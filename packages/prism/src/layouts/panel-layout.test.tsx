@@ -125,3 +125,35 @@ describe('independent application and document navigation', () => {
     expect(screen.getByLabelText('Document draft')).toBe(draft);
   });
 });
+
+it('exposes compact navigation without replacing the editable document or its panel state', () => {
+  const select = vi.fn();
+  render(
+    <PanelLayout
+      title="Contents"
+      labels={labels}
+      height={640}
+      panel={({ collapsed }) => (
+        <>
+          <input aria-label="Panel search" hidden={collapsed} defaultValue="" />
+          {collapsed && <button onClick={select}>Chapter two</button>}
+        </>
+      )}
+    >
+      <textarea aria-label="Proof draft" defaultValue="Original" />
+    </PanelLayout>
+  );
+  const search = screen.getByLabelText('Panel search'),
+    draft = screen.getByLabelText('Proof draft');
+  fireEvent.change(search, { target: { value: 'sequence' } });
+  fireEvent.change(draft, { target: { value: 'Unpublished' } });
+  fireEvent.click(screen.getByLabelText('Collapse contents'));
+  expect(search).not.toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Chapter two' }));
+  expect(select).toHaveBeenCalledOnce();
+  expect(screen.getByLabelText('Proof draft')).toBe(draft);
+  expect(draft).toHaveValue('Unpublished');
+  fireEvent.click(screen.getByLabelText('Expand contents'));
+  expect(screen.getByLabelText('Panel search')).toBe(search);
+  expect(search).toHaveValue('sequence');
+});

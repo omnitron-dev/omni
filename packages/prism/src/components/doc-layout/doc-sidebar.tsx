@@ -13,6 +13,8 @@ export interface DocSidebarItem {
   id: string;
   label: string;
   href?: string;
+  /** Short identity displayed in a collapsed navigation rail. */
+  shortLabel?: string;
   children?: DocSidebarItem[];
 }
 
@@ -21,6 +23,7 @@ interface DocSidebarProps {
   activeId?: string;
   onItemClick?: (item: DocSidebarItem) => void;
   title?: string;
+  compact?: boolean;
 }
 
 /**
@@ -36,33 +39,79 @@ const MAX_LABEL_LINES = 2;
 
 // useLayoutEffect logs a warning during SSR; pick the right hook so
 // consumers rendering the sidebar in a server bundle aren't noisy.
-const useIsoLayoutEffect =
-  typeof window === 'undefined' ? useEffect : useLayoutEffect;
+const useIsoLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
-export function DocSidebar({ items, activeId, onItemClick, title }: DocSidebarProps) {
-  return (
-    <Box>
-      {title && (
-        <Typography
-          variant="subtitle2"
-          sx={{
-            px: 1.5,
-            pt: 0.5,
-            pb: 2,
-            fontWeight: 700,
-            fontSize: '0.8125rem',
-            color: 'text.secondary',
-            letterSpacing: '0.01em',
-          }}
-        >
-          {title}
-        </Typography>
-      )}
-      <List dense disablePadding>
-        {items.map((item) => (
-          <SidebarNode key={item.id} item={item} activeId={activeId} onItemClick={onItemClick} depth={0} />
+export function DocSidebar({ items, activeId, onItemClick, title, compact = false }: DocSidebarProps) {
+  const compactIndex = () => {
+    const leaves = (nodes: DocSidebarItem[], path: string[] = []): { item: DocSidebarItem; path: string }[] =>
+      nodes.flatMap((item) => [
+        ...(item.href || !item.children?.length ? [{ item, path: [...path, item.label].join(' / ') }] : []),
+        ...leaves(item.children ?? [], [...path, item.label]),
+      ]);
+    return (
+      <List dense disablePadding aria-label={title}>
+        {leaves(items).map(({ item, path }) => (
+          <Tooltip key={item.id} title={path} placement="right" disableInteractive>
+            <ListItemButton
+              component={item.href ? 'a' : 'button'}
+              href={item.href}
+              aria-label={item.label}
+              aria-current={activeId === item.id ? 'page' : undefined}
+              selected={activeId === item.id}
+              onClick={(event: React.MouseEvent<HTMLElement>) => {
+                if (
+                  item.href &&
+                  (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)
+                )
+                  return;
+                if (item.href && onItemClick) event.preventDefault();
+                onItemClick?.(item);
+              }}
+              sx={{
+                minHeight: 40,
+                width: '100%',
+                px: 0.5,
+                mb: 0.5,
+                borderRadius: 1,
+                justifyContent: 'center',
+                textDecoration: 'none',
+              }}
+            >
+              <Typography component="span" variant="caption" aria-hidden="true" sx={{ fontWeight: 600 }}>
+                {item.shortLabel ?? Array.from(item.label.trim()).slice(0, 2).join('')}
+              </Typography>
+            </ListItemButton>
+          </Tooltip>
         ))}
       </List>
+    );
+  };
+  return (
+    <Box>
+      {compact && compactIndex()}
+      <Box hidden={compact}>
+        {title && (
+          <Typography
+            variant="subtitle2"
+            sx={{
+              px: 1.5,
+              pt: 0.5,
+              pb: 2,
+              fontWeight: 700,
+              fontSize: '0.8125rem',
+              color: 'text.secondary',
+              letterSpacing: '0.01em',
+            }}
+          >
+            {title}
+          </Typography>
+        )}
+        <List dense disablePadding>
+          {items.map((item) => (
+            <SidebarNode key={item.id} item={item} activeId={activeId} onItemClick={onItemClick} depth={0} />
+          ))}
+        </List>
+      </Box>
     </Box>
   );
 }
@@ -95,7 +144,8 @@ function SidebarNode({
         selected={isActive}
         onClick={(event: React.MouseEvent<HTMLElement>) => {
           // Native links retain copy/open-in-new-tab and modified-click behaviour.
-          if (item.href && (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)) return;
+          if (item.href && (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0))
+            return;
           if (item.href && onItemClick) event.preventDefault();
           if (hasChildren) setOpen(!open);
           onItemClick?.(item);
@@ -121,7 +171,11 @@ function SidebarNode({
           }),
         }}
       >
-        {hasChildren && <Box component="span" aria-hidden="true" sx={{ width: 16, flexShrink: 0 }}>{open ? '−' : '+'}</Box>}
+        {hasChildren && (
+          <Box component="span" aria-hidden="true" sx={{ width: 16, flexShrink: 0 }}>
+            {open ? '−' : '+'}
+          </Box>
+        )}
         <SidebarLabel
           label={item.label}
           sx={{
@@ -223,14 +277,7 @@ function SidebarLabel({ label, sx }: { label: string; sx?: object }) {
   if (!isOverflowing) return text;
 
   return (
-    <Tooltip
-      title={label}
-      placement="right"
-      arrow
-      enterDelay={300}
-      enterNextDelay={150}
-      disableInteractive
-    >
+    <Tooltip title={label} placement="right" arrow enterDelay={300} enterNextDelay={150} disableInteractive>
       {text}
     </Tooltip>
   );

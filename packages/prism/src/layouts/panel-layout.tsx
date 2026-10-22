@@ -7,12 +7,14 @@ import SvgIcon from '@mui/material/SvgIcon';
 import Typography from '@mui/material/Typography';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme, type SxProps, type Theme, type Breakpoint } from '@mui/material/styles';
+import { Scrollbar } from '../components/scrollbar/scrollbar.js';
 import { SidebarToggle } from './sidebar-toggle.js';
 import { useSettingsStore } from '../state/stores/settings.js';
 
 export interface PanelLayoutProps {
   children: ReactNode;
-  panel: ReactNode;
+  /** Render a compact, actionable index while keeping the same component mounted. */
+  panel: ReactNode | ((state: { collapsed: boolean }) => ReactNode);
   title: string;
   /** Translate all three action labels in the host application. */
   labels: { expand: string; collapse: string; close: string };
@@ -22,6 +24,9 @@ export interface PanelLayoutProps {
   /** Close the mobile drawer when the host changes its active document/selection. */
   navigationKey?: string;
   width?: number;
+  collapsedWidth?: number;
+  /** Stable in both modes. A graph can use the same height as its canvas. */
+  height?: number | string;
   layoutQuery?: Breakpoint;
   /** Top of the sticky panel below the application header. */
   offset?: number;
@@ -41,6 +46,8 @@ export function PanelLayout({
   defaultCollapsed = false,
   navigationKey,
   width = 264,
+  collapsedWidth = 64,
+  height,
   layoutQuery = 'md',
   offset = 88,
   sx,
@@ -54,6 +61,7 @@ export function PanelLayout({
   );
   const [mobileOpen, setMobileOpen] = useState(false);
   const id = useId();
+  const renderPanel = (compact: boolean) => (typeof panel === 'function' ? panel({ collapsed: compact }) : panel);
   useEffect(() => {
     setMobileOpen(false);
   }, [navigationKey, wide]);
@@ -74,7 +82,11 @@ export function PanelLayout({
           component="aside"
           aria-label={title}
           sx={{
-            width: collapsed ? 40 : width,
+            width: collapsed ? collapsedWidth : width,
+            height: height ?? `calc(100dvh - ${offset + 24}px)`,
+            minHeight: 160,
+            display: 'flex',
+            flexDirection: 'column',
             flexShrink: 0,
             position: 'sticky',
             top: offset,
@@ -84,7 +96,17 @@ export function PanelLayout({
             '@media (prefers-reduced-motion: reduce)': { transition: 'none' },
           }}
         >
-          <Box sx={{ height: 48, display: 'flex', alignItems: 'center', pr: 3, pl: 1.5, overflow: 'hidden' }}>
+          <Box
+            sx={{
+              height: 48,
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              pr: 3,
+              pl: 1.5,
+              overflow: 'hidden',
+            }}
+          >
             {!collapsed && (
               <Typography component="div" variant="subtitle2" noWrap>
                 {title}
@@ -98,19 +120,13 @@ export function PanelLayout({
             aria-controls={id + '-desktop'}
             sx={{ top: 24 }}
           />
-          <Box
+          <Scrollbar
             id={id + '-desktop'}
-            hidden={collapsed}
-            sx={{
-              maxHeight: `calc(100dvh - ${offset + 64}px)`,
-              overflowY: 'auto',
-              overscrollBehavior: 'contain',
-              px: 1.5,
-              pb: 2,
-            }}
+            hidden={collapsed && typeof panel !== 'function'}
+            sx={{ flex: 1, overscrollBehavior: 'contain', px: collapsed ? 0.5 : 1.5, pb: 2 }}
           >
-            {panel}
-          </Box>
+            {renderPanel(collapsed)}
+          </Scrollbar>
         </Box>
       )}
       <Box sx={{ flex: '1 1 auto', minWidth: 0 }}>
@@ -153,7 +169,7 @@ export function PanelLayout({
               <span aria-hidden="true">×</span>
             </IconButton>
           </Box>
-          <Box sx={{ overflowY: 'auto', px: 2, pb: 2 }}>{panel}</Box>
+          <Scrollbar sx={{ flex: 1, px: 2, pb: 2 }}>{renderPanel(false)}</Scrollbar>
         </Drawer>
       )}
     </Box>

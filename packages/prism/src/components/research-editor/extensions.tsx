@@ -3,11 +3,12 @@ import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import { TableKit } from '@tiptap/extension-table';
-import { Plugin } from '@tiptap/pm/state';
+import { Plugin, NodeSelection } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import { MathNodeView, mathEntryKey } from './math-node.js';
 import { canSplit } from '@tiptap/pm/transform';
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import katex from 'katex';
 import { ResearchDocument, type ResearchWidgets, type ResearchLabels } from '../research/document.js';
 import { newBlockId, snapshot } from './source.js';
 import { runBlockAction } from './block-commands.js';
@@ -128,50 +129,74 @@ export function researchExtensions(
     ],
     addNodeView: () => ReactNodeViewRenderer(SourceView),
   });
-  const Math = Node.create({
-    name: 'mathInline',
-    marks: 'bold italic strike link',
-    group: 'inline',
-    inline: true,
-    atom: true,
-    addAttributes: () => ({ tex: { default: '' } }),
-    parseHTML: () => [
-      {
-        tag: 'span[data-math-inline]',
-        getAttrs: (element) => ({ tex: element.getAttribute('data-tex') ?? element.textContent ?? '' }),
+  const mathNode = (name: 'mathInline' | 'mathBlock') =>
+    Node.create({
+      name,
+      marks: name === 'mathInline' ? 'bold italic strike link' : '',
+      group: name === 'mathInline' ? 'inline' : 'block',
+      inline: name === 'mathInline',
+      atom: true,
+      selectable: true,
+      addAttributes: () => ({ tex: { default: '' } }),
+      parseHTML: () => [
+        {
+          tag: name === 'mathInline' ? 'span[data-math-inline]' : 'div[data-math-block]',
+          getAttrs: (element) => ({ tex: element.getAttribute('data-tex') ?? element.textContent ?? '' }),
+        },
+      ],
+      renderHTML: ({ node }) => [
+        name === 'mathInline' ? 'span' : 'div',
+        {
+          [name === 'mathInline' ? 'data-math-inline' : 'data-math-block']: true,
+          'data-tex': String(node.attrs.tex),
+        },
+        String(node.attrs.tex),
+      ],
+      addNodeView: () =>
+        ReactNodeViewRenderer(MathNodeView, {
+          // Shadow-DOM math input is not a native INPUT/TEXTAREA. Letting its keys
+          // reach ProseMirror would replace the selected atom with ordinary text.
+          stopEvent: ({ event }) => event.target instanceof Element && !!event.target.closest('.prism-math-input'),
+        }),
+      addKeyboardShortcuts() {
+        const enter = (backward: boolean) => {
+          if (!this.editor.isEditable || !this.editor.state.selection.empty) return false;
+          const { $from } = this.editor.state.selection;
+          const next = backward ? $from.nodeBefore : $from.nodeAfter;
+          if (next?.type.name !== 'mathInline') return false;
+          const pos = backward ? $from.pos - next.nodeSize : $from.pos;
+          this.editor.view.dispatch(
+            this.editor.state.tr
+              .setSelection(NodeSelection.create(this.editor.state.doc, pos))
+              .setMeta('prismMathEntry', backward ? 'end' : 'start')
+          );
+          return true;
+        };
+        return { ArrowLeft: () => enter(true), ArrowRight: () => enter(false) };
       },
-    ],
-    renderHTML: ({ node }) => [
-      'span',
-      { 'data-math-inline': true, 'data-tex': String(node.attrs.tex) },
-      String(node.attrs.tex),
-    ],
-    addNodeView() {
-      return ({ node }) => {
-        const dom = document.createElement('span');
-        dom.className = 'prism-science__math';
-        dom.contentEditable = 'false';
-        dom.title = String(node.attrs.tex);
-        try {
-          katex.render(String(node.attrs.tex), dom, {
-            trust: false,
-            strict: 'error',
-            throwOnError: true,
-            maxExpand: 1000,
-            maxSize: 20,
-          });
-        } catch {
-          dom.textContent = String(node.attrs.tex);
-        }
-        return { dom };
-      };
-    },
-  });
+    });
   const Ids = Extension.create({
     name: 'researchIds',
     addProseMirrorPlugins() {
       return [
         new Plugin({
+          key: mathEntryKey,
+          state: { init: () => 'end' as const, apply: (tr, value) => tr.getMeta('prismMathEntry') ?? value },
+        }),
+        new Plugin({
+          props: {
+            decorations(state) {
+              const { from, to, empty } = state.selection;
+              const decorations: Decoration[] = [];
+              state.doc.forEach((node, pos) => {
+                if (empty ? from >= pos && from < pos + node.nodeSize : from < pos + node.nodeSize && to > pos)
+                  decorations.push(
+                    Decoration.node(pos, pos + node.nodeSize, { class: empty ? 'is-current' : 'is-selected' })
+                  );
+              });
+              return DecorationSet.create(state.doc, decorations);
+            },
+          },
           filterTransaction(tr) {
             if (!tr.docChanged || !limits) return true;
             try {
@@ -205,7 +230,8 @@ export function researchExtensions(
     TaskItem.configure({ nested: true, a11y: { checkboxLabel: (node) => node.textContent } }),
     TableKit.configure({ table: { resizable: false } }),
     Source,
-    Math,
+    mathNode('mathInline'),
+    mathNode('mathBlock'),
     Ids,
   ];
 }

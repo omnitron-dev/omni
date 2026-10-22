@@ -707,6 +707,9 @@ importers:
       maplibre-gl:
         specifier: ^6.15.0
         version: 6.15.0
+      mathlive:
+        specifier: 0.111.1
+        version: 0.111.1
       mdast-util-directive:
         specifier: ^3.1.1
         version: 3.1.1
@@ -6338,6 +6341,9 @@ packages:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
     engines: {node: '>= 0.4'}
 
+  mathlive@0.111.1:
+    resolution: {integrity: sha512-RVaC7NO02Lmx3ZNUxOHR2xCRpcvTfBb2BtdgV60cTanAMufaUkWcPPB2VxChcsNeL+0rTQKqOPDYxXLPOXJI+A==}
+
   mdast-util-directive@3.1.1:
     resolution: {integrity: sha512-Gqpa3MHorXYEZ0VfbroyvBlVKUfz371V6mIERqOYMcb0W1D3LwmFq1ZW4O2TDrbn+4ZmGLwMWeFRJgYZ+bc5fQ==}
 
@@ -10712,7 +10718,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.3.0
       tinyrainbow: 3.2.0
-      vitest: 5.0.3(patch_hash=7d3b94ccb37b6e9f0722028aef2b130bae32ecaf86e9672f1ffa31b2236e583c)(@opentelemetry/api@1.9.1)(@types/node@25.9.5)(@vitest/coverage-v8@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(jsdom@30.1.3(@noble/hashes@2.2.0))(vite@8.3.5(@types/node@25.9.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
+      vitest: 5.0.3(patch_hash=7d3b94ccb37b6e9f0722028aef2b130bae32ecaf86e9672f1ffa31b2236e583c)(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(@vitest/coverage-v8@5.0.3)(@vitest/ui@5.0.3)(happy-dom@21.0.4)(jsdom@30.1.3(@noble/hashes@2.2.0))(vite@8.3.5(@types/node@25.6.0)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.0))
     optional: true
 
   '@vitest/coverage-v8@5.0.5(vitest@5.0.5)':
@@ -10817,7 +10823,7 @@ snapshots:
       pathe: 2.0.3
       sirv: 3.0.2
       tinyrainbow: 3.2.0
-      vitest: 5.0.3(patch_hash=7d3b94ccb37b6e9f0722028aef2b130bae32ecaf86e9672f1ffa31b2236e583c)(@opentelemetry/api@1.9.1)(@types/node@25.9.5)(@vitest/coverage-v8@5.0.3)(@vitest/ui@5.0.3)(happy-dom@20.14.0)(jsdom@30.1.3(@noble/hashes@2.2.0))(vite@8.3.5(@types/node@25.9.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
+      vitest: 5.0.3(patch_hash=7d3b94ccb37b6e9f0722028aef2b130bae32ecaf86e9672f1ffa31b2236e583c)(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(@vitest/coverage-v8@5.0.3)(@vitest/ui@5.0.3)(happy-dom@21.0.4)(jsdom@30.1.3(@noble/hashes@2.2.0))(vite@8.3.5(@types/node@25.6.0)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.0))
     optional: true
 
   '@vitest/ui@5.0.5(vitest@5.0.5)':
@@ -13400,6 +13406,8 @@ snapshots:
   marked@16.4.2: {}
 
   math-intrinsics@1.1.0: {}
+
+  mathlive@0.111.1: {}
 
   mdast-util-directive@3.1.1:
     dependencies:

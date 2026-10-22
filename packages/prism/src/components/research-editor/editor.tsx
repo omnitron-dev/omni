@@ -19,6 +19,7 @@ import { researchExtensions, ResearchViewContext } from './extensions.js';
 import { blockSource, hydrateSource, snapshot, type ResearchSnapshot } from './source.js';
 import { currentBlock, findBlock, runBlockAction } from './block-commands.js';
 import { BlockControls } from './block-controls.js';
+import { ResearchMathContext, type ResearchMathOptions } from './math-node.js';
 import './editor.css';
 
 export const defaultResearchEditorLabels = {
@@ -41,7 +42,7 @@ export const defaultResearchEditorLabels = {
   cancel: 'Cancel',
   invalid: 'This source cannot be applied. Check the document limits and structure.',
   limit: 'Document exceeds the configured source limit.',
-  hint: 'Type / in an empty paragraph to insert a block. Select text to format it.',
+  hint: 'Type / for a new block. Ctrl/⌘ + Shift + M inserts an equation. Arrow keys move between text and math.',
   paragraph: 'Text',
   heading: 'Heading',
   list: 'Bullet list',
@@ -83,6 +84,8 @@ export interface ResearchEditorProps {
   maxSourceLength?: number;
   /** Contextual block controls; keyboard commands remain available when hidden. */
   blockControls?: boolean;
+  /** In-place equation input configuration and localisation. */
+  math?: ResearchMathOptions;
   className?: string;
   sx?: SxProps<Theme>;
 }
@@ -102,6 +105,7 @@ export function ResearchEditor({
   insertions = noInsertions,
   maxSourceLength = researchLimits.source,
   blockControls = true,
+  math,
   className,
   sx,
 }: ResearchEditorProps) {
@@ -111,7 +115,7 @@ export function ResearchEditor({
   const notify = useRef(onChange);
   notify.current = onChange;
   const [palette, setPalette] = useState(false),
-    [dialog, setDialog] = useState<{ kind: 'document' | 'block' | 'math' | 'link'; text: string; pos?: number }>(),
+    [dialog, setDialog] = useState<{ kind: 'document' | 'block' | 'link'; text: string; pos?: number }>(),
     [invalid, setInvalid] = useState('');
   const extensions = useMemo(
     () =>
@@ -128,6 +132,17 @@ export function ResearchEditor({
     editorProps: {
       attributes: { role: 'textbox', 'aria-multiline': 'true', 'aria-label': labels.editor },
       handleKeyDown: (view, event) => {
+        if (
+          !readOnly &&
+          !event.isComposing &&
+          (event.metaKey || event.ctrlKey) &&
+          event.shiftKey &&
+          event.key.toLowerCase() === 'm'
+        ) {
+          event.preventDefault();
+          insertInlineMath();
+          return true;
+        }
         if (
           event.key === '/' &&
           !event.isComposing &&
@@ -194,13 +209,21 @@ export function ResearchEditor({
       { id: 'tasks', label: labels.tasks, source: '- [ ] ' },
       { id: 'quote', label: labels.quote, source: '> ' },
       { id: 'code', label: labels.code, source: '```\n\n```' },
-      { id: 'equation', label: labels.equation, source: '$$\nx^2+y^2=z^2\n$$' },
+      { id: 'equation', label: labels.equation, source: '$$\n\\placeholder{}\n$$' },
       { id: 'diagram', label: labels.diagram, source: '```mermaid\nflowchart LR\n  A[Source] --> B[Question]\n```' },
       { id: 'table', label: labels.table, source: '| A | B |\n| --- | --- |\n|  |  |' },
       ...insertions,
     ],
     [labels, insertions]
   );
+  function insertInlineMath() {
+    if (!editor?.isEditable) return;
+    if (editor.state.selection instanceof NodeSelection && editor.state.selection.node.type.name === 'mathInline')
+      return;
+    const tr = editor.state.tr.replaceSelectionWith(editor.schema.nodes.mathInline!.create({ tex: '\\placeholder{}' }));
+    tr.setSelection(NodeSelection.create(tr.doc, tr.selection.from - 1));
+    editor.view.dispatch(tr.setMeta('prismMathEntry', 'start'));
+  }
   function applyDocument(source: string) {
     if (!editor) return;
     if (source.length > maxSourceLength) throw Error('document_limit');
@@ -274,13 +297,6 @@ export function ResearchEditor({
         );
         if (snapshot(tr.doc).getSource().length > maxSourceLength) throw Error('document_limit');
         editor.view.dispatch(tr.scrollIntoView());
-      } else if (dialog.kind === 'math') {
-        if (!text.trim() || text.length > researchLimits.block) throw Error('invalid_math');
-        editor
-          .chain()
-          .focus()
-          .insertContent({ type: 'mathInline', attrs: { tex: text } })
-          .run();
       } else {
         if (text && !/^(https?:\/\/|mailto:)/i.test(text)) throw Error('invalid_link');
         const chain = editor.chain().focus().extendMarkRange('link');
@@ -342,9 +358,7 @@ export function ResearchEditor({
           selection?.italic
         )}
         {button(labels.link, () => setDialog({ kind: 'link', text: String(editor?.getAttributes('link').href ?? '') }))}
-        {button(labels.inlineMath, () =>
-          setDialog({ kind: 'math', text: String(editor?.getAttributes('mathInline').tex ?? '') })
-        )}
+        {button(labels.inlineMath, insertInlineMath)}
         {button(
           labels.undo,
           () => {
@@ -370,7 +384,9 @@ export function ResearchEditor({
         className={`prism-science__workspace${blockControls ? ' prism-science__workspace--controls' : ''}`}
       >
         <ResearchViewContext.Provider value={presentation}>
-          <EditorContent editor={editor} className="prism-science__content" />
+          <ResearchMathContext.Provider value={{ ...math, readOnly }}>
+            <EditorContent editor={editor} className="prism-science__content" />
+          </ResearchMathContext.Provider>
         </ResearchViewContext.Provider>
         {editor && blockControls && (
           <BlockControls
@@ -441,15 +457,7 @@ export function ResearchEditor({
       {dialog && (
         <SourceDialog
           key={`${dialog.kind}:${dialog.pos}`}
-          title={
-            dialog.kind === 'document'
-              ? labels.source
-              : dialog.kind === 'math'
-                ? labels.inlineMath
-                : dialog.kind === 'link'
-                  ? labels.link
-                  : labels.editBlock
-          }
+          title={dialog.kind === 'document' ? labels.source : dialog.kind === 'link' ? labels.link : labels.editBlock}
           initial={dialog.text}
           maxLength={maxSourceLength}
           labels={labels}

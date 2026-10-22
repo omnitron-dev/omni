@@ -31,10 +31,9 @@ const opaque = new Set([
   'containerDirective',
   'leafDirective',
   'textDirective',
-  'math',
 ]);
 const hasOpaque = (n: Ast): boolean =>
-  (n.type === 'code' && !!n.meta) ||
+  ((n.type === 'code' || n.type === 'math') && !!n.meta) ||
   (n.type === 'list' &&
     n.children?.some((c) => typeof c.checked === 'boolean') &&
     !n.children?.every((c) => typeof c.checked === 'boolean')) ||
@@ -130,6 +129,8 @@ function astNode(n: JSONContent): Ast {
       return { type: 'blockquote', children: children() };
     case 'codeBlock':
       return { type: 'code', lang: a.language || null, value: (n.content ?? []).map((x) => x.text ?? '').join('') };
+    case 'mathBlock':
+      return { type: 'math', value: a.tex ?? '' };
     case 'mathInline':
       result = { type: 'inlineMath', value: a.tex ?? '' };
       break;

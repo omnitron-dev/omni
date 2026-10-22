@@ -118,3 +118,41 @@ test.describe('large-document measurement', () => {
     await expect(blocks).toHaveCount(2000);
   });
 });
+
+test('in-place equation typing, immediate snapshot, document undo and read-only handover', async ({ page }) => {
+  await page.getByRole('button', { name: 'Equation: x^2+y^2=z^2', exact: true }).click();
+  const field = page.locator('math-field');
+  await expect(field).toBeVisible();
+  await field.press('2');
+  await page.getByRole('button', { name: 'Capture source' }).click();
+  const changed = JSON.parse((await page.getByTestId('captured-json').textContent())!);
+  expect(changed).toContain('x^2+y^2=z^22');
+  expect(changed).toContain('First statement.\r\n\r\n');
+  await field.press('ControlOrMeta+z');
+  await page.getByRole('button', { name: 'Capture source' }).click();
+  expect(await page.getByTestId('captured-json').textContent()).toBe(JSON.stringify(source));
+  await page.getByRole('checkbox', { name: 'Read only', exact: true }).check();
+  await expect(field).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Research document' })).toHaveAttribute('contenteditable', 'false');
+});
+
+test('inline navigation does not replace the equation or insert spurious paragraphs', async ({ page }) => {
+  await page.getByRole('button', { name: 'Document source', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Document source', exact: true }).fill('Before $x^2$ after.');
+  await page.getByRole('button', { name: 'Apply', exact: true }).click();
+  const paragraph = page.locator('[data-research-block] p');
+  await paragraph.click();
+  await page.keyboard.press('Home');
+  for (let i = 0; i < 7; i++) await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  const field = page.locator('math-field');
+  await expect(field).toBeVisible();
+  await field.press('2');
+  await field.press('3');
+  await expect(field).toBeVisible();
+  await field.press('Escape');
+  await page.keyboard.type(' verified');
+  await page.getByRole('button', { name: 'Capture source' }).click();
+  expect(await page.getByTestId('captured-json').textContent()).toBe(JSON.stringify('Before $23x^2$ verified after.'));
+  await expect(page.locator('[data-research-block]')).toHaveCount(1);
+});

@@ -55,6 +55,13 @@
 export interface PackageManifest {
   name: string;
   version: string;
+  type?: string;
+  main?: string;
+  module?: string;
+  exports?: unknown;
+  imports?: unknown;
+  bin?: string | Record<string, string>;
+  publishConfig?: { exports?: unknown };
   dependencies?: Record<string, string> | undefined;
   optionalDependencies?: Record<string, string> | undefined;
 }
@@ -241,7 +248,16 @@ export function bundleRootManifest(plan: BundlePlan, version: string): Record<st
     name: plan.root.name,
     version,
     private: true,
-    type: 'module',
+    type: plan.root.type ?? 'module',
+    // A deployed daemon can also be imported by its managed applications.
+    // Preserve its public module boundary instead of publishing only dependencies.
+    ...(plan.root.main ? { main: plan.root.main } : {}),
+    ...(plan.root.module ? { module: plan.root.module } : {}),
+    ...((plan.root.publishConfig?.exports ?? plan.root.exports) !== undefined
+      ? { exports: plan.root.publishConfig?.exports ?? plan.root.exports }
+      : {}),
+    ...(plan.root.imports ? { imports: plan.root.imports } : {}),
+    ...(plan.root.bin ? { bin: plan.root.bin } : {}),
     dependencies,
     overrides: plan.overrides,
   };

@@ -78,8 +78,7 @@ export interface HttpTrafficSnapshot {
 function holdsItsCaller(instance: object | undefined, methodName: string): boolean {
   if (!instance) return false;
   const options = Reflect.getMetadata(METADATA_KEYS.METHOD_OPTIONS, Object.getPrototypeOf(instance), methodName) as
-    | { holds?: unknown }
-    | undefined;
+    { holds?: unknown } | undefined;
   return options?.holds === true;
 }
 
@@ -176,18 +175,14 @@ export function resolveMaxBodyBytes(options: unknown): number {
   if (typeof opts.maxRequestSize === 'string') {
     const match = opts.maxRequestSize.trim().match(/^(\d+(?:\.\d+)?)\s*(b|kb|mb|gb)?$/i);
     if (match) {
-      const multiplier = { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3 }[
-        (match[2] ?? 'b').toLowerCase()
-      ]!;
+      const multiplier = { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3 }[(match[2] ?? 'b').toLowerCase()]!;
       const bytes = Math.floor(parseFloat(match[1]!) * multiplier);
       if (bytes > 0) return bytes;
     }
     // An unparseable value must not silently widen the limit.
   }
 
-  return typeof opts.maxBodySize === 'number' && opts.maxBodySize > 0
-    ? opts.maxBodySize
-    : DEFAULT_MAX_BODY_BYTES;
+  return typeof opts.maxBodySize === 'number' && opts.maxBodySize > 0 ? opts.maxBodySize : DEFAULT_MAX_BODY_BYTES;
 }
 
 /**
@@ -403,12 +398,11 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     const cors = this.options.cors;
     if (typeof cors === 'object' && cors !== null) {
       const policy = cors as { origin?: unknown; credentials?: boolean };
-      const reflectsAny =
-        policy.origin === undefined || policy.origin === true || policy.origin === '*';
+      const reflectsAny = policy.origin === undefined || policy.origin === true || policy.origin === '*';
       if (policy.credentials === true && reflectsAny) {
         throw new Error(
           'CORS: `credentials: true` requires an explicit `origin` allow-list — ' +
-            'reflecting any origin with credentials lets any site read an authenticated response.',
+            'reflecting any origin with credentials lets any site read an authenticated response.'
         );
       }
     }
@@ -609,7 +603,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       // `cors: true` is shorthand for "reflect any origin"; the adapter takes
       // the object form, so say it in the form it understands rather than
       // handing it a boolean it has no property in common with.
-      cors: this.options.cors === true ? { origin: true } : (this.options.cors || undefined),
+      cors: this.options.cors === true ? { origin: true } : this.options.cors || undefined,
     });
 
     // Store logging option for use in request handlers
@@ -647,26 +641,27 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           exempt: [],
         });
       }
-      if (security.origin) this.globalPipeline.use(
-        createOriginMiddleware(security.origin),
-        { name: 'http-origin', priority: 15 }, MiddlewareStage.PRE_INVOKE,
-      );
-      if (security.csrf) this.globalPipeline.use(
-        createCsrfMiddleware(security.csrf),
-        { name: 'http-csrf', priority: 18 }, MiddlewareStage.PRE_INVOKE,
-      );
+      if (security.origin)
+        this.globalPipeline.use(
+          createOriginMiddleware(security.origin),
+          { name: 'http-origin', priority: 15 },
+          MiddlewareStage.PRE_INVOKE
+        );
+      if (security.csrf)
+        this.globalPipeline.use(
+          createCsrfMiddleware(security.csrf),
+          { name: 'http-csrf', priority: 18 },
+          MiddlewareStage.PRE_INVOKE
+        );
       this.httpSecurityInstalled = true;
     }
     const optsPolicyEngine = (this.options as any).policyEngine as PolicyEngine | undefined;
-    const optsAuthorizationManager = (this.options as any)
-      .authorizationManager as AuthorizationManager | undefined;
+    const optsAuthorizationManager = (this.options as any).authorizationManager as AuthorizationManager | undefined;
     // Auto-instantiation needs a real logger (AuthorizationManager calls
     // `logger.child(...)` in its constructor). Some test peers stub the
     // logger with an empty object — in that case skip auto-wire so we
     // don't crash the transport boot.
-    const canAutoInstantiate =
-      !!netron?.authenticationManager &&
-      typeof (peer.logger as any)?.child === 'function';
+    const canAutoInstantiate = !!netron?.authenticationManager && typeof (peer.logger as any)?.child === 'function';
     const resolvedAuthorizationManager =
       optsAuthorizationManager ||
       (netron?.authorizationManager as AuthorizationManager | undefined) ||
@@ -950,8 +945,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       // own when no upper bound applies.
       const requestTimeout = this.requestTimeoutMs;
       const userHeadersTimeout = (this.options as any)?.headersTimeout ?? 60_000;
-      const headersTimeout =
-        requestTimeout > 0 ? Math.min(userHeadersTimeout, requestTimeout) : userHeadersTimeout;
+      const headersTimeout = requestTimeout > 0 ? Math.min(userHeadersTimeout, requestTimeout) : userHeadersTimeout;
       this.server = createServer(
         {
           // OPTIMIZATION: Longer keep-alive timeout for connection reuse
@@ -1821,7 +1815,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     req: HttpRequestMessage,
     request: Request,
     fallbackContext: HttpRequestContext | undefined,
-    setCookies: string[],
+    setCookies: string[]
   ): Promise<unknown> {
     const service = this.services.get(req.service);
     const method = service?.methods.get(req.method);
@@ -1997,7 +1991,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
                 ...(error instanceof Error && error.stack && { stack: error.stack }),
                 batchMode: 'parallel',
               },
-              'Netron batch error',
+              'Netron batch error'
             );
           }
 
@@ -2040,7 +2034,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
                 ...(error instanceof Error && error.stack && { stack: error.stack }),
                 batchMode: 'sequential',
               },
-              'Netron batch error',
+              'Netron batch error'
             );
           }
 
@@ -2172,13 +2166,10 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    */
   private handleHealthCheck(_request: Request): Response {
     const status = this.status === 'online' ? 200 : 503;
-    return new Response(
-      JSON.stringify({ status: this.status }),
-      {
-        status,
-        headers: { 'Content-Type': 'application/json' },
-      }
-    );
+    return new Response(JSON.stringify({ status: this.status }), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 
   /**
@@ -2227,7 +2218,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
           'Content-Type': 'application/json',
           'WWW-Authenticate': 'Bearer',
         },
-      },
+      }
     );
   }
 
@@ -2440,7 +2431,28 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         errorRequest.headers.get('X-Request-ID') || generateRequestId(),
         errorRequest
       );
-      res.shouldKeepAlive = false;
+      // Closing the response while the sender is still uploading resets the
+      // socket: fetch reports EPIPE/ECONNRESET instead of the 413 we just sent.
+      // Discard the remainder without retaining chunks. Send the refusal now,
+      // but defer a requested close until both HTTP directions have finished.
+      const closeAfterDrain = !res.shouldKeepAlive;
+      res.shouldKeepAlive = true;
+      const drainTimeout = this.requestTimeoutMs > 0 ? this.requestTimeoutMs : this.DEFAULT_REQUEST_TIMEOUT;
+      const deadline = setTimeout(() => req.destroy(), drainTimeout);
+      deadline.unref();
+      const drained = () => {
+        clearTimeout(deadline);
+        req.removeListener('end', drained);
+        req.removeListener('close', drained);
+        if (closeAfterDrain && req.complete && res.writableFinished) req.socket.end();
+      };
+      req.once('end', drained);
+      req.once('close', drained);
+      if (closeAfterDrain)
+        res.once('finish', () => {
+          if (req.complete) req.socket.end();
+        });
+      if (req.complete) drained();
       req.resume();
     }
 
@@ -2594,10 +2606,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         typeof this.options.cors === 'object' && this.options.cors !== null
           ? ((this.options.cors as { allowedHeaders?: readonly string[] }).allowedHeaders ?? [])
           : [];
-      headers.set(
-        'Access-Control-Allow-Headers',
-        ['Content-Type', 'Authorization', ...extra].join(', '),
-      );
+      headers.set('Access-Control-Allow-Headers', ['Content-Type', 'Authorization', ...extra].join(', '));
       headers.set('Access-Control-Max-Age', '86400');
 
       if (this.corsCredentials) {

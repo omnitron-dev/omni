@@ -562,7 +562,8 @@ function getDensityMultiplier(density: ComponentDensity): number {
 
 /**
  * Deep merge two theme option objects.
- * Arrays are replaced, not concatenated. Functions are overwritten.
+ * Arrays are replaced and functions are overwritten outside component style slots.
+ * Component style slots compose with MUI interpolation arrays, preserving theme callbacks.
  * Preserves nested component overrides, palette, typography, etc.
  */
 function deepMergeThemeOptions(base: ThemeOptions, overrides: Partial<ThemeOptions>): ThemeOptions {
@@ -572,7 +573,22 @@ function deepMergeThemeOptions(base: ThemeOptions, overrides: Partial<ThemeOptio
     const baseVal = (base as Record<string, unknown>)[key];
     const overrideVal = (overrides as Record<string, unknown>)[key];
 
+    // A slot callback and a plain CSS object are both native MUI styles. Replacing
+    // the callback discards density, state selectors and palette-dependent rules.
+    // Let MUI evaluate both in order so the consumer overrides only its own rules.
     if (
+      key === 'styleOverrides' &&
+      baseVal &&
+      overrideVal &&
+      typeof baseVal === 'object' &&
+      typeof overrideVal === 'object'
+    ) {
+      const slots = { ...(baseVal as Record<string, unknown>) };
+      for (const [slot, style] of Object.entries(overrideVal)) {
+        if (style !== undefined) slots[slot] = slots[slot] === undefined ? style : [slots[slot], style];
+      }
+      result[key] = slots;
+    } else if (
       overrideVal !== null &&
       typeof overrideVal === 'object' &&
       !Array.isArray(overrideVal) &&

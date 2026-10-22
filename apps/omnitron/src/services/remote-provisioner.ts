@@ -176,6 +176,8 @@ export interface ProvisionRequirements {
   readonly prefix?: string;
   /** Allow using the host's package manager for missing tools. Default true. */
   readonly usePackageManager?: boolean;
+  /** The caller installs a verified local bundle instead of the registry package. */
+  readonly installOmnitron?: boolean;
 }
 
 /** How each package manager installs a package non-interactively. */
@@ -306,7 +308,7 @@ export function planProvisioning(
     });
   }
 
-  if (!facts.omnitron) {
+  if (!facts.omnitron && requirements.installOmnitron !== false) {
     // `npm install -g` puts the CLI in its own prefix's `bin`, and that is
     // not always on PATH. For the runtime installed above it is
     // `/opt/omnitron/runtime/bin`, which is on nobody's.

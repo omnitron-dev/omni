@@ -1,0 +1,92 @@
+diff --git a/dist/chunks/cli-api.De07GUeT.js b/dist/chunks/cli-api.De07GUeT.js
+index ff6e63043ff8fa0b821d4b0b382d1fd998d85dbb..4e3f2c1d8648ef254112671fb683ee349fde8d79 100644
+--- a/dist/chunks/cli-api.De07GUeT.js
++++ b/dist/chunks/cli-api.De07GUeT.js
+@@ -1,3 +1,4 @@
++import { tmpCopiesDir } from './tmp-copies.js';
+ import * as fs from 'node:fs';
+ import fs__default, { promises, existsSync, writeFileSync, mkdirSync, readFileSync, statSync, readdirSync } from 'node:fs';
+ import { r as resolveCoverageProviderModule, g as getCoverageFilesDirectory, C as CoverageProviderMap } from './coverage.cTDc4uSS.js';
+@@ -12250,7 +12251,7 @@ class Vitest {
+ 	/** @internal */ _testRun;
+ 	/** @internal */ _resolver;
+ 	/** @internal */ _transformService;
+-	/** @internal */ _tmpDir = join(tmpdir(), nanoid());
++	/** @internal */ _tmpDir = tmpCopiesDir();
+ 	/** @internal */ _traces;
+ 	/** @internal */ _harness;
+ 	/** @internal */ _exitTimeout;
+@@ -12320,7 +12321,7 @@ class Vitest {
+ 		this.snapshot = new SnapshotManager({ ...resolved.snapshotOptions });
+ 		this._resolver = new VitestResolver(this.viteConfig.cacheDir, resolved);
+ 		// a closed run removes the temp dir, so a restart must allocate a new one
+-		const tmpDir = this._tmpDir ??= join(tmpdir(), nanoid());
++		const tmpDir = this._tmpDir ??= tmpCopiesDir();
+ 		this._transformService = new ModuleTransformService(this._resolver, resolved, this.cache._modules, this._traces, tmpDir);
+ 	}
+ 	_restartPromise;
+diff --git a/dist/chunks/index.1TqnEahn.js b/dist/chunks/index.1TqnEahn.js
+index 50dd001b7b24be2eac6f37eeb1929ad4645aa1a9..2863cb7a5961a352ba307b54d4609edfb1767b56 100644
+--- a/dist/chunks/index.1TqnEahn.js
++++ b/dist/chunks/index.1TqnEahn.js
+@@ -1,3 +1,4 @@
++import { tmpCopiesDir, removeOwnTmpCopies } from './tmp-copies.js';
+ import { promises, existsSync, mkdirSync, writeFileSync, linkSync, renameSync, rmSync, chmodSync, readFileSync, statfsSync, realpathSync, statSync, readdirSync } from 'node:fs';
+ import url, { pathToFileURL, fileURLToPath } from 'node:url';
+ import { c as cleanUrl, r as resolve, f as extname, d as dirname, j as join, h as KNOWN_ASSET_RE, H as withTrailingSlash, I as wrapId, i as isAbsolute, J as isExternalUrl, L as unwrapId, a as relative, z as unique, s as slash, t as toArray, b as basename, m as isPrimitive, n as normalize, G as deepMerge, e as createDefer, p as deepClone } from './pathe.M-eThtNZ.Ba-7h1rE.js';
+@@ -6467,7 +6468,7 @@ class TestProject {
+ 	constructor(vitest, server, viteConfig, projectConfig) {
+ 		this.vitest = vitest;
+ 		this.globalConfig = vitest.config;
+-		this.tmpDir = join(tmpdir(), nanoid());
++		this.tmpDir = tmpCopiesDir();
+ 		this.vite = server;
+ 		this.viteConfig = viteConfig;
+ 		this.config = projectConfig;
+@@ -8574,6 +8575,7 @@ This might cause false positive tests. Resolve unhandled errors to make sure you
+ 		};
+ 		const onExit = (signal, exitCode) => {
+ 			cleanup();
++			removeOwnTmpCopies(this.ctx);
+ 			// Interrupted signals don't set exit code automatically.
+ 			// Use same exit code as node: https://nodejs.org/api/process.html#signal-events
+ 			if (process.exitCode === void 0) process.exitCode = exitCode !== void 0 ? 128 + exitCode : Number(signal);
+diff --git a/dist/chunks/tmp-copies.js b/dist/chunks/tmp-copies.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..14eb937a78c23e9247b1e86bd9a00fdbd8755c5c
+--- /dev/null
++++ b/dist/chunks/tmp-copies.js
+@@ -0,0 +1,33 @@
++// Omnitron: preserve the existing interrupted-run cleanup when upgrading Vitest.
++import { readdirSync, rmSync } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join, basename, dirname } from 'node:path';
++import { randomBytes } from 'node:crypto';
++const ownedName = /^vitest-(\d+)-[\w-]{21}$/;
++let checked = false;
++export function tmpCopiesDir() {
++  const root = tmpdir();
++  if (!checked) {
++    checked = true;
++    try {
++      for (const name of readdirSync(root)) {
++        const owner = ownedName.exec(name);
++        if (!owner || Number(owner[1]) === process.pid) continue;
++        try { process.kill(Number(owner[1]), 0); }
++        catch (error) {
++          if (error.code === 'ESRCH') {
++            try { rmSync(join(root, name), { recursive: true, force: true }); } catch {}
++          }
++        }
++      }
++    } catch {}
++  }
++  return join(root, `vitest-${process.pid}-${randomBytes(16).toString('base64url').slice(0, 21)}`);
++}
++export function removeOwnTmpCopies(context) {
++  const dirs = new Set([context._tmpDir, context.coreWorkspaceProject?.tmpDir, ...(context.projects ?? []).map(project => project.tmpDir)]);
++  for (const dir of dirs) {
++    if (!dir || dirname(dir) !== tmpdir() || ownedName.exec(basename(dir))?.[1] !== String(process.pid)) continue;
++    try { rmSync(dir, { recursive: true, force: true }); } catch {}
++  }
++}

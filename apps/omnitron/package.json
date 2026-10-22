@@ -42,6 +42,10 @@
     "./sync-reading": {
       "types": "./src/shared/sync-reading.ts",
       "default": "./dist/shared/sync-reading.js"
+    },
+    "./operations": {
+      "types": "./src/operations.ts",
+      "default": "./dist/operations.js"
     }
   },
   "scripts": {

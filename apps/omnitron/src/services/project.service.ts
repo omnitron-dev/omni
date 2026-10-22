@@ -451,19 +451,18 @@ export class ProjectService extends EventEmitter {
     if (!project) throw new Error(`Project '${name}' not found`);
 
     if (data.path) {
-      // Invalidate cached config so next access reloads from new path
-      this.configRegistry.delete(name);
-      const updated = this.registry.updatePath(name, data.path);
-
-      // Registry may have renamed the project (basename of new path)
-      if (updated.name !== name) {
-        this.configRegistry.delete(updated.name);
-        this.logger.info({ oldName: name, newName: updated.name, path: data.path }, 'Project renamed and path updated');
-        this.emit('project:renamed', name, updated.name);
-      } else {
-        this.logger.info({ project: name, path: data.path }, 'Project path updated');
+      const nextPath = path.resolve(data.path);
+      if (nextPath !== path.resolve(project.path)) {
+        const running = this.getRunningStacks(name);
+        if (running.length > 0) {
+          throw new Error(`Project '${name}' has running stacks: ${running.join(', ')}. Stop them before changing its path.`);
+        }
       }
-      this.emit('project:updated', updated.name, data);
+      // Validate and persist first. A rejected path must not invalidate a live config.
+      const updated = this.registry.updatePath(name, nextPath);
+      this.configRegistry.delete(name);
+      this.logger.info({ project: name, path: nextPath }, 'Project path updated');
+      this.emit('project:updated', name, data);
       return this.toProjectInfo(updated);
     }
 

@@ -91,6 +91,8 @@ it('compact navigation keeps destinations and active identity while retaining ex
   await vi.waitFor(() => expect(host.querySelector('a')).toBeNull());
   await act(async () => root.render(draw(true)));
   const compactLink = host.querySelector<HTMLAnchorElement>('a[aria-label="Limits"]')!;
+  expect(compactLink.textContent).toBe('Li');
+  expect(host.querySelector('a[aria-label="Series"]')!.textContent).toBe('02');
   expect(compactLink.getAttribute('href')).toBe('/limits');
   expect(compactLink.getAttribute('aria-current')).toBe('page');
   await act(async () => compactLink.click());

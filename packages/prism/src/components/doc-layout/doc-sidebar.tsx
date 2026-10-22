@@ -50,7 +50,7 @@ export function DocSidebar({ items, activeId, onItemClick, title, compact = fals
       ]);
     return (
       <List dense disablePadding aria-label={title}>
-        {leaves(items).map(({ item, path }) => (
+        {leaves(items).map(({ item, path }, index) => (
           <Tooltip key={item.id} title={path} placement="right" disableInteractive>
             <ListItemButton
               component={item.href ? 'a' : 'button'}
@@ -78,7 +78,7 @@ export function DocSidebar({ items, activeId, onItemClick, title, compact = fals
               }}
             >
               <Typography component="span" variant="caption" aria-hidden="true" sx={{ fontWeight: 600 }}>
-                {item.shortLabel ?? Array.from(item.label.trim()).slice(0, 2).join('')}
+                {item.shortLabel ?? String(index + 1).padStart(2, '0')}
               </Typography>
             </ListItemButton>
           </Tooltip>

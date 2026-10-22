@@ -1,4 +1,5 @@
-'use client';
+import { DocSidebar } from '../doc-layout/doc-sidebar.js';
+('use client');
 import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ReactFlow,
@@ -333,7 +334,26 @@ export function KnowledgeGraph({
             <PanelLayout
               title={labels.indexTitle}
               labels={{ expand: labels.openIndex, collapse: labels.collapseIndex, close: labels.closeIndex }}
-              panel={graphIndex}
+              panel={({ collapsed }) => (
+                <>
+                  <Box hidden={collapsed}>{graphIndex}</Box>
+                  {collapsed && (
+                    <DocSidebar
+                      compact
+                      items={index.slice(0, visibleBudget).map((item) => ({
+                        id: JSON.stringify(item.selection),
+                        label: item.label,
+                      }))}
+                      activeId={selected && JSON.stringify(selected)}
+                      onItemClick={(item) => {
+                        const target = index.find((entry) => JSON.stringify(entry.selection) === item.id);
+                        if (target) choose(target.selection);
+                      }}
+                    />
+                  )}
+                </>
+              )}
+              height={expanded ? '75dvh' : height}
               width={240}
               offset={88}
               persistKey={panelPersistKey}

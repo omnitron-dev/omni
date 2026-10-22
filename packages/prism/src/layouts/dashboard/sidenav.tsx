@@ -11,6 +11,7 @@
 import { Fragment, useEffect, type ReactNode } from 'react';
 import { styled, alpha } from '@mui/material/styles';
 import Drawer from '@mui/material/Drawer';
+import { Scrollbar } from '../../components/scrollbar/scrollbar.js';
 import { SidebarToggle } from '../sidebar-toggle.js';
 import Box from '@mui/material/Box';
 import List from '@mui/material/List';
@@ -75,18 +76,7 @@ const NavContent = styled(Box)({
   overflow: 'hidden',
 });
 
-const NavScrollArea = styled(Box)({
-  flex: 1,
-  overflow: 'auto',
-  // Custom scrollbar
-  '&::-webkit-scrollbar': {
-    width: 6,
-  },
-  '&::-webkit-scrollbar-thumb': {
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-    borderRadius: 3,
-  },
-});
+const NavScrollArea = styled(Scrollbar)({ flex: 1 });
 
 // =============================================================================
 // COMPONENTS

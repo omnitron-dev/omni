@@ -10,14 +10,15 @@
 
 import type { ReactNode, Ref } from 'react';
 import Box from '@mui/material/Box';
-import { styled, alpha } from '@mui/material/styles';
+import { styled } from '@mui/material/styles';
+import { scrollbarStyles } from '../../theme/mixins.js';
 import type { SxProps, Theme } from '@mui/material/styles';
 
 // =============================================================================
 // TYPES
 // =============================================================================
 
-export interface ScrollbarProps {
+export interface ScrollbarProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'children'> {
   /** Content to scroll */
   children?: ReactNode;
   /** Additional styles */
@@ -55,10 +56,6 @@ const ScrollbarRoot = styled(Box, {
 })<ScrollbarRootProps>(({ theme, ownerState }) => {
   const { fillContent, hideScrollbar, axis } = ownerState;
 
-  const scrollbarColor = alpha(theme.palette.text.disabled, 0.4);
-  const scrollbarHoverColor = alpha(theme.palette.text.disabled, 0.6);
-  const scrollbarTrackColor = alpha(theme.palette.grey[500], 0.08);
-
   const getOverflow = () => {
     if (axis === 'x') return { overflowX: 'auto', overflowY: 'hidden' } as const;
     if (axis === 'y') return { overflowX: 'hidden', overflowY: 'auto' } as const;
@@ -74,30 +71,7 @@ const ScrollbarRoot = styled(Box, {
       display: 'flex',
       flexDirection: 'column',
     }),
-    // Custom scrollbar styles
-    ...(!hideScrollbar && {
-      scrollbarWidth: 'thin',
-      scrollbarColor: `${scrollbarColor} ${scrollbarTrackColor}`,
-      // Webkit browsers
-      '&::-webkit-scrollbar': {
-        width: 8,
-        height: 8,
-      },
-      '&::-webkit-scrollbar-track': {
-        backgroundColor: scrollbarTrackColor,
-        borderRadius: 4,
-      },
-      '&::-webkit-scrollbar-thumb': {
-        backgroundColor: scrollbarColor,
-        borderRadius: 4,
-        '&:hover': {
-          backgroundColor: scrollbarHoverColor,
-        },
-      },
-      '&::-webkit-scrollbar-corner': {
-        backgroundColor: 'transparent',
-      },
-    }),
+    ...(!hideScrollbar && scrollbarStyles(theme)),
     ...(hideScrollbar && {
       scrollbarWidth: 'none',
       msOverflowStyle: 'none',
@@ -137,7 +111,18 @@ const ScrollbarRoot = styled(Box, {
  * </Scrollbar>
  * ```
  */
-export function Scrollbar({children, sx, fillContent = false, hideScrollbar = false, axis = 'y', maxHeight, minHeight, className, ref, ...other }: ScrollbarProps & { ref?: Ref<HTMLDivElement> }) {
+export function Scrollbar({
+  children,
+  sx,
+  fillContent = false,
+  hideScrollbar = false,
+  axis = 'y',
+  maxHeight,
+  minHeight,
+  className,
+  ref,
+  ...other
+}: ScrollbarProps & { ref?: Ref<HTMLDivElement> }) {
   const ownerState = {
     fillContent,
     hideScrollbar,

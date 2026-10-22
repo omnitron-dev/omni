@@ -407,24 +407,15 @@ export function borderGradient(options: { color?: string; borderWidth?: number; 
 export function scrollbarStyles(theme: Theme): CSSObject {
   const palette = theme.vars?.palette || theme.palette;
   const greyChannel = (palette.grey as { ['500Channel']?: string })['500Channel'] || '145, 158, 171';
-
   return {
-    scrollbarWidth: 'thin' as const,
-    scrollbarColor: `${varAlpha(greyChannel, 0.4)} ${varAlpha(greyChannel, 0.08)}`,
-    '&::-webkit-scrollbar': {
-      width: 6,
-      height: 6,
-    },
-    '&::-webkit-scrollbar-track': {
-      backgroundColor: 'transparent',
-    },
-    '&::-webkit-scrollbar-thumb': {
-      backgroundColor: varAlpha(greyChannel, 0.4),
-      borderRadius: 3,
-      '&:hover': {
-        backgroundColor: varAlpha(greyChannel, 0.6),
-      },
-    },
+    scrollbarWidth: 'thin',
+    scrollbarColor: `${varAlpha(greyChannel, 0.4)} transparent`,
+    '&::-webkit-scrollbar': { width: 6, height: 6 },
+    '&::-webkit-scrollbar-track': { backgroundColor: 'transparent' },
+    '&::-webkit-scrollbar-thumb': { backgroundColor: varAlpha(greyChannel, 0.4), borderRadius: 3 },
+    '&::-webkit-scrollbar-thumb:hover': { backgroundColor: varAlpha(greyChannel, 0.65) },
+    '&::-webkit-scrollbar-corner': { backgroundColor: 'transparent' },
+    '@media (forced-colors: active)': { scrollbarColor: 'auto', scrollbarWidth: 'auto' },
   };
 }
 
@@ -555,27 +546,7 @@ export const hideScrollbarMixin = {
  * Custom scrollbar mixin.
  */
 export function customScrollbarMixin(theme: Theme): CSSObject {
-  const palette = theme.vars?.palette || theme.palette;
-  const greyChannel = (palette.grey as { ['500Channel']?: string })['500Channel'] || '145, 158, 171';
-
-  return {
-    scrollbarWidth: 'thin' as const,
-    scrollbarColor: `${varAlpha(greyChannel, 0.4)} ${varAlpha(greyChannel, 0.08)}`,
-    '&::-webkit-scrollbar': {
-      width: 6,
-      height: 6,
-    },
-    '&::-webkit-scrollbar-track': {
-      backgroundColor: 'transparent',
-    },
-    '&::-webkit-scrollbar-thumb': {
-      backgroundColor: varAlpha(greyChannel, 0.4),
-      borderRadius: 3,
-      '&:hover': {
-        backgroundColor: varAlpha(greyChannel, 0.6),
-      },
-    },
-  };
+  return scrollbarStyles(theme);
 }
 
 /**

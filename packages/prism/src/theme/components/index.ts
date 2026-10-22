@@ -1,3 +1,4 @@
+import { scrollbarStyles } from '../mixins.js';
 /**
  * Component Overrides
  *
@@ -1112,30 +1113,12 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
         html: {
           scrollBehavior: 'smooth',
         },
-        body: {
-          scrollbarWidth: 'thin',
-          scrollbarColor: `rgba(${getGreyChannel(theme)} / 0.4) rgba(${getGreyChannel(theme)} / 0.08)`,
-        },
+        'html, body, *': scrollbarStyles(theme),
         '*, *::before, *::after': {
           boxSizing: 'border-box',
         },
         '#root, #__next': {
           height: '100%',
-        },
-        // Webkit scrollbar styling
-        '::-webkit-scrollbar': {
-          width: 6,
-          height: 6,
-        },
-        '::-webkit-scrollbar-track': {
-          backgroundColor: 'transparent',
-        },
-        '::-webkit-scrollbar-thumb': {
-          backgroundColor: `rgba(${getGreyChannel(theme)} / 0.4)`,
-          borderRadius: 3,
-        },
-        '::-webkit-scrollbar-thumb:hover': {
-          backgroundColor: `rgba(${getGreyChannel(theme)} / 0.6)`,
         },
         // Vision Mode Accessibility Filters
         // These apply SVG color matrix filters to simulate color blindness

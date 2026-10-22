@@ -22,7 +22,7 @@ import type { IAuthenticationManager, ILocalPeerInternal } from './interfaces/in
 import type { IAuthorizationManager } from './interfaces/core-types.js';
 import type { ITokenTransport } from './auth/token-transport.js';
 import type { PolicyEngine } from './auth/policy-engine.js';
-import type { AuthContext } from './auth/types.js';
+import type { AuthContext, HttpAuthSecurity } from './auth/types.js';
 import { BearerTokenTransport } from './auth/token-transports/bearer.js';
 import { LocalPeer } from './local-peer.js';
 import { RemotePeer } from './remote-peer.js';
@@ -287,6 +287,9 @@ export class Netron extends EventEmitter implements INetron {
    */
   public tokenTransport: ITokenTransport = new BearerTokenTransport();
 
+  /** HTTP gates configured before transport startup; no after-listen mutation required. */
+  public httpAuthSecurity?: HttpAuthSecurity;
+
   /**
    * Allowed Origin policy for WebSocket upgrades — passed straight to
    * the WS auth handler. `undefined` disables Origin enforcement
@@ -496,14 +499,22 @@ export class Netron extends EventEmitter implements INetron {
        * is vulnerable to cross-origin upgrade forgery without it.
        */
       allowedOrigins?: true | string[];
+      /** Origin and CSRF gates attached before HTTP listen (single and batch invocations). */
+      httpSecurity?: HttpAuthSecurity;
     }
   ): void {
+    if (options?.httpSecurity !== undefined && this.transportServers.has('http')) {
+      throw new Error('HTTP auth security must be configured before the HTTP server starts');
+    }
     this.authenticationManager = authenticationManager;
     if (authorizationManager) {
       this.authorizationManager = authorizationManager;
     }
     if (options?.tokenTransport) {
       this.tokenTransport = options.tokenTransport;
+    }
+    if (options?.httpSecurity !== undefined) {
+      this.httpAuthSecurity = options.httpSecurity;
     }
     if (options?.allowedOrigins !== undefined) {
       this.wsAllowedOrigins = options.allowedOrigins;

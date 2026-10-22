@@ -321,3 +321,9 @@ export interface AccessValidationResult {
     missingScopes?: string[];
   };
 }
+
+/** HTTP cookie gates installed while attaching the peer, before the server listens. */
+export interface HttpAuthSecurity {
+  origin?: import('./origin-middleware.js').OriginMiddlewareOptions;
+  csrf?: import('./csrf-middleware.js').CsrfMiddlewareOptions;
+}

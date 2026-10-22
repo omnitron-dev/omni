@@ -145,3 +145,8 @@ export async function withSystemRLSContext<T>(fn: () => Promise<T>, tenantId?: s
   };
   return rlsContext.runAsync(ctx, fn);
 }
+
+/** Read the current native RLS identity; null outside an authenticated invocation. */
+export function getCurrentRLSAuthContext(): RLSAuthContext | null {
+  return rlsContext.getContextOrNull()?.auth ?? null;
+}

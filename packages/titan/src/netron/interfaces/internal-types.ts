@@ -8,7 +8,7 @@
 
 import type { INetron, ILocalPeer, IAuthorizationManager } from './core-types.js';
 import type { ServiceStub } from '../service-stub.js';
-import type { AuthCredentials, AuthResult } from '../auth/types.js';
+import type { AuthCredentials, AuthResult, HttpAuthSecurity } from '../auth/types.js';
 import type { ITokenTransport } from '../auth/token-transport.js';
 import type { PolicyEngine } from '../auth/policy-engine.js';
 
@@ -94,6 +94,9 @@ export interface INetronInternal extends INetron {
    * @internal
    */
   tokenTransport?: ITokenTransport;
+
+  /** HTTP gates installed by setPeer before listen. */
+  httpAuthSecurity?: HttpAuthSecurity;
 }
 
 /**

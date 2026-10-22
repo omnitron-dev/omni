@@ -2385,62 +2385,111 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    * Handle Node.js style request
    */
   private async handleNodeRequest(req: any, res: any): Promise<void> {
-    // Convert Node.js request to Web API Request
-    const body = await this.readNodeBody(req);
-    const url = `http://${req.headers.host || 'localhost'}${req.url}`;
-
-    const headers = new Headers();
-    for (const [key, value] of Object.entries(req.headers)) {
-      if (typeof value === 'string') {
-        headers.set(key, value);
-      } else if (Array.isArray(value)) {
-        headers.set(key, value.join(', '));
+    let request: Request | undefined;
+    let response: Response;
+    try {
+      const headers = new Headers();
+      for (const [key, value] of Object.entries(req.headers)) {
+        if (typeof value === 'string') headers.set(key, value);
+        else if (Array.isArray(value)) headers.set(key, value.join(', '));
       }
+      const url = `http://${req.headers.host || 'localhost'}${req.url}`;
+      // Retain headers for a correlated refusal even when the body cannot be read.
+      request = new Request(url, { method: req.method, headers });
+      const body = await this.readNodeBody(req);
+      request = new Request(url, {
+        method: req.method,
+        headers,
+        body: body && ['POST', 'PUT', 'PATCH'].includes(req.method) ? body : undefined,
+      });
+      response = await this.handleRequest(request);
+    } catch (error) {
+      // Node's HTTP listener does not await an async callback. A rejected body
+      // read must become a transport refusal, never an unhandled rejection that
+      // terminates the process. Do not destroy the socket before flushing 413.
+      if (res.destroyed || req.aborted) {
+        res.destroy();
+        return;
+      }
+      const titanError = error instanceof TitanError ? error : toTitanError(error);
+      const errorRequest = request ?? new Request('http://localhost');
+      response = this.createErrorResponse(
+        titanError,
+        errorRequest.headers.get('X-Request-ID') || generateRequestId(),
+        errorRequest
+      );
+      res.shouldKeepAlive = false;
+      req.resume();
     }
 
-    const request = new Request(url, {
-      method: req.method,
-      headers,
-      body: body && ['POST', 'PUT', 'PATCH'].includes(req.method) ? body : undefined,
-    });
+    try {
+      // Convert Web API Response to Node.js response
+      res.statusCode = response.status;
+      // Set-Cookie requires special handling: a single response can carry
+      // multiple Set-Cookie headers, but `res.setHeader('set-cookie', x)`
+      // REPLACES rather than appends. And Headers.forEach() yields a
+      // comma-joined string for Set-Cookie on some implementations, which
+      // is wrong (commas are valid inside cookie values). Use the
+      // standardized getSetCookie() accessor (Node 20+/undici) to fetch
+      // the array form, then pass it to setHeader (Node's http server
+      // expands array values into N separate header lines).
+      const setCookies = (response.headers as any).getSetCookie?.() ?? [];
+      if (setCookies.length > 0) {
+        res.setHeader('set-cookie', setCookies);
+      }
+      response.headers.forEach((value: string, key: string) => {
+        if (key.toLowerCase() === 'set-cookie') return; // already emitted above
+        res.setHeader(key, value);
+      });
 
-    const response = await this.handleRequest(request);
-
-    // Convert Web API Response to Node.js response
-    res.statusCode = response.status;
-    // Set-Cookie requires special handling: a single response can carry
-    // multiple Set-Cookie headers, but `res.setHeader('set-cookie', x)`
-    // REPLACES rather than appends. And Headers.forEach() yields a
-    // comma-joined string for Set-Cookie on some implementations, which
-    // is wrong (commas are valid inside cookie values). Use the
-    // standardized getSetCookie() accessor (Node 20+/undici) to fetch
-    // the array form, then pass it to setHeader (Node's http server
-    // expands array values into N separate header lines).
-    const setCookies = (response.headers as any).getSetCookie?.() ?? [];
-    if (setCookies.length > 0) {
-      res.setHeader('set-cookie', setCookies);
-    }
-    response.headers.forEach((value: string, key: string) => {
-      if (key.toLowerCase() === 'set-cookie') return; // already emitted above
-      res.setHeader(key, value);
-    });
-
-    if (response.body) {
-      // Stream the response body to avoid buffering and preserve binary data
-      const reader = response.body.getReader();
-      const pump = async (): Promise<void> => {
-        const { done, value } = await reader.read();
-        if (done) {
-          res.end();
-          return undefined;
+      if (response.body) {
+        // Stream the response body to avoid buffering and preserve binary data
+        const reader = response.body.getReader();
+        const cancel = () => {
+          void reader.cancel().catch(() => {});
+        };
+        res.once('close', cancel);
+        try {
+          while (!res.destroyed) {
+            const { done, value } = await reader.read();
+            if (done) {
+              if (!res.destroyed) res.end();
+              break;
+            }
+            if (res.destroyed) break;
+            if (!res.write(Buffer.from(value))) {
+              await new Promise<void>((resolve, reject) => {
+                const cleanup = () => {
+                  res.removeListener('drain', ready);
+                  res.removeListener('close', ready);
+                  res.removeListener('error', failed);
+                };
+                const ready = () => {
+                  cleanup();
+                  resolve();
+                };
+                const failed = (error: Error) => {
+                  cleanup();
+                  reject(error);
+                };
+                res.once('drain', ready);
+                res.once('close', ready);
+                res.once('error', failed);
+                if (res.destroyed) ready();
+              });
+            }
+          }
+        } finally {
+          res.removeListener('close', cancel);
+          reader.releaseLock();
         }
-        const ok = res.write(Buffer.from(value));
-        if (ok) return pump();
-        return new Promise((resolve) => res.once('drain', () => pump().then(resolve)));
-      };
-      await pump();
-    } else {
-      res.end();
+      } else {
+        res.end();
+      }
+    } catch {
+      // A client may disappear during response delivery. The listener still
+      // must settle, and a partially written response cannot be replaced.
+      res.destroy();
     }
   }
 
@@ -2451,36 +2500,47 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    */
   private readNodeBody(req: any): Promise<string> {
     return new Promise((resolve, reject) => {
-      // OPTIMIZATION: Collect chunks as Buffers, then concat once
-      // This is more efficient than string concatenation for large bodies
       const chunks: Buffer[] = [];
+      const maxSize = resolveMaxBodyBytes(this.options);
       let totalLength = 0;
-
+      let settled = false;
+      const fail = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        chunks.length = 0;
+        reject(error);
+      };
+      const tooLarge = () =>
+        fail(
+          new TitanError({
+            code: ErrorCode.PAYLOAD_TOO_LARGE,
+            message: `Request body too large (max: ${maxSize} bytes)`,
+          })
+        );
+      // Keep error/aborted listeners until this request is collected: draining
+      // an over-limit body can itself be interrupted by the sender.
+      req.on('error', fail);
+      req.on('aborted', () => fail(new Error('Request body was interrupted')));
       req.on('data', (chunk: Buffer) => {
-        chunks.push(chunk);
+        if (settled) return;
         totalLength += chunk.length;
         this.metrics.totalBytesReceived += chunk.length;
-
-        // OPTIMIZATION: Prevent memory exhaustion from oversized requests
-        const maxSize = resolveMaxBodyBytes(this.options);
         if (totalLength > maxSize) {
-          req.destroy();
-          reject(
-            new TitanError({
-              code: ErrorCode.PAYLOAD_TOO_LARGE,
-              message: `Request body too large (max: ${maxSize} bytes)`,
-            })
-          );
+          tooLarge();
+          return;
         }
+        chunks.push(chunk);
       });
-
       req.on('end', () => {
-        // OPTIMIZATION: Single Buffer.concat is faster than multiple string concatenations
-        const body = Buffer.concat(chunks, totalLength).toString('utf8');
-        resolve(body);
+        if (settled) return;
+        settled = true;
+        resolve(Buffer.concat(chunks, totalLength).toString('utf8'));
+        chunks.length = 0;
       });
-
-      req.on('error', reject);
+      // Refuse a declared oversize without allocating its payload. The catch
+      // in handleNodeRequest drains input and flushes the refusal before close.
+      const contentLength = Number(req.headers['content-length']);
+      if (Number.isFinite(contentLength) && contentLength > maxSize) tooLarge();
     });
   }
 

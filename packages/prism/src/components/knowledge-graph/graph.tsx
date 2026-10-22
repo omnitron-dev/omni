@@ -14,6 +14,7 @@ import {
   type XYPosition,
 } from '@xyflow/react';
 import Box from '@mui/material/Box';
+import { PanelLayout } from '../../layouts/panel-layout.js';
 import Dialog from '@mui/material/Dialog';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
@@ -37,6 +38,10 @@ export const defaultKnowledgeGraphLabels = {
   search: 'Find an entity or relation',
   all: 'Whole map',
   list: 'Index',
+  indexTitle: 'Objects and relations',
+  openIndex: 'Expand graph index',
+  closeIndex: 'Close graph index',
+  collapseIndex: 'Collapse graph index',
   map: 'Map',
   empty: 'No objects to display.',
   invalid: 'The graph contains invalid identities or references.',
@@ -72,6 +77,8 @@ export interface KnowledgeGraphProps {
   labels?: Partial<KnowledgeGraphLabels>;
   /** Bound visible DOM nodes, including relation nodes. Omitted relations are counted explicitly. */
   visibleBudget?: number;
+  /** Optional independent persistence key for the graph index. */
+  panelPersistKey?: string;
   onSelect?: (selection: KnowledgeSelection | undefined) => void;
   /** Only visual coordinates. No semantic operation is implied by a drag. */
   onLayoutChange?: (positions: Readonly<Record<string, XYPosition>>) => void;
@@ -139,6 +146,7 @@ export function KnowledgeGraph({
   data,
   labels: overrides,
   visibleBudget = 300,
+  panelPersistKey,
   onSelect,
   onLayoutChange,
   layout = defaultLayout,
@@ -233,9 +241,49 @@ export function KnowledgeGraph({
       onSelect?.(undefined);
     }
   }, [selected, object, onSelect]);
+  const graphIndex = (
+    <Box className="prism-knowledge__index">
+      <TextField
+        fullWidth
+        size="small"
+        type="search"
+        label={labels.search}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        sx={{ mb: 2 }}
+      />
+      <ul className="prism-knowledge__results">
+        {index.slice(0, visibleBudget).map((item) => (
+          <li key={JSON.stringify(item.selection)}>
+            <Button
+              type="button"
+              variant="text"
+              aria-current={selected?.id === item.id && selected.type === item.selection.type}
+              onClick={() => choose(item.selection)}
+            >
+              <span>{item.kind}</span>
+              {item.label}
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <small>
+        {Math.min(index.length, visibleBudget)} / {index.length}
+      </small>
+      <Button
+        type="button"
+        onClick={() => {
+          setFocus(undefined);
+          choose(undefined);
+        }}
+      >
+        {labels.clear}
+      </Button>
+    </Box>
+  );
   const content = (
     <Box
-      className={['prism-knowledge', className].filter(Boolean).join(' ')}
+      className={['prism-knowledge', view === 'list' && 'is-list', className].filter(Boolean).join(' ')}
       sx={[
         {
           '--prism-graph-border': theme.palette.divider,
@@ -279,91 +327,65 @@ export function KnowledgeGraph({
       ) : (
         <>
           <p className="prism-knowledge__hint">{labels.hint}</p>
-          <div className={`prism-knowledge__workspace ${view === 'list' ? 'is-list' : ''}`}>
-            <aside className="prism-knowledge__index">
-              <TextField
-                fullWidth
-                size="small"
-                type="search"
-                label={labels.search}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                sx={{ mb: 2 }}
-              />
-              <ul className="prism-knowledge__results">
-                {index.slice(0, visibleBudget).map((item) => (
-                  <li key={JSON.stringify(item.selection)}>
-                    <Button
-                      type="button"
-                      variant="text"
-                      aria-current={selected?.id === item.id && selected.type === item.selection.type}
-                      onClick={() => choose(item.selection)}
-                    >
-                      <span>{item.kind}</span>
-                      {item.label}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-              <small>
-                {Math.min(index.length, visibleBudget)} / {index.length}
-              </small>
-              <Button
-                type="button"
-                onClick={() => {
-                  setFocus(undefined);
-                  choose(undefined);
-                }}
-              >
-                {labels.clear}
-              </Button>
-            </aside>
-            <div
-              hidden={view === 'list'}
-              className="prism-knowledge__canvas"
-              style={{ height: view === 'map' ? (expanded ? '75dvh' : height) : undefined }}
+          {view === 'list' ? (
+            graphIndex
+          ) : (
+            <PanelLayout
+              title={labels.indexTitle}
+              labels={{ expand: labels.openIndex, collapse: labels.collapseIndex, close: labels.closeIndex }}
+              panel={graphIndex}
+              width={240}
+              offset={88}
+              persistKey={panelPersistKey}
+              navigationKey={selected ? selected.type + ':' + selected.id : ''}
+              sx={{ px: 1, pb: 1 }}
             >
-              {view === 'map' && nodes.length > 0 ? (
-                <ReactFlow<GraphNode>
-                  nodes={nodes}
-                  edges={edges}
-                  nodeTypes={nodeTypes}
-                  onNodesChange={onNodesChange}
-                  onNodeClick={(_e, n) => choose(n.data.selection)}
-                  onNodeDragStop={(_e, node) =>
-                    onLayoutChange?.(
-                      Object.fromEntries(nodes.map((n) => [n.id, n.id === node.id ? node.position : n.position]))
-                    )
-                  }
-                  onSelectionChange={({ nodes: chosen }) => {
-                    const s = chosen[0]?.data.selection;
-                    if (s && (s.id !== selected?.id || s.type !== selected?.type)) choose(s);
-                  }}
-                  nodesConnectable={false}
-                  deleteKeyCode={null}
-                  edgesReconnectable={false}
-                  fitView
-                  minZoom={0.1}
-                  maxZoom={2}
-                  onlyRenderVisibleElements
-                  colorMode={theme.palette.mode}
-                  ariaLabelConfig={{
-                    'controls.zoomIn.ariaLabel': labels.zoomIn,
-                    'controls.zoomOut.ariaLabel': labels.zoomOut,
-                    'controls.fitView.ariaLabel': labels.fit,
-                    'controls.interactive.ariaLabel': labels.lock,
-                  }}
-                >
-                  <Background gap={24} />
-                  <Controls showInteractive={false} />
-                </ReactFlow>
-              ) : (
-                <div className="prism-knowledge__empty">
-                  {projection.total === 0 ? labels.empty : projection.limited ? labels.budget : labels.list}
-                </div>
-              )}
-            </div>
-          </div>
+              <div
+                className="prism-knowledge__canvas"
+                style={{ height: view === 'map' ? (expanded ? '75dvh' : height) : undefined }}
+              >
+                {view === 'map' && nodes.length > 0 ? (
+                  <ReactFlow<GraphNode>
+                    nodes={nodes}
+                    edges={edges}
+                    nodeTypes={nodeTypes}
+                    onNodesChange={onNodesChange}
+                    onNodeClick={(_e, n) => choose(n.data.selection)}
+                    onNodeDragStop={(_e, node) =>
+                      onLayoutChange?.(
+                        Object.fromEntries(nodes.map((n) => [n.id, n.id === node.id ? node.position : n.position]))
+                      )
+                    }
+                    onSelectionChange={({ nodes: chosen }) => {
+                      const s = chosen[0]?.data.selection;
+                      if (s && (s.id !== selected?.id || s.type !== selected?.type)) choose(s);
+                    }}
+                    nodesConnectable={false}
+                    deleteKeyCode={null}
+                    edgesReconnectable={false}
+                    fitView
+                    minZoom={0.1}
+                    maxZoom={2}
+                    onlyRenderVisibleElements
+                    colorMode={theme.palette.mode}
+                    ariaLabelConfig={{
+                      'controls.zoomIn.ariaLabel': labels.zoomIn,
+                      'controls.zoomOut.ariaLabel': labels.zoomOut,
+                      'controls.fitView.ariaLabel': labels.fit,
+                      'controls.interactive.ariaLabel': labels.lock,
+                    }}
+                  >
+                    <Background gap={24} />
+                    <Controls showInteractive={false} />
+                  </ReactFlow>
+                ) : (
+                  <div className="prism-knowledge__empty">
+                    {projection.total === 0 ? labels.empty : projection.limited ? labels.budget : labels.list}
+                  </div>
+                )}
+              </div>
+            </PanelLayout>
+          )}
           {projection.limited && (
             <p className="prism-knowledge__hint" role="status">
               {labels.partial}: {projection.entities.length + projection.relations.length} / {projection.total}.{' '}

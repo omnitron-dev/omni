@@ -84,3 +84,10 @@ export type { AuthSplitLayoutProps, AuthSplitIllustrationProps, AuthSplitContent
 
 export { AuthSimpleLayout, SimpleCompactContent } from './auth/index.js';
 export type { AuthSimpleLayoutProps, SimpleCompactContentProps } from './auth/index.js';
+
+export type { DashboardLabels } from './dashboard/labels.js';
+export { PanelLayout } from './panel-layout.js';
+export type { PanelLayoutProps } from './panel-layout.js';
+
+export { SidebarToggle } from './sidebar-toggle.js';
+export type { SidebarToggleProps } from './sidebar-toggle.js';

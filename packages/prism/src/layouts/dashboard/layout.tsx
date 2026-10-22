@@ -9,6 +9,7 @@
 
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
+import { dashboardLabels, type DashboardLabels } from './labels.js';
 import { styled } from '@mui/material/styles';
 import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
@@ -52,6 +53,7 @@ const MainWrapper = styled(Box, {
   ...(hasSidebar && {
     [theme.breakpoints.up(layoutQuery)]: {
       marginLeft: sidebarWidth,
+      minWidth: 0,
     },
   }),
   // Smooth transition
@@ -72,9 +74,12 @@ interface DashboardLayoutInternalProps {
   logo?: ReactNode;
   footer?: ReactNode;
   sidenavFooter?: ReactNode;
+  labels?: Partial<DashboardLabels>;
   slotProps?: {
     header?: Partial<React.ComponentProps<typeof HeaderSection>>;
     main?: {
+      id?: string;
+      className?: string;
       sx?: SxProps<Theme>;
       disablePadding?: boolean;
       maxWidth?: Breakpoint | false;
@@ -94,7 +99,9 @@ function DashboardLayoutInternal({
   footer,
   sidenavFooter,
   slotProps,
+  labels: customLabels,
 }: DashboardLayoutInternalProps): ReactNode {
+  const labels = { ...dashboardLabels, ...customLabels };
   const config = useLayoutConfig();
   const { toggleDrawer } = useLayoutContext();
   const {
@@ -117,7 +124,9 @@ function DashboardLayoutInternal({
     const mobileMenuButton = (
       <IconButton
         onClick={toggleDrawer}
-        aria-label="Open menu"
+        aria-label={labels.openMenu}
+        aria-haspopup="dialog"
+        aria-expanded={config.drawerOpen}
         sx={{
           display: { xs: 'inline-flex', [layoutQuery]: 'none' },
           bgcolor: 'transparent',
@@ -138,12 +147,12 @@ function DashboardLayoutInternal({
         </>
       ),
     };
-  }, [hasSidebar, headerSlots, toggleDrawer, layoutQuery]);
+  }, [hasSidebar, headerSlots, toggleDrawer, layoutQuery, labels.openMenu, config.drawerOpen]);
 
   return (
     <MainWrapper hasSidebar={hasSidebar} sidebarWidth={sidebarWidth} layoutQuery={layoutQuery}>
       {/* Skip to main content link for keyboard users */}
-      <SkipLink href="#main-content">Skip to main content</SkipLink>
+      <SkipLink href={`#${slotProps?.main?.id ?? 'main-content'}`}>{labels.skipToContent}</SkipLink>
 
       {/* Header */}
       <HeaderSection
@@ -172,14 +181,16 @@ function DashboardLayoutInternal({
             navData={navData}
             footer={sidenavFooter}
             layoutQuery={layoutQuery}
-            aria-label={ARIA_LABELS.mainNav}
+            aria-label={labels.navigation}
+            labels={labels}
           />
           <MobileSidenav
             logo={logo}
             navData={navData}
             footer={sidenavFooter}
             layoutQuery={layoutQuery}
-            aria-label={ARIA_LABELS.mainNav}
+            aria-label={labels.navigation}
+            labels={labels}
           />
         </>
       )}
@@ -187,9 +198,10 @@ function DashboardLayoutInternal({
       {/* Main content */}
       <Box
         component="main"
-        id="main-content"
+        id={slotProps?.main?.id ?? 'main-content'}
+        className={slotProps?.main?.className}
         role="main"
-        aria-label={ARIA_LABELS.main}
+        aria-label={labels.main}
         tabIndex={-1}
         sx={{
           display: 'flex',
@@ -249,9 +261,12 @@ export interface DashboardLayoutProps {
    */
   persistKey?: string;
   /** Props for layout sections */
+  labels?: Partial<DashboardLabels>;
   slotProps?: {
     header?: Partial<React.ComponentProps<typeof HeaderSection>>;
     main?: {
+      id?: string;
+      className?: string;
       sx?: SxProps<Theme>;
       disablePadding?: boolean;
       maxWidth?: Breakpoint | false;
@@ -298,6 +313,7 @@ export function DashboardLayout({
   initialConfig,
   persistKey,
   slotProps,
+  labels,
 }: DashboardLayoutProps): ReactNode {
   return (
     <LayoutProvider initialConfig={initialConfig} persistKey={persistKey}>
@@ -309,6 +325,7 @@ export function DashboardLayout({
         footer={footer}
         sidenavFooter={sidenavFooter}
         slotProps={slotProps}
+        labels={labels}
       >
         {children}
       </DashboardLayoutInternal>

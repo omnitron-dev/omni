@@ -60,6 +60,7 @@ import type {
 } from '../shared/dto/project.js';
 import { summariseSync } from './sync-summary.js';
 import { StackInfrastructureManager } from '../infrastructure/stack-infra-manager.js';
+import { describeProvisioning, summariseProvisioning } from '../infrastructure/provisioning-outcome.js';
 import { waitForPostgres } from './wait-for-postgres.js';
 import { resolveStack, resolvedConfigToEnv } from '../project/config-resolver.js';
 import { resolveStartupOrder } from '../orchestrator/dependency-resolver.js';
@@ -2616,6 +2617,10 @@ export class ProjectService extends EventEmitter {
           project?.path,
         );
         state.infraService = infraService;
+        const outcome = summariseProvisioning(infraService.getDesiredServices(), infraService.getState().services);
+        if (!outcome.ready && !outcome.empty) {
+          throw new Error(describeProvisioning(outcome));
+        }
       } catch (err) {
         const reason = (err as Error).message;
         this.logger.error(

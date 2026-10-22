@@ -754,28 +754,30 @@ export async function waitForHealthy(name: string, timeoutMs = 60_000): Promise<
   }
 }
 
-/**
- * Create a Docker bridge network if it doesn't exist.
- *
- * Idempotent — `docker network create` exits non-zero with a recognisable
- * "already exists" message when the network is present; we swallow that
- * specific case and propagate everything else. Done via execFile rather
- * than the adapter because the adapter doesn't expose network APIs and
- * the call is rare (once per daemon startup per network).
- */
+/** Reuse existing Docker networks; create only an explicitly absent named bridge. */
 export async function ensureNetwork(name: string): Promise<void> {
+  // Sharing another container's namespace is a runtime mode, not a network object.
+  if (name.startsWith('container:') && name.length > 'container:'.length) return;
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
-  const execFileAsync = promisify(execFile);
+  const run = promisify(execFile);
+  const options = { encoding: 'utf-8' as const, timeout: 15_000 };
+  const inspect = () => run('docker', ['network', 'inspect', name], options);
   try {
-    await execFileAsync('docker', ['network', 'create', name, '--driver', 'bridge'], {
-      encoding: 'utf-8',
-      timeout: 15_000,
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/already exists/i.test(msg)) return; // idempotent
-    throw err;
+    await inspect();
+    // In particular, host/none/bridge are Docker-owned and must never be created.
+    return;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/no such network|network .+ not found/i.test(message)) throw error;
+  }
+  try {
+    await run('docker', ['network', 'create', name, '--driver', 'bridge'], options);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/already exists/i.test(message)) throw error;
+    // A concurrent creator won. Verify its result rather than trusting error prose.
+    await inspect();
   }
 }
 

@@ -202,6 +202,20 @@ describe('omnitron pipeline list', () => {
 });
 
 describe('omnitron pipeline run', () => {
+  it('updates the definition through the operator RPC without replacing its identity', async () => {
+    const definition = { name: 'release', steps: [{name:'deploy', run:'node deploy.mjs', env:{PATH:'/opt/runtime/bin:/usr/bin'}}] };
+    const update = vi.fn(async (id, def) => ({ id, ...def }));
+    await daemonWith(new PipelineRpcService({ updatePipeline: update } as never));
+    const { createDaemonClient } = await import('../../src/daemon/daemon-client.js');
+    const client = createDaemonClient();
+    try {
+      const rpc = await client.service<import('../../src/shared/dto/services.js').IOmnitronPipelinesService>('OmnitronPipelines');
+      const result = await rpc.updatePipeline({id:'stable-id', definition});
+      expect(result.id).toBe('stable-id');
+      expect(result.steps).toEqual(definition.steps);
+      expect(update).toHaveBeenCalledExactlyOnceWith('stable-id', definition);
+    } finally { await client.disconnect(); }
+  });
   it.each(['release', 'pipeline-id'])('resolves %s to the registered pipeline over Netron', async (name) => {
     const execute = vi.fn(async () => ({ id: 'run-id', status: 'running' }));
     await daemonWith(new PipelineRpcService({

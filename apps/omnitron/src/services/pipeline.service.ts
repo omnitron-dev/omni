@@ -75,6 +75,18 @@ export class PipelineService {
     return this.mapPipeline(row);
   }
 
+  /** Replace the definition while retaining run history and the stable pipeline identity. */
+  async updatePipeline(id: string, def: PipelineDef): Promise<Pipeline> {
+    const row = await this.db.updateTable('pipelines' as any)
+      .set({ name: def.name, description: def.description ?? null,
+        steps: JSON.stringify(def.steps), triggers: JSON.stringify(def.triggers ?? []),
+        updatedAt: new Date() } as any)
+      .where('id', '=', id).returningAll().executeTakeFirst();
+    if (!row) throw new Error(`Pipeline '${id}' not found`);
+    this.logger.info({ id, name: def.name }, 'Pipeline updated');
+    return this.mapPipeline(row);
+  }
+
   async getPipeline(id: string): Promise<Pipeline | null> {
     const row = await this.db
       .selectFrom('pipelines' as any)

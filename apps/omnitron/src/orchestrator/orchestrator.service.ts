@@ -1853,10 +1853,14 @@ export class OrchestratorService extends EventEmitter {
     // (which was costing ~500ms per restart and racing against the
     // watcher's own incremental output). The watch context is also
     // preserved (we never unwatched), so we don't re-arm it either.
-    if (definition && this.devMode) {
+    // Source topologies need compilation in production as well. Watchers are
+    // independent of compilation and remain a development-only capability.
+    const sourceTopology = /\.(?:[cm]?ts|tsx)$/.test(bootstrapAbsPath) ||
+      definition?.processes.some((process) => /\.(?:[cm]?ts|tsx)$/.test(process.module));
+    if (definition && (this.devMode || sourceTopology)) {
       try {
         if (!this.buildService) {
-          this.buildService = new BuildService(/* isDev */ true, {
+          this.buildService = new BuildService(this.devMode, {
             onEsbuildReset: (info) => this.metricsBridge?.recordResilientHandleReset(info),
             onBuildResult: ({ app, kind, durationMs, ok }) =>
               this.metricsBridge?.recordEsbuildBuild(app, kind, durationMs, ok),
@@ -1903,7 +1907,7 @@ export class OrchestratorService extends EventEmitter {
           // Start esbuild watch for incremental rebuilds on source changes.
           // On rebuild → fire a restart trigger; the coalescer takes it
           // from there.
-          await this.buildService.watchApp(entry.name, bootstrapAbsPath, definition, () => {
+          if (this.devMode && entry.watch !== false) await this.buildService.watchApp(entry.name, bootstrapAbsPath, definition, () => {
             // Gate: skip if the app is in a non-running state — repeated
             // restarts of an escalated/errored process just churn forever
             // without forward progress (Fix #248).
@@ -1948,7 +1952,7 @@ export class OrchestratorService extends EventEmitter {
           'esbuild build failed — app cannot start without bundled output'
         );
         throw new Error(
-          `Cannot launch '${entry.name}' in dev mode: esbuild build failed (${(err as Error).message}). ` +
+          `Cannot launch '${entry.name}': esbuild build failed (${(err as Error).message}). ` +
           `Fix the build error and retry, or run with bundled output present in apps/${entry.name}/.omnitron-build/.`,
           { cause: err },
         );

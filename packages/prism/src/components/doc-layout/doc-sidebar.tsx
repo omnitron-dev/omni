@@ -158,7 +158,7 @@ function SidebarNode({
           mx: 0.5,
           mb: 0.25,
           minHeight: 0,
-          alignItems: 'flex-start',
+          alignItems: 'center',
           width: 'calc(100% - 8px)',
           textAlign: 'left',
           textDecoration: 'none',
@@ -172,7 +172,19 @@ function SidebarNode({
         }}
       >
         {hasChildren && (
-          <Box component="span" aria-hidden="true" sx={{ width: 16, flexShrink: 0 }}>
+          <Box
+            component="span"
+            aria-hidden="true"
+            sx={{
+              width: 20,
+              height: 20,
+              flexShrink: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              lineHeight: 1,
+            }}
+          >
             {open ? '−' : '+'}
           </Box>
         )}

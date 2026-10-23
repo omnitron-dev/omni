@@ -297,9 +297,9 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
             borderBottomLeftRadius: borderRadius,
             borderBottomRightRadius: borderRadius,
           },
-          '&:not(:last-child)': {
-            borderBottom: 0,
-          },
+          // Every disclosure owns its full outline. Sibling position cannot
+          // imply a contiguous group: a toolbar, paragraph or spaced panel
+          // may follow it, and application themes may use bottom-only rules.
           [`&.${accordionClasses.disabled}`]: {
             backgroundColor: 'transparent',
           },

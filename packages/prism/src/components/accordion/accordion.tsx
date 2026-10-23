@@ -122,7 +122,6 @@ export function Accordion({
         return {
           border: 1,
           borderColor: 'divider',
-          '&:not(:last-child)': { borderBottom: 0 },
           '&::before': { display: 'none' },
           boxShadow: 'none',
         };

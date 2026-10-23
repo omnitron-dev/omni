@@ -1,6 +1,6 @@
 'use client';
 import { DocSidebar } from '../doc-layout/doc-sidebar.js';
-import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ReactFlow,
   BaseEdge,
@@ -218,6 +218,7 @@ export function KnowledgeGraph({
     [selected, setSelected] = useState<KnowledgeSelection>(),
     [focus, setFocus] = useState<KnowledgeSelection>(),
     [view, setView] = useState<'map' | 'list'>('map');
+  const selectionRef = useRef<KnowledgeSelection | undefined>(undefined);
   const valid = useMemo(() => {
     try {
       validateKnowledgeGraph(data);
@@ -245,12 +246,19 @@ export function KnowledgeGraph({
         type: 'knowledge',
         position: prior.get(n.id)?.position ?? positions[n.id] ?? { x: 0, y: 0 },
         data: n,
-        selected: selected?.id === n.selection.id && selected.type === n.selection.type,
         ariaLabel: `${n.kind}: ${n.label}`,
         deletable: false,
       }));
     });
-  }, [graph, positions, selected]);
+  }, [graph, positions]);
+  const displayedNodes = useMemo(
+    () =>
+      nodes.map((node) => ({
+        ...node,
+        selected: selected?.id === node.data.selection.id && selected.type === node.data.selection.type,
+      })),
+    [nodes, selected]
+  );
   const edges = useMemo(
     () =>
       graph.edges.map((e) => ({
@@ -265,20 +273,34 @@ export function KnowledgeGraph({
   );
   const choose = useCallback(
     (s: KnowledgeSelection | undefined) => {
+      const previous = selectionRef.current;
+      if (previous?.id === s?.id && previous?.type === s?.type) return;
+      selectionRef.current = s;
       setSelected(s);
       onSelect?.(s);
       if (projection.total > visibleBudget) setFocus(s);
     },
     [onSelect, projection.total, visibleBudget]
   );
-  const onNodesChange = useCallback((changes: NodeChange<GraphNode>[]) => {
-    setNodes((n) =>
-      applyNodeChanges(
-        changes.filter((c) => c.type !== 'remove'),
-        n
-      )
-    );
-  }, []);
+  const onNodesChange = useCallback(
+    (changes: NodeChange<GraphNode>[]) => {
+      // Selection has one owner. React Flow emits user intents; controlled node
+      // props are a projection of that selection, never a second feedback source.
+      const selectedChange = [...changes].reverse().find((change) => change.type === 'select' && change.selected);
+      if (selectedChange?.type === 'select') {
+        const node = graph.nodes.find((node) => node.id === selectedChange.id);
+        if (node) choose(node.selection);
+      } else {
+        const current = selectionRef.current;
+        const id = current && (current.type === 'entity' ? entityNodeId(current.id) : relationNodeId(current.id));
+        if (changes.some((change) => change.type === 'select' && !change.selected && change.id === id))
+          choose(undefined);
+      }
+      const geometry = changes.filter((change) => change.type !== 'remove' && change.type !== 'select');
+      if (geometry.length) setNodes((nodes) => applyNodeChanges(geometry, nodes));
+    },
+    [graph, choose]
+  );
   const index = useMemo(
     () =>
       [
@@ -297,11 +319,10 @@ export function KnowledgeGraph({
       : data.relations.find((r) => r.id === selected?.id);
   useEffect(() => {
     if (selected && !object) {
-      setSelected(undefined);
+      choose(undefined);
       setFocus(undefined);
-      onSelect?.(undefined);
     }
-  }, [selected, object, onSelect]);
+  }, [selected, object, choose]);
   const graphIndex = (
     <Box className="prism-knowledge__index">
       <TextField
@@ -428,7 +449,7 @@ export function KnowledgeGraph({
                 {view === 'map' && nodes.length > 0 ? (
                   <EdgeLabelsContext.Provider value={labelStore}>
                     <ReactFlow<GraphNode>
-                      nodes={nodes}
+                      nodes={displayedNodes}
                       edges={edges}
                       nodeTypes={nodeTypes}
                       edgeTypes={edgeTypes}
@@ -443,10 +464,6 @@ export function KnowledgeGraph({
                           Object.fromEntries(nodes.map((n) => [n.id, n.id === node.id ? node.position : n.position]))
                         )
                       }
-                      onSelectionChange={({ nodes: chosen }) => {
-                        const s = chosen[0]?.data.selection;
-                        if (s && (s.id !== selected?.id || s.type !== selected?.type)) choose(s);
-                      }}
                       nodesConnectable={false}
                       deleteKeyCode={null}
                       edgesReconnectable={false}

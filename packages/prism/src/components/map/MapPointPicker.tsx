@@ -1,149 +1,190 @@
 'use client';
 
-/**
- * MapPointPicker Component
- *
- * Controlled "click to choose a coordinate" widget. Renders a
- * `<Map>` with click handler that emits `{lng, lat}` and shows
- * a draggable `<MapMarker>` at the current value. Reverse-
- * geocoding is the host app's job (it knows which RPC client to
- * call) — pass `geocodeResult` + `geocodeLoading` from your
- * useQuery and we render them in the side panel.
- *
- * The component stays UI-only / backend-agnostic so prism has no
- * dependency on any specific RPC client. Apps wire
- * `Geocoding.reverse` to `value` changes via TanStack Query.
- *
- * @module components/map
- */
-
-import { useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { Marker } from 'react-map-gl/maplibre';
-import type { MarkerDragEvent } from 'react-map-gl/maplibre';
-import { Stack, Paper, Typography, CircularProgress, Box } from '@mui/material';
-import { useTheme } from '@mui/material/styles';
+import { Stack, Paper, Typography, CircularProgress, Box, Button, Alert } from '@mui/material';
 import { Map } from './Map.js';
 import type { MapProps, MapViewport } from './Map.js';
+import { isMapPoint, normalizeMapPoint, mapCameraLatitude } from './coordinates.js';
+import type { MapPointPickerValue } from './coordinates.js';
+export type { MapPointPickerValue } from './coordinates.js';
 
-export interface MapPointPickerValue {
-  lng: number;
-  lat: number;
+export interface MapPointPickerLabels {
+  placeholder: string;
+  coordinates: string;
+  place: string;
+  loading: string;
+  unknown: string;
+  chooseCenter: string;
+  clear: string;
+  marker: string;
 }
-
+const defaults: MapPointPickerLabels = {
+  placeholder: 'Choose a point on the map, or move the map and select its centre.',
+  coordinates: 'Coordinates',
+  place: 'Place',
+  loading: 'Finding place…',
+  unknown: 'No place name for this point',
+  chooseCenter: 'Select map centre',
+  clear: 'Clear selection',
+  marker: 'Selected point',
+};
 export interface MapPointPickerProps {
-  /** Currently picked point, or null if nothing yet. */
   value: MapPointPickerValue | null;
-  /** Called on click and on marker drag-end. */
   onChange: (next: MapPointPickerValue) => void;
-  /** Initial map viewport. Default Moscow at zoom 4. */
+  onClear?: () => void;
   initialViewport?: Partial<MapViewport>;
-  /** Override map tile style. */
+  /** Minimum zoom when receiving a newly selected point. */
+  selectionZoom?: number;
   styleUrl?: MapProps['styleUrl'];
-  /** Container height (passed to inner Map). */
   height?: number;
-  /** Reverse-geocode response to display in the side panel. */
   geocodeResult?: ReactNode;
-  /** Show a spinner in the side panel while host RPC is in flight. */
   geocodeLoading?: boolean;
-  /** Hint text shown when value is null. */
+  geocodeError?: ReactNode;
   placeholder?: string;
+  labels?: Partial<MapPointPickerLabels>;
+  readOnly?: boolean;
+  showDetails?: boolean;
+  /** MapLibre sources, overlays and interaction configuration are reusable. */
+  mapProps?: Omit<MapProps, 'viewport' | 'onViewportChange' | 'onClick' | 'styleUrl' | 'initialViewport'>;
 }
-
 export function MapPointPicker({
   value,
   onChange,
+  onClear,
   initialViewport,
+  selectionZoom = 10,
   styleUrl,
   height = 480,
   geocodeResult,
   geocodeLoading = false,
-  placeholder = 'Кликните по карте, чтобы выбрать точку',
+  geocodeError,
+  placeholder,
+  labels,
+  readOnly = false,
+  showDetails = true,
+  mapProps,
 }: MapPointPickerProps) {
-  const theme = useTheme();
-
-  const handleClick = useCallback<NonNullable<MapProps['onClick']>>(
-    (e) => onChange({ lng: e.lngLat.lng, lat: e.lngLat.lat }),
-    [onChange],
-  );
-
-  const handleDragEnd = useCallback(
-    (e: MarkerDragEvent) => {
-      onChange({ lng: e.lngLat.lng, lat: e.lngLat.lat });
-    },
-    [onChange],
-  );
-
+  const copy = { ...defaults, ...labels, ...(placeholder ? { placeholder } : {}) };
+  const valid = value && isMapPoint(value) ? value : null;
+  const [camera, setCamera] = useState<MapViewport>(() => ({
+    longitude: valid?.lng ?? 0,
+    latitude: valid ? mapCameraLatitude(valid.lat) : 0,
+    zoom: valid ? 10 : 1,
+    ...initialViewport,
+  }));
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    if (value && isMapPoint(value))
+      setCamera((old) => ({
+        ...old,
+        longitude: value.lng,
+        latitude: mapCameraLatitude(value.lat),
+        zoom: Math.max(old.zoom, selectionZoom),
+      }));
+  }, [value?.lng, value?.lat, selectionZoom]);
+  function choose(lng: number, lat: number) {
+    const point = normalizeMapPoint(lng, lat);
+    if (point && !readOnly) onChange(point);
+  }
   return (
-    <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ width: '100%' }}>
-      <Box sx={{ flex: 1, minWidth: 0 }}>
+    <Stack sx={{ gap: 2, width: '100%' }}>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: showDetails ? { xs: '1fr', md: 'minmax(0,1fr) 280px' } : '1fr',
+          gap: 2,
+        }}
+      >
         <Map
+          {...mapProps}
           styleUrl={styleUrl}
-          initialViewport={initialViewport}
-          cursor="crosshair"
-          onClick={handleClick}
-          style={{ height }}
+          viewport={camera}
+          onViewportChange={setCamera}
+          cursor={readOnly ? 'grab' : 'crosshair'}
+          onClick={(event) => choose(event.lngLat.lng, event.lngLat.lat)}
+          onLoad={(event) => {
+            setLoaded(true);
+            mapProps?.onLoad?.(event);
+          }}
+          style={{ ...mapProps?.style, height }}
         >
-          {value && (
+          {mapProps?.children}
+          {valid && (
             <Marker
-              longitude={value.lng}
-              latitude={value.lat}
-              anchor="bottom"
-              draggable
-              onDragEnd={handleDragEnd}
+              longitude={valid.lng}
+              latitude={valid.lat}
+              anchor="center"
+              draggable={!readOnly}
+              onDragEnd={(event) => choose(event.lngLat.lng, event.lngLat.lat)}
             >
-              <svg width="24" height="32" viewBox="0 0 24 32" aria-hidden style={{ display: 'block' }}>
-                <path
-                  d="M12 0C5.4 0 0 5.4 0 12c0 9 12 20 12 20s12-11 12-20C24 5.4 18.6 0 12 0z"
-                  fill={theme.palette.error.main}
-                />
-                <circle cx="12" cy="12" r="4" fill="#fff" />
-              </svg>
+              <Box
+                role="img"
+                aria-label={copy.marker}
+                sx={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: '50%',
+                  bgcolor: 'primary.main',
+                  border: '3px solid',
+                  borderColor: 'background.paper',
+                  boxShadow: 2,
+                }}
+              />
             </Marker>
           )}
         </Map>
-      </Box>
-      <Paper
-        variant="outlined"
-        sx={{
-          width: { xs: '100%', md: 320 },
-          p: 2,
-          borderColor: theme.palette.divider,
-          bgcolor: theme.palette.background.default,
-        }}
-      >
-        {value ? (
-          <Stack spacing={1.5}>
-            <Typography variant="caption" color="text.secondary">
-              Координаты
-            </Typography>
-            <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums' }}>
-              {value.lat.toFixed(5)}, {value.lng.toFixed(5)}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Распознанное место
-            </Typography>
-            {geocodeLoading ? (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CircularProgress size={16} />
-                <Typography variant="body2" color="text.secondary">
-                  Геокодирование…
+        {showDetails && (
+          <Paper variant="outlined" sx={{ p: 2, minWidth: 0 }}>
+            {valid ? (
+              <Stack sx={{ gap: 1.5 }}>
+                <Typography variant="caption" color="text.secondary">
+                  {copy.coordinates}
                 </Typography>
-              </Box>
-            ) : geocodeResult ? (
-              <Box>{geocodeResult}</Box>
+                <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {valid.lat.toFixed(5)}, {valid.lng.toFixed(5)}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {copy.place}
+                </Typography>
+                {geocodeLoading ? (
+                  <Stack direction="row" sx={{ gap: 1, alignItems: 'center' }} role="status">
+                    <CircularProgress size={16} />
+                    <Typography variant="body2">{copy.loading}</Typography>
+                  </Stack>
+                ) : geocodeError ? (
+                  <Alert severity="warning">{geocodeError}</Alert>
+                ) : (
+                  <Box sx={{ overflowWrap: 'anywhere' }}>
+                    {geocodeResult ?? (
+                      <Typography variant="body2" color="text.secondary">
+                        {copy.unknown}
+                      </Typography>
+                    )}
+                  </Box>
+                )}
+              </Stack>
             ) : (
               <Typography variant="body2" color="text.secondary">
-                Нет данных
+                {copy.placeholder}
               </Typography>
             )}
-          </Stack>
-        ) : (
-          <Typography variant="body2" color="text.secondary">
-            {placeholder}
-          </Typography>
+          </Paper>
         )}
-      </Paper>
+      </Box>
+      {!readOnly && (
+        <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+          <Button type="button" disabled={!loaded} onClick={() => choose(camera.longitude, camera.latitude)}>
+            {copy.chooseCenter}
+          </Button>
+          {onClear && (
+            <Button type="button" disabled={!value} onClick={onClear}>
+              {copy.clear}
+            </Button>
+          )}
+        </Stack>
+      )}
     </Stack>
   );
 }

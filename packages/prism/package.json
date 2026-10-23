@@ -94,7 +94,12 @@
     "./icons": {
       "types": "./dist/icons/index.d.ts",
       "import": "./dist/icons/index.js"
-    }
+    },
+    "./components/map": {
+      "types": "./dist/components/map/index.d.ts",
+      "import": "./dist/components/map/index.js"
+    },
+    "./components/map/styles.css": "./dist/components/map/index.css"
   },
   "bin": {
     "prism": "./bin/prism.js"

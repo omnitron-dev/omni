@@ -31,15 +31,7 @@ export interface MapMarkerProps {
   onClick?: () => void;
 }
 
-export function MapMarker({
-  longitude,
-  latitude,
-  color,
-  children,
-  popup,
-  anchor = 'bottom',
-  onClick,
-}: MapMarkerProps) {
+export function MapMarker({ longitude, latitude, color, children, popup, anchor = 'bottom', onClick }: MapMarkerProps) {
   const theme = useTheme();
   const [open, setOpen] = useState(false);
   const fill = color ?? theme.palette.primary.main;
@@ -52,18 +44,10 @@ export function MapMarker({
 
   return (
     <>
-      <Marker
-        longitude={longitude}
-        latitude={latitude}
-        anchor={anchor}
-        onClick={handleClick}
-      >
+      <Marker longitude={longitude} latitude={latitude} anchor={anchor} onClick={handleClick}>
         {children ?? (
           <svg width="24" height="32" viewBox="0 0 24 32" aria-hidden style={{ display: 'block' }}>
-            <path
-              d="M12 0C5.4 0 0 5.4 0 12c0 9 12 20 12 20s12-11 12-20C24 5.4 18.6 0 12 0z"
-              fill={fill}
-            />
+            <path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 20 12 20s12-11 12-20C24 5.4 18.6 0 12 0z" fill={fill} />
             <circle cx="12" cy="12" r="4" fill="#fff" />
           </svg>
         )}

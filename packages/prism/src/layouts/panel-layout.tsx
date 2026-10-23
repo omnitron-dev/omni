@@ -1,9 +1,9 @@
+import { MenuIcon, CloseIcon } from '../icons/controls.js';
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Drawer from '@mui/material/Drawer';
 import IconButton from '@mui/material/IconButton';
-import SvgIcon from '@mui/material/SvgIcon';
 import Typography from '@mui/material/Typography';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme, type SxProps, type Theme, type Breakpoint } from '@mui/material/styles';
@@ -136,11 +136,7 @@ export function PanelLayout({
             aria-haspopup="dialog"
             aria-expanded={mobileOpen}
             sx={{ mb: 2 }}
-            startIcon={
-              <SvgIcon>
-                <path d="M3 5h18v2H3zm0 6h18v2H3zm0 6h18v2H3z" />
-              </SvgIcon>
-            }
+            startIcon={<MenuIcon />}
           >
             {title}
           </Button>
@@ -166,7 +162,7 @@ export function PanelLayout({
               {title}
             </Typography>
             <IconButton onClick={() => setMobileOpen(false)} aria-label={labels.close}>
-              <span aria-hidden="true">×</span>
+              <CloseIcon fontSize="small" />
             </IconButton>
           </Box>
           <Scrollbar sx={{ flex: 1, px: 2, pb: 2 }}>{renderPanel(false)}</Scrollbar>

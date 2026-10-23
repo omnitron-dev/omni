@@ -42,6 +42,12 @@
   min-width: 36px;
   min-height: 36px;
 }
+.prism-knowledge .react-flow__controls-button .MuiSvgIcon-root {
+  width: 20px;
+  height: 20px;
+  max-width: none;
+  max-height: none;
+}
 .prism-knowledge .react-flow__controls-button:focus-visible {
   outline: var(--prism-focus-width, 2px) solid var(--prism-graph-accent);
   outline-offset: 2px;

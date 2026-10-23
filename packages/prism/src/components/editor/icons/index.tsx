@@ -1,3 +1,4 @@
+import { createPrismIcon } from '../../../icons/context.js';
 /**
  * Editor toolbar icons — HugeIcons Duotone Rounded style.
  * Source: experiments/portal-old/src/components/editor/toolbar/icons
@@ -18,7 +19,7 @@ type IconComponent = (props?: SvgIconProps) => React.JSX.Element;
 // Text Formatting
 // ---------------------------------------------------------------------------
 
-export const BoldIcon: IconComponent = (props) => (
+const DefaultBoldIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path
       fill="none"
@@ -41,7 +42,7 @@ export const BoldIcon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const ItalicIcon: IconComponent = (props) => (
+const DefaultItalicIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path d="M12 4H19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     <path d="M8 20L16 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -49,7 +50,7 @@ export const ItalicIcon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const UnderlineIcon: IconComponent = (props) => (
+const DefaultUnderlineIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path
       fill="none"
@@ -63,7 +64,7 @@ export const UnderlineIcon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const StrikeIcon: IconComponent = (props) => (
+const DefaultStrikeIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path d="M4 12H20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     <path
@@ -76,7 +77,7 @@ export const StrikeIcon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const InlineCodeIcon: IconComponent = (props) => (
+const DefaultInlineCodeIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path
       fill="none"
@@ -98,7 +99,7 @@ export const InlineCodeIcon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const CodeBlockIcon: IconComponent = (props) => (
+const DefaultCodeBlockIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path
       stroke="currentColor"
@@ -128,7 +129,7 @@ export const CodeBlockIcon: IconComponent = (props) => (
 // Headings
 // ---------------------------------------------------------------------------
 
-export const H1Icon: IconComponent = (props) => (
+const DefaultH1Icon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path d="M4 5V19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     <path d="M14 5V19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -143,7 +144,7 @@ export const H1Icon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const H2Icon: IconComponent = (props) => (
+const DefaultH2Icon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path d="M3.5 5V19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     <path d="M13.5 5V19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -159,7 +160,7 @@ export const H2Icon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const H3Icon: IconComponent = (props) => (
+const DefaultH3Icon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path d="M3.5 5V19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     <path d="M13.5 5V19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -175,7 +176,7 @@ export const H3Icon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const H4Icon: IconComponent = (props) => (
+const DefaultH4Icon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path d="M3.5 5V19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     <path d="M13.5 5V19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -191,7 +192,7 @@ export const H4Icon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const H5Icon: IconComponent = (props) => (
+const DefaultH5Icon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path d="M3.5 5V19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     <path d="M13.5 5V19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -207,7 +208,7 @@ export const H5Icon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const H6Icon: IconComponent = (props) => (
+const DefaultH6Icon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path d="M3.5 5V19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     <path d="M13.5 5V19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -223,7 +224,7 @@ export const H6Icon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const ParagraphIcon: IconComponent = (props) => (
+const DefaultParagraphIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" d="M15 21.001H9" />
     <path
@@ -239,7 +240,7 @@ export const ParagraphIcon: IconComponent = (props) => (
 // Alignment
 // ---------------------------------------------------------------------------
 
-export const AlignLeftIcon: IconComponent = (props) => (
+const DefaultAlignLeftIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path d="M3 3H21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     <path d="M3 9H11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -248,7 +249,7 @@ export const AlignLeftIcon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const AlignCenterIcon: IconComponent = (props) => (
+const DefaultAlignCenterIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path d="M3 3H21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     <path d="M8 9H16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -257,7 +258,7 @@ export const AlignCenterIcon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const AlignRightIcon: IconComponent = (props) => (
+const DefaultAlignRightIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path d="M3 3H21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     <path d="M13 9H21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -266,7 +267,7 @@ export const AlignRightIcon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const AlignJustifyIcon: IconComponent = (props) => (
+const DefaultAlignJustifyIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path d="M3 3H21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     <path d="M3 9H21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -279,7 +280,7 @@ export const AlignJustifyIcon: IconComponent = (props) => (
 // Lists
 // ---------------------------------------------------------------------------
 
-export const BulletListIcon: IconComponent = (props) => (
+const DefaultBulletListIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path d="M11 5.5L21 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     <path
@@ -301,7 +302,7 @@ export const BulletListIcon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const OrderedListIcon: IconComponent = (props) => (
+const DefaultOrderedListIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path d="M11 6L21 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     <path d="M11 12L21 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -324,7 +325,7 @@ export const OrderedListIcon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const CheckListIcon: IconComponent = (props) => (
+const DefaultCheckListIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path d="M11 6L21 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     <path d="M11 12L21 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -350,7 +351,7 @@ export const CheckListIcon: IconComponent = (props) => (
 // Block Elements
 // ---------------------------------------------------------------------------
 
-export const QuoteIcon: IconComponent = (props) => (
+const DefaultQuoteIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path
       fill="none"
@@ -381,13 +382,13 @@ export const QuoteIcon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const HorizontalRuleIcon: IconComponent = (props) => (
+const DefaultHorizontalRuleIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path d="M2.5 12L21.5002 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
   </SvgIcon>
 );
 
-export const TableIcon: IconComponent = (props) => (
+const DefaultTableIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path
       fill="none"
@@ -408,7 +409,7 @@ export const TableIcon: IconComponent = (props) => (
 // Media & Links
 // ---------------------------------------------------------------------------
 
-export const LinkIcon: IconComponent = (props) => (
+const DefaultLinkIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path d="M9.5 14.5L14.5 9.49995" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     <path
@@ -421,7 +422,7 @@ export const LinkIcon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const UnlinkIcon: IconComponent = (props) => (
+const DefaultUnlinkIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path
       fill="none"
@@ -447,7 +448,7 @@ export const UnlinkIcon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const ImageIcon: IconComponent = (props) => (
+const DefaultImageIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <circle
       fill="none"
@@ -478,7 +479,7 @@ export const ImageIcon: IconComponent = (props) => (
 // Utilities
 // ---------------------------------------------------------------------------
 
-export const ClearMarksIcon: IconComponent = (props) => (
+const DefaultClearMarksIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path d="M11 20.001H5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     <path d="M3 3L21 21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -499,7 +500,7 @@ export const ClearMarksIcon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const UndoIcon: IconComponent = (props) => (
+const DefaultUndoIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path
       fill="none"
@@ -512,7 +513,7 @@ export const UndoIcon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const RedoIcon: IconComponent = (props) => (
+const DefaultRedoIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path
       fill="none"
@@ -525,7 +526,7 @@ export const RedoIcon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const HardBreakIcon: IconComponent = (props) => (
+const DefaultHardBreakIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path
       fill="none"
@@ -546,7 +547,7 @@ export const HardBreakIcon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const FullscreenIcon: IconComponent = (props) => (
+const DefaultFullscreenIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path
       fill="none"
@@ -559,7 +560,7 @@ export const FullscreenIcon: IconComponent = (props) => (
   </SvgIcon>
 );
 
-export const ExitFullscreenIcon: IconComponent = (props) => (
+const DefaultExitFullscreenIcon: IconComponent = (props) => (
   <SvgIcon {...props}>
     <path
       fill="none"
@@ -571,3 +572,67 @@ export const ExitFullscreenIcon: IconComponent = (props) => (
     />
   </SvgIcon>
 );
+
+export const BoldIcon = createPrismIcon('bold', DefaultBoldIcon);
+
+export const ItalicIcon = createPrismIcon('italic', DefaultItalicIcon);
+
+export const UnderlineIcon = createPrismIcon('underline', DefaultUnderlineIcon);
+
+export const StrikeIcon = createPrismIcon('strike', DefaultStrikeIcon);
+
+export const InlineCodeIcon = createPrismIcon('inlineCode', DefaultInlineCodeIcon);
+
+export const CodeBlockIcon = createPrismIcon('codeBlock', DefaultCodeBlockIcon);
+
+export const H1Icon = createPrismIcon('h1', DefaultH1Icon);
+
+export const H2Icon = createPrismIcon('h2', DefaultH2Icon);
+
+export const H3Icon = createPrismIcon('h3', DefaultH3Icon);
+
+export const H4Icon = createPrismIcon('h4', DefaultH4Icon);
+
+export const H5Icon = createPrismIcon('h5', DefaultH5Icon);
+
+export const H6Icon = createPrismIcon('h6', DefaultH6Icon);
+
+export const ParagraphIcon = createPrismIcon('paragraph', DefaultParagraphIcon);
+
+export const AlignLeftIcon = createPrismIcon('alignLeft', DefaultAlignLeftIcon);
+
+export const AlignCenterIcon = createPrismIcon('alignCenter', DefaultAlignCenterIcon);
+
+export const AlignRightIcon = createPrismIcon('alignRight', DefaultAlignRightIcon);
+
+export const AlignJustifyIcon = createPrismIcon('alignJustify', DefaultAlignJustifyIcon);
+
+export const BulletListIcon = createPrismIcon('bulletList', DefaultBulletListIcon);
+
+export const OrderedListIcon = createPrismIcon('orderedList', DefaultOrderedListIcon);
+
+export const CheckListIcon = createPrismIcon('checkList', DefaultCheckListIcon);
+
+export const QuoteIcon = createPrismIcon('quote', DefaultQuoteIcon);
+
+export const HorizontalRuleIcon = createPrismIcon('horizontalRule', DefaultHorizontalRuleIcon);
+
+export const TableIcon = createPrismIcon('table', DefaultTableIcon);
+
+export const LinkIcon = createPrismIcon('link', DefaultLinkIcon);
+
+export const UnlinkIcon = createPrismIcon('unlink', DefaultUnlinkIcon);
+
+export const ImageIcon = createPrismIcon('image', DefaultImageIcon);
+
+export const ClearMarksIcon = createPrismIcon('clearMarks', DefaultClearMarksIcon);
+
+export const UndoIcon = createPrismIcon('undo', DefaultUndoIcon);
+
+export const RedoIcon = createPrismIcon('redo', DefaultRedoIcon);
+
+export const HardBreakIcon = createPrismIcon('hardBreak', DefaultHardBreakIcon);
+
+export const FullscreenIcon = createPrismIcon('fullscreen', DefaultFullscreenIcon);
+
+export const ExitFullscreenIcon = createPrismIcon('fullscreenExit', DefaultExitFullscreenIcon);

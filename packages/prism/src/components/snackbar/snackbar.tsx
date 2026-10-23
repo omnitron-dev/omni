@@ -13,7 +13,7 @@ import { createContext, useContext, useState, useCallback, useMemo } from 'react
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
 import IconButton from '@mui/material/IconButton';
-import CloseIcon from '@mui/icons-material/Close';
+import { CloseIcon as CloseIcon } from '../../icons/controls.js';
 import type { AlertColor } from '@mui/material/Alert';
 import type { SnackbarOrigin } from '@mui/material/Snackbar';
 import type { SxProps, Theme } from '@mui/material/styles';

@@ -39,7 +39,6 @@ function App() {
 }
 ```
 
-
 ## Research documents
 
 `@omnitron-dev/prism/components/research` adds a source-preserving Markdown → typed document → React path. Import `@omnitron-dev/prism/components/research/styles.css` once. It supports GFM, stable Unicode heading anchors, admonitions, tabs, KaTeX and strict Mermaid diagrams. `parseResearchMarkdown(source, documentId)` returns the document tree, heading outline and diagnostics; node attributes retain source positions.
@@ -51,8 +50,11 @@ import { z } from 'zod';
 
 const props = z.object({ value: z.number().finite() }).strict();
 const widgets = {
-  quantity: defineResearchWidget(1, input => props.parse(input),
-    ({ value }) => <output aria-label="Quantity">{value}</output>),
+  quantity: defineResearchWidget(
+    1,
+    (input) => props.parse(input),
+    ({ value }) => <output aria-label="Quantity">{value}</output>
+  ),
 };
 <ResearchDocument source={markdown} documentId="paper-overview" widgets={widgets} contents />;
 ```
@@ -95,7 +97,6 @@ profile leaves that syntax literal. This is an inert rendering profile, not an M
 runtime or a Docusaurus configuration executor. Corpus routes and semantic metadata
 are supplied by the host's source adapter; Prism does not infer knowledge status.
 
-
 ## Corpus navigation
 
 `@omnitron-dev/prism/components/doc-layout` exposes `DocSidebar`, `DocLayout`
@@ -105,3 +106,25 @@ modified-click and new-tab navigation; `onItemClick` may route ordinary clicks
 through the host router. Categories announce expansion and remove collapsed
 children from keyboard navigation. No source-format or authorization semantics
 belong in these presentation components.
+
+### Application icon families
+
+Wrap the application (including its theme provider) in `PrismIconProvider` from
+`@omnitron-dev/prism/icons`. Supply components accepting `SvgIconProps`, forwarding
+an SVG ref and retaining MUI's decorative/accessibly labelled behaviour. A partial
+set overrides selected slots; a complete `Record<PrismIconName, PrismIconComponent>`
+provides compile-time coverage. `prismIconNames` enumerates the public slots.
+
+The same context reaches layout controls, search, scientific and rich-text editors,
+graph controls and native MUI slots through portals. Nested providers inherit the
+parent set. Unconfigured slots retain bundled artwork; applications own and license
+their supplied assets. No network icon lookup or DOM replacement is performed.
+Local MUI `slots`, `IconComponent` and `icon` props still take precedence.
+
+```tsx
+import { PrismIconProvider, type PrismIconSet } from '@omnitron-dev/prism/icons';
+const icons = { search: ApplicationSearchIcon } satisfies PrismIconSet;
+<PrismIconProvider icons={icons}>
+  <PrismThemeProvider theme={theme}>{children}</PrismThemeProvider>
+</PrismIconProvider>;
+```

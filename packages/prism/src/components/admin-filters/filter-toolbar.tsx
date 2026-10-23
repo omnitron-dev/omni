@@ -1,5 +1,7 @@
 'use client';
 
+import { FilterIcon } from '../../icons/controls.js';
+
 /**
  * Filter Toolbar Component
  *
@@ -98,23 +100,6 @@ export interface FilterToolbarProps {
 // =============================================================================
 // SEARCH ICON (inline SVG to avoid external dependency)
 // =============================================================================
-
-function FilterIcon(): ReactNode {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-    </svg>
-  );
-}
 
 // =============================================================================
 // HELPERS
@@ -303,9 +288,12 @@ export function FilterToolbar({
               }}
             >
               <MenuItem value="">
-                <Typography variant="body2" sx={{
-                  color: "text.secondary"
-                }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'text.secondary',
+                  }}
+                >
                   {label}
                 </Typography>
               </MenuItem>
@@ -338,9 +326,12 @@ export function FilterToolbar({
                     const sel = selected as string[];
                     if (sel.length === 0) {
                       return (
-                        <Typography variant="body2" sx={{
-                          color: "text.secondary"
-                        }}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color: 'text.secondary',
+                          }}
+                        >
                           {label}
                         </Typography>
                       );
@@ -418,9 +409,14 @@ export function FilterToolbar({
 
         case 'number-range':
           return (
-            <Stack key={key} direction="row" spacing={1} sx={{
-              alignItems: "center"
-            }}>
+            <Stack
+              key={key}
+              direction="row"
+              spacing={1}
+              sx={{
+                alignItems: 'center',
+              }}
+            >
               <TextField
                 type="number"
                 size="small"
@@ -432,9 +428,10 @@ export function FilterToolbar({
               <Typography
                 variant="body2"
                 sx={{
-                  color: "text.disabled",
-                  px: 0.5
-                }}>
+                  color: 'text.disabled',
+                  px: 0.5,
+                }}
+              >
                 —
               </Typography>
               <TextField
@@ -470,10 +467,11 @@ export function FilterToolbar({
       <Stack
         direction="row"
         sx={{
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: 1.5
-        }}>
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 1.5,
+        }}
+      >
         {filters.map(renderFilter)}
 
         {/* Active filter count + reset */}
@@ -481,9 +479,10 @@ export function FilterToolbar({
           direction="row"
           spacing={1}
           sx={{
-            alignItems: "center",
-            ml: 'auto'
-          }}>
+            alignItems: 'center',
+            ml: 'auto',
+          }}
+        >
           {activeCount > 0 && (
             <Badge badgeContent={activeCount} color="primary" sx={{ '& .MuiBadge-badge': { fontSize: '0.65rem' } }}>
               <Box sx={{ color: 'text.secondary', display: 'flex', alignItems: 'center' }}>
@@ -515,12 +514,11 @@ export function FilterToolbar({
         <Typography
           variant="caption"
           sx={{
-            color: "text.disabled",
-            mt: 0.5
-          }}>
-          {resultsLabel
-            ? resultsLabel(total)
-            : `${total.toLocaleString()} result${total !== 1 ? 's' : ''}`}
+            color: 'text.disabled',
+            mt: 0.5,
+          }}
+        >
+          {resultsLabel ? resultsLabel(total) : `${total.toLocaleString()} result${total !== 1 ? 's' : ''}`}
         </Typography>
       )}
     </Stack>

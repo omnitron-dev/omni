@@ -1,5 +1,7 @@
 'use client';
 
+import { EmptyIcon } from '../../icons/controls.js';
+
 /**
  * Admin Data Table Component
  *
@@ -231,26 +233,6 @@ const EMPTY_SELECTION: ReadonlySet<string> = new Set<string>();
 // EMPTY STATE ICON
 // =============================================================================
 
-function EmptyIcon(): ReactNode {
-  return (
-    <svg
-      width="48"
-      height="48"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      opacity="0.3"
-    >
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="9" y1="15" x2="15" y2="15" />
-    </svg>
-  );
-}
-
 // =============================================================================
 // COMPONENT
 // =============================================================================
@@ -328,7 +310,6 @@ export function AdminDataTable<T>({
       // to records the operator never picked. Surface it in development
       // rather than let a delete find out at runtime.
       if (selectable && process.env['NODE_ENV'] !== 'production') {
-         
         console.error(
           '[AdminDataTable] `selectable` is on but rows have no stable key: ' +
             'pass `rowKey`, or give each row an `id`. Index-based keys make the ' +
@@ -507,15 +488,19 @@ export function AdminDataTable<T>({
           direction="row"
           spacing={2}
           sx={{
-            alignItems: "center",
+            alignItems: 'center',
             px: 2,
             py: 1,
             borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
-            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.06)
-          }}>
-          <Typography variant="body2" sx={{
-            fontWeight: 600
-          }}>
+            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.06),
+          }}
+        >
+          <Typography
+            variant="body2"
+            sx={{
+              fontWeight: 600,
+            }}
+          >
             {selection.size} selected
           </Typography>
           <Box sx={{ flex: 1 }} />
@@ -535,7 +520,7 @@ export function AdminDataTable<T>({
                     disabled={loading || pageRowKeys.length === 0}
                     onChange={toggleAllOnPage}
                     slotProps={{
-                      input: { 'aria-label': 'select all rows on page' }
+                      input: { 'aria-label': 'select all rows on page' },
                     }}
                   />
                 </TableCell>
@@ -592,7 +577,7 @@ export function AdminDataTable<T>({
                             checked={isSelected}
                             onChange={() => toggleRow(key)}
                             slotProps={{
-                              input: { 'aria-label': 'select row' }
+                              input: { 'aria-label': 'select row' },
                             }}
                           />
                         </TableCell>
@@ -616,10 +601,7 @@ export function AdminDataTable<T>({
                         pair read as two records.
                       */}
                       <TableRow>
-                        <TableCell
-                          colSpan={columns.length + (selectable ? 1 : 0)}
-                          sx={{ py: 0, borderBottom: 0 }}
-                        >
+                        <TableCell colSpan={columns.length + (selectable ? 1 : 0)} sx={{ py: 0, borderBottom: 0 }}>
                           {detail}
                         </TableCell>
                       </TableRow>

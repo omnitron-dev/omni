@@ -15,8 +15,8 @@ import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import Collapse from '@mui/material/Collapse';
 import IconButton from '@mui/material/IconButton';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import { ChevronDownIcon as ExpandMoreIcon } from '../../icons/controls.js';
+import { CopyIcon as ContentCopyIcon } from '../../icons/controls.js';
 import type { SxProps, Theme } from '@mui/material/styles';
 
 // =============================================================================
@@ -307,20 +307,22 @@ function DefaultErrorFallback({
       <Typography
         variant="body2"
         sx={{
-          color: "text.secondary",
+          color: 'text.secondary',
           mb: 1,
-          maxWidth: 400
-        }}>
+          maxWidth: 400,
+        }}
+      >
         {error.message || 'An unexpected error occurred'}
       </Typography>
       {shouldShowDetails && parsedStack.primary && (
         <Typography
           variant="caption"
           sx={{
-            color: "text.secondary",
+            color: 'text.secondary',
             mb: 2,
-            fontFamily: 'monospace'
-          }}>
+            fontFamily: 'monospace',
+          }}
+        >
           {parsedStack.primary.filePath}
           {parsedStack.primary.lineNumber && `:${parsedStack.primary.lineNumber}`}
           {parsedStack.primary.functionName && ` (${parsedStack.primary.functionName})`}
@@ -353,9 +355,10 @@ function DefaultErrorFallback({
               <Typography
                 variant="caption"
                 sx={{
-                  color: "success.main",
-                  alignSelf: 'center'
-                }}>
+                  color: 'success.main',
+                  alignSelf: 'center',
+                }}
+              >
                 Copied!
               </Typography>
             )}

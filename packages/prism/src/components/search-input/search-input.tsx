@@ -1,3 +1,4 @@
+import { SearchIcon as SearchGlyph, CloseIcon } from '../../icons/controls.js';
 /**
  * SearchInput — Unified search field for the entire platform.
  *
@@ -22,39 +23,11 @@ import { alpha, useTheme, type SxProps, type Theme } from '@mui/material/styles'
 // ---------------------------------------------------------------------------
 
 function SearchIcon({ size = 18 }: { size?: number }): ReactNode {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="11" cy="11" r="8" />
-      <line x1="21" y1="21" x2="16.65" y2="16.65" />
-    </svg>
-  );
+  return <SearchGlyph sx={{ fontSize: size }} />;
 }
 
 function ClearIcon(): ReactNode {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  );
+  return <CloseIcon sx={{ fontSize: 16 }} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -96,22 +69,23 @@ export interface SearchInputProps {
 // Component
 // ---------------------------------------------------------------------------
 
-export function SearchInput({value: controlledValue,
-    onChange,
-    placeholder = 'Search...',
-    debounce = 0,
-    compact = false,
-    fullWidth = true,
-    width,
-    minWidth,
-    clearTooltip = 'Clear',
-    autoFocus,
-    onFocus,
-    onBlur,
-    onKeyDown,
-    sx,
-    ref,
-  }: SearchInputProps & { ref?: Ref<HTMLInputElement> }) {
+export function SearchInput({
+  value: controlledValue,
+  onChange,
+  placeholder = 'Search...',
+  debounce = 0,
+  compact = false,
+  fullWidth = true,
+  width,
+  minWidth,
+  clearTooltip = 'Clear',
+  autoFocus,
+  onFocus,
+  onBlur,
+  onKeyDown,
+  sx,
+  ref,
+}: SearchInputProps & { ref?: Ref<HTMLInputElement> }) {
   const theme = useTheme();
 
   // Internal state for debounced mode or uncontrolled usage

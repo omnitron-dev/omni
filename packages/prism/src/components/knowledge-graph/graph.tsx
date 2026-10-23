@@ -1,4 +1,5 @@
 'use client';
+
 import { DocSidebar } from '../doc-layout/doc-sidebar.js';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
@@ -484,6 +485,8 @@ export function KnowledgeGraph({
                         gap={edgeLabelGap}
                         maxWidth={edgeLabelMaxWidth}
                         fitLabel={labels.fit}
+                        zoomInLabel={labels.zoomIn}
+                        zoomOutLabel={labels.zoomOut}
                       />
                     </ReactFlow>
                   </EdgeLabelsContext.Provider>

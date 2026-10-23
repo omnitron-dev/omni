@@ -1,4 +1,6 @@
 'use client';
+
+import { ChevronDownIcon } from '../../icons/controls.js';
 import { Component, useId, useMemo, type ReactNode, type ComponentType } from 'react';
 import katex from 'katex';
 import { Accordion, AccordionSummary, AccordionDetails, Box, Typography } from '@mui/material';
@@ -171,7 +173,7 @@ export function ResearchDocument({
           elevation={0}
           sx={{ mb: 2, border: 1, borderColor: 'divider', '&:before': { display: 'none' } }}
         >
-          <AccordionSummary expandIcon={<span aria-hidden="true">＋</span>}>
+          <AccordionSummary expandIcon={<ChevronDownIcon fontSize="small" />}>
             <Typography variant="caption" color="text.secondary">
               {labels.metadata} · YAML
             </Typography>

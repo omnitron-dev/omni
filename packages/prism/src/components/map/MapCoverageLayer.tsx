@@ -46,13 +46,7 @@ export interface MapCoverageLayerProps {
   showLabels?: boolean;
 }
 
-export function MapCoverageLayer({
-  id,
-  points,
-  colorByStatus,
-  radius = 6,
-  showLabels = false,
-}: MapCoverageLayerProps) {
+export function MapCoverageLayer({ id, points, colorByStatus, radius = 6, showLabels = false }: MapCoverageLayerProps) {
   const theme = useTheme();
 
   const palette = useMemo<Record<string, string>>(
@@ -64,7 +58,7 @@ export function MapCoverageLayer({
       retired: theme.palette.text.disabled,
       ...(colorByStatus ?? {}),
     }),
-    [theme, colorByStatus],
+    [theme, colorByStatus]
   );
 
   const geojson = useMemo(
@@ -84,7 +78,7 @@ export function MapCoverageLayer({
         },
       })),
     }),
-    [points, palette, theme],
+    [points, palette, theme]
   );
 
   return (

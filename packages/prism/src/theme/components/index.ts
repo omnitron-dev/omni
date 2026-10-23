@@ -507,7 +507,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
         root: ({ theme }) => ({
           [`& .${tableCellClasses.head}`]: {
             fontWeight: 600,
-            backgroundColor: theme.vars?.palette.background.neutral || theme.palette.grey[50],
+            backgroundColor: theme.vars?.palette.background.neutral || theme.palette.background.neutral || paletteVar(theme, 'background.paper'),
             color: paletteVar(theme, 'text.secondary'),
           },
         }),

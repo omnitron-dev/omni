@@ -1,6 +1,10 @@
 import { render, fireEvent } from '@testing-library/react';
 import { ThemeProvider, type ThemeOptions } from '@mui/material/styles';
 import Box from '@mui/material/Box';
+import Table from '@mui/material/Table';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
+import TableCell from '@mui/material/TableCell';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
@@ -92,5 +96,18 @@ describe('component style composition at the rendered MUI boundary', () => {
     expect(after.color).toBeTruthy();
     expect(styles(container, '.MuiAccordionSummary-content').alignItems).toBe('center');
     expect(styles(container, '.MuiAccordionSummary-expandIconWrapper').flexShrink).toBe('0');
+  });
+});
+
+
+describe('table surface in each color mode', () => {
+  it.each(['light', 'dark'] as const)('keeps the %s header on the configured semantic surface', (mode) => {
+    const paper = mode === 'dark' ? 'rgb(21, 27, 33)' : 'rgb(243, 247, 249)';
+    const { container } = render(
+      <ThemeProvider theme={createPrismTheme({ mode, cssVariables: { enabled: false }, overrides: { palette: { background: { paper, neutral: paper } } } })}>
+        <Table><TableHead><TableRow><TableCell>Statement and scope</TableCell></TableRow></TableHead></Table>
+      </ThemeProvider>
+    );
+    expect(styles(container, 'th').backgroundColor).toBe(paper);
   });
 });

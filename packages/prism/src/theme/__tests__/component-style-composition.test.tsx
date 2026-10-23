@@ -9,6 +9,7 @@ import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import { describe, expect, it } from 'vitest';
+import { Accordion as AccordionGroup, SimpleAccordion } from '../../components/accordion/accordion.js';
 import { createPrismTheme } from '../create-theme.js';
 
 function sample(overrides?: Partial<ThemeOptions>) {
@@ -109,5 +110,42 @@ describe('table surface in each color mode', () => {
       </ThemeProvider>
     );
     expect(styles(container, 'th').backgroundColor).toBe(paper);
+  });
+});
+
+
+describe('disclosure outlines are independent of neighboring content', () => {
+  it.each(['light', 'dark'] as const)('retains every %s outline before trailing content, nested controls and expanded content', (mode) => {
+    const { container } = render(
+      <ThemeProvider theme={createPrismTheme({ mode, cssVariables: { enabled: false } })}>
+        <Box>
+          <Accordion sx={{ my: 2 }}><AccordionSummary>Impact and review</AccordionSummary><AccordionDetails>Dependencies</AccordionDetails></Accordion>
+          <p>A following paragraph is not another panel.</p>
+          <SimpleAccordion title="Corpus access">Roles and permissions</SimpleAccordion>
+          <button type="button">Save</button>
+          <AccordionGroup variant="outlined" items={[
+            { id: 'source', title: 'Source history', content: 'Historical source' },
+            { id: 'proof', title: 'Proof history', content: 'Recorded judgment' },
+          ]} />
+          <p>Publication actions</p>
+        </Box>
+      </ThemeProvider>
+    );
+    const panels = [...container.querySelectorAll<HTMLElement>('.MuiAccordion-root')];
+    expect(panels.length).toBe(4);
+    const outline = () => panels.forEach(panel => {
+      const style = getComputedStyle(panel);
+      expect(style.borderBottomWidth).toBe('1px');
+      expect(style.borderBottomStyle).toBe('solid');
+    });
+    outline();
+    for (const panel of panels) {
+      const summary = panel.querySelector<HTMLButtonElement>('.MuiAccordionSummary-root')!;
+      fireEvent.click(summary);
+      expect(summary.getAttribute('aria-expanded')).toBe('true');
+      outline();
+      fireEvent.click(summary);
+      outline();
+    }
   });
 });

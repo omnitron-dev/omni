@@ -1,3 +1,4 @@
+import { prismIconDefaults } from '../icons/theme.js';
 /**
  * Theme Factory
  *
@@ -764,7 +765,8 @@ export function createPrismTheme(options: CreatePrismThemeOptions = {}): PrismTh
   };
 
   // Deep merge with custom overrides (preserves nested component overrides)
-  const finalOptions = overrides ? deepMergeThemeOptions(themeOptions, overrides) : themeOptions;
+  const themedIcons = deepMergeThemeOptions(themeOptions, { components: prismIconDefaults() });
+  const finalOptions = overrides ? deepMergeThemeOptions(themedIcons, overrides) : themedIcons;
 
   // Create base theme
   let theme = muiCreateTheme(finalOptions, muiLocale);

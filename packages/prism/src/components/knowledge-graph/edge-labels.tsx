@@ -1,3 +1,4 @@
+import { ZoomInIcon, ZoomOutIcon } from '../../icons/controls.js';
 import {
   createContext,
   useCallback,
@@ -8,9 +9,17 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { Controls, ControlButton, EdgeLabelRenderer, useNodes, useNodesInitialized, useReactFlow } from '@xyflow/react';
+import {
+  Controls,
+  ControlButton,
+  EdgeLabelRenderer,
+  useNodes,
+  useNodesInitialized,
+  useReactFlow,
+  useStore,
+} from '@xyflow/react';
 import Box from '@mui/material/Box';
-import FitScreenIcon from '@mui/icons-material/FitScreen';
+import { FitViewIcon as FitScreenIcon } from '../../icons/controls.js';
 import { EdgeLabelStore } from './label-store.js';
 import { enclosingRect, placeEdgeLabels, type LabelAnchor, type LabelRect } from './label-layout.js';
 
@@ -92,17 +101,23 @@ export function EdgeLabels({
   gap,
   maxWidth,
   fitLabel,
+  zoomInLabel,
+  zoomOutLabel,
 }: {
   store: EdgeLabelStore;
   gap: number;
   maxWidth: number;
   fitLabel: string;
+  zoomInLabel: string;
+  zoomOutLabel: string;
 }) {
   const anchors = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [sizes, setSizes] = useState<ReadonlyMap<string, Size>>(new Map());
   const nodes = useNodes();
   const initialized = useNodesInitialized();
-  const { fitBounds } = useReactFlow();
+  const { fitBounds, zoomIn, zoomOut } = useReactFlow();
+  const atMinZoom = useStore((state) => state.transform[2] <= state.minZoom);
+  const atMaxZoom = useStore((state) => state.transform[2] >= state.maxZoom);
   const initialFit = useRef(false);
   const onSize = useCallback(
     (id: string, size: Size | undefined) =>
@@ -181,7 +196,23 @@ export function EdgeLabels({
           />
         ))}
       </EdgeLabelRenderer>
-      <Controls showInteractive={false} showFitView={false}>
+      <Controls showInteractive={false} showFitView={false} showZoom={false}>
+        <ControlButton
+          disabled={atMaxZoom}
+          onClick={() => void zoomIn({ duration: 200 })}
+          title={zoomInLabel}
+          aria-label={zoomInLabel}
+        >
+          <ZoomInIcon />
+        </ControlButton>
+        <ControlButton
+          disabled={atMinZoom}
+          onClick={() => void zoomOut({ duration: 200 })}
+          title={zoomOutLabel}
+          aria-label={zoomOutLabel}
+        >
+          <ZoomOutIcon />
+        </ControlButton>
         <ControlButton onClick={fit} title={fitLabel} aria-label={fitLabel}>
           <FitScreenIcon />
         </ControlButton>

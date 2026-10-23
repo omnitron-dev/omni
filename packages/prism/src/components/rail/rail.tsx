@@ -1,3 +1,6 @@
+'use client';
+
+import { ChevronLeftIcon, ChevronRightIcon } from '../../icons/controls.js';
 /**
  * A row that scrolls: items side by side, snapped, scrolled by the browser.
  *
@@ -9,8 +12,6 @@
  *
  * @module components/rail
  */
-
-'use client';
 
 import { Children, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import Box from '@mui/material/Box';
@@ -34,11 +35,7 @@ export interface RailProps {
 const DEFAULT_ITEM_WIDTH = { xs: '78%', sm: '46%', md: '31%', lg: '23.5%' };
 
 function Chevron({ direction }: { direction: 'left' | 'right' }): ReactNode {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-      <polyline points={direction === 'left' ? '15 6 9 12 15 18' : '9 6 15 12 9 18'} />
-    </svg>
-  );
+  return direction === 'left' ? <ChevronLeftIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />;
 }
 
 /**

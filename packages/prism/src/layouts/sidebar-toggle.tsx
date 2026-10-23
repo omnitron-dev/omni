@@ -1,5 +1,5 @@
+import { PanelExpandIcon, PanelCollapseIcon } from '../icons/controls.js';
 import IconButton, { type IconButtonProps } from '@mui/material/IconButton';
-import SvgIcon from '@mui/material/SvgIcon';
 export interface SidebarToggleProps extends Omit<IconButtonProps, 'children' | 'aria-label' | 'aria-expanded'> {
   collapsed: boolean;
   labels: { expand: string; collapse: string };
@@ -29,9 +29,7 @@ export function SidebarToggle({ collapsed, labels, sx, ...props }: SidebarToggle
         ...(Array.isArray(sx) ? sx : [sx]),
       ]}
     >
-      <SvgIcon sx={{ fontSize: 16, transform: collapsed ? 'rotate(180deg)' : undefined }}>
-        <path d="m14.7 6.7-1.4-1.4L6.6 12l6.7 6.7 1.4-1.4L9.4 12z" />
-      </SvgIcon>
+      {collapsed ? <PanelExpandIcon sx={{ fontSize: 18 }} /> : <PanelCollapseIcon sx={{ fontSize: 18 }} />}
     </IconButton>
   );
 }

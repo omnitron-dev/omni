@@ -1,3 +1,4 @@
+import { MenuIcon } from '../../icons/controls.js';
 /**
  * Dashboard Layout
  *
@@ -14,7 +15,6 @@ import { styled } from '@mui/material/styles';
 import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
 import IconButton from '@mui/material/IconButton';
-import SvgIcon from '@mui/material/SvgIcon';
 import type { SxProps, Theme, Breakpoint } from '@mui/material';
 import { LayoutProvider, useLayoutConfig, useLayoutContext } from '../core/context.js';
 import { HeaderSection } from '../core/header-section.js';
@@ -22,15 +22,6 @@ import { Sidenav, MobileSidenav } from './sidenav.js';
 import { Topnav } from './topnav.js';
 import { SkipLink, ARIA_LABELS } from '../../core/accessibility/index.js';
 import { type LayoutNavData, type HeaderSlots, type LayoutConfig } from '../types.js';
-
-// Simple menu icon (3 horizontal lines)
-function MenuIcon() {
-  return (
-    <SvgIcon>
-      <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
-    </SvgIcon>
-  );
-}
 
 // =============================================================================
 // STYLED COMPONENTS

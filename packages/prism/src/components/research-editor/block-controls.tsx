@@ -1,5 +1,7 @@
 'use client';
 
+import { DragIcon, AddIcon } from '../../icons/controls.js';
+
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { Editor } from '@tiptap/core';
 import Menu from '@mui/material/Menu';
@@ -162,7 +164,7 @@ export function BlockControls({
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onInsert(anchor.id)}
         >
-          +
+          <AddIcon fontSize="small" />
         </IconButton>
         <IconButton
           type="button"
@@ -183,11 +185,7 @@ export function BlockControls({
           }}
           onClick={(event) => setMenu({ id: anchor.id, element: event.currentTarget })}
         >
-          <svg width="16" height="20" viewBox="0 0 16 20" aria-hidden="true">
-            {[5, 10].flatMap((x) =>
-              [5, 10, 15].map((y) => <circle key={`${x}:${y}`} cx={x} cy={y} r="1.2" fill="currentColor" />)
-            )}
-          </svg>
+          <DragIcon fontSize="small" />
         </IconButton>
       </div>
       {dropTop !== undefined && (

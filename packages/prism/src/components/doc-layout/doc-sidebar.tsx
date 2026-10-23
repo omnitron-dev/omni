@@ -1,5 +1,7 @@
 'use client';
 
+import { ChevronDownIcon, ChevronRightIcon } from '../../icons/controls.js';
+
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import List from '@mui/material/List';
@@ -185,7 +187,7 @@ function SidebarNode({
               lineHeight: 1,
             }}
           >
-            {open ? '−' : '+'}
+            {open ? <ChevronDownIcon sx={{ fontSize: 18 }} /> : <ChevronRightIcon sx={{ fontSize: 18 }} />}
           </Box>
         )}
         <SidebarLabel

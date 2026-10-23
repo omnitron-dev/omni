@@ -1,5 +1,8 @@
 'use client';
 
+import type { ReactNode } from 'react';
+import { AddIcon } from '../../icons/controls.js';
+
 import { useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from 'react';
 import { getSchema, type JSONContent } from '@tiptap/core';
 import { useEditor, EditorContent, useEditorState } from '@tiptap/react';
@@ -310,9 +313,10 @@ export function ResearchEditor({
       setInvalid(labels.invalid);
     }
   }
-  const button = (label: string, action: () => void, disabled = false, pressed?: boolean) => (
+  const button = (label: string, action: () => void, disabled = false, pressed?: boolean, icon?: ReactNode) => (
     <Button
       size="small"
+      startIcon={icon}
       variant={pressed ? 'contained' : 'text'}
       type="button"
       title={label}
@@ -340,7 +344,7 @@ export function ResearchEditor({
       ]}
     >
       <div className="prism-science__toolbar" role="toolbar" aria-label={labels.editor}>
-        {button('+ ' + labels.insert, () => setPalette(true))}
+        {button(labels.insert, () => setPalette(true), false, undefined, <AddIcon />)}
         {button(
           labels.bold,
           () => {

@@ -20,7 +20,7 @@ import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Chip from '@mui/material/Chip';
 import Typography from '@mui/material/Typography';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import { ChevronRightIcon as ChevronRightIcon } from '../../icons/controls.js';
 import { alpha, type SxProps, type Theme } from '@mui/material/styles';
 
 export interface NavCardProps {
@@ -134,9 +134,7 @@ export function NavCard({
         // rather than a card outline. Falls back gracefully when a
         // theme doesn't define `elevation1`.
         bgcolor: (theme) =>
-          theme.palette.background?.elevation2 ??
-          theme.palette.background?.neutral ??
-          theme.palette.background.paper,
+          theme.palette.background?.elevation2 ?? theme.palette.background?.neutral ?? theme.palette.background.paper,
         // On dark themes the default outlined-Paper border (alpha
         // 0.16 on grey) is too close to both the page bg and the
         // card body — the right edge of each card ends up reading
@@ -144,8 +142,7 @@ export function NavCard({
         // a small alpha so the border is unambiguously a card edge
         // regardless of theme contrast, then let hover swap to the
         // accent colour for tactile feedback.
-        borderColor: (theme) =>
-          alpha(theme.palette.text.primary, theme.palette.mode === 'dark' ? 0.16 : 0.12),
+        borderColor: (theme) => alpha(theme.palette.text.primary, theme.palette.mode === 'dark' ? 0.16 : 0.12),
         // Suppress the theme-level Card box-shadow halo for the
         // outlined variant — replicates prism's `Card` wrapper logic
         // so a raw MuiCard (which NavCard uses to be a real anchor)
@@ -185,7 +182,7 @@ export function NavCard({
           // Vertical: icon top, title + description stacked below, no
           // chevron (the entire card is the affordance — adding an
           // arrow into a narrow tile just steals text space).
-          (<>
+          <>
             {icon && (
               <Box
                 sx={{
@@ -208,8 +205,9 @@ export function NavCard({
                 variant="subtitle1"
                 sx={{
                   fontWeight: 600,
-                  lineHeight: 1.2
-                }}>
+                  lineHeight: 1.2,
+                }}
+              >
                 {title}
               </Typography>
               {showBadge && (
@@ -225,7 +223,7 @@ export function NavCard({
               <Typography
                 variant="body2"
                 sx={{
-                  color: "text.secondary",
+                  color: 'text.secondary',
                   lineHeight: 1.35,
 
                   // Clamp the description to 2 lines so an unusually
@@ -234,12 +232,13 @@ export function NavCard({
 
                   WebkitLineClamp: 2,
                   WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden'
-                }}>
+                  overflow: 'hidden',
+                }}
+              >
                 {description}
               </Typography>
             )}
-          </>)
+          </>
         ) : (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
@@ -266,8 +265,9 @@ export function NavCard({
                     variant="subtitle1"
                     sx={{
                       fontWeight: 600,
-                      lineHeight: 1.3
-                    }}>
+                      lineHeight: 1.3,
+                    }}
+                  >
                     {title}
                   </Typography>
                   {showBadge && (
@@ -283,9 +283,10 @@ export function NavCard({
                   <Typography
                     variant="body2"
                     sx={{
-                      color: "text.secondary",
-                      lineHeight: 1.4
-                    }}>
+                      color: 'text.secondary',
+                      lineHeight: 1.4,
+                    }}
+                  >
                     {description}
                   </Typography>
                 )}

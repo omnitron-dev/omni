@@ -22,16 +22,16 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { styled, alpha, useTheme } from '@mui/material/styles';
 
 // MUI Icons (standard for design system components)
-import CloseIcon from '@mui/icons-material/Close';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import ZoomInIcon from '@mui/icons-material/ZoomIn';
-import ZoomOutIcon from '@mui/icons-material/ZoomOut';
-import FullscreenIcon from '@mui/icons-material/Fullscreen';
-import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
-import DownloadIcon from '@mui/icons-material/Download';
-import ShareIcon from '@mui/icons-material/Share';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import { CloseIcon as CloseIcon } from '../../icons/controls.js';
+import { ChevronLeftIcon as ChevronLeftIcon } from '../../icons/controls.js';
+import { ChevronRightIcon as ChevronRightIcon } from '../../icons/controls.js';
+import { ZoomInIcon as ZoomInIcon } from '../../icons/controls.js';
+import { ZoomOutIcon as ZoomOutIcon } from '../../icons/controls.js';
+import { FullscreenIcon as FullscreenIcon } from '../../icons/controls.js';
+import { FullscreenExitIcon as FullscreenExitIcon } from '../../icons/controls.js';
+import { DownloadIcon as DownloadIcon } from '../../icons/controls.js';
+import { ShareIcon as ShareIcon } from '../../icons/controls.js';
+import { PlayIcon as PlayArrowIcon } from '../../icons/controls.js';
 
 import { cn } from '../../utils/cn.js';
 import { lightboxClasses } from './classes.js';
@@ -110,10 +110,7 @@ export function Lightbox({
 
   // Merged once per identity change, so a consumer passing an inline object
   // does not rebuild the toolbar on every render.
-  const labels = useMemo(
-    () => ({ ...DEFAULT_LIGHTBOX_LABELS, ...labelOverrides }),
-    [labelOverrides]
-  );
+  const labels = useMemo(() => ({ ...DEFAULT_LIGHTBOX_LABELS, ...labelOverrides }), [labelOverrides]);
 
   // State
   const [currentIndex, setCurrentIndex] = useState(controlledIndex);
@@ -543,7 +540,12 @@ export function Lightbox({
 
             {toolbar?.buttons}
 
-            <GlassButton onClick={onClose} aria-label={labels.close} className={lightboxClasses.toolbarButton} size="small">
+            <GlassButton
+              onClick={onClose}
+              aria-label={labels.close}
+              className={lightboxClasses.toolbarButton}
+              size="small"
+            >
               <CloseIcon fontSize="small" />
             </GlassButton>
           </GlassToolbar>

@@ -14,7 +14,7 @@ import MuiAccordion from '@mui/material/Accordion';
 import MuiAccordionSummary from '@mui/material/AccordionSummary';
 import MuiAccordionDetails from '@mui/material/AccordionDetails';
 import Typography from '@mui/material/Typography';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import { ChevronDownIcon as ExpandMoreIcon } from '../../icons/controls.js';
 
 /**
  * Accordion item definition.
@@ -164,9 +164,10 @@ export function Accordion({
               <Typography
                 component="span"
                 sx={{
-                  color: "text.secondary",
-                  ml: 1
-                }}>
+                  color: 'text.secondary',
+                  ml: 1,
+                }}
+              >
                 {item.subtitle}
               </Typography>
             )}
@@ -218,9 +219,10 @@ export function SimpleAccordion({ title, subtitle, children, icon, ...props }: S
           <Typography
             component="span"
             sx={{
-              color: "text.secondary",
-              ml: 1
-            }}>
+              color: 'text.secondary',
+              ml: 1,
+            }}
+          >
             {subtitle}
           </Typography>
         )}

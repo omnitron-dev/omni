@@ -35,6 +35,7 @@ export {
   Link,
   List,
   ListItem,
+  ListItemIcon,
   ListItemButton,
   ListItemText,
   Menu,
@@ -63,3 +64,13 @@ export { ThemeProvider as PrismThemeProvider, useTheme } from '@mui/material/sty
 export { default as useMediaQuery } from '@mui/material/useMediaQuery';
 
 export { default as Breadcrumbs } from '@mui/material/Breadcrumbs';
+
+export { default as SvgIcon } from '@mui/material/SvgIcon';
+export type { SvgIconProps } from '@mui/material/SvgIcon';
+export {
+  PrismIconProvider,
+  prismIconNames,
+  type PrismIconSet,
+  type PrismIconName,
+  type PrismIconComponent,
+} from '../icons/context.js';

@@ -1,3 +1,4 @@
+import { CloseIcon } from '../../icons/controls.js';
 /**
  * Dashboard Sidenav
  *
@@ -289,7 +290,7 @@ export function MobileSidenav({
       >
         <Box sx={{ flex: 1 }}>{logo}</Box>
         <IconButton aria-label={labels.closeMenu} onClick={close}>
-          <span aria-hidden="true">×</span>
+          <CloseIcon fontSize="small" />
         </IconButton>
       </Box>
 

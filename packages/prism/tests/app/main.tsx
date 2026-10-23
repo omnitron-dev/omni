@@ -23,6 +23,7 @@ import { ColorsTestPage } from './pages/colors';
 import { AnimationsTestPage } from './pages/animations';
 import { ButtonsTestPage } from './pages/buttons';
 import { ResearchTestPage } from './pages/research';
+import { KnowledgeGraphTestPage } from './pages/knowledge-graph';
 
 function App() {
   return (
@@ -38,6 +39,7 @@ function App() {
         <Route path="/test/colors" element={<ColorsTestPage />} />
         <Route path="/test/animations" element={<AnimationsTestPage />} />
         <Route path="/test/buttons" element={<ButtonsTestPage />} />
+        <Route path="/test/knowledge-graph" element={<KnowledgeGraphTestPage />} />
         <Route path="/test/research" element={<ResearchTestPage />} />
         <Route
           path="/"

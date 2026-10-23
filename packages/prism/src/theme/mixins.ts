@@ -404,7 +404,7 @@ export function borderGradient(options: { color?: string; borderWidth?: number; 
  * ...scrollbarStyles(theme)
  * ```
  */
-export function scrollbarStyles(theme: Theme): CSSObject {
+export function scrollbarStyles(theme: Theme, { autoHide = true }: { autoHide?: boolean } = {}): CSSObject {
   const palette = theme.vars?.palette || theme.palette;
   const greyChannel = (palette.grey as { ['500Channel']?: string })['500Channel'] || '145, 158, 171';
   return {
@@ -415,7 +415,24 @@ export function scrollbarStyles(theme: Theme): CSSObject {
     '&::-webkit-scrollbar-thumb': { backgroundColor: varAlpha(greyChannel, 0.4), borderRadius: 3 },
     '&::-webkit-scrollbar-thumb:hover': { backgroundColor: varAlpha(greyChannel, 0.65) },
     '&::-webkit-scrollbar-corner': { backgroundColor: 'transparent' },
-    '@media (forced-colors: active)': { scrollbarColor: 'auto', scrollbarWidth: 'auto' },
+    // Change colour only: revealing a thumb must not change the scrollport's
+    // geometry. Touch and high-contrast interfaces retain native discoverability.
+    '@media (hover: hover) and (pointer: fine) and (forced-colors: none)': {
+      scrollbarColor: autoHide ? 'transparent transparent' : `${varAlpha(greyChannel, 0.4)} transparent`,
+      '&::-webkit-scrollbar-thumb': {
+        backgroundColor: autoHide ? 'transparent' : varAlpha(greyChannel, 0.4),
+      },
+      '&:hover, &:focus-within': {
+        scrollbarColor: `${varAlpha(greyChannel, 0.4)} transparent`,
+        '&::-webkit-scrollbar-thumb': { backgroundColor: varAlpha(greyChannel, 0.4) },
+        '&::-webkit-scrollbar-thumb:hover': { backgroundColor: varAlpha(greyChannel, 0.65) },
+      },
+    },
+    '@media (forced-colors: active)': {
+      scrollbarColor: 'auto',
+      scrollbarWidth: 'auto',
+      '&::-webkit-scrollbar-thumb': { backgroundColor: 'CanvasText' },
+    },
   };
 }
 

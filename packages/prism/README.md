@@ -128,3 +128,15 @@ const icons = { search: ApplicationSearchIcon } satisfies PrismIconSet;
   <PrismThemeProvider theme={theme}>{children}</PrismThemeProvider>
 </PrismIconProvider>;
 ```
+
+### Scrollbar visibility
+
+Prism's baseline and `Scrollbar` share native, theme-aware scrollbars. On a fine
+pointer they reveal on container hover or `focus-within`, and become transparent
+when idle. Thumb visibility changes neither overflow nor scrollport dimensions.
+Touch input and forced-colors mode retain visible native controls. No mouse
+listener, overlay, delayed timer or scroll-position state is introduced.
+
+Set `<Scrollbar autoHide={false}>` for a persistent thumb, or use
+`mixins.scrollbarStyles(theme, { autoHide: false })` for a custom scrollport.
+`hideScrollbar` remains the explicit fully-hidden option.

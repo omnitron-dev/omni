@@ -27,6 +27,8 @@ export interface ScrollbarProps extends Omit<React.HTMLAttributes<HTMLDivElement
   fillContent?: boolean;
   /** Hide scrollbar (content still scrollable) */
   hideScrollbar?: boolean;
+  /** Reveal on hover or keyboard focus; native visibility on touch/high contrast. */
+  autoHide?: boolean;
   /** Scrollbar axis */
   axis?: 'x' | 'y' | 'both';
   /** Max height constraint */
@@ -47,6 +49,7 @@ interface ScrollbarRootProps {
   ownerState: {
     fillContent: boolean;
     hideScrollbar: boolean;
+    autoHide: boolean;
     axis: 'x' | 'y' | 'both';
   };
 }
@@ -54,7 +57,7 @@ interface ScrollbarRootProps {
 const ScrollbarRoot = styled(Box, {
   shouldForwardProp: (prop) => prop !== 'ownerState',
 })<ScrollbarRootProps>(({ theme, ownerState }) => {
-  const { fillContent, hideScrollbar, axis } = ownerState;
+  const { fillContent, hideScrollbar, autoHide, axis } = ownerState;
 
   const getOverflow = () => {
     if (axis === 'x') return { overflowX: 'auto', overflowY: 'hidden' } as const;
@@ -71,7 +74,7 @@ const ScrollbarRoot = styled(Box, {
       display: 'flex',
       flexDirection: 'column',
     }),
-    ...(!hideScrollbar && scrollbarStyles(theme)),
+    ...(!hideScrollbar && scrollbarStyles(theme, { autoHide })),
     ...(hideScrollbar && {
       scrollbarWidth: 'none',
       msOverflowStyle: 'none',
@@ -116,6 +119,7 @@ export function Scrollbar({
   sx,
   fillContent = false,
   hideScrollbar = false,
+  autoHide = true,
   axis = 'y',
   maxHeight,
   minHeight,
@@ -126,6 +130,7 @@ export function Scrollbar({
   const ownerState = {
     fillContent,
     hideScrollbar,
+    autoHide,
     axis,
   };
 

@@ -1,14 +1,12 @@
+'use client';
 import { DocSidebar } from '../doc-layout/doc-sidebar.js';
-('use client');
 import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ReactFlow,
   BaseEdge,
-  EdgeLabelRenderer,
   getSmoothStepPath,
   type EdgeProps,
   Background,
-  Controls,
   Handle,
   Position,
   MarkerType,
@@ -39,6 +37,8 @@ import {
 } from './model.js';
 import '@xyflow/react/dist/style.css';
 import './graph.css';
+import { EdgeLabels, EdgeLabelsContext, useEdgeLabel } from './edge-labels.js';
+import { EdgeLabelStore } from './label-store.js';
 
 export const defaultKnowledgeGraphLabels = {
   title: 'Knowledge map',
@@ -93,6 +93,10 @@ export interface KnowledgeGraphProps {
   layout?: (projection: KnowledgeProjection) => Readonly<Record<string, XYPosition>>;
   renderDetails?: (selection: KnowledgeSelection) => ReactNode;
   height?: number;
+  /** Space between measured label boxes and graph nodes, in canvas units. */
+  edgeLabelGap?: number;
+  /** Wrap long roles without truncation; measured before collision placement. */
+  edgeLabelMaxWidth?: number;
   className?: string;
   sx?: SxProps<Theme>;
 }
@@ -154,44 +158,18 @@ const EntityNode = memo(function EntityNode({ data, selected }: NodeProps<GraphN
     </div>
   );
 });
-// Portal labels above the complete SVG edge layer. Otherwise a later path can
-// cross through an earlier SVG label when a node grows after a status update.
 function KnowledgeEdge(props: EdgeProps) {
   const [path, x, y] = getSmoothStepPath(props);
+  useEdgeLabel(typeof props.label === 'string' ? { id: props.id, text: props.label, x, y } : undefined);
   return (
-    <>
-      <BaseEdge
-        id={props.id}
-        path={path}
-        markerEnd={props.markerEnd}
-        markerStart={props.markerStart}
-        style={props.style}
-        interactionWidth={props.interactionWidth}
-      />
-      {props.label != null && (
-        <EdgeLabelRenderer>
-          <Box
-            component="span"
-            aria-hidden="true"
-            className="nodrag nopan"
-            sx={{
-              position: 'absolute',
-              transform: `translate(-50%, -50%) translate(${x}px, ${y}px)`,
-              bgcolor: 'background.paper',
-              color: 'text.primary',
-              borderRadius: 0.5,
-              px: 0.5,
-              py: 0.25,
-              fontSize: 12,
-              lineHeight: 1.4,
-              pointerEvents: 'none',
-            }}
-          >
-            {props.label}
-          </Box>
-        </EdgeLabelRenderer>
-      )}
-    </>
+    <BaseEdge
+      id={props.id}
+      path={path}
+      markerEnd={props.markerEnd}
+      markerStart={props.markerStart}
+      style={props.style}
+      interactionWidth={props.interactionWidth}
+    />
   );
 }
 const edgeTypes = { knowledge: KnowledgeEdge };
@@ -220,9 +198,19 @@ export function KnowledgeGraph({
   layout = defaultLayout,
   renderDetails,
   height = 560,
+  edgeLabelGap = 8,
+  edgeLabelMaxWidth = 240,
   className,
   sx,
 }: KnowledgeGraphProps) {
+  if (
+    !Number.isFinite(edgeLabelGap) ||
+    edgeLabelGap < 0 ||
+    !Number.isFinite(edgeLabelMaxWidth) ||
+    edgeLabelMaxWidth <= 0
+  )
+    throw Error('invalid_edge_label_options');
+  const [labelStore] = useState(() => new EdgeLabelStore());
   const theme = useTheme(),
     labels = useMemo(() => ({ ...defaultKnowledgeGraphLabels, ...overrides }), [overrides]);
   const [expanded, setExpanded] = useState(false);
@@ -252,6 +240,7 @@ export function KnowledgeGraph({
     setNodes((old) => {
       const prior = new Map(old.map((n) => [n.id, n]));
       return graph.nodes.map((n) => ({
+        ...prior.get(n.id),
         id: n.id,
         type: 'knowledge',
         position: prior.get(n.id)?.position ?? positions[n.id] ?? { x: 0, y: 0 },
@@ -437,40 +426,50 @@ export function KnowledgeGraph({
                 style={{ height: view === 'map' ? (expanded ? '75dvh' : height) : undefined }}
               >
                 {view === 'map' && nodes.length > 0 ? (
-                  <ReactFlow<GraphNode>
-                    nodes={nodes}
-                    edges={edges}
-                    nodeTypes={nodeTypes}
-                    edgeTypes={edgeTypes}
-                    onNodesChange={onNodesChange}
-                    onNodeClick={(_e, n) => choose(n.data.selection)}
-                    onNodeDragStop={(_e, node) =>
-                      onLayoutChange?.(
-                        Object.fromEntries(nodes.map((n) => [n.id, n.id === node.id ? node.position : n.position]))
-                      )
-                    }
-                    onSelectionChange={({ nodes: chosen }) => {
-                      const s = chosen[0]?.data.selection;
-                      if (s && (s.id !== selected?.id || s.type !== selected?.type)) choose(s);
-                    }}
-                    nodesConnectable={false}
-                    deleteKeyCode={null}
-                    edgesReconnectable={false}
-                    fitView
-                    minZoom={0.1}
-                    maxZoom={2}
-                    onlyRenderVisibleElements
-                    colorMode={theme.palette.mode}
-                    ariaLabelConfig={{
-                      'controls.zoomIn.ariaLabel': labels.zoomIn,
-                      'controls.zoomOut.ariaLabel': labels.zoomOut,
-                      'controls.fitView.ariaLabel': labels.fit,
-                      'controls.interactive.ariaLabel': labels.lock,
-                    }}
-                  >
-                    <Background gap={24} />
-                    <Controls showInteractive={false} />
-                  </ReactFlow>
+                  <EdgeLabelsContext.Provider value={labelStore}>
+                    <ReactFlow<GraphNode>
+                      nodes={nodes}
+                      edges={edges}
+                      nodeTypes={nodeTypes}
+                      edgeTypes={edgeTypes}
+                      onNodesChange={onNodesChange}
+                      onNodeClick={(_e, n) => choose(n.data.selection)}
+                      onEdgeClick={(_event, edge) => {
+                        const occurrence = graph.edges.find((item) => item.id === edge.id);
+                        if (occurrence) choose({ type: 'relation', id: occurrence.relationId });
+                      }}
+                      onNodeDragStop={(_e, node) =>
+                        onLayoutChange?.(
+                          Object.fromEntries(nodes.map((n) => [n.id, n.id === node.id ? node.position : n.position]))
+                        )
+                      }
+                      onSelectionChange={({ nodes: chosen }) => {
+                        const s = chosen[0]?.data.selection;
+                        if (s && (s.id !== selected?.id || s.type !== selected?.type)) choose(s);
+                      }}
+                      nodesConnectable={false}
+                      deleteKeyCode={null}
+                      edgesReconnectable={false}
+                      fitView
+                      minZoom={0.1}
+                      maxZoom={2}
+                      colorMode={theme.palette.mode}
+                      ariaLabelConfig={{
+                        'controls.zoomIn.ariaLabel': labels.zoomIn,
+                        'controls.zoomOut.ariaLabel': labels.zoomOut,
+                        'controls.fitView.ariaLabel': labels.fit,
+                        'controls.interactive.ariaLabel': labels.lock,
+                      }}
+                    >
+                      <Background gap={24} />
+                      <EdgeLabels
+                        store={labelStore}
+                        gap={edgeLabelGap}
+                        maxWidth={edgeLabelMaxWidth}
+                        fitLabel={labels.fit}
+                      />
+                    </ReactFlow>
+                  </EdgeLabelsContext.Provider>
                 ) : (
                   <div className="prism-knowledge__empty">
                     {projection.total === 0 ? labels.empty : projection.limited ? labels.budget : labels.list}

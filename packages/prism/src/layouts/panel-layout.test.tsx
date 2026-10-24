@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Link, useLocation } from 'react-router-dom';
+import type { Window as HappyWindow } from 'happy-dom';
 import { PanelLayout } from './panel-layout.js';
 import { DashboardLayout } from './dashboard/layout.js';
 import { useSettingsStore } from '../state/stores/settings.js';
@@ -156,4 +157,76 @@ it('exposes compact navigation without replacing the editable document or its pa
   fireEvent.click(screen.getByLabelText('Expand contents'));
   expect(screen.getByLabelText('Panel search')).toBe(search);
   expect(search).toHaveValue('sequence');
+});
+
+describe('dashboard logo variants', () => {
+  const viewport = (window as unknown as HappyWindow).happyDOM;
+  beforeEach(() => viewport.setWindowSize({ width: 1440 }));
+  afterEach(() => viewport.setWindowSize({ width: 1024 }));
+  const fullLogo = (
+    <Link to="/" aria-label="Full project wordmark">
+      consumer.
+    </Link>
+  );
+  const compactLogo = (
+    <Link to="/" aria-label="Compact project wordmark">
+      o.
+    </Link>
+  );
+
+  it('switches the desktop wordmark without remounting the working document', () => {
+    render(
+      <MemoryRouter>
+        <DashboardLayout logo={fullLogo} compactLogo={compactLogo}>
+          <textarea aria-label="Unpublished draft" defaultValue="Original" />
+        </DashboardLayout>
+      </MemoryRouter>
+    );
+    const draft = screen.getByLabelText('Unpublished draft');
+    fireEvent.change(draft, { target: { value: 'Unsaved work' } });
+    expect(screen.getByRole('link', { name: 'Full project wordmark' })).toBeVisible();
+    expect(screen.queryByRole('link', { name: 'Compact project wordmark' })).toBeNull();
+    fireEvent.click(screen.getByLabelText('Collapse sidebar'));
+    expect(screen.getByRole('link', { name: 'Compact project wordmark' })).toHaveAttribute('href', '/');
+    expect(screen.queryByRole('link', { name: 'Full project wordmark' })).toBeNull();
+    fireEvent.click(screen.getByLabelText('Expand sidebar'));
+    expect(screen.getByRole('link', { name: 'Full project wordmark' })).toBeVisible();
+    expect(screen.getByLabelText('Unpublished draft')).toBe(draft);
+    expect(draft).toHaveValue('Unsaved work');
+  });
+
+  it('uses the compact logo for a mini rail and keeps the original logo as the default fallback', () => {
+    const view = render(
+      <MemoryRouter>
+        <DashboardLayout logo={fullLogo} compactLogo={compactLogo} initialConfig={{ sidenavVariant: 'mini' }} />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole('link', { name: 'Compact project wordmark' })).toBeVisible();
+    expect(screen.queryByLabelText('Collapse sidebar')).toBeNull();
+    view.unmount();
+    render(
+      <MemoryRouter>
+        <DashboardLayout logo={fullLogo} initialConfig={{ sidenavCollapsed: true }} />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole('link', { name: 'Full project wordmark' })).toBeVisible();
+    expect(screen.getByLabelText('Expand sidebar')).toBeVisible();
+  });
+
+  it('keeps the full wordmark in the mobile drawer even when the desktop rail is collapsed', async () => {
+    desktop = false;
+    viewport.setWindowSize({ width: 390 });
+    render(
+      <MemoryRouter>
+        <DashboardLayout logo={fullLogo} compactLogo={compactLogo} initialConfig={{ sidenavCollapsed: true }} />
+      </MemoryRouter>
+    );
+    fireEvent.click(screen.getByLabelText('Open menu'));
+    const drawer = screen.getByRole('dialog', { name: 'Main navigation' });
+    expect(within(drawer).getByRole('link', { name: 'Full project wordmark' })).toBeVisible();
+    expect(within(drawer).queryByRole('link', { name: 'Compact project wordmark' })).toBeNull();
+    fireEvent.click(within(drawer).getByLabelText('Close menu'));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Main navigation' })).toBeNull());
+    expect(screen.getByLabelText('Expand sidebar')).toHaveAttribute('aria-expanded', 'false');
+  });
 });

@@ -13,11 +13,14 @@ export function SidebarToggle({ collapsed, labels, sx, ...props }: SidebarToggle
       aria-label={collapsed ? labels.expand : labels.collapse}
       aria-expanded={!collapsed}
       sx={[
-        {
+        (theme) => ({
           position: 'absolute',
           top: 36,
-          right: -12,
-          transform: 'translateY(-50%)',
+          insetInlineEnd: 0,
+          // Centre on the rail edge even when the host enlarges the hit target.
+          // A logical inset and an unflipped custom value also work with RTL caches.
+          '--prism-sidebar-toggle-shift': theme.direction === 'rtl' ? '-50%' : '50%',
+          transform: 'translate(var(--prism-sidebar-toggle-shift), -50%)',
           width: 24,
           height: 24,
           bgcolor: 'background.paper',
@@ -25,7 +28,7 @@ export function SidebarToggle({ collapsed, labels, sx, ...props }: SidebarToggle
           borderColor: 'divider',
           boxShadow: 1,
           '&:hover': { bgcolor: 'action.hover' },
-        },
+        }),
         ...(Array.isArray(sx) ? sx : [sx]),
       ]}
     >

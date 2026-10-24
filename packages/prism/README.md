@@ -163,3 +163,30 @@ const appTheme = ({ mode }: PrismThemeOverrideContext) => ({
 Import `PrismProvider` and the `PrismThemeOverrideContext` type from
 `@omnitron-dev/prism/core`. The callback is evaluated again when the resolved
 mode changes; existing object overrides retain their behavior.
+
+
+Palette overrides replace dependent tones and channels together: changing `main`
+rebuilds its tonal family; changing an individual colour rebuilds only that
+colour's channel. Explicit shades and channel expressions retain precedence.
+This includes Prism's `lighter`/`darker` and `text.disabledChannel` extensions.
+Opaque static colours receive the higher-contrast black/white `contrastText`
+when none is supplied. Authored contrast colours remain the application's
+responsibility.
+
+For runtime CSS colours (`var(...)`, `oklch(...)`, wide-gamut colours), use
+`themeOverrides={{ cssVariables: { nativeColor: true }, palette: ... }}`. MUI resolves tones and
+contrast in the browser; Prism channels use relative RGB expressions instead
+of guessed numeric values. This requires browser support for CSS relative
+colours and MUI native colour mode. Without native colour mode, an unresolved
+`main` requires explicit `light`, `dark` and `contrastText`; Prism reports this
+contract before MUI's JavaScript colour parser runs. Static presets and
+explicit channel overrides remain supported.
+
+
+### Compact navigation identity
+
+`DashboardLayout` and `Sidenav` accept `compactLogo` for the collapsed or mini
+sidebar. Pass a compact symbol that fits beside the collapse control; the full
+`logo` remains visible in expanded and mobile navigation. Omitting the prop
+preserves the existing logo behavior. The sidebar control stays centred on its
+boundary in either text direction, including enlarged accessible hit targets.

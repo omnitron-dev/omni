@@ -86,6 +86,8 @@ const NavScrollArea = styled(Scrollbar)({ flex: 1 });
 export interface SidenavProps {
   /** Logo component */
   logo?: ReactNode;
+  /** Logo for collapsed and mini desktop rails. Omission falls back to logo. */
+  compactLogo?: ReactNode;
   /** Navigation data */
   navData?: LayoutNavData;
   /** Navigation item renderer */
@@ -122,6 +124,7 @@ export interface SidenavProps {
  */
 export function Sidenav({
   logo,
+  compactLogo,
   navData,
   renderNavItem,
   footer,
@@ -162,7 +165,7 @@ export function Sidenav({
           flexShrink: 0,
         }}
       >
-        {logo}
+        {showText || compactLogo === undefined ? logo : compactLogo}
       </Box>
 
       <Divider />
@@ -234,7 +237,7 @@ export function Sidenav({
 // MOBILE SIDENAV (DRAWER)
 // =============================================================================
 
-export interface MobileSidenavProps extends Omit<SidenavProps, 'showCollapseButton' | 'layoutQuery'> {
+export interface MobileSidenavProps extends Omit<SidenavProps, 'showCollapseButton' | 'layoutQuery' | 'compactLogo'> {
   /** Layout breakpoint (shows only below this) */
   layoutQuery?: Breakpoint;
 }

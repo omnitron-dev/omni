@@ -257,21 +257,19 @@ export function createButtonOverrides(config: ComponentsConfig): Components<Them
       // outlinedSize* class slots were removed in MUI v9 in favour
       // of the `variants` array on the component override. See
       // https://mui.com/material-ui/migration/upgrade-to-v9/.
-      // The icon slot wraps a single child (the icon SVG). `:first-child`
-      // is the modern, tag-agnostic way to target it — replaces
-      // `:first-of-type` which only matched if the wrapped element was
-      // the first sibling of its tag (fine for the common case, but
-      // brittle when a consumer wraps the icon in a tooltip or fragment
-      // that introduces a non-element node before the SVG).
+      // Each native slot contains the supplied icon root, which may be a
+      // custom wrapper. Ignore SSR style elements instead of relying on child
+      // position. The public slot class keeps this rule authoritative over
+      // MUI's size-specific icon selectors without affecting nested content.
       startIcon: {
         marginRight: 4,
-        '& > :first-child': {
+        [`&.${buttonClasses.startIcon} > :not(style)`]: {
           fontSize: 16,
         },
       },
       endIcon: {
         marginLeft: 4,
-        '& > :first-child': {
+        [`&.${buttonClasses.endIcon} > :not(style)`]: {
           fontSize: 16,
         },
       },

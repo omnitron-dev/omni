@@ -271,6 +271,56 @@ export class OrchestratorService extends EventEmitter {
 
   /** esbuild bundling pipeline — pre-bundles TS entry points for child processes */
   private buildService: BuildService | null = null;
+  private watchDisabled = false;
+  private watchSelection: Set<string> | null = null;
+  private readonly bootstrapSources = new Map<string, { path: string; definition: IAppDefinition }>();
+
+  private allowsWatch(entry: IEcosystemAppEntry): boolean {
+    return this.devMode && !this.watchDisabled && entry.watch !== false &&
+      (!this.watchSelection || this.watchSelection.has(entry.name));
+  }
+
+  /** One policy for both fs.watch and esbuild; disabling does not stop apps. */
+  async setWatchMode(enabled: boolean, apps?: string[]): Promise<void> {
+    this.watchDisabled = !enabled;
+    this.watchSelection = apps ? new Set(apps.map((name) => this.resolveAppName(name) ?? name)) : null;
+    for (const [name, state] of this.restartCoalescer) {
+      if (!enabled || !this.handles.get(name) || !this.allowsWatch(this.handles.get(name)!.entry)) state.watchSerial = 0;
+    }
+    await Promise.all([...this.bootstrapSources.keys()].map((name) => this.syncBootstrapWatch(name)));
+  }
+
+  getBuildWatchedApps(): Array<{ name: string; directory: string }> {
+    return [...this.bootstrapSources].filter(([name]) => this.buildService?.isWatching(name))
+      .map(([name, source]) => ({ name, directory: path.dirname(source.path) }));
+  }
+
+  private async syncBootstrapWatch(name: string): Promise<void> {
+    const source = this.bootstrapSources.get(name);
+    const entry = this.handles.get(name)?.entry;
+    if (!this.buildService || !source) return;
+    if (!entry || !this.allowsWatch(entry) || !entry.bootstrap ||
+        path.resolve(entry.cwd ?? this.cwd, entry.bootstrap) !== source.path) {
+      const state = this.restartCoalescer.get(name);
+      if (state) state.watchSerial = 0;
+      await this.buildService.unwatchApp(name);
+      return;
+    }
+    if (this.buildService.isWatching(name)) return;
+    await this.buildService.watchApp(name, source.path, source.definition, () => {
+      void this.restartAfterChange(name).catch((error) => {
+        this.logger.error({ app: name, error: (error as Error).message }, 'Restart after source change failed');
+      });
+    });
+  }
+
+  /** Automatic triggers remain revocable while queued; manual restart is independent. */
+  async restartAfterChange(name: string): Promise<AppHandle | undefined> {
+    const canonical = this.resolveAppName(name) ?? name;
+    const handle = this.handles.get(canonical);
+    if (!handle || !this.allowsWatch(handle.entry)) return handle;
+    return this.restartAppCoalesced(canonical, true, 'watch');
+  }
 
   /** Cached build results per app name */
   private readonly buildResults = new Map<string, BuildResult>();
@@ -302,6 +352,8 @@ export class OrchestratorService extends EventEmitter {
       inFlight: Promise<AppHandle> | null;
       triggerSerial: number;
       firedSerial: number;
+      manualSerial: number;
+      watchSerial: number;
       cooldownUntil: number;
     }
   >();
@@ -1052,6 +1104,7 @@ export class OrchestratorService extends EventEmitter {
       this.buildService = null;
     }
     this.buildResults.clear();
+    this.bootstrapSources.clear();
 
     return count;
   }
@@ -1062,10 +1115,15 @@ export class OrchestratorService extends EventEmitter {
    * `restartApp` starts from this. `false` when nothing by that name runs
    * here. See `AppHandle.redefine`.
    */
-  redefineApp(name: string, entry: IEcosystemAppEntry): boolean {
+  async redefineApp(name: string, entry: IEcosystemAppEntry): Promise<boolean> {
     const handle = this.handles.get(this.resolveAppName(name) ?? name);
     if (!handle) return false;
     handle.redefine(entry);
+    if (!this.allowsWatch(entry)) {
+      const state = this.restartCoalescer.get(handle.name);
+      if (state) state.watchSerial = 0;
+    }
+    await this.syncBootstrapWatch(handle.name);
     return true;
   }
 
@@ -1103,7 +1161,7 @@ export class OrchestratorService extends EventEmitter {
    * triggers, just continuations — they must not bump or the trailing
    * coalesced restart would re-fire forever.
    */
-  private async restartAppCoalesced(name: string, fromExternal: boolean): Promise<AppHandle> {
+  private async restartAppCoalesced(name: string, fromExternal: boolean, cause: 'manual' | 'watch' = 'manual'): Promise<AppHandle> {
     const canonical = this.resolveAppName(name) ?? name;
     const handle = this.handles.get(canonical);
     if (!handle) {
@@ -1166,8 +1224,16 @@ export class OrchestratorService extends EventEmitter {
     name = canonical;
 
     const state = this.getCoalescerState(name);
-    if (fromExternal) state.triggerSerial += 1;
-    const observedSerial = state.triggerSerial;
+    if (fromExternal) {
+      state.triggerSerial += 1;
+      if (cause === 'watch') state.watchSerial = state.triggerSerial;
+      else state.manualSerial = state.triggerSerial;
+    }
+    if (!this.allowsWatch(handle.entry) || ['errored', 'crashed', 'stopped', 'stopping'].includes(handle.status)) {
+      state.watchSerial = 0;
+    }
+    const observedSerial = Math.max(state.manualSerial, state.watchSerial);
+    if (observedSerial <= state.firedSerial) return handle;
 
     // Cooldown: the app reported online recently. Wait it out, then
     // proceed as a non-external continuation (we already counted this
@@ -1201,7 +1267,7 @@ export class OrchestratorService extends EventEmitter {
 
     // Take the slot. Capture which serial this run is consuming —
     // anything bumped after this is the next run's problem.
-    const consumedSerial = state.triggerSerial;
+    const consumedSerial = observedSerial;
     const promise = this.restartAppNow(name);
     state.inFlight = promise;
 
@@ -1217,7 +1283,7 @@ export class OrchestratorService extends EventEmitter {
       // trigger arrived between when we claimed the slot and now.
       // Two coalescer arms colliding can no longer cause this branch
       // to fire because they don't bump triggerSerial.
-      if (state.triggerSerial > consumedSerial) {
+      if (Math.max(state.manualSerial, state.watchSerial) > consumedSerial) {
         this.restartAppCoalesced(name, /* fromExternal */ false).catch((err) => {
           this.logger.error(
             { app: name, error: (err as Error).message },
@@ -1279,7 +1345,7 @@ export class OrchestratorService extends EventEmitter {
   private getCoalescerState(name: string) {
     let state = this.restartCoalescer.get(name);
     if (!state) {
-      state = { inFlight: null, triggerSerial: 0, firedSerial: 0, cooldownUntil: 0 };
+      state = { inFlight: null, triggerSerial: 0, firedSerial: 0, manualSerial: 0, watchSerial: 0, cooldownUntil: 0 };
       this.restartCoalescer.set(name, state);
     }
     return state;
@@ -1847,117 +1913,7 @@ export class OrchestratorService extends EventEmitter {
 
     // Build all entry points via esbuild (dev mode bundles from source .ts)
     //
-    // On a *restart* (as opposed to a first start), buildResults already
-    // has a fresh entry — esbuild's watcher just produced the bundle
-    // that triggered us. Reusing it skips a redundant cold rebuild
-    // (which was costing ~500ms per restart and racing against the
-    // watcher's own incremental output). The watch context is also
-    // preserved (we never unwatched), so we don't re-arm it either.
-    // Source topologies need compilation in production as well. Watchers are
-    // independent of compilation and remain a development-only capability.
-    const sourceTopology = /\.(?:[cm]?ts|tsx)$/.test(bootstrapAbsPath) ||
-      definition?.processes.some((process) => /\.(?:[cm]?ts|tsx)$/.test(process.module));
-    if (definition && (this.devMode || sourceTopology)) {
-      try {
-        if (!this.buildService) {
-          this.buildService = new BuildService(this.devMode, {
-            onEsbuildReset: (info) => this.metricsBridge?.recordResilientHandleReset(info),
-            onBuildResult: ({ app, kind, durationMs, ok }) =>
-              this.metricsBridge?.recordEsbuildBuild(app, kind, durationMs, ok),
-          });
-        }
-
-        const existing = this.buildResults.get(entry.name);
-        const existingWatch = this.buildService.isWatching?.(entry.name);
-        // A fresh bootstrap may describe a different entry graph while the old
-        // esbuild contexts still watch only the former module set.
-        const reusable = existing
-          ? this.buildService.canReuseBuild(existing, bootstrapAbsPath, definition)
-          : false;
-
-        if (existing && existingWatch && reusable) {
-          // Restart path — keep the already-built bundle and live watch.
-          this.logger.debug(
-            { app: entry.name, modules: existing.modulePaths.size },
-            'Reusing existing esbuild bundle + watch (restart path)'
-          );
-        } else {
-          if (existing && existingWatch && !reusable) {
-            // Missing artifacts or changed entry points require a new watch
-            // graph as well as new bundles; retaining it would omit new workers.
-            this.logger.warn(
-              { app: entry.name, bootstrapPath: existing.bootstrapPath },
-              'Cached build no longer covers the process entry graph — forcing rebuild'
-            );
-            try {
-              await this.buildService.unwatchApp?.(entry.name);
-            } catch (err) {
-              this.logger.debug({ err, app: entry.name }, 'unwatchApp failed (non-fatal)');
-            }
-            this.buildResults.delete(entry.name);
-          }
-          // First-start path — build everything from cold and arm the watcher.
-          const buildResult = await this.buildService.buildApp(entry.name, bootstrapAbsPath, definition);
-          this.buildResults.set(entry.name, buildResult);
-          this.logger.info(
-            { app: entry.name, modules: buildResult.modulePaths.size },
-            'Built entry points via esbuild'
-          );
-
-          // Start esbuild watch for incremental rebuilds on source changes.
-          // On rebuild → fire a restart trigger; the coalescer takes it
-          // from there.
-          if (this.devMode && entry.watch !== false) await this.buildService.watchApp(entry.name, bootstrapAbsPath, definition, () => {
-            // Gate: skip if the app is in a non-running state — repeated
-            // restarts of an escalated/errored process just churn forever
-            // without forward progress (Fix #248).
-            // Skip restart when the app is in a terminal non-running
-            // state. Includes 'crashed' (supervisor escalated after
-            // exceeding its restart budget) and 'errored' (start
-            // failed). 'stopped' means operator explicitly stopped it.
-            // In all three cases, restarting just churns a known-broken
-            // process; the operator must fix the underlying issue and
-            // call `omnitron start <app>` to clear the state.
-            const status = this.getAppStatus(entry.name);
-            if (status === 'errored' || status === 'crashed' || status === 'stopped') {
-              this.logger.warn(
-                { app: entry.name, status },
-                'esbuild rebuild detected but app is not running — skipping restart'
-              );
-              return;
-            }
-            this.logger.info({ app: entry.name }, 'esbuild rebuild detected — restarting');
-            this.metricsBridge?.recordEsbuildBuild(entry.name, 'rebuild', 0, true);
-            this.restartApp(entry.name).catch((err) => {
-              this.logger.error(
-                { app: entry.name, error: (err as Error).message },
-                'Restart after esbuild rebuild failed'
-              );
-            });
-          });
-        }
-      } catch (err) {
-        // The "fall back to tsx" wording was misleading — the orchestrator
-        // does not inject a tsx loader into spawned children, so without
-        // a build the bootstrap-process will try to `import` the source
-        // .ts file (referenced as `./app.module.js` in the topology) and
-        // fail with a cryptic "Cannot find module" downstream. Surface
-        // the build error directly so the operator sees the actual
-        // problem on `omnitron start/restart`.
-        // esbuild's error carries an `errors[]` with file, line and column.
-        // `.message` is the summary; the locations are what an operator needs
-        // to fix the build, and they exist only on the original.
-        this.logger.error(
-          { app: entry.name, error: err },
-          'esbuild build failed — app cannot start without bundled output'
-        );
-        throw new Error(
-          `Cannot launch '${entry.name}': esbuild build failed (${(err as Error).message}). ` +
-          `Fix the build error and retry, or run with bundled output present in apps/${entry.name}/.omnitron-build/.`,
-          { cause: err },
-        );
-      }
-    }
+    if (definition) await this.prepareBootstrapBuild(entry, bootstrapAbsPath, definition);
 
     const buildResult = this.buildResults.get(entry.name);
     // Use bundled bootstrap path for topology import when available
@@ -1967,6 +1923,36 @@ export class OrchestratorService extends EventEmitter {
       await this.launchTopology(entry, handle, config, effectiveBootstrapPath, topology, buildResult);
     } else {
       await this.launchSingleProcess(entry, handle, config, effectiveBootstrapPath, buildResult);
+    }
+  }
+
+  private async prepareBootstrapBuild(entry: IEcosystemAppEntry, bootstrapAbsPath: string, definition: IAppDefinition): Promise<void> {
+    const sourceTopology = /\.(?:[cm]?ts|tsx)$/.test(bootstrapAbsPath) ||
+      definition.processes.some((process) => /\.(?:[cm]?ts|tsx)$/.test(process.module));
+    if (!this.devMode && !sourceTopology) return;
+    try {
+      this.buildService ??= new BuildService(this.devMode, {
+        onEsbuildReset: (info) => this.metricsBridge?.recordResilientHandleReset(info),
+        onBuildResult: ({ app, kind, durationMs, ok }) =>
+          this.metricsBridge?.recordEsbuildBuild(app, kind, durationMs, ok),
+      });
+      const existing = this.buildResults.get(entry.name);
+      const current = this.handles.get(entry.name)?.entry ?? entry;
+      const reusable = existing && this.allowsWatch(current) && this.buildService.isWatching(entry.name) &&
+        this.buildService.canReuseBuild(existing, bootstrapAbsPath, definition);
+      if (!reusable) {
+        // A manual restart with watch:false deliberately compiles the current
+        // sources. It must not reuse an artifact that stopped being maintained.
+        await this.buildService.unwatchApp(entry.name);
+        this.buildResults.delete(entry.name);
+        this.buildResults.set(entry.name, await this.buildService.buildApp(entry.name, bootstrapAbsPath, definition));
+        this.logger.info({ app: entry.name }, 'Built entry points via esbuild');
+      }
+      this.bootstrapSources.set(entry.name, { path: bootstrapAbsPath, definition });
+      await this.syncBootstrapWatch(entry.name);
+    } catch (error) {
+      this.logger.error({ app: entry.name, error }, 'esbuild build failed — app cannot start without bundled output');
+      throw new Error(`Cannot launch '${entry.name}': esbuild build failed (${(error as Error).message}). Fix the build error and retry.`, { cause: error });
     }
   }
 

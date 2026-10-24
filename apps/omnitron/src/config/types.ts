@@ -656,7 +656,9 @@ export interface IEcosystemAppEntry {
    * `OMNITRON_NO_WATCH=1`) turns it off daemon-wide, `watch: false` per app.
    *
    * Bootstrap-mode apps are watched through esbuild's import graph instead of
-   * `fs.watch`, so this entry configures the latter only.
+   * `fs.watch`. `false` disables both engines; directory/ignore/debounce
+   * settings configure only fs.watch. Disabling cancels pending automatic
+   * restarts and waits for watchers to stop; manual restarts still work.
    *
    * - `string`: directory to watch (relative to cwd or absolute)
    * - `IWatchConfig`: full watch configuration

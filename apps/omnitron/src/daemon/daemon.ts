@@ -18,6 +18,7 @@
  *   - Config resolution: secrets + env-aware injection into apps
  */
 
+import path from 'node:path';
 import { Application, ShutdownReason, ShutdownPriority, ApplicationEvent } from '@omnitron-dev/titan';
 import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';
 import { TcpTransport } from '@omnitron-dev/titan/netron/transport/tcp';
@@ -413,7 +414,7 @@ export class OmnitronDaemon {
     await this.registerHealthIndicators();
 
     // 8. File watching (dev mode)
-    this.startFileWatcher(config, options, logger);
+    await this.startFileWatcher(config, options, logger);
 
     // 8.5. Wire daemon Netron to orchestrator for native topology routing
     {
@@ -1618,23 +1619,19 @@ export class OmnitronDaemon {
   // File Watching (dev mode)
   // ============================================================================
 
-  private startFileWatcher(
+  private async startFileWatcher(
     config: IEcosystemConfig,
     options: DaemonStartOptions | undefined,
     logger: import('@omnitron-dev/titan/module/logger').ILogger,
-  ): void {
-    if (!options?.watch || options?.noWatch || !this.app) return;
-
-    this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN).then((orchestrator) => {
-      orchestrator.devMode = true;
-      this.fileWatcher = new FileWatcher(logger, orchestrator, config, process.cwd());
-      this.fileWatcher.start(options.watchApps);
-
-      const watched = this.fileWatcher.getWatchedApps();
-      for (const w of watched) {
-        logger.info({ app: w.name, directory: w.directory }, 'Watching for changes');
-      }
-    });
+  ): Promise<void> {
+    if (!this.app) return;
+    const orchestrator = await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
+    const enabled = !!options?.watch && !options?.noWatch;
+    orchestrator.devMode = enabled;
+    await orchestrator.setWatchMode(enabled, options?.watchApps);
+    if (!enabled) return;
+    this.fileWatcher = new FileWatcher(logger, orchestrator, config, process.cwd());
+    this.fileWatcher.start(options?.watchApps);
   }
 
   // ============================================================================
@@ -2317,8 +2314,10 @@ export class OmnitronDaemon {
 
     const config = await this.getConfig();
     this.fileWatcher = new FileWatcher(loggerModule.logger, orchestrator, config, process.cwd());
+    orchestrator.devMode = true;
+    await orchestrator.setWatchMode(true, apps);
     this.fileWatcher.start(apps);
-    return this.fileWatcher.getWatchedApps();
+    return [...this.fileWatcher.getWatchedApps(), ...orchestrator.getBuildWatchedApps()];
   }
 
   /**
@@ -2329,53 +2328,50 @@ export class OmnitronDaemon {
    * reload updates, which is exactly how the watcher came to be left out of
    * both.
    */
-  applyWatchConfig(config: IEcosystemConfig): void {
+  async applyWatchConfig(config: IEcosystemConfig): Promise<void> {
     this.fileWatcher?.applyConfig(config);
-  }
-
-  disableWatch(): void {
-    if (this.fileWatcher) {
-      this.fileWatcher.stop();
-      this.fileWatcher = null;
+    if (!this.app) return;
+    const orchestrator = await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
+    for (const entry of config.apps) {
+      const handle = orchestrator.getHandle(entry.name);
+      // A bare name may resolve to a different registered project's app.
+      // Only the same entry point may update that handle's watch policy.
+      const source = entry.bootstrap ?? entry.script;
+      const running = handle?.entry.bootstrap ?? handle?.entry.script;
+      if (!handle || !source || !running ||
+          path.resolve(entry.cwd ?? process.cwd(), source) !== path.resolve(handle.entry.cwd ?? process.cwd(), running)) continue;
+      const next = { ...handle.entry };
+      if (entry.watch === undefined) delete next.watch;
+      else next.watch = entry.watch;
+      await orchestrator.redefineApp(handle.name, next);
     }
   }
 
-  /**
-   * Whether file watching is running, and over what.
-   *
-   * `enabled` said only that a `FileWatcher` OBJECT existed. Observed on this
-   * host: `{ enabled: true, apps: [] }` — a watcher running over nothing,
-   * reported to an operator as "watching". Everyone downstream read the
-   * boolean and concluded their edits were being picked up.
-   *
-   * The watch set is built from `config.apps` — the daemon's OWN ecosystem
-   * config. Apps that arrive through the project registry are not in it, so a
-   * daemon serving projects watches none of them however the flag reads.
-   * `watching` is the fact an operator actually wants; `enabled` keeps its
-   * old meaning so existing callers do not silently change behaviour, and
-   * `reason` says why the two can disagree.
-   */
-  getWatchStatus(): {
+  async disableWatch(): Promise<void> {
+    this.fileWatcher?.stop();
+    this.fileWatcher = null;
+    if (this.app) {
+      const orchestrator = await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
+      await orchestrator.setWatchMode(false);
+    }
+  }
+
+  /** Reports both watcher engines, including registered bootstrap projects. */
+  async getWatchStatus(): Promise<{
     enabled: boolean;
     watching: boolean;
     reason?: string;
     apps: Array<{ name: string; directory: string }>;
-  } {
-    if (!this.fileWatcher) {
-      return { enabled: false, watching: false, reason: 'the file watcher is not running', apps: [] };
-    }
-    const apps = this.fileWatcher.getWatchedApps();
-    if (apps.length === 0) {
-      return {
-        enabled: true,
-        watching: false,
-        reason:
-          'the watcher is running but no app matched: the watch set comes from this daemon\'s own ' +
-          'ecosystem config, and apps registered through a project are not in it',
-        apps,
-      };
-    }
-    return { enabled: true, watching: true, apps };
+  }> {
+    const orchestrator = this.app
+      ? await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN) : null;
+    const apps = [...(this.fileWatcher?.getWatchedApps() ?? []), ...(orchestrator?.getBuildWatchedApps() ?? [])];
+    return {
+      enabled: !!this.fileWatcher,
+      watching: apps.length > 0,
+      ...(apps.length ? {} : { reason: this.fileWatcher ? 'no enabled app matches the watch policy' : 'watching is disabled' }),
+      apps,
+    };
   }
 
   private async getConfig(): Promise<IEcosystemConfig> {
@@ -2437,9 +2433,7 @@ export class OmnitronDaemon {
         // updated who gets restarted but not who is watched: an app added to
         // the config was never watched, and one removed from it kept its
         // watchers and went on triggering restarts.
-        apply: (cfg) => {
-          this.applyWatchConfig(cfg);
-        },
+        apply: (cfg) => this.applyWatchConfig(cfg),
       },
       {
         name: 'RPC snapshot',

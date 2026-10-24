@@ -51,9 +51,9 @@ describe('a restart starts from the definition the app was last given', () => {
     expect(handle.entry).toBe(OLD);
   });
 
-  it('answers false for an app it does not supervise', () => {
+  it('answers false for an app it does not supervise', async () => {
     const self = { handles: new Map(), resolveAppName: () => undefined };
-    expect(OrchestratorService.prototype.redefineApp.call(self as never, 'nope', NEW as never)).toBe(false);
+    expect(await OrchestratorService.prototype.redefineApp.call(self as never, 'nope', NEW as never)).toBe(false);
   });
 });
 

@@ -476,7 +476,7 @@ export class DaemonRpcService implements IDaemonService {
     // Same omission as the config refs above, one layer out: the file
     // watcher keeps its own app list, so without this a reload changed
     // which apps get restarted but not which are watched.
-    this.daemon.applyWatchConfig(newConfig);
+    await this.daemon.applyWatchConfig(newConfig);
     return { success: true };
   }
 
@@ -733,7 +733,7 @@ export class DaemonRpcService implements IDaemonService {
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async disableWatch(): Promise<{ success: boolean }> {
-    this.daemon.disableWatch();
+    await this.daemon.disableWatch();
     return { success: true };
   }
 

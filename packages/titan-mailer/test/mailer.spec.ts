@@ -107,6 +107,32 @@ describe('real SMTP and MIME', () => {
     }
     expect(received).toHaveLength(0);
   });
+  it.each([
+    [454, 'transient', true],
+    [535, 'configuration', false],
+  ] as const)('preserves actual AUTH %i retry semantics from Nodemailer', async (responseCode, kind, retryable) => {
+    const authServer = new SMTPServer({
+      disabledCommands: ['STARTTLS'],
+      allowInsecureAuth: true,
+      logger: false,
+      onAuth(_auth, _session, done) {
+        done(Object.assign(new Error('private authentication refusal'), { responseCode }));
+      },
+    });
+    await new Promise<void>(resolve => authServer.listen(0, '127.0.0.1', resolve));
+    const port = (authServer.server.address() as AddressInfo).port;
+    const sender = service({ smtp: `smtp://synthetic:test@127.0.0.1:${port}` });
+    try {
+      const failure = await sender.verify().catch(error => error);
+      expect(failure).toBeInstanceOf(MailDeliveryError);
+      expect(failure).toMatchObject({ kind, retryable });
+      expect(failure.message).not.toContain('private');
+      expect(received).toHaveLength(0);
+    } finally {
+      await sender.close();
+      await new Promise<void>(resolve => authServer.close(resolve));
+    }
+  });
   it('requires STARTTLS by default even on loopback and cannot silently downgrade', async () => {
     await expect(service({ allowInsecureLocalhost: false }).verify()).rejects.toMatchObject({ kind: 'configuration' });
     expect(received).toHaveLength(0);

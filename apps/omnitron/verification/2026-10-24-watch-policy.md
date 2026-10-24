@@ -29,3 +29,26 @@ Initial checks exposed stale test doubles still calling the former manual restar
 ## Activation
 
 No forecast processes were restarted during these checks. This patch must be loaded by the daemon; a build on disk is not activation. The old daemon cannot disable its esbuild contexts through its exposed disableWatch API. Do not use runtime injection or claim its fs.watch status represents bootstrap watching. Schedule a controlled daemon restart, retain experiment artifacts/state and record any observation gap separately.
+
+## Activation and registered-project shutdown
+
+The local daemon was restarted with the operator's explicit approval. Its watch
+status now includes the API and mail applications, and excludes the landscape,
+control, paired forecast and Priceverse applications configured with `watch:false`.
+The stored core binaries and paired worker hashes did not change.
+
+The restart exposed a separate shutdown defect: `stopAll` iterated only the first
+loaded ecosystem. Registered classic processes in other projects survived their
+daemon, retaining listening ports. Only the verified orphan processes were stopped;
+the native stack/restart operations restored the applications. Forecast downtime is
+recorded in Ozar, without backfilling predictions.
+
+Shutdown now takes its ownership graph from all supervised handles, drains admitted
+starts, resolves local dependencies in their project scope, and still cleans up
+owned processes if a later reconfiguration introduced a cycle. Four new regressions
+include real forked classic processes from two projects, bootstrap pool cleanup
+without a root config, dependency order and the invalid-graph cleanup path.
+All 125 tests selected by the full orchestrator directory plus the supplied matching
+filters passed; the package production build passed. This additional shutdown fix
+will be loaded at the next managed daemon restart, not silently injected into the
+running daemon.

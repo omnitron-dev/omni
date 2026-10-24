@@ -1060,7 +1060,6 @@ export class OrchestratorService extends EventEmitter {
   }
 
   async stopAll(force = false): Promise<number> {
-    if (!this.config) return 0;
 
     if (this.metricsTimer) {
       clearInterval(this.metricsTimer);
@@ -1077,7 +1076,34 @@ export class OrchestratorService extends EventEmitter {
     // When force=true (daemon shutdown), use short timeout per app (3s SIGTERM, then SIGKILL)
     const perAppTimeout = force ? 3_000 : 10_000;
 
-    for (const batch of resolveShutdownOrder(this.config.apps)) {
+    // Registered projects need not belong to the daemon's root ecosystem.
+    // Ownership is defined by handles, not by whichever config booted first.
+    // Drain admitted starts before taking the shutdown graph snapshot.
+    await Promise.allSettled([...this.startingApps.values()]);
+    const entries = [...this.handles.values()].map((handle) => handle.entry);
+    const names = new Set(entries.map((entry) => entry.name));
+    const graph = entries.map((entry) => {
+      const scope = entry.name.slice(0, entry.name.lastIndexOf('/') + 1);
+      return {
+        ...entry,
+        dependsOn: (entry.dependsOn ?? []).flatMap((dependency) => {
+          const name = !dependency.includes('/') && names.has(scope + dependency)
+            ? scope + dependency : dependency;
+          // A dependency never started here has no owned process to stop.
+          return names.has(name) ? [name] : [];
+        }),
+      };
+    });
+    let batches: IEcosystemAppEntry[][];
+    try {
+      batches = resolveShutdownOrder(graph);
+    } catch (error) {
+      // Invalid reconfiguration must not turn shutdown into leaked children.
+      this.logger.error({ error: (error as Error).message }, 'Invalid shutdown graph; stopping every owned app');
+      batches = [entries];
+    }
+
+    for (const batch of batches) {
       await Promise.all(
         batch.map(async (entry) => {
           try {

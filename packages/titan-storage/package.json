@@ -1,0 +1,39 @@
+{
+  "name": "@omnitron-dev/titan-storage",
+  "version": "0.3.0",
+  "description": "Shared DAOS object storage adapters and Titan lifecycle module",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "../../scripts/build-package.sh -p ./tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1043.0",
+    "@aws-sdk/s3-request-presigner": "^3.1043.0",
+    "@smithy/node-http-handler": "^4.6.1"
+  },
+  "peerDependencies": {
+    "@omnitron-dev/titan": "workspace:*"
+  },
+  "devDependencies": {
+    "@omnitron-dev/titan": "workspace:*",
+    "@types/node": "25.6.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  },
+  "license": "MIT"
+}

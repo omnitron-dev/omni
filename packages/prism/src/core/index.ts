@@ -8,7 +8,7 @@
 
 // Provider
 export { PrismProvider } from './provider.js';
-export type { PrismProviderProps } from './provider.js';
+export type { PrismProviderProps, PrismThemeOverrides, PrismThemeOverrideContext } from './provider.js';
 
 // Provider Stack (composable providers)
 export {

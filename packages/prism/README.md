@@ -140,3 +140,26 @@ listener, overlay, delayed timer or scroll-position state is introduced.
 Set `<Scrollbar autoHide={false}>` for a persistent thumb, or use
 `mixins.scrollbarStyles(theme, { autoHide: false })` for a custom scrollport.
 `hideScrollbar` remains the explicit fully-hidden option.
+
+
+### Mode-aware application palettes
+
+`PrismProvider.themeOverrides` accepts a static object or a function receiving
+`{ mode: 'light' | 'dark' }`. The provider resolves the operating-system setting
+before calling this function, so an application does not need a second theme
+store or a synchronisation effect. Keep the callback stable when possible.
+
+```tsx
+const appTheme = ({ mode }: PrismThemeOverrideContext) => ({
+  palette: {
+    primary: { main: mode === 'dark' ? '#C9B2FF' : '#7446A6' },
+    background: { paper: mode === 'dark' ? '#241E2C' : '#FFFCF8' },
+  },
+});
+
+<PrismProvider themeOverrides={appTheme}>{children}</PrismProvider>
+```
+
+Import `PrismProvider` and the `PrismThemeOverrideContext` type from
+`@omnitron-dev/prism/core`. The callback is evaluated again when the resolved
+mode changes; existing object overrides retain their behavior.

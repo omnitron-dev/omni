@@ -1,3 +1,4 @@
+import { reconcilePaletteOverrides, type PaletteOverrides } from './palette/overrides.js';
 import { prismIconDefaults } from '../icons/theme.js';
 /**
  * Theme Factory
@@ -59,6 +60,8 @@ import { arcticPreset } from './presets/arctic.js';
 
 export type SupportedLocale = keyof typeof locales;
 
+type ThemeOverrideOptions = Omit<ThemeOptions, 'palette'> & { palette?: PaletteOverrides };
+
 /**
  * Options for creating a Prism theme.
  *
@@ -101,7 +104,7 @@ export interface CreatePrismThemeOptions {
   /** Enable responsive font sizes (default: true) */
   responsiveFonts?: boolean;
   /** Custom MUI theme overrides */
-  overrides?: Partial<ThemeOptions>;
+  overrides?: ThemeOverrideOptions;
   /** Typography configuration (optional override) */
   typography?: Partial<ThemeOptions['typography']>;
   /** CSS variables configuration (optional override) */
@@ -567,7 +570,7 @@ function getDensityMultiplier(density: ComponentDensity): number {
  * Component style slots compose with MUI interpolation arrays, preserving theme callbacks.
  * Preserves nested component overrides, palette, typography, etc.
  */
-function deepMergeThemeOptions(base: ThemeOptions, overrides: Partial<ThemeOptions>): ThemeOptions {
+function deepMergeThemeOptions(base: ThemeOptions, overrides: Partial<ThemeOptions> | ThemeOverrideOptions): ThemeOptions {
   const result: Record<string, unknown> = { ...base };
 
   for (const key of Object.keys(overrides)) {
@@ -767,6 +770,12 @@ export function createPrismTheme(options: CreatePrismThemeOptions = {}): PrismTh
   // Deep merge with custom overrides (preserves nested component overrides)
   const themedIcons = deepMergeThemeOptions(themeOptions, { components: prismIconDefaults() });
   const finalOptions = overrides ? deepMergeThemeOptions(themedIcons, overrides) : themedIcons;
+
+  const variableOptions = typeof finalOptions.cssVariables === 'object' ? finalOptions.cssVariables : undefined;
+  finalOptions.palette = reconcilePaletteOverrides(finalOptions.palette!, overrides?.palette, {
+    nativeColor: variableOptions?.nativeColor,
+    cssVarPrefix: variableOptions?.cssVarPrefix ?? cssVarPrefix,
+  });
 
   // Create base theme
   let theme = muiCreateTheme(finalOptions, muiLocale);

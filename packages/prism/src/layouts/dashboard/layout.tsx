@@ -63,6 +63,8 @@ interface DashboardLayoutInternalProps {
   navData?: LayoutNavData;
   headerSlots?: HeaderSlots;
   logo?: ReactNode;
+  /** Logo for collapsed and mini desktop rails; expanded and mobile retain logo. */
+  compactLogo?: ReactNode;
   footer?: ReactNode;
   sidenavFooter?: ReactNode;
   labels?: Partial<DashboardLabels>;
@@ -87,6 +89,7 @@ function DashboardLayoutInternal({
   navData,
   headerSlots,
   logo,
+  compactLogo,
   footer,
   sidenavFooter,
   slotProps,
@@ -169,6 +172,7 @@ function DashboardLayoutInternal({
         <>
           <Sidenav
             logo={logo}
+            compactLogo={compactLogo}
             navData={navData}
             footer={sidenavFooter}
             layoutQuery={layoutQuery}
@@ -239,6 +243,8 @@ export interface DashboardLayoutProps {
   headerSlots?: HeaderSlots;
   /** Logo component */
   logo?: ReactNode;
+  /** Logo for collapsed and mini desktop rails; expanded and mobile retain logo. */
+  compactLogo?: ReactNode;
   /** Footer component */
   footer?: ReactNode;
   /** Sidenav footer content */
@@ -299,6 +305,7 @@ export function DashboardLayout({
   navData,
   headerSlots,
   logo,
+  compactLogo,
   footer,
   sidenavFooter,
   initialConfig,
@@ -313,6 +320,7 @@ export function DashboardLayout({
         navData={navData}
         headerSlots={headerSlots}
         logo={logo}
+        compactLogo={compactLogo}
         footer={footer}
         sidenavFooter={sidenavFooter}
         slotProps={slotProps}

@@ -277,29 +277,18 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
       },
       styleOverrides: {
         root: ({ theme }) => ({
+          // Every disclosure owns its full outline and all four corners.
+          // Use MUI's native rounded state to override its edge-only radii,
+          // independent of siblings (including Emotion's SSR style tags).
+          // The square prop remains authoritative when rounded is absent.
           border: `1px solid ${paletteVar(theme, 'divider')}`,
-          borderRadius,
+          borderRadius: 0,
+          [`&.${accordionClasses.rounded}`]: {
+            borderRadius,
+          },
           '&::before': {
             display: 'none',
           },
-          // Position selectors switched from `:first-of-type` /
-          // `:last-of-type` to `:first-child` / `:last-child` —
-          // accordions are intended to be direct siblings, so the
-          // child-position form gives the correct result without
-          // depending on element-tag homogeneity (an interspersed
-          // <Divider /> would break the of-type form silently by
-          // making each accordion the only "of-type" sibling).
-          '&:first-child': {
-            borderTopLeftRadius: borderRadius,
-            borderTopRightRadius: borderRadius,
-          },
-          '&:last-child': {
-            borderBottomLeftRadius: borderRadius,
-            borderBottomRightRadius: borderRadius,
-          },
-          // Every disclosure owns its full outline. Sibling position cannot
-          // imply a contiguous group: a toolbar, paragraph or spaced panel
-          // may follow it, and application themes may use bottom-only rules.
           [`&.${accordionClasses.disabled}`]: {
             backgroundColor: 'transparent',
           },

@@ -15,6 +15,10 @@
     "./preset/shared-session": {
       "types": "./dist/preset/shared-session.d.ts",
       "default": "./dist/preset/shared-session.js"
+    },
+    "./access": {
+      "types": "./dist/access/index.d.ts",
+      "default": "./dist/access/index.js"
     }
   },
   "files": [

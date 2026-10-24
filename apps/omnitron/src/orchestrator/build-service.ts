@@ -37,8 +37,15 @@ export interface BuildResult {
 }
 
 interface WatchHandle {
-  ctx: any; // esbuild.BuildContext
   dispose: () => Promise<void>;
+}
+
+interface WatchSession {
+  closed: boolean;
+  handles: WatchHandle[];
+  ready: Promise<void>;
+  timer: NodeJS.Timeout | null;
+  firstChangeAt: number;
 }
 
 // =============================================================================
@@ -248,7 +255,7 @@ export interface BuildServiceTelemetry {
 }
 
 export class BuildService {
-  private readonly watchHandles = new Map<string, WatchHandle[]>();
+  private readonly watchHandles = new Map<string, WatchSession>();
   private readonly isDev: boolean;
   private readonly telemetry: BuildServiceTelemetry;
   /**
@@ -357,93 +364,70 @@ export class BuildService {
     definition: IAppDefinition,
     onChange: () => void
   ): Promise<void> {
-    return this.esbuildHandle.use(async (esbuild) => {
-      const appDir = this.resolveAppDir(bootstrapAbsPath);
-      const outDir = path.join(appDir, '.omnitron-build');
-
-      fs.mkdirSync(outDir, { recursive: true });
-
-      const handles: WatchHandle[] = [];
-
-      // Tail-debounce with hard upper bound. 300ms was too aggressive — IDE
-      // auto-format-on-save (prettier/eslint --fix) touches the file 2-3
-      // times within a few hundred ms, and each touch reset the timer too
-      // quickly for the debounce to do anything meaningful. The MAX_WAIT
-      // safety net guarantees we never starve a restart even under a steady
-      // stream of changes.
-      const DEBOUNCE_MS = 750;
-      const MAX_WAIT_MS = 5_000;
-      let debounceTimer: NodeJS.Timeout | null = null;
-      let firstChangeAt = 0;
-      const debouncedOnChange = () => {
-        if (firstChangeAt === 0) firstChangeAt = Date.now();
-        if (debounceTimer) clearTimeout(debounceTimer);
-        const elapsed = Date.now() - firstChangeAt;
-        const remaining = Math.max(0, MAX_WAIT_MS - elapsed);
-        const wait = Math.min(DEBOUNCE_MS, remaining || DEBOUNCE_MS);
-        debounceTimer = setTimeout(() => {
-          firstChangeAt = 0;
-          debounceTimer = null;
-          onChange();
-        }, wait);
-      };
-
-      // Watch bootstrap
-      const bootstrapCtx = await this.createWatchContext(
-        esbuild,
-        bootstrapAbsPath,
-        path.join(outDir, 'bootstrap.js'),
-        debouncedOnChange
-      );
-      handles.push(bootstrapCtx);
-
-      // Watch each process module
-      for (const proc of definition.processes) {
-        const moduleSourcePath = this.resolveModuleSource(bootstrapAbsPath, proc.module);
-        const outPath = path.join(outDir, `${proc.name}.js`);
-        const ctx = await this.createWatchContext(esbuild, moduleSourcePath, outPath, debouncedOnChange);
-        handles.push(ctx);
-      }
-
-      // Store handles for cleanup
-      this.watchHandles.set(appName, handles);
-    });
-  }
-
-  /**
-   * Stop watching a specific app.
-   */
-  async unwatchApp(appName: string): Promise<void> {
-    const handles = this.watchHandles.get(appName);
-    if (!handles) return;
-
-    await Promise.all(handles.map((h) => h.dispose()));
-    this.watchHandles.delete(appName);
-  }
-
-  /**
-   * True iff a live esbuild watch context exists for this app. The
-   * orchestrator uses this to decide whether a restart needs a cold
-   * rebuild + watch (first start) or can reuse the existing bundle
-   * and live watcher (subsequent restart).
-   */
-  isWatching(appName: string): boolean {
-    const handles = this.watchHandles.get(appName);
-    return !!handles && handles.length > 0;
-  }
-
-  /**
-   * Dispose all watch contexts and clean up.
-   */
-  async dispose(): Promise<void> {
-    const allDispose: Promise<void>[] = [];
-    for (const [, handles] of this.watchHandles) {
-      for (const h of handles) {
-        allDispose.push(h.dispose());
-      }
+    // Publish ownership before the first await: unwatch must also cancel a
+    // context that is still being created, not just one already watching.
+    const previous = this.unwatchApp(appName);
+    const session: WatchSession = {
+      closed: false, handles: [], ready: Promise.resolve(), timer: null, firstChangeAt: 0,
+    };
+    this.watchHandles.set(appName, session);
+    const debouncedOnChange = () => {
+      if (session.closed) return;
+      if (session.firstChangeAt === 0) session.firstChangeAt = Date.now();
+      if (session.timer) clearTimeout(session.timer);
+      const wait = Math.min(750, Math.max(0, 5_000 - (Date.now() - session.firstChangeAt)));
+      session.timer = setTimeout(() => {
+        session.firstChangeAt = 0;
+        session.timer = null;
+        if (!session.closed) onChange();
+      }, wait);
+    };
+    session.ready = (async () => {
+      await previous;
+      if (session.closed) return;
+      await this.esbuildHandle.use(async (esbuild) => {
+        const outDir = path.join(this.resolveAppDir(bootstrapAbsPath), '.omnitron-build');
+        fs.mkdirSync(outDir, { recursive: true });
+        const entries = [
+          [bootstrapAbsPath, path.join(outDir, 'bootstrap.js')],
+          ...definition.processes.map((proc) => [
+            this.resolveModuleSource(bootstrapAbsPath, proc.module), path.join(outDir, `${proc.name}.js`),
+          ]),
+        ];
+        for (const [source, output] of entries) {
+          if (session.closed) break;
+          session.handles.push(await this.createWatchContext(esbuild, source!, output!, debouncedOnChange));
+        }
+      });
+    })();
+    try {
+      await session.ready;
+    } catch (error) {
+      if (this.watchHandles.get(appName) === session) this.watchHandles.delete(appName);
+      session.closed = true;
+      if (session.timer) clearTimeout(session.timer);
+      await Promise.all(session.handles.map((handle) => handle.dispose()));
+      throw error;
     }
-    await Promise.all(allDispose);
-    this.watchHandles.clear();
+  }
+
+  /** Revokes callbacks synchronously, then waits for all contexts to stop writing. */
+  async unwatchApp(appName: string): Promise<void> {
+    const session = this.watchHandles.get(appName);
+    if (!session) return;
+    this.watchHandles.delete(appName);
+    session.closed = true;
+    if (session.timer) clearTimeout(session.timer);
+    await session.ready.catch(() => {});
+    await Promise.all(session.handles.map((handle) => handle.dispose()));
+  }
+
+  isWatching(appName: string): boolean {
+    return this.watchHandles.has(appName);
+  }
+
+  async dispose(): Promise<void> {
+    await Promise.all([...this.watchHandles.keys()].map((name) => this.unwatchApp(name)));
   }
 
   // ===========================================================================
@@ -498,7 +482,9 @@ export class BuildService {
     // the caller's handle).
     let currentCtx: any = null;
     let consecutiveStaleErrors = 0;
-    let recreating = false;
+    let disposed = false;
+    let recreation: Promise<void> | null = null;
+    let recreationTimer: NodeJS.Immediate | null = null;
     // SHA-1 of the previous successful bundle output. If a rebuild produces
     // byte-identical bytes (input mtime touched without an actual content
     // change — common with atime updates, IDE re-saves, formatter idempotency,
@@ -522,6 +508,7 @@ export class BuildService {
           setup: (build: any) => {
             let isInitialBuild = true;
             build.onEnd((result: any) => {
+              if (disposed) return;
               if (result.errors.length === 0) {
                 patchCreateRequireInOutput(outPath, entryPath);
                 consecutiveStaleErrors = 0;
@@ -529,19 +516,15 @@ export class BuildService {
                 consecutiveStaleErrors += 1;
                 // Schedule context recreation outside the onEnd handler
                 // (don't dispose the context that's currently calling us).
-                if (!recreating && consecutiveStaleErrors >= 1) {
-                  recreating = true;
-                  setImmediate(() => {
-                    void this.recreateWatchContextSafely(
-                      currentCtx,
-                      esbuild,
-                      buildOptions,
-                      (next) => {
-                        currentCtx = next;
-                        recreating = false;
-                        consecutiveStaleErrors = 0;
-                      },
-                    );
+                if (!recreation && !recreationTimer && consecutiveStaleErrors >= 1) {
+                  recreationTimer = setImmediate(() => {
+                    recreationTimer = null;
+                    if (disposed) return;
+                    recreation = this.recreateWatchContextSafely(
+                      currentCtx, esbuild, buildOptions,
+                      (next) => { currentCtx = next; consecutiveStaleErrors = 0; },
+                      () => disposed,
+                    ).finally(() => { recreation = null; });
                   });
                 }
               }
@@ -578,13 +561,14 @@ export class BuildService {
     });
 
     currentCtx = await esbuild.context(buildOptions());
-    await currentCtx.watch();
+    try { await currentCtx.watch(); }
+    catch (error) { disposed = true; await currentCtx.dispose(); throw error; }
 
     return {
-      ctx: currentCtx,
       dispose: async () => {
-        // currentCtx swaps when we self-heal; always tear down the
-        // freshest one.
+        disposed = true;
+        if (recreationTimer) clearImmediate(recreationTimer);
+        await recreation;
         if (currentCtx) await currentCtx.dispose();
       },
     };
@@ -623,20 +607,25 @@ export class BuildService {
     esbuild: any,
     buildOptions: () => unknown,
     onNewCtx: (ctx: any) => void,
+    isDisposed: () => boolean,
   ): Promise<void> {
     try {
       if (oldCtx) await oldCtx.dispose();
     } catch {
       // Ignore — old ctx is dying anyway
     }
+    let fresh: any = null;
     try {
-      const fresh = await esbuild.context(buildOptions());
-      await fresh.watch();
+      if (isDisposed()) { onNewCtx(null); return; }
+      fresh = await esbuild.context(buildOptions());
       onNewCtx(fresh);
+      if (isDisposed()) return; // dispose() awaits recreation and closes fresh.
+      await fresh.watch();
     } catch (err) {
       // Recreate failed — log via this.logger if available; the next
       // rebuild attempt will retry.
       console.error('[BuildService] failed to recreate watch context:', (err as Error).message);
+      if (fresh) await fresh.dispose().catch(() => {});
       onNewCtx(null);
     }
   }

@@ -50,8 +50,10 @@ function createMockLogger() {
 }
 
 function createMockOrchestrator(overrides: Record<string, unknown> = {}) {
+  const restart = vi.fn().mockResolvedValue(undefined);
   return {
-    restartApp: vi.fn().mockResolvedValue(undefined),
+    restartApp: restart,
+    restartAfterChange: overrides.restartApp ?? restart,
     // The real orchestrator has this, and `triggerRestart` calls it from
     // inside its own catch — a double without it made the failure path
     // throw rather than log. See «survives a diagnostic that throws».
@@ -245,6 +247,20 @@ describe('FileWatcher', () => {
     await settle();
 
     expect(restartApp).toHaveBeenCalledWith('acme/dev/test-app');
+  });
+
+  it('applies watch:false to an existing watcher and cancels its pending debounce', async () => {
+    const script = path.join(appDir, 'src', 'bootstrap.ts');
+    const w = startWatcher(50, [{ name: 'test-app', script }]);
+    w.emit('src/changed.ts');
+    w.applyConfig(createTestConfig([{ name: 'test-app', script, watch: false }]));
+    expect(w.getWatchedApps()).toEqual([]);
+    await settle();
+    expect(restartMock()).not.toHaveBeenCalled();
+    w.applyConfig(createTestConfig([{ name: 'test-app', script }]));
+    w.emit('src/changed-again.ts');
+    await settle();
+    expect(restartMock()).toHaveBeenCalledTimes(1);
   });
 
   it('watches only the named apps when a filter is given', () => {

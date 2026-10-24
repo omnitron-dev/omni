@@ -98,6 +98,7 @@ interface WatchedApp {
 export class FileWatcher {
   private readonly apps = new Map<string, WatchedApp>();
   private running = false;
+  private selection: string[] | undefined;
 
   constructor(
     private readonly logger: ILogger,
@@ -114,6 +115,7 @@ export class FileWatcher {
   start(appNames?: string[]): void {
     if (this.running) return;
     this.running = true;
+    this.selection = appNames;
 
     const entries = appNames
       ? this.config.apps.filter((a) => appNames.includes(a.name))
@@ -177,11 +179,14 @@ export class FileWatcher {
     if (!this.running) return;
 
     const desired = new Map(
-      config.apps.filter((a) => a.enabled !== false).map((a) => [a.name, a] as const)
+      config.apps.filter((a) => a.enabled !== false && a.watch !== false &&
+        (!this.selection || this.selection.includes(a.name))).map((a) => [a.name, a] as const)
     );
 
     for (const name of [...this.apps.keys()]) {
-      if (!desired.has(name)) this.removeApp(name);
+      const next = desired.get(name), previous = this.apps.get(name)!.entry;
+      if (!next || JSON.stringify([next.watch, next.cwd, next.script, next.bootstrap]) !==
+          JSON.stringify([previous.watch, previous.cwd, previous.script, previous.bootstrap])) this.removeApp(name);
     }
     for (const [name, entry] of desired) {
       if (!this.apps.has(name)) this.addApp(entry);
@@ -357,6 +362,7 @@ export class FileWatcher {
   }
 
   private onFileChange(app: WatchedApp, filename: string, _eventType: string): void {
+    if (!this.running || this.apps.get(app.entry.name) !== app) return;
     // Ignore irrelevant files
     if (this.shouldIgnore(filename, app.extraIgnore)) return;
 
@@ -374,6 +380,7 @@ export class FileWatcher {
   }
 
   private async triggerRestart(app: WatchedApp): Promise<void> {
+    if (!this.running || this.apps.get(app.entry.name) !== app) return;
     // Don't stack restarts — but don't discard the work either.
     //
     // This branch used to `clear()` the pending set before returning, which
@@ -443,7 +450,8 @@ export class FileWatcher {
       }
 
       try {
-        await this.orchestrator.restartApp(appName);
+        if (!this.running || this.apps.get(app.entry.name) !== app) return;
+        await this.orchestrator.restartAfterChange(appName);
         this.logger.info({ app: appName }, 'Restart complete');
       } catch (err) {
         const message = (err as Error).message;

@@ -435,7 +435,7 @@ export class ProjectService extends EventEmitter {
       const build = this.stackEntryBuilder(name, state.stack, stackConfig, config, definitions, stackEnv);
       for (const entry of entries) {
         const built = build(entry);
-        if (this.orchestrator.redefineApp(built.name, built)) redefined += 1;
+        if (await this.orchestrator.redefineApp(built.name, built)) redefined += 1;
       }
     }
 

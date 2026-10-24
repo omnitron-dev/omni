@@ -71,30 +71,6 @@ describe('a node does not watch', () => {
   });
 });
 
-describe('what watching costs on a node', () => {
-  /**
-   * The orchestrator's gate, quoted so the link between the two files is
-   * visible: no watch, no devMode, no esbuild build of a deployed artifact.
-   */
-  it('is the only thing that sets devMode', () => {
-    const daemon = stripComments(
-      fs.readFileSync(path.join(here, '../../src/daemon/daemon.ts'), 'utf8'),
-    );
-    const at = daemon.indexOf('orchestrator.devMode = true');
-
-    expect(at, 'devMode is set in startFileWatcher').toBeGreaterThan(-1);
-    // And startFileWatcher returns early without the option.
-    const before = daemon.slice(Math.max(0, at - 400), at);
-    expect(before).toMatch(/if \(!options\?\.watch \|\| options\?\.noWatch/);
-  });
-
-  it('is what arms the esbuild rebuild restart', () => {
-    const orchestrator = stripComments(
-      fs.readFileSync(path.join(here, '../../src/orchestrator/orchestrator.service.ts'), 'utf8'),
-    );
-    const at = orchestrator.indexOf('this.buildService.watchApp(');
-
-    expect(at).toBeGreaterThan(-1);
-    expect(orchestrator.slice(Math.max(0, at - 3000), at)).toMatch(/if \(definition && this\.devMode\)/);
-  });
-});
+// The startup policy and actual watch cancellation are exercised through
+// daemon.startFileWatcher in daemon-watch-control.spec.ts and through real
+// esbuild/child processes in watch-policy.spec.ts (not source-pattern matches).

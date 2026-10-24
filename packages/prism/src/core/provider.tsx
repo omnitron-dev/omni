@@ -26,6 +26,15 @@ import { useResolvedMode } from './hooks/use-media-query.js';
 import { createPrismTheme } from '../theme/create-theme.js';
 import { useSettingsStore } from '../state/stores/settings.js';
 
+export interface PrismThemeOverrideContext {
+  /** Actual palette mode after resolving the operating-system preference. */
+  mode: 'light' | 'dark';
+}
+
+export type PrismThemeOverrides =
+  | Record<string, unknown>
+  | ((context: PrismThemeOverrideContext) => Record<string, unknown>);
+
 /**
  * Props for PrismProvider.
  */
@@ -38,8 +47,8 @@ export interface PrismProviderProps {
   defaultSettings?: Partial<PrismSettingsState>;
   /** Disable CSS baseline */
   disableCssBaseline?: boolean;
-  /** Custom theme overrides */
-  themeOverrides?: Record<string, unknown>;
+  /** Static overrides or an application palette derived from the resolved native mode. */
+  themeOverrides?: PrismThemeOverrides;
   /**
    * Locale code passed to MUI's `LocalizationProvider` as
    * `adapterLocale` — e.g. `'ru'`, `'en'`. Must be a locale already
@@ -233,7 +242,9 @@ export function PrismProvider({
         contrast: storeContrast,
         fontFamily: storeFontFamily,
         fontSize: storeFontSize,
-        overrides: themeOverrides,
+        overrides: typeof themeOverrides === 'function'
+          ? themeOverrides({ mode: resolvedMode })
+          : themeOverrides,
       }),
     [
       storePreset,

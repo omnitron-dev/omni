@@ -74,3 +74,6 @@ export {
   type PrismIconName,
   type PrismIconComponent,
 } from '../icons/context.js';
+
+// Lightweight layout primitive; importing it must not load editor/map barrels.
+export { Scrollbar, type ScrollbarProps } from '../components/scrollbar/index.js';

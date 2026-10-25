@@ -507,9 +507,10 @@ export interface IProcessEntry {
   /** Environment variables specific to this process */
   env?: Record<string, string>;
 
-  /** Custom HTTP routes (only relevant if transports.http is set) */
+  /** Custom HTTP routes after reserved Netron endpoints (only with transports.http). */
   customRoutes?: Array<{
     method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+    /** Literal pathname with optional * wildcards; query strings are excluded. */
     pattern: string;
     handler: (req: Request) => Promise<Response | null>;
   }>;

@@ -476,7 +476,16 @@ class BootstrapProcess {
 
       // Wire custom routes from process entry
       if (this.entry.customRoutes && this.entry.customRoutes.length > 0) {
-        transportOptions['customRoutes'] = this.entry.customRoutes.map((r) => r.handler);
+        transportOptions['customRoutes'] = this.entry.customRoutes.map((route) => {
+          // Titan accepts fall-through handlers, while defineSystem declares routes.
+          // Preserve the method and pathname boundary when adapting between them.
+          const pattern = new RegExp('^' + route.pattern.split('*')
+            .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$');
+          return async (request: Request) => {
+            if (request.method !== route.method || !pattern.test(new URL(request.url).pathname)) return null;
+            return route.handler(request);
+          };
+        });
       }
 
       this.app.netron.registerTransportServer('http', {

@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "date": "2026-10-25",
+  "productionTrigger": "Consumer f63526f8-a835-40f3-9541-914f490eff4c failed application readiness after API startup",
+  "nativeDefect": "BootstrapProcess projected declared customRoutes to handlers only, discarding method and pathname matching.",
+  "correction": "Adapt declared method and anchored literal pathname with * wildcards to Titan fallthrough handlers; preserve order, null fallthrough and reserved native endpoints. Query strings excluded; encoded slashes are not decoded.",
+  "validation": {
+    "realBootstrapHttpTests": 4,
+    "focusedTotal": 17,
+    "backendTypecheck": "passed",
+    "backendBuild": "passed",
+    "originalCode": "2 of 3 native HTTP tests failed: readiness intercepted by media handler; POST invoked GET media handler.",
+    "stagedConsumerTests": 4,
+    "stagedConsumerFocusedTotal": 23
+  },
+  "retainedBroaderFailure": {
+    "result": "25 passed, 1 failed across 3 files",
+    "test": "a-definition-loader-that-kept-its-first-graph.test.ts:155",
+    "reason": "Mock launch object lacks prepareBootstrapBuild; the failing path does not invoke the changed HTTP adapter. Retained, not fixed in this bounded change."
+  },
+  "logs": {
+    "originalNative": {
+      "path": "/tmp/omni-routes-red.log",
+      "sha256": "5136e7bfe672975c9581dfaea852a514147f741d226ce17f36bd38eccd877d00"
+    },
+    "originalApplication": {
+      "path": "/tmp/consumer-readiness-red.log",
+      "sha256": "e176d1006a8b28eafbbaa3be7e2b2980b1e4bcbd323764f57348e3cdd4749a4c"
+    },
+    "focusedNative": {
+      "path": "/tmp/omni-routes-green-focused.log",
+      "sha256": "dd94cd71b8dbbd9d7d2b97ef2c190e0420157910bf3467e15ab31a087ef84236"
+    },
+    "stagedApplication": {
+      "path": "/tmp/consumer-ready-green.log",
+      "sha256": "5b6411578b012c1bde142ec20f1f7770388fd21aed320d9f5100c03aa3b8cba1"
+    },
+    "broaderNative": {
+      "path": "/tmp/omni-routes-green.log",
+      "sha256": "8b7c34839bcc9617fbd8ece2aa9888db8c27882f151d56dc8ace4c24e82c27ae"
+    }
+  },
+  "liveAcceptance": "pending controlled platform and application delivery"
+}

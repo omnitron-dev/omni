@@ -1200,6 +1200,7 @@ function snapshot(root) {
       const p=path.join(root,rel),st=fs.lstatSync(p);
       if(st.isSymbolicLink()) {
         const link=fs.readlinkSync(p),resolved=path.resolve(path.dirname(p),link);
+        if(path.isAbsolute(link))throw Error('Installed symlink must remain relative after promotion: '+rel);
         if(!resolved.startsWith(root+'/'))throw Error('Installed symlink escapes bundle: '+rel);
         entries[rel]={kind:'link',link};
       } else if(st.isDirectory()){entries[rel]={kind:'directory',mode:st.mode&0o777};visit(rel)}

@@ -18,7 +18,7 @@ function fixture() {
   fs.writeFileSync(path.join(source, 'BUNDLE.json'), JSON.stringify({ version, commit: 'a'.repeat(40) }));
   fs.writeFileSync(path.join(source, 'dist/cli/omnitron.js'), '#!/bin/sh\nprintf "%s\\n" "'+version+'"\n'.replaceAll('\\n', '\n'));
   // A real child process mutates only its staged dependency tree; no network.
-  fs.writeFileSync(path.join(bin, 'npm'), '#!/bin/sh\nprintf x >> "$INSTALL_COUNTER"\nmkdir -p node_modules\nprintf dependency > node_modules/value\nif [ "$FAIL_INSTALL" = yes ]; then exit 17; fi\n'.replaceAll('\\n', '\n'), { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, 'npm'), '#!/bin/sh\nprintf x >> "$INSTALL_COUNTER"\nmkdir -p node_modules\nprintf dependency > node_modules/value\nif [ "$ABSOLUTE_LINK" = yes ]; then ln -s "$PWD/node_modules/value" node_modules/absolute; fi\nif [ "$FAIL_INSTALL" = yes ]; then exit 17; fi\n'.replaceAll('\\n', '\n'), { mode: 0o755 });
   const archive = path.join(root, 'bundle.tgz');
   const pack = () => execFileSync('tar', ['-czf', archive, '-C', source, '.'], { env: { ...process.env, COPYFILE_DISABLE: '1' } });
   pack();
@@ -51,6 +51,13 @@ describe('immutable native bundle installation', () => {
     expect(f.run().trim()).toBe(f.layout.version);
     expect(fs.existsSync(path.join(f.prefix,'versions',failed[0]!))).toBe(true);
     expect(fs.readFileSync(f.counter,'utf8')).toBe('xx');
+  });
+  it('refuses an absolute dependency symlink that would break after sibling promotion', () => {
+    const f = fixture();
+    expect(() => f.run({ ABSOLUTE_LINK: 'yes' })).toThrow(/symlink must remain relative/);
+    expect(fs.existsSync(f.dir)).toBe(false);
+    const stage = fs.readdirSync(path.join(f.prefix, 'versions'))[0]!;
+    expect(fs.lstatSync(path.join(f.prefix, 'versions', stage, 'node_modules/absolute')).isSymbolicLink()).toBe(true);
   });
   it('leaves the serving version intact if the new CLI does not match its manifest', () => {
     const f = fixture(), old = path.join(f.prefix, 'versions', '0.2.0');

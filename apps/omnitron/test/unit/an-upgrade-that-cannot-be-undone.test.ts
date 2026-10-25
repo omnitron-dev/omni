@@ -49,42 +49,18 @@ describe('installing beside what is running', () => {
     expect(commands).not.toContain('/opt/omnitron/current');
   });
 
-  it('clears a directory an interrupted attempt left behind', () => {
-    // `npm install` over a half-unpacked tree reconciles against whatever is
-    // there, and what comes out is not this version — it is a mixture, which
-    // then passes the version check because `package.json` unpacked first.
-    expect(script(installSteps(layout, '/tmp/b.tgz'))).toContain('rm -rf');
+  it('preserves existing versions and installs into a fresh sibling', () => {
+    const commands = script(installSteps(layout, '/tmp/b.tgz'));
+    expect(commands).not.toContain('rm -rf');
+    expect(commands).toContain('.install-');
+    expect(commands).toContain('fs.renameSync(stage,dir)');
+    expect(commands).toContain('Existing bundle identity conflicts');
   });
 
-  it('runs the new copy before anything points at it', () => {
-    const steps = installSteps(layout, '/tmp/b.tgz');
-    const check = steps.find((s) => s.what.includes('runs'));
-
-    expect(check).toBeTruthy();
-    // By absolute path into the version directory — not `omnitron --version`,
-    // which would run whatever `current` points at and pass whatever happens.
-    expect(check!.command).toContain(`${versionDir(layout)}/dist/cli/omnitron.js`);
-    expect(check!.command).not.toMatch(/^\s*omnitron /);
-  });
-
-  it('makes the entry point executable before anything runs it', () => {
-    // Measured 2026-09-23: a dist compiled by plain `tsc --outDir` had
-    // `dist/cli/omnitron.js` at 0644, and the upgrade of sample-test stopped at
-    // the check below with «Permission denied», the node unchanged. The mode
-    // is set on the node, where it is needed, whatever the builder left.
-    const steps = installSteps(layout, '/tmp/b.tgz');
-    const chmod = steps.findIndex((s) => /chmod 755 .*\/dist\/cli\/omnitron\.js/.test(s.command));
-    const check = steps.findIndex((s) => s.what.includes('runs'));
-
-    expect(chmod, 'no step makes the entry point executable').toBeGreaterThan(-1);
-    expect(chmod).toBeLessThan(check);
-    expect(steps[chmod]!.command).toContain(versionDir(layout));
-  });
-
-  it('checks last, after the install it is checking', () => {
-    const steps = installSteps(layout, '/tmp/b.tgz');
-
-    expect(steps[steps.length - 1]!.what).toContain('runs');
+  it('checks the actual CLI before promoting the sibling', () => {
+    const commands = script(installSteps(layout, '/tmp/b.tgz'));
+    expect(commands.indexOf('check(stage)')).toBeLessThan(commands.indexOf('fs.renameSync(stage,dir)'));
+    expect(commands.indexOf('fs.chmodSync')).toBeLessThan(commands.indexOf('check(stage)'));
   });
 
   it('gives npm a deadline long enough to finish', () => {
@@ -205,7 +181,7 @@ describe('quoting', () => {
   it('quotes a version that contains shell characters', () => {
     // `+` is in every local version by construction, and a version is a
     // directory name interpolated into a remote shell command.
-    const odd: InstallLayout = { prefix: "/opt/om'nitron", version: "0.2.0+local.a'b.1" };
+    const odd: InstallLayout = { prefix: "/opt/om'nitron", version: "0.2.0+local.ab.1" };
 
     for (const step of [...installSteps(odd, '/tmp/b.tgz'), ...activateSteps(odd)]) {
       expect(step.command, step.what).toContain("'\\''");

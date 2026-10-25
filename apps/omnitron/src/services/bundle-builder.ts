@@ -1121,6 +1121,10 @@ export interface InstallLayout {
 }
 
 export function versionDir(layout: InstallLayout): string {
+  if (!/^\d+\.\d+\.\d+(?:-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?(?:\+[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?$/.test(layout.version))
+    throw new Error('Bundle version must be one complete semantic-version path segment');
+  if (!path.posix.isAbsolute(layout.prefix) || layout.prefix === '/' || path.posix.normalize(layout.prefix) !== layout.prefix || /[\\\r\n\0]/.test(layout.prefix))
+    throw new Error('Bundle prefix must be a canonical absolute directory');
   return `${layout.prefix}/versions/${layout.version}`;
 }
 
@@ -1141,45 +1145,121 @@ export interface RemoteStep {
  *
  * `archivePath` is where the caller put the tarball on the target.
  */
-export function installSteps(layout: InstallLayout, archivePath: string): readonly RemoteStep[] {
-  const dir = versionDir(layout);
-  return [
-    {
-      what: `unpack ${layout.version}`,
-      // Removed first: a directory left by an interrupted earlier attempt
-      // would have `npm install` reconcile against a half-unpacked tree, and
-      // what comes out of that is not this version.
-      command: `rm -rf ${q(dir)} && mkdir -p ${q(dir)} && tar -xzf ${q(archivePath)} -C ${q(dir)}`,
-      timeoutMs: 300_000,
-    },
-    {
-      what: 'make the entry point executable',
-      // The steps below run `dist/cli/omnitron.js` directly and `bin/omnitron`
-      // links to it, so its mode is part of whether this version runs — and it
-      // came from whatever built the dist on the master. Measured 2026-09-23:
-      // a dist compiled by plain `tsc --outDir` has the file 0644, and the
-      // upgrade of sample-test stopped here with «omnitron.js: Permission
-      // denied», the node unchanged. The mode is set where it is needed.
-      command: `chmod 755 ${q(`${dir}/dist/cli/omnitron.js`)}`,
-      timeoutMs: 30_000,
-    },
-    {
-      what: 'install dependencies for this machine',
-      // `--omit=dev` because a node runs the daemon, it does not build it.
-      // `--no-audit --no-fund` because neither says anything about whether
-      // the install worked, and both write to stdout a caller has to read
-      // past.
-      command: `cd ${q(dir)} && npm install --omit=dev --no-audit --no-fund`,
-      timeoutMs: 900_000,
-    },
-    {
-      what: 'check that it runs before making it current',
-      // The whole reason for the versioned layout. This runs the NEW copy by
-      // absolute path, while the old one is still the one serving.
-      command: `${q(`${dir}/dist/cli/omnitron.js`)} --version`,
-      timeoutMs: 120_000,
-    },
-  ];
+const installPrefixSource = String.raw`
+function directory(p) {
+  let parent=p;
+  while (!fs.existsSync(parent)) {
+    try { fs.lstatSync(parent); throw Error('Dangling installation path: '+parent); }
+    catch(e) { if(e.code!=='ENOENT') throw e; }
+    const next=path.dirname(parent); if(next===parent) throw Error('Missing installation root'); parent=next;
+  }
+  if(fs.realpathSync(parent)!==parent || !fs.statSync(parent).isDirectory()) throw Error('Noncanonical installation parent: '+parent);
+  fs.mkdirSync(p,{recursive:true});
+  if(fs.realpathSync(p)!==p || !fs.lstatSync(p).isDirectory()) throw Error('Noncanonical installation directory: '+p);
+}
+for(const p of [prefix,prefix+'/versions',prefix+'/releases']) directory(p);
+`;
+
+/** Check physical ownership before even uploading into the prefix. */
+export function installPreflightCommand(layout: InstallLayout): string {
+  versionDir(layout);
+  const code = `const fs=require('node:fs'),path=require('node:path'),prefix=${JSON.stringify(layout.prefix)};${installPrefixSource}`;
+  return `node -e ${q(code)}`;
+}
+
+/**
+ * A completed version is never unpacked or installed again. Each attempt gets
+ * a fresh sibling and publishes it only after npm and the actual CLI pass.
+ * The receipt hashes the complete installed tree, so reuse verifies both the
+ * archive identity and physical dependencies, including modes and symlinks.
+ * Failed siblings remain available for diagnosis; they are never reused.
+ */
+export function installSteps(
+  layout: InstallLayout,
+  archivePath: string,
+  expectedArchiveSha256?: string,
+): readonly RemoteStep[] {
+  versionDir(layout);
+  if (expectedArchiveSha256 !== undefined && !/^[a-f0-9]{64}$/.test(expectedArchiveSha256))
+    throw new Error('Bundle archive identity must be a SHA256');
+  const code = String.raw`
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),cp=require('node:child_process');
+const [prefix,version,archive,expected]=process.argv.slice(1),dir=prefix+'/versions/'+version;
+${installPrefixSource}
+const sha=b=>crypto.createHash('sha256').update(b).digest('hex');
+const archiveHash=sha(fs.readFileSync(archive));
+if(expected && archiveHash!==expected) throw Error('Bundle archive SHA256 mismatch');
+const record='.omnitron-install.json';
+function present(p){try{fs.lstatSync(p);return true}catch(e){if(e.code==='ENOENT')return false;throw e}}
+function snapshot(root) {
+  const entries={};
+  function visit(relative) {
+    for(const name of fs.readdirSync(path.join(root,relative)).sort()) {
+      const rel=relative?relative+'/'+name:name;
+      if(rel===record)continue;
+      const p=path.join(root,rel),st=fs.lstatSync(p);
+      if(st.isSymbolicLink()) {
+        const link=fs.readlinkSync(p),resolved=path.resolve(path.dirname(p),link);
+        if(!resolved.startsWith(root+'/'))throw Error('Installed symlink escapes bundle: '+rel);
+        entries[rel]={kind:'link',link};
+      } else if(st.isDirectory()){entries[rel]={kind:'directory',mode:st.mode&0o777};visit(rel)}
+      else if(st.isFile())entries[rel]={kind:'file',mode:st.mode&0o777,sha256:sha(fs.readFileSync(p))};
+      else throw Error('Unsupported installed entry: '+rel);
+    }
+  }
+  visit('');return entries;
+}
+function identity(root){
+  const pkg=JSON.parse(fs.readFileSync(root+'/package.json','utf8'));
+  const bundle=JSON.parse(fs.readFileSync(root+'/BUNDLE.json','utf8'));
+  if(pkg.version!==version || bundle.version!==version)throw Error('Bundle metadata version mismatch');
+}
+function check(root){
+  identity(root);
+  const out=cp.execFileSync(root+'/dist/cli/omnitron.js',['--version'],{encoding:'utf8',timeout:120000,stdio:['ignore','pipe','pipe']});
+  if(out.trim().split('\n').pop().trim()!==version)throw Error('Installed CLI version mismatch');
+}
+function reuse(){
+  if(fs.realpathSync(dir)!==dir || !fs.lstatSync(dir).isDirectory())throw Error('Existing bundle path is not an immutable directory');
+  const r=JSON.parse(fs.readFileSync(dir+'/'+record,'utf8'));
+  if(r.schema!==1 || r.version!==version || r.archiveSha256!==archiveHash)throw Error('Existing bundle identity conflicts with archive');
+  if(JSON.stringify(r.entries)!==JSON.stringify(snapshot(dir)))throw Error('Existing bundle content differs from install receipt');
+  check(dir);console.log(version);
+}
+if(present(dir)){reuse();process.exit(0)}
+// Refuse unsafe archive paths and links before tar can write anything. Bundle
+// archives created by packBundle contain regular files/directories only.
+const names=cp.execFileSync('tar',['-tzf',archive],{encoding:'utf8',maxBuffer:32*1024*1024}).trim().split('\n');
+for(const name of names){
+  if(!name || name.startsWith('/') || name.split('/').includes('..') || name.includes('\r'))throw Error('Unsafe bundle archive path');
+}
+const listing=cp.execFileSync('tar',['-tvzf',archive],{encoding:'utf8',maxBuffer:32*1024*1024}).trim().split('\n');
+if(listing.some(line=>!['-','d'].includes(line[0])))throw Error('Bundle archive must contain regular files and directories only');
+const stage=prefix+'/versions/.install-'+version+'-'+crypto.randomUUID();fs.mkdirSync(stage,{mode:0o700});
+cp.execFileSync('tar',['-xzf',archive,'-C',stage],{timeout:300000,stdio:'inherit'});
+identity(stage);
+if(present(stage+'/'+record))throw Error('Archive may not supply an installation receipt');
+fs.chmodSync(stage+'/dist/cli/omnitron.js',0o755);
+cp.execFileSync('npm',['install','--omit=dev','--no-audit','--no-fund'],{cwd:stage,timeout:900000,stdio:'inherit'});
+check(stage);
+const entries=snapshot(stage);
+fs.writeFileSync(stage+'/'+record,JSON.stringify({schema:1,version,archiveSha256:archiveHash,entries})+'\n',{flag:'wx',mode:0o600});
+function syncTree(p){
+  const st=fs.lstatSync(p);if(st.isSymbolicLink())return;
+  if(st.isDirectory())for(const name of fs.readdirSync(p))syncTree(path.join(p,name));
+  const fd=fs.openSync(p,'r');try{fs.fsyncSync(fd)}finally{fs.closeSync(fd)}
+}
+syncTree(stage);
+if(present(dir))throw Error('Bundle appeared while the sibling was installing; refusing replacement');
+fs.renameSync(stage,dir);
+const fd=fs.openSync(prefix+'/versions','r');try{fs.fsyncSync(fd)}finally{fs.closeSync(fd)}
+console.log(version);
+`;
+  return [{
+    what: 'install dependencies in an immutable sibling and check that it runs',
+    command: `node -e ${q(code)} ${q(layout.prefix)} ${q(layout.version)} ${q(archivePath)} ${q(expectedArchiveSha256 ?? '')}`,
+    timeoutMs: 1_500_000,
+  }];
 }
 
 /**

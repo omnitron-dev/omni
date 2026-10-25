@@ -60,7 +60,7 @@ import {
   planProvisioning,
   describePlan,
 } from './remote-provisioner.js';
-import { installSteps, activateSteps, pruneSteps } from './bundle-builder.js';
+import { installSteps, installPreflightCommand, versionDir, activateSteps, pruneSteps } from './bundle-builder.js';
 import { reachabilityRule, reachabilityCommand } from '../infrastructure/gateway-reachability.js';
 import { readNodeHealth, readNodeStatus } from '../project/node-app-health.js';
 import {
@@ -1622,20 +1622,22 @@ export class RemoteDeployer {
   ): Promise<boolean> {
     const nodeKey = `${target.host}:${target.daemonPort ?? 9700}`;
     const layout = { prefix, version };
-    // Under the prefix, not `/tmp`: a bundle is tens of megabytes and `/tmp`
-    // is a tmpfs on many hosts, where a large transfer competes with memory.
-    const remoteArchive = `${prefix}/releases/${version}.tar.gz`;
-
     try {
+      // Reject path traversal before any connection, upload or filesystem mutation.
+      versionDir(layout);
+      const fs = await import('node:fs/promises');
+      const archiveSha256 = crypto.createHash('sha256').update(await fs.readFile(archivePath)).digest('hex');
+      // Content-addressed transfer cannot replace an earlier archive with different bytes.
+      const remoteArchive = `${prefix}/releases/${version}.${archiveSha256}.tar.gz`;
       this.emitProgress(nodeKey, '*', 'pending', 0, 'Connecting via SSH...');
       await this.verifySSH(target);
 
       this.emitProgress(nodeKey, '*', 'transferring', 10, `Transferring ${version}...`);
-      await this.sshExec(target, `mkdir -p ${shellEscape(`${prefix}/releases`)}`);
+      await this.sshExec(target, installPreflightCommand(layout));
       await this.scpTransfer(target, archivePath, remoteArchive);
 
       let progress = 30;
-      for (const step of installSteps(layout, remoteArchive)) {
+      for (const step of installSteps(layout, remoteArchive, archiveSha256)) {
         this.emitProgress(nodeKey, '*', 'extracting', progress, step.what);
         const output = await this.sshExec(target, step.command, step.timeoutMs);
         if (step.what.includes('runs')) {

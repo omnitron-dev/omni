@@ -27,7 +27,11 @@ export function SidebarToggle({ collapsed, labels, sx, ...props }: SidebarToggle
           border: 1,
           borderColor: 'divider',
           boxShadow: 1,
-          '&:hover': { bgcolor: 'action.hover' },
+          // Keep an opaque surface over the rail divider in every interactive state.
+          '&:hover, &.Mui-focusVisible': {
+            bgcolor: 'background.paper',
+            backgroundImage: `linear-gradient(${(theme.vars ?? theme).palette.action.hover}, ${(theme.vars ?? theme).palette.action.hover})`,
+          },
         }),
         ...(Array.isArray(sx) ? sx : [sx]),
       ]}

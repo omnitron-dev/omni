@@ -77,3 +77,12 @@ export {
 
 // Lightweight layout primitive; importing it must not load editor/map barrels.
 export { Scrollbar, type ScrollbarProps } from '../components/scrollbar/index.js';
+
+export {
+  PrismDatePicker,
+  PrismTimePicker,
+  PrismDateTimePicker,
+  datePickerRuRU,
+  datePickerEnUS,
+  type PrismCalendarInputProps,
+} from '../components/date-input/index.js';

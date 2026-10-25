@@ -5,13 +5,16 @@ import { emitError, emitJson } from './output.js';
 import type { IOmnitronInfraService } from '../shared/dto/services.js';
 
 /** The host daemon owns publication; CLI and Webapp call the same authenticated API. */
-export async function hostIngressCommand(operation: 'configure' | 'apply' | 'check' | 'remove' | 'status' | 'recover', filename?: string): Promise<void> {
+export async function hostIngressCommand(operation: 'configure' | 'apply' | 'check' | 'validate' | 'restore' | 'rollback-takeover' | 'remove' | 'status' | 'recover', filename?: string): Promise<void> {
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {
     const input = filename ? JSON.parse(await readFile(filename, 'utf8')) : undefined;
     const service = await client.service<IOmnitronInfraService>('OmnitronInfra');
     const result = operation === 'configure' ? await service.configureHostIngress(input)
       : operation === 'check' ? await service.checkHostIngress(input)
+      : operation === 'validate' ? await service.validateHostIngress(input)
+      : operation === 'restore' ? await service.restoreHostIngressOwner(input)
+      : operation === 'rollback-takeover' ? await service.rollbackHostIngressTakeover(input)
       : operation === 'apply' ? await service.applyHostIngress(input)
       : operation === 'remove' ? await service.removeHostIngress(input)
       : operation === 'recover' ? await service.recoverHostIngress()

@@ -441,6 +441,9 @@ export interface IOmnitronDeployService {
  * console's build.
  */
 export interface IOmnitronInfraService {
+  validateHostIngress(data: import('../../infrastructure/host-ingress-types.js').HostIngressApply): Promise<import('../../infrastructure/host-ingress-types.js').HostIngressValidation>;
+  restoreHostIngressOwner(data: import('../../infrastructure/host-ingress-types.js').HostIngressOwnerRestore): Promise<import('../../infrastructure/host-ingress-types.js').HostIngressReceipt>;
+  rollbackHostIngressTakeover(data: import('../../infrastructure/host-ingress-types.js').HostIngressTakeoverRollback): Promise<import('../../infrastructure/host-ingress-types.js').HostIngressTakeoverRollbackReceipt>;
   checkHostIngress(data: import('../../infrastructure/host-ingress-types.js').HostIngressApply): Promise<import('../../infrastructure/host-ingress-types.js').HostIngressCheck>;
   configureHostIngress(data: import('../../infrastructure/host-ingress-types.js').HostIngressSettings): Promise<{ configured: true; settings: import('../../infrastructure/host-ingress-types.js').HostIngressSettings }>;
   getHostIngress(): Promise<import('../../infrastructure/host-ingress-types.js').HostIngressStatus>;

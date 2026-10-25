@@ -6,7 +6,7 @@
  */
 
 import { HostIngressService } from '../infrastructure/host-ingress.service.js';
-import type { HostIngressApply, HostIngressRemove, HostIngressSettings } from '../infrastructure/host-ingress-types.js';
+import type { HostIngressApply, HostIngressRemove, HostIngressSettings, HostIngressOwnerRestore, HostIngressTakeoverRollback } from '../infrastructure/host-ingress-types.js';
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 import { VIEWER_ROLES, OPERATOR_ROLES, CONTROL_PLANE_ROLES, CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
@@ -93,6 +93,15 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
 
   @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
   async checkHostIngress(data: HostIngressApply) { return this.hostIngress.check(data); }
+
+  @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
+  async validateHostIngress(data: HostIngressApply) { return this.hostIngress.validate(data); }
+
+  @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
+  async restoreHostIngressOwner(data: HostIngressOwnerRestore) { return this.hostIngress.restoreOwner(data); }
+
+  @Public({ auth: { roles: ['admin', 'service_role'] } })
+  async rollbackHostIngressTakeover(data: HostIngressTakeoverRollback) { return this.hostIngress.rollbackTakeover(data); }
 
   @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
   async applyHostIngress(data: HostIngressApply) { return this.hostIngress.apply(data); }

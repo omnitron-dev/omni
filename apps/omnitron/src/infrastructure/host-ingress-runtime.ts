@@ -1,9 +1,10 @@
+import { DockerIngressTakeover } from './host-ingress-takeover.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import http from 'node:http';
 import net from 'node:net';
-import type { HostIngressRuntime, HostIngressSettings } from './host-ingress-types.js';
+import type { HostIngressRuntime, HostIngressSettings, HostIngressTakeover, HostIngressTakeoverSnapshot } from './host-ingress-types.js';
 
 const execute = promisify(execFile);
 export type IngressExec = (file: string, args: string[]) => Promise<string>;
@@ -14,6 +15,10 @@ const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 
 export class DockerHostIngressRuntime implements HostIngressRuntime {
   constructor(private readonly root: string, private readonly exec: IngressExec = async (file, args) => (await execute(file, args, { timeout: 120_000, maxBuffer: 1024 * 1024 })).stdout) {}
+  async inspectTakeover(settings: HostIngressSettings, descriptor: HostIngressTakeover) { return new DockerIngressTakeover(this.exec).inspect(settings, descriptor); }
+  async quiesceTakeover(snapshot: HostIngressTakeoverSnapshot) { return new DockerIngressTakeover(this.exec).quiesce(snapshot); }
+  async restoreTakeover(settings: HostIngressSettings, snapshot: HostIngressTakeoverSnapshot) { return new DockerIngressTakeover(this.exec).restore(settings, snapshot); }
+  async verifyRetiredTakeover(snapshot: HostIngressTakeoverSnapshot) { return new DockerIngressTakeover(this.exec).verifyRetired(snapshot); }
   private labels(settings: HostIngressSettings): Record<string, string> {
     return { 'omnitron.host-ingress': 'true', 'omnitron.host-ingress.owner': hash(this.root), 'omnitron.host-ingress.settings': hash(JSON.stringify(settings)) };
   }

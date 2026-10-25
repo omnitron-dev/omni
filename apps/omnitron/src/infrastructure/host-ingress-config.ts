@@ -42,19 +42,20 @@ export function normalizeIngressSettings(value: unknown): HostIngressSettings {
   if (new Set([httpPort, httpsPort, controlPort]).size !== 3) throw new Error('Ingress listener ports must differ');
   const certificateRoot = text(r.certificateRoot, 'certificateRoot');
   if (!path.isAbsolute(certificateRoot) || /[\0\r\n,]/.test(certificateRoot)) throw new Error('certificateRoot must be an absolute host path');
-  const policy = record(r.proxyPolicy, ['mode', 'trustedCidrs'], 'proxy policy');
+  const policy = record(r.proxyPolicy, ['mode', 'trustedCidrs', 'allowLoopbackProbes'], 'proxy policy');
+  if (policy.allowLoopbackProbes !== undefined && typeof policy.allowLoopbackProbes !== 'boolean') throw new Error('allowLoopbackProbes must be boolean');
   if (!Array.isArray(policy.trustedCidrs)) throw new Error('trustedCidrs must be an array');
   const trustedCidrs = [...new Set(policy.trustedCidrs.map((value) => {
     const cidr = text(value, 'CIDR'); const parts = cidr.split('/'); const family = isIP(parts[0]!);
     if (parts.length !== 2 || !family || !/^\d+$/.test(parts[1]!) || Number(parts[1]) < 1 || Number(parts[1]) > (family === 4 ? 32 : 128)) throw new Error(`Invalid trusted CIDR: ${cidr}`);
     return `${parts[0]!.toLowerCase()}/${Number(parts[1])}`;
   }))].sort();
-  if (policy.mode === 'cloudflare-only' && trustedCidrs.length > 0) return { image, httpPort, httpsPort, controlPort, certificateRoot: path.resolve(certificateRoot), proxyPolicy: { mode: 'cloudflare-only', trustedCidrs } };
-  if (policy.mode === 'direct' && trustedCidrs.length === 0) return { image, httpPort, httpsPort, controlPort, certificateRoot: path.resolve(certificateRoot), proxyPolicy: { mode: 'direct', trustedCidrs: [] } };
+  if (policy.mode === 'cloudflare-only' && trustedCidrs.length > 0) return { image, httpPort, httpsPort, controlPort, certificateRoot: path.resolve(certificateRoot), proxyPolicy: { mode: 'cloudflare-only', trustedCidrs, ...(policy.allowLoopbackProbes ? { allowLoopbackProbes: true } : {}) } };
+  if (policy.mode === 'direct' && trustedCidrs.length === 0 && !policy.allowLoopbackProbes) return { image, httpPort, httpsPort, controlPort, certificateRoot: path.resolve(certificateRoot), proxyPolicy: { mode: 'direct', trustedCidrs: [] } };
   throw new Error('Cloudflare-only requires explicit trusted CIDRs; direct mode trusts no proxy headers');
 }
 export function normalizeIngressApplication(value: unknown): HostIngressApplication {
-  const r = record(value, ['owner', 'reservedPorts', 'routes', 'expectedGeneration'], 'application ingress');
+  const r = record(value, ['owner', 'reservedPorts', 'routes', 'expectedGeneration', 'preparedOwnerRevision', 'takeover'], 'application ingress');
   const owner = ingressOwner(r.owner);
   if (!Array.isArray(r.reservedPorts) || r.reservedPorts.length > 1000 || !Array.isArray(r.routes) || !r.routes.length || r.routes.length > 100) throw new Error('Declare reservedPorts and 1–100 routes');
   const ports = new Set(r.reservedPorts.map(ingressPort)); const allDomains = new Set<string>();
@@ -110,6 +111,7 @@ export function renderHostIngress(settings: HostIngressSettings, manifest: HostI
     for (const cidr of settings.proxyPolicy.trustedCidrs) lines.push(`  set_real_ip_from ${cidr};`);
     lines.push('  real_ip_header CF-Connecting-IP;', '  real_ip_recursive on;', '  geo $realip_remote_addr $ingress_trusted_proxy {', '    default 0;');
     for (const cidr of settings.proxyPolicy.trustedCidrs) lines.push(`    ${cidr} 1;`);
+    if (settings.proxyPolicy.allowLoopbackProbes) lines.push('    127.0.0.1/32 1;', '    ::1/128 1;');
     lines.push('  }');
   }
   lines.push(`  server { listen 127.0.0.1:${settings.controlPort}; location = /generation { default_type text/plain; return 200 "${manifest.generation}"; } location / { return 404; } }`, `  server { listen ${settings.httpPort} default_server; server_name _; return 444; }`, `  server { listen ${settings.httpsPort} ssl default_server; server_name _; ssl_reject_handshake on; return 444; }`);

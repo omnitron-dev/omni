@@ -815,7 +815,7 @@ program
 const infra = program.command('infra').description('Manage infrastructure containers (PostgreSQL, Redis, MinIO, etc.)');
 
 const ingress = infra.command('ingress').description('Manage host-owned public ingress independently of application stacks');
-for (const operation of ['configure', 'check', 'apply', 'remove'] as const) {
+for (const operation of ['configure', 'check', 'validate', 'apply', 'restore', 'rollback-takeover', 'remove'] as const) {
   ingress.command(`${operation} <manifest>`)
     .description(`${operation} host ingress using a JSON manifest (host daemon, exact generation CAS)`)
     .action(async (manifest: string) => {

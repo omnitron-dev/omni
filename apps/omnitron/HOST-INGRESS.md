@@ -76,11 +76,64 @@ The proxy runs with one worker, one CPU, 256 MiB memory, 64 PIDs, a 64 MiB tempo
 
 An application deployment must use the installed framework; changing the host framework is a separate controlled transaction. A daemon upgrade can stop all supervised applications even while this independent ingress container remains running. Plan an application outage and use the host-upgrade inventory/rebind/restore contract; do not hide framework activation inside one tenant's release. Existing long-lived client connections and application-level recovery require their own validation.
 
-For the initial move from an app-owned public proxy, inventory every tenant and listener, retain the old TLS/config/container rollback material, stage the new host settings and certificates, validate the tenant admission manifest, and coordinate the public-port handoff under the host lease. The old container must release ports 80/443 before the new host container can start. Do not stop unrelated stacks or let an app teardown own the new host proxy. This source change performs no production handoff by itself.
+For the initial move from an app-owned public proxy, inventory every tenant and listener, retain the old TLS/config/container rollback material, stage the new host settings and certificates, validate the tenant admission manifest, and coordinate the public-port handoff under the host lease. The old container must release ports 80/443 before the new host container can start. Do not stop unrelated stacks or let an app teardown own the new host proxy. The explicit native initial takeover below performs the coordinated handoff; configuring or checking alone does not mutate production listeners.
+
+## Prepublication validation and exact application rollback
+
+`validateHostIngress(input)` / `omnitron --json infra ingress validate tenant.json` uses the same immutable certificate snapshots and candidate construction as publication, including real `nginx -t`. It does not change `current`, write a publication journal, stop any container, or reload/start ingress. It returns the current `generation`, the `candidateGeneration`, `ownerRevision`, and `nativeConfigValidated: true`. This method can also be called through the candidate's native `HostIngressService` module before upgrading an older daemon that does not yet expose the RPC. Configure the host first. Validation writes immutable staging objects; `checkHostIngress` remains read-only and reports `nativeConfigValidated: false`.
+
+Both checks return `ownerRevision`, the hash of the normalized stored owner declaration, including the exact TLS object hashes. Before applying, persist the prior generation and planned owner revision in the deployment journal. Pass the planned revision back as `preparedOwnerRevision` in the apply input; if TLS files or desired content change, publication fails before mutation. Apply returns `ownerRevision`, and status exposes `ownerRevisions: [{owner, revision}]`. This allows a controller that died after publication to distinguish its own published state from a later change without relying on a receipt it never received.
+
+To undo one application's publication, call `restoreHostIngressOwner` / `omnitron --json infra ingress restore rollback.json`:
+
+```json
+{
+  "owner": { "project": "example-production", "stack": "web", "app": "public" },
+  "fromGeneration": "1-<prior-generation-hash>",
+  "expectedGeneration": "3-<current-generation-hash>",
+  "expectedOwnerRevision": "<planned-owner-revision-from-before-publication>"
+}
+```
+
+Supply actual generation strings and the full 64-character owner revision. `fromGeneration: null`, or a prior generation that had no such owner, removes only that owner. Both current host generation and current owner revision must match. The method preserves every other tenant in the current generation and reuses the prior owner's immutable certificate snapshots; it never rereads potentially rotated/deleted source TLS filenames. A conflict stops recovery rather than overwriting someone else's deployment. Historical generations and certificate objects must remain available.
+
+## Explicit initial origin handoff
+
+For an existing app-owned host-network origin, add an explicit `takeover` descriptor to the first apply/validate request (`expectedGeneration: null` only):
+
+```json
+{
+  "containerId": "<full-64-character-legacy-Docker-ID>",
+  "containerName": "existing-project-origin",
+  "expectedLabels": {
+    "omnitron.managed": "true",
+    "omnitron.project": "example-production",
+    "omnitron.stack": "web"
+  },
+  "probe": {
+    "domain": "example.test",
+    "path": "/",
+    "status": 200,
+    "certificateSha256": "<lowercase-SHA256-of-the-leaf-certificate-DER>"
+  }
+}
+```
+
+Obtain the ID/name/labels from the explicitly identified existing origin, not by adopting an arbitrary process listening on a public port. Include additional expected labels when available. The old container must be running, use host networking, and belong to the applying owner's project/stack. The probe domain must be one of that owner's exact declared domains. HTTPS connects only to loopback at the configured public HTTPS port, checks the explicit leaf DER pin, SAN and validity, then checks the expected 200–399 status. The pin is not a hash of PEM text. It permits verifying a Cloudflare Origin certificate without disabling identity verification. Probe time is bounded by an absolute two-second deadline.
+
+For Cloudflare-only host ingress, set `proxyPolicy.allowLoopbackProbes: true` deliberately when configuring the host. This permits loopback admission without adding loopback to the list of trusted forwarding-header sources. The default is false. This does not alter the legacy origin's own access policy; its verification probe must already be permitted there.
+
+Before stopping the legacy origin, publication writes/syncs the candidate and TLS snapshots, runs native `nginx -t`, verifies the exact legacy identity and pinned HTTPS response, and durably records its original restart policy and running state. It then sets that exact old container's restart policy to `no`, stops it, publishes the new host proxy and observes the new generation. The old container is retained, never removed. A failed new-host start/acknowledgment removes only the positively owned new proxy, restores the exact old restart policy/container and verifies its pinned HTTPS response. Failure to restore leaves the journal for explicit recovery. A completed handoff is retained in `takeover.json` and reported in status as `{generation,snapshot,outcome}`.
+
+The legacy declaration and its active reconciler must be retired before handoff, or they could recreate/restart an origin that the transaction stopped. Preserve its original Nginx/TLS mount contents for rollback. In particular, an older daemon's shutdown may delete stack containers even after a profile file was changed. Verify the actual installed shutdown behavior and use a host-upgrade path that preserves the exact legacy container ID and other application infrastructure; installing newer source does not change the old process's shutdown handler. This ingress operation does not modify application profiles or freeze an external reconciler.
+
+If later acceptance fails immediately after initial handoff, call `rollbackHostIngressTakeover({expectedGeneration})` / `omnitron --json infra ingress rollback-takeover rollback.json`. It requires the exact archived initial generation, sequence 1, and only its initial owner. Any later generation or tenant causes refusal. It journals rollback intent before removing the new host proxy, restores the old restart policy/container, verifies old HTTPS and records `outcome: "rolled-back"`. Repeating the same completed rollback verifies the restored origin. `recoverHostIngress` resumes interrupted takeover or explicit rollback according to the durable journal. Restore the old application profile only after native rollback succeeds; a refusal or failed restore must remain visibly recovery-required.
+
+The initial host handoff and a later single-owner deployment rollback are different operations: the former can release public ports back to the old origin only while no later tenant has joined; the latter creates a new generation while preserving other tenants.
 
 ## Verification
 
-Run the focused suite and existing infrastructure RPC regressions. The optional native test needs local Docker, a cached digest-pinned OpenResty image, cached `node:22.14.0-bookworm-slim`, the unused dedicated container name, and unused test ports 28080/28443/28280/28461/28471:
+Run the focused suite and existing infrastructure RPC regressions. The optional native test needs local Docker, a cached digest-pinned OpenResty image, cached `node:22.14.0-bookworm-slim`, the unused dedicated container name, and unused test ports 28080/28443/28280/28461/28471 and 29080/29443/29280/29281/28481:
 
 ```sh
 OMNITRON_INGRESS_DOCKER_TEST_IMAGE='openresty/openresty@sha256:<cached-image-digest>' \
@@ -88,4 +141,4 @@ OMNITRON_INGRESS_DOCKER_TEST_IMAGE='openresty/openresty@sha256:<cached-image-dig
 pnpm --filter @omnitron-dev/omnitron exec tsc --noEmit -p tsconfig.build.json
 ```
 
-Native checks exercise two-tenant HTTPS routing, prefix rewriting, denied paths, unknown-host rejection, upload limits, removal while the second tenant remains live, and Linux kernel-lock exclusion/release after SIGKILL. Fault-injection tests cover failed validation, activation, acknowledgment, rollback, journal recovery, certificate corruption, CAS conflicts and ownership conflicts. Native tests use temporary high ports and remove their own container; they must not run on a host already serving production with that container name.
+Native checks exercise two-tenant HTTPS routing, prefix rewriting, denied paths, unknown-host rejection, upload limits, removal while the second tenant remains live, real legacy-origin handoff/failure rollback with pinned TLS and restart-policy restoration, and Linux kernel-lock exclusion/release after SIGKILL. Fault-injection tests cover failed validation, activation, acknowledgment, partial legacy stop, rollback, all takeover journal phases, exact historical owner restoration, certificate corruption, CAS conflicts and ownership conflicts. Native tests use temporary high ports and remove their own container; they must not run on a host already serving production with that container name.

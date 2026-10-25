@@ -12,3 +12,6 @@ export type { IOmnitronPipelinesService, IOmnitronSecretsService } from './share
 export type { INodeWithStatus } from './shared/dto/nodes.js';
 
 export type { HostOperationAllowance } from './services/host-operation-barrier.js';
+
+export { immutableAssetsRoot, type StaticAssetOwner, type StaticAssetSource, type StaticAssetPublication, type StaticAssetReceipt } from './services/static-carry-forward.js';
+export { compileCustomRoutes } from './orchestrator/http-routes.js';

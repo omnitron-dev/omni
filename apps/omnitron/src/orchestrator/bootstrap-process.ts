@@ -21,6 +21,7 @@ import { Errors } from '@omnitron-dev/titan/errors';
 import { HttpTransport, type HttpTrafficSnapshot } from '@omnitron-dev/titan/netron/transport/http';
 import { WebSocketTransport } from '@omnitron-dev/titan/netron/transport/websocket';
 import { loadBootstrapConfig } from './bootstrap-loader.js';
+import { compileCustomRoutes } from './http-routes.js';
 import type { AppHealthAnswer, IAppDefinition, IProcessEntry } from '../config/types.js';
 import type { IProcessTraffic } from '@omnitron-dev/titan-pm';
 import { pathToFileURL } from 'node:url';
@@ -476,16 +477,7 @@ class BootstrapProcess {
 
       // Wire custom routes from process entry
       if (this.entry.customRoutes && this.entry.customRoutes.length > 0) {
-        transportOptions['customRoutes'] = this.entry.customRoutes.map((route) => {
-          // Titan accepts fall-through handlers, while defineSystem declares routes.
-          // Preserve the method and pathname boundary when adapting between them.
-          const pattern = new RegExp('^' + route.pattern.split('*')
-            .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$');
-          return async (request: Request) => {
-            if (request.method !== route.method || !pattern.test(new URL(request.url).pathname)) return null;
-            return route.handler(request);
-          };
-        });
+        transportOptions['customRoutes'] = compileCustomRoutes(this.entry.customRoutes);
       }
 
       this.app.netron.registerTransportServer('http', {

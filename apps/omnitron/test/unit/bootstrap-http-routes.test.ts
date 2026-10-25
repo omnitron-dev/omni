@@ -21,6 +21,7 @@ beforeAll(async () => {
     `export const hits={media:0,ready:0}; export default {name:'route-fixture',version:'1.0.0',processes:[{name:'http',module:'./module.mjs',transports:{http:{host:'127.0.0.1',port:0}},customRoutes:[
     {method:'GET',pattern:'/account-media/*',handler:async()=>{hits.media++;return new Response('media');}},
     {method:'GET',pattern:'/readyz',handler:async()=>{hits.ready++;return Response.json({status:'ok'});}},
+    {method:'HEAD',pattern:'/explicit-head',handler:async(request)=>new Response(null,{headers:{'x-handler-method':request.method}})},
     {method:'GET',pattern:'/literal.v1',handler:async()=>new Response('literal')},
     {method:'GET',pattern:'/fall',handler:async()=>null},
     {method:'GET',pattern:'/fall',handler:async()=>new Response('fallthrough')},
@@ -85,4 +86,14 @@ it('preserves a EXAMPLE-style GET catchall with explicit fallthrough', async () 
   expect(await (await fetch(endpoint + '/site?language=en')).text()).toBe('site');
   expect((await fetch(endpoint + '/site', { method: 'POST' })).status).toBe(404);
   expect((await fetch(endpoint + '/absent')).status).toBe(404);
+});
+
+it('runs an explicitly declared HEAD route without promoting GET or changing the request method', async () => {
+  const response = await fetch(endpoint + '/explicit-head', { method: 'HEAD' });
+  expect(response.status).toBe(200);
+  expect(response.headers.get('x-handler-method')).toBe('HEAD');
+  expect(await response.text()).toBe('');
+  expect((await fetch(endpoint + '/explicit-head')).status).toBe(404);
+  expect((await fetch(endpoint + '/explicit-head', { method: 'POST' })).status).toBe(404);
+  expect((await fetch(endpoint + '/readyz', { method: 'HEAD' })).status).toBe(404);
 });

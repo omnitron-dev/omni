@@ -66,3 +66,22 @@ it('passes the execution fence and cleanup budget to the transport for guarded p
   await deployer.underLease(target, 'platform', () => deployer.uploadToNode(target, '/local', '/remote'));
   expect(execution.ssh).toHaveBeenCalledWith(expect.anything(), 'guarded:verify and promote', { timeout: 75000 });
 });
+
+it('publishes the immutable asset pool through the native lease and guarded command', async () => {
+  const { deployer, execution } = fixture();
+  vi.spyOn(deployer, 'assertNoPendingHostOperations').mockResolvedValue(undefined);
+  const receipt = { assetsRoot: '/opt/omnitron/stack-static/assets/project/stack/app/public', manifestSha256: 'a'.repeat(64), files: 1, added: 1, reused: 0, bytes: 4 };
+  execution.ssh.mockResolvedValue({ exitCode: 0, stdout: JSON.stringify(receipt), stderr: '' });
+  expect(await deployer.carryPreviousBuildForward(target, { owner: { project: 'project', stack: 'stack', app: 'app' }, sources: [{ root: '/release/assets', files: { 'a.js': 'b'.repeat(64) } }] })).toEqual(receipt);
+  expect(lease.acquire).toHaveBeenCalledOnce();
+  expect(execution.uploadFile).toHaveBeenCalledOnce();
+  expect(execution.ssh.mock.calls[0]?.[1]).toMatch(/^guarded:node -e /);
+  expect(lease.guard).toHaveBeenCalledWith('leased-host:22', expect.stringContaining('Immutable assets:'), 300000);
+});
+it('does not publish asset bytes when the lease is lost after manifest upload', async () => {
+  const { deployer, execution } = fixture();
+  vi.spyOn(deployer, 'assertNoPendingHostOperations').mockResolvedValue(undefined);
+  execution.uploadFile.mockImplementation(async () => { lease.confirm.mockRejectedValue(Error('lost before asset publication')); });
+  await expect(deployer.carryPreviousBuildForward(target, { owner: { project: 'project', stack: 'stack', app: 'app' }, sources: [{ root: '/release/assets', files: { 'a.js': 'b'.repeat(64) } }] })).rejects.toThrow('lost before asset publication');
+  expect(execution.ssh).not.toHaveBeenCalled();
+});

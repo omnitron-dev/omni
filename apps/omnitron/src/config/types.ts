@@ -509,7 +509,7 @@ export interface IProcessEntry {
 
   /** Custom HTTP routes after reserved Netron endpoints (only with transports.http). */
   customRoutes?: Array<{
-    method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+    method: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'DELETE';
     /** Literal pathname with optional * wildcards; query strings are excluded. */
     pattern: string;
     handler: (req: Request) => Promise<Response | null>;

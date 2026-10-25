@@ -168,3 +168,296 @@ export function readGatewayMounts(output: string): { serving: string[]; mounted:
   }
   return { serving: [...new Set(serving)], mounted: [...new Set(mounted)] };
 }
+
+/** Stable public URLs retain their bytes independently of release-directory retention. */
+export type StaticAssetOwner = { project: string; stack: string; app: string };
+export type StaticAssetSource = { root: string; files: Record<string, string> };
+export type StaticAssetPublication = {
+  owner: StaticAssetOwner;
+  sources: StaticAssetSource[];
+};
+export type StaticAssetReceipt = {
+  assetsRoot: string;
+  manifestSha256: string;
+  files: number;
+  added: number;
+  reused: number;
+  bytes: number;
+};
+const ASSET_STORAGE = '/opt/omnitron/stack-static/assets';
+export function immutableAssetsRoot(owner: StaticAssetOwner): string {
+  if (
+    !owner ||
+    Object.keys(owner).sort().join(',') !== 'app,project,stack' ||
+    ![owner.project, owner.stack, owner.app].every(
+      (part) => typeof part === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(part),
+    )
+  )
+    throw new Error('Invalid static asset owner');
+  return `${ASSET_STORAGE}/${owner.project}/${owner.stack}/${owner.app}/public`;
+}
+
+/** Self-contained destination program. Every writer MUST hold the native exclusive execution fence. */
+function immutableAssetProgram(input: StaticAssetPublication, storage: string, replaying = false): StaticAssetReceipt {
+  const fs = require('node:fs') as typeof import('node:fs');
+  const path = require('node:path') as typeof import('node:path');
+  const crypto = require('node:crypto') as typeof import('node:crypto');
+  type Entry = { sha256: string; bytes: number };
+  type Manifest = {
+    schema: 1;
+    owner: StaticAssetOwner;
+    files: Record<string, Entry>;
+  };
+  const fail = (reason: string): never => {
+    throw new Error('Immutable assets: ' + reason);
+  };
+  const object = (value: unknown): value is Record<string, unknown> =>
+    !!value && typeof value === 'object' && !Array.isArray(value);
+  const digest = (bytes: Buffer | string) => crypto.createHash('sha256').update(bytes).digest('hex');
+  const safeName = (name: string) =>
+    name.length > 0 &&
+    name.length <= 1024 &&
+    name.split('/').every((part) => /^[a-zA-Z0-9_@+-][a-zA-Z0-9._@+-]*$/.test(part));
+  if (
+    !object(input) ||
+    !object(input.owner) ||
+    Object.keys(input.owner).sort().join(',') !== 'app,project,stack' ||
+    ![input.owner.project, input.owner.stack, input.owner.app].every(
+      (part) => typeof part === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(part),
+    ) ||
+    !Array.isArray(input.sources) ||
+    input.sources.length === 0
+  )
+    fail('invalid owner or sources');
+  const owner = {
+    project: input.owner.project,
+    stack: input.owner.stack,
+    app: input.owner.app,
+  };
+  if (!path.isAbsolute(storage) || path.resolve(storage) !== storage) fail('noncanonical storage');
+  const ownerRoot = path.join(storage, owner.project, owner.stack, owner.app),
+    publicRoot = path.join(ownerRoot, 'public');
+  const manifestFile = path.join(ownerRoot, 'manifest.json'),
+    pendingFile = path.join(ownerRoot, 'pending.json');
+  const syncDir = (name: string) => {
+    const fd = fs.openSync(name, 'r');
+    try {
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+  };
+  const directory = (name: string, create = false) => {
+    if (!path.isAbsolute(name) || path.resolve(name) !== name) fail('noncanonical directory: ' + name);
+    let current = path.parse(name).root;
+    for (const component of name.slice(current.length).split('/').filter(Boolean)) {
+      const parent = current;
+      current = path.join(current, component);
+      let st: import('node:fs').Stats;
+      try {
+        st = fs.lstatSync(current);
+      } catch (error) {
+        if (!create || (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        fs.mkdirSync(current, { mode: 0o755 });
+        fs.chmodSync(current, 0o755); // native remote commands inherit umask 077
+        syncDir(parent);
+        st = fs.lstatSync(current);
+      }
+      if (!st.isDirectory() || st.isSymbolicLink()) fail('directory symlink or non-directory: ' + current);
+    }
+    if (fs.realpathSync(name) !== name) fail('directory alias: ' + name);
+  };
+  const read = (file: string): Buffer => {
+    directory(path.dirname(file));
+    const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    try {
+      if (!fs.fstatSync(fd).isFile()) fail('nonregular file: ' + file);
+      return fs.readFileSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+  };
+  const inventory = (root: string): string[] => {
+    directory(root);
+    const names: string[] = [];
+    const walk = (dir: string, prefix: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const name = prefix + entry.name;
+        if (!safeName(name) || entry.isSymbolicLink()) fail('unsafe asset: ' + name);
+        if (entry.isDirectory()) walk(path.join(dir, entry.name), name + '/');
+        else if (entry.isFile()) names.push(name);
+        else fail('nonregular asset: ' + name);
+      }
+    };
+    walk(root, '');
+    return names.sort();
+  };
+  const validateManifest = (value: unknown): Manifest => {
+    if (
+      !object(value) ||
+      value['schema'] !== 1 ||
+      JSON.stringify(value['owner']) !== JSON.stringify(owner) ||
+      !object(value['files'])
+    )
+      fail('invalid pool manifest');
+    const parsed = value as unknown as Manifest;
+    for (const [name, entry] of Object.entries(parsed.files)) {
+      if (
+        !safeName(name) ||
+        !object(entry) ||
+        !/^[a-f0-9]{64}$/.test(entry.sha256) ||
+        !Number.isSafeInteger(entry.bytes) ||
+        entry.bytes < 0
+      )
+        fail('invalid pool entry: ' + name);
+    }
+    return parsed;
+  };
+  const exists = (file: string) => {
+    try {
+      fs.lstatSync(file);
+      return true;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw e;
+    }
+  };
+  const load = (file: string) => validateManifest(JSON.parse(read(file).toString('utf8')));
+  const encode = (manifest: Manifest) =>
+    JSON.stringify({
+      schema: 1,
+      owner,
+      files: Object.fromEntries(Object.entries(manifest.files).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))),
+    }) + '\n';
+  const writeAtomic = (file: string, bytes: string) => {
+    const temp = file + '.' + crypto.randomUUID() + '.tmp',
+      fd = fs.openSync(temp, 'wx', 0o600);
+    try {
+      fs.writeFileSync(fd, bytes);
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(temp, file);
+    syncDir(path.dirname(file));
+  };
+  directory(ownerRoot, true);
+  directory(publicRoot, true);
+  const baseline: Manifest = exists(manifestFile) ? load(manifestFile) : { schema: 1, owner, files: {} };
+  const pending = exists(pendingFile) ? (load(pendingFile) as Manifest & { sources?: StaticAssetSource[] }) : null;
+  if (pending)
+    for (const [name, entry] of Object.entries(baseline.files)) {
+      if (JSON.stringify(pending.files[name]) !== JSON.stringify(entry))
+        fail('pending publication changes retained asset: ' + name);
+    }
+  const admitted = pending ?? baseline,
+    present = new Set(inventory(publicRoot));
+  for (const name of present) {
+    const entry = Object.hasOwn(admitted.files, name) ? admitted.files[name] : undefined;
+    if (!entry) fail('unrecorded public asset: ' + name);
+    const bytes = read(path.join(publicRoot, name));
+    if (bytes.length !== entry!.bytes || digest(bytes) !== entry!.sha256) fail('retained asset integrity: ' + name);
+  }
+  for (const name of Object.keys(baseline.files)) if (!present.has(name)) fail('missing retained asset: ' + name);
+  if (pending && !replaying) {
+    const incomplete = Object.keys(pending.files).some((name) => !present.has(name));
+    if (incomplete) {
+      if (!Array.isArray(pending.sources) || pending.sources.length === 0)
+        fail('pending publication has no recoverable source descriptors');
+      // Complete the original validated intention first, even if this caller is a later release.
+      immutableAssetProgram({ owner, sources: pending.sources! }, storage, true);
+    } else {
+      // All planned bytes already passed integrity verification; no source directory is needed.
+      writeAtomic(manifestFile, encode(pending));
+      fs.unlinkSync(pendingFile);
+      syncDir(ownerRoot);
+    }
+    return immutableAssetProgram(input, storage);
+  }
+  const stage = fs.mkdtempSync(path.join(ownerRoot, '.staging-'));
+  fs.chmodSync(stage, 0o700);
+  const requested: Record<string, Entry> = Object.create(null);
+  try {
+    // Copy and validate every requested byte before changing any public URL.
+    for (const source of input.sources) {
+      if (
+        !object(source) ||
+        typeof source.root !== 'string' ||
+        !object(source.files) ||
+        Object.keys(source.files).length === 0
+      )
+        fail('invalid or empty source');
+      directory(source.root);
+      const names = Object.keys(source.files).sort();
+      if (JSON.stringify(names) !== JSON.stringify(inventory(source.root)))
+        fail('source inventory differs from manifest: ' + source.root);
+      for (const name of names) {
+        const expected = source.files[name];
+        if (!safeName(name) || typeof expected !== 'string' || !/^[a-f0-9]{64}$/.test(expected))
+          fail('invalid source identity: ' + name);
+        const bytes = read(path.join(source.root, name));
+        if (digest(bytes) !== expected) fail('source digest differs: ' + name);
+        const entry = { sha256: expected!, bytes: bytes.length };
+        for (const prior of [Object.hasOwn(admitted.files, name) ? admitted.files[name] : undefined, requested[name]])
+          if (prior && (prior.sha256 !== entry.sha256 || prior.bytes !== entry.bytes)) fail('URL collision: ' + name);
+        if (!requested[name] && !present.has(name)) {
+          const file = path.join(stage, name);
+          directory(path.dirname(file), true);
+          const fd = fs.openSync(file, 'wx', 0o444);
+          try {
+            fs.writeFileSync(fd, bytes);
+            fs.fchmodSync(fd, 0o444); // readable through an app-owned nginx bind mount
+            fs.fsyncSync(fd);
+          } finally {
+            fs.closeSync(fd);
+          }
+        }
+        requested[name] = entry;
+      }
+    }
+    for (const name of Object.keys(admitted.files))
+      if (!present.has(name) && !requested[name]) fail('unfinished publication requires its original sources: ' + name);
+    const next: Manifest = {
+        schema: 1,
+        owner,
+        files: { ...admitted.files, ...requested },
+      },
+      encoded = encode(next);
+    // A durable intention identifies partial publication after a lost controller/acknowledgement.
+    writeAtomic(pendingFile, JSON.stringify({ ...next, sources: input.sources }) + '\n');
+    let added = 0;
+    for (const name of Object.keys(requested).sort()) {
+      if (present.has(name)) continue;
+      const destination = path.join(publicRoot, name),
+        staged = path.join(stage, name);
+      directory(path.dirname(destination), true);
+      if (exists(destination)) fail('destination appeared before publication: ' + name);
+      const copied = read(staged);
+      if (digest(copied) !== requested[name]!.sha256 || copied.length !== requested[name]!.bytes)
+        fail('staged asset integrity: ' + name);
+      // All writers use the same native exclusive execution fence. No source inode is linked.
+      fs.renameSync(staged, destination);
+      syncDir(path.dirname(destination));
+      added++;
+    }
+    writeAtomic(manifestFile, encoded);
+    fs.unlinkSync(pendingFile);
+    syncDir(ownerRoot);
+    return {
+      assetsRoot: publicRoot,
+      manifestSha256: digest(encoded),
+      files: Object.keys(next.files).length,
+      added,
+      reused: Object.keys(requested).length - added,
+      bytes: Object.values(next.files).reduce((sum, entry) => sum + entry.bytes, 0),
+    };
+  } finally {
+    fs.rmSync(stage, { recursive: true, force: true });
+  }
+}
+
+/** Runs only inside the caller's native node execution fence; custom storage isolates integration tests. */
+export function immutableAssetsScript(inputFile: string, storage = ASSET_STORAGE): string {
+  const source = `const fs=require('node:fs');const input=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));const receipt=(${immutableAssetProgram.toString()})(input,process.argv[2]);process.stdout.write(JSON.stringify(receipt)+'\\n');`;
+  return `node -e ${shellEscape(source)} ${shellEscape(inputFile)} ${shellEscape(storage)}`;
+}

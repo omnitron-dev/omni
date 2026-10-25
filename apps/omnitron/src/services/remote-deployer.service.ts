@@ -50,6 +50,7 @@
  */
 
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import type { StaticAssetPublication, StaticAssetReceipt } from './static-carry-forward.js';
 import type { MaintenanceLock as HeldLock } from './maintenance-lock.js';
 import type { IStackNode } from '../config/types.js';
 import type { ArtifactInfo } from '../project/artifact-builder.js';
@@ -2258,13 +2259,45 @@ export class RemoteDeployer {
   }
 
   /**
-   * Hard-link the assets of the build the running gateways serve into the
-   * one just unpacked, and remove builds nobody serves
-   * (`static-carry-forward.ts`). Never fails the delivery: without it an open
-   * tab reloads onto the new build instead of continuing, which the portal
-   * handles; with a failed delivery nobody gets a portal at all.
+   * The owner-scoped overload publishes a retained asset pool and fails closed.
+   * The legacy positional overload retains its previous best-effort gateway
+   * carry-forward behavior; it does not provide the owner-scoped guarantee.
    */
-  private async carryPreviousBuildForward(target: DeployTarget, root: string, fresh: string): Promise<void> {
+  async carryPreviousBuildForward(target: DeployTarget, input: StaticAssetPublication): Promise<StaticAssetReceipt>;
+  async carryPreviousBuildForward(target: DeployTarget, root: string, fresh: string): Promise<void>;
+  async carryPreviousBuildForward(target: DeployTarget, input: string | StaticAssetPublication, fresh?: string): Promise<void | StaticAssetReceipt> {
+    if (typeof input !== 'string') {
+      const { immutableAssetsRoot, immutableAssetsScript } = await import('./static-carry-forward.js');
+      const expectedRoot = immutableAssetsRoot(input.owner);
+      // The native execution fence serializes every publisher, including reentrant calls.
+      return this.underLease(target, 'retain immutable public assets', async () => {
+        await this.assertNoPendingHostOperations(target);
+        const fs = await import('node:fs/promises');
+        const { tmpdir } = await import('node:os');
+        const { join } = await import('node:path');
+        const { randomUUID } = await import('node:crypto');
+        const temporary = await fs.mkdtemp(join(tmpdir(), 'omnitron-static-assets-'));
+        const local = join(temporary, 'request.json');
+        const remote = '/tmp/omnitron-static-assets-' + randomUUID() + '.json';
+        try {
+          await fs.writeFile(local, JSON.stringify(input), { mode: 0o600, flag: 'wx' });
+          await this.uploadToNode(target, local, remote);
+          const output = await this.sshExec(target, immutableAssetsScript(remote), 300_000);
+          const receipt = JSON.parse(output) as StaticAssetReceipt;
+          if (receipt.assetsRoot !== expectedRoot || !/^[a-f0-9]{64}$/.test(receipt.manifestSha256) ||
+              ![receipt.files, receipt.added, receipt.reused, receipt.bytes].every((n) => Number.isSafeInteger(n) && n >= 0)) {
+            throw new Error('Invalid immutable asset publication receipt');
+          }
+          this.logger.info({ host: target.host, owner: input.owner, ...receipt }, 'Immutable public asset bytes retained');
+          return receipt;
+        } finally {
+          await fs.rm(temporary, { recursive: true, force: true });
+          await this.sshExec(target, 'rm -f -- ' + shellEscape(remote)).catch(() => undefined);
+        }
+      });
+    }
+    const root = input;
+    if (!fresh) throw new Error('Missing legacy static build');
     try {
       const { GATEWAY_MOUNTS_COMMAND, readGatewayMounts, carryForwardScript } = await import('./static-carry-forward.js');
       const mounts = readGatewayMounts(await this.sshExec(target, GATEWAY_MOUNTS_COMMAND).catch(() => ''));

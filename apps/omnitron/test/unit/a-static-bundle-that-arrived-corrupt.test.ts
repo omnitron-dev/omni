@@ -49,7 +49,7 @@ function dirToServe(): string {
  */
 function deployer(answers: (cmd: string) => string, uploadFile = vi.fn(async () => {})) {
   const asked: string[] = [];
-  const svc: any = Object.create(RemoteDeployer.prototype);
+  const svc: any = new RemoteDeployer({} as any, {} as any);
   Object.assign(svc, {
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     execution: {
@@ -116,7 +116,7 @@ describe('a bundle is unpacked only when it arrived whole', () => {
     // pass both tests above.
     const asked: string[] = [];
     const extracted: string[] = [];
-    const svc: any = Object.create(RemoteDeployer.prototype);
+    const svc: any = new RemoteDeployer({} as any, {} as any);
     Object.assign(svc, {
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       execution: {
@@ -226,7 +226,7 @@ describe('a bundle is unpacked only when it arrived whole', () => {
 
   it('writes the record only after the unpack, and last', async () => {
     const asked: string[] = [];
-    const svc: any = Object.create(RemoteDeployer.prototype);
+    const svc: any = new RemoteDeployer({} as any, {} as any);
     Object.assign(svc, {
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       execution: {

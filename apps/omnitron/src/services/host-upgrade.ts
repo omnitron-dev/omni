@@ -42,6 +42,10 @@ export interface HostUpgradeReceipt {
 
 function fail(reason: string): never { throw new Error(`Host upgrade preflight: ${reason}`); }
 function strings(value: unknown): value is string[] { return Array.isArray(value) && value.every(v => typeof v === 'string' && v.length > 0); }
+/** The native control-plane runtime contract currently binds the default daemon endpoint. */
+export function assertControlledDaemonPort(port?: number): void {
+  if (port !== undefined && port !== 9700) throw new Error('Controlled host operations currently require daemon port 9700');
+}
 export function assertServingBundle(bundle: InstalledBundle, status: HostInventory['status']): void {
   if (!status || status.build?.commit !== bundle.commit || status.build?.dirty !== false ||
       typeof status.version !== 'string' || status.version.split('+')[0] !== bundle.version.split('+')[0] ||
@@ -324,12 +328,15 @@ export function runtimeStopCommand(runtime: HostRuntime, bundle: InstalledBundle
   if (runtime.kind === 'fork') return `${shellEscape(`${bundle.root}/dist/cli/omnitron.js`)} down`;
   return `systemctl ${runtime.scope === 'user' ? '--user ' : ''}stop omnitron-daemon.service`;
 }
-export function runtimeStartCommand(runtime: HostRuntime, previous: InstalledBundle, bundle: InstalledBundle): string {
+export function runtimeStartCommand(runtime: HostRuntime, previous: InstalledBundle, bundle: InstalledBundle, allowedCurrentRoots: string[] = [previous.root, bundle.root]): string {
   if (runtime.kind === 'fork') return `cd ${shellEscape(runtime.cwd === previous.root ? bundle.root : runtime.cwd)} && ${shellEscape(`${bundle.root}/dist/cli/omnitron.js`)} up --no-infra`;
   return remoteNode(`${fsPrelude} import {execFileSync} from 'node:child_process';
     const original=${JSON.stringify(runtime.contents)};
-    const content=original.split('\\n').map(l=>(l.startsWith('ExecStart=')||l.startsWith('WorkingDirectory=')||/^Environment="?OMNITRON_CWD=/.test(l))?l.split(${JSON.stringify(previous.root)}).join(${JSON.stringify(bundle.root)}):l).join('\\n');
-    const file=${JSON.stringify(runtime.file)}; const mode=fs.statSync(file).mode & 0o777;
+    const render=root=>original.split('\\n').map(l=>(l.startsWith('ExecStart=')||l.startsWith('WorkingDirectory=')||/^Environment="?OMNITRON_CWD=/.test(l))?l.split(${JSON.stringify(previous.root)}).join(root):l).join('\\n');
+    const content=render(${JSON.stringify(bundle.root)});
+    const file=${JSON.stringify(runtime.file)};
+    if(!${JSON.stringify(allowedCurrentRoots)}.map(render).includes(fs.readFileSync(file,'utf8'))) throw Error('Supervisor unit changed outside the captured host operation');
+    const mode=fs.statSync(file).mode & 0o777;
     const temporary=file+'.upgrade-part'; const fd=fs.openSync(temporary,'w',mode);
     try{fs.writeFileSync(fd,content);fs.fsyncSync(fd)}finally{fs.closeSync(fd)} fs.renameSync(temporary,file);
     const scope=${JSON.stringify(runtime.scope === 'user' ? ['--user'] : [])};

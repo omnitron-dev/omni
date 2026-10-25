@@ -95,8 +95,12 @@ subsequent remote command, data command and `uploadToNode` transfer confirms
 ownership first; failed confirmation also prevents rollback commands from
 racing a new owner. Application controllers should use `uploadToNode`, not call
 the bare transport while assuming the surrounding lease confirms each step.
-This check fences later steps; an already-running remote command requires a
-host execution lock to prevent overlap after controller loss.
+Commands and upload promotion also run under the native host execution fence,
+which verifies the lease token and holds its lock for the command lifetime.
+Lease acquisition cannot replace a holder while that command is busy or its
+durable execution intent is unresolved. A native timeout/abnormal exit retains
+unresolved intent and refuses automatic retries; it does not infer that every
+possible descendant has died.
 
 A failed final verified-receipt write resets the in-memory outcome to running
 before any rollback intent is saved. A crash during rollback therefore leaves
@@ -119,3 +123,9 @@ bypasses another pending operation nor accepts a changed/missing identity. App
 pipelines use the default unscoped inspection. The barrier is checked under the
 host lease, alongside the separate native framework recovery receipts. It does
 not replace execution fencing or make arbitrary administrator commands transactional.
+
+Controlled host inspection/activation/recovery currently supports daemon port
+9700 only; a different explicit target port is refused before SSH. Supervisor
+rewrites first require the on-disk unit to equal the captured original or one
+of this operation's two framework-bound variants. Outside unit edits are
+preserved and force recovery-required instead of being overwritten.

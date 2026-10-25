@@ -127,3 +127,12 @@ describe('RemoteDeployer controlled host-upgrade adapter', () => {
     } finally { vi.useRealTimers(); host.clean(); }
   });
 });
+
+it('refuses unsupported daemon ports before any SSH inventory or mutation', async () => {
+  const host = node();
+  try {
+    await expect(host.deployer.activateBundle({ host: 'test', daemonPort: 9800 }, host.candidate.version, host.prefix)).rejects.toThrow('9700');
+    await expect(host.deployer.inspectInstalledBundle({ host: 'test', daemonPort: 9800 }, host.prefix)).rejects.toThrow('9700');
+    expect(host.commands).toEqual([]); expect(host.deployer.underLease).not.toHaveBeenCalled();
+  } finally { host.clean(); }
+});

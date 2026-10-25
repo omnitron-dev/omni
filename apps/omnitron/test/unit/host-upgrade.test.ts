@@ -193,10 +193,10 @@ describe('captured systemd binding recovery', () => {
       fs.writeFileSync(file, contents, { mode: 0o640 });
       fs.writeFileSync(path.join(dir, 'systemctl'), `#!/usr/bin/env node\nrequire('node:fs').appendFileSync(${JSON.stringify(log)},JSON.stringify(process.argv.slice(2))+'\\n');`, { mode: 0o755 });
       const runtime = { kind: 'systemd' as const, cwd: old.root, scope: 'system' as const, file, contents, enabled: false };
-      const run = (command: string) => execSync(command, { env: { ...process.env, PATH: `${dir}:${process.env.PATH}` } });
+      const run = (command: string) => execSync(command, { env: { ...process.env, PATH: `${dir}:${process.env.PATH}` }, stdio: ['ignore', 'pipe', 'pipe'] });
       run(runtimeStopCommand(runtime, old)); run(runtimeStartCommand(runtime, old, next));
       expect(fs.readFileSync(file, 'utf8')).toBe(contents.replaceAll(old.root, next.root));
-      run(runtimeStartCommand(runtime, old, old));
+      run(runtimeStartCommand(runtime, old, old, [old.root, next.root]));
       expect(fs.readFileSync(file, 'utf8')).toBe(contents);
       expect(fs.statSync(file).mode & 0o777).toBe(0o640);
       const calls = fs.readFileSync(log, 'utf8').trim().split('\n').map(l => JSON.parse(l));
@@ -205,6 +205,11 @@ describe('captured systemd binding recovery', () => {
         ['daemon-reload'], ['disable', 'omnitron-daemon.service'], ['start', 'omnitron-daemon.service'],
         ['daemon-reload'], ['disable', 'omnitron-daemon.service'], ['start', 'omnitron-daemon.service'],
       ]);
+      const outsideEdit = contents + 'Environment=EXTERNAL_OPERATOR_EDIT=preserve-me\n';
+      fs.writeFileSync(file, outsideEdit);
+      expect(() => run(runtimeStartCommand(runtime, old, next, [old.root, next.root]))).toThrow();
+      expect(fs.readFileSync(file, 'utf8')).toBe(outsideEdit);
+      expect(fs.readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(7);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
 });

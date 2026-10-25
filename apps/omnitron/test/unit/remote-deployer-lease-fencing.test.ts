@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const lease = vi.hoisted(() => ({ confirm: vi.fn(), acquire: vi.fn() }));
+const lease = vi.hoisted(() => ({ confirm: vi.fn(), acquire: vi.fn(), guard: vi.fn((_node: string, command: string) => `guarded:${command}`) }));
 vi.mock('../../src/services/node-deploy-lease.js', () => ({
   withNodeLeases: async (_targets: unknown, _purpose: unknown, _logger: unknown, work: (leases: unknown) => unknown) => {
-    lease.acquire(); return work({ has: () => true, confirm: lease.confirm, unreachable: new Map() });
+    lease.acquire(); return work({ has: () => true, confirm: lease.confirm, guard: lease.guard, unreachable: new Map() });
   },
 }));
 import { RemoteDeployer } from '../../src/services/remote-deployer.service.js';
@@ -29,7 +29,8 @@ describe('RemoteDeployer lease confirmation fences later work', () => {
       await expect((deployer as any).sshExec(target, 'rollback')).rejects.toThrow('lost after first');
     }));
     expect(lease.acquire).toHaveBeenCalledOnce(); expect(execution.ssh).toHaveBeenCalledOnce();
-    expect(execution.ssh.mock.calls[0]?.[1]).toBe('first');
+    expect(execution.ssh.mock.calls[0]?.[1]).toBe('guarded:first');
+    expect(lease.guard).toHaveBeenCalledWith('leased-host:22', 'first', 600000);
   });
   it('uses a raw data channel for lease renewal so confirmation cannot recurse', async () => {
     const { deployer, execution } = fixture();
@@ -48,4 +49,20 @@ describe('RemoteDeployer lease confirmation fences later work', () => {
     });
     expect(execution.uploadFile).not.toHaveBeenCalled();
   });
+});
+
+it('guards the actual upload promotion after bulk transfer and refuses a lease lost during transfer', async () => {
+  const { deployer, execution } = fixture();
+  execution.uploadFile.mockImplementation(async (_ssh: any, _source: any, _destination: any, options: any) => {
+    lease.confirm.mockRejectedValue(Error('lost during bulk upload'));
+    await options.runControl('promote unique temporary bytes', 30000);
+  });
+  await expect(deployer.underLease(target, 'platform', () => deployer.uploadToNode(target, '/local', '/remote'))).rejects.toThrow('lost during bulk upload');
+  expect(execution.ssh).not.toHaveBeenCalled();
+});
+it('passes the execution fence and cleanup budget to the transport for guarded promotion', async () => {
+  const { deployer, execution } = fixture();
+  execution.uploadFile.mockImplementation(async (_ssh: any, _source: any, _destination: any, options: any) => options.runControl('verify and promote', 30000));
+  await deployer.underLease(target, 'platform', () => deployer.uploadToNode(target, '/local', '/remote'));
+  expect(execution.ssh).toHaveBeenCalledWith(expect.anything(), 'guarded:verify and promote', { timeout: 75000 });
 });

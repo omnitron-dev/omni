@@ -81,7 +81,7 @@ import {
 import crypto from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import {
-  assertServingBundle, bundleProbeCommand, contractPreflightCommand, executeHostUpgrade,
+  assertControlledDaemonPort, assertServingBundle, bundleProbeCommand, contractPreflightCommand, executeHostUpgrade,
   hookCommand, inventoryCommand, planHostUpgrade, receiptCommand, verifyRestoredInventory,
   updateContractBindingsCommand, runtimeProbeCommand, runtimeStartCommand, runtimeStopCommand,
   appHealthCommand, pendingReceiptsCommand, recoverHostUpgrade, stoppedDaemonCommand,
@@ -374,7 +374,10 @@ export function wholeTarGz(archive: Buffer): true | string {
 }
 
 export class RemoteDeployer {
-  private readonly deploymentLeases = new AsyncLocalStorage<ReadonlyMap<string, (step: string) => Promise<void>>>();
+  private readonly deploymentLeases = new AsyncLocalStorage<ReadonlyMap<string, {
+    confirm(step: string): Promise<void>;
+    guard(command: string, timeoutMs?: number): string;
+  }>>();
   /** Active deployment progress handlers */
   private readonly progressHandlers: Array<(progress: DeployProgress) => void> = [];
 
@@ -1679,10 +1682,11 @@ export class RemoteDeployer {
     prefix = '/opt/omnitron',
     keepVersions = 3,
   ): Promise<boolean> {
+    assertControlledDaemonPort(target.daemonPort);
     return this.underLease(target, `held host upgrade to ${version}`, async () => {
       await this.assertNoPendingHostOperations(target, prefix);
       const { runningGatewaySites, MaintenanceLock, DEFAULT_MAINTENANCE_TIMING } = await import('./maintenance-lock.js');
-      const run = this.leaseRunner(target);
+      const run = (script: string) => this.sshExecData(target, script, 30_000);
       const locks: HeldLock[] = [];
       for (const site of await runningGatewaySites(run, `omnitron ${version}`)) {
         const lock = await MaintenanceLock.open(site, this.logger, { ...DEFAULT_MAINTENANCE_TIMING, probeWithinMs: 180_000 });
@@ -1719,6 +1723,7 @@ export class RemoteDeployer {
 
   /** Require a settled host and the actual serving immutable daemon build. */
   async inspectInstalledBundle(target: DeployTarget, prefix = '/opt/omnitron', allowance?: HostOperationAllowance): Promise<InstalledBundle> {
+    assertControlledDaemonPort(target.daemonPort);
     await this.assertNoPendingHostOperations(target, prefix, allowance);
     const pending = JSON.parse(await this.sshExecData(target, pendingReceiptsCommand(prefix))) as HostUpgradeReceipt[];
     if (pending.length) throw new Error(`Unfinished host upgrade ${pending.map(r => r.id).join(', ')}; recover it before deploying an app`);
@@ -1737,6 +1742,7 @@ export class RemoteDeployer {
     verifyPlatform?: () => Promise<void>,
     allowance?: HostOperationAllowance,
   ): Promise<boolean> {
+    assertControlledDaemonPort(target.daemonPort);
     if (!/^[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(version) || version.includes('..')) throw new Error('Invalid installed bundle version');
     if (!Number.isSafeInteger(keepVersions) || keepVersions < 1) throw new Error('keepVersions must be a positive integer');
     return this.underLease(target, `host upgrade to ${version}`, async () => {
@@ -1779,6 +1785,7 @@ export class RemoteDeployer {
 
   /** Recover a recorded interrupted upgrade under the same node lease; never prunes or changes app release versions. */
   async recoverBundleUpgrade(target: DeployTarget, id: string, prefix = '/opt/omnitron', verifyPlatform?: () => Promise<void>, allowance?: HostOperationAllowance): Promise<boolean> {
+    assertControlledDaemonPort(target.daemonPort);
     return this.underLease(target, `recover host upgrade ${id}`, async () => {
       await this.assertNoPendingHostOperations(target, prefix, allowance);
       const records = JSON.parse(await this.sshExecData(target, pendingReceiptsCommand(prefix, id))) as HostUpgradeReceipt[];
@@ -1806,7 +1813,7 @@ export class RemoteDeployer {
       },
       rebind: async (app, bundle) => { await this.sshExec(target, hookCommand(app, bundle, 'rebind'), 330_000); },
       start: async bundle => {
-        await this.sshExec(target, runtimeStartCommand(plan.inventory.runtime, plan.previous, bundle), 180_000);
+        await this.sshExec(target, runtimeStartCommand(plan.inventory.runtime, plan.previous, bundle, [plan.previous.root, plan.candidate.root]), 180_000);
       },
       verify: async bundle => {
         const deadline = Date.now() + 180_000;
@@ -1887,7 +1894,7 @@ export class RemoteDeployer {
           throw new Error(`Could not reach ${machine} to lease it for ${purpose}: ${leases.unreachable.get(machine) ?? 'no answer'}`);
         }
         const context = new Map(held);
-        context.set(machine, step => leases.confirm(machine, step));
+        context.set(machine, { confirm: step => leases.confirm(machine, step), guard: (command, timeoutMs) => leases.guard(machine, command, timeoutMs) });
         return this.deploymentLeases.run(context, work);
       },
     );
@@ -1896,12 +1903,19 @@ export class RemoteDeployer {
   /** Confirm a held lease before the next node operation; outside a lease this is a no-op. */
   async confirmLease(target: DeployTarget, step: string): Promise<void> {
     const machine = `${target.host}:${target.sshPort ?? 22}`;
-    await this.deploymentLeases.getStore()?.get(machine)?.(step);
+    await this.deploymentLeases.getStore()?.get(machine)?.confirm(step);
+  }
+
+  /** The node holds its execution fence for the command lifetime, beyond a lost controller. */
+  private guardedCommand(target: DeployTarget, command: string, timeout: number): { command: string; timeout: number } {
+    const lease = this.deploymentLeases.getStore()?.get(`${target.host}:${target.sshPort ?? 22}`);
+    return lease ? { command: lease.guard(command, timeout), timeout: timeout + 45_000 } : { command, timeout };
   }
 
   private async sshExec(target: DeployTarget, command: string, timeout = 60_000): Promise<string> {
     await this.confirmLease(target, 'remote command');
-    const result = await this.execution.ssh(sshTargetOf(target), command, { timeout });
+    const guarded = this.guardedCommand(target, command, timeout);
+    const result = await this.execution.ssh(sshTargetOf(target), guarded.command, { timeout: guarded.timeout });
     if (result.exitCode !== 0) {
       const detail = result.stderr || result.stdout || `exit ${result.exitCode}`;
       throw new Error(`ssh ${target.username ?? 'root'}@${target.host}: ${detail}`);
@@ -1933,7 +1947,8 @@ export class RemoteDeployer {
     timeoutMs = 600_000,
   ): Promise<{ stdout: string; stderr: string; code: number }> {
     await this.confirmLease(target, 'remote command');
-    const result = await this.execution.ssh(sshTargetOf(target), command, { timeout: timeoutMs });
+    const guarded = this.guardedCommand(target, command, timeoutMs);
+    const result = await this.execution.ssh(sshTargetOf(target), guarded.command, { timeout: guarded.timeout });
     return { stdout: result.stdout, stderr: result.stderr, code: result.exitCode ?? -1 };
   }
 
@@ -1954,7 +1969,8 @@ export class RemoteDeployer {
     timeoutMs = 600_000,
   ): Promise<{ stdout: string; stderr: string; code: number }> {
     await this.confirmLease(target, 'remote data command');
-    return this.readFromNodeRaw(target, command, timeoutMs);
+    const guarded = this.guardedCommand(target, command, timeoutMs);
+    return this.readFromNodeRaw(target, guarded.command, guarded.timeout);
   }
 
   private async readFromNodeRaw(
@@ -1971,7 +1987,17 @@ export class RemoteDeployer {
   /** Use this inside underLease so uploads share the command confirmation boundary. */
   async uploadToNode(target: DeployTarget, localPath: string, remotePath: string): Promise<void> {
     await this.confirmLease(target, 'file upload');
-    await this.execution.uploadFile(sshTargetOf(target), localPath, remotePath);
+    const lease = this.deploymentLeases.getStore()?.get(`${target.host}:${target.sshPort ?? 22}`);
+    if (!lease) {
+      await this.execution.uploadFile(sshTargetOf(target), localPath, remotePath);
+      return;
+    }
+    await this.execution.uploadFile(sshTargetOf(target), localPath, remotePath, {
+      runControl: async (command, timeout) => {
+        const result = await this.runOnNode(target, command, timeout);
+        return { stdout: result.stdout, stderr: result.stderr, exitCode: result.code };
+      },
+    });
   }
 
   private async scpTransfer(target: DeployTarget, localPath: string, remotePath: string): Promise<void> {

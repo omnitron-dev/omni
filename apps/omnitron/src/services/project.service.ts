@@ -2217,7 +2217,7 @@ export class ProjectService extends EventEmitter {
       this.resumeTimer = null;
     }
     this.slaveConnector?.dispose();
-    await this.infraManager.teardownAll();
+    this.infraManager.dispose();
   }
 
   // ===========================================================================

@@ -2668,6 +2668,7 @@ export class OmnitronDaemon {
         if (this.dc.role === 'slave') {
           // Said on the way out, because the absence of a teardown is
           // otherwise indistinguishable from a teardown that failed.
+          this.infraService.dispose();
           console.info('[omnitron] leaving this node\'s infrastructure running — the daemon does not own its lifetime');
         } else {
           try { await this.infraService.teardown(); } catch { /* best-effort */ }

@@ -254,8 +254,15 @@ export class StackInfrastructureManager {
     this.portAllocations.delete(key);
   }
 
+  /** Release local monitors; a supervisor restart must preserve the data plane. */
+  dispose(): void {
+    for (const infra of this.instances.values()) infra.dispose();
+    this.instances.clear();
+    this.portAllocations.clear();
+  }
+
   /**
-   * Teardown all stack infrastructure (daemon shutdown).
+   * Explicitly remove all stack infrastructure.
    */
   async teardownAll(): Promise<void> {
     const entries = [...this.instances.entries()];

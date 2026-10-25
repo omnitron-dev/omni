@@ -54,3 +54,18 @@ Existing daemon startup resumes entire enabled local stacks. Therefore a partial
 The focused courts exercise phase failures, interrupted receipts, no-prune recovery, operational-health refusal, real filesystem receipt/hook/unit commands, and separate projects with the same app basename. RemoteDeployer adapter tests simulate daemon replies and inject failures; they are not live Linux/systemd deployment evidence. No live host mutation was performed while developing this mechanism.
 
 Validation receipt (2026-10-25): 114 tests passed across 14 focused/neighboring files in 21.20 seconds; package typecheck passed. The current local build used for native preparation is deliberately stamped dirty until coordinated source commits finish. Initial adapter tests exposed rejection of valid semver `+local` versions; the installed-version validator now accepts that format. A read-only production probe exposed the native unit's `OMNITRON_CWD` binding; it is now validated and migrated with the other two native framework fields. No production upgrade result is claimed by these tests.
+
+### Infrastructure lifetime
+
+Project service disposal releases health monitors and janitors without removing
+stack containers. Explicit stack/infrastructure teardown remains the operation
+that removes them. The slave daemon also disposes its own monitor without
+removing the data plane. Regression coverage traverses ProjectService, its stack
+manager and a real InfrastructureService, proving that disposal preserves
+containers while explicit teardown still removes them.
+
+An already-running older daemon can still execute its former destructive
+container teardown on the first transition. Its retained named volumes and
+application declarations must be validated and backed up before that transition;
+readiness is checked after recreation. A later ingress handoff must capture the
+actual post-upgrade legacy container identity, not a stale pre-upgrade ID.

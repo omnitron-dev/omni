@@ -419,9 +419,9 @@ export class InfrastructureService {
   }
 
   /**
-   * Stop all managed infrastructure containers.
+   * Release process-owned monitoring resources without changing infrastructure.
    */
-  async teardown(): Promise<void> {
+  dispose(): void {
     this.stopHealthMonitor();
     // T#75: stop the janitor BEFORE removing containers so a final
     // tick can't race the teardown's `docker rm` and produce noisy
@@ -431,6 +431,11 @@ export class InfrastructureService {
       this.phantomJanitor = null;
     }
 
+  }
+
+  /** Explicit infrastructure removal; process disposal alone preserves containers. */
+  async teardown(): Promise<void> {
+    this.dispose();
     // Remove all containers in parallel for fast shutdown — the control-plane
     // database only where this service keeps one (`controlPlaneContainers`).
     const allContainers = [...[...this.desiredContainers].reverse(), ...this.controlPlaneContainers()];

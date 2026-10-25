@@ -102,3 +102,20 @@ A failed final verified-receipt write resets the in-memory outcome to running
 before any rollback intent is saved. A crash during rollback therefore leaves
 an unfinished receipt discoverable by native recovery, never an `upgraded`
 receipt describing a stopped or partially restored host.
+
+## Durable operator workflow barrier
+
+An interrupted operation around a framework upgrade (for example, transferring
+public ingress ownership) must also block ordinary app/fleet deployment. Native
+`inspectInstalledBundle`, activation and recovery check the host registry at
+`/opt/omnitron/platform-operations/<name>/pending.json`. Each journal has schema 1,
+an exact `id` and an `outcome`. `running` and `recovery-required` block new work;
+unknown, malformed or aliased registry entries fail closed. Finished receipts can
+be archived after a crash without undoing the accepted operation.
+
+A recovering orchestrator may pass `{ name, id }` to the native inspection,
+activation or recovery call for its own captured journal. That allowance neither
+bypasses another pending operation nor accepts a changed/missing identity. App
+pipelines use the default unscoped inspection. The barrier is checked under the
+host lease, alongside the separate native framework recovery receipts. It does
+not replace execution fencing or make arbitrary administrator commands transactional.

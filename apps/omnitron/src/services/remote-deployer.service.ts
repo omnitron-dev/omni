@@ -94,6 +94,7 @@ import { fromDataChannel, throughDataChannel } from '../execution/data-channel.j
 /** A node that could not be asked at all — the SSH call itself failed. */
 const UNREADABLE = -3;
 import { withNodeLeases, type LeaseRunner } from './node-deploy-lease.js';
+import { hostOperationBarrierCommand, type HostOperationAllowance } from './host-operation-barrier.js';
 import { migrationOutput } from './migration-output.js';
 
 
@@ -1677,6 +1678,7 @@ export class RemoteDeployer {
     keepVersions = 3,
   ): Promise<boolean> {
     return this.underLease(target, `held host upgrade to ${version}`, async () => {
+      await this.assertNoPendingHostOperations(target, prefix);
       const { runningGatewaySites, MaintenanceLock, DEFAULT_MAINTENANCE_TIMING } = await import('./maintenance-lock.js');
       const run = this.leaseRunner(target);
       const locks: HeldLock[] = [];
@@ -1708,9 +1710,14 @@ export class RemoteDeployer {
     });
   }
 
-  /** Resolve the immutable installation and require the serving daemon to identify that build.
-   * App deployment callers hold underLease across inspection, packaging, and activation of their app. */
-  async inspectInstalledBundle(target: DeployTarget, prefix = '/opt/omnitron'): Promise<InstalledBundle> {
+  /** Check all durable operator workflows; a recovery can allow only its exact active journal. */
+  async assertNoPendingHostOperations(target: DeployTarget, prefix = '/opt/omnitron', allowance?: HostOperationAllowance): Promise<void> {
+    await this.sshExecData(target, hostOperationBarrierCommand(prefix, allowance));
+  }
+
+  /** Require a settled host and the actual serving immutable daemon build. */
+  async inspectInstalledBundle(target: DeployTarget, prefix = '/opt/omnitron', allowance?: HostOperationAllowance): Promise<InstalledBundle> {
+    await this.assertNoPendingHostOperations(target, prefix, allowance);
     const pending = JSON.parse(await this.sshExecData(target, pendingReceiptsCommand(prefix))) as HostUpgradeReceipt[];
     if (pending.length) throw new Error(`Unfinished host upgrade ${pending.map(r => r.id).join(', ')}; recover it before deploying an app`);
     const bundle = JSON.parse(await this.sshExecData(target, bundleProbeCommand(prefix))) as InstalledBundle;
@@ -1726,20 +1733,22 @@ export class RemoteDeployer {
     prefix = '/opt/omnitron',
     keepVersions = 3,
     verifyPlatform?: () => Promise<void>,
+    allowance?: HostOperationAllowance,
   ): Promise<boolean> {
     if (!/^[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(version) || version.includes('..')) throw new Error('Invalid installed bundle version');
     if (!Number.isSafeInteger(keepVersions) || keepVersions < 1) throw new Error('keepVersions must be a positive integer');
     return this.underLease(target, `host upgrade to ${version}`, async () => {
       const nodeKey = `${target.host}:${target.daemonPort ?? 9700}`;
       try {
+        await this.assertNoPendingHostOperations(target, prefix, allowance);
         const pending = JSON.parse(await this.sshExecData(target, pendingReceiptsCommand(prefix))) as HostUpgradeReceipt[];
         if (pending.length) {
           if (pending.length !== 1) throw new Error('Multiple unfinished host upgrades; recover an explicit receipt ID first');
-          const recovered = await this.recoverBundleUpgrade(target, pending[0]!.id, prefix, verifyPlatform);
+          const recovered = await this.recoverBundleUpgrade(target, pending[0]!.id, prefix, verifyPlatform, allowance);
           this.logger.warn({ receipt: pending[0]!.id, recovered }, 'Recovered the unfinished host upgrade; retry the requested upgrade separately');
           return false;
         }
-        const previous = await this.inspectInstalledBundle(target, prefix);
+        const previous = await this.inspectInstalledBundle(target, prefix, allowance);
         const candidate = JSON.parse(await this.sshExecData(target, bundleProbeCommand(prefix, version))) as InstalledBundle;
         await this.sshExec(target, `${shellEscape(`${candidate.root}/dist/cli/omnitron.js`)} --version`, 120_000);
         const inventory = JSON.parse(await this.sshExecData(target, inventoryCommand(previous, true))) as HostInventory;
@@ -1767,8 +1776,9 @@ export class RemoteDeployer {
   }
 
   /** Recover a recorded interrupted upgrade under the same node lease; never prunes or changes app release versions. */
-  async recoverBundleUpgrade(target: DeployTarget, id: string, prefix = '/opt/omnitron', verifyPlatform?: () => Promise<void>): Promise<boolean> {
+  async recoverBundleUpgrade(target: DeployTarget, id: string, prefix = '/opt/omnitron', verifyPlatform?: () => Promise<void>, allowance?: HostOperationAllowance): Promise<boolean> {
     return this.underLease(target, `recover host upgrade ${id}`, async () => {
+      await this.assertNoPendingHostOperations(target, prefix, allowance);
       const records = JSON.parse(await this.sshExecData(target, pendingReceiptsCommand(prefix, id))) as HostUpgradeReceipt[];
       if (records.length !== 1 || records[0]!.id !== id) throw new Error('No unfinished host upgrade with that receipt ID');
       const receipt = records[0]!;

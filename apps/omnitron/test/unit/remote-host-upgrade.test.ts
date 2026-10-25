@@ -31,6 +31,7 @@ function node(missingContract = false, failCandidate = false, failHealth = false
   deployer.underLease = vi.fn(async (_target, _purpose, work) => work());
   deployer.sshExecData = vi.fn(async (_target, command: string) => {
     commands.push(command);
+    if (command.includes('/platform-operations')) return execSync(command, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     if (command.includes('const records=ids.map')) return execSync(command, { encoding: 'utf8' });
     if (command.includes('BUNDLE.json')) return JSON.stringify(command.includes(`versions/${candidate.version}`) ? candidate : previous);
     if (command.includes('/proc/')) return JSON.stringify({ kind: 'fork', cwd: prefix });
@@ -66,6 +67,20 @@ describe('RemoteDeployer controlled host-upgrade adapter', () => {
       const retention = host.commands.find(c => c.includes('awk -v keep=1'))!;
       expect(retention).toContain(host.previous.root);
       expect(host.commands.findIndex(c => c.includes('upgrade-receipts'))).toBeLessThan(host.commands.findIndex(c => c.endsWith(' down')));
+    } finally { host.clean(); }
+  });
+  it('blocks unrelated fleet/app operations while allowing only the exact recovering workflow', async () => {
+    const host = node();
+    try {
+      const operation = path.join(host.prefix, 'platform-operations', 'platform');
+      fs.mkdirSync(operation, { recursive: true });
+      fs.writeFileSync(path.join(operation, 'pending.json'), JSON.stringify({ schema: 1, id: 'attempt', outcome: 'running' }));
+      await expect(host.deployer.inspectInstalledBundle({ host: 'test' }, host.prefix)).rejects.toThrow(/Unfinished host operations/);
+      expect(await host.deployer.activateBundle({ host: 'test' }, host.candidate.version, host.prefix)).toBe(false);
+      expect(host.state().active).toBe(host.previous);
+      expect(host.commands.some(c => c.endsWith(' down'))).toBe(false);
+      expect(await host.deployer.activateBundle({ host: 'test' }, host.candidate.version, host.prefix, 3, undefined, { name: 'platform', id: 'attempt' })).toBe(true);
+      expect(host.state().active).toBe(host.candidate);
     } finally { host.clean(); }
   });
   it('rejects missing manifests without touching current or stopping the host', async () => {

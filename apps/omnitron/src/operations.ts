@@ -10,3 +10,5 @@ export { StackInfrastructureManager } from './infrastructure/stack-infra-manager
 export { summariseProvisioning } from './infrastructure/provisioning-outcome.js';
 export type { IOmnitronPipelinesService, IOmnitronSecretsService } from './shared/dto/services.js';
 export type { INodeWithStatus } from './shared/dto/nodes.js';
+
+export type { HostOperationAllowance } from './services/host-operation-barrier.js';

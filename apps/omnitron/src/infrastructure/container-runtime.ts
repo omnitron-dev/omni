@@ -713,6 +713,19 @@ export async function removeContainer(nameOrId: string): Promise<void> {
  * Pull an image if not present locally.
  */
 export async function ensureImage(image: string): Promise<void> {
+  // A local content ID is not a registry reference. Never turn it into a
+  // pull of a repository named "sha256", or accept a missing local object.
+  if (image.startsWith('sha256:')) {
+    if (!/^sha256:[a-f0-9]{64}$/.test(image)) throw new Error('Invalid local image ID');
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const { stdout } = await promisify(execFile)('docker', ['image', 'inspect', image, '--format', '{{.Id}}'], {
+      timeout: 15_000,
+      maxBuffer: 4096,
+    });
+    if (stdout.trim() !== image) throw new Error('Local image identity mismatch');
+    return;
+  }
   const adapter = await getAdapter();
   try {
     // Check if image exists locally via listImages

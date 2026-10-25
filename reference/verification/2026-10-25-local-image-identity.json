@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "at": "2026-10-25T14:23:20.556565+00:00",
+  "scope": "Exact local Docker image IDs in native infrastructure provisioning",
+  "cause": "ensureImage split sha256:<id> into repository sha256, attempted pull and swallowed failure; missing immutable local objects were not refused.",
+  "before": {
+    "tests": 4,
+    "failed": 3,
+    "passed": 1,
+    "logSha256": "fcf27c3d08caa427fd3a7a271c9eee238ecb267eaafce201d2bd2f8d15ef28f3"
+  },
+  "after": {
+    "focusedFiles": 3,
+    "tests": 31,
+    "passed": 31,
+    "backendTypecheck": "passed",
+    "realDocker": "Creates an isolated scratch image and verifies exact existing and absent IDs. No fixture container, registry pull, or live host mutation."
+  },
+  "behavior": "Local IDs require full lowercase SHA256 and exact docker image inspect identity; inspection failure propagates before the adapter. Registry reference behavior remains unchanged.",
+  "limitations": [
+    "Does not build or attest application image source; the owning application preparation must supply that receipt.",
+    "A future prune may remove a local image; provisioning then fails closed until explicit preparation restores it."
+  ]
+}

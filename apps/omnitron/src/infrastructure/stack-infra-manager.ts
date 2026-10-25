@@ -1,3 +1,4 @@
+import { usesGatewayTemplate } from './service-resolver.js';
 /**
  * StackInfrastructureManager — Per-stack infrastructure isolation
  *
@@ -31,10 +32,10 @@ import { gatewayRedisDb as gatewayRedisDbOf } from './gateway-redis-db.js';
 // =============================================================================
 
 const DEFAULT_PORT_OFFSETS: Record<string, { postgres: number; redis: number; minio: number }> = {
-  dev:     { postgres: 0,   redis: 0,   minio: 0 },
-  test:    { postgres: 100, redis: 100, minio: 100 },
+  dev: { postgres: 0, redis: 0, minio: 0 },
+  test: { postgres: 100, redis: 100, minio: 100 },
   staging: { postgres: 200, redis: 200, minio: 200 },
-  prod:    { postgres: 300, redis: 300, minio: 300 },
+  prod: { postgres: 300, redis: 300, minio: 300 },
 };
 
 const REDIS_DB_RANGE_SIZE = 5;
@@ -64,7 +65,7 @@ export class StackInfrastructureManager {
     stackConfig: IStackConfig,
     baseInfraConfig: InfrastructureConfig,
     appDefinitions?: Map<string, import('../config/types.js').IAppDefinition>,
-    projectRoot?: string,
+    projectRoot?: string
   ): Promise<InfrastructureService> {
     const key = `${project}/${stack}`;
 
@@ -115,7 +116,7 @@ export class StackInfrastructureManager {
       // Gateway is resolved separately (needs special volume mounts + entrypoint).
       // Exclude from generic resolver to avoid creating a "bare" gateway container.
       const servicesForResolver = { ...normalizedServices };
-      delete servicesForResolver['gateway'];
+      if (usesGatewayTemplate(normalizedServices['gateway'])) delete servicesForResolver['gateway'];
 
       this.logger.info(
         { services: Object.keys(normalizedServices), resolved: Object.keys(servicesForResolver) },
@@ -127,14 +128,11 @@ export class StackInfrastructureManager {
         this.logger.child({ stack: key }),
         stackInfraConfig,
         servicesForResolver,
-        registry,
+        registry
       );
     } catch (err) {
       this.logger.warn({ error: (err as Error).message }, 'Preset normalization failed — using legacy resolvers');
-      infraService = new InfrastructureService(
-        this.logger.child({ stack: key }),
-        stackInfraConfig
-      );
+      infraService = new InfrastructureService(this.logger.child({ stack: key }), stackInfraConfig);
     }
 
     // 5. Add app-declared infrastructure services (bitcoin, monero, etc.)
@@ -144,16 +142,12 @@ export class StackInfrastructureManager {
         const infraReqs = definition.omnitronConfig?.infrastructure;
         if (!infraReqs) continue;
 
-        const appContainers = resolveAppInfrastructure(
-          infraReqs,
-          stackConfig.serviceOverrides,
-          appName,
-        );
+        const appContainers = resolveAppInfrastructure(infraReqs, stackConfig.serviceOverrides, appName);
 
         if (appContainers.length > 0) {
           infraService.addAppContainers(appContainers);
           this.logger.info(
-            { app: appName, services: appContainers.map(c => c.name) },
+            { app: appName, services: appContainers.map((c) => c.name) },
             'Resolved app infrastructure services'
           );
         }
@@ -163,17 +157,17 @@ export class StackInfrastructureManager {
     // 6. Resolve API gateway if present in normalized services or legacy config
     const gatewayInServices = normalizedServices?.['gateway'];
     const legacyGateway = stackInfraConfig.gateway;
-    if ((gatewayInServices || legacyGateway) && projectRoot) {
-      const { resolveGateway, gatewayConfigOf, containerEndpoint, REDIS_CONTAINER_PORT } = await import('./service-resolver.js');
+    if ((usesGatewayTemplate(gatewayInServices) || (!gatewayInServices && legacyGateway)) && projectRoot) {
+      const { resolveGateway, gatewayConfigOf, containerEndpoint, REDIS_CONTAINER_PORT } =
+        await import('./service-resolver.js');
       // The gateway's own database, by the one rule every side uses
       // (gateway-redis-db.ts). `redisDbEnd + 1` was 5 — geo's database, since
       // sample outgrew the five-wide range this was the end of.
       const gatewayRedisDb = gatewayRedisDbOf(
-        (stackInfraConfig.redis as { databases?: Record<string, number> } | undefined)?.databases,
+        (stackInfraConfig.redis as { databases?: Record<string, number> } | undefined)?.databases
       );
-      const redisPassword = typeof stackInfraConfig.redis?.password === 'string'
-        ? stackInfraConfig.redis.password
-        : undefined;
+      const redisPassword =
+        typeof stackInfraConfig.redis?.password === 'string' ? stackInfraConfig.redis.password : undefined;
       // Over the stack network, by container name. `host.docker.internal`
       // and the host-published port sent the gateway out to the host and
       // back, which a Linux node does not allow once the ports are bound to
@@ -192,7 +186,7 @@ export class StackInfrastructureManager {
       const gatewayContainer = resolveGateway(
         gatewayConfigOf(gatewayInServices?._presetConfig, legacyGateway, gwPort, gatewayRedisDb),
         redisConfig,
-        projectRoot,
+        projectRoot
       );
       infraService.addAppContainers([gatewayContainer]);
       this.logger.info(
@@ -211,10 +205,7 @@ export class StackInfrastructureManager {
     } catch (err) {
       // Remove on failure — the infrastructure is not usable
       this.instances.delete(key);
-      this.logger.error(
-        { project, stack, error: (err as Error).message },
-        'Failed to provision stack infrastructure'
-      );
+      this.logger.error({ project, stack, error: (err as Error).message }, 'Failed to provision stack infrastructure');
       throw err;
     }
   }
@@ -234,10 +225,7 @@ export class StackInfrastructureManager {
     try {
       await infraService.teardown();
     } catch (err) {
-      this.logger.error(
-        { project, stack, error: (err as Error).message },
-        'Failed to teardown stack infrastructure'
-      );
+      this.logger.error({ project, stack, error: (err as Error).message }, 'Failed to teardown stack infrastructure');
     }
 
     this.instances.delete(key);
@@ -293,7 +281,10 @@ export class StackInfrastructureManager {
   /**
    * Get normalized services for a stack (from preset system).
    */
-  getNormalizedServices(project: string, stack: string): Record<string, import('./types.js').IServiceRequirement> | null {
+  getNormalizedServices(
+    project: string,
+    stack: string
+  ): Record<string, import('./types.js').IServiceRequirement> | null {
     const infraService = this.instances.get(`${project}/${stack}`);
     return infraService?.getNormalizedServices() ?? null;
   }
@@ -306,7 +297,7 @@ export class StackInfrastructureManager {
     project: string,
     stack: string,
     settings: IStackSettings | undefined,
-    baseConfig: InfrastructureConfig,
+    baseConfig: InfrastructureConfig
   ): StackPortAllocation {
     const basePg = baseConfig.postgres?.port ?? 5432;
     const baseRedis = baseConfig.redis?.port ?? 6379;
@@ -362,7 +353,7 @@ export class StackInfrastructureManager {
   private mergeInfraConfig(
     base: InfrastructureConfig,
     stackConfig: IStackConfig,
-    portAlloc: StackPortAllocation,
+    portAlloc: StackPortAllocation
   ): InfrastructureConfig {
     const override = stackConfig.infrastructure ?? {};
 

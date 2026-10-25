@@ -69,14 +69,16 @@ type DeclaredVolume = string | { source: string; target: string; readonly?: bool
 function resolveNamedOrBound(
   service: string,
   key: string,
-  vol: DeclaredVolume,
+  vol: DeclaredVolume
 ): { source: string; target: string; readonly?: boolean } {
   if (typeof vol === 'string') return { source: `${CONTAINER_PREFIX}-${service}-${key}`, target: vol };
   const shared = vol.source.startsWith(SHARED_VOLUME_PREFIX) ? vol.source.slice(SHARED_VOLUME_PREFIX.length) : null;
   if (shared !== null && !/^[a-z0-9][a-z0-9_.-]*$/.test(shared)) {
     // Docker would refuse the name anyway; saying which declaration it was is
     // the useful part.
-    throw new Error(`Volume "${key}" of ${service}: "${vol.source}" does not name a shared volume (lower-case letters, digits, «_.-»)`);
+    throw new Error(
+      `Volume "${key}" of ${service}: "${vol.source}" does not name a shared volume (lower-case letters, digits, «_.-»)`
+    );
   }
   const isBindMount = vol.source.startsWith('/') || vol.source.startsWith('.');
   const entry: { source: string; target: string; readonly?: boolean } = {
@@ -91,7 +93,6 @@ function resolveNamedOrBound(
   if (vol.readonly) entry.readonly = vol.readonly;
   return entry;
 }
-
 
 /**
  * Where to PUBLISH the gateway, which is not where it listens.
@@ -116,8 +117,13 @@ function resolveNamedOrBound(
  * really is a container port, which is why the fallback is not a mistake.
  */
 export function gatewayHostPort(
-  service: { ports?: Record<string, number> | undefined; docker?: { portMappings?: Record<string, number> | undefined } | undefined } | undefined,
-  legacy: { port?: number | undefined } | undefined,
+  service:
+    | {
+        ports?: Record<string, number> | undefined;
+        docker?: { portMappings?: Record<string, number> | undefined } | undefined;
+      }
+    | undefined,
+  legacy: { port?: number | undefined } | undefined
 ): number {
   return service?.docker?.portMappings?.['http'] ?? service?.ports?.['http'] ?? legacy?.port ?? 8080;
 }
@@ -297,10 +303,7 @@ function stackLabels(): Record<string, string> {
  * service's own: `http` by convention, then whatever single port it
  * declares — a service with one port cannot mean another.
  */
-function healthPort(
-  check: NonNullable<IServiceRequirement['healthCheck']>,
-  ports?: Record<string, number>,
-): number {
+function healthPort(check: NonNullable<IServiceRequirement['healthCheck']>, ports?: Record<string, number>): number {
   const named = (check as { port?: string }).port;
   if (named && ports?.[named]) return ports[named]!;
   if (ports?.['http']) return ports['http'];
@@ -327,7 +330,7 @@ export function resolveServiceRequirement(
   override?: IServiceOverride,
   appName?: string,
   /** Where each service's shipped config directory is on THIS machine — see `shipped-config.ts`. */
-  configRoots?: ReadonlyMap<string, string>,
+  configRoots?: ReadonlyMap<string, string>
 ): ResolvedContainer | null {
   // A container only for a service this stack runs as one — not one it
   // disables, reaches elsewhere, or runs on the node as a system service
@@ -370,7 +373,10 @@ export function resolveServiceRequirement(
       // copy arrived — it stays as it is, and docker refuses it by name.
       const local = shippedMountPath(vol.source, configRoots);
       if (local) shippedRoots.add(local.root);
-      const entry: { source: string; target: string; readonly?: boolean } = { source: local?.path ?? vol.source, target: vol.target };
+      const entry: { source: string; target: string; readonly?: boolean } = {
+        source: local?.path ?? vol.source,
+        target: vol.target,
+      };
       if (vol.readonly) entry.readonly = vol.readonly;
       return entry;
     }
@@ -412,10 +418,13 @@ export function resolveServiceRequirement(
   // script recreates the container — the same reason as the gateway's.
   for (const root of shippedRoots) {
     const digest = mountedConfigDigest(root, spec.volumes);
-    if (digest) spec.configDigest = spec.configDigest ? configFilesHash([
-      { path: 'a', content: spec.configDigest, mode: '644' },
-      { path: 'b', content: digest, mode: '644' },
-    ]) : digest;
+    if (digest)
+      spec.configDigest = spec.configDigest
+        ? configFilesHash([
+            { path: 'a', content: spec.configDigest, mode: '644' },
+            { path: 'b', content: digest, mode: '644' },
+          ])
+        : digest;
   }
   return spec;
 }
@@ -428,7 +437,7 @@ export function resolveAppInfrastructure(
   infrastructure: Record<string, IServiceRequirement>,
   overrides?: Record<string, IServiceOverride>,
   appName?: string,
-  configRoots?: ReadonlyMap<string, string>,
+  configRoots?: ReadonlyMap<string, string>
 ): ResolvedContainer[] {
   const containers: ResolvedContainer[] = [];
   const resolved = new Set<string>();
@@ -458,7 +467,10 @@ export function resolveAppInfrastructure(
 }
 
 /** Convert IServiceHealthCheck to Docker ContainerHealthCheck */
-function convertHealthCheck(check?: IServiceRequirement['healthCheck'], ports?: Record<string, number>): ContainerHealthCheck | undefined {
+function convertHealthCheck(
+  check?: IServiceRequirement['healthCheck'],
+  ports?: Record<string, number>
+): ContainerHealthCheck | undefined {
   if (!check) return undefined;
 
   // One helper per default, not one helper for every duration field. A
@@ -506,7 +518,10 @@ function convertHealthCheck(check?: IServiceRequirement['healthCheck'], ports?: 
           : '';
       const rpcPath = check.jsonrpc?.path ?? '/json_rpc';
       return {
-        test: ['CMD-SHELL', `curl -sf ${authStr} -X POST http://localhost:${port}${rpcPath} -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":"health","method":"${method}"}' || exit 1`],
+        test: [
+          'CMD-SHELL',
+          `curl -sf ${authStr} -X POST http://localhost:${port}${rpcPath} -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":"health","method":"${method}"}' || exit 1`,
+        ],
         interval: everyDefault(check.interval),
         timeout: deadlineDefault(check.timeout),
         retries: check.retries ?? 5,
@@ -519,10 +534,7 @@ function convertHealthCheck(check?: IServiceRequirement['healthCheck'], ports?: 
 }
 
 /** Deep merge Docker configs (base + variant/override) */
-function deepMergeDocker(
-  base: IDockerServiceConfig,
-  overlay: Partial<IDockerServiceConfig>,
-): IDockerServiceConfig {
+function deepMergeDocker(base: IDockerServiceConfig, overlay: Partial<IDockerServiceConfig>): IDockerServiceConfig {
   const merged: IDockerServiceConfig = { ...base, ...overlay };
   if (base.environment || overlay.environment) {
     merged.environment = { ...base.environment, ...overlay.environment };
@@ -574,15 +586,17 @@ export function resolveOmnitronPg(options?: {
       POSTGRES_PASSWORD: password,
       POSTGRES_DB: 'omnitron',
     },
-    volumes: [
-      { source: `${CONTAINER_PREFIX}-pg-data`, target: '/var/lib/postgresql/data' },
-    ],
+    volumes: [{ source: `${CONTAINER_PREFIX}-pg-data`, target: '/var/lib/postgresql/data' }],
     command: [
       'postgres',
-      '-c', 'max_connections=50',
-      '-c', 'shared_buffers=64MB',
-      '-c', 'log_statement=none',
-      '-c', 'log_min_duration_statement=500',
+      '-c',
+      'max_connections=50',
+      '-c',
+      'shared_buffers=64MB',
+      '-c',
+      'log_statement=none',
+      '-c',
+      'log_min_duration_statement=500',
     ],
     healthCheck: {
       test: ['CMD-SHELL', `pg_isready -U ${user} -d omnitron`],
@@ -643,7 +657,11 @@ export function mountedConfigDigest(root: string, volumes: ResolvedContainer['vo
     } else if (stat.isFile()) {
       // latin1 maps bytes to code units one to one, so the digest sees the
       // bytes the container will, text or not.
-      files.push({ path: abs.slice(prefix.length), content: fs.readFileSync(abs, 'latin1'), mode: (stat.mode & 0o777).toString(8) });
+      files.push({
+        path: abs.slice(prefix.length),
+        content: fs.readFileSync(abs, 'latin1'),
+        mode: (stat.mode & 0o777).toString(8),
+      });
     }
   };
   try {
@@ -680,7 +698,7 @@ export function gatewayConfigOf(
   presetConfig: Readonly<Record<string, unknown>> | undefined,
   legacy: Partial<GatewayServiceConfig> | undefined,
   port: number,
-  redisDb: number,
+  redisDb: number
 ): GatewayServiceConfig {
   const pick = <K extends keyof GatewayServiceConfig>(key: K): GatewayServiceConfig[K] | undefined =>
     (presetConfig?.[key] as GatewayServiceConfig[K] | undefined) ?? legacy?.[key];
@@ -697,10 +715,17 @@ export function gatewayConfigOf(
   };
 }
 
+/** Only the OpenResty preset owns the shipped template contract.
+ * A service called "gateway" can declare a completely different container.
+ */
+export function usesGatewayTemplate(service: IServiceRequirement | undefined): boolean {
+  return service?._preset === 'openresty';
+}
+
 export function resolveGateway(
   config: GatewayServiceConfig,
   redisConfig: { host: string; port: number; db: number; password?: string },
-  projectRoot: string,
+  projectRoot: string
 ): ResolvedContainer {
   const image = config.image ?? 'openresty/openresty:alpine';
   const port = config.port ?? 8080;
@@ -810,7 +835,10 @@ export function resolveGateway(
     ],
     entrypoint: ['/bin/sh', '/docker-entrypoint.sh'],
     healthCheck: {
-      test: ['CMD-SHELL', '[ -S /usr/local/openresty/nginx/logs/nginx.pid ] || kill -0 $(cat /usr/local/openresty/nginx/logs/nginx.pid 2>/dev/null) 2>/dev/null || exit 1'],
+      test: [
+        'CMD-SHELL',
+        '[ -S /usr/local/openresty/nginx/logs/nginx.pid ] || kill -0 $(cat /usr/local/openresty/nginx/logs/nginx.pid 2>/dev/null) 2>/dev/null || exit 1',
+      ],
       interval: '10s',
       timeout: '5s',
       retries: 3,
@@ -954,14 +982,19 @@ export function resolveInfrastructure(
      * `node_modules` under the web root.
      */
     staticLinkRoots?: Map<string, string>;
-  },
+  }
 ): ResolvedContainer[] {
   if (!normalizedServices || Object.keys(normalizedServices).length === 0) {
     return [];
   }
 
   const gatewayRoot = configRoots?.get('gateway');
-  if (!gatewayRoot || !normalizedServices['gateway'] || !gatewayContext) {
+  if (
+    !gatewayRoot ||
+    !normalizedServices['gateway'] ||
+    !usesGatewayTemplate(normalizedServices['gateway']) ||
+    !gatewayContext
+  ) {
     return resolveAppInfrastructure(normalizedServices, overrides, undefined, configRoots);
   }
 
@@ -981,7 +1014,7 @@ export function resolveInfrastructure(
     normalizedServices['gateway']._presetConfig,
     undefined,
     port,
-    gatewayContext.redis.db,
+    gatewayContext.redis.db
   );
   const staticRoot = gatewayContext.staticRoots?.get('gateway');
   const staticLinkRoot = gatewayContext.staticLinkRoots?.get('gateway');
@@ -1002,14 +1035,14 @@ export function resolveInfrastructure(
               staticLinkRoot,
               staticLinkName: gatewayStaticLinkName(
                 STACK_LABELS['omnitron.project'] ?? '',
-                STACK_LABELS['omnitron.stack'] ?? '',
+                STACK_LABELS['omnitron.stack'] ?? ''
               ),
             }
           : {}),
       },
       gatewayContext.redis,
-      gatewayRoot,
-    ),
+      gatewayRoot
+    )
   );
   return containers;
 }

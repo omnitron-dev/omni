@@ -129,3 +129,20 @@ Controlled host inspection/activation/recovery currently supports daemon port
 rewrites first require the on-disk unit to equal the captured original or one
 of this operation's two framework-bound variants. Outside unit edits are
 preserved and force recovery-required instead of being overwritten.
+
+### Remaining verification boundaries (25 October 2026)
+
+The installed-tree receipt binds all installed dependency bytes and rejects
+changes on reuse. The source bundle currently does not carry a generated npm
+lockfile for all external transitive dependencies: their first resolution still
+occurs during installation. This is not a claim of bit-for-bit dependency
+reproducibility across fresh hosts. A lockfile/SBOM build step and an offline
+installation check remain separate supply-chain work.
+
+Execution fencing covers native leased commands and guarded upload publication.
+An abnormal timeout or killed command retains durable unresolved intent; no
+elapsed-time heuristic declares it safe to admit a new writer. Recovery needs
+inspection of the recorded operation and host processes. Intentionally detached
+late mutations and direct administrator operations outside the deployment
+contract are not made transactional by this mechanism. A single physical host
+also remains a failure domain; process recovery is not multi-host availability.

@@ -88,6 +88,25 @@ describe('a verified upload is atomically promoted', () => {
     expect(f.dispose).toHaveBeenCalledTimes(2);
     expect(readdirSync(f.dir).filter((p) => p.endsWith('.part'))).toEqual([]);
   });
+  it('cannot promote bytes after its lease is lost during the real temporary-file transfer', async () => {
+    const f = fixture(async (source, temporary) => copyFileSync(source, temporary));
+    const runControl = vi.fn(async () => { throw Error('Node lease lost'); });
+    await expect(f.svc.uploadFile(target, f.source, f.remote, { runControl })).rejects.toThrow('Node lease lost');
+    expect(runControl).toHaveBeenCalledTimes(2);
+    expect(readFileSync(f.remote, 'utf8')).toBe('prior content');
+    expect(readdirSync(f.dir).filter((p) => p.endsWith('.part'))).toEqual([]);
+    expect(f.svc.ssh.mock.calls.some(([, command]: [unknown, string]) => command.includes('mv -f --'))).toBe(false);
+  });
+  it('verifies complete bytes inside the same guard that promotes the destination', async () => {
+    const f = fixture(async (source, temporary) => copyFileSync(source, temporary));
+    const runControl = vi.fn(async (command: string) => {
+      const temporary = readdirSync(f.dir).find((p) => p.endsWith('.part'))!;
+      writeFileSync(join(f.dir, temporary), Buffer.alloc(statSync(f.source).size, 7));
+      return f.svc.ssh(target, command);
+    });
+    await expect(f.svc.uploadFile(target, f.source, f.remote, { runControl })).rejects.toThrow('promotion rejected');
+    expect(readFileSync(f.remote, 'utf8')).toBe('prior content');
+  });
   it('safely retries a lost acknowledgement after the first atomic promotion', async () => {
     const f = fixture(async (source, temporary) => copyFileSync(source, temporary));
     const original = f.svc.ssh;

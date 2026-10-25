@@ -36,6 +36,11 @@ export interface SSHTarget {
   password?: string;
 }
 
+export interface UploadOptions {
+  /** A deployment may fence verification and promotion under its node lease. */
+  runControl(command: string, timeout: number): Promise<Pick<ExecResult, 'stdout' | 'stderr' | 'exitCode'>>;
+}
+
 export interface DockerTarget {
   container: string;
   /** Execute via SSH to remote Docker host */
@@ -411,13 +416,13 @@ export class ExecutionService {
    * The engine speaks SFTP over the same authenticated connection as
    * `ssh()`, so one credential path serves both.
    */
-  async uploadFile(target: SSHTarget, localPath: string, remotePath: string): Promise<void> {
+  async uploadFile(target: SSHTarget, localPath: string, remotePath: string, options?: UploadOptions): Promise<void> {
     // Serialize bulk transfers per node. Each owns a dedicated connection;
     // lease and control commands use the independent main engine.
     const node = `${target.host}:${target.port ?? 22}`;
     const queue = (this.transfersByNode ??= new Map<string, Promise<void>>());
     const before = queue.get(node) ?? Promise.resolve();
-    const mine = before.then(() => this.transferOnce(target, localPath, remotePath));
+    const mine = before.then(() => this.transferOnce(target, localPath, remotePath, options));
     const settled = mine.catch(() => undefined);
     queue.set(node, settled);
     try {
@@ -440,7 +445,7 @@ export class ExecutionService {
     });
   }
 
-  private async transferOnce(target: SSHTarget, localPath: string, remotePath: string): Promise<void> {
+  private async transferOnce(target: SSHTarget, localPath: string, remotePath: string, options?: UploadOptions): Promise<void> {
     const fsp = await import('node:fs/promises');
     const stat = await fsp.stat(localPath);
     if (!stat.isFile()) throw new Error('Upload source must be a regular file');
@@ -507,9 +512,19 @@ export class ExecutionService {
           )
         ).split(/\s+/)[0];
         if (actual !== digest) throw new Error('Uploaded file SHA256 does not match the source');
-        await control(
-          `chmod ${(stat.mode & 0o777).toString(8)} ${shellEscape(temporary)} && test ! -d ${shellEscape(remotePath)} && mv -f -- ${shellEscape(temporary)} ${shellEscape(remotePath)}`
-        );
+        // The guarded command repeats byte/hash checks inside the same execution
+        // fence as rename. A lost lease may finish SFTP into its unique temporary
+        // file, but must never replace a newer owner's canonical destination.
+        const promote =
+          `test "$(wc -c < ${shellEscape(temporary)})" -eq ${expected} && ` +
+          `actual=$(if command -v sha256sum >/dev/null 2>&1; then sha256sum ${shellEscape(temporary)}; else shasum -a 256 ${shellEscape(temporary)}; fi) && ` +
+          `test "\${actual%% *}" = ${shellEscape(digest)} && ` +
+          `chmod ${(stat.mode & 0o777).toString(8)} ${shellEscape(temporary)} && test ! -d ${shellEscape(remotePath)} && mv -f -- ${shellEscape(temporary)} ${shellEscape(remotePath)}`;
+        if (options?.runControl) {
+          const out = await options.runControl(promote, 30_000);
+          if (out.exitCode !== 0)
+            throw new Error(`Upload promotion rejected (${out.exitCode}): ${out.stderr}`);
+        } else await control(promote);
         return;
       } catch (error) {
         if (attempt === 2) throw error;

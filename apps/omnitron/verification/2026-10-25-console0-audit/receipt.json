@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "at": "2026-10-25T13:29:36.302914+00:00",
+  "tested_code_commit": "f9cc791e34f1e26d2851a12ae9a59ea0d52951b8",
+  "documented_commit": "00c4f61d285ed8f1b9f1aea361cb0fec78f6450e",
+  "validation": {
+    "combined": {
+      "files": 14,
+      "passed": 166,
+      "conditional_native_cases": 4
+    },
+    "native_followup": {
+      "files": 2,
+      "passed": 37,
+      "skipped": 0
+    },
+    "unique_checked_cases": 170,
+    "typecheck": "passed",
+    "operator_build": "passed",
+    "local_forecast_status_pid_inventory": "unchanged"
+  },
+  "logs": {
+    "omnitron-console0-final-tests.log": {
+      "sha256": "d5c734250fd6a82af4919f8412b89fad3c031a7eb1e513599abd56bfe9dda1bb",
+      "bytes": 432
+    },
+    "omnitron-console0-native-tests.log": {
+      "sha256": "d19c68b76adc481953fbef1f8eef775b52c197a2adc3a86b86407dc2194095da",
+      "bytes": 344
+    },
+    "omnitron-console0-operator-build.log": {
+      "sha256": "db2756d416f148b1a92e9adbfc07177d5b047d05489f060ad95f69a561c68b23",
+      "bytes": 206
+    }
+  },
+  "scope": [
+    "host workflow recovery barrier",
+    "daemon upgrade and rollback",
+    "immutable bundle install and reuse",
+    "file delivery and atomic promotion",
+    "lease renewal and remote execution fencing",
+    "host ingress ownership, TLS and rollback",
+    "multi-project infrastructure identity and lifecycle"
+  ],
+  "remaining_boundaries": [
+    "Initial external npm dependency resolution is not shipped as a complete lockfile; installed bytes are recorded and immutable reuse is checked.",
+    "Abnormal remote execution retains unresolved intent. There is no automatic safe-liveness inference or native intent recovery entry yet.",
+    "Direct administrative commands outside the managed lease contract and intentionally detached late writes are outside execution fencing.",
+    "A single physical server remains one failure domain."
+  ],
+  "production": "Host platform and Consumer acceptance pending; EXAMPLE app-only release accepted separately."
+}

@@ -10,6 +10,9 @@
  *   const result = await executionService.docker('container-name')`cat /etc/config`;
  */
 
+import { createHash, randomUUID } from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import { shellEscape } from '../shared/shell-escape.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
 // =============================================================================
@@ -180,6 +183,8 @@ export const SSH_CONNECTION_POOL = {
  * artifacts crossed in ~70 s, about 0.4 MB/s — so a slow link still delivers,
  * and a dead one fails in minutes, with its words, instead of never.
  */
+export const UPLOAD_STALL_MS = 120_000;
+
 export function uploadDeadlineMs(bytes: number): number {
   return 60_000 + Math.ceil(bytes / (32 * 1024)) * 1000;
 }
@@ -326,7 +331,7 @@ export class ExecutionService {
   async tunnel(
     target: SSHTarget,
     remotePort: number,
-    options?: { remoteHost?: string; localHost?: string },
+    options?: { remoteHost?: string; localHost?: string }
   ): Promise<{ host: string; port: number; close(): Promise<void> }> {
     const engine = await this.getEngine();
     if (!engine) throw new Error('SSH tunnelling needs the xec engine, which is not available');
@@ -345,10 +350,7 @@ export class ExecutionService {
       remotePort,
     });
 
-    this.logger.debug(
-      { host: target.host, localPort: handle.localPort, remotePort },
-      'SSH tunnel open',
-    );
+    this.logger.debug({ host: target.host, localPort: handle.localPort, remotePort }, 'SSH tunnel open');
 
     return {
       host: handle.localHost ?? '127.0.0.1',
@@ -410,12 +412,8 @@ export class ExecutionService {
    * `ssh()`, so one credential path serves both.
    */
   async uploadFile(target: SSHTarget, localPath: string, remotePath: string): Promise<void> {
-    // One transfer at a time per node. They share one SSH connection, so
-    // running three side by side is not faster — the link is the limit — and
-    // it queues megabytes in front of every small command on that connection:
-    // with 3–5 transfers in flight (each `fastPut` keeps up to 2 MB
-    // outstanding) a lease renewal waited past its 30 s, and its timeout is
-    // what closed the connection under them (see `uploadDeadlineMs`).
+    // Serialize bulk transfers per node. Each owns a dedicated connection;
+    // lease and control commands use the independent main engine.
     const node = `${target.host}:${target.port ?? 22}`;
     const queue = (this.transfersByNode ??= new Map<string, Promise<void>>());
     const before = queue.get(node) ?? Promise.resolve();
@@ -432,56 +430,104 @@ export class ExecutionService {
   /** Transfers still to finish, per node — see `uploadFile`. */
   private transfersByNode?: Map<string, Promise<void>>;
 
+  /** Bulk channels must never share a pool with deployment lease/control commands. */
+  private async createTransferEngine(): Promise<any> {
+    const xec = await import('@xec-sh/core');
+    return new xec.ExecutionEngine({
+      defaultTimeout: 30_000,
+      defaultShell: '/bin/sh',
+      adapters: { ssh: { connectionPool: SSH_CONNECTION_POOL } },
+    });
+  }
+
   private async transferOnce(target: SSHTarget, localPath: string, remotePath: string): Promise<void> {
-    const engine = await this.getEngine();
-    if (!engine) {
-      // No silent fallback to `scp`. It cannot present a password, so it
-      // would fail with "Permission denied (publickey,password)" — an error
-      // that sends the reader to the node's credentials, which are fine.
-      throw new Error(
-        'Cannot transfer files: the execution engine is unavailable, and the fallback cannot use stored credentials.',
-      );
-    }
     const fsp = await import('node:fs/promises');
-    const expected = (await fsp.stat(localPath)).size;
-
-    // The transfer is not finished when the call returns — it is finished
-    // when the bytes are there.
-    //
-    // Measured 2026-09-21 delivering the portal to `sample-test`: this method
-    // returned without error, the next step ran `tar -xzf` on the result,
-    // and the node answered `gzip: stdin: unexpected end of file`. A
-    // 19 687 584-byte archive had arrived short, and nothing between the two
-    // steps asked how long it was. The gateway was then configured with no
-    // static root at all and served nothing at `/`.
-    //
-    // `wc -c <` rather than `stat`: the flag for a file's size is spelled
-    // differently on the two systems this runs against, and a probe that
-    // fails on the healthy case is worse than none.
+    const stat = await fsp.stat(localPath);
+    if (!stat.isFile()) throw new Error('Upload source must be a regular file');
+    const expected = stat.size;
+    const hash = createHash('sha256');
+    for await (const chunk of createReadStream(localPath)) hash.update(chunk);
+    const digest = hash.digest('hex');
+    const control = async (command: string): Promise<string> => {
+      const out = await this.ssh(target, command, { timeout: 30_000 });
+      if (out.exitCode !== 0) throw new Error(`Upload verification command failed (${out.exitCode}): ${out.stderr}`);
+      return out.stdout.trim();
+    };
     for (let attempt = 1; attempt <= 2; attempt++) {
-      const ssh = engine.ssh(sshConfig(target));
-      await this.withinDeadline(ssh.uploadFile(localPath, remotePath), uploadDeadlineMs(expected), (ms) =>
-        new Error(
-          `Upload of ${localPath} (${expected} bytes) to ${target.host}:${remotePath} did not finish in ` +
-            `${Math.round(ms / 1000)} s — the transfer was abandoned; the file on the node is incomplete and was not used.`,
-        ),
-      );
-
-      const out = await this.ssh(target, `wc -c < '${remotePath.replace(/'/g, "'\\''")}'`, {
-        timeout: 30_000,
-      });
-      const landed = Number.parseInt(out.stdout.trim(), 10);
-      if (Number.isFinite(landed) && landed === expected) return;
-
-      this.logger.warn(
-        { remotePath, expected, landed, attempt },
-        'The uploaded file is not the size it was sent — retrying',
-      );
-      if (attempt === 2) {
-        throw new Error(
-          `Upload of ${localPath} to ${remotePath} landed ${Number.isFinite(landed) ? landed : 'an unreadable size'} ` +
-            `of ${expected} bytes, twice. The file on the node is incomplete and was not used.`,
+      const temporary = remotePath + '.upload-' + randomUUID() + '.part';
+      const engine = await this.createTransferEngine();
+      let stop = false;
+      let poll: ReturnType<typeof setTimeout> | undefined;
+      let wake: (() => void) | undefined;
+      let watch: Promise<never> | undefined;
+      try {
+        await control(`umask 077 && (set -C; : > ${shellEscape(temporary)})`);
+        let lastSize = 0;
+        let lastProgress = Date.now();
+        watch = (async () => {
+          while (!stop) {
+            await new Promise<void>((resolve) => {
+              wake = resolve;
+              poll = setTimeout(resolve, 15_000);
+            });
+            if (stop) break;
+            const size = Number(await control(`wc -c < ${shellEscape(temporary)}`));
+            if (!Number.isSafeInteger(size) || size < lastSize || size > expected)
+              throw new Error('Invalid upload progress');
+            if (size > lastSize) {
+              lastSize = size;
+              lastProgress = Date.now();
+            }
+            if (Date.now() - lastProgress >= UPLOAD_STALL_MS)
+              throw new Error(
+                `Upload to ${target.host}:${remotePath} made no progress for ${UPLOAD_STALL_MS / 1000} s; temporary file was not promoted`
+              );
+          }
+          return await new Promise<never>(() => {});
+        })();
+        await this.withinDeadline(
+          Promise.race([engine.ssh(sshConfig(target)).uploadFile(localPath, temporary), watch]),
+          uploadDeadlineMs(expected),
+          (ms) =>
+            new Error(
+              `Upload of ${localPath} (${expected} bytes) to ${target.host}:${remotePath} did not finish in ${Math.round(ms / 1000)} s; temporary file was not promoted`
+            )
         );
+        stop = true;
+        clearTimeout(poll);
+        wake?.();
+        const landed = Number(await control(`wc -c < ${shellEscape(temporary)}`));
+        if (!Number.isSafeInteger(landed) || landed !== expected)
+          throw new Error(
+            `Upload landed ${Number.isFinite(landed) ? landed : 'an unreadable size'} of ${expected} bytes`
+          );
+        const actual = (
+          await control(
+            `if command -v sha256sum >/dev/null 2>&1; then sha256sum ${shellEscape(temporary)}; else shasum -a 256 ${shellEscape(temporary)}; fi`
+          )
+        ).split(/\s+/)[0];
+        if (actual !== digest) throw new Error('Uploaded file SHA256 does not match the source');
+        await control(
+          `chmod ${(stat.mode & 0o777).toString(8)} ${shellEscape(temporary)} && test ! -d ${shellEscape(remotePath)} && mv -f -- ${shellEscape(temporary)} ${shellEscape(remotePath)}`
+        );
+        return;
+      } catch (error) {
+        if (attempt === 2) throw error;
+        this.logger.warn(
+          { remotePath, attempt, error: describeXecError(error) },
+          'Upload failed before promotion; retrying with a fresh isolated connection'
+        );
+      } finally {
+        stop = true;
+        clearTimeout(poll);
+        wake?.();
+        // Disposing only this engine cannot close the lease/control connection.
+        await this.withinDeadline(
+          engine.dispose(),
+          10_000,
+          () => new Error('Isolated transfer connection did not close')
+        ).catch(() => undefined);
+        await control(`rm -f -- ${shellEscape(temporary)}`).catch(() => undefined);
       }
     }
   }

@@ -91,6 +91,45 @@ export class StackInfrastructureManager {
     const portAlloc = this.computePortAllocation(project, stack, stackConfig.settings, baseInfraConfig);
     this.portAllocations.set(key, portAlloc);
 
+    const infraService = await this.resolveStackDefinition(project, stack, stackConfig, baseInfraConfig, portAlloc, appDefinitions, projectRoot);
+
+    // Register BEFORE provision so the UI can query intermediate state
+    // during the provisioning process (which may take 30+ seconds).
+    this.instances.set(key, infraService);
+
+    try {
+      await infraService.provision();
+      return infraService;
+    } catch (err) {
+      // Remove on failure — the infrastructure is not usable
+      this.instances.delete(key);
+      this.logger.error({ project, stack, error: (err as Error).message }, 'Failed to provision stack infrastructure');
+      throw err;
+    }
+  }
+
+  /** Resolve the current declaration without provisioning or changing containers. */
+  async refreshOwnership(
+    project: string, stack: string, stackConfig: IStackConfig, baseInfraConfig: InfrastructureConfig,
+    appDefinitions?: Map<string, import('../config/types.js').IAppDefinition>, projectRoot?: string,
+  ): Promise<{ released: string[]; adopted: string[] }> {
+    const key = `${project}/${stack}`;
+    const existing = this.instances.get(key);
+    const allocation = this.portAllocations.get(key);
+    if (!existing || !allocation) throw new Error(`No active infrastructure ownership for ${key}`);
+    return withInfrastructureScope(project, stack, async () => {
+      const candidate = await this.resolveStackDefinition(project, stack, stackConfig, baseInfraConfig, allocation, appDefinitions, projectRoot, true);
+      return existing.refreshOwnershipFrom(candidate);
+    });
+  }
+
+  private async resolveStackDefinition(
+    project: string, stack: string, stackConfig: IStackConfig, baseInfraConfig: InfrastructureConfig,
+    portAlloc: StackPortAllocation,
+    appDefinitions?: Map<string, import('../config/types.js').IAppDefinition>, projectRoot?: string,
+    strict = false,
+  ): Promise<InfrastructureService> {
+    const key = `${project}/${stack}`;
     // 2. Build stack-specific infrastructure config with port overrides
     const stackInfraConfig = this.mergeInfraConfig(baseInfraConfig, stackConfig, portAlloc);
 
@@ -146,6 +185,7 @@ export class StackInfrastructureManager {
         false // An application stack never owns the host control-plane database.
       );
     } catch (err) {
+      if (strict) throw err;
       this.logger.warn({ error: (err as Error).message }, 'Preset normalization failed — using legacy resolvers');
       infraService = new InfrastructureService(
         this.logger.child({ stack: key }),
@@ -217,19 +257,7 @@ export class StackInfrastructureManager {
       );
     }
 
-    // Register BEFORE provision so the UI can query intermediate state
-    // during the provisioning process (which may take 30+ seconds).
-    this.instances.set(key, infraService);
-
-    try {
-      await infraService.provision();
-      return infraService;
-    } catch (err) {
-      // Remove on failure — the infrastructure is not usable
-      this.instances.delete(key);
-      this.logger.error({ project, stack, error: (err as Error).message }, 'Failed to provision stack infrastructure');
-      throw err;
-    }
+    return infraService;
   }
 
   /**

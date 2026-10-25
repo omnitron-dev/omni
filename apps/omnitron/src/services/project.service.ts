@@ -447,6 +447,24 @@ export class ProjectService extends EventEmitter {
     return redefined;
   }
 
+  /** Refresh only local container monitoring from the current validated project config. */
+  async refreshInfrastructureOwnership(projectName: string, stackName: string): Promise<{ released: string[]; adopted: string[] }> {
+    const project = this.registry.get(projectName);
+    if (!project) throw new Error(`Project '${projectName}' not found`);
+    this.configRegistry.delete(projectName);
+    const config = await this.loadProjectConfig(projectName);
+    const stack = this.resolveStacks(config, projectName)[stackName];
+    if (!stack || stack.type !== 'local') throw new Error('Ownership refresh requires a declared local stack');
+    const definitions = await this.loadAppDefinitions(projectName, stack, config);
+    // The same requirements merge used at stack start. A failed fresh scan must
+    // refuse a handoff rather than silently releasing auto-detected services.
+    const { scanRequirements, buildInfraFromRequirements } = await import('../project/requirements-scanner.js');
+    const auto = buildInfraFromRequirements(await scanRequirements(this.resolveStackApps(stack, config), project.path));
+    const explicit = mergeInfrastructure(config, stack);
+    const effective = { ...auto, ...explicit, services: { ...explicit?.services } };
+    return this.infraManager.refreshOwnership(projectName, stackName, stack, effective as InfrastructureConfig, definitions, project.path);
+  }
+
   updateProject(name: string, data: { path?: string }): IProjectInfo {
     const project = this.registry.get(name);
     if (!project) throw new Error(`Project '${name}' not found`);

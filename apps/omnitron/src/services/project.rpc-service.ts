@@ -96,6 +96,13 @@ export class ProjectRpcService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
+  async refreshInfrastructureOwnership(data: { project: string; stack: string }): Promise<{ released: string[]; adopted: string[] }> {
+    const result = await this.projectService.refreshInfrastructureOwnership(data.project, data.stack);
+    await this.audit?.record({ action: 'project.infrastructure.ownership', resourceType: 'project', resourceId: data.project, details: { stack: data.stack, ...result } });
+    return result;
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
   async removeProject(data: { name: string }): Promise<{ success: boolean }> {
     this.projectService.removeProject(data.name);
     await this.audit?.record({

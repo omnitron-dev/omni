@@ -305,6 +305,7 @@ export interface IProjectRpcService {
   // --- Projects (Admin) ---
   addProject(data: { name: string; path: string }): Promise<IProjectInfo>;
   updateProject(data: { name: string; path?: string }): Promise<IProjectInfo>;
+  refreshInfrastructureOwnership(data: { project: string; stack: string }): Promise<{ released: string[]; adopted: string[] }>;
   removeProject(data: { name: string }): Promise<{ success: boolean }>;
 
   // --- Apps (Viewer) ---

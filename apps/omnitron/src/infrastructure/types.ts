@@ -210,6 +210,8 @@ export interface InfrastructureConfig {
 export type ContainerStatus = 'not_found' | 'created' | 'running' | 'paused' | 'restarting' | 'exited' | 'dead';
 
 export interface ContainerState {
+  /** Native container labels, used to verify explicit ownership adoption. */
+  labels?: Record<string, string> | undefined;
   name: string;
   image: string;
   status: ContainerStatus;

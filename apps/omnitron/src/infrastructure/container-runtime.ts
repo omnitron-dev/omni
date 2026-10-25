@@ -307,6 +307,7 @@ export async function getContainerState(name: string): Promise<ContainerState | 
         startedAt: info.State?.StartedAt,
         ports: publishedPorts(info),
         specHash: info.Config?.Labels?.[SPEC_HASH_LABEL],
+        labels: info.Config?.Labels,
         service: info.Config?.Labels?.['omnitron.service'],
         networkAttached,
         ...(failure && { error: failure }),

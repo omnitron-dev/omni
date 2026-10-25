@@ -407,6 +407,56 @@ export class InfrastructureService {
   }
 
   /**
+   * Transfer monitoring ownership to a freshly resolved declaration. This never
+   * provisions containers: retained specs must match; additions must already be
+   * running with exact native ownership and spec labels. Freeze and drain all
+   * earlier monitor/reconcile work before acknowledging a handoff.
+   */
+  async refreshOwnershipFrom(candidate: InfrastructureService): Promise<{ released: string[]; adopted: string[] }> {
+    if (this.ownershipFrozen) throw new Error('Infrastructure ownership refresh already in progress');
+    this.ownershipFrozen = true;
+    try {
+      const drained = await Promise.allSettled([...this.activeSweeps, ...this.reconcileTasks.values()]);
+      if (drained.some(result => result.status === 'rejected')) throw new Error('In-flight infrastructure reconciliation failed; retry ownership refresh');
+      const current = new Map(this.desiredContainers.map(c => [c.name, c]));
+      const next = new Map(candidate.desiredContainers.map(c => [c.name, c]));
+      if (next.size !== candidate.desiredContainers.length) throw new Error('Duplicate desired container identity');
+      const adopted: string[] = [];
+      for (const [name, desired] of next) {
+        const prior = current.get(name);
+        if (prior) {
+          if (containerSpecHash(prior) !== containerSpecHash(desired) || !sameRecord(prior.labels, desired.labels)) {
+            throw new Error(`Ownership refresh cannot change retained service spec: ${name}`);
+          }
+          continue;
+        }
+        const actual = await getContainerState(name);
+        const labels = desired.labels;
+        if (!labels['omnitron.project'] || !labels['omnitron.stack'] || labels['omnitron.managed'] !== 'true' ||
+            actual?.status !== 'running' || actual.networkAttached === false || actual.specHash !== containerSpecHash(desired) ||
+            Object.entries(labels).some(([key, value]) => actual.labels?.[key] !== value)) {
+          throw new Error(`Cannot adopt service without matching running native ownership and spec: ${name}`);
+        }
+        adopted.push(name);
+      }
+      const released = [...current.keys()].filter(name => !next.has(name));
+      this.desiredContainers = [...candidate.desiredContainers];
+      this.config = candidate.config;
+      this.normalizedServices = candidate.normalizedServices;
+      this.serviceOverrides = candidate.serviceOverrides;
+      for (const name of released) {
+        delete this.state.services[name];
+        this.unhealthyTicks.delete(name);
+        this.restartBackoff.delete(name);
+        this.lastActions.delete(name);
+      }
+      return { released, adopted };
+    } finally {
+      this.ownershipFrozen = false;
+    }
+  }
+
+  /**
    * Services whose socket is new since this reconcile began.
    *
    * `noop` is the only action that leaves an existing connection usable.
@@ -479,6 +529,7 @@ export class InfrastructureService {
     normalizedServices: Record<string, import('./types.js').IServiceRequirement>,
     serviceOverrides?: Record<string, import('./types.js').IServiceOverride>,
   ): void {
+    if (this.ownershipFrozen) throw new Error('Infrastructure ownership refresh in progress');
     this.config = config;
     this.normalizedServices = normalizedServices;
     this.serviceOverrides = serviceOverrides;
@@ -580,6 +631,10 @@ export class InfrastructureService {
    * own restart-policy in the mix) occasional duplicate containers.
    */
   private readonly reconciling = new Set<string>();
+  private readonly reconcileTasks = new Map<string, Promise<void>>();
+  private readonly activeSweeps = new Set<Promise<void>>();
+  private ownershipFrozen = false;
+
 
   /**
    * Where this node keeps each service's config files, once a master sent them.
@@ -625,20 +680,24 @@ export class InfrastructureService {
 
   private async reconcileService(desired: ResolvedContainer): Promise<void> {
     // T#58: per-name lock around the whole inspect→decide→act loop.
-    if (this.reconciling.has(desired.name)) {
+    if (this.ownershipFrozen || this.reconciling.has(desired.name)) {
       this.logger.debug({ service: desired.name }, 'Reconcile already in flight — skipping');
       return;
     }
     this.reconciling.add(desired.name);
+    const task = this.reconcileServiceLocked(desired);
+    this.reconcileTasks.set(desired.name, task);
     try {
-      await this.reconcileServiceLocked(desired);
+      await task;
     } finally {
       this.reconciling.delete(desired.name);
+      this.reconcileTasks.delete(desired.name);
     }
   }
 
   private async reconcileServiceLocked(desired: ResolvedContainer): Promise<void> {
     const actual = await getContainerState(desired.name);
+    if (this.ownershipFrozen) return;
 
     const action = this.computeAction(desired, actual);
     // A container that was created, started or recreated is listening on a
@@ -1009,11 +1068,19 @@ export class InfrastructureService {
   }
 
   private async healthSweep(): Promise<void> {
+    if (this.ownershipFrozen) return;
+    const task = this.healthSweepOwned();
+    this.activeSweeps.add(task);
+    try { await task; } finally { this.activeSweeps.delete(task); }
+  }
+
+  private async healthSweepOwned(): Promise<void> {
     // The control-plane database alongside the app containers, where this
     // service keeps one.
     const allContainers = [...this.controlPlaneContainers(), ...this.desiredContainers];
     for (const desired of allContainers) {
       const actual = await getContainerState(desired.name);
+      if (this.ownershipFrozen) return;
 
       // T#58: Docker's own `--restart=always` / `--restart=on-failure`
       // policy puts the container into the 'restarting' state for the

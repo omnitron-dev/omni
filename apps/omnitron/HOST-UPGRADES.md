@@ -69,3 +69,23 @@ container teardown on the first transition. Its retained named volumes and
 application declarations must be validated and backed up before that transition;
 readiness is checked after recreation. A later ingress handoff must capture the
 actual post-upgrade legacy container identity, not a stale pre-upgrade ID.
+
+## Explicit infrastructure ownership handoff
+
+After registering a changed local project configuration, the admin native
+`OmnitronProject.refreshInfrastructureOwnership({project, stack})` operation
+resolves the fresh validated stack through the same container resolver and
+requirements merge as stack startup. It returns exact `released` and `adopted`
+container names. It does not create, remove, stop, or restart containers.
+
+The operation freezes new monitoring/reconcile work and drains existing work
+before changing ownership. Removed services leave the desired set; delayed
+health snapshots cannot revive them after the operation returns. Retained
+specifications must remain identical. Newly declared services can be adopted
+only when already running with matching native ownership labels and spec hash;
+missing, stopped, foreign, or changed services are refused. Restore the previous
+profile, register it again, and invoke the same operation to restore monitoring
+after an ingress rollback. A native ingress takeover must still validate the
+exact container identity after the refresh drains prior work. This bounded
+operation does not deploy changed service specifications or provision missing
+infrastructure; those remain explicit stack deployment operations.

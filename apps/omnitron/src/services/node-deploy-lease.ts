@@ -14,7 +14,8 @@
  * within the last `leaseSec` is refused and told who holds it; one that finds
  * it older takes it over, and says so. A laptop closed mid-deployment therefore
  * frees the only test server by itself, `leaseSec` after its last renewal,
- * instead of wedging it until someone logs in to delete a file.
+ * provided its remote command completed. A killed host worker leaves durable
+ * unresolved intent and requires inspected recovery instead of an unsafe takeover.
  *
  * Every read-decide-write of that file runs under `flock` on the node, so two
  * masters deciding at the same instant cannot both win. A node that cannot
@@ -68,7 +69,7 @@ export type AcquireAnswer =
 
 export type RenewAnswer = { kind: 'renewed' } | { kind: 'lost'; holder: LeaseRecord | null };
 
-export type ReleaseAnswer = { kind: 'released' } | { kind: 'not-held'; holder: LeaseRecord | null };
+export type ReleaseAnswer = { kind: 'released' } | { kind: 'not-held'; holder: LeaseRecord | null } | { kind: 'busy' };
 
 /** The node answered, and cannot provide exclusion. Refuse the deployment. */
 export class LeaseUnavailableError extends Error {
@@ -95,7 +96,7 @@ export class LeaseHeldError extends Error {
     super(
       `${node} is being deployed by ${who}; its lease was renewed ${idleSec}s ago. ` +
         `One writer per node: wait for it to finish. If that deployment is dead, ` +
-        `its lease lapses ${Math.max(0, leaseSec - idleSec)}s from now and the next deployment takes it over.`,
+        `its lease becomes eligible for takeover ${Math.max(0, leaseSec - idleSec)}s from now, once remote execution has cleared.`,
     );
     this.name = 'LeaseHeldError';
   }
@@ -103,23 +104,81 @@ export class LeaseHeldError extends Error {
 
 const LEASE_FILE = 'deploy.lease';
 const GUARD_FILE = 'deploy.guard';
+const EXECUTION_GUARD_FILE = 'deploy.execution.guard';
+const EXECUTION_RECORD_FILE = 'deploy.execution.json';
 
 /** Everything that decides runs after this: exclusion, or a named refusal. */
-function prelude(dir: string): string[] {
+function prelude(dir: string, refusalExit = 0): string[] {
   const d = shellEscape(dir);
   return [
-    `command -v flock >/dev/null 2>&1 || { echo 'NO-FLOCK'; exit 0; }`,
-    `mkdir -p ${d} 2>/dev/null || { echo 'NO-DIR'; exit 0; }`,
+    `command -v flock >/dev/null 2>&1 || { echo 'NO-FLOCK'; exit ${refusalExit}; }`,
+    `mkdir -p ${d} 2>/dev/null || { echo 'NO-DIR'; exit ${refusalExit}; }`,
     `fs=$(stat -f -c %T ${d} 2>/dev/null || echo unknown)`,
-    `case "$fs" in nfs*|cifs|smb*|fuse*|9p|ceph) echo "NETWORK-FS $fs"; exit 0;; esac`,
-    `exec 9>${shellEscape(`${dir}/${GUARD_FILE}`)} || { echo 'NO-GUARD'; exit 0; }`,
-    `flock -w 10 9 || { echo 'GUARD-TIMEOUT'; exit 0; }`,
+    `case "$fs" in nfs*|cifs|smb*|fuse*|9p|ceph) echo "NETWORK-FS $fs"; exit ${refusalExit};; esac`,
+    `exec 9>${shellEscape(`${dir}/${GUARD_FILE}`)} || { echo 'NO-GUARD'; exit ${refusalExit}; }`,
+    `flock -w 10 9 || { echo 'GUARD-TIMEOUT'; exit ${refusalExit}; }`,
     `L=${shellEscape(`${dir}/${LEASE_FILE}`)}`,
   ];
 }
 
 function tokenNeedle(token: string): string {
   return shellEscape(`"token":"${token}"`);
+}
+
+/** Called under the metadata lock; never waits for a command that needs that lock. */
+function executionIdle(timing: LeaseTiming): string[] {
+  return [
+    `exec 8>${shellEscape(`${timing.dir}/${EXECUTION_GUARD_FILE}`)} || { echo 'NO-GUARD'; exit 0; }`,
+    `flock -n 8 || { echo 'EXECUTION-BUSY'; exit 0; }`,
+    `if [ -e ${shellEscape(`${timing.dir}/${EXECUTION_RECORD_FILE}`)} ]; then echo 'EXECUTION-UNRESOLVED'; exit 0; fi`,
+  ];
+}
+
+/**
+ * Keep host mutations exclusive for the entire remote command, not just the
+ * controller's pre-step check. The child does not inherit the lock descriptor.
+ * A durable intent survives SIGKILL of the lock holder: it is never treated as
+ * completed merely because a lease or timeout elapsed. Ordinary disconnects
+ * leave the host worker to finish and clear its own record. An unresolved
+ * record requires inspected recovery before another writer can take over.
+ * Commands must synchronously finish their mutations; managed daemon startup
+ * may detach the daemon, but must not detach delayed deployment writes.
+ */
+export function guardScript(timing: LeaseTiming, token: string, command: string, timeoutMs = 600_000): string {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 86_400_000) throw new Error('Invalid guarded command timeout');
+  const id = crypto.randomUUID();
+  const file = `${timing.dir}/${EXECUTION_RECORD_FILE}`;
+  const temporary = `${file}.${id}.part`;
+  const record = JSON.stringify({ schema: 1, id, token, timeoutMs });
+  const body = [
+    ...prelude(timing.dir, 73),
+    `command -v timeout >/dev/null 2>&1 && command -v sync >/dev/null 2>&1 || { echo 'Execution fencing requires timeout and sync' >&2; exit 73; }`,
+    `if [ -e ${shellEscape(file)} ]; then echo 'Unresolved remote deployment command; inspected recovery is required' >&2; exit 73; fi`,
+    `if ! [ -s "$L" ] || ! grep -qF ${tokenNeedle(token)} "$L"; then echo 'Deployment lease was lost before remote execution' >&2; exit 73; fi`,
+    `umask 077`,
+    `printf '%s\\n' ${shellEscape(record)} > ${shellEscape(temporary)} && sync -f ${shellEscape(temporary)} && mv -f ${shellEscape(temporary)} ${shellEscape(file)} && sync -f ${shellEscape(timing.dir)} || exit 73`,
+    `touch "$L" || exit 73`,
+    `flock -u 9; exec 9>&-`,
+    `timeout --signal=TERM --kill-after=5s ${Math.ceil(timeoutMs / 1000)}s sh -c ${shellEscape(command)}`,
+    `result=$?`,
+    // A timeout or killed supervisor does not prove all descendant writers
+    // stopped. Retain intent; a new writer needs inspected recovery.
+    `if [ "$result" -ge 124 ]; then echo 'Remote command termination needs inspected recovery' >&2; exit "$result"; fi`,
+    // Retake metadata only after the bounded command has returned. If cleanup
+    // cannot be proved, the unresolved record remains and future work refuses.
+    `exec 9>${shellEscape(`${timing.dir}/${GUARD_FILE}`)} || exit 73`,
+    `flock -w 10 9 || exit 73`,
+    `if ! [ -f ${shellEscape(file)} ] || ! grep -qF ${shellEscape(`"id":"${id}"`)} ${shellEscape(file)}; then echo 'Remote execution record changed' >&2; exit 73; fi`,
+    `rm -f ${shellEscape(file)} && sync -f ${shellEscape(timing.dir)} || exit 73`,
+    `exit "$result"`,
+  ].join('\n');
+  return [
+    `command -v flock >/dev/null 2>&1 || { echo 'Execution fencing requires flock' >&2; exit 73; }`,
+    `mkdir -p ${shellEscape(timing.dir)} || exit 73`,
+    // --close prevents a launched service/background process from retaining
+    // the kernel lock forever. The durable record handles lock-holder death.
+    `flock --exclusive --timeout 30 --close ${shellEscape(`${timing.dir}/${EXECUTION_GUARD_FILE}`)} sh -c ${shellEscape(body)}`,
+  ].join('\n');
 }
 
 export function acquireScript(timing: LeaseTiming, record: LeaseRecord): string {
@@ -135,6 +194,7 @@ export function acquireScript(timing: LeaseTiming, record: LeaseRecord): string 
     `  if [ "$idle" -lt ${timing.leaseSec} ]; then printf 'HELD %s\\t' "$idle"; cat "$L"; echo; exit 0; fi`,
     `  printf 'LAPSED %s\\t' "$idle"; cat "$L"; echo`,
     `fi`,
+    ...executionIdle(timing),
     `printf '%s' ${shellEscape(JSON.stringify(record))} > "$L.tmp" && mv "$L.tmp" "$L" && echo 'ACQUIRED'`,
   ].join('\n');
 }
@@ -150,6 +210,7 @@ export function renewScript(timing: LeaseTiming, token: string): string {
 export function releaseScript(timing: LeaseTiming, token: string): string {
   return [
     ...prelude(timing.dir),
+    ...executionIdle(timing),
     `if [ -s "$L" ] && grep -qF ${tokenNeedle(token)} "$L"; then rm -f "$L"; echo 'RELEASED'; ` +
       `else printf 'NOT-HELD\\t'; cat "$L" 2>/dev/null; echo; fi`,
   ].join('\n');
@@ -157,6 +218,8 @@ export function releaseScript(timing: LeaseTiming, token: string): string {
 
 const REFUSALS: Record<string, string> = {
   'NO-FLOCK': 'the node has no flock(1) (util-linux)',
+  'EXECUTION-BUSY': 'a remote deployment command is still executing; the lease cannot be replaced',
+  'EXECUTION-UNRESOLVED': 'a remote deployment command has unresolved durable intent; inspected recovery is required',
   'NO-DIR': 'the lock directory could not be created',
   'NO-GUARD': 'the guard file could not be opened',
   'GUARD-TIMEOUT': 'the guard stayed locked for 10s — a lease operation on the node is stuck',
@@ -233,6 +296,7 @@ export function parseRenew(node: string, out: string): RenewAnswer {
 
 export function parseRelease(node: string, out: string): ReleaseAnswer {
   const ls = lines(out);
+  if (ls.some((l) => l.trim() === 'EXECUTION-BUSY' || l.trim() === 'EXECUTION-UNRESOLVED')) return { kind: 'busy' };
   refusalIn(node, ls);
   if (ls.some((l) => l.trim() === 'RELEASED')) return { kind: 'released' };
   const notHeld = ls.find((l) => l.startsWith('NOT-HELD'));
@@ -340,6 +404,8 @@ export class NodeLease {
     );
   }
 
+  guard(command: string, timeoutMs?: number): string { return guardScript(this.timing, this.record.token, command, timeoutMs); }
+
   async release(): Promise<ReleaseAnswer> {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
@@ -365,6 +431,8 @@ export interface HeldLeases {
   has(node: string): boolean;
   /** Confirm with the node before a step that changes it; throws if not ours. */
   confirm(node: string, step: string): Promise<void>;
+  /** Host-side exclusion and token validation for the entire remote command. */
+  guard(node: string, command: string, timeoutMs?: number): string;
   /** Nodes that could not be reached to lease them, with the reason. */
   readonly unreachable: ReadonlyMap<string, string>;
 }
@@ -448,6 +516,11 @@ export async function withNodeLeases<T>(
         if (!lease) throw new Error(`Refusing ${step} on ${node}: this deployment does not hold its lease`);
         await lease.confirm(step);
       },
+      guard: (node, command, timeoutMs) => {
+        const lease = held.get(node);
+        if (!lease) throw new Error(`Refusing remote command on ${node}: this deployment does not hold its lease`);
+        return lease.guard(command, timeoutMs);
+      },
       unreachable,
     });
   } finally {
@@ -465,13 +538,15 @@ async function releaseAll(held: ReadonlyMap<string, NodeLease>, stack: string, l
           { node: lease.node, stack, holder: answer.holder },
           'The deploy lease was no longer ours to give back — another deployment took it over',
         );
+      } else if (answer.kind === 'busy') {
+        logger.warn({ node: lease.node, stack }, 'Deploy lease retained: remote command is active or requires inspected recovery');
       } else {
         logger.info({ node: lease.node, stack }, 'Deploy lease released');
       }
     } catch (err) {
       logger.warn(
         { node: lease.node, stack, error: (err as Error).message },
-        'Could not release the deploy lease — it lapses by itself once it goes unrenewed',
+        'Could not release the deploy lease — takeover also requires remote execution to be clear',
       );
     }
   }

@@ -5,18 +5,21 @@
   "nativeDefect": "BootstrapProcess projected declared customRoutes to handlers only, discarding method and pathname matching.",
   "correction": "Adapt declared method and anchored literal pathname with * wildcards to Titan fallthrough handlers; preserve order, null fallthrough and reserved native endpoints. Query strings excluded; encoded slashes are not decoded.",
   "validation": {
-    "realBootstrapHttpTests": 4,
+    "realBootstrapHttpTests": 5,
     "focusedTotal": 17,
     "backendTypecheck": "passed",
     "backendBuild": "passed",
     "originalCode": "2 of 3 native HTTP tests failed: readiness intercepted by media handler; POST invoked GET media handler.",
     "stagedConsumerTests": 4,
-    "stagedConsumerFocusedTotal": 23
+    "stagedConsumerFocusedTotal": 23,
+    "finalFocusedTotal": 28,
+    "finalFocusedFiles": 3
   },
   "retainedBroaderFailure": {
     "result": "25 passed, 1 failed across 3 files",
     "test": "a-definition-loader-that-kept-its-first-graph.test.ts:155",
-    "reason": "Mock launch object lacks prepareBootstrapBuild; the failing path does not invoke the changed HTTP adapter. Retained, not fixed in this bounded change."
+    "reason": "Mock launch object lacks prepareBootstrapBuild; the failing path does not invoke the changed HTTP adapter. Retained, not fixed in this bounded change.",
+    "resolution": "Fixture now invokes the real current prepareBootstrapBuild method and provides handles/unwatchApp required by that path. Original assertions are unchanged; all 28 final checks pass."
   },
   "logs": {
     "originalNative": {
@@ -38,6 +41,10 @@
     "broaderNative": {
       "path": "/tmp/omni-routes-green.log",
       "sha256": "8b7c34839bcc9617fbd8ece2aa9888db8c27882f151d56dc8ace4c24e82c27ae"
+    },
+    "finalNative": {
+      "path": "/tmp/omni-routes-final.log",
+      "sha256": "37413acb258227d4cd3edb7069d4448d2be93686ddd6803ec7c812991f8cc7fc"
     }
   },
   "liveAcceptance": "pending controlled platform and application delivery"

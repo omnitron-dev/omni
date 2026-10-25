@@ -23,7 +23,8 @@ beforeAll(async () => {
     {method:'GET',pattern:'/readyz',handler:async()=>{hits.ready++;return Response.json({status:'ok'});}},
     {method:'GET',pattern:'/literal.v1',handler:async()=>new Response('literal')},
     {method:'GET',pattern:'/fall',handler:async()=>null},
-    {method:'GET',pattern:'/fall',handler:async()=>new Response('fallthrough')}
+    {method:'GET',pattern:'/fall',handler:async()=>new Response('fallthrough')},
+    {method:'GET',pattern:'/*',handler:async(request)=>new URL(request.url).pathname==='/site' ? new Response('site') : null}
   ]}]};`
   );
   boot = new BootstrapProcess();
@@ -78,4 +79,10 @@ it('treats regex punctuation literally and retains ordered null fallthrough', as
   expect(await (await fetch(endpoint + '/literal.v1')).text()).toBe('literal');
   expect((await fetch(endpoint + '/literalXv1')).status).toBe(404);
   expect(await (await fetch(endpoint + '/fall')).text()).toBe('fallthrough');
+});
+
+it('preserves a EXAMPLE-style GET catchall with explicit fallthrough', async () => {
+  expect(await (await fetch(endpoint + '/site?language=en')).text()).toBe('site');
+  expect((await fetch(endpoint + '/site', { method: 'POST' })).status).toBe(404);
+  expect((await fetch(endpoint + '/absent')).status).toBe(404);
 });

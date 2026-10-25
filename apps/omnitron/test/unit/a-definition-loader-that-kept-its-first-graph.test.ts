@@ -141,8 +141,11 @@ describe('a definition read after a package it imports gained an export', () => 
       cwd: p.root,
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       buildResults: new Map(),
+      handles: new Map(),
+      prepareBootstrapBuild: (OrchestratorService.prototype as any).prepareBootstrapBuild,
       buildService: {
         isWatching: () => false,
+        unwatchApp: async () => {},
         buildApp: async (_app: string, _bootstrap: string, definition: { processes: Array<{ name: string }> }) => {
           seen.push(definition);
           throw new Error('stopped once the definition was read');

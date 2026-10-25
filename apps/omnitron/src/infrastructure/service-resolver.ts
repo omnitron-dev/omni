@@ -9,6 +9,7 @@
  */
 
 import fs from 'node:fs';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 import { configFilesHash, type ConfigFile } from './config-payload.js';
 import { gatewayStaticLinkName } from '../services/static-carry-forward.js';
@@ -36,16 +37,38 @@ import type {
  *   omnitron.project = {project}
  *   omnitron.stack = {stack}
  */
+interface InfrastructureScope {
+  prefix: string;
+  labels: Record<string, string>;
+}
+const infrastructureScopes = new AsyncLocalStorage<InfrastructureScope>();
 let CONTAINER_PREFIX = 'omnitron';
+
+/** Concurrent operations own their names/networks/volumes; ownerless work starts clean. */
+export function withInfrastructureScope<T>(project: string | undefined, stack: string | undefined, work: () => T): T {
+  if ((project === undefined) !== (stack === undefined))
+    throw new Error('Infrastructure ownership requires project and stack together');
+  const labels: Record<string, string> =
+    project === undefined
+      ? {}
+      : {
+          'omnitron.project': project,
+          'omnitron.stack': stack!,
+          'com.docker.compose.project': `omnitron-${project}-${stack}`,
+        };
+  return infrastructureScopes.run({ prefix: project === undefined ? 'omnitron' : `${project}-${stack}`, labels }, work);
+}
 
 /** Set the container prefix for project-scoped infrastructure */
 export function setContainerPrefix(project: string, env: string): void {
-  CONTAINER_PREFIX = `${project}-${env}`;
+  const scope = infrastructureScopes.getStore();
+  if (scope) scope.prefix = `${project}-${env}`;
+  else CONTAINER_PREFIX = `${project}-${env}`;
 }
 
 /** Get current prefix */
 export function getContainerPrefix(): string {
-  return CONTAINER_PREFIX;
+  return infrastructureScopes.getStore()?.prefix ?? CONTAINER_PREFIX;
 }
 
 /**
@@ -71,7 +94,7 @@ function resolveNamedOrBound(
   key: string,
   vol: DeclaredVolume
 ): { source: string; target: string; readonly?: boolean } {
-  if (typeof vol === 'string') return { source: `${CONTAINER_PREFIX}-${service}-${key}`, target: vol };
+  if (typeof vol === 'string') return { source: `${getContainerPrefix()}-${service}-${key}`, target: vol };
   const shared = vol.source.startsWith(SHARED_VOLUME_PREFIX) ? vol.source.slice(SHARED_VOLUME_PREFIX.length) : null;
   if (shared !== null && !/^[a-z0-9][a-z0-9_.-]*$/.test(shared)) {
     // Docker would refuse the name anyway; saying which declaration it was is
@@ -84,10 +107,10 @@ function resolveNamedOrBound(
   const entry: { source: string; target: string; readonly?: boolean } = {
     source:
       shared !== null
-        ? `${CONTAINER_PREFIX}-${shared}`
+        ? `${getContainerPrefix()}-${shared}`
         : isBindMount
           ? vol.source
-          : `${CONTAINER_PREFIX}-${service}-${key}`,
+          : `${getContainerPrefix()}-${service}-${key}`,
     target: vol.target,
   };
   if (vol.readonly) entry.readonly = vol.readonly;
@@ -129,7 +152,7 @@ export function gatewayHostPort(
 }
 
 function containerName(service: string): string {
-  return `${CONTAINER_PREFIX}-${service}`;
+  return `${getContainerPrefix()}-${service}`;
 }
 
 /**
@@ -189,7 +212,7 @@ export const REDIS_CONTAINER_PORT = 6379;
  * adjacent infrastructure.
  */
 export function getManagedNetwork(): string {
-  return `${CONTAINER_PREFIX}_default`;
+  return `${getContainerPrefix()}_default`;
 }
 
 /**
@@ -238,22 +261,27 @@ let STACK_LABELS: Record<string, string> = {};
 
 /** Set stack labels for subsequent container creation calls */
 export function setStackLabels(project: string, stack: string): void {
-  STACK_LABELS = {
+  const labels = {
     'omnitron.project': project,
     'omnitron.stack': stack,
     // Docker Desktop groups containers by com.docker.compose.project label
     'com.docker.compose.project': `omnitron-${project}-${stack}`,
   };
+  const scope = infrastructureScopes.getStore();
+  if (scope) scope.labels = labels;
+  else STACK_LABELS = labels;
 }
 
 /** Clear stack labels (for internal/global containers) */
 export function clearStackLabels(): void {
-  STACK_LABELS = {};
+  const scope = infrastructureScopes.getStore();
+  if (scope) scope.labels = {};
+  else STACK_LABELS = {};
 }
 
 /** Get current stack labels */
 function stackLabels(): Record<string, string> {
-  return { ...STACK_LABELS };
+  return { ...(infrastructureScopes.getStore()?.labels ?? STACK_LABELS) };
 }
 
 // =============================================================================
@@ -578,7 +606,7 @@ export function resolveOmnitronPg(options?: {
   const password = options?.password ?? 'omnitron';
 
   return applyManagedDefaults({
-    name: `${CONTAINER_PREFIX}-pg`,
+    name: `${getContainerPrefix()}-pg`,
     image,
     ports: [{ host: port, container: 5432 }],
     environment: {
@@ -586,7 +614,7 @@ export function resolveOmnitronPg(options?: {
       POSTGRES_PASSWORD: password,
       POSTGRES_DB: 'omnitron',
     },
-    volumes: [{ source: `${CONTAINER_PREFIX}-pg-data`, target: '/var/lib/postgresql/data' }],
+    volumes: [{ source: `${getContainerPrefix()}-pg-data`, target: '/var/lib/postgresql/data' }],
     command: [
       'postgres',
       '-c',
@@ -885,7 +913,7 @@ export function resolveOmnitronNginx(options?: {
   }
 
   return applyManagedDefaults({
-    name: `${CONTAINER_PREFIX}-nginx`,
+    name: `${getContainerPrefix()}-nginx`,
     image,
     ports: [{ host: port, container: 80, bindHost: options?.bindHost ?? '127.0.0.1' }],
     environment: {
@@ -1034,8 +1062,8 @@ export function resolveInfrastructure(
           ? {
               staticLinkRoot,
               staticLinkName: gatewayStaticLinkName(
-                STACK_LABELS['omnitron.project'] ?? '',
-                STACK_LABELS['omnitron.stack'] ?? ''
+                stackLabels()['omnitron.project'] ?? '',
+                stackLabels()['omnitron.stack'] ?? ''
               ),
             }
           : {}),

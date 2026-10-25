@@ -1,4 +1,4 @@
-import { usesGatewayTemplate } from './service-resolver.js';
+import { usesGatewayTemplate, withInfrastructureScope } from './service-resolver.js';
 /**
  * StackInfrastructureManager — Per-stack infrastructure isolation
  *
@@ -60,6 +60,19 @@ export class StackInfrastructureManager {
    * Returns the InfrastructureService instance (already provisioned).
    */
   async provisionStack(
+    project: string,
+    stack: string,
+    stackConfig: IStackConfig,
+    baseInfraConfig: InfrastructureConfig,
+    appDefinitions?: Map<string, import('../config/types.js').IAppDefinition>,
+    projectRoot?: string
+  ): Promise<InfrastructureService> {
+    return withInfrastructureScope(project, stack, () =>
+      this.provisionStackScoped(project, stack, stackConfig, baseInfraConfig, appDefinitions, projectRoot)
+    );
+  }
+
+  private async provisionStackScoped(
     project: string,
     stack: string,
     stackConfig: IStackConfig,

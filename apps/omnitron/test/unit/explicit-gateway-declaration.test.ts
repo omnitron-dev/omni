@@ -6,6 +6,10 @@ import {
   resolveInfrastructure,
   setContainerPrefix,
   usesGatewayTemplate,
+  withInfrastructureScope,
+  setStackLabels,
+  getContainerPrefix,
+  resolveServiceRequirement,
 } from '../../src/infrastructure/service-resolver.js';
 import { createDefaultRegistry } from '../../src/infrastructure/presets/index.js';
 import { normalizeInfraConfig } from '../../src/infrastructure/config-normalizer.js';
@@ -36,6 +40,67 @@ function assertExplicit(spec: {
   expect(spec.volumes).toEqual([{ source: '/private/custom.conf', target: '/proxy/config', readonly: true }]);
 }
 describe('an explicit gateway container is not an OpenResty template', () => {
+  it('resets ownerless nested work and restores context even when an asynchronous operation fails', async () => {
+    setContainerPrefix('legacy', 'caller');
+    setStackLabels('legacy', 'caller');
+    await expect(
+      withInfrastructureScope('owned', 'production', async () => {
+        await Promise.resolve();
+        expect(getContainerPrefix()).toBe('owned-production');
+        await withInfrastructureScope(undefined, undefined, async () => {
+          await Promise.resolve();
+          const spec = resolveServiceRequirement('storage', explicit)!;
+          expect(spec.name).toBe('omnitron-storage');
+          expect(spec.labels['omnitron.project']).toBeUndefined();
+        });
+        expect(getContainerPrefix()).toBe('owned-production');
+        throw new Error('fixture interruption');
+      })
+    ).rejects.toThrow('fixture interruption');
+    expect(getContainerPrefix()).toBe('legacy-caller');
+    expect(resolveServiceRequirement('storage', explicit)!.labels['omnitron.project']).toBe('legacy');
+  });
+  it('refuses partially specified ownership rather than inheriting another stack', () => {
+    expect(() => withInfrastructureScope('owned', undefined, () => null)).toThrow();
+    expect(() => withInfrastructureScope(undefined, 'prod', () => null)).toThrow();
+  });
+
+  it('keeps names, volumes and labels isolated across concurrent stack preparation', async () => {
+    vi.spyOn(InfrastructureService.prototype, 'provision').mockImplementation(async () => {
+      await Promise.resolve();
+      return undefined;
+    });
+    const manager = new StackInfrastructureManager(createNullLogger());
+    const storage: IServiceRequirement = {
+      type: 'daemon',
+      ports: {},
+      env: {},
+      docker: { image: 'storage:1', volumes: { data: '/data' } },
+    };
+    const specs = await Promise.all(
+      ['alpha', 'beta'].map(async (project) => {
+        const infra = await manager.provisionStack(
+          project,
+          'prod',
+          { type: 'local', apps: [] },
+          { services: { storage } } as InfrastructureConfig,
+          undefined,
+          '/immutable/' + project
+        );
+        return (infra as unknown as { desiredContainers: ResolvedContainer[] }).desiredContainers;
+      })
+    );
+    for (const [index, project] of ['alpha', 'beta'].entries()) {
+      expect(specs[index]).toHaveLength(1);
+      expect(specs[index]![0]).toMatchObject({
+        name: project + '-prod-storage',
+        network: project + '-prod_default',
+        labels: { 'omnitron.project': project, 'omnitron.stack': 'prod' },
+        volumes: [{ source: project + '-prod-storage-data', target: '/data' }],
+      });
+    }
+  });
+
   it('preserves the declared image, private network and limits on local stack provisioning', async () => {
     vi.spyOn(InfrastructureService.prototype, 'provision').mockResolvedValue(undefined);
     const manager = new StackInfrastructureManager(createNullLogger());

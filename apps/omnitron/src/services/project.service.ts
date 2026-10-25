@@ -4533,29 +4533,15 @@ export class ProjectService extends EventEmitter {
     // Build app list from config — include both running and stopped apps.
     const ecosystemConfig = this.getLoadedConfig(projectName);
     const configuredApps = ecosystemConfig ? this.resolveStackApps(config, ecosystemConfig) : [];
-    const configuredNames = new Set(configuredApps.map((a) => a.name));
-
-    // Match running handles by effective (un-prefixed) name. Two
-    // registration paths can land an app in the orchestrator's handle
-    // map: the namespaced stack-mode path (`omni/dev/main`) and the
-    // bare-name daemon-RPC path (`main`). Pre-fix the UI only saw the
-    // first; a CLI `omnitron start main` (or any ecosystem.config entry
-    // started before the stack-mode env vars were known) registered
-    // bare and silently disappeared from the project/stack view, even
-    // though `omnitron list` happily reported it online. By keying off
-    // `effectiveAppName` we accept either form so the UI matches the
-    // CLI's worldview. Cross-stack collisions on the same effective
-    // name still resolve via the namespaced handle's prefix; the bare
-    // fallback only applies when that name appears in this stack's
-    // configured-app set, so an unrelated bare handle in another stack
-    // never bleeds in.
+    // A bare handle carries no project/stack ownership. Assigning it by basename
+    // admitted the same process into every project that configured "api". Only an
+    // exact namespace proves ownership; ad-hoc bare processes remain visible in list.
     const runningByName = new Map<string, ReturnType<OrchestratorService['list']>[number]>();
     for (const a of this.orchestrator.list()) {
       const effective = effectiveAppName(a.name);
       const inThisPrefix = a.name.startsWith(prefix);
-      const inThisStackByName = !a.name.includes('/') && configuredNames.has(effective);
-      if (!inThisPrefix && !inThisStackByName) continue;
-      // Namespaced wins over bare on collision.
+      if (!inThisPrefix) continue;
+      // An exact qualified identity belongs to this stack only.
       const existing = runningByName.get(effective);
       if (!existing || a.name.startsWith(prefix)) {
         runningByName.set(effective, a);

@@ -835,7 +835,8 @@ export class OrchestratorService extends EventEmitter {
     //   - exact key already exists, online   → return it (idempotent)
     //   - exact key already exists, not online → fall through and re-launch
     //     under the same key
-    //   - DIFFERENT key with the same effective short name:
+    //   - different fully qualified keys are distinct apps and coexist
+    //   - bare/qualified keys with the same effective short name:
     //       - new is MORE specific (namespaced) and existing is bare → stop
     //         the bare one and re-launch under the namespaced key. Without
     //         this, a boot-race where bare-name auto-start beats the
@@ -845,11 +846,16 @@ export class OrchestratorService extends EventEmitter {
     //         restart by canonical name, not register an alias.
     const effective = effectiveAppName(entry.name);
     const newIsNamespaced = entry.name.includes('/');
+    if (!newIsNamespaced && [...this.handles.keys()].filter(key => key.includes('/') && effectiveAppName(key) === effective).length > 1) {
+      throw new Error(`Ambiguous app name '${entry.name}'; use its full project/stack/app identity`);
+    }
     for (const [key, h] of this.handles) {
       if (key === entry.name) continue;
       if (effectiveAppName(key) !== effective) continue;
       const existingIsNamespaced = key.includes('/');
-      // Same effective app under a different key.
+      // Qualified identities are separate deployments, even when their basename matches.
+      if (newIsNamespaced && existingIsNamespaced) continue;
+      // A bare alias may still refer to the one qualified deployment.
       if (h.status === 'online') {
         if (newIsNamespaced && !existingIsNamespaced) {
           this.logger.info(

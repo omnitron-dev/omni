@@ -328,6 +328,24 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
     return activated;
   }
 
+  /** Recovery reaches the node by SSH even when its daemon cannot answer. */
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async recoverBundleOnNode(data: { nodeId: string; receiptId: string }): Promise<boolean> {
+    const node = this.nodeManager.getNode(data.nodeId);
+    if (!node || node.isLocal) throw new Error('Recovery requires a registered remote node');
+    const target = await this.nodeManager.nodeToDeployTarget(data.nodeId);
+    let recovered = false;
+    try {
+      recovered = await this.deployer().recoverBundleUpgrade(target, data.receiptId);
+      return recovered;
+    } finally {
+      await this.audit?.record({
+        action: 'node.bundle.recover', resourceType: 'node', resourceId: data.nodeId,
+        details: { receiptId: data.receiptId, recovered },
+      });
+    }
+  }
+
   /**
    * Upgrade a node's omnitron to the one this daemon is built from.
    *

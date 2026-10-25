@@ -1242,7 +1242,7 @@ export function activateSteps(layout: InstallLayout, pathDir = '/usr/local/bin')
  * `awk` rather than GNU `head -n -N`, so the court can run the command
  * itself on the machine that builds.
  */
-export function pruneSteps(layout: InstallLayout, keep: number): readonly RemoteStep[] {
+export function pruneSteps(layout: InstallLayout, keep: number, protectedRoots: readonly string[] = []): readonly RemoteStep[] {
   const versions = `${layout.prefix}/versions`;
   return [
     {
@@ -1253,6 +1253,7 @@ export function pruneSteps(layout: InstallLayout, keep: number): readonly Remote
         `ls -1 | awk -F. '{ s = $NF; if (s !~ /^[0-9]+$/) s = 0; print s "\\t" $0 }' | sort -n -k1,1 | cut -f2- | ` +
         `awk -v keep=${keep} '{ a[NR] = $0 } END { for (i = 1; i <= NR - keep; i++) print a[i] }' | while read -r v; do ` +
         `[ "${versions}/$v" = "$CURRENT" ] && continue; ` +
+        protectedRoots.map(root => `[ "${versions}/$v" = ${q(root)} ] && continue; `).join('') +
         `rm -rf -- "$v"; done; true`,
       timeoutMs: 120_000,
     },

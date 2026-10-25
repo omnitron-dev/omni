@@ -79,6 +79,14 @@ import {
   checkDelivered,
 } from '../release/delivered.js';
 import crypto from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import {
+  assertServingBundle, bundleProbeCommand, contractPreflightCommand, executeHostUpgrade,
+  hookCommand, inventoryCommand, planHostUpgrade, receiptCommand, verifyRestoredInventory,
+  updateContractBindingsCommand, runtimeProbeCommand, runtimeStartCommand, runtimeStopCommand,
+  appHealthCommand, pendingReceiptsCommand, recoverHostUpgrade, stoppedDaemonCommand,
+  type InstalledBundle, type HostInventory, type HostRuntime, type HostUpgradePlan, type HostUpgradeActions, type HostUpgradeReceipt,
+} from './host-upgrade.js';
 import { gunzipSync } from 'node:zlib';
 import { shellEscape } from '../shared/shell-escape.js';
 import { fromDataChannel, throughDataChannel } from '../execution/data-channel.js';
@@ -365,6 +373,7 @@ export function wholeTarGz(archive: Buffer): true | string {
 }
 
 export class RemoteDeployer {
+  private readonly deploymentLeases = new AsyncLocalStorage<ReadonlySet<string>>();
   /** Active deployment progress handlers */
   private readonly progressHandlers: Array<(progress: DeployProgress) => void> = [];
 
@@ -639,7 +648,7 @@ export class RemoteDeployer {
       // puts the link INSIDE it, leaving a directory with no package.json
       // that node reports as a missing `index.js` — a message about a file
       // that was never the problem.
-      const daemonRoot = '/opt/omnitron/current';
+      const daemonRoot = (await this.inspectInstalledBundle(target)).root;
       await this.sshExec(
         target,
         `set -e; APP=${shellEscape(`${remotePath}/node_modules/@omnitron-dev`)}; ` +
@@ -1667,102 +1676,152 @@ export class RemoteDeployer {
     prefix = '/opt/omnitron',
     keepVersions = 3,
   ): Promise<boolean> {
-    const { runningGatewaySites, MaintenanceLock, DEFAULT_MAINTENANCE_TIMING } = await import('./maintenance-lock.js');
-    const run = this.leaseRunner(target);
-    const locks: HeldLock[] = [];
-    for (const site of await runningGatewaySites(run, `omnitron ${version}`)) {
-      const lock = await MaintenanceLock.open(site, this.logger, { ...DEFAULT_MAINTENANCE_TIMING, probeWithinMs: 180_000 });
-      if (lock) locks.push(lock);
-    }
-    try {
-      const activated = await this.activateBundle(target, version, prefix, keepVersions);
-      while (locks.length > 0) {
-        const lifted = await locks.shift()!.liftWhenAnswering(['/', '/api/main/health']);
-        if (!lifted.lifted) {
-          this.logger.error(
-            { host: target.host, version, failed: lifted.failed },
-            'After the upgrade the platform does not answer through its gateway — maintenance expires by itself',
-          );
-        }
+    return this.underLease(target, `held host upgrade to ${version}`, async () => {
+      const { runningGatewaySites, MaintenanceLock, DEFAULT_MAINTENANCE_TIMING } = await import('./maintenance-lock.js');
+      const run = this.leaseRunner(target);
+      const locks: HeldLock[] = [];
+      for (const site of await runningGatewaySites(run, `omnitron ${version}`)) {
+        const lock = await MaintenanceLock.open(site, this.logger, { ...DEFAULT_MAINTENANCE_TIMING, probeWithinMs: 180_000 });
+        if (lock) locks.push(lock);
       }
-      return activated;
-    } finally {
-      for (const lock of locks) await lock.lift('failed').catch(() => undefined);
-    }
+      try {
+        let activated = await this.activateBundle(target, version, prefix, keepVersions, async () => {
+          for (const lock of locks) {
+            const failed = await lock.probe(['/', '/api/main/health']);
+            if (failed.length) throw new Error(`Gateway verification failed: ${failed.join(', ')}`);
+          }
+        });
+        while (locks.length > 0) {
+          const lifted = await locks.shift()!.liftWhenAnswering(['/', '/api/main/health']);
+          if (!lifted.lifted) {
+            activated = false;
+            this.logger.error(
+              { host: target.host, version, failed: lifted.failed },
+              'After the upgrade the platform does not answer through its gateway — maintenance expires by itself',
+            );
+          }
+        }
+        return activated;
+      } finally {
+        for (const lock of locks) await lock.lift('failed').catch(() => undefined);
+      }
+    });
   }
 
-  /**
-   * Make an installed version the one the node runs, and restart into it.
-   *
-   * Separate from `installBundle` for the reason the layout exists: this is
-   * the only step that changes what runs.
-   */
+  /** Resolve the immutable installation and require the serving daemon to identify that build.
+   * App deployment callers hold underLease across inspection, packaging, and activation of their app. */
+  async inspectInstalledBundle(target: DeployTarget, prefix = '/opt/omnitron'): Promise<InstalledBundle> {
+    const pending = JSON.parse(await this.sshExecData(target, pendingReceiptsCommand(prefix))) as HostUpgradeReceipt[];
+    if (pending.length) throw new Error(`Unfinished host upgrade ${pending.map(r => r.id).join(', ')}; recover it before deploying an app`);
+    const bundle = JSON.parse(await this.sshExecData(target, bundleProbeCommand(prefix))) as InstalledBundle;
+    const status = JSON.parse(await this.sshExecData(target, inventoryCommand(bundle, false))) as HostInventory['status'];
+    assertServingBundle(bundle, status);
+    await this.sshExecData(target, runtimeProbeCommand(bundle, status.pid));
+    return bundle;
+  }
+
   async activateBundle(
     target: DeployTarget,
     version: string,
     prefix = '/opt/omnitron',
     keepVersions = 3,
+    verifyPlatform?: () => Promise<void>,
   ): Promise<boolean> {
-    const nodeKey = `${target.host}:${target.daemonPort ?? 9700}`;
-    const layout = { prefix, version };
-
-    try {
-      for (const step of activateSteps(layout)) {
-        this.emitProgress(nodeKey, '*', 'restarting', 40, step.what);
-        await this.sshExec(target, step.command, step.timeoutMs);
-      }
-
-      this.emitProgress(nodeKey, '*', 'restarting', 60, 'Restarting the daemon into the new version');
-      // By absolute path into `current`, not by name. A bare `omnitron` is
-      // whatever the node's PATH resolves — which, until the step above ran,
-      // was a different installation entirely. Naming the copy we just
-      // activated is the difference between restarting the new version and
-      // restarting whatever was there.
-      const cli = shellEscape(`${prefix}/current/dist/cli/omnitron.js`);
-      await this.sshExec(target, `${cli} down 2>/dev/null; ${cli} up --no-infra`, 180_000).catch((err) => {
-        this.logger.warn(
-          { host: target.host, error: (err as Error).message },
-          'Restart command did not return cleanly — verifying anyway',
-        );
-      });
-
-      this.emitProgress(nodeKey, '*', 'verifying', 80, 'Verifying the daemon answers');
-      const started = await this.awaitDaemon(target, 120_000);
-      if (!started.ok) {
-        // Reported, and NOT rolled back automatically. A daemon that will not
-        // start is a decision for whoever is watching: the previous version
-        // is still on disk and one `ln -sfn` away, and guessing that a
-        // rollback is wanted can be as wrong as guessing it is not.
-        this.logger.error(
-          { host: target.host, version, detail: started.detail },
-          'The new version did not answer — the previous one is still installed',
-        );
-        this.emitProgress(
-          nodeKey, '*', 'failed', 80,
-          `${version} did not answer: ${started.detail}. Roll back with ` +
-            `\`ln -sfn ${prefix}/versions/<previous> ${prefix}/current\` and restart.`,
-        );
+    if (!/^[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(version) || version.includes('..')) throw new Error('Invalid installed bundle version');
+    if (!Number.isSafeInteger(keepVersions) || keepVersions < 1) throw new Error('keepVersions must be a positive integer');
+    return this.underLease(target, `host upgrade to ${version}`, async () => {
+      const nodeKey = `${target.host}:${target.daemonPort ?? 9700}`;
+      try {
+        const pending = JSON.parse(await this.sshExecData(target, pendingReceiptsCommand(prefix))) as HostUpgradeReceipt[];
+        if (pending.length) {
+          if (pending.length !== 1) throw new Error('Multiple unfinished host upgrades; recover an explicit receipt ID first');
+          const recovered = await this.recoverBundleUpgrade(target, pending[0]!.id, prefix, verifyPlatform);
+          this.logger.warn({ receipt: pending[0]!.id, recovered }, 'Recovered the unfinished host upgrade; retry the requested upgrade separately');
+          return false;
+        }
+        const previous = await this.inspectInstalledBundle(target, prefix);
+        const candidate = JSON.parse(await this.sshExecData(target, bundleProbeCommand(prefix, version))) as InstalledBundle;
+        await this.sshExec(target, `${shellEscape(`${candidate.root}/dist/cli/omnitron.js`)} --version`, 120_000);
+        const inventory = JSON.parse(await this.sshExecData(target, inventoryCommand(previous, true))) as HostInventory;
+        inventory.runtime = JSON.parse(await this.sshExecData(target, runtimeProbeCommand(previous, inventory.status.pid))) as HostRuntime;
+        const plan = planHostUpgrade(previous, candidate, inventory);
+        await this.sshExec(target, contractPreflightCommand(plan.apps));
+        for (const app of plan.apps) {
+          await this.sshExec(target, hookCommand(app, previous, 'verify'), 330_000);
+          if (plan.online.includes(app.name)) await this.sshExec(target, appHealthCommand(app, previous), 330_000);
+        }
+        const id = `${new Date().toISOString().replace(/[:.]/g, '-')}-${crypto.randomUUID()}`;
+        const receiptPath = `${prefix}/upgrade-receipts/${id}.json`;
+        const receipt = await executeHostUpgrade(plan, id, this.hostUpgradeActions(target, prefix, keepVersions, plan, verifyPlatform));
+        const ok = receipt.outcome === 'upgraded';
+        this.emitProgress(nodeKey, '*', ok ? 'success' : 'failed', 100, `${receipt.outcome}; recovery receipt: ${receiptPath}`);
+        this.logger[ok ? 'info' : 'error']({ host: target.host, version, receipt: receiptPath, outcome: receipt.outcome }, 'Controlled host upgrade finished');
+        return ok;
+      } catch (error) {
+        const message = (error as Error).message;
+        this.emitProgress(nodeKey, '*', 'failed', 0, message);
+        this.logger.error({ host: target.host, version, error: message }, 'Host upgrade refused or preparation failed');
         return false;
       }
+    });
+  }
 
-      // Only once the new version is serving. Pruning before this could
-      // remove the version a rollback needs.
-      for (const step of pruneSteps(layout, keepVersions)) {
-        await this.sshExec(target, step.command, step.timeoutMs).catch((err) => {
-          // Retention failing is not the upgrade failing.
-          this.logger.warn({ host: target.host, error: (err as Error).message }, 'Version retention failed');
-        });
-      }
+  /** Recover a recorded interrupted upgrade under the same node lease; never prunes or changes app release versions. */
+  async recoverBundleUpgrade(target: DeployTarget, id: string, prefix = '/opt/omnitron', verifyPlatform?: () => Promise<void>): Promise<boolean> {
+    return this.underLease(target, `recover host upgrade ${id}`, async () => {
+      const records = JSON.parse(await this.sshExecData(target, pendingReceiptsCommand(prefix, id))) as HostUpgradeReceipt[];
+      if (records.length !== 1 || records[0]!.id !== id) throw new Error('No unfinished host upgrade with that receipt ID');
+      const receipt = records[0]!;
+      const plan = planHostUpgrade(receipt.plan.previous, receipt.plan.candidate, receipt.plan.inventory);
+      const installed = JSON.parse(await this.sshExecData(target, bundleProbeCommand(prefix, plan.previous.version))) as InstalledBundle;
+      if (JSON.stringify(installed) !== JSON.stringify(plan.previous)) throw new Error('Recorded previous bundle changed; recovery refused');
+      await this.sshExec(target, contractPreflightCommand(plan.apps));
+      const result = await recoverHostUpgrade(receipt, this.hostUpgradeActions(target, prefix, 3, plan, verifyPlatform));
+      this.logger[result.outcome === 'rolled-back' ? 'info' : 'error']({ receipt: `${prefix}/upgrade-receipts/${id}.json`, outcome: result.outcome }, 'Host upgrade recovery finished');
+      return result.outcome === 'rolled-back';
+    });
+  }
 
-      this.emitProgress(nodeKey, '*', 'success', 100, `Running ${version} — ${started.detail}`);
-      this.logger.info({ host: target.host, version, daemon: started.detail }, 'Node upgraded');
-      return true;
-    } catch (err) {
-      const message = (err as Error).message;
-      this.emitProgress(nodeKey, '*', 'failed', 0, message);
-      this.logger.error({ host: target.host, version, error: message }, 'Activation failed');
-      return false;
-    }
+  private hostUpgradeActions(target: DeployTarget, prefix: string, keepVersions: number, plan: HostUpgradePlan, verifyPlatform?: () => Promise<void>): HostUpgradeActions {
+    return {
+      save: async receipt => { await this.sshExec(target, receiptCommand(prefix, receipt)); },
+      stop: async bundle => {
+        await this.sshExec(target, runtimeStopCommand(plan.inventory.runtime, bundle), 180_000);
+        await this.sshExec(target, stoppedDaemonCommand(bundle), 30_000);
+      },
+      activate: async bundle => {
+        for (const step of activateSteps({ prefix, version: bundle.version })) await this.sshExec(target, step.command, step.timeoutMs);
+      },
+      rebind: async (app, bundle) => { await this.sshExec(target, hookCommand(app, bundle, 'rebind'), 330_000); },
+      start: async bundle => {
+        await this.sshExec(target, runtimeStartCommand(plan.inventory.runtime, plan.previous, bundle), 180_000);
+      },
+      verify: async bundle => {
+        const deadline = Date.now() + 180_000;
+        let lastError: unknown;
+        do {
+          try {
+            const status = JSON.parse(await this.sshExecData(target, inventoryCommand(bundle, false), 30_000)) as HostInventory['status'];
+            verifyRestoredInventory(plan, bundle, status);
+            const runtime = JSON.parse(await this.sshExecData(target, runtimeProbeCommand(bundle, status.pid))) as HostRuntime;
+            if (runtime.kind !== plan.inventory.runtime.kind || (runtime.kind === 'systemd' && plan.inventory.runtime.kind === 'systemd' &&
+                (runtime.scope !== plan.inventory.runtime.scope || runtime.enabled !== plan.inventory.runtime.enabled))) throw new Error('Supervisor state was not restored');
+            for (const app of plan.apps) {
+              await this.sshExec(target, hookCommand(app, bundle, 'verify'), 330_000);
+              if (plan.online.includes(app.name)) await this.sshExec(target, appHealthCommand(app, bundle), 330_000);
+            }
+            if (verifyPlatform) await verifyPlatform();
+            await this.sshExec(target, updateContractBindingsCommand(plan, bundle));
+            return;
+          } catch (error) { lastError = error; }
+          if (Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 2_000));
+        } while (Date.now() < deadline);
+        throw new Error(`Host and application verification failed: ${String(lastError)}`);
+      },
+      prune: async protectedRoots => {
+        for (const step of pruneSteps({ prefix, version: plan.candidate.version }, keepVersions, protectedRoots)) await this.sshExec(target, step.command, step.timeoutMs);
+      },
+    };
   }
 
   private async verifySSH(target: DeployTarget): Promise<void> {
@@ -1799,6 +1858,8 @@ export class RemoteDeployer {
    */
   async underLease<T>(target: DeployTarget, purpose: string, work: () => Promise<T>): Promise<T> {
     const machine = `${target.host}:${target.sshPort ?? 22}`;
+    const held = this.deploymentLeases.getStore();
+    if (held?.has(machine)) return work();
     return withNodeLeases(
       [{ node: machine, machine, run: this.leaseRunner(target) }],
       purpose,
@@ -1807,7 +1868,7 @@ export class RemoteDeployer {
         if (!leases.has(machine)) {
           throw new Error(`Could not reach ${machine} to lease it for ${purpose}: ${leases.unreachable.get(machine) ?? 'no answer'}`);
         }
-        return work();
+        return this.deploymentLeases.run(new Set([...(held ?? []), machine]), work);
       },
     );
   }

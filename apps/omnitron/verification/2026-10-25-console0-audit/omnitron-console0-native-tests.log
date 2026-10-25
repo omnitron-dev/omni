@@ -1,0 +1,10 @@
+
+ RUN  v5.0.3 /Users/taaliman/projects/luxquant/omnitron-dev/omni/apps/omnitron
+
+WARNING: The requested image's platform (linux/amd64) does not match the detected host platform (linux/arm64/v8) and no specific platform was requested
+
+ Test Files  2 passed (2)
+      Tests  37 passed (37)
+   Start at  16:18:35
+   Duration  46.82s (tests 100%)
+

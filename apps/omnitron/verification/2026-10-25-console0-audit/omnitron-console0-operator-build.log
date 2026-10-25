@@ -1,0 +1,5 @@
+
+> @omnitron-dev/omnitron@0.3.0 build /Users/taaliman/projects/luxquant/omnitron-dev/omni/apps/omnitron
+> tsc -p tsconfig.build.json && node scripts/stamp-build.mjs dist
+
+stamp-build: dist — f9cc791e34f1

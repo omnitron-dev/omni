@@ -1,0 +1,12 @@
+
+ RUN  v5.0.3 /Users/taaliman/projects/luxquant/omnitron-dev/omni/apps/omnitron
+
+
+ Test Files  14 passed (14)
+      Tests  166 passed | 4 skipped (170)
+   Start at  16:16:07
+   Duration  36.21s (tests 86%, transform 8%, import 6%)
+
+    Isolate  14 workers spawned · ~144ms startup each (spawn + environment, per file)
+             at least ~1.87s faster with isolate: false — reuses workers across files instead of one per file
+

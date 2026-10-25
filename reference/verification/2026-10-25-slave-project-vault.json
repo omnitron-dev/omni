@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "at": "2026-10-25T14:51:24.141053+00:00",
+  "cause": "Slave daemon registered SecretsService but omitted it from its ProjectService factory. Declared appEnv vault references therefore refused stack start.",
+  "scope": "Wire the existing local encrypted vault into slave ProjectService; audit/fleet remain master-only.",
+  "before": {
+    "actualModuleRegistrationTest": "failed",
+    "logSha256": "0b6ba4aa7b2a2393378a8adb9b49bcc03225054c9ef2c713e68a1740759dcc6f"
+  },
+  "after": {
+    "tests": 29,
+    "files": 3,
+    "backendTypecheck": "passed"
+  },
+  "negativeControls": [
+    "Original three-argument factory still refuses app-env references without a vault",
+    "Missing or empty entries still refuse startup; no empty-secret fallback"
+  ],
+  "runtimeEffect": "No credential creation, rotation, serialization or transport change."
+}

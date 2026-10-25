@@ -268,7 +268,7 @@ export class ProjectService extends EventEmitter {
     private readonly orchestrator: OrchestratorService,
     daemonStateStore: import('../daemon/daemon-state-store.service.js').DaemonStateStore,
     /**
-     * What a master has and a slave does not — by NAME. These were four more
+     * Optional local collaborators — by NAME. Both daemon roles have a vault. These were four more
      * positional parameters, and the daemon's factory passed them through an
      * `any`: `new ProjectService(logger, orchestrator, dStore, fleet,
      * undefined, secrets, audit)`. A slot removed or reordered there moves
@@ -4734,4 +4734,23 @@ export const MASTER_PROJECT_SERVICE_PROVIDER: {
     // because two of the three callers of `startStack` never pass through the
     // RPC layer that used to record it.
     new ProjectService(loggerModule.logger, orchestrator, daemonStateStore, { secrets, audit }),
+};
+
+/** A slave has its own encrypted vault even though it has no master database/audit service. */
+export const SLAVE_PROJECT_SERVICE_PROVIDER: {
+  readonly inject: readonly unknown[];
+  readonly useFactory: (
+    loggerModule: ILoggerModule,
+    orchestrator: OrchestratorService,
+    daemonStateStore: DaemonStateStore,
+    secrets: SecretsService,
+  ) => ProjectService;
+} = {
+  inject: [LOGGER_SERVICE_TOKEN, ORCHESTRATOR_TOKEN, DAEMON_STATE_STORE_TOKEN, SECRETS_SERVICE_TOKEN] as const,
+  useFactory: (
+    loggerModule: ILoggerModule,
+    orchestrator: OrchestratorService,
+    daemonStateStore: DaemonStateStore,
+    secrets: SecretsService,
+  ): ProjectService => new ProjectService(loggerModule.logger, orchestrator, daemonStateStore, { secrets }),
 };

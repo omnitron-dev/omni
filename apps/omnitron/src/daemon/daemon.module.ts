@@ -64,7 +64,7 @@ import { BackupService } from '../services/backup.service.js';
 import { SecretsService } from '../services/secrets.service.js';
 import { AuditService } from '../services/audit.service.js';
 import { createTelemetryRelay } from '../services/telemetry.service.js';
-import { ProjectService, MASTER_PROJECT_SERVICE_PROVIDER } from '../services/project.service.js';
+import { ProjectService, MASTER_PROJECT_SERVICE_PROVIDER, SLAVE_PROJECT_SERVICE_PROVIDER } from '../services/project.service.js';
 import { SlaveStorageService } from '../services/slave-storage.service.js';
 import { Writable } from 'node:stream';
 import type { Kysely } from 'kysely';
@@ -569,8 +569,7 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
       ] as any] : []),
 
       // Project + Stack management
-      // On master: receives FleetService for remote/cluster stacks
-      // On slave: FleetService is null — only local stack management
+      // Both roles receive their own local vault. Only the master has an audit database.
       // T-7 — registry persistence routes through DaemonStateStore
       ...(!isSlave ? [[
         PROJECT_SERVICE_TOKEN,
@@ -583,9 +582,7 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
       ] as any] : [[
         PROJECT_SERVICE_TOKEN,
         {
-          useFactory: (loggerModule: ILoggerModule, orchestrator: OrchestratorService, dStore: DaemonStateStore) =>
-            new ProjectService(loggerModule.logger, orchestrator, dStore),
-          inject: [LOGGER_SERVICE_TOKEN, ORCHESTRATOR_TOKEN, DAEMON_STATE_STORE_TOKEN],
+          ...SLAVE_PROJECT_SERVICE_PROVIDER,
           scope: Scope.Singleton,
         },
       ] as any]),

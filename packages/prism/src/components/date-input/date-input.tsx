@@ -68,8 +68,8 @@ function CalendarInput({
   }, [value, kind]);
   useEffect(() => {
     input.current?.setCustomValidity(invalidDraft ? invalidText : '');
-    onValidityChange?.(!invalidDraft);
-  }, [invalidDraft, invalidText, onValidityChange]);
+    onValidityChange?.(!invalidDraft && (!required || draft !== null));
+  }, [invalidDraft, invalidText, onValidityChange, required, draft]);
   const onValue = (next: Dayjs | null, context: { validationError: unknown }) => {
     const failed = context.validationError != null || (next !== null && !next.isValid());
     setDraft(next);
@@ -98,6 +98,21 @@ function CalendarInput({
         helperText: invalidDraft ? invalidText : helperText,
       },
       field: { clearable: true, fieldRef: captureField },
+      popper: {
+        modifiers: [
+          { name: 'flip', options: { rootBoundary: 'viewport', padding: 8 } },
+          {
+            name: 'preventOverflow',
+            // For a top/bottom placement the alternate axis is vertical. A
+            // calendar may fit the viewport but neither side of its anchor;
+            // permit overlap with the anchor rather than hiding its actions.
+            options: { rootBoundary: 'viewport', padding: 8, mainAxis: true, altAxis: true, tether: false },
+          },
+        ],
+      },
+      desktopPaper: {
+        sx: { maxHeight: 'calc(100dvh - 16px)', maxWidth: 'calc(100vw - 16px)', overflow: 'auto' },
+      },
       actionBar: { actions: ['clear', 'cancel', 'accept'] as ('clear' | 'cancel' | 'accept')[] },
     },
   };

@@ -37,3 +37,9 @@ Dayjs locale without changing Dayjs's global locale.
   max="2100-12-31"
 />
 ```
+
+The desktop popup uses Popper's viewport collision handling on both axes. When
+neither side of an anchor has enough space, it can overlap the anchor instead of
+clipping the actions outside the viewport. Very small viewports constrain the
+paper and scroll its content; the background page need not be scrolled to reach
+picker controls.

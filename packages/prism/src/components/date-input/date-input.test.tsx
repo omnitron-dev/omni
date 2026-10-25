@@ -75,6 +75,35 @@ describe('Prism calendar control', () => {
     expect(screen.getByRole('spinbutton', { name: 'Month' }).textContent).toBe('10');
     expect(changed).not.toHaveBeenCalled();
   });
+  it('reports required-empty as invalid to programmatic form consumers', async () => {
+    const validity = vi.fn();
+    const { rerender, container } = render(
+      <PrismDatePicker
+        name="date"
+        label="Дата"
+        invalidText="Некорректная дата"
+        value=""
+        required
+        onChange={() => {}}
+        onValidityChange={validity}
+      />,
+      { wrapper }
+    );
+    await waitFor(() => expect(validity).toHaveBeenLastCalledWith(false));
+    expect((container.querySelector('input[name="date"]') as HTMLInputElement).checkValidity()).toBe(false);
+    rerender(
+      <PrismDatePicker
+        name="date"
+        label="Дата"
+        invalidText="Некорректная дата"
+        value=""
+        onChange={() => {}}
+        onValidityChange={validity}
+      />
+    );
+    await waitFor(() => expect(validity).toHaveBeenLastCalledWith(true));
+    expect((container.querySelector('input[name="date"]') as HTMLInputElement).checkValidity()).toBe(true);
+  });
   it('rejects an out-of-range value at the form boundary rather than submitting it silently', async () => {
     const valid = vi.fn();
     const { container } = render(

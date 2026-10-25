@@ -373,7 +373,7 @@ export function wholeTarGz(archive: Buffer): true | string {
 }
 
 export class RemoteDeployer {
-  private readonly deploymentLeases = new AsyncLocalStorage<ReadonlySet<string>>();
+  private readonly deploymentLeases = new AsyncLocalStorage<ReadonlyMap<string, (step: string) => Promise<void>>>();
   /** Active deployment progress handlers */
   private readonly progressHandlers: Array<(progress: DeployProgress) => void> = [];
 
@@ -1847,7 +1847,13 @@ export class RemoteDeployer {
     // Through the data channel: a lease answer carries the holder's record,
     // `{"token":…}`, which the masker rewrote into `"token": [REDACTED]` on
     // every read — a refusal could never say who held the node.
-    return (script) => this.sshExecData(target, script, 30_000);
+    return async (script) => {
+      // Confirmation itself must use the raw channel, never recursively ask
+      // for another confirmation of the lease being acquired or renewed.
+      const result = await this.readFromNodeRaw(target, script, 30_000);
+      if (result.code !== 0) throw new Error(`Lease transport failed: ${result.stderr || result.stdout}`);
+      return result.stdout.trim();
+    };
   }
 
   /**
@@ -1868,12 +1874,21 @@ export class RemoteDeployer {
         if (!leases.has(machine)) {
           throw new Error(`Could not reach ${machine} to lease it for ${purpose}: ${leases.unreachable.get(machine) ?? 'no answer'}`);
         }
-        return this.deploymentLeases.run(new Set([...(held ?? []), machine]), work);
+        const context = new Map(held);
+        context.set(machine, step => leases.confirm(machine, step));
+        return this.deploymentLeases.run(context, work);
       },
     );
   }
 
+  /** Confirm a held lease before the next node operation; outside a lease this is a no-op. */
+  async confirmLease(target: DeployTarget, step: string): Promise<void> {
+    const machine = `${target.host}:${target.sshPort ?? 22}`;
+    await this.deploymentLeases.getStore()?.get(machine)?.(step);
+  }
+
   private async sshExec(target: DeployTarget, command: string, timeout = 60_000): Promise<string> {
+    await this.confirmLease(target, 'remote command');
     const result = await this.execution.ssh(sshTargetOf(target), command, { timeout });
     if (result.exitCode !== 0) {
       const detail = result.stderr || result.stdout || `exit ${result.exitCode}`;
@@ -1905,6 +1920,7 @@ export class RemoteDeployer {
     command: string,
     timeoutMs = 600_000,
   ): Promise<{ stdout: string; stderr: string; code: number }> {
+    await this.confirmLease(target, 'remote command');
     const result = await this.execution.ssh(sshTargetOf(target), command, { timeout: timeoutMs });
     return { stdout: result.stdout, stderr: result.stderr, code: result.exitCode ?? -1 };
   }
@@ -1925,6 +1941,13 @@ export class RemoteDeployer {
     command: string,
     timeoutMs = 600_000,
   ): Promise<{ stdout: string; stderr: string; code: number }> {
+    await this.confirmLease(target, 'remote data command');
+    return this.readFromNodeRaw(target, command, timeoutMs);
+  }
+
+  private async readFromNodeRaw(
+    target: DeployTarget, command: string, timeoutMs: number,
+  ): Promise<{ stdout: string; stderr: string; code: number }> {
     const result = await this.execution.ssh(sshTargetOf(target), throughDataChannel(command), { timeout: timeoutMs });
     const data = fromDataChannel(result.stdout);
     if (!data.ok) {
@@ -1933,8 +1956,14 @@ export class RemoteDeployer {
     return { stdout: data.text, stderr: result.stderr, code: result.exitCode ?? -1 };
   }
 
-  private async scpTransfer(target: DeployTarget, localPath: string, remotePath: string): Promise<void> {
+  /** Use this inside underLease so uploads share the command confirmation boundary. */
+  async uploadToNode(target: DeployTarget, localPath: string, remotePath: string): Promise<void> {
+    await this.confirmLease(target, 'file upload');
     await this.execution.uploadFile(sshTargetOf(target), localPath, remotePath);
+  }
+
+  private async scpTransfer(target: DeployTarget, localPath: string, remotePath: string): Promise<void> {
+    await this.uploadToNode(target, localPath, remotePath);
   }
 
   /**
@@ -2107,7 +2136,7 @@ export class RemoteDeployer {
         await this.sshExec(target, `rm -rf ${shellEscape(remoteDir)} ${shellEscape(marker)}`).catch(() => undefined);
 
         await this.sshExec(target, `mkdir -p ${shellEscape(remoteDir)}`);
-        await this.execution.uploadFile(sshTargetOf(target), archive, remoteFile);
+        await this.uploadToNode(target, archive, remoteFile);
 
         // `uploadFile` already refuses a file that landed SHORT. That catches
         // the likely failure and not the other one: a transfer that completes

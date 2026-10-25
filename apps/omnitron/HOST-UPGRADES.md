@@ -89,3 +89,16 @@ after an ingress rollback. A native ingress takeover must still validate the
 exact container identity after the refresh drains prior work. This bounded
 operation does not deploy changed service specifications or provision missing
 infrastructure; those remain explicit stack deployment operations.
+
+Lease confirmation is retained through reentrant `underLease` calls. Every
+subsequent remote command, data command and `uploadToNode` transfer confirms
+ownership first; failed confirmation also prevents rollback commands from
+racing a new owner. Application controllers should use `uploadToNode`, not call
+the bare transport while assuming the surrounding lease confirms each step.
+This check fences later steps; an already-running remote command requires a
+host execution lock to prevent overlap after controller loss.
+
+A failed final verified-receipt write resets the in-memory outcome to running
+before any rollback intent is saved. A crash during rollback therefore leaves
+an unfinished receipt discoverable by native recovery, never an `upgraded`
+receipt describing a stopped or partially restored host.

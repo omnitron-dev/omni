@@ -156,6 +156,9 @@ export async function executeHostUpgrade(plan: HostUpgradePlan, id: string, acti
     await record('verifying'); await actions.verify(plan.candidate);
     receipt.outcome = 'upgraded'; await record('verified');
   } catch (error) {
+    // A failed terminal write may have left either the old or the new bytes.
+    // Rollback intent must always be discoverable as unfinished after a crash.
+    receipt.outcome = 'running';
     // Record loss must not prevent recovery. All failed writes remain in the returned receipt.
     try { await record('rollback', error); } catch (writeError) { receipt.events.push({ at: new Date().toISOString(), phase: 'receipt-write-failed', error: String(writeError) }); }
     return recoverHostUpgrade(receipt, actions);
@@ -173,6 +176,7 @@ export async function recoverHostUpgrade(receipt: HostUpgradeReceipt, actions: H
     await actions.save(receipt);
   };
   try {
+    receipt.outcome = 'running';
     await record('recovering');
     await actions.stop(receipt.plan.candidate);
     await actions.activate(receipt.plan.previous);

@@ -105,6 +105,19 @@ describe('host upgrade recovery order', () => {
     expect(api.verify).toHaveBeenCalledWith(old); expect(api.prune).not.toHaveBeenCalled();
     expect(api.rebind).toHaveBeenCalledTimes(4);
   });
+  it('never writes terminal upgraded status into rollback intent after a failed verified receipt write', async () => {
+    const { api } = actions(); const saved: Array<{phase: string; outcome: string}> = [];
+    vi.mocked(api.save).mockImplementation(async receipt => {
+      if (receipt.phase === 'verified') throw Error('lost verified receipt write');
+      saved.push({ phase: receipt.phase, outcome: receipt.outcome });
+    });
+    const result = await executeHostUpgrade(planHostUpgrade(old, next, inventory()), 'upgrade', api);
+    expect(result.outcome).toBe('rolled-back');
+    expect(saved.filter(record => ['rollback', 'recovering'].includes(record.phase))).toEqual([
+      { phase: 'rollback', outcome: 'running' }, { phase: 'recovering', outcome: 'running' },
+    ]);
+    expect(api.prune).not.toHaveBeenCalled();
+  });
   it('keeps a recovery-required receipt when rollback bindings fail; does not restart inconsistent apps', async () => {
     const { api } = actions(); vi.mocked(api.rebind).mockRejectedValue(new Error('binding unavailable'));
     const result = await executeHostUpgrade(planHostUpgrade(old, next, inventory()), 'upgrade', api);

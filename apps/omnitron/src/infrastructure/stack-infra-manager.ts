@@ -141,11 +141,20 @@ export class StackInfrastructureManager {
         this.logger.child({ stack: key }),
         stackInfraConfig,
         servicesForResolver,
-        registry
+        registry,
+        undefined,
+        false // An application stack never owns the host control-plane database.
       );
     } catch (err) {
       this.logger.warn({ error: (err as Error).message }, 'Preset normalization failed — using legacy resolvers');
-      infraService = new InfrastructureService(this.logger.child({ stack: key }), stackInfraConfig);
+      infraService = new InfrastructureService(
+        this.logger.child({ stack: key }),
+        stackInfraConfig,
+        undefined,
+        undefined,
+        undefined,
+        false
+      );
     }
 
     // 5. Add app-declared infrastructure services (bitcoin, monero, etc.)

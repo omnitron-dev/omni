@@ -23,6 +23,7 @@ vi.mock('../../src/infrastructure/container-runtime.js', async (original) => ({
   getContainerState: async (name: string) => (state.running.has(name) ? { name, status: 'running' } : null),
 }));
 
+import { StackInfrastructureManager } from '../../src/infrastructure/stack-infra-manager.js';
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
 import { setContainerPrefix } from '../../src/infrastructure/service-resolver.js';
 
@@ -32,7 +33,14 @@ const redis = { redis: { ports: { main: 6379 }, env: {}, docker: { image: 'redis
 
 function sweepOf(needsControlPlaneDatabase: boolean) {
   setContainerPrefix('sample', 'test');
-  const svc = new InfrastructureService(quiet(), { services: redis } as never, redis as never, undefined, undefined, needsControlPlaneDatabase);
+  const svc = new InfrastructureService(
+    quiet(),
+    { services: redis } as never,
+    redis as never,
+    undefined,
+    undefined,
+    needsControlPlaneDatabase
+  );
   const restarted: string[] = [];
   (svc as unknown as { reconcileService: (d: { name: string }) => Promise<void> }).reconcileService = async (d) => {
     restarted.push(d.name);
@@ -43,7 +51,7 @@ function sweepOf(needsControlPlaneDatabase: boolean) {
 beforeEach(() => state.running.clear());
 
 describe('the health sweep', () => {
-  it('on a node, restarts the stack\'s services and never the control-plane database', async () => {
+  it("on a node, restarts the stack's services and never the control-plane database", async () => {
     const { sweep, restarted } = sweepOf(false);
     await sweep();
     expect(restarted).toEqual(['sample-test-redis']);
@@ -62,4 +70,24 @@ describe('the health sweep', () => {
     await sweep();
     expect(restarted).toEqual([]);
   });
+});
+
+it('a project stack manager owns only its declared services, never the host database', async () => {
+  const provision = vi
+    .spyOn(InfrastructureService.prototype, 'provision')
+    .mockResolvedValue({ services: {}, ready: true });
+  try {
+    const manager = new StackInfrastructureManager(quiet());
+    const svc = await manager.provisionStack('tenant', 'prod', { type: 'local', apps: [] }, {
+      services: redis,
+    } as never);
+    const restarted: string[] = [];
+    (svc as unknown as { reconcileService(d: { name: string }): Promise<void> }).reconcileService = async (d) => {
+      restarted.push(d.name);
+    };
+    await (svc as unknown as { healthSweep(): Promise<void> }).healthSweep();
+    expect(restarted).toEqual(['tenant-prod-redis']);
+  } finally {
+    provision.mockRestore();
+  }
 });

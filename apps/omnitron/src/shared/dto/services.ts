@@ -441,6 +441,13 @@ export interface IOmnitronDeployService {
  * console's build.
  */
 export interface IOmnitronInfraService {
+  checkHostIngress(data: import('../../infrastructure/host-ingress-types.js').HostIngressApply): Promise<import('../../infrastructure/host-ingress-types.js').HostIngressCheck>;
+  configureHostIngress(data: import('../../infrastructure/host-ingress-types.js').HostIngressSettings): Promise<{ configured: true; settings: import('../../infrastructure/host-ingress-types.js').HostIngressSettings }>;
+  getHostIngress(): Promise<import('../../infrastructure/host-ingress-types.js').HostIngressStatus>;
+  applyHostIngress(data: import('../../infrastructure/host-ingress-types.js').HostIngressApply): Promise<import('../../infrastructure/host-ingress-types.js').HostIngressReceipt>;
+  removeHostIngress(data: import('../../infrastructure/host-ingress-types.js').HostIngressRemove): Promise<import('../../infrastructure/host-ingress-types.js').HostIngressReceipt>;
+  recoverHostIngress(): Promise<import('../../infrastructure/host-ingress-types.js').HostIngressStatus>;
+
   /**
    * Bring up a stack's infrastructure on THIS node.
    *
@@ -723,6 +730,7 @@ export interface IOmnitronNodesService {
   installBundleOnNode(data: { nodeId: string; archivePath: string; version: string }): Promise<boolean>;
   /** Make an installed version current and restart the node's daemon into it. */
   activateBundleOnNode(data: { nodeId: string; version: string; keepVersions?: number }): Promise<boolean>;
+  recoverBundleOnNode(data: { nodeId: string; receiptId: string }): Promise<boolean>;
 }
 
 /**

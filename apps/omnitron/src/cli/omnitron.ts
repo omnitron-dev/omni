@@ -547,6 +547,14 @@ fleet
   });
 
 fleet
+  .command('recover <node> <receipt>')
+  .description('Recover an interrupted host upgrade from its recorded receipt')
+  .action(async (node: string, receipt: string) => {
+    const { fleetRecoverCommand } = await import('../commands/fleet-recover.js');
+    await fleetRecoverCommand(node, receipt);
+  });
+
+fleet
   .command('upgrade [nodes...]')
   .description('Install the omnitron built from this working tree on registered nodes')
   .option('--dry-run', 'Print the plan and ship nothing')
@@ -805,6 +813,24 @@ program
   });
 
 const infra = program.command('infra').description('Manage infrastructure containers (PostgreSQL, Redis, MinIO, etc.)');
+
+const ingress = infra.command('ingress').description('Manage host-owned public ingress independently of application stacks');
+for (const operation of ['configure', 'check', 'apply', 'remove'] as const) {
+  ingress.command(`${operation} <manifest>`)
+    .description(`${operation} host ingress using a JSON manifest (host daemon, exact generation CAS)`)
+    .action(async (manifest: string) => {
+      const { hostIngressCommand } = await import('../commands/host-ingress.js');
+      await hostIngressCommand(operation, manifest);
+    });
+}
+for (const operation of ['status', 'recover'] as const) {
+  ingress.command(operation)
+    .description(operation === 'status' ? 'Read configured and observed ingress generation' : 'Recover an interrupted host ingress publication')
+    .action(async () => {
+      const { hostIngressCommand } = await import('../commands/host-ingress.js');
+      await hostIngressCommand(operation);
+    });
+}
 
 infra
   .command('up')

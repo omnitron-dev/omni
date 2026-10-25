@@ -30,6 +30,10 @@ omnitron logs
 omnitron logs --level warn --grep "error"
 ```
 
+## Host-owned public ingress
+
+See [host ingress setup, application publication and recovery](HOST-INGRESS.md) for independent multi-application HTTPS hosting through the native CLI and RPC API.
+
 ## License
 
 MIT

@@ -5,6 +5,8 @@
  * (Docker-based PostgreSQL, Redis, MinIO, etc.).
  */
 
+import { HostIngressService } from '../infrastructure/host-ingress.service.js';
+import type { HostIngressApply, HostIngressRemove, HostIngressSettings } from '../infrastructure/host-ingress-types.js';
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 import { VIEWER_ROLES, OPERATOR_ROLES, CONTROL_PLANE_ROLES, CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
@@ -13,7 +15,7 @@ import type { InfrastructureConfig, IServiceRequirement } from '../infrastructur
 import { summariseProvisioning, provisioningVerdict } from '../infrastructure/provisioning-outcome.js';
 import { withGeneratedCredentials } from '../infrastructure/service-credentials.js';
 import { duringPhase } from '../project/deploy-phases.js';
-import { containerEndpoint, REDIS_CONTAINER_PORT } from '../infrastructure/service-resolver.js';
+import { containerEndpoint, REDIS_CONTAINER_PORT, withInfrastructureScope } from '../infrastructure/service-resolver.js';
 import type { InfrastructureState, ContainerState } from '../infrastructure/types.js';
 import type { IOmnitronInfraService } from '../shared/dto/services.js';
 import { gatewayRedisDb } from '../infrastructure/gateway-redis-db.js';
@@ -80,7 +82,26 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
       warn?(obj: object, msg?: string, ...args: any[]): void;
       info?(obj: object, msg?: string, ...args: any[]): void;
     } | undefined,
+    private readonly hostIngress: HostIngressService = new HostIngressService(),
   ) {}
+
+  @Public({ auth: { roles: ['admin', 'service_role'] } })
+  async configureHostIngress(data: HostIngressSettings) { return this.hostIngress.configure(data); }
+
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
+  async getHostIngress() { return this.hostIngress.status(); }
+
+  @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
+  async checkHostIngress(data: HostIngressApply) { return this.hostIngress.check(data); }
+
+  @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
+  async applyHostIngress(data: HostIngressApply) { return this.hostIngress.apply(data); }
+
+  @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
+  async removeHostIngress(data: HostIngressRemove) { return this.hostIngress.remove(data); }
+
+  @Public({ auth: { roles: ['admin', 'service_role'] } })
+  async recoverHostIngress() { return this.hostIngress.recover(); }
 
   /**
    * Bring up the infrastructure a stack needs, here, on this node.
@@ -187,8 +208,10 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // Named while it runs, so a stall on this node says what it was doing.
     // Test node, 2026-09-22: it went quiet for ten seconds around the end of a
     // provision and nothing here could name it — `monitoring/event-loop-watch.ts`.
-    return duringPhase(`provisioning ${data?.project ?? 'omnitron'}/${data?.stack ?? 'default'} for the master`, () =>
-      this.provisionStackNow(data),
+    return withInfrastructureScope(data?.project, data?.stack, () =>
+      duringPhase(`provisioning ${data?.project ?? 'omnitron'}/${data?.stack ?? 'default'} for the master`, () =>
+        this.provisionStackNow(data),
+      ),
     );
   }
 
@@ -216,12 +239,6 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // Measured: a node asked to provision `postgres, redis, minio` answered
     // "Infrastructure: nothing is declared, so nothing was provisioned" —
     // which was true of what it had been given and false of what was asked.
-    if (data.project && data.stack) {
-      const { setContainerPrefix, setStackLabels } = await import('../infrastructure/service-resolver.js');
-      setContainerPrefix(data.project, data.stack);
-      setStackLabels(data.project, data.stack);
-    }
-
     const { normalizeInfraConfig } = await import('../infrastructure/config-normalizer.js');
     const { createDefaultRegistry } = await import('../infrastructure/presets/index.js');
     // One registry, used to expand the config AND to run the post-provision

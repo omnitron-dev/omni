@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { expandRoles, canModerateUserWithRole, assignableRolesFor, permissionGrants, hasAllPermissions, isValidPermissionKey, definePermission } from './index.js';
-describe('shared SAMPLE access policy', () => {
+describe('platform access policy', () => {
   it('separates security and moderation capability while preserving admin inheritance', () => {
     expect(expandRoles('admin')).toEqual(['user','moderator','security','admin']);
     expect(expandRoles('security')).toEqual(['user','security']);

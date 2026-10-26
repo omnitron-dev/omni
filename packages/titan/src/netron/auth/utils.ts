@@ -4,6 +4,9 @@
  */
 
 import { timingSafeEqual } from 'node:crypto';
+import {
+  permissionGrants, hasPermission as policyHasPermission, createPermissionChecker as compilePermissions,
+} from '@omnitron-dev/access/permissions';
 
 import type { AuthContext, AccessValidationResult } from './types.js';
 
@@ -54,13 +57,7 @@ export function safeCompare(a: string, b: string): boolean {
  * @returns true if the granted permission covers the required one
  */
 export function permissionMatches(granted: string, required: string): boolean {
-  if (granted === '*') return true;
-  if (granted === required) return true;
-  if (granted.endsWith('.*')) {
-    const prefix = granted.slice(0, -1); // 'admin.users.*' → 'admin.users.'
-    return required.startsWith(prefix);
-  }
-  return false;
+  return permissionGrants(granted, required, 'explicit');
 }
 
 /**
@@ -71,35 +68,12 @@ export function permissionMatches(granted: string, required: string): boolean {
  * @returns true if at least one granted permission covers the required one
  */
 export function hasPermission(grantedPermissions: string[], required: string): boolean {
-  return grantedPermissions.some((granted) => permissionMatches(granted, required));
+  return policyHasPermission(grantedPermissions, required, 'explicit');
 }
 
-/**
- * Pre-index a granted-permission list for repeated checks.
- *
- * `hasPermission` scans the whole granted array per required permission, so
- * checking an ACL is O(required × granted) — with a thousand of each that is a
- * million `permissionMatches` calls on the authorization path, and the
- * permissions claim is the one part of this system's token that grows without
- * a bound. Measured: ten times the input cost sixty-five times the work.
- *
- * Exact grants go in a Set; only wildcard grants ('*' and 'prefix.*') still
- * need scanning, and there are normally a handful. Same semantics as
- * `hasPermission`, checked against it in the tests.
- */
-export function createPermissionChecker(grantedPermissions: string[]): (required: string) => boolean {
-  const exact = new Set<string>();
-  const wildcards: string[] = [];
-
-  for (const granted of grantedPermissions) {
-    if (granted === '*' || granted.endsWith('.*')) wildcards.push(granted);
-    else exact.add(granted);
-  }
-
-  return (required: string): boolean => {
-    if (exact.has(required)) return true;
-    return wildcards.some((granted) => permissionMatches(granted, required));
-  };
+/** Compile a principal's grants once, preserving Netron's explicit matching policy. */
+export function createPermissionChecker(grantedPermissions: readonly string[]): (required: string) => boolean {
+  return compilePermissions(grantedPermissions, 'explicit');
 }
 
 /**
@@ -145,7 +119,8 @@ export function validateAccessRequirements(
   // Permissions — ALL required (wildcard-aware).
   if (requirements.permissions && requirements.permissions.length > 0) {
     const granted = authContext.permissions ?? [];
-    const missingPermissions = requirements.permissions.filter((required) => !hasPermission(granted, required));
+    const allows = createPermissionChecker(granted);
+    const missingPermissions = requirements.permissions.filter((required) => !allows(required));
     if (missingPermissions.length > 0) {
       return { allowed: false, reason: 'Missing required permissions', details: { missingPermissions } };
     }

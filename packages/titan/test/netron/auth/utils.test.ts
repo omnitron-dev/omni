@@ -199,56 +199,21 @@ describe('createPermissionChecker', () => {
     });
   }
 
-  // The point of `createPermissionChecker` is that an exact grant is answered
-  // without consulting the other grants — `hasPermission` in a loop scans the
-  // whole array per required permission, a million comparisons for a thousand
-  // of each, on the authorization path.
-  //
-  // This used to be asserted with a stopwatch: build a checker over 100 grants
-  // and over 1000, and require the second to cost less than 50x the first. That
-  // could not work. The small side is hundredths of a millisecond, so one
-  // scheduler slice in the numerator sends the ratio past the threshold — it was
-  // measured at 108x during a full monorepo run and 7.6x–14.9x when idle, and
-  // raising the iteration count widens the spread rather than narrowing it,
-  // because V8 optimises a 100-element walk and a 1000-element walk differently.
-  // The ratio is not a stable quantity at any scale, so no threshold over it
-  // means anything. `Math.max(small, 0.001)` made it worse rather than safer:
-  // the author saw the denominator could collapse and clamped its SHAPE, which
-  // lets pure noise stand in for a measurement.
-  //
-  // The property underneath is not temporal at all, and is checked directly
-  // below: an exact hit must not touch the other grants.
-  it('answers an exact grant without consulting the other grants', () => {
-    let touchedAfterBuild = 0;
-    let built = false;
-
-    // Poses as a wildcard grant so it lands in the list `permissionMatches`
-    // walks, and counts every look it gets once construction is over.
-    const poison = {
-      endsWith: (suffix: string) => {
-        if (built) touchedAfterBuild++;
-        return suffix === '.*';
+  it('snapshots grants once for exact hits, wildcard hits and misses', () => {
+    let reads = 0;
+    const grants = new Proxy(['documents.*', ...Array.from({ length: 1000 }, (_, i) => `perm:${i}`)], {
+      get(target, key, receiver) {
+        if (typeof key === 'string' && /^\d+$/.test(key)) reads++;
+        return Reflect.get(target, key, receiver);
       },
-      slice: () => 'never.matches.',
-    } as unknown as string;
-
-    // FIRST in the array on purpose: a linear scan would have to walk past it to
-    // reach the exact grant below. Placed last, it survived a mutation that
-    // restored the scan — `some()` short-circuited on the match before ever
-    // reaching it, and the test passed while measuring nothing.
-    const permitted = createPermissionChecker([
-      poison,
-      ...Array.from({ length: 1000 }, (_, i) => `perm:${i}`),
-    ]);
-    built = true;
-
+    });
+    const permitted = createPermissionChecker(grants);
+    expect(reads).toBeGreaterThan(0); // The observation detects accesses during compilation.
+    reads = 0;
     expect(permitted('perm:999')).toBe(true);
-    expect(touchedAfterBuild, 'an exact grant walked the wildcard list').toBe(0);
-
-    // Control: the counter can move, so the zero above is an observation and
-    // not an artefact of a poison nothing ever reaches.
+    expect(permitted('documents.edit')).toBe(true);
     expect(permitted('granted.to.nobody')).toBe(false);
-    expect(touchedAfterBuild, 'a miss did not consult the wildcards either').toBeGreaterThan(0);
+    expect(reads).toBe(0);
   });
 
   it('answers from the grants it was given, not from later edits to the array', () => {

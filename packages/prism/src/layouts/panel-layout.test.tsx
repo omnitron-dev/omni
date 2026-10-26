@@ -165,12 +165,12 @@ describe('dashboard logo variants', () => {
   afterEach(() => viewport.setWindowSize({ width: 1024 }));
   const fullLogo = (
     <Link to="/" aria-label="Full project wordmark">
-      consumer.
+      app.
     </Link>
   );
   const compactLogo = (
     <Link to="/" aria-label="Compact project wordmark">
-      o.
+      a.
     </Link>
   );
 

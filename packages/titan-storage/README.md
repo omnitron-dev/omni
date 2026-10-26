@@ -1,9 +1,9 @@
 # Titan storage
 
-The object-storage port and S3/local adapters extracted from SAMPLE. SAMPLE imports
-these same implementations; multipart uploads, ranges, metadata, bulk deletion,
-copying and listing remain available. This is the storage backend, not a claim
-that application-specific quotas, sharing or access policy have been migrated.
+A portable object-storage interface with S3 and local filesystem adapters.
+Both backends support multipart uploads, ranges, metadata, bulk deletion,
+copying and listing. Applications supply their own authorization, quotas,
+sharing rules and metadata storage.
 
 Import `StorageModule.forRoot({ backend: 's3' })` and inject `STORAGE_ADAPTER`.
 Titan config supplies `storage.s3` (endpoint, bucket, credentials, region,

@@ -1,0 +1,55 @@
+{
+  "name": "@omnitron-dev/access",
+  "version": "0.3.1",
+  "description": "Dependency-free role hierarchies and permission policies for browsers and servers",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./roles": {
+      "types": "./dist/role-hierarchy.d.ts",
+      "import": "./dist/role-hierarchy.js",
+      "default": "./dist/role-hierarchy.js"
+    },
+    "./permissions": {
+      "types": "./dist/permissions.d.ts",
+      "import": "./dist/permissions.js",
+      "default": "./dist/permissions.js"
+    },
+    "./platform": {
+      "types": "./dist/platform-roles.d.ts",
+      "import": "./dist/platform-roles.js",
+      "default": "./dist/platform-roles.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "../../scripts/build-package.sh -p ./tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check:bundle": "node scripts/check-bundle.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3",
+    "esbuild": "^0.28.2"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/omnitron-dev/omni.git",
+    "directory": "packages/access"
+  }
+}

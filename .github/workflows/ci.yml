@@ -75,6 +75,10 @@ jobs:
       # work the graph does not ask for.
       - name: Build packages (apps typecheck against their dist)
         run: pnpm --filter './packages/**' run build
+      - name: Pure access policy and browser bundle boundary
+        run: |
+          pnpm --filter @omnitron-dev/access test
+          pnpm --filter @omnitron-dev/access check:bundle
       - name: Typecheck (all packages + apps)
         run: pnpm -r run typecheck
 
@@ -97,6 +101,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -108,7 +114,7 @@ jobs:
         run: pnpm check:scans
 
   # -------------------------------------------------------------------
-  # Not here yet: tests.
+  # Full workspace tests are not here yet. Pure access tests run above.
   #
   # `pnpm test` is `turbo test`, and `pnpm test:ci` wraps it in
   # `docker compose -f docker-compose.test.yml up -d --wait`. Several

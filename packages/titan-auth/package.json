@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-auth",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "JWT authentication module for Titan framework",
   "author": "LuxQuant",
   "license": "MIT",
@@ -32,7 +32,8 @@
   },
   "dependencies": {
     "jose": "^6.2.11",
-    "reflect-metadata": "^0.2.2"
+    "reflect-metadata": "^0.2.2",
+    "@omnitron-dev/access": "workspace:*"
   },
   "peerDependencies": {
     "@omnitron-dev/titan": "workspace:*"

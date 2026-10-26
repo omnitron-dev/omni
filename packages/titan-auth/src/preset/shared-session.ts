@@ -234,8 +234,7 @@ export interface SharedSessionAuthManagerOptions {
    * roles resolved from the JWT before they reach the
    * AuthorizationManager.
    *
-   * The platform's role hierarchy (e.g. admin → user|boss|moderator|
-   * security|admin) is baked into the JWT at mint time, but legacy
+   * The application's role hierarchy is baked into the JWT at mint time, but legacy
    * tokens, service-to-service tokens, or any caller that forgot
    * to expand can still hit this validate path with only the
    * singular `role`. Without re-expansion here, a JWT carrying
@@ -244,9 +243,10 @@ export interface SharedSessionAuthManagerOptions {
    * manager does flat `roles.includes(required)` and knows
    * nothing about hierarchy.
    *
-   * Caller-supplied so titan-auth stays tenant-/platform-agnostic
-   * — the downstream `createJwtAuthManager` wrapper injects the canonical
-   * `expandRoleSet` from `@acme/auth-utils`.
+   * Supply policy.expandRoleSet from createRoleHierarchy, or the compatible
+   * platform expandRoleSet, exported by @omnitron-dev/titan-auth/access.
+   * Use the same policy at issuance and verification. Expansion is not a
+   * substitute for authenticating the issuer or resolving tenant authority.
    *
    * Unset → roles pass through verbatim (back-compat).
    */

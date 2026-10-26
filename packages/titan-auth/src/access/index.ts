@@ -1,3 +1,3 @@
-// Browser-safe policy primitives shared by server enforcement and UI affordances.
-export * from './platform-roles.js';
-export * from './permissions.js';
+/** Compatibility entry point. New framework-independent code can import @omnitron-dev/access. */
+export * from '@omnitron-dev/access';
+export * from '@omnitron-dev/access/platform';

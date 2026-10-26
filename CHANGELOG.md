@@ -6,6 +6,104 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.3.1] - 2026-10-26
+
+### ✨ Features
+
+- feat(prism): add timezone-safe calendar inputs and opaque sidebar controls
+- feat(titan): share portable access policy and object storage adapters
+- feat(prism): derive application theme overrides from resolved mode
+- feat(prism): add provider-neutral map search and coordinate contracts
+- feat(prism): reveal native scrollbars on hover and keyboard focus
+- feat(prism): provide semantic icon slots across research controls
+- feat(prism): show typed observation badges in knowledge graphs
+- feat(prism): add source-preserving in-place equation editing
+- feat(prism): unify collapsible workspace and graph navigation
+- feat(prism): export theme-native breadcrumb navigation
+- feat(prism): expose accessible corpus navigation primitives
+
+### 🐛 Bug Fixes
+
+- fix(omnitron): retain immutable assets across app releases
+- fix(lifecycle): preserve project containers on daemon disposal
+- fix(infra): keep the control-plane database outside application stacks
+- fix(infra): isolate concurrent stack resource ownership
+- fix(infra): honor explicit gateway container declarations
+- fix(prism): keep calendar actions in viewport and report required validity
+- fix(prism): expose scrollbar without loading optional subsystems
+- fix(omnitron): stop every supervised project during shutdown
+- fix(omnitron): make watch policy cancel all automatic restarts
+- fix(mailer): retry temporary SMTP authentication failures
+- fix(prism): reconcile application palettes and responsive workspace geometry
+- fix(prism): preserve disclosure outlines beside unrelated content
+- fix(prism): resolve table headers from semantic theme surfaces
+- fix(prism): center document navigation labels and disclosure markers
+- fix(prism): keep one owner for graph selection
+- fix(prism): place measured graph labels without collisions
+- fix(prism): keep graph labels above crossing edges
+- fix(prism): restore equation editing after verification locks
+- fix(prism): close the equation keyboard with its owner
+- fix(prism): inherit text color in transparent workspace headers
+- fix(prism): align equation keyboard with theme layers
+- fix(prism): distinguish compact items with repeated title prefixes
+- fix(prism): preserve compact panel navigation and stable geometry
+- fix(omnitron): reuse Docker networks and gate incomplete stack infrastructure
+- fix(omnitron): preserve project identity when activating release paths
+- fix(netron): drain rejected HTTP uploads before closing sockets
+- fix(prism): unify research editor and graph theme controls
+- fix(titan): close unused auth endpoints and release disconnected responses
+- fix(titan): reject oversized Node HTTP bodies without killing the server
+- fix(titan): preserve authentication provider outages across HTTP calls
+- fix(common): allow browser imports without Node globals
+- fix(titan): bind HTTP authority to native sessions before listen
+- fix(netron): preserve invocation cancellation and validate HTTP responses
+- fix(prism): scope Docusaurus heading anchors to source profile
+- fix(prism): preserve source metadata and expose theme-native UI primitives
+- fix(titan/netron): a handshake the client heard before it listened
+- fix(test): the copies a killed test run left behind
+
+### 📝 Other Changes
+
+- Verify native route catchall and current build preparation contract
+- Preserve declared HTTP route methods and pathname matching
+- Give slave project services their existing local vault
+- Inspect immutable local container image IDs without registry fallback
+- Retain native audit logs referenced by the verification receipt
+- Record native deployment audit checks and remaining boundaries
+- Record deployment audit guarantees and remaining boundaries
+- Fence remote upgrade commands and preserve captured supervisor ownership
+- Reject nonportable links before bundle promotion
+- Fence remote deployment commands for their full execution lifetime
+- Install native bundles immutably and verify exact reuse
+- Fence verified upload promotion under the node lease
+- Fence app and fleet operations on unfinished host workflow journals
+- Keep interrupted rollback discoverable and confirm deployment lease ownership
+- Refresh native infrastructure ownership without container mutation
+- Isolate and atomically verify native file uploads
+- Make initial ingress takeover and owner rollback resumable
+- Add transactional host-owned ingress with tenant ownership and recovery
+- Restore shared-host apps and supervision through checked upgrades
+- Compile production source topologies and isolate classic app launch context
+- Preserve public module exports in deployed Omnitron bundles
+- Allow operator pipelines to update without discarding run history
+- Align Prism with current UI dependencies and expose verified deployment operations
+- Invalidate watched builds when process entry graphs change
+- Fix terminal SSH secret input and preserve node authentication method
+- Expose shared typography tokens for research components
+- Add Titan Mailer with durable notification delivery and recovery
+- Expose the themed MUI slider through Prism UI
+- Add contextual scientific block editing with shared transactions
+- Keep inserted scientific blocks selected for editing
+- Search scientific insertions by host-provided keywords
+- Add source-preserving scientific editor and typed knowledge graph
+- Keep research parser documentation independent of private projects
+- Align research diagrams with the host Prism palette
+- Preserve research diagram layout through isolated SVG images
+- Add source-preserving research documents with scoped Prism widgets
+- refactor: make project tool integration generic and keep public source self-contained
+- test(titan/netron): six authorization specs that dialled two families
+
+
 ## [0.3.0] - 2026-10-01
 
 ### ✨ Features

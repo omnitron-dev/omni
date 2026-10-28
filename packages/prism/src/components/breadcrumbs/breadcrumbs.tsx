@@ -89,6 +89,7 @@ export interface BreadcrumbsProps extends React.ComponentProps<'div'> {
 // =============================================================================
 
 const BreadcrumbsRoot = styled('div')(({ theme }) => ({
+  minWidth: 0,
   display: 'flex',
   flexDirection: 'column',
   gap: theme.spacing(2),
@@ -110,6 +111,7 @@ const BreadcrumbsContainer = styled('div')(({ theme }) => ({
 }));
 
 const BreadcrumbsContent = styled('div')(({ theme }) => ({
+  minWidth: 0,
   display: 'flex',
   flex: '1 1 auto',
   gap: theme.spacing(2),
@@ -142,6 +144,9 @@ const ItemRoot = styled('div', {
   shouldForwardProp: (prop: string) => prop !== 'disabled',
 })<{ disabled?: boolean }>(({ disabled, theme }) => ({
   ...theme.typography.body2,
+  minWidth: 0,
+  maxWidth: '100%',
+  overflowWrap: 'anywhere',
   alignItems: 'center',
   gap: theme.spacing(0.5),
   display: 'inline-flex',
@@ -240,10 +245,11 @@ function BreadcrumbLink({
   icon,
   name,
   disabled,
+  current,
   linkComponent,
-}: BreadcrumbLinkProps & { linkComponent?: ElementType }) {
+}: BreadcrumbLinkProps & { current?: boolean; linkComponent?: ElementType }) {
   const content = (
-    <ItemRoot disabled={disabled}>
+    <ItemRoot disabled={disabled} aria-current={current ? 'page' : undefined}>
       {icon && <ItemIcon>{icon}</ItemIcon>}
       {name}
     </ItemRoot>
@@ -345,8 +351,6 @@ export function Breadcrumbs({
   linkComponent,
   ...other
 }: BreadcrumbsProps): ReactNode {
-  const lastLink = links[links.length - 1]?.name;
-
   const renderHeading = () => (
     <BreadcrumbsHeading {...slotProps?.heading}>
       {backHref ? <BackLink href={backHref} label={heading} linkComponent={linkComponent} /> : heading}
@@ -358,11 +362,12 @@ export function Breadcrumbs({
       <MuiBreadcrumbs separator={<BreadcrumbsSeparator />} {...slotProps?.breadcrumbs}>
         {links.map((link, index) => (
           <BreadcrumbLink
-            key={link.name ?? index}
+            key={`${link.href ?? link.name ?? ''}-${index}`}
             icon={link.icon}
             href={link.href}
             name={link.name}
-            disabled={link.name === lastLink && !activeLast}
+            disabled={link.disabled || (index === links.length - 1 && !activeLast)}
+            current={index === links.length - 1}
             linkComponent={linkComponent}
           />
         ))}

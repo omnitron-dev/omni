@@ -28,18 +28,21 @@ import { type LayoutNavData, type HeaderSlots, type LayoutConfig } from '../type
 // =============================================================================
 
 interface MainWrapperProps {
+  contentMode: 'document' | 'workspace';
   hasSidebar: boolean;
   sidebarWidth: number;
   layoutQuery: Breakpoint;
 }
 
 const MainWrapper = styled(Box, {
-  shouldForwardProp: (prop) => !['hasSidebar', 'sidebarWidth', 'layoutQuery'].includes(prop as string),
-})<MainWrapperProps>(({ theme, hasSidebar, sidebarWidth, layoutQuery }) => ({
+  shouldForwardProp: (prop) => !['hasSidebar', 'sidebarWidth', 'layoutQuery', 'contentMode'].includes(prop as string),
+})<MainWrapperProps>(({ theme, hasSidebar, sidebarWidth, layoutQuery, contentMode }) => ({
   display: 'flex',
   flexDirection: 'column',
   flex: '1 1 auto',
   minHeight: '100vh',
+  minWidth: 0,
+  ...(contentMode === 'workspace' && { height: '100dvh', minHeight: 0, overflow: 'hidden' }),
   // Adjust margin for sidebar on desktop
   ...(hasSidebar && {
     [theme.breakpoints.up(layoutQuery)]: {
@@ -58,6 +61,7 @@ const MainWrapper = styled(Box, {
 // =============================================================================
 
 interface DashboardLayoutInternalProps {
+  contentMode: 'document' | 'workspace';
   children?: ReactNode;
   layoutQuery: Breakpoint;
   navData?: LayoutNavData;
@@ -84,6 +88,7 @@ interface DashboardLayoutInternalProps {
  * Internal dashboard layout (used within LayoutProvider).
  */
 function DashboardLayoutInternal({
+  contentMode,
   children,
   layoutQuery,
   navData,
@@ -144,7 +149,12 @@ function DashboardLayoutInternal({
   }, [hasSidebar, headerSlots, toggleDrawer, layoutQuery, labels.openMenu, config.drawerOpen]);
 
   return (
-    <MainWrapper hasSidebar={hasSidebar} sidebarWidth={sidebarWidth} layoutQuery={layoutQuery}>
+    <MainWrapper
+      contentMode={contentMode}
+      hasSidebar={hasSidebar}
+      sidebarWidth={sidebarWidth}
+      layoutQuery={layoutQuery}
+    >
       {/* Skip to main content link for keyboard users */}
       <SkipLink href={`#${slotProps?.main?.id ?? 'main-content'}`}>{labels.skipToContent}</SkipLink>
 
@@ -202,6 +212,8 @@ function DashboardLayoutInternal({
           display: 'flex',
           flexDirection: 'column',
           flex: '1 1 auto',
+          minWidth: 0,
+          ...(contentMode === 'workspace' && { minHeight: 0, overflow: 'hidden' }),
           // Remove focus outline for skip link target
           '&:focus': {
             outline: 'none',
@@ -214,7 +226,16 @@ function DashboardLayoutInternal({
         }}
       >
         {slotProps?.main?.maxWidth ? (
-          <Container maxWidth={slotProps.main.maxWidth} sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <Container
+            maxWidth={slotProps.main.maxWidth}
+            sx={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              minWidth: 0,
+              ...(contentMode === 'workspace' && { minHeight: 0 }),
+            }}
+          >
             {children}
           </Container>
         ) : (
@@ -233,6 +254,8 @@ function DashboardLayoutInternal({
 // =============================================================================
 
 export interface DashboardLayoutProps {
+  /** Document scrolling, or a viewport-bounded workspace with scrolling owned by its panels. */
+  contentMode?: 'document' | 'workspace';
   /** Child content */
   children?: ReactNode;
   /** Layout breakpoint for responsive behavior */
@@ -300,6 +323,7 @@ export interface DashboardLayoutProps {
  * ```
  */
 export function DashboardLayout({
+  contentMode = 'document',
   children,
   layoutQuery = 'lg',
   navData,
@@ -316,6 +340,7 @@ export function DashboardLayout({
   return (
     <LayoutProvider initialConfig={initialConfig} persistKey={persistKey}>
       <DashboardLayoutInternal
+        contentMode={contentMode}
         layoutQuery={layoutQuery}
         navData={navData}
         headerSlots={headerSlots}

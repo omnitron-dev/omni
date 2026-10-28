@@ -8,11 +8,13 @@
  * @module components/tabs
  */
 
-import type { ReactNode, ReactElement, SyntheticEvent, ComponentProps } from 'react';
-import { useState, useCallback, Children, isValidElement, useMemo } from 'react';
+import type { ReactNode, ReactElement, SyntheticEvent, ComponentProps, KeyboardEvent } from 'react';
+import { useState, useCallback, Children, isValidElement, useMemo, useId, useRef, useEffect } from 'react';
 import MuiTabs from '@mui/material/Tabs';
 import MuiTab from '@mui/material/Tab';
 import Box from '@mui/material/Box';
+import IconButton from '@mui/material/IconButton';
+import { CloseIcon } from '../../icons/controls.js';
 
 /**
  * Tab item definition.
@@ -28,6 +30,12 @@ export interface TabItem {
   content?: ReactNode;
   /** Disabled state */
   disabled?: boolean;
+  /** Show an individual close control. Requires Tabs.onClose. */
+  closable?: boolean;
+  /** Disable closing without disabling selection (e.g. during a save). */
+  closeDisabled?: boolean;
+  /** Localized accessible name for the close control. */
+  closeLabel?: string;
 }
 
 /**
@@ -45,6 +53,8 @@ export interface TabsProps extends Omit<ComponentProps<typeof MuiTabs>, 'onChang
   defaultValue?: string;
   /** Change handler */
   onChange?: (value: string) => void;
+  /** Request closure. The caller owns confirmation, removal and controlled selection. */
+  onClose?: (value: string) => void;
   /** Tab panel children (alternative to tabs prop) */
   children?: ReactNode;
   /** Keep unmounted tabs in DOM */
@@ -90,14 +100,19 @@ export function Tabs({
   value: controlledValue,
   defaultValue,
   onChange,
+  onClose,
   children,
   keepMounted = false,
   action,
+  sx,
   ...muiProps
 }: TabsProps): ReactNode {
   const [internalValue, setInternalValue] = useState(defaultValue ?? tabs?.[0]?.value ?? '');
 
   const value = controlledValue ?? internalValue;
+  const id = useId();
+  const tabRefs = useRef(new Map<string, HTMLElement>());
+  const closing = useRef<{ value: string; next?: string } | null>(null);
 
   const handleChange = useCallback(
     (_event: SyntheticEvent, newValue: string) => {
@@ -123,11 +138,39 @@ export function Tabs({
           icon: props.icon,
           content: props.children,
           disabled: props.disabled,
+          closable: props.closable,
+          closeDisabled: props.closeDisabled,
+          closeLabel: props.closeLabel,
         });
       }
     });
     return items;
   }, [tabs, children]);
+
+  const requestClose = (tab: TabItem) => {
+    if (!onClose || !tab.closable || tab.disabled || tab.closeDisabled) return;
+    const index = tabItems.indexOf(tab);
+    const next =
+      tabItems.slice(index + 1).find((item) => !item.disabled) ??
+      tabItems
+        .slice(0, index)
+        .reverse()
+        .find((item) => !item.disabled);
+    closing.current = { value: tab.value, next: next?.value };
+    onClose(tab.value);
+  };
+
+  // A confirmation may defer or cancel closure. Move focus only after removal.
+  useEffect(() => {
+    const pending = closing.current;
+    if (!pending || tabItems.some((tab) => tab.value === pending.value)) return;
+    closing.current = null;
+    if (controlledValue === undefined && value === pending.value) {
+      setInternalValue(pending.next ?? '');
+      if (pending.next) onChange?.(pending.next);
+    }
+    if (pending.next) tabRefs.current.get(pending.next)?.focus();
+  }, [tabItems, controlledValue, value, onChange]);
 
   // Flex wrapper exists only to host the optional action node to
   // the right of the tab strip — no bottom divider; MuiTabs keeps
@@ -136,26 +179,85 @@ export function Tabs({
   const hasAction = action !== undefined && action !== null && action !== false;
 
   return (
-    <Box sx={{ width: '100%' }}>
+    <Box sx={{ width: '100%', minWidth: 0, flexShrink: 0 }}>
       <Box
         sx={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: 2,
+          minWidth: 0,
         }}
       >
-        <MuiTabs value={value} onChange={handleChange} {...muiProps}>
-          {tabItems.map((tab) => (
-            <MuiTab
-              key={tab.value}
-              value={tab.value}
-              label={tab.label}
-              icon={tab.icon}
-              iconPosition="start"
-              disabled={tab.disabled}
-            />
-          ))}
+        <MuiTabs
+          value={value || false}
+          onChange={handleChange}
+          {...muiProps}
+          sx={[{ flex: 1, minWidth: 0 }, ...(Array.isArray(sx) ? sx : [sx])]}
+        >
+          {tabItems.map((tab) => {
+            const closable = Boolean(tab.closable && onClose);
+            return (
+              <MuiTab
+                key={tab.value}
+                ref={(element: HTMLElement | null) => {
+                  if (element) tabRefs.current.set(tab.value, element);
+                  else tabRefs.current.delete(tab.value);
+                }}
+                component={closable ? 'div' : 'button'}
+                id={`${id}-tab-${tab.value}`}
+                aria-controls={tab.content === undefined ? undefined : `${id}-panel-${tab.value}`}
+                aria-label={tab.label}
+                aria-keyshortcuts={closable && !tab.closeDisabled ? 'Delete' : undefined}
+                value={tab.value}
+                label={
+                  closable ? (
+                    <Box
+                      component="span"
+                      sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, minWidth: 0, maxWidth: '100%' }}
+                    >
+                      <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {tab.label}
+                      </Box>
+                      <IconButton
+                        component="button"
+                        type="button"
+                        size="small"
+                        tabIndex={-1}
+                        aria-label={tab.closeLabel ?? `Close ${tab.label}`}
+                        title={tab.closeLabel ?? `Close ${tab.label}`}
+                        disabled={tab.disabled || tab.closeDisabled}
+                        sx={{ p: 0.25, flexShrink: 0, color: 'text.secondary' }}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          requestClose(tab);
+                        }}
+                        onKeyDown={(event) => event.stopPropagation()}
+                      >
+                        <CloseIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </Box>
+                  ) : (
+                    tab.label
+                  )
+                }
+                icon={tab.icon}
+                iconPosition="start"
+                disabled={tab.disabled}
+                onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
+                  if (event.key === 'Delete' && closable && !tab.closeDisabled) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    requestClose(tab);
+                  }
+                }}
+              />
+            );
+          })}
         </MuiTabs>
         {hasAction && (
           <Box
@@ -184,8 +286,8 @@ export function Tabs({
             key={tab.value}
             role="tabpanel"
             hidden={!isActive}
-            id={`tabpanel-${tab.value}`}
-            aria-labelledby={`tab-${tab.value}`}
+            id={`${id}-panel-${tab.value}`}
+            aria-labelledby={`${id}-tab-${tab.value}`}
             sx={{ pt: 2 }}
           >
             {tab.content}
@@ -210,6 +312,9 @@ export interface TabPanelProps {
   children?: ReactNode;
   /** Disabled state */
   disabled?: boolean;
+  closable?: boolean;
+  closeDisabled?: boolean;
+  closeLabel?: string;
 }
 
 /**

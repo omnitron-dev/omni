@@ -27,7 +27,14 @@ describe('Breadcrumbs', () => {
   });
 
   it('leaves the last crumb inert by default', () => {
-    render(<Breadcrumbs links={[{ name: 'Dashboard', href: '/' }, { name: 'Orders', href: '/orders' }]} />);
+    render(
+      <Breadcrumbs
+        links={[
+          { name: 'Dashboard', href: '/' },
+          { name: 'Orders', href: '/orders' },
+        ]}
+      />
+    );
 
     expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Orders' })).not.toBeInTheDocument();
@@ -35,10 +42,28 @@ describe('Breadcrumbs', () => {
 
   it('keeps the last crumb clickable when activeLast is set', () => {
     render(
-      <Breadcrumbs activeLast links={[{ name: 'Dashboard', href: '/' }, { name: 'Orders', href: '/orders' }]} />
+      <Breadcrumbs
+        activeLast
+        links={[
+          { name: 'Dashboard', href: '/' },
+          { name: 'Orders', href: '/orders' },
+        ]}
+      />
     );
 
     expect(screen.getByRole('link', { name: 'Orders' })).toHaveAttribute('href', '/orders');
+  });
+
+  it('distinguishes repeated names and marks only the current location', () => {
+    const { container } = render(<Breadcrumbs links={[{ name: 'Nodes', href: '/nodes' }, { name: 'Nodes' }]} />);
+    expect(screen.getByRole('link', { name: 'Nodes' })).toHaveAttribute('href', '/nodes');
+    expect(container.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    expect(container.querySelector('[aria-current="page"]')?.closest('a')).toBeNull();
+  });
+
+  it('respects an explicitly disabled ancestor', () => {
+    render(<Breadcrumbs links={[{ name: 'Private', href: '/private', disabled: true }, { name: 'Current' }]} />);
+    expect(screen.queryByRole('link', { name: 'Private' })).not.toBeInTheDocument();
   });
 
   it('renders an action slot', () => {
@@ -70,7 +95,6 @@ describe('Breadcrumbs', () => {
     render(
       <Breadcrumbs
         moreLinks={[
-           
           'javascript:alert(1)',
           'data:text/html,<script>alert(1)</script>',
           'vbscript:msgbox(1)',

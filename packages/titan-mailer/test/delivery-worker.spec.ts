@@ -5,7 +5,7 @@ import type {
   NotificationHandler,
   NotificationSubscription,
 } from '@omnitron-dev/titan-notifications';
-import { MailDeliveryWorker, type MailOutbox } from '../src/notifications.js';
+import { MailDeliveryWorker, type MailOutbox, type MailDeliveryWorkerOptions } from '../src/notifications.js';
 import type { MailSender } from '../src/types.js';
 const deferred = () => {
   let resolve!: () => void;
@@ -14,7 +14,7 @@ const deferred = () => {
   });
   return { promise, resolve };
 };
-function fixture() {
+function fixture(options: Partial<MailDeliveryWorkerOptions> = {}) {
   let handler!: NotificationHandler;
   const subscription = {
     unsubscribe: vi.fn(async () => {}),
@@ -34,6 +34,7 @@ function fixture() {
     channel: 'mail.test',
     group: 'mail.test.workers',
     intervalMs: 60000,
+    ...options,
   });
   const message = (data: unknown = 'id-1'): IncomingNotification => ({
     id: 'event-1',
@@ -46,6 +47,28 @@ function fixture() {
   return { bus, store, sender, worker, subscription, message, dispatch: (m: IncomingNotification) => handler(m) };
 }
 describe('delivery ownership and failure boundaries', () => {
+  it('reports safe failure codes and preserves the original error when telemetry rejects', async () => {
+    const report = vi.fn(async () => { throw Error('log sink unavailable'); });
+    const f = fixture({ onError: report });
+    await f.worker.start();
+    await f.worker.reconcile();
+    const secret = Error('private database URI and recipient');
+    vi.mocked(f.store.deliver).mockRejectedValueOnce(secret);
+    await expect(f.dispatch(f.message())).rejects.toBe(secret);
+    expect(report).toHaveBeenLastCalledWith('delivery', 'outbox_delivery_failed');
+    const m = f.message();
+    vi.mocked(m.ack).mockRejectedValueOnce(secret);
+    await expect(f.dispatch(m)).rejects.toBe(secret);
+    expect(report).toHaveBeenLastCalledWith('delivery', 'notification_ack_failed');
+    vi.mocked(f.store.pending).mockRejectedValueOnce(secret);
+    await expect(f.worker.reconcile()).rejects.toBe(secret);
+    expect(report).toHaveBeenLastCalledWith('relay', 'outbox_read_failed');
+    vi.mocked(f.bus.publish).mockResolvedValueOnce({ success: false } as never);
+    await expect(f.worker.reconcile()).rejects.toThrow('unavailable');
+    expect(report).toHaveBeenLastCalledWith('relay', 'notification_publish_failed');
+    expect(JSON.stringify(report.mock.calls)).not.toContain('private');
+    await f.worker.stop();
+  });
   it('publishes only opaque IDs and reconciles again after lost wake-ups', async () => {
     const f = fixture();
     await f.worker.start();

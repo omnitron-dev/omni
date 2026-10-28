@@ -24,8 +24,10 @@ export interface MailDeliveryWorkerOptions {
   intervalMs?: number;
   batchSize?: number;
   maxConcurrent?: number;
-  onError?: (stage: 'relay' | 'delivery') => void;
+  onError?: (stage: 'relay' | 'delivery', code: MailWorkerFailureCode) => void | Promise<void>;
 }
+export type MailWorkerFailureCode =
+  'outbox_read_failed' | 'notification_publish_failed' | 'outbox_delivery_failed' | 'notification_ack_failed';
 /** Redis carries opaque outbox IDs. Reconciliation repairs lost/trimmed wake-ups.
  * Successful ACK means the durable store recorded the outcome, not recipient delivery.
  */
@@ -80,7 +82,7 @@ export class MailDeliveryWorker {
       try {
         await this.reconcile();
       } catch {
-        this.options.onError?.('relay');
+        /* reconcile reports its failure, including explicit operator calls */
       }
       if (!this.closed) {
         this.timer = setTimeout(tick, this.interval);
@@ -107,11 +109,17 @@ export class MailDeliveryWorker {
       }
       try {
         await this.store.deliver(payload.data, (mail) => this.mailer.send(mail));
+      } catch (error) {
+        this.deliveryFailure = true;
+        await this.report('delivery', 'outbox_delivery_failed');
+        throw error;
+      }
+      try {
         await message.ack();
         this.deliveryFailure = false;
       } catch (error) {
         this.deliveryFailure = true;
-        this.options.onError?.('delivery');
+        await this.report('delivery', 'notification_ack_failed');
         throw error;
       }
     })();
@@ -123,8 +131,10 @@ export class MailDeliveryWorker {
   reconcile(): Promise<void> {
     if (this.closed) return Promise.reject(new Error('Mail delivery worker is closed'));
     if (this.relay) return this.relay;
+    let code: MailWorkerFailureCode = 'outbox_read_failed';
     this.relay = (async () => {
       const ids = await this.store.pending(this.batchSize);
+      code = 'notification_publish_failed';
       for (const id of ids) {
         if (this.closed) break;
         // No publisher-side "exactly once": an ACK lost after SMTP is inherently ambiguous.
@@ -133,14 +143,22 @@ export class MailDeliveryWorker {
       }
       this.failure = false;
     })()
-      .catch((error) => {
+      .catch(async (error) => {
         this.failure = true;
+        await this.report('relay', code);
         throw error;
       })
       .finally(() => {
         this.relay = undefined;
       });
     return this.relay;
+  }
+  private async report(stage: 'relay' | 'delivery', code: MailWorkerFailureCode): Promise<void> {
+    try {
+      await this.options.onError?.(stage, code);
+    } catch {
+      /* Telemetry cannot change ACK/retry semantics. */
+    }
   }
   async health(): Promise<{ available: boolean; active: number }> {
     const transport = await this.bus.healthCheck();

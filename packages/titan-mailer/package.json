@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-mailer",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Lifecycle-managed transactional email for Titan with Nodemailer and durable notification workers",
   "author": "LuxQuant",
   "license": "MIT",
@@ -36,8 +36,8 @@
     "@types/nodemailer": "^8.0.2"
   },
   "peerDependencies": {
-    "@omnitron-dev/titan": "workspace:*",
-    "@omnitron-dev/titan-notifications": "workspace:*"
+    "@omnitron-dev/titan": "^0.3.0",
+    "@omnitron-dev/titan-notifications": "^0.3.0"
   },
   "peerDependenciesMeta": {
     "@omnitron-dev/titan-notifications": {

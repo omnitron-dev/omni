@@ -1,4 +1,4 @@
-import { mailFailure } from './errors.js';
+import { mailFailure, type MailFailureKind } from './errors.js';
 import type { MailMessage, MailReceipt } from './types.js';
 import type { MailOutbox } from './notifications.js';
 /** Existing transaction executor: compatible with a pg pool/client or a Titan database adapter.
@@ -19,8 +19,18 @@ export interface PostgresMailOutboxOptions {
   maxAttempts?: number;
   retrySeconds?: number;
   maxRetrySeconds?: number;
+  /** Best-effort telemetry after the transaction commits. Cannot change delivery outcome. */
+  onDelivery?: (event: MailDeliveryEvent) => void | Promise<void>;
 }
 export type MailDeliveryState = 'queued' | 'retrying' | 'accepted' | 'failed' | 'expired';
+/** Safe for structured logs: no address, body, credential or SMTP response text. */
+export interface MailDeliveryEvent {
+  deliveryId: string;
+  state: Exclude<MailDeliveryState, 'queued'>;
+  /** Attempts in the current retry cycle. Manual retry starts a new cycle. */
+  attempts: number;
+  errorKind: MailFailureKind | null;
+}
 export interface MailDeliveryStatus extends Record<string, unknown> {
   id: string;
   state: MailDeliveryState;
@@ -88,7 +98,7 @@ export class PostgresMailOutbox implements MailOutbox {
   }
   async deliver(id: string, send: (mail: MailMessage) => Promise<MailReceipt>): Promise<void> {
     if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id)) return;
-    await this.db.transaction(async (c) => {
+    const event = await this.db.transaction(async (c): Promise<MailDeliveryEvent | undefined> => {
       const row = (
         await c.query<OutboxRow>(
           `SELECT *,expires_at<=now() AS expired FROM mail_outbox
@@ -98,7 +108,7 @@ export class PostgresMailOutbox implements MailOutbox {
       ).rows[0];
       if (!row) return;
       let state: MailDeliveryState = 'accepted',
-        kind: string | null = null;
+        kind: MailFailureKind | null = null;
       if (row.expired) state = 'expired';
       else {
         try {
@@ -138,7 +148,16 @@ export class PostgresMailOutbox implements MailOutbox {
       );
       if (state === 'accepted' || state === 'expired')
         await c.query('DELETE FROM mail_outbox WHERE delivery_id=$1', [id]);
+      return { deliveryId: id, state, attempts: row.attempts + (row.expired ? 0 : 1), errorKind: kind };
     });
+    if (event) {
+      try {
+        await this.options.onDelivery?.(event);
+      } catch {
+        // A broken log sink must not turn committed SMTP acceptance into a retry.
+        // The durable receipt remains the authority for operational recovery.
+      }
+    }
   }
   /** No recipient, message, token or SMTP transcript is exposed to operators. */
   async status(id: string): Promise<MailDeliveryStatus | null> {

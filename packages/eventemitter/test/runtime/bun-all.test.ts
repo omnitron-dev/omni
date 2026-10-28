@@ -1,5 +1,5 @@
 /**
- * Bun test runner for all @devgrid/eventemitter tests
+ * Bun test runner for all @omnitron-dev/eventemitter tests
  * This file imports and runs all *.spec.ts tests
  * Note: bun-setup.ts is preloaded via bunfig.toml
  */
@@ -21,7 +21,7 @@ import '../wildcard.spec';
 import '../wildcard-edge-cases.spec';
 
 // Bun-specific runtime tests
-describe('@devgrid/eventemitter Bun Runtime', () => {
+describe('@omnitron-dev/eventemitter Bun Runtime', () => {
   test('should detect Bun runtime', () => {
     expect(typeof Bun).toBe('object');
     expect(Bun.version).toBeDefined();

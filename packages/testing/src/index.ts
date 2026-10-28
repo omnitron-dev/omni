@@ -1,5 +1,5 @@
 /**
- * @devgrid/testing - Cross-runtime testing utilities
+ * @omnitron-dev/testing - Cross-runtime testing utilities
  */
 
 export * from './runtime/test-adapter.js';

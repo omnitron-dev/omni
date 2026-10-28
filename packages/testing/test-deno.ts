@@ -1,5 +1,5 @@
 /**
- * Deno test runner for @devgrid/testing
+ * Deno test runner for @omnitron-dev/testing
  */
 
 import './src/runtime/deno-adapter.ts';

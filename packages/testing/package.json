@@ -12,17 +12,17 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "require": "./dist/index.js"
     },
     "./async": {
       "types": "./dist/async/index.d.ts",
       "import": "./dist/async/index.js",
-      "require": "./dist/async/index.cjs"
+      "require": "./dist/async/index.js"
     },
     "./docker": {
       "types": "./dist/docker/index.d.ts",
       "import": "./dist/docker/index.js",
-      "require": "./dist/docker/index.cjs"
+      "require": "./dist/docker/index.js"
     },
     "./runtime/vitest": {
       "types": "./dist/runtime/node-adapter.d.ts",
@@ -43,22 +43,22 @@
     "./titan": {
       "types": "./dist/titan/index.d.ts",
       "import": "./dist/titan/index.js",
-      "require": "./dist/titan/index.cjs"
+      "require": "./dist/titan/index.js"
     },
     "./helpers": {
       "types": "./dist/helpers/index.d.ts",
       "import": "./dist/helpers/index.js",
-      "require": "./dist/helpers/index.cjs"
+      "require": "./dist/helpers/index.js"
     },
     "./performance": {
       "types": "./dist/performance/index.d.ts",
       "import": "./dist/performance/index.js",
-      "require": "./dist/performance/index.cjs"
+      "require": "./dist/performance/index.js"
     },
     "./env": {
       "types": "./dist/env.d.ts",
       "import": "./dist/env.js",
-      "require": "./dist/env.cjs"
+      "require": "./dist/env.js"
     }
   },
   "files": [
@@ -102,7 +102,7 @@
     "@omnitron-dev/titan-pm": "workspace:*",
     "@omnitron-dev/titan-redis": "workspace:*",
     "bun": "*",
-    "ioredis": "^5.11.1",
+    "ioredis": "^5.11.1 || ^6.0.0",
     "pino": "^10.3.1",
     "vitest": "^5.0.0"
   },
@@ -136,12 +136,12 @@
     }
   },
   "engines": {
-    "node": ">=22.0.0",
+    "node": ">=22.12.0",
     "bun": ">=1.2.0"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/devgrid/devgrid.git",
+    "url": "git+https://github.com/omnitron-dev/omni.git",
     "directory": "packages/testing"
   },
   "keywords": [

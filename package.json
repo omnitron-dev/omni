@@ -25,7 +25,8 @@
     "link:global": "cd apps/omnitron && pnpm link --global",
     "unlink:global": "pnpm uninstall --global @omnitron-dev/omnitron",
     "kb:extract": "turbo kb:extract",
-    "kb:index": "cd apps/omnitron && tsx src/commands/kb.ts index"
+    "kb:index": "cd apps/omnitron && tsx src/commands/kb.ts index",
+    "check:packages": "node scripts/check-package-exports.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -1,5 +1,5 @@
 /**
- * Bun test runner for @devgrid/testing
+ * Bun test runner for @omnitron-dev/testing
  */
 
 import './src/runtime/bun-adapter';

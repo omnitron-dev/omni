@@ -1,5 +1,5 @@
 /**
- * Deno test runner for all @devgrid/eventemitter tests
+ * Deno test runner for all @omnitron-dev/eventemitter tests
  * This file imports and runs all *.spec.ts tests
  * Uses a modified import strategy for Deno compatibility
  */
@@ -45,7 +45,7 @@ const jest = {
 // import '../deno.test.ts';
 
 // Deno-specific runtime tests
-describe('@devgrid/eventemitter Deno Runtime', () => {
+describe('@omnitron-dev/eventemitter Deno Runtime', () => {
   it('should detect Deno runtime', () => {
     assertEquals(typeof Deno, 'object');
     assertExists(Deno.version);

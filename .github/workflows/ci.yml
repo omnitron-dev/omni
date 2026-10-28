@@ -42,19 +42,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      # No `version:` here ON PURPOSE. `package.json` carries
-      # `"packageManager": "pnpm@10.33.0"`, and `pnpm/action-setup@v4` refuses
-      # when it is told a version twice:
-      #
-      #   Error: Multiple versions of pnpm specified:
-      #     - version 10 in the GitHub Action config with the key "version"
-      #     - version pnpm@10.33.0 in the package.json with the key "packageManager"
-      #
-      # That refusal killed BOTH jobs at the first step, in twelve seconds,
-      # on every push since this file was added: 33 runs, 2026-09-21 to
-      # 2026-09-29, all red, none of which ever reached a typecheck or a scan.
-      # The file above says «`run-checks.mjs` was written to be a gate and had
-      # no gate to stand in» — it then had one that never opened.
+      # Resolve pnpm from the repository's packageManager field.
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -62,19 +50,10 @@ jobs:
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      # Without this the job cannot typecheck at all, and the first run that
-      # ever reached it said so: `packages/eventemitter` and `packages/msgpack`
-      # both answered `Cannot find module '@omnitron-dev/common' or its
-      # corresponding type declarations`. A workspace package resolves a
-      # sibling through its `exports`, which point at `dist`, and a fresh
-      # checkout has none. Every developer's tree has them, which is why this
-      # was invisible for as long as nothing ran the job.
-      #
-      # Packages only: the apps typecheck against the packages' `dist`, not
-      # against each other's, so building thirty projects to check thirty is
-      # work the graph does not ask for.
-      - name: Build packages (apps typecheck against their dist)
-        run: pnpm --filter './packages/**' run build
+      - name: Build packages and applications
+        run: pnpm build
+      - name: Verify package archive exports
+        run: pnpm check:packages
       - name: Pure access policy and browser bundle boundary
         run: |
           pnpm --filter @omnitron-dev/access test

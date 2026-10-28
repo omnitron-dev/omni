@@ -358,7 +358,7 @@ export interface OnDestroy {
  *
  * @example
  * ```typescript
- * import titan from '@devgrid/titan';
+ * import titan from '@omnitron-dev/titan';
  *
  * const app = await titan();
  * ```

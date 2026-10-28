@@ -10,12 +10,9 @@ export default defineConfig({
     'test/index': 'src/test/index.ts',
   },
   format: ['esm', 'cjs'],
-  // Declarations are emitted by `tsc` (see the build script), not by tsup.
-  // tsup's `dts: true` runs a rollup-plugin-dts compiled INTO tsup — so
-  // pnpm.overrides cannot raise it — and that copy reads TypeScript internals
-  // removed in TS 7, failing at load with
-  // "Cannot read properties of undefined (reading 'useCaseSensitiveFileNames')".
-  dts: false,
+  // Bundled declarations preserve separate ESM and CommonJS entry points.
+  // tsup reads the TypeScript 6 Compiler API alias; tsc uses native TS 7.
+  dts: true,
   splitting: true,
   sourcemap: true,
   clean: true,

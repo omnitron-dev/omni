@@ -59,6 +59,7 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
   const [host, setHost] = useState<TerminalHostKey | null>(null);
   const [fingerprint, setFingerprint] = useState('');
   const [pendingClose, setPendingClose] = useState<string | null>(null);
+  const [pendingCloseLabel, setPendingCloseLabel] = useState('SSH session');
   const [menu, setMenu] = useState<HTMLElement | null>(null);
   const newTabButton = useRef<HTMLButtonElement>(null);
   const tabNumbers = useRef(new Map<string, number>());
@@ -168,7 +169,6 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
       </Alert>
     );
   const second = split ? sessions.find((s) => s.id !== active)?.id : undefined;
-  const closingSession = sessions.find((s) => s.id === pendingClose);
   return (
     <Box
       sx={{
@@ -318,7 +318,12 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
           <Tabs
             value={active}
             onChange={setActive}
-            onClose={setPendingClose}
+            onClose={(id) => {
+              const session = sessions.find((item) => item.id === id);
+              if (!session) return;
+              setPendingCloseLabel(`${session.nodeName} ${tabNumbers.current.get(id)}`);
+              setPendingClose(id);
+            }}
             tabs={sessions.map((session) => ({
               value: session.id,
               label: `${session.nodeName} ${tabNumbers.current.get(session.id)}${session.state === 'closed' ? ' · closed' : ''}`,
@@ -406,9 +411,7 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
         </DialogActions>
       </Dialog>
       <Dialog open={pendingClose !== null} onClose={() => !busy && setPendingClose(null)}>
-        <DialogTitle>
-          Close {closingSession?.nodeName} {pendingClose ? tabNumbers.current.get(pendingClose) : ''}?
-        </DialogTitle>
+        <DialogTitle>Close {pendingCloseLabel}?</DialogTitle>
         <DialogContent>
           The remote shell will disconnect. Foreground commands may stop; use a remote session manager for work that
           must survive disconnects.

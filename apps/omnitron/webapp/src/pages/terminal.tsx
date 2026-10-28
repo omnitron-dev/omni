@@ -18,21 +18,14 @@ import {
   Menu,
   IconButton,
   Tooltip,
+  ToggleButton,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { Tabs } from '@omnitron-dev/prism/components/tabs';
-import {
-  AddIcon,
-  MoreIcon,
-  SearchIcon,
-  CloseIcon,
-  ArrowUpIcon,
-  ArrowDownIcon,
-  PanelExpandIcon,
-} from '@omnitron-dev/prism/icons';
+import { AddIcon, MoreIcon, SearchIcon, CloseIcon, ArrowUpIcon, ArrowDownIcon } from '@omnitron-dev/prism/icons';
 import { alpha, useTheme } from '@mui/material/styles';
 import { useCopyToClipboard } from '@omnitron-dev/prism/core';
 import type { TerminalSession, TerminalHostKey, TerminalPolicy } from '@omnitron-dev/omnitron/dto/services';
@@ -162,6 +155,7 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
       const index = sessions.findIndex((s) => s.id === pendingClose);
       if (active === pendingClose) setActive((sessions[index + 1] ?? sessions[index - 1])?.id ?? '');
       tabNumbers.current.delete(pendingClose);
+      if (sessions.length <= 2) setSplit(false);
       if (sessions.length === 1) requestAnimationFrame(() => newTabButton.current?.focus());
       setPendingClose(null);
     });
@@ -261,17 +255,20 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
               New SSH tab
             </Box>
           </Button>
-          <Tooltip title={split ? 'Single pane' : 'Split view'}>
+          <Tooltip title={second ? 'Show only the selected tab' : 'Show two sessions in split view'}>
             <span>
-              <IconButton
-                aria-label={split ? 'Single pane' : 'Split view'}
-                aria-pressed={split}
+              <ToggleButton
+                value="split"
+                size="small"
+                aria-label="Split view"
+                selected={Boolean(second)}
                 disabled={sessions.length < 2}
                 onClick={() => setSplit((v) => !v)}
-                color={split ? 'primary' : 'default'}
+                color="primary"
+                sx={{ whiteSpace: 'nowrap', height: 36, px: 1 }}
               >
-                <PanelExpandIcon />
-              </IconButton>
+                {second ? '2 panes' : '1 pane'}
+              </ToggleButton>
             </span>
           </Tooltip>
           <Tooltip title="Workspace actions">
@@ -365,6 +362,7 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
               <TerminalPane
                 key={session.id}
                 session={session}
+                label={`${session.nodeName} ${tabNumbers.current.get(session.id)}`}
                 visible={visible && (session.id === active || session.id === second)}
                 update={update}
               />
@@ -430,10 +428,12 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
 
 function TerminalPane({
   session,
+  label,
   visible,
   update,
 }: {
   session: TerminalSession;
+  label: string;
   visible: boolean;
   update: (s: TerminalSession) => void;
 }) {
@@ -672,9 +672,9 @@ function TerminalPane({
           borderColor: 'divider',
         }}
       >
-        <Tooltip title={`${session.nodeName} · ${session.username}@${session.host}`}>
+        <Tooltip title={`${label} · ${session.username}@${session.host}`}>
           <Typography variant="caption" noWrap sx={{ fontFamily: 'monospace', flex: 1, minWidth: 0 }}>
-            {session.username}@{session.host}
+            {label} · {session.username}@{session.host}
           </Typography>
         </Tooltip>
         <Chip

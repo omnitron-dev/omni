@@ -31,7 +31,7 @@ const MIGRATOR_SAID = [
 function deployment() {
   const said: Array<{ msg: string; fields: Record<string, unknown> }> = [];
   const info = (fields: Record<string, unknown>, msg: string) => said.push({ fields, msg });
-  const svc: any = Object.create(RemoteDeployer.prototype);
+  const svc: any = new RemoteDeployer({} as never, {} as never);
   Object.assign(svc, {
     logger: { info, warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     emitProgress: vi.fn(),

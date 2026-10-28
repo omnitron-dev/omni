@@ -102,7 +102,10 @@ function providersIn(file: string, text: string): { providers: FactoryProvider[]
         const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
         let fn = factory.initializer;
         if (ts.isIdentifier(fn)) fn = functions.get(fn.text) ?? fn;
-        const array = inject.initializer;
+        let array = inject.initializer;
+        while (ts.isAsExpression(array) || ts.isSatisfiesExpression(array) || ts.isParenthesizedExpression(array)) {
+          array = array.expression;
+        }
 
         if (!(ts.isArrowFunction(fn) || ts.isFunctionExpression(fn) || ts.isFunctionDeclaration(fn))) {
           unchecked.push({ file, line, why: `useFactory is \`${factory.initializer.getText(source)}\`, which is not a function in this file` });
@@ -169,6 +172,15 @@ describe('provider arity', () => {
 });
 
 describe('the parser itself', () => {
+  it('counts readonly injection tuples without hiding a missing token', () => {
+    const { providers, unchecked } = providersIn(
+      'planted.ts',
+      'const P = { useFactory: (a: A, b: B) => new S(a, b), inject: ([TA] as const) satisfies readonly unknown[] };',
+    );
+    expect(unchecked).toEqual([]);
+    expect(said(short(providers))).toEqual(['planted.ts:1 — 2 params, 1 tokens']);
+  });
+
   it('counts a parameter typed through an inline import — and finds the factory short', () => {
     // The case the regex passed: it read `(a: import('x'` as the whole list —
     // one parameter against one token.

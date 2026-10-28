@@ -49,6 +49,7 @@ packages:
 
 describe('the build root puts omni where the lockfile will look', () => {
   it('reads the layout from the lockfile — the links that leave the project are omni', () => {
+    expect(readLinkLayout('---\nlockfileVersion: \"9.0\"\nimporters:\n  .:\n    packageManagerDependencies: {}\npackages: {}\n---\n' + LOCK)).toEqual(readLinkLayout(LOCK));
     const layout = readLinkLayout(LOCK);
     expect(layout).toEqual({
       omniRel: '../../luxquant/omnitron-dev/omni',

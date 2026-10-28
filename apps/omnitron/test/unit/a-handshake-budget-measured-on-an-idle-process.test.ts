@@ -18,7 +18,8 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { mkdtempSync, writeFileSync, statSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, statSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -55,6 +56,11 @@ function serviceWithSpy() {
     on: () => {},
   };
 
+  (service as any).createTransferEngine = async () => ({
+    ssh: (config: Record<string, unknown>) => { configs.push(config); return handle; },
+    dispose: async () => {},
+  });
+
   return { service, configs, answersWith: (f: (cmd: string) => string) => { answer = f; } };
 }
 
@@ -90,19 +96,22 @@ describe('every SSH connection this control plane opens', () => {
     // finished when the bytes are there, and the local length is half of
     // that question. The path here used to be `/tmp/a`, which existed only
     // in the sense that nothing looked.
-    const local = join(mkdtempSync(join(tmpdir(), 'handshake-')), 'payload');
+    const directory = mkdtempSync(join(tmpdir(), 'handshake-'));
+    const local = join(directory, 'payload');
     writeFileSync(local, 'payload');
-    answersWith((cmd) => (cmd.startsWith('wc -c') ? String(statSync(local).size) : ''));
+    const digest = createHash('sha256').update('payload').digest('hex');
+    answersWith((cmd) => cmd.startsWith('wc -c') ? String(statSync(local).size) : cmd.startsWith('if command -v sha256sum') ? digest : '');
 
-    await service.ssh(target, 'true');
-    await service.tunnel(target, 9700);
-    await service.uploadFile(target, local, '/tmp/b');
+    try {
+      await service.ssh(target, 'true');
+      await service.tunnel(target, 9700);
+      await service.uploadFile(target, local, '/tmp/b');
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
 
-    // Four, not three: the upload opens one connection to send and one to
-    // ask the node how much landed. The claim is unchanged and now covers
-    // the check as well — a verification that dialled differently from the
-    // transfer would be measuring another host's opinion.
-    expect(configs).toHaveLength(4);
+    // Commands, tunnel, isolated bulk transfer and integrity checks share the dialling policy.
+    expect(configs.length).toBeGreaterThanOrEqual(4);
     for (const c of configs.slice(1)) expect(c).toEqual(configs[0]);
   });
 

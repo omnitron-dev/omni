@@ -47,7 +47,7 @@
  * wedge of 2026-09-14 would read here.
  */
 
-import { monitorEventLoopDelay, performance, type IntervalHistogram } from 'node:perf_hooks';
+import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
 
 import { activePhases } from '../project/deploy-phases.js';
 
@@ -120,7 +120,7 @@ export class EventLoopWatch {
   private readonly tickMs: number;
   private readonly phases: () => string[];
 
-  private histogram: IntervalHistogram | null = null;
+  private histogram: ReturnType<typeof monitorEventLoopDelay> | null = null;
   private ticker: NodeJS.Timeout | null = null;
   private windowTimer: NodeJS.Timeout | null = null;
   /** `performance.now()` at the last tick — monotonic, see above. */

@@ -25,6 +25,7 @@
  */
 
 import fs from 'node:fs';
+import path from 'node:path';
 
 let pnpmPath: string | null = null;
 
@@ -32,9 +33,13 @@ export function resolvePnpm(): string {
   if (pnpmPath) return pnpmPath;
 
   const home = process.env['HOME'] ?? '';
+  const active = process.env['npm_execpath'];
   const candidates = [
+    // Reuse the package manager that launched this build, including Corepack.
+    active && /^pnpm(?:\.(?:exe|cjs|mjs))?$/.test(path.basename(active)) ? active : null,
     // The two pnpm installs itself into, in the order it prefers.
     process.env['PNPM_HOME'] ? `${process.env['PNPM_HOME']}/pnpm` : null,
+    ...(process.env['PATH'] ?? '').split(path.delimiter).filter(Boolean).map(dir => path.join(dir, process.platform === 'win32' ? 'pnpm.exe' : 'pnpm')),
     home ? `${home}/Library/pnpm/pnpm` : null,
     home ? `${home}/.local/share/pnpm/pnpm` : null,
     '/opt/homebrew/bin/pnpm',
@@ -44,6 +49,7 @@ export function resolvePnpm(): string {
   for (const candidate of candidates) {
     try {
       fs.accessSync(candidate, fs.constants.X_OK);
+      if (!fs.statSync(candidate).isFile()) continue;
       pnpmPath = candidate;
       return candidate;
     } catch {

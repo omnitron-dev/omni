@@ -33,7 +33,7 @@ const DB = (app: string) => ({ DATABASE_URL: `postgresql://u:p@127.0.0.1:5432/${
 function deployment(unasked: Set<string>) {
   const restarted: string[] = [];
   const migrated: string[] = [];
-  const svc: any = Object.create(RemoteDeployer.prototype);
+  const svc: any = new RemoteDeployer({} as never, {} as never);
   Object.assign(svc, {
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     emitProgress: vi.fn(),

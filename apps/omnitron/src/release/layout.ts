@@ -39,7 +39,12 @@ function importerLinks(lockfile: string): Array<{ importer: string; rel: string 
       continue;
     }
     if (!inImporters) continue;
-    if (/^\S/.test(line)) break; // the next top-level key
+    if (/^\S/.test(line)) {
+      // pnpm 12 stores tool and application graphs as separate YAML documents.
+      inImporters = false;
+      importer = null;
+      continue;
+    }
     const key = /^ {2}([^\s].*?):\s*$/.exec(line);
     if (key) {
       importer = key[1]!.replace(/^['"]|['"]$/g, '');

@@ -12,7 +12,9 @@ import { alpha } from '@mui/material/styles';
 import Chart from 'react-apexcharts';
 
 import { MetricsIcon, AppsIcon, LogsIcon, RefreshIcon } from 'src/assets/icons';
-import { Alert, Breadcrumbs, Skeleton } from '@omnitron-dev/prism';
+import { Alert } from '@omnitron-dev/prism/components/alert';
+import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { daemon, metrics, logs as logsClient } from 'src/netron/client';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';

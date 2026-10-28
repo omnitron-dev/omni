@@ -28,7 +28,7 @@ import { daemon, logs } from 'src/netron/client';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import type { AppNodeData, InfraNodeData, GatewayNodeData, ServerNodeData } from './topology-store';
 import type { LogEntryRow } from '@omnitron-dev/omnitron/dto/services';
-import { Skeleton } from '@omnitron-dev/prism';
+import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 
 // ---------------------------------------------------------------------------
 // Constants

@@ -1,3 +1,4 @@
+import { Can } from 'src/auth/access';
 import { useState } from 'react';
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
@@ -23,7 +24,11 @@ import {
   CloseIcon,
   LogsIcon,
 } from 'src/assets/icons';
-import { AdminDataTable, Alert, Breadcrumbs, ConfirmDialog, Skeleton, type ColumnDef } from '@omnitron-dev/prism';
+import { AdminDataTable, type ColumnDef } from '@omnitron-dev/prism/components/admin-filters';
+import { Alert } from '@omnitron-dev/prism/components/alert';
+import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { ConfirmDialog } from '@omnitron-dev/prism/components/confirm-dialog';
+import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { infra } from 'src/netron/client';
 import { Link as RouterLink } from 'react-router-dom';
 import Link from '@mui/material/Link';
@@ -347,29 +352,29 @@ export default function ContainersPage() {
       align: 'right',
       render: (container) => (
         <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
-          <Tooltip title="Remove">
+          <Can permission="OmnitronInfra.removeContainer"><Tooltip title="Remove">
             <IconButton size="small" color="error" onClick={() => setConfirmRemove(container.name)}>
               <CloseIcon fontSize="small" />
             </IconButton>
-          </Tooltip>
+          </Tooltip></Can>
           <Tooltip title="Logs">
             <IconButton size="small" onClick={() => handleViewLogs(container)}>
               <LogsIcon fontSize="small" />
             </IconButton>
           </Tooltip>
           {container.status !== 'running' && (
-            <Tooltip title="Start">
+            <Can permission="OmnitronInfra.startContainer"><Tooltip title="Start">
               <IconButton size="small" color="success" onClick={() => handleStart(container.name)}>
                 <PlayIcon fontSize="small" />
               </IconButton>
-            </Tooltip>
+            </Tooltip></Can>
           )}
           {container.status === 'running' && (
-            <Tooltip title="Stop">
+            <Can permission="OmnitronInfra.stopContainer"><Tooltip title="Stop">
               <IconButton size="small" color="warning" onClick={() => handleStop(container.name)}>
                 <StopIcon fontSize="small" />
               </IconButton>
-            </Tooltip>
+            </Tooltip></Can>
           )}
         </Stack>
       ),
@@ -378,7 +383,7 @@ export default function ContainersPage() {
 
   return (
     <Stack spacing={3}>
-      <ConfirmDialog
+      <Can permission="OmnitronInfra.removeContainer"><ConfirmDialog
         open={confirmRemove !== null}
         onClose={() => setConfirmRemove(null)}
         onConfirm={handleRemove}
@@ -391,7 +396,7 @@ export default function ContainersPage() {
         }
         confirmLabel="Remove"
         confirmColor="error"
-      />
+      /></Can>
       {/* Header */}
       <Breadcrumbs
         links={[{ name: 'Containers' }]}

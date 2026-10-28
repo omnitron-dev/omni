@@ -22,6 +22,8 @@ export type {
   AppDiagnosticsDto,
 };
 export type { AppStatus, SubProcessInfoDto } from '../../config/types.js';
+export type { IOmnitronAccessService, ConsoleAccess, ConsoleCapability, ConsoleAccount, ConsoleRole } from './access.js';
+export { consolePasswordError } from './auth.js';
 
 // ============================================================================
 // Daemon Service Interface
@@ -183,6 +185,7 @@ export interface IOmnitronAuthService {
 export interface IOmnitronLogsService {
   queryLogs(data: {
     app?: string;
+    nodeId?: string;
     level?: string | string[];
     search?: string;
     labels?: Record<string, string>;
@@ -862,5 +865,22 @@ export interface IOmnitronReleaseService {
     /** Where the probes' accounts came from — see `AttestAccounts` in project.service. */
     accounts: 'provisioned' | 'not-declared' | 'producer-cannot';
   }>;
+}
+
+import type { TerminalHostKey, TerminalPolicy, TerminalRead, TerminalSession } from './terminal.js';
+export type { TerminalHostKey, TerminalPolicy, TerminalRead, TerminalSession } from './terminal.js';
+
+/** Owner-scoped interactive SSH; every method requires an active administrator. */
+export interface IOmnitronTerminalService {
+  capabilities(): Promise<TerminalPolicy>;
+  inspectHost(data: { nodeId: string }): Promise<TerminalHostKey>;
+  trustHost(data: { nodeId: string; fingerprint: string; previous: string | null }): Promise<void>;
+  open(data: { nodeId: string; cols: number; rows: number }): Promise<TerminalSession>;
+  list(): Promise<TerminalSession[]>;
+  read(data: { id: string; cursor: number; wait?: boolean }): Promise<TerminalRead>;
+  /** Input is base64 bytes, including UTF-8 text and binary terminal protocols. */
+  write(data: { id: string; sequence: number; data: string }): Promise<{ nextSequence: number }>;
+  resize(data: { id: string; cols: number; rows: number }): Promise<void>;
+  close(data: { id: string }): Promise<void>;
 }
 

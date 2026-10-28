@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
@@ -25,10 +26,14 @@ import InputAdornment from '@mui/material/InputAdornment';
 import { alpha, keyframes } from '@mui/material/styles';
 
 import { SearchIcon, RefreshIcon, PlayIcon, StopIcon, CloseIcon, TerminalIcon } from 'src/assets/icons';
-import { Alert, Breadcrumbs, Skeleton } from '@omnitron-dev/prism';
+import { Alert } from '@omnitron-dev/prism/components/alert';
+import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
+import { useCopyToClipboard } from '@omnitron-dev/prism/core';
 import { logs, daemon, nodes as nodesRpc } from 'src/netron/client';
 import { LEVEL_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
+import { logCommand } from 'src/utils/log-location';
 
 import type { LogEntryRow, LevelCount } from '@omnitron-dev/omnitron/dto/services';
 
@@ -328,10 +333,22 @@ function LogRow({ log, isNew, nodeNames }: LogRowProps) {
 export default function LogsPage() {
   const { activeProject, namespacePrefix, filterApps, displayName } = useStackContext();
   const daemonMode = !activeProject;
+  const [params, setParams] = useSearchParams();
+  const clipboard = useCopyToClipboard();
 
   // ---- Filters ----
-  const [app, setApp] = useState(daemonMode ? 'omnitron' : '');
-  const [nodeFilter, setNodeFilter] = useState(''); // cluster node filter
+  const app = params.get('app') ?? (daemonMode ? 'omnitron' : '');
+  const nodeFilter = params.get('node') ?? '';
+  const setApp = (value: string) => setParams((previous) => {
+    const next = new URLSearchParams(previous);
+    next.set('app', value);
+    return next;
+  }, { replace: true });
+  const setNodeFilter = (value: string) => setParams((previous) => {
+    const next = new URLSearchParams(previous);
+    if (value) next.set('node', value); else next.delete('node');
+    return next;
+  }, { replace: true });
   const [nodeNames, setNodeNames] = useState<Array<{ id: string; hostname: string }>>([]);
   /** The same list the Node dropdown shows, keyed for the row detail. */
   const nodeNameById = useMemo(
@@ -342,7 +359,7 @@ export default function LogsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [labelInput, setLabelInput] = useState('');
-  const [timeRangeKey, setTimeRangeKey] = useState<TimeRangeKey>(daemonMode ? 'live' : '1h');
+  const [timeRangeKey, setTimeRangeKey] = useState<TimeRangeKey>('live');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
 
@@ -368,6 +385,18 @@ export default function LogsPage() {
   const streamRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTimestampRef = useRef<string | null>(null);
   const newIdsRef = useRef<Set<string>>(new Set());
+  const viewGeneration = useRef(0);
+
+  // A late answer for another node must never appear under the new node's name.
+  useEffect(() => {
+    viewGeneration.current++;
+    setLogRows([]);
+    setTotal(0);
+    setHasMore(false);
+    setNewCount(0);
+    lastTimestampRef.current = null;
+    return () => { viewGeneration.current++; };
+  }, [app, nodeFilter, selectedLevels, debouncedSearch, labelInput, timeRangeKey, customFrom, customTo]);
 
   // ---- Scroll ----
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -484,8 +513,8 @@ export default function LogsPage() {
     // leftovers — have no prefix to match, so they stay visible in every
     // scope. Same rule the metrics page applies to its series.
     const inScope = (name: string) =>
-      !namespacePrefix || name.startsWith(namespacePrefix) || !name.includes('/');
-    const values = [...new Set([...liveApps, ...loggedApps])].filter(inScope).sort();
+      name === app || !namespacePrefix || name.startsWith(namespacePrefix) || !name.includes('/');
+    const values = [...new Set([...liveApps, ...loggedApps, ...(app ? [app] : [])])].filter(inScope).sort();
 
     // Two values can render to one label — `main` and `acme/dev/main` both
     // display as `main`. Where that happens, show the full value: a dropdown
@@ -499,9 +528,9 @@ export default function LogsPage() {
 
     return values.map((value) => {
       const label = displayName(value);
-      return { value, label: labelCounts.get(label)! > 1 ? value : label };
+      return { value, label: daemonMode || labelCounts.get(label)! > 1 ? value : label };
     });
-  }, [liveApps, loggedApps, namespacePrefix, displayName]);
+  }, [liveApps, loggedApps, namespacePrefix, displayName, app, daemonMode]);
 
   // ---- Build filter ----
   const buildFilter = useCallback(
@@ -539,9 +568,11 @@ export default function LogsPage() {
 
   // ---- Fetch logs (paginated mode) ----
   const fetchLogs = useCallback(async () => {
+    const generation = viewGeneration.current;
     try {
       setLoading(true);
       const result = await logs.queryLogs(buildFilter(0) as any);
+      if (generation !== viewGeneration.current) return;
       setLogRows(result.entries);
       setTotal(result.total);
       setLevelCounts(result.byLevel);
@@ -554,20 +585,24 @@ export default function LogsPage() {
         lastTimestampRef.current = new Date(result.entries[0]!.timestamp).toISOString();
       }
     } catch (err: any) {
+      if (generation !== viewGeneration.current) return;
       setError(err?.message ?? 'Failed to query logs');
     } finally {
-      setLoading(false);
+      if (generation === viewGeneration.current) setLoading(false);
     }
   }, [buildFilter]);
 
   // ---- Load more (older entries) ----
   const loadMore = async () => {
+    const generation = viewGeneration.current;
     setLoadingMore(true);
     try {
       const result = await logs.queryLogs(buildFilter(logRows.length) as any);
+      if (generation !== viewGeneration.current) return;
       setLogRows((prev) => [...prev, ...result.entries]);
       setHasMore(result.hasMore);
     } catch (err: any) {
+      if (generation !== viewGeneration.current) return;
       setError(err?.message ?? 'Failed to load more');
     } finally {
       setLoadingMore(false);
@@ -603,10 +638,12 @@ export default function LogsPage() {
   // Initial live fetch
   useEffect(() => {
     if (!isLive) return;
+    let active = true;
     (async () => {
       try {
         setLoading(true);
         const entries: LogEntryRow[] = await logs.streamLogs(streamFilter as any);
+        if (!active) return;
         // Newest first
         const reversed = [...entries].reverse();
         setLogRows(reversed);
@@ -618,11 +655,13 @@ export default function LogsPage() {
           lastTimestampRef.current = new Date(entries[entries.length - 1]!.timestamp).toISOString();
         }
       } catch (err: any) {
+        if (!active) return;
         setError(err?.message ?? 'Failed to stream logs');
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     })();
+    return () => { active = false; };
   }, [isLive, streamFilter]);
 
   // Polling interval for live mode
@@ -634,13 +673,20 @@ export default function LogsPage() {
 
     if (!streaming || paused) return undefined;
 
+    let active = true;
+    let pending = false;
+
     streamRef.current = setInterval(async () => {
+      if (pending) return;
+      pending = true;
       try {
         const since = lastTimestampRef.current;
         const filter = { ...streamFilter, tail: 50 } as any;
         if (since) filter.since = since;
 
         const entries: LogEntryRow[] = await logs.streamLogs(filter);
+        if (!active) return;
+        setError(null);
         if (entries.length === 0) return;
 
         // Deduplicate by id
@@ -670,11 +716,14 @@ export default function LogsPage() {
           setNewCount((prev) => prev + fresh.length);
         }
       } catch {
-        /* silent polling failure */
+        if (active) setError('Live log stream unavailable. Retrying.');
+      } finally {
+        pending = false;
       }
     }, STREAM_INTERVAL);
 
     return () => {
+      active = false;
       if (streamRef.current) clearInterval(streamRef.current);
     };
   }, [streaming, paused, streamFilter, logRows]);
@@ -715,8 +764,7 @@ export default function LogsPage() {
 
   // ---- Clear all filters ----
   const clearFilters = () => {
-    setApp('');
-    setNodeFilter('');
+    setParams({ app: '' }, { replace: true });
     setSelectedLevels([]);
     setSearchInput('');
     setDebouncedSearch('');
@@ -728,6 +776,7 @@ export default function LogsPage() {
 
   const hasActiveFilters =
     app !== '' ||
+    nodeFilter !== '' ||
     selectedLevels.length > 0 ||
     debouncedSearch !== '' ||
     labelInput !== '';
@@ -769,7 +818,7 @@ export default function LogsPage() {
       >
         {/* Row 1: Title + controls */}
         <Breadcrumbs
-          links={[{ name: daemonMode ? 'Daemon Logs' : 'Logs' }]}
+          links={[{ name: 'Logs' }]}
           sx={{ mb: 1.5 }}
           action={
             <Stack direction="row" spacing={0.5} sx={{
@@ -834,7 +883,6 @@ export default function LogsPage() {
             flexWrap: "wrap",
             mb: 1.5
           }}>
-          {!daemonMode && (
             <TextField
               select
               size="small"
@@ -856,10 +904,9 @@ export default function LogsPage() {
                 </MenuItem>
               ))}
             </TextField>
-          )}
 
           {/* Node selector — only visible when cluster has multiple nodes */}
-          {!daemonMode && nodeNames.length > 0 && (
+          {nodeNames.length > 0 && (
             <TextField
               select
               size="small"
@@ -904,7 +951,6 @@ export default function LogsPage() {
             }}
           />
 
-          {!daemonMode && (
             <TextField
               size="small"
               placeholder="Labels: key=val, key2=val2"
@@ -915,8 +961,23 @@ export default function LogsPage() {
                 '& .MuiInputBase-root': { fontFamily: MONO, fontSize: 12 },
               }}
             />
-          )}
         </Stack>
+
+        {nodeFilter && (
+          <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'text.secondary' }}>
+            Replicated logs from {nodeNameById[nodeFilter] ?? nodeFilter}. An empty result does not prove that an operation was not attempted.
+          </Typography>
+        )}
+        {app && (
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1, minWidth: 0 }}>
+            <Typography component="code" variant="caption" sx={{ fontFamily: MONO, overflowWrap: 'anywhere' }}>
+              {logCommand(app, nodeFilter)}
+            </Typography>
+            <Button size="small" onClick={() => void clipboard.copy(logCommand(app, nodeFilter))}>
+              {clipboard.state === 'success' ? 'Copied' : clipboard.state === 'error' ? 'Retry copy' : 'Copy app/node command'}
+            </Button>
+          </Stack>
+        )}
 
         {/* Row 3: Levels + Time range */}
         <Stack

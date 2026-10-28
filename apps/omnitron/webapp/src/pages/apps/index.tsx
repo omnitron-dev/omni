@@ -1,8 +1,11 @@
+import { Can } from 'src/auth/access';
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
-import { Alert, Breadcrumbs, Table, type TableColumn } from '@omnitron-dev/prism';
+import { Alert } from '@omnitron-dev/prism/components/alert';
+import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Table, type TableColumn } from '@omnitron-dev/prism/components/table';
 import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
@@ -226,7 +229,7 @@ export default function AppsListPage() {
             onClick={(e) => e.stopPropagation()}
           >
             {app.status === 'stopped' || app.status === 'crashed' || app.status === 'errored' ? (
-              <Tooltip title="Start">
+              <Can permission="OmnitronDaemon.startApp"><Tooltip title="Start">
                 <IconButton
                   size="small"
                   color="success"
@@ -235,10 +238,10 @@ export default function AppsListPage() {
                 >
                   <PlayIcon sx={{ fontSize: 18 }} />
                 </IconButton>
-              </Tooltip>
+              </Tooltip></Can>
             ) : (
               <>
-                <Tooltip title="Restart">
+                <Can permission="OmnitronDaemon.restartApp"><Tooltip title="Restart">
                   <IconButton
                     size="small"
                     color="warning"
@@ -247,8 +250,8 @@ export default function AppsListPage() {
                   >
                     <RestartIcon sx={{ fontSize: 18 }} />
                   </IconButton>
-                </Tooltip>
-                <Tooltip title="Stop">
+                </Tooltip></Can>
+                <Can permission="OmnitronDaemon.stopApp"><Tooltip title="Stop">
                   <IconButton
                     size="small"
                     color="error"
@@ -257,7 +260,7 @@ export default function AppsListPage() {
                   >
                     <StopIcon sx={{ fontSize: 18 }} />
                   </IconButton>
-                </Tooltip>
+                </Tooltip></Can>
               </>
             )}
           </Stack>

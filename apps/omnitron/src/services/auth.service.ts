@@ -13,6 +13,8 @@ import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto';
 import { computeLockout } from './lockout.js';
 import { promisify } from 'node:util';
 import { SignJWT, jwtVerify } from 'jose';
+import { Errors } from '@omnitron-dev/titan/errors';
+import { consolePasswordError } from '../shared/dto/auth.js';
 import type { Kysely } from 'kysely';
 import type { OmnitronDatabase } from '../database/schema.js';
 import { Injectable, Inject } from '@omnitron-dev/titan/decorators';
@@ -275,7 +277,7 @@ export class AuthService {
   // Validate Token (JWT)
   // ===========================================================================
 
-  async validateToken(token: string): Promise<{ userId: string; sessionId: string } | null> {
+  async validateToken(token: string): Promise<{ userId: string; sessionId: string; role: string } | null> {
     try {
       const { payload } = await jwtVerify(token, this.jwtSecret, {
         algorithms: ['HS256'],
@@ -301,9 +303,10 @@ export class AuthService {
       try {
         session = await this.db
           .selectFrom('omnitron_sessions')
-          .select(['id', 'expiresAt'])
-          .where('id', '=', sessionId)
-          .where('userId', '=', userId)
+          .innerJoin('omnitron_users', 'omnitron_users.id', 'omnitron_sessions.userId')
+          .select(['omnitron_sessions.id', 'omnitron_sessions.expiresAt', 'omnitron_users.role'])
+          .where('omnitron_sessions.id', '=', sessionId)
+          .where('omnitron_sessions.userId', '=', userId)
           .executeTakeFirst();
       } catch (err) {
         throw Object.assign(new Error('Session store is unavailable'), {
@@ -316,7 +319,7 @@ export class AuthService {
       if (!session) return null;
       if (new Date(session.expiresAt) < new Date()) return null;
 
-      return { userId, sessionId };
+      return { userId, sessionId, role: session.role };
     } catch (err) {
       // A token that does not verify is the normal answer here. The lookup
       // failure above is rethrown so it does not land in this branch.
@@ -405,6 +408,8 @@ export class AuthService {
   // ===========================================================================
 
   async changePassword(userId: string, oldPassword: string, newPassword: string, currentSessionId?: string): Promise<void> {
+    const passwordError = consolePasswordError(newPassword);
+    if (passwordError) throw Errors.badRequest(passwordError);
     const user = await this.db
       .selectFrom('omnitron_users')
       .select(['id', 'passwordHash'])
@@ -422,18 +427,20 @@ export class AuthService {
 
     const newHash = await this.hashPassword(newPassword);
 
-    await this.db
-      .updateTable('omnitron_users')
-      .set({ passwordHash: newHash, updatedAt: new Date() })
-      .where('id', '=', userId)
-      .execute();
+    await this.db.transaction().execute(async (trx) => {
+      await trx
+        .updateTable('omnitron_users')
+        .set({ passwordHash: newHash, updatedAt: new Date() })
+        .where('id', '=', userId)
+        .execute();
 
-    // Revoke all sessions except the caller's current session
-    let query = this.db.deleteFrom('omnitron_sessions').where('userId', '=', userId);
-    if (currentSessionId) {
-      query = query.where('id', '!=', currentSessionId);
-    }
-    await query.execute();
+      // Revoke all sessions except the caller's current session
+      let query = trx.deleteFrom('omnitron_sessions').where('userId', '=', userId);
+      if (currentSessionId) {
+        query = query.where('id', '!=', currentSessionId);
+      }
+      await query.execute();
+    });
   }
 
   // ===========================================================================

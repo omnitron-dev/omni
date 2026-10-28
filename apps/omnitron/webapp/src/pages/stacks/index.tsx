@@ -1,3 +1,4 @@
+import { Can } from 'src/auth/access';
 /**
  * StacksPage — Grid of stack cards per project
  *
@@ -23,7 +24,10 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogActions from '@mui/material/DialogActions';
 import { alpha } from '@mui/material/styles';
-import { Alert, Breadcrumbs, EmptyContent, Skeleton } from '@omnitron-dev/prism';
+import { Alert } from '@omnitron-dev/prism/components/alert';
+import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { EmptyContent } from '@omnitron-dev/prism/components/empty-content';
+import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { PlayIcon, StopIcon, SyncIcon, RefreshIcon, PlusIcon, DeleteIcon, DeployIcon } from '../../assets/icons';
 import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
@@ -142,26 +146,26 @@ export default function StacksPage() {
             <IconButton size="small" onClick={() => fetchStacks(activeProject)} title="Refresh">
               <RefreshIcon />
             </IconButton>
-            <Button
+            <Can permission="OmnitronProject.createStack"><Button
               variant="contained"
               size="small"
               startIcon={<PlusIcon />}
               onClick={() => setCreateOpen(true)}
             >
               Create
-            </Button>
+            </Button></Can>
           </Box>
         }
       />
 
-      <CreateStackDialog
+      <Can permission="OmnitronProject.createStack"><CreateStackDialog
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCreated={() => {
           setCreateOpen(false);
           fetchStacks(activeProject!);
         }}
-      />
+      /></Can>
 
       {error && (
         <Alert closable severity="error" onClose={clearError}>
@@ -202,13 +206,13 @@ export default function StacksPage() {
         </Grid>
       )}
 
-      <DeployReleaseDialog
+      <Can permission="OmnitronProject.startStack"><DeployReleaseDialog
         open={deployTarget !== null}
         onClose={() => setDeployTarget(null)}
         project={activeProject ?? ''}
         release={null}
         {...(deployTarget ? { stack: deployTarget } : {})}
-      />
+      /></Can>
 
       <Dialog open={deleteTarget !== null} onClose={() => setDeleteTarget(null)}>
         <DialogTitle>Delete Stack</DialogTitle>
@@ -219,7 +223,7 @@ export default function StacksPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteTarget(null)}>Cancel</Button>
-          <Button onClick={handleDelete} color="error" variant="contained">Delete</Button>
+          <Can permission="OmnitronProject.deleteStack"><Button onClick={handleDelete} color="error" variant="contained">Delete</Button></Can>
         </DialogActions>
       </Dialog>
     </Stack>
@@ -328,9 +332,9 @@ function StackCard({
       <CardActions sx={{ px: 2, pb: 1.5, justifyContent: 'space-between' }} onClick={(e) => e.stopPropagation()}>
         <Box>
           {isStopped && !busy && (
-            <IconButton size="small" color="error" onClick={onDelete} title="Delete stack">
+            <Can permission="OmnitronProject.deleteStack"><IconButton size="small" color="error" onClick={onDelete} title="Delete stack">
               <DeleteIcon />
-            </IconButton>
+            </IconButton></Can>
           )}
         </Box>
         <Box>
@@ -344,34 +348,34 @@ function StackCard({
             </Button>
           ) : isStopped ? (
             takesReleasesOnly ? (
-              <Button size="small" startIcon={<DeployIcon />} color="success" onClick={onDeploy}>
+              <Can permission="OmnitronProject.startStack"><Button size="small" startIcon={<DeployIcon />} color="success" onClick={onDeploy}>
                 Deploy release…
-              </Button>
+              </Button></Can>
             ) : (
-              <Button
+              <Can permission="OmnitronProject.startStack"><Button
                 size="small"
                 startIcon={<PlayIcon />}
                 color="success"
                 onClick={onStart}
               >
                 Start
-              </Button>
+              </Button></Can>
             )
           ) : isRunning ? (
             <>
               {stack.type !== 'local' && (
-                <Button size="small" startIcon={<DeployIcon />} onClick={onDeploy}>
+                <Can permission="OmnitronProject.startStack"><Button size="small" startIcon={<DeployIcon />} onClick={onDeploy}>
                   Deploy…
-                </Button>
+                </Button></Can>
               )}
-              <Button
+              <Can permission="OmnitronProject.stopStack"><Button
                 size="small"
                 startIcon={<StopIcon />}
                 color="error"
                 onClick={onStop}
               >
                 Stop
-              </Button>
+              </Button></Can>
             </>
           ) : (
             <Chip label={status.label} size="small" color={status.color} sx={{ height: 20, fontSize: '0.65rem' }} />

@@ -1,3 +1,4 @@
+import { Can } from 'src/auth/access';
 /**
  * Upgrading the fleet — many machines, one decision.
  *
@@ -142,9 +143,9 @@ export function FleetRollout({ nodes }: { nodes: INodeWithStatus[] }) {
             />
           )}
           <Box sx={{ flex: 1 }} />
-          <Button size="small" variant="contained" startIcon={<DeployIcon />} onClick={() => setOpen(true)}>
+          <Can permission="OmnitronNodes.upgradeNodes"><Button size="small" variant="contained" startIcon={<DeployIcon />} onClick={() => setOpen(true)}>
             Upgrade nodes…
-          </Button>
+          </Button></Can>
         </Stack>
 
         {actionError && (
@@ -186,7 +187,7 @@ export function FleetRollout({ nodes }: { nodes: INodeWithStatus[] }) {
                       {when(row.at)}
                     </Typography>
                     {inFlight(row.phase) && (
-                      <Tooltip
+                      <Can permission="OmnitronNodes.cancelUpgrade"><Tooltip
                         title={
                           row.phase === 'queued'
                             ? 'Drop this node from the queue'
@@ -199,7 +200,7 @@ export function FleetRollout({ nodes }: { nodes: INodeWithStatus[] }) {
                             Cancel
                           </Button>
                         </span>
-                      </Tooltip>
+                      </Tooltip></Can>
                     )}
                   </Stack>
                   {inFlight(row.phase) && row.phase !== 'queued' && (
@@ -212,7 +213,7 @@ export function FleetRollout({ nodes }: { nodes: INodeWithStatus[] }) {
         )}
       </CardContent>
 
-      <RolloutDialog
+      <Can permission="OmnitronNodes.upgradeNodes"><RolloutDialog
         open={open}
         onClose={() => setOpen(false)}
         nodes={nodes}
@@ -220,7 +221,7 @@ export function FleetRollout({ nodes }: { nodes: INodeWithStatus[] }) {
           setFast(true);
           void refresh();
         }}
-      />
+      /></Can>
     </Card>
   );
 }

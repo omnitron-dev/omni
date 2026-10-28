@@ -14,7 +14,7 @@
 
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CommandPalette as PrismCommandPalette, type CommandAction } from '@omnitron-dev/prism';
+import { CommandPalette as PrismCommandPalette, type CommandAction } from '@omnitron-dev/prism/components/command-palette';
 
 import {
   DashboardIcon,

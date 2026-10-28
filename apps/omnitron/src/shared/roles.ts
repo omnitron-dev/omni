@@ -9,8 +9,9 @@ import { createRoleHierarchy } from '@omnitron-dev/access/roles';
  *   viewer   → read-only access (list, status, logs, metrics, health)
  *
  * The user's role is stored in omnitron_users.role and included in JWT claims.
- * The Netron auth middleware extracts roles from the JWT payload and sets
- * them in AuthContext.roles — service decorators then enforce access.
+ * The Netron token validator resolves human roles from the live account and
+ * session; JWT role claims cannot preserve revoked privileges. Service
+ * decorators then enforce AuthContext.roles.
  */
 
 /** All valid daemon roles, ordered by privilege level (highest first). */
@@ -21,6 +22,16 @@ export const ROLES = {
 } as const;
 
 export type OmnitronRole = (typeof ROLES)[keyof typeof ROLES];
+
+export function isOmnitronRole(value: unknown): value is OmnitronRole {
+  return value === 'viewer' || value === 'operator' || value === 'admin';
+}
+
+export const ROLE_DESCRIPTIONS = [
+  { role: 'viewer', label: 'Viewer', description: 'Read operational status, logs, metrics and health.' },
+  { role: 'operator', label: 'Operator', description: 'Viewer access plus application and deployment operations.' },
+  { role: 'admin', label: 'Administrator', description: 'Control-plane configuration, accounts, secrets and SSH terminals.' },
+] as const;
 
 /** Daemon vocabulary is independent of the optional application platform preset. */
 const rolePolicy = createRoleHierarchy({

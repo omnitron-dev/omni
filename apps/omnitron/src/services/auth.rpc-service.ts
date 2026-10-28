@@ -18,6 +18,8 @@ import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 import { requirePayload, requireString } from './anonymous-input.js';
 import { getCurrentAuth, requireAuth, getRequestContext } from './auth-context.js';
+import { revokeDaemonAuthority } from './daemon-principal.js';
+import type { Netron } from '@omnitron-dev/titan/netron';
 import type {
   AuthService,
   OmnitronSignInResult,
@@ -27,7 +29,7 @@ import type {
 
 @Service({ name: 'OmnitronAuth' })
 export class AuthRpcService {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService, private readonly netron?: Netron) {}
 
   // ===========================================================================
   // Public (anonymous) endpoints — no token required
@@ -93,13 +95,14 @@ export class AuthRpcService {
 
     // If authenticated, verify session ownership
     const auth = getCurrentAuth();
+    const sessionOwner = await this.authService.validateSession(sessionId);
     if (auth) {
-      const sessionOwner = await this.authService.validateSession(sessionId);
       if (sessionOwner && sessionOwner.id !== auth.userId) {
         throw Errors.forbidden('Cannot revoke another user\'s session');
       }
     }
     await this.authService.signOut(sessionId);
+    if (sessionOwner && this.netron) revokeDaemonAuthority(this.netron, sessionOwner.id, { only: sessionId });
     return { success: true };
   }
 
@@ -120,8 +123,12 @@ export class AuthRpcService {
     newPassword: string;
   }): Promise<{ success: boolean }> {
     const auth = requireAuth();
+    const payload = requirePayload(data, 'changePassword');
+    requireString(payload, 'oldPassword', 'changePassword');
+    requireString(payload, 'newPassword', 'changePassword');
     const sessionId = (auth.metadata as any)?.sessionId;
     await this.authService.changePassword(auth.userId, data.oldPassword, data.newPassword, sessionId);
+    if (this.netron) revokeDaemonAuthority(this.netron, auth.userId, { except: sessionId });
     return { success: true };
   }
 }

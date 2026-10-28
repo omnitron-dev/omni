@@ -1,14 +1,12 @@
 import { useEffect } from 'react';
 import { BrowserRouter, useLocation } from 'react-router-dom';
 
-import {
-  PrismProvider,
-  SnackbarProvider,
-  MotionLazy,
-  NavigationProgress,
-  ScrollToTop,
-  ErrorBoundary,
-} from '@omnitron-dev/prism';
+import { PrismProvider } from '@omnitron-dev/prism/core';
+import { SnackbarProvider } from '@omnitron-dev/prism/components/snackbar';
+import { MotionLazy } from '@omnitron-dev/prism/components/animate';
+import { NavigationProgress } from '@omnitron-dev/prism/components/navigation-progress';
+import { ScrollToTop } from '@omnitron-dev/prism/components/scroll-to-top';
+import { ErrorBoundary } from '@omnitron-dev/prism/components/error-boundary';
 
 import { MultiBackendProvider } from '@omnitron-dev/prism/netron';
 import { daemonClient } from 'src/netron/client';

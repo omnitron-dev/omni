@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FormAlert } from '@omnitron-dev/prism';
+import { FormAlert } from '@omnitron-dev/prism/components/alert';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';

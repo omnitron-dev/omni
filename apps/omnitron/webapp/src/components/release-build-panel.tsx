@@ -1,3 +1,4 @@
+import { Can } from 'src/auth/access';
 /**
  * A build, while it is happening.
  *
@@ -68,14 +69,14 @@ export function ReleaseBuildPanel({
             {record.requestedBy ? ` · ${record.requestedBy}` : ''}
           </Typography>
           {running && onStop && (
-            <Button size="small" color="warning" startIcon={<StopIcon />} onClick={() => onStop(record.buildId)}>
+            <Can permission="OmnitronRelease.stopBuild"><Button size="small" color="warning" startIcon={<StopIcon />} onClick={() => onStop(record.buildId)}>
               Stop
-            </Button>
+            </Button></Can>
           )}
           {record.state === 'done' && record.releaseId && onDeploy && (
-            <Button size="small" variant="contained" onClick={() => onDeploy(record.releaseId!)}>
+            <Can permission="OmnitronProject.startStack"><Button size="small" variant="contained" onClick={() => onDeploy(record.releaseId!)}>
               Deploy…
-            </Button>
+            </Button></Can>
           )}
         </Stack>
 

@@ -23,6 +23,7 @@ const SECRET = 'a-secret-long-enough-for-hs256-signing-in-tests';
 
 /** A database whose every query throws — the outage, without one. */
 const brokenDb = {
+  innerJoin() { return this; },
   selectFrom() {
     return this;
   },
@@ -42,6 +43,7 @@ const brokenDb = {
 
 /** A database that answers, and has no such session. */
 const emptyDb = {
+  innerJoin() { return this; },
   selectFrom() {
     return this;
   },
@@ -71,6 +73,11 @@ beforeAll(async () => {
 });
 
 describe('validateToken', () => {
+  it('uses the current account role when a still-valid token carries the old admin role', async () => {
+    const db = { ...(emptyDb as Record<string, unknown>), executeTakeFirst: async () => ({ id: 'session-1', expiresAt: new Date(Date.now() + 60_000), role: 'viewer' }) };
+    const auth = new AuthService(db as never, SECRET);
+    await expect(auth.validateToken(token)).resolves.toEqual({ userId: 'user-1', sessionId: 'session-1', role: 'viewer' });
+  });
   it('reports an unreachable session store rather than a revoked session', async () => {
     const auth = new AuthService(brokenDb, SECRET);
 

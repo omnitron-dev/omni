@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { Outlet } from 'react-router-dom';
-import { AuthCenteredLayout, SplashScreen } from '@omnitron-dev/prism';
+import { AuthCenteredLayout } from '@omnitron-dev/prism/layouts';
+import { SplashScreen } from '@omnitron-dev/prism/components/loading-screen';
 
 /**
  * The sign-in shell.

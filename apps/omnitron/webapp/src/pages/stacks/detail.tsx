@@ -1,3 +1,4 @@
+import { Can } from 'src/auth/access';
 /**
  * StackDetailPage — Detailed view of a single stack
  *
@@ -23,7 +24,10 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogActions from '@mui/material/DialogActions';
-import { Alert, Breadcrumbs, FormAlert, PageContent, Table, type TableColumn } from '@omnitron-dev/prism';
+import { Alert, FormAlert } from '@omnitron-dev/prism/components/alert';
+import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { PageContent } from '@omnitron-dev/prism/components/page-content';
+import { Table, type TableColumn } from '@omnitron-dev/prism/components/table';
 import { PlayIcon, StopIcon, RefreshIcon, SyncIcon, DeployIcon, DeleteIcon } from '../../assets/icons';
 import {
   useProjectStore,
@@ -236,9 +240,9 @@ export default function StackDetailPage() {
               }}
             />
             {isStopped && !busy && (
-              <IconButton size="small" color="error" onClick={() => setDeleteOpen(true)} title="Delete stack">
+              <Can permission="OmnitronProject.deleteStack"><IconButton size="small" color="error" onClick={() => setDeleteOpen(true)} title="Delete stack">
                 <DeleteIcon />
-              </IconButton>
+              </IconButton></Can>
             )}
             <IconButton size="small" onClick={() => activeProject && fetchStacks(activeProject)}>
               <RefreshIcon />
@@ -258,7 +262,7 @@ export default function StackDetailPage() {
               // console says it BEFORE the press instead: the release card
               // below carries the button that works.
               takesReleasesOnly ? (
-                <Button
+                <Can permission="OmnitronProject.startStack"><Button
                   startIcon={<DeployIcon />}
                   color="success"
                   variant="contained"
@@ -266,16 +270,16 @@ export default function StackDetailPage() {
                   onClick={() => setDeployOpen(true)}
                 >
                   Deploy release…
-                </Button>
+                </Button></Can>
               ) : (
-                <Button startIcon={<PlayIcon />} color="success" variant="contained" size="small" onClick={handleStart}>
+                <Can permission="OmnitronProject.startStack"><Button startIcon={<PlayIcon />} color="success" variant="contained" size="small" onClick={handleStart}>
                   Start
-                </Button>
+                </Button></Can>
               )
             ) : isRunning ? (
-              <Button startIcon={<StopIcon />} color="error" variant="outlined" size="small" onClick={handleStop}>
+              <Can permission="OmnitronProject.stopStack"><Button startIcon={<StopIcon />} color="error" variant="outlined" size="small" onClick={handleStop}>
                 Stop
-              </Button>
+              </Button></Can>
             ) : null}
           </Box>
         }
@@ -429,13 +433,13 @@ export default function StackDetailPage() {
           </CardContent>
         </Card>
       )}
-      <DeployReleaseDialog
+      <Can permission="OmnitronProject.startStack"><DeployReleaseDialog
         open={deployOpen}
         onClose={() => setDeployOpen(false)}
         project={activeProject ?? ''}
         release={null}
         {...(name ? { stack: name } : {})}
-      />
+      /></Can>
 
       <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
         <DialogTitle>Delete Stack</DialogTitle>
@@ -447,7 +451,7 @@ export default function StackDetailPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
-          <Button onClick={handleDelete} color="error" variant="contained">Delete</Button>
+          <Can permission="OmnitronProject.deleteStack"><Button onClick={handleDelete} color="error" variant="contained">Delete</Button></Can>
         </DialogActions>
       </Dialog>
     </PageContent>

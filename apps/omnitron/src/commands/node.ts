@@ -225,20 +225,20 @@ async function openDaemon(): Promise<ReturnType<typeof createDaemonClient> | nul
 }
 
 /** A terminal completes on Enter; a pipe completes on EOF. Never echo the secret. */
-export async function readSecretFromStdin(what: string): Promise<string> {
+export async function readSecretFromStdin(what: string, label = 'SSH'): Promise<string> {
   const maxBytes = 64 * 1024;
   if (process.stdin.isTTY) {
     const value = await password({
-      message: `SSH ${what} (Enter to submit, Ctrl+C to cancel)`,
+      message: `${label} ${what} (Enter to submit, Ctrl+C to cancel)`,
       input: process.stdin,
       output: process.stderr,
       validate: (input) => {
         if (!input) return `Enter a ${what}`;
-        if (Buffer.byteLength(input, 'utf8') > maxBytes) return 'SSH secret exceeds 64 KiB';
+        if (Buffer.byteLength(input, 'utf8') > maxBytes) return `${label} secret exceeds 64 KiB`;
         return undefined;
       },
     });
-    if (typeof value !== 'string') throw new Error('SSH secret input cancelled');
+    if (typeof value !== 'string') throw new Error(`${label} secret input cancelled`);
     return value;
   }
 
@@ -247,7 +247,7 @@ export async function readSecretFromStdin(what: string): Promise<string> {
   for await (const chunk of process.stdin) {
     const buffer = Buffer.from(chunk);
     bytes += buffer.length;
-    if (bytes > maxBytes) throw new Error('SSH secret exceeds 64 KiB');
+    if (bytes > maxBytes) throw new Error(`${label} secret exceeds 64 KiB`);
     chunks.push(buffer);
   }
   const value = Buffer.concat(chunks).toString('utf8').replace(/\r?\n$/, '');

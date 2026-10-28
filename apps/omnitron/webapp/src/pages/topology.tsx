@@ -66,7 +66,8 @@ import { useTopologyStore, type AppNodeData, type TopologyNodeData } from 'src/c
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import { pulseKeyframes } from 'src/components/topology/shared-styles';
-import { Alert, Skeleton } from '@omnitron-dev/prism';
+import { Alert } from '@omnitron-dev/prism/components/alert';
+import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 
 // ---------------------------------------------------------------------------
 // Node type registry

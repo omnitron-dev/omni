@@ -45,11 +45,13 @@
  * console reads too) reads either convention, including the older one of
  * naming the failure in the action (`node.upgrade.failed`).
  *
- * Best-effort by design: the action has already happened — or already failed
+ * Best-effort by default: the action has already happened — or already failed
  * — when this is called, and failing it afterwards would turn an unrecorded
  * change into a broken one. A write that fails is reported at error with the
  * action it could not record, which is the state an operator needs to know
  * about.
+ * Actions that require an audit record BEFORE execution pass `required: true`.
+ * Those callers fail closed when the database is absent or the insert fails.
  */
 
 import type { Kysely } from 'kysely';
@@ -206,8 +208,16 @@ export class AuditService {
     return this.db !== null;
   }
 
-  async record(entry: AuditEntry): Promise<void> {
-    if (!this.db) return;
+  /** Include the audit row in the caller's transaction; rollback both on failure. */
+  inTransaction(db: Kysely<OmnitronDatabase>): AuditService {
+    return new AuditService(this.logger, db);
+  }
+
+  async record(entry: AuditEntry, required = false): Promise<void> {
+    if (!this.db) {
+      if (required) throw new Error('Audit storage is required for this operation');
+      return;
+    }
     const { actorId, actorType } = currentActor();
     const ipAddress = getRequestContext()?.ipAddress ?? null;
 
@@ -238,8 +248,9 @@ export class AuditService {
     } catch (err) {
       this.logger.error(
         { action: entry.action, resource: `${entry.resourceType}:${entry.resourceId ?? '-'}`, error: (err as Error).message },
-        'Could not record this action in the audit log — it happened and nothing recorded it',
+        required ? 'Required audit write failed; operation refused' : 'Could not record this action in the audit log — it happened and nothing recorded it',
       );
+      if (required) throw new Error('Audit storage is unavailable; operation refused');
     }
   }
 

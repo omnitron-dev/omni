@@ -14,7 +14,9 @@ import Grid from '@mui/material/Grid';
 import { alpha } from '@mui/material/styles';
 
 import { TraceIcon, RefreshIcon, SearchIcon } from 'src/assets/icons';
-import { AdminDataTable, Alert, Breadcrumbs, type ColumnDef } from '@omnitron-dev/prism';
+import { AdminDataTable, type ColumnDef } from '@omnitron-dev/prism/components/admin-filters';
+import { Alert } from '@omnitron-dev/prism/components/alert';
+import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
 import { traces } from 'src/netron/client';
 import { formatDate } from 'src/utils/formatters';
 import { usePolledResource } from 'src/hooks/use-polled-resource';

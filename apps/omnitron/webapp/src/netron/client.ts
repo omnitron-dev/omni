@@ -16,6 +16,8 @@ import {
 } from '@omnitron-dev/prism/netron';
 
 import type {
+  IOmnitronAccessService,
+  IOmnitronTerminalService,
   IDaemonService,
   IOmnitronAuthService,
   IOmnitronLogsService,
@@ -44,6 +46,8 @@ import type {
 
 export interface OmnitronConsoleSchema extends BackendSchema {
   daemon: {
+    OmnitronAccess: IOmnitronAccessService;
+    OmnitronTerminal: IOmnitronTerminalService;
     OmnitronDaemon: IDaemonService;
     OmnitronAuth: IOmnitronAuthService;
     OmnitronLogs: IOmnitronLogsService;
@@ -244,6 +248,10 @@ export const systemInfo = daemonClient.daemon.OmnitronSystemInfo;
 
 /** Infrastructure node management */
 export const nodes = daemonClient.daemon.OmnitronNodes;
+/** Interactive SSH sessions owned by the current authenticated session. */
+export const terminal = daemonClient.daemon.OmnitronTerminal;
+/** Live RPC capabilities and human control-plane accounts. */
+export const access = daemonClient.daemon.OmnitronAccess;
 
 /**
  * Releases — what was built from which two commits, and the builds running now.

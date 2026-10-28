@@ -366,6 +366,7 @@ program
   .option('-n, --lines <N>', 'Number of lines', '50')
   .option('-l, --level <level>', 'Minimum log level (trace|debug|info|warn|error|fatal)')
   .option('-g, --grep <pattern>', 'Filter by message pattern (regex)')
+  .option('--node <node>', 'Read replicated logs from one registered node (name or ID)')
   .option('--file', 'Read from log files instead of daemon (auto when daemon offline)')
   .action(async (app, opts) => {
     const { logsCommand } = await import('../commands/logs.js');
@@ -375,6 +376,7 @@ program
       file: opts.file,
       level: opts.level,
       grep: opts.grep,
+      node: opts.node,
     });
   });
 
@@ -1109,6 +1111,26 @@ node
     await nodeUpdateCommand(id, input as any);
   });
 
+const access = program.command('access').description('Console roles, effective RPC permissions and human accounts');
+access.command('show').description('Show effective permissions from the running daemon').action(async () => {
+  const { accessCommand } = await import('../commands/access.js'); await accessCommand('show');
+});
+access.command('users').description('List console accounts without secrets').option('--after <id>', 'Continue after this account ID').action(async (opts) => {
+  const { accessCommand } = await import('../commands/access.js'); await accessCommand('users', opts);
+});
+access.command('create <username>').description('Create a human console account; password stays out of arguments and output')
+  .option('--role <role>', 'viewer, operator or admin', 'viewer').option('--display-name <name>', 'Display name')
+  .requiredOption('--password-stdin', 'Read password from a hidden terminal prompt or stdin until EOF').action(async (username, opts) => {
+    const { accessCommand } = await import('../commands/access.js'); await accessCommand('create', { ...opts, username });
+  });
+access.command('role <id> <role>').description('Change an account role and revoke its sessions')
+  .requiredOption('--expect <role>', 'The role you reviewed; refuse if it changed').action(async (id, role, opts) => {
+    const { accessCommand } = await import('../commands/access.js'); await accessCommand('role', { id, role, expect: opts.expect });
+  });
+access.command('revoke <id>').description('Revoke all sessions for a console account').action(async (id) => {
+  const { accessCommand } = await import('../commands/access.js'); await accessCommand('revoke', { id });
+});
+
 program
   .command('audit')
   .description('Who changed this control plane, and what they changed')
@@ -1159,6 +1181,17 @@ node
 // ============================================================================
 // Webapp Management
 // ============================================================================
+
+node.command('ssh <node>').description('Open an audited interactive SSH terminal (Ctrl+] disconnects)')
+  .action(async (name: string) => { const { nodeSshCommand } = await import('../commands/terminal.js'); await nodeSshCommand(name); });
+node.command('ssh-key <node>').description('Inspect SSH host fingerprint; trust only after independent verification')
+  .option('--trust <fingerprint>', 'Store an independently verified SHA256 fingerprint')
+  .action(async (name: string, options: { trust?: string }) => { const { nodeHostKeyCommand } = await import('../commands/terminal.js'); await nodeHostKeyCommand(name, options); });
+const terminal = program.command('terminal').description('Manage SSH sessions owned by this local CLI identity');
+terminal.command('list').description('List this caller’s SSH sessions')
+  .action(async () => { const { terminalSessionsCommand } = await import('../commands/terminal.js'); await terminalSessionsCommand(); });
+terminal.command('close <id>').description('Close this caller’s SSH session')
+  .action(async (id: string) => { const { terminalSessionsCommand } = await import('../commands/terminal.js'); await terminalSessionsCommand(id); });
 
 const webapp = program.command('webapp').description('Manage Omnitron Console webapp');
 

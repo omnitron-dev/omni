@@ -1,3 +1,4 @@
+import { Can } from 'src/auth/access';
 /**
  * Releases — what this master has built, and what is building now.
  *
@@ -22,7 +23,9 @@ import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import { Alert, AdminDataTable, Breadcrumbs, type ColumnDef } from '@omnitron-dev/prism';
+import { Alert } from '@omnitron-dev/prism/components/alert';
+import { AdminDataTable, type ColumnDef } from '@omnitron-dev/prism/components/admin-filters';
+import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
 
 import type { BuildRecord, ReleaseDeploymentDto, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
 import { stacksByRelease, type DeploymentsAnswer } from '@omnitron-dev/omnitron/release-reading';
@@ -34,7 +37,6 @@ import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { releases as releaseRpc } from 'src/netron/client';
 import { releaseApi, type ReleasePreflightView } from 'src/netron/release-wire';
 import { useActiveProject } from 'src/stores/project.store';
-import { useAuthStore } from 'src/auth/store';
 
 import BuildReleaseDialog from './build-release-dialog';
 import PruneReleasesDialog from './prune-releases-dialog';
@@ -85,7 +87,6 @@ async function loadPage(): Promise<PageData> {
 
 export default function ReleasesPage() {
   const activeProject = useActiveProject();
-  const role = useAuthStore((s) => s.user?.role);
   const [buildOpen, setBuildOpen] = useState(false);
   const [pruneOpen, setPruneOpen] = useState(false);
   const [deployTarget, setDeployTarget] = useState<ReleaseSummary | null>(null);
@@ -272,7 +273,7 @@ export default function ReleasesPage() {
       header: '',
       render: (r) => (
         <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
-          <Button
+          <Can permission="OmnitronProject.startStack"><Button
             size="small"
             variant="outlined"
             startIcon={<DeployIcon />}
@@ -281,7 +282,7 @@ export default function ReleasesPage() {
             sx={{ whiteSpace: 'nowrap' }}
           >
             Deploy…
-          </Button>
+          </Button></Can>
         </Stack>
       ),
     },
@@ -300,16 +301,14 @@ export default function ReleasesPage() {
             <IconButton size="small" onClick={() => void refresh()} title="Refresh">
               <RefreshIcon />
             </IconButton>
-            {role === 'admin' && (
-              <Button size="small" startIcon={<DeleteIcon />} onClick={() => setPruneOpen(true)}>
+              <Can permission="OmnitronRelease.prune"><Button size="small" startIcon={<DeleteIcon />} onClick={() => setPruneOpen(true)}>
                 Prune…
-              </Button>
-            )}
+              </Button></Can>
             <Tooltip title={canBuild ? '' : 'This master cannot run a build — see the banner'} arrow>
               <span>
-                <Button variant="contained" size="small" startIcon={<PlusIcon />} disabled={!canBuild} onClick={() => setBuildOpen(true)}>
+                <Can permission="OmnitronRelease.build"><Button variant="contained" size="small" startIcon={<PlusIcon />} disabled={!canBuild} onClick={() => setBuildOpen(true)}>
                   Build
-                </Button>
+                </Button></Can>
               </span>
             </Tooltip>
           </Stack>
@@ -398,7 +397,7 @@ export default function ReleasesPage() {
         dense
       />
 
-      <BuildReleaseDialog
+      <Can permission="OmnitronRelease.build"><BuildReleaseDialog
         open={buildOpen}
         onClose={() => setBuildOpen(false)}
         defaultProject={activeProject}
@@ -407,20 +406,20 @@ export default function ReleasesPage() {
           setJustStarted(record);
           void live.refresh().then(() => refresh());
         }}
-      />
+      /></Can>
 
-      <PruneReleasesDialog
+      <Can permission="OmnitronRelease.prune"><PruneReleasesDialog
         open={pruneOpen}
         onClose={() => setPruneOpen(false)}
         onPruned={() => void refresh()}
-      />
+      /></Can>
 
-      <DeployReleaseDialog
+      <Can permission="OmnitronProject.startStack"><DeployReleaseDialog
         open={deployTarget !== null}
         onClose={() => setDeployTarget(null)}
         project={deployTarget?.project ?? activeProject ?? ''}
         release={deployTarget}
-      />
+      /></Can>
     </Stack>
   );
 }

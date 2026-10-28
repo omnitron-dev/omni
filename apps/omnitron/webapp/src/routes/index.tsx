@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { LoadingScreen } from '@omnitron-dev/prism';
+import { LoadingScreen } from '@omnitron-dev/prism/components/loading-screen';
 import { AuthGuard, GuestGuard } from 'src/auth/guard';
 import { ProjectGuard } from 'src/auth/project-guard';
 import { ConsoleLayout } from 'src/layouts/console-layout';
@@ -30,6 +30,7 @@ const SystemInfoPage = lazy(() => import('src/pages/system-info'));
 const NodesPage = lazy(() => import('src/pages/nodes'));
 const ProjectsPage = lazy(() => import('src/pages/projects'));
 const AuditPage = lazy(() => import('src/pages/audit'));
+const AccessPage = lazy(() => import('src/pages/access'));
 const ReleasesPage = lazy(() => import('src/pages/releases/index'));
 const ReleaseDetailPage = lazy(() => import('src/pages/releases/detail'));
 
@@ -62,11 +63,14 @@ export function Router() {
         {/* Always accessible — no project required */}
         <Route index element={<Page><DashboardPage /></Page>} />
         <Route path="nodes" element={<Page><NodesPage /></Page>} />
+        {/* Workspace stays mounted in ConsoleLayout while navigating other pages. */}
+        <Route path="terminal" element={null} />
         <Route path="projects" element={<Page><ProjectsPage /></Page>} />
         <Route path="system" element={<Page><SystemInfoPage /></Page>} />
         <Route path="settings" element={<Page><SettingsPage /></Page>} />
         <Route path="logs" element={<Page><LogsPage /></Page>} />
         <Route path="audit" element={<Page><AuditPage /></Page>} />
+        <Route path="access" element={<Page><AccessPage /></Page>} />
         {/*
           Not project-scoped. A release names the project it was built for,
           and the page filters by the active one — but the master holds every

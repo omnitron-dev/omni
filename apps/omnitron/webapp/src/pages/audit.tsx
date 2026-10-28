@@ -24,7 +24,10 @@ import MenuItem from '@mui/material/MenuItem';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
-import { Alert, Breadcrumbs, EmptyContent, Skeleton } from '@omnitron-dev/prism';
+import { Alert } from '@omnitron-dev/prism/components/alert';
+import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { EmptyContent } from '@omnitron-dev/prism/components/empty-content';
+import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { outcomeOf, outcomeReason, type AuditOutcome } from '@omnitron-dev/omnitron/audit-outcome';
 import type { IOmnitronAuditService } from '@omnitron-dev/omnitron/dto/services';
 import { audit } from 'src/netron/client';
@@ -41,7 +44,7 @@ type AuditRow = Awaited<ReturnType<IOmnitronAuditService['list']>>[number];
  * writing rows; a filter that could not select them hid the whole release
  * trail behind «everything».
  */
-const RESOURCE_TYPES = ['', 'stack', 'release', 'project', 'node', 'secret'] as const;
+const RESOURCE_TYPES = ['', 'stack', 'release', 'project', 'node', 'secret', 'terminal', 'account'] as const;
 
 const PAGE_SIZES = [50, 100, 250, 500] as const;
 

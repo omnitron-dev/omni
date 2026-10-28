@@ -696,6 +696,8 @@ export interface IWatchConfig {
 // =============================================================================
 
 export interface IDaemonConfig {
+  /** Interactive SSH: admin-only, pinned host keys, server-enforced session limits. */
+  terminal?: Partial<import('../shared/dto/terminal.js').TerminalPolicy>;
   /** Unix socket path for local CLI ↔ daemon RPC (high-performance, secure) */
   socketPath: string;
   /** TCP port for remote omnitron ↔ omnitron fleet RPC */

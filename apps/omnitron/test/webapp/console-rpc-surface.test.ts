@@ -119,7 +119,9 @@ function exposedMethods(): Map<string, Set<string>> {
   return out;
 }
 
-const dtoSource = fs.readFileSync(path.join(SRC, 'shared/dto/services.ts'), 'utf8');
+const dtoDirectory = path.join(SRC, 'shared/dto');
+const dtoSource = fs.readdirSync(dtoDirectory).filter((file) => file.endsWith('.ts'))
+  .map((file) => fs.readFileSync(path.join(dtoDirectory, file), 'utf8')).join('\n');
 const clientSource = fs.readFileSync(path.join(WEBAPP, 'netron/client.ts'), 'utf8');
 
 const interfaces = interfaceMethods(dtoSource);

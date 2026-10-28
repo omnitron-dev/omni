@@ -292,6 +292,7 @@ export class OmnitronDaemon {
   private slaveConnector: import('../cluster/slave-connector.js').SlaveConnector | null = null;
   private meshHandle: import('../cluster/mesh.js').MeshHandle | null = null;
   private nodeManagerRpcService: import('../services/node-manager.rpc-service.js').NodeManagerRpcService | null = null;
+  private terminalRpcService: import('../services/terminal.rpc-service.js').TerminalRpcService | null = null;
 
   /**
    * The live record of release builds this daemon is running.
@@ -663,6 +664,7 @@ export class OmnitronDaemon {
       validateToken: async (token: string): Promise<AuthContext> => {
         // JWT verification with caching via titan-auth JWTService
         const payload = await jwtService.verify(token);
+        let role = (payload['role'] as string) ?? 'viewer';
 
         // Session validation — master only (requires PG for omnitron_sessions)
         if (authService) {
@@ -675,11 +677,13 @@ export class OmnitronDaemon {
               (err as any).statusCode = 401;
               throw err;
             }
+            // Human roles come from the current account, not an hour-old JWT.
+            role = session.role;
           }
         }
 
-        // Role is now in JWT claims (set by AuthService.issueToken)
-        const role = (payload['role'] as string) ?? 'viewer';
+        // Service identities on nodes retain their signed role; human sessions
+        // on the master use the current database role (cache bounded to 10s).
         const sessionId = payload['sid'] as string | undefined;
 
         return {
@@ -1043,6 +1047,12 @@ export class OmnitronDaemon {
         secretsService as any,
       );
       this.nodeManagerService = nodeManager;
+      if (audit) {
+        const { TerminalRpcService } = await import('../services/terminal.rpc-service.js');
+        const terminalAuth = await container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN);
+        this.terminalRpcService = new TerminalRpcService(nodeManager, terminalAuth, daemonStateStore, audit, dc.terminal);
+        await this.app.netron.peer.exposeService(this.terminalRpcService);
+      }
       const nodeManagerRpcService = new NodeManagerRpcService(nodeManager, audit);
       // The deployer reaches nodes through the same SSH implementation as the
       // health checks — the only one that can present a stored password or a
@@ -1174,8 +1184,13 @@ export class OmnitronDaemon {
     if (!isSlave) {
       // Auth RPC service
       const authService = await container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN);
-      const authRpcService = new AuthRpcService(authService);
+      const authRpcService = new AuthRpcService(authService, this.app.netron);
       await this.app.netron.peer.exposeService(authRpcService);
+      if (audit) {
+        const { AccessRpcService } = await import('../services/access.rpc-service.js');
+        const accessDb = await container.resolveAsync<import('kysely').Kysely<import('../database/schema.js').OmnitronDatabase>>(OMNITRON_DB_TOKEN);
+        await this.app.netron.peer.exposeService(new AccessRpcService(accessDb, authService, audit, this.app.netron));
+      }
 
       // Alert RPC service
       const { AlertRpcService: AlertRpc } = await import('../services/alert.rpc-service.js');
@@ -2507,6 +2522,8 @@ export class OmnitronDaemon {
 
     // --- Priority: First (0) — Immediate cleanup ---
     app.registerShutdownTask('stop-file-watcher-and-webapp', async () => {
+      this.terminalRpcService?.dispose();
+      this.terminalRpcService = null;
       if (this.fileWatcher) {
         this.fileWatcher.stop();
         this.fileWatcher = null;

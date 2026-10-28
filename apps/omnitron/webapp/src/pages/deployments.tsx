@@ -1,3 +1,4 @@
+import { Can } from 'src/auth/access';
 import { useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import Link from '@mui/material/Link';
@@ -14,7 +15,9 @@ import TextField from '@mui/material/TextField';
 import MenuItem from '@mui/material/MenuItem';
 
 import { DeployIcon, PlusIcon, RefreshIcon } from 'src/assets/icons';
-import { AdminDataTable, Alert, Breadcrumbs, type ColumnDef } from '@omnitron-dev/prism';
+import { AdminDataTable, type ColumnDef } from '@omnitron-dev/prism/components/admin-filters';
+import { Alert } from '@omnitron-dev/prism/components/alert';
+import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
 import { deploy, project } from 'src/netron/client';
 import { DeployProgressList } from 'src/components/deploy-progress';
 import { formatDate, formatDuration } from 'src/utils/formatters';
@@ -143,7 +146,7 @@ function DeployDialog({ open, onClose, onDeploy, apps }: DeployDialogProps) {
         <Button onClick={onClose} size="small">
           Cancel
         </Button>
-        <Button
+        <Can permission="OmnitronDeploy.deployApp"><Button
           variant="contained"
           onClick={handleSubmit}
           size="small"
@@ -151,7 +154,7 @@ function DeployDialog({ open, onClose, onDeploy, apps }: DeployDialogProps) {
           startIcon={<DeployIcon />}
         >
           Deploy
-        </Button>
+        </Button></Can>
       </DialogActions>
     </Dialog>
   );
@@ -305,14 +308,14 @@ export default function DeploymentsPage() {
             <IconButton size="small" onClick={fetchDeployments} title="Refresh">
               <RefreshIcon />
             </IconButton>
-            <Button
+            <Can permission="OmnitronDeploy.deployApp"><Button
               variant="contained"
               size="small"
               startIcon={<PlusIcon />}
               onClick={() => setDialogOpen(true)}
             >
               Deploy
-            </Button>
+            </Button></Can>
           </Stack>
         }
       />

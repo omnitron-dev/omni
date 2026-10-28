@@ -1,3 +1,4 @@
+import { Can } from 'src/auth/access';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, Link as RouterLink } from 'react-router-dom';
 import Box from '@mui/material/Box';
@@ -19,7 +20,10 @@ import Collapse from '@mui/material/Collapse';
 import { alpha, useTheme, keyframes } from '@mui/material/styles';
 import Chart from 'react-apexcharts';
 import { RestartIcon, StopIcon, PlayIcon, RefreshIcon, CircleIcon, SearchIcon } from 'src/assets/icons';
-import { Alert, Breadcrumbs, Skeleton, Table, type TableColumn } from '@omnitron-dev/prism';
+import { Alert } from '@omnitron-dev/prism/components/alert';
+import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
+import { Table, type TableColumn } from '@omnitron-dev/prism/components/table';
 
 import { daemon, logs, metrics } from 'src/netron/client';
 import { formatUptime, formatMemory } from 'src/utils/formatters';
@@ -1082,17 +1086,17 @@ export default function AppDetailPage() {
                 size="small"
               />
               {isStopped ? (
-                <Button variant="outlined" color="success" size="small" startIcon={<PlayIcon />} disabled={actionLoading} onClick={() => handleAction('start')}>
+                <Can permission="OmnitronDaemon.startApp"><Button variant="outlined" color="success" size="small" startIcon={<PlayIcon />} disabled={actionLoading} onClick={() => handleAction('start')}>
                   Start
-                </Button>
+                </Button></Can>
               ) : (
                 <>
-                  <Button variant="outlined" color="warning" size="small" startIcon={<RestartIcon />} disabled={actionLoading} onClick={() => handleAction('restart')}>
+                  <Can permission="OmnitronDaemon.restartApp"><Button variant="outlined" color="warning" size="small" startIcon={<RestartIcon />} disabled={actionLoading} onClick={() => handleAction('restart')}>
                     Restart
-                  </Button>
-                  <Button variant="outlined" color="error" size="small" startIcon={<StopIcon />} disabled={actionLoading} onClick={() => handleAction('stop')}>
+                  </Button></Can>
+                  <Can permission="OmnitronDaemon.stopApp"><Button variant="outlined" color="error" size="small" startIcon={<StopIcon />} disabled={actionLoading} onClick={() => handleAction('stop')}>
                     Stop
-                  </Button>
+                  </Button></Can>
                 </>
               )}
               <IconButton onClick={() => { fetchApp(); fetchDiagnostics(); }} size="small" title="Refresh">

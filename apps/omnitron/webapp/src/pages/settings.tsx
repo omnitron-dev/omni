@@ -33,12 +33,15 @@ import Box from '@mui/material/Box';
 
 import { EyeIcon, DeleteIcon } from 'src/assets/icons';
 
-import { Alert, FormAlert, TabPanel, Table, Tabs, type TableColumn } from '@omnitron-dev/prism';
+import { Alert, FormAlert } from '@omnitron-dev/prism/components/alert';
+import { TabPanel, Tabs } from '@omnitron-dev/prism/components/tabs';
+import { Table, type TableColumn } from '@omnitron-dev/prism/components/table';
 import { useAuthStore } from 'src/auth/store';
 import { auth, getSessionId } from 'src/netron/client';
 import { formatDateShort, timeAgo } from 'src/utils/formatters';
 
 import type { OmnitronActiveSession } from '@omnitron-dev/omnitron/dto/services';
+import { consolePasswordError } from '@omnitron-dev/omnitron/dto/services';
 import { writeStored } from '../utils/storage';
 import { ALERT_SEVERITIES } from '@omnitron-dev/omnitron/alerts';
 import {
@@ -130,7 +133,8 @@ function SecuritySection() {
     setSuccess(false);
     if (!oldPassword || !newPassword) { setError('All fields are required.'); return; }
     if (newPassword !== confirmPassword) { setError('New passwords do not match.'); return; }
-    if (newPassword.length < 8) { setError('New password must be at least 8 characters.'); return; }
+    const passwordError = consolePasswordError(newPassword);
+    if (passwordError) { setError(passwordError); return; }
 
     setSubmitting(true);
     try {

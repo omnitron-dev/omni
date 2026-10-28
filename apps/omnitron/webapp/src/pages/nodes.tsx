@@ -1,3 +1,4 @@
+import { Can, useAccess } from 'src/auth/access';
 /**
  * Nodes Page — Infrastructure node management
  *
@@ -6,6 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -29,7 +31,11 @@ import Divider from '@mui/material/Divider';
 import LinearProgress from '@mui/material/LinearProgress';
 import { alpha, keyframes, useTheme, type Theme } from '@mui/material/styles';
 
-import { Breadcrumbs, EmptyContent, FormAlert, Skeleton, useSnackbar } from '@omnitron-dev/prism';
+import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { EmptyContent } from '@omnitron-dev/prism/components/empty-content';
+import { FormAlert } from '@omnitron-dev/prism/components/alert';
+import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
+import { useSnackbar } from '@omnitron-dev/prism/components/snackbar';
 import { FleetRollout } from 'src/components/fleet-rollout';
 import { nodes as nodesRpc } from 'src/netron/client';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
@@ -39,11 +45,12 @@ import { usePollingEffect } from 'src/hooks/use-polled-resource';
 // role it can never send would have type-checked here.
 import type {
   INodeStatus, INodeWithStatus, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState,
-  INodeDaemonAnswer, DaemonStatusDto, NodeUpgradeProgress as INodeUpgradeProgress,
+  INodeDaemonAnswer, DaemonStatusDto, AggregatedHealthDto, NodeUpgradeProgress as INodeUpgradeProgress,
 } from '@omnitron-dev/omnitron/dto/services';
 import { verdictOf, omnitronVerdict, firstReason, clusterDisagreement, type LayerVerdict } from 'src/utils/node-diagnosis';
 import { omnitronFinding } from '@omnitron-dev/omnitron/node-check';
 import { appsMemoryOf } from 'src/utils/daemon-memory';
+import { logHref } from 'src/utils/log-location';
 import { useRealtimeStore } from 'src/stores/realtime.store';
 import {
   PlusIcon,
@@ -714,7 +721,10 @@ function HistoryRow({ row, isLocal }: { row: HealthCheckRow; isLocal: boolean })
  * reason rather than an empty list, because "we could not ask" and "it runs
  * nothing" are not the same sentence.
  */
-function NodeApps({ data }: { data: INodeDaemonAnswer<DaemonStatusDto> | null }) {
+function NodeApps({ data, health }: {
+  data: INodeDaemonAnswer<DaemonStatusDto> | null;
+  health: INodeDaemonAnswer<AggregatedHealthDto> | null;
+}) {
   if (!data) {
     return (
       <Typography variant="body2" sx={{ py: 1, color: 'text.secondary' }}>
@@ -753,6 +763,7 @@ function NodeApps({ data }: { data: INodeDaemonAnswer<DaemonStatusDto> | null })
         {(appsMemoryOf(status) / 1024 / 1024).toFixed(0)} MB
       </Typography>
       {status.apps.map((app) => (
+        <Box key={app.name}>
         <Stack
           key={app.name}
           direction="row"
@@ -768,6 +779,10 @@ function NodeApps({ data }: { data: INodeDaemonAnswer<DaemonStatusDto> | null })
           <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
             {app.name}
           </Typography>
+          <Button component={RouterLink} to={logHref(app.name, data.nodeId === 'local' ? undefined : data.nodeId)} size="small"
+            aria-label={`View logs for ${app.name}`}>
+            Logs
+          </Button>
           <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
             {[
               app.pid ? `pid ${app.pid}` : null,
@@ -779,6 +794,17 @@ function NodeApps({ data }: { data: INodeDaemonAnswer<DaemonStatusDto> | null })
               .join(' · ')}
           </Typography>
         </Stack>
+        <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
+          Health: {health?.answer?.apps[app.name]?.status ?? 'not read'}
+          {health?.error ? ` — ${health.error}` : ''}
+        </Typography>
+        {health?.answer?.apps[app.name]?.checks.map((check) => (
+          <Typography key={check.name} variant="caption" sx={{ display: 'block', pl: 1,
+            color: check.status === 'fail' ? 'error.main' : check.status === 'warn' ? 'warning.main' : 'text.secondary' }}>
+            {check.status} · {check.name}{check.message ? ` — ${check.message}` : ''}
+          </Typography>
+        ))}
+        </Box>
       ))}
     </Box>
   );
@@ -1070,6 +1096,7 @@ function NodeDiagnosisDialog({
   const [summary, setSummary] = useState<{ status: string; lastSeenOnline: string | null; consecutiveFailures: number } | null>(null);
   const [limit, setLimit] = useState<number>(50);
   const [apps, setApps] = useState<INodeDaemonAnswer<DaemonStatusDto> | null>(null);
+  const [appHealth, setAppHealth] = useState<INodeDaemonAnswer<AggregatedHealthDto> | null>(null);
   const [upgrade, setUpgrade] = useState<INodeUpgradeProgress | null>(null);
   const [upgrading, setUpgrading] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -1085,7 +1112,7 @@ function NodeDiagnosisDialog({
       // history comes from this master's database and the indicators from the
       // node itself, and a node that cannot be reached still has a history
       // worth reading — that history is how you find out when it stopped.
-      const [rows, ind, syn, rel, sums, running, upgrades] = await Promise.allSettled([
+      const [rows, ind, syn, rel, sums, running, upgrades, health] = await Promise.allSettled([
         nodesRpc.getCheckHistory({ nodeId, limit: n }),
         nodesRpc.getNodeIndicators({ nodeId }),
         nodesRpc.getNodeSyncStatus({ nodeId }),
@@ -1093,7 +1120,11 @@ function NodeDiagnosisDialog({
         nodesRpc.getNodeHealthSummaries(),
         nodesRpc.getNodeDaemonStatus({ nodeId }),
         nodesRpc.getUpgradeProgress(),
+        nodesRpc.getNodeDaemonHealth({ nodeId }),
       ]);
+      setAppHealth(health.status === 'fulfilled' ? health.value : {
+        nodeId, reachable: false, answer: null, error: 'Application health could not be read',
+      });
       setApps(running.status === 'fulfilled' ? (running.value as INodeDaemonAnswer<DaemonStatusDto>) : null);
       setUpgrade(
         upgrades.status === 'fulfilled'
@@ -1265,7 +1296,7 @@ function NodeDiagnosisDialog({
         <Typography variant="overline" sx={{ color: 'text.secondary' }}>
           Running on this node
         </Typography>
-        <NodeApps data={apps} />
+        <NodeApps data={apps} health={appHealth} />
 
         <Divider sx={{ my: 2 }} />
 
@@ -1317,17 +1348,17 @@ function NodeDiagnosisDialog({
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={recheck} disabled={checking} startIcon={<RefreshIcon sx={{ fontSize: 16 }} />}>
+        <Can permission="OmnitronNodes.triggerNodeCheck"><Button onClick={recheck} disabled={checking} startIcon={<RefreshIcon sx={{ fontSize: 16 }} />}>
           {checking ? 'Checking…' : 'Check now'}
-        </Button>
+        </Button></Can>
         {!isLocal && (
-          <Button
+          <Can permission="OmnitronNodes.upgradeNode"><Button
             onClick={startUpgrade}
             disabled={upgrading || upgradeRunning}
             startIcon={<DeployIcon sx={{ fontSize: 16 }} />}
           >
             {upgradeRunning ? 'Upgrading…' : 'Upgrade omnitron'}
-          </Button>
+          </Button></Can>
         )}
         <Box sx={{ flexGrow: 1 }} />
         <Button onClick={onClose}>Close</Button>
@@ -1395,6 +1426,7 @@ function NodeCard({
             </Box>
           </Stack>
           <Stack direction="row" spacing={0}>
+            {!node.isLocal && <Can permission="OmnitronTerminal.open"><Button component={RouterLink} to={`/terminal?${new URLSearchParams({ node: node.id })}`} size="small">SSH</Button></Can>}
             {!node.isLocal && (
               <Tooltip title={checking ? 'Checking...' : 'Check SSH connection'}>
                 {/* MUI needs a span to hold a tooltip over a DISABLED button,
@@ -1403,14 +1435,14 @@ function NodeCard({
                     "button". Every other icon button in the console gets its
                     name from its tooltip; this one has to say it directly. */}
                 <span>
-                  <IconButton
+                  <Can permission="OmnitronNodes.checkNodeStatus"><IconButton
                     size="small"
                     aria-label="Check SSH connection"
                     onClick={() => onCheckSsh(node.id)}
                     disabled={checking}
                   >
                     <RefreshIcon sx={{ fontSize: 18, ...(checking && { animation: `${spin} 1s linear infinite` }) }} />
-                  </IconButton>
+                  </IconButton></Can>
                 </span>
               </Tooltip>
             )}
@@ -1424,8 +1456,8 @@ function NodeCard({
             </Tooltip>
             {!node.isLocal && (
               <>
-                <Tooltip title="Edit"><IconButton size="small" onClick={() => onEdit(node)}><SettingsIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip>
-                <Tooltip title="Remove"><IconButton size="small" onClick={() => onRemove(node.id)} color="error"><DeleteIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip>
+                <Can permission="OmnitronNodes.updateNode"><Tooltip title="Edit"><IconButton size="small" onClick={() => onEdit(node)}><SettingsIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip></Can>
+                <Can permission="OmnitronNodes.removeNode"><Tooltip title="Remove"><IconButton size="small" onClick={() => onRemove(node.id)} color="error"><DeleteIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip></Can>
               </>
             )}
           </Stack>
@@ -1911,9 +1943,9 @@ function CheckSettingsDialog({ open, onClose, onSaved }: {
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} color="inherit" disabled={saving}>Cancel</Button>
-        <Button variant="contained" onClick={handleSave} disabled={!config || saving}>
+        <Can permission="OmnitronNodes.setCheckConfig"><Button variant="contained" onClick={handleSave} disabled={!config || saving}>
           {saving ? 'Saving...' : 'Save'}
-        </Button>
+        </Button></Can>
       </DialogActions>
     </Dialog>
   );
@@ -1924,6 +1956,8 @@ function CheckSettingsDialog({ open, onClose, onSaved }: {
 // =============================================================================
 
 export default function NodesPage() {
+  const { can } = useAccess();
+  const mayListSshKeys = can('OmnitronNodes.listSshKeys');
   const [nodeList, setNodeList] = useState<INodeWithStatus[]>([]);
   const [sshKeys, setSshKeys] = useState<SshKeyInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2042,10 +2076,11 @@ export default function NodesPage() {
   }, []);
 
   const fetchSshKeys = useCallback(async () => {
+    if (!mayListSshKeys) { setSshKeys([]); return; }
     // Same reasoning, higher stakes: the key list feeds the Add Node dialog,
     // and "no keys" invites an operator to add one that already exists.
     try { setSshKeys(await nodesRpc.listSshKeys()); } catch { /* keep the last good list */ }
-  }, []);
+  }, [mayListSshKeys]);
 
   // The shared daemon socket. The store's refcount keeps it alive across
   // page changes; this page used to poll blind while the daemon pushed a
@@ -2241,17 +2276,17 @@ export default function NodesPage() {
         links={[{ name: 'Nodes' }]}
         action={
           <Stack direction="row" spacing={1}>
-            <Button variant="outlined" size="small" startIcon={<SettingsIcon sx={{ fontSize: 18 }} />}
+            <Can permission="OmnitronNodes.setCheckConfig"><Button variant="outlined" size="small" startIcon={<SettingsIcon sx={{ fontSize: 18 }} />}
               onClick={() => setSettingsOpen(true)}>
               Check Settings
-            </Button>
+            </Button></Can>
             <Button variant="outlined" size="small" startIcon={<RefreshIcon sx={{ fontSize: 18 }} />}
               onClick={async () => { const n = await fetchNodes(); await fetchUptimeBars(n); }}>
               Refresh
             </Button>
-            <Button variant="contained" size="small" startIcon={<PlusIcon sx={{ fontSize: 18 }} />} onClick={handleOpenAdd}>
+            <Can permission="OmnitronNodes.addNode"><Button variant="contained" size="small" startIcon={<PlusIcon sx={{ fontSize: 18 }} />} onClick={handleOpenAdd}>
               Add Node
-            </Button>
+            </Button></Can>
           </Stack>
         }
       />
@@ -2322,17 +2357,17 @@ export default function NodesPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={closeRemoveDialog} color="inherit" disabled={removing}>Cancel</Button>
-          <Button onClick={handleRemove} color="error" variant="contained" disabled={removing}>
+          <Can permission="OmnitronNodes.removeNode"><Button onClick={handleRemove} color="error" variant="contained" disabled={removing}>
             {removing ? 'Removing…' : 'Remove'}
-          </Button>
+          </Button></Can>
         </DialogActions>
       </Dialog>
 
-      <NodeDialog open={dialogOpen} onClose={handleCloseDialog} onSubmit={handleSubmit}
+      <Can permission={editNode ? "OmnitronNodes.updateNode" : "OmnitronNodes.addNode"}><NodeDialog open={dialogOpen} onClose={handleCloseDialog} onSubmit={handleSubmit}
         editNode={editNode} sshKeys={sshKeys} loading={submitting}
-        error={submitError} onDismissError={() => setSubmitError(null)} />
+        error={submitError} onDismissError={() => setSubmitError(null)} /></Can>
 
-      <CheckSettingsDialog
+      <Can permission="OmnitronNodes.setCheckConfig"><CheckSettingsDialog
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         onSaved={(cfg) => {
@@ -2341,7 +2376,7 @@ export default function NodesPage() {
           );
           void fetchNodes();
         }}
-      />
+      /></Can>
     </Stack>
   );
 }

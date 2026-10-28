@@ -29,6 +29,10 @@ import '@testing-library/jest-dom/vitest';
 
 import { useProjectStore } from '../../webapp/src/stores/project.store.js';
 
+// Exercise a permitted operation's outcome. The real access provider is
+// covered independently, including denied and revoked capabilities.
+vi.mock('src/auth/access', () => ({ Can: ({ children }: { children: ReactNode }) => children }));
+
 const stopApp = vi.fn();
 /** The page's one read: `main`, running in the project's local dev stack. */
 const list = vi.fn(async () => [

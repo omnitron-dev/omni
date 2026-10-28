@@ -24,7 +24,8 @@ import { alpha, useTheme } from '@mui/material/styles';
 
 import { AppsIcon, StacksIcon, MetricsIcon, ContainersIcon } from 'src/assets/icons';
 
-import { Alert, StatCard } from '@omnitron-dev/prism';
+import { Alert } from '@omnitron-dev/prism/components/alert';
+import { StatCard } from '@omnitron-dev/prism/components/card';
 import { daemon, metrics, project as projectRpc } from 'src/netron/client';
 import { formatMemory, formatUptime } from 'src/utils/formatters';
 import { useRealtimeStore } from 'src/stores/realtime.store';

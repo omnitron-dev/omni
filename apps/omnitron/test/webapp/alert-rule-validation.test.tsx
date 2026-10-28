@@ -24,6 +24,13 @@ import '@testing-library/jest-dom/vitest';
 
 import type { AlertRule } from '../../src/shared/dto/alerts.js';
 
+// These cases exercise an authorized operator's form; access revocation has
+// separate coverage against the real provider in console-access.test.tsx.
+vi.mock('src/auth/access', () => ({
+  Can: ({ children }: { children: ReactNode }) => children,
+  useAccess: () => ({ can: () => true }),
+}));
+
 const createRule = vi.fn();
 const updateRule = vi.fn();
 let listed: AlertRule[] = [];

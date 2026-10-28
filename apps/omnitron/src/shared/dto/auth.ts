@@ -23,6 +23,12 @@ export interface OmnitronSignInRequest {
   userAgent?: string;
 }
 
+/** Shared by account creation and password changes, on server and in Console. */
+export function consolePasswordError(value: unknown): string | null {
+  return typeof value === 'string' && Array.from(value).length >= 15 && new TextEncoder().encode(value).length <= 256
+    ? null : 'Password must contain at least 15 characters and at most 256 UTF-8 bytes';
+}
+
 export interface OmnitronAuthUser {
   id: string;
   username: string;

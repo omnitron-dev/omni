@@ -1,3 +1,4 @@
+import { Can } from 'src/auth/access';
 import { useState } from 'react';
 import Box from '@mui/material/Box';
 import ButtonBase from '@mui/material/ButtonBase';
@@ -16,7 +17,11 @@ import TextField from '@mui/material/TextField';
 import LinearProgress from '@mui/material/LinearProgress';
 
 import { PipelineIcon, PlayIcon, RefreshIcon, PlusIcon, CloseIcon } from 'src/assets/icons';
-import { AdminDataTable, Alert, Breadcrumbs, ConfirmDialog, Skeleton, type ColumnDef } from '@omnitron-dev/prism';
+import { AdminDataTable, type ColumnDef } from '@omnitron-dev/prism/components/admin-filters';
+import { Alert } from '@omnitron-dev/prism/components/alert';
+import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { ConfirmDialog } from '@omnitron-dev/prism/components/confirm-dialog';
+import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { pipelines } from 'src/netron/client';
 import { formatDate, formatDuration } from 'src/utils/formatters';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
@@ -123,9 +128,9 @@ function CreatePipelineDialog({ open, onClose, onCreated }: CreateDialogProps) {
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} size="small">Cancel</Button>
-        <Button variant="contained" onClick={handleCreate} size="small" disabled={!name}>
+        <Can permission="OmnitronPipelines.createPipeline"><Button variant="contained" onClick={handleCreate} size="small" disabled={!name}>
           Create
-        </Button>
+        </Button></Can>
       </DialogActions>
     </Dialog>
   );
@@ -358,12 +363,12 @@ export default function PipelinesPage() {
       align: 'right',
       render: (p) => (
         <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
-          <IconButton size="small" color="error" onClick={() => setConfirmDelete(p.id)} title="Delete">
+          <Can permission="OmnitronPipelines.deletePipeline"><IconButton size="small" color="error" onClick={() => setConfirmDelete(p.id)} title="Delete">
             <CloseIcon />
-          </IconButton>
-          <IconButton size="small" onClick={() => handleRun(p.id)} title="Run">
+          </IconButton></Can>
+          <Can permission="OmnitronPipelines.executePipeline"><IconButton size="small" onClick={() => handleRun(p.id)} title="Run">
             <PlayIcon />
-          </IconButton>
+          </IconButton></Can>
         </Stack>
       ),
     },
@@ -371,7 +376,7 @@ export default function PipelinesPage() {
 
   return (
     <Stack spacing={3}>
-      <ConfirmDialog
+      <Can permission="OmnitronPipelines.deletePipeline"><ConfirmDialog
         open={confirmDelete !== null}
         onClose={() => setConfirmDelete(null)}
         onConfirm={handleDelete}
@@ -383,7 +388,7 @@ export default function PipelinesPage() {
         }
         confirmLabel="Delete"
         confirmColor="error"
-      />
+      /></Can>
       {/* Header */}
       <Breadcrumbs
         links={[{ name: 'Pipelines' }]}
@@ -392,14 +397,14 @@ export default function PipelinesPage() {
             <IconButton size="small" onClick={fetchData} title="Refresh">
               <RefreshIcon />
             </IconButton>
-            <Button
+            <Can permission="OmnitronPipelines.createPipeline"><Button
               variant="contained"
               size="small"
               startIcon={<PlusIcon />}
               onClick={() => setDialogOpen(true)}
             >
               New Pipeline
-            </Button>
+            </Button></Can>
           </Stack>
         }
       />

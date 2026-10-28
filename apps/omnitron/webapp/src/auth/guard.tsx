@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { SplashScreen } from '@omnitron-dev/prism';
+import { SplashScreen } from '@omnitron-dev/prism/components/loading-screen';
 import { useAuthStore } from './store';
 import { sanitizeReturnTo } from 'src/utils/errors';
+import { ConsoleAccessProvider } from './access';
 
 // ---------------------------------------------------------------------------
 // Auth Guard — requires authenticated user
@@ -34,7 +35,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
     return <Navigate to={`/auth/sign-in?returnTo=${returnTo}`} replace />;
   }
 
-  return <>{children}</>;
+  return <ConsoleAccessProvider key={`${user.id}:${useAuthStore.getState().sessionId}`}>{children}</ConsoleAccessProvider>;
 }
 
 // ---------------------------------------------------------------------------

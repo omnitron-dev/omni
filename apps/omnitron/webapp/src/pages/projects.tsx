@@ -1,3 +1,4 @@
+import { Can } from 'src/auth/access';
 /**
  * ProjectsPage — Project management in the Omnitron system workspace
  *
@@ -31,7 +32,12 @@ import TextField from '@mui/material/TextField';
 import Divider from '@mui/material/Divider';
 import { alpha } from '@mui/material/styles';
 
-import { Alert, Breadcrumbs, EmptyContent, Label, Skeleton, useSnackbar } from '@omnitron-dev/prism';
+import { Alert } from '@omnitron-dev/prism/components/alert';
+import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { EmptyContent } from '@omnitron-dev/prism/components/empty-content';
+import { Label } from '@omnitron-dev/prism/components/label';
+import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
+import { useSnackbar } from '@omnitron-dev/prism/components/snackbar';
 import { useProjectStore } from 'src/stores/project.store';
 import type { IProjectInfo } from '@omnitron-dev/omnitron/dto/services';
 import { timeAgo } from 'src/utils/formatters';
@@ -145,7 +151,7 @@ function ProjectCard({
         )}
       </CardContent>
       <CardActions sx={{ px: 2, pb: 1.5, justifyContent: 'space-between' }} onClick={(e) => e.stopPropagation()}>
-        <Tooltip title="Remove project">
+        <Can permission="OmnitronProject.removeProject"><Tooltip title="Remove project">
           <IconButton
             size="small"
             color="error"
@@ -154,12 +160,12 @@ function ProjectCard({
           >
             <DeleteIcon sx={{ fontSize: 18 }} />
           </IconButton>
-        </Tooltip>
-        <Tooltip title="Settings">
+        </Tooltip></Can>
+        <Can permission="OmnitronProject.updateProject"><Tooltip title="Settings">
           <IconButton size="small" onClick={() => onEdit(project)}>
             <SettingsIcon sx={{ fontSize: 18 }} />
           </IconButton>
-        </Tooltip>
+        </Tooltip></Can>
       </CardActions>
     </Card>
   );
@@ -273,13 +279,13 @@ function EditProjectDialog({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} color="inherit">Cancel</Button>
-        <Button
+        <Can permission="OmnitronProject.updateProject"><Button
           variant="contained"
           onClick={() => onSave(project.name, { path: path.trim() })}
           disabled={!canSubmit || loading}
         >
           Save
-        </Button>
+        </Button></Can>
       </DialogActions>
     </Dialog>
   );
@@ -342,13 +348,13 @@ function AddProjectDialog({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} color="inherit">Cancel</Button>
-        <Button
+        <Can permission="OmnitronProject.addProject"><Button
           variant="contained"
           onClick={() => onAdd(name.trim(), path.trim())}
           disabled={!canSubmit || loading}
         >
           Add Project
-        </Button>
+        </Button></Can>
       </DialogActions>
     </Dialog>
   );
@@ -452,14 +458,14 @@ export default function ProjectsPage() {
             >
               Refresh
             </Button>
-            <Button
+            <Can permission="OmnitronProject.addProject"><Button
               variant="contained"
               size="small"
               startIcon={<PlusIcon sx={{ fontSize: 18 }} />}
               onClick={() => setAddOpen(true)}
             >
               Add Project
-            </Button>
+            </Button></Can>
           </Stack>
         }
       />
@@ -531,14 +537,14 @@ export default function ProjectsPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmRemove(null)} color="inherit">Cancel</Button>
-          <Button
+          <Can permission="OmnitronProject.removeProject"><Button
             onClick={handleRemove}
             color="error"
             variant="contained"
             disabled={submitting || (confirmProject?.runningStacks ?? 0) > 0}
           >
             Remove
-          </Button>
+          </Button></Can>
         </DialogActions>
       </Dialog>
     </Stack>

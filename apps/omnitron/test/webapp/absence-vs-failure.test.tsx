@@ -19,6 +19,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render as rtlRender, screen, waitFor } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { SnackbarProvider } from '@omnitron-dev/prism';
+import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
 
 // The page reads the MUI theme and the snackbar context; neither is optional
@@ -27,7 +28,7 @@ const theme = createTheme();
 const render = (ui: ReactNode) =>
   rtlRender(
     <ThemeProvider theme={theme}>
-      <SnackbarProvider>{ui}</SnackbarProvider>
+      <SnackbarProvider><MemoryRouter>{ui}</MemoryRouter></SnackbarProvider>
     </ThemeProvider>
   );
 

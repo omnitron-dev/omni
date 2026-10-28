@@ -88,6 +88,9 @@ async function renderPage() {
       </MemoryRouter>
     </ThemeProvider>
   );
+  // Logs now opens in live mode. These assertions concern the explicit
+  // paginated hour view and its total, not the live tail's retained rows.
+  fireEvent.click(screen.getByRole('button', { name: '1h', exact: true }));
   await screen.findByText('Showing 2 of 48,991');
 }
 

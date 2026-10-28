@@ -1,3 +1,4 @@
+import { Can, useAccess } from 'src/auth/access';
 import { useEffect, useState } from 'react';
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
@@ -23,7 +24,11 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { alpha } from '@mui/material/styles';
 
 import { AlertIcon, PlusIcon, RefreshIcon, CheckIcon, EditIcon, DeleteIcon } from 'src/assets/icons';
-import { AdminDataTable, Alert, Breadcrumbs, ConfirmDialog, Skeleton, type ColumnDef } from '@omnitron-dev/prism';
+import { AdminDataTable, type ColumnDef } from '@omnitron-dev/prism/components/admin-filters';
+import { Alert } from '@omnitron-dev/prism/components/alert';
+import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { ConfirmDialog } from '@omnitron-dev/prism/components/confirm-dialog';
+import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { alerts } from 'src/netron/client';
 import { timeAgo } from 'src/utils/formatters';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
@@ -253,6 +258,7 @@ function StatCard({ title, value, icon, color, loading }: StatCardProps) {
 // ---------------------------------------------------------------------------
 
 export default function AlertsPage() {
+  const { can } = useAccess();
   // No stack context here on purpose. An `AlertRule` is an expression over
   // metrics with no app field, and an `ActiveAlert` names the rule that fired,
   // so there is nothing for `namespacePrefix` to narrow. The page used to pull
@@ -386,6 +392,7 @@ export default function AlertsPage() {
         <Switch
           size="small"
           checked={rule.enabled}
+          disabled={!can('OmnitronAlerts.updateRule')}
           onChange={(_, checked) => handleToggleRule(rule.id, checked)}
         />
       ),
@@ -396,16 +403,16 @@ export default function AlertsPage() {
       align: 'right',
       render: (rule) => (
         <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
-          <Tooltip title="Edit rule">
+          <Can permission="OmnitronAlerts.updateRule"><Tooltip title="Edit rule">
             <IconButton size="small" onClick={() => setEditing(rule)}>
               <EditIcon sx={{ fontSize: 18 }} />
             </IconButton>
-          </Tooltip>
-          <Tooltip title="Delete rule">
+          </Tooltip></Can>
+          <Can permission="OmnitronAlerts.deleteRule"><Tooltip title="Delete rule">
             <IconButton size="small" color="error" onClick={() => setConfirmDeleteRule(rule.id)}>
               <DeleteIcon sx={{ fontSize: 18 }} />
             </IconButton>
-          </Tooltip>
+          </Tooltip></Can>
         </Stack>
       ),
     },
@@ -428,14 +435,14 @@ export default function AlertsPage() {
             <IconButton size="small" onClick={fetchData} title="Refresh">
               <RefreshIcon />
             </IconButton>
-            <Button
+            <Can permission="OmnitronAlerts.createRule"><Button
               variant="contained"
               size="small"
               startIcon={<PlusIcon />}
               onClick={() => setEditing(null)}
             >
               New Rule
-            </Button>
+            </Button></Can>
           </Stack>
         }
       />
@@ -540,14 +547,14 @@ export default function AlertsPage() {
                       {timeAgo(alert.firedAt)}
                     </Typography>
                     {!alert.acknowledged && (
-                      <Button
+                      <Can permission="OmnitronAlerts.acknowledgeAlert"><Button
                         size="small"
                         variant="outlined"
                         onClick={() => handleAcknowledge(alert.id)}
                         sx={{ minWidth: 0, px: 1.5, fontSize: 11 }}
                       >
                         Ack
-                      </Button>
+                      </Button></Can>
                     )}
                     {alert.acknowledged && (
                       <Chip label="Acked" size="small" variant="outlined" color="default" sx={{ fontSize: 10 }} />
@@ -583,7 +590,7 @@ export default function AlertsPage() {
           dense
         />
       </Card>
-      <ConfirmDialog
+      <Can permission="OmnitronAlerts.deleteRule"><ConfirmDialog
         open={confirmDeleteRule !== null}
         onClose={() => setConfirmDeleteRule(null)}
         onConfirm={handleDeleteRule}
@@ -596,13 +603,13 @@ export default function AlertsPage() {
         }
         confirmLabel="Delete"
         confirmColor="error"
-      />
-      <AlertRuleDialog
+      /></Can>
+      <Can permission={editing ? "OmnitronAlerts.updateRule" : "OmnitronAlerts.createRule"}><AlertRuleDialog
         open={editing !== undefined}
         rule={editing ?? null}
         onClose={() => setEditing(undefined)}
         onSaved={() => void fetchData()}
-      />
+      /></Can>
     </Stack>
   );
 }

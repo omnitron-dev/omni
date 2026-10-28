@@ -67,6 +67,7 @@
   },
   "dependencies": {
     "@kysera/migrations": "^0.10.0",
+    "@omnitron-dev/access": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
     "@omnitron-dev/kb": "workspace:*",
     "@omnitron-dev/titan": "workspace:*",
@@ -89,8 +90,7 @@
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
     "systeminformation": "^5.33.8",
-    "tsx": "^4.23.13",
-    "@omnitron-dev/access": "workspace:*"
+    "tsx": "^4.23.13"
   },
   "devDependencies": {
     "@emotion/react": "^11.14.0",

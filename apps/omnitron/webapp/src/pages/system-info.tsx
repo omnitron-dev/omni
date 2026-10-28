@@ -29,7 +29,8 @@ import { alpha, useTheme } from '@mui/material/styles';
 import { systemInfo } from 'src/netron/client';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { formatMemory } from 'src/utils/formatters';
-import { Alert, Skeleton } from '@omnitron-dev/prism';
+import { Alert } from '@omnitron-dev/prism/components/alert';
+import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 
 // =============================================================================
 // Shared

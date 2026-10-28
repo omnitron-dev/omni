@@ -25,7 +25,8 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import CircularProgress from '@mui/material/CircularProgress';
 import Chip from '@mui/material/Chip';
 import { alpha } from '@mui/material/styles';
-import { Alert, FormAlert, Stepper, useStepper, type StepItem } from '@omnitron-dev/prism';
+import { Alert, FormAlert } from '@omnitron-dev/prism/components/alert';
+import { Stepper, useStepper, type StepItem } from '@omnitron-dev/prism/components/stepper';
 import { daemon, nodes as nodesRpc, project as projectRpc } from 'src/netron/client';
 import { useProjectStore } from 'src/stores/project.store';
 

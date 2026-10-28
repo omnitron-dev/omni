@@ -21,7 +21,7 @@ overrides:
 
 patchedDependencies:
   '@xec-sh/core@0.11.1':
-    hash: acb1de1252fd1e5b38da425a4bca39e173da957ef01aaa30eeb4a2c6bd0b6472
+    hash: 907d904726cc21b98e160fd022d1f0480f8844b24fc5aa7eb7b719a5c8a8eb64
     path: patches/@xec-sh__core@0.11.1.patch
   vitest@5.0.3:
     hash: 7d3b94ccb37b6e9f0722028aef2b130bae32ecaf86e9672f1ffa31b2236e583c
@@ -163,7 +163,7 @@ importers:
         version: link:../../packages/titan-telemetry-relay
       '@xec-sh/core':
         specifier: ^0.11.1
-        version: 0.11.1(patch_hash=acb1de1252fd1e5b38da425a4bca39e173da957ef01aaa30eeb4a2c6bd0b6472)
+        version: 0.11.1(patch_hash=907d904726cc21b98e160fd022d1f0480f8844b24fc5aa7eb7b719a5c8a8eb64)
       '@xec-sh/kit':
         specifier: ^0.9.0
         version: 0.9.0(typescript@7.0.2)
@@ -264,6 +264,15 @@ importers:
       '@omnitron-dev/prism':
         specifier: workspace:*
         version: link:../../../packages/prism
+      '@xterm/addon-fit':
+        specifier: 0.11.0
+        version: 0.11.0
+      '@xterm/addon-search':
+        specifier: 0.16.0
+        version: 0.16.0
+      '@xterm/xterm':
+        specifier: 6.0.0
+        version: 6.0.0
       '@xyflow/react':
         specifier: ^12.12.0
         version: 12.12.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(immer@11.2.9)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -4412,6 +4421,15 @@ packages:
   '@xec-sh/ops@0.11.1':
     resolution: {integrity: sha512-mii5BF8ieX/v5SVkHW7nhjDZQyWmKnG3fwFWQgB15soUB0nhLm5kPrXUX4OqXjkqWw9yhdCg2/fJ1jMHB6EOhQ==}
     engines: {node: '>=20.0.0'}
+
+  '@xterm/addon-fit@0.11.0':
+    resolution: {integrity: sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==}
+
+  '@xterm/addon-search@0.16.0':
+    resolution: {integrity: sha512-9OeuBFu0/uZJPu+9AHKY6g/w0Czyb/Ut0A5t79I4ULoU4IfU5BEpPFVGQxP4zTTMdfZEYkVIRYbHBX1xWwjeSA==}
+
+  '@xterm/xterm@6.0.0':
+    resolution: {integrity: sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==}
 
   '@xtuc/ieee754@1.2.0':
     resolution: {integrity: sha512-DX8nKgqcGwsc0eJSqYt5lwP4DH5FlHnmuWWBRy7X0NcaGR0ZtuyeESgMwTYVEtxmsNGY+qit4QYT/MIYTOTPeA==}
@@ -11296,7 +11314,7 @@ snapshots:
       '@webassemblyjs/ast': 1.14.1
       '@xtuc/long': 4.2.2
 
-  '@xec-sh/core@0.11.1(patch_hash=acb1de1252fd1e5b38da425a4bca39e173da957ef01aaa30eeb4a2c6bd0b6472)':
+  '@xec-sh/core@0.11.1(patch_hash=907d904726cc21b98e160fd022d1f0480f8844b24fc5aa7eb7b719a5c8a8eb64)':
     dependencies:
       ssh2: 1.17.0
 
@@ -11319,7 +11337,7 @@ snapshots:
 
   '@xec-sh/ops@0.11.1(typescript@7.0.2)':
     dependencies:
-      '@xec-sh/core': 0.11.1(patch_hash=acb1de1252fd1e5b38da425a4bca39e173da957ef01aaa30eeb4a2c6bd0b6472)
+      '@xec-sh/core': 0.11.1(patch_hash=907d904726cc21b98e160fd022d1f0480f8844b24fc5aa7eb7b719a5c8a8eb64)
       '@xec-sh/kit': 0.11.1(typescript@7.0.2)
       '@xec-sh/loader': 0.11.1(typescript@7.0.2)
       dotenv: 17.4.2
@@ -11329,6 +11347,12 @@ snapshots:
       zod: 4.5.4
     transitivePeerDependencies:
       - typescript
+
+  '@xterm/addon-fit@0.11.0': {}
+
+  '@xterm/addon-search@0.16.0': {}
+
+  '@xterm/xterm@6.0.0': {}
 
   '@xtuc/ieee754@1.2.0': {}
 

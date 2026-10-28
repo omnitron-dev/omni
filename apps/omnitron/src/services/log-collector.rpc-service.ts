@@ -26,6 +26,7 @@ export class LogsRpcService {
   @Public({ auth: { roles: VIEWER_ROLES } })
   async queryLogs(data: {
     app?: string;
+    nodeId?: string;
     level?: string | string[];
     search?: string;
     labels?: Record<string, string>;

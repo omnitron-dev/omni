@@ -33,7 +33,9 @@ import TableRow from '@mui/material/TableRow';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
-import { Alert, Breadcrumbs, LoadingScreen } from '@omnitron-dev/prism';
+import { Alert } from '@omnitron-dev/prism/components/alert';
+import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { LoadingScreen } from '@omnitron-dev/prism/components/loading-screen';
 
 import type { ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
 import { DeployIcon, RefreshIcon } from 'src/assets/icons';

@@ -1,12 +1,17 @@
-import { Suspense, useMemo } from 'react';
-import { Outlet } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import Stack from '@mui/material/Stack';
-import { ErrorBoundary, DashboardLayout, SplashScreen, useLayoutConfig, usePrismContext, useSettingsStore } from '@omnitron-dev/prism';
-import type { ThemeMode, LayoutNavData } from '@omnitron-dev/prism';
+import { ErrorBoundary } from '@omnitron-dev/prism/components/error-boundary';
+import { DashboardLayout, useLayoutConfig } from '@omnitron-dev/prism/layouts';
+import { SplashScreen } from '@omnitron-dev/prism/components/loading-screen';
+import { usePrismContext } from '@omnitron-dev/prism/core';
+import { useSettingsStore } from '@omnitron-dev/prism/state';
+import type { ThemeMode } from '@omnitron-dev/prism/theme';
+import type { LayoutNavData } from '@omnitron-dev/prism/layouts';
 import { StatusBar } from 'src/components/status-bar';
 import { OmnitronLogo } from 'src/components/omnitron-logo';
 
@@ -32,10 +37,13 @@ import {
 } from 'src/assets/icons';
 
 import { useAuthStore } from 'src/auth/store';
+import { useAccess, PAGE_PERMISSIONS, PageAccess, AccessBoundary } from 'src/auth/access';
 import { ProjectSwitcher } from 'src/components/project-switcher';
 import { useActiveProject } from 'src/stores/project.store';
 import { reportCrash } from 'src/utils/report-crash';
 import { useAlertNotifications } from 'src/hooks/use-alert-notifications';
+
+const TerminalPage = lazy(() => import('src/pages/terminal'));
 
 // =============================================================================
 // Navigation — conditional on active project
@@ -80,6 +88,7 @@ function useNavData(): LayoutNavData {
           items: [
             { id: 'projects', title: 'Projects', path: '/projects', icon: <ProjectIcon /> },
             { id: 'nodes', title: 'Nodes', path: '/nodes', icon: <NodesIcon /> },
+            { id: 'terminal', title: 'SSH workspace', path: '/terminal', icon: <ServerIcon /> },
             { id: 'releases', title: 'Releases', path: '/releases', icon: <ReleaseIcon />, selectionPrefix: '/releases' },
           ],
         },
@@ -89,6 +98,7 @@ function useNavData(): LayoutNavData {
           items: [
             { id: 'settings', title: 'Settings', path: '/settings', icon: <SettingsIcon /> },
             { id: 'audit', title: 'Audit', path: '/audit', icon: <AuditIcon /> },
+            { id: 'access', title: 'Access', path: '/access', icon: <SettingsIcon /> },
             { id: 'system-info', title: 'System Info', path: '/system', icon: <ServerIcon /> },
           ],
         },
@@ -122,6 +132,8 @@ function useNavData(): LayoutNavData {
           { id: 'stacks', title: 'Stacks', path: '/stacks', icon: <StacksIcon />, selectionPrefix: '/stacks' },
           { id: 'releases', title: 'Releases', path: '/releases', icon: <ReleaseIcon />, selectionPrefix: '/releases' },
           { id: 'topology', title: 'Topology', path: '/topology', icon: <NodesIcon /> },
+          { id: 'nodes', title: 'Nodes', path: '/nodes', icon: <NodesIcon /> },
+          { id: 'terminal', title: 'SSH workspace', path: '/terminal', icon: <ServerIcon /> },
           { id: 'containers', title: 'Containers', path: '/containers', icon: <ContainersIcon /> },
           { id: 'deployments', title: 'Deployments', path: '/deployments', icon: <DeployIcon /> },
           { id: 'pipelines', title: 'Pipelines', path: '/pipelines', icon: <PipelineIcon />, selectionPrefix: '/pipelines' },
@@ -134,6 +146,7 @@ function useNavData(): LayoutNavData {
           { id: 'dashboard-builder', title: 'Dashboard Builder', path: '/dashboard-builder', icon: <DashboardBuilderIcon /> },
           { id: 'settings', title: 'Settings', path: '/settings', icon: <SettingsIcon /> },
           { id: 'audit', title: 'Audit', path: '/audit', icon: <AuditIcon /> },
+            { id: 'access', title: 'Access', path: '/access', icon: <SettingsIcon /> },
           { id: 'system-info', title: 'System Info', path: '/system', icon: <ServerIcon /> },
         ],
       },
@@ -245,7 +258,16 @@ function HeaderRight() {
 // =============================================================================
 
 export function ConsoleLayout() {
-  const navData = useNavData();
+  const allNavData = useNavData();
+  const { can } = useAccess();
+  const navData = allNavData.map((section) => ({ ...section, items: section.items.filter((item) => {
+    const permission = PAGE_PERMISSIONS[item.path?.split('/')[1] || 'dashboard'];
+    return !permission || can(permission);
+  }) })).filter((section) => section.items.length > 0);
+  const location = useLocation();
+  const terminalVisible = location.pathname === '/terminal';
+  const [terminalVisited, setTerminalVisited] = useState(terminalVisible);
+  useEffect(() => { if (terminalVisible) setTerminalVisited(true); }, [terminalVisible]);
   // Every page of the console, so an alert that fires is heard wherever the
   // operator is — and only while someone is signed in to hear it.
   useAlertNotifications(useAuthStore((s) => Boolean(s.user)));
@@ -279,8 +301,13 @@ export function ConsoleLayout() {
           progress bar is indistinguishable from a page that broke.
         */}
         <Suspense fallback={<SplashScreen variant="linear" message="Loading…" />}>
-          <Outlet />
+          {!terminalVisible && <PageAccess><Outlet /></PageAccess>}
         </Suspense>
+        {terminalVisited && <Box sx={{ display: terminalVisible ? 'block' : 'none' }}>
+          <Suspense fallback={<SplashScreen variant="linear" message="Loading SSH workspace…" />}>
+            <AccessBoundary permission="OmnitronTerminal.open"><TerminalPage visible={terminalVisible} /></AccessBoundary>
+          </Suspense>
+        </Box>}
       </ErrorBoundary>
       <StatusBar />
     </DashboardLayout>

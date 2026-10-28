@@ -22,6 +22,8 @@ import { NODE_STACK } from '../project/node-app-config.js';
 import { BackwardAssembler, LineAssembler, LEVEL_RANK, levelRank, type KnownLevel, type LogRecord } from '../monitoring/log-line.js';
 import { emitJson, emitError, isJsonMode } from './output.js';
 import { describeAbsence } from './daemon-required.js';
+import { resolveNodeArgument } from './node.js';
+import type { IOmnitronLogsService } from '../shared/dto/services.js';
 
 const LOG_DIR = path.join(OMNITRON_HOME, 'logs');
 const PROJECTS_DIR = path.join(OMNITRON_HOME, 'projects');
@@ -41,6 +43,7 @@ const FOLLOW_WINDOW = 200;
 const FOLLOW_INTERVAL_MS = 1000;
 
 export interface LogsOptions {
+  node?: string;
   lines?: number;
   follow?: boolean;
   file?: boolean;
@@ -83,6 +86,13 @@ export async function logsCommand(appName?: string, options: LogsOptions = {}): 
   if (options.follow && isJsonMode()) {
     emitError('logs --follow is not supported in --json mode (use file-tail or jq instead)');
     return;
+  }
+
+  // An explicit remote node must never fall back to this machine's files or
+  // identically named local app. Use the same node column and RPC as Console.
+  if (options.node !== undefined) {
+    if (options.file) return refuse('--node cannot be combined with --file', appName);
+    return showNodeLogs(appName ?? DAEMON_LOG_NAME, options.node, wanted, match, options.follow ?? false);
   }
 
   // The daemon's own log. The help has always promised this for a bare
@@ -273,7 +283,45 @@ async function inspectApp(client: DaemonClient, appName: string): Promise<AppDia
 }
 
 interface NodesReader {
-  listNodes(): Promise<Array<{ id: string; name: string; host: string }>>;
+  listNodes(): Promise<Array<{ id: string; name: string; host: string; isLocal?: boolean }>>;
+}
+
+async function showNodeLogs(app: string, node: string, wanted: Wanted, match: Match, following: boolean): Promise<void> {
+  if (wanted.lines > 10_000) return refuse('--node supports at most 10000 records per request', app);
+  const client = createDaemonClient();
+  try {
+    const absence = await client.whyUnreachable();
+    if (absence) throw new Error(describeAbsence(absence));
+    const registered = await (await client.service<NodesReader>('OmnitronNodes')).listNodes();
+    const result = resolveNodeArgument(node, registered);
+    if (result.kind !== 'found') throw new Error(result.kind === 'ambiguous'
+      ? `Node '${node}' is ambiguous — use its full ID`
+      : `No registered node '${node}'`);
+    const target = result.node;
+    if (target.isLocal) throw new Error('For this machine, omit --node to read its live capture and log files');
+    const service = await client.service<IOmnitronLogsService>('OmnitronLogs');
+    const levels = wanted.minLevel === null ? undefined : LEVEL_NAMES.filter((level) => LEVEL_RANK[level] >= wanted.minLevel!);
+    const read = async (tail: number): Promise<LogEntryDto[]> => (await service.streamLogs({
+      app, nodeId: target.id, ...(levels ? { level: levels } : {}), tail,
+    })).map((entry) => ({
+      timestamp: new Date(entry.timestamp).getTime(), app: entry.app,
+      level: entry.level, message: entry.message,
+      data: { ...entry.metadata, sourceNode: entry.nodeId },
+    }));
+    const window = wanted.pattern ? Math.max(STORED_WINDOW, wanted.lines) : wanted.lines;
+    const entries = await read(window);
+    const hits = entries.filter(match);
+    const names = new Map([[target.id, target.name]]);
+    report(app, {
+      source: 'stored', nodes: [{ id: target.id, name: target.name }],
+      note: `replicated logs; ${hits.length < wanted.lines && entries.length >= window ? `searched the last ${window} stored records; ` : ''}absence of entries does not prove that an operation was not attempted`,
+    }, hits.slice(-wanted.lines), names);
+    if (following) await follow(() => read(FOLLOW_WINDOW), entries, match, names, client);
+  } catch (error) {
+    refuse((error as Error).message, app);
+  } finally {
+    await client.disconnect();
+  }
 }
 
 interface StackReader {

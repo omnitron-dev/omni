@@ -22,18 +22,19 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1043.0",
-    "@aws-sdk/s3-request-presigner": "^3.1043.0",
-    "@smithy/node-http-handler": "^4.6.1"
+    "@aws-sdk/client-s3": "^3.1159.0",
+    "@aws-sdk/s3-request-presigner": "^3.1159.0",
+    "@smithy/node-http-handler": "^4.13.0"
   },
   "peerDependencies": {
     "@omnitron-dev/titan": "workspace:*"
   },
   "devDependencies": {
     "@omnitron-dev/titan": "workspace:*",
-    "@types/node": "25.6.0",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.3"
+    "@types/node": "26.6.6",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^5.0.5",
+    "@typescript/native": "npm:typescript@^7.0.2"
   },
   "license": "MIT"
 }

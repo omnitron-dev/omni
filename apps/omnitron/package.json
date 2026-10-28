@@ -8,43 +8,43 @@
   },
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./config": {
-      "types": "./src/config/index.ts",
+      "types": "./dist/config/index.d.ts",
       "default": "./dist/config/index.js"
     },
     "./dto/services": {
-      "types": "./src/shared/dto/services.ts",
+      "types": "./dist/shared/dto/services.d.ts",
       "default": "./dist/shared/dto/services.js"
     },
     "./dto/events": {
-      "types": "./src/shared/events.ts",
+      "types": "./dist/shared/events.d.ts",
       "default": "./dist/shared/events.js"
     },
     "./alerts": {
-      "types": "./src/shared/alert-expression.ts",
+      "types": "./dist/shared/alert-expression.d.ts",
       "default": "./dist/shared/alert-expression.js"
     },
     "./release-reading": {
-      "types": "./src/shared/release-reading.ts",
+      "types": "./dist/shared/release-reading.d.ts",
       "default": "./dist/shared/release-reading.js"
     },
     "./node-check": {
-      "types": "./src/shared/node-check.ts",
+      "types": "./dist/shared/node-check.d.ts",
       "default": "./dist/shared/node-check.js"
     },
     "./audit-outcome": {
-      "types": "./src/shared/audit-outcome.ts",
+      "types": "./dist/shared/audit-outcome.d.ts",
       "default": "./dist/shared/audit-outcome.js"
     },
     "./sync-reading": {
-      "types": "./src/shared/sync-reading.ts",
+      "types": "./dist/shared/sync-reading.d.ts",
       "default": "./dist/shared/sync-reading.js"
     },
     "./operations": {
-      "types": "./src/operations.ts",
+      "types": "./dist/operations.d.ts",
       "default": "./dist/operations.js"
     }
   },
@@ -79,34 +79,35 @@
     "@omnitron-dev/titan-scheduler": "workspace:*",
     "@omnitron-dev/titan-telemetry-relay": "workspace:*",
     "@xec-sh/core": "^0.11.1",
-    "@xec-sh/kit": "^0.9.0",
+    "@xec-sh/kit": "^0.11.1",
     "@xec-sh/ops": "^0.11.1",
     "better-sqlite3": "^13.0.3",
     "commander": "^15.0.0",
-    "cron-parser": "^5.10.0",
+    "cron-parser": "^5.10.2",
     "esbuild": "^0.28.2",
-    "jose": "^6.2.11",
-    "kysely": "^0.29.5",
-    "pg": "^8.23.0",
+    "jose": "^6.2.13",
+    "kysely": "^0.29.7",
+    "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
-    "systeminformation": "^5.33.8",
-    "tsx": "^4.23.13"
+    "systeminformation": "^5.33.18",
+    "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
-    "@mui/material": "^9.4.0",
-    "@testing-library/jest-dom": "^6.9.1",
+    "@mui/material": "^9.5.0",
+    "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
-    "@testing-library/user-event": "^14.6.7",
-    "@types/node": "^25.9.5",
+    "@testing-library/user-event": "^14.6.8",
+    "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",
-    "happy-dom": "^20.14.0",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "react-router-dom": "^7.18.3",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.3"
+    "happy-dom": "^21.0.4",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router-dom": "7.18.5",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^5.0.5",
+    "@typescript/native": "npm:typescript@^7.0.2"
   },
   "files": [
     "dist",

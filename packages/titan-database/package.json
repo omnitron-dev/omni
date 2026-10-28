@@ -62,8 +62,8 @@
     "@kysera/soft-delete": "^0.10.0",
     "@kysera/timestamps": "^0.10.0",
     "@omnitron-dev/eventemitter": "workspace:*",
-    "kysely": "^0.29.5",
-    "zod": "^4.5.4"
+    "kysely": "^0.29.7",
+    "zod": "^4.6.7"
   },
   "peerDependencies": {
     "@omnitron-dev/titan": "workspace:*",
@@ -84,9 +84,10 @@
   },
   "devDependencies": {
     "@omnitron-dev/titan": "workspace:*",
-    "@types/node": "^25.9.5",
+    "@types/node": "^26.6.6",
     "reflect-metadata": "^0.2.2",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.3"
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^5.0.5",
+    "@typescript/native": "npm:typescript@^7.0.2"
   }
 }

@@ -1,10 +1,105 @@
+overrides:
+  web-worker: 1.5.0
+  rollup-plugin-dts: 6.5.1
+  "@typescript-eslint/eslint-plugin": 8.72.1
+  "@typescript-eslint/parser": 8.72.1
+  "@typescript-eslint/utils": 8.72.1
+  "@typescript-eslint/typescript-estree": 8.72.1
+  "@typescript-eslint/type-utils": 8.72.1
+  "@typescript-eslint/scope-manager": 8.72.1
+  "@typescript-eslint/visitor-keys": 8.72.1
+  react: 19.3.1
+  react-dom: 19.3.1
+  react-router-dom: 7.18.5
+  "@xec-sh/core": file:vendor/xec-sh-core-0.11.1-fd9597f040bb.tgz
+  "@xec-sh/kit": file:vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz
+  "@xec-sh/loader": file:vendor/xec-sh-loader-0.11.1-52fcf8dc7c0c.tgz
+  "@xec-sh/ops": file:vendor/xec-sh-ops-0.11.1-7f64f34776cb.tgz
+patchedDependencies:
+  vitest@5.0.5: patches/vitest@5.0.5.patch
 packages:
   - apps/*
   - apps/omnitron/webapp
   - packages/*
   - tools/*
-
-onlyBuiltDependencies:
-  - better-sqlite3
-  - cpu-features
-  - ssh2
+allowBuilds:
+  "@swc/core": true
+  better-sqlite3: true
+  cpu-features: true
+  ssh2: true
+  unrs-resolver: true
+  esbuild: true
+  msgpackr-extract: true
+  protobufjs: true
+  "@firebase/util": false
+  bun: false
+verifyDepsBeforeRun: error
+minimumReleaseAgeExclude:
+  - "@hookform/resolvers@6.0.2"
+  - "@types/node@26.6.6"
+  - react-apexcharts@2.1.2
+  - react-router-dom@7.18.5
+  - "@aws-sdk/checksums@3.1001.7"
+  - "@aws-sdk/client-s3@3.1159.0"
+  - "@aws-sdk/core@3.978.7"
+  - "@aws-sdk/credential-provider-env@3.972.78"
+  - "@aws-sdk/credential-provider-http@3.972.80"
+  - "@aws-sdk/credential-provider-ini@3.973.23"
+  - "@aws-sdk/credential-provider-login@3.972.85"
+  - "@aws-sdk/credential-provider-node@3.972.90"
+  - "@aws-sdk/credential-provider-process@3.972.78"
+  - "@aws-sdk/credential-provider-sso@3.973.22"
+  - "@aws-sdk/credential-provider-web-identity@3.972.84"
+  - "@aws-sdk/middleware-sdk-s3@3.972.83"
+  - "@aws-sdk/nested-clients@3.997.52"
+  - "@aws-sdk/s3-request-presigner@3.1159.0"
+  - "@aws-sdk/signature-v4-multi-region@3.996.50"
+  - "@aws-sdk/token-providers@3.1159.0"
+  - "@aws-sdk/xml-builder@3.972.42"
+  - "@isaacs/nonrecursive-glob-match@1.0.2 || 1.0.3"
+  - glob@14.0.3
+  - minimatch@11.0.2 || 11.0.3
+  - msgpackr@2.1.3
+  - path-scurry@3.0.0
+  - systeminformation@5.33.18
+  - react-router@7.18.5
+  - "@tiptap/core@3.32.1"
+  - "@tiptap/extension-code-block-lowlight@3.32.1"
+  - "@tiptap/extension-image@3.32.1"
+  - "@tiptap/extension-link@3.32.1"
+  - "@tiptap/extension-placeholder@3.32.1"
+  - "@tiptap/extension-table@3.32.1"
+  - "@tiptap/extension-task-item@3.32.1"
+  - "@tiptap/extension-task-list@3.32.1"
+  - "@tiptap/extension-text-align@3.32.1"
+  - "@tiptap/extension-underline@3.32.1"
+  - "@tiptap/pm@3.32.1"
+  - "@tiptap/react@3.32.1"
+  - "@tiptap/starter-kit@3.32.1"
+  - "@tiptap/extension-blockquote@3.32.1"
+  - "@tiptap/extension-bold@3.32.1"
+  - "@tiptap/extension-bubble-menu@3.32.1"
+  - "@tiptap/extension-bullet-list@3.32.1"
+  - "@tiptap/extension-code-block@3.32.1"
+  - "@tiptap/extension-code@3.32.1"
+  - "@tiptap/extension-document@3.32.1"
+  - "@tiptap/extension-dropcursor@3.32.1"
+  - "@tiptap/extension-floating-menu@3.32.1"
+  - "@tiptap/extension-gapcursor@3.32.1"
+  - "@tiptap/extension-hard-break@3.32.1"
+  - "@tiptap/extension-heading@3.32.1"
+  - "@tiptap/extension-horizontal-rule@3.32.1"
+  - "@tiptap/extension-italic@3.32.1"
+  - "@tiptap/extension-list-item@3.32.1"
+  - "@tiptap/extension-list-keymap@3.32.1"
+  - "@tiptap/extension-list@3.32.1"
+  - "@tiptap/extension-ordered-list@3.32.1"
+  - "@tiptap/extension-paragraph@3.32.1"
+  - "@tiptap/extension-strike@3.32.1"
+  - "@tiptap/extension-text@3.32.1"
+  - "@tiptap/extensions@3.32.1"
+# SQON ships JavaScript and declarations without a Compiler API dependency.
+# Its types compile with our TypeScript 7 build; the tooling alias is API 6.
+peerDependencyRules:
+  allowedVersions:
+    "@surrealdb/sqon@0.2.0>typescript": "6.0.2"

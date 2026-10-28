@@ -13,7 +13,7 @@
  * And a `ps` that failed answered `[]`: «this process has no descendants», a
  * statement about the process tree that nothing had established.
  *
- * Patched in omni (patches/@xec-sh__core@0.11.1.patch; xec is its own
+ * Fixed in Xec and included in the verified vendor artifacts (Xec is its own
  * project): `ps` gets a deadline, and a `ps` that did not answer makes the
  * descendants UNKNOWN — `null` — which the kill says out loud while it still
  * signals the process group and the process itself.

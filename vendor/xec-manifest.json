@@ -1,0 +1,66 @@
+[
+  {
+    "name": "@xec-sh/core",
+    "version": "0.11.1",
+    "filename": "xec-sh-core-0.11.1-fd9597f040bb.tgz",
+    "sha256": "fd9597f040bbd8d8b2cc1be355ec57b990ec9513b633a0848e44b2c71fd54b34",
+    "integrity": "sha512-6vnr0fjdSMDEuEJSy2088/HO1fRaugJB58rPrPF810bbMS5OWQQNTQsQVU3RvPPgwsED1gxYxLgtN9yEMbaFug==",
+    "sourceRevision": "cada8f1f847fead843ed20e667104364fdb5ab58",
+    "sourceDirty": false,
+    "dependencies": {
+      "ssh2": "^1.17.0"
+    },
+    "optionalDependencies": {},
+    "peerDependencies": {}
+  },
+  {
+    "name": "@xec-sh/kit",
+    "version": "0.11.1",
+    "filename": "xec-sh-kit-0.11.1-695c3fd925ba.tgz",
+    "sha256": "695c3fd925ba94777d8972e2a81a64b5258144fa7876f975b6b9db55733fecfc",
+    "integrity": "sha512-InYeKUhxGedEv8b/ItQ6YcCQfN//cmwkwqG/MfEY889b/LnbFxLf1clf9h4bhbyqxUpCxocjUEnCw8xEfL7k7g==",
+    "sourceRevision": "cada8f1f847fead843ed20e667104364fdb5ab58",
+    "sourceDirty": false,
+    "dependencies": {
+      "sisteransi": "^2.0.0"
+    },
+    "optionalDependencies": {},
+    "peerDependencies": {}
+  },
+  {
+    "name": "@xec-sh/loader",
+    "version": "0.11.1",
+    "filename": "xec-sh-loader-0.11.1-52fcf8dc7c0c.tgz",
+    "sha256": "52fcf8dc7c0c6324cfc6c398992d38afa354b65ad3c4c4be16ee131b86b93cb0",
+    "integrity": "sha512-xd9GfvXluMNbPHNw+mbq+mvVJdp7csWQvXqqH9W+qHWTXZvDMuqEASWJu1S7UgyyWIy8aDx4ry055+Qc2/aJcg==",
+    "sourceRevision": "cada8f1f847fead843ed20e667104364fdb5ab58",
+    "sourceDirty": false,
+    "dependencies": {
+      "@xec-sh/kit": "0.11.1",
+      "esbuild": "^0.28.2"
+    },
+    "optionalDependencies": {},
+    "peerDependencies": {}
+  },
+  {
+    "name": "@xec-sh/ops",
+    "version": "0.11.1",
+    "filename": "xec-sh-ops-0.11.1-7f64f34776cb.tgz",
+    "sha256": "7f64f34776cb68811d660ebaec7028fada1283e08812a601f285c8571e67af41",
+    "integrity": "sha512-c83vAO48iIhp81S3zFM41FjalXsb5PcaPdB/EU1cmIoNx9nihy2nD7zy9rQhPVXlwR1grxpCREJ31HvE6qKh+Q==",
+    "sourceRevision": "cada8f1f847fead843ed20e667104364fdb5ab58",
+    "sourceDirty": false,
+    "dependencies": {
+      "@xec-sh/core": "0.11.1",
+      "@xec-sh/kit": "0.11.1",
+      "@xec-sh/loader": "0.11.1",
+      "dotenv": "^18.0.9",
+      "fs-extra": "^11.4.1",
+      "glob": "^14.0.3",
+      "js-yaml": "^5.5.0",
+      "zod": "^4.6.7"
+    },
+    "optionalDependencies": {},
+    "peerDependencies": {}
+  }
+]

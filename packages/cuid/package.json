@@ -24,14 +24,15 @@
     "@paralleldrive/cuid2": "^3.3.0",
     "@types/benchmark": "^2.1.5",
     "@types/bun": "latest",
-    "@types/node": "25.6.0",
+    "@types/node": "26.6.6",
     "benchmark": "^2.1.4",
-    "nanoid": "^5.1.16",
+    "nanoid": "^6.0.2",
     "short-uuid": "^6.0.3",
-    "tsx": "^4.23.13",
-    "typescript": "^7.0.2",
-    "uuid": "^14.0.2",
-    "vitest": "^5.0.3"
+    "tsx": "^4.23.15",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "uuid": "^14.0.3",
+    "vitest": "^5.0.5",
+    "@typescript/native": "npm:typescript@^7.0.2"
   },
   "keywords": [
     "utils",
@@ -61,6 +62,6 @@
   },
   "homepage": "https://github.com/omnitron-dev/omni/tree/main/packages/common#readme",
   "dependencies": {
-    "@noble/hashes": "2.2.0"
+    "@noble/hashes": "2.4.0"
   }
 }

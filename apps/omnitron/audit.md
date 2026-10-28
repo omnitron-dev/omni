@@ -53,7 +53,7 @@ These totals include lazy routes; they are not first-load transfer measurements.
 - Terminal audit contains session metadata, not commands or transcripts. Access to an SSH shell has the rights of the configured remote OS account. Use suitably restricted node credentials.
 - Browser reload/daemon restart does not reattach shells. Durable sessions, collaboration, command recording, SFTP UI, agent forwarding and jump-host configuration require separate authorization/lifecycle work. A remote multiplexer is the current option for jobs that must outlive the connection.
 - Remote deployments, multi-process revocation distribution, network partitions across a live fleet and the entire repository's integration matrix were not exercised. The documented selected suites are the evidence for this change.
-- Xec integration is carried by the existing pnpm patch until the updated Xec package is published. Its earlier process-tree timeout fix is preserved. The patch adds only the required SSH export and implementation changes.
+- Xec integration uses verified archives built from its source repository. `vendor/xec-manifest.json` records the source commit, archive digest and package closure; workspace overrides select the same artifacts for every consumer. Interactive SSH and the process-tree deadline are implemented and tested in Xec itself.
 
 ## Activation and documentation
 

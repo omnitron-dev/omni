@@ -1,42 +1,9 @@
 /**
- * ESLint runs against TypeScript 6, deliberately, while the monorepo builds on
- * TypeScript 7.
- *
- * `typescript-eslint` reads `ts.versionMajorMinor` at import time and throws on
- * anything >= 7 (`typescript-eslint does not support TS 7.0`, upstream
- * typescript-eslint#10940). Between the TS 7 upgrade and this note, lint did
- * not run anywhere in the repository.
- *
- * The fix is the one TypeScript 7's own upgrade note recommends: give
- * typescript-eslint the TS 6 API side by side. `tools/lint` is a workspace
- * package whose only job is to declare `typescript@6.0.3`, and the require
- * below reaches into it, so the copy of typescript-eslint that loads here is
- * the one pnpm bound to 6.0.3. Every other package still resolves 7.0.2.
- *
- * Why not a pnpm override — measured three ways, so nobody repeats it:
- * `typescript` is a PEER dependency of typescript-eslint, and pnpm resolves
- * peers from the importer. A scoped override (`typescript-eslint>typescript`)
- * does not take, with or without a flat one; an alias
- * (`npm:typescript@6.0.3`) does not either, because an override matches on the
- * dependency NAME. Only an importer that declares TS 6 itself works, which is
- * what `tools/lint` is.
- *
- * A previous version of this comment recorded a second objection as settled
- * fact: that a TS 6 parser reading TS 7 source would report unknown syntax as
- * errors, "noise shaped like findings". That is false here and was never
- * measured. TypeScript 7.0 is a reimplementation of the same language, not an
- * extension of its grammar: the 6.0.3 parser reads 781 files across titan,
- * testing, netron-browser and prism with ZERO syntax errors. The objection was
- * plausible, unverifiable by reading, and closed the question for a day —
- * which is the more expensive kind of wrong answer, because a bad finding gets
- * re-checked and a bad reason for not trying does not.
- *
- * Delete `tools/lint` and restore the plain require when upstream ships TS 7
- * support.
- *
- * Note that only 5 of the 28 packages declare a `lint` script. Turning it on
- * for the rest is a decision for a human holding the finding count, which is
- * now measurable.
+ * Build with TypeScript's native compiler; lint against the stable compiler API.
+ * Both packages follow their current stable releases through npm aliases.
+ * tools/lint owns the ESLint adapter and its compiler API peer so the runtime
+ * dependency graph never needs either toolchain.
+ * https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-60
  */
 
 const globals = require('globals');
@@ -52,11 +19,10 @@ const eslintJs = require('@eslint/js');
 const { createRequire } = require('node:module');
 const lintRequire = createRequire(require.resolve('./tools/lint/package.json'));
 const eslintTs = lintRequire('typescript-eslint');
-const importPlugin = require('eslint-plugin-import');
 const perfectionistPlugin = require('eslint-plugin-perfectionist');
 // Also from tools/lint: this plugin requires @typescript-eslint/eslint-plugin
 // at load time (an optional peer), and resolving it from the root pulls in a
-// TypeScript-7-bound copy, which prints the unsupported-version error to
+// incompatible compiler copy, which prints the unsupported-version error to
 // stderr on every run. Lint still worked — the message was pure noise, which
 // is the worst kind, since it says the tool is not running while it is.
 const unusedImportsPlugin = lintRequire('eslint-plugin-unused-imports');
@@ -93,15 +59,6 @@ const commonRules = () => ({
     caughtErrors: 'all',
     caughtErrorsIgnorePattern: '^_'
   }],
-});
-
-/**
- * @rules import
- * from 'eslint-plugin-import'.
- * Disabled due to ESLint 9 compatibility issues
- */
-const importRules = () => ({
-  // Import plugin rules are disabled due to ESLint 9 compatibility
 });
 
 /**
@@ -170,7 +127,6 @@ const customConfig = {
   },
   rules: {
     ...commonRules(),
-    ...importRules(),
     ...unusedImportsRules(),
     // ...sortImportsRules(),
   },

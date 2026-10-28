@@ -15,18 +15,36 @@ import {
   DialogContent,
   DialogTitle,
   MenuItem,
+  Menu,
+  IconButton,
+  Tooltip,
   Stack,
-  Tab,
-  Tabs,
   TextField,
   Typography,
 } from '@mui/material';
-import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
+import { Tabs } from '@omnitron-dev/prism/components/tabs';
+import {
+  AddIcon,
+  MoreIcon,
+  SearchIcon,
+  CloseIcon,
+  ArrowUpIcon,
+  ArrowDownIcon,
+  PanelExpandIcon,
+} from '@omnitron-dev/prism/icons';
+import { alpha, useTheme } from '@mui/material/styles';
 import { useCopyToClipboard } from '@omnitron-dev/prism/core';
 import type { TerminalSession, TerminalHostKey, TerminalPolicy } from '@omnitron-dev/omnitron/dto/services';
 import { nodes, terminal } from 'src/netron/client';
 import { useAuthStore } from 'src/auth/store';
-import { encodeTerminalInput, requiresPasteReview, secureTerminalOrigin, visiblePaste, terminalCommand } from 'src/utils/terminal-input';
+import {
+  encodeTerminalInput,
+  requiresPasteReview,
+  secureTerminalOrigin,
+  visiblePaste,
+  terminalCommand,
+} from 'src/utils/terminal-input';
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 type RemoteNode = { id: string; name: string; host: string; sshUser: string };
@@ -48,6 +66,10 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
   const [host, setHost] = useState<TerminalHostKey | null>(null);
   const [fingerprint, setFingerprint] = useState('');
   const [pendingClose, setPendingClose] = useState<string | null>(null);
+  const [menu, setMenu] = useState<HTMLElement | null>(null);
+  const newTabButton = useRef<HTMLButtonElement>(null);
+  const tabNumbers = useRef(new Map<string, number>());
+  const nextTabNumber = useRef(1);
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
   const mounted = useRef(false);
@@ -116,6 +138,7 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
         await terminal.close({ id: session.id });
         return;
       }
+      tabNumbers.current.set(session.id, nextTabNumber.current++);
       setSessions((all) => [...all, session]);
       setActive(session.id);
     });
@@ -136,7 +159,10 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
       if (!pendingClose) return;
       await terminal.close({ id: pendingClose });
       setSessions((all) => all.filter((s) => s.id !== pendingClose));
-      if (active === pendingClose) setActive(sessions.find((s) => s.id !== pendingClose)?.id ?? '');
+      const index = sessions.findIndex((s) => s.id === pendingClose);
+      if (active === pendingClose) setActive((sessions[index + 1] ?? sessions[index - 1])?.id ?? '');
+      tabNumbers.current.delete(pendingClose);
+      if (sessions.length === 1) requestAnimationFrame(() => newTabButton.current?.focus());
       setPendingClose(null);
     });
 
@@ -148,27 +174,62 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
       </Alert>
     );
   const second = split ? sessions.find((s) => s.id !== active)?.id : undefined;
-  const current = sessions.find((s) => s.id === active);
+  const closingSession = sessions.find((s) => s.id === pendingClose);
   return (
-    <Box>
-      <Breadcrumbs heading="SSH workspace" links={[{ name: 'Infrastructure' }, { name: 'Terminal' }]} />
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        One session per tab. SSH credentials stay in the daemon. Tabs stay connected while you navigate this Console.
-      </Typography>
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        flex: 1,
+        minHeight: 0,
+        minWidth: 0,
+        gap: 1,
+        containerType: 'size',
+        containerName: 'ssh-workspace',
+      }}
+    >
+      <Breadcrumbs
+        active={visible}
+        heading="SSH workspace"
+        links={[{ name: 'Infrastructure', href: '/nodes' }, { name: 'Terminal' }]}
+        action={
+          policy && (
+            <Tooltip
+              title={`Idle timeout ${Math.round(policy.idleTimeoutMs / 60_000)} min. Disconnected clients close after ${Math.round(policy.disconnectTimeoutMs / 1000)} s. Credentials stay in the daemon.`}
+            >
+              <Typography
+                variant="caption"
+                tabIndex={0}
+                sx={{ color: 'text.secondary', fontFamily: 'monospace', whiteSpace: 'nowrap' }}
+              >
+                {sessions.filter((s) => s.state !== 'closed').length}/{policy.maxSessionsPerOwner}
+                <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                  {' '}
+                  sessions
+                </Box>
+              </Typography>
+            </Tooltip>
+          )
+        }
+      />
       {error && (
-        <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>
+        <Alert severity="error" onClose={() => setError('')} sx={{ flexShrink: 0, overflowWrap: 'anywhere' }}>
           {error}
         </Alert>
       )}
-      <Card sx={{ p: 2, mb: 2 }}>
-        <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
+      <Card variant="outlined" sx={{ p: 0.75, flexShrink: 0, borderRadius: 1, boxShadow: 'none', overflow: 'visible' }}>
+        <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0 }}>
           <TextField
             select
             label="SSH node"
             value={nodeId}
             onChange={(e) => setNodeId(e.target.value)}
             size="small"
-            sx={{ minWidth: 240 }}
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              '& .MuiSelect-select': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+            }}
           >
             {available.map((n) => (
               <MenuItem key={n.id} value={n.id}>
@@ -178,6 +239,16 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
           </TextField>
           <Button
             variant="contained"
+            aria-label="New SSH tab"
+            ref={newTabButton}
+            startIcon={<AddIcon />}
+            onClick={open}
+            sx={{
+              minWidth: { xs: 36, sm: 112 },
+              height: 36,
+              whiteSpace: 'nowrap',
+              '& .MuiButton-startIcon': { m: { xs: 0, sm: undefined } },
+            }}
             disabled={
               busy ||
               !policy ||
@@ -185,60 +256,111 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
               sessions.length >= MAX_WORKSPACE_TABS ||
               sessions.filter((s) => s.state !== 'closed').length >= policy.maxSessionsPerOwner
             }
-            onClick={open}
           >
-            New SSH tab
+            <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+              New SSH tab
+            </Box>
           </Button>
-          <Button disabled={busy || !policy || !nodeId} onClick={inspect}>
-            Verify host key
-          </Button>
-          <Button disabled={sessions.length < 2} aria-pressed={split} onClick={() => setSplit((v) => !v)}>
-            {split ? 'Single pane' : 'Split view'}
-          </Button>
-          <Button component={Link} to="/audit">
-            Audit
-          </Button>
-          <Button disabled={!nodeId} onClick={() => void copy(terminalCommand(nodeId))}>
-            Copy CLI command
-          </Button>
+          <Tooltip title={split ? 'Single pane' : 'Split view'}>
+            <span>
+              <IconButton
+                aria-label={split ? 'Single pane' : 'Split view'}
+                aria-pressed={split}
+                disabled={sessions.length < 2}
+                onClick={() => setSplit((v) => !v)}
+                color={split ? 'primary' : 'default'}
+              >
+                <PanelExpandIcon />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Workspace actions">
+            <IconButton
+              aria-label="Workspace actions"
+              aria-haspopup="menu"
+              aria-expanded={Boolean(menu)}
+              onClick={(e) => setMenu(e.currentTarget)}
+            >
+              <MoreIcon />
+            </IconButton>
+          </Tooltip>
         </Stack>
-        {policy && (
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            {sessions.filter((s) => s.state !== 'closed').length}/{policy.maxSessionsPerOwner} open · idle timeout{' '}
-            {Math.round(policy.idleTimeoutMs / 60_000)} min · disconnected clients close after{' '}
-            {Math.round(policy.disconnectTimeoutMs / 1000)} s
-          </Typography>
-        )}
       </Card>
+      <Menu anchorEl={menu} open={Boolean(menu)} onClose={() => setMenu(null)}>
+        <MenuItem
+          disabled={busy || !policy || !nodeId}
+          onClick={() => {
+            setMenu(null);
+            void inspect();
+          }}
+        >
+          Verify host key
+        </MenuItem>
+        <MenuItem
+          disabled={!nodeId}
+          onClick={() => {
+            setMenu(null);
+            void copy(terminalCommand(nodeId));
+          }}
+        >
+          Copy CLI command
+        </MenuItem>
+        <MenuItem component={Link} to="/audit" onClick={() => setMenu(null)}>
+          Audit trail
+        </MenuItem>
+      </Menu>
       {sessions.length === 0 ? (
-        <Alert severity="info">
-          Select a registered node, verify its SSH host key, then open a tab. The shell has the permissions of that
-          node’s SSH user.
-        </Alert>
+        <Box sx={{ flex: 1, display: 'grid', placeContent: 'center', minHeight: 0 }}>
+          <Typography color="text.secondary" variant="body2" sx={{ maxWidth: 440, textAlign: 'center' }}>
+            Select a node and open a tab. Sessions stay connected while you navigate. The shell uses that node’s SSH
+            permissions.
+          </Typography>
+        </Box>
       ) : (
         <>
-          <Stack direction="row" sx={{ alignItems: 'center', mb: 1 }}>
-            <Tabs
-              value={active || false}
-              onChange={(_, id: string) => setActive(id)}
-              variant="scrollable"
-              scrollButtons="auto"
-              aria-label="SSH sessions"
-              sx={{ flex: 1 }}
-            >
-              {sessions.map((s, i) => (
-                <Tab
-                  key={s.id}
-                  value={s.id}
-                  label={`${s.nodeName} ${i + 1}${s.state === 'closed' ? ' · closed' : ''}`}
-                />
-              ))}
-            </Tabs>
-            <Button color="warning" disabled={!current || busy} onClick={() => setPendingClose(active)}>
-              Close tab
-            </Button>
-          </Stack>
-          <Box sx={{ display: 'grid', gridTemplateColumns: second ? { xs: '1fr', lg: '1fr 1fr' } : '1fr', gap: 1 }}>
+          <Tabs
+            value={active}
+            onChange={setActive}
+            onClose={setPendingClose}
+            tabs={sessions.map((session) => ({
+              value: session.id,
+              label: `${session.nodeName} ${tabNumbers.current.get(session.id)}${session.state === 'closed' ? ' · closed' : ''}`,
+              closable: true,
+              closeDisabled: busy,
+              closeLabel: `Close ${session.nodeName} ${tabNumbers.current.get(session.id)}`,
+            }))}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+            aria-label="SSH sessions"
+            sx={{
+              minHeight: 36,
+              '& .MuiTab-root': {
+                minHeight: 36,
+                py: 0.5,
+                maxWidth: 240,
+                minWidth: 80,
+                textTransform: 'none',
+                fontFamily: 'monospace',
+                fontSize: 12,
+              },
+            }}
+          />
+          <Box
+            data-testid="terminal-grid"
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              minHeight: 0,
+              display: 'grid',
+              gap: 1,
+              gridTemplateColumns: 'minmax(0, 1fr)',
+              gridTemplateRows: second ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)',
+              '@container ssh-workspace (min-width: 960px)': second
+                ? { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gridTemplateRows: 'minmax(0, 1fr)' }
+                : {},
+            }}
+          >
             {sessions.map((session) => (
               <TerminalPane
                 key={session.id}
@@ -286,7 +408,9 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
         </DialogActions>
       </Dialog>
       <Dialog open={pendingClose !== null} onClose={() => !busy && setPendingClose(null)}>
-        <DialogTitle>Close SSH session?</DialogTitle>
+        <DialogTitle>
+          Close {closingSession?.nodeName} {pendingClose ? tabNumbers.current.get(pendingClose) : ''}?
+        </DialogTitle>
         <DialogContent>
           The remote shell will disconnect. Foreground commands may stop; use a remote session manager for work that
           must survive disconnects.
@@ -319,6 +443,9 @@ function TerminalPane({
   const finder = useRef<SearchAddon | null>(null);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [paneMenu, setPaneMenu] = useState<HTMLElement | null>(null);
+  const theme = useTheme();
   const [readOnly, setReadOnly] = useState(false);
   const [fontSize, setFontSize] = useState(14);
   const [paste, setPaste] = useState<string | null>(null);
@@ -345,6 +472,14 @@ function TerminalPane({
     // Remote output cannot write the browser clipboard or create actionable hyperlinks.
     term.parser.registerOscHandler(52, () => true);
     term.parser.registerOscHandler(8, () => true);
+    term.attachCustomKeyEventHandler((event) => {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
+        if (event.type === 'keydown') setSearchOpen(true);
+        event.preventDefault();
+        return false;
+      }
+      return true;
+    });
     term.open(host.current);
     emulator.current = term;
     fitter.current = fit;
@@ -423,10 +558,16 @@ function TerminalPane({
     };
     host.current.addEventListener('paste', pasted, true);
     const element = host.current;
-    const observer = new ResizeObserver(() => {
-      if (element.clientWidth && element.clientHeight) fit.fit();
-    });
+    let fitFrame = 0;
+    const scheduleFit = () => {
+      cancelAnimationFrame(fitFrame);
+      fitFrame = requestAnimationFrame(() => {
+        if (!disposed && element.clientWidth && element.clientHeight) fit.fit();
+      });
+    };
+    const observer = new ResizeObserver(scheduleFit);
     observer.observe(element);
+    void document.fonts?.ready.then(scheduleFit);
     void (async () => {
       // StrictMode may tear this effect down before the first request is sent.
       await Promise.resolve();
@@ -455,6 +596,7 @@ function TerminalPane({
       clearTimeout(sendTimer);
       clearTimeout(resizeTimer);
       observer.disconnect();
+      cancelAnimationFrame(fitFrame);
       element.removeEventListener('paste', pasted, true);
       input.dispose();
       binaryInput.dispose();
@@ -468,8 +610,11 @@ function TerminalPane({
 
   useEffect(() => {
     if (visible) {
-      fitter.current?.fit();
-      emulator.current?.focus();
+      const frame = requestAnimationFrame(() => {
+        fitter.current?.fit();
+        emulator.current?.focus();
+      });
+      return () => cancelAnimationFrame(frame);
     }
   }, [visible]);
   useEffect(() => {
@@ -483,70 +628,191 @@ function TerminalPane({
     }
   }, [fontSize, visible]);
 
+  useEffect(() => {
+    if (emulator.current)
+      emulator.current.options.theme = {
+        background: theme.palette.background.default,
+        foreground: theme.palette.text.primary,
+        cursor: theme.palette.primary.main,
+        selectionBackground: alpha(theme.palette.primary.main, 0.28),
+      };
+  }, [theme]);
+
   return (
-    <Card sx={{ display: visible ? 'block' : 'none', minWidth: 0, p: 1 }}>
-      <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center', mb: 1 }}>
-        <Typography variant="caption" sx={{ fontFamily: 'monospace', flex: 1 }}>
-          {session.username}@{session.host}
-        </Typography>
+    <Card
+      variant="outlined"
+      data-testid="terminal-pane"
+      sx={{
+        display: visible ? 'flex' : 'none',
+        flexDirection: 'column',
+        minWidth: 0,
+        minHeight: 0,
+        borderRadius: 1,
+        overflow: 'hidden',
+        boxShadow: 'none',
+        '&:focus-within': { borderColor: 'primary.main' },
+      }}
+      onKeyDown={(e) => {
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+          e.preventDefault();
+          setSearchOpen(true);
+        }
+      }}
+    >
+      <Stack
+        direction="row"
+        spacing={0.5}
+        sx={{
+          alignItems: 'center',
+          px: 1,
+          py: 0.5,
+          flexShrink: 0,
+          minWidth: 0,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
+        <Tooltip title={`${session.nodeName} · ${session.username}@${session.host}`}>
+          <Typography variant="caption" noWrap sx={{ fontFamily: 'monospace', flex: 1, minWidth: 0 }}>
+            {session.username}@{session.host}
+          </Typography>
+        </Tooltip>
         <Chip
           size="small"
+          variant="outlined"
           label={session.state === 'closed' ? (session.reason ?? 'closed') : session.state}
           color={session.state === 'open' ? 'success' : 'default'}
+          sx={{ height: 20, maxWidth: 110, fontSize: 10 }}
         />
-        <Button size="small" aria-pressed={readOnly} onClick={() => setReadOnly((v) => !v)}>
-          {readOnly ? 'Enable input' : 'Read only'}
-        </Button>
-        <Button size="small" onClick={() => void copy(emulator.current?.getSelection() ?? '')}>
-          Copy selection
-        </Button>
+        <Tooltip title={readOnly ? 'Enable terminal input' : 'Make terminal read only'}>
+          <Button
+            size="small"
+            aria-label={readOnly ? 'Enable terminal input' : 'Make terminal read only'}
+            aria-pressed={readOnly}
+            color={readOnly ? 'warning' : 'inherit'}
+            onClick={() => setReadOnly((v) => !v)}
+            sx={{ minWidth: 40, fontFamily: 'monospace', fontSize: 10, px: 0.5 }}
+          >
+            {readOnly ? 'READ' : 'INPUT'}
+          </Button>
+        </Tooltip>
+        <Tooltip title="Find in scrollback (Ctrl/⌘ Shift F)">
+          <IconButton
+            size="small"
+            aria-label="Find in scrollback"
+            aria-expanded={searchOpen}
+            onClick={() => setSearchOpen((v) => !v)}
+          >
+            <SearchIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Terminal actions">
+          <IconButton
+            size="small"
+            aria-label="Terminal actions"
+            aria-haspopup="menu"
+            onClick={(e) => setPaneMenu(e.currentTarget)}
+          >
+            <MoreIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        </Tooltip>
       </Stack>
+      <Menu anchorEl={paneMenu} open={Boolean(paneMenu)} onClose={() => setPaneMenu(null)}>
+        <MenuItem
+          onClick={() => {
+            void copy(emulator.current?.getSelection() ?? '');
+            setPaneMenu(null);
+          }}
+        >
+          Copy selection
+        </MenuItem>
+        <MenuItem disabled={fontSize <= 10} onClick={() => setFontSize((v) => Math.max(10, v - 1))}>
+          Smaller text
+        </MenuItem>
+        <MenuItem disabled={fontSize >= 24} onClick={() => setFontSize((v) => Math.min(24, v + 1))}>
+          Larger text
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setFontSize(14);
+            setPaneMenu(null);
+          }}
+        >
+          Reset text size · 14 px
+        </MenuItem>
+      </Menu>
       {error && (
-        <Alert severity="error" sx={{ mb: 1 }}>
+        <Alert severity="error" sx={{ flexShrink: 0, maxHeight: 100, overflow: 'auto', overflowWrap: 'anywhere' }}>
           {error}
         </Alert>
       )}
       {pasteNotice && (
-        <Alert severity="warning" onClose={() => setPasteNotice('')} sx={{ mb: 1 }}>
+        <Alert severity="warning" onClose={() => setPasteNotice('')} sx={{ flexShrink: 0 }}>
           {pasteNotice}
         </Alert>
       )}
-      <Stack direction="row" spacing={1} sx={{ mb: 1, alignItems: 'center' }}>
-        <TextField
-          size="small"
-          label="Find in scrollback"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') finder.current?.findNext(query);
-          }}
-          sx={{ flex: 1 }}
-        />
-        <Button size="small" disabled={!query} onClick={() => finder.current?.findPrevious(query)}>
-          Previous
-        </Button>
-        <Button size="small" disabled={!query} onClick={() => finder.current?.findNext(query)}>
-          Next
-        </Button>
-        <Button
-          size="small"
-          aria-label="Decrease terminal font"
-          onClick={() => setFontSize((v) => Math.max(10, v - 1))}
-        >
-          A−
-        </Button>
-        <Button
-          size="small"
-          aria-label="Increase terminal font"
-          onClick={() => setFontSize((v) => Math.min(24, v + 1))}
-        >
-          A+
-        </Button>
-      </Stack>
+      {searchOpen && (
+        <Stack direction="row" spacing={0.5} sx={{ p: 0.75, alignItems: 'center', minWidth: 0, flexShrink: 0 }}>
+          <TextField
+            size="small"
+            autoFocus
+            label="Find in scrollback"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                if (e.shiftKey) finder.current?.findPrevious(query);
+                else finder.current?.findNext(query);
+              }
+              if (e.key === 'Escape') {
+                setSearchOpen(false);
+                emulator.current?.focus();
+              }
+            }}
+            sx={{ flex: 1, minWidth: 0 }}
+          />
+          <IconButton
+            size="small"
+            aria-label="Previous match"
+            disabled={!query}
+            onClick={() => finder.current?.findPrevious(query)}
+          >
+            <ArrowUpIcon />
+          </IconButton>
+          <IconButton
+            size="small"
+            aria-label="Next match"
+            disabled={!query}
+            onClick={() => finder.current?.findNext(query)}
+          >
+            <ArrowDownIcon />
+          </IconButton>
+          <IconButton
+            size="small"
+            aria-label="Close search"
+            onClick={() => {
+              setSearchOpen(false);
+              emulator.current?.focus();
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Stack>
+      )}
       <Box
         ref={host}
         aria-label={`Terminal on ${session.nodeName}`}
-        sx={{ height: 'min(65vh, 720px)', minHeight: 300, bgcolor: '#080c15', p: 1, '& .xterm': { height: '100%' } }}
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+          overflow: 'hidden',
+          bgcolor: 'background.default',
+          p: 0.75,
+          '& .xterm': { height: '100%' },
+          '& .xterm-viewport': { overscrollBehavior: 'contain' },
+        }}
       />
       <Dialog open={paste !== null} onClose={() => setPaste(null)} fullWidth maxWidth="md">
         <DialogTitle>Review terminal paste</DialogTitle>

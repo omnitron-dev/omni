@@ -25,7 +25,7 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogActions from '@mui/material/DialogActions';
 import { Alert, FormAlert } from '@omnitron-dev/prism/components/alert';
-import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { PageContent } from '@omnitron-dev/prism/components/page-content';
 import { Table, type TableColumn } from '@omnitron-dev/prism/components/table';
 import { PlayIcon, StopIcon, RefreshIcon, SyncIcon, DeployIcon, DeleteIcon } from '../../assets/icons';

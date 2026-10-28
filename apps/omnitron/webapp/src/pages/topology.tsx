@@ -68,6 +68,7 @@ import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import { pulseKeyframes } from 'src/components/topology/shared-styles';
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 
 // ---------------------------------------------------------------------------
 // Node type registry
@@ -377,7 +378,8 @@ export default function TopologyPage() {
   const totalApps = apps.length;
 
   return (
-    <>
+    <Stack spacing={1} sx={{ flex: 1, minHeight: 0, minWidth: 0 }}>
+      <Breadcrumbs heading="Topology" links={[{ name: 'Infrastructure', href: '/nodes' }, { name: 'Topology' }]} />
       {/* Inject pulse animation keyframes */}
       <style>{pulseKeyframes}</style>
       <Box
@@ -385,10 +387,9 @@ export default function TopologyPage() {
         sx={{
           display: 'flex',
           width: '100%',
-          // Explicit height required — React Flow needs a sized container.
-          // 64px header + 28px status bar + 64px padding = ~156px overhead
-          height: 'calc(100vh - 156px)',
-          minHeight: 400,
+          // The workspace supplies the available height, including its chrome.
+          flex: 1,
+          minHeight: 0,
           overflow: 'hidden',
           bgcolor: '#0a0a0f',
           position: 'relative',
@@ -724,6 +725,6 @@ export default function TopologyPage() {
           ]}
         </Menu>
       </Box>
-    </>
+    </Stack>
   );
 }

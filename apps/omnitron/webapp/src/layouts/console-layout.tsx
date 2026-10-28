@@ -71,16 +71,12 @@ function useNavData(): LayoutNavData {
         {
           id: 'overview',
           subheader: 'Overview',
-          items: [
-            { id: 'dashboard', title: 'Dashboard', path: '/', icon: <DashboardIcon /> },
-          ],
+          items: [{ id: 'dashboard', title: 'Dashboard', path: '/', icon: <DashboardIcon /> }],
         },
         {
           id: 'observability',
           subheader: 'Observability',
-          items: [
-            { id: 'logs', title: 'Logs', path: '/logs', icon: <LogsIcon /> },
-          ],
+          items: [{ id: 'logs', title: 'Logs', path: '/logs', icon: <LogsIcon /> }],
         },
         {
           id: 'infrastructure',
@@ -89,7 +85,13 @@ function useNavData(): LayoutNavData {
             { id: 'projects', title: 'Projects', path: '/projects', icon: <ProjectIcon /> },
             { id: 'nodes', title: 'Nodes', path: '/nodes', icon: <NodesIcon /> },
             { id: 'terminal', title: 'SSH workspace', path: '/terminal', icon: <ServerIcon /> },
-            { id: 'releases', title: 'Releases', path: '/releases', icon: <ReleaseIcon />, selectionPrefix: '/releases' },
+            {
+              id: 'releases',
+              title: 'Releases',
+              path: '/releases',
+              icon: <ReleaseIcon />,
+              selectionPrefix: '/releases',
+            },
           ],
         },
         {
@@ -136,17 +138,28 @@ function useNavData(): LayoutNavData {
           { id: 'terminal', title: 'SSH workspace', path: '/terminal', icon: <ServerIcon /> },
           { id: 'containers', title: 'Containers', path: '/containers', icon: <ContainersIcon /> },
           { id: 'deployments', title: 'Deployments', path: '/deployments', icon: <DeployIcon /> },
-          { id: 'pipelines', title: 'Pipelines', path: '/pipelines', icon: <PipelineIcon />, selectionPrefix: '/pipelines' },
+          {
+            id: 'pipelines',
+            title: 'Pipelines',
+            path: '/pipelines',
+            icon: <PipelineIcon />,
+            selectionPrefix: '/pipelines',
+          },
         ],
       },
       {
         id: 'system',
         subheader: 'System',
         items: [
-          { id: 'dashboard-builder', title: 'Dashboard Builder', path: '/dashboard-builder', icon: <DashboardBuilderIcon /> },
+          {
+            id: 'dashboard-builder',
+            title: 'Dashboard Builder',
+            path: '/dashboard-builder',
+            icon: <DashboardBuilderIcon />,
+          },
           { id: 'settings', title: 'Settings', path: '/settings', icon: <SettingsIcon /> },
           { id: 'audit', title: 'Audit', path: '/audit', icon: <AuditIcon /> },
-            { id: 'access', title: 'Access', path: '/access', icon: <SettingsIcon /> },
+          { id: 'access', title: 'Access', path: '/access', icon: <SettingsIcon /> },
           { id: 'system-info', title: 'System Info', path: '/system', icon: <ServerIcon /> },
         ],
       },
@@ -163,9 +176,13 @@ function ConsoleLogo() {
   const showText = !sidenavCollapsed && sidenavVariant !== 'mini';
 
   return (
-    <Stack direction="row" spacing={1} sx={{
-      alignItems: "center"
-    }}>
+    <Stack
+      direction="row"
+      spacing={1}
+      sx={{
+        alignItems: 'center',
+      }}
+    >
       <OmnitronLogo size={48} />
       {showText && (
         <Typography
@@ -175,8 +192,9 @@ function ConsoleLogo() {
             fontWeight: 800,
             letterSpacing: 2,
             textTransform: 'uppercase',
-            fontSize: '0.85rem'
-          }}>
+            fontSize: '0.85rem',
+          }}
+        >
           Omnitron
         </Typography>
       )}
@@ -192,8 +210,19 @@ function ThemeModeIcon({ mode }: { mode: string }) {
   if (mode === 'dark') {
     return (
       <Box component="svg" viewBox="0 0 24 24" sx={{ width: 20, height: 20 }}>
-        <path fill="currentColor" opacity="0.4" d="M21.5 14.08C20.31 14.67 18.98 15 17.58 15C12.86 15 9.08 11.22 9.08 6.5C9.08 5.1 9.42 3.77 10 2.58C5.73 3.63 2.58 7.5 2.58 12.08C2.58 17.6 7.06 22.08 12.58 22.08C17.16 22.08 21.04 18.93 22.08 14.67C21.89 14.81 21.7 14.94 21.5 14.08Z" />
-        <path fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" d="M21.5 14.08C20.31 14.67 18.98 15 17.58 15C12.86 15 9.08 11.22 9.08 6.5C9.08 5.1 9.42 3.77 10 2.58C5.73 3.63 2.58 7.5 2.58 12.08C2.58 17.6 7.06 22.08 12.58 22.08C17.16 22.08 21.04 18.93 22.08 14.67" />
+        <path
+          fill="currentColor"
+          opacity="0.4"
+          d="M21.5 14.08C20.31 14.67 18.98 15 17.58 15C12.86 15 9.08 11.22 9.08 6.5C9.08 5.1 9.42 3.77 10 2.58C5.73 3.63 2.58 7.5 2.58 12.08C2.58 17.6 7.06 22.08 12.58 22.08C17.16 22.08 21.04 18.93 22.08 14.67C21.89 14.81 21.7 14.94 21.5 14.08Z"
+        />
+        <path
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M21.5 14.08C20.31 14.67 18.98 15 17.58 15C12.86 15 9.08 11.22 9.08 6.5C9.08 5.1 9.42 3.77 10 2.58C5.73 3.63 2.58 7.5 2.58 12.08C2.58 17.6 7.06 22.08 12.58 22.08C17.16 22.08 21.04 18.93 22.08 14.67"
+        />
       </Box>
     );
   }
@@ -202,14 +231,30 @@ function ThemeModeIcon({ mode }: { mode: string }) {
       <Box component="svg" viewBox="0 0 24 24" sx={{ width: 20, height: 20 }}>
         <circle fill="currentColor" opacity="0.4" cx="12" cy="12" r="5" />
         <circle fill="none" stroke="currentColor" strokeWidth="1.5" cx="12" cy="12" r="5" />
-        <path fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" d="M12 2V4M12 20V22M4 12H2M22 12H20M19.78 4.22L18.36 5.64M5.64 18.36L4.22 19.78M19.78 19.78L18.36 18.36M5.64 5.64L4.22 4.22" />
+        <path
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          d="M12 2V4M12 20V22M4 12H2M22 12H20M19.78 4.22L18.36 5.64M5.64 18.36L4.22 19.78M19.78 19.78L18.36 18.36M5.64 5.64L4.22 4.22"
+        />
       </Box>
     );
   }
   return (
     <Box component="svg" viewBox="0 0 24 24" sx={{ width: 20, height: 20 }}>
-      <path fill="currentColor" opacity="0.4" d="M2 10C2 6.23 2 4.34 3.17 3.17C4.34 2 6.23 2 10 2H14C17.77 2 19.66 2 20.83 3.17C22 4.34 22 6.23 22 10V11C22 11.55 21.55 12 21 12H3C2.45 12 2 11.55 2 11V10Z" />
-      <path fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" d="M2 10C2 6.23 2 4.34 3.17 3.17C4.34 2 6.23 2 10 2H14C17.77 2 19.66 2 20.83 3.17C22 4.34 22 6.23 22 10V14C22 17.77 22 19.66 20.83 20.83C19.66 22 17.77 22 14 22H10C6.23 22 4.34 22 3.17 20.83C2 19.66 2 17.77 2 14V10Z" />
+      <path
+        fill="currentColor"
+        opacity="0.4"
+        d="M2 10C2 6.23 2 4.34 3.17 3.17C4.34 2 6.23 2 10 2H14C17.77 2 19.66 2 20.83 3.17C22 4.34 22 6.23 22 10V11C22 11.55 21.55 12 21 12H3C2.45 12 2 11.55 2 11V10Z"
+      />
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        d="M2 10C2 6.23 2 4.34 3.17 3.17C4.34 2 6.23 2 10 2H14C17.77 2 19.66 2 20.83 3.17C22 4.34 22 6.23 22 10V14C22 17.77 22 19.66 20.83 20.83C19.66 22 17.77 22 14 22H10C6.23 22 4.34 22 3.17 20.83C2 19.66 2 17.77 2 14V10Z"
+      />
       <path fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" d="M2 12H22" />
     </Box>
   );
@@ -236,9 +281,13 @@ function HeaderRight() {
   const themeTooltip = mode === 'light' ? 'Dark mode' : mode === 'dark' ? 'System mode' : 'Light mode';
 
   return (
-    <Stack direction="row" spacing={0.5} sx={{
-      alignItems: "center"
-    }}>
+    <Stack
+      direction="row"
+      spacing={0.5}
+      sx={{
+        alignItems: 'center',
+      }}
+    >
       <Tooltip title={themeTooltip}>
         <IconButton disableRipple onClick={handleCycleTheme} sx={headerIconBtnSx}>
           <ThemeModeIcon mode={mode} />
@@ -260,20 +309,32 @@ function HeaderRight() {
 export function ConsoleLayout() {
   const allNavData = useNavData();
   const { can } = useAccess();
-  const navData = allNavData.map((section) => ({ ...section, items: section.items.filter((item) => {
-    const permission = PAGE_PERMISSIONS[item.path?.split('/')[1] || 'dashboard'];
-    return !permission || can(permission);
-  }) })).filter((section) => section.items.length > 0);
+  const navData = allNavData
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        const permission = PAGE_PERMISSIONS[item.path?.split('/')[1] || 'dashboard'];
+        return !permission || can(permission);
+      }),
+    }))
+    .filter((section) => section.items.length > 0);
   const location = useLocation();
   const terminalVisible = location.pathname === '/terminal';
+  useEffect(() => {
+    document.getElementById('main-content')?.scrollTo({ top: 0 });
+  }, [location.pathname]);
   const [terminalVisited, setTerminalVisited] = useState(terminalVisible);
-  useEffect(() => { if (terminalVisible) setTerminalVisited(true); }, [terminalVisible]);
+  useEffect(() => {
+    if (terminalVisible) setTerminalVisited(true);
+  }, [terminalVisible]);
   // Every page of the console, so an alert that fires is heard wherever the
   // operator is — and only while someone is signed in to hear it.
   useAlertNotifications(useAuthStore((s) => Boolean(s.user)));
 
   return (
     <DashboardLayout
+      contentMode="workspace"
+      footer={<StatusBar docked />}
       logo={<ConsoleLogo />}
       navData={navData}
       persistKey="console"
@@ -288,7 +349,10 @@ export function ConsoleLayout() {
       }}
       slotProps={{
         main: {
-          sx: { pb: { xs: 6, sm: 7, md: 8 } },
+          sx:
+            terminalVisible || location.pathname === '/topology'
+              ? { p: { xs: 1, sm: 1.5, md: 2 }, minHeight: 0 }
+              : { minWidth: 0, minHeight: 0, overflowY: 'auto', p: { xs: 1.5, sm: 2, md: 2.5 } },
         },
       }}
     >
@@ -301,15 +365,30 @@ export function ConsoleLayout() {
           progress bar is indistinguishable from a page that broke.
         */}
         <Suspense fallback={<SplashScreen variant="linear" message="Loading…" />}>
-          {!terminalVisible && <PageAccess><Outlet /></PageAccess>}
+          {!terminalVisible && (
+            <PageAccess>
+              <Outlet />
+            </PageAccess>
+          )}
         </Suspense>
-        {terminalVisited && <Box sx={{ display: terminalVisible ? 'block' : 'none' }}>
-          <Suspense fallback={<SplashScreen variant="linear" message="Loading SSH workspace…" />}>
-            <AccessBoundary permission="OmnitronTerminal.open"><TerminalPage visible={terminalVisible} /></AccessBoundary>
-          </Suspense>
-        </Box>}
+        {terminalVisited && (
+          <Box
+            sx={{
+              display: terminalVisible ? 'flex' : 'none',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+              minWidth: 0,
+            }}
+          >
+            <Suspense fallback={<SplashScreen variant="linear" message="Loading SSH workspace…" />}>
+              <AccessBoundary permission="OmnitronTerminal.open">
+                <TerminalPage visible={terminalVisible} />
+              </AccessBoundary>
+            </Suspense>
+          </Box>
+        )}
       </ErrorBoundary>
-      <StatusBar />
     </DashboardLayout>
   );
 }

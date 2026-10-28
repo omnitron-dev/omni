@@ -31,7 +31,7 @@ import Divider from '@mui/material/Divider';
 import LinearProgress from '@mui/material/LinearProgress';
 import { alpha, keyframes, useTheme, type Theme } from '@mui/material/styles';
 
-import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { EmptyContent } from '@omnitron-dev/prism/components/empty-content';
 import { FormAlert } from '@omnitron-dev/prism/components/alert';
 import { Skeleton } from '@omnitron-dev/prism/components/skeleton';

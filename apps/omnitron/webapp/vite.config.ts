@@ -64,6 +64,7 @@ export default defineConfig({
       '@omnitron-dev/prism/components/stepper': path.resolve(here, '../../../packages/prism/src/components/stepper/index.ts'),
       '@omnitron-dev/prism/components/table': path.resolve(here, '../../../packages/prism/src/components/table/index.ts'),
       '@omnitron-dev/prism/components/tabs': path.resolve(here, '../../../packages/prism/src/components/tabs/index.ts'),
+      '@omnitron-dev/prism/icons': path.resolve(here, '../../../packages/prism/src/icons/index.ts'),
       '@omnitron-dev/prism/core': path.resolve(here, '../../../packages/prism/src/core/index.ts'),
       '@omnitron-dev/prism/layouts': path.resolve(here, '../../../packages/prism/src/layouts/index.ts'),
       '@omnitron-dev/prism/state': path.resolve(here, '../../../packages/prism/src/state/index.ts'),

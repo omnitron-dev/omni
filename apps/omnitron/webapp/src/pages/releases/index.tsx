@@ -25,7 +25,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { AdminDataTable, type ColumnDef } from '@omnitron-dev/prism/components/admin-filters';
-import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 
 import type { BuildRecord, ReleaseDeploymentDto, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
 import { stacksByRelease, type DeploymentsAnswer } from '@omnitron-dev/omnitron/release-reading';

@@ -27,7 +27,7 @@ import { alpha, keyframes } from '@mui/material/styles';
 
 import { SearchIcon, RefreshIcon, PlayIcon, StopIcon, CloseIcon, TerminalIcon } from 'src/assets/icons';
 import { Alert } from '@omnitron-dev/prism/components/alert';
-import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { useCopyToClipboard } from '@omnitron-dev/prism/core';
 import { logs, daemon, nodes as nodesRpc } from 'src/netron/client';

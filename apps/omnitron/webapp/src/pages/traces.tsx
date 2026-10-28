@@ -16,7 +16,7 @@ import { alpha } from '@mui/material/styles';
 import { TraceIcon, RefreshIcon, SearchIcon } from 'src/assets/icons';
 import { AdminDataTable, type ColumnDef } from '@omnitron-dev/prism/components/admin-filters';
 import { Alert } from '@omnitron-dev/prism/components/alert';
-import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { traces } from 'src/netron/client';
 import { formatDate } from 'src/utils/formatters';
 import { usePolledResource } from 'src/hooks/use-polled-resource';

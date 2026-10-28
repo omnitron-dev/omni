@@ -4,7 +4,7 @@ import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
 import { Alert } from '@omnitron-dev/prism/components/alert';
-import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { Table, type TableColumn } from '@omnitron-dev/prism/components/table';
 import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';

@@ -13,7 +13,7 @@ import Chart from 'react-apexcharts';
 
 import { MetricsIcon, AppsIcon, LogsIcon, RefreshIcon } from 'src/assets/icons';
 import { Alert } from '@omnitron-dev/prism/components/alert';
-import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { daemon, metrics, logs as logsClient } from 'src/netron/client';
 import { useStackContext } from 'src/hooks/use-stack-context';

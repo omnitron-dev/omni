@@ -25,7 +25,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
 import { Alert } from '@omnitron-dev/prism/components/alert';
-import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { EmptyContent } from '@omnitron-dev/prism/components/empty-content';
 import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { outcomeOf, outcomeReason, type AuditOutcome } from '@omnitron-dev/omnitron/audit-outcome';

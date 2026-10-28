@@ -19,7 +19,7 @@ import LinearProgress from '@mui/material/LinearProgress';
 import { PipelineIcon, PlayIcon, RefreshIcon, PlusIcon, CloseIcon } from 'src/assets/icons';
 import { AdminDataTable, type ColumnDef } from '@omnitron-dev/prism/components/admin-filters';
 import { Alert } from '@omnitron-dev/prism/components/alert';
-import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { ConfirmDialog } from '@omnitron-dev/prism/components/confirm-dialog';
 import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { pipelines } from 'src/netron/client';

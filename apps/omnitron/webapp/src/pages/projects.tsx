@@ -33,7 +33,7 @@ import Divider from '@mui/material/Divider';
 import { alpha } from '@mui/material/styles';
 
 import { Alert } from '@omnitron-dev/prism/components/alert';
-import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { EmptyContent } from '@omnitron-dev/prism/components/empty-content';
 import { Label } from '@omnitron-dev/prism/components/label';
 import { Skeleton } from '@omnitron-dev/prism/components/skeleton';

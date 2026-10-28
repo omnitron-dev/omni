@@ -19,7 +19,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import type { ConsoleAccount, ConsoleRole } from '@omnitron-dev/omnitron/dto/services';
 import { consolePasswordError } from '@omnitron-dev/omnitron/dto/services';
 import { access } from 'src/netron/client';

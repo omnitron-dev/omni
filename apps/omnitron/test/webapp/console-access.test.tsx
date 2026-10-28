@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import '@testing-library/jest-dom/vitest';
+import { MemoryRouter } from 'react-router-dom';
 import { ConsoleAccessProvider, AccessBoundary, Can, useAccess } from '../../webapp/src/auth/access.js';
 import { useAuthStore } from '../../webapp/src/auth/store.js';
 import AccessPage from '../../webapp/src/pages/access.js';
@@ -41,7 +42,7 @@ function Surface() {
 function mount(page = <Surface />) {
   return render(
     <ThemeProvider theme={createTheme()}>
-      <ConsoleAccessProvider>{page}</ConsoleAccessProvider>
+      <MemoryRouter><ConsoleAccessProvider>{page}</ConsoleAccessProvider></MemoryRouter>
     </ThemeProvider>
   );
 }

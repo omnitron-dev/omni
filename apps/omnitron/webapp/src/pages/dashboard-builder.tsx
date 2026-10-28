@@ -44,7 +44,7 @@ import {
   CloseIcon,
   RefreshIcon,
 } from 'src/assets/icons';
-import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { FormAlert } from '@omnitron-dev/prism/components/alert';
 import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { daemon, alerts } from 'src/netron/client';

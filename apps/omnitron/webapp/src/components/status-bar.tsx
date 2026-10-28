@@ -55,9 +55,12 @@ function formatUptimeMs(ms: number): string {
   return `${minutes}m`;
 }
 
-function StatusItem({ children }: { children: React.ReactNode }) {
+function StatusItem({ children, priority }: { children: React.ReactNode; priority?: 'detail' | 'extra' | 'context' }) {
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+    <Box
+      data-priority={priority}
+      sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0, whiteSpace: 'nowrap', minWidth: 0 }}
+    >
       {children}
     </Box>
   );
@@ -69,7 +72,7 @@ function StatusText({ children, highlight }: { children: React.ReactNode; highli
       variant="caption"
       sx={{
         fontSize: 'inherit',
-        color: highlight ? '#e4e4e7' : 'text.secondary',
+        color: highlight ? 'text.primary' : 'text.secondary',
         fontWeight: highlight ? 600 : 400,
       }}
     >
@@ -81,7 +84,10 @@ function StatusText({ children, highlight }: { children: React.ReactNode; highli
 function StatusLabel({ label, value }: { label: string; value: string | number }) {
   return (
     <StatusText>
-      {label} <span style={{ color: '#e4e4e7', fontWeight: 600 }}>{value}</span>
+      {label}{' '}
+      <Box component="span" sx={{ color: 'text.primary', fontWeight: 600 }}>
+        {value}
+      </Box>
     </StatusText>
   );
 }
@@ -107,7 +113,7 @@ interface StatusData {
 // Status Bar
 // =============================================================================
 
-export function StatusBar() {
+export function StatusBar({ docked = false }: { docked?: boolean }) {
   const [data, setData] = useState<StatusData | null>(null);
   /**
    * The last values the nodes and alerts queries actually produced.
@@ -225,17 +231,21 @@ export function StatusBar() {
       const st = status.value as any;
       const apps = countedApps(project, stack, st, deployments);
       if (apps) Object.assign(lastKnown.current, tally(apps));
-      setData((prev) => prev ? {
-        ...prev,
-        daemonOnline: true,
-        appsOnline: lastKnown.current.appsOnline,
-        appsTotal: lastKnown.current.appsTotal,
-        firingAlerts: lastKnown.current.firingAlerts,
-        uptimeMs: st?.uptime ?? prev.uptimeMs,
-        version: st?.version ?? prev.version,
-        pid: st?.pid ?? prev.pid,
-        lastFetch: Date.now(),
-      } : prev);
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              daemonOnline: true,
+              appsOnline: lastKnown.current.appsOnline,
+              appsTotal: lastKnown.current.appsTotal,
+              firingAlerts: lastKnown.current.firingAlerts,
+              uptimeMs: st?.uptime ?? prev.uptimeMs,
+              version: st?.version ?? prev.version,
+              pid: st?.pid ?? prev.pid,
+              lastFetch: Date.now(),
+            }
+          : prev
+      );
     })();
   }, [lastEvent]);
 
@@ -243,35 +253,42 @@ export function StatusBar() {
 
   return (
     <Box
+      aria-label={`Infrastructure status: ${data.daemonOnline ? 'online' : 'offline'}, applications ${data.appsOnline}/${data.appsTotal}, nodes ${data.nodesOnline}/${data.nodesTotal}, ${data.firingAlerts} alerts`}
       sx={{
-        position: 'fixed',
+        position: docked ? 'relative' : 'fixed',
         bottom: 0,
         left: 0,
         right: 0,
-        height: 28,
-        bgcolor: alpha('#0a0a10', 0.96),
+        height: 'calc(28px + env(safe-area-inset-bottom, 0px))',
+        pb: 'env(safe-area-inset-bottom, 0px)',
+        flexShrink: 0,
+        minWidth: 0,
+        overflow: 'hidden',
+        containerType: 'inline-size',
+        bgcolor: (theme) => alpha(theme.palette.background.default, 0.96),
         backdropFilter: 'blur(12px)',
         borderTop: '1px solid',
-        borderColor: alpha('#fff', 0.06),
+        borderColor: 'divider',
         display: 'flex',
         alignItems: 'center',
-        px: 2,
-        gap: 2.5,
-        zIndex: 1300,
+        px: { xs: 1, sm: 2 },
+        gap: { xs: 1, md: 2.5 },
+        zIndex: (theme) => theme.zIndex.appBar,
         fontSize: '0.68rem',
         userSelect: 'none',
+        '@container (max-width: 800px)': { '& [data-priority="detail"]': { display: 'none' } },
+        '@container (max-width: 600px)': { '& [data-priority="context"]': { display: 'none' } },
+        '@container (max-width: 420px)': { '& [data-priority="extra"]': { display: 'none' } },
       }}
     >
       {/* Daemon status */}
       <StatusItem>
         <Dot color={data.daemonOnline ? '#22c55e' : '#ef4444'} pulse={data.daemonOnline} />
-        <StatusText highlight={data.daemonOnline}>
-          {data.daemonOnline ? 'Online' : 'Offline'}
-        </StatusText>
+        <StatusText highlight={data.daemonOnline}>{data.daemonOnline ? 'Online' : 'Offline'}</StatusText>
       </StatusItem>
 
       {/* Separator */}
-      <Box sx={{ width: '1px', height: 12, bgcolor: alpha('#fff', 0.08) }} />
+      <Box sx={{ width: '1px', height: 12, bgcolor: 'divider' }} />
 
       {/* Project context */}
       <ProjectStackIndicator />
@@ -283,7 +300,7 @@ export function StatusBar() {
 
       {/* Nodes */}
       {data.nodesTotal > 0 && (
-        <StatusItem>
+        <StatusItem priority="extra">
           <StatusLabel label="Nodes" value={`${data.nodesOnline}/${data.nodesTotal}`} />
         </StatusItem>
       )}
@@ -299,7 +316,7 @@ export function StatusBar() {
       )}
 
       {/* Connection type */}
-      <StatusItem>
+      <StatusItem priority="extra">
         <Dot color={wsConnected ? '#3b82f6' : '#6b7280'} />
         <StatusText>{wsConnected ? 'Live' : 'Polling'}</StatusText>
       </StatusItem>
@@ -309,7 +326,7 @@ export function StatusBar() {
 
       {/* Uptime */}
       {data.daemonOnline && data.uptimeMs > 0 && (
-        <StatusItem>
+        <StatusItem priority="detail">
           <StatusLabel label="Uptime" value={formatUptimeMs(data.uptimeMs)} />
         </StatusItem>
       )}
@@ -319,12 +336,13 @@ export function StatusBar() {
 
       {/* Cmd+K */}
       <Box
+        data-priority="detail"
         sx={{
           px: 0.75,
           py: 0.1,
           borderRadius: 0.5,
           border: '1px solid',
-          borderColor: alpha('#fff', 0.08),
+          borderColor: 'divider',
           fontSize: 'inherit',
           color: 'text.disabled',
           lineHeight: 1,
@@ -346,7 +364,7 @@ export function StatusBar() {
  * Between fetches, we tick locally with that offset applied.
  */
 function DaemonClock({ serverTimestamp }: { serverTimestamp: number }) {
-  const [offset] = useState(() => serverTimestamp ? serverTimestamp - Date.now() : 0);
+  const [offset] = useState(() => (serverTimestamp ? serverTimestamp - Date.now() : 0));
   const [now, setNow] = useState(() => Date.now() + offset);
 
   useEffect(() => {
@@ -360,8 +378,10 @@ function DaemonClock({ serverTimestamp }: { serverTimestamp: number }) {
   const ss = String(d.getSeconds()).padStart(2, '0');
 
   return (
-    <StatusItem>
-      <StatusText>{hh}:{mm}:{ss}</StatusText>
+    <StatusItem priority="detail">
+      <StatusText>
+        {hh}:{mm}:{ss}
+      </StatusText>
     </StatusItem>
   );
 }
@@ -376,14 +396,22 @@ function ProjectStackIndicator() {
   const runningCount = stacks.filter((s) => s.status === 'running').length;
 
   return (
-    <StatusItem>
+    <StatusItem priority="context">
       <StatusText>
-        <span style={{ color: '#e4e4e7', fontWeight: 600 }}>{activeProject}</span>
+        <Box component="span" sx={{ color: 'text.primary', fontWeight: 600 }}>
+          {activeProject}
+        </Box>
         {activeStack && (
-          <span style={{ color: '#60a5fa' }}> / {activeStack}</span>
+          <Box component="span" sx={{ color: 'info.main' }}>
+            {' '}
+            / {activeStack}
+          </Box>
         )}
         {runningCount > 0 && !activeStack && (
-          <span style={{ color: '#6b7280' }}> ({runningCount} stack{runningCount > 1 ? 's' : ''})</span>
+          <span style={{ color: '#6b7280' }}>
+            {' '}
+            ({runningCount} stack{runningCount > 1 ? 's' : ''})
+          </span>
         )}
       </StatusText>
     </StatusItem>

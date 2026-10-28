@@ -1,3 +1,4 @@
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 /**
  * Omnitron Console Dashboard
  *
@@ -389,6 +390,7 @@ export default function DashboardPage() {
 
   return (
     <Stack spacing={3}>
+      <Breadcrumbs heading="Overview" links={[{ name: 'Overview' }]} />
       {error && (
         <Alert severity="warning" variant="outlined">
           {error}

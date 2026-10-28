@@ -21,7 +21,7 @@ import { alpha, useTheme, keyframes } from '@mui/material/styles';
 import Chart from 'react-apexcharts';
 import { RestartIcon, StopIcon, PlayIcon, RefreshIcon, CircleIcon, SearchIcon } from 'src/assets/icons';
 import { Alert } from '@omnitron-dev/prism/components/alert';
-import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { Table, type TableColumn } from '@omnitron-dev/prism/components/table';
 

@@ -25,7 +25,7 @@ import DialogContentText from '@mui/material/DialogContentText';
 import DialogActions from '@mui/material/DialogActions';
 import { alpha } from '@mui/material/styles';
 import { Alert } from '@omnitron-dev/prism/components/alert';
-import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { EmptyContent } from '@omnitron-dev/prism/components/empty-content';
 import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';

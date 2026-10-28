@@ -17,7 +17,7 @@ import MenuItem from '@mui/material/MenuItem';
 import { DeployIcon, PlusIcon, RefreshIcon } from 'src/assets/icons';
 import { AdminDataTable, type ColumnDef } from '@omnitron-dev/prism/components/admin-filters';
 import { Alert } from '@omnitron-dev/prism/components/alert';
-import { Breadcrumbs } from '@omnitron-dev/prism/components/breadcrumbs';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { deploy, project } from 'src/netron/client';
 import { DeployProgressList } from 'src/components/deploy-progress';
 import { formatDate, formatDuration } from 'src/utils/formatters';

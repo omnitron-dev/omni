@@ -1,3 +1,4 @@
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 /**
  * System Info Page — Real-time system metrics + build info
  *
@@ -152,6 +153,7 @@ export default function SystemInfoPage() {
 
   return (
     <Stack spacing={3}>
+      <Breadcrumbs heading="System info" links={[{ name: 'System info' }]} />
       {error && <Alert severity="warning" variant="outlined">{error}</Alert>}
       {d && (
         // The daemon serves the last snapshot while it collects the next, so

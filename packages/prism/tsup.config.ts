@@ -12,6 +12,7 @@ export default defineConfig([
       'registry/index': 'src/registry/index.ts',
       'layouts/index': 'src/layouts/index.ts',
       'blocks/index': 'src/blocks/index.ts',
+      'auth/index': 'src/auth/index.ts',
       'types/index': 'src/types/index.ts',
       'state/index': 'src/state/index.ts',
       'hooks/index': 'src/hooks/index.ts',
@@ -19,12 +20,27 @@ export default defineConfig([
       'forms/index': 'src/forms/index.ts',
       'accessibility/index': 'src/accessibility/index.ts',
       'http/index': 'src/http/index.ts',
-      // Component subpath entries — kept tight on purpose. The
-      // `./components/*` glob in package.json makes every component
-      // directory addressable, but we only ship the ones a downstream
-      // app actually imports as a separate entry, since each one bloats
-      // the build matrix. Add entries here when a downstream file
-      // uses `from '@omnitron-dev/prism/components/<name>'`.
+      // Every public component subpath has a matching JS build entry and declaration.
+      'components/admin-filters/index': 'src/components/admin-filters/index.ts',
+      'components/alert/index': 'src/components/alert/index.ts',
+      'components/animate/index': 'src/components/animate/index.ts',
+      'components/breadcrumbs/index': 'src/components/breadcrumbs/index.ts',
+      'components/card/index': 'src/components/card/index.ts',
+      'components/command-palette/index': 'src/components/command-palette/index.ts',
+      'components/confirm-dialog/index': 'src/components/confirm-dialog/index.ts',
+      'components/empty-content/index': 'src/components/empty-content/index.ts',
+      'components/error-boundary/index': 'src/components/error-boundary/index.ts',
+      'components/label/index': 'src/components/label/index.ts',
+      'components/loading-screen/index': 'src/components/loading-screen/index.ts',
+      'components/navigation-progress/index': 'src/components/navigation-progress/index.ts',
+      'components/page-content/index': 'src/components/page-content/index.ts',
+      'components/popover/index': 'src/components/popover/index.ts',
+      'components/scroll-to-top/index': 'src/components/scroll-to-top/index.ts',
+      'components/skeleton/index': 'src/components/skeleton/index.ts',
+      'components/snackbar/index': 'src/components/snackbar/index.ts',
+      'components/stepper/index': 'src/components/stepper/index.ts',
+      'components/table/index': 'src/components/table/index.ts',
+      'components/tabs/index': 'src/components/tabs/index.ts',
       'components/index': 'src/components/index.ts',
       'components/map/index': 'src/components/map/index.ts',
       'components/doc-layout/index': 'src/components/doc-layout/index.ts',

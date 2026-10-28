@@ -24,6 +24,10 @@
       "types": "./dist/layouts/index.d.ts",
       "import": "./dist/layouts/index.js"
     },
+    "./auth": {
+      "types": "./dist/auth/index.d.ts",
+      "import": "./dist/auth/index.js"
+    },
     "./blocks": {
       "types": "./dist/blocks/index.d.ts",
       "import": "./dist/blocks/index.js"
@@ -99,7 +103,87 @@
       "types": "./dist/components/map/index.d.ts",
       "import": "./dist/components/map/index.js"
     },
-    "./components/map/styles.css": "./dist/components/map/index.css"
+    "./components/map/styles.css": "./dist/components/map/index.css",
+    "./components/admin-filters": {
+      "types": "./dist/components/admin-filters/index.d.ts",
+      "import": "./dist/components/admin-filters/index.js"
+    },
+    "./components/alert": {
+      "types": "./dist/components/alert/index.d.ts",
+      "import": "./dist/components/alert/index.js"
+    },
+    "./components/animate": {
+      "types": "./dist/components/animate/index.d.ts",
+      "import": "./dist/components/animate/index.js"
+    },
+    "./components/breadcrumbs": {
+      "types": "./dist/components/breadcrumbs/index.d.ts",
+      "import": "./dist/components/breadcrumbs/index.js"
+    },
+    "./components/card": {
+      "types": "./dist/components/card/index.d.ts",
+      "import": "./dist/components/card/index.js"
+    },
+    "./components/command-palette": {
+      "types": "./dist/components/command-palette/index.d.ts",
+      "import": "./dist/components/command-palette/index.js"
+    },
+    "./components/confirm-dialog": {
+      "types": "./dist/components/confirm-dialog/index.d.ts",
+      "import": "./dist/components/confirm-dialog/index.js"
+    },
+    "./components/empty-content": {
+      "types": "./dist/components/empty-content/index.d.ts",
+      "import": "./dist/components/empty-content/index.js"
+    },
+    "./components/error-boundary": {
+      "types": "./dist/components/error-boundary/index.d.ts",
+      "import": "./dist/components/error-boundary/index.js"
+    },
+    "./components/label": {
+      "types": "./dist/components/label/index.d.ts",
+      "import": "./dist/components/label/index.js"
+    },
+    "./components/loading-screen": {
+      "types": "./dist/components/loading-screen/index.d.ts",
+      "import": "./dist/components/loading-screen/index.js"
+    },
+    "./components/navigation-progress": {
+      "types": "./dist/components/navigation-progress/index.d.ts",
+      "import": "./dist/components/navigation-progress/index.js"
+    },
+    "./components/page-content": {
+      "types": "./dist/components/page-content/index.d.ts",
+      "import": "./dist/components/page-content/index.js"
+    },
+    "./components/popover": {
+      "types": "./dist/components/popover/index.d.ts",
+      "import": "./dist/components/popover/index.js"
+    },
+    "./components/scroll-to-top": {
+      "types": "./dist/components/scroll-to-top/index.d.ts",
+      "import": "./dist/components/scroll-to-top/index.js"
+    },
+    "./components/skeleton": {
+      "types": "./dist/components/skeleton/index.d.ts",
+      "import": "./dist/components/skeleton/index.js"
+    },
+    "./components/snackbar": {
+      "types": "./dist/components/snackbar/index.d.ts",
+      "import": "./dist/components/snackbar/index.js"
+    },
+    "./components/stepper": {
+      "types": "./dist/components/stepper/index.d.ts",
+      "import": "./dist/components/stepper/index.js"
+    },
+    "./components/table": {
+      "types": "./dist/components/table/index.d.ts",
+      "import": "./dist/components/table/index.js"
+    },
+    "./components/tabs": {
+      "types": "./dist/components/tabs/index.d.ts",
+      "import": "./dist/components/tabs/index.js"
+    }
   },
   "bin": {
     "prism": "./bin/prism.js"

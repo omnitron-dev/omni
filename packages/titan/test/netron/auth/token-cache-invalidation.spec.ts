@@ -24,7 +24,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { AuthenticationManager } from '../../../src/netron/auth/authentication-manager.js';
+import { AuthenticationManager, AuthenticationUnavailableError } from '../../../src/netron/auth/authentication-manager.js';
 import { createMockLogger } from '../test-utils.js';
 import type { AuthContext } from '../../../src/netron/auth/types.js';
 
@@ -42,6 +42,20 @@ const PASS_USER2: AuthContext = {
 };
 
 describe('AuthenticationManager — T#37 token cache invalidation', () => {
+  it('cannot reinsert an obsolete principal when revocation races an in-flight validation', async () => {
+    let finish: (context: AuthContext) => void = () => {};
+    const validating = new AuthenticationManager(createMockLogger(), {
+      authenticate: async () => PASS,
+      validateToken: () => new Promise<AuthContext>((resolve) => { finish = resolve; }),
+      tokenCache: { enabled: true, ttl: 60_000 },
+    });
+    const pending = validating.validateToken('in-flight');
+    const rejection = expect(pending).rejects.toBeInstanceOf(AuthenticationUnavailableError);
+    validating.invalidateUser(PASS.userId!);
+    finish(PASS);
+    await rejection;
+    expect(validating.getCacheStats().size).toBe(0);
+  });
   let validateToken: ReturnType<typeof vi.fn>;
   let manager: AuthenticationManager;
 

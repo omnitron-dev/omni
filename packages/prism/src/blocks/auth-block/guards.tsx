@@ -314,69 +314,20 @@ export function RoleBasedGuard({
   accessDeniedComponent = null,
 }: RoleBasedGuardProps): ReactNode {
   const { isAuthenticated, isLoading, user } = useAuth();
-  const [checked, setChecked] = useState(false);
-  const [accessGranted, setAccessGranted] = useState(false);
+  // Derive access during render. Storing it in an effect exposes the previous
+  // user's children for one render after a role/permission change.
+  let reason: AccessDeniedReason | null = null;
+  if (!isAuthenticated || !user) reason = 'not_authenticated';
+  else if (requireEmailVerified && !user.emailVerified) reason = 'email_not_verified';
+  else if (roles.length > 0 && !hasRole(user, roles, roleMatchStrategy)) reason = 'missing_role';
+  else if (permissions.length > 0 && !hasPermission(user, permissions, 'all')) reason = 'missing_permission';
 
   useEffect(() => {
-    if (!isLoading) {
-      // Check authentication
-      if (!isAuthenticated || !user) {
-        onAccessDenied?.('not_authenticated');
-        setAccessGranted(false);
-        setChecked(true);
-        return;
-      }
+    if (!isLoading && reason) onAccessDenied?.(reason);
+  }, [isLoading, reason, onAccessDenied]);
 
-      // Check email verification
-      if (requireEmailVerified && !user.emailVerified) {
-        onAccessDenied?.('email_not_verified');
-        setAccessGranted(false);
-        setChecked(true);
-        return;
-      }
-
-      // Check roles
-      if (roles.length > 0) {
-        const userRoles = user.roles ?? [];
-        const hasRequiredRole =
-          roleMatchStrategy === 'all'
-            ? roles.every((role) => userRoles.includes(role))
-            : roles.some((role) => userRoles.includes(role));
-
-        if (!hasRequiredRole) {
-          onAccessDenied?.('missing_role');
-          setAccessGranted(false);
-          setChecked(true);
-          return;
-        }
-      }
-
-      // Check permissions (always ALL)
-      if (permissions.length > 0) {
-        const userPermissions = user.permissions ?? [];
-        const hasAllPermissions = permissions.every((perm) => userPermissions.includes(perm));
-
-        if (!hasAllPermissions) {
-          onAccessDenied?.('missing_permission');
-          setAccessGranted(false);
-          setChecked(true);
-          return;
-        }
-      }
-
-      // Access granted
-      setAccessGranted(true);
-      setChecked(true);
-    }
-  }, [isAuthenticated, isLoading, user, roles, permissions, requireEmailVerified, roleMatchStrategy, onAccessDenied]);
-
-  if (isLoading || !checked) {
-    return loadingComponent;
-  }
-
-  if (!accessGranted) {
-    return accessDeniedComponent;
-  }
+  if (isLoading) return loadingComponent;
+  if (reason) return accessDeniedComponent;
 
   return children;
 }

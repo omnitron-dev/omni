@@ -60,6 +60,8 @@ export class AuthenticationManager {
   /** Token validation cache for performance optimization */
   private tokenCache?: TimedMap<string, AuthResult>;
   private tokenCacheConfig: TokenCacheConfig = { enabled: true };
+  /** Prevent an in-flight validation from restoring authority after invalidation. */
+  private authorityRevision = 0;
   private cacheHits = 0;
   private cacheMisses = 0;
 
@@ -151,6 +153,7 @@ export class AuthenticationManager {
    * Clear the token cache
    */
   clearCache(): void {
+    this.authorityRevision++;
     this.tokenCache?.clear();
     this.cacheHits = 0;
     this.cacheMisses = 0;
@@ -171,7 +174,9 @@ export class AuthenticationManager {
    * Safe to call when the cache is disabled — it's a no-op.
    */
   invalidateToken(token: string): boolean {
-    if (!this.tokenCache || !token || typeof token !== 'string') return false;
+    if (!token || typeof token !== 'string') return false;
+    this.authorityRevision++;
+    if (!this.tokenCache) return false;
     const removed = this.tokenCache.delete(this.hashToken(token));
     if (removed) {
       this.logger.debug('Token invalidated from cache');
@@ -190,7 +195,9 @@ export class AuthenticationManager {
    * disabled — returns 0.
    */
   invalidateUser(userId: string): number {
-    if (!this.tokenCache || !userId || typeof userId !== 'string') return 0;
+    if (!userId || typeof userId !== 'string') return 0;
+    this.authorityRevision++;
+    if (!this.tokenCache) return 0;
     // Collect keys first; mutating during forEach iteration is fragile.
     const victims: string[] = [];
     this.tokenCache.forEach((value, key) => {
@@ -497,6 +504,7 @@ export class AuthenticationManager {
       this.logger.debug('Validating token...');
 
       // Execute token validation with timeout
+      const revision = this.authorityRevision;
       const validationPromise = Promise.resolve(this.validateTokenFn(token));
       const context = await this.withTimeout(validationPromise, this.authTimeout, 'Token validation');
 
@@ -537,6 +545,12 @@ export class AuthenticationManager {
       });
 
       // Build successful result
+      if (revision !== this.authorityRevision) {
+        // A concurrent revocation may have changed any principal while the
+        // validator/audit callback was awaiting I/O. A retry must read fresh
+        // authority; never cache or admit this potentially obsolete snapshot.
+        throw new AuthenticationUnavailableError(new Error('Authority changed during validation; retry the request'));
+      }
       const result: AuthResult = {
         success: true,
         context,

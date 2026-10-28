@@ -10,6 +10,7 @@
 import { Command } from 'commander';
 import { CLI_VERSION } from '../config/defaults.js';
 import { setEnvOverride } from '../shared/env-config.js';
+import { exitAfterOutput } from './exit-after-output.js';
 
 const program = new Command();
 
@@ -1355,13 +1356,13 @@ kb.command('query <question>')
  * the loop with their own work and never reach here.
  */
 program.parseAsync().then(
-  () => process.exit(process.exitCode ?? 0),
+  () => exitAfterOutput(process.exitCode ?? 0),
   (err: unknown) => {
     // Commander prints its own errors and sets an exit code; anything else
     // reaching here is a bug in a command, and swallowing it would hide it.
     if ((err as { exitCode?: number })?.exitCode == null) {
       console.error(err instanceof Error ? err.stack ?? err.message : String(err));
     }
-    process.exit(process.exitCode ?? 1);
+    return exitAfterOutput(process.exitCode ?? 1);
   },
 );

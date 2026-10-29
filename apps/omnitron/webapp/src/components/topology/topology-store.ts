@@ -28,8 +28,9 @@
  */
 
 import { create } from 'zustand';
-import type { Node, Edge } from '@xyflow/react';
+import type { Node, Edge, BuiltInEdge } from '@xyflow/react';
 import { daemon, infra, project } from 'src/netron/client';
+import { arrangeTopologyNodes } from './topology-layout';
 import type { ContainerState, DaemonStatusDto, IStackInfo, ProcessInfoDto } from '@omnitron-dev/omnitron/dto/services';
 
 // ---------------------------------------------------------------------------
@@ -340,26 +341,17 @@ export function daemonBands(processes: ProcessInfoDto[], containers: ContainerSt
 // Layout
 // ---------------------------------------------------------------------------
 
-const COLUMN = { server: -360, infra: 0, app: 360, gateway: 720 };
-const GAP = 24;
-const INFRA_HEIGHT = 120;
-const SERVER_HEIGHT = 180;
-const appHeight = (app: AppNodeData) => 140 + (app.processes?.length ?? 0) * 28;
-
 /**
- * Bands one under the other, each in four columns: the nodes it runs on,
- * its services, its apps, its gateway. The only edges are declared ones —
- * a service provisioned for one app, to that app.
+ * Stable identities and declared relationships, with a compact initial layout.
+ * The workspace rearranges these deployment groups for the available width.
  */
 export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeData>[]; edges: Edge[] } {
   const nodes: Node<TopologyNodeData>[] = [];
   const edges: Edge[] = [];
   const serversPlaced = new Map<string, Node<TopologyNodeData>>();
-  let top = 0;
 
   for (const band of bands) {
     const key = band.stack ?? 'daemon';
-    let serverY = top;
     for (const server of band.servers) {
       // A machine that runs two stacks is one machine.
       const placed = serversPlaced.get(server.address);
@@ -371,47 +363,44 @@ export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeDa
       const node: Node<TopologyNodeData> = {
         id: `server-${server.address}`,
         type: 'serverNode',
-        position: { x: COLUMN.server, y: serverY },
+        position: { x: 0, y: 0 },
         data: server,
       };
       serversPlaced.set(server.address, node);
       nodes.push(node);
-      serverY += SERVER_HEIGHT + GAP;
     }
 
-    let infraY = top;
     for (const service of band.services) {
       nodes.push({
         id: `infra-${key}-${service.service}`,
         type: 'infraNode',
-        position: { x: COLUMN.infra, y: infraY },
+        position: { x: 0, y: 0 },
         data: service,
       });
-      infraY += INFRA_HEIGHT + GAP;
     }
 
-    let appY = top;
     for (const app of band.apps) {
       // Keyed by band too: every remote stack's node names its apps alike,
       // `sample/deployed/main`.
       const id = `app-${key}-${app.name}`;
-      nodes.push({ id, type: 'appNode', position: { x: COLUMN.app, y: appY }, data: app });
-      appY += appHeight(app) + GAP;
+      nodes.push({ id, type: 'appNode', position: { x: 0, y: 0 }, data: app });
 
       for (const service of band.services) {
         if (!service.app || service.app !== lastSegment(app.name)) continue;
-        edges.push({
+        const edge: BuiltInEdge = {
           id: `edge-${key}-${service.service}-${app.name}`,
           source: `infra-${key}-${service.service}`,
           target: id,
           type: 'smoothstep',
+          pathOptions: { offset: 8, borderRadius: 4 },
           animated: service.status === 'running',
           style: {
             stroke: service.health === 'healthy' || service.health === 'none' ? '#22c55e' : '#ef4444',
             strokeDasharray: '6 3',
             strokeWidth: 1.5,
           },
-        });
+        };
+        edges.push(edge);
       }
     }
 
@@ -419,15 +408,13 @@ export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeDa
       nodes.push({
         id: `gateway-${key}`,
         type: 'gatewayNode',
-        position: { x: COLUMN.gateway, y: top },
+        position: { x: 0, y: 0 },
         data: band.gateway,
       });
     }
-
-    top = Math.max(serverY, infraY, appY, top + (band.gateway ? 180 : 0)) + 80;
   }
 
-  return { nodes, edges };
+  return { nodes: arrangeTopologyNodes(nodes, 3), edges };
 }
 
 // ---------------------------------------------------------------------------

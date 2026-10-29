@@ -1,11 +1,6 @@
 /**
- * Shared topology node styles — theme-aware via Prism palette.
- *
- * Uses MUI theme palette references instead of hardcoded hex values.
- * This ensures topology nodes adapt to any Prism preset (midnight, dracula, etc.).
+ * Topology state colours shared by cards, inspector and minimap.
  */
-
-import type { SxProps, Theme } from '@mui/material/styles';
 
 import { statusColor } from 'src/utils/constants';
 
@@ -45,26 +40,3 @@ const FALLBACK_HEX: Record<'success' | 'warning' | 'error' | 'default', string> 
   error: '#ef4444',
   default: '#6b7280',
 };
-
-// ---------------------------------------------------------------------------
-// Glass card style — uses theme-aware alpha
-// ---------------------------------------------------------------------------
-
-export const glassCardSx = {
-  bgcolor: 'background.paper',
-  border: (theme) => `1px solid ${theme.palette.divider}`,
-  borderRadius: '12px',
-  color: (theme) => theme.palette.text.primary,
-  width: 280,
-  minWidth: 260,
-  overflowWrap: 'anywhere',
-  transition: 'border-color 0.2s, box-shadow 0.2s',
-  '&:hover': {
-    borderColor: (theme) => (theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)'),
-  },
-} satisfies SxProps<Theme>;
-
-export const selectedGlowSx = {
-  borderColor: 'primary.main',
-  boxShadow: (theme) => `0 0 0 1px ${theme.palette.primary.main}`,
-} satisfies SxProps<Theme>;

@@ -1,5 +1,5 @@
 /** Deployment topology: machines, declared dependencies, applications and ingress. */
-import { useEffect, useCallback, useState, useRef } from 'react';
+import { useEffect, useCallback, useMemo, useState, useRef } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
@@ -10,6 +10,7 @@ import {
   useEdgesState,
   useReactFlow,
   useViewport,
+  useNodesInitialized,
   type Node,
   type Edge,
   type NodeTypes,
@@ -43,14 +44,28 @@ import {
   FullscreenExitIcon,
   LockIcon,
   LockOpenIcon,
+  DashboardIcon,
 } from 'src/assets/icons';
 import { InfraNode } from 'src/components/topology/infra-node';
 import { AppNode } from 'src/components/topology/app-node';
 import { GatewayNode } from 'src/components/topology/gateway-node';
 import { ServerNode } from 'src/components/topology/server-node';
 import { DetailPanel } from 'src/components/topology/detail-panel';
-import { useTopologyStore, type AppNodeData, type TopologyNodeData } from 'src/components/topology/topology-store';
+import {
+  useTopologyStore,
+  serviceState,
+  type AppNodeData,
+  type TopologyNodeData,
+} from 'src/components/topology/topology-store';
 import { getStatusColor } from 'src/components/topology/shared-styles';
+import {
+  arrangeTopologyNodes,
+  nearestTopologyNode,
+  readableTopologyViewport,
+  topologyColumns,
+  TOPOLOGY_CARD_HEIGHT,
+  TOPOLOGY_GAP,
+} from 'src/components/topology/topology-layout';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import { useAccess } from 'src/auth/access';
@@ -100,30 +115,50 @@ function TopologyWorkspace() {
   const [fullscreen, setFullscreen] = useState(false);
   const [viewError, setViewError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const [manualLayout, setManualLayout] = useState(false);
+  const [layoutReset, setLayoutReset] = useState(0);
   const container = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; node: Node<TopologyNodeData> } | null>(null);
-  const { fitView, zoomIn, zoomOut } = useReactFlow();
+  const { fitView, zoomIn, zoomOut, getNodes, getViewport, setViewport } = useReactFlow();
   const { zoom } = useViewport();
+  const nodesInitialized = useNodesInitialized();
+  const viewMode = useRef<'readable' | 'overview' | 'manual'>('readable');
+  const viewFocus = useRef<string | null>(null);
+  const previousSize = useRef<typeof canvasSize | null>(null);
+  const previousGeometry = useRef<Pick<Node, 'id' | 'position'>[]>([]);
+  const columns = topologyColumns(canvasSize.width);
+  const arrangedNodes = useMemo(() => arrangeTopologyNodes(storeNodes, columns), [storeNodes, columns]);
+  const layoutKey = arrangedNodes.map((node) => `${node.id}:${node.position.x}:${node.position.y}`).join('|');
   const duration = reducedMotion ? 0 : 200;
 
   useEffect(() => {
     setScope({ project: activeProject, stack: activeStack });
   }, [activeProject, activeStack, setScope]);
   useEffect(() => {
-    setNodes((previous) =>
-      storeNodes.map((node) => {
+    setNodes((previous) => {
+      let nextY = Math.max(0, ...previous.map((node) => node.position.y + TOPOLOGY_CARD_HEIGHT + TOPOLOGY_GAP));
+      return arrangedNodes.map((node) => {
         const existing = previous.find((old) => old.id === node.id);
+        let position = node.position;
+        if (manualLayout) {
+          position = existing?.position ?? { x: 0, y: nextY };
+          if (!existing) nextY += TOPOLOGY_CARD_HEIGHT + TOPOLOGY_GAP;
+        }
         return {
+          ...existing,
           ...node,
-          position: existing?.position ?? node.position,
+          position,
+          sourcePosition: manualLayout && existing ? existing.sourcePosition : node.sourcePosition,
+          targetPosition: manualLayout && existing ? existing.targetPosition : node.targetPosition,
           selected: existing?.selected ?? false,
           ariaRole: 'button',
-          ariaLabel: `${node.data.label}, ${node.data.nodeType}, ${node.data.status}. Inspect details`,
+          ariaLabel: `${node.data.label}, ${node.data.nodeType}, ${node.data.nodeType === 'infra' || node.data.nodeType === 'gateway' ? serviceState(node.data) : node.data.status}. Inspect details`,
         };
-      })
-    );
-  }, [storeNodes, setNodes]);
+      });
+    });
+  }, [arrangedNodes, manualLayout, setNodes]);
   useEffect(() => {
     setEdges(storeEdges);
   }, [storeEdges, setEdges]);
@@ -141,9 +176,12 @@ function TopologyWorkspace() {
 
   const inspect = useCallback(
     (node: Node<TopologyNodeData>) => {
+      viewFocus.current = node.id;
+      viewMode.current = 'manual';
+      setNodes((previous) => previous.map((item) => ({ ...item, selected: item.id === node.id })));
       openDetail(node.id, node.data.nodeType, node.data);
     },
-    [openDetail]
+    [openDetail, setNodes]
   );
   const toggleFullscreen = async () => {
     try {
@@ -163,31 +201,84 @@ function TopologyWorkspace() {
     }
   };
   const fit = () => {
-    void fitView({ padding: 0.15, maxZoom: 1, duration });
+    viewMode.current = 'overview';
+    viewFocus.current = null;
+    void fitView({ padding: 0.08, minZoom: 0.1, maxZoom: 1, duration });
   };
-  // Refit on available-space changes, not on polling. A manual pan survives refreshes.
+  const readable = () => {
+    viewMode.current = 'readable';
+    void setViewport(readableTopologyViewport(getNodes(), canvasSize, detailPanel.nodeId ?? viewFocus.current), {
+      duration,
+    });
+  };
+  const changeZoom = (direction: 'in' | 'out') => {
+    viewMode.current = 'manual';
+    viewFocus.current = null;
+    void (direction === 'in' ? zoomIn({ duration }) : zoomOut({ duration }));
+  };
+  // Measure the actual canvas, including the space reserved by a persistent inspector.
   useEffect(() => {
     const element = canvas.current;
-    if (!element || listView || !nodes.length) return;
-    let frame = 0;
-    const fitAvailableSpace = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        void fitView({
-          ...(detailPanel.open && detailPanel.nodeId ? { nodes: [{ id: detailPanel.nodeId }] } : {}),
-          padding: 0.15,
-          maxZoom: 1,
-          duration: 0,
-        });
-      });
-    };
-    const observer = new ResizeObserver(fitAvailableSpace);
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      setCanvasSize((previous) =>
+        previous.width === width && previous.height === height ? previous : { width, height }
+      );
+    });
     observer.observe(element);
-    return () => {
-      observer.disconnect();
-      cancelAnimationFrame(frame);
-    };
-  }, [fitView, nodes.length, listView, detailPanel.open, detailPanel.nodeId]);
+    return () => observer.disconnect();
+  }, []);
+  // Polling changes readings, not the camera. Only geometry, selection or an explicit command reframes it.
+  useEffect(() => {
+    if (!nodesInitialized || listView || !canvasSize.width || !canvasSize.height) return;
+    const frame = requestAnimationFrame(() => {
+      const oldSize = previousSize.current;
+      const oldNodes = previousGeometry.current;
+      const currentNodes = getNodes();
+      previousSize.current = canvasSize;
+      previousGeometry.current = currentNodes.map(({ id, position }) => ({ id, position: { ...position } }));
+      const focusId = detailPanel.open ? detailPanel.nodeId : viewFocus.current;
+      if (focusId) {
+        void setViewport(readableTopologyViewport(getNodes(), canvasSize, focusId));
+      } else if (viewMode.current === 'overview') {
+        void fitView({ padding: 0.08, minZoom: 0.1, maxZoom: 1, duration: 0 });
+      } else if (viewMode.current === 'manual' && oldSize) {
+        const current = getViewport();
+        const oldPositions = new Map(oldNodes.map((node) => [node.id, node.position]));
+        const reflowed = currentNodes.some((node) => {
+          const old = oldPositions.get(node.id);
+          return old && (old.x !== node.position.x || old.y !== node.position.y);
+        });
+        if (reflowed) {
+          const anchor = nearestTopologyNode(oldNodes, oldSize, current);
+          void setViewport(readableTopologyViewport(currentNodes, canvasSize, anchor));
+        } else {
+          void setViewport({
+            ...current,
+            x: current.x + (canvasSize.width - oldSize.width) / 2,
+            y: current.y + (canvasSize.height - oldSize.height) / 2,
+          });
+        }
+      } else {
+        void setViewport(readableTopologyViewport(getNodes(), canvasSize));
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [
+    nodesInitialized,
+    listView,
+    canvasSize,
+    layoutKey,
+    layoutReset,
+    detailPanel.open,
+    detailPanel.nodeId,
+    fitView,
+    getNodes,
+    getViewport,
+    setViewport,
+  ]);
 
   const menuApp = menu?.node.data.nodeType === 'app' ? (menu.node.data as AppNodeData) : null;
   const localApp = menuApp && !menuApp.remote ? menuApp : null;
@@ -201,13 +292,13 @@ function TopologyWorkspace() {
     {
       label: 'Zoom out',
       icon: <ZoomOutIcon fontSize="small" />,
-      action: () => zoomOut({ duration }),
+      action: () => changeZoom('out'),
       disabled: listView || zoom <= 0.1,
     },
     {
       label: 'Zoom in',
       icon: <ZoomInIcon fontSize="small" />,
-      action: () => zoomIn({ duration }),
+      action: () => changeZoom('in'),
       disabled: listView || zoom >= 2,
     },
     { label: 'Fit graph', icon: <NodesIcon fontSize="small" />, action: fit, disabled: listView || !nodes.length },
@@ -271,7 +362,7 @@ function TopologyWorkspace() {
             onChange={(_, node) => {
               if (node) {
                 inspect(node);
-                void fitView({ nodes: [{ id: node.id }], maxZoom: 1, padding: 0.3, duration });
+                void setViewport(readableTopologyViewport(getNodes(), canvasSize, node.id), { duration });
               }
             }}
           />
@@ -293,17 +384,37 @@ function TopologyWorkspace() {
                 </span>
               </Tooltip>
             ))}
+            {manualLayout && (
+              <Tooltip title="Arrange nodes" describeChild>
+                <IconButton
+                  size="small"
+                  aria-label="Arrange nodes"
+                  disabled={listView}
+                  onClick={() => {
+                    viewMode.current = 'readable';
+                    viewFocus.current = null;
+                    setManualLayout(false);
+                    setLayoutReset((value) => value + 1);
+                  }}
+                >
+                  <DashboardIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
             <IconButton size="small" aria-label="Refresh topology" disabled={refreshing} onClick={refresh}>
               <RefreshIcon fontSize="small" />
             </IconButton>
             {!listView && (
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ minWidth: 32, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-              >
-                {Math.round(zoom * 100)}%
-              </Typography>
+              <Tooltip title="Readable view (1)" describeChild>
+                <Button
+                  size="small"
+                  aria-label="Readable view"
+                  onClick={readable}
+                  sx={{ minWidth: 40, px: 0.5, fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {Math.round(zoom * 100)}%
+                </Button>
+              </Tooltip>
             )}
           </Stack>
         </Stack>
@@ -322,7 +433,7 @@ function TopologyWorkspace() {
             color="text.secondary"
             sx={{ display: { xs: 'none', sm: 'block' }, ml: 'auto' }}
           >
-            Select to inspect · + / − zoom · 0 fit
+            Scroll to pan · + / − zoom · 0 fit · 1 readable
           </Typography>
         </Stack>
         <Box sx={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0, position: 'relative', overflow: 'hidden' }}>
@@ -362,15 +473,31 @@ function TopologyWorkspace() {
               if (listView) return;
               if (event.key === '+' || event.key === '=') {
                 event.preventDefault();
-                void zoomIn({ duration });
+                changeZoom('in');
               }
               if (event.key === '-') {
                 event.preventDefault();
-                void zoomOut({ duration });
+                changeZoom('out');
               }
               if (event.key === '0') {
                 event.preventDefault();
                 fit();
+              }
+              if (event.key === '1') {
+                event.preventDefault();
+                readable();
+              }
+              if (
+                event.target === event.currentTarget &&
+                ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)
+              ) {
+                event.preventDefault();
+                viewMode.current = 'manual';
+                viewFocus.current = null;
+                const current = getViewport();
+                const dx = event.key === 'ArrowLeft' ? 80 : event.key === 'ArrowRight' ? -80 : 0;
+                const dy = event.key === 'ArrowUp' ? 80 : event.key === 'ArrowDown' ? -80 : 0;
+                void setViewport({ ...current, x: current.x + dx, y: current.y + dy });
               }
             }}
           >
@@ -389,10 +516,28 @@ function TopologyWorkspace() {
                   <ReactFlow
                     nodes={nodes}
                     edges={edges}
-                    onNodesChange={onNodesChange}
+                    onNodesChange={(changes) => {
+                      if (changes.some((change) => change.type === 'position' && change.position)) {
+                        viewMode.current = 'manual';
+                        viewFocus.current = null;
+                        setManualLayout(true);
+                      }
+                      onNodesChange(changes);
+                    }}
                     onEdgesChange={onEdgesChange}
                     nodeTypes={nodeTypes}
                     onNodeClick={(_, node) => inspect(node)}
+                    onNodeDragStart={() => {
+                      viewMode.current = 'manual';
+                      viewFocus.current = null;
+                      setManualLayout(true);
+                    }}
+                    onMoveStart={(event) => {
+                      if (event) {
+                        viewMode.current = 'manual';
+                        viewFocus.current = null;
+                      }
+                    }}
                     onPaneClick={closeDetail}
                     onNodeContextMenu={(event, node) => {
                       event.preventDefault();
@@ -406,8 +551,10 @@ function TopologyWorkspace() {
                       'node.a11yDescription.default': 'Press Enter or Space to inspect this node.',
                       'node.a11yDescription.keyboardDisabled': 'Press Enter or Space to inspect this node.',
                     }}
-                    fitView
-                    fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
+                    panOnScroll
+                    panOnScrollSpeed={1}
+                    zoomOnScroll={false}
+                    zoomActivationKeyCode={['Meta', 'Control']}
                     minZoom={0.1}
                     maxZoom={2}
                     colorMode={theme.palette.mode}
@@ -423,7 +570,8 @@ function TopologyWorkspace() {
                     />
                     {wide && (
                       <MiniMap
-                        position="bottom-left"
+                        ariaLabel="Topology overview"
+                        position="bottom-right"
                         pannable
                         zoomable
                         style={{

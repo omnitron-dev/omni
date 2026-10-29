@@ -94,4 +94,14 @@ describe('dashboard with a half-failed refresh', () => {
     await waitFor(() => expect(screen.getByRole('link', { name: 'main', exact: true })).toBeInTheDocument());
     expect(screen.queryByText(/could not refresh/i)).not.toBeInTheDocument();
   });
+  it('uses the same current readings in the summary and application cards', async () => {
+    list.mockResolvedValue([app('main')]);
+    getSnapshot.mockResolvedValue({ apps: { main: { cpu: 4, memory: 1024 } } });
+    const { default: Dashboard } = await import('../../webapp/src/pages/dashboard.js');
+    render(<Dashboard />);
+    await screen.findByRole('link', { name: 'main', exact: true });
+    expect(screen.getAllByText('4.0%')).toHaveLength(2);
+    expect(screen.getAllByText('1 KiB')).toHaveLength(2);
+  });
+
 });

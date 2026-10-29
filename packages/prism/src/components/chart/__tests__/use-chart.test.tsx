@@ -18,6 +18,7 @@ describe('chart theme and motion policy', () => {
     expect(result.current.tooltip?.y?.formatter?.(25)).toBe('25 bytes');
     expect(result.current.chart?.animations?.enabled).toBe(false);
     expect(result.current.chart?.toolbar?.show).toBe(false);
+    expect(result.current.chart?.background).toBe('transparent');
   });
 
   it('honours reduced motion even when a caller requests animation', () => {

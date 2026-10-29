@@ -93,6 +93,7 @@ function baseChartOptions(theme: Theme): ChartOptions {
     // https://apexcharts.com/docs/options/chart/animations/
     // =========================================================================
     chart: {
+      background: 'transparent',
       toolbar: { show: false },
       zoom: { enabled: false },
       parentHeightOffset: 0,

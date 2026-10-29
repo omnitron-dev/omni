@@ -334,8 +334,9 @@ function DashboardReader() {
   const totalApps = apps.length;
   const onlineCount = apps.filter((a) => a.status === 'online').length;
   const offlineCount = totalApps - onlineCount;
-  const totalCpu = resourceTotal(apps.map((a) => sampled(a)?.cpu ?? a.cpu));
-  const totalMemory = resourceTotal(apps.map((a) => sampled(a)?.memory ?? a.memory));
+  const readings = apps.map((a) => ({ ...a, cpu: sampled(a)?.cpu ?? a.cpu, memory: sampled(a)?.memory ?? a.memory }));
+  const totalCpu = resourceTotal(readings.map((a) => a.cpu));
+  const totalMemory = resourceTotal(readings.map((a) => a.memory));
   const runningStacks = stacks.filter((s) => s.status === 'running').length;
 
   return (
@@ -446,7 +447,7 @@ function DashboardReader() {
       )}
       {!loading && apps.length > 0 && (
         <ResourceBreakdown
-          apps={apps.map((a) => ({ ...a, cpu: sampled(a)?.cpu ?? a.cpu, memory: sampled(a)?.memory ?? a.memory }))}
+          apps={readings}
         />
       )}
       {!loading && shown !== null && apps.length === 0 && (
@@ -466,7 +467,7 @@ function DashboardReader() {
           >
             Applications
           </Typography>
-          <AppStatusGrid apps={apps} activeStack={activeStack} activeProject={activeProject} />
+          <AppStatusGrid apps={readings} activeStack={activeStack} activeProject={activeProject} />
         </Box>
       )}
     </Stack>

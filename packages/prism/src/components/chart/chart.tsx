@@ -111,6 +111,8 @@ export function Chart({
 
 const ChartRoot = styled('div')(({ theme }) => ({
   width: '100%',
+  minWidth: 0,
+  maxWidth: '100%',
   flexShrink: 0,
   position: 'relative',
   borderRadius: Number(theme.shape.borderRadius) * 1.5,

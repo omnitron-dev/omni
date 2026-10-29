@@ -124,6 +124,10 @@
       "types": "./dist/components/card/index.d.ts",
       "import": "./dist/components/card/index.js"
     },
+    "./components/chart": {
+      "types": "./dist/components/chart/index.d.ts",
+      "import": "./dist/components/chart/index.js"
+    },
     "./components/command-palette": {
       "types": "./dist/components/command-palette/index.d.ts",
       "import": "./dist/components/command-palette/index.js"

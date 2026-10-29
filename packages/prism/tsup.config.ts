@@ -26,6 +26,7 @@ export default defineConfig([
       'components/animate/index': 'src/components/animate/index.ts',
       'components/breadcrumbs/index': 'src/components/breadcrumbs/index.ts',
       'components/card/index': 'src/components/card/index.ts',
+      'components/chart/index': 'src/components/chart/index.ts',
       'components/command-palette/index': 'src/components/command-palette/index.ts',
       'components/confirm-dialog/index': 'src/components/confirm-dialog/index.ts',
       'components/empty-content/index': 'src/components/empty-content/index.ts',

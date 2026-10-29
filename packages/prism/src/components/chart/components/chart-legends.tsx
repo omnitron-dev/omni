@@ -98,6 +98,8 @@ const ListRoot = styled('ul')(({ theme }) => ({
 }));
 
 const ItemWrap = styled('li')({
+  minWidth: 0,
+  maxWidth: '100%',
   display: 'inline-flex',
   flexDirection: 'column',
 });
@@ -134,7 +136,8 @@ const ItemDot = styled('span')({
 });
 
 const ItemLabel = styled('span')({
-  flexShrink: 0,
+  minWidth: 0,
+  overflowWrap: 'anywhere',
 });
 
 const ItemValue = styled('span')(({ theme }) => ({

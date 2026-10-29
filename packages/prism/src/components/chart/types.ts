@@ -84,7 +84,13 @@ export interface ChartOptions {
     itemMargin?: { horizontal?: number; vertical?: number };
   };
   plotOptions?: {
-    bar?: { borderRadius?: number; columnWidth?: string; borderRadiusApplication?: string };
+    bar?: {
+      borderRadius?: number;
+      columnWidth?: string;
+      borderRadiusApplication?: string;
+      horizontal?: boolean;
+      barHeight?: string;
+    };
     pie?: { donut?: { size?: string; labels?: { show?: boolean; value?: object; total?: object } } };
     radialBar?: { hollow?: object; track?: object; dataLabels?: object };
     radar?: { polygons?: { fill?: object; strokeColors?: string; connectorColors?: string } };
@@ -101,7 +107,7 @@ export interface ChartOptions {
 export type ChartSeries =
   | Array<{
       name?: string;
-      data: number[] | number[][] | Array<{ x: string | number; y: number }>;
+      data: number[] | number[][] | Array<{ x: string | number; y: number | null }>;
       type?: string;
       [key: string]: unknown;
     }>

@@ -11,6 +11,7 @@ import type { Theme } from '@mui/material/styles';
 import type { ChartOptions } from './types.js';
 
 import { useTheme } from '@mui/material/styles';
+import useMediaQuery from '@mui/material/useMediaQuery';
 
 // =============================================================================
 // USE CHART HOOK
@@ -41,10 +42,15 @@ import { useTheme } from '@mui/material/styles';
  */
 export function useChart(updatedOptions?: ChartOptions): ChartOptions {
   const theme = useTheme();
+  const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
 
   const baseOptions = baseChartOptions(theme) ?? {};
 
-  return deepMerge(baseOptions, updatedOptions ?? {});
+  const options = deepMerge(baseOptions, updatedOptions ?? {});
+  if (reducedMotion) {
+    options.chart = { ...options.chart, animations: { ...options.chart?.animations, enabled: false } };
+  }
+  return options;
 }
 
 // =============================================================================
@@ -90,7 +96,7 @@ function baseChartOptions(theme: Theme): ChartOptions {
       zoom: { enabled: false },
       parentHeightOffset: 0,
       fontFamily: theme.typography.fontFamily,
-      foreColor: vars?.text.disabled ?? palette.text.disabled,
+      foreColor: vars?.text.secondary ?? palette.text.secondary,
       animations: {
         enabled: true,
         speed: 360,
@@ -182,7 +188,7 @@ function baseChartOptions(theme: Theme): ChartOptions {
     // =========================================================================
     // Tooltip
     // =========================================================================
-    tooltip: { theme: 'false', fillSeriesColor: false, x: { show: true } },
+    tooltip: { theme: palette.mode, fillSeriesColor: false, x: { show: true } },
 
     // =========================================================================
     // Legend

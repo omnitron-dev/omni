@@ -255,4 +255,16 @@ describe('a topology that could not read one of its sources', () => {
     ]);
     expect(state.error).toMatch(/incomplete: could not read container health/i);
   });
+  it('keeps inspected readings current and clears the old selection when scope changes', async () => {
+    await fetchFor('dev');
+    const selected = useTopologyStore.getState().nodes.find((node) => node.data.nodeType === 'app')!;
+    useTopologyStore.getState().openDetail(selected.id, 'app', selected.data);
+    client.listStacks.mockResolvedValue(STACKS.map((stack) => ({ ...stack, apps: stack.apps.map((app) => ({ ...app, cpu: 150 })) })));
+    await useTopologyStore.getState().fetchAll();
+    expect(useTopologyStore.getState().detailPanel.data).toMatchObject({ cpu: 150 });
+    useTopologyStore.getState().setScope(scope('test'));
+    expect(useTopologyStore.getState().detailPanel.open).toBe(false);
+    expect(useTopologyStore.getState().nodes).toEqual([]);
+  });
+
 });

@@ -1,3 +1,4 @@
+import { useTheme } from '@mui/material/styles';
 /**
  * InfrastructureNode — Custom React Flow node for infrastructure services
  * (PostgreSQL, Redis, MinIO, etc.)
@@ -28,6 +29,7 @@ const INFRA_ICONS: Record<string, { emoji: string; color: string }> = {
 // ---------------------------------------------------------------------------
 
 function InfraNodeComponent({ data, selected }: NodeProps) {
+  const theme = useTheme();
   const nodeData = data as unknown as InfraNodeData;
   const state = serviceState(nodeData);
   const statusColor = getStatusColor(state);
@@ -53,9 +55,10 @@ function InfraNodeComponent({ data, selected }: NodeProps) {
           direction="row"
           spacing={1.5}
           sx={{
-            alignItems: "center",
-            mb: 1.5
-          }}>
+            alignItems: 'center',
+            mb: 1.5,
+          }}
+        >
           <Box
             sx={{
               width: 36,
@@ -78,15 +81,13 @@ function InfraNodeComponent({ data, selected }: NodeProps) {
                 fontWeight: 700,
                 textTransform: 'capitalize',
                 letterSpacing: 0.3,
-                lineHeight: 1.2
-              }}>
+                lineHeight: 1.2,
+              }}
+            >
               {nodeData.label}
             </Typography>
             {nodeData.port !== null && (
-              <Typography
-                variant="caption"
-                sx={{ fontFamily: 'monospace', color: 'text.secondary', fontSize: 11 }}
-              >
+              <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary', fontSize: 11 }}>
                 :{nodeData.port}
               </Typography>
             )}
@@ -100,17 +101,18 @@ function InfraNodeComponent({ data, selected }: NodeProps) {
               borderRadius: '50%',
               bgcolor: statusColor,
               flexShrink: 0,
-              ...(isOnline && {
-                animation: 'topoPulse 2s ease-in-out infinite',
-              }),
             }}
           />
         </Stack>
 
         {/* Status chip */}
-        <Stack direction="row" spacing={1} sx={{
-          alignItems: "center"
-        }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{
+            alignItems: 'center',
+          }}
+        >
           <Chip
             label={nodeData.status}
             size="small"
@@ -134,7 +136,7 @@ function InfraNodeComponent({ data, selected }: NodeProps) {
               sx={{
                 fontFamily: 'monospace',
                 fontSize: 10,
-                color: 'text.disabled',
+                color: 'text.secondary',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 maxWidth: 100,
@@ -154,7 +156,7 @@ function InfraNodeComponent({ data, selected }: NodeProps) {
               mt: 1,
               fontFamily: 'monospace',
               fontSize: 10,
-              color: 'text.disabled',
+              color: 'text.secondary',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',

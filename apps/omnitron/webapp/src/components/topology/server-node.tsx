@@ -1,3 +1,4 @@
+import { useTheme } from '@mui/material/styles';
 /**
  * ServerNode — a machine a stack runs on: its name, address, the daemon's
  * role there, and the apps it runs.
@@ -32,10 +33,10 @@ const ROLE_COLORS: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 function ServerNodeComponent({ data, selected }: NodeProps) {
+  const theme = useTheme();
   const nodeData = data as unknown as ServerNodeData;
-  const statusColor = getStatusColor(nodeData.status);
+  const statusColor = getStatusColor(nodeData.status, theme);
   const roleColor = ROLE_COLORS[nodeData.role] ?? '#94a3b8';
-  const isOnline = nodeData.status === 'online';
 
   return (
     <>
@@ -49,8 +50,9 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
           minWidth: 300,
           // The app chips wrap; left to grow, the card ran into the services beside it.
           maxWidth: 320,
-          background: 'rgba(15, 15, 25, 0.92)',
-          border: '1px solid', borderColor: 'divider',
+          bgcolor: 'background.paper',
+          border: '1px solid',
+          borderColor: 'divider',
           ...(selected && {
             borderColor: 'rgba(99, 102, 241, 0.6)',
             boxShadow: '0 0 20px rgba(99, 102, 241, 0.15)',
@@ -62,9 +64,10 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
           direction="row"
           spacing={1.5}
           sx={{
-            alignItems: "center",
-            mb: 1.5
-          }}>
+            alignItems: 'center',
+            mb: 1.5,
+          }}
+        >
           <Box
             sx={{
               width: 40,
@@ -86,8 +89,9 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
               sx={{
                 fontWeight: 700,
                 letterSpacing: 0.3,
-                lineHeight: 1.2
-              }}>
+                lineHeight: 1.2,
+              }}
+            >
               {nodeData.hostname}
             </Typography>
             <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary', fontSize: 11 }}>
@@ -102,7 +106,6 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
               borderRadius: '50%',
               bgcolor: statusColor,
               flexShrink: 0,
-              ...(isOnline && { animation: 'topoPulse 2s ease-in-out infinite' }),
             }}
           />
         </Stack>
@@ -112,9 +115,10 @@ function ServerNodeComponent({ data, selected }: NodeProps) {
           direction="row"
           spacing={0.75}
           sx={{
-            alignItems: "center",
-            mb: 1.5
-          }}>
+            alignItems: 'center',
+            mb: 1.5,
+          }}
+        >
           <Chip
             label={nodeData.role}
             size="small"

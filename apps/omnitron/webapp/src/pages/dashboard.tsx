@@ -1,16 +1,5 @@
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
-/**
- * Omnitron Console Dashboard
- *
- * Production-grade overview following portal admin dashboard patterns:
- * - 4 primary KPI stat cards (Prism StatCard)
- * - Application status grid with equal-height cards
- * - Daemon info card
- * - Recent activity log card
- *
- * All data loaded in parallel via Promise.allSettled with graceful fallbacks.
- * Auto-refresh every 5 seconds (silent — no skeleton flash after first load).
- */
+/** Selected deployments, current resource readings and links to operational detail. */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Grid from '@mui/material/Grid';
@@ -20,150 +9,78 @@ import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
-import Divider from '@mui/material/Divider';
-import { alpha, useTheme } from '@mui/material/styles';
-
-import { AppsIcon, StacksIcon, MetricsIcon, ContainersIcon } from 'src/assets/icons';
+import Link from '@mui/material/Link';
+import Button from '@mui/material/Button';
+import { Link as RouterLink } from 'react-router-dom';
+import { statusColor } from 'src/utils/constants';
+import { formatBytes, formatCpu, resourceTotal } from 'src/utils/metric-series';
+import { ResourceBreakdown } from 'src/components/resource-breakdown';
 
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { StatCard } from '@omnitron-dev/prism/components/card';
 import { daemon, metrics, project as projectRpc } from 'src/netron/client';
-import { formatMemory, formatUptime } from 'src/utils/formatters';
+import { formatUptime } from 'src/utils/formatters';
 import { useRealtimeStore } from 'src/stores/realtime.store';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import { useActiveProjectStacks } from 'src/stores/project.store';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { shownApps, type ShownApp } from 'src/utils/app-address';
 
-import type { IProjectAppStatus, ProcessInfoDto } from '@omnitron-dev/omnitron/dto/services';
+import type { IProjectAppStatus, ProcessInfoDto, MetricsSnapshot } from '@omnitron-dev/omnitron/dto/services';
 
 // ---------------------------------------------------------------------------
 // App Status Card
 // ---------------------------------------------------------------------------
 
 function AppStatusCard({ app }: { app: ShownApp }) {
-  const theme = useTheme();
-
-  const statusColor =
-    app.status === 'online'
-      ? theme.palette.success.main
-      : app.status === 'errored' || app.status === 'crashed'
-        ? theme.palette.error.main
-        : app.status === 'starting'
-          ? theme.palette.warning.main
-          : theme.palette.text.disabled;
-
-  const rows = [
-    { label: 'PID', value: app.pid ?? '--' },
-    { label: 'Uptime', value: formatUptime(app.uptime) },
-    { label: 'CPU', value: app.cpu > 0 ? `${app.cpu.toFixed(1)}%` : '--' },
-    { label: 'Memory', value: formatMemory(app.memory) },
-    { label: 'Restarts', value: app.restarts },
-  ];
-
   return (
-    <Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}>
-      <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
-        <Stack
-          direction="row"
-          sx={{
-            alignItems: "center",
-            justifyContent: "space-between",
-            mb: 1.5
-          }}>
-          <Typography variant="subtitle2" sx={{
-            fontWeight: 700
-          }}>
-            {app.name}
+    <Card
+      variant="outlined"
+      sx={{
+        height: '100%',
+        '& h4': { fontSize: { xs: 22, sm: 26 }, overflowWrap: 'anywhere', fontVariantNumeric: 'tabular-nums' },
+      }}
+    >
+      <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+        <Stack direction="row" useFlexGap spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: 1.5 }}>
+          <Typography variant="subtitle2" sx={{ minWidth: 0, flex: '1 1 100px', overflowWrap: 'anywhere' }}>
+            {app.remote ? (
+              app.name
+            ) : (
+              <Link
+                component={RouterLink}
+                to={`/apps/${encodeURIComponent(app.key)}`}
+                color="inherit"
+                underline="hover"
+              >
+                {app.name}
+              </Link>
+            )}
           </Typography>
-          <Chip
-            label={app.status}
-            size="small"
-            sx={{
-              height: 22,
-              fontSize: '0.7rem',
-              fontWeight: 600,
-              bgcolor: alpha(statusColor, 0.12),
-              color: statusColor,
-              border: `1px solid ${alpha(statusColor, 0.3)}`,
-            }}
-          />
+          <Chip label={app.status} color={statusColor(app.status)} size="small" variant="outlined" />
         </Stack>
-
-        <Divider sx={{ mb: 1 }} />
-
-        <Stack spacing={0.5}>
-          {rows.map((row) => (
-            <Stack
-              key={row.label}
-              direction="row"
-              sx={{
-                justifyContent: "space-between",
-                alignItems: "center",
-                py: 0.25
-              }}>
-              <Typography variant="caption" sx={{
-                color: "text.secondary"
-              }}>
-                {row.label}
+        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+          {[
+            { label: 'CPU', value: formatCpu(app.cpu) },
+            { label: 'Resident memory', value: formatBytes(app.memory) },
+            { label: 'Uptime', value: formatUptime(app.uptime) },
+            { label: 'Restarts', value: app.restarts },
+          ].map((item) => (
+            <Box key={item.label} sx={{ minWidth: 0 }}>
+              <Typography variant="caption" color="text.secondary">
+                {item.label}
               </Typography>
-              <Typography variant="caption" sx={{
-                fontWeight: 600
-              }}>
-                {row.value}
+              <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' }}>
+                {item.value}
               </Typography>
-            </Stack>
+            </Box>
           ))}
-        </Stack>
-
-        {app.processes && app.processes.length > 0 && (
-          <>
-            <Divider sx={{ my: 1 }} />
-            <Typography
-              variant="caption"
-              sx={{
-                color: "text.secondary",
-                fontWeight: 600,
-                mb: 0.5,
-                display: 'block'
-              }}>
-              Processes
-            </Typography>
-            <Stack spacing={0.25}>
-              {app.processes.map((p) => (
-                <Stack
-                  key={p.name}
-                  direction="row"
-                  sx={{
-                    justifyContent: "space-between",
-                    alignItems: "center"
-                  }}>
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      color: "text.secondary",
-                      fontSize: '0.68rem'
-                    }}>
-                    {p.name}
-                  </Typography>
-                  <Chip
-                    label={p.status}
-                    size="small"
-                    sx={{
-                      height: 16,
-                      fontSize: '0.6rem',
-                      fontWeight: 600,
-                      bgcolor: alpha(
-                        p.status === 'online' ? '#22c55e' : p.status === 'stopped' ? '#6b7280' : '#ef4444',
-                        0.1,
-                      ),
-                      color: p.status === 'online' ? '#22c55e' : p.status === 'stopped' ? '#6b7280' : '#ef4444',
-                    }}
-                  />
-                </Stack>
-              ))}
-            </Stack>
-          </>
+        </Box>
+        {!!app.processes?.length && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+            {app.processes.filter((process) => process.status === 'online').length}/{app.processes.length} processes
+            online
+          </Typography>
         )}
       </CardContent>
     </Card>
@@ -174,11 +91,19 @@ function AppStatusCard({ app }: { app: ShownApp }) {
 // App Status Grid — groups by stack when showing all stacks
 // ---------------------------------------------------------------------------
 
-function AppStatusGrid({ apps, activeStack }: { apps: ShownApp[]; activeStack: string | null }) {
+function AppStatusGrid({
+  apps,
+  activeStack,
+  activeProject,
+}: {
+  apps: ShownApp[];
+  activeStack: string | null;
+  activeProject: string | null;
+}) {
   // If a specific stack is selected, or no app belongs to one, show flat grid
   if (activeStack || apps.every((a) => a.stack === null)) {
     return (
-      <Grid container spacing={2.5}>
+      <Grid container spacing={1.5}>
         {apps.map((app) => (
           <Grid key={app.key} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
             <AppStatusCard app={app} />
@@ -192,7 +117,11 @@ function AppStatusGrid({ apps, activeStack }: { apps: ShownApp[]; activeStack: s
   // remote stack's apps carry the node's naming, `sample/deployed/main`.
   const groups = new Map<string, ShownApp[]>();
   for (const app of apps) {
-    const stackLabel = app.stack ?? 'default';
+    const stackLabel = activeProject
+      ? (app.stack ?? 'default')
+      : app.key.includes('/')
+        ? app.key.split('/').slice(0, 2).join('/')
+        : 'Local';
     if (!groups.has(stackLabel)) groups.set(stackLabel, []);
     groups.get(stackLabel)!.push(app);
   }
@@ -204,35 +133,42 @@ function AppStatusGrid({ apps, activeStack }: { apps: ShownApp[]; activeStack: s
           <Stack
             direction="row"
             sx={{
-              alignItems: "center",
+              alignItems: 'center',
               gap: 1,
-              mb: 1.5
-            }}>
+              flexWrap: 'wrap',
+              mb: 1.5,
+            }}
+          >
             <Box
               sx={{
                 width: 8,
                 height: 8,
                 borderRadius: '50%',
-                bgcolor: stackApps.every((a) => a.status === 'online') ? '#22c55e' : '#eab308',
+                bgcolor: stackApps.every((a) => a.status === 'online') ? 'success.main' : 'warning.main',
               }}
             />
             <Typography
               variant="subtitle2"
               sx={{
                 fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: 0.5
-              }}>
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+                overflowWrap: 'anywhere',
+              }}
+            >
               {stackName}
               {stackApps.some((a) => a.remote) ? ' · remote' : ''}
             </Typography>
-            <Typography variant="caption" sx={{
-              color: "text.secondary"
-            }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: 'text.secondary',
+              }}
+            >
               {stackApps.filter((a) => a.status === 'online').length}/{stackApps.length} online
             </Typography>
           </Stack>
-          <Grid container spacing={2.5}>
+          <Grid container spacing={1.5}>
             {stackApps.map((app) => (
               <Grid key={app.key} size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
                 <AppStatusCard app={app} />
@@ -254,7 +190,15 @@ function KpiSkeleton() {
     <>
       {Array.from({ length: 4 }).map((_, i) => (
         <Grid key={i} size={{ xs: 6, sm: 3 }}>
-          <StatCard label="" value="" loading sx={{ height: '100%' }} />
+          <StatCard
+            label=""
+            value=""
+            loading
+            sx={{
+              height: '100%',
+              '& h4': { fontSize: { xs: 22, sm: 26 }, overflowWrap: 'anywhere', fontVariantNumeric: 'tabular-nums' },
+            }}
+          />
         </Grid>
       ))}
     </>
@@ -266,20 +210,27 @@ function KpiSkeleton() {
 // ---------------------------------------------------------------------------
 
 export default function DashboardPage() {
-  const theme = useTheme();
+  const { activeProject, activeStack } = useStackContext();
+  return <DashboardReader key={JSON.stringify([activeProject, activeStack])} />;
+}
 
+function DashboardReader() {
   const [processes, setProcesses] = useState<ProcessInfoDto[]>([]);
   /** The selected project's deployments, with the project they answer for. */
   const [deployments, setDeployments] = useState<{ project: string; apps: IProjectAppStatus[] } | null>(null);
-  const [metricsSnapshot, setMetricsSnapshot] = useState<any>(null);
+  const [metricsSnapshot, setMetricsSnapshot] = useState<MetricsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isFirstLoad = useRef(true);
+  const busy = useRef(false);
+  const [receivedAt, setReceivedAt] = useState<number | null>(null);
 
   const { activeProject, activeStack } = useStackContext();
-  const stacks = useActiveProjectStacks();
+  const stacks = useActiveProjectStacks().filter((stack) => !activeStack || stack.name === activeStack);
 
   const fetchData = useCallback(async () => {
+    if (busy.current) return;
+    busy.current = true;
     try {
       const [projectApps, appList, snapshot] = await Promise.allSettled([
         activeProject ? projectRpc.getProjectApps({ project: activeProject }) : Promise.resolve(null),
@@ -316,9 +267,11 @@ export default function DashboardPage() {
       }
 
       setError(null);
+      setReceivedAt(Date.now());
     } catch (err: any) {
       setError(err?.message ?? 'Failed to connect to daemon');
     } finally {
+      busy.current = false;
       if (isFirstLoad.current) {
         setLoading(false);
         isFirstLoad.current = false;
@@ -363,7 +316,7 @@ export default function DashboardPage() {
     activeProject,
     activeStack,
     deployments?.project === activeProject ? deployments.apps : null,
-    processes,
+    processes
   );
   const apps = shown ?? [];
 
@@ -377,27 +330,39 @@ export default function DashboardPage() {
   // active stack filter the user has selected.
   // The snapshot is this daemon's: it enriches local apps only, by handle.
   const snapApps = metricsSnapshot?.apps ?? {};
-  const sampled = (a: ShownApp) => (a.remote ? undefined : snapApps[a.key]);
+  const sampled = (a: ShownApp) => (a.remote || a.status !== 'online' ? undefined : snapApps[a.key]);
   const totalApps = apps.length;
   const onlineCount = apps.filter((a) => a.status === 'online').length;
   const offlineCount = totalApps - onlineCount;
-  const totalCpu = apps.reduce((sum, a) => sum + (sampled(a)?.cpu ?? a.cpu), 0);
-  const totalMemory = apps.reduce((sum, a) => sum + (sampled(a)?.memory ?? a.memory), 0);
+  const totalCpu = resourceTotal(apps.map((a) => sampled(a)?.cpu ?? a.cpu));
+  const totalMemory = resourceTotal(apps.map((a) => sampled(a)?.memory ?? a.memory));
   const runningStacks = stacks.filter((s) => s.status === 'running').length;
-  const cpuColor: 'success' | 'warning' | 'error' = totalCpu > 80 ? 'error' : totalCpu > 60 ? 'warning' : 'success';
-  const memMb = totalMemory / (1024 * 1024);
-  const memColor: 'info' | 'warning' | 'error' = memMb > 2048 ? 'error' : memMb > 1024 ? 'warning' : 'info';
 
   return (
-    <Stack spacing={3}>
-      <Breadcrumbs heading="Overview" links={[{ name: 'Overview' }]} />
+    <Stack spacing={2} sx={{ minWidth: 0 }}>
+      <Breadcrumbs
+        heading="Overview"
+        links={[{ name: 'Overview' }]}
+        action={
+          activeProject ? (
+            <Stack direction="row" spacing={1}>
+              <Button component={RouterLink} to="/metrics" size="small">
+                Metrics
+              </Button>
+              <Button component={RouterLink} to="/topology" size="small">
+                Topology
+              </Button>
+            </Stack>
+          ) : undefined
+        }
+      />
       {error && (
         <Alert severity="warning" variant="outlined">
           {error}
         </Alert>
       )}
       {/* Row 1: KPI Stat Cards */}
-      <Grid container spacing={2.5}>
+      <Grid container spacing={1.5}>
         {loading || shown === null ? (
           <KpiSkeleton />
         ) : (
@@ -406,61 +371,102 @@ export default function DashboardPage() {
               <StatCard
                 label="Applications"
                 value={totalApps === 0 ? '0' : `${onlineCount}/${totalApps}`}
-                subtitle={
-                  totalApps === 0
-                    ? 'No apps yet'
-                    : offlineCount > 0
-                      ? `${offlineCount} offline`
-                      : 'All online'
-                }
-                icon={<AppsIcon sx={{ fontSize: 28 }} />}
+                subtitle={totalApps === 0 ? 'No apps yet' : offlineCount > 0 ? `${offlineCount} offline` : 'All online'}
                 color={totalApps === 0 ? 'secondary' : offlineCount > 0 ? 'warning' : 'success'}
-                sx={{ height: '100%' }}
+                sx={{
+                  height: '100%',
+                  '& h4': {
+                    fontSize: { xs: 22, sm: 26 },
+                    overflowWrap: 'anywhere',
+                    fontVariantNumeric: 'tabular-nums',
+                  },
+                }}
               />
             </Grid>
             <Grid size={{ xs: 6, sm: 3 }}>
               <StatCard
                 label="Stacks"
-                value={stacks.length > 0 ? `${runningStacks}/${stacks.length}` : '1'}
-                subtitle={stacks.length > 0 ? `${runningStacks} running` : 'Local'}
-                icon={<StacksIcon sx={{ fontSize: 28 }} />}
+                value={
+                  activeProject
+                    ? `${runningStacks}/${stacks.length}`
+                    : new Set(apps.map((a) => a.key.split('/').slice(0, -1).join('/') || 'local')).size
+                }
+                subtitle={activeProject ? `${runningStacks} running` : 'On this daemon'}
                 color={runningStacks > 0 ? 'primary' : 'secondary'}
-                sx={{ height: '100%' }}
+                sx={{
+                  height: '100%',
+                  '& h4': {
+                    fontSize: { xs: 22, sm: 26 },
+                    overflowWrap: 'anywhere',
+                    fontVariantNumeric: 'tabular-nums',
+                  },
+                }}
               />
             </Grid>
             <Grid size={{ xs: 6, sm: 3 }}>
               <StatCard
-                label="CPU Usage"
-                value={`${totalCpu.toFixed(1)}%`}
-                icon={<MetricsIcon sx={{ fontSize: 28 }} />}
-                color={cpuColor}
-                sx={{ height: '100%' }}
+                label="CPU"
+                value={formatCpu(totalCpu)}
+                subtitle="Sum across selected apps"
+                color="primary"
+                sx={{
+                  height: '100%',
+                  '& h4': {
+                    fontSize: { xs: 22, sm: 26 },
+                    overflowWrap: 'anywhere',
+                    fontVariantNumeric: 'tabular-nums',
+                  },
+                }}
               />
             </Grid>
             <Grid size={{ xs: 6, sm: 3 }}>
               <StatCard
                 label="Memory"
-                value={formatMemory(totalMemory)}
-                icon={<ContainersIcon sx={{ fontSize: 28 }} />}
-                color={memColor}
-                sx={{ height: '100%' }}
+                value={formatBytes(totalMemory)}
+                subtitle="Resident bytes"
+                color="info"
+                sx={{
+                  height: '100%',
+                  '& h4': {
+                    fontSize: { xs: 22, sm: 26 },
+                    overflowWrap: 'anywhere',
+                    fontVariantNumeric: 'tabular-nums',
+                  },
+                }}
               />
             </Grid>
           </>
         )}
       </Grid>
-      {/* Row 2: Application Status Grid — grouped by stack when showing all */}
+      {receivedAt && (
+        <Typography variant="caption" color="text.secondary">
+          {activeProject ? 'Selected deployments' : 'This daemon’s applications'} · received{' '}
+          {new Date(receivedAt).toLocaleTimeString()}. CPU can exceed 100%; memory has no inferred capacity limit.
+        </Typography>
+      )}
+      {!loading && apps.length > 0 && (
+        <ResourceBreakdown
+          apps={apps.map((a) => ({ ...a, cpu: sampled(a)?.cpu ?? a.cpu, memory: sampled(a)?.memory ?? a.memory }))}
+        />
+      )}
+      {!loading && shown !== null && apps.length === 0 && (
+        <Alert severity="info" variant="outlined">
+          No applications in this selection.
+        </Alert>
+      )}
+      {/* Row 2: Applications Grid — grouped by stack when showing all */}
       {apps.length > 0 && (
         <Box>
           <Typography
             variant="h6"
             sx={{
               fontWeight: 700,
-              mb: 2
-            }}>
-            Application Status
+              mb: 2,
+            }}
+          >
+            Applications
           </Typography>
-          <AppStatusGrid apps={apps} activeStack={activeStack} />
+          <AppStatusGrid apps={apps} activeStack={activeStack} activeProject={activeProject} />
         </Box>
       )}
     </Stack>

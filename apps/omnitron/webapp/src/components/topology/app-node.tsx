@@ -10,8 +10,9 @@ import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
 import { AppsIcon } from 'src/assets/icons';
-import { glassCardSx, getStatusColor, miniBarSx } from './shared-styles';
-import { formatMemory } from 'src/utils/formatters';
+import { glassCardSx, getStatusColor, selectedGlowSx } from './shared-styles';
+import { formatBytes, formatCpu } from 'src/utils/metric-series';
+import { useTheme, alpha } from '@mui/material/styles';
 import type { AppNodeData } from './topology-store';
 
 // ---------------------------------------------------------------------------
@@ -20,25 +21,28 @@ import type { AppNodeData } from './topology-store';
 
 function AppNodeComponent({ data, selected }: NodeProps) {
   const nodeData = data as unknown as AppNodeData;
-  const statusColor = getStatusColor(nodeData.status);
+  const theme = useTheme();
+  const statusColor = getStatusColor(nodeData.status, theme);
   const isOnline = nodeData.status === 'online';
-  const cpuPct = Math.min(100, nodeData.cpu);
-  const memMb = nodeData.memory / (1024 * 1024);
-  const memPct = Math.min(100, (memMb / 512) * 100); // 512MB as reference max
 
   return (
     <>
-      <Handle type="target" position={Position.Left} style={{ background: '#3b82f6', width: 8, height: 8 }} />
-      <Handle type="source" position={Position.Right} style={{ background: '#3b82f6', width: 8, height: 8 }} />
+      <Handle
+        type="target"
+        position={Position.Left}
+        style={{ background: theme.palette.primary.main, width: 8, height: 8 }}
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        style={{ background: theme.palette.primary.main, width: 8, height: 8 }}
+      />
       <Box
         sx={{
           ...glassCardSx,
           p: 2,
           cursor: 'pointer',
-          ...(selected && {
-            borderColor: 'rgba(99, 102, 241, 0.6)',
-            boxShadow: '0 0 20px rgba(99, 102, 241, 0.15)',
-          }),
+          ...(selected && selectedGlowSx),
         }}
       >
         {/* Header */}
@@ -46,15 +50,16 @@ function AppNodeComponent({ data, selected }: NodeProps) {
           direction="row"
           spacing={1.5}
           sx={{
-            alignItems: "center",
-            mb: 1
-          }}>
+            alignItems: 'center',
+            mb: 1,
+          }}
+        >
           <Box
             sx={{
               width: 36,
               height: 36,
               borderRadius: '8px',
-              bgcolor: `${statusColor}18`,
+              bgcolor: alpha(statusColor, 0.1),
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -70,13 +75,19 @@ function AppNodeComponent({ data, selected }: NodeProps) {
               sx={{
                 fontWeight: 700,
                 letterSpacing: 0.3,
-                lineHeight: 1.2
-              }}>
+                overflowWrap: 'anywhere',
+                lineHeight: 1.2,
+              }}
+            >
               {nodeData.label}
             </Typography>
-            <Stack direction="row" spacing={0.5} sx={{
-              alignItems: "center"
-            }}>
+            <Stack
+              direction="row"
+              spacing={0.5}
+              sx={{
+                alignItems: 'center',
+              }}
+            >
               {nodeData.port && (
                 <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary', fontSize: 11 }}>
                   :{nodeData.port}
@@ -100,9 +111,6 @@ function AppNodeComponent({ data, selected }: NodeProps) {
               borderRadius: '50%',
               bgcolor: statusColor,
               flexShrink: 0,
-              ...(isOnline && {
-                animation: 'topoPulse 2s ease-in-out infinite',
-              }),
             }}
           />
         </Stack>
@@ -112,9 +120,10 @@ function AppNodeComponent({ data, selected }: NodeProps) {
           direction="row"
           spacing={0.75}
           sx={{
-            alignItems: "center",
-            mb: 1.5
-          }}>
+            alignItems: 'center',
+            mb: 1.5,
+          }}
+        >
           <Chip
             label={nodeData.status}
             size="small"
@@ -122,14 +131,14 @@ function AppNodeComponent({ data, selected }: NodeProps) {
               height: 22,
               fontSize: 11,
               fontWeight: 600,
-              bgcolor: `${statusColor}18`,
+              bgcolor: alpha(statusColor, 0.1),
               color: statusColor,
-              border: `1px solid ${statusColor}33`,
+              border: `1px solid ${alpha(statusColor, 0.2)}`,
               textTransform: 'capitalize',
             }}
           />
           {nodeData.pid && (
-            <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 10, color: 'text.disabled' }}>
+            <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 10, color: 'text.secondary' }}>
               PID {nodeData.pid}
             </Typography>
           )}
@@ -142,31 +151,20 @@ function AppNodeComponent({ data, selected }: NodeProps) {
           )}
         </Stack>
 
-        {/* CPU / Memory mini bars */}
         {isOnline && (
-          <Stack spacing={0.75} sx={{ mb: 1 }}>
-            <Stack direction="row" spacing={1} sx={{
-              alignItems: "center"
-            }}>
-              <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled', width: 28, flexShrink: 0 }}>
-                CPU
-              </Typography>
-              <Box sx={miniBarSx(cpuPct, cpuPct > 80 ? '#ef4444' : cpuPct > 50 ? '#f59e0b' : '#22c55e')} />
-              <Typography variant="caption" sx={{ fontSize: 10, color: 'text.secondary', width: 36, textAlign: 'right', flexShrink: 0 }}>
-                {nodeData.cpu.toFixed(1)}%
-              </Typography>
-            </Stack>
-            <Stack direction="row" spacing={1} sx={{
-              alignItems: "center"
-            }}>
-              <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled', width: 28, flexShrink: 0 }}>
-                MEM
-              </Typography>
-              <Box sx={miniBarSx(memPct, memPct > 80 ? '#ef4444' : memPct > 50 ? '#f59e0b' : '#3b82f6')} />
-              <Typography variant="caption" sx={{ fontSize: 10, color: 'text.secondary', width: 36, textAlign: 'right', flexShrink: 0 }}>
-                {formatMemory(nodeData.memory)}
-              </Typography>
-            </Stack>
+          <Stack direction="row" spacing={2} sx={{ mb: 1 }}>
+            <Typography variant="caption" color="text.secondary">
+              CPU{' '}
+              <Box component="span" sx={{ color: 'text.primary' }}>
+                {formatCpu(nodeData.cpu)}
+              </Box>
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              RSS{' '}
+              <Box component="span" sx={{ color: 'text.primary' }}>
+                {formatBytes(nodeData.memory)}
+              </Box>
+            </Typography>
           </Stack>
         )}
 
@@ -177,23 +175,38 @@ function AppNodeComponent({ data, selected }: NodeProps) {
             sx={{
               mt: 1,
               pt: 1,
-              borderTop: '1px solid', borderTopColor: 'divider',
+              borderTop: '1px solid',
+              borderTopColor: 'divider',
             }}
           >
-            <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+            <Typography
+              variant="caption"
+              sx={{
+                fontSize: 10,
+                color: 'text.secondary',
+                fontWeight: 600,
+                letterSpacing: 0.5,
+                textTransform: 'uppercase',
+              }}
+            >
               Processes
             </Typography>
             {nodeData.processes.map((proc) => {
-              const procColor = getStatusColor(proc.status);
+              const procColor = getStatusColor(proc.status, theme);
               return (
-                <Stack key={proc.name} direction="row" spacing={0.75} sx={{
-                  alignItems: "center"
-                }}>
+                <Stack
+                  key={proc.name}
+                  direction="row"
+                  spacing={0.75}
+                  sx={{
+                    alignItems: 'center',
+                  }}
+                >
                   <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: procColor, flexShrink: 0 }} />
                   <Typography variant="caption" sx={{ fontSize: 11, color: 'text.primary', flex: 1 }}>
                     {proc.name}
                   </Typography>
-                  <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled' }}>
+                  <Typography variant="caption" sx={{ fontSize: 10, color: 'text.secondary' }}>
                     {proc.type}
                   </Typography>
                 </Stack>

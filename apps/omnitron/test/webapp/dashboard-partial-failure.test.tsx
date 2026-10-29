@@ -61,7 +61,7 @@ describe('dashboard with a half-failed refresh', () => {
     const { default: Dashboard } = await import('../../webapp/src/pages/dashboard.js');
     render(<Dashboard />);
 
-    await waitFor(() => expect(screen.getByText('main')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('link', { name: 'main', exact: true })).toBeInTheDocument());
 
     // The second poll fails on the app list only.
     await waitFor(() => expect(screen.getByText(/could not refresh the app list/i)).toBeInTheDocument(), {
@@ -69,7 +69,7 @@ describe('dashboard with a half-failed refresh', () => {
     });
     // And the last good data is still shown — blanking it would be the
     // other half of this defect.
-    expect(screen.getByText('main')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'main', exact: true })).toBeInTheDocument();
   }, 15_000);
 
   it('names metrics when metrics is the half that failed', async () => {
@@ -91,7 +91,7 @@ describe('dashboard with a half-failed refresh', () => {
     const { default: Dashboard } = await import('../../webapp/src/pages/dashboard.js');
     render(<Dashboard />);
 
-    await waitFor(() => expect(screen.getByText('main')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('link', { name: 'main', exact: true })).toBeInTheDocument());
     expect(screen.queryByText(/could not refresh/i)).not.toBeInTheDocument();
   });
 });

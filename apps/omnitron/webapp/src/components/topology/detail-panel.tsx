@@ -12,20 +12,19 @@ import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
-import Tabs from '@mui/material/Tabs';
-import Tab from '@mui/material/Tab';
+import { Tabs } from '@omnitron-dev/prism/components/tabs';
+import useMediaQuery from '@mui/material/useMediaQuery';
+import { useTheme, alpha } from '@mui/material/styles';
+import { useAccess } from 'src/auth/access';
+import { MetricChart } from 'src/components/metric-chart';
+import { metricLines, formatBytes, formatCpu } from 'src/utils/metric-series';
 
-import {
-  CloseIcon,
-  PlayIcon,
-  StopIcon,
-  RestartIcon,
-} from 'src/assets/icons';
+import { CloseIcon, PlayIcon, StopIcon, RestartIcon } from 'src/assets/icons';
 import { serviceState, useTopologyStore } from './topology-store';
-import { getStatusColor, miniBarSx } from './shared-styles';
+import { getStatusColor } from './shared-styles';
 import { formatUptime, formatMemory, formatTimestamp } from 'src/utils/formatters';
-import { daemon, logs } from 'src/netron/client';
-import { usePollingEffect } from 'src/hooks/use-polled-resource';
+import { daemon, logs, metrics } from 'src/netron/client';
+import { usePolledResource, usePollingEffect } from 'src/hooks/use-polled-resource';
 import type { AppNodeData, InfraNodeData, GatewayNodeData, ServerNodeData } from './topology-store';
 import type { LogEntryRow } from '@omnitron-dev/omnitron/dto/services';
 import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
@@ -52,6 +51,7 @@ const LEVEL_COLORS: Record<string, string> = {
 /** Start, restart, stop: a local app's. A remote app is its node's, and this daemon has no handle for it. */
 function AppActions({ data }: { data: AppNodeData }) {
   const { restartApp, stopApp, startApp } = useTopologyStore();
+  const { can } = useAccess();
   if (data.remote) {
     return (
       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
@@ -61,13 +61,14 @@ function AppActions({ data }: { data: AppNodeData }) {
   }
   const isStopped = data.status === 'stopped' || data.status === 'crashed' || data.status === 'errored';
   return (
-    <Stack direction="row" spacing={1}>
+    <Stack direction="row" useFlexGap spacing={1} sx={{ flexWrap: 'wrap' }}>
       {isStopped ? (
         <Button
           variant="contained"
           size="small"
           color="success"
           startIcon={<PlayIcon />}
+          disabled={!can('OmnitronDaemon.startApp')}
           onClick={() => startApp(data.name)}
           sx={{ textTransform: 'none', fontWeight: 600 }}
         >
@@ -80,6 +81,7 @@ function AppActions({ data }: { data: AppNodeData }) {
             size="small"
             color="warning"
             startIcon={<RestartIcon />}
+            disabled={!can('OmnitronDaemon.restartApp')}
             onClick={() => restartApp(data.name)}
             sx={{ textTransform: 'none', fontWeight: 600 }}
           >
@@ -90,6 +92,7 @@ function AppActions({ data }: { data: AppNodeData }) {
             size="small"
             color="error"
             startIcon={<StopIcon />}
+            disabled={!can('OmnitronDaemon.stopApp')}
             onClick={() => stopApp(data.name)}
             sx={{ textTransform: 'none', fontWeight: 600 }}
           >
@@ -102,7 +105,8 @@ function AppActions({ data }: { data: AppNodeData }) {
 }
 
 function AppOverview({ data }: { data: AppNodeData }) {
-  const statusColor = getStatusColor(data.status);
+  const theme = useTheme();
+  const statusColor = getStatusColor(data.status, theme);
   const isOnline = data.status === 'online';
 
   return (
@@ -118,9 +122,9 @@ function AppOverview({ data }: { data: AppNodeData }) {
             height: 22,
             fontSize: 11,
             fontWeight: 600,
-            bgcolor: `${statusColor}18`,
+            bgcolor: alpha(statusColor, 0.1),
             color: statusColor,
-            border: `1px solid ${statusColor}33`,
+            border: `1px solid ${alpha(statusColor, 0.2)}`,
             textTransform: 'capitalize',
           }}
         />
@@ -134,53 +138,45 @@ function AppOverview({ data }: { data: AppNodeData }) {
         <>
           <Divider sx={{ borderColor: 'divider' }} />
 
-          <Stack spacing={1}>
-            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              Resources
-            </Typography>
-            <Stack direction="row" spacing={1} sx={{
-              alignItems: "center"
-            }}>
-              <Typography variant="caption" sx={{ fontSize: 12, color: 'text.secondary', width: 60 }}>CPU</Typography>
-              <Box sx={{ flex: 1, ...miniBarSx(data.cpu, data.cpu > 80 ? '#ef4444' : '#22c55e', 6) }} />
-              <Typography variant="caption" sx={{ fontSize: 12, color: 'text.primary', width: 50, textAlign: 'right' }}>
-                {data.cpu.toFixed(1)}%
-              </Typography>
-            </Stack>
-            <Stack direction="row" spacing={1} sx={{
-              alignItems: "center"
-            }}>
-              <Typography variant="caption" sx={{ fontSize: 12, color: 'text.secondary', width: 60 }}>Memory</Typography>
-              <Box sx={{ flex: 1, ...miniBarSx(Math.min(100, (data.memory / (512 * 1024 * 1024)) * 100), '#3b82f6', 6) }} />
-              <Typography variant="caption" sx={{ fontSize: 12, color: 'text.primary', width: 50, textAlign: 'right' }}>
-                {formatMemory(data.memory)}
-              </Typography>
-            </Stack>
-          </Stack>
+          <InfoRow label="CPU">{formatCpu(data.cpu)}</InfoRow>
+          <InfoRow label="Resident memory">{formatBytes(data.memory)}</InfoRow>
+          <Typography variant="caption" color="text.secondary">
+            Process CPU can exceed 100%. No memory capacity limit is inferred.
+          </Typography>
         </>
       )}
       {/* Sub-processes */}
       {data.processes && data.processes.length > 0 && (
         <>
           <Divider sx={{ borderColor: 'divider' }} />
-          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <Typography
+            variant="caption"
+            sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5 }}
+          >
             Process Topology
           </Typography>
           {data.processes.map((proc) => {
-            const pc = getStatusColor(proc.status);
+            const pc = getStatusColor(proc.status, theme);
             return (
-              <Stack key={proc.name} direction="row" spacing={1} sx={{
-                alignItems: "center"
-              }}>
+              <Stack
+                key={proc.name}
+                direction="row"
+                spacing={1}
+                sx={{
+                  alignItems: 'center',
+                }}
+              >
                 <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: pc, flexShrink: 0 }} />
-                <Typography variant="body2" sx={{ flex: 1, fontSize: 13 }}>{proc.name}</Typography>
+                <Typography variant="body2" sx={{ flex: 1, fontSize: 13 }}>
+                  {proc.name}
+                </Typography>
                 <Chip
                   label={proc.type}
                   size="small"
                   sx={{ height: 20, fontSize: 10, bgcolor: 'action.hover', color: 'text.secondary' }}
                 />
                 {proc.pid && (
-                  <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 11, color: 'text.disabled' }}>
+                  <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 11, color: 'text.secondary' }}>
                     {proc.pid}
                   </Typography>
                 )}
@@ -198,7 +194,8 @@ function AppOverview({ data }: { data: AppNodeData }) {
 // ---------------------------------------------------------------------------
 
 function InfraOverview({ data }: { data: InfraNodeData }) {
-  const statusColor = getStatusColor(serviceState(data));
+  const theme = useTheme();
+  const statusColor = getStatusColor(serviceState(data), theme);
   return (
     <Stack spacing={2}>
       <InfoRow label="Service">{data.service}</InfoRow>
@@ -209,9 +206,13 @@ function InfraOverview({ data }: { data: InfraNodeData }) {
           label={data.status}
           size="small"
           sx={{
-            height: 22, fontSize: 11, fontWeight: 600,
-            bgcolor: `${statusColor}18`, color: statusColor,
-            border: `1px solid ${statusColor}33`, textTransform: 'capitalize',
+            height: 22,
+            fontSize: 11,
+            fontWeight: 600,
+            bgcolor: alpha(statusColor, 0.1),
+            color: statusColor,
+            border: `1px solid ${alpha(statusColor, 0.2)}`,
+            textTransform: 'capitalize',
           }}
         />
       </InfoRow>
@@ -228,7 +229,8 @@ function InfraOverview({ data }: { data: InfraNodeData }) {
 // ---------------------------------------------------------------------------
 
 function GatewayOverview({ data }: { data: GatewayNodeData }) {
-  const statusColor = getStatusColor(serviceState(data));
+  const theme = useTheme();
+  const statusColor = getStatusColor(serviceState(data), theme);
   return (
     <Stack spacing={2}>
       <InfoRow label="Port">{data.port ?? '—'}</InfoRow>
@@ -237,9 +239,13 @@ function GatewayOverview({ data }: { data: GatewayNodeData }) {
           label={data.status}
           size="small"
           sx={{
-            height: 22, fontSize: 11, fontWeight: 600,
-            bgcolor: `${statusColor}18`, color: statusColor,
-            border: `1px solid ${statusColor}33`, textTransform: 'capitalize',
+            height: 22,
+            fontSize: 11,
+            fontWeight: 600,
+            bgcolor: alpha(statusColor, 0.1),
+            color: statusColor,
+            border: `1px solid ${alpha(statusColor, 0.2)}`,
+            textTransform: 'capitalize',
           }}
         />
       </InfoRow>
@@ -256,7 +262,8 @@ function GatewayOverview({ data }: { data: GatewayNodeData }) {
 // ---------------------------------------------------------------------------
 
 function ServerOverview({ data }: { data: ServerNodeData }) {
-  const statusColor = getStatusColor(data.status);
+  const theme = useTheme();
+  const statusColor = getStatusColor(data.status, theme);
   return (
     <Stack spacing={2}>
       <InfoRow label="Hostname">{data.hostname}</InfoRow>
@@ -266,7 +273,14 @@ function ServerOverview({ data }: { data: ServerNodeData }) {
         <Chip
           label={data.role}
           size="small"
-          sx={{ height: 22, fontSize: 11, fontWeight: 600, bgcolor: 'action.hover', color: 'text.primary', textTransform: 'capitalize' }}
+          sx={{
+            height: 22,
+            fontSize: 11,
+            fontWeight: 600,
+            bgcolor: 'action.hover',
+            color: 'text.primary',
+            textTransform: 'capitalize',
+          }}
         />
       </InfoRow>
       <InfoRow label="Status">
@@ -274,26 +288,39 @@ function ServerOverview({ data }: { data: ServerNodeData }) {
           label={data.status}
           size="small"
           sx={{
-            height: 22, fontSize: 11, fontWeight: 600,
-            bgcolor: `${statusColor}18`, color: statusColor,
-            border: `1px solid ${statusColor}33`, textTransform: 'capitalize',
+            height: 22,
+            fontSize: 11,
+            fontWeight: 600,
+            bgcolor: alpha(statusColor, 0.1),
+            color: statusColor,
+            border: `1px solid ${alpha(statusColor, 0.2)}`,
+            textTransform: 'capitalize',
           }}
         />
       </InfoRow>
       {data.apps.length > 0 && (
         <>
           <Divider sx={{ borderColor: 'divider' }} />
-          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <Typography
+            variant="caption"
+            sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5 }}
+          >
             Applications
           </Typography>
           <Stack
             direction="row"
             sx={{
-              flexWrap: "wrap",
-              gap: 0.5
-            }}>
+              flexWrap: 'wrap',
+              gap: 0.5,
+            }}
+          >
             {data.apps.map((a) => (
-              <Chip key={a} label={a} size="small" sx={{ height: 22, fontSize: 11, bgcolor: 'action.hover', color: 'text.primary' }} />
+              <Chip
+                key={a}
+                label={a}
+                size="small"
+                sx={{ height: 22, fontSize: 11, bgcolor: 'action.hover', color: 'text.primary' }}
+              />
             ))}
           </Stack>
         </>
@@ -332,7 +359,9 @@ function LogsTab({ appName }: { appName: string }) {
   if (loading) {
     return (
       <Stack spacing={0.5}>
-        {[...Array(8)].map((_, i) => <Skeleton key={i} height={18} sx={{ bgcolor: 'action.hover' }} />)}
+        {[...Array(8)].map((_, i) => (
+          <Skeleton key={i} height={18} sx={{ bgcolor: 'action.hover' }} />
+        ))}
       </Stack>
     );
   }
@@ -353,47 +382,56 @@ function LogsTab({ appName }: { appName: string }) {
         </Typography>
       )}
       <Stack
-      spacing={0}
-      sx={{
-        fontFamily: 'monospace',
-        fontSize: 11,
-        maxHeight: 400,
-        overflow: 'auto',
-        bgcolor: 'rgba(0,0,0,0.3)',
-        borderRadius: 1,
-        p: 1,
-      }}
-    >
-      {logEntries.map((log) => (
-        <Stack
-          key={log.id}
-          direction="row"
-          spacing={0.75}
-          sx={{
-            py: 0.25,
-            '&:hover': { bgcolor: 'action.hover' },
-          }}
-        >
-          <Typography
-            component="span"
-            sx={{ fontSize: 10, color: 'text.disabled', flexShrink: 0 }}
+        spacing={0}
+        sx={{
+          fontFamily: 'monospace',
+          fontSize: 11,
+          maxHeight: 400,
+          overflow: 'auto',
+          bgcolor: 'background.default',
+          borderRadius: 1,
+          p: 1,
+        }}
+      >
+        {logEntries.map((log) => (
+          <Stack
+            key={log.id}
+            direction="row"
+            spacing={0.75}
+            sx={{
+              py: 0.25,
+              '&:hover': { bgcolor: 'action.hover' },
+            }}
           >
-            {formatTimestamp(log.timestamp)}
-          </Typography>
-          <Typography
-            component="span"
-            sx={{ fontSize: 10, color: LEVEL_COLORS[log.level] ?? '#6b7280', fontWeight: 600, flexShrink: 0, width: 36 }}
-          >
-            {log.level.toUpperCase()}
-          </Typography>
-          <Typography
-            component="span"
-            sx={{ fontSize: 11, color: 'text.primary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-          >
-            {log.message}
-          </Typography>
-        </Stack>
-      ))}
+            <Typography component="span" sx={{ fontSize: 10, color: 'text.secondary', flexShrink: 0 }}>
+              {formatTimestamp(log.timestamp)}
+            </Typography>
+            <Typography
+              component="span"
+              sx={{
+                fontSize: 10,
+                color: LEVEL_COLORS[log.level] ?? '#6b7280',
+                fontWeight: 600,
+                flexShrink: 0,
+                width: 36,
+              }}
+            >
+              {log.level.toUpperCase()}
+            </Typography>
+            <Typography
+              component="span"
+              sx={{
+                fontSize: 11,
+                color: 'text.primary',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {log.message}
+            </Typography>
+          </Stack>
+        ))}
       </Stack>
     </Stack>
   );
@@ -408,7 +446,8 @@ function ConfigTab({ appName }: { appName: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    daemon.inspect({ name: appName })
+    daemon
+      .inspect({ name: appName })
       .then((diag) => setConfig(diag.config ?? {}))
       .catch(() => setConfig(null))
       .finally(() => setLoading(false));
@@ -420,9 +459,14 @@ function ConfigTab({ appName }: { appName: string }) {
 
   if (!config) {
     return (
-      <Typography variant="body2" sx={{
-        color: "text.secondary"
-      }}>Could not load configuration.</Typography>
+      <Typography
+        variant="body2"
+        sx={{
+          color: 'text.secondary',
+        }}
+      >
+        Could not load configuration.
+      </Typography>
     );
   }
 
@@ -433,7 +477,7 @@ function ConfigTab({ appName }: { appName: string }) {
         fontFamily: 'monospace',
         fontSize: 11,
         color: 'text.primary',
-        bgcolor: 'rgba(0,0,0,0.3)',
+        bgcolor: 'background.default',
         borderRadius: 1,
         p: 1.5,
         overflow: 'auto',
@@ -448,165 +492,43 @@ function ConfigTab({ appName }: { appName: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Metrics Tab — Mini CPU/Memory sparkline charts (last 5 min)
+// Metrics Tab — retained metric history for this local application
 // ---------------------------------------------------------------------------
 
-interface MetricSample {
-  ts: number;
-  value: number;
-}
-
-function MetricsTab({ appName, cpu, memory }: { appName?: string; cpu?: number; memory?: number }) {
-  const [cpuHistory, setCpuHistory] = useState<MetricSample[]>([]);
-  const [memHistory, setMemHistory] = useState<MetricSample[]>([]);
-
-  // Accumulate samples every 5s (auto-refresh from parent drives re-renders)
-  useEffect(() => {
-    const now = Date.now();
-    const cutoff = now - 5 * 60 * 1000; // 5 min window
-
-    if (cpu !== undefined) {
-      setCpuHistory((prev) => [...prev.filter((s) => s.ts > cutoff), { ts: now, value: cpu }]);
-    }
-    if (memory !== undefined) {
-      setMemHistory((prev) => [...prev.filter((s) => s.ts > cutoff), { ts: now, value: memory }]);
-    }
-     
-  }, [cpu, memory]);
-
-  return (
-    <Stack spacing={3}>
-      <Stack spacing={1}>
-        <Stack
-          direction="row"
-          sx={{
-            alignItems: "center",
-            justifyContent: "space-between"
-          }}>
-          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            CPU Usage
-          </Typography>
-          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.primary', fontSize: 12 }}>
-            {cpu !== undefined ? `${cpu.toFixed(1)}%` : '--'}
-          </Typography>
-        </Stack>
-        <MiniSparkline data={cpuHistory} maxValue={100} color="#22c55e" warnColor="#f59e0b" dangerColor="#ef4444" />
-      </Stack>
-      <Stack spacing={1}>
-        <Stack
-          direction="row"
-          sx={{
-            alignItems: "center",
-            justifyContent: "space-between"
-          }}>
-          <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            Memory Usage
-          </Typography>
-          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.primary', fontSize: 12 }}>
-            {memory !== undefined ? formatMemory(memory) : '--'}
-          </Typography>
-        </Stack>
-        <MiniSparkline
-          data={memHistory.map((s) => ({ ...s, value: s.value / (1024 * 1024) }))}
-          maxValue={512}
-          color="#3b82f6"
-          warnColor="#f59e0b"
-          dangerColor="#ef4444"
-          formatValue={(v) => `${v.toFixed(0)}MB`}
-        />
-      </Stack>
-      {cpuHistory.length < 3 && (
-        <Typography variant="caption" sx={{ color: 'text.disabled', textAlign: 'center', pt: 1 }}>
-          Collecting samples... metrics will populate over the next few seconds.
-        </Typography>
-      )}
-    </Stack>
+function MetricsTab({ appName }: { appName: string }) {
+  const history = usePolledResource(
+    async () => {
+      const to = Date.now();
+      const from = to - 5 * 60_000;
+      const series = await metrics.querySeries({
+        apps: [appName],
+        names: ['cpu_percent', 'memory_bytes'],
+        from,
+        to,
+        interval: '10s',
+        limit: 60,
+      });
+      return { series: series.filter((item) => item.app === appName && !item.labels?.node), from, to };
+    },
+    { intervalMs: 10_000 }
   );
-}
-
-// ---------------------------------------------------------------------------
-// Mini Sparkline — SVG-based sparkline chart
-// ---------------------------------------------------------------------------
-
-function MiniSparkline({
-  data,
-  maxValue,
-  color,
-  warnColor,
-  dangerColor,
-  formatValue,
-}: {
-  data: MetricSample[];
-  maxValue: number;
-  color: string;
-  warnColor: string;
-  dangerColor: string;
-  formatValue?: (v: number) => string;
-}) {
-  const width = 340;
-  const height = 60;
-  const padY = 4;
-
-  if (data.length < 2) {
-    return (
-      <Box sx={{ width: '100%', height, bgcolor: 'rgba(0,0,0,0.2)', borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: 10 }}>Waiting for data...</Typography>
-      </Box>
-    );
-  }
-
-  const minTs = data[0]!.ts;
-  const maxTs = data[data.length - 1]!.ts;
-  const tRange = Math.max(maxTs - minTs, 1);
-
-  const points = data.map((s) => {
-    const x = ((s.ts - minTs) / tRange) * width;
-    const y = height - padY - ((Math.min(s.value, maxValue) / maxValue) * (height - padY * 2));
-    return `${x},${y}`;
-  });
-
-  const lastVal = data[data.length - 1]!.value;
-  const lineColor = lastVal > maxValue * 0.8 ? dangerColor : lastVal > maxValue * 0.5 ? warnColor : color;
-
-  const areaPoints = `0,${height} ${points.join(' ')} ${width},${height}`;
-
   return (
-    <Box sx={{ width: '100%', bgcolor: 'rgba(0,0,0,0.2)', borderRadius: 1, overflow: 'hidden' }}>
-      <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
-        {/* Grid lines */}
-        {[0.25, 0.5, 0.75].map((pct) => (
-          <line
-            key={pct}
-            x1={0}
-            y1={height - padY - pct * (height - padY * 2)}
-            x2={width}
-            y2={height - padY - pct * (height - padY * 2)}
-            stroke="rgba(255,255,255,0.04)"
-            strokeWidth={1}
-          />
-        ))}
-        {/* Area fill */}
-        <polygon points={areaPoints} fill={lineColor} fillOpacity={0.08} />
-        {/* Line */}
-        <polyline
-          points={points.join(' ')}
-          fill="none"
-          stroke={lineColor}
-          strokeWidth={1.5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
+    <Stack spacing={2}>
+      {(['cpu_percent', 'memory_bytes'] as const).map((name) => (
+        <MetricChart
+          key={name}
+          title={name === 'cpu_percent' ? 'CPU' : 'Resident memory'}
+          description="5 minutes · 10 s averages · local time"
+          lines={metricLines(history.data?.series ?? [], name, '', true, {}, 10_000)}
+          format={name === 'cpu_percent' ? formatCpu : formatBytes}
+          from={history.data?.from ?? Date.now() - 300_000}
+          to={history.data?.to ?? Date.now()}
+          loading={history.loading}
+          error={history.error}
+          height={180}
         />
-        {/* Current value dot */}
-        {data.length > 0 && (
-          <circle
-            cx={width}
-            cy={height - padY - ((Math.min(lastVal, maxValue) / maxValue) * (height - padY * 2))}
-            r={3}
-            fill={lineColor}
-          />
-        )}
-      </svg>
-    </Box>
+      ))}
+    </Stack>
   );
 }
 
@@ -614,119 +536,103 @@ function MiniSparkline({
 // Detail Panel
 // ---------------------------------------------------------------------------
 
-export function DetailPanel() {
+export function DetailPanel({ container }: { container?: HTMLElement | null }) {
+  const theme = useTheme();
+  const wide = useMediaQuery(theme.breakpoints.up('md'));
   const { detailPanel, closeDetail } = useTopologyStore();
-  const [tab, setTab] = useState(0);
-
-  // Reset tab when panel changes
+  const { can } = useAccess();
+  const [tab, setTab] = useState('Overview');
   useEffect(() => {
-    setTab(0);
+    setTab('Overview');
   }, [detailPanel.nodeId]);
-
   const { open, nodeType, data } = detailPanel;
   if (!data) return null;
-
-  // The tabs a node has a source for. Every node had a Logs tab, and for a
-  // service or a server it asked for the log of no app — the tail of every
-  // app's — under the service's name.
   const app = nodeType === 'app' ? (data as AppNodeData) : null;
-  const tabs = ['Overview', ...(app && !app.remote ? ['Config', 'Metrics'] : []), ...(app ? ['Logs'] : [])];
-  const shown = tabs[tab] ?? 'Overview';
-
+  const overview = (
+    <>
+      {nodeType === 'app' && <AppOverview data={data as AppNodeData} />}
+      {nodeType === 'infra' && <InfraOverview data={data as InfraNodeData} />}
+      {nodeType === 'gateway' && <GatewayOverview data={data as GatewayNodeData} />}
+      {nodeType === 'server' && <ServerOverview data={data as ServerNodeData} />}
+    </>
+  );
+  const tabs = [
+    { value: 'Overview', label: 'Overview', content: overview },
+    ...(app && !app.remote
+      ? [
+          ...(can('OmnitronDaemon.inspect')
+            ? [{ value: 'Config', label: 'Config', content: <ConfigTab key={app.name} appName={app.name} /> }]
+            : []),
+          { value: 'Metrics', label: 'Metrics', content: <MetricsTab key={app.name} appName={app.name} /> },
+        ]
+      : []),
+    ...(app ? [{ value: 'Logs', label: 'Logs', content: <LogsTab key={app.name} appName={app.name} /> }] : []),
+  ];
   return (
     <Drawer
       anchor="right"
       open={open}
       onClose={closeDetail}
-      variant="persistent"
-      sx={{
-        width: open ? DRAWER_WIDTH : 0,
-        flexShrink: 0,
-        '& .MuiDrawer-paper': {
-          width: DRAWER_WIDTH,
-          bgcolor: 'background.paper',
-          borderLeft: '1px solid', borderLeftColor: 'divider',
-          color: 'text.primary',
-          pt: 0,
+      variant={wide ? 'persistent' : 'temporary'}
+      container={container}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') closeDetail();
+      }}
+      sx={{ width: wide && open ? DRAWER_WIDTH : 0, flexShrink: 0 }}
+      slotProps={{
+        paper: {
+          role: wide ? 'complementary' : 'dialog',
+          'aria-modal': wide ? undefined : true,
+          'aria-labelledby': 'topology-detail-title',
+          sx: {
+            width: DRAWER_WIDTH,
+            maxWidth: '100%',
+            minWidth: 0,
+            height: '100%',
+            maxHeight: '100dvh',
+            position: wide ? 'absolute' : 'fixed',
+            bgcolor: 'background.paper',
+            color: 'text.primary',
+            borderLeft: '1px solid',
+            borderColor: 'divider',
+          },
         },
       }}
     >
-      {/* Header */}
       <Stack
         direction="row"
-        sx={{
-          alignItems: "center",
-          justifyContent: "space-between",
-          px: 2.5,
-          py: 2,
-          borderBottom: '1px solid', borderBottomColor: 'divider',
-          bgcolor: 'rgba(0,0,0,0.2)'
-        }}>
-        <Stack spacing={0.25}>
-          <Typography
-            variant="h6"
-            sx={{
-              fontWeight: 700,
-              fontSize: 16
-            }}>
+        useFlexGap
+        spacing={1}
+        sx={{ alignItems: 'center', p: 2, borderBottom: '1px solid', borderColor: 'divider' }}
+      >
+        <Stack sx={{ flex: 1, minWidth: 0 }}>
+          <Typography id="topology-detail-title" variant="subtitle2" sx={{ overflowWrap: 'anywhere' }}>
             {data.label}
           </Typography>
-          <Typography variant="caption" sx={{ color: 'text.disabled', textTransform: 'capitalize' }}>
-            {nodeType} node
+          <Typography variant="caption" color="text.secondary">
+            {nodeType} · {data.status}
           </Typography>
         </Stack>
-        <IconButton size="small" onClick={closeDetail} sx={{ color: 'text.secondary' }}>
+        <IconButton size="small" aria-label="Close node details" onClick={closeDetail}>
           <CloseIcon />
         </IconButton>
       </Stack>
-      {/* Tabs */}
-      <Tabs
-        value={tab}
-        onChange={(_, v) => setTab(v)}
-        variant="fullWidth"
-        sx={{
-          borderBottom: '1px solid', borderBottomColor: 'divider',
-          minHeight: 40,
-          '& .MuiTab-root': {
-            color: 'text.disabled',
-            fontSize: 12,
-            fontWeight: 600,
-            minHeight: 40,
-            textTransform: 'none',
-            '&.Mui-selected': { color: 'text.primary' },
-          },
-          '& .MuiTabs-indicator': { bgcolor: 'primary.main' },
+      <Box
+        sx={{ p: 1.5, overflow: 'auto', minHeight: 0, minWidth: 0, flex: 1 }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') closeDetail();
         }}
       >
-        {tabs.map((name) => (
-          <Tab key={name} label={name} />
-        ))}
-      </Tabs>
-      {/* Tab Content */}
-      <Box sx={{ px: 2.5, overflow: 'auto', flex: 1 }}>
-        {shown === 'Overview' && (
-          <Box sx={{ py: 2 }}>
-            {nodeType === 'app' && <AppOverview data={data as AppNodeData} />}
-            {nodeType === 'infra' && <InfraOverview data={data as InfraNodeData} />}
-            {nodeType === 'gateway' && <GatewayOverview data={data as GatewayNodeData} />}
-            {nodeType === 'server' && <ServerOverview data={data as ServerNodeData} />}
-          </Box>
-        )}
-        {app && shown === 'Config' && (
-          <Box sx={{ py: 2 }}>
-            <ConfigTab appName={app.name} />
-          </Box>
-        )}
-        {app && shown === 'Metrics' && (
-          <Box sx={{ py: 2 }}>
-            <MetricsTab appName={app.name} cpu={app.cpu} memory={app.memory} />
-          </Box>
-        )}
-        {app && shown === 'Logs' && (
-          <Box sx={{ py: 2 }}>
-            <LogsTab appName={app.name} />
-          </Box>
-        )}
+        <Tabs
+          aria-label="Node details"
+          tabs={tabs}
+          value={tabs.some((item) => item.value === tab) ? tab : 'Overview'}
+          onChange={setTab}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
+          sx={{ minHeight: 40, '& .MuiTab-root': { minWidth: 72, px: 1 } }}
+        />
       </Box>
     </Drawer>
   );
@@ -741,13 +647,25 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
     <Stack
       direction="row"
       sx={{
-        alignItems: "center",
-        justifyContent: "space-between"
-      }}>
-      <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: 12 }}>
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 1.5,
+        minWidth: 0,
+      }}
+    >
+      <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: 12 }}>
         {label}
       </Typography>
-      <Typography variant="body2" sx={{ fontSize: 13, fontFamily: typeof children === 'string' || typeof children === 'number' ? 'monospace' : undefined }}>
+      <Typography
+        variant="body2"
+        sx={{
+          fontSize: 13,
+          minWidth: 0,
+          textAlign: 'right',
+          overflowWrap: 'anywhere',
+          fontFamily: typeof children === 'string' || typeof children === 'number' ? 'monospace' : undefined,
+        }}
+      >
         {children}
       </Typography>
     </Stack>

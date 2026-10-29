@@ -1,3 +1,4 @@
+import { useTheme } from '@mui/material/styles';
 /**
  * GatewayNode — Custom React Flow node for gateway/reverse proxy (OpenResty/Nginx)
  * with optional Tor hidden service indicator.
@@ -18,6 +19,7 @@ import { serviceState, type GatewayNodeData } from './topology-store';
 // ---------------------------------------------------------------------------
 
 function GatewayNodeComponent({ data, selected }: NodeProps) {
+  const theme = useTheme();
   const nodeData = data as unknown as GatewayNodeData;
   const state = serviceState(nodeData);
   const statusColor = getStatusColor(state);
@@ -42,9 +44,10 @@ function GatewayNodeComponent({ data, selected }: NodeProps) {
           direction="row"
           spacing={1.5}
           sx={{
-            alignItems: "center",
-            mb: 1.5
-          }}>
+            alignItems: 'center',
+            mb: 1.5,
+          }}
+        >
           <Box
             sx={{
               width: 36,
@@ -66,8 +69,9 @@ function GatewayNodeComponent({ data, selected }: NodeProps) {
               sx={{
                 fontWeight: 700,
                 letterSpacing: 0.3,
-                lineHeight: 1.2
-              }}>
+                lineHeight: 1.2,
+              }}
+            >
               {nodeData.label}
             </Typography>
             {nodeData.port !== null && (
@@ -84,7 +88,6 @@ function GatewayNodeComponent({ data, selected }: NodeProps) {
               borderRadius: '50%',
               bgcolor: statusColor,
               flexShrink: 0,
-              ...(isOnline && { animation: 'topoPulse 2s ease-in-out infinite' }),
             }}
           />
         </Stack>
@@ -94,9 +97,10 @@ function GatewayNodeComponent({ data, selected }: NodeProps) {
           direction="row"
           spacing={0.75}
           sx={{
-            alignItems: "center",
-            mb: 1
-          }}>
+            alignItems: 'center',
+            mb: 1,
+          }}
+        >
           <Chip
             label={nodeData.status}
             size="small"
@@ -125,7 +129,6 @@ function GatewayNodeComponent({ data, selected }: NodeProps) {
             />
           )}
         </Stack>
-
       </Box>
     </>
   );

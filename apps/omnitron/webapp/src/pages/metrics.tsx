@@ -1,548 +1,328 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import Box from '@mui/material/Box';
-import Grid from '@mui/material/Grid';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import CardHeader from '@mui/material/CardHeader';
-import Typography from '@mui/material/Typography';
-import Stack from '@mui/material/Stack';
-import IconButton from '@mui/material/IconButton';
-import Switch from '@mui/material/Switch';
-import { alpha } from '@mui/material/styles';
-import Chart from 'react-apexcharts';
-
-import { MetricsIcon, AppsIcon, LogsIcon, RefreshIcon } from 'src/assets/icons';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  FormControlLabel,
+  Grid,
+  IconButton,
+  MenuItem,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
+} from '@mui/material';
 import { Alert } from '@omnitron-dev/prism/components/alert';
+import { StatCard } from '@omnitron-dev/prism/components/card';
+import { Chart, useChart } from '@omnitron-dev/prism/components/chart';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
-import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
-import { daemon, metrics, logs as logsClient } from 'src/netron/client';
+import { MetricChart } from 'src/components/metric-chart';
+import { RefreshIcon } from 'src/assets/icons';
+import { daemon, metrics, project, logs, nodes } from 'src/netron/client';
 import { useStackContext } from 'src/hooks/use-stack-context';
-import { usePollingEffect } from 'src/hooks/use-polled-resource';
+import { usePolledResource } from 'src/hooks/use-polled-resource';
+import { shownApps } from 'src/utils/app-address';
+import {
+  formatBytes,
+  formatCpu,
+  metricLines,
+  metricScope,
+  METRIC_WINDOWS,
+  resourceTotal,
+  type MetricWindow,
+} from 'src/utils/metric-series';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+export { seriesLabel } from 'src/utils/metric-series';
 
-interface MetricsSummary {
-  totalCpuPercent: number;
-  /**
-   * Resident memory across managed apps, in bytes.
-   *
-   * This was `totalMemoryPercent`, computed as `memory / (1024 * 1024)` —
-   * megabytes — rendered with a `%` suffix and coloured red above 80. The
-   * card read "6162%" on this host, permanently in the error colour, for a
-   * number that was never a percentage. There is no host memory total in
-   * the API to divide by, so it is shown as what it is.
-   */
-  totalMemoryBytes: number;
-  activeApps: number;
-  /** Lines written per second, or null until two samples exist to compare. */
-  logIngestionRate: number | null;
-}
-
-// ---------------------------------------------------------------------------
-// Chart theme config
-// ---------------------------------------------------------------------------
-
-const baseChartOptions: ApexCharts.ApexOptions = {
-  chart: { background: 'transparent', toolbar: { show: false } },
-  theme: { mode: 'dark' },
-  grid: { borderColor: 'rgba(255,255,255,0.1)' },
-  xaxis: {
-    type: 'datetime',
-    labels: { style: { colors: '#999' }, datetimeUTC: false },
-  },
-  yaxis: { labels: { style: { colors: '#999' } } },
-  stroke: { curve: 'smooth', width: 2 },
-  tooltip: { theme: 'dark', x: { format: 'HH:mm:ss' } },
-  legend: { labels: { colors: '#ccc' } },
-};
-
-/** "6.0 GB", "812 MB", "—" when unknown. */
-function formatBytes(bytes: number | undefined): string {
-  if (bytes === undefined || !Number.isFinite(bytes) || bytes < 0) return '—';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
-
-/** "1.2k", "340", "—" when there is nothing to compare against yet. */
-function formatRate(rate: number | null | undefined): string {
-  if (rate === null || rate === undefined || !Number.isFinite(rate)) return '—';
-  if (rate >= 1000) return `${(rate / 1000).toFixed(1)}k`;
-  return rate < 10 ? rate.toFixed(1) : String(Math.round(rate));
-}
-
-// ---------------------------------------------------------------------------
-// Gauge Card
-// ---------------------------------------------------------------------------
-
-interface GaugeCardProps {
-  title: string;
-  value: string | number;
-  suffix?: string;
-  icon: React.ReactNode;
-  color: 'success' | 'warning' | 'error' | 'info' | 'primary';
-  loading?: boolean;
-}
-
-function GaugeCard({ title, value, suffix, icon, color, loading }: GaugeCardProps) {
-  return (
-    <Card variant="outlined">
-      <CardContent>
-        <Stack
-          direction="row"
-          spacing={2}
-          sx={{
-            alignItems: "center",
-            justifyContent: "space-between"
-          }}>
-          <Stack spacing={0.5}>
-            <Typography variant="body2" sx={{
-              color: "text.secondary"
-            }}>
-              {title}
-            </Typography>
-            {loading ? (
-              <Skeleton width={60} height={40} />
-            ) : (
-              <Typography variant="h4">
-                {value}
-                {suffix && (
-                  <Typography
-                    component="span"
-                    variant="body2"
-                    sx={{
-                      color: "text.secondary",
-                      ml: 0.5
-                    }}>
-                    {suffix}
-                  </Typography>
-                )}
-              </Typography>
-            )}
-          </Stack>
-          <Box
-            sx={{
-              p: 1.5,
-              borderRadius: 2,
-              bgcolor: (t) => alpha(t.palette[color].main, 0.12),
-              color: `${color}.main`,
-              display: 'flex',
-            }}
-          >
-            {icon}
-          </Box>
-        </Stack>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Metrics Page
-// ---------------------------------------------------------------------------
-
-const METRICS_POLL_MS = 10_000;
-
-// `DATA_POINTS = 30` and `INTERVAL_MS = 10_000` stood here. The first was the
-// bucket count of a time series this page stopped drawing when it turned out
-// the data had no time dimension (see the note by `getLogStats` below); the
-// second was never wired to the poll, which passes `intervalMs: 10_000`
-// literally. Both were read by nothing.
-
-/**
- * What to call a chart line, once more than one machine reports.
- *
- * Every series here was named `s.app`, and a fleet runs the SAME app names on
- * every node — `omnitron` itself on all of them. Replicated samples arrive
- * carrying a `node` label, and the storage groups by it, so two machines
- * produce two series. Named by app alone they are two lines with one name:
- * the legend cannot separate them and the shape reads as one app flapping
- * between two values.
- *
- * The master's own readings keep the bare app name. A remote node's are
- * suffixed with the node, resolved to the name an operator gave it — a uuid
- * in a legend identifies nothing to a person.
- *
- * A child process keeps its app: `sample/dev/main/http` is `main/http`. Named
- * by its last segment alone it was `http`, and main's, storage's,
- * quotes's and payments's http processes were four lines with one name —
- * six more on the node (measured on the master, 2026-09-23).
- */
-export function seriesLabel(
-  series: { app: string; labels?: Record<string, string> | undefined },
-  nodeNames: Record<string, string>,
-): string {
-  const parts = series.app.split('/');
-  // project/stack/app/child → app/child; otherwise the last segment.
-  const app = parts.length >= 4 ? parts.slice(2).join('/') : parts[parts.length - 1]!;
-  const node = series.labels?.['node'];
-  if (!node) return app;
-  return `${app} · ${nodeNames[node] ?? node}`;
-}
-
+/** Remount the reader when scope changes: a late answer cannot populate a new selection. */
 export default function MetricsPage() {
-  const { namespacePrefix } = useStackContext();
-  const [summary, setSummary] = useState<MetricsSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { activeProject, activeStack } = useStackContext();
+  const [window, setWindow] = useState<MetricWindow>('5m');
   const [autoRefresh, setAutoRefresh] = useState(true);
+  return (
+    <MetricsReader
+      key={JSON.stringify([activeProject, activeStack, window])}
+      window={window}
+      setWindow={setWindow}
+      autoRefresh={autoRefresh}
+      setAutoRefresh={setAutoRefresh}
+    />
+  );
+}
 
-  // Mock time-series data — regenerated on each fetch cycle
-  const [cpuSeries, setCpuSeries] = useState<any[]>([]);
-  const [memSeries, setMemSeries] = useState<any[]>([]);
-  const [logSeries, setLogSeries] = useState<any[]>([]);
+function MetricsReader({
+  window,
+  setWindow,
+  autoRefresh,
+  setAutoRefresh,
+}: {
+  window: MetricWindow;
+  setWindow: (value: MetricWindow) => void;
+  autoRefresh: boolean;
+  setAutoRefresh: (value: boolean) => void;
+}) {
+  const { activeProject, activeStack, namespacePrefix } = useStackContext();
+  const [includeProcesses, setIncludeProcesses] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const previousIngestion = useRef<{ total: number; at: number } | null>(null);
+  const period = METRIC_WINDOWS[window];
 
-  /**
-   * Last ingestion sample, for the rate.
-   *
-   * A ref rather than state: it feeds the next computation and nothing
-   * renders from it, so writing it must not schedule a render.
-   */
-  const lastIngestion = useRef<{ total: number; at: number } | null>(null);
+  const inventory = usePolledResource(
+    async () => {
+      const [processes, deployments] = await Promise.all([
+        daemon.list(),
+        activeProject ? project.getProjectApps({ project: activeProject }) : Promise.resolve(null),
+      ]);
+      const apps = shownApps(activeProject, activeStack, deployments, processes)!;
+      return {
+        apps,
+        cpu: resourceTotal(apps.map((a) => a.cpu)),
+        memory: resourceTotal(apps.map((a) => a.memory)),
+        at: Date.now(),
+      };
+    },
+    { intervalMs: 10_000, enabled: autoRefresh }
+  );
 
-  /**
-   * Node uuid → the name an operator gave it.
-   *
-   * A ref, because it is read while building chart series and must not put
-   * the whole page through a render when a node is renamed. Empty until the
-   * first answer, and `seriesLabel` falls back to the uuid — which is ugly
-   * and true, where the app name alone would be neither.
-   */
-  const nodeNamesRef = useRef<Record<string, string>>({});
+  const history = usePolledResource(
+    async () => {
+      const to = Date.now();
+      const from = to - period.duration;
+      // One bounded query for both metrics; filtering preserves metric/node identity.
+      const [series, stacks, registry] = await Promise.all([
+        metrics.querySeries({
+          names: ['cpu_percent', 'memory_bytes'],
+          from,
+          to,
+          interval: period.interval,
+          limit: 120,
+        }),
+        activeProject ? project.listStacks({ project: activeProject }) : Promise.resolve([]),
+        nodes.listNodes(),
+      ]);
+      return {
+        series,
+        from,
+        to,
+        nodeNames: Object.fromEntries(registry.map((node) => [node.id, node.name])),
+        scope: activeProject ? metricScope(activeProject, activeStack, stacks, registry) : undefined,
+      };
+    },
+    { intervalMs: 10_000, enabled: autoRefresh }
+  );
 
+  const ingestion = usePolledResource(
+    async () => {
+      const stats = await logs.getIngestionStats();
+      const at = Date.now();
+      const previous = previousIngestion.current;
+      const delta = previous ? stats.ingestedTotal - previous.total : -1;
+      const rate = previous && at > previous.at && delta >= 0 ? (delta * 1000) / (at - previous.at) : null;
+      previousIngestion.current = { total: stats.ingestedTotal, at };
+      return rate;
+    },
+    { intervalMs: 10_000, enabled: autoRefresh }
+  );
+
+  // Explicit scope/window selection asks once, even while automatic refresh is paused.
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const { nodes } = await import('src/netron/client');
-        const list = await nodes.listNodes();
-        if (!cancelled) {
-          nodeNamesRef.current = Object.fromEntries(list.map((n: { id: string; name: string }) => [n.id, n.name]));
-        }
-      } catch {
-        // Charts stay readable without it: a series keeps the uuid, which
-        // still separates two machines from each other.
-      }
-    })();
-    return () => { cancelled = true; };
+    void inventory.refresh();
+    void history.refresh();
+    void ingestion.refresh();
   }, []);
-
-  const fetchMetrics = useCallback(async () => {
+  const refresh = async () => {
+    setRefreshing(true);
     try {
-      // Fetch metrics snapshot from titan-metrics
-      let snapshot: any = null;
-      try {
-        snapshot = await metrics.getSnapshot();
-      } catch {
-        // Metrics service not available
-      }
-
-      // Lines actually written per second, from two samples of an in-memory
-      // counter. The card was a hardcoded 0; the only other source is
-      // `getLogStats`, which counts the whole table — 22.5 million rows here.
-      // Null until there are two samples: a rate needs an interval, and
-      // showing 0 for the first one would be a measurement nobody made.
-      let ingestionRate: number | null = null;
-      try {
-        const stats = await logsClient.getIngestionStats();
-        const now = Date.now();
-        const previous = lastIngestion.current;
-        if (previous && now > previous.at) {
-          const delta = stats.ingestedTotal - previous.total;
-          // A counter that went backwards means the daemon restarted; that is
-          // not a negative rate, it is the absence of a comparable pair.
-          ingestionRate = delta >= 0 ? (delta * 1000) / (now - previous.at) : null;
-        }
-        lastIngestion.current = { total: stats.ingestedTotal, at: now };
-      } catch {
-        // The counter is a nicety; losing it must not empty the page.
-      }
-
-      if (snapshot?.totals) {
-        setSummary({
-          totalCpuPercent: Math.round(snapshot.totals.cpu),
-          totalMemoryBytes: snapshot.totals.memory ?? 0,
-          activeApps: snapshot.totals.onlineApps ?? 0,
-          logIngestionRate: ingestionRate,
-        });
-      } else {
-        // Fallback to daemon status
-        const result = await daemon.status();
-        const apps = (result as any)?.apps ?? [];
-        const activeCount = Array.isArray(apps) ? apps.filter((a: any) => a.status === 'online').length : 0;
-        const totalCpu = Array.isArray(apps) ? apps.reduce((s: number, a: any) => s + (a.cpu ?? 0), 0) : 0;
-        const totalMem = Array.isArray(apps) ? apps.reduce((s: number, a: any) => s + (a.memory ?? 0), 0) : 0;
-
-        setSummary({
-          totalCpuPercent: Math.round(totalCpu),
-          totalMemoryBytes: totalMem,
-          activeApps: activeCount,
-          logIngestionRate: ingestionRate,
-        });
-      }
-
-      // Fetch time-series from titan-metrics querySeries
-      const fiveMinAgo = new Date(Date.now() - 5 * 60_000).toISOString();
-      let cpuData: any[] = [];
-      let memData: any[] = [];
-      try {
-        cpuData = await metrics.querySeries({ names: ['cpu_percent'], from: fiveMinAgo, interval: '30s' });
-        memData = await metrics.querySeries({ names: ['memory_bytes'], from: fiveMinAgo, interval: '30s' });
-      } catch {
-        // Not available yet
-      }
-
-      if (cpuData.length > 0) {
-        // Filter series by stack context. The display name is `seriesLabel`'s
-        // job and only its job — stripping the namespace here as well meant
-        // two places deciding what a line is called, and only one of them
-        // knew about nodes.
-        const filterSeries = (data: any[]) =>
-          data.filter((s: any) => !namespacePrefix || s.app.startsWith(namespacePrefix) || !s.app.includes('/'));
-
-        const filteredCpu = filterSeries(cpuData);
-        const filteredMem = filterSeries(memData);
-
-        setCpuSeries(filteredCpu.map((s: any) => ({
-          name: seriesLabel(s, nodeNamesRef.current),
-          data: s.points.map((p: any) => ({ x: new Date(p.timestamp).getTime(), y: Number(p.value.toFixed(1)) })),
-        })));
-        setMemSeries(filteredMem.map((s: any) => ({
-          name: seriesLabel(s, nodeNamesRef.current),
-          data: s.points.map((p: any) => ({ x: new Date(p.timestamp).getTime(), y: Math.round(p.value / (1024 * 1024)) })),
-        })));
-      } else {
-        // No series for this window — say so by drawing nothing.
-        //
-        // This used to fall back to `generateMockTimeSeries` for three
-        // hardcoded app names, so a daemon that had just restarted showed an
-        // operator plausible CPU and memory history for apps that might not
-        // exist. Absence rendered as invented data is worse than absence
-        // rendered as zero: there is nothing about it to disbelieve.
-        setCpuSeries([]);
-        setMemSeries([]);
-      }
-
-      // Log volume — query real log stats, fall back to mock if unavailable
-      try {
-        const { logs } = await import('src/netron/client');
-        const logStats = await logs.getLogStats();
-        if (logStats?.byLevel && logStats.byLevel.length > 0) {
-          // `byLevel` is a cumulative count per level with no time dimension.
-          // It used to be spread as `count / DATA_POINTS` across thirty
-          // buckets and drawn on a time axis — a flat line presented as
-          // history, under a y-axis labelled "Lines / interval". One bar per
-          // level is what the data actually is.
-          setLogSeries([
-            {
-              name: 'lines',
-              data: logStats.byLevel.map(({ level, count }) => ({ x: level, y: count })),
-            },
-          ]);
-        } else {
-          throw new Error('no data');
-        }
-      } catch {
-        // Same rule as the series above: nothing, rather than something made up.
-        setLogSeries([]);
-      }
-
-      setError(null);
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to fetch metrics');
+      await Promise.all([inventory.refresh(), history.refresh(), ingestion.refresh()]);
     } finally {
-      setLoading(false);
+      setRefreshing(false);
     }
-    // `namespacePrefix` filters the series above, and it changes whenever the
-    // operator switches project or stack. With an empty dependency list this
-    // callback kept the prefix it was built with — and the 10 s poll below
-    // re-ran it forever, so the page went on drawing the project the operator
-    // had left. The prefix is also `''` until the project store hydrates,
-    // which disables the filter entirely; capturing that first value showed
-    // every project's apps at once, permanently.
-  }, [namespacePrefix]);
+  };
 
-  // The page owns its several series in local state, so it takes the schedule
-  // only. `autoRefresh` is the toggle the user controls; note that turning it
-  // off used to skip the interval but still fetch once per render of this
-  // effect, which is not what "off" means.
-  usePollingEffect(() => void fetchMetrics(), { intervalMs: METRICS_POLL_MS, enabled: autoRefresh });
-
-  useEffect(() => {
-    // One fetch on mount regardless of the toggle: an operator arriving with
-    // auto-refresh off still expects to see numbers.
-    void fetchMetrics();
-  }, [fetchMetrics]);
-
-  const cpuChartOptions = useMemo<ApexCharts.ApexOptions>(
-    () => ({
-      ...baseChartOptions,
-      yaxis: {
-        ...baseChartOptions.yaxis,
-        title: { text: 'CPU %', style: { color: '#999' } },
-        max: 100,
-      },
-      colors: ['#6366f1', '#22d3ee', '#f97316'],
-    }),
-    [],
-  );
-
-  const memChartOptions = useMemo<ApexCharts.ApexOptions>(
-    () => ({
-      ...baseChartOptions,
-      yaxis: {
-        ...baseChartOptions.yaxis,
-        title: { text: 'Memory (MB)', style: { color: '#999' } },
-      },
-      colors: ['#a78bfa', '#34d399', '#fb923c'],
-    }),
-    [],
-  );
-
-  const logChartOptions = useMemo<ApexCharts.ApexOptions>(
-    () => ({
-      ...baseChartOptions,
-      chart: { ...baseChartOptions.chart, type: 'bar' },
-      plotOptions: { bar: { columnWidth: '40%', borderRadius: 2, distributed: true } },
-      legend: { show: false },
-      // A category axis, not a time axis. `byLevel` has no time dimension —
-      // the shared `baseChartOptions` uses `datetime`, which is right for the
-      // CPU and memory charts and wrong here.
-      xaxis: { ...baseChartOptions.xaxis, type: 'category' },
-      yaxis: {
-        ...baseChartOptions.yaxis,
-        title: { text: 'Lines (total)', style: { color: '#999' } },
-      },
-      colors: ['#3b82f6', '#f59e0b', '#ef4444', '#6b7280'],
-    }),
-    [],
-  );
+  const from = history.data?.from ?? Date.now() - period.duration;
+  const to = history.data?.to ?? Date.now();
+  const lines = (name: string) =>
+    metricLines(
+      history.data?.series ?? [],
+      name,
+      namespacePrefix,
+      includeProcesses,
+      history.data?.nodeNames ?? {},
+      period.bucket,
+      history.data?.scope
+    );
+  const data = inventory.data;
+  const caption = `${period.interval} averages · local time · ${includeProcesses ? 'apps and child processes' : 'application totals'}`;
 
   return (
-    <Stack spacing={3}>
-      {/* Header */}
+    <Stack spacing={2} sx={{ minWidth: 0 }}>
       <Breadcrumbs
+        heading="Metrics"
         links={[{ name: 'Metrics' }]}
         action={
-          <Stack direction="row" spacing={1} sx={{
-            alignItems: "center"
-          }}>
-            <Typography variant="body2" sx={{
-              color: "text.secondary"
-            }}>
-              Auto-refresh
-            </Typography>
-            <Switch
-              size="small"
-              checked={autoRefresh}
-              onChange={(_, checked) => setAutoRefresh(checked)}
+          <Stack direction="row" spacing={1} useFlexGap>
+            <FormControlLabel
+              sx={{ m: 0 }}
+              control={<Switch size="small" checked={autoRefresh} onChange={(_, value) => setAutoRefresh(value)} />}
+              label={<Typography variant="caption">Live</Typography>}
             />
-            <IconButton size="small" onClick={fetchMetrics} title="Refresh">
+            <IconButton size="small" aria-label="Refresh metrics" disabled={refreshing} onClick={refresh}>
               <RefreshIcon />
             </IconButton>
           </Stack>
         }
       />
-      {error && (
-        <Alert closable severity="warning" variant="outlined" onClose={() => setError(null)}>
-          {error}
+      {inventory.error && (
+        <Alert severity="warning" variant="outlined">
+          Application readings: {inventory.error}.{' '}
+          {data ? 'Showing the last received values.' : 'No readings available.'}
         </Alert>
       )}
-      {/* Gauge Cards */}
-      <Grid container spacing={3}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <GaugeCard
-            title="Total CPU"
-            value={summary?.totalCpuPercent ?? 0}
-            suffix="%"
-            icon={<MetricsIcon />}
-            color={
-              (summary?.totalCpuPercent ?? 0) > 80
-                ? 'error'
-                : (summary?.totalCpuPercent ?? 0) > 60
-                  ? 'warning'
-                  : 'success'
-            }
-            loading={loading}
+      <Grid container spacing={1.5}>
+        {[
+          {
+            label: 'Applications',
+            value: data ? `${data.apps.filter((a) => a.status === 'online').length}/${data.apps.length}` : '—',
+            subtitle: 'Online in this selection',
+          },
+          { label: 'CPU', value: formatCpu(data?.cpu), subtitle: 'Sum across selected apps' },
+          { label: 'Resident memory', value: formatBytes(data?.memory), subtitle: 'Sum across selected apps' },
+          {
+            label: 'Log ingestion',
+            value: ingestion.error ? '—' : ingestion.data == null ? '—' : `${ingestion.data.toFixed(1)}/s`,
+            subtitle: ingestion.error ? 'Counter unavailable' : 'Daemon · all projects',
+          },
+        ].map((item) => (
+          <Grid key={item.label} size={{ xs: 6, md: 3 }}>
+            <StatCard
+              {...item}
+              loading={item.label === 'Log ingestion' ? ingestion.loading : inventory.loading}
+              color="primary"
+              sx={{
+                height: '100%',
+                '& h4': { fontSize: { xs: 22, sm: 26 }, overflowWrap: 'anywhere', fontVariantNumeric: 'tabular-nums' },
+              }}
+            />
+          </Grid>
+        ))}
+      </Grid>
+      <Stack direction="row" spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
+        <TextField
+          select
+          size="small"
+          label="Time window"
+          value={window}
+          onChange={(event) => setWindow(event.target.value as MetricWindow)}
+          sx={{ minWidth: 140 }}
+        >
+          {Object.entries(METRIC_WINDOWS).map(([value, item]) => (
+            <MenuItem key={value} value={value}>
+              {item.label}
+            </MenuItem>
+          ))}
+        </TextField>
+        <FormControlLabel
+          sx={{ m: 0 }}
+          control={
+            <Switch size="small" checked={includeProcesses} onChange={(_, value) => setIncludeProcesses(value)} />
+          }
+          label={<Typography variant="caption">Include child processes</Typography>}
+        />
+        <Typography variant="caption" color="text.secondary" sx={{ ml: { sm: 'auto' } }}>
+          {autoRefresh ? 'Every 10 s' : 'Paused'}
+          {history.data ? ` · received ${new Date(history.data.to).toLocaleTimeString()}` : ''}
+        </Typography>
+      </Stack>
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12, lg: 6 }}>
+          <MetricChart
+            title="CPU"
+            description={caption}
+            lines={lines('cpu_percent')}
+            format={formatCpu}
+            from={from}
+            to={to}
+            loading={history.loading}
+            error={history.error}
           />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <GaugeCard
-            title="Total Memory"
-            value={formatBytes(summary?.totalMemoryBytes)}
-            icon={<MetricsIcon />}
-            // No threshold: without a host memory total there is nothing to
-            // be a fraction of, and a colour picked from an absolute byte
-            // count would be a judgement this page cannot make.
-            color="info"
-            loading={loading}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <GaugeCard
-            title="Active Apps"
-            value={summary?.activeApps ?? 0}
-            icon={<AppsIcon />}
-            color="primary"
-            loading={loading}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <GaugeCard
-            title="Log Ingestion"
-            value={formatRate(summary?.logIngestionRate)}
-            suffix="lines/s"
-            icon={<LogsIcon />}
-            color="info"
-            loading={loading}
+        <Grid size={{ xs: 12, lg: 6 }}>
+          <MetricChart
+            title="Resident memory"
+            description={caption}
+            lines={lines('memory_bytes')}
+            format={formatBytes}
+            from={from}
+            to={to}
+            loading={history.loading}
+            error={history.error}
           />
         </Grid>
       </Grid>
-      {/* CPU Chart */}
-      <Card variant="outlined">
-        <CardHeader slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle1', fontWeight: 600 } }}
-          title="CPU Usage"
-          subheader="Per-application CPU usage (last 5 minutes)"
-        />
-        <CardContent sx={{ pt: 0 }}>
-          {loading ? (
-            <Skeleton variant="rectangular" height={300} />
-          ) : (
-            <Chart type="area" height={300} options={cpuChartOptions} series={cpuSeries} />
-          )}
-        </CardContent>
-      </Card>
-      {/* Memory Chart */}
-      <Card variant="outlined">
-        <CardHeader slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle1', fontWeight: 600 } }}
-          title="Memory Usage"
-          subheader="Per-application memory consumption (MB)"
-        />
-        <CardContent sx={{ pt: 0 }}>
-          {loading ? (
-            <Skeleton variant="rectangular" height={300} />
-          ) : (
-            <Chart type="area" height={300} options={memChartOptions} series={memSeries} />
-          )}
-        </CardContent>
-      </Card>
-      {/* Log Volume Chart */}
-      <Card variant="outlined">
-        <CardHeader slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle1', fontWeight: 600 } }}
-          title="Log Lines by Level"
-          subheader="Cumulative totals in the log store — not a rate over time"
-        />
-        <CardContent sx={{ pt: 0 }}>
-          {loading ? (
-            <Skeleton variant="rectangular" height={300} />
-          ) : (
-            <Chart type="bar" height={300} options={logChartOptions} series={logSeries} />
-          )}
-        </CardContent>
-      </Card>
+      <Typography variant="caption" color="text.secondary">
+        CPU is summed process usage and can exceed 100%. Memory is resident bytes, not a percentage of host capacity.
+        Child processes are shown separately and must not be added to their application totals.
+      </Typography>
+      <LogStoreSummary />
     </Stack>
+  );
+}
+
+/** An expensive cumulative store scan is opt-in, never part of the live metrics poll. */
+function LogStoreSummary() {
+  const [open, setOpen] = useState(false);
+  const stats = usePolledResource(() => logs.getLogStats(), { intervalMs: 60_000, enabled: open });
+  const levels = stats.data?.byLevel ?? [];
+  const options = useChart({
+    chart: { animations: { enabled: false } },
+    xaxis: { type: 'category', categories: levels.map((item) => item.level) },
+    yaxis: {
+      min: 0,
+      labels: { formatter: (value: number) => value.toLocaleString(undefined, { notation: 'compact' }) },
+    },
+    tooltip: { y: { formatter: (value) => value.toLocaleString() } },
+  });
+  return (
+    <Accordion
+      expanded={open}
+      onChange={(_, value) => setOpen(value)}
+      disableGutters
+      variant="outlined"
+      sx={{ '&::before': { display: 'none' } }}
+    >
+      <AccordionSummary aria-controls="log-store-data" id="log-store-toggle">
+        <Typography variant="body2">{open ? '−' : '+'} Log store · all projects</Typography>
+      </AccordionSummary>
+      <AccordionDetails id="log-store-data">
+        <Typography variant="caption" color="text.secondary">
+          Cumulative lines by level in this daemon’s log store. Independent of the selected project and time window.
+          Refreshes every minute while expanded.
+        </Typography>
+        {stats.error && <Alert severity="warning">{stats.error}</Alert>}
+        {levels.length ? (
+          <>
+            <Chart
+              type="bar"
+              height={220}
+              options={options}
+              series={[{ name: 'Lines', data: levels.map((item) => item.count) }]}
+              role="img"
+              aria-label="Cumulative log lines by level"
+            />
+            <Stack direction="row" useFlexGap spacing={2} sx={{ flexWrap: 'wrap' }}>
+              {levels.map((item) => (
+                <Typography key={item.level} variant="caption">
+                  {item.level}: {item.count.toLocaleString()}
+                </Typography>
+              ))}
+            </Stack>
+          </>
+        ) : (
+          <Typography sx={{ py: 2 }} variant="body2">
+            {stats.loading ? 'Reading log store…' : 'No log totals available'}
+          </Typography>
+        )}
+      </AccordionDetails>
+    </Accordion>
   );
 }

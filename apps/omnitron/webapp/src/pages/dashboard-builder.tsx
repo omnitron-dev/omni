@@ -36,8 +36,7 @@ import Chip from '@mui/material/Chip';
 import Tooltip from '@mui/material/Tooltip';
 import LinearProgress from '@mui/material/LinearProgress';
 import { alpha, useTheme } from '@mui/material/styles';
-import Chart from 'react-apexcharts';
-import type { ApexOptions } from 'apexcharts';
+import { Chart, useChart } from '@omnitron-dev/prism/components/chart';
 
 import {
   PlusIcon,
@@ -304,25 +303,18 @@ function TimeSeriesChartPanel({
       name,
       data: history.map((pt) => ({
         x: pt.time,
-        y: Math.round((pt.values[name] ?? 0) * 10) / 10,
+        y: pt.values[name] === undefined || pt.values[name]! < 0 ? null : Math.round(pt.values[name]! * 10) / 10,
       })),
     })), [appNames, history]);
 
-  const options = useMemo<ApexOptions>(() => ({
-    chart: { background: 'transparent', toolbar: { show: false }, animations: { enabled: true, easing: 'linear', dynamicAnimation: { speed: 1000 } } },
-    theme: { mode: 'dark' },
-    colors: ['#6366f1', '#22d3ee', '#f97316', '#a78bfa', '#22c55e'],
-    grid: { borderColor: alpha(theme.palette.divider, 0.3), strokeDashArray: 3 },
-    xaxis: { type: 'datetime', labels: { style: { colors: theme.palette.text.disabled, fontSize: '10px' }, datetimeFormatter: { hour: 'HH:mm', minute: 'HH:mm:ss' } }, axisBorder: { show: false }, axisTicks: { show: false } },
-    yaxis: {
-      labels: { style: { colors: theme.palette.text.disabled, fontSize: '10px' }, formatter: (val: number) => metric === 'memory' ? `${Math.round(val)}MB` : `${val.toFixed(1)}%` },
-      min: 0,
-    },
-    stroke: { curve: 'smooth', width: 2 },
-    fill: { type: 'gradient', gradient: { shadeIntensity: 0, opacityFrom: 0.3, opacityTo: 0.05 } },
-    tooltip: { theme: 'dark', x: { format: 'HH:mm:ss' } },
-    legend: { labels: { colors: theme.palette.text.secondary }, fontSize: '11px', position: 'bottom', offsetY: 4 },
-  }), [theme, metric]);
+  const options = useChart({
+    chart: { animations: { enabled: false }, redrawOnParentResize: true },
+    xaxis: { type: 'datetime', labels: { datetimeUTC: false, hideOverlappingLabels: true } },
+    yaxis: { min: 0, labels: { formatter: (value: number) => metric === 'memory' ? `${Math.round(value)} MiB` : `${value.toFixed(1)}%` } },
+    stroke: { curve: 'straight', width: 2 },
+    tooltip: { x: { format: 'HH:mm:ss' }, y: { formatter: (value) => metric === 'memory' ? `${value.toFixed(1)} MiB` : `${value.toFixed(1)}%` } },
+    legend: { show: true, position: 'bottom', horizontalAlign: 'left', fontSize: '11px' },
+  });
 
   if (data.loading) return <Skeleton variant="rectangular" height={200} />;
   if (history.length < 2) {
@@ -340,7 +332,7 @@ function TimeSeriesChartPanel({
     );
   }
 
-  return <Chart type="area" height={200} options={options} series={series} />;
+  return <Chart type="line" height={200} options={options} series={series} role="img" aria-label={`${metric} readings collected while this dashboard is open`} />;
 }
 
 function StatPanel({ data, config }: { data: DaemonData; config: Record<string, unknown> }) {

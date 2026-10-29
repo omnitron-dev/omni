@@ -1,19 +1,11 @@
-/**
- * Topology Page — what runs where, for the selected project and stack.
- *
- * A React Flow canvas of the machines each stack runs on, its services, its
- * apps and its gateway, drawn from the store's sources (see
- * `topology-store.ts`). Supports drag-to-rearrange, click-to-inspect, and
- * auto-refresh.
- */
-
+/** Deployment topology: machines, declared dependencies, applications and ingress. */
 import { useEffect, useCallback, useState, useRef } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   MiniMap,
-  Panel,
   useNodesState,
   useEdgesState,
   useReactFlow,
@@ -21,34 +13,30 @@ import {
   type Node,
   type Edge,
   type NodeTypes,
-  type NodeMouseHandler,
   BackgroundVariant,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-
-import Box from '@mui/material/Box';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import Button from '@mui/material/Button';
-import IconButton from '@mui/material/IconButton';
-import MenuItem from '@mui/material/MenuItem';
-import Chip from '@mui/material/Chip';
-import Snackbar from '@mui/material/Snackbar';
-import Tooltip from '@mui/material/Tooltip';
-import Menu from '@mui/material/Menu';
-import ListItemIcon from '@mui/material/ListItemIcon';
-import ListItemText from '@mui/material/ListItemText';
-import Divider from '@mui/material/Divider';
-
+import {
+  Autocomplete,
+  Box,
+  Button,
+  Divider,
+  IconButton,
+  List,
+  ListItemButton,
+  ListItemText,
+  Menu,
+  MenuItem,
+  Stack,
+  TextField,
+  Tooltip,
+  Typography,
+  useMediaQuery,
+} from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
 import {
   RefreshIcon,
   NodesIcon,
-  ServerIcon,
-  RestartIcon,
-  StopIcon,
-  PlayIcon,
-  LogsIcon,
-  SearchIcon,
   ZoomInIcon,
   ZoomOutIcon,
   FullscreenIcon,
@@ -56,125 +44,42 @@ import {
   LockIcon,
   LockOpenIcon,
 } from 'src/assets/icons';
-
 import { InfraNode } from 'src/components/topology/infra-node';
 import { AppNode } from 'src/components/topology/app-node';
 import { GatewayNode } from 'src/components/topology/gateway-node';
 import { ServerNode } from 'src/components/topology/server-node';
 import { DetailPanel } from 'src/components/topology/detail-panel';
 import { useTopologyStore, type AppNodeData, type TopologyNodeData } from 'src/components/topology/topology-store';
+import { getStatusColor } from 'src/components/topology/shared-styles';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
-import { pulseKeyframes } from 'src/components/topology/shared-styles';
+import { useAccess } from 'src/auth/access';
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 
-// ---------------------------------------------------------------------------
-// Node type registry
-// ---------------------------------------------------------------------------
-
 const nodeTypes: NodeTypes = {
-  infraNode: InfraNode as any,
-  appNode: AppNode as any,
-  gatewayNode: GatewayNode as any,
-  serverNode: ServerNode as any,
+  infraNode: InfraNode,
+  appNode: AppNode,
+  gatewayNode: GatewayNode,
+  serverNode: ServerNode,
 };
 
-// (Stack selector is now in the header — no inline environment dropdown needed)
-
-// ---------------------------------------------------------------------------
-// Toolbar controls (must be inside ReactFlow to use hooks)
-// ---------------------------------------------------------------------------
-
-const toolbarIconBtnSx = { color: '#94a3b8', '&:hover': { color: '#e2e8f0' } } as const;
-
-function ToolbarControls({
-  nodesLocked,
-  onToggleLock,
-  isFullscreen,
-  onToggleFullscreen,
-}: {
-  nodesLocked: boolean;
-  onToggleLock: () => void;
-  isFullscreen: boolean;
-  onToggleFullscreen: () => void;
-}) {
-  const { fitView, zoomIn, zoomOut } = useReactFlow();
-  const { zoom } = useViewport();
-  const zoomPercent = Math.round(zoom * 100);
-
+export default function TopologyPage() {
+  const { activeProject, activeStack } = useStackContext();
   return (
-    <>
-      {/* Zoom controls */}
-      <Tooltip title="Zoom out (-)">
-        <IconButton size="small" data-zoom-out onClick={() => zoomOut({ duration: 200 })} sx={toolbarIconBtnSx}>
-          <ZoomOutIcon sx={{ fontSize: 18 }} />
-        </IconButton>
-      </Tooltip>
-
-      <Typography
-        variant="caption"
-        sx={{
-          color: '#94a3b8',
-          fontWeight: 600,
-          fontSize: 11,
-          minWidth: 36,
-          textAlign: 'center',
-          userSelect: 'none',
-          fontVariantNumeric: 'tabular-nums',
-        }}
-      >
-        {zoomPercent}%
-      </Typography>
-
-      <Tooltip title="Zoom in (+)">
-        <IconButton size="small" data-zoom-in onClick={() => zoomIn({ duration: 200 })} sx={toolbarIconBtnSx}>
-          <ZoomInIcon sx={{ fontSize: 18 }} />
-        </IconButton>
-      </Tooltip>
-
-      {/* Auto-layout / fit view */}
-      <Tooltip title="Fit view (0)">
-        <IconButton
-          size="small"
-          data-fit-view
-          onClick={() => fitView({ padding: 0.3, maxZoom: 1.2, duration: 400 })}
-          sx={toolbarIconBtnSx}
-        >
-          <NodesIcon sx={{ fontSize: 18 }} />
-        </IconButton>
-      </Tooltip>
-
-      {/* Separator */}
-      <Box sx={{ width: 1, height: 20, bgcolor: 'rgba(255,255,255,0.08)' }} />
-
-      {/* Lock toggle */}
-      <Tooltip title={nodesLocked ? 'Unlock nodes' : 'Lock nodes'}>
-        <IconButton size="small" onClick={onToggleLock} sx={toolbarIconBtnSx}>
-          {nodesLocked ? <LockIcon sx={{ fontSize: 18 }} /> : <LockOpenIcon sx={{ fontSize: 18 }} />}
-        </IconButton>
-      </Tooltip>
-
-      {/* Fullscreen toggle */}
-      <Tooltip title={isFullscreen ? 'Exit fullscreen (F11)' : 'Fullscreen (F11)'}>
-        <IconButton size="small" onClick={onToggleFullscreen} sx={toolbarIconBtnSx}>
-          {isFullscreen ? (
-            <FullscreenExitIcon sx={{ fontSize: 18 }} />
-          ) : (
-            <FullscreenIcon sx={{ fontSize: 18 }} />
-          )}
-        </IconButton>
-      </Tooltip>
-    </>
+    <ReactFlowProvider key={JSON.stringify([activeProject, activeStack])}>
+      <TopologyWorkspace />
+    </ReactFlowProvider>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Topology Page
-// ---------------------------------------------------------------------------
-
-export default function TopologyPage() {
+function TopologyWorkspace() {
+  const theme = useTheme();
+  const wide = useMediaQuery(theme.breakpoints.up('md'));
+  const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+  const { can } = useAccess();
+  const navigate = useNavigate();
   const { activeProject, activeStack } = useStackContext();
   const {
     nodes: storeNodes,
@@ -187,526 +92,432 @@ export default function TopologyPage() {
     openDetail,
     closeDetail,
     apps,
-    daemonStatus,
   } = useTopologyStore();
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<TopologyNodeData>>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [locked, setLocked] = useState(true);
+  const [listView, setListView] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [viewError, setViewError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const container = useRef<HTMLDivElement>(null);
+  const canvas = useRef<HTMLDivElement>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; node: Node<TopologyNodeData> } | null>(null);
+  const { fitView, zoomIn, zoomOut } = useReactFlow();
+  const { zoom } = useViewport();
+  const duration = reducedMotion ? 0 : 200;
 
-  // The header's project and stack are the diagram's scope.
   useEffect(() => {
     setScope({ project: activeProject, stack: activeStack });
   }, [activeProject, activeStack, setScope]);
-
-  // React Flow local state (synced from store)
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-
-  // Lock / Fullscreen state
-  const [nodesLocked, setNodesLocked] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // Context menu state
-  const [contextMenu, setContextMenu] = useState<{
-    mouseX: number;
-    mouseY: number;
-    nodeId: string;
-    nodeType: string;
-    data: TopologyNodeData;
-  } | null>(null);
-
-  // Sync store nodes -> React Flow
   useEffect(() => {
-    setNodes(storeNodes as Node[]);
+    setNodes((previous) =>
+      storeNodes.map((node) => {
+        const existing = previous.find((old) => old.id === node.id);
+        return {
+          ...node,
+          position: existing?.position ?? node.position,
+          selected: existing?.selected ?? false,
+          ariaRole: 'button',
+          ariaLabel: `${node.data.label}, ${node.data.nodeType}, ${node.data.status}. Inspect details`,
+        };
+      })
+    );
   }, [storeNodes, setNodes]);
-
   useEffect(() => {
-    setEdges(storeEdges as Edge[]);
+    setEdges(storeEdges);
   }, [storeEdges, setEdges]);
-
-  // Persist position changes back to store
-  const handleNodesChangeWrapped = useCallback(
-    (changes: any) => {
-      onNodesChange(changes);
+  usePollingEffect(
+    () => {
+      void fetchAll();
     },
-    [onNodesChange],
+    { intervalMs: 5_000 }
   );
+  useEffect(() => {
+    const update = () => setFullscreen(document.fullscreenElement === container.current);
+    document.addEventListener('fullscreenchange', update);
+    return () => document.removeEventListener('fullscreenchange', update);
+  }, []);
 
-  // State lives in the topology store; this takes the schedule only. At a
-  // five-second period this was the console's heaviest background loop, and
-  // it ran from a hidden tab like all the others.
-  usePollingEffect(() => void fetchAll(), { intervalMs: 5_000 });
-
-  // Toggle fullscreen on the canvas container
-  const toggleFullscreen = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    } else {
-      el.requestFullscreen();
+  const inspect = useCallback(
+    (node: Node<TopologyNodeData>) => {
+      openDetail(node.id, node.data.nodeType, node.data);
+    },
+    [openDetail]
+  );
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await container.current?.requestFullscreen();
+      setViewError(null);
+    } catch {
+      setViewError('Fullscreen is unavailable in this browser. The graph remains usable in this window.');
     }
-  }, []);
-
-  // Sync fullscreen state with browser events
+  };
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetchAll();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  const fit = () => {
+    void fitView({ padding: 0.15, maxZoom: 1, duration });
+  };
+  // Refit on available-space changes, not on polling. A manual pan survives refreshes.
   useEffect(() => {
-    const handler = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener('fullscreenchange', handler);
-    return () => document.removeEventListener('fullscreenchange', handler);
-  }, []);
-
-  // Toggle node lock
-  const toggleNodesLocked = useCallback(() => {
-    setNodesLocked((prev) => !prev);
-  }, []);
-
-  // Keyboard shortcuts (must be on window since ReactFlow canvas may not be focusable)
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      // Skip if user is typing in an input
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-
-      switch (e.key) {
-        case '+':
-        case '=':
-          // Zoom in — dispatched to ReactFlow via store-independent DOM approach
-          document.querySelector<HTMLButtonElement>('[data-zoom-in]')?.click();
-          break;
-        case '-':
-          document.querySelector<HTMLButtonElement>('[data-zoom-out]')?.click();
-          break;
-        case '0':
-          document.querySelector<HTMLButtonElement>('[data-fit-view]')?.click();
-          break;
-        case 'Escape':
-          if (detailPanel.open) closeDetail();
-          break;
-        default:
-          // Every other key belongs to the page, not to this handler.
-          break;
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [detailPanel.open, closeDetail]);
-
-  // Node click -> open detail panel
-  const handleNodeClick: NodeMouseHandler = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
-      const data = node.data;
-      if (!data) return;
-      const nodeType = (data as any).nodeType ?? 'app';
-      openDetail(node.id, nodeType, data as TopologyNodeData);
-    },
-    [openDetail],
-  );
-
-  // Pane click -> close detail panel + context menu
-  const handlePaneClick = useCallback(() => {
-    if (detailPanel.open) closeDetail();
-    if (contextMenu) setContextMenu(null);
-  }, [detailPanel.open, closeDetail, contextMenu]);
-
-  // Right-click -> context menu
-  const handleNodeContextMenu: NodeMouseHandler = useCallback(
-    (event: React.MouseEvent, node: Node) => {
-      event.preventDefault();
-      const data = node.data;
-      if (!data) return;
-      const nodeType = (data as any).nodeType ?? 'app';
-      setContextMenu({
-        mouseX: event.clientX,
-        mouseY: event.clientY,
-        nodeId: node.id,
-        nodeType,
-        data: data as TopologyNodeData,
+    const element = canvas.current;
+    if (!element || listView || !nodes.length) return;
+    let frame = 0;
+    const fitAvailableSpace = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        void fitView({
+          ...(detailPanel.open && detailPanel.nodeId ? { nodes: [{ id: detailPanel.nodeId }] } : {}),
+          padding: 0.15,
+          maxZoom: 1,
+          duration: 0,
+        });
       });
+    };
+    const observer = new ResizeObserver(fitAvailableSpace);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [fitView, nodes.length, listView, detailPanel.open, detailPanel.nodeId]);
+
+  const menuApp = menu?.node.data.nodeType === 'app' ? (menu.node.data as AppNodeData) : null;
+  const localApp = menuApp && !menuApp.remote ? menuApp : null;
+  const act = (action: 'start' | 'stop' | 'restart') => {
+    if (!localApp) return;
+    const name = localApp.name;
+    setMenu(null);
+    void useTopologyStore.getState()[`${action}App`](name);
+  };
+  const controls = [
+    {
+      label: 'Zoom out',
+      icon: <ZoomOutIcon fontSize="small" />,
+      action: () => zoomOut({ duration }),
+      disabled: listView || zoom <= 0.1,
     },
-    [],
-  );
-
-  const handleContextMenuClose = useCallback(() => {
-    setContextMenu(null);
-  }, []);
-
-  const handleContextMenuAction = useCallback(
-    (action: string) => {
-      if (!contextMenu) return;
-      const { nodeType, data } = contextMenu;
-      setContextMenu(null);
-
-      if (nodeType === 'app') {
-        const appData = data as any;
-        switch (action) {
-          case 'inspect':
-            openDetail(contextMenu.nodeId, nodeType as any, data);
-            break;
-          case 'restart':
-            useTopologyStore.getState().restartApp(appData.name);
-            break;
-          case 'stop':
-            useTopologyStore.getState().stopApp(appData.name);
-            break;
-          case 'start':
-            useTopologyStore.getState().startApp(appData.name);
-            break;
-          case 'logs':
-            openDetail(contextMenu.nodeId, nodeType as any, data);
-            // Switch to logs tab after panel opens
-            break;
-          default:
-            // An action the menu offers and this handler does not implement
-            // would otherwise close the menu and do nothing at all, which
-            // reads as a click that missed.
-            openDetail(contextMenu.nodeId, nodeType as any, data);
-            break;
-        }
-      } else {
-        // For non-app nodes, just open detail panel
-        openDetail(contextMenu.nodeId, nodeType as any, data);
-      }
+    {
+      label: 'Zoom in',
+      icon: <ZoomInIcon fontSize="small" />,
+      action: () => zoomIn({ duration }),
+      disabled: listView || zoom >= 2,
     },
-    [contextMenu, openDetail],
-  );
-
-  // The app a context menu was opened on — and, when it is this daemon's own,
-  // the one it may restart or stop: a remote app is its node's.
-  const menuApp = contextMenu?.nodeType === 'app' ? (contextMenu.data as AppNodeData) : null;
-  const localMenuApp = menuApp && !menuApp.remote ? menuApp : null;
-
-  // Summary stats
-  const onlineApps = apps.filter((a) => a.status === 'online').length;
-  const totalApps = apps.length;
+    { label: 'Fit graph', icon: <NodesIcon fontSize="small" />, action: fit, disabled: listView || !nodes.length },
+    {
+      label: locked ? 'Unlock node positions' : 'Lock node positions',
+      icon: locked ? <LockIcon fontSize="small" /> : <LockOpenIcon fontSize="small" />,
+      action: () => setLocked(!locked),
+      disabled: listView,
+    },
+    {
+      label: fullscreen ? 'Exit fullscreen' : 'Fullscreen',
+      icon: fullscreen ? <FullscreenExitIcon fontSize="small" /> : <FullscreenIcon fontSize="small" />,
+      action: toggleFullscreen,
+    },
+  ];
 
   return (
     <Stack spacing={1} sx={{ flex: 1, minHeight: 0, minWidth: 0 }}>
-      <Breadcrumbs heading="Topology" links={[{ name: 'Infrastructure', href: '/nodes' }, { name: 'Topology' }]} />
-      {/* Inject pulse animation keyframes */}
-      <style>{pulseKeyframes}</style>
+      <Breadcrumbs
+        heading="Topology"
+        links={[{ name: 'Infrastructure', href: '/nodes' }, { name: 'Topology' }]}
+        action={
+          <Button component={RouterLink} to="/nodes" size="small">
+            Nodes
+          </Button>
+        }
+      />
       <Box
-        ref={containerRef}
+        ref={container}
         sx={{
           display: 'flex',
-          width: '100%',
-          // The workspace supplies the available height, including its chrome.
+          flexDirection: 'column',
           flex: 1,
           minHeight: 0,
-          overflow: 'hidden',
-          bgcolor: 'background.default',
+          minWidth: 0,
           position: 'relative',
+          bgcolor: 'background.default',
         }}
       >
-        {/* Main canvas area */}
-        <Box
+        <Stack
+          direction="row"
+          useFlexGap
+          spacing={1}
           sx={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            minWidth: 0,
-            transition: 'margin-right 0.3s ease',
-            mr: detailPanel.open ? '400px' : 0,
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            p: 1,
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 1,
           }}
         >
-          {/* Error snackbar.
-              Stays up while the diagram is empty. An auto-hiding warning over
-              a blank canvas leaves the operator with the canvas, and a blank
-              topology reads as "nothing is running" rather than "nothing
-              could be read". Partial results dismiss normally — the diagram
-              itself carries the news. */}
-          <Snackbar
-            open={!!error}
-            autoHideDuration={storeNodes.length === 0 ? null : 6000}
-            anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+          <Autocomplete
+            options={nodes}
+            value={null}
+            size="small"
+            getOptionLabel={(node) => `${node.data.label} · ${node.data.nodeType}`}
+            isOptionEqualToValue={(a, b) => a.id === b.id}
+            sx={{ flex: '1 1 180px', minWidth: 0 }}
+            renderInput={(params) => <TextField {...params} label="Find node" />}
+            onChange={(_, node) => {
+              if (node) {
+                inspect(node);
+                void fitView({ nodes: [{ id: node.id }], maxZoom: 1, padding: 0.3, duration });
+              }
+            }}
+          />
+          <Stack direction="row" spacing={0.25} sx={{ flexWrap: 'wrap' }}>
+            <Button size="small" aria-pressed={listView} onClick={() => setListView(!listView)}>
+              {listView ? 'Graph' : 'List'}
+            </Button>
+            {controls.map((control) => (
+              <Tooltip key={control.label} title={control.label} describeChild>
+                <span>
+                  <IconButton
+                    size="small"
+                    aria-label={control.label}
+                    disabled={control.disabled}
+                    onClick={control.action}
+                  >
+                    {control.icon}
+                  </IconButton>
+                </span>
+              </Tooltip>
+            ))}
+            <IconButton size="small" aria-label="Refresh topology" disabled={refreshing} onClick={refresh}>
+              <RefreshIcon fontSize="small" />
+            </IconButton>
+            {!listView && (
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ minWidth: 32, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+              >
+                {Math.round(zoom * 100)}%
+              </Typography>
+            )}
+          </Stack>
+        </Stack>
+        {(error || viewError) && (
+          <Alert severity={error && !nodes.length ? 'error' : 'warning'} variant="outlined" sx={{ mt: 1 }}>
+            {error || viewError}
+          </Alert>
+        )}
+        <Stack direction="row" useFlexGap spacing={1} sx={{ flexWrap: 'wrap', px: 1, py: 0.75 }}>
+          <Typography variant="caption" color="text.secondary">
+            {apps.filter((app) => app.status === 'online').length}/{apps.length} apps online · {nodes.length} nodes ·{' '}
+            {edges.length} declared links
+          </Typography>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: { xs: 'none', sm: 'block' }, ml: 'auto' }}
           >
-            <Alert
-              severity={storeNodes.length === 0 ? 'error' : 'warning'}
-              variant="filled"
-              sx={{ width: '100%' }}
-            >
-              {error}
-            </Alert>
-          </Snackbar>
-
-          {/* Loading skeleton */}
-          {loading && nodes.length === 0 ? (
-            <Box sx={{ p: 4 }}>
-              <Stack spacing={2}>
-                <Skeleton variant="rectangular" height={50} sx={{ borderRadius: 1, bgcolor: 'rgba(255,255,255,0.04)' }} />
-                <Stack direction="row" spacing={3}>
-                  {[...Array(3)].map((_, i) => (
-                    <Skeleton
-                      key={i}
-                      variant="rectangular"
-                      width={280}
-                      height={160}
-                      sx={{ borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }}
-                    />
-                  ))}
-                </Stack>
+            Select to inspect · + / − zoom · 0 fit
+          </Typography>
+        </Stack>
+        <Box sx={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0, position: 'relative', overflow: 'hidden' }}>
+          <Box
+            ref={canvas}
+            tabIndex={0}
+            role="region"
+            aria-label="Deployment topology"
+            onKeyDownCapture={(event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              const target = event.target as HTMLElement;
+              const element = target.closest('.react-flow__node');
+              if (target !== element) return;
+              const node = nodes.find((item) => item.id === element?.getAttribute('data-id'));
+              if (node) {
+                event.preventDefault();
+                event.stopPropagation();
+                inspect(node);
+              }
+            }}
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              minHeight: 0,
+              position: 'relative',
+              '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 },
+            }}
+            onKeyDown={(event) => {
+              if (
+                event.defaultPrevented ||
+                event.ctrlKey ||
+                event.metaKey ||
+                event.altKey ||
+                (event.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')
+              )
+                return;
+              if (listView) return;
+              if (event.key === '+' || event.key === '=') {
+                event.preventDefault();
+                void zoomIn({ duration });
+              }
+              if (event.key === '-') {
+                event.preventDefault();
+                void zoomOut({ duration });
+              }
+              if (event.key === '0') {
+                event.preventDefault();
+                fit();
+              }
+            }}
+          >
+            {loading && !nodes.length ? (
+              <Skeleton variant="rectangular" height="100%" />
+            ) : !nodes.length ? (
+              <Stack sx={{ height: '100%', p: 2, alignItems: 'center', justifyContent: 'center' }} spacing={1}>
+                <Typography variant="body2">
+                  {error ? 'Topology unavailable' : 'No deployments in this selection'}
+                </Typography>
+                <Button onClick={refresh}>Refresh</Button>
               </Stack>
-            </Box>
-          ) : (
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={handleNodesChangeWrapped}
-              onEdgesChange={onEdgesChange}
-              onNodeClick={handleNodeClick}
-              onNodeContextMenu={handleNodeContextMenu}
-              onPaneClick={handlePaneClick}
-              nodeTypes={nodeTypes}
-              nodesDraggable={!nodesLocked}
-              fitView
-              fitViewOptions={{ padding: 0.3, maxZoom: 1.2 }}
-              minZoom={0.2}
-              maxZoom={2}
-              proOptions={{ hideAttribution: true }}
-              style={{ background: '#0a0a0f' }}
-              defaultEdgeOptions={{
-                type: 'smoothstep',
-                style: { strokeWidth: 1.5 },
+            ) : (
+              <>
+                <Box sx={{ height: '100%', display: listView ? 'none' : 'block' }}>
+                  <ReactFlow
+                    nodes={nodes}
+                    edges={edges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    nodeTypes={nodeTypes}
+                    onNodeClick={(_, node) => inspect(node)}
+                    onPaneClick={closeDetail}
+                    onNodeContextMenu={(event, node) => {
+                      event.preventDefault();
+                      setMenu({ x: event.clientX, y: event.clientY, node });
+                    }}
+                    nodesDraggable={!locked}
+                    nodesConnectable={false}
+                    edgesFocusable={false}
+                    deleteKeyCode={null}
+                    ariaLabelConfig={{
+                      'node.a11yDescription.default': 'Press Enter or Space to inspect this node.',
+                      'node.a11yDescription.keyboardDisabled': 'Press Enter or Space to inspect this node.',
+                    }}
+                    fitView
+                    fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
+                    minZoom={0.1}
+                    maxZoom={2}
+                    colorMode={theme.palette.mode}
+                    proOptions={{ hideAttribution: true }}
+                    style={{ background: 'transparent' }}
+                  >
+                    <Background
+                      bgColor="transparent"
+                      variant={BackgroundVariant.Dots}
+                      gap={24}
+                      size={1}
+                      color={theme.palette.divider}
+                    />
+                    {wide && (
+                      <MiniMap
+                        position="bottom-left"
+                        pannable
+                        zoomable
+                        style={{
+                          width: 140,
+                          height: 90,
+                          background: theme.palette.background.paper,
+                          border: `1px solid ${theme.palette.divider}`,
+                          borderRadius: 8,
+                        }}
+                        nodeColor={(node) => getStatusColor(String(node.data?.status ?? 'unknown'), theme)}
+                        maskColor={alpha(theme.palette.background.default, 0.75)}
+                      />
+                    )}
+                  </ReactFlow>
+                </Box>
+                {listView && (
+                  <List aria-label="Topology nodes" sx={{ height: '100%', overflow: 'auto', p: 0 }}>
+                    {nodes.map((node) => (
+                      <ListItemButton
+                        key={node.id}
+                        selected={detailPanel.nodeId === node.id}
+                        onClick={() => inspect(node)}
+                        sx={{ gap: 1 }}
+                      >
+                        <Box
+                          sx={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: '50%',
+                            flexShrink: 0,
+                            bgcolor: getStatusColor(node.data.status, theme),
+                          }}
+                        />
+                        <ListItemText
+                          primary={node.data.label}
+                          secondary={`${node.data.nodeType} · ${node.data.status}`}
+                          slotProps={{ primary: { sx: { overflowWrap: 'anywhere' } } }}
+                        />
+                      </ListItemButton>
+                    ))}
+                  </List>
+                )}
+              </>
+            )}
+          </Box>
+          <DetailPanel container={fullscreen ? container.current : undefined} />
+        </Box>
+        <Menu
+          open={!!menu}
+          onClose={() => setMenu(null)}
+          anchorReference="anchorPosition"
+          anchorPosition={menu ? { left: menu.x, top: menu.y } : undefined}
+          container={fullscreen ? container.current : undefined}
+          slotProps={{ list: { 'aria-label': 'Node actions' } }}
+        >
+          <MenuItem
+            onClick={() => {
+              if (menu) inspect(menu.node);
+              setMenu(null);
+            }}
+          >
+            Inspect
+          </MenuItem>
+          {localApp && <Divider />}
+          {localApp &&
+            (localApp.status === 'online' ? (
+              [
+                <MenuItem key="restart" disabled={!can('OmnitronDaemon.restartApp')} onClick={() => act('restart')}>
+                  Restart
+                </MenuItem>,
+                <MenuItem
+                  key="stop"
+                  disabled={!can('OmnitronDaemon.stopApp')}
+                  onClick={() => act('stop')}
+                  sx={{ color: 'error.main' }}
+                >
+                  Stop
+                </MenuItem>,
+              ]
+            ) : (
+              <MenuItem disabled={!can('OmnitronDaemon.startApp')} onClick={() => act('start')}>
+                Start
+              </MenuItem>
+            ))}
+          {localApp && (
+            <MenuItem
+              onClick={() => {
+                navigate(`/logs?app=${encodeURIComponent(localApp.name)}`);
+                setMenu(null);
               }}
             >
-              {/* Background dots */}
-              <Background
-                variant={BackgroundVariant.Dots}
-                gap={24}
-                size={1}
-                color="rgba(255,255,255,0.04)"
-              />
-
-              {/* MiniMap */}
-              <MiniMap
-                position="bottom-right"
-                nodeColor={(node) => {
-                  const data = node.data as any;
-                  if (!data) return '#334155';
-                  if (data.nodeType === 'infra') return '#336791';
-                  if (data.nodeType === 'app') {
-                    return data.status === 'online' ? '#22c55e' : data.status === 'stopped' ? '#6b7280' : '#ef4444';
-                  }
-                  if (data.nodeType === 'gateway') return '#3b82f6';
-                  if (data.nodeType === 'server') return '#818cf8';
-                  return '#334155';
-                }}
-                maskColor="rgba(10, 10, 15, 0.85)"
-                style={{
-                  background: 'rgba(15, 15, 25, 0.9)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: 8,
-                }}
-              />
-
-              {/* Top toolbar panel */}
-              <Panel position="top-left">
-                <Stack
-                  direction="row"
-                  spacing={1.5}
-                  sx={{
-                    alignItems: "center",
-                    bgcolor: 'rgba(15, 15, 25, 0.92)',
-                    backdropFilter: 'blur(12px)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    borderRadius: '10px',
-                    px: 2,
-                    py: 1
-                  }}>
-                  {/* Title */}
-                  <NodesIcon sx={{ color: '#818cf8', fontSize: 20 }} />
-                  <Typography
-                    variant="subtitle2"
-                    sx={{
-                      fontWeight: 700,
-                      color: '#e2e8f0',
-                      mr: 1
-                    }}>
-                    Topology
-                  </Typography>
-
-                  {/* Stack context shown via header StackSelector */}
-
-                  {/* Separator */}
-                  <Box sx={{ width: 1, height: 20, bgcolor: 'rgba(255,255,255,0.08)' }} />
-
-                  {/* Stats */}
-                  <Chip
-                    label={`${onlineApps}/${totalApps} apps online`}
-                    size="small"
-                    sx={{
-                      height: 24,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      bgcolor: onlineApps === totalApps && totalApps > 0
-                        ? 'rgba(34,197,94,0.12)'
-                        : 'rgba(245,158,11,0.12)',
-                      color: onlineApps === totalApps && totalApps > 0 ? '#22c55e' : '#f59e0b',
-                      border: '1px solid',
-                      borderColor: onlineApps === totalApps && totalApps > 0
-                        ? 'rgba(34,197,94,0.3)'
-                        : 'rgba(245,158,11,0.3)',
-                    }}
-                  />
-
-                  {daemonStatus && (
-                    <Chip
-                      label={`v${daemonStatus.version}`}
-                      size="small"
-                      sx={{
-                        height: 24,
-                        fontSize: 11,
-                        bgcolor: 'rgba(255,255,255,0.06)',
-                        color: '#94a3b8',
-                      }}
-                    />
-                  )}
-
-                  {/* Separator */}
-                  <Box sx={{ width: 1, height: 20, bgcolor: 'rgba(255,255,255,0.08)' }} />
-
-                  {/* Zoom / Lock / Fullscreen controls */}
-                  <ToolbarControls
-                    nodesLocked={nodesLocked}
-                    onToggleLock={toggleNodesLocked}
-                    isFullscreen={isFullscreen}
-                    onToggleFullscreen={toggleFullscreen}
-                  />
-
-                  {/* Separator */}
-                  <Box sx={{ width: 1, height: 20, bgcolor: 'rgba(255,255,255,0.08)' }} />
-
-                  {/* Refresh */}
-                  <Tooltip title="Refresh topology">
-                    <IconButton
-                      size="small"
-                      onClick={fetchAll}
-                      sx={toolbarIconBtnSx}
-                    >
-                      <RefreshIcon />
-                    </IconButton>
-                  </Tooltip>
-
-                  {/* Machines are added where stacks find them: the node
-                      registry. «Add Server» wrote to the fleet table, which
-                      no stack deploys to and this diagram no longer draws. */}
-                  <Button
-                    component={RouterLink}
-                    to="/nodes"
-                    variant="outlined"
-                    size="small"
-                    startIcon={<ServerIcon />}
-                    sx={{
-                      textTransform: 'none',
-                      fontWeight: 600,
-                      fontSize: 12,
-                      height: 32,
-                      color: '#e2e8f0',
-                      borderColor: 'rgba(255,255,255,0.15)',
-                      '&:hover': {
-                        borderColor: 'rgba(255,255,255,0.3)',
-                        bgcolor: 'rgba(255,255,255,0.04)',
-                      },
-                    }}
-                  >
-                    Nodes
-                  </Button>
-                </Stack>
-              </Panel>
-
-              {/* Empty state overlay */}
-              {!loading && nodes.length === 0 && (
-                <Panel position="top-center">
-                  <Box
-                    sx={{
-                      mt: 12,
-                      textAlign: 'center',
-                      bgcolor: 'rgba(15, 15, 25, 0.92)',
-                      backdropFilter: 'blur(12px)',
-                      border: '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: '12px',
-                      px: 4,
-                      py: 3,
-                    }}
-                  >
-                    <NodesIcon sx={{ fontSize: 48, color: '#7c8493', mb: 1 }} />
-                    <Typography variant="h6" sx={{ color: '#94a3b8', mb: 0.5 }}>
-                      No topology data
-                    </Typography>
-                    <Typography variant="body2" sx={{ color: '#8b949e', mb: 2 }}>
-                      Start the daemon and deploy applications to see your infrastructure topology.
-                    </Typography>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      onClick={fetchAll}
-                      startIcon={<RefreshIcon />}
-                      sx={{
-                        textTransform: 'none',
-                        color: '#818cf8',
-                        borderColor: 'rgba(129, 140, 248, 0.3)',
-                      }}
-                    >
-                      Retry
-                    </Button>
-                  </Box>
-                </Panel>
-              )}
-            </ReactFlow>
+              View logs
+            </MenuItem>
           )}
-        </Box>
-
-        {/* Detail panel */}
-        <DetailPanel />
-
-        {/* Context Menu */}
-        <Menu
-          open={contextMenu !== null}
-          onClose={handleContextMenuClose}
-          anchorReference="anchorPosition"
-          anchorPosition={
-            contextMenu ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined
-          }
-          slotProps={{
-            paper: { sx: { minWidth: 180 } },
-            list: { 'aria-label': 'Application actions' },
-          }}
-        >
-          <MenuItem onClick={() => handleContextMenuAction('inspect')}>
-            <ListItemIcon><SearchIcon sx={{ fontSize: 18 }} /></ListItemIcon>
-            <ListItemText>Inspect</ListItemText>
-          </MenuItem>
-
-          {localMenuApp && [
-            <Divider key="div-1" sx={{ borderColor: 'divider' }} />,
-
-            localMenuApp.status === 'online' ? (
-              <MenuItem key="restart" onClick={() => handleContextMenuAction('restart')}>
-                <ListItemIcon><RestartIcon sx={{ fontSize: 18 }} /></ListItemIcon>
-                <ListItemText>Restart</ListItemText>
-              </MenuItem>
-            ) : null,
-
-            localMenuApp.status === 'online' ? (
-              <MenuItem key="stop" onClick={() => handleContextMenuAction('stop')}>
-                <ListItemIcon><StopIcon sx={{ fontSize: 18, color: 'error.main' }} /></ListItemIcon>
-                <ListItemText sx={{ '& .MuiTypography-root': { color: 'error.main' } }}>Stop</ListItemText>
-              </MenuItem>
-            ) : null,
-
-            localMenuApp.status !== 'online' ? (
-              <MenuItem key="start" onClick={() => handleContextMenuAction('start')}>
-                <ListItemIcon><PlayIcon sx={{ fontSize: 18, color: 'success.main' }} /></ListItemIcon>
-                <ListItemText sx={{ '& .MuiTypography-root': { color: 'success.main' } }}>Start</ListItemText>
-              </MenuItem>
-            ) : null,
-          ]}
-
-          {menuApp && [
-            <Divider key="div-2" sx={{ borderColor: 'divider' }} />,
-
-            <MenuItem key="logs" onClick={() => handleContextMenuAction('logs')}>
-              <ListItemIcon><LogsIcon sx={{ fontSize: 18 }} /></ListItemIcon>
-              <ListItemText>View Logs</ListItemText>
-            </MenuItem>,
-          ]}
         </Menu>
       </Box>
     </Stack>

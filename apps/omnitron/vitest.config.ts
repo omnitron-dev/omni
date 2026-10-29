@@ -28,6 +28,7 @@ export default defineConfig({
       '@omnitron-dev/prism/components/animate': path.resolve(import.meta.dirname, '../../packages/prism/src/components/animate/index.ts'),
       '@omnitron-dev/prism/components/breadcrumbs': path.resolve(import.meta.dirname, '../../packages/prism/src/components/breadcrumbs/index.ts'),
       '@omnitron-dev/prism/components/card': path.resolve(import.meta.dirname, '../../packages/prism/src/components/card/index.ts'),
+      '@omnitron-dev/prism/components/chart': path.resolve(import.meta.dirname, '../../packages/prism/src/components/chart/index.ts'),
       '@omnitron-dev/prism/components/command-palette': path.resolve(import.meta.dirname, '../../packages/prism/src/components/command-palette/index.ts'),
       '@omnitron-dev/prism/components/confirm-dialog': path.resolve(import.meta.dirname, '../../packages/prism/src/components/confirm-dialog/index.ts'),
       '@omnitron-dev/prism/components/empty-content': path.resolve(import.meta.dirname, '../../packages/prism/src/components/empty-content/index.ts'),

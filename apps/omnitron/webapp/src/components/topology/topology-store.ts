@@ -482,6 +482,13 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
       daemonStatus: statusAnswer.status === 'fulfilled' ? statusAnswer.value : null,
       nodes,
       edges,
+      detailPanel: (() => {
+        const current = get().detailPanel;
+        const selected = nodes.find((node) => node.id === current.nodeId);
+        return current.open && selected
+          ? { ...current, data: selected.data }
+          : { open: false, nodeId: null, nodeType: null, data: null };
+      })(),
       loading: false,
       error:
         unavailable.length === 0
@@ -497,7 +504,15 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
   setScope: (scope) => {
     const current = get().scope;
     if (current.project === scope.project && current.stack === scope.stack) return;
-    set({ scope, loading: true });
+    set({
+      scope,
+      loading: true,
+      nodes: [],
+      edges: [],
+      apps: [],
+      error: null,
+      detailPanel: { open: false, nodeId: null, nodeType: null, data: null },
+    });
     void get().fetchAll();
   },
 

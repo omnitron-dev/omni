@@ -14,6 +14,28 @@ import { FileNodeRpcService } from '../../src/files/file-node.rpc-service.js';
 import { FilesRpcService } from '../../src/files/files.rpc-service.js';
 import { MemoryFileStore } from '../helpers/memory-file-store.js';
 import type { FileEntry, FileTransfer } from '../../src/shared/dto/files.js';
+import { OmnitronDaemon } from '../../src/daemon/daemon.js';
+
+/** Exercise the daemon's actual transport wiring, not a more permissive test stand. */
+async function fleetOptions() {
+  const servers = new Map<string, { options: Record<string, unknown> }>();
+  const dependencies = { logger: createNullLogger(), verify: async () => ({}), validateToken: async () => null };
+  const daemon = Object.create(OmnitronDaemon.prototype) as {
+    app: unknown;
+    registerTransports(config: unknown): Promise<void>;
+  };
+  daemon.app = {
+    netron: {
+      registerTransport() {},
+      registerTransportServer: (name: string, config: { options: Record<string, unknown> }) => servers.set(name, config),
+      setTransportAuthContext() {},
+      configureAuth() {},
+    },
+    container: { resolveAsync: async () => dependencies },
+  };
+  await daemon.registerTransports({ socketPath: '/unused/daemon.sock', host: '127.0.0.1', port: 9700, role: 'slave' });
+  return servers.get('tcp')!.options;
+}
 
 let directory: string,
   master: string,
@@ -50,7 +72,7 @@ async function host(expose: (n: Netron) => Promise<void>) {
   n.registerTransport('tcp', () => new TcpTransport());
   n.registerTransportServer('tcp', {
     name: 'tcp',
-    options: { host: '127.0.0.1', port: 0, invocationWrapper: createAuthContextWrapper() },
+    options: { ...(await fleetOptions()), host: '127.0.0.1', port: 0 },
   });
   await n.start();
   await expose(n);

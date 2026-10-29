@@ -84,6 +84,8 @@ export function FilePane({
     [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false),
     [error, setError] = useState('');
+  const [rootsLoading, setRootsLoading] = useState(true),
+    [rootsError, setRootsError] = useState('');
   const [next, setNext] = useState<string | null>(null),
     [revision, setRevision] = useState(''),
     [reload, setReload] = useState(0);
@@ -133,7 +135,8 @@ export function FilePane({
     let current = true;
     setRoots([]);
     setEntries([]);
-    setError('');
+    setRootsLoading(true);
+    setRootsError('');
     setSelected([]);
     void files
       .roots({ nodeId: tab.nodeId })
@@ -150,12 +153,15 @@ export function FilePane({
         );
       })
       .catch((e) => {
-        if (current) setError(describeFileError(e));
+        if (current) setRootsError(describeFileError(e));
+      })
+      .finally(() => {
+        if (current) setRootsLoading(false);
       });
     return () => {
       current = false;
     };
-  }, [tab.id, tab.nodeId]);
+  }, [tab.id, tab.nodeId, reload]);
   useEffect(() => {
     const run = ++generation.current;
     setSelected([]);
@@ -488,16 +494,18 @@ export function FilePane({
         slotProps={{ htmlInput: { 'aria-label': `Filter ${side} files` } }}
         sx={{ mx: 1, my: 0.75 }}
       />
-      <Box sx={{ height: 2, flexShrink: 0 }}>{loading && <LinearProgress aria-label={`Loading ${side} files`} />}</Box>
-      {error && (
+      <Box sx={{ height: 2, flexShrink: 0 }}>
+        {(loading || rootsLoading) && <LinearProgress aria-label={`Loading ${side} files`} />}
+      </Box>
+      {(rootsError || error) && (
         <Alert severity="error" sx={{ mx: 1, my: 0.5, overflowWrap: 'anywhere' }}>
-          {error}
+          {rootsError || error}
         </Alert>
       )}
-      {!roots.length && !error && (
+      {!roots.length && !rootsLoading && !rootsError && !error && (
         <Box sx={{ p: 2 }}>
           <Typography variant="body2" color="text.secondary">
-            No file roots exported. Configure daemon.files.roots on this node to enable access.
+            No file roots are available. Check the files policy in this node’s ~/.omnitron/config.json.
           </Typography>
         </Box>
       )}

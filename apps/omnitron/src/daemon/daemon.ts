@@ -649,6 +649,8 @@ export class OmnitronDaemon {
       options: {
         port: dc.port,
         host: tcpHost,
+        // Carry the authenticated mesh identity into service-level guards and audit.
+        invocationWrapper: createAuthContextWrapper(),
       },
     });
 

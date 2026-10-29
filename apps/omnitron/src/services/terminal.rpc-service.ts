@@ -409,7 +409,12 @@ export class TerminalRpcService implements IOmnitronTerminalService {
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async close(data: { id: string }): Promise<void> {
-    this.finish(await this.owned(data?.id), 'closed_by_operator');
+    const owner = await this.owner();
+    const session = this.sessions.get(textId(data?.id));
+    // Closing an already-pruned session is a no-op, but still requires live authority.
+    if (!session) return;
+    if (session.owner.key !== owner.key) throw Errors.forbidden('Terminal is unavailable to this session');
+    this.finish(session, 'closed_by_operator');
   }
 
   private append(session: Session, data: Buffer): void {

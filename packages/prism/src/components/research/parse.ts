@@ -173,25 +173,25 @@ export function parseResearchMarkdown(
         );
       case 'inlineMath':
       case 'math':
-        return node(n.type === 'math' ? 'mathBlock' : 'mathInline', { tex: str(n.value) }, []).map((n) => ({
-          ...n,
+        return node(n.type === 'math' ? 'mathBlock' : 'mathInline', { tex: str(n.value) }, []).map((mathNode) => ({
+          ...mathNode,
           marks,
         }));
       case 'code': {
         const language = str(n.lang).toLowerCase(),
-          body = str(n.value);
-        if (['mermaid', 'pintora', 'prism'].includes(language) && body.length > researchLimits.block)
+          codeText = str(n.value);
+        if (['mermaid', 'pintora', 'prism'].includes(language) && codeText.length > researchLimits.block)
           return [fallback(n, 'block_limit')];
         if (language === 'mermaid' || language === 'pintora')
-          return node('diagram', { engine: language, code: body }, []);
+          return node('diagram', { engine: language, code: codeText }, []);
         if (language === 'prism') {
           try {
-            return node('researchWidget', { descriptor: JSON.parse(body) }, []);
+            return node('researchWidget', { descriptor: JSON.parse(codeText) }, []);
           } catch {
             return [fallback(n, 'invalid_widget_json')];
           }
         }
-        return node('codeBlock', { language, title: str(n.meta) }, [{ type: 'text', text: body }]);
+        return node('codeBlock', { language, title: str(n.meta) }, [{ type: 'text', text: codeText }]);
       }
       case 'containerDirective':
       case 'leafDirective': {

@@ -146,7 +146,8 @@ export function MetricChart({ title, description, lines, format, from, to, loadi
                   onClick={() =>
                     setHidden((previous) => {
                       const next = new Set(previous);
-                      next.has(line.id) ? next.delete(line.id) : next.add(line.id);
+                      if (next.has(line.id)) next.delete(line.id);
+                      else next.add(line.id);
                       return next;
                     })
                   }

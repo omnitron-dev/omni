@@ -14,9 +14,9 @@ export function normalizeIngressTakeover(value: unknown, app?: HostIngressApplic
   if (typeof r.containerId !== 'string' || !/^[a-f0-9]{64}$/.test(r.containerId) || typeof r.containerName !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(r.containerName) || r.containerName === 'omnitron-host-ingress') throw new Error('Takeover requires an exact legacy container ID and name');
   if (!r.expectedLabels || typeof r.expectedLabels !== 'object' || Array.isArray(r.expectedLabels)) throw new Error('Takeover requires exact ownership labels');
   const labels: Record<string, string> = {};
-  for (const [key, value] of Object.entries(r.expectedLabels)) {
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(key) || typeof value !== 'string' || value.length > 256 || /[\0\r\n]/.test(value)) throw new Error('Invalid takeover ownership label');
-    labels[key] = value;
+  for (const [key, labelValue] of Object.entries(r.expectedLabels)) {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(key) || typeof labelValue !== 'string' || labelValue.length > 256 || /[\0\r\n]/.test(labelValue)) throw new Error('Invalid takeover ownership label');
+    labels[key] = labelValue;
   }
   const owner = ingressOwner({ project: labels['omnitron.project'], stack: labels['omnitron.stack'], app: 'legacy-origin' });
   if (labels['omnitron.managed'] !== 'true' || (app && (owner.project !== app.owner.project || owner.stack !== app.owner.stack)) || 'omnitron.host-ingress' in labels) throw new Error('Legacy origin must belong to the declaring project and stack');

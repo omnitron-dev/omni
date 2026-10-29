@@ -77,6 +77,19 @@ function fixture(policy = {}) {
 }
 
 describe('SSH terminal policy and lifecycle', () => {
+  it('allows closing a pruned session while still checking current authority', async () => {
+    const f = fixture();
+    await f.trust();
+    const session = await f.open();
+    await f.as(() => f.service.close({ id: session.id }));
+    f.time(62_000);
+    await f.service.sweep();
+    expect(await f.as(() => f.service.list())).toEqual([]);
+    await expect(f.as(() => f.service.close({ id: session.id }))).resolves.toBeUndefined();
+    expect(f.pty.close).toHaveBeenCalledTimes(1);
+    f.setRole('viewer');
+    await expect(f.as(() => f.service.close({ id: session.id }))).rejects.toThrow(/revoked|administrator/);
+  });
   it('refuses anonymous, viewer, operator and non-session admins before any network action', async () => {
     const f = fixture();
     await expect(f.service.capabilities()).rejects.toThrow();

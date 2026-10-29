@@ -27,7 +27,7 @@ export const EdgeLabelsContext = createContext<EdgeLabelStore | null>(null);
 export function useEdgeLabel(anchor: LabelAnchor | undefined) {
   const store = useContext(EdgeLabelsContext);
   useLayoutEffect(() => {
-    if (!store || !anchor) return;
+    if (!store || !anchor) return undefined;
     store.set(anchor);
     return () => store.remove(anchor.id);
   }, [store, anchor?.id, anchor?.text, anchor?.x, anchor?.y]);
@@ -47,7 +47,7 @@ function MeasuredLabel({
   const ref = useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => {
     const element = ref.current;
-    if (!element) return;
+    if (!element) return undefined;
     const measure = (width: number, height: number) => {
       if (width > 0 && height > 0) onSize(anchor.id, { width: Math.ceil(width), height: Math.ceil(height) });
     };

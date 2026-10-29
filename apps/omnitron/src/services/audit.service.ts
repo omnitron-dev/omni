@@ -250,7 +250,7 @@ export class AuditService {
         { action: entry.action, resource: `${entry.resourceType}:${entry.resourceId ?? '-'}`, error: (err as Error).message },
         required ? 'Required audit write failed; operation refused' : 'Could not record this action in the audit log — it happened and nothing recorded it',
       );
-      if (required) throw new Error('Audit storage is unavailable; operation refused');
+      if (required) throw new Error('Audit storage is unavailable; operation refused', { cause: err });
     }
   }
 

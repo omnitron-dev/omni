@@ -8,7 +8,7 @@ export function abortable<T>(operation: () => Promise<T>, signal?: AbortSignal):
     signal.addEventListener('abort', onAbort, { once: true });
     try {
       operation().then(
-        value => { cleanup(); signal.aborted ? reject(signal.reason) : resolve(value); },
+        value => { cleanup(); if (signal.aborted) reject(signal.reason); else resolve(value); },
         error => { cleanup(); reject(signal.aborted ? signal.reason : error); }
       );
     } catch (error) {

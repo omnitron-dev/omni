@@ -1,4 +1,5 @@
 'use client';
+
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTheme } from '@mui/material/styles';
 import type { ResearchLabels } from './document.js';
@@ -82,9 +83,9 @@ export function ResearchDiagram({
           ],
         });
         const result = await mermaid.render(id, source, scratch);
-        const picture = diagramImage(result.svg, purify);
+        const renderedPicture = diagramImage(result.svg, purify);
         if (!cancelled) {
-          setPicture(picture);
+          setPicture(renderedPicture);
           setState('ready');
         }
       } catch {

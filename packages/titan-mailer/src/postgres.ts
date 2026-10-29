@@ -106,7 +106,7 @@ export class PostgresMailOutbox implements MailOutbox {
           [id, this.maxAttempts]
         )
       ).rows[0];
-      if (!row) return;
+      if (!row) return undefined;
       let state: MailDeliveryState = 'accepted',
         kind: MailFailureKind | null = null;
       if (row.expired) state = 'expired';

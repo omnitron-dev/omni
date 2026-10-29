@@ -393,7 +393,8 @@ export function localHost(): HostRunner {
           await fs.rm(staging, { force: true });
           const e = err as { stderr?: string; message?: string };
           throw new Error(
-            `could not give ${path} to ${options.owner}: ${firstLine(e.stderr?.trim() || e.message || '')}`
+            `could not give ${path} to ${options.owner}: ${firstLine(e.stderr?.trim() || e.message || '')}`,
+            { cause: err },
           );
         }
       }

@@ -91,8 +91,12 @@ export async function logsCommand(appName?: string, options: LogsOptions = {}): 
   // An explicit remote node must never fall back to this machine's files or
   // identically named local app. Use the same node column and RPC as Console.
   if (options.node !== undefined) {
-    if (options.file) return refuse('--node cannot be combined with --file', appName);
-    return showNodeLogs(appName ?? DAEMON_LOG_NAME, options.node, wanted, match, options.follow ?? false);
+    if (options.file) {
+      refuse('--node cannot be combined with --file', appName);
+      return;
+    }
+    await showNodeLogs(appName ?? DAEMON_LOG_NAME, options.node, wanted, match, options.follow ?? false);
+    return;
   }
 
   // The daemon's own log. The help has always promised this for a bare
@@ -287,7 +291,10 @@ interface NodesReader {
 }
 
 async function showNodeLogs(app: string, node: string, wanted: Wanted, match: Match, following: boolean): Promise<void> {
-  if (wanted.lines > 10_000) return refuse('--node supports at most 10000 records per request', app);
+  if (wanted.lines > 10_000) {
+    refuse('--node supports at most 10000 records per request', app);
+    return;
+  }
   const client = createDaemonClient();
   try {
     const absence = await client.whyUnreachable();

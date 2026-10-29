@@ -148,10 +148,10 @@ export class DaemonWsClient {
   /** Authenticate over the open connection, then subscribe; connected only once both answered. */
   private async handshake(socket: EventSocket): Promise<void> {
     const token = (this.options.token ?? getStorageToken)();
-    if (!token || socket !== this.socket) return this.setConnected(false);
+    if (!token || socket !== this.socket) { this.setConnected(false); return; }
     try {
       const auth = await socket.runTask<{ success?: boolean }>('authenticate', { token });
-      if (!auth?.success) return this.setConnected(false);
+      if (!auth?.success) { this.setConnected(false); return; }
       await socket.invoke('OmnitronEvents', 'subscribe', [{ channels: this.options.channels ?? CONSOLE_CHANNELS }]);
       if (socket === this.socket) this.setConnected(true);
     } catch {

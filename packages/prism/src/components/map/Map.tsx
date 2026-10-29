@@ -95,7 +95,7 @@ export const Map = forwardRef<MapRef, MapProps>(function MapView(
     [forwardedRef]
   );
   useEffect(() => {
-    if (!host.current || typeof ResizeObserver === 'undefined') return;
+    if (!host.current || typeof ResizeObserver === 'undefined') return undefined;
     const observer = new ResizeObserver(() => map.current?.resize());
     observer.observe(host.current);
     return () => observer.disconnect();

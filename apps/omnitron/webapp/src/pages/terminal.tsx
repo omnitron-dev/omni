@@ -456,7 +456,7 @@ function TerminalPane({
   const { copy } = useCopyToClipboard();
 
   useEffect(() => {
-    if (!host.current) return;
+    if (!host.current) return undefined;
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
@@ -619,6 +619,7 @@ function TerminalPane({
       });
       return () => cancelAnimationFrame(frame);
     }
+    return undefined;
   }, [visible]);
   useEffect(() => {
     if (emulator.current)

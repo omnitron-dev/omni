@@ -24,9 +24,7 @@ export async function executeMigrationOperation<DB>(config: MigrationConfig<DB>,
   if (!Array.isArray(migrations)) throw new Error('Migration configuration must provide a migration array');
   const connection = await config.connect();
   if (typeof connection.close !== 'function') throw new Error('Migration connection must provide close()');
-  let failure: unknown;
-  let failed = false;
-  try {
+  const run = async () => {
     const runner = createMigrationRunner(connection.db, migrations, { ...config.options, dryRun: options.dryRun ?? false });
     const startedAt = performance.now();
     if (options.action === 'status' || options.action === 'verify') {
@@ -36,17 +34,18 @@ export async function executeMigrationOperation<DB>(config: MigrationConfig<DB>,
     const result = options.action === 'down' ? await runner.down(options.steps ?? 1)
       : options.to ? await runner.upTo(options.to) : await runner.up();
     return { name: config.name ?? 'application', operation: options.action, result, durationMs: performance.now() - startedAt };
-  } catch (error) {
-    failed = true;
-    failure = error;
-    throw error;
-  } finally {
-    try { await connection.close(); }
-    catch (error) {
-      if (failed) throw new AggregateError([failure, error], 'Migration operation and connection cleanup failed');
-      throw new Error('Migration operation completed, but connection cleanup failed; inspect history before retrying', { cause: error });
-    }
+  };
+  const outcome = await run().then(
+    value => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+  try { await connection.close(); }
+  catch (error) {
+    if (!outcome.ok) throw new AggregateError([outcome.error, error], 'Migration operation and connection cleanup failed', { cause: error });
+    throw new Error('Migration operation completed, but connection cleanup failed; inspect history before retrying', { cause: error });
   }
+  if (!outcome.ok) throw outcome.error;
+  return outcome.value;
 }
 
 export function diagnoseMigrationFailure(error: unknown): DiagnosticFinding & { outcome: 'not-started' | 'committed' | 'unknown' } {

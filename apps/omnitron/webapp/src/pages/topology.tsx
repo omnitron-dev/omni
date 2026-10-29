@@ -219,7 +219,7 @@ function TopologyWorkspace() {
   // Measure the actual canvas, including the space reserved by a persistent inspector.
   useEffect(() => {
     const element = canvas.current;
-    if (!element) return;
+    if (!element) return undefined;
     const observer = new ResizeObserver(([entry]) => {
       if (!entry) return;
       const { width, height } = entry.contentRect;
@@ -232,7 +232,7 @@ function TopologyWorkspace() {
   }, []);
   // Polling changes readings, not the camera. Only geometry, selection or an explicit command reframes it.
   useEffect(() => {
-    if (!nodesInitialized || listView || !canvasSize.width || !canvasSize.height) return;
+    if (!nodesInitialized || listView || !canvasSize.width || !canvasSize.height) return undefined;
     const frame = requestAnimationFrame(() => {
       const oldSize = previousSize.current;
       const oldNodes = previousGeometry.current;

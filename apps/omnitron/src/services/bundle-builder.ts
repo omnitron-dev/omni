@@ -27,6 +27,7 @@ import { promisify } from 'node:util';
 
 import { resolvePnpm } from '../shared/pnpm.js';
 import { readBuildStamp } from '../shared/build-stamp.js';
+import { copyBundleOverride, readBundleOverrides } from './bundle-overrides.js';
 
 import {
   planBundle,
@@ -52,6 +53,8 @@ export interface BundleMetadata {
   readonly builtAt: string;
   /** Packages that travelled, for a reader deciding whether to trust it. */
   readonly vendored: readonly string[];
+  /** Exact local dependency archives retained from the source workspace. */
+  readonly dependencyArchives?: readonly { name: string; version: string; sha256: string }[];
 }
 
 export interface BuildBundleOptions {
@@ -575,9 +578,12 @@ export async function describeTree(cwd: string): Promise<{ commit: string; dirty
  */
 export async function buildBundle(options: BuildBundleOptions): Promise<BuildBundleResult> {
   const workspaceRoot = path.resolve(options.workspaceRoot);
-  const workspace = readWorkspaces([workspaceRoot, ...(options.additionalWorkspaceRoots ?? [])]);
-  const plan = planBundle(options.rootPackage, workspace);
-  if (plan.refusal) throw new Error(plan.refusal);
+  const roots = [workspaceRoot, ...(options.additionalWorkspaceRoots ?? [])];
+  const workspace = readWorkspaces(roots);
+  const workspacePlan = planBundle(options.rootPackage, workspace);
+  if (workspacePlan.refusal) throw new Error(workspacePlan.refusal);
+  const inherited = await readBundleOverrides(roots);
+  const plan = { ...workspacePlan, overrides: { ...inherited.overrides, ...workspacePlan.overrides } };
 
   const tree = await describeTree(workspaceRoot);
   const version = localVersion(plan.root.version, tree.commit, new Date());
@@ -588,6 +594,9 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
   fs.mkdirSync(path.join(staging, VENDOR_DIR), { recursive: true });
 
   try {
+    for (const archive of inherited.archives) {
+      copyBundleOverride(archive, path.join(staging, VENDOR_DIR));
+    }
     const rootDir = directoryOf(workspace.get(options.rootPackage)!);
 
     // The package's own built output. Copied rather than packed: `npm pack`
@@ -638,7 +647,7 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
         throw new Error(
           `${vendored.name} ships 'dist' and its 'dist' is out of date (${stale}), and rebuilding it failed: ` +
             `${(err as Error).message.slice(0, 300)}`,
-          { cause: err },
+          { cause: err }
         );
       }
       // What this package hashed to a moment ago is no longer what it is:
@@ -649,7 +658,7 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
       if (still) {
         throw new Error(
           `${vendored.name} ships 'dist' and its 'dist' is still out of date after a build (${still}). ` +
-            `Packing it would put months-old compiled code on a node under a current version number.`,
+            `Packing it would put months-old compiled code on a node under a current version number.`
         );
       }
     }
@@ -692,7 +701,7 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
         // the override would point at a file that is not there.
         throw new Error(
           `Packing ${vendored.name} produced no ${vendored.tarball}. ` +
-            `The bundle's overrides would point at a file that does not exist.`,
+            `The bundle's overrides would point at a file that does not exist.`
         );
       }
 
@@ -709,7 +718,7 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
 
     fs.writeFileSync(
       path.join(staging, 'package.json'),
-      JSON.stringify(bundleRootManifest(plan, version), null, 2) + '\n',
+      JSON.stringify(bundleRootManifest(plan, version), null, 2) + '\n'
     );
 
     const metadata: BundleMetadata = {
@@ -718,6 +727,11 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
       dirty: tree.dirty,
       builtAt: new Date().toISOString(),
       vendored: plan.vendored.map((v) => `${v.name}@${v.version}`),
+      dependencyArchives: inherited.archives.map(({ name, version: dependencyVersion, sha256 }) => ({
+        name,
+        version: dependencyVersion,
+        sha256,
+      })),
     };
     fs.writeFileSync(path.join(staging, BUNDLE_METADATA_FILE), JSON.stringify(metadata, null, 2) + '\n');
 
@@ -827,7 +841,7 @@ export async function bundleChecksum(
     readonly skip?: (relativePath: string) => boolean;
     /** A file to hash as something other than its bytes — see `withoutBuildVersion`. */
     readonly rewrite?: { appliesTo(relativePath: string): boolean; to(bytes: Buffer): Buffer };
-  },
+  }
 ): Promise<string> {
   const { createHash } = await import('node:crypto');
   const root = path.resolve(bundleDir);
@@ -1051,7 +1065,7 @@ export async function buildInputsChecksum(
   options?: {
     readonly additionalWorkspaceRoots?: readonly string[];
     readonly memo?: Map<string, string>;
-  },
+  }
 ): Promise<string | null> {
   const workspaceRoot = findWorkspaceRoot(appDir);
   if (!workspaceRoot) return null;
@@ -1064,7 +1078,8 @@ export async function buildInputsChecksum(
   }
   if (!manifest.name) return null;
 
-  const workspace = readWorkspaces([workspaceRoot, ...(options?.additionalWorkspaceRoots ?? [])]);
+  const roots = [workspaceRoot, ...(options?.additionalWorkspaceRoots ?? [])];
+  const workspace = readWorkspaces(roots);
   const plan = planBundle(manifest.name, workspace);
   if (plan.refusal) return null;
 
@@ -1078,6 +1093,20 @@ export async function buildInputsChecksum(
   };
 
   const parts = [`app ${manifest.name} ${await readOnce(sourcesKey(appDir), appDir, withoutBuildOutput)}`];
+  // Resolution inputs live above the app. An archive replaced in place must
+  // invalidate the build just like a source edit, even when its version stays.
+  const inherited = await readBundleOverrides(roots);
+  for (const [name, range] of Object.entries(inherited.overrides)) parts.push(`override ${name} ${range}`);
+  const { createHash } = await import('node:crypto');
+  for (const [index, root] of roots.entries()) {
+    for (const file of ['package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml', '.npmrc']) {
+      const location = path.join(root, file);
+      if (fs.existsSync(location))
+        parts.push(
+          `resolution ${index} ${file} ${createHash('sha256').update(fs.readFileSync(location)).digest('hex')}`
+        );
+    }
+  }
   for (const vendored of plan.vendored) {
     const entry = workspace.get(vendored.name);
     if (!entry) return null;
@@ -1086,7 +1115,6 @@ export async function buildInputsChecksum(
   }
   parts.sort();
 
-  const { createHash } = await import('node:crypto');
   return createHash('sha256').update(parts.join('\n')).digest('hex');
 }
 
@@ -1121,9 +1149,18 @@ export interface InstallLayout {
 }
 
 export function versionDir(layout: InstallLayout): string {
-  if (!/^\d+\.\d+\.\d+(?:-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?(?:\+[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?$/.test(layout.version))
+  if (
+    !/^\d+\.\d+\.\d+(?:-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?(?:\+[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?$/.test(
+      layout.version
+    )
+  )
     throw new Error('Bundle version must be one complete semantic-version path segment');
-  if (!path.posix.isAbsolute(layout.prefix) || layout.prefix === '/' || path.posix.normalize(layout.prefix) !== layout.prefix || /[\\\r\n\0]/.test(layout.prefix))
+  if (
+    !path.posix.isAbsolute(layout.prefix) ||
+    layout.prefix === '/' ||
+    path.posix.normalize(layout.prefix) !== layout.prefix ||
+    /[\\\r\n\0]/.test(layout.prefix)
+  )
     throw new Error('Bundle prefix must be a canonical absolute directory');
   return `${layout.prefix}/versions/${layout.version}`;
 }
@@ -1177,7 +1214,7 @@ export function installPreflightCommand(layout: InstallLayout): string {
 export function installSteps(
   layout: InstallLayout,
   archivePath: string,
-  expectedArchiveSha256?: string,
+  expectedArchiveSha256?: string
 ): readonly RemoteStep[] {
   versionDir(layout);
   if (expectedArchiveSha256 !== undefined && !/^[a-f0-9]{64}$/.test(expectedArchiveSha256))
@@ -1256,11 +1293,13 @@ fs.renameSync(stage,dir);
 const fd=fs.openSync(prefix+'/versions','r');try{fs.fsyncSync(fd)}finally{fs.closeSync(fd)}
 console.log(version);
 `;
-  return [{
-    what: 'install dependencies in an immutable sibling and check that it runs',
-    command: `node -e ${q(code)} ${q(layout.prefix)} ${q(layout.version)} ${q(archivePath)} ${q(expectedArchiveSha256 ?? '')}`,
-    timeoutMs: 1_500_000,
-  }];
+  return [
+    {
+      what: 'install dependencies in an immutable sibling and check that it runs',
+      command: `node -e ${q(code)} ${q(layout.prefix)} ${q(layout.version)} ${q(archivePath)} ${q(expectedArchiveSha256 ?? '')}`,
+      timeoutMs: 1_500_000,
+    },
+  ];
 }
 
 /**
@@ -1323,7 +1362,11 @@ export function activateSteps(layout: InstallLayout, pathDir = '/usr/local/bin')
  * `awk` rather than GNU `head -n -N`, so the court can run the command
  * itself on the machine that builds.
  */
-export function pruneSteps(layout: InstallLayout, keep: number, protectedRoots: readonly string[] = []): readonly RemoteStep[] {
+export function pruneSteps(
+  layout: InstallLayout,
+  keep: number,
+  protectedRoots: readonly string[] = []
+): readonly RemoteStep[] {
   const versions = `${layout.prefix}/versions`;
   return [
     {
@@ -1334,7 +1377,7 @@ export function pruneSteps(layout: InstallLayout, keep: number, protectedRoots: 
         `ls -1 | awk -F. '{ s = $NF; if (s !~ /^[0-9]+$/) s = 0; print s "\\t" $0 }' | sort -n -k1,1 | cut -f2- | ` +
         `awk -v keep=${keep} '{ a[NR] = $0 } END { for (i = 1; i <= NR - keep; i++) print a[i] }' | while read -r v; do ` +
         `[ "${versions}/$v" = "$CURRENT" ] && continue; ` +
-        protectedRoots.map(root => `[ "${versions}/$v" = ${q(root)} ] && continue; `).join('') +
+        protectedRoots.map((root) => `[ "${versions}/$v" = ${q(root)} ] && continue; `).join('') +
         `rm -rf -- "$v"; done; true`,
       timeoutMs: 120_000,
     },

@@ -118,7 +118,7 @@ export class XecTerminalDriver implements TerminalDriver {
       const reason =
         (error as { code?: string }).code === 'EHOSTKEY' ? 'ssh_host_key_mismatch' : 'ssh_connection_failed';
       finish(reason);
-      throw new Error(reason);
+      throw new Error(reason, { cause: error });
     }
   }
 }

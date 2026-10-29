@@ -59,7 +59,7 @@ export function arrangeTopologyNodes<T extends Node<TopologyNodeData>>(nodes: T[
       search: for (; ; row++) {
         for (column = 0; column <= columns - width; column++) {
           const fits = Array.from({ length: height }, (_, y) =>
-            Array.from({ length: width }, (_, x) => !occupied[row + y]?.[column + x]).every(Boolean)
+            Array.from({ length: width }, (_column, x) => !occupied[row + y]?.[column + x]).every(Boolean)
           ).every(Boolean);
           if (fits) break search;
         }

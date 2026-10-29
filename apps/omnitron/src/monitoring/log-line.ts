@@ -89,6 +89,8 @@ export function levelOf(value: unknown): string {
   return UNKNOWN_LEVEL;
 }
 
+// ESC is intentional: remove terminal colour sequences from stored log records.
+// eslint-disable-next-line no-control-regex
 const ANSI = /\u001b\[[0-9;]*m/g;
 
 /** Colour is for a terminal; in a record it is noise between the letters. */
@@ -291,6 +293,10 @@ export function recordOf(klass: Exclude<LineClass, { kind: 'continuation' }>, li
       };
     case 'text':
       return { kind: 'text', level: UNKNOWN_LEVEL, time: reference, timeFromLine: false, message: stripAnsi(raw), lines: 1 };
+    default: {
+      const unsupported: never = klass;
+      throw new TypeError(`Unsupported log record: ${JSON.stringify(unsupported)}`);
+    }
   }
 }
 

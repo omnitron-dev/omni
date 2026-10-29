@@ -116,17 +116,17 @@ export function MathInput(props: MathInputProps) {
         };
         const key = (event: KeyboardEvent) => {
           if (event.isComposing) return;
-          const p = latest.current;
-          if (p.onHistory && (event.metaKey || event.ctrlKey) && ['z', 'y'].includes(event.key.toLowerCase())) {
+          const currentProps = latest.current;
+          if (currentProps.onHistory && (event.metaKey || event.ctrlKey) && ['z', 'y'].includes(event.key.toLowerCase())) {
             event.preventDefault();
             event.stopImmediatePropagation();
-            p.onHistory(event.shiftKey || event.key.toLowerCase() === 'y');
-          } else if (p.onExit && (event.key === 'Escape' || (event.key === 'Enter' && !event.shiftKey))) {
+            currentProps.onHistory(event.shiftKey || event.key.toLowerCase() === 'y');
+          } else if (currentProps.onExit && (event.key === 'Escape' || (event.key === 'Enter' && !event.shiftKey))) {
             // Let MathLive complete a command or navigate a matrix with Enter first.
             if (event.key === 'Enter' && mf.mode === 'latex') return;
             event.preventDefault();
             event.stopImmediatePropagation();
-            p.onExit('forward');
+            currentProps.onExit('forward');
           }
         };
         const stop = (event: Event) => {

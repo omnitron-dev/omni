@@ -576,7 +576,7 @@ describe('Transaction context functions', () => {
     expect(row.rows).toHaveLength(0);
   });
 
-  it('nested runInTransaction reuses the outer transaction', async () => {
+  it('nested runInTransaction shares the connection and restores the outer savepoint depth', async () => {
     const outerCtx: any = {};
     const innerCtx: any = {};
 
@@ -588,13 +588,14 @@ describe('Transaction context functions', () => {
         innerCtx.trx = getTransactionContext()?.transaction;
         innerCtx.depth = getTransactionContext()?.depth;
       });
+      expect(getTransactionContext()?.depth).toBe(1);
     });
 
     // Both should have the same transaction object since inner reuses outer
     expect(outerCtx.trx).toBe(innerCtx.trx);
-    // Depth stays 1 because inner call just reuses outer (no new context created)
+    // Kysera owns the nested savepoint; each callback has its own nesting depth.
     expect(outerCtx.depth).toBe(1);
-    expect(innerCtx.depth).toBe(1);
+    expect(innerCtx.depth).toBe(2);
   });
 
   it('repository executor switches to transaction inside runInTransaction', async () => {

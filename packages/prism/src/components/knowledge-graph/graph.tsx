@@ -119,7 +119,7 @@ function Badges({ badges }: { badges?: readonly KnowledgeBadge[] }) {
     </Box>
   );
 }
-const EntityNode = memo(function EntityNode({ data, selected }: NodeProps<GraphNode>) {
+const EntityNode = memo(function EntityNodeView({ data, selected }: NodeProps<GraphNode>) {
   return (
     <div
       style={{ minHeight: Math.max(76, Math.max(data.inputs ?? 0, data.outputs ?? 0) * 24 + 24) }}
@@ -289,7 +289,7 @@ export function KnowledgeGraph({
       // props are a projection of that selection, never a second feedback source.
       const selectedChange = [...changes].reverse().find((change) => change.type === 'select' && change.selected);
       if (selectedChange?.type === 'select') {
-        const node = graph.nodes.find((node) => node.id === selectedChange.id);
+        const node = graph.nodes.find((candidate) => candidate.id === selectedChange.id);
         if (node) choose(node.selection);
       } else {
         const current = selectionRef.current;
@@ -298,7 +298,7 @@ export function KnowledgeGraph({
           choose(undefined);
       }
       const geometry = changes.filter((change) => change.type !== 'remove' && change.type !== 'select');
-      if (geometry.length) setNodes((nodes) => applyNodeChanges(geometry, nodes));
+      if (geometry.length) setNodes((previous) => applyNodeChanges(geometry, previous));
     },
     [graph, choose]
   );

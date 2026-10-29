@@ -58,7 +58,7 @@ export class HostIngressService {
   }
   private async currentGeneration(): Promise<string | null> {
     let link: string;
-    try { link = await fs.readlink(this.file('current')); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null; throw new Error(`Invalid host ingress current pointer: ${String(e)}`); }
+    try { link = await fs.readlink(this.file('current')); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null; throw new Error(`Invalid host ingress current pointer: ${String(e)}`, { cause: e }); }
     if (!/^generations\/[1-9][0-9]*-[a-f0-9]{16}$/.test(link)) throw new Error('Invalid host ingress current pointer');
     return path.posix.basename(link);
   }
@@ -232,8 +232,8 @@ export class HostIngressService {
       await durableFile(this.file('pending.json'), JSON.stringify({ ...journal, phase: 'acknowledged' }) + '\n');
     } catch (failure) {
       try { await this.restoreJournal(settings, journal); await this.clearJournal(); }
-      catch (rollback) { throw new Error(`Host ingress publication failed (${String(failure)}); rollback needs recovery (${String(rollback)})`); }
-      throw new Error(`Host ingress publication failed; previous generation restored: ${String(failure)}`);
+      catch (rollback) { throw new AggregateError([failure, rollback], `Host ingress publication failed (${String(failure)}); rollback needs recovery (${String(rollback)})`, { cause: rollback }); }
+      throw new Error(`Host ingress publication failed; previous generation restored: ${String(failure)}`, { cause: failure });
     }
     await this.recordTakeover(journal, 'committed'); await this.clearJournal();
     return { generation, previousGeneration: previous?.generation ?? null, observedGeneration: generation, changed: true, owner, ownerRevision, ...(snapshot ? { takeover: { containerId: snapshot.descriptor.containerId, containerName: snapshot.descriptor.containerName, retained: true as const } } : {}) };
@@ -320,7 +320,7 @@ export class HostIngressService {
       const journal: Journal = { version: 1, previous: null, candidate: generation, phase: 'rollback-prepared', settingsHash: digest(JSON.stringify(settings)), takeover: record.snapshot };
       await durableFile(this.file('pending.json'), JSON.stringify(journal) + '\n');
       try { await this.restoreJournal(settings, journal); await this.clearJournal(); }
-      catch (error) { throw new Error(`Initial takeover rollback needs recovery: ${String(error)}`); }
+      catch (error) { throw new Error(`Initial takeover rollback needs recovery: ${String(error)}`, { cause: error }); }
       return { rolledBack: true, previousGeneration: generation, generation: null, legacyContainerId: record.snapshot.descriptor.containerId, legacyVerified: true };
     });
   }

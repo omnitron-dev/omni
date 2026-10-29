@@ -24,7 +24,7 @@ export function ingressOwner(value: unknown): HostIngressOwner {
 export function ingressOwnerKey(owner: HostIngressOwner): string { return JSON.stringify([owner.project, owner.stack, owner.app]); }
 export function ingressDomain(value: unknown): string {
   const raw = text(value, 'domain');
-  if (/[\\/:?#@%\s\x00-\x1f\x7f]/.test(raw) || raw !== raw.trim()) throw new Error('Domain must not contain surrounding whitespace');
+  if ((/[\\/:?#@%\s]/.test(raw) || [...raw].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) || raw !== raw.trim()) throw new Error('Domain must not contain surrounding whitespace');
   const name = domainToASCII(raw.replace(/\.$/, '')).toLowerCase();
   if (!name || name.length > 253 || isIP(name) || !name.includes('.') || name.split('.').some((p) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(p))) throw new Error(`Invalid exact hostname: ${raw}`);
   return name;
@@ -45,8 +45,8 @@ export function normalizeIngressSettings(value: unknown): HostIngressSettings {
   const policy = record(r.proxyPolicy, ['mode', 'trustedCidrs', 'allowLoopbackProbes'], 'proxy policy');
   if (policy.allowLoopbackProbes !== undefined && typeof policy.allowLoopbackProbes !== 'boolean') throw new Error('allowLoopbackProbes must be boolean');
   if (!Array.isArray(policy.trustedCidrs)) throw new Error('trustedCidrs must be an array');
-  const trustedCidrs = [...new Set(policy.trustedCidrs.map((value) => {
-    const cidr = text(value, 'CIDR'); const parts = cidr.split('/'); const family = isIP(parts[0]!);
+  const trustedCidrs = [...new Set(policy.trustedCidrs.map((candidate) => {
+    const cidr = text(candidate, 'CIDR'); const parts = cidr.split('/'); const family = isIP(parts[0]!);
     if (parts.length !== 2 || !family || !/^\d+$/.test(parts[1]!) || Number(parts[1]) < 1 || Number(parts[1]) > (family === 4 ? 32 : 128)) throw new Error(`Invalid trusted CIDR: ${cidr}`);
     return `${parts[0]!.toLowerCase()}/${Number(parts[1])}`;
   }))].sort();
@@ -69,8 +69,8 @@ export function normalizeIngressApplication(value: unknown): HostIngressApplicat
     const tls = record(route.tls, ['certificate', 'privateKey'], 'TLS');
     if (!Array.isArray(route.locations) || !route.locations.length || route.locations.length > 100) throw new Error('Declare 1–100 locations');
     const seen = new Set<string>();
-    const locations: HostIngressLocation[] = route.locations.map((entry) => {
-      const loc = record(entry, ['path', 'upstream', 'stripPrefix', 'deny'], 'location'); const prefix = text(loc.path, 'location path');
+    const locations: HostIngressLocation[] = route.locations.map((location) => {
+      const loc = record(location, ['path', 'upstream', 'stripPrefix', 'deny'], 'location'); const prefix = text(loc.path, 'location path');
       if (!/^\/[a-zA-Z0-9_./-]*$/.test(prefix) || prefix.includes('//') || prefix.split('/').some((s) => s === '.' || s === '..')) throw new Error('Location must be a literal absolute path');
       const effective = prefix === '/' ? '/' : prefix.replace(/\/$/, '');
       if (seen.has(effective)) throw new Error(`Duplicate location: ${prefix}`); seen.add(effective);

@@ -241,8 +241,11 @@ export const VENDOR_DIR = 'vendor';
 export function bundleRootManifest(plan: BundlePlan, version: string): Record<string, unknown> {
   const dependencies: Record<string, string> = {};
   for (const [name, range] of Object.entries(plan.root.dependencies ?? {})) {
-    dependencies[name] = isVendorableRange(range) ? (plan.overrides[name] ?? range) : range;
+    dependencies[name] = plan.overrides[name] ?? range;
   }
+  const optionalDependencies = Object.fromEntries(
+    Object.entries(plan.root.optionalDependencies ?? {}).map(([name, range]) => [name, plan.overrides[name] ?? range])
+  );
 
   return {
     name: plan.root.name,
@@ -259,6 +262,7 @@ export function bundleRootManifest(plan: BundlePlan, version: string): Record<st
     ...(plan.root.imports ? { imports: plan.root.imports } : {}),
     ...(plan.root.bin ? { bin: plan.root.bin } : {}),
     dependencies,
+    ...(Object.keys(optionalDependencies).length ? { optionalDependencies } : {}),
     overrides: plan.overrides,
   };
 }

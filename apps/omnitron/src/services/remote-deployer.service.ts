@@ -2313,6 +2313,7 @@ export class RemoteDeployer {
         'Could not carry the previous build forward — open tabs will reload onto the new one',
       );
     }
+    return undefined;
   }
 
   private async signalRemoteDaemon(target: DeployTarget, appName: string): Promise<{ ok: boolean; detail: string }> {

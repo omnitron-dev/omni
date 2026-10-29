@@ -111,7 +111,7 @@ export class HardenedMigrationRunner<DB = unknown> {
           if (missingFiles.length) this.logger.error(`The database records ${missingFiles.join(', ')}, which this build does not ship. A retry will fail identically if these created the same objects; reconcile the bookkeeping first.`);
         } catch { /* The original failure is retained below. */ }
       }
-      this.rethrow(error);
+      return this.rethrow(error);
     }
   }
 
@@ -119,7 +119,7 @@ export class HardenedMigrationRunner<DB = unknown> {
     try {
       const result = await this.runner.down(steps);
       return { rolledBack: result.executed, failed: result.failed };
-    } catch (error) { this.rethrow(error); }
+    } catch (error) { return this.rethrow(error); }
   }
 
   async verifyChecksums(): Promise<HardenedStatus['drift']> {

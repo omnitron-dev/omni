@@ -658,7 +658,7 @@ export default function LogsPage() {
 
   // Initial live fetch
   useEffect(() => {
-    if (!isLive) return;
+    if (!isLive) return undefined;
     let active = true;
     (async () => {
       try {

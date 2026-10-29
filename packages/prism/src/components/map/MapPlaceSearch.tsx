@@ -106,7 +106,7 @@ export function MapPlaceSearch<T extends MapPlace>({
     }
   }
   useEffect(() => {
-    if (mode !== 'autocomplete' || !validQuery || disabled || selected) return;
+    if (mode !== 'autocomplete' || !validQuery || disabled || selected) return undefined;
     const timer = setTimeout(() => void run(), debounceMs);
     return () => clearTimeout(timer);
   }, [query, mode, debounceMs, disabled, selected]);

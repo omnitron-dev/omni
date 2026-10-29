@@ -17,7 +17,7 @@
  */
 
 import { createHash, randomBytes } from 'node:crypto';
-import { Agent, request } from 'node:http';
+import { Agent, request as httpRequest } from 'node:http';
 import type { NetworkInterfaceInfo } from 'node:os';
 
 import { bindService, secretValues, type Provisioning } from './service-binding.js';
@@ -627,7 +627,7 @@ function post(
   signal: AbortSignal
 ): Promise<{ status: number; challenge: string | undefined; text: string }> {
   return new Promise((resolve, reject) => {
-    const sent = request(
+    const sent = httpRequest(
       url,
       { method: 'POST', agent, signal, headers: { ...headers, 'content-length': String(Buffer.byteLength(body)) } },
       (response) => {

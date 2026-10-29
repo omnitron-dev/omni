@@ -14,11 +14,13 @@ function separated(a: LabelRect, b: LabelRect, gap: number) {
 }
 function audit(labels: readonly MeasuredLabel[], nodes: readonly LabelRect[], gap: number) {
   const placed = placeEdgeLabels(labels, nodes, gap);
+  const textById = new Map(labels.map(label => [label.id, label.text]));
   expect(placed.map((l) => l.id).sort()).toEqual(labels.map((l) => l.id).sort());
   for (let i = 0; i < placed.length; i++) {
-    expect(placed[i].text).toBe(labels.find((l) => l.id === placed[i].id)!.text);
+    expect(placed[i].text).toBe(textById.get(placed[i].id));
     for (const obstacle of [...nodes, ...placed.slice(0, i).map((l) => l.box)])
-      expect(separated(placed[i].box, obstacle, gap), JSON.stringify({ label: placed[i], obstacle })).toBe(true);
+      if (!separated(placed[i].box, obstacle, gap))
+        throw new Error(`Overlapping labels: ${JSON.stringify({ label: placed[i], obstacle })}`);
   }
   return placed;
 }
@@ -89,7 +91,9 @@ describe('measured edge-label geometry', () => {
           height: l.box.height * scale,
         }));
         for (let i = 0; i < boxes.length; i++)
-          for (let j = 0; j < i; j++) expect(separated(boxes[i], boxes[j], gap * scale)).toBe(true);
+          for (let j = 0; j < i; j++)
+            if (!separated(boxes[i], boxes[j], gap * scale))
+              throw new Error(`Overlap after scaling: ${JSON.stringify({ scale, first: boxes[i], second: boxes[j] })}`);
       }
     }
   });

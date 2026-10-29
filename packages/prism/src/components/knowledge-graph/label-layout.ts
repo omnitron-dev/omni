@@ -71,7 +71,7 @@ export function placeEdgeLabels(labels: readonly MeasuredLabel[], nodes: readonl
 }
 
 export function enclosingRect(rects: readonly LabelRect[]): LabelRect | undefined {
-  if (!rects.length) return;
+  if (!rects.length) return undefined;
   let x = Infinity,
     y = Infinity,
     right = -Infinity,

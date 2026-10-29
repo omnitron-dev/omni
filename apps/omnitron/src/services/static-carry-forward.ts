@@ -199,8 +199,12 @@ export function immutableAssetsRoot(owner: StaticAssetOwner): string {
 
 /** Self-contained destination program. Every writer MUST hold the native exclusive execution fence. */
 function immutableAssetProgram(input: StaticAssetPublication, storage: string, replaying = false): StaticAssetReceipt {
+  // This function is serialized and executed as CommonJS on the destination host.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Destination CommonJS program.
   const path = require('node:path') as typeof import('node:path');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Destination CommonJS program.
   const crypto = require('node:crypto') as typeof import('node:crypto');
   type Entry = { sha256: string; bytes: number };
   type Manifest = {

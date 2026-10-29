@@ -163,7 +163,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@kysera/migrations': file:vendor/kysera-migrations-0.10.0-be05d079c584.tgz
+  '@kysera/migrations': file:vendor/kysera-migrations-0.10.0-00b4efffa7df.tgz
   web-worker: 1.5.0
   rollup-plugin-dts: 6.5.1
   '@typescript-eslint/eslint-plugin': 8.72.1
@@ -176,10 +176,10 @@ overrides:
   react: 19.3.1
   react-dom: 19.3.1
   react-router-dom: 7.18.5
-  '@xec-sh/core': file:vendor/xec-sh-core-0.11.1-fd9597f040bb.tgz
+  '@xec-sh/core': file:vendor/xec-sh-core-0.11.1-eeb6b3827836.tgz
   '@xec-sh/kit': file:vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz
   '@xec-sh/loader': file:vendor/xec-sh-loader-0.11.1-52fcf8dc7c0c.tgz
-  '@xec-sh/ops': file:vendor/xec-sh-ops-0.11.1-7f64f34776cb.tgz
+  '@xec-sh/ops': file:vendor/xec-sh-ops-0.11.1-706fe15c8746.tgz
 
 patchedDependencies:
   vitest@5.0.5: 00368f70ece4e928463dc220e1f92faf297e8d5e782d993025fcfd095a3cabd4
@@ -295,14 +295,14 @@ importers:
         specifier: workspace:*
         version: link:../../packages/titan-telemetry-relay
       '@xec-sh/core':
-        specifier: file:../../vendor/xec-sh-core-0.11.1-fd9597f040bb.tgz
-        version: file:vendor/xec-sh-core-0.11.1-fd9597f040bb.tgz
+        specifier: file:../../vendor/xec-sh-core-0.11.1-eeb6b3827836.tgz
+        version: file:vendor/xec-sh-core-0.11.1-eeb6b3827836.tgz
       '@xec-sh/kit':
         specifier: file:../../vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz
         version: file:vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz
       '@xec-sh/ops':
-        specifier: file:../../vendor/xec-sh-ops-0.11.1-7f64f34776cb.tgz
-        version: file:vendor/xec-sh-ops-0.11.1-7f64f34776cb.tgz
+        specifier: file:../../vendor/xec-sh-ops-0.11.1-706fe15c8746.tgz
+        version: file:vendor/xec-sh-ops-0.11.1-706fe15c8746.tgz
       better-sqlite3:
         specifier: ^13.0.3
         version: 13.0.3
@@ -1272,8 +1272,8 @@ importers:
         specifier: ^0.10.0
         version: 0.10.0(kysely@0.29.7)
       '@kysera/migrations':
-        specifier: file:../../vendor/kysera-migrations-0.10.0-be05d079c584.tgz
-        version: file:vendor/kysera-migrations-0.10.0-be05d079c584.tgz(kysely@0.29.7)(zod@4.6.7)
+        specifier: file:../../vendor/kysera-migrations-0.10.0-00b4efffa7df.tgz
+        version: file:vendor/kysera-migrations-0.10.0-00b4efffa7df.tgz(kysely@0.29.7)(zod@4.6.7)
       '@kysera/repository':
         specifier: ^0.10.0
         version: 0.10.0(kysely@0.29.7)(zod@4.6.7)
@@ -2520,8 +2520,8 @@ packages:
     peerDependencies:
       kysely: '>=0.29.0'
 
-  '@kysera/migrations@file:vendor/kysera-migrations-0.10.0-be05d079c584.tgz':
-    resolution: {integrity: sha512-cSWMOkZdFotvu/OoH8h3N22jRXOduzNmxMtxRc5UuM6SGgZTQMo6LHE+AaxAaddF36bkLYYDieNoawOO6FRHEw==, tarball: file:vendor/kysera-migrations-0.10.0-be05d079c584.tgz}
+  '@kysera/migrations@file:vendor/kysera-migrations-0.10.0-00b4efffa7df.tgz':
+    resolution: {integrity: sha512-b0gRTM25uuDZDA8gn6zF2FuDiVBgw7SzDRLPrCVrRdG6sHPvSPywX/1+eFi06k7XMxV0nExF3Jf1CLFb+N5A3A==, tarball: file:vendor/kysera-migrations-0.10.0-00b4efffa7df.tgz}
     version: 0.10.0
     engines: {bun: '>=1.0.0', node: '>=22.0.0'}
     peerDependencies:
@@ -4160,8 +4160,8 @@ packages:
   '@vitest/utils@5.0.5':
     resolution: {integrity: sha512-/rBu7gzLDQI/SC79Tn98b5DwOgaHU/Gt4I9OVeP3YofzNaYtbImRCOJQmT1S6vOJg9gEIlWC+r3QxKkjuSa1nQ==}
 
-  '@xec-sh/core@file:vendor/xec-sh-core-0.11.1-fd9597f040bb.tgz':
-    resolution: {integrity: sha512-6vnr0fjdSMDEuEJSy2088/HO1fRaugJB58rPrPF810bbMS5OWQQNTQsQVU3RvPPgwsED1gxYxLgtN9yEMbaFug==, tarball: file:vendor/xec-sh-core-0.11.1-fd9597f040bb.tgz}
+  '@xec-sh/core@file:vendor/xec-sh-core-0.11.1-eeb6b3827836.tgz':
+    resolution: {integrity: sha512-DA7Jj/xwURrYDt71DkUyhimyeldAJO3ZWkZhrCD/8cBtcjelNxvjUsA+VlO8E8HhvzPqNqkAq8gfqlpkwabwJw==, tarball: file:vendor/xec-sh-core-0.11.1-eeb6b3827836.tgz}
     version: 0.11.1
     engines: {node: '>=20.0.0'}
 
@@ -4175,8 +4175,8 @@ packages:
     version: 0.11.1
     engines: {node: '>=20.0.0'}
 
-  '@xec-sh/ops@file:vendor/xec-sh-ops-0.11.1-7f64f34776cb.tgz':
-    resolution: {integrity: sha512-c83vAO48iIhp81S3zFM41FjalXsb5PcaPdB/EU1cmIoNx9nihy2nD7zy9rQhPVXlwR1grxpCREJ31HvE6qKh+Q==, tarball: file:vendor/xec-sh-ops-0.11.1-7f64f34776cb.tgz}
+  '@xec-sh/ops@file:vendor/xec-sh-ops-0.11.1-706fe15c8746.tgz':
+    resolution: {integrity: sha512-6ObdKrx6XOK4Iqn4Pj0VsXsBCthhIsRn0PEk9DF82hgJ2AOUgRsKCJD0crO/VUuf/YBFHwOym5B/0iT6S2rFPQ==, tarball: file:vendor/xec-sh-ops-0.11.1-706fe15c8746.tgz}
     version: 0.11.1
     engines: {node: '>=20.0.0'}
 
@@ -8311,7 +8311,7 @@ snapshots:
       '@kysera/core': 0.10.0(kysely@0.29.7)
       kysely: 0.29.7
 
-  '@kysera/migrations@file:vendor/kysera-migrations-0.10.0-be05d079c584.tgz(kysely@0.29.7)(zod@4.6.7)':
+  '@kysera/migrations@file:vendor/kysera-migrations-0.10.0-00b4efffa7df.tgz(kysely@0.29.7)(zod@4.6.7)':
     dependencies:
       '@kysera/core': 0.10.0(kysely@0.29.7)
       kysely: 0.29.7
@@ -9737,7 +9737,7 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.2.0
 
-  '@xec-sh/core@file:vendor/xec-sh-core-0.11.1-fd9597f040bb.tgz':
+  '@xec-sh/core@file:vendor/xec-sh-core-0.11.1-eeb6b3827836.tgz':
     dependencies:
       ssh2: 1.17.0
 
@@ -9750,9 +9750,9 @@ snapshots:
       '@xec-sh/kit': file:vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz
       esbuild: 0.28.2
 
-  '@xec-sh/ops@file:vendor/xec-sh-ops-0.11.1-7f64f34776cb.tgz':
+  '@xec-sh/ops@file:vendor/xec-sh-ops-0.11.1-706fe15c8746.tgz':
     dependencies:
-      '@xec-sh/core': file:vendor/xec-sh-core-0.11.1-fd9597f040bb.tgz
+      '@xec-sh/core': file:vendor/xec-sh-core-0.11.1-eeb6b3827836.tgz
       '@xec-sh/kit': file:vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz
       '@xec-sh/loader': file:vendor/xec-sh-loader-0.11.1-52fcf8dc7c0c.tgz
       dotenv: 18.0.9

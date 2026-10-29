@@ -31,6 +31,10 @@
       "types": "./dist/shared/release-reading.d.ts",
       "default": "./dist/shared/release-reading.js"
     },
+    "./source-layout": {
+      "types": "./dist/release/layout.d.ts",
+      "default": "./dist/release/layout.js"
+    },
     "./node-check": {
       "types": "./dist/shared/node-check.d.ts",
       "default": "./dist/shared/node-check.js"

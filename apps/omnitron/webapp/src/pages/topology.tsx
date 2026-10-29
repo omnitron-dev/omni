@@ -275,8 +275,8 @@ function TopologyWorkspace() {
               }
             }}
           />
-          <Stack direction="row" spacing={0.25} sx={{ flexWrap: 'wrap' }}>
-            <Button size="small" aria-pressed={listView} onClick={() => setListView(!listView)}>
+          <Stack direction="row" useFlexGap spacing={0.25} sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
+            <Button size="small" sx={{ minWidth: 0 }} aria-pressed={listView} onClick={() => setListView(!listView)}>
               {listView ? 'Graph' : 'List'}
             </Button>
             {controls.map((control) => (

@@ -296,6 +296,7 @@ export class OmnitronDaemon {
   private meshHandle: import('../cluster/mesh.js').MeshHandle | null = null;
   private nodeManagerRpcService: import('../services/node-manager.rpc-service.js').NodeManagerRpcService | null = null;
   private terminalRpcService: import('../services/terminal.rpc-service.js').TerminalRpcService | null = null;
+  private filesRpcService: import('../files/files.rpc-service.js').FilesRpcService | null = null;
   private pipelineService: import('../services/pipeline.service.js').PipelineService | null = null;
 
   /**
@@ -1183,6 +1184,14 @@ export class OmnitronDaemon {
       }
     }
 
+    // File protocol uses the existing authenticated Netron mesh on every node.
+    const { FileNode } = await import('../files/file-node.js');
+    const { configuredFileRoots } = await import('../files/file-config.js');
+    const { FileNodeRpcService } = await import('../files/file-node.rpc-service.js');
+    const fileState = await container.resolveAsync<import('./daemon-state-store.service.js').DaemonStateStore>(DAEMON_STATE_STORE_TOKEN);
+    const fileNode = new FileNode(configuredFileRoots(dc.files), fileState);
+    await this.app.netron.peer.exposeService(new FileNodeRpcService(fileNode));
+
     // =====================================================================
     // Master-only RPC services (require PostgreSQL)
     // =====================================================================
@@ -1196,6 +1205,15 @@ export class OmnitronDaemon {
         const { AccessRpcService } = await import('../services/access.rpc-service.js');
         const accessDb = await container.resolveAsync<import('kysely').Kysely<import('../database/schema.js').OmnitronDatabase>>(OMNITRON_DB_TOKEN);
         await this.app.netron.peer.exposeService(new AccessRpcService(accessDb, authService, audit, this.app.netron));
+        const { FilesRpcService } = await import('../files/files.rpc-service.js');
+        this.filesRpcService = new FilesRpcService(fileNode, async (nodeId, actor, request) => {
+          const node = this.nodeManagerService?.getNode(nodeId);
+          if (!node) throw new Error('Unknown file node');
+          if (node.isLocal) return fileNode.invoke(actor, request);
+          if (!this.slaveConnector) throw new Error('File node is not connected to the mesh');
+          return this.slaveConnector.invokeOnSlave(node.host, node.daemonPort, 'OmnitronFileNode', 'invoke', [{ actor, request }]);
+        }, authService, audit, fileState);
+        await this.app.netron.peer.exposeService(this.filesRpcService);
       }
 
       // Alert RPC service
@@ -2532,6 +2550,8 @@ export class OmnitronDaemon {
 
     // --- Priority: First (0) — Immediate cleanup ---
     app.registerShutdownTask('stop-file-watcher-and-webapp', async () => {
+      await this.filesRpcService?.dispose();
+      this.filesRpcService = null;
       await this.pipelineService?.dispose();
       this.pipelineService = null;
       this.terminalRpcService?.dispose();

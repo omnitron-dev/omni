@@ -1214,6 +1214,30 @@ node.command('ssh <node>').description('Open an audited interactive SSH terminal
 node.command('ssh-key <node>').description('Inspect SSH host fingerprint; trust only after independent verification')
   .option('--trust <fingerprint>', 'Store an independently verified SHA256 fingerprint')
   .action(async (name: string, options: { trust?: string }) => { const { nodeHostKeyCommand } = await import('../commands/terminal.js'); await nodeHostKeyCommand(name, options); });
+const fileWorkspace = program.command('files').description('Audited multi-node file workspace');
+for (const [name, signature, description] of [
+  ['roots', '', 'List explicitly exported roots'], ['list', '[path]', 'List a directory page'],
+  ['stat', '<path>', 'Inspect metadata and current version'], ['read', '<path>', 'Read a bounded UTF-8 document'],
+  ['save', '<path>', 'Save UTF-8 input with an expected version'], ['mkdir', '<path>', 'Create a folder'],
+  ['rename', '<path>', 'Rename without overwriting'], ['trash', '<path>', 'Move a versioned item to recoverable trash'],
+  ['trash-list', '', 'List this identity’s retained trash'], ['restore', '<id>', 'Restore without overwriting'],
+  ['copy', '<path>', 'Start a durable node-to-node copy'], ['transfers', '', 'Inspect this identity’s transfer queue'],
+  ['pause', '<id>', 'Pause a transfer'], ['resume', '<id>', 'Reconcile and resume a transfer'], ['cancel', '<id>', 'Cancel uncommitted transfer work'],
+  ['upload', '<path>', 'Upload a local file in bounded verified chunks'], ['download', '<path>', 'Download without overwriting a local file'],
+  ['upload-status', '<id>', 'Inspect a durable upload receipt'], ['upload-finish', '<id>', 'Reconcile publication after a lost acknowledgement'], ['upload-abort', '<id>', 'Discard an unfinished upload'],
+] as const) {
+  fileWorkspace.command(`${name} ${signature}`.trim()).description(description)
+    .option('--node <id>', 'Registered node ID or local', 'local').option('--root <id>', 'Exported root ID')
+    .option('--version <version>', 'Expected version; save accepts new for creation')
+    .option('--from <file>', 'Local input file').option('--to <path>', 'Rename destination or local download path')
+    .option('--to-node <id>', 'Copy destination node').option('--to-root <id>', 'Copy destination root').option('--to-path <path>', 'Copy destination folder', '')
+    .option('--after <name>', 'Directory page cursor').option('--revision <version>', 'Directory revision from first page')
+    .action(async (...args) => {
+      const { filesCommand } = await import('../commands/files.js');
+      await filesCommand(name, signature ? args[0] : undefined, signature ? args[1] : args[0]);
+    });
+}
+
 const terminal = program.command('terminal').description('Manage SSH sessions owned by this local CLI identity');
 terminal.command('list').description('List this caller’s SSH sessions')
   .action(async () => { const { terminalSessionsCommand } = await import('../commands/terminal.js'); await terminalSessionsCommand(); });

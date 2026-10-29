@@ -884,3 +884,5 @@ export interface IOmnitronTerminalService {
   close(data: { id: string }): Promise<void>;
 }
 
+
+export type * from './files.js';

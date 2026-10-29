@@ -27,7 +27,8 @@
     "noEmit": true,
     "tsBuildInfoFile": "node_modules/.cache/tsconfig.tsbuildinfo",
     "paths": {
-      "src/*": ["./src/*"]
+      "src/*": ["./src/*"],
+      "@omnitron-dev/omnitron/dto/services": ["../src/shared/dto/services.ts"]
     }
   },
   "include": ["src"]

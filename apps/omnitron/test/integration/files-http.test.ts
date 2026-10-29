@@ -1,3 +1,5 @@
+import { TcpTransport } from '@omnitron-dev/titan/netron/transport/tcp';
+import type { IOmnitronFileNodeService } from '../../src/shared/dto/files.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -45,6 +47,11 @@ async function host(expose: (n: Netron) => Promise<void>) {
     }),
     new AuthorizationManager(logger)
   );
+  n.registerTransport('tcp', () => new TcpTransport());
+  n.registerTransportServer('tcp', {
+    name: 'tcp',
+    options: { host: '127.0.0.1', port: 0, invocationWrapper: createAuthContextWrapper() },
+  });
   await n.start();
   await expose(n);
   netrons.push(n);
@@ -88,13 +95,19 @@ beforeAll(async () => {
   remote = await host(async (n) => {
     await n.peer.exposeService(new FileNodeRpcService(node));
   });
+  const meshClient = new Netron(createNullLogger());
+  meshClient.registerTransport('tcp', () => new TcpTransport());
+  await meshClient.start();
+  netrons.push(meshClient);
+  const remotePort = (netrons[0]!.transportServers.get('tcp') as unknown as { port: number }).port;
+  const peer = await meshClient.connect(`tcp://127.0.0.1:${remotePort}`);
+  expect((await peer.runTask('authenticate', { token: 'mesh' })).success).toBe(true);
+  const filePeer = await peer.queryInterface<IOmnitronFileNodeService>('OmnitronFileNode');
   service = new FilesRpcService(
     local,
     async (_node, actor, request) => {
       if (request.op === 'writeChunk') await gate?.();
-      const result = await rpc(remote, 'mesh', 'OmnitronFileNode', 'invoke', [{ actor, request }]);
-      if (!result.success) throw new Error(result.error?.message ?? 'Remote error');
-      return result.data;
+      return filePeer.invoke({ actor, request });
     },
     { validateSession: async (id: string) => ({ id, role }) } as never,
     {
@@ -117,7 +130,7 @@ afterAll(async () => {
   await fs.rm(directory, { recursive: true, force: true });
 });
 
-describe('files through real Netron HTTP authority and separate nodes', () => {
+describe('files through real Netron HTTP admission and TCP mesh', () => {
   it('rejects lower roles and human calls to the internal mesh service', async () => {
     for (const token of ['viewer', 'operator', 'mesh'])
       expect((await invoke('roots', { nodeId: 'local' }, token)).success).toBe(false);

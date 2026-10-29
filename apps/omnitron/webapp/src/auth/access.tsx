@@ -98,6 +98,7 @@ export const PAGE_PERMISSIONS: Record<string, RpcPermission> = {
   apps: 'OmnitronDaemon.list',
   nodes: 'OmnitronNodes.listNodes',
   terminal: 'OmnitronTerminal.open',
+  files: 'OmnitronFiles.roots',
   projects: 'OmnitronProject.listProjects',
   system: 'OmnitronSystemInfo.getSnapshot',
   logs: 'OmnitronLogs.queryLogs',

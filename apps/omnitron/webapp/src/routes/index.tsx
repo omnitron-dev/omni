@@ -65,6 +65,7 @@ export function Router() {
         <Route path="nodes" element={<Page><NodesPage /></Page>} />
         {/* Workspace stays mounted in ConsoleLayout while navigating other pages. */}
         <Route path="terminal" element={null} />
+        <Route path="files" element={null} />
         <Route path="projects" element={<Page><ProjectsPage /></Page>} />
         <Route path="system" element={<Page><SystemInfoPage /></Page>} />
         <Route path="settings" element={<Page><SettingsPage /></Page>} />

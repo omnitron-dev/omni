@@ -85,6 +85,18 @@ describe('file export boundary and atomic editing', () => {
     expect(await call<FileTrash>({ op: 'restore', id: removed.id })).toMatchObject({ restored: true });
     expect(await fs.readFile(path.join(root, ref.path), 'utf8')).toBe('keep');
   });
+  it('reconciles a restored file after losing the journal acknowledgement', async () => {
+    const saved = await call<FileDocument>({ op: 'saveText', ...ref, content: 'recover', version: null });
+    const removed = await call<FileTrash>({ op: 'trash', ...ref, version: saved.version });
+    expect(removed).not.toHaveProperty('identity');
+    store.fail = true;
+    await expect(call({ op: 'restore', id: removed.id })).rejects.toThrow('journal unavailable');
+    expect(await fs.readFile(path.join(root, ref.path), 'utf8')).toBe('recover');
+    store.fail = false;
+    node = new FileNode([{ id: 'work', label: 'Workspace', path: root }], store);
+    expect(await call<FileTrash>({ op: 'restore', id: removed.id })).toMatchObject({ restored: true });
+    expect(await call({ op: 'trashList', rootId: 'work' })).toEqual([]);
+  });
 });
 
 describe('durable acknowledged file writes', () => {

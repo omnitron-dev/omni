@@ -34,6 +34,7 @@ import {
   AuditIcon,
   LogoutIcon,
   ReleaseIcon,
+  FolderIcon,
 } from 'src/assets/icons';
 
 import { useAuthStore } from 'src/auth/store';
@@ -44,6 +45,7 @@ import { reportCrash } from 'src/utils/report-crash';
 import { useAlertNotifications } from 'src/hooks/use-alert-notifications';
 
 const TerminalPage = lazy(() => import('src/pages/terminal'));
+const FilesPage = lazy(() => import('src/pages/files'));
 
 // =============================================================================
 // Navigation — conditional on active project
@@ -85,6 +87,7 @@ function useNavData(): LayoutNavData {
             { id: 'projects', title: 'Projects', path: '/projects', icon: <ProjectIcon /> },
             { id: 'nodes', title: 'Nodes', path: '/nodes', icon: <NodesIcon /> },
             { id: 'terminal', title: 'SSH workspace', path: '/terminal', icon: <ServerIcon /> },
+          { id: 'files', title: 'Files', path: '/files', icon: <FolderIcon /> },
             {
               id: 'pipelines',
               title: 'Pipelines',
@@ -143,6 +146,7 @@ function useNavData(): LayoutNavData {
           { id: 'topology', title: 'Topology', path: '/topology', icon: <NodesIcon /> },
           { id: 'nodes', title: 'Nodes', path: '/nodes', icon: <NodesIcon /> },
           { id: 'terminal', title: 'SSH workspace', path: '/terminal', icon: <ServerIcon /> },
+          { id: 'files', title: 'Files', path: '/files', icon: <FolderIcon /> },
           { id: 'containers', title: 'Containers', path: '/containers', icon: <ContainersIcon /> },
           { id: 'deployments', title: 'Deployments', path: '/deployments', icon: <DeployIcon /> },
           {
@@ -327,6 +331,9 @@ export function ConsoleLayout() {
     .filter((section) => section.items.length > 0);
   const location = useLocation();
   const terminalVisible = location.pathname === '/terminal';
+  const filesVisible = location.pathname === '/files';
+  const [filesVisited, setFilesVisited] = useState(filesVisible);
+  useEffect(() => { if (filesVisible) setFilesVisited(true); }, [filesVisible]);
   useEffect(() => {
     document.getElementById('main-content')?.scrollTo({ top: 0 });
   }, [location.pathname]);
@@ -357,7 +364,7 @@ export function ConsoleLayout() {
       slotProps={{
         main: {
           sx:
-            terminalVisible || location.pathname === '/topology'
+            terminalVisible || filesVisible || location.pathname === '/topology'
               ? { p: { xs: 1, sm: 1.5, md: 2 }, minHeight: 0 }
               : { minWidth: 0, minHeight: 0, overflowY: 'auto', p: { xs: 1.5, sm: 2, md: 2.5 } },
         },
@@ -372,12 +379,19 @@ export function ConsoleLayout() {
           progress bar is indistinguishable from a page that broke.
         */}
         <Suspense fallback={<SplashScreen variant="linear" message="Loading…" />}>
-          {!terminalVisible && (
+          {!terminalVisible && !filesVisible && (
             <PageAccess>
               <Outlet />
             </PageAccess>
           )}
         </Suspense>
+        {filesVisited && (
+          <Box sx={{ display: filesVisible ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
+            <Suspense fallback={<SplashScreen variant="linear" message="Loading files…" />}>
+              <AccessBoundary permission="OmnitronFiles.roots"><FilesPage visible={filesVisible} /></AccessBoundary>
+            </Suspense>
+          </Box>
+        )}
         {terminalVisited && (
           <Box
             sx={{

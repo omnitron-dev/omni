@@ -67,6 +67,7 @@ const CONTROL_PLANE_CALLS: ReadonlyArray<{ service: string; method: string; why:
   { service: 'OmnitronSync', method: 'getSyncStatus', why: 'the «Sync» column, and the backlog' },
   { service: 'OmnitronTelemetry', method: 'getRelayStats', why: 'the only counter that reports LOSS' },
   { service: 'OmnitronCluster', method: 'getClusterState', why: 'split brain is only visible across nodes' },
+  { service: 'OmnitronFileNode', method: 'invoke', why: 'bounded filesystem operations authenticated by the mesh' },
 ];
 
 /** `@Service({ name })` → file contents, for every rpc service in the tree. */

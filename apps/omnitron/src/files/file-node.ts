@@ -33,6 +33,7 @@ interface Upload extends FileUpload {
 }
 interface Trash extends FileTrash {
   actor: string;
+  identity?: { device: string; inode: string };
 }
 const digest = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
 const missing = (e: unknown) => (e as NodeJS.ErrnoException)?.code === 'ENOENT';
@@ -221,6 +222,9 @@ export class FileNode {
       ...(value.sha256 ? { sha256: value.sha256 } : {}),
     };
   }
+  private viewTrash({ actor: _actor, identity: _identity, ...value }: Trash): FileTrash {
+    return value;
+  }
   async invoke(actor: string, request: FileNodeRequest): Promise<unknown> {
     if (!actor || actor.length > 300 || !request || typeof request !== 'object')
       throw new Error('Invalid file request');
@@ -263,7 +267,7 @@ export class FileNode {
           .map((id) => this.store.kvGetSync<Trash>(`files:trash:${id}`))
           .filter((r): r is Trash => Boolean(r && r.actor === actor && r.rootId === request.rootId && !r.restored))
           .reverse()
-          .map(({ actor: _actor, ...r }) => r);
+          .map((r) => this.viewTrash(r));
       case 'restore':
         return this.restore(actor, request.id);
       case 'beginWrite':
@@ -444,7 +448,8 @@ export class FileNode {
   private async trash(actor: string, r: Extract<FileNodeRequest, { op: 'trash' }>): Promise<FileTrash> {
     if (!filePath(r.path)) throw new Error('Cannot remove an exported root');
     const source = await this.resolve(r.rootId, r.path, true);
-    if ((await this.stat(r.rootId, r.path)).version !== r.version) throw new Error('File changed before removal');
+    const sourceStat = await fs.lstat(source, { bigint: true });
+    if (fingerprint(sourceStat) !== r.version) throw new Error('File changed before removal');
     const value: Trash = {
       id: randomUUID(),
       actor,
@@ -452,6 +457,7 @@ export class FileNode {
       path: r.path,
       removedAt: new Date().toISOString(),
       restored: false,
+      identity: { device: String(sourceStat.dev), inode: String(sourceStat.ino) },
     };
     const destination = path.join(
       await this.internal(r.rootId, 'trash', path.posix.dirname(r.path) === '.' ? '' : path.posix.dirname(r.path)),
@@ -462,8 +468,7 @@ export class FileNode {
     await fs.rename(source, destination);
     await syncDirectory(path.dirname(source));
     await syncDirectory(path.dirname(destination));
-    const { actor: _actor, ...result } = value;
-    return result;
+    return this.viewTrash(value);
   }
   private async restore(actor: string, id: string): Promise<FileTrash> {
     const value = this.store.kvGetSync<Trash>(`files:trash:${identifier(id)}`);
@@ -471,7 +476,6 @@ export class FileNode {
     return this.locked(value.rootId, async () => {
       if (!value.restored) {
         const target = await this.resolve(value.rootId, value.path, true, true);
-        if (await exists(target)) throw new Error('Restore conflict: destination exists');
         const source = path.join(
           await this.internal(
             value.rootId,
@@ -480,14 +484,25 @@ export class FileNode {
           ),
           value.id
         );
-        await fs.rename(source, target);
+        if (await exists(target)) {
+          // A durable move may have succeeded before the journal acknowledgement failed.
+          const restored = await fs.lstat(target, { bigint: true });
+          if (
+            !value.identity ||
+            String(restored.dev) !== value.identity.device ||
+            String(restored.ino) !== value.identity.inode ||
+            (await exists(source))
+          )
+            throw new Error('Restore conflict: destination exists');
+        } else {
+          await fs.rename(source, target);
+        }
         await syncDirectory(path.dirname(target));
         await syncDirectory(path.dirname(source));
         value.restored = true;
         this.store.kvSetSync(`files:trash:${id}`, value);
       }
-      const { actor: _actor, ...result } = value;
-      return result;
+      return this.viewTrash(value);
     });
   }
   private async beginWrite(actor: string, r: Extract<FileNodeRequest, { op: 'beginWrite' }>) {
@@ -528,7 +543,7 @@ export class FileNode {
     }
     if (await exists(await this.resolve(r.rootId, r.path, true, true)))
       throw new Error('Destination exists; copy to a new name');
-    const uploads = this.index('uploads').map((id) => this.store.kvGetSync<Upload>(`files:upload:${id}`));
+    const uploads = this.index('uploads').map((key) => this.store.kvGetSync<Upload>(`files:upload:${key}`));
     if (uploads.filter((u) => u && ['receiving', 'committing'].includes(u.state)).length >= FILE_LIMITS.uploads)
       throw new Error('File write capacity reached');
     const u: Upload = {

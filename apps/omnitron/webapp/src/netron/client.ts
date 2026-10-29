@@ -17,6 +17,7 @@ import {
 
 import type {
   IOmnitronAccessService,
+  IOmnitronFilesService,
   IOmnitronTerminalService,
   IDaemonService,
   IOmnitronAuthService,
@@ -47,6 +48,7 @@ import type {
 export interface OmnitronConsoleSchema extends BackendSchema {
   daemon: {
     OmnitronAccess: IOmnitronAccessService;
+    OmnitronFiles: IOmnitronFilesService;
     OmnitronTerminal: IOmnitronTerminalService;
     OmnitronDaemon: IDaemonService;
     OmnitronAuth: IOmnitronAuthService;
@@ -252,6 +254,7 @@ export const nodes = daemonClient.daemon.OmnitronNodes;
 export const terminal = daemonClient.daemon.OmnitronTerminal;
 /** Live RPC capabilities and human control-plane accounts. */
 export const access = daemonClient.daemon.OmnitronAccess;
+export const files = daemonClient.daemon.OmnitronFiles;
 
 /**
  * Releases — what was built from which two commits, and the builds running now.

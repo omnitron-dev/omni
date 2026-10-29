@@ -285,6 +285,8 @@ export class OmnitronDaemon {
   private rpcHttpPort: number | null = null;
 
   private fileWatcher: FileWatcher | null = null;
+  /** Last boot/reload configuration, which may come from a registered project outside CWD. */
+  private watchConfig: IEcosystemConfig | null = null;
   private infraService: InfrastructureService | null = null;
   private eventLoopWatch: EventLoopWatch | null = null;
   private eventBroadcaster: EventBroadcasterService | null = null;
@@ -326,6 +328,7 @@ export class OmnitronDaemon {
 
   async start(config: IEcosystemConfig, options?: DaemonStartOptions, daemonConfig?: IDaemonConfig): Promise<void> {
     this.dc = daemonConfig ?? DEFAULT_DAEMON_CONFIG;
+    this.watchConfig = config;
 
     const pidFile = expandPath(this.dc.pidFile);
     this.pidManager = new PidManager(pidFile);
@@ -2329,6 +2332,8 @@ export class OmnitronDaemon {
 
   async enableWatch(apps?: string[]): Promise<Array<{ name: string; directory: string }>> {
     if (!this.app) throw new Error('Daemon not started');
+    const config = this.watchConfig;
+    if (!config) throw new Error('Daemon watch configuration is unavailable');
 
     const orchestrator = await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
     const loggerModule = await this.app.container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN);
@@ -2337,7 +2342,6 @@ export class OmnitronDaemon {
       this.fileWatcher.stop();
     }
 
-    const config = await this.getConfig();
     this.fileWatcher = new FileWatcher(loggerModule.logger, orchestrator, config, process.cwd());
     orchestrator.devMode = true;
     await orchestrator.setWatchMode(true, apps);
@@ -2354,6 +2358,7 @@ export class OmnitronDaemon {
    * both.
    */
   async applyWatchConfig(config: IEcosystemConfig): Promise<void> {
+    this.watchConfig = config;
     this.fileWatcher?.applyConfig(config);
     if (!this.app) return;
     const orchestrator = await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
@@ -2397,11 +2402,6 @@ export class OmnitronDaemon {
       ...(apps.length ? {} : { reason: this.fileWatcher ? 'no enabled app matches the watch policy' : 'watching is disabled' }),
       apps,
     };
-  }
-
-  private async getConfig(): Promise<IEcosystemConfig> {
-    const { loadEcosystemConfig } = await import('../config/loader.js');
-    return loadEcosystemConfig();
   }
 
   // ============================================================================

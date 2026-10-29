@@ -21,7 +21,7 @@ import { Can } from 'src/auth/access';
 import { PlayIcon, RefreshIcon, PlusIcon, CloseIcon } from 'src/assets/icons';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { PipelineEditor } from 'src/components/pipeline-editor';
-import { pipelines } from 'src/netron/client';
+import { pipelines, nodes } from 'src/netron/client';
 import { formatDate, formatDuration } from 'src/utils/formatters';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { settledPair } from 'src/utils/settled-pair';
@@ -51,7 +51,13 @@ const codeSx = {
   minWidth: 0,
 } as const;
 
-export function PipelineRunDetail({ run }: { run: PipelineRun }) {
+export function PipelineRunDetail({
+  run,
+  targetLabel = (id) => id ?? 'Local daemon host',
+}: {
+  run: PipelineRun;
+  targetLabel?: (id?: string) => string;
+}) {
   return (
     <Stack spacing={2} sx={{ minWidth: 0 }}>
       <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
@@ -87,7 +93,7 @@ export function PipelineRunDetail({ run }: { run: PipelineRun }) {
             color="text.secondary"
             sx={{ display: 'block', mb: 1, overflowWrap: 'anywhere' }}
           >
-            {step.kind ?? 'shell'} · {step.nodeId ?? 'local'}
+            {step.kind ?? 'shell'} · {targetLabel(step.nodeId)}
           </Typography>
           {step.error && (
             <Alert severity="error" variant="outlined" sx={{ mb: 1, overflowWrap: 'anywhere' }}>
@@ -135,6 +141,12 @@ export default function PipelinesPage() {
   const [remove, setRemove] = useState<Pipeline | null>(null);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
+  const targets = usePolledResource(() => nodes.listNodes(), {
+    intervalMs: 30_000,
+    enabled: Boolean(runDefinition || selectedRun),
+  });
+  const targetLabel = (id?: string) =>
+    !id || id === 'local' ? 'Local daemon host' : (targets.data?.find((node) => node.id === id)?.name ?? id);
   const { data, loading, error, refresh } = usePolledResource(
     async () => {
       const pair = await settledPair([pipelines.listPipelines(), pipelines.listRuns({ limit: 100 })], [[], []]);
@@ -330,13 +342,32 @@ export default function PipelinesPage() {
                 {actionError}
               </Alert>
             )}
+            {targets.error && (
+              <Alert severity="warning" variant="outlined">
+                Node names unavailable; verify target IDs below.
+              </Alert>
+            )}
             {runDefinition?.steps.map((step) => (
               <Box key={step.name} component="details">
                 <Box component="summary" sx={{ cursor: 'pointer', fontSize: 13 }}>
-                  {step.name} · {step.kind ?? 'shell'} · {step.nodeId ?? 'local'} · {(step.timeout ?? 300000) / 1000}s
+                  {step.name} · {step.kind ?? 'shell'} · {targetLabel(step.nodeId)} · {(step.timeout ?? 300000) / 1000}s
                 </Box>
                 <Box component="pre" sx={{ ...codeSx, mt: 1 }}>
                   {step.run}
+                </Box>
+                <Box component="pre" aria-label={`${step.name} execution settings`} sx={{ ...codeSx, mt: 1 }}>
+                  {JSON.stringify(
+                    {
+                      targetId: step.nodeId ?? 'local',
+                      cwd: step.cwd ?? 'Daemon working directory',
+                      dependsOn: step.dependsOn ?? [],
+                      retries: step.retries ?? 0,
+                      condition: step.condition ?? null,
+                      env: step.env ?? {},
+                    },
+                    null,
+                    2
+                  )}
                 </Box>
               </Box>
             ))}
@@ -403,7 +434,7 @@ export default function PipelinesPage() {
         )}
         {run ? (
           <>
-            <PipelineRunDetail run={run} />
+            <PipelineRunDetail run={run} targetLabel={targetLabel} />
             <Can permission="OmnitronPipelines.cancelRun">
               {active(run) && (
                 <Button

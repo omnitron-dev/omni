@@ -71,6 +71,7 @@ export function Router() {
         <Route path="logs" element={<Page><LogsPage /></Page>} />
         <Route path="audit" element={<Page><AuditPage /></Page>} />
         <Route path="access" element={<Page><AccessPage /></Page>} />
+        <Route path="pipelines" element={<Page><PipelinesPage /></Page>} />
         {/*
           Not project-scoped. A release names the project it was built for,
           and the page filters by the active one — but the master holds every
@@ -90,7 +91,6 @@ export function Router() {
         <Route path="containers" element={<ProjectRoute><ContainersPage /></ProjectRoute>} />
         <Route path="deployments" element={<ProjectRoute><DeploymentsPage /></ProjectRoute>} />
         <Route path="alerts" element={<ProjectRoute><AlertsPage /></ProjectRoute>} />
-        <Route path="pipelines" element={<ProjectRoute><PipelinesPage /></ProjectRoute>} />
         <Route path="traces" element={<ProjectRoute><TracesPage /></ProjectRoute>} />
         <Route path="dashboard-builder" element={<ProjectRoute><DashboardBuilderPage /></ProjectRoute>} />
 

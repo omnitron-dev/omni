@@ -125,11 +125,14 @@ function MetricsReader({
   );
 
   // Explicit scope/window selection asks once, even while automatic refresh is paused.
+  const refreshInventory = inventory.refresh;
+  const refreshHistory = history.refresh;
+  const refreshIngestion = ingestion.refresh;
   useEffect(() => {
-    void inventory.refresh();
-    void history.refresh();
-    void ingestion.refresh();
-  }, []);
+    void refreshInventory();
+    void refreshHistory();
+    void refreshIngestion();
+  }, [refreshInventory, refreshHistory, refreshIngestion]);
   const refresh = async () => {
     setRefreshing(true);
     try {

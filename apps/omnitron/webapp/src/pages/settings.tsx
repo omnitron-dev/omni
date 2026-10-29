@@ -24,8 +24,6 @@ import InputAdornment from '@mui/material/InputAdornment';
 import CircularProgress from '@mui/material/CircularProgress';
 import Switch from '@mui/material/Switch';
 import FormControlLabel from '@mui/material/FormControlLabel';
-import ToggleButton from '@mui/material/ToggleButton';
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
 import FormControl from '@mui/material/FormControl';
@@ -38,7 +36,7 @@ import { Alert, FormAlert } from '@omnitron-dev/prism/components/alert';
 import { TabPanel, Tabs } from '@omnitron-dev/prism/components/tabs';
 import { Table, type TableColumn } from '@omnitron-dev/prism/components/table';
 import { useAuthStore } from 'src/auth/store';
-import { auth, getSessionId } from 'src/netron/client';
+import { auth } from 'src/netron/client';
 import { formatDateShort, timeAgo } from 'src/utils/formatters';
 
 import type { OmnitronActiveSession } from '@omnitron-dev/omnitron/dto/services';
@@ -183,7 +181,6 @@ function SecuritySection() {
 
 function SessionsSection() {
   const user = useAuthStore((s) => s.user);
-  const currentSessionId = getSessionId();
   const [sessions, setSessions] = useState<OmnitronActiveSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -200,7 +197,7 @@ function SessionsSection() {
     } finally {
       setLoading(false);
     }
-  }, [user, currentSessionId]);
+  }, [user]);
 
   useEffect(() => { fetchSessions(); }, [fetchSessions]);
 

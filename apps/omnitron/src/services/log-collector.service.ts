@@ -1,3 +1,4 @@
+import { validateLogQuery } from './log-query.js';
 /**
  * Log Collector Service
  *
@@ -425,7 +426,8 @@ export class LogCollectorService extends EventEmitter {
    * press Live.
    */
   async queryLogs(filter: LogQueryFilter): Promise<LogQueryResult> {
-    const limit = Math.min(filter.limit ?? 100, 1000);
+    validateLogQuery(filter);
+    const limit = filter.limit ?? 100;
     const offset = filter.offset ?? 0;
 
     // One definition of "which rows", used by both queries.
@@ -565,6 +567,7 @@ export class LogCollectorService extends EventEmitter {
    * (so the caller can append them in chronological order).
    */
   async getRecentLogs(filter: LogQueryFilter & { tail?: number }): Promise<LogEntryRow[]> {
+    validateLogQuery(filter);
     const tail = filter.tail ?? 50;
 
     let query = this.db.selectFrom('logs').selectAll();

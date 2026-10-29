@@ -102,8 +102,7 @@ export function createManagementTools(client: DaemonClient): IMcpToolDef[] {
         },
         required: ['project', 'stack'],
       },
-      handler: async (params: any) =>
-        (await project()).startStack({ project: params.project, stack: params.stack }),
+      handler: async (params: any) => (await project()).startStack({ project: params.project, stack: params.stack }),
     },
     {
       name: 'stack.stop',
@@ -116,8 +115,7 @@ export function createManagementTools(client: DaemonClient): IMcpToolDef[] {
         },
         required: ['project', 'stack'],
       },
-      handler: async (params: any) =>
-        (await project()).stopStack({ project: params.project, stack: params.stack }),
+      handler: async (params: any) => (await project()).stopStack({ project: params.project, stack: params.stack }),
     },
 
     // ---- Secrets ------------------------------------------------------------
@@ -236,8 +234,7 @@ export function createManagementTools(client: DaemonClient): IMcpToolDef[] {
           limit: { type: 'number', description: 'Max records', default: 20 },
         },
       },
-      handler: async (params: any) =>
-        (await deploy()).getHistory({ app: params.app, limit: params.limit ?? 20 }),
+      handler: async (params: any) => (await deploy()).getHistory({ app: params.app, limit: params.limit ?? 20 }),
     },
 
     // ---- Fleet --------------------------------------------------------------
@@ -297,17 +294,26 @@ export function createManagementTools(client: DaemonClient): IMcpToolDef[] {
     },
     {
       name: 'pipeline.run',
-      description: 'Execute a pipeline.',
+      description:
+        'Execute the exact reviewed pipeline revision. Requires administrator authority; not an agent sandbox.',
       inputSchema: {
         type: 'object',
         properties: {
           id: { type: 'string', description: 'Pipeline id' },
+          expectedRevision: {
+            type: 'string',
+            description: 'Revision returned by pipeline.list; review its source and targets before running',
+          },
           params: { type: 'object', description: 'Parameters passed to the run' },
         },
-        required: ['id'],
+        required: ['id', 'expectedRevision'],
       },
       handler: async (params: any) =>
-        (await pipelines()).executePipeline({ id: params.id, params: params.params }),
+        (await pipelines()).executePipeline({
+          id: params.id,
+          expectedRevision: params.expectedRevision,
+          params: params.params,
+        }),
     },
     {
       name: 'pipeline.status',

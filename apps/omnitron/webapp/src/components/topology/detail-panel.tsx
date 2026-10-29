@@ -22,7 +22,7 @@ import { metricLines, formatBytes, formatCpu } from 'src/utils/metric-series';
 import { CloseIcon, PlayIcon, StopIcon, RestartIcon } from 'src/assets/icons';
 import { serviceState, useTopologyStore } from './topology-store';
 import { getStatusColor } from './shared-styles';
-import { formatUptime, formatMemory, formatTimestamp } from 'src/utils/formatters';
+import { formatUptime, formatTimestamp } from 'src/utils/formatters';
 import { daemon, logs, metrics } from 'src/netron/client';
 import { usePolledResource, usePollingEffect } from 'src/hooks/use-polled-resource';
 import type { AppNodeData, InfraNodeData, GatewayNodeData, ServerNodeData } from './topology-store';

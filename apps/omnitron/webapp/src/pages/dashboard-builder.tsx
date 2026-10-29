@@ -294,7 +294,6 @@ function TimeSeriesChartPanel({
   refreshKey: number;
   metric: 'cpu' | 'memory';
 }) {
-  const theme = useTheme();
   const history = useTimeSeriesHistory(data.apps, refreshKey, metric);
 
   const appNames = useMemo(() => data.apps.map((a) => a.name), [data.apps]);

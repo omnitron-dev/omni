@@ -2,10 +2,10 @@
   {
     "name": "@xec-sh/core",
     "version": "0.11.1",
-    "filename": "xec-sh-core-0.11.1-fd9597f040bb.tgz",
-    "sha256": "fd9597f040bbd8d8b2cc1be355ec57b990ec9513b633a0848e44b2c71fd54b34",
-    "integrity": "sha512-6vnr0fjdSMDEuEJSy2088/HO1fRaugJB58rPrPF810bbMS5OWQQNTQsQVU3RvPPgwsED1gxYxLgtN9yEMbaFug==",
-    "sourceRevision": "cada8f1f847fead843ed20e667104364fdb5ab58",
+    "filename": "xec-sh-core-0.11.1-2fb49c74aa63.tgz",
+    "sha256": "2fb49c74aa63581d6844206ac63229ee46b04c75e49ed9b7be4ba6d3a1f6d5a7",
+    "integrity": "sha512-3YeW5HyTf8ofg74U0a3kS+QlstySTEMDHHpwEtRZw2wnuqyTXtp/zD+1bFnTGs0kkv5w7Dm0MGa5DmTJEyRSzQ==",
+    "sourceRevision": "827eabe3fbff55d6203474e1198765b4a3e59a33",
     "sourceDirty": false,
     "dependencies": {
       "ssh2": "^1.17.0"
@@ -45,10 +45,10 @@
   {
     "name": "@xec-sh/ops",
     "version": "0.11.1",
-    "filename": "xec-sh-ops-0.11.1-7f64f34776cb.tgz",
-    "sha256": "7f64f34776cb68811d660ebaec7028fada1283e08812a601f285c8571e67af41",
-    "integrity": "sha512-c83vAO48iIhp81S3zFM41FjalXsb5PcaPdB/EU1cmIoNx9nihy2nD7zy9rQhPVXlwR1grxpCREJ31HvE6qKh+Q==",
-    "sourceRevision": "cada8f1f847fead843ed20e667104364fdb5ab58",
+    "filename": "xec-sh-ops-0.11.1-e559606232c0.tgz",
+    "sha256": "e559606232c01165df0693348c60e7512fbb2a7048362646db247164e9084c07",
+    "integrity": "sha512-XpRkkNIwZLThbZLBHNiFJu57eDdkAnQe97ZASUD63ZHfu3d8vdymXevUfrGGTlPK6h6R/UC6RZKV5jfLR4k82w==",
+    "sourceRevision": "46818b59ada65e3506f2cc1724dfd428e0c51c43",
     "sourceDirty": false,
     "dependencies": {
       "@xec-sh/core": "0.11.1",

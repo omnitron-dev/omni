@@ -294,6 +294,7 @@ export class OmnitronDaemon {
   private meshHandle: import('../cluster/mesh.js').MeshHandle | null = null;
   private nodeManagerRpcService: import('../services/node-manager.rpc-service.js').NodeManagerRpcService | null = null;
   private terminalRpcService: import('../services/terminal.rpc-service.js').TerminalRpcService | null = null;
+  private pipelineService: import('../services/pipeline.service.js').PipelineService | null = null;
 
   /**
    * The live record of release builds this daemon is running.
@@ -1041,8 +1042,7 @@ export class OmnitronDaemon {
     if (!isSlave) {
       const { NodeManagerService } = await import('../services/node-manager.service.js');
       const { NodeManagerRpcService } = await import('../services/node-manager.rpc-service.js');
-      const { DaemonStateStore: DaemonStateStoreCls } = await import('./daemon-state-store.service.js');
-      const daemonStateStore = await container.resolveAsync<InstanceType<typeof DaemonStateStoreCls>>(DAEMON_STATE_STORE_TOKEN);
+      const daemonStateStore = await container.resolveAsync<import('./daemon-state-store.service.js').DaemonStateStore>(DAEMON_STATE_STORE_TOKEN);
       const nodeManager = new NodeManagerService(
         loggerModule.logger.child({ component: 'nodes' }),
         daemonStateStore,
@@ -1225,7 +1225,11 @@ export class OmnitronDaemon {
       // Pipeline RPC service
       const { PipelineRpcService: PipelineRpc } = await import('../services/pipeline.rpc-service.js');
       const pipelineService = await container.resolveAsync(PIPELINE_SERVICE_TOKEN);
-      const pipelineRpcService = new PipelineRpc(pipelineService);
+      if (!audit || !this.nodeManagerService) throw new Error('Pipeline execution requires audit and node services');
+      pipelineService.configure(this.nodeManagerService, (status, duration) => this.metricsBridge?.recordPipelineRun(status, duration));
+      await pipelineService.initialize();
+      this.pipelineService = pipelineService;
+      const pipelineRpcService = new PipelineRpc(pipelineService, authService, audit);
       await this.app.netron.peer.exposeService(pipelineRpcService);
 
       // Trace collector RPC service
@@ -2528,6 +2532,8 @@ export class OmnitronDaemon {
 
     // --- Priority: First (0) — Immediate cleanup ---
     app.registerShutdownTask('stop-file-watcher-and-webapp', async () => {
+      await this.pipelineService?.dispose();
+      this.pipelineService = null;
       this.terminalRpcService?.dispose();
       this.terminalRpcService = null;
       if (this.fileWatcher) {

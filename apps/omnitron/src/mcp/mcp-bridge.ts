@@ -38,7 +38,7 @@ export class McpBridge {
       try {
         const message = JSON.parse(line);
         await this.handleMessage(message);
-      } catch (err) {
+      } catch {
         this.sendError(null, -32700, 'Parse error');
       }
     }

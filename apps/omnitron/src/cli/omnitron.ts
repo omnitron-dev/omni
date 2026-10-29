@@ -948,17 +948,32 @@ pipeline
 pipeline
   .command('run <id>')
   .description('Execute a pipeline')
-  .action(async (id) => {
+  .option('--params-file <file>', 'JSON parameters, supplied as data to the executor')
+  .action(async (id, options) => {
     const { pipelineRunCommand } = await import('../commands/pipeline.js');
-    await pipelineRunCommand(id);
+    await pipelineRunCommand(id, options);
   });
 
 pipeline
   .command('status <runId>')
   .description('Check pipeline run status')
-  .action(async (runId) => {
+  .option('--json', 'Print the structured run record')
+  .option('--output', 'Include retained stdout and stderr')
+  .action(async (runId, options) => {
     const { pipelineStatusCommand } = await import('../commands/pipeline.js');
-    await pipelineStatusCommand(runId);
+    await pipelineStatusCommand(runId, options);
+  });
+
+pipeline.command('save <file>').description('Create a pipeline from JSON, or update an existing definition')
+  .option('--id <id>', 'Existing pipeline ID to update')
+  .action(async (file, options) => {
+    const { pipelineSaveCommand } = await import('../commands/pipeline.js');
+    await pipelineSaveCommand(file, options);
+  });
+pipeline.command('cancel <runId>').description('Cancel a run and wait for its executor to stop')
+  .action(async runId => {
+    const { pipelineCancelCommand } = await import('../commands/pipeline.js');
+    await pipelineCancelCommand(runId);
   });
 
 // ============================================================================

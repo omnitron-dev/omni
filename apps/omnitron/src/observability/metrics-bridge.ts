@@ -64,6 +64,13 @@ export class MetricsBridge {
     this.orchestrator = orchestrator;
   }
 
+  /** Bounded status labels; run IDs and user input stay in the journal, never metric labels. */
+  recordPipelineRun(status: string, durationMs: number): void {
+    if (!['success', 'failed', 'cancelled', 'interrupted'].includes(status)) return;
+    this.counter('omnitron_pipeline_runs_total', { status }, 1);
+    this.histogram('omnitron_pipeline_duration_seconds', { status }, durationMs / 1000);
+  }
+
   /**
    * Refresh per-app gauges. Called by the metrics HTTP server before it
    * formats text — keeps the gauges current without instrumenting every
@@ -176,6 +183,11 @@ export class MetricsBridge {
     if (this.definitionsRegistered) return;
     this.definitionsRegistered = true;
     const registry = this.metrics.getRegistry();
+
+    registry.define({ name: 'omnitron_pipeline_runs_total', type: 'counter',
+      help: 'Completed automation runs by outcome', labelNames: ['status'] });
+    registry.define({ name: 'omnitron_pipeline_duration_seconds', type: 'histogram',
+      help: 'Automation run duration in seconds', labelNames: ['status'] });
 
     registry.define({
       name: 'omnitron_app_status',

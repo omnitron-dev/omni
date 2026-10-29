@@ -1,80 +1,84 @@
-/**
- * Running one pipeline step.
- *
- * The step runner used `execFile` with a 10 MB `maxBuffer`, which fails the
- * whole call when a command that exited 0 simply printed more than that:
- * "stdout maxBuffer length exceeded", reported to the operator as a failed
- * build. Verified before the change — a command doing `exit 0` after 200 KB
- * of output, against a 100 KB buffer, produced an error.
- *
- * A verbose build is not a broken build, and a pipeline that says otherwise
- * sends someone looking for a fault that is not there.
- */
-
 import { describe, it, expect } from 'vitest';
+import { Pipeline } from '@xec-sh/ops';
+import { PipelineOutput } from '../../src/services/pipeline.service.js';
+import {
+  PIPELINE_LIMITS,
+  pipelineCondition,
+  validatePipeline,
+  validatePipelineParams,
+} from '../../src/services/pipeline-definition.js';
 
-import { PipelineService, __test__ } from '../../src/services/pipeline.service.js';
+const run = async (command: string, timeout = 10_000, signal?: AbortSignal) =>
+  (
+    await Pipeline.create('step')
+      .step('inspect', { run: command, timeout })
+      .run({}, { outputLimit: PIPELINE_LIMITS.outputBytes, ...(signal ? { signal } : {}) })
+  ).steps[0]!;
 
-/** The runner touches neither the database nor the logger. */
-const service = new PipelineService(
-  {} as never,
-  { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} } as never
-);
-
-const run = (command: string, timeout = 10_000, signal?: AbortSignal) =>
-  __test__.runShellCommand(service, command, undefined, timeout, signal ?? new AbortController().signal);
-
-describe('runShellCommand', () => {
-  it('returns what the command printed', async () => {
-    expect(await run('printf hello')).toContain('hello');
+describe('Omnitron uses the Xec step executor', () => {
+  it('keeps both output streams on success', async () => {
+    expect(await run('echo out; echo warning >&2')).toMatchObject({
+      success: true,
+      stdout: 'out\n',
+      stderr: 'warning\n',
+    });
   });
-
-  it('succeeds when a command prints far more than the old buffer allowed', async () => {
-    // The defect. 2 MB against the old 10 MB limit would have passed; the
-    // point is that output volume no longer decides success at all, so this
-    // asserts the exit code won rather than the byte count.
-    const output = await run('yes 0123456789abcdef | head -c 2000000; exit 0');
-
-    expect(output.length).toBeGreaterThan(0);
-    expect(output).toContain('0123456789abcdef');
+  it('does not fail verbose builds and explicitly reports limited retention', async () => {
+    const result = await run('yes 0123456789abcdef | head -c 2000000; exit 0');
+    expect(result.success).toBe(true);
+    expect(result.outputTruncated).toBe(true);
+    expect(Buffer.byteLength(result.stdout)).toBeLessThanOrEqual(PIPELINE_LIMITS.outputBytes);
   });
-
-  it('says so when output was cut short, rather than silently shortening it', async () => {
-    // Retention is capped at 1 MB. A truncated log that does not admit it is
-    // a log an operator will read to the end and believe.
-    const output = await run('yes 0123456789abcdef | head -c 4000000; exit 0');
-
-    expect(output).toContain('output truncated');
+  it('preserves failure stderr and exit status', async () => {
+    expect(await run('echo missing-script >&2; exit 3')).toMatchObject({
+      success: false,
+      exitCode: 3,
+      stderr: 'missing-script\n',
+    });
   });
+  it('classifies timeout and abort as unsuccessful', async () => {
+    expect((await run('sleep 5', 100)).success).toBe(false);
+    const abort = new AbortController();
+    const work = run('sleep 5', 10000, abort.signal);
+    setTimeout(() => abort.abort(), 100);
+    expect(await work).toMatchObject({ success: false, cancelled: true });
+  });
+  it('does not report a missing executable as success', async () => {
+    expect((await run('definitely-not-an-executable')).success).toBe(false);
+  });
+});
 
-  it('fails when the command fails, and carries its stderr', async () => {
-    await expect(run('echo "npm ERR! missing script: build" >&2; exit 1')).rejects.toThrow(
-      /exited with code 1.*missing script/s
+describe('pipeline admission and diagnostics', () => {
+  it('rejects unsupported conditions and unsafe parameter interpolation', () => {
+    expect(() => pipelineCondition('runAnything()', {})).toThrow('Unsupported');
+    expect(pipelineCondition('params.confirm == "yes"', { confirm: 'yes' })).toBe(true);
+    expect(() => validatePipeline({ name: 'unsafe', steps: [{ name: 'one', run: 'echo {{payload}}' }] })).toThrow(
+      'interpolation'
     );
+    expect(() => validatePipelineParams({ payload: { nested: true } })).toThrow('scalar');
+    expect(() => validatePipelineParams({ invalid: NaN })).toThrow('scalar');
   });
-
-  it('keeps stderr from a step that succeeded', async () => {
-    // Warnings a build printed used to be discarded on success — only the
-    // failure path had them, and only inside a truncated Error message.
-    const output = await run('echo out; echo "warning: deprecated API" >&2; exit 0');
-
-    expect(output).toContain('out');
-    expect(output).toContain('deprecated API');
+  it('redacts secrets even when they span stream boundaries', () => {
+    const out = new PipelineOutput(['sensitive-value']);
+    out.append('output\nsensitive-');
+    expect(out.snapshot()).not.toContain('sensitive-');
+    out.append('value\nfinished\n');
+    expect(out.snapshot(true)).toBe('output\n***\nfinished\n');
   });
-
-  it('reports a timeout as a timeout', async () => {
-    await expect(run('sleep 5', 300)).rejects.toThrow(/timed out after 300ms/);
+  it('reports retention loss even inside the extra secret-matching buffer', () => {
+    const out = new PipelineOutput(['sensitive-value']);
+    out.append('a\n'.repeat(PIPELINE_LIMITS.outputBytes / 2 + 1));
+    expect(Buffer.byteLength(out.snapshot(true))).toBeLessThanOrEqual(PIPELINE_LIMITS.outputBytes);
+    expect(out.truncated).toBe(true);
   });
-
-  it('stops on abort rather than running to completion', async () => {
-    const controller = new AbortController();
-    const promise = run('sleep 5', 10_000, controller.signal);
-    setTimeout(() => controller.abort(), 100);
-
-    await expect(promise).rejects.toThrow(/aborted/);
-  });
-
-  it('reports a command that does not exist as a failure, not as empty output', async () => {
-    await expect(run('definitely-not-a-command')).rejects.toThrow(/exited with code/);
+  it('never releases private key contents after retention removes the opening marker', () => {
+    const out = new PipelineOutput([]);
+    out.append('-----BEGIN PRIVATE KEY-----\n');
+    for (let i = 0; i < 100; i++) out.append('private-material'.repeat(100) + '\n');
+    expect(out.snapshot(true)).not.toContain('private-material');
+    out.append('-----END PRIVATE ');
+    out.append('KEY-----\nsafe-result\n');
+    expect(out.snapshot(true)).toContain('safe-result');
+    expect(out.snapshot(true)).not.toContain('private-material');
   });
 });

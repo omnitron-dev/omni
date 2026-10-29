@@ -1,482 +1,449 @@
-import { Can } from 'src/auth/access';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Box from '@mui/material/Box';
-import ButtonBase from '@mui/material/ButtonBase';
-import Card from '@mui/material/Card';
-import CardHeader from '@mui/material/CardHeader';
-import Typography from '@mui/material/Typography';
-import Stack from '@mui/material/Stack';
-import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
-import IconButton from '@mui/material/IconButton';
+import Chip from '@mui/material/Chip';
 import Dialog from '@mui/material/Dialog';
-import DialogTitle from '@mui/material/DialogTitle';
-import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
-import TextField from '@mui/material/TextField';
+import DialogContent from '@mui/material/DialogContent';
+import DialogTitle from '@mui/material/DialogTitle';
+import Drawer from '@mui/material/Drawer';
+import IconButton from '@mui/material/IconButton';
 import LinearProgress from '@mui/material/LinearProgress';
-
-import { PipelineIcon, PlayIcon, RefreshIcon, PlusIcon, CloseIcon } from 'src/assets/icons';
+import Stack from '@mui/material/Stack';
+import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
+import { Tabs } from '@omnitron-dev/prism/components/tabs';
 import { AdminDataTable, type ColumnDef } from '@omnitron-dev/prism/components/admin-filters';
 import { Alert } from '@omnitron-dev/prism/components/alert';
-import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { ConfirmDialog } from '@omnitron-dev/prism/components/confirm-dialog';
-import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
+import type { Pipeline, PipelineRun, PipelineRunSummary } from '@omnitron-dev/omnitron/dto/services';
+import { Can } from 'src/auth/access';
+import { PlayIcon, RefreshIcon, PlusIcon, CloseIcon } from 'src/assets/icons';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
+import { PipelineEditor } from 'src/components/pipeline-editor';
 import { pipelines } from 'src/netron/client';
 import { formatDate, formatDuration } from 'src/utils/formatters';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { settledPair } from 'src/utils/settled-pair';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface Pipeline {
-  id: string;
-  name: string;
-  description: string | null;
-  steps: Array<{ name: string; run: string; dependsOn?: string[] }>;
-  triggers: Array<{ type: string; config: Record<string, unknown> }>;
-  createdAt: string;
-}
-
-interface PipelineRun {
-  id: string;
-  pipelineId: string;
-  status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
-  steps: Array<{ name: string; status: string; duration: number; output?: string; error?: string }>;
-  startedAt: string;
-  completedAt: string | null;
-  triggeredBy: string;
-}
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const STATUS_COLORS: Record<string, 'success' | 'error' | 'info' | 'warning' | 'default'> = {
+const colors: Record<string, 'success' | 'error' | 'info' | 'warning' | 'default'> = {
   success: 'success',
   failed: 'error',
   running: 'info',
-  pending: 'warning',
+  pending: 'default',
+  cancelling: 'warning',
+  interrupted: 'warning',
   cancelled: 'default',
 };
+const active = (run: PipelineRun) => ['pending', 'running', 'cancelling'].includes(run.status);
+const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+const codeSx = {
+  m: 0,
+  p: 1.5,
+  borderRadius: 1,
+  bgcolor: 'action.hover',
+  fontFamily: 'monospace',
+  fontSize: 12,
+  whiteSpace: 'pre-wrap',
+  overflowWrap: 'anywhere',
+  maxHeight: 320,
+  overflow: 'auto',
+  minWidth: 0,
+} as const;
 
-
-
-// ---------------------------------------------------------------------------
-// Create Pipeline Dialog
-// ---------------------------------------------------------------------------
-
-interface CreateDialogProps {
-  open: boolean;
-  onClose: () => void;
-  onCreated: () => void;
-}
-
-function CreatePipelineDialog({ open, onClose, onCreated }: CreateDialogProps) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [stepsJson, setStepsJson] = useState('[\n  { "name": "build", "run": "echo building..." },\n  { "name": "test", "run": "echo testing...", "dependsOn": ["build"] }\n]');
-  const [error, setError] = useState<string | null>(null);
-
-  const handleCreate = async () => {
-    try {
-      const steps = JSON.parse(stepsJson);
-      await pipelines.createPipeline({ name, description: description || undefined, steps });
-      setName('');
-      setDescription('');
-      setError(null);
-      onCreated();
-      onClose();
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to create pipeline');
-    }
-  };
-
+export function PipelineRunDetail({ run }: { run: PipelineRun }) {
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Create Pipeline</DialogTitle>
-      <DialogContent>
-        <Stack spacing={2.5} sx={{ mt: 1 }}>
-          {error && <Alert severity="error" variant="outlined">{error}</Alert>}
-          <TextField
-            label="Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            size="small"
-            fullWidth
-          />
-          <TextField
-            label="Description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            size="small"
-            fullWidth
-          />
-          <TextField
-            label="Steps (JSON)"
-            value={stepsJson}
-            onChange={(e) => setStepsJson(e.target.value)}
-            size="small"
-            fullWidth
-            multiline
-            rows={6}
-            slotProps={{ input: { sx: { fontFamily: 'monospace', fontSize: 12 } } }}
-          />
-        </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} size="small">Cancel</Button>
-        <Can permission="OmnitronPipelines.createPipeline"><Button variant="contained" onClick={handleCreate} size="small" disabled={!name}>
-          Create
-        </Button></Can>
-      </DialogActions>
-    </Dialog>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Run Detail
-// ---------------------------------------------------------------------------
-
-function RunDetail({ run }: { run: PipelineRun }) {
-  return (
-    <Box sx={{ pl: 4, pr: 2, pb: 2 }}>
-      {run.status === 'running' && <LinearProgress sx={{ mb: 1 }} />}
-      <Typography
-        variant="caption"
-        sx={{
-          color: "text.secondary",
-          mb: 1,
-          display: 'block'
-        }}>
-        Triggered by: {run.triggeredBy} | Started: {formatDate(run.startedAt)}
-        {run.completedAt && ` | Completed: ${formatDate(run.completedAt)}`}
+    <Stack spacing={2} sx={{ minWidth: 0 }}>
+      <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+        <Chip size="small" label={run.status} color={colors[run.status] ?? 'default'} />
+        <Typography variant="caption">
+          {formatDate(run.startedAt)} · {run.triggeredBy}
+        </Typography>
+      </Stack>
+      <Typography variant="caption" sx={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
+        {run.id}
       </Typography>
-      {run.steps.map((step, i) => (
-        <Stack
-          key={i}
-          direction="row"
-          spacing={1}
-          sx={{
-            alignItems: "center",
-            py: 0.5
-          }}>
-          <Chip
-            label={step.status}
-            size="small"
-            color={STATUS_COLORS[step.status] ?? 'default'}
-            variant="filled"
-            sx={{ minWidth: 70, fontWeight: 600, fontSize: 11 }}
-          />
-          <Typography variant="body2" sx={{
-            fontWeight: 500
-          }}>{step.name}</Typography>
+      {active(run) && <LinearProgress aria-label="Automation in progress" />}
+      {run.status === 'interrupted' && (
+        <Alert severity="warning" variant="outlined">
+          The executor stopped before recording completion. Inspect effects before starting another run.
+        </Alert>
+      )}
+      {run.steps.map((step) => (
+        <Box key={step.name} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1.5, minWidth: 0 }}>
+          <Stack direction="row" sx={{ flexWrap: 'wrap', alignItems: 'center', gap: 1, mb: 1 }}>
+            <Typography variant="subtitle2" sx={{ flex: 1, overflowWrap: 'anywhere' }}>
+              {step.name}
+            </Typography>
+            <Chip size="small" label={step.status} color={colors[step.status] ?? 'default'} />
+            <Typography variant="caption" color="text.secondary">
+              {formatDuration(step.duration)}
+              {step.attempts ? ` · attempt ${step.attempts}` : ''}
+              {step.exitCode !== undefined && ` · exit ${step.exitCode}`}
+            </Typography>
+          </Stack>
           <Typography
             variant="caption"
-            sx={{
-              color: "text.secondary",
-              fontFamily: 'monospace'
-            }}>
-            {formatDuration(step.duration)}
+            color="text.secondary"
+            sx={{ display: 'block', mb: 1, overflowWrap: 'anywhere' }}
+          >
+            {step.kind ?? 'shell'} · {step.nodeId ?? 'local'}
           </Typography>
           {step.error && (
-            <Typography
-              variant="caption"
-              sx={{
-                color: "error.main",
-                fontFamily: 'monospace'
-              }}>
+            <Alert severity="error" variant="outlined" sx={{ mb: 1, overflowWrap: 'anywhere' }}>
               {step.error}
+            </Alert>
+          )}
+          {step.output && (
+            <Box component="pre" aria-label={`${step.name} stdout`} tabIndex={0} sx={codeSx}>
+              {step.output}
+            </Box>
+          )}
+          {step.stderr && (
+            <Box component="pre" aria-label={`${step.name} stderr`} tabIndex={0} sx={{ ...codeSx, mt: 1 }}>
+              {step.stderr}
+            </Box>
+          )}
+          {step.outputTruncated && (
+            <Typography variant="caption" color="warning.main">
+              Output retention limit reached; earlier content was omitted.
             </Typography>
           )}
-        </Stack>
+          {step.sourceHash && (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: 'block', mt: 1, overflowWrap: 'anywhere', fontFamily: 'monospace' }}
+            >
+              SHA-256 {step.sourceHash}
+            </Typography>
+          )}
+        </Box>
       ))}
-    </Box>
+    </Stack>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Pipelines Page
-// ---------------------------------------------------------------------------
-
 export default function PipelinesPage() {
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [expandedRun, setExpandedRun] = useState<string | null>(null);
-
-  // Shared polling loop; `settledPair` keeps one RPC failing from blanking
-  // the other AND says so, which the `allSettled` this replaces did not.
-  const { data, loading, error, refresh: fetchData } = usePolledResource(
-    async () => {
-      const { first, second, partialFailure } = await settledPair<Pipeline[], PipelineRun[]>(
-        [pipelines.listPipelines(), pipelines.listRuns({ limit: 50 })],
-        [[], []]
-      );
-      return { pipelineList: first, runs: second, partialFailure };
-    },
-    { intervalMs: 10_000 }
-  );
-
-  // A failed button press is a different thing from a stale poll.
+  const [editor, setEditor] = useState<Pipeline | 'new' | null>(null);
+  const [section, setSection] = useState('definitions');
+  const [selectedRun, setSelectedRun] = useState<string | null>(null);
+  const [runDefinition, setRunDefinition] = useState<Pipeline | null>(null);
+  const [params, setParams] = useState('{}');
   const [actionError, setActionError] = useState<string | null>(null);
-  // Deleting a pipeline used to happen on one click, next to the button that
-  // runs it — and its run history goes with it.
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [defPage, setDefPage] = useState(0);
-  const [defPageSize, setDefPageSize] = useState(25);
-  const [runPage, setRunPage] = useState(0);
-  const [runPageSize, setRunPageSize] = useState(25);
-
-  const pipelineList = data?.pipelineList ?? [];
+  const [pending, setPending] = useState(false);
+  const [remove, setRemove] = useState<Pipeline | null>(null);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
+  const { data, loading, error, refresh } = usePolledResource(
+    async () => {
+      const pair = await settledPair([pipelines.listPipelines(), pipelines.listRuns({ limit: 100 })], [[], []]);
+      return { definitions: pair.first, runs: pair.second, partialFailure: pair.partialFailure };
+    },
+    { intervalMs: 3000 }
+  );
+  const definitions = data?.definitions ?? [];
   const runs = data?.runs ?? [];
-  const partialFailure = data?.partialFailure ?? null;
-
-  const handleRun = async (id: string) => {
+  const detail = usePolledResource(() => pipelines.getRunStatus({ runId: selectedRun! }), {
+    intervalMs: 3000,
+    enabled: Boolean(selectedRun),
+  });
+  const refreshDetail = detail.refresh;
+  useEffect(() => {
+    if (selectedRun) void refreshDetail();
+  }, [selectedRun, refreshDetail]);
+  const run = detail.data?.id === selectedRun ? detail.data : null;
+  const act = async (operation: () => Promise<unknown>) => {
+    setPending(true);
+    setActionError(null);
     try {
-      await pipelines.executePipeline({ id });
-      fetchData();
-    } catch (err: any) {
-      setActionError(err?.message ?? 'Failed to execute pipeline');
+      await operation();
+      await refresh();
+    } catch (cause) {
+      setActionError(message(cause));
+    } finally {
+      setPending(false);
     }
   };
-
-  const handleDelete = async () => {
-    const id = confirmDelete;
-    if (!id) return;
-    try {
-      await pipelines.deletePipeline({ id });
-      setConfirmDelete(null);
-      await fetchData();
-    } catch (err: any) {
-      setActionError(err?.message ?? 'Failed to delete pipeline');
-    }
-  };
-
-  const pendingDelete = pipelineList.find((p) => p.id === confirmDelete);
-
-  const runRows = runs.slice(runPage * runPageSize, runPage * runPageSize + runPageSize);
-
-  const runColumns: ColumnDef<PipelineRun>[] = [
+  const definitionColumns: ColumnDef<Pipeline>[] = [
     {
-      key: 'pipeline',
-      header: 'Pipeline',
-      // The toggle lives in a cell, not on the row: `onRowClick` is reachable
-      // by pointer only. This table used to be ONE `colSpan={5}` cell holding
-      // a ButtonBase whose Stack imitated the five columns the header
-      // declared — so the headers never lined up with anything. Real cells
-      // now, and the control that opens the run keeps its focus, its role and
-      // its Enter/Space.
-      render: (run) => {
-        const pipeline = pipelineList.find((p) => p.id === run.pipelineId);
-        return (
-          <ButtonBase
-            aria-expanded={expandedRun === run.id}
-            onClick={() => setExpandedRun(expandedRun === run.id ? null : run.id)}
-            sx={{ fontWeight: 600, fontSize: '0.8125rem', textAlign: 'left' }}
-          >
-            {pipeline?.name ?? run.pipelineId.slice(0, 8)}
-          </ButtonBase>
-        );
-      },
+      key: 'name',
+      header: 'Automation',
+      render: (item) => (
+        <Button size="small" onClick={() => setEditor(item)} sx={{ textAlign: 'left' }}>
+          {item.name}
+        </Button>
+      ),
+    },
+    { key: 'description', header: 'Description', render: (item) => item.description || '—' },
+    { key: 'steps', header: 'Steps', render: (item) => item.steps.length },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      render: (item) => (
+        <Stack direction="row" sx={{ justifyContent: 'flex-end', gap: 1 }}>
+          <Can permission="OmnitronPipelines.executePipeline">
+            <Button
+              size="small"
+              startIcon={<PlayIcon />}
+              disabled={pending}
+              onClick={() => {
+                setRunDefinition(item);
+                setParams('{}');
+                setActionError(null);
+              }}
+            >
+              Run
+            </Button>
+          </Can>
+          <Can permission="OmnitronPipelines.deletePipeline">
+            <IconButton size="small" title={`Delete ${item.name}`} disabled={pending} onClick={() => setRemove(item)}>
+              <CloseIcon />
+            </IconButton>
+          </Can>
+        </Stack>
+      ),
+    },
+  ];
+  const runColumns: ColumnDef<PipelineRunSummary>[] = [
+    {
+      key: 'name',
+      header: 'Automation',
+      render: (item) => (
+        <Button size="small" onClick={() => setSelectedRun(item.id)}>
+          {definitions.find((def) => def.id === item.pipelineId)?.name ?? item.pipelineId.slice(0, 8)}
+        </Button>
+      ),
     },
     {
       key: 'status',
       header: 'Status',
-      render: (run) => (
-        <Chip
-          label={run.status}
-          size="small"
-          color={STATUS_COLORS[run.status] ?? 'default'}
-          variant="filled"
-          sx={{ fontWeight: 600 }}
-        />
-      ),
+      render: (item) => <Chip size="small" label={item.status} color={colors[item.status] ?? 'default'} />,
     },
+    { key: 'startedAt', header: 'Started', render: (item) => formatDate(item.startedAt) },
     {
-      key: 'startedAt',
-      header: 'Started',
-      render: (run) => (
-        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          {formatDate(run.startedAt)}
-        </Typography>
-      ),
+      key: 'duration',
+      header: 'Duration',
+      render: (item) =>
+        formatDuration(Date.parse(item.completedAt ?? new Date().toISOString()) - Date.parse(item.startedAt)),
     },
-    {
-      key: 'completedAt',
-      header: 'Completed',
-      render: (run) => (
-        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          {run.completedAt ? formatDate(run.completedAt) : '--'}
-        </Typography>
-      ),
-    },
-    {
-      key: 'triggeredBy',
-      header: 'Triggered By',
-      render: (run) => (
-        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          {run.triggeredBy}
-        </Typography>
-      ),
-    },
+    { key: 'triggeredBy', header: 'Actor', render: (item) => item.triggeredBy },
   ];
-
-  const definitionRows = pipelineList.slice(
-    defPage * defPageSize,
-    defPage * defPageSize + defPageSize,
-  );
-
-  const definitionColumns: ColumnDef<Pipeline>[] = [
-    {
-      key: 'name',
-      header: 'Name',
-      render: (p) => (
-        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-          {p.name}
-        </Typography>
-      ),
-    },
-    {
-      key: 'description',
-      header: 'Description',
-      render: (p) => (
-        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          {p.description ?? '--'}
-        </Typography>
-      ),
-    },
-    { key: 'steps', header: 'Steps', render: (p) => p.steps.length },
-    { key: 'triggers', header: 'Triggers', render: (p) => p.triggers.length },
-    {
-      key: 'createdAt',
-      header: 'Created',
-      render: (p) => (
-        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          {formatDate(p.createdAt)}
-        </Typography>
-      ),
-    },
-    {
-      key: 'actions',
-      header: 'Actions',
-      align: 'right',
-      render: (p) => (
-        <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
-          <Can permission="OmnitronPipelines.deletePipeline"><IconButton size="small" color="error" onClick={() => setConfirmDelete(p.id)} title="Delete">
-            <CloseIcon />
-          </IconButton></Can>
-          <Can permission="OmnitronPipelines.executePipeline"><IconButton size="small" onClick={() => handleRun(p.id)} title="Run">
-            <PlayIcon />
-          </IconButton></Can>
-        </Stack>
-      ),
-    },
-  ];
-
   return (
-    <Stack spacing={3}>
-      <Can permission="OmnitronPipelines.deletePipeline"><ConfirmDialog
-        open={confirmDelete !== null}
-        onClose={() => setConfirmDelete(null)}
-        onConfirm={handleDelete}
-        title="Delete pipeline?"
-        content={
-          <>
-            <b>{pendingDelete?.name ?? confirmDelete}</b> and its run history will be removed.
-          </>
-        }
-        confirmLabel="Delete"
-        confirmColor="error"
-      /></Can>
-      {/* Header */}
+    <Stack spacing={2} sx={{ minWidth: 0 }}>
       <Breadcrumbs
         links={[{ name: 'Pipelines' }]}
         action={
           <Stack direction="row" spacing={1}>
-            <IconButton size="small" onClick={fetchData} title="Refresh">
+            <IconButton size="small" title="Refresh pipelines" onClick={refresh}>
               <RefreshIcon />
             </IconButton>
-            <Can permission="OmnitronPipelines.createPipeline"><Button
-              variant="contained"
-              size="small"
-              startIcon={<PlusIcon />}
-              onClick={() => setDialogOpen(true)}
-            >
-              New Pipeline
-            </Button></Can>
+            <Can permission="OmnitronPipelines.createPipeline">
+              <Button size="small" variant="contained" startIcon={<PlusIcon />} onClick={() => setEditor('new')}>
+                New automation
+              </Button>
+            </Can>
           </Stack>
         }
       />
-      {(error || actionError || partialFailure) && (
-        <Alert closable severity="warning" variant="outlined" onClose={() => setActionError(null)}>
-          {actionError ?? error ?? `Some data is unavailable: ${partialFailure}`}
+      {(error || data?.partialFailure || actionError) && (
+        <Alert severity="warning" variant="outlined">
+          {actionError ?? error ?? data?.partialFailure} · Displayed run state may be stale.
         </Alert>
       )}
-      {/* Pipeline Definitions */}
-      <Card variant="outlined">
-        <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 600 } }}
-          title="Pipeline Definitions"
-          avatar={<PipelineIcon />}
-        />
-        {/*
-          prism's AdminDataTable. The run-history table below still builds its
-          own rows: it expands a row in place to show the steps, which this
-          component has no shape for.
-        */}
+      <Tabs
+        value={section}
+        onChange={(value) => {
+          setSection(value);
+          setPage(0);
+        }}
+        aria-label="Pipeline views"
+        tabs={[
+          { value: 'definitions', label: `Automations · ${definitions.length}` },
+          { value: 'runs', label: `Runs · ${runs.length}` },
+        ]}
+      />
+      {section === 'definitions' ? (
         <AdminDataTable<Pipeline>
-          minWidth={640}
-        scrollLabel="Pipelines"
+          data={definitions.slice(page * pageSize, (page + 1) * pageSize)}
           columns={definitionColumns}
-          data={definitionRows}
-          total={pipelineList.length}
-          loading={loading}
-          loadError={error ?? partialFailure ?? null}
-          emptyMessage="No pipelines defined"
-          rowKey={(p) => p.id}
-          page={defPage}
-          pageSize={defPageSize}
-          onPageChange={setDefPage}
+          rowKey={(item) => item.id}
+          total={definitions.length}
+          page={page}
+          pageSize={pageSize}
+          onPageChange={setPage}
           onPageSizeChange={(size) => {
-            setDefPageSize(size);
-            setDefPage(0);
+            setPageSize(size);
+            setPage(0);
           }}
+          loading={loading}
+          loadError={error ?? data?.partialFailure}
+          emptyMessage="Create an automation to run Xec scripts and shell steps."
+          minWidth={560}
+          scrollLabel="Automation definitions"
           dense
         />
-      </Card>
-      {/* Run History */}
-      <Card variant="outlined">
-        <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 600 } }}
-          title="Run History"
-        />
-        <AdminDataTable<PipelineRun>
-          minWidth={640}
-        scrollLabel="Pipeline runs"
+      ) : (
+        <AdminDataTable<PipelineRunSummary>
+          data={runs.slice(page * pageSize, (page + 1) * pageSize)}
           columns={runColumns}
-          data={runRows}
+          rowKey={(item) => item.id}
           total={runs.length}
-          loading={loading}
-          loadError={error ?? partialFailure ?? null}
-          emptyMessage="No pipeline runs yet"
-          rowKey={(run) => run.id}
-          renderExpanded={(run) =>
-            expandedRun === run.id ? <RunDetail run={run} /> : null
-          }
-          page={runPage}
-          pageSize={runPageSize}
-          onPageChange={setRunPage}
+          page={page}
+          pageSize={pageSize}
+          onPageChange={setPage}
           onPageSizeChange={(size) => {
-            setRunPageSize(size);
-            setRunPage(0);
+            setPageSize(size);
+            setPage(0);
           }}
+          loading={loading}
+          loadError={error ?? data?.partialFailure}
+          emptyMessage="No automation runs yet."
+          minWidth={620}
+          scrollLabel="Automation run history"
           dense
         />
-      </Card>
-      {/* Create Pipeline Dialog */}
-      <CreatePipelineDialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        onCreated={fetchData}
+      )}
+      {editor && (
+        <PipelineEditor
+          {...(editor === 'new' ? {} : { definition: editor })}
+          onClose={() => setEditor(null)}
+          onSaved={() => {
+            void refresh();
+          }}
+        />
+      )}
+      <Dialog
+        open={Boolean(runDefinition)}
+        onClose={() => {
+          if (!pending) setRunDefinition(null);
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Run {runDefinition?.name}</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            {actionError && (
+              <Alert severity="error" variant="outlined">
+                {actionError}
+              </Alert>
+            )}
+            {runDefinition?.steps.map((step) => (
+              <Box key={step.name} component="details">
+                <Box component="summary" sx={{ cursor: 'pointer', fontSize: 13 }}>
+                  {step.name} · {step.kind ?? 'shell'} · {step.nodeId ?? 'local'} · {(step.timeout ?? 300000) / 1000}s
+                </Box>
+                <Box component="pre" sx={{ ...codeSx, mt: 1 }}>
+                  {step.run}
+                </Box>
+              </Box>
+            ))}
+            <TextField
+              label="Parameters (JSON)"
+              value={params}
+              onChange={(e) => setParams(e.target.value)}
+              multiline
+              minRows={3}
+              fullWidth
+              helperText="Values are passed as data and are not stored in run history."
+              slotProps={{ input: { sx: { fontFamily: 'monospace', fontSize: 13 } } }}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={pending} onClick={() => setRunDefinition(null)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={pending}
+            variant="contained"
+            onClick={() =>
+              act(async () => {
+                const result = await pipelines.executePipeline({
+                  id: runDefinition!.id,
+                  expectedRevision: runDefinition!.revision,
+                  params: JSON.parse(params),
+                });
+                setSelectedRun(result.id);
+                setSection('runs');
+                setPage(0);
+                setRunDefinition(null);
+              })
+            }
+          >
+            {pending ? 'Starting…' : 'Run automation'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Drawer
+        anchor="right"
+        open={Boolean(selectedRun)}
+        onClose={() => setSelectedRun(null)}
+        slotProps={{
+          paper: { sx: { width: { xs: '100%', sm: 640 }, maxWidth: '100vw', p: 2, boxSizing: 'border-box' } },
+        }}
+      >
+        <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+          <Typography variant="subtitle2">Run details</Typography>
+          <IconButton title="Close run details" onClick={() => setSelectedRun(null)}>
+            <CloseIcon />
+          </IconButton>
+        </Stack>
+        {detail.error && (
+          <Alert severity="warning" variant="outlined">
+            Updates unavailable. The displayed state may be stale.
+          </Alert>
+        )}
+        {actionError && (
+          <Alert severity="error" variant="outlined" sx={{ mb: 2 }}>
+            {actionError}
+          </Alert>
+        )}
+        {run ? (
+          <>
+            <PipelineRunDetail run={run} />
+            <Can permission="OmnitronPipelines.cancelRun">
+              {active(run) && (
+                <Button
+                  sx={{ mt: 2 }}
+                  color="warning"
+                  variant="outlined"
+                  disabled={pending || run.status === 'cancelling'}
+                  onClick={() =>
+                    act(async () => {
+                      await pipelines.cancelRun({ runId: run.id });
+                      await detail.refresh();
+                    })
+                  }
+                >
+                  Cancel run
+                </Button>
+              )}
+            </Can>
+          </>
+        ) : (
+          <Alert severity="info" variant="outlined">
+            {detail.loading ? 'Loading run state…' : 'Run state is unavailable.'}
+          </Alert>
+        )}
+      </Drawer>
+      <ConfirmDialog
+        open={Boolean(remove)}
+        onClose={() => {
+          if (!pending) setRemove(null);
+        }}
+        onConfirm={() =>
+          act(async () => {
+            await pipelines.deletePipeline({ id: remove!.id });
+            setRemove(null);
+          })
+        }
+        title="Delete automation?"
+        content={`${remove?.name ?? ''} and its run history will be removed. Active runs must be stopped first.`}
+        confirmLabel="Delete"
+        confirmColor="error"
       />
     </Stack>
   );

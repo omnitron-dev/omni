@@ -152,7 +152,6 @@ export default function SystemInfoPage() {
   }
 
   const d = data;
-  const statusColor = d ? theme.palette.success.main : theme.palette.error.main;
 
   return (
     <Stack spacing={3}>

@@ -144,9 +144,7 @@ export default function CreateStackDialog({ open, onClose, onCreated }: CreateSt
             const appNames = Object.keys(reqs?.apps ?? {});
             const list = appNames.map((name: string) => ({ name }));
             setApps(list);
-            if (selectedApps.length === 0) {
-              setSelectedApps(appNames);
-            }
+            setSelectedApps(current => current.length === 0 ? appNames : current);
           })
           .catch(() => {
             // Fallback: try runtime list
@@ -154,9 +152,7 @@ export default function CreateStackDialog({ open, onClose, onCreated }: CreateSt
               .then((result: any) => {
                 const list = Array.isArray(result) ? result : [];
                 setApps(list);
-                if (selectedApps.length === 0) {
-                  setSelectedApps(list.map((a: any) => a.name));
-                }
+                setSelectedApps(current => current.length === 0 ? list.map((a: any) => a.name) : current);
               })
               .catch(() => setApps([]));
           })
@@ -217,14 +213,6 @@ export default function CreateStackDialog({ open, onClose, onCreated }: CreateSt
     }
   }, [currentStepLabel, type, selectedNodes, selectedApps, stackName]);
 
-  const handleNext = useCallback(() => {
-    if (stepper.isLastStep) {
-      handleSubmit();
-    } else {
-      stepper.nextStep();
-    }
-  }, [stepper]);
-
   const handleSubmit = useCallback(async () => {
     if (!activeProject || !type) return;
 
@@ -246,6 +234,15 @@ export default function CreateStackDialog({ open, onClose, onCreated }: CreateSt
       setSubmitting(false);
     }
   }, [activeProject, type, stackName, selectedApps, apps.length, selectedNodes, createStack, resetForm, onCreated]);
+
+  const handleNext = useCallback(() => {
+    if (stepper.isLastStep) {
+      void handleSubmit();
+    } else {
+      stepper.nextStep();
+    }
+  }, [stepper, handleSubmit]);
+
 
   // --- Node toggle ---
   const toggleNode = useCallback(

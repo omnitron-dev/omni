@@ -86,6 +86,13 @@ function useNavData(): LayoutNavData {
             { id: 'nodes', title: 'Nodes', path: '/nodes', icon: <NodesIcon /> },
             { id: 'terminal', title: 'SSH workspace', path: '/terminal', icon: <ServerIcon /> },
             {
+              id: 'pipelines',
+              title: 'Pipelines',
+              path: '/pipelines',
+              icon: <PipelineIcon />,
+              selectionPrefix: '/pipelines',
+            },
+            {
               id: 'releases',
               title: 'Releases',
               path: '/releases',

@@ -410,13 +410,14 @@ export default function LogsPage() {
 
   // A late answer for another node must never appear under the new node's name.
   useEffect(() => {
-    viewGeneration.current++;
+    const generation = viewGeneration;
+    generation.current++;
     setLogRows([]);
     setTotal(0);
     setHasMore(false);
     setNewCount(0);
     lastTimestampRef.current = null;
-    return () => { viewGeneration.current++; };
+    return () => { generation.current++; };
   }, [app, nodeFilter, selectedLevels, debouncedSearch, labelInput, timeRangeKey, customFrom, customTo]);
 
   // ---- Scroll ----

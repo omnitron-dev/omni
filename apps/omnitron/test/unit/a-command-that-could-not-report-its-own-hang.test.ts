@@ -92,13 +92,14 @@ describe('the CLI leaves when its work is done', () => {
     // is missing when the daemon is wedged. The process is leaving; the OS
     // closes what it held.
     expect(cliSrc).toContain('parseAsync');
-    expect(cliSrc).toMatch(/process\.exit\(process\.exitCode \?\? 0\)/);
+    // The drain helper's real-process test also checks complete piped output.
+    expect(cliSrc).toMatch(/exitAfterOutput\(process\.exitCode \?\? 0\)/);
   });
 
   it('keeps the exit code the commands set', () => {
     // This changes WHEN the process leaves, not what it says. A command that
     // reported a failure must still exit non-zero.
-    expect(cliSrc).toMatch(/process\.exit\(process\.exitCode \?\? 1\)/);
+    expect(cliSrc).toMatch(/exitAfterOutput\(process\.exitCode \?\? 1\)/);
   });
 
   it('still prints an error that reached the top', () => {

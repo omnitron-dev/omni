@@ -113,7 +113,10 @@ describe('the evaluation loop', () => {
     expect(failures).toHaveLength(1);
     // The cause travels with it: "evaluation failed" without the reason is
     // the same dead end one level up.
-    expect((failures[0]![0] as { err?: Error }).err?.message).toContain('ECONNREFUSED');
+    expect(failures[0]![0]).toMatchObject({
+      job: 'alert-evaluation',
+      error: expect.stringContaining('ECONNREFUSED'),
+    });
   });
 
   it('keeps running after a failed cycle', async () => {

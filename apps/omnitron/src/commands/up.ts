@@ -53,6 +53,8 @@ export interface SavedDaemonConfig {
    * running daemon.
    */
   httpRateLimit?: IDaemonConfig['httpRateLimit'];
+  /** Administrator file exports for this daemon, including an explicit disabled policy. */
+  files?: IDaemonConfig['files'];
 
   /**
    * Transport bind address and the address slaves dial to reach a master.
@@ -72,12 +74,15 @@ export interface SavedDaemonConfig {
 
 const DAEMON_CONFIG_PATH = path.join(OMNITRON_HOME, 'config.json');
 
-export function readSavedDaemonConfig(): SavedDaemonConfig | null {
+export function readSavedDaemonConfig(configPath = DAEMON_CONFIG_PATH): SavedDaemonConfig | null {
   try {
-    const raw = fs.readFileSync(DAEMON_CONFIG_PATH, 'utf-8');
-    return JSON.parse(raw) as SavedDaemonConfig;
-  } catch {
-    return null;
+    const config: unknown = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    if (!config || typeof config !== 'object' || Array.isArray(config))
+      throw new Error('Expected a daemon configuration object');
+    return config as SavedDaemonConfig;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw new Error(`Cannot read daemon configuration ${configPath}; refusing to replace its access policy with defaults`, { cause: error });
   }
 }
 
@@ -293,6 +298,7 @@ export async function upCommand(options?: UpCommandOptions): Promise<void> {
     ...DEFAULT_DAEMON_CONFIG,
     role: savedConfig.role,
     ...(savedConfig.master ? { master: savedConfig.master } : {}),
+    ...(savedConfig.files !== undefined ? { files: savedConfig.files } : {}),
   };
   const pidFile = expandPath(dc.pidFile);
   const socketPath = expandPath(dc.socketPath);

@@ -697,7 +697,7 @@ export interface IWatchConfig {
 // =============================================================================
 
 export interface IDaemonConfig {
-  /** Explicit file exports. Empty by default; never exports the host filesystem implicitly. */
+  /** Administrator file access. Defaults to / within daemon OS permissions; explicit roots replace it. */
   files?: { enabled?: boolean; roots?: import('../shared/dto/files.js').FileRootConfig[] };
   /** Interactive SSH: admin-only, pinned host keys, server-enforced session limits. */
   terminal?: Partial<import('../shared/dto/terminal.js').TerminalPolicy>;

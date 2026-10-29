@@ -94,7 +94,7 @@ describe('the file the daemon actually boots from', () => {
       .then(({ fileURLToPath }) => fileURLToPath(new URL('../../src/daemon/daemon-entry.ts', import.meta.url)));
     const source = await (await import('node:fs/promises')).readFile(entry, 'utf8');
 
-    for (const field of ['host', 'port', 'httpPort', 'advertiseHost', 'role', 'master']) {
+    for (const field of ['host', 'port', 'httpPort', 'advertiseHost', 'role', 'master', 'files']) {
       expect(source, `daemon-entry drops savedConfig.${field}`).toMatch(
         new RegExp(`savedConfig\\.${field}`),
       );
@@ -112,9 +112,11 @@ describe('the file the daemon actually boots from', () => {
       master: { host: '192.0.2.10', port: 9700 },
       host: '0.0.0.0',
       advertiseHost: 'omnitron.example.com',
+      files: { enabled: false },
     };
 
     expect(saved.host).toBe('0.0.0.0');
     expect(saved.advertiseHost).toBe('omnitron.example.com');
+    expect(saved.files?.enabled).toBe(false);
   });
 });

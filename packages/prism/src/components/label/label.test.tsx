@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 import { createTheme, getContrastRatio, ThemeProvider } from '@mui/material/styles';
+import { blend } from '@mui/system/colorManipulator';
 import { createPrismTheme } from '../../theme/create-theme';
+import { presetNames } from '../../theme/presets';
 import { Label } from './label';
 
 afterEach(cleanup);
@@ -32,6 +34,65 @@ describe('label contrast across colour schemes', () => {
       getContrastRatio(getComputedStyle(getByText('Online')).color, theme.palette.background.paper)
     ).toBeGreaterThanOrEqual(4.5);
     expect(getContrastRatio(getComputedStyle(getByText('Inverted')).color, '#fff')).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it.each(['light', 'dark'] as const)('keeps small status text readable on its actual %s tinted surface', (mode) => {
+    const colors = ['primary', 'secondary', 'info', 'success', 'warning', 'error'] as const;
+    for (const preset of presetNames) {
+      const theme = createPrismTheme({ preset, mode, cssVariables: { enabled: false } });
+      const { getByText, unmount } = render(
+        <ThemeProvider theme={theme}>
+          {colors.map((color) => (
+            <Label key={color} color={color}>
+              {color}
+            </Label>
+          ))}
+        </ThemeProvider>
+      );
+      for (const color of colors) {
+        const style = getComputedStyle(getByText(color));
+        // MUI may emit modern space-separated rgba(), which its legacy
+        // decomposeColor helper does not parse. Read the rendered channels.
+        expect(style.backgroundColor).toMatch(/^rgba?\(/);
+        const values = style.backgroundColor.match(/[\d.]+/g)!.map(Number);
+        const surface = blend(theme.palette.background.paper, `rgb(${values.slice(0, 3).join(',')})`, values[3] ?? 1);
+        expect(
+          getContrastRatio(style.color, surface),
+          `${preset}/${mode}/${color}: ${style.color} on ${surface}`
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+      unmount();
+    }
+  });
+
+  it('falls back to semantic text when a custom MUI palette has no readable tone, and applies sx locally', () => {
+    const theme = createTheme({ palette: { success: { main: '#bdddcc', dark: '#9dbdac', light: '#ddeedd' } } });
+    const { getByText } = render(
+      <ThemeProvider theme={theme}>
+        <Label color="success" sx={{ height: 32 }}>
+          Custom
+        </Label>
+      </ThemeProvider>
+    );
+    const label = getByText('Custom');
+    expect(getComputedStyle(label).color).toBe(theme.palette.text.primary);
+    expect(getComputedStyle(label).height).toBe('32px');
+    expect(label.hasAttribute('sx')).toBe(false);
+  });
+
+  it('composites HSL theme colours as RGB instead of blending HSL channels', () => {
+    const theme = createTheme({
+      palette: {
+        background: { paper: 'hsl(0, 0%, 100%)' },
+        success: { main: 'hsl(160, 57%, 45%)', dark: '#066f49', light: '#70d1aa' },
+      },
+    });
+    const { getByText } = render(
+      <ThemeProvider theme={theme}>
+        <Label color="success">HSL</Label>
+      </ThemeProvider>
+    );
+    expect(getComputedStyle(getByText('HSL')).color).toBe('#066f49');
   });
 
   it('emits both scheme rules using a consumer variable prefix', () => {

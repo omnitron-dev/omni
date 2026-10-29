@@ -10,7 +10,8 @@
 
 import type { ReactNode, Ref } from 'react';
 import Box from '@mui/material/Box';
-import { getContrastRatio, styled } from '@mui/material/styles';
+import { decomposeColor, getContrastRatio, hslToRgb, styled } from '@mui/material/styles';
+import { blend } from '@mui/system/colorManipulator';
 import type { CssVarsTheme, SxProps, Theme } from '@mui/material/styles';
 
 // =============================================================================
@@ -56,8 +57,20 @@ interface StyledLabelProps {
   };
 }
 
+type LabelTone = 'dark' | 'light' | 'darker' | 'lighter';
+
+/** MUI blend expects opaque sRGB channels, even when the theme uses HSL. */
+function opaqueRgb(color: string): string {
+  const rgb = color.startsWith('hsl') ? hslToRgb(color) : color;
+  const { type, values } = decomposeColor(rgb);
+  if (!['rgb', 'rgba'].includes(type) || !values.every(Number.isFinite) || (values[3] ?? 1) !== 1) {
+    throw new Error('Label contrast requires an opaque sRGB surface');
+  }
+  return rgb;
+}
+
 const StyledLabel = styled('span', {
-  shouldForwardProp: (prop) => prop !== 'ownerState',
+  shouldForwardProp: (prop) => !['ownerState', 'theme', 'sx', 'as'].includes(prop as string),
 })<StyledLabelProps>(({ theme, ownerState }) => {
   const palette = theme.vars?.palette ?? theme.palette;
   const { color, variant, disabled } = ownerState;
@@ -74,18 +87,33 @@ const StyledLabel = styled('span', {
   };
 
   // Prism's dark presets invert tonal roles; custom MUI palettes need not.
-  // Choose by contrast against each scheme's surface, then keep the CSS variable
+  // Compare with the actual tinted surface, then keep the CSS variable
   // so changing schemes or the variable prefix does not freeze a light-mode colour.
   const contrastText = (mode: 'light' | 'dark', surface: 'paper' | 'white' = 'paper') => {
     if (color === 'default') return surface === 'white' ? palette.grey[800] : palette.text.secondary;
     const schemes = (theme as Theme & Partial<Pick<CssVarsTheme, 'colorSchemes'>>).colorSchemes;
     const source = schemes?.[mode]?.palette ?? theme.palette;
     try {
-      const tones = source[color];
-      const background = surface === 'white' ? source.common.white : source.background.paper;
-      const tone =
-        getContrastRatio(tones.dark, background) >= getContrastRatio(tones.light, background) ? 'dark' : 'light';
-      return safePalette[tone];
+      const tones = source[color] as Partial<Record<LabelTone, string>>;
+      const background =
+        surface === 'white'
+          ? opaqueRgb(source.common.white)
+          : blend(opaqueRgb(source.background.paper), opaqueRgb(source[color].main), 0.16);
+      // Prefer the usual tones; use Prism's extended scale only when small
+      // text would miss AA on the translucent fill. Plain MUI themes may
+      // omit these extra tones, so semantic text remains the final fallback.
+      for (const pair of [
+        ['dark', 'light'],
+        ['darker', 'lighter'],
+      ] as const) {
+        const tone = pair
+          .filter((key) => tones[key])
+          .sort((a, b) => getContrastRatio(tones[b]!, background) - getContrastRatio(tones[a]!, background))[0];
+        if (tone && getContrastRatio(tones[tone]!, background) >= 4.5) {
+          return (safePalette as Partial<Record<LabelTone, string>>)[tone];
+        }
+      }
+      return surface === 'white' ? palette.grey[800] : palette.text.primary;
     } catch {
       // Browser-resolved brand colours cannot be compared in JavaScript.
       return surface === 'white' ? palette.grey[800] : palette.text.primary;

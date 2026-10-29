@@ -1311,6 +1311,7 @@ function NodeDiagnosisDialog({
           <FormControl size="small" sx={{ ml: 'auto', minWidth: 120 }}>
             <Select
               value={limit}
+              inputProps={{ 'aria-label': 'History entries' }}
               onChange={(e) => setLimit(Number(e.target.value))}
               sx={{ height: 30, fontSize: 12 }}
             >
@@ -1749,21 +1750,21 @@ function NodeDialog({ open, onClose, onSubmit, editNode, sshKeys, loading, error
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{isEdit ? `Edit "${editNode.name}"` : 'Add Node'}</DialogTitle>
-      <DialogContent sx={{ pt: '8px !important' }}>
+      <DialogContent>
         {error && <FormAlert onClose={onDismissError}>{error}</FormAlert>}
         <Stack spacing={2.5} sx={{
           mt: 1
         }}>
           <TextField label="Name" value={form.name} onChange={(e) => up('name', e.target.value)} fullWidth placeholder="production-server-1" autoFocus />
-          <Stack direction="row" spacing={2}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField label="Host" value={form.host} onChange={(e) => up('host', e.target.value)} fullWidth placeholder="192.168.1.100" />
-            <TextField label="SSH Port" value={form.sshPort} onChange={(e) => up('sshPort', parseInt(e.target.value, 10) || 22)} sx={{ width: 120 }} type="number" />
+            <TextField label="SSH Port" value={form.sshPort} onChange={(e) => up('sshPort', parseInt(e.target.value, 10) || 22)} sx={{ width: { xs: '100%', sm: 120 }, flexShrink: 0 }} type="number" />
           </Stack>
-          <Stack direction="row" spacing={2}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField label="SSH User" value={form.sshUser} onChange={(e) => up('sshUser', e.target.value)} fullWidth />
             <FormControl sx={{ minWidth: 160 }}>
               <InputLabel>Auth Method</InputLabel>
-              <Select value={form.sshAuthMethod} label="Auth Method" onChange={(e) => up('sshAuthMethod', e.target.value)}>
+              <Select value={form.sshAuthMethod} label="Auth Method" inputProps={{ 'aria-label': 'Auth Method' }} onChange={(e) => up('sshAuthMethod', e.target.value)}>
                 <MenuItem value="key">SSH Key</MenuItem>
                 <MenuItem value="password">Password</MenuItem>
               </Select>
@@ -1773,7 +1774,7 @@ function NodeDialog({ open, onClose, onSubmit, editNode, sshKeys, loading, error
             <>
               <FormControl fullWidth>
                 <InputLabel>SSH Private Key</InputLabel>
-                <Select value={form.sshPrivateKey} label="SSH Private Key" onChange={(e) => up('sshPrivateKey', e.target.value as string)}>
+                <Select value={form.sshPrivateKey} label="SSH Private Key" inputProps={{ 'aria-label': 'SSH Private Key' }} onChange={(e) => up('sshPrivateKey', e.target.value as string)}>
                   {sshKeys.map((key) => (
                     <MenuItem key={key.path} value={key.path}>
                       <Stack
@@ -1825,20 +1826,20 @@ function NodeDialog({ open, onClose, onSubmit, editNode, sshKeys, loading, error
             />
           )}
           <Divider />
-          <Stack direction="row" spacing={2}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <FormControl sx={{ minWidth: 140 }}>
               <InputLabel>Runtime</InputLabel>
-              <Select value={form.runtime} label="Runtime" onChange={(e) => up('runtime', e.target.value)}>
+              <Select value={form.runtime} label="Runtime" inputProps={{ 'aria-label': 'Runtime' }} onChange={(e) => up('runtime', e.target.value)}>
                 <MenuItem value="node">Node.js</MenuItem>
                 <MenuItem value="bun">Bun</MenuItem>
               </Select>
             </FormControl>
-            <TextField label="Daemon Port" value={form.daemonPort} onChange={(e) => up('daemonPort', parseInt(e.target.value, 10) || 9700)} sx={{ width: 140 }} type="number" />
+            <TextField label="Daemon Port" value={form.daemonPort} onChange={(e) => up('daemonPort', parseInt(e.target.value, 10) || 9700)} sx={{ width: { xs: '100%', sm: 140 }, flexShrink: 0 }} type="number" />
             <TextField label="Tags" value={form.tags} onChange={(e) => up('tags', e.target.value)} fullWidth placeholder="production, gpu" helperText="Comma-separated" />
           </Stack>
         </Stack>
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
+      <DialogActions>
         <Button onClick={onClose} color="inherit">Cancel</Button>
         <Button variant="contained" onClick={() => onSubmit(form)} disabled={!canSubmit || loading}>{isEdit ? 'Save' : 'Add Node'}</Button>
       </DialogActions>
@@ -1900,7 +1901,7 @@ function CheckSettingsDialog({ open, onClose, onSaved }: {
   return (
     <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="xs" fullWidth>
       <DialogTitle>Check Settings</DialogTitle>
-      <DialogContent sx={{ pt: '8px !important' }}>
+      <DialogContent>
         {error && <FormAlert onClose={() => setError(null)}>{error}</FormAlert>}
         {!config ? (
           <Skeleton variant="rounded" height={220} />
@@ -1911,6 +1912,7 @@ function CheckSettingsDialog({ open, onClose, onSaved }: {
               <Select
                 value={config.pingEnabled ? 'on' : 'off'}
                 label="ICMP Ping"
+                inputProps={{ 'aria-label': 'ICMP Ping' }}
                 onChange={(e) => up('pingEnabled', e.target.value === 'on')}
               >
                 <MenuItem value="on">Enabled</MenuItem>
@@ -1941,7 +1943,7 @@ function CheckSettingsDialog({ open, onClose, onSaved }: {
           </Stack>
         )}
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
+      <DialogActions>
         <Button onClick={onClose} color="inherit" disabled={saving}>Cancel</Button>
         <Can permission="OmnitronNodes.setCheckConfig"><Button variant="contained" onClick={handleSave} disabled={!config || saving}>
           {saving ? 'Saving...' : 'Save'}
@@ -2280,10 +2282,8 @@ export default function NodesPage() {
               onClick={() => setSettingsOpen(true)}>
               Check Settings
             </Button></Can>
-            <Button variant="outlined" size="small" startIcon={<RefreshIcon sx={{ fontSize: 18 }} />}
-              onClick={async () => { const n = await fetchNodes(); await fetchUptimeBars(n); }}>
-              Refresh
-            </Button>
+            <Tooltip title="Refresh"><IconButton size="small" aria-label="Refresh"
+              onClick={async () => { const n = await fetchNodes(); await fetchUptimeBars(n); }}><RefreshIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip>
             <Can permission="OmnitronNodes.addNode"><Button variant="contained" size="small" startIcon={<PlusIcon sx={{ fontSize: 18 }} />} onClick={handleOpenAdd}>
               Add Node
             </Button></Can>

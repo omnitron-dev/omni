@@ -355,6 +355,8 @@ export default function DeploymentsPage() {
         list you are reading is incomplete" looked the same.
       */}
       <AdminDataTable<Deployment>
+        minWidth={640}
+        scrollLabel="Deployments"
         columns={columns}
         data={pageRows}
         total={deployments.length}

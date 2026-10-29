@@ -90,6 +90,7 @@ async function renderPage() {
   );
   // Logs now opens in live mode. These assertions concern the explicit
   // paginated hour view and its total, not the live tail's retained rows.
+  fireEvent.click(screen.getByRole('button', { name: 'Filters', exact: true }));
   fireEvent.click(screen.getByRole('button', { name: '1h', exact: true }));
   await screen.findByText('Showing 2 of 48,991');
 }
@@ -103,6 +104,12 @@ describe('a breakdown beside a total it did not add up to', () => {
 
     expect(breakdown()).toEqual(['debug: 3,950', 'info: 44,185', 'warn: 705', 'error: 149', 'medium: 2']);
     expect(screen.queryByText('error: 42,650')).not.toBeInTheDocument();
+    // A message without structured metadata can still be expanded and read by keyboard.
+    const row = screen.getByRole('button', { name: /sample\/dev\/main info: line 1/ });
+    fireEvent.keyDown(row, { key: 'Enter' });
+    expect(row).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.keyDown(row, { key: ' ' });
+    expect(row).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('narrows with the filter, and does not group the whole table again for it', async () => {
@@ -116,5 +123,9 @@ describe('a breakdown beside a total it did not add up to', () => {
     await screen.findByText('Showing 1 of 149');
     await waitFor(() => expect(breakdown()).toEqual(['error: 149']));
     expect(getLogStats.mock.calls.length).toBe(asked);
+    fireEvent.click(screen.getByRole('button', { name: 'Filters · 2', exact: true }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: '1h', exact: true })).toBeNull());
+    expect(screen.getByRole('button', { name: 'Filters · 2', exact: true })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByText('Showing 1 of 149')).toBeInTheDocument();
   });
 });

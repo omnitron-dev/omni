@@ -85,9 +85,12 @@ export function ProjectSwitcher() {
     <>
       {/* Trigger button */}
       <ButtonBase
+        aria-label={`Switch workspace: ${isOmnitron ? 'Omnitron' : activeInfo?.displayName ?? activeProject}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
         disableRipple
         onClick={onOpen}
-        sx={{ py: 0.5, gap: { xs: 0.5, sm: 1 }, '&::before': buttonBg }}
+        sx={{ minWidth: 0, maxWidth: '100%', py: 0.5, gap: { xs: 0.5, sm: 1 }, '&::before': buttonBg }}
       >
         <Box sx={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {isOmnitron
@@ -100,7 +103,8 @@ export function ProjectSwitcher() {
           component="span"
           sx={{
             typography: 'subtitle2',
-            display: { xs: 'none', sm: 'inline-flex' },
+            display: { xs: 'none', sm: 'block' },
+            minWidth: 0, maxWidth: { sm: 180, md: 240 }, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
           }}
         >
           {isOmnitron ? 'Omnitron' : activeInfo?.displayName ?? activeProject}
@@ -130,7 +134,7 @@ export function ProjectSwitcher() {
         anchorEl={anchorEl}
         onClose={onClose}
         arrow={{ placement: 'top-left' }}
-        slotProps={{ paper: { sx: { mt: 0.5, ml: -1.55, width: 280 } } }}
+        slotProps={{ paper: { sx: { mt: 0.5, ml: -1.55, width: 280, maxWidth: 'calc(100vw - 32px)' } } }}
       >
         <Box sx={{ maxHeight: 320, overflow: 'auto' }}>
           <MenuList>
@@ -159,7 +163,7 @@ export function ProjectSwitcher() {
               const isActive = p.name === activeProject;
 
               return (
-                <Tooltip key={p.name} title={p.path} placement="right" arrow enterDelay={500}>
+                <Tooltip describeChild key={p.name} title={p.path} placement="right" arrow enterDelay={500}>
                   <MenuItem
                     selected={isActive}
                     onClick={() => handleSelectProject(p.name)}

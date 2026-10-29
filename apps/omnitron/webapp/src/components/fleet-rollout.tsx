@@ -130,7 +130,7 @@ export function FleetRollout({ nodes }: { nodes: INodeWithStatus[] }) {
   return (
     <Card variant="outlined">
       <CardContent>
-        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: live.length > 0 || rows.length > 0 ? 1.5 : 0 }}>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: live.length > 0 || rows.length > 0 ? 1.5 : 0 }}>
           <Typography variant="overline" sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
             Fleet upgrade
           </Typography>
@@ -308,7 +308,7 @@ function RolloutDialog({
           </Typography>
 
           <Box>
-            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: 0.5 }}>
               <Checkbox
                 size="small"
                 checked={allPicked}

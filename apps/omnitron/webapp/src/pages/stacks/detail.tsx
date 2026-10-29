@@ -344,6 +344,8 @@ export default function StackDetailPage() {
             Applications ({stack.apps.length})
           </Typography>
           <Table<IStackAppStatus>
+            scrollLabel="Stack applications"
+            sx={{ minWidth: 640 }}
             columns={appColumns}
             data={stack.apps}
             rowKey={(app) => app.handleKey}
@@ -424,6 +426,8 @@ export default function StackDetailPage() {
               Nodes ({stack.nodes.length})
             </Typography>
             <Table<IStackNodeStatus>
+              scrollLabel="Stack nodes"
+              sx={{ minWidth: 560 }}
               columns={nodeColumns}
               data={stack.nodes}
               rowKey={(node) => node.host}

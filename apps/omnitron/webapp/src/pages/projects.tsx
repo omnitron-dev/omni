@@ -237,7 +237,7 @@ function EditProjectDialog({
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Project Settings — {project.displayName}</DialogTitle>
-      <DialogContent sx={{ pt: '8px !important' }}>
+      <DialogContent>
         <Stack spacing={2.5} sx={{
           mt: 1
         }}>
@@ -277,7 +277,7 @@ function EditProjectDialog({
           />
         </Stack>
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
+      <DialogActions>
         <Button onClick={onClose} color="inherit">Cancel</Button>
         <Can permission="OmnitronProject.updateProject"><Button
           variant="contained"
@@ -318,7 +318,7 @@ function AddProjectDialog({
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Add Project</DialogTitle>
-      <DialogContent sx={{ pt: '8px !important' }}>
+      <DialogContent>
         <Stack spacing={2.5} sx={{
           mt: 1
         }}>
@@ -346,7 +346,7 @@ function AddProjectDialog({
           />
         </Stack>
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
+      <DialogActions>
         <Button onClick={onClose} color="inherit">Cancel</Button>
         <Can permission="OmnitronProject.addProject"><Button
           variant="contained"

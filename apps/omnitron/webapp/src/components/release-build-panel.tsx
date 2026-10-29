@@ -50,7 +50,7 @@ export function ReleaseBuildPanel({
   return (
     <Card variant="outlined" sx={{ borderColor: running ? 'primary.main' : undefined }}>
       <CardContent sx={{ pb: 2 }}>
-        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 1 }}>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: 1 }}>
           <Chip label={state.label} size="small" color={state.color} sx={{ fontWeight: 600 }} />
           <Typography variant="subtitle2">{request.project}</Typography>
           {record.releaseId && (
@@ -82,7 +82,7 @@ export function ReleaseBuildPanel({
 
         <BuildBar percent={record.percent} state={record.state} />
 
-        <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline', mt: 1 }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline', flexWrap: 'wrap', mt: 1 }}>
           <Typography variant="body2" sx={{ fontWeight: 500 }}>
             {record.phase}
           </Typography>

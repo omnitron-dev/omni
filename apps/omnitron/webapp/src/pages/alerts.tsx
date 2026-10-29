@@ -497,6 +497,7 @@ export default function AlertsPage() {
                     spacing={2}
                     sx={{
                       alignItems: "center",
+                      flexWrap: 'wrap',
                       p: 1.5,
                       borderRadius: 1,
 
@@ -521,7 +522,7 @@ export default function AlertsPage() {
                       variant="filled"
                       sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: 10, minWidth: 64 }}
                     />
-                    <Stack sx={{ flex: 1, minWidth: 0 }}>
+                    <Stack sx={{ flex: '1 1 160px', minWidth: 0 }}>
                       <Typography variant="body2" sx={{
                         fontWeight: 600
                       }}>
@@ -571,6 +572,8 @@ export default function AlertsPage() {
           title="Alert Rules"
         />
         <AdminDataTable<AlertRule>
+          minWidth={640}
+        scrollLabel="Alert rules"
           columns={ruleColumns}
           data={ruleRows}
           total={rules.length}

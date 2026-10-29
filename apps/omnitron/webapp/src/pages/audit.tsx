@@ -97,9 +97,27 @@ function Event({ row }: { row: AuditRow }) {
     ([k, v]) => !(k === 'outcome' && v === outcome) && k !== reason?.key
   );
   return (
-    <Stack spacing={0.25}>
+    <Stack spacing={0.5} sx={{ minWidth: 0 }}>
+      <Stack
+        direction="row"
+        spacing={1}
+        sx={{ display: { xs: 'flex', md: 'none' }, flexWrap: 'wrap', alignItems: 'center' }}
+      >
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: { xs: 'inline', sm: 'none' } }}
+          title={new Date(row.createdAt).toLocaleString()}
+        >
+          {when(row.createdAt)}
+        </Typography>
+        <Actor actorId={row.actorId} actorType={row.actorType} />
+        <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+          {row.ipAddress ?? '—'}
+        </Typography>
+      </Stack>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, overflowWrap: 'anywhere' }}>
           {row.action}
         </Typography>
         <Typography variant="body2" sx={{ fontFamily: 'monospace', color: 'text.secondary', overflowWrap: 'anywhere' }}>
@@ -139,7 +157,10 @@ function Actor({ actorId, actorType }: { actorId: string | null; actorType: stri
     return (
       <Tooltip title={actorId} arrow>
         <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
-          {me.username} <Box component="span" sx={{ color: 'text.secondary' }}>(you)</Box>
+          {me.username}{' '}
+          <Box component="span" sx={{ color: 'text.secondary' }}>
+            (you)
+          </Box>
         </Typography>
       </Tooltip>
     );
@@ -157,7 +178,9 @@ function Actor({ actorId, actorType }: { actorId: string | null; actorType: stri
       </Tooltip>
     );
   }
-  return <Chip size="small" variant="outlined" label={words.text} sx={{ height: 20, fontSize: 11 }} title={words.title} />;
+  return (
+    <Chip size="small" variant="outlined" label={words.text} sx={{ height: 20, fontSize: 11 }} title={words.title} />
+  );
 }
 
 export default function AuditPage() {
@@ -179,8 +202,8 @@ export default function AuditPage() {
   });
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Breadcrumbs heading="Audit" links={[{ name: 'Console', href: '/' }, { name: 'Audit' }]} sx={{ mb: 3 }} />
+    <Box sx={{ minWidth: 0 }}>
+      <Breadcrumbs heading="Audit" links={[{ name: 'Console', href: '/' }, { name: 'Audit' }]} sx={{ mb: 2 }} />
 
       <Stack direction="row" spacing={2} sx={{ mb: 2, flexWrap: 'wrap' }}>
         <TextField
@@ -189,7 +212,7 @@ export default function AuditPage() {
           label="Resource"
           value={resourceType}
           onChange={(e) => setResourceType(e.target.value)}
-          sx={{ minWidth: 160 }}
+          sx={{ flex: '1 1 160px', maxWidth: 240, minWidth: 0 }}
         >
           {RESOURCE_TYPES.map((t) => (
             <MenuItem key={t || 'all'} value={t}>
@@ -203,7 +226,7 @@ export default function AuditPage() {
           label="Entries"
           value={limit}
           onChange={(e) => setLimit(Number(e.target.value))}
-          sx={{ minWidth: 120 }}
+          sx={{ flex: '0 1 120px', minWidth: 100 }}
         >
           {PAGE_SIZES.map((n) => (
             <MenuItem key={n} value={n}>
@@ -213,14 +236,16 @@ export default function AuditPage() {
         </TextField>
       </Stack>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
       {loading && !data && <Skeleton variant="rectangular" height={280} />}
 
       {data && !data.available && (
         // An empty table would read as "nothing has happened".
-        <Alert severity="info">
-          This daemon has no audit trail — it has no omnitron database to record into.
-        </Alert>
+        <Alert severity="info">This daemon has no audit trail — it has no omnitron database to record into.</Alert>
       )}
 
       {data?.available && data.rows.length === 0 && (
@@ -228,36 +253,39 @@ export default function AuditPage() {
       )}
 
       {data?.available && data.rows.length > 0 && (
-        // Four columns, and the details UNDER the event rather than beside it.
-        //
-        // «Details» was a sixth column, and at a laptop's width it sat
-        // entirely past the right edge of the card — `release=…`, `stack=…`,
-        // the part that says what actually happened, reachable only by a
-        // sideways scroll nobody knew was there. An event now reads as one
-        // block: what was done, to what, and with which particulars.
-        <Card sx={{ borderRadius: 2 }}>
+        <Card variant="outlined">
           <Table size="small" sx={{ tableLayout: 'fixed' }}>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ width: 110 }}>When</TableCell>
+                <TableCell sx={{ width: 110, display: { xs: 'none', sm: 'table-cell' } }}>When</TableCell>
                 <TableCell>Event</TableCell>
-                <TableCell sx={{ width: 120 }}>Actor</TableCell>
-                <TableCell sx={{ width: 140 }}>From</TableCell>
+                <TableCell sx={{ width: 120, display: { xs: 'none', md: 'table-cell' } }}>Actor</TableCell>
+                <TableCell sx={{ width: 140, display: { xs: 'none', md: 'table-cell' } }}>From</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {data.rows.map((row) => (
                 <TableRow key={row.id} hover sx={{ verticalAlign: 'top' }}>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }} title={new Date(row.createdAt).toLocaleString()}>
+                  <TableCell
+                    sx={{ whiteSpace: 'nowrap', display: { xs: 'none', sm: 'table-cell' } }}
+                    title={new Date(row.createdAt).toLocaleString()}
+                  >
                     {when(row.createdAt)}
                   </TableCell>
                   <TableCell>
                     <Event row={row} />
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                     <Actor actorId={row.actorId} actorType={row.actorType} />
                   </TableCell>
-                  <TableCell sx={{ fontFamily: 'monospace', color: 'text.secondary', whiteSpace: 'nowrap' }}>
+                  <TableCell
+                    sx={{
+                      fontFamily: 'monospace',
+                      color: 'text.secondary',
+                      overflowWrap: 'anywhere',
+                      display: { xs: 'none', md: 'table-cell' },
+                    }}
+                  >
                     {row.ipAddress ?? '—'}
                   </TableCell>
                 </TableRow>

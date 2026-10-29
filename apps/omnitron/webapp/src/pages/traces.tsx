@@ -2,18 +2,17 @@ import { useState } from 'react';
 import Box from '@mui/material/Box';
 import ButtonBase from '@mui/material/ButtonBase';
 import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
+import Button from '@mui/material/Button';
 import CardHeader from '@mui/material/CardHeader';
 import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
-import TableContainer from '@mui/material/TableContainer';
 import TextField from '@mui/material/TextField';
 import Grid from '@mui/material/Grid';
 import { alpha } from '@mui/material/styles';
 
-import { TraceIcon, RefreshIcon, SearchIcon } from 'src/assets/icons';
+import { TraceIcon, RefreshIcon } from 'src/assets/icons';
 import { AdminDataTable, type ColumnDef } from '@omnitron-dev/prism/components/admin-filters';
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
@@ -100,10 +99,11 @@ function SpanWaterfall({ spans }: { spans: TraceSpan[] }) {
         <Stack
           direction="row"
           sx={{
-            alignItems: "center",
+            alignItems: 'center',
             py: 0.25,
-            pl: depth * 2
-          }}>
+            pl: depth * 2,
+          }}
+        >
           <Typography variant="caption" sx={{ minWidth: 120, fontWeight: 500 }} noWrap>
             {span.serviceName}
           </Typography>
@@ -111,9 +111,10 @@ function SpanWaterfall({ spans }: { spans: TraceSpan[] }) {
             variant="caption"
             noWrap
             sx={{
-              color: "text.secondary",
-              minWidth: 140
-            }}>
+              color: 'text.secondary',
+              minWidth: 140,
+            }}
+          >
             {span.operationName}
           </Typography>
           <Box sx={{ flex: 1, position: 'relative', height: 16, mx: 1 }}>
@@ -124,9 +125,10 @@ function SpanWaterfall({ spans }: { spans: TraceSpan[] }) {
                 width: `${widthPct}%`,
                 height: '100%',
                 borderRadius: 0.5,
-                bgcolor: span.status === 'error'
-                  ? (t) => alpha(t.palette.error.main, 0.7)
-                  : (t) => alpha(t.palette.primary.main, 0.5),
+                bgcolor:
+                  span.status === 'error'
+                    ? (t) => alpha(t.palette.error.main, 0.7)
+                    : (t) => alpha(t.palette.primary.main, 0.5),
               }}
             />
           </Box>
@@ -148,10 +150,7 @@ function SpanWaterfall({ spans }: { spans: TraceSpan[] }) {
 
   return (
     <Box sx={{ py: 1 }}>
-      {roots.length > 0
-        ? roots.map((root) => renderSpan(root, 0))
-        : spans.map((span) => renderSpan(span, 0))
-      }
+      {roots.length > 0 ? roots.map((root) => renderSpan(root, 0)) : spans.map((span) => renderSpan(span, 0))}
     </Box>
   );
 }
@@ -195,10 +194,7 @@ export default function TracesPage() {
       if (operationFilter) filter.operation = operationFilter;
       if (minDuration) filter.minDuration = parseInt(minDuration, 10);
 
-      const [tracesResult, mapResult] = await Promise.allSettled([
-        traces.queryTraces(filter),
-        traces.getServiceMap(),
-      ]);
+      const [tracesResult, mapResult] = await Promise.allSettled([traces.queryTraces(filter), traces.getServiceMap()]);
 
       const failures = [tracesResult, mapResult]
         .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
@@ -206,12 +202,14 @@ export default function TracesPage() {
       if (failures.length === 2) throw new Error(failures[0]);
 
       return {
-        traceList: tracesResult.status === 'fulfilled' && Array.isArray(tracesResult.value)
-          ? (tracesResult.value as Trace[])
-          : [],
-        serviceMap: mapResult.status === 'fulfilled' && Array.isArray(mapResult.value)
-          ? (mapResult.value as ServiceMapEntry[])
-          : [],
+        traceList:
+          tracesResult.status === 'fulfilled' && Array.isArray(tracesResult.value)
+            ? (tracesResult.value as Trace[])
+            : [],
+        serviceMap:
+          mapResult.status === 'fulfilled' && Array.isArray(mapResult.value)
+            ? (mapResult.value as ServiceMapEntry[])
+            : [],
         partialFailure: failures.length === 1 ? failures[0] : null,
       };
     },
@@ -222,10 +220,7 @@ export default function TracesPage() {
   const serviceMap = data?.serviceMap ?? [];
   const partialFailure = data?.partialFailure ?? null;
 
-  const traceRows = traceList.slice(
-    tracePage * tracePageSize,
-    tracePage * tracePageSize + tracePageSize,
-  );
+  const traceRows = traceList.slice(tracePage * tracePageSize, tracePage * tracePageSize + tracePageSize);
 
   const traceColumns: ColumnDef<Trace>[] = [
     {
@@ -239,9 +234,7 @@ export default function TracesPage() {
       render: (trace) => (
         <ButtonBase
           aria-expanded={expandedTrace === trace.traceId}
-          onClick={() =>
-            setExpandedTrace(expandedTrace === trace.traceId ? null : trace.traceId)
-          }
+          onClick={() => setExpandedTrace(expandedTrace === trace.traceId ? null : trace.traceId)}
           sx={{ fontWeight: 600, fontSize: '0.8125rem', textAlign: 'left' }}
         >
           {trace.serviceName}
@@ -276,13 +269,7 @@ export default function TracesPage() {
               {trace.spans.length} spans
             </Typography>
             {hasErrors && (
-              <Chip
-                label="errors"
-                size="small"
-                color="error"
-                variant="filled"
-                sx={{ fontSize: 10, height: 18 }}
-              />
+              <Chip label="errors" size="small" color="error" variant="filled" sx={{ fontSize: 10, height: 18 }} />
             )}
           </Stack>
         );
@@ -299,10 +286,7 @@ export default function TracesPage() {
     },
   ];
 
-  const serviceMapRows = serviceMap.slice(
-    mapPage * mapPageSize,
-    mapPage * mapPageSize + mapPageSize,
-  );
+  const serviceMapRows = serviceMap.slice(mapPage * mapPageSize, mapPage * mapPageSize + mapPageSize);
 
   const serviceMapColumns: ColumnDef<ServiceMapEntry>[] = [
     {
@@ -371,85 +355,103 @@ export default function TracesPage() {
           {error ?? `Some trace data is unavailable: ${partialFailure}`}
         </Alert>
       )}
-      {/* Filters */}
-      <Card variant="outlined">
-        <CardContent>
-          <Stack direction="row" spacing={2} sx={{
-            alignItems: "center"
-          }}>
-            <SearchIcon />
-            <TextField
-              label="Service"
-              value={serviceFilter}
-              onChange={(e) => setServiceFilter(e.target.value)}
-              size="small"
-              sx={{ minWidth: 150 }}
-            />
-            <TextField
-              label="Operation"
-              value={operationFilter}
-              onChange={(e) => setOperationFilter(e.target.value)}
-              size="small"
-              sx={{ minWidth: 150 }}
-            />
-            <TextField
-              label="Min Duration (ms)"
-              value={minDuration}
-              onChange={(e) => setMinDuration(e.target.value)}
-              size="small"
-              type="number"
-              sx={{ minWidth: 130 }}
-            />
-          </Stack>
-        </CardContent>
-      </Card>
+      <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
+        <TextField
+          label="Service"
+          value={serviceFilter}
+          onChange={(e) => {
+            setServiceFilter(e.target.value);
+            setTracePage(0);
+          }}
+          size="small"
+          sx={{ flex: '1 1 180px', minWidth: 0 }}
+        />
+        <TextField
+          label="Operation"
+          value={operationFilter}
+          onChange={(e) => {
+            setOperationFilter(e.target.value);
+            setTracePage(0);
+          }}
+          size="small"
+          sx={{ flex: '1 1 180px', minWidth: 0 }}
+        />
+        <TextField
+          label="Min duration (ms)"
+          value={minDuration}
+          onChange={(e) => {
+            setMinDuration(e.target.value);
+            setTracePage(0);
+          }}
+          size="small"
+          type="number"
+          sx={{ flex: '1 1 160px', minWidth: 0 }}
+          slotProps={{ htmlInput: { min: 0 } }}
+        />
+        {(serviceFilter || operationFilter || minDuration) && (
+          <Button
+            size="small"
+            onClick={() => {
+              setServiceFilter('');
+              setOperationFilter('');
+              setMinDuration('');
+              setTracePage(0);
+            }}
+          >
+            Reset filters
+          </Button>
+        )}
+      </Stack>
       <Grid container spacing={3}>
         {/* Trace List */}
         <Grid size={{ xs: 12, lg: 8 }}>
           <Card variant="outlined">
-            <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 600 } }}
+            <CardHeader
+              slotProps={{ title: { variant: 'subtitle1', fontWeight: 600 } }}
               title="Recent Traces"
               avatar={<TraceIcon />}
             />
-            <TableContainer>
-              <AdminDataTable<Trace>
-                columns={traceColumns}
-                data={traceRows}
-                total={traceList.length}
-                loading={loading}
-                loadError={error ?? partialFailure ?? null}
-                emptyMessage="No traces collected yet"
-                rowKey={(trace) => trace.traceId}
-                renderExpanded={(trace) =>
-                  expandedTrace === trace.traceId ? (
-                    <Box sx={{ px: 2, pb: 1 }}>
-                      <Typography
-                        variant="caption"
-                        sx={{ color: 'text.secondary', fontFamily: 'monospace', mb: 1, display: 'block' }}
-                      >
-                        Trace ID: {trace.traceId}
-                      </Typography>
-                      <SpanWaterfall spans={trace.spans} />
-                    </Box>
-                  ) : null
-                }
-                page={tracePage}
-                pageSize={tracePageSize}
-                onPageChange={setTracePage}
-                onPageSizeChange={(size) => {
-                  setTracePageSize(size);
-                  setTracePage(0);
-                }}
-                dense
-              />
-            </TableContainer>
+
+            <AdminDataTable<Trace>
+              minWidth={640}
+              scrollLabel="Traces"
+              columns={traceColumns}
+              data={traceRows}
+              total={traceList.length}
+              loading={loading}
+              loadError={error ?? partialFailure ?? null}
+              emptyMessage="No traces collected yet"
+              rowKey={(trace) => trace.traceId}
+              renderExpanded={(trace) =>
+                expandedTrace === trace.traceId ? (
+                  <Box sx={{ px: 2, pb: 1 }}>
+                    <Typography
+                      variant="caption"
+                      sx={{ color: 'text.secondary', fontFamily: 'monospace', mb: 1, display: 'block' }}
+                    >
+                      Trace ID: {trace.traceId}
+                    </Typography>
+                    <SpanWaterfall spans={trace.spans} />
+                  </Box>
+                ) : null
+              }
+              page={tracePage}
+              pageSize={tracePageSize}
+              onPageChange={setTracePage}
+              onPageSizeChange={(size) => {
+                setTracePageSize(size);
+                setTracePage(0);
+              }}
+              dense
+            />
           </Card>
         </Grid>
 
         {/* Service Map */}
         <Grid size={{ xs: 12, lg: 4 }}>
           <Card variant="outlined">
-            <CardHeader slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle1', fontWeight: 600 } }}
+            <CardHeader
+              slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle1', fontWeight: 600 } }}
               title="Service Map"
               subheader="Service-to-service call counts"
             />
@@ -459,6 +461,8 @@ export default function TracesPage() {
               not a shape AdminDataTable has. This one is an ordinary table.
             */}
             <AdminDataTable<ServiceMapEntry>
+              minWidth={480}
+              scrollLabel="Service map"
               columns={serviceMapColumns}
               data={serviceMapRows}
               total={serviceMap.length}

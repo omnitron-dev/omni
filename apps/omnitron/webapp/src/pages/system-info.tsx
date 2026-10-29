@@ -47,6 +47,8 @@ function InfoRow({ label, value, mono }: { label: string; value: React.ReactNode
       sx={{
         justifyContent: "space-between",
         alignItems: "center",
+        gap: 2,
+        minWidth: 0,
         py: 0.5
       }}>
       <Typography variant="body2" sx={{
@@ -56,6 +58,7 @@ function InfoRow({ label, value, mono }: { label: string; value: React.ReactNode
         variant="body2"
         sx={{
           fontWeight: 600,
+          minWidth: 0, overflowWrap: 'anywhere', textAlign: 'right',
           ...(mono && { fontFamily: 'monospace', fontSize: '0.8rem' }),
         }}>
         {value}

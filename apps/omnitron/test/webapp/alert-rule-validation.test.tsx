@@ -14,6 +14,7 @@
  */
 
 import type { ReactNode } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render as rtlRender, screen, waitFor } from '@testing-library/react';
@@ -56,7 +57,9 @@ const theme = createTheme();
 const render = (ui: ReactNode) =>
   rtlRender(
     <ThemeProvider theme={theme}>
-      <SnackbarProvider>{ui}</SnackbarProvider>
+      <MemoryRouter>
+        <SnackbarProvider>{ui}</SnackbarProvider>
+      </MemoryRouter>
     </ThemeProvider>
   );
 

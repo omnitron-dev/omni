@@ -467,6 +467,8 @@ export default function ContainersPage() {
       </Grid>
       {/* Containers Table — prism owns the chrome, this page owns the columns. */}
       <AdminDataTable<Container>
+        minWidth={640}
+        scrollLabel="Containers"
         columns={columns}
         data={pageRows}
         total={containers.length}

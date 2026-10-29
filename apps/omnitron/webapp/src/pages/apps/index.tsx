@@ -5,6 +5,7 @@ import Typography from '@mui/material/Typography';
 import Stack from '@mui/material/Stack';
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
+import { FilterToolbar, type FilterValues } from '@omnitron-dev/prism/components/admin-filters';
 import { Table, type TableColumn } from '@omnitron-dev/prism/components/table';
 import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
@@ -32,6 +33,7 @@ export default function AppsListPage() {
   const [allApps, setAllApps] = useState<IProjectAppStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<FilterValues>({ search: '', status: '' });
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // The route is behind ProjectRoute: there is always a project here.
@@ -54,6 +56,11 @@ export default function AppsListPage() {
   // them, the same app appears once per stack and the Stack column tells the
   // rows apart.
   const apps = deploymentsIn(allApps, activeStack);
+  const visibleApps = apps.filter(
+    (app) =>
+      `${app.name} ${app.stack}`.toLowerCase().includes(String(filters.search ?? '').toLowerCase()) &&
+      (!filters.status || app.status === filters.status)
+  );
 
   // Subscribe to the realtime WS — same pattern as Dashboard. The
   // store's refcount keeps the shared socket alive across page
@@ -133,10 +140,7 @@ export default function AppsListPage() {
       label: 'Name',
       render: (app) =>
         isLocal(app) ? (
-          // A real link, not just a clickable row. The row's onClick is a
-          // convenience for a pointer; it is not reachable by keyboard and
-          // announces nothing, so it was the only way into an app's detail
-          // page and a keyboard user had none.
+          // Keep a real link for open-in-new-tab and standard browser navigation.
           <Link
             component={RouterLink}
             to={detailHref(app)}
@@ -176,12 +180,7 @@ export default function AppsListPage() {
       id: 'status',
       label: 'Status',
       render: (app) => (
-        <Chip
-          label={app.status}
-          size="small"
-          color={STATUS_COLORS[app.status] || 'default'}
-          variant="outlined"
-        />
+        <Chip label={app.status} size="small" color={STATUS_COLORS[app.status] || 'default'} variant="outlined" />
       ),
     },
     { id: 'instances', label: 'Instances', align: 'right' },
@@ -222,45 +221,46 @@ export default function AppsListPage() {
         ) : (
           // The handle, not the bare name: two local stacks running `main`
           // make `main` ambiguous, and the daemon refuses it.
-          <Stack
-            direction="row"
-            spacing={0.5}
-            sx={{ justifyContent: 'center' }}
-            onClick={(e) => e.stopPropagation()}
-          >
+          <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
             {app.status === 'stopped' || app.status === 'crashed' || app.status === 'errored' ? (
-              <Can permission="OmnitronDaemon.startApp"><Tooltip title="Start">
-                <IconButton
-                  size="small"
-                  color="success"
-                  disabled={actionLoading === app.handleKey}
-                  onClick={() => handleStart(app.handleKey)}
-                >
-                  <PlayIcon sx={{ fontSize: 18 }} />
-                </IconButton>
-              </Tooltip></Can>
+              <Can permission="OmnitronDaemon.startApp">
+                <Tooltip title="Start">
+                  <IconButton
+                    size="small"
+                    color="success"
+                    disabled={actionLoading === app.handleKey}
+                    onClick={() => handleStart(app.handleKey)}
+                  >
+                    <PlayIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
+              </Can>
             ) : (
               <>
-                <Can permission="OmnitronDaemon.restartApp"><Tooltip title="Restart">
-                  <IconButton
-                    size="small"
-                    color="warning"
-                    disabled={actionLoading === app.handleKey}
-                    onClick={() => handleRestart(app.handleKey)}
-                  >
-                    <RestartIcon sx={{ fontSize: 18 }} />
-                  </IconButton>
-                </Tooltip></Can>
-                <Can permission="OmnitronDaemon.stopApp"><Tooltip title="Stop">
-                  <IconButton
-                    size="small"
-                    color="error"
-                    disabled={actionLoading === app.handleKey}
-                    onClick={() => handleStop(app.handleKey)}
-                  >
-                    <StopIcon sx={{ fontSize: 18 }} />
-                  </IconButton>
-                </Tooltip></Can>
+                <Can permission="OmnitronDaemon.restartApp">
+                  <Tooltip title="Restart">
+                    <IconButton
+                      size="small"
+                      color="warning"
+                      disabled={actionLoading === app.handleKey}
+                      onClick={() => handleRestart(app.handleKey)}
+                    >
+                      <RestartIcon sx={{ fontSize: 18 }} />
+                    </IconButton>
+                  </Tooltip>
+                </Can>
+                <Can permission="OmnitronDaemon.stopApp">
+                  <Tooltip title="Stop">
+                    <IconButton
+                      size="small"
+                      color="error"
+                      disabled={actionLoading === app.handleKey}
+                      onClick={() => handleStop(app.handleKey)}
+                    >
+                      <StopIcon sx={{ fontSize: 18 }} />
+                    </IconButton>
+                  </Tooltip>
+                </Can>
               </>
             )}
           </Stack>
@@ -289,9 +289,25 @@ export default function AppsListPage() {
         row styling, the empty state and the loading placeholders are the
         design system's, so this page describes its COLUMNS and nothing else.
       */}
+      <FilterToolbar
+        filters={[
+          { key: 'search', type: 'search', label: 'Search applications', placeholder: 'Application or stack…' },
+          {
+            key: 'status',
+            type: 'select',
+            label: 'All statuses',
+            options: [...new Set(apps.map((app) => app.status))].map((status) => ({ value: status, label: status })),
+          },
+        ]}
+        values={filters}
+        onChange={setFilters}
+        total={visibleApps.length}
+      />
       <Table<IProjectAppStatus>
+        scrollLabel="Applications"
+        sx={{ minWidth: 800 }}
         columns={columns}
-        data={apps}
+        data={visibleApps}
         rowKey={(app) => `${app.stack}/${app.name}`}
         loading={loading}
         loadingRows={3}
@@ -299,28 +315,20 @@ export default function AppsListPage() {
         emptyContent={
           <Stack spacing={1} sx={{ alignItems: 'center' }}>
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              No applications deployed yet.
+              {apps.length ? 'No applications match these filters.' : 'No applications deployed yet.'}
             </Typography>
             <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-              Use <code>omnitron deploy</code> to get started.
+              {apps.length ? (
+                'Change or reset the filters to see more applications.'
+              ) : (
+                <>
+                  Use <code>omnitron deploy</code> to get started.
+                </>
+              )}
             </Typography>
           </Stack>
         }
       />
-      <Typography
-        variant="caption"
-        sx={{
-          color: "text.disabled",
-          mt: 1,
-          display: 'block'
-        }}>
-        <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
-          <Chip label="online" size="small" color="success" variant="outlined" />
-          <Chip label="stopped" size="small" color="default" variant="outlined" />
-          <Chip label="errored" size="small" color="error" variant="outlined" />
-          <Chip label="starting" size="small" color="warning" variant="outlined" />
-        </Stack>
-      </Typography>
     </Stack>
   );
 }

@@ -391,7 +391,7 @@ export default function TopologyPage() {
           flex: 1,
           minHeight: 0,
           overflow: 'hidden',
-          bgcolor: '#0a0a0f',
+          bgcolor: 'background.default',
           position: 'relative',
         }}
       >
@@ -665,24 +665,8 @@ export default function TopologyPage() {
             contextMenu ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined
           }
           slotProps={{
-            paper: {
-              sx: {
-                bgcolor: 'rgba(15, 15, 25, 0.95)',
-                backdropFilter: 'blur(12px)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                color: '#e2e8f0',
-                minWidth: 180,
-                '& .MuiMenuItem-root': {
-                  fontSize: 13,
-                  py: 0.75,
-                  '&:hover': { bgcolor: 'rgba(255,255,255,0.06)' },
-                },
-                '& .MuiListItemIcon-root': {
-                  minWidth: 32,
-                  color: '#94a3b8',
-                },
-              },
-            },
+            paper: { sx: { minWidth: 180 } },
+            list: { 'aria-label': 'Application actions' },
           }}
         >
           <MenuItem onClick={() => handleContextMenuAction('inspect')}>
@@ -691,7 +675,7 @@ export default function TopologyPage() {
           </MenuItem>
 
           {localMenuApp && [
-            <Divider key="div-1" sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />,
+            <Divider key="div-1" sx={{ borderColor: 'divider' }} />,
 
             localMenuApp.status === 'online' ? (
               <MenuItem key="restart" onClick={() => handleContextMenuAction('restart')}>
@@ -702,21 +686,21 @@ export default function TopologyPage() {
 
             localMenuApp.status === 'online' ? (
               <MenuItem key="stop" onClick={() => handleContextMenuAction('stop')}>
-                <ListItemIcon><StopIcon sx={{ fontSize: 18, color: '#ef4444' }} /></ListItemIcon>
-                <ListItemText sx={{ '& .MuiTypography-root': { color: '#ef4444' } }}>Stop</ListItemText>
+                <ListItemIcon><StopIcon sx={{ fontSize: 18, color: 'error.main' }} /></ListItemIcon>
+                <ListItemText sx={{ '& .MuiTypography-root': { color: 'error.main' } }}>Stop</ListItemText>
               </MenuItem>
             ) : null,
 
             localMenuApp.status !== 'online' ? (
               <MenuItem key="start" onClick={() => handleContextMenuAction('start')}>
-                <ListItemIcon><PlayIcon sx={{ fontSize: 18, color: '#22c55e' }} /></ListItemIcon>
-                <ListItemText sx={{ '& .MuiTypography-root': { color: '#22c55e' } }}>Start</ListItemText>
+                <ListItemIcon><PlayIcon sx={{ fontSize: 18, color: 'success.main' }} /></ListItemIcon>
+                <ListItemText sx={{ '& .MuiTypography-root': { color: 'success.main' } }}>Start</ListItemText>
               </MenuItem>
             ) : null,
           ]}
 
           {menuApp && [
-            <Divider key="div-2" sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />,
+            <Divider key="div-2" sx={{ borderColor: 'divider' }} />,
 
             <MenuItem key="logs" onClick={() => handleContextMenuAction('logs')}>
               <ListItemIcon><LogsIcon sx={{ fontSize: 18 }} /></ListItemIcon>

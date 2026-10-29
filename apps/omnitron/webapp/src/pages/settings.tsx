@@ -68,6 +68,8 @@ function InfoRow({ label, value, mono }: { label: string; value: React.ReactNode
       sx={{
         justifyContent: "space-between",
         alignItems: "center",
+        gap: 2,
+        minWidth: 0,
         py: 0.5
       }}>
       <Typography variant="body2" sx={{
@@ -82,6 +84,7 @@ function InfoRow({ label, value, mono }: { label: string; value: React.ReactNode
         variant="body2"
         sx={{
           fontWeight: 600,
+          minWidth: 0, overflowWrap: 'anywhere', textAlign: 'right',
           ...(mono && { fontFamily: 'monospace', fontSize: '0.8rem' }),
         }}>
         {value}
@@ -306,6 +309,8 @@ function SessionsSection() {
         three layouts the reader saw flash past in sequence.
       */}
       <Table<OmnitronActiveSession>
+        scrollLabel="Active sessions"
+        sx={{ minWidth: 560 }}
         columns={sessionColumns}
         data={sessions}
         rowKey={(session) => session.id}
@@ -391,7 +396,7 @@ function NotificationsSection() {
                 display: 'block'
               }}>Only receive notifications at or above this level</Typography>
             <FormControl size="small" fullWidth>
-              <Select value={alertSeverity} onChange={(e) => { setAlertSeverity(e.target.value); writeStored(LS_ALERT_SEVERITY, e.target.value); }}>
+              <Select inputProps={{ 'aria-label': 'Minimum alert severity' }} value={alertSeverity} onChange={(e) => { setAlertSeverity(e.target.value); writeStored(LS_ALERT_SEVERITY, e.target.value); }}>
                 {ALERT_SEVERITIES.map((s) => (
                   <MenuItem key={s} value={s} sx={{ textTransform: 'capitalize' }}>
                     {s}

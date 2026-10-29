@@ -208,7 +208,7 @@ export default function ReleasesPage() {
       header: 'Gates',
       render: (r) => (
         <Stack spacing={0.5}>
-          <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+          <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
             <GateCount release={r} />
             {r.machine && ranLoaded(r.machine) && (
               <Tooltip
@@ -297,7 +297,7 @@ export default function ReleasesPage() {
       <Breadcrumbs
         links={[{ name: 'Releases' }]}
         action={
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
             <IconButton size="small" onClick={() => void refresh()} title="Refresh">
               <RefreshIcon />
             </IconButton>
@@ -360,8 +360,8 @@ export default function ReleasesPage() {
         </Stack>
       )}
 
-      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
-        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
+      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
           {data?.root ?? ''}
         </Typography>
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
@@ -380,6 +380,8 @@ export default function ReleasesPage() {
       </Stack>
 
       <AdminDataTable<ReleaseSummary>
+        minWidth={640}
+        scrollLabel="Releases"
         columns={columns}
         data={pageRows}
         total={rows.length}

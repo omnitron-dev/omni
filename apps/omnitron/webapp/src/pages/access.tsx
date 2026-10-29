@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
   Alert,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
   Box,
   Button,
   Card,
@@ -19,6 +22,10 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import { TableViewport } from '@omnitron-dev/prism/components/table';
+import { SearchInput } from '@omnitron-dev/prism/components/search-input';
+import { ChevronRightIcon } from 'src/assets/icons';
+import { RowActions } from 'src/components/row-actions';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import type { ConsoleAccount, ConsoleRole } from '@omnitron-dev/omnitron/dto/services';
 import { consolePasswordError } from '@omnitron-dev/omnitron/dto/services';
@@ -79,7 +86,7 @@ export default function AccessPage() {
     snapshot?.capabilities.filter((c) => `${c.service}.${c.method}`.toLowerCase().includes(query.toLowerCase())) ?? [];
   return (
     <Box>
-      <Breadcrumbs heading="Access" links={[{ name: 'System' }, { name: 'Access' }]} />
+      <Breadcrumbs heading="Access" links={[{ name: 'System' }, { name: 'Access' }]} sx={{ mb: 2 }} />
       <Typography color="text.secondary" sx={{ mb: 2 }}>
         Your role: <strong>{snapshot?.role}</strong>. Permissions below come from this daemon’s active RPC policy.
       </Typography>
@@ -88,20 +95,29 @@ export default function AccessPage() {
           {error || listError}
         </Alert>
       )}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2, mb: 3 }}>
-        {snapshot?.roles.map((r) => (
-          <Card key={r.role} sx={{ p: 2 }}>
-            <Typography variant="h6">{r.label}</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {r.description}
-            </Typography>
-          </Card>
-        ))}
+      <Box sx={{ mb: 3 }}>
+        <Accordion>
+          <AccordionSummary expandIcon={<ChevronRightIcon sx={{ transform: 'rotate(90deg)' }} />}>
+            <Typography variant="subtitle2">Role definitions</Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
+              {snapshot?.roles.map((r) => (
+                <Box key={r.role}>
+                  <Typography variant="subtitle1">{r.label}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {r.description}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          </AccordionDetails>
+        </Accordion>
       </Box>
       {can('OmnitronAccess.listUsers') && (
         <Card sx={{ p: 2, mb: 3 }}>
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1 }}>
-            <Typography variant="h6" sx={{ flex: 1 }}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: 1 }}>
+            <Typography variant="subtitle1" sx={{ flex: '1 1 180px' }}>
               Console accounts
             </Typography>
             <Button onClick={() => void refresh()}>Refresh</Button>
@@ -116,8 +132,8 @@ export default function AccessPage() {
           {!secure && (
             <Alert severity="warning">Use HTTPS to create accounts. Local loopback development is allowed.</Alert>
           )}
-          <Box sx={{ overflowX: 'auto' }}>
-            <Table size="small">
+          <TableViewport label="Console accounts">
+            <Table size="small" sx={{ minWidth: 520 }}>
               <TableHead>
                 <TableRow>
                   <TableCell>Account</TableCell>
@@ -143,31 +159,34 @@ export default function AccessPage() {
                     </TableCell>
                     <TableCell>{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'Never'}</TableCell>
                     <TableCell align="right">
-                      <Button
-                        size="small"
-                        disabled={busy || u.id === snapshot?.userId || !can('OmnitronAccess.setRole')}
-                        onClick={() => {
-                          setRole(u.role === 'admin' || u.role === 'operator' ? u.role : 'viewer');
-                          setEditing(u);
-                        }}
-                      >
-                        Change role
-                      </Button>
-                      <Button
-                        size="small"
-                        color="warning"
-                        disabled={busy || !can('OmnitronAccess.revokeSessions')}
-                        onClick={() => setRevoking(u)}
-                      >
-                        Revoke sessions
-                      </Button>
+                      <RowActions
+                        label={`Actions for ${u.username}`}
+                        actions={[
+                          {
+                            id: 'role',
+                            label: 'Change role',
+                            disabled: busy || u.id === snapshot?.userId || !can('OmnitronAccess.setRole'),
+                            onClick: () => {
+                              setRole(u.role === 'admin' || u.role === 'operator' ? u.role : 'viewer');
+                              setEditing(u);
+                            },
+                          },
+                          {
+                            id: 'revoke',
+                            label: 'Revoke sessions',
+                            color: 'warning',
+                            disabled: busy || !can('OmnitronAccess.revokeSessions'),
+                            onClick: () => setRevoking(u),
+                          },
+                        ]}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
-          </Box>
-          <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+          </TableViewport>
+          <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap' }}>
             <Button disabled={!after} onClick={() => setAfter(undefined)}>
               First page
             </Button>
@@ -182,45 +201,52 @@ export default function AccessPage() {
         </Card>
       )}
       <Card sx={{ p: 2 }}>
-        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" sx={{ flex: 1 }}>
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: 2 }}>
+          <Typography variant="subtitle1" sx={{ flex: '1 1 180px' }}>
             Effective permissions
           </Typography>
-          <TextField
-            size="small"
-            label="Filter service or method"
+          <SearchInput
+            aria-label="Filter service or method"
+            placeholder="Service or method…"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={setQuery}
+            sx={{ flex: '1 1 240px', minWidth: 0 }}
           />
         </Stack>
-        <Box sx={{ maxHeight: 560, overflow: 'auto' }}>
-          <Table stickyHeader size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Service / method</TableCell>
-                <TableCell>Declared roles</TableCell>
-                <TableCell>Your access</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {visible.map((c) => (
-                <TableRow key={`${c.service}.${c.method}`}>
-                  <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>
-                    {c.service}.{c.method}
-                  </TableCell>
-                  <TableCell>{c.roles.join(', ') || (c.anonymous ? 'Anonymous' : 'Authenticated')}</TableCell>
-                  <TableCell>
-                    <Chip
-                      size="small"
-                      color={c.allowed ? 'success' : 'default'}
-                      label={c.conditional ? 'Conditional' : c.allowed ? 'Allowed' : 'Denied'}
-                    />
-                  </TableCell>
+        {visible.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>
+            No permissions match this filter.
+          </Typography>
+        ) : (
+          <TableViewport label="Effective permissions" maxHeight={560}>
+            <Table stickyHeader size="small" sx={{ minWidth: 620 }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Service / method</TableCell>
+                  <TableCell>Declared roles</TableCell>
+                  <TableCell>Your access</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Box>
+              </TableHead>
+              <TableBody>
+                {visible.map((c) => (
+                  <TableRow key={`${c.service}.${c.method}`}>
+                    <TableCell sx={{ fontFamily: 'monospace', fontSize: 12 }}>
+                      {c.service}.{c.method}
+                    </TableCell>
+                    <TableCell>{c.roles.join(', ') || (c.anonymous ? 'Anonymous' : 'Authenticated')}</TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        color={c.allowed ? 'success' : 'default'}
+                        label={c.conditional ? 'Conditional' : c.allowed ? 'Allowed' : 'Denied'}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableViewport>
+        )}
         <Typography variant="caption" color="text.secondary">
           Resource ownership, session validity and other contextual checks still apply when an action runs. Application
           roles are managed by the application.

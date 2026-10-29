@@ -37,6 +37,7 @@ export default defineConfig({
       '@omnitron-dev/prism/components/navigation-progress': path.resolve(import.meta.dirname, '../../packages/prism/src/components/navigation-progress/index.ts'),
       '@omnitron-dev/prism/components/page-content': path.resolve(import.meta.dirname, '../../packages/prism/src/components/page-content/index.ts'),
       '@omnitron-dev/prism/components/popover': path.resolve(import.meta.dirname, '../../packages/prism/src/components/popover/index.ts'),
+      '@omnitron-dev/prism/components/search-input': path.resolve(import.meta.dirname, '../../packages/prism/src/components/search-input/index.ts'),
       '@omnitron-dev/prism/components/scroll-to-top': path.resolve(import.meta.dirname, '../../packages/prism/src/components/scroll-to-top/index.ts'),
       '@omnitron-dev/prism/components/skeleton': path.resolve(import.meta.dirname, '../../packages/prism/src/components/skeleton/index.ts'),
       '@omnitron-dev/prism/components/snackbar': path.resolve(import.meta.dirname, '../../packages/prism/src/components/snackbar/index.ts'),

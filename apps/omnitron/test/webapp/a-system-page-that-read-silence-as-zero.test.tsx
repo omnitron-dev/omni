@@ -10,6 +10,7 @@
  * `unanswered`, and is served with its age while the next is collected.
  */
 
+import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
@@ -22,8 +23,25 @@ const snapshot = {
     cpu: 'did not answer within 2000 ms (asked 2 s ago, still out)',
     docker: 'did not answer within 2000 ms (asked 2 s ago, still out)',
   },
-  os: { platform: 'darwin', distro: 'macOS', release: '26.4', kernel: '25.4.0', arch: 'arm64', hostname: 'master', uptime: 1 },
-  cpu: { manufacturer: '', brand: '', cores: 0, physicalCores: 0, speed: 0, currentLoad: 0, loadPerCore: [], temperature: null },
+  os: {
+    platform: 'darwin',
+    distro: 'macOS',
+    release: '26.4',
+    kernel: '25.4.0',
+    arch: 'arm64',
+    hostname: 'master',
+    uptime: 1,
+  },
+  cpu: {
+    manufacturer: '',
+    brand: '',
+    cores: 0,
+    physicalCores: 0,
+    speed: 0,
+    currentLoad: 0,
+    loadPerCore: [],
+    temperature: null,
+  },
   memory: { total: 100, used: 90, free: 10, available: 40, committed: 60, usedPercent: 60, swapTotal: 0, swapUsed: 0 },
   disks: [],
   network: { interfaces: [], rxSec: 0, txSec: 0 },
@@ -47,8 +65,10 @@ describe('a system page that read silence as zero', () => {
     const { default: SystemInfoPage } = await import('../../webapp/src/pages/system-info.js');
     render(
       <ThemeProvider theme={createTheme()}>
-        <SystemInfoPage />
-      </ThemeProvider>,
+        <MemoryRouter>
+          <SystemInfoPage />
+        </MemoryRouter>
+      </ThemeProvider>
     );
 
     expect(await screen.findByText('Docker')).toBeInTheDocument();

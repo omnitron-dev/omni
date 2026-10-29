@@ -15,6 +15,7 @@ import { CommandPalette } from 'src/components/command-palette';
 import { DaemonOfflineBanner } from 'src/components/daemon-offline-banner';
 import { useProjectStore } from 'src/stores/project.store';
 import { reportCrash } from 'src/utils/report-crash';
+import { consoleTheme } from 'src/theme';
 
 function AppContent() {
   const { pathname } = useLocation();
@@ -44,6 +45,7 @@ function AppContent() {
 export function App() {
   return (
     <PrismProvider
+      themeOverrides={consoleTheme}
       defaultSettings={{
         mode: 'dark',
         preset: 'midnight',

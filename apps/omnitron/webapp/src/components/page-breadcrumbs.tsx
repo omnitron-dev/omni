@@ -10,6 +10,7 @@ export function Breadcrumbs({
   backHref,
   sx,
   active = true,
+  action,
   ...props
 }: BreadcrumbsProps & { active?: boolean }) {
   const title = heading || links.at(-1)?.name || 'Console';
@@ -44,6 +45,11 @@ export function Breadcrumbs({
         {...props}
         links={navigation}
         linkComponent={Link}
+        action={
+          action ? (
+            <Box sx={{ minWidth: 0, maxWidth: '100%', '& > .MuiStack-root': { flexWrap: 'wrap' } }}>{action}</Box>
+          ) : undefined
+        }
         sx={[
           {
             minWidth: 0,

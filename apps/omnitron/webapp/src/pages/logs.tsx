@@ -2,7 +2,7 @@
  * Logs Page — Production-grade streaming log viewer.
  *
  * Terminal-style dark log viewer with rich filtering, live streaming,
- * expandable row detail, virtualized rendering, and level-based stats.
+ * expandable row detail, a bounded live buffer, and level-based stats.
  *
  * This is the most-used page in the Omnitron Console.
  */
@@ -23,7 +23,7 @@ import Collapse from '@mui/material/Collapse';
 import Fab from '@mui/material/Fab';
 import Badge from '@mui/material/Badge';
 import InputAdornment from '@mui/material/InputAdornment';
-import { alpha, keyframes } from '@mui/material/styles';
+import { alpha, keyframes, useTheme, type Theme } from '@mui/material/styles';
 
 import { SearchIcon, RefreshIcon, PlayIcon, StopIcon, CloseIcon, TerminalIcon } from 'src/assets/icons';
 import { Alert } from '@omnitron-dev/prism/components/alert';
@@ -31,7 +31,6 @@ import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { useCopyToClipboard } from '@omnitron-dev/prism/core';
 import { logs, daemon, nodes as nodesRpc } from 'src/netron/client';
-import { LEVEL_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { logCommand } from 'src/utils/log-location';
 
@@ -154,10 +153,17 @@ interface LogRowProps {
   nodeNames?: Record<string, string>;
 }
 
+function logLevelColor(level: string, theme: Theme): string {
+  const tones = { info: 'info', warn: 'warning', error: 'error', fatal: 'error' } as const;
+  const tone = tones[level as keyof typeof tones];
+  return tone ? theme.palette[tone][theme.palette.mode === 'light' ? 'dark' : 'light'] : theme.palette.text.secondary;
+}
+
 function LogRow({ log, isNew, nodeNames }: LogRowProps) {
+  const theme = useTheme();
   const [expanded, setExpanded] = useState(false);
 
-  const levelColor = LEVEL_COLORS[log.level] ?? '#6b7280';
+  const levelColor = logLevelColor(log.level, theme);
   const rowBg = LEVEL_ROW_BG[log.level] ?? 'transparent';
 
   // `nodeId` counts as detail. A line the master collected itself has none;
@@ -169,21 +175,32 @@ function LogRow({ log, isNew, nodeNames }: LogRowProps) {
   return (
     <>
       <Box
-        onClick={() => hasDetail && setExpanded((v) => !v)}
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        aria-label={`${formatTimePrecise(log.timestamp)} ${log.app} ${log.level}: ${log.message}`}
+        onClick={() => setExpanded((v) => !v)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setExpanded((value) => !value);
+          }
+        }}
         sx={{
           display: 'grid',
-          gridTemplateColumns: '90px 72px 36px 1fr',
+          gridTemplateColumns: { xs: '90px minmax(0, 1fr) 36px', sm: '90px 120px 36px minmax(0, 1fr)' },
           gap: 1,
           alignItems: 'baseline',
           px: 1.5,
           py: '3px',
-          bgcolor: expanded ? 'rgba(255,255,255,0.04)' : rowBg,
+          bgcolor: expanded ? 'action.hover' : rowBg,
           borderLeft: `2px solid ${expanded ? levelColor : 'transparent'}`,
-          cursor: hasDetail ? 'pointer' : 'default',
+          cursor: 'pointer',
+          '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 },
           transition: 'background-color 0.15s ease',
           animation: isNew ? `${slideIn} 0.3s ease-out` : undefined,
           '&:hover': {
-            bgcolor: 'rgba(255,255,255,0.04)',
+            bgcolor: 'action.hover',
           },
         }}
       >
@@ -194,7 +211,7 @@ function LogRow({ log, isNew, nodeNames }: LogRowProps) {
             sx={{
               fontFamily: MONO,
               fontSize: 11,
-              color: '#7c8493',
+              color: 'text.secondary',
               lineHeight: '20px',
               whiteSpace: 'nowrap',
               letterSpacing: '-0.02em',
@@ -210,7 +227,7 @@ function LogRow({ log, isNew, nodeNames }: LogRowProps) {
           sx={{
             fontFamily: MONO,
             fontSize: 11,
-            color: '#58a6ff',
+            color: theme.palette.info[theme.palette.mode === 'light' ? 'dark' : 'light'],
             lineHeight: '20px',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
@@ -243,7 +260,9 @@ function LogRow({ log, isNew, nodeNames }: LogRowProps) {
           sx={{
             fontFamily: MONO,
             fontSize: 11.5,
-            color: log.level === 'error' || log.level === 'fatal' ? '#fca5a5' : '#c9d1d9',
+            color: log.level === 'error' || log.level === 'fatal' ? levelColor : 'text.primary',
+            gridColumn: { xs: '1 / -1', sm: 'auto' },
+            minWidth: 0,
             lineHeight: '20px',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -256,14 +275,14 @@ function LogRow({ log, isNew, nodeNames }: LogRowProps) {
       </Box>
 
       {/* Expanded detail */}
-      <Collapse in={expanded} unmountOnExit>
+      {hasDetail && <Collapse in={expanded} unmountOnExit>
         <Box
           sx={{
             ml: '14px',
             mr: 1.5,
             mb: 0.5,
             p: 1.5,
-            bgcolor: 'rgba(255,255,255,0.025)',
+            bgcolor: 'action.hover',
             borderRadius: 1,
             borderLeft: `2px solid ${alpha(levelColor, 0.3)}`,
           }}
@@ -273,7 +292,7 @@ function LogRow({ log, isNew, nodeNames }: LogRowProps) {
             sx={{
               fontFamily: MONO,
               fontSize: 11,
-              color: '#8b949e',
+              color: 'text.secondary',
               m: 0,
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-all',
@@ -282,46 +301,46 @@ function LogRow({ log, isNew, nodeNames }: LogRowProps) {
           >
             {log.nodeId && (
               <span>
-                <span style={{ color: '#7c8493' }}>node:    </span>
-                <span style={{ color: '#58a6ff' }}>{nodeNames?.[log.nodeId] ?? log.nodeId}</span>
+                <Box component="span" sx={{ color: 'text.secondary' }}>node:    </Box>
+                <Box component="span" sx={{ color: theme.palette.info[theme.palette.mode === 'light' ? 'dark' : 'light'] }}>{nodeNames?.[log.nodeId] ?? log.nodeId}</Box>
                 {'\n'}
               </span>
             )}
             {log.traceId && (
               <span>
-                <span style={{ color: '#7c8493' }}>traceId: </span>
-                <span style={{ color: '#d2a8ff' }}>{log.traceId}</span>
+                <Box component="span" sx={{ color: 'text.secondary' }}>traceId: </Box>
+                <Box component="span" sx={{ color: theme.palette.secondary[theme.palette.mode === 'light' ? 'dark' : 'light'] }}>{log.traceId}</Box>
                 {'\n'}
               </span>
             )}
             {log.spanId && (
               <span>
-                <span style={{ color: '#7c8493' }}>spanId:  </span>
-                <span style={{ color: '#d2a8ff' }}>{log.spanId}</span>
+                <Box component="span" sx={{ color: 'text.secondary' }}>spanId:  </Box>
+                <Box component="span" sx={{ color: theme.palette.secondary[theme.palette.mode === 'light' ? 'dark' : 'light'] }}>{log.spanId}</Box>
                 {'\n'}
               </span>
             )}
             {log.labels && (
               <span>
-                <span style={{ color: '#7c8493' }}>labels:  </span>
-                <span style={{ color: '#7ee787' }}>
+                <Box component="span" sx={{ color: 'text.secondary' }}>labels:  </Box>
+                <Box component="span" sx={{ color: theme.palette.success[theme.palette.mode === 'light' ? 'dark' : 'light'] }}>
                   {JSON.stringify(log.labels, null, 2)}
-                </span>
+                </Box>
                 {'\n'}
               </span>
             )}
             {log.metadata && (
               <span>
-                <span style={{ color: '#7c8493' }}>metadata:</span>
+                <Box component="span" sx={{ color: 'text.secondary' }}>metadata:</Box>
                 {'\n'}
-                <span style={{ color: '#e6edf3' }}>
+                <Box component="span" sx={{ color: 'text.primary' }}>
                   {JSON.stringify(log.metadata, null, 2)}
-                </span>
+                </Box>
               </span>
             )}
           </Box>
         </Box>
-      </Collapse>
+      </Collapse>}
     </>
   );
 }
@@ -331,6 +350,7 @@ function LogRow({ log, isNew, nodeNames }: LogRowProps) {
 // =============================================================================
 
 export default function LogsPage() {
+  const theme = useTheme();
   const { activeProject, namespacePrefix, filterApps, displayName } = useStackContext();
   const daemonMode = !activeProject;
   const [params, setParams] = useSearchParams();
@@ -358,6 +378,7 @@ export default function LogsPage() {
   const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [labelInput, setLabelInput] = useState('');
   const [timeRangeKey, setTimeRangeKey] = useState<TimeRangeKey>('live');
   const [customFrom, setCustomFrom] = useState('');
@@ -798,22 +819,21 @@ export default function LogsPage() {
   // ==========================================================================
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, minWidth: 0 }}>
       {/* ================================================================== */}
       {/* Filter Bar — glass-morphism header                                 */}
       {/* ================================================================== */}
       <Box
         sx={{
-          position: 'sticky',
-          top: 0,
+          position: 'relative',
+          flexShrink: 0,
           zIndex: 10,
           mb: 2,
-          p: 2,
+          p: { xs: 1.5, sm: 2 },
           borderRadius: 2,
-          bgcolor: alpha('#0a0a0f', 0.85),
-          backdropFilter: 'blur(16px)',
+          bgcolor: 'background.paper',
           border: '1px solid',
-          borderColor: alpha('#fff', 0.06),
+          borderColor: 'divider',
         }}
       >
         {/* Row 1: Title + controls */}
@@ -822,7 +842,7 @@ export default function LogsPage() {
           sx={{ mb: 1.5 }}
           action={
             <Stack direction="row" spacing={0.5} sx={{
-              alignItems: "center"
+              alignItems: "center", flexWrap: 'wrap'
             }}>
               {isLive && (
                 <Chip
@@ -835,7 +855,7 @@ export default function LogsPage() {
                     fontFamily: MONO,
                     letterSpacing: '0.08em',
                     bgcolor: paused ? alpha('#f59e0b', 0.15) : alpha('#22c55e', 0.15),
-                    color: paused ? '#f59e0b' : '#22c55e',
+                    color: theme.palette[paused ? 'warning' : 'success'][theme.palette.mode === 'light' ? 'dark' : 'light'],
                     animation: !paused ? `${pulse} 2s ease-in-out infinite` : undefined,
                     border: '1px solid',
                     borderColor: paused ? alpha('#f59e0b', 0.3) : alpha('#22c55e', 0.3),
@@ -844,7 +864,7 @@ export default function LogsPage() {
               )}
               {isLive && (
                 <Tooltip title={paused ? 'Resume streaming' : 'Pause streaming'}>
-                  <IconButton size="small" onClick={() => setPaused((v) => !v)} sx={{ color: paused ? '#f59e0b' : '#22c55e' }}>
+                  <IconButton size="small" onClick={() => setPaused((v) => !v)} sx={{ color: theme.palette[paused ? 'warning' : 'success'][theme.palette.mode === 'light' ? 'dark' : 'light'] }}>
                     {paused ? <PlayIcon /> : <StopIcon />}
                   </IconButton>
                 </Tooltip>
@@ -865,7 +885,7 @@ export default function LogsPage() {
               </Tooltip>
               {hasActiveFilters && (
                 <Tooltip title="Clear all filters">
-                  <IconButton size="small" onClick={clearFilters} sx={{ color: '#ef4444' }}>
+                  <IconButton size="small" onClick={clearFilters} sx={{ color: 'error.main' }}>
                     <CloseIcon />
                   </IconButton>
                 </Tooltip>
@@ -890,7 +910,7 @@ export default function LogsPage() {
               value={app}
               onChange={(e) => setApp(e.target.value)}
               sx={{
-                minWidth: 150,
+                minWidth: 0, flex: '1 1 160px',
                 '& .MuiInputBase-root': { fontFamily: MONO, fontSize: 12 },
                 '& .MuiInputLabel-root': { fontSize: 12 },
               }}
@@ -914,7 +934,7 @@ export default function LogsPage() {
               value={nodeFilter}
               onChange={(e) => setNodeFilter(e.target.value)}
               sx={{
-                minWidth: 140,
+                minWidth: 0, flex: '1 1 150px',
                 '& .MuiInputBase-root': { fontFamily: MONO, fontSize: 12 },
                 '& .MuiInputLabel-root': { fontSize: 12 },
               }}
@@ -933,34 +953,34 @@ export default function LogsPage() {
           <TextField
             size="small"
             placeholder="Search messages..."
+            label="Search messages"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             slotProps={{
               input: {
                 startAdornment: (
                   <InputAdornment position="start">
-                    <SearchIcon sx={{ fontSize: 16, color: '#7c8493' }} />
+                    <SearchIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
                   </InputAdornment>
                 ),
               },
             }}
             sx={{
-              flex: 1,
-              minWidth: 200,
+              flex: '2 1 220px',
+              minWidth: 0,
               '& .MuiInputBase-root': { fontFamily: MONO, fontSize: 12 },
             }}
           />
 
-            <TextField
-              size="small"
-              placeholder="Labels: key=val, key2=val2"
-              value={labelInput}
-              onChange={(e) => setLabelInput(e.target.value)}
-              sx={{
-                minWidth: 200,
-                '& .MuiInputBase-root': { fontFamily: MONO, fontSize: 12 },
-              }}
-            />
+          <Button
+            size="small"
+            aria-expanded={filtersOpen}
+            aria-controls="log-filter-options"
+            variant={filtersOpen ? 'outlined' : 'text'}
+            onClick={() => setFiltersOpen((open) => !open)}
+          >
+            Filters{(selectedLevels.length > 0 || labelInput || timeRangeKey !== 'live') ? ` · ${Number(selectedLevels.length > 0) + Number(!!labelInput) + Number(timeRangeKey !== 'live')}` : ''}
+          </Button>
         </Stack>
 
         {nodeFilter && (
@@ -968,8 +988,22 @@ export default function LogsPage() {
             Replicated logs from {nodeNameById[nodeFilter] ?? nodeFilter}. An empty result does not prove that an operation was not attempted.
           </Typography>
         )}
+        <Collapse in={filtersOpen} id="log-filter-options">
+          <Box sx={{ pt: 1, pb: 1.5 }}>
+            <TextField
+              size="small"
+              placeholder="key=val, key2=val2"
+              label="Labels"
+              value={labelInput}
+              onChange={(e) => setLabelInput(e.target.value)}
+              sx={{
+                width: '100%', maxWidth: 480, minWidth: 0,
+                '& .MuiInputBase-root': { fontFamily: MONO, fontSize: 12 },
+              }}
+            />
+          </Box>
         {app && (
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 1, minWidth: 0 }}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: 1, minWidth: 0 }}>
             <Typography component="code" variant="caption" sx={{ fontFamily: MONO, overflowWrap: 'anywhere' }}>
               {logCommand(app, nodeFilter)}
             </Typography>
@@ -990,11 +1024,11 @@ export default function LogsPage() {
           }}>
           {/* Level chips */}
           <Stack direction="row" spacing={0.5} sx={{
-            alignItems: "center"
+            alignItems: "center", flexWrap: 'wrap'
           }}>
             {LEVELS.map((level) => {
               const active = selectedLevels.includes(level);
-              const color = LEVEL_COLORS[level] ?? '#6b7280';
+              const color = logLevelColor(level, theme);
               return (
                 <Chip
                   key={level}
@@ -1017,6 +1051,7 @@ export default function LogsPage() {
                     </Stack>
                   }
                   variant={active ? 'filled' : 'outlined'}
+                  aria-pressed={active}
                   onClick={() => toggleLevel(level)}
                   sx={{
                     fontFamily: MONO,
@@ -1026,8 +1061,8 @@ export default function LogsPage() {
                     letterSpacing: '0.04em',
                     height: 24,
                     borderColor: active ? color : alpha(color, 0.3),
-                    color: active ? '#fff' : color,
-                    bgcolor: active ? alpha(color, 0.8) : 'transparent',
+                    color: active ? theme.palette.getContrastText(color) : color,
+                    bgcolor: active ? color : 'transparent',
                     '&:hover': {
                       bgcolor: active ? alpha(color, 0.9) : alpha(color, 0.12),
                     },
@@ -1039,15 +1074,16 @@ export default function LogsPage() {
           </Stack>
 
           {/* Divider */}
-          <Box sx={{ width: 1, height: 20, bgcolor: alpha('#fff', 0.08), mx: 0.5 }} />
+          <Box sx={{ width: '1px', height: 20, bgcolor: 'text.disabled', mx: 0.5 }} />
 
           {/* Time range */}
-          <ButtonGroup size="small" variant="outlined" sx={{ height: 28 }}>
+          <ButtonGroup size="small" variant="outlined" sx={{ flexWrap: 'wrap', maxWidth: '100%', rowGap: 0.5 }}>
             {TIME_RANGES.map((range) => {
               const active = timeRangeKey === range.key;
               return (
                 <Button
                   key={range.key}
+                  aria-pressed={active}
                   onClick={() => setTimeRangeKey(range.key)}
                   variant={active ? 'contained' : 'outlined'}
                   sx={{
@@ -1059,7 +1095,7 @@ export default function LogsPage() {
                     ...(range.key === 'live' && active
                       ? {
                           bgcolor: alpha('#22c55e', 0.2),
-                          color: '#22c55e',
+                          color: theme.palette.success[theme.palette.mode === 'light' ? 'dark' : 'light'],
                           borderColor: alpha('#22c55e', 0.4),
                           '&:hover': { bgcolor: alpha('#22c55e', 0.3) },
                         }
@@ -1075,7 +1111,7 @@ export default function LogsPage() {
           {/* Custom date pickers */}
           {timeRangeKey === 'custom' && (
             <Stack direction="row" spacing={1} sx={{
-              alignItems: "center"
+              alignItems: "center", flexWrap: 'wrap'
             }}>
               <TextField
                 type="datetime-local"
@@ -1084,7 +1120,7 @@ export default function LogsPage() {
                 onChange={(e) => setCustomFrom(e.target.value)}
                 label="From"
                 sx={{
-                  width: 200,
+                  width: 200, maxWidth: '100%', minWidth: 0,
                   '& .MuiInputBase-root': { fontSize: 11, fontFamily: MONO },
                   '& .MuiInputLabel-root': { fontSize: 11 },
                 }}
@@ -1097,7 +1133,7 @@ export default function LogsPage() {
                 onChange={(e) => setCustomTo(e.target.value)}
                 label="To"
                 sx={{
-                  width: 200,
+                  width: 200, maxWidth: '100%', minWidth: 0,
                   '& .MuiInputBase-root': { fontSize: 11, fontFamily: MONO },
                   '& .MuiInputLabel-root': { fontSize: 11 },
                 }}
@@ -1106,6 +1142,7 @@ export default function LogsPage() {
             </Stack>
           )}
         </Stack>
+        </Collapse>
       </Box>
       {/* ================================================================== */}
       {/* Stats Bar                                                          */}
@@ -1115,15 +1152,16 @@ export default function LogsPage() {
         sx={{
           alignItems: "center",
           justifyContent: "space-between",
+          flexWrap: 'wrap', gap: 1,
           mb: 1,
           px: 0.5
         }}>
         <Stack direction="row" spacing={2} sx={{
-          alignItems: "center"
+          alignItems: "center", flexWrap: 'wrap'
         }}>
           <Typography
             variant="caption"
-            sx={{ fontFamily: MONO, fontSize: 11, color: '#7c8493' }}
+            sx={{ fontFamily: MONO, fontSize: 11, color: 'text.secondary' }}
           >
             {loading
               ? 'Loading...'
@@ -1134,9 +1172,9 @@ export default function LogsPage() {
 
           {!loading && levelBreakdown.length > 0 && (
             <Stack direction="row" spacing={1.5} sx={{
-              alignItems: "center"
+              alignItems: "center", flexWrap: 'wrap'
             }}>
-              <Box sx={{ width: 1, height: 12, bgcolor: alpha('#fff', 0.06) }} />
+              <Box sx={{ width: '1px', height: 12, bgcolor: 'divider' }} />
               {levelBreakdown.map((entry) => (
                 <Stack key={entry.level} direction="row" spacing={0.5} sx={{
                   alignItems: "center"
@@ -1146,7 +1184,7 @@ export default function LogsPage() {
                       width: 5,
                       height: 5,
                       borderRadius: '50%',
-                      bgcolor: LEVEL_COLORS[entry.level] ?? '#6b7280',
+                      bgcolor: logLevelColor(entry.level, theme),
                     }}
                   />
                   <Typography
@@ -1154,7 +1192,7 @@ export default function LogsPage() {
                     sx={{
                       fontFamily: MONO,
                       fontSize: 10,
-                      color: '#7c8493',
+                      color: 'text.secondary',
                     }}
                   >
                     {entry.level}: {entry.count.toLocaleString()}
@@ -1171,7 +1209,7 @@ export default function LogsPage() {
             sx={{
               fontFamily: MONO,
               fontSize: 10,
-              color: alpha('#22c55e', 0.6),
+              color: theme.palette.success[theme.palette.mode === 'light' ? 'dark' : 'light'],
               animation: `${pulse} 2s ease-in-out infinite`,
             }}
           >
@@ -1199,12 +1237,13 @@ export default function LogsPage() {
         sx={{
           position: 'relative',
           flex: 1,
-          minHeight: 400,
+          minHeight: 320,
+          flexShrink: 0,
           borderRadius: 2,
           overflow: 'hidden',
           border: '1px solid',
-          borderColor: alpha('#fff', 0.06),
-          bgcolor: '#0a0a0f',
+          borderColor: 'divider',
+          bgcolor: 'background.paper',
         }}
       >
         {/* Terminal title bar */}
@@ -1214,19 +1253,15 @@ export default function LogsPage() {
             alignItems: 'center',
             height: 32,
             px: 1.5,
-            bgcolor: alpha('#fff', 0.03),
+            bgcolor: 'action.hover',
             borderBottom: '1px solid',
-            borderColor: alpha('#fff', 0.05),
+            borderColor: 'divider',
           }}
         >
-          <Stack direction="row" spacing={0.5} sx={{ mr: 1.5 }}>
-            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#ef4444' }} />
-            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#f59e0b' }} />
-            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#22c55e' }} />
-          </Stack>
+          <TerminalIcon sx={{ fontSize: 16, color: 'text.secondary', mr: 1 }} />
           <Typography
             variant="caption"
-            sx={{ fontFamily: MONO, fontSize: 10, color: '#7c8493', letterSpacing: '0.04em' }}
+            sx={{ fontFamily: MONO, fontSize: 10, color: 'text.secondary', letterSpacing: '0.04em', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
           >
             {daemonMode ? 'omnitron-daemon' : 'omnitron-logs'}
             {app ? ` — ${app}` : ''}
@@ -1246,9 +1281,9 @@ export default function LogsPage() {
             '&::-webkit-scrollbar': { width: 6 },
             '&::-webkit-scrollbar-track': { bgcolor: 'transparent' },
             '&::-webkit-scrollbar-thumb': {
-              bgcolor: alpha('#fff', 0.1),
+              bgcolor: 'action.selected',
               borderRadius: 3,
-              '&:hover': { bgcolor: alpha('#fff', 0.2) },
+              '&:hover': { bgcolor: 'text.disabled' },
             },
           }}
         >
@@ -1259,7 +1294,7 @@ export default function LogsPage() {
                   key={i}
                   height={18}
                   sx={{
-                    bgcolor: alpha('#fff', 0.03),
+                    bgcolor: 'action.hover',
                     borderRadius: 0.5,
                     animationDuration: `${1.5 + (i % 5) * 0.2}s`,
                   }}
@@ -1274,12 +1309,12 @@ export default function LogsPage() {
                 height: '100%',
                 py: 8
               }}>
-              <TerminalIcon sx={{ fontSize: 40, color: alpha('#fff', 0.08), mb: 1.5 }} />
+              <TerminalIcon sx={{ fontSize: 40, color: 'text.disabled', mb: 1.5 }} />
               <Typography
                 sx={{
                   fontFamily: MONO,
                   fontSize: 12,
-                  color: '#7c8493',
+                  color: 'text.secondary',
                   textAlign: 'center',
                 }}
               >
@@ -1289,7 +1324,7 @@ export default function LogsPage() {
                 sx={{
                   fontFamily: MONO,
                   fontSize: 11,
-                  color: alpha('#fff', 0.15),
+                  color: 'text.secondary',
                   mt: 0.5,
                 }}
               >
@@ -1313,7 +1348,7 @@ export default function LogsPage() {
                     sx={{
                       fontFamily: MONO,
                       fontSize: 10,
-                      color: '#58a6ff',
+                      color: theme.palette.info[theme.palette.mode === 'light' ? 'dark' : 'light'],
                       textTransform: 'none',
                       '&:hover': { bgcolor: alpha('#58a6ff', 0.08) },
                     }}
@@ -1341,7 +1376,7 @@ export default function LogsPage() {
               top: 48,
               right: 16,
               bgcolor: alpha('#58a6ff', 0.15),
-              color: '#58a6ff',
+              color: theme.palette.info[theme.palette.mode === 'light' ? 'dark' : 'light'],
               backdropFilter: 'blur(8px)',
               border: '1px solid',
               borderColor: alpha('#58a6ff', 0.2),

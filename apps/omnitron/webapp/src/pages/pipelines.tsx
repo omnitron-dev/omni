@@ -425,6 +425,8 @@ export default function PipelinesPage() {
           component has no shape for.
         */}
         <AdminDataTable<Pipeline>
+          minWidth={640}
+        scrollLabel="Pipelines"
           columns={definitionColumns}
           data={definitionRows}
           total={pipelineList.length}
@@ -448,6 +450,8 @@ export default function PipelinesPage() {
           title="Run History"
         />
         <AdminDataTable<PipelineRun>
+          minWidth={640}
+        scrollLabel="Pipeline runs"
           columns={runColumns}
           data={runRows}
           total={runs.length}

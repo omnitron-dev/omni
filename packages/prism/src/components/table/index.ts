@@ -13,3 +13,4 @@ export {
   type UseTableOptions,
   type UseTableReturn,
 } from './table.js';
+export { TableViewport, type TableViewportProps } from './table-viewport.js';

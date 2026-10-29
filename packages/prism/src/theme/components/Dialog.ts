@@ -45,8 +45,8 @@ export function createDialogOverrides(config: ComponentsConfig): {
                   margin: 0,
                   width: '100%',
                   maxWidth: 'none',
-                  maxHeight: 'none',
-                  height: '100%',
+                  maxHeight: '100dvh',
+                  height: '100dvh',
                   borderRadius: 0,
                 },
               },
@@ -55,6 +55,7 @@ export function createDialogOverrides(config: ComponentsConfig): {
               props: (props: Record<string, unknown>) => !props.fullScreen,
               style: {
                 borderRadius: borderRadius * 2,
+                [theme.breakpoints.down('sm')]: { borderRadius: 0 },
                 [theme.breakpoints.up('sm')]: {
                   margin: theme.spacing(2),
                 },
@@ -71,6 +72,7 @@ export function createDialogOverrides(config: ComponentsConfig): {
           fontSize: theme.typography.pxToRem(18),
           fontWeight: 600,
           lineHeight: 28 / 18,
+          overflowWrap: 'anywhere',
         }),
       },
     },
@@ -78,6 +80,9 @@ export function createDialogOverrides(config: ComponentsConfig): {
       styleOverrides: {
         root: {
           padding: `${16 * dm}px ${24 * dm}px`,
+          minWidth: 0,
+          overflowWrap: 'anywhere',
+          '.MuiDialogTitle-root + &': { paddingTop: 16 * dm },
         },
       },
     },
@@ -86,6 +91,8 @@ export function createDialogOverrides(config: ComponentsConfig): {
         root: {
           padding: `${16 * dm}px ${24 * dm}px`,
           gap: 8,
+          flexWrap: 'wrap',
+          '& > :not(style) ~ :not(style)': { marginLeft: 0 },
         },
       },
     },

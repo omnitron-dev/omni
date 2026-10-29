@@ -17,7 +17,7 @@ import { useCallback, useMemo } from 'react';
 import MuiTable from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
+import { TableViewport } from '../table/table-viewport.js';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TableSortLabel from '@mui/material/TableSortLabel';
@@ -42,6 +42,8 @@ export interface ColumnDef<T> {
   header: string;
   /** Column width */
   width?: number | string;
+  /** Minimum readable column width before horizontal scrolling. */
+  minWidth?: number;
   /** Whether column is sortable */
   sortable?: boolean;
   /** Cell alignment */
@@ -150,6 +152,10 @@ export interface AdminDataTableProps<T> {
   stickyHeader?: boolean;
   /** Dense mode (less padding) */
   dense?: boolean;
+  /** Minimum table width before horizontal scrolling. */
+  minWidth?: number | string;
+  /** Accessible name of the scrollable table region. */
+  scrollLabel?: string;
   /** Container max height */
   maxHeight?: number | string;
   /**
@@ -191,7 +197,9 @@ export interface AdminDataTableProps<T> {
 const StyledTableContainer = styled(Paper)(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,
   border: `1px solid ${theme.palette.divider}`,
-  overflow: 'auto',
+  overflow: 'hidden',
+  minWidth: 0,
+  maxWidth: '100%',
 }));
 
 const StyledTableHead = styled(TableHead)(({ theme }) => ({
@@ -200,7 +208,7 @@ const StyledTableHead = styled(TableHead)(({ theme }) => ({
     fontWeight: 600,
     fontSize: theme.typography.pxToRem(13),
     color: theme.palette.text.secondary,
-    backgroundColor: 'transparent',
+    backgroundColor: theme.vars?.palette.background.paper ?? theme.palette.background.paper,
     whiteSpace: 'nowrap',
     borderBottom: `1px solid ${theme.palette.divider}`,
   },
@@ -290,6 +298,8 @@ export function AdminDataTable<T>({
   stickyHeader = false,
   dense = false,
   maxHeight,
+  minWidth,
+  scrollLabel,
   paginationLabels,
   sx,
   selectable = false,
@@ -419,21 +429,30 @@ export function AdminDataTable<T>({
   if (!loading && data.length === 0) {
     return (
       <StyledTableContainer sx={sx}>
-        <MuiTable size={dense ? 'small' : 'medium'} stickyHeader={stickyHeader}>
-          <StyledTableHead>
-            <TableRow>
-              {selectable && <TableCell padding="checkbox" />}
-              {columns.map((col) => (
-                <TableCell key={col.key} align={col.align ?? 'left'} style={{ width: col.width }}>
-                  {col.header}
-                </TableCell>
-              ))}
-            </TableRow>
-          </StyledTableHead>
-        </MuiTable>
+        <TableViewport label={scrollLabel}>
+          <MuiTable sx={{ minWidth }} size={dense ? 'small' : 'medium'} stickyHeader={stickyHeader}>
+            <StyledTableHead>
+              <TableRow>
+                {selectable && <TableCell padding="checkbox" />}
+                {columns.map((col) => (
+                  <TableCell
+                    key={col.key}
+                    align={col.align ?? 'left'}
+                    style={{ width: col.width, minWidth: col.minWidth }}
+                  >
+                    {col.header}
+                  </TableCell>
+                ))}
+              </TableRow>
+            </StyledTableHead>
+          </MuiTable>
+        </TableViewport>
         <Box
           sx={{
             py: 6,
+            px: 2,
+            textAlign: 'center',
+            overflowWrap: 'anywhere',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -460,7 +479,7 @@ export function AdminDataTable<T>({
   }
 
   return (
-    <StyledTableContainer sx={{ maxHeight, ...sx }}>
+    <StyledTableContainer sx={sx}>
       {loadError && (
         <Box
           role="status"
@@ -507,8 +526,8 @@ export function AdminDataTable<T>({
           {bulkActions(selection)}
         </Stack>
       )}
-      <TableContainer>
-        <MuiTable size={dense ? 'small' : 'medium'} stickyHeader={stickyHeader}>
+      <TableViewport label={scrollLabel} maxHeight={maxHeight}>
+        <MuiTable sx={{ minWidth }} size={dense ? 'small' : 'medium'} stickyHeader={stickyHeader}>
           <StyledTableHead>
             <TableRow>
               {selectable && (
@@ -529,7 +548,7 @@ export function AdminDataTable<T>({
                 <TableCell
                   key={col.key}
                   align={col.align ?? 'left'}
-                  style={{ width: col.width }}
+                  style={{ width: col.width, minWidth: col.minWidth }}
                   sortDirection={sortBy === col.key ? sortOrder : false}
                 >
                   {col.sortable && onSort ? (
@@ -559,9 +578,21 @@ export function AdminDataTable<T>({
                       key={key}
                       hover
                       selected={isSelected}
+                      tabIndex={onRowClick ? 0 : undefined}
+                      onKeyDown={(event) => {
+                        if (
+                          event.target === event.currentTarget &&
+                          onRowClick &&
+                          (event.key === 'Enter' || event.key === ' ')
+                        ) {
+                          event.preventDefault();
+                          onRowClick(row);
+                        }
+                      }}
                       onClick={onRowClick ? () => onRowClick(row) : undefined}
                       sx={{
                         cursor: onRowClick ? 'pointer' : 'default',
+                        '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 },
                         ...rowSx?.(row, index),
                       }}
                     >
@@ -610,7 +641,7 @@ export function AdminDataTable<T>({
                 })}
           </TableBody>
         </MuiTable>
-      </TableContainer>
+      </TableViewport>
       <TablePagination
         component="div"
         count={total}

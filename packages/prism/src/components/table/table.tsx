@@ -11,6 +11,7 @@
 import type { ReactNode, ChangeEvent, Ref } from 'react';
 import { useCallback, useState, useMemo } from 'react';
 import MuiTable from '@mui/material/Table';
+import { TableViewport } from './table-viewport.js';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
 import TableHead from '@mui/material/TableHead';
@@ -103,6 +104,8 @@ export interface TableProps<T> extends Omit<MuiTableProps, 'children'> {
   maxHeight?: number | string;
   /** Row click handler */
   onRowClick?: (row: T, index: number) => void;
+  /** Accessible name of the scrollable table region. */
+  scrollLabel?: string;
   /** Container styles */
   containerSx?: SxProps<Theme>;
 }
@@ -114,14 +117,16 @@ export interface TableProps<T> extends Omit<MuiTableProps, 'children'> {
 const StyledTableContainer = styled(Paper)(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,
   border: `1px solid ${theme.palette.divider}`,
-  overflow: 'auto',
+  overflow: 'hidden',
+  minWidth: 0,
+  maxWidth: '100%',
 }));
 
 const StyledTableHead = styled(TableHead)(({ theme }) => ({
   backgroundColor: alpha(theme.palette.grey[500], 0.08),
   '& .MuiTableCell-head': {
     fontWeight: 600,
-    backgroundColor: 'transparent',
+    backgroundColor: theme.vars?.palette.background.paper ?? theme.palette.background.paper,
   },
 }));
 
@@ -167,35 +172,36 @@ const StyledTableRow = styled(TableRow)(({ theme }) => ({
 // `ref` on the props (typed against the rendered MUI Table element)
 // and call it a day.
 export function Table<T>({
-    columns,
-    data,
-    rowKey = 'id' as keyof T,
-    selectable = false,
-    selected = [],
-    onSelectChange,
-    sortable = false,
-    sortBy,
-    sortOrder = 'asc',
-    onSortChange,
-    paginated = false,
-    page = 0,
-    rowsPerPage = 10,
-    totalRows,
-    onPageChange,
-    onRowsPerPageChange,
-    rowsPerPageOptions = [5, 10, 25, 50],
-    emptyContent,
-    loading = false,
-    loadingRows = 5,
-    dense = false,
-    stickyHeader = false,
-    maxHeight,
-    onRowClick,
-    containerSx,
-    sx,
-    ref,
-    ...other
-  }: TableProps<T> & { ref?: Ref<HTMLTableElement> }): ReactNode {
+  columns,
+  data,
+  rowKey = 'id' as keyof T,
+  selectable = false,
+  selected = [],
+  onSelectChange,
+  sortable = false,
+  sortBy,
+  sortOrder = 'asc',
+  onSortChange,
+  paginated = false,
+  page = 0,
+  rowsPerPage = 10,
+  totalRows,
+  onPageChange,
+  onRowsPerPageChange,
+  rowsPerPageOptions = [5, 10, 25, 50],
+  emptyContent,
+  loading = false,
+  loadingRows = 5,
+  dense = false,
+  stickyHeader = false,
+  maxHeight,
+  onRowClick,
+  containerSx,
+  scrollLabel,
+  sx,
+  ref,
+  ...other
+}: TableProps<T> & { ref?: Ref<HTMLTableElement> }): ReactNode {
   // Get row key
   const getRowKey = useCallback(
     (row: T, index: number): string | number => {
@@ -269,7 +275,7 @@ export function Table<T>({
 
   // Slice data for client-side pagination
   const displayData = useMemo(() => {
-    if (paginated && !totalRows) {
+    if (paginated && totalRows === undefined) {
       return data.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
     }
     return data;
@@ -280,114 +286,131 @@ export function Table<T>({
     return (
       <StyledTableContainer sx={containerSx}>
         <Box sx={{ p: 4, textAlign: 'center' }}>
-          {emptyContent || <Typography sx={{
-            color: "text.secondary"
-          }}>No data available</Typography>}
+          {emptyContent || (
+            <Typography
+              sx={{
+                color: 'text.secondary',
+              }}
+            >
+              No data available
+            </Typography>
+          )}
         </Box>
       </StyledTableContainer>
     );
   }
 
   return (
-    <StyledTableContainer
-      sx={{
-        maxHeight,
-        ...containerSx,
-      }}
-    >
-      <MuiTable ref={ref} stickyHeader={stickyHeader} size={dense ? 'small' : 'medium'} sx={sx} {...other}>
-        <StyledTableHead>
-          <TableRow>
-            {selectable && (
-              <TableCell padding="checkbox">
-                <Checkbox indeterminate={isIndeterminate} checked={isAllSelected} onChange={handleSelectAll} />
-              </TableCell>
-            )}
-            {columns.map((column) => (
-              <TableCell
-                key={String(column.id)}
-                align={column.align || 'left'}
-                style={{ width: column.width, minWidth: column.minWidth }}
-                sortDirection={sortBy === column.id ? sortOrder : false}
-              >
-                {sortable && column.sortable !== false ? (
-                  <TableSortLabel
-                    active={sortBy === column.id}
-                    direction={sortBy === column.id ? sortOrder : 'asc'}
-                    onClick={() => handleSort(String(column.id))}
-                  >
-                    {column.label}
-                  </TableSortLabel>
-                ) : (
-                  column.label
-                )}
-              </TableCell>
-            ))}
-          </TableRow>
-        </StyledTableHead>
+    <StyledTableContainer sx={containerSx}>
+      <TableViewport label={scrollLabel} maxHeight={maxHeight}>
+        <MuiTable ref={ref} stickyHeader={stickyHeader} size={dense ? 'small' : 'medium'} sx={sx} {...other}>
+          <StyledTableHead>
+            <TableRow>
+              {selectable && (
+                <TableCell padding="checkbox">
+                  <Checkbox indeterminate={isIndeterminate} checked={isAllSelected} onChange={handleSelectAll} />
+                </TableCell>
+              )}
+              {columns.map((column) => (
+                <TableCell
+                  key={String(column.id)}
+                  align={column.align || 'left'}
+                  style={{ width: column.width, minWidth: column.minWidth }}
+                  sortDirection={sortBy === column.id ? sortOrder : false}
+                >
+                  {sortable && column.sortable !== false ? (
+                    <TableSortLabel
+                      active={sortBy === column.id}
+                      direction={sortBy === column.id ? sortOrder : 'asc'}
+                      onClick={() => handleSort(String(column.id))}
+                    >
+                      {column.label}
+                    </TableSortLabel>
+                  ) : (
+                    column.label
+                  )}
+                </TableCell>
+              ))}
+            </TableRow>
+          </StyledTableHead>
 
-        <TableBody>
-          {/*
+          <TableBody>
+            {/*
             `loading` used to do one thing — suppress the empty state — which
             left every consumer to hand-roll its own skeleton rows, or to show
             a bare header and call it a loading state. Draw them here, inside
             the real table, so the columns do not jump when the data lands.
           */}
-          {loading &&
-            Array.from({ length: Math.max(1, loadingRows) }, (_, rowIndex) => (
-              <TableRow key={`loading-${rowIndex}`}>
-                {selectable && (
-                  <TableCell padding="checkbox">
-                    <Skeleton variant="rectangular" width={18} height={18} />
-                  </TableCell>
-                )}
-                {columns.map((column) => (
-                  <TableCell key={String(column.id)} align={column.align || 'left'}>
-                    <Skeleton variant="text" width={column.width ?? '80%'} />
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          {!loading &&
-            displayData.map((row, index) => {
-            const key = getRowKey(row, index);
-            const isSelected = selected.includes(key);
-
-            return (
-              <StyledTableRow
-                key={key}
-                hover
-                selected={isSelected}
-                onClick={() => onRowClick?.(row, index)}
-                sx={{ cursor: onRowClick ? 'pointer' : 'default' }}
-              >
-                {selectable && (
-                  <TableCell padding="checkbox">
-                    <Checkbox
-                      checked={isSelected}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={() => handleSelectRow(key)}
-                    />
-                  </TableCell>
-                )}
-                {columns.map((column) => {
-                  const value = row[column.id as keyof T];
-
-                  return (
-                    <TableCell key={String(column.id)} align={column.align || 'left'}>
-                      {column.render
-                        ? column.render(row, index)
-                        : column.format
-                          ? column.format(value)
-                          : String(value ?? '')}
+            {loading &&
+              Array.from({ length: Math.max(1, loadingRows) }, (_, rowIndex) => (
+                <TableRow key={`loading-${rowIndex}`}>
+                  {selectable && (
+                    <TableCell padding="checkbox">
+                      <Skeleton variant="rectangular" width={18} height={18} />
                     </TableCell>
-                  );
-                })}
-              </StyledTableRow>
-              );
-            })}
-        </TableBody>
-      </MuiTable>
+                  )}
+                  {columns.map((column) => (
+                    <TableCell key={String(column.id)} align={column.align || 'left'}>
+                      <Skeleton variant="text" width={column.width ?? '80%'} />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            {!loading &&
+              displayData.map((row, index) => {
+                const key = getRowKey(row, index);
+                const isSelected = selected.includes(key);
+
+                return (
+                  <StyledTableRow
+                    key={key}
+                    hover
+                    selected={isSelected}
+                    tabIndex={onRowClick ? 0 : undefined}
+                    onKeyDown={(event) => {
+                      if (
+                        event.target === event.currentTarget &&
+                        onRowClick &&
+                        (event.key === 'Enter' || event.key === ' ')
+                      ) {
+                        event.preventDefault();
+                        onRowClick(row, index);
+                      }
+                    }}
+                    onClick={() => onRowClick?.(row, index)}
+                    sx={{
+                      cursor: onRowClick ? 'pointer' : 'default',
+                      '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 },
+                    }}
+                  >
+                    {selectable && (
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          checked={isSelected}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={() => handleSelectRow(key)}
+                        />
+                      </TableCell>
+                    )}
+                    {columns.map((column) => {
+                      const value = row[column.id as keyof T];
+
+                      return (
+                        <TableCell key={String(column.id)} align={column.align || 'left'}>
+                          {column.render
+                            ? column.render(row, index)
+                            : column.format
+                              ? column.format(value)
+                              : String(value ?? '')}
+                        </TableCell>
+                      );
+                    })}
+                  </StyledTableRow>
+                );
+              })}
+          </TableBody>
+        </MuiTable>
+      </TableViewport>
 
       {paginated && (
         <TablePagination
@@ -403,7 +426,6 @@ export function Table<T>({
     </StyledTableContainer>
   );
 }
-
 
 // =============================================================================
 // USE TABLE HOOK

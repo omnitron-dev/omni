@@ -39,6 +39,8 @@ export interface SearchInputProps {
   value?: string;
   /** Change handler. Receives the raw string (or debounced string if `debounce` > 0). */
   onChange?: (value: string) => void;
+  /** Accessible name; defaults to the placeholder. */
+  'aria-label'?: string;
   /** Placeholder text. */
   placeholder?: string;
   /** Debounce delay in ms. 0 = no debounce (default). */
@@ -73,6 +75,7 @@ export function SearchInput({
   value: controlledValue,
   onChange,
   placeholder = 'Search...',
+  'aria-label': ariaLabel,
   debounce = 0,
   compact = false,
   fullWidth = true,
@@ -131,6 +134,7 @@ export function SearchInput({
       ref={ref}
       fullWidth={fullWidth}
       placeholder={placeholder}
+      inputProps={{ 'aria-label': ariaLabel ?? placeholder }}
       value={displayValue}
       onChange={handleChange}
       autoFocus={autoFocus}
@@ -149,6 +153,7 @@ export function SearchInput({
               <Box
                 component="button"
                 type="button"
+                aria-label={clearTooltip}
                 onClick={handleClear}
                 sx={{
                   p: 0.25,

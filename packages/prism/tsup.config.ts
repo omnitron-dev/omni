@@ -35,6 +35,7 @@ export default defineConfig([
       'components/navigation-progress/index': 'src/components/navigation-progress/index.ts',
       'components/page-content/index': 'src/components/page-content/index.ts',
       'components/popover/index': 'src/components/popover/index.ts',
+      'components/search-input/index': 'src/components/search-input/index.ts',
       'components/scroll-to-top/index': 'src/components/scroll-to-top/index.ts',
       'components/skeleton/index': 'src/components/skeleton/index.ts',
       'components/snackbar/index': 'src/components/snackbar/index.ts',

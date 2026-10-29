@@ -160,6 +160,10 @@
       "types": "./dist/components/popover/index.d.ts",
       "import": "./dist/components/popover/index.js"
     },
+    "./components/search-input": {
+      "types": "./dist/components/search-input/index.d.ts",
+      "import": "./dist/components/search-input/index.js"
+    },
     "./components/scroll-to-top": {
       "types": "./dist/components/scroll-to-top/index.d.ts",
       "import": "./dist/components/scroll-to-top/index.js"

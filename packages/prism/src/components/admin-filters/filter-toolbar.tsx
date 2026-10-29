@@ -116,7 +116,15 @@ function useDebounce(value: string, delay: number): string {
   return debouncedValue;
 }
 
-function isFilterActive(config: FilterConfig, value: unknown): boolean {
+function isFilterActive(config: FilterConfig, values: FilterValues): boolean {
+  if (config.type === 'date-range') return !!(values[`${config.key}From`] || values[`${config.key}To`]);
+  if (config.type === 'number-range') {
+    return ['Min', 'Max'].some((suffix) => {
+      const end = values[`${config.key}${suffix}`];
+      return end !== undefined && end !== null && end !== '';
+    });
+  }
+  const value = values[config.key];
   if (value === undefined || value === null || value === '') return false;
   if (Array.isArray(value) && value.length === 0) return false;
   if (config.type === 'boolean' && value === false) return false;
@@ -205,12 +213,12 @@ export function FilterToolbar({
 
   // Count active filters (excluding search)
   const activeCount = useMemo(
-    () => filters.filter((f) => f.type !== 'search' && isFilterActive(f, values[f.key])).length,
+    () => filters.filter((f) => f.type !== 'search' && isFilterActive(f, values)).length,
     [filters, values]
   );
 
   const hasAnyActive = useMemo(
-    () => filters.some((f) => isFilterActive(f, f.type === 'search' ? localSearch : values[f.key])),
+    () => filters.some((f) => isFilterActive(f, f.type === 'search' ? { [f.key]: localSearch } : values)),
     [filters, values, localSearch]
   );
 
@@ -261,8 +269,8 @@ export function FilterToolbar({
               value={localSearch}
               onChange={setLocalSearch}
               placeholder={placeholder ?? 'Search...'}
-              fullWidth={false}
-              minWidth={width ?? 220}
+              aria-label={label}
+              fullWidth
             />
           );
 
@@ -282,7 +290,8 @@ export function FilterToolbar({
               // not want.
               slotProps={{ select: { displayEmpty: true, 'aria-label': label } }}
               sx={{
-                minWidth: width ?? 150,
+                minWidth: 0,
+                width: '100%',
                 '& .MuiOutlinedInput-root': { borderRadius: 1 },
                 '& .MuiOutlinedInput-notchedOutline legend': { width: 0 },
               }}
@@ -355,7 +364,8 @@ export function FilterToolbar({
                 },
               }}
               sx={{
-                minWidth: width ?? 180,
+                minWidth: 0,
+                width: '100%',
                 '& .MuiOutlinedInput-root': { borderRadius: 1 },
                 '& .MuiOutlinedInput-notchedOutline legend': { width: 0 },
               }}
@@ -377,10 +387,9 @@ export function FilterToolbar({
               startDate={(values[`${key}From`] as string) ?? ''}
               endDate={(values[`${key}To`] as string) ?? ''}
               onChange={(from, to) => {
-                handleChange(`${key}From`, from);
-                handleChange(`${key}To`, to);
+                startTransition(() => onChange({ ...values, [`${key}From`]: from, [`${key}To`]: to }));
               }}
-              width={width ?? 220}
+              width="100%"
               size="small"
             />
           );
@@ -423,7 +432,7 @@ export function FilterToolbar({
                 label={`${label} min`}
                 value={(values[`${key}Min`] as string) ?? ''}
                 onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange(`${key}Min`, e.target.value)}
-                sx={{ minWidth: width ?? 100 }}
+                sx={{ flex: 1, minWidth: 0 }}
               />
               <Typography
                 variant="body2"
@@ -440,7 +449,7 @@ export function FilterToolbar({
                 label={`${label} max`}
                 value={(values[`${key}Max`] as string) ?? ''}
                 onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange(`${key}Max`, e.target.value)}
-                sx={{ minWidth: width ?? 100 }}
+                sx={{ flex: 1, minWidth: 0 }}
               />
             </Stack>
           );
@@ -449,14 +458,15 @@ export function FilterToolbar({
           return null;
       }
     },
-    [localSearch, values, handleChange]
+    [localSearch, values, handleChange, onChange]
   );
 
   return (
     <Stack
       spacing={compact ? 0 : 1.5}
       sx={{
-        p: 2,
+        p: 1.5,
+        minWidth: 0,
         borderRadius: 1,
         border: (theme) => `1px solid ${theme.palette.divider}`,
         bgcolor: (theme) => alpha(theme.palette.background.default, 0.5),
@@ -472,7 +482,20 @@ export function FilterToolbar({
           gap: 1.5,
         }}
       >
-        {filters.map(renderFilter)}
+        {filters.map((filter) => (
+          <Box
+            key={filter.key}
+            sx={{
+              flex: filter.type === 'search' ? '1 1 220px' : '0 1 auto',
+              width: filter.width ?? (filter.type === 'number-range' ? 260 : filter.type === 'boolean' ? 'auto' : 180),
+              minWidth: 0,
+              maxWidth: '100%',
+              '& > .MuiFormControl-root': { width: '100%', minWidth: 0 },
+            }}
+          >
+            {renderFilter(filter)}
+          </Box>
+        ))}
 
         {/* Active filter count + reset */}
         <Stack

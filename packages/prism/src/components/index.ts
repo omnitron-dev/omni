@@ -618,3 +618,5 @@ export {
   type MapCoverageLayerProps,
   type CoveragePoint,
 } from './map/index.js';
+
+export { TableViewport, type TableViewportProps } from './table/index.js';

@@ -330,6 +330,19 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
         root: ({ theme }) => ({
           padding: `${8 * dm}px ${16 * dm}px ${16 * dm}px`,
           borderTop: `1px solid ${paletteVar(theme, 'divider')}`,
+          containerType: 'inline-size',
+          containerName: 'prism-pagination',
+          '@container prism-pagination (max-width: 420px)': {
+            '& .MuiTablePagination-toolbar': {
+              display: 'grid',
+              gridTemplateColumns: '1fr auto',
+              gap: '0 8px',
+              padding: '4px 8px',
+            },
+            '& .MuiTablePagination-spacer': { display: 'none' },
+            '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': { margin: '4px 0' },
+            '& .MuiTablePagination-input, & .MuiTablePagination-actions': { margin: 0, justifySelf: 'end' },
+          },
         }),
       },
     },
@@ -496,7 +509,10 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
         root: ({ theme }) => ({
           [`& .${tableCellClasses.head}`]: {
             fontWeight: 600,
-            backgroundColor: theme.vars?.palette.background.neutral || theme.palette.background.neutral || paletteVar(theme, 'background.paper'),
+            backgroundColor:
+              theme.vars?.palette.background.neutral ||
+              theme.palette.background.neutral ||
+              paletteVar(theme, 'background.paper'),
             color: paletteVar(theme, 'text.secondary'),
           },
         }),
@@ -543,6 +559,19 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
       styleOverrides: {
         root: ({ theme }) => ({
           borderTop: `1px solid ${paletteVar(theme, 'divider')}`,
+          containerType: 'inline-size',
+          containerName: 'prism-pagination',
+          '@container prism-pagination (max-width: 420px)': {
+            '& .MuiTablePagination-toolbar': {
+              display: 'grid',
+              gridTemplateColumns: '1fr auto',
+              gap: '0 8px',
+              padding: '4px 8px',
+            },
+            '& .MuiTablePagination-spacer': { display: 'none' },
+            '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': { margin: '4px 0' },
+            '& .MuiTablePagination-input, & .MuiTablePagination-actions': { margin: 0, justifySelf: 'end' },
+          },
         }),
         toolbar: {
           minHeight: 44 * dm,
@@ -805,6 +834,7 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
         paper: ({ theme }) => ({
           borderRadius,
           marginTop: 4,
+          maxWidth: 'calc(100vw - 32px)',
           boxShadow: `0 0 2px 0 rgba(${getGreyChannel(theme)} / 0.24), -20px 20px 40px -4px rgba(${getGreyChannel(theme)} / 0.24)`,
         }),
         list: {
@@ -816,6 +846,9 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
       styleOverrides: {
         root: ({ theme }) => ({
           ...theme.typography.body2,
+          minWidth: 0,
+          whiteSpace: 'normal',
+          overflowWrap: 'anywhere',
           borderRadius: borderRadius - 2,
           margin: 2,
           padding: `${8 * dm}px ${12 * dm}px`,

@@ -8,6 +8,7 @@ import { generateUuidV7 } from '@omnitron-dev/titan/utils';
 import { defer, Deferred, delay as delayMs } from '@omnitron-dev/common';
 
 import { Errors } from '@omnitron-dev/titan/errors';
+import { describeError } from '@omnitron-dev/titan/diagnostics';
 import { StatsTracker } from './stats.js';
 import { createNullLogger, type ILogger } from '@omnitron-dev/titan/types';
 import { Middleware, MiddlewareManager } from './middleware.js';
@@ -516,6 +517,7 @@ export class NotificationManager {
     const exactlyOnceFlag = options?.exactlyOnce ? 'true' : 'false';
 
     const results: string[] = [];
+    const failures: unknown[] = [];
 
     for (const pattern of matchingPatterns) {
       const streamKey = getStreamKey(pattern);
@@ -555,17 +557,30 @@ export class NotificationManager {
         if (result === 'DUPLICATE') {
           this.logger.info(`Duplicate message detected: ${dedupKey}`);
         } else {
-          results.push(result as string);
+          if (typeof result !== 'string' || !result) {
+            throw new Error('Publish script returned no acknowledgement');
+          }
+          results.push(result);
         }
       } catch (err) {
-        this.logger.error({ err, streamKey }, 'Error publishing to stream');
-        await this.middleware.runOnError(
-          { channel, payload, attempt: +attempt, id: '', timestamp: +timestamp, ack: async () => {} },
-          err as Error
-        );
+        failures.push(err);
+        this.logger.error({ error: describeError(err), streamKey }, 'Error publishing to stream');
+        try {
+          await this.middleware.runOnError(
+            { channel, payload, attempt: +attempt, id: '', timestamp: +timestamp, ack: async () => {} },
+            err as Error
+          );
+        } catch (observerError) {
+          failures.push(observerError);
+        }
       }
     }
 
+    // Partial publication remains retryable. Confirmed streams deduplicate the
+    // same explicit key on retry; an empty result is not a confirmed duplicate.
+    if (failures.length) {
+      throw new AggregateError(failures, 'Notification publication failed for one or more streams');
+    }
     if (results.length === 0) {
       return 'DUPLICATE';
     }

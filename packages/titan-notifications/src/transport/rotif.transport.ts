@@ -1,4 +1,5 @@
 import { NotificationManager } from '../rotif/rotif.js';
+import { describeError } from '@omnitron-dev/titan/diagnostics';
 import type { RotifMessage, Subscription, PublishOptions } from '../rotif/types.js';
 import type { Middleware } from '../rotif/middleware.js';
 import type { DLQCleanupConfig } from '../rotif/dlq-manager.js';
@@ -113,7 +114,7 @@ export class RotifTransport implements MessagingTransport {
         messageIds: [],
         status: 'failed',
         patternCount: 0,
-        error: error instanceof Error ? error.message : String(error),
+        error: describeError(error),
         timestamp: Date.now(),
       };
     }

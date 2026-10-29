@@ -1,6 +1,9 @@
 import { Module } from '@omnitron-dev/titan/decorators';
 import { createToken, type DynamicModule, type Token } from '@omnitron-dev/titan/nexus';
-import { sanitizeDiagnostic, type DiagnosticEvent, type DiagnosticReceipt, type DiagnosticSink } from '@omnitron-dev/titan/diagnostics';
+import {
+  sanitizeDiagnostic, redactDiagnosticText,
+  type DiagnosticEvent, type DiagnosticReceipt, type DiagnosticSink,
+} from '@omnitron-dev/titan/diagnostics';
 import { NOTIFICATIONS_TRANSPORT } from './notifications.tokens.js';
 import type { MessagingTransport } from './transport/transport.interface.js';
 
@@ -8,8 +11,13 @@ export const DIAGNOSTIC_NOTIFICATION_SINK: Token<DiagnosticSink> = createToken('
 
 export class DiagnosticDeliveryError extends Error {
   readonly code = 'DIAGNOSTIC_DELIVERY_UNAVAILABLE';
-  constructor(readonly status: 'no_subscribers' | 'failed') {
-    super(status === 'no_subscribers' ? 'No consumer is registered for operational diagnostics' : 'The notification transport did not acknowledge the diagnostic');
+  constructor(readonly status: 'no_subscribers' | 'failed', detail?: string) {
+    super(
+      status === 'no_subscribers'
+        ? 'No consumer is registered for operational diagnostics'
+        : 'The notification transport did not acknowledge the diagnostic',
+      detail ? { cause: new Error(redactDiagnosticText(detail)) } : undefined,
+    );
     this.name = 'DiagnosticDeliveryError';
   }
 }
@@ -36,7 +44,10 @@ export class DiagnosticNotificationSink implements DiagnosticSink {
       priority: event.severity === 'critical' ? 'urgent' : event.severity === 'error' ? 'high' : 'normal',
     });
     if (!result.success || !['published', 'scheduled', 'duplicate'].includes(result.status)) {
-      throw new DiagnosticDeliveryError(result.status === 'no_subscribers' ? 'no_subscribers' : 'failed');
+      throw new DiagnosticDeliveryError(
+        result.status === 'no_subscribers' ? 'no_subscribers' : 'failed',
+        result.error,
+      );
     }
     return { status: result.status === 'duplicate' ? 'duplicate' : 'queued', messageIds: result.messageIds };
   }

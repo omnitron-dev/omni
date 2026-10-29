@@ -22,9 +22,18 @@ The optional `@omnitron-dev/titan-notifications/diagnostics` entry point exports
 or `forRootAsync` module; the adapter uses its transport, queue, deduplication and
 DLQ. No messenger integration or automatic publication is enabled by importing it.
 
-Delivery rejects when no consumer accepts the event. A queued receipt confirms
-broker acceptance, not human receipt. Reuse event identities across retries;
-consumers must remain idempotent outside the 24-hour deduplication window.
+Delivery rejects when no consumer accepts the event or any matching stream
+fails to acknowledge publication. A Redis failure or invalid acknowledgement
+never counts as a duplicate. Partial fan-out remains retryable: reuse the event
+identity so confirmed streams deduplicate while failed streams can accept it.
+Transport and error-observer causes are retained with credential redaction.
+A queued receipt confirms broker acceptance, not human receipt; consumers must
+remain idempotent outside the 24-hour deduplication window.
+
+Explicit deduplication keys preserve punctuation through percent encoding.
+When upgrading, keys previously changed by underscore substitution start a new
+broker deduplication window. Consumer idempotency must cover retries that cross
+that deployment boundary.
 
 Notification lifecycle observer failures are logged and retained in health until
 the next successful invocation of that event. They do not resend a notification

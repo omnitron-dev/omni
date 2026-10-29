@@ -213,8 +213,9 @@ export function generateDedupKey({
   let id: string;
 
   if (explicitKey) {
-    // Use explicit key directly (sanitized for Redis key safety)
-    id = explicitKey.replace(/[^a-zA-Z0-9_-]/g, '_');
+    // Preserve identity: replacing punctuation with '_' aliases distinct keys
+    // (for example, 'incident:1' and 'incident_1') and silently drops messages.
+    id = encodeURIComponent(explicitKey);
   } else {
     // Create a unique serialization for the payload
     // Include the type to ensure different types with same value get different hashes

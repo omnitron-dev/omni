@@ -13,7 +13,7 @@ import type { Kysely } from 'kysely';
 export {
   createMigrationHistory, defineMigrations, createMigration, createMigrationWithMeta,
   createPostgresMigrationDatabase, migrationSqlClient, defineSqlMigration,
-  createHardenedRunner, HardenedMigrationRunner, runMigrationCli,
+  createHardenedRunner, HardenedMigrationRunner, runMigrationCli, loadMigrationFiles, migrationLockKey,
   MigrationError, MigrationHookError,
   MigrationEngineLockError as MigrationLockError, MigrationEngineChecksumError as MigrationChecksumError,
   MigrationLockError as LegacyMigrationLockError, MigrationChecksumError as LegacyMigrationChecksumError,

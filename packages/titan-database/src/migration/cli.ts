@@ -105,7 +105,7 @@ export async function runMigrationCli(opts: MigrationCliOptions): Promise<void> 
   let failure: unknown;
   let failed = false;
   try {
-    const migrations = await discoverMigrations(dir);
+    const migrations = await loadMigrationFiles(dir);
     logger.info(
       `Discovered ${migrations.length} migration(s): ${migrations.map((m) => m.name).join(', ') || '—'}`,
     );
@@ -114,7 +114,7 @@ export async function runMigrationCli(opts: MigrationCliOptions): Promise<void> 
       logger,
       enforceChecksums: cmd.enforceChecksums,
       advisoryLockKey:
-        opts.advisoryLockKey === undefined ? deterministicLockKey(opts.defaultDatabase) : opts.advisoryLockKey,
+        opts.advisoryLockKey === undefined ? migrationLockKey(opts.defaultDatabase) : opts.advisoryLockKey,
       lockTimeoutMs: opts.lockTimeoutMs ?? 60_000,
     });
 
@@ -207,7 +207,7 @@ interface ParsedArgs {
 
 export function parseMigrationCliArgs(argv: string[]): ParsedArgs {
   const out: ParsedArgs = { kind: 'up', steps: 1, enforceChecksums: true };
-  const args = argv.filter(arg => {
+  const args = (argv[0] === '--' ? argv.slice(1) : argv).filter(arg => {
     if (arg === '--no-checksums') { out.enforceChecksums = false; return false; }
     return true;
   });
@@ -224,7 +224,9 @@ export function parseMigrationCliArgs(argv: string[]): ParsedArgs {
   return out;
 }
 
-async function discoverMigrations(dir: string): Promise<HardenedMigration[]> {
+/** Node file loader shared by startup hooks and the compatibility CLI. */
+export async function loadMigrationFiles(directory: string | URL): Promise<HardenedMigration[]> {
+  const dir = typeof directory === 'string' ? path.resolve(directory) : fileURLToPath(directory);
   const files = readdirSync(dir)
     .filter((f) => /^\d+_.+\.(migration\.)?(ts|js)$/.test(f))
     .filter((f) => !/\.(d|spec|test)\.(ts|js)$/.test(f))
@@ -233,21 +235,25 @@ async function discoverMigrations(dir: string): Promise<HardenedMigration[]> {
     files.map(async (f) => {
       const name = f.replace(/\.(migration\.)?(ts|js)$/, '');
       const url = pathToFileURL(path.join(dir, f)).href;
-      const mod = (await import(url)) as { up?: unknown; down?: unknown };
+      const mod = (await import(url)) as { up?: unknown; down?: unknown; checksum?: unknown };
       if (typeof mod.up !== 'function' || typeof mod.down !== 'function') {
         throw new Error(`Migration ${f} must export 'up' and 'down' functions`);
+      }
+      if (mod.checksum !== undefined && typeof mod.checksum !== 'string') {
+        throw new Error(`Migration ${f} must export a string checksum when provided`);
       }
       return {
         name,
         up: mod.up as HardenedMigration['up'],
         down: mod.down as HardenedMigration['down'],
+        ...(mod.checksum === undefined ? {} : { checksum: mod.checksum }),
       };
     }),
   );
 }
 
 /** Deterministic 6-byte lock key seeded from the database name. */
-function deterministicLockKey(seed: string): bigint {
+export function migrationLockKey(seed: string): bigint {
   const hash = createHash('sha256').update(seed).digest();
   let n = 0n;
   for (let i = 0; i < 6; i++) n = (n << 8n) | BigInt(hash[i]!);

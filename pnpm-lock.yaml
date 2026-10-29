@@ -163,7 +163,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@kysera/migrations': file:vendor/kysera-migrations-0.10.0-a6577d24685f.tgz
+  '@kysera/migrations': file:vendor/kysera-migrations-0.10.0-be05d079c584.tgz
   web-worker: 1.5.0
   rollup-plugin-dts: 6.5.1
   '@typescript-eslint/eslint-plugin': 8.72.1
@@ -1272,8 +1272,8 @@ importers:
         specifier: ^0.10.0
         version: 0.10.0(kysely@0.29.7)
       '@kysera/migrations':
-        specifier: file:../../vendor/kysera-migrations-0.10.0-a6577d24685f.tgz
-        version: file:vendor/kysera-migrations-0.10.0-a6577d24685f.tgz(kysely@0.29.7)(zod@4.6.7)
+        specifier: file:../../vendor/kysera-migrations-0.10.0-be05d079c584.tgz
+        version: file:vendor/kysera-migrations-0.10.0-be05d079c584.tgz(kysely@0.29.7)(zod@4.6.7)
       '@kysera/repository':
         specifier: ^0.10.0
         version: 0.10.0(kysely@0.29.7)(zod@4.6.7)
@@ -2520,8 +2520,8 @@ packages:
     peerDependencies:
       kysely: '>=0.29.0'
 
-  '@kysera/migrations@file:vendor/kysera-migrations-0.10.0-a6577d24685f.tgz':
-    resolution: {integrity: sha512-hMuqsZ3/l2xj1r/7U+hJZ+dZygFJJzZXw8ufghL8x1ab27+9pF3cF2tOJZrFlrNiRVqubXKjJIagC5ifA95k0w==, tarball: file:vendor/kysera-migrations-0.10.0-a6577d24685f.tgz}
+  '@kysera/migrations@file:vendor/kysera-migrations-0.10.0-be05d079c584.tgz':
+    resolution: {integrity: sha512-cSWMOkZdFotvu/OoH8h3N22jRXOduzNmxMtxRc5UuM6SGgZTQMo6LHE+AaxAaddF36bkLYYDieNoawOO6FRHEw==, tarball: file:vendor/kysera-migrations-0.10.0-be05d079c584.tgz}
     version: 0.10.0
     engines: {bun: '>=1.0.0', node: '>=22.0.0'}
     peerDependencies:
@@ -8311,7 +8311,7 @@ snapshots:
       '@kysera/core': 0.10.0(kysely@0.29.7)
       kysely: 0.29.7
 
-  '@kysera/migrations@file:vendor/kysera-migrations-0.10.0-a6577d24685f.tgz(kysely@0.29.7)(zod@4.6.7)':
+  '@kysera/migrations@file:vendor/kysera-migrations-0.10.0-be05d079c584.tgz(kysely@0.29.7)(zod@4.6.7)':
     dependencies:
       '@kysera/core': 0.10.0(kysely@0.29.7)
       kysely: 0.29.7

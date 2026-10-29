@@ -12,5 +12,5 @@ export type {
   HardenedDownResult,
   HardenedStatus,
 } from './hardened-runner.js';
-export { runMigrationCli } from './cli.js';
+export { runMigrationCli, loadMigrationFiles, migrationLockKey } from './cli.js';
 export type { MigrationCliOptions } from './cli.js';

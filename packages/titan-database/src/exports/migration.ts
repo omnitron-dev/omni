@@ -55,6 +55,8 @@ export {
   MigrationLockError,
   MigrationChecksumError,
   runMigrationCli,
+  loadMigrationFiles,
+  migrationLockKey,
 } from '../migration/index.js';
 export { createPostgresMigrationDatabase, migrationSqlClient, defineSqlMigration } from '../migration/postgres.js';
 export type { MigrationSqlClient } from '../migration/postgres.js';

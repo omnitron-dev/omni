@@ -93,7 +93,12 @@ export function Chart({
   const renderFallback = () => <ChartLoading type={type} sx={slotProps?.loading} />;
 
   return (
-    <ChartRoot dir="ltr" className={cn(chartClasses.root, className)} sx={sx} {...other}>
+    <ChartRoot
+      dir="ltr"
+      className={cn(chartClasses.root, className)}
+      sx={[{ minHeight: typeof height === 'number' ? height : undefined }, ...(Array.isArray(sx) ? sx : [sx])]}
+      {...other}
+    >
       {isClient ? (
         <Suspense fallback={renderFallback()}>
           <LazyApexChart type={type} series={series} options={options} width={width} height={height} />
@@ -110,6 +115,12 @@ export function Chart({
 // =============================================================================
 
 const ChartRoot = styled('div')(({ theme }) => ({
+  '--prism-chart-text': theme.vars?.palette.text.primary ?? theme.palette.text.primary,
+  '--prism-chart-muted': theme.vars?.palette.text.secondary ?? theme.palette.text.secondary,
+  '--prism-chart-background': theme.vars?.palette.background.paper ?? theme.palette.background.paper,
+  '--prism-chart-neutral': theme.vars?.palette.background.default ?? theme.palette.background.default,
+  '--prism-chart-divider': theme.vars?.palette.divider ?? theme.palette.divider,
+  '--prism-chart-shadow': theme.shadows[8],
   width: '100%',
   minWidth: 0,
   maxWidth: '100%',

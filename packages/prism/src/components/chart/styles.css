@@ -11,35 +11,38 @@
    */
   .apexcharts-tooltip {
     min-width: 80px;
+    max-width: min(320px, calc(100vw - 32px));
+    overflow-wrap: anywhere;
+    white-space: normal;
     border-radius: 10px;
     backdrop-filter: blur(6px);
-    color: var(--palette-text-primary);
-    box-shadow: var(--customShadows-dropdown);
-    background-color: rgba(var(--palette-background-defaultChannel) / 0.9);
+    color: var(--prism-chart-text);
+    box-shadow: var(--prism-chart-shadow);
+    background-color: var(--prism-chart-background);
   }
 
   .apexcharts-xaxistooltip {
     border-radius: 10px;
     border-color: transparent;
     backdrop-filter: blur(6px);
-    color: var(--palette-text-primary);
-    box-shadow: var(--customShadows-dropdown);
-    background-color: rgba(var(--palette-background-defaultChannel) / 0.9);
+    color: var(--prism-chart-text);
+    box-shadow: var(--prism-chart-shadow);
+    background-color: var(--prism-chart-background);
 
     &::before {
-      border-bottom-color: rgba(var(--palette-grey-500Channel) / 0.16);
+      border-bottom-color: var(--prism-chart-divider);
     }
 
     &::after {
-      border-bottom-color: rgba(var(--palette-background-defaultChannel) / 0.9);
+      border-bottom-color: var(--prism-chart-background);
     }
   }
 
   .apexcharts-tooltip-title {
     font-weight: 700;
     text-align: center;
-    color: var(--palette-text-secondary);
-    background-color: var(--palette-background-neutral);
+    color: var(--prism-chart-muted);
+    background-color: var(--prism-chart-neutral);
   }
 
   /**

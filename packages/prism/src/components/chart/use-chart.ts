@@ -87,6 +87,7 @@ function baseChartOptions(theme: Theme): ChartOptions {
   const paperColor = vars?.background.paper ?? palette.background.paper;
 
   return {
+    theme: { mode: palette.mode },
     // =========================================================================
     // Chart
     // https://apexcharts.com/docs/options/chart/animations/

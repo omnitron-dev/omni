@@ -1,8 +1,12 @@
 import { useEffect, useRef } from 'react';
-import { Box, useTheme } from '@mui/material';
+import { Box, useMediaQuery, useTheme } from '@mui/material';
+import { getContrastRatio } from '@mui/material/styles';
+import { usePrismContext } from '@omnitron-dev/prism/core';
 import { EditorState, Compartment } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { indentWithTab } from '@codemirror/commands';
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { tags } from '@lezer/highlight';
 import { basicSetup } from 'codemirror';
 import { lineEnding } from './model';
 
@@ -24,11 +28,19 @@ export default function CodeEditor({
     callbacks = useRef({ onChange, onSave });
   callbacks.current = { onChange, onSave };
   const theme = useTheme();
+  const { settings } = usePrismContext();
+  const prefersDark = useMediaQuery('(prefers-color-scheme: dark)');
+  const dark = settings.mode === 'system' ? prefersDark : settings.mode === 'dark';
   const content = useRef(initial);
   content.current = initial;
   useEffect(() => {
     if (!host.current) return undefined;
     const ending = lineEnding(content.current);
+    // Prism's tonal scales adapt to the scheme; choose by contrast instead of shade names.
+    const accent = (color: typeof theme.palette.primary & { lighter?: string; darker?: string }) =>
+      [color.main, color.light, color.dark, color.darker, color.lighter].find(
+        (candidate) => candidate && getContrastRatio(candidate, theme.palette.background.default) >= 4.5
+      ) ?? theme.palette.text.primary;
     const language = new Compartment();
     let disposed = false;
     const editor = new EditorView({
@@ -37,6 +49,17 @@ export default function CodeEditor({
         doc: content.current,
         extensions: [
           basicSetup,
+          syntaxHighlighting(
+            HighlightStyle.define([
+              { tag: tags.keyword, color: accent(theme.palette.primary) },
+              { tag: [tags.string, tags.special(tags.string)], color: accent(theme.palette.success) },
+              { tag: [tags.number, tags.bool, tags.null], color: accent(theme.palette.warning) },
+              { tag: [tags.function(tags.variableName), tags.typeName], color: accent(theme.palette.info) },
+              { tag: tags.comment, color: theme.palette.text.secondary, fontStyle: 'italic' },
+              { tag: [tags.name, tags.punctuation, tags.operator], color: theme.palette.text.primary },
+              { tag: tags.invalid, color: accent(theme.palette.error), textDecoration: 'underline' },
+            ])
+          ),
           language.of([]),
           keymap.of([
             {
@@ -78,7 +101,7 @@ export default function CodeEditor({
               '&.cm-focused': { outline: 'none' },
               '.cm-panels': { backgroundColor: theme.palette.background.paper, color: theme.palette.text.primary },
             },
-            { dark: theme.palette.mode === 'dark' }
+            { dark }
           ),
         ],
       }),
@@ -102,7 +125,7 @@ export default function CodeEditor({
       editor.destroy();
     };
     // Changing text on each keystroke would destroy undo history; a new document gets a new component key.
-  }, [name, readOnly, theme]);
+  }, [name, readOnly, theme, dark]);
   return (
     <Box
       ref={host}

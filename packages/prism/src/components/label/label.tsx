@@ -10,8 +10,8 @@
 
 import type { ReactNode, Ref } from 'react';
 import Box from '@mui/material/Box';
-import { alpha, styled } from '@mui/material/styles';
-import type { SxProps, Theme } from '@mui/material/styles';
+import { getContrastRatio, styled } from '@mui/material/styles';
+import type { CssVarsTheme, SxProps, Theme } from '@mui/material/styles';
 
 // =============================================================================
 // TYPES
@@ -59,18 +59,37 @@ interface StyledLabelProps {
 const StyledLabel = styled('span', {
   shouldForwardProp: (prop) => prop !== 'ownerState',
 })<StyledLabelProps>(({ theme, ownerState }) => {
-  const isLight = theme.palette.mode === 'light';
+  const palette = theme.vars?.palette ?? theme.palette;
   const { color, variant, disabled } = ownerState;
 
   // Get palette color for non-default colors (guaranteed defined when used below)
-  const paletteColor = color !== 'default' ? theme.palette[color] : null;
+  const paletteColor = color !== 'default' ? palette[color] : null;
 
   // Fallback palette for safe access (uses grey as safe default)
   const safePalette = paletteColor ?? {
-    main: theme.palette.grey[500],
-    light: theme.palette.grey[300],
-    dark: theme.palette.grey[700],
-    contrastText: theme.palette.common.white,
+    main: palette.grey[500],
+    light: palette.grey[300],
+    dark: palette.grey[700],
+    contrastText: palette.common.white,
+  };
+
+  // Prism's dark presets invert tonal roles; custom MUI palettes need not.
+  // Choose by contrast against each scheme's surface, then keep the CSS variable
+  // so changing schemes or the variable prefix does not freeze a light-mode colour.
+  const contrastText = (mode: 'light' | 'dark', surface: 'paper' | 'white' = 'paper') => {
+    if (color === 'default') return surface === 'white' ? palette.grey[800] : palette.text.secondary;
+    const schemes = (theme as Theme & Partial<Pick<CssVarsTheme, 'colorSchemes'>>).colorSchemes;
+    const source = schemes?.[mode]?.palette ?? theme.palette;
+    try {
+      const tones = source[color];
+      const background = surface === 'white' ? source.common.white : source.background.paper;
+      const tone =
+        getContrastRatio(tones.dark, background) >= getContrastRatio(tones.light, background) ? 'dark' : 'light';
+      return safePalette[tone];
+    } catch {
+      // Browser-resolved brand colours cannot be compared in JavaScript.
+      return surface === 'white' ? palette.grey[800] : palette.text.primary;
+    }
   };
 
   // Border radius as number for arithmetic
@@ -101,32 +120,34 @@ const StyledLabel = styled('span', {
 
   // Filled variant
   const filledStyles = {
-    color:
-      color === 'default' ? (isLight ? theme.palette.common.white : theme.palette.grey[800]) : safePalette.contrastText,
-    backgroundColor: color === 'default' ? theme.palette.text.primary : safePalette.main,
+    color: color === 'default' ? palette.common.white : safePalette.contrastText,
+    backgroundColor: color === 'default' ? palette.text.primary : safePalette.main,
+    ...(color === 'default' && theme.applyStyles('dark', { color: palette.grey[800] })),
   };
 
   // Outlined variant
   const outlinedStyles = {
-    color: color === 'default' ? theme.palette.text.primary : safePalette.main,
+    color: color === 'default' ? palette.text.primary : safePalette.main,
     backgroundColor: 'transparent',
-    border: `2px solid ${color === 'default' ? alpha(theme.palette.grey[500], 0.32) : alpha(safePalette.main, 0.48)}`,
+    border: `2px solid ${color === 'default' ? theme.alpha(palette.grey[500], 0.32) : theme.alpha(safePalette.main, 0.48)}`,
   };
 
   // Soft variant
   const softStyles = {
-    color: color === 'default' ? theme.palette.text.secondary : isLight ? safePalette.dark : safePalette.light,
-    backgroundColor: color === 'default' ? alpha(theme.palette.grey[500], 0.16) : alpha(safePalette.main, 0.16),
+    color: contrastText('light'),
+    backgroundColor: color === 'default' ? theme.alpha(palette.grey[500], 0.16) : theme.alpha(safePalette.main, 0.16),
+    ...theme.applyStyles('dark', { color: contrastText('dark') }),
   };
 
   // Inverted variant (white background with colored text)
   const invertedStyles = {
-    color: color === 'default' ? theme.palette.text.primary : safePalette.dark,
-    backgroundColor: theme.palette.common.white,
-    border: `1px solid ${alpha(theme.palette.grey[500], 0.16)}`,
+    color: contrastText('light', 'white'),
+    backgroundColor: palette.common.white,
+    border: `1px solid ${theme.alpha(palette.grey[500], 0.16)}`,
     ...(paletteColor && {
-      boxShadow: `inset 0 0 0 1px ${alpha(paletteColor.main, 0.24)}`,
+      boxShadow: `inset 0 0 0 1px ${theme.alpha(paletteColor.main, 0.24)}`,
     }),
+    ...theme.applyStyles('dark', { color: contrastText('dark', 'white') }),
   };
 
   const variantStyles = {

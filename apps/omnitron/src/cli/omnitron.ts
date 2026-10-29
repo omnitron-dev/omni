@@ -957,7 +957,6 @@ pipeline
 pipeline
   .command('status <runId>')
   .description('Check pipeline run status')
-  .option('--json', 'Print the structured run record')
   .option('--output', 'Include retained stdout and stderr')
   .action(async (runId, options) => {
     const { pipelineStatusCommand } = await import('../commands/pipeline.js');

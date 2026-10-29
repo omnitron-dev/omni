@@ -8,6 +8,7 @@ import { log } from '@xec-sh/kit';
 import { readFile } from 'node:fs/promises';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { IOmnitronPipelinesService } from '../shared/dto/services.js';
+import { emitJson, emitError } from './output.js';
 
 /**
  * One call to the daemon's pipelines service, through `client.service()` —
@@ -37,6 +38,7 @@ async function withPipelines<T>(call: (svc: IOmnitronPipelinesService) => Promis
 export async function pipelineListCommand(): Promise<void> {
   try {
     const pipelines = await withPipelines((svc) => svc.listPipelines());
+    if (emitJson({ pipelines })) return;
 
     if (pipelines.length === 0) {
       log.info('No pipelines defined');
@@ -63,7 +65,7 @@ export async function pipelineListCommand(): Promise<void> {
       );
     }
   } catch (err) {
-    log.error(`Failed: ${(err as Error).message}`);
+    emitError(`Failed: ${(err as Error).message}`);
     // Every catch in this file printed «Failed» and left with exit 0, so a
     // script — or an `&&` — took the failure for an answer.
     process.exitCode = 1;
@@ -82,32 +84,26 @@ export async function pipelineRunCommand(id: string, options: { paramsFile?: str
       return svc.executePipeline({
         id: matches[0]!.id,
         expectedRevision: matches[0]!.revision,
-        ...(params ? { params } : {}),
+        ...(params !== undefined ? { params } : {}),
       });
     });
-    log.success(`Pipeline run started: ${run.id} (status: ${run.status})`);
+    if (!emitJson(run)) log.success(`Pipeline run started: ${run.id} (status: ${run.status})`);
   } catch (err) {
-    log.error(`Failed: ${(err as Error).message}`);
+    emitError(`Failed: ${(err as Error).message}`);
     process.exitCode = 1;
   }
 }
 
-export async function pipelineStatusCommand(
-  runId: string,
-  options: { json?: boolean; output?: boolean } = {}
-): Promise<void> {
+export async function pipelineStatusCommand(runId: string, options: { output?: boolean } = {}): Promise<void> {
   try {
     const run = await withPipelines((svc) => svc.getRunStatus({ runId }));
     if (!run) {
-      log.warn(`Run '${runId}' not found`);
+      emitError(`Run '${runId}' not found`);
       process.exitCode = 1;
       return;
     }
     if (['failed', 'cancelled', 'interrupted'].includes(run.status)) process.exitCode = 1;
-    if (options.json) {
-      console.log(JSON.stringify(run, null, 2));
-      return;
-    }
+    if (emitJson(run)) return;
 
     log.info(`Run ${run.id}: ${run.status}`);
 
@@ -127,7 +123,7 @@ export async function pipelineStatusCommand(
       log.info(`Completed: ${new Date(run.completedAt).toLocaleString()}`);
     }
   } catch (err) {
-    log.error(`Failed: ${(err as Error).message}`);
+    emitError(`Failed: ${(err as Error).message}`);
     process.exitCode = 1;
   }
 }
@@ -138,19 +134,19 @@ export async function pipelineSaveCommand(file: string, options: { id?: string }
     const result = await withPipelines((svc) =>
       options.id ? svc.updatePipeline({ id: options.id, definition }) : svc.createPipeline(definition)
     );
-    log.success(`Pipeline saved: ${result.id} (${result.name})`);
+    if (!emitJson(result)) log.success(`Pipeline saved: ${result.id} (${result.name})`);
   } catch (error) {
-    log.error(`Failed: ${(error as Error).message}`);
+    emitError(`Failed: ${(error as Error).message}`);
     process.exitCode = 1;
   }
 }
 
 export async function pipelineCancelCommand(runId: string): Promise<void> {
   try {
-    await withPipelines((svc) => svc.cancelRun({ runId }));
-    log.success(`Run ${runId} is no longer executing`);
+    const result = await withPipelines((svc) => svc.cancelRun({ runId }));
+    if (!emitJson({ runId, ...result })) log.success(`Run ${runId} is no longer executing`);
   } catch (error) {
-    log.error(`Failed: ${(error as Error).message}`);
+    emitError(`Failed: ${(error as Error).message}`);
     process.exitCode = 1;
   }
 }

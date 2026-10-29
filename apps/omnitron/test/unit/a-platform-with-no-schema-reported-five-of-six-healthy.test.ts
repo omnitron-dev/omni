@@ -66,15 +66,8 @@ describe('the schema arrives before the apps that read it', () => {
     expect(migrateNodeApps.trimEnd().endsWith('return failed;'), 'migrateNodeApps is where this test thinks it is').toBe(true);
   });
 
-  it('runs them after the config is written and before anything starts', () => {
-    // The order is the whole point: the config carries `DATABASE_URL`, the
-    // migrations need it, and the apps need the tables. Any other order
-    // leaves one of the three holding nothing.
-    //
-    // Scoped to `deployToStack`, because `signalRemoteDaemon` is also called
-    // from the single-app path earlier in the file — a whole-file `indexOf`
-    // answers about the wrong one, which is how this assertion first failed
-    // against code that was correct.
+  it('runs them before publishing the boot configuration or starting candidates', () => {
+    // Credentials are supplied directly; a failed migrator must not publish candidate boot definitions.
     const from = deployer.indexOf('async deployToStack(');
     expect(from, 'deployToStack is where this test thinks it is').toBeGreaterThan(-1);
     const region = deployer.slice(from, deployer.indexOf('\n  }', deployer.indexOf('return results;', from)));
@@ -84,8 +77,9 @@ describe('the schema arrives before the apps that read it', () => {
     const start = region.indexOf('await this.signalRemoteDaemon(');
 
     expect(register).toBeGreaterThan(-1);
-    expect(migrate).toBeGreaterThan(register);
-    expect(start).toBeGreaterThan(migrate);
+    expect(migrate).toBeGreaterThan(-1);
+    expect(register).toBeGreaterThan(migrate);
+    expect(start).toBeGreaterThan(register);
   });
 
   it('takes the connection from what the app was given', () => {
@@ -131,7 +125,7 @@ describe('the schema arrives before the apps that read it', () => {
 
     expect(body).toMatch(/assertRemotePathSegment\('project name', project\)/);
     expect(body).toMatch(/assertRemotePathSegment\('app name', entry\.app\)/);
-    expect(body).toMatch(/assertRemotePathSegment\('version', entry\.version\)/);
+    expect(body).toMatch(/assertRemotePathSegment\('version', entry\.directory \?\? entry\.version\)/);
   });
 });
 

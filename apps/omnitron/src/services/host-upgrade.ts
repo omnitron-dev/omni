@@ -14,7 +14,7 @@ export interface AppUpgradeContract {
     kind: 'hook'; bundleRoot: string; bundleEnv: string; rebind: string[]; verify: string[];
   };
 }
-export type HostRuntime = { kind: 'fork'; cwd: string } | {
+export type HostRuntime = { kind: 'fork'; cwd: string; executable?: string } | {
   kind: 'systemd'; cwd: string; scope: 'system' | 'user'; file: string; contents: string; enabled: boolean;
 };
 export interface HostInventory {
@@ -238,11 +238,29 @@ export function inventoryCommand(bundle: InstalledBundle, full: boolean): string
     try {
       const status=await client.status();
       ${full ? `const service=await client.service('OmnitronProject');
+      const {loadEcosystemConfig}=await import(pathToFileURL(${JSON.stringify(`${bundle.root}/dist/config/loader.js`)}).href);
       const projects=await service.listProjects(); const stacks=[]; const contracts=[];
       for(const project of projects){
-        stacks.push({project:project.name,path:project.path,stacks:await service.listStacks({project:project.name})});
+        const live=await service.listStacks({project:project.name});
+        stacks.push({project:project.name,path:project.path,stacks:live});
         const file=path.join(project.path,${JSON.stringify(HOST_UPGRADE_CONTRACT)});
-        if(fs.existsSync(file)) contracts.push({...JSON.parse(fs.readFileSync(file,'utf8')),project:project.name});
+        const contract=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):null;
+        if(contract) contracts.push({...contract,project:project.name});
+        // The daemon's cached inventory is insufficient: prove that disk can boot it again.
+        const config=await loadEcosystemConfig(project.path);
+        const userFile=path.join(project.path,'omnitron.stacks.json');
+        const declared={...(fs.existsSync(userFile)?JSON.parse(fs.readFileSync(userFile,'utf8')):{}),...config.stacks};
+        const boot=[];
+        for(const [stackName,stack] of Object.entries(declared)){
+          if(stack.type!=='local') continue;
+          for(const app of config.apps.filter(a=>a.enabled!==false && (!stack.apps || stack.apps==='all' || stack.apps.includes(a.name)))){
+            const name=project.name+'/'+stackName+'/'+app.name; boot.push(name);
+            const binding=contract?.apps?.find(a=>a.name===name);
+            if(!binding || path.resolve(project.path,app.cwd||'.')!==binding.cwd) throw Error('Boot release differs from upgrade contract: '+name);
+          }
+        }
+        const expected=live.filter(s=>s.type==='local').flatMap(s=>s.apps.map(a=>a.handleKey)).sort();
+        if(JSON.stringify(boot.sort())!==JSON.stringify(expected)) throw Error('Boot configuration differs from serving app inventory: '+project.name);
       }
       console.log(JSON.stringify({status,projects,stacks,contracts}));` : 'console.log(JSON.stringify(status));'}
     } finally { await client.disconnect(); }`);
@@ -308,7 +326,9 @@ export function runtimeProbeCommand(bundle: InstalledBundle, pid: number): strin
     const cwd=fs.realpathSync('/proc/'+pid+'/cwd');
     const candidates=[{scope:'system',file:'/etc/systemd/system/omnitron-daemon.service'},{scope:'user',file:path.join(os.homedir(),'.config/systemd/user/omnitron-daemon.service')}].filter(c=>fs.existsSync(c.file));
     if(candidates.length>1) throw Error('Multiple supervisor scopes are unsupported');
-    if(!candidates.length) { console.log(JSON.stringify({kind:'fork',cwd})); }
+    const executable=fs.realpathSync('/proc/'+pid+'/exe');
+    fs.accessSync(executable,fs.constants.X_OK);
+    if(!candidates.length) { console.log(JSON.stringify({kind:'fork',cwd,executable})); }
     else {
       const unit=candidates[0]; const args=unit.scope==='user'?['--user']:[];
       const output=execFileSync('systemctl',[...args,'show','omnitron-daemon.service','--property=MainPID,ActiveState,UnitFileState,FragmentPath,DropInPaths'],{encoding:'utf8'});
@@ -325,11 +345,17 @@ export function runtimeProbeCommand(bundle: InstalledBundle, pid: number): strin
     }`);
 }
 export function runtimeStopCommand(runtime: HostRuntime, bundle: InstalledBundle): string {
-  if (runtime.kind === 'fork') return `${shellEscape(`${bundle.root}/dist/cli/omnitron.js`)} down`;
+  if (runtime.kind === 'fork') return `${runtime.executable ? shellEscape(runtime.executable) + ' ' : ''}${shellEscape(`${bundle.root}/dist/cli/omnitron.js`)} down`;
   return `systemctl ${runtime.scope === 'user' ? '--user ' : ''}stop omnitron-daemon.service`;
 }
 export function runtimeStartCommand(runtime: HostRuntime, previous: InstalledBundle, bundle: InstalledBundle, allowedCurrentRoots: string[] = [previous.root, bundle.root]): string {
-  if (runtime.kind === 'fork') return `cd ${shellEscape(runtime.cwd === previous.root ? bundle.root : runtime.cwd)} && ${shellEscape(`${bundle.root}/dist/cli/omnitron.js`)} up --no-infra`;
+  if (runtime.kind === 'fork') {
+    if (runtime.executable && !runtime.executable.startsWith('/')) throw new Error('Captured Node executable must be absolute');
+    const executable = runtime.executable ? shellEscape(runtime.executable) + ' ' : '';
+    // Keep the serving Node runtime for the daemon and its child processes, without modifying global links.
+    const env = runtime.executable ? `PATH=${shellEscape(runtime.executable.slice(0, runtime.executable.lastIndexOf('/')))}:"$PATH" ` : '';
+    return `cd ${shellEscape(runtime.cwd === previous.root ? bundle.root : runtime.cwd)} && ${env}${executable}${shellEscape(`${bundle.root}/dist/cli/omnitron.js`)} up --no-infra`;
+  }
   return remoteNode(`${fsPrelude} import {execFileSync} from 'node:child_process';
     const original=${JSON.stringify(runtime.contents)};
     const render=root=>original.split('\\n').map(l=>(l.startsWith('ExecStart=')||l.startsWith('WorkingDirectory=')||/^Environment="?OMNITRON_CWD=/.test(l))?l.split(${JSON.stringify(previous.root)}).join(root):l).join('\\n');

@@ -34,6 +34,8 @@ export const NODE_STACK = 'deployed';
 export interface NodeArtifact {
   app: string;
   version: string;
+  /** Installation identity selected by the deployer, independent of package version. */
+  directory?: string;
 }
 
 export interface NodeConfigInput {
@@ -105,7 +107,7 @@ const DROPPED = new Set(['watch', 'cwd', 'script']);
  * by not listing it.
  */
 export function selectNodeApps(input: NodeConfigInput): Array<Record<string, unknown>> {
-  const versions = new Map(input.artifacts.map((a) => [a.app, a.version]));
+  const versions = new Map(input.artifacts.map((a) => [a.app, a.directory ?? a.version]));
   const present = new Set(versions.keys());
   const out: Array<Record<string, unknown>> = [];
 

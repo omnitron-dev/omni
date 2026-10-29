@@ -34,7 +34,7 @@
 import { quoteForShell, type ShellDialect } from '@xec-sh/core';
 
 /** The default runtime a prepared node gets when it has none. */
-export const DEFAULT_NODE_VERSION = '22.14.0';
+export const DEFAULT_NODE_VERSION = '22.23.4';
 
 /** Where omnitron puts things it installed itself. */
 export const OMNITRON_PREFIX = '/opt/omnitron';

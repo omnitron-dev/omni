@@ -6,6 +6,7 @@ import { execSync } from 'node:child_process';
 import {
   planHostUpgrade, executeHostUpgrade, recoverHostUpgrade, verifyRestoredInventory, bundleProbeCommand,
   hookCommand, receiptCommand, updateContractBindingsCommand, runtimeStartCommand, runtimeStopCommand,
+  inventoryCommand,
   type HostInventory, type InstalledBundle, type HostUpgradeActions,
 } from '../../src/services/host-upgrade.js';
 import { pruneSteps } from '../../src/services/bundle-builder.js';
@@ -133,6 +134,24 @@ describe('generated remote commands on a real filesystem', () => {
     try { run(directory); } finally { fs.rmSync(directory, { recursive: true, force: true }); }
   }
   const execute = (command: string) => execSync(command, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  it('rejects disk configuration that has lost a serving app before the daemon is stopped', () => temporary(dir => {
+    fs.mkdirSync(path.join(dir, 'dist/daemon'), { recursive: true }); fs.mkdirSync(path.join(dir, 'dist/config'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'package.json'), '{"type":"module"}');
+    fs.writeFileSync(path.join(dir, 'dist/daemon/daemon-client.js'), `export const createDaemonClient=()=>({status:async()=>({}),disconnect:async()=>{},service:async()=>({listProjects:async()=>[{name:'p',path:${JSON.stringify(dir)}}],listStacks:async()=>[{name:'deployed',type:'local',apps:[{handleKey:'p/deployed/api'}]}]})});`);
+    fs.writeFileSync(path.join(dir, 'dist/config/loader.js'), `export const loadEcosystemConfig=async()=>JSON.parse((await import('node:fs')).readFileSync(${JSON.stringify(path.join(dir, 'boot.json'))},'utf8'));`);
+    fs.writeFileSync(path.join(dir, 'omnitron.host-upgrade.json'), JSON.stringify({ schema: 1, apps: [{ name: 'p/deployed/api', cwd: dir }] }));
+    fs.writeFileSync(path.join(dir, 'boot.json'), JSON.stringify({ apps: [], stacks: { deployed: { type: 'local', apps: 'all' } } }));
+    expect(() => execute(inventoryCommand({ ...old, root: dir }, true))).toThrow(/Boot configuration differs/);
+    fs.writeFileSync(path.join(dir, 'boot.json'), JSON.stringify({ apps: [{ name: 'api', cwd: dir }], stacks: { deployed: { type: 'local', apps: 'all' } } }));
+    expect(JSON.parse(execute(inventoryCommand({ ...old, root: dir }, true))).stacks).toHaveLength(1);
+  }));
+  it('starts a fork with its captured Node rather than the global shebang runtime', () => temporary(dir => {
+    const root = path.join(dir, 'release'); fs.mkdirSync(path.join(root, 'dist/cli'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'dist/cli/omnitron.js'), 'console.log(JSON.stringify({exec:process.execPath,args:process.argv.slice(2),path:process.env.PATH}))');
+    const output = JSON.parse(execute(runtimeStartCommand({ kind: 'fork', cwd: dir, executable: process.execPath }, old, { ...next, root })));
+    expect(output.exec).toBe(process.execPath); expect(output.args).toEqual(['up', '--no-infra']);
+    expect(output.path.startsWith(path.dirname(process.execPath) + ':')).toBe(true);
+  }));
   it('checks installed metadata and rejects a dirty or mismatched candidate', () => temporary(dir => {
     const root = path.join(dir, 'versions', next.version); fs.mkdirSync(path.join(root, 'dist/cli'), { recursive: true });
     const meta = { version: next.version, commit: next.commit, dirty: false };

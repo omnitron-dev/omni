@@ -96,17 +96,12 @@ describe('a node that could not be asked, taken to have no migrations', () => {
     expect(d.restarted).not.toContain('payments');
   });
 
-  it('still migrates and starts the app it could ask about', async () => {
-    // The control: a deployer that refused everything on one failed
-    // question would pass the case above. About `main` only — what happens
-    // to payments is the case above's claim, not this one's.
+  it('retains existing code for the entire node when a migration probe is unavailable', async () => {
     const d = deployment(new Set(['payments']));
-
     const results = await d.run();
-
-    expect(results.find((r: any) => r.app === 'main').status).toBe('success');
+    expect(results.every((r: any) => r.status === 'failed')).toBe(true);
     expect(d.migrated).toContain('main');
-    expect(d.restarted).toContain('main');
+    expect(d.restarted).toEqual([]);
   });
 
   it('migrates and starts both when the node answers', async () => {

@@ -87,23 +87,20 @@ describe('new code is not started on a schema it does not match', () => {
 
     const payments = results.find((r: any) => r.app === 'payments');
     expect(payments.status).toBe('failed');
-    expect(payments.error).toMatch(/database migrations failed, so the new code was not started/);
+    expect(payments.error).toMatch(/database migrations failed; existing code retained/);
     expect(payments.error).toMatch(/relation "wallets" does not exist/);
     // The claim is about what did NOT happen: nothing restarted it onto the
     // code whose schema is missing.
     expect(restarted).not.toContain('payments');
   });
 
-  it('still starts the apps whose migrations went through', async () => {
-    // The control. A deployer that stopped everything on one failure would
-    // pass the test above.
+  it('retains the complete node configuration when any migration fails', async () => {
     const { svc, restarted } = deployer(new Set(['payments']));
+    svc.registerNodeApps = vi.fn(async () => ({ changed: true }));
     const results = await run(svc);
-    expect(results.filter((r: any) => r.status === 'success').map((r: any) => r.app).sort()).toEqual([
-      'main',
-      'storage',
-    ]);
-    expect(restarted.sort()).toEqual(['main', 'storage']);
+    expect(results.every((r: any) => r.status === 'failed')).toBe(true);
+    expect(restarted).toEqual([]);
+    expect(svc.registerNodeApps).not.toHaveBeenCalled();
   });
 
   it('starts everything when every migration succeeds', async () => {

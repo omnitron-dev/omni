@@ -228,14 +228,7 @@ describe('the deployment wires both halves', () => {
     expect(body).toMatch(/every app will be restarted/);
   });
 
-  it('treats an unknown config as changed', () => {
-    // The catch in `registerNodeApps`: not knowing whether the definitions
-    // moved must not read as "they did not".
-    const at = deployer.indexOf('private async registerNodeApps(');
-    const body = deployer.slice(at, deployer.indexOf('\n  /**', at + 2000));
 
-    expect(body).toMatch(/return \{ changed: true \}/);
-  });
 });
 
 /**

@@ -133,7 +133,7 @@ describe('deciding what to do about it', () => {
     const plan = planProvisioning(facts({ os: 'darwin', arch: 'arm64', packageManager: 'brew', isRoot: false, passwordlessSudo: true }));
 
     expect(plan.refusal).toBeUndefined();
-    expect(plan.steps.map((s) => s.command).join('\n')).toContain('node-v22.14.0-darwin-arm64.tar.gz');
+    expect(plan.steps.map((s) => s.command).join('\n')).toContain(`node-v${DEFAULT_NODE_VERSION}-darwin-arm64.tar.gz`);
   });
 
   it('can prepare the runtime without installing the registry CLI when a verified bundle follows', () => {

@@ -72,7 +72,6 @@ import {
   readChecksumCommand,
   parseRecordedChecksum,
   ARTIFACT_CHECKSUM_FILE,
-  NODE_CONFIG_HASH_FILE,
 } from './redeploy-decision.js';
 import {
   deliveredProbeCommand,
@@ -97,6 +96,7 @@ const UNREADABLE = -3;
 import { withNodeLeases, type LeaseRunner } from './node-deploy-lease.js';
 import { hostOperationBarrierCommand, type HostOperationAllowance } from './host-operation-barrier.js';
 import { migrationOutput } from './migration-output.js';
+import { publishNodeConfigCommand, restoreNodeConfigCommand } from './node-registration.js';
 
 
 /**
@@ -308,6 +308,8 @@ export interface DeployResult {
    * record it — see `recordRunningArtifact`.
    */
   checksum?: string;
+  /** Immutable installation directory segment; the application version may be reused. */
+  directory?: string;
 }
 
 export interface DeployProgress {
@@ -454,8 +456,8 @@ export class RemoteDeployer {
       await this.verifySSH(target);
 
       // 2. Ensure remote directory structure
-      const remotePath = artifactDirOnNode(project, artifact.app, artifact.version);
-      await this.sshExec(target, `mkdir -p ${shellEscape(remotePath)}`);
+      let directory = `${artifact.version}-${artifact.tarballSha256 ?? crypto.randomUUID()}`;
+      let remotePath = artifactDirOnNode(project, artifact.app, directory);
 
       // 2a. What the node already has.
       //
@@ -488,9 +490,20 @@ export class RemoteDeployer {
             status: 'success',
             duration,
             unchanged: true,
+            directory,
           };
         }
       }
+
+      // Never clear a version directory: a running process can still load files from it.
+      // A failed attempt, or an explicit reinstall, gets another private directory.
+      const occupied = await this.sshExec(target, `test -e ${shellEscape(remotePath)} && echo occupied || echo absent`);
+      if (options?.force === true || occupied.trim() !== 'absent') {
+        directory += `-${crypto.randomUUID()}`;
+        remotePath = artifactDirOnNode(project, artifact.app, directory);
+      }
+      const parent = artifactDirOnNode(project, artifact.app, artifact.version).replace(/\/[^/]+$/, '');
+      await this.sshExec(target, `mkdir -p ${shellEscape(parent)} && mkdir ${shellEscape(remotePath)}`);
 
       // 3. Transfer artifact
       this.emitProgress(nodeKey, artifact.app, 'transferring', 20, 'Transferring artifact...');
@@ -541,31 +554,10 @@ export class RemoteDeployer {
         );
       }
 
-      // 4. Extract on remote, into an empty directory.
-      //
-      // `tar -xzf` over whatever was there before leaves everything the new
-      // archive does not name — and what was there before is a `node_modules`
-      // of a different SHAPE. The first deployment after this builder changed
-      // put an npm manifest beside a pnpm tree and `npm install` answered
-      //
-      //     npm error Cannot read properties of null (reading 'edgesOut')
-      //
-      // which is npm walking a dependency graph through symlinks it did not
-      // create. The same reasoning as `installSteps`, which removes the
-      // version directory before unpacking for exactly this: an install
-      // reconciling against a tree from another tool is not this version.
-      //
-      // Everything except the archive just uploaded, and only inside the
-      // artifact's own version directory — every segment of which was checked
-      // by `assertRemotePathSegment` above.
-      this.emitProgress(nodeKey, artifact.app, 'extracting', 50, 'Extracting artifact...');
+      // This newly reserved directory is not referenced by any registered application.
+      this.emitProgress(nodeKey, artifact.app, 'extracting', 50, 'Extracting candidate artifact...');
       const archiveName = `${artifact.app}-${artifact.version}.tar.gz`;
-      await this.sshExec(
-        target,
-        `cd ${shellEscape(remotePath)} && ` +
-          `find . -mindepth 1 -maxdepth 1 ! -name ${shellEscape(archiveName)} -exec rm -rf {} + && ` +
-          `tar -xzf ${shellEscape(archiveName)}`,
-      );
+      await this.sshExec(target, `cd ${shellEscape(remotePath)} && tar -xzf ${shellEscape(archiveName)}`);
 
       // 5. Install the dependencies ON THE NODE.
       //
@@ -594,7 +586,7 @@ export class RemoteDeployer {
       try {
         await this.sshExec(
           target,
-          `cd ${shellEscape(remotePath)} && npm install --omit=dev --no-audit --no-fund`,
+          `cd ${shellEscape(remotePath)} && npm install --omit=dev --engine-strict --no-audit --no-fund`,
           900_000,
         );
       } catch (err) {
@@ -716,49 +708,12 @@ export class RemoteDeployer {
           version: artifact.version,
           status: 'success',
           duration,
+          directory,
           ...(artifact.checksum ? { checksum: artifact.checksum } : {}),
         };
       }
 
-      this.emitProgress(nodeKey, artifact.app, 'restarting', 80, 'Restarting app on remote...');
-      const started = await this.signalRemoteDaemon(target, artifact.app);
-
-      // 7. Verify health
-      this.emitProgress(nodeKey, artifact.app, 'verifying', 90, 'Verifying health...');
-      const health = await this.verifyHealth(target, artifact.app, project);
-
-      const duration = Date.now() - startTime;
-
-      // An artifact on disk is not a running application. Reporting success
-      // for the transfer alone is what let a fleet show six deployed apps and
-      // run none of them.
-      if (!started.ok || !health.online) {
-        const why = !started.ok ? started.detail : health.detail;
-        this.emitProgress(nodeKey, artifact.app, 'failed', 90, `artifact installed, app not running: ${why}`);
-        this.logger.error(
-          { node: nodeKey, app: artifact.app, version: artifact.version, duration, detail: why },
-          'Artifact installed, but the app is not running on the node',
-        );
-        return {
-          node: nodeKey,
-          app: artifact.app,
-          version: artifact.version,
-          status: 'failed',
-          duration,
-          error: `artifact installed, app not running: ${why}`,
-        };
-      }
-
-      await this.recordRunningArtifact(target, remotePath, artifact.app, artifact.checksum);
-
-      this.emitProgress(nodeKey, artifact.app, 'success', 100, `Deployed in ${Math.round(duration / 1000)}s`);
-
-      this.logger.info(
-        { node: nodeKey, app: artifact.app, version: artifact.version, duration },
-        'Deployment successful'
-      );
-
-      return { node: nodeKey, app: artifact.app, version: artifact.version, status: 'success', duration };
+      throw new Error('Artifact installed in a new directory; activate it through deployToStack with application definitions');
     } catch (err) {
       const duration = Date.now() - startTime;
       const error = (err as Error).message;
@@ -857,19 +812,33 @@ export class RemoteDeployer {
         const nodeKey = `${target.host}:${target.daemonPort ?? 9700}`;
         const landed = results
           .filter((r) => r.node === nodeKey && r.status === 'success')
-          .map((r) => ({ app: r.app, version: r.version }));
-        const registration = await this.registerNodeApps(
-          target,
-          project,
-          options.apps,
-          landed,
-          options.appEnv,
-          options.alertSink,
-        );
-
-        // Schema before the apps that read it — and an app whose schema did
-        // not arrive does not get its new code started on the old one.
+          .map((r) => ({ app: r.app, version: r.version, ...(r.directory ? { directory: r.directory } : {}) }));
+        const expected = tasks.filter(task => task.target === target).length;
+        if (landed.length !== expected) {
+          for (const result of results.filter(r => r.node === nodeKey && r.status === 'success')) {
+            result.status = 'failed'; result.error = 'Another artifact failed installation; existing node configuration and processes were retained';
+            this.emitProgress(nodeKey, result.app, 'failed', 75, result.error);
+          }
+          continue;
+        }
+        // Do not publish a new boot configuration until every candidate is installed and migrated.
         const migrationFailed = await this.migrateNodeApps(target, project, landed, options.appEnv);
+        if (migrationFailed.size) {
+          for (const result of results.filter(r => r.node === nodeKey && r.status === 'success')) {
+            result.status = 'failed'; result.error = `database migrations failed; existing code retained: ${migrationFailed.get(result.app) ?? 'another application failed'}`;
+            this.emitProgress(nodeKey, result.app, 'failed', 80, result.error);
+          }
+          continue;
+        }
+        let registration: { changed: boolean };
+        try { registration = await this.registerNodeApps(target, project, options.apps, landed, options.appEnv, options.alertSink); }
+        catch (error) {
+          for (const result of results.filter(r => r.node === nodeKey && r.status === 'success')) {
+            result.status = 'failed'; result.error = `Node registration failed: ${(error as Error).message}`;
+            this.emitProgress(nodeKey, result.app, 'failed', 85, result.error);
+          }
+          continue;
+        }
 
         // And the path from the gateway to them, which is the one crossing
         // no configuration can open by itself. See `gateway-reachability`.
@@ -926,7 +895,7 @@ export class RemoteDeployer {
           if (health.online) {
             await this.recordRunningArtifact(
               target,
-              artifactDirOnNode(project, entry.app, entry.version),
+              artifactDirOnNode(project, entry.app, entry.directory ?? entry.version),
               entry.app,
               result.checksum,
             );
@@ -1110,7 +1079,7 @@ export class RemoteDeployer {
   private async migrateNodeApps(
     target: DeployTarget,
     project: string,
-    landed: ReadonlyArray<{ app: string; version: string }>,
+    landed: ReadonlyArray<{ app: string; version: string; directory?: string }>,
     appEnv?: Readonly<Record<string, Record<string, string>>> | undefined,
   ): Promise<Map<string, string>> {
     const failed = new Map<string, string>();
@@ -1121,7 +1090,7 @@ export class RemoteDeployer {
       const dir =
         `/opt/omnitron/artifacts/${assertRemotePathSegment('project name', project)}` +
         `/${assertRemotePathSegment('app name', entry.app)}` +
-        `/${assertRemotePathSegment('version', entry.version)}`;
+        `/${assertRemotePathSegment('version', entry.directory ?? entry.version)}`;
       const script = `${dir}/dist/database/migrate.js`;
 
       // A node that could not be asked is not an app without a migrator.
@@ -1222,7 +1191,7 @@ export class RemoteDeployer {
     target: DeployTarget,
     project: string,
     apps: readonly import('../config/types.js').IEcosystemAppEntry[],
-    landed: ReadonlyArray<{ app: string; version: string }>,
+    landed: ReadonlyArray<{ app: string; version: string; directory?: string }>,
     appEnv?: Readonly<Record<string, Record<string, string>>> | undefined,
     alertSink?: import('../config/types.js').IAlertSink | undefined,
   ): Promise<{ changed: boolean }> {
@@ -1242,33 +1211,12 @@ export class RemoteDeployer {
       alertSink,
     });
 
-    const bodyHash = crypto.createHash('sha256').update(body).digest('hex');
-
+    const operation = crypto.randomUUID();
+    let published = false;
     try {
-      await this.sshExec(target, `mkdir -p ${shellEscape(dir)}`);
-      const previous = parseRecordedChecksum(
-        await this.sshExec(target, readChecksumCommand(shellEscape(dir), NODE_CONFIG_HASH_FILE)),
-      );
-      const changed = previous !== bodyHash;
-      // Through a here-document: the config carries braces, quotes and
-      // newlines, and a single-quoted argument would need every quote in it
-      // escaped by hand — which is how a generated file acquires a syntax
-      // error nobody can see in the source that generated it.
-      const configPath = `${dir}/omnitron.config.mjs`;
-      // `umask 077` around the write, not a `chmod` after it: the file exists
-      // with its contents between the two, and what it contains is the
-      // generated password of every service on this node. It was written 0644
-      // for as long as it has existed — measured on the test node — which was
-      // harmless only because it held no credentials to leak.
-      await this.sshExec(
-        target,
-        `umask 077 && cat > ${shellEscape(configPath)} <<'OMNITRON_EOF'\n${body}\nOMNITRON_EOF`,
-      );
-      await this.sshExec(target, `chmod 600 ${shellEscape(configPath)}`);
-      await this.sshExec(
-        target,
-        `printf %s ${shellEscape(bodyHash)} > ${shellEscape(`${dir}/${NODE_CONFIG_HASH_FILE}`)}`,
-      );
+      const result = await this.sshExec(target, publishNodeConfigCommand({ directory: dir, project, body, operation, artifacts: landed }));
+      published = true;
+      const { changed } = JSON.parse(result.trim()) as { changed: boolean };
       const added = await this.sshExec(target, `omnitron project add ${shellEscape(project)} ${shellEscape(dir)} 2>&1`);
 
       // Registering the project is not starting it. The node reads the
@@ -1311,7 +1259,7 @@ export class RemoteDeployer {
           { host: target.host, project, dir, detail: `${added}\n${out}`.trim().slice(0, 300) },
           'The node refused the apps it was given — its artifacts are installed and it will run none of them',
         );
-        return { changed };
+        throw new Error('Node CLI refused project registration or stack start');
       }
 
       this.logger.info(
@@ -1335,9 +1283,15 @@ export class RemoteDeployer {
         { host: target.host, project, dir, error: (err as Error).message },
         'Could not tell the node what to run — its artifacts are installed and its daemon does not know the apps',
       );
-      // Unknown, and unknown must not read as "nothing moved": an app whose
-      // config may have changed is an app to restart.
-      return { changed: true };
+      // Restore durable boot definitions if publication or registration was interrupted.
+      // Do not claim process rollback: some applications may already have started.
+      try {
+        await this.sshExec(target, restoreNodeConfigCommand(dir, operation));
+        if (published) await this.sshExec(target, `omnitron project add ${shellEscape(project)} ${shellEscape(dir)} 2>&1`);
+      } catch (restoreError) {
+        throw new Error(`Registration and configuration recovery failed; inspect ${dir}/.registration-${operation}`, { cause: restoreError });
+      }
+      throw err;
     }
   }
 

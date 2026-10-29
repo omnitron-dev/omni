@@ -63,7 +63,7 @@ describe('the node’s config carries the sink', () => {
     const project = readFileSync(new URL('../../src/services/project.service.ts', import.meta.url), 'utf8');
     expect(project).toMatch(/alertSink: \{ \.\.\.sink, host: `\$\{projectName\}\/\$\{stackName\}` \}/);
     const deployer = readFileSync(new URL('../../src/services/remote-deployer.service.ts', import.meta.url), 'utf8');
-    expect(deployer).toMatch(/options\.appEnv,\s*options\.alertSink,/);
+    expect(deployer).toMatch(/options\.appEnv,\s*options\.alertSink,?/);
     expect(deployer).toMatch(/appEnv,\s*alertSink,\s*\}\);/);
   });
 });

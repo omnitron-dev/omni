@@ -103,6 +103,9 @@ export function spawnDaemon(options: SpawnDaemonOptions): SpawnedDaemon {
   }
 
   child.unref();
+  // The IPC pipe has its own event-loop reference. Detaching the process
+  // alone keeps the launching CLI alive for the daemon's entire lifetime.
+  child.channel?.unref();
 
   const pid = child.pid;
   return {

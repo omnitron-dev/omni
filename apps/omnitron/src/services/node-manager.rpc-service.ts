@@ -83,6 +83,8 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
 
   private leaderElection: { getClusterState(): unknown } | null = null;
 
+  private localDaemon: Pick<import('../daemon/daemon.rpc-service.js').DaemonRpcService, 'status' | 'getHealth' | 'getMetrics'> | null = null;
+
   constructor(
     private readonly nodeManager: NodeManagerService,
     /** The audit trail, when this daemon has one — see `ProjectRpcService`. */
@@ -526,6 +528,11 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
     this.titanHealth = service;
   }
 
+  /** Use the same daemon readers locally as the mesh exposes remotely. */
+  setLocalDaemon(service: typeof this.localDaemon): void {
+    this.localDaemon = service;
+  }
+
   /** This daemon's own replication state, for the local node. */
   setSyncService(service: { getStatus(): Promise<ISyncStatus> } | null): void {
     this.syncService = service;
@@ -655,7 +662,14 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
     method: 'status' | 'getHealth' | 'getMetrics',
     args: unknown[],
   ): Promise<INodeDaemonAnswer<T>> {
-    const r = await this.askNode<T>(nodeId, 'OmnitronDaemon', method, args, null);
+    const daemon = this.localDaemon;
+    const local = daemon ? async () => {
+      const answer = method === 'status' ? await daemon.status()
+        : method === 'getHealth' ? await daemon.getHealth({})
+          : await daemon.getMetrics({});
+      return answer as T;
+    } : null;
+    const r = await this.askNode<T>(nodeId, 'OmnitronDaemon', method, args, local);
     return r.ok
       ? { nodeId, reachable: true, error: null, answer: r.value ?? null }
       : { nodeId, reachable: false, error: r.error, answer: null };

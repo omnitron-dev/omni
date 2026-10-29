@@ -28,6 +28,8 @@ import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 import { spawnDaemon, describeStartupTimeout, DAEMON_EXEC_ARGV } from '../../src/daemon/spawn-daemon.js';
 
@@ -48,6 +50,28 @@ function scratch(body: string) {
 const settle = (ms = 800) => new Promise((r) => setTimeout(r, ms));
 
 describe('a daemon that exits during startup', () => {
+  it('lets its launcher exit while the detached daemon stays alive', async () => {
+    const s = scratch('setInterval(() => {}, 1000);');
+    const pidFile = path.join(s.dir, 'pid');
+    const launcher = path.join(s.dir, 'launcher.mjs');
+    fs.writeFileSync(launcher, `
+      import fs from 'node:fs';
+      import { spawnDaemon } from ${JSON.stringify(new URL('../../src/daemon/spawn-daemon.ts', import.meta.url).href)};
+      const child = spawnDaemon(${JSON.stringify({ entryPath: s.entry, packageRoot: s.dir, operatorCwd: s.dir, bootLogPath: s.bootLog, execArgv: [] })});
+      fs.writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));
+    `);
+    try {
+      await promisify(execFile)(process.execPath, ['--import', 'tsx/esm', launcher], { timeout: 5_000 });
+      const pid = Number(fs.readFileSync(pidFile, 'utf8'));
+      expect(pid).toBeGreaterThan(0);
+      expect(() => process.kill(pid, 0)).not.toThrow();
+    } finally {
+      if (fs.existsSync(pidFile)) {
+        try { process.kill(Number(fs.readFileSync(pidFile, 'utf8')), 'SIGTERM'); } catch { /* already exited */ }
+      }
+    }
+  });
+
   it('leaves its reason in the boot log', async () => {
     const s = scratch('process.stderr.write("the reason it died\\n"); process.exit(3);');
 

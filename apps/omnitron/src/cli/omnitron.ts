@@ -14,6 +14,18 @@ import { exitAfterOutput } from './exit-after-output.js';
 
 const program = new Command();
 
+program.command('migrate [action]')
+  .description('Inspect or execute application migrations (default: status)')
+  .option('-c, --config <path>', 'Migration config (default: omnitron.migrations.ts)')
+  .option('--daemon', 'Use the local daemon database and built-in registry')
+  .option('--steps <count>', 'Number of migrations to roll back with down')
+  .option('--to <name>', 'Apply through this migration, inclusive')
+  .option('--dry-run', 'Preview up/down without writing to the database')
+  .action(async (action = 'status', options) => {
+    const { migrateCommand } = await import('../commands/migrate.js');
+    await migrateCommand(action, options);
+  });
+
 program.name('omnitron').description('Production-grade Titan application supervisor').version(CLI_VERSION);
 
 // Global --json flag toggles structured machine-readable output and

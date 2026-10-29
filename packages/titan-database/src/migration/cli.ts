@@ -15,7 +15,7 @@
  *   --down [N]      — roll back the last N (default 1)
  *   --status        — print pending / executed / drift
  *   --redo          — down 1 then up (useful in dev)
- *   --verify        — alias of --status (no exit code on drift)
+ *   --verify        — read-only integrity check (exit 2 when integrity is not established)
  *   --no-checksums  — skip checksum enforcement (recovery escape hatch)
  *
  * Exit codes:
@@ -29,6 +29,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { Kysely, PostgresDialect } from 'kysely';
+import { describeError } from '@omnitron-dev/titan/diagnostics';
 import {
   HardenedMigrationRunner,
   MigrationLockError,
@@ -60,6 +61,7 @@ export interface MigrationCliOptions {
   advisoryLockKey?: bigint | number | null;
   /** Custom logger. Defaults to console.{log,warn,error}. */
   logger?: HardenedLogger;
+  lockTimeoutMs?: number;
 }
 
 export async function runMigrationCli(opts: MigrationCliOptions): Promise<void> {
@@ -69,7 +71,7 @@ export async function runMigrationCli(opts: MigrationCliOptions): Promise<void> 
       : fileURLToPath(opts.migrationsDir);
   const logger = opts.logger ?? defaultLogger();
   const argv = process.argv.slice(2);
-  const cmd = parseArgs(argv);
+  const cmd = parseMigrationCliArgs(argv);
 
   const config = {
     host: process.env[`${opts.envPrefix}__HOST`] ?? opts.defaultHost ?? 'localhost',
@@ -87,17 +89,21 @@ export async function runMigrationCli(opts: MigrationCliOptions): Promise<void> 
 
   // pg is a peer-dep on titan-database; we import it lazily so SQLite-only
   // consumers don't need the package installed.
-  const pgMod = (await import('pg')) as unknown as { default: { Pool: new (cfg: unknown) => unknown }; Pool?: new (cfg: unknown) => unknown };
+  const pgMod = await import('pg');
   const Pool = pgMod.Pool ?? pgMod.default?.Pool;
   if (!Pool) {
     throw new Error('pg package not found — install pg as a dependency to use runMigrationCli.');
   }
 
-  const db = new Kysely<unknown>({
-    dialect: new PostgresDialect({ pool: new Pool(config) as never }),
-  });
-
   let exitCode = 0;
+  const pool = new Pool({ ...config, connectionTimeoutMillis: 5_000 });
+  pool.on('error', error => {
+    exitCode = 1;
+    logger.error(`Migration pool connection failed: ${describeError(error)}`);
+  });
+  const db = new Kysely<unknown>({ dialect: new PostgresDialect({ pool }) });
+  let failure: unknown;
+  let failed = false;
   try {
     const migrations = await discoverMigrations(dir);
     logger.info(
@@ -108,7 +114,8 @@ export async function runMigrationCli(opts: MigrationCliOptions): Promise<void> 
       logger,
       enforceChecksums: cmd.enforceChecksums,
       advisoryLockKey:
-        opts.advisoryLockKey ?? deterministicLockKey(opts.defaultDatabase),
+        opts.advisoryLockKey === undefined ? deterministicLockKey(opts.defaultDatabase) : opts.advisoryLockKey,
+      lockTimeoutMs: opts.lockTimeoutMs ?? 60_000,
     });
 
     switch (cmd.kind) {
@@ -127,6 +134,10 @@ export async function runMigrationCli(opts: MigrationCliOptions): Promise<void> 
       case 'status':
       case 'verify': {
         const s = await runner.status();
+        if (s.unknownChecksums.length) {
+          logger.warn(`Integrity is unverified for: ${s.unknownChecksums.join(', ')}. Review the applied definitions before adopting checksums.`);
+          if (cmd.kind === 'verify') exitCode = 2;
+        }
         logger.info(`Pending (${s.pending.length}): ${s.pending.join(', ') || '—'}`);
         logger.info(
           `Executed (${s.executed.length}): ${s.executed.map((e) => e.name).join(', ') || '—'}`,
@@ -135,6 +146,7 @@ export async function runMigrationCli(opts: MigrationCliOptions): Promise<void> 
           logger.warn(
             `Applied migrations missing from source: ${s.missingFiles.join(', ')}`,
           );
+          if (cmd.kind === 'verify') exitCode = 2;
         }
         if (s.drift.length > 0) {
           logger.warn(`Checksum drift on: ${s.drift.map((d) => d.name).join(', ')}`);
@@ -154,7 +166,7 @@ export async function runMigrationCli(opts: MigrationCliOptions): Promise<void> 
         );
         break;
       }
-          default: {
+      default: {
         // `cmd` is parsed from argv, so an unhandled kind used to exit 0
         // having done nothing — the shape of "the migration ran" from the
         // caller's side.
@@ -165,19 +177,26 @@ export async function runMigrationCli(opts: MigrationCliOptions): Promise<void> 
       }
     }
   } catch (err) {
+    failed = true;
+    failure = err;
     if (err instanceof MigrationLockError || err instanceof MigrationChecksumError) {
-      logger.error(err.message);
+      logger.error(describeError(err));
       exitCode = 2;
     } else {
-      logger.error(`Migration failed: ${(err as Error).message}`);
-      if ((err as Error).stack) logger.error((err as Error).stack!);
+      logger.error(`Migration failed: ${describeError(err)}`);
       exitCode = 1;
     }
   } finally {
-    await db.destroy();
+    try { await db.destroy(); }
+    catch (error) {
+      exitCode = 1;
+      logger.error(describeError(failed
+        ? new AggregateError([failure, error], 'Migration operation and connection cleanup failed')
+        : new Error('Migration operation completed, but connection cleanup failed; inspect history before retrying', { cause: error })));
+    }
   }
   if (exitCode === 0) logger.info('Done');
-  if (exitCode !== 0) process.exit(exitCode);
+  if (exitCode !== 0) process.exitCode = exitCode;
 }
 
 interface ParsedArgs {
@@ -186,19 +205,22 @@ interface ParsedArgs {
   enforceChecksums: boolean;
 }
 
-function parseArgs(argv: string[]): ParsedArgs {
+export function parseMigrationCliArgs(argv: string[]): ParsedArgs {
   const out: ParsedArgs = { kind: 'up', steps: 1, enforceChecksums: true };
-  if (argv.includes('--no-checksums')) out.enforceChecksums = false;
-  if (argv.includes('--down') || argv[0] === 'down') {
-    out.kind = 'down';
-    const i = argv.indexOf('--down');
-    const next = i >= 0 ? argv[i + 1] : argv[1];
-    if (next && /^\d+$/.test(next)) out.steps = parseInt(next, 10);
-    return out;
+  const args = argv.filter(arg => {
+    if (arg === '--no-checksums') { out.enforceChecksums = false; return false; }
+    return true;
+  });
+  const command = args.shift()?.replace(/^--/, '') ?? 'up';
+  if (!['up', 'down', 'status', 'verify', 'redo'].includes(command)) {
+    throw new Error(`Unknown migration command: ${command}`);
   }
-  if (argv.includes('--status') || argv[0] === 'status') return { ...out, kind: 'status' };
-  if (argv.includes('--verify') || argv[0] === 'verify') return { ...out, kind: 'verify' };
-  if (argv.includes('--redo') || argv[0] === 'redo') return { ...out, kind: 'redo' };
+  out.kind = command as ParsedArgs['kind'];
+  if (out.kind === 'down' && args.length === 1 && /^\d+$/.test(args[0]!)) {
+    out.steps = Number(args.shift());
+    if (!Number.isSafeInteger(out.steps)) throw new Error('Rollback count must be a nonnegative safe integer');
+  }
+  if (args.length) throw new Error(`Unexpected migration arguments: ${args.join(' ')}`);
   return out;
 }
 

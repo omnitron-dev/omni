@@ -162,6 +162,27 @@ describe.skipIf(!testPg.ok)('Omnitron migrations (integration)', () => {
     expect(tracked.rows.map((r) => r.name)).not.toContain('999_from_the_future');
   });
 
+  it('does not resurrect a rolled-back legacy migration during adoption', async () => {
+    const { migrateOmnitronDb, createOmnitronMigrationRunner } = await import('../../src/database/migration-runner.js');
+    const { OMNITRON_MIGRATIONS } = await import('../../src/database/migrations/index.js');
+    const { sql } = await import('kysely');
+    await migrateOmnitronDb(db);
+    await sql`create table kysely_migration (name varchar(255) primary key, timestamp varchar(255) not null)`.execute(db);
+    for (const migration of OMNITRON_MIGRATIONS) {
+      await sql`insert into kysely_migration values (${migration.name}, ${'2026-03-22T19:39:38.304Z'})`.execute(db);
+    }
+    await sql`delete from migrations`.execute(db);
+    const runner = createOmnitronMigrationRunner(db);
+    const before = await runner.inspect();
+    expect(before.pending).toEqual([]);
+    expect((await sql`select * from migrations`.execute(db)).rows).toEqual([]);
+    await runner.down(1);
+    const last = OMNITRON_MIGRATIONS.at(-1)!.name;
+    expect((await runner.inspect()).pending).toEqual([last]);
+    expect((await migrateOmnitronDb(db)).applied).toEqual([last]);
+    expect((await migrateOmnitronDb(db)).applied).toEqual([]);
+  });
+
   it('creates the tables whose absence produced the live log storm', async () => {
     const { migrateOmnitronDb } = await import('../../src/database/migration-runner.js');
     await migrateOmnitronDb(db);

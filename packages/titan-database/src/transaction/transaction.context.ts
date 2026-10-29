@@ -9,7 +9,6 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { sql } from 'kysely';
 import type { Transaction, Kysely } from 'kysely';
 
 /**
@@ -17,6 +16,8 @@ import type { Transaction, Kysely } from 'kysely';
  */
 export interface TransactionContextData {
   transaction: Transaction<unknown>;
+  database?: Kysely<unknown>;
+  parent?: TransactionContextData;
   connectionName: string;
   depth: number;
   startedAt: Date;
@@ -63,9 +64,24 @@ export function getCurrentTransaction<DB = unknown>(): Transaction<DB> | undefin
  * automatically inherit plugin interception. The returned value
  * is always safe to use for plugin-aware queries.
  */
-export function getExecutor<DB>(db: Kysely<DB> | Transaction<DB>): Kysely<DB> | Transaction<DB> {
-  const ctx = transactionStorage.getStore();
+function ownsConnection(db: Kysely<unknown>, ctx: TransactionContextData): boolean {
+  if (db === ctx.database || db === ctx.transaction) return true;
+  // withSchema/withPlugin views and their transactions share one adapter.
+  // Different databases must never inherit an unrelated ambient transaction.
+  if (typeof db.getExecutor !== 'function' || typeof ctx.transaction.getExecutor !== 'function') return false;
+  const adapter = db.getExecutor().adapter;
+  return adapter !== undefined && adapter === ctx.transaction.getExecutor().adapter;
+}
 
+function contextFor(db: Kysely<unknown>): TransactionContextData | undefined {
+  for (let ctx = transactionStorage.getStore(); ctx; ctx = ctx.parent) {
+    if (ownsConnection(db, ctx)) return ctx;
+  }
+  return undefined;
+}
+
+export function getExecutor<DB>(db: Kysely<DB> | Transaction<DB>): Kysely<DB> | Transaction<DB> {
+  const ctx = contextFor(db as Kysely<unknown>);
   if (ctx) {
     return ctx.transaction as Transaction<DB>;
   }
@@ -79,11 +95,9 @@ export function getExecutor<DB>(db: Kysely<DB> | Transaction<DB>): Kysely<DB> | 
 
 /**
  * Run a function within a new transaction context.
- * If already in a transaction, reuses it (nested support).
+ * Nested work on the same database uses a savepoint via Kysera DAL.
+ * Work on another database owns an independent transaction.
  */
-// Monotonic counter for collision-free savepoint names within a process.
-let savepointSequence = 0;
-
 export interface RunInTransactionOptions {
   name?: string;
   connectionName?: string;
@@ -102,57 +116,49 @@ export async function runInTransaction<DB, T>(
   fn: () => Promise<T>,
   options?: RunInTransactionOptions
 ): Promise<T> {
-  const existingCtx = transactionStorage.getStore();
+  const parent = transactionStorage.getStore();
+  const existingCtx = contextFor(db as Kysely<unknown>);
 
   if (existingCtx) {
-    // Joining the outer transaction bare is not enough: on Postgres ANY
-    // inner failure aborts the WHOLE transaction (every following statement
-    // fails with 25P02), invisibly to an outer catch. A savepoint makes the
-    // nested unit atomic on its own — same syntax on postgres/mysql/sqlite.
-    const trx = existingCtx.transaction;
-    const savepoint = `titan_sp_${++savepointSequence}`;
-    await sql.raw(`SAVEPOINT ${savepoint}`).execute(trx);
-    try {
-      const result = await fn();
-      await sql.raw(`RELEASE SAVEPOINT ${savepoint}`).execute(trx);
-      return result;
-    } catch (error) {
-      try {
-        await sql.raw(`ROLLBACK TO SAVEPOINT ${savepoint}`).execute(trx);
-      } catch {
-        // Connection-level failure — the outer transaction is already doomed.
-      }
-      throw error;
+    if (options?.connectionName && options.connectionName !== existingCtx.connectionName) {
+      throw new Error('The same database was requested under a different transaction connection name');
     }
+    const { withTransaction } = await import('@kysera/dal');
+    return withTransaction(existingCtx.transaction, () => transactionStorage.run({
+      ...existingCtx,
+      depth: existingCtx.depth + 1,
+      parent,
+      name: options?.name ?? existingCtx.name,
+    }, fn), {
+      rollbackErrorMode: 'callback',
+      onRollbackError: (originalError, rollbackError) => {
+        throw new AggregateError([originalError, rollbackError], 'Nested transaction failed and savepoint rollback could not be confirmed');
+      },
+    });
   }
 
-  const runOnce = (): Promise<T> =>
-    db.transaction().execute(async (trx) => {
+  const inContext = async (trx: Transaction<DB>): Promise<T> => {
       const ctx: TransactionContextData = {
         transaction: trx as Transaction<unknown>,
+        database: db as Kysely<unknown>,
+        parent,
         connectionName: options?.connectionName ?? 'default',
         depth: 1,
         startedAt: new Date(),
         name: options?.name,
       };
       return transactionStorage.run(ctx, fn);
-    });
+    };
 
   if (options?.retry) {
-    // Same semantics as @kysera/infra withTransactionRetry (which is
-    // withRetry over db.transaction().execute): each attempt here runs
-    // runOnce(), i.e. a FRESH transaction and a fresh ALS context.
-    const { withRetry, isSerializationError } = await import('@kysera/infra');
+    const { withTransactionRetry } = await import('@kysera/infra');
     const maxAttempts = typeof options.retry === 'number' ? options.retry : 3;
-    return withRetry(runOnce, {
+    return withTransactionRetry(db, inContext, {
       maxAttempts,
-      delayMs: 100,
-      maxDelayMs: 2000,
-      shouldRetry: isSerializationError,
     });
   }
 
-  return runOnce();
+  return db.transaction().execute(inContext);
 }
 
 /**
@@ -161,13 +167,15 @@ export async function runInTransaction<DB, T>(
 export async function runWithTransaction<DB, T>(
   trx: Transaction<DB>,
   fn: () => Promise<T>,
-  options?: { name?: string; connectionName?: string }
+  options?: { name?: string; connectionName?: string; database?: Kysely<DB> }
 ): Promise<T> {
   const existingCtx = transactionStorage.getStore();
   const depth = existingCtx ? existingCtx.depth + 1 : 1;
 
   const ctx: TransactionContextData = {
     transaction: trx as Transaction<unknown>,
+    database: options?.database as Kysely<unknown> | undefined,
+    parent: existingCtx,
     connectionName: options?.connectionName ?? existingCtx?.connectionName ?? 'default',
     depth,
     startedAt: new Date(),
@@ -201,10 +209,6 @@ export function AutoTransactional(options?: { name?: string; connectionName?: st
           `@AutoTransactional requires 'db' property on class ${target.constructor.name}. ` +
             `Ensure the service has Kysely database injected.`
         );
-      }
-
-      if (isInTransactionContext()) {
-        return originalMethod.apply(this, args);
       }
 
       return runInTransaction(db, () => originalMethod.apply(this, args), {

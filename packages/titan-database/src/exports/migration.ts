@@ -22,6 +22,8 @@ export {
   createLoggingPlugin,
   createMetricsPlugin,
   MigrationError,
+  MigrationHookError,
+  createMigrationHistory,
 } from '@kysera/migrations';
 
 export type {
@@ -34,6 +36,11 @@ export type {
   MigrationDefinitions,
   MigrationPlugin,
   MigrationRunnerWithPluginsOptions,
+  MigrationHistory,
+  MigrationHistoryOptions,
+  MigrationRecord,
+  MigrationInspection,
+  MigrationLockProvider,
 } from '@kysera/migrations';
 
 /**
@@ -41,10 +48,7 @@ export type {
  */
 export type IMigration = import('@kysera/migrations').Migration;
 
-// Hardened wrapper — adds advisory locking, checksum integrity, atomic
-// (migration+bookkeeping) transactions, and a turnkey CLI on top of the
-// vanilla kysera runner. New code should prefer these over the raw kysera
-// primitives. See ../migration/hardened-runner.ts for design notes.
+// Compatibility API; execution and storage are delegated to Kysera.
 export {
   HardenedMigrationRunner,
   createHardenedRunner,
@@ -52,6 +56,9 @@ export {
   MigrationChecksumError,
   runMigrationCli,
 } from '../migration/index.js';
+export { createPostgresMigrationDatabase, migrationSqlClient, defineSqlMigration } from '../migration/postgres.js';
+export type { MigrationSqlClient } from '../migration/postgres.js';
+export { MigrationLockError as MigrationEngineLockError, MigrationChecksumError as MigrationEngineChecksumError } from '@kysera/migrations';
 export type {
   HardenedMigration,
   HardenedLogger,

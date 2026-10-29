@@ -6,6 +6,7 @@
 
 import type { IRestartPolicy, IBackoffOptions } from '@omnitron-dev/titan-pm';
 import type { CorsOptions } from '@omnitron-dev/titan/netron';
+import type { DiagnosticEvent } from '@omnitron-dev/titan/diagnostics';
 
 // ============================================================================
 // App Definition (per-app declarative config)
@@ -1083,6 +1084,7 @@ export interface AggregatedHealthDto {
   daemon?: {
     status: 'healthy' | 'degraded' | 'unhealthy';
     indicators: Array<{ name: string; status: 'pass' | 'warn' | 'fail'; message?: string }>;
+    diagnostics?: Array<{ event: DiagnosticEvent; occurrences: number }>;
   };
   /** Each managed app, as the app itself answered — every child process, not the first. */
   apps: Record<

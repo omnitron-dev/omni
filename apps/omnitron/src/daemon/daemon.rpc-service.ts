@@ -38,6 +38,7 @@ import type { LogManager } from '../monitoring/log-manager.js';
 import type { IEcosystemConfig } from '../config/types.js';
 import { CLI_VERSION, DAEMON_SERVICE_ID } from '../config/defaults.js';
 import { OWN_BUILD } from '../shared/build-stamp.js';
+import { runtimeDiagnostics } from '../monitoring/runtime-diagnostics.js';
 import { loadEcosystemConfig } from '../config/loader.js';
 import type { OmnitronDaemon } from './daemon.js';
 import { OPERATOR_ROLES, ADMIN_ROLES, CONTROL_PLANE_READ_ROLES, CONTROL_PLANE_ROLES } from '../shared/roles.js';
@@ -386,6 +387,7 @@ export class DaemonRpcService implements IDaemonService {
       const result = await this.titanHealth.check();
       daemon = {
         status: result.status,
+        ...(runtimeDiagnostics.snapshot().active.length ? { diagnostics: runtimeDiagnostics.snapshot().active } : {}),
         indicators: Object.entries(result.indicators).map(([name, indicator]) => ({
           name,
           status: indicator.status === 'healthy' ? 'pass' : indicator.status === 'degraded' ? 'warn' : 'fail',

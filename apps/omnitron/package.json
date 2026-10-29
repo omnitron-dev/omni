@@ -46,6 +46,14 @@
     "./operations": {
       "types": "./dist/operations.d.ts",
       "default": "./dist/operations.js"
+    },
+    "./migration": {
+      "types": "./dist/migration/index.d.ts",
+      "default": "./dist/migration/index.js"
+    },
+    "./diagnostics": {
+      "types": "./dist/diagnostics/index.d.ts",
+      "default": "./dist/diagnostics/index.js"
     }
   },
   "scripts": {
@@ -66,7 +74,6 @@
     "lint:fix": "eslint src/**/*.ts --fix"
   },
   "dependencies": {
-    "@kysera/migrations": "^0.10.0",
     "@omnitron-dev/access": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
     "@omnitron-dev/kb": "workspace:*",

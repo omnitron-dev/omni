@@ -20,6 +20,8 @@ import type { LogManager } from '../monitoring/log-manager.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import type { SchedulerService } from '@omnitron-dev/titan-scheduler';
 import type { SyncService } from '../services/sync.service.js';
+import type { RuntimeDiagnostics } from '../monitoring/runtime-diagnostics.js';
+import { describeError } from '../shared/describe-error.js';
 
 export function registerDaemonJobs(
   scheduler: SchedulerService,
@@ -36,9 +38,15 @@ export function registerDaemonJobs(
     syncService: SyncService | null;
     metricsInterval: number;
     healthCheckInterval: number;
+    diagnostics?: Pick<RuntimeDiagnostics, 'failure' | 'resolve'>;
   }
 ): void {
   const { logger, orchestrator, authService, metricsService, alertService, fleetService, logManager, syncService } = deps;
+  const failed = (job: string, title: string, error: unknown) => {
+    if (deps.diagnostics) deps.diagnostics.failure(`runtime.job.${job}`, title, error);
+    else logger.error({ error: describeError(error), job }, title);
+  };
+  const recovered = (job: string) => deps.diagnostics?.resolve(`runtime.job.${job}`);
   const jobs: string[] = [];
   // Three of the five jobs below register only when an optional service is
   // present — all of them "master only, requires PG". The log line at the end
@@ -54,8 +62,9 @@ export function registerDaemonJobs(
       try {
         const removed = await authService.cleanupExpiredSessions();
         if (removed > 0) logger.debug({ removed }, 'Cleaned up expired sessions');
+        recovered('session-cleanup');
       } catch (err) {
-        logger.warn({ error: (err as Error).message }, 'Session cleanup failed');
+        failed('session-cleanup', 'Session cleanup failed', err);
       }
     });
     jobs.push('session-cleanup');
@@ -101,11 +110,13 @@ export function registerDaemonJobs(
         for (const batch of childBatches) {
           metricsService.recordBatch(batch.samples);
         }
-      } catch {
-        // Children may not support __drainMetrics yet — silently skip
+        recovered('child-metrics');
+      } catch (error) {
+        failed('child-metrics', 'Child metric samples could not be collected', error);
       }
-    } catch {
-      // Non-critical
+      recovered('metrics-collection');
+    } catch (error) {
+      failed('metrics-collection', 'Daemon metrics could not be collected', error);
     }
   });
   jobs.push('metrics-collection');
@@ -115,12 +126,13 @@ export function registerDaemonJobs(
     scheduler.addInterval('alert-evaluation', deps.healthCheckInterval, async () => {
       try {
         await alertService.evaluate();
+        recovered('alert-evaluation');
       } catch (err) {
         // At `error`, with its cause. This is the loop whose whole job is to
         // notice that something is wrong: its own failure is the one no alert
         // can report, and an unreachable database would stop every alert on
         // the platform looking exactly like a platform with nothing to say.
-        logger.error({ err }, 'Alert evaluation failed — no rules were checked this cycle');
+        failed('alert-evaluation', 'Alert evaluation failed — no rules were checked this cycle', err);
       }
     });
     jobs.push('alert-evaluation');
@@ -140,6 +152,10 @@ export function registerDaemonJobs(
   if (fleetService) {
     let lastProblem: string | null = null;
     const problem = (msg: string, fields: Record<string, unknown>) => {
+      if (deps.diagnostics) {
+        failed('fleet-heartbeat', msg, fields['error'] ?? msg);
+        return;
+      }
       const key = `${msg} ${String(fields['error'] ?? '')}`;
       if (lastProblem === key) {
         logger.debug(fields, msg);
@@ -161,6 +177,7 @@ export function registerDaemonJobs(
           return;
         }
         lastProblem = null;
+        recovered('fleet-heartbeat');
       } catch (err) {
         problem('Fleet heartbeat failed', { nodeId, error: (err as Error).message });
       }
@@ -174,8 +191,9 @@ export function registerDaemonJobs(
   scheduler.addInterval('log-rotation', 60_000, () => {
     try {
       logManager.checkRotation('omnitron');
-    } catch {
-      // Non-critical
+      recovered('log-rotation');
+    } catch (error) {
+      failed('log-rotation', 'Daemon log rotation failed', error);
     }
   });
   jobs.push('log-rotation');
@@ -234,12 +252,10 @@ export function registerDaemonJobs(
         // rather than stepping over it — the one case where re-reading is
         // right, because nothing was queued.
         watermark = cutoff;
+        recovered('metrics-replication');
         if (entries.length > 0) logger.debug({ count: entries.length }, 'Queued metric samples for the master');
       } catch (err) {
-        logger.error(
-          { error: (err as Error).message, since: new Date(watermark).toISOString() },
-          'Metrics replication tick failed — samples since this point have not been queued',
-        );
+        failed('metrics-replication', `Metrics replication failed — samples since ${new Date(watermark).toISOString()} have not been queued`, err);
       }
     });
     jobs.push('metrics-replication');

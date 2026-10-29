@@ -286,3 +286,5 @@ export type {
   QuietHoursConfig,
   RedisPreferenceStoreOptions,
 } from './redis-preference-store.js';
+
+export { DiagnosticNotificationsModule, DiagnosticNotificationSink, DiagnosticDeliveryError, DIAGNOSTIC_NOTIFICATION_SINK } from './diagnostics.js';

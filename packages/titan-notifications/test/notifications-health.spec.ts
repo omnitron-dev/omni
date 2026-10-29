@@ -122,7 +122,7 @@ describe('NotificationsHealthIndicator', () => {
       const result = await health.check();
 
       expect(result.status).toBe('unhealthy');
-      expect(result.message).toBe('Unknown error during health check');
+      expect(result.message).toBe('String error');
       expect(result.transport.error).toBe('String error');
     });
   });

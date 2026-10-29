@@ -15,6 +15,10 @@
     "./rotif": {
       "types": "./dist/rotif/index.d.ts",
       "default": "./dist/rotif/index.js"
+    },
+    "./diagnostics": {
+      "types": "./dist/diagnostics.d.ts",
+      "default": "./dist/diagnostics.js"
     }
   },
   "files": [

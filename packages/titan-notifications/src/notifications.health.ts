@@ -1,4 +1,6 @@
 import type { MessagingTransport, TransportHealth } from './transport/transport.interface.js';
+import type { NotificationsEventEmitter } from './notifications.events.js';
+import { describeError } from '@omnitron-dev/titan/diagnostics';
 
 /**
  * Health status for the Notifications module.
@@ -15,6 +17,7 @@ export interface NotificationsHealthStatus {
 
   /** Health check latency in milliseconds */
   latency?: number;
+  events?: ReturnType<NotificationsEventEmitter['snapshot']>;
 }
 
 /**
@@ -22,7 +25,7 @@ export interface NotificationsHealthStatus {
  * Provides health checks and liveness/readiness probes.
  */
 export class NotificationsHealthIndicator {
-  constructor(private readonly transport: MessagingTransport) {}
+  constructor(private readonly transport: MessagingTransport, private readonly events?: Pick<NotificationsEventEmitter, 'snapshot'>) {}
 
   /**
    * Perform a comprehensive health check of the notification system.
@@ -37,23 +40,27 @@ export class NotificationsHealthIndicator {
     try {
       const transportHealth = await this.transport.healthCheck();
       const latency = performance.now() - startTime;
+      const events = this.events?.snapshot();
+      const failedEvents = Boolean(events?.unresolved.length);
+      const status = transportHealth.status === 'healthy' && failedEvents ? 'degraded' : transportHealth.status;
 
       return {
-        status: transportHealth.status,
-        message: transportHealth.error || this.getStatusMessage(transportHealth.status),
+        status,
+        message: transportHealth.error || (failedEvents ? 'Notification lifecycle handlers have unresolved failures' : this.getStatusMessage(status)),
         transport: transportHealth,
         latency,
+        ...(events ? { events } : {}),
       };
     } catch (error) {
       const latency = performance.now() - startTime;
 
       return {
         status: 'unhealthy',
-        message: error instanceof Error ? error.message : 'Unknown error during health check',
+        message: describeError(error),
         transport: {
           status: 'unhealthy',
           connected: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: describeError(error),
           timestamp: Date.now(),
         },
         latency,

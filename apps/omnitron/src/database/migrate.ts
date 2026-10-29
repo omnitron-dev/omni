@@ -11,10 +11,9 @@
  *   tsx src/database/migrate.ts --down   (rollback last)
  */
 
-import { createMigrationRunner } from '@kysera/migrations';
+import { createOmnitronMigrationRunner } from './migration-runner.js';
 
 import { createOmnitronDb, resolveOmnitronPgConfig } from './connection.js';
-import { OMNITRON_MIGRATIONS } from './migrations/index.js';
 
 const isDown = process.argv.includes('--down');
 
@@ -24,19 +23,7 @@ async function run() {
 
   const db = await createOmnitronDb<unknown>({ max: 2 });
 
-  const runner = createMigrationRunner(db, OMNITRON_MIGRATIONS, {
-    verbose: true,
-    useTransactions: true,
-    advisoryLock: true,
-    logger: {
-      info: (msg: string) => console.log(msg),
-      warn: (msg: string) => console.warn(msg),
-      error: (msg: string) => console.error(msg),
-      debug: () => {},
-      trace: () => {},
-      fatal: (msg: string) => console.error(msg),
-    },
-  });
+  const runner = createOmnitronMigrationRunner(db);
 
   try {
     if (isDown) {

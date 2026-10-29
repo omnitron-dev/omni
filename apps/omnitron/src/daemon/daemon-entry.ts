@@ -13,6 +13,7 @@ import { ProjectRegistry } from '../project/registry.js';
 import { OmnitronDaemon } from './daemon.js';
 import { readSavedDaemonConfig, ensurePersistedJwtSecret } from '../commands/up.js';
 import { getEnv } from '../shared/env-config.js';
+import { runtimeDiagnostics } from '../monitoring/runtime-diagnostics.js';
 
 async function main() {
   const env = getEnv();
@@ -105,20 +106,18 @@ async function main() {
   }, dc);
 }
 
-// Supervisor-grade safety net. Node's default kills the process on an
-// unhandled rejection — which is how a background log-flush bug (2026-07-11,
-// LogCollectorService requeue stack-overflow) took down the whole control
-// plane and every app under it. A leaked background promise must never kill
-// the supervisor: log it loudly and keep running. Uncaught synchronous
-// exceptions keep the default fatal behaviour (state may be corrupt; the OS
-// service respawns us and boot-time stack resume + the enabled-stacks
-// reconciler restore the apps).
+// Capture failures before DI exists as well as during runtime. Titan's
+// ProcessHost still owns classification, recovery and shutdown policy.
 process.on('unhandledRejection', (reason) => {
-  const err = reason instanceof Error ? reason : new Error(String(reason));
-  console.error(`[daemon] Unhandled rejection (continuing): ${err.stack ?? err.message}`);
+  runtimeDiagnostics.failure('runtime.unhandled-rejection', 'An asynchronous task escaped its error boundary', reason);
+});
+process.on('uncaughtExceptionMonitor', (error) => {
+  runtimeDiagnostics.record({ id: 'runtime.uncaught-exception', severity: 'critical', title: 'An exception escaped the process boundary', evidence: [],
+    remedy: 'Inspect the failing component and supervisor recovery; do not assume in-memory state remains valid.' }, error);
 });
 
 main().catch((err) => {
-  console.error('Daemon fatal error:', err);
+  runtimeDiagnostics.record({ id: 'runtime.startup-failed', severity: 'critical', title: 'Daemon startup failed', evidence: [],
+    remedy: 'Repair the reported startup dependency before restarting.' }, err);
   process.exit(1);
 });

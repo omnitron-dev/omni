@@ -34,6 +34,21 @@ omnitron logs --level warn --grep "error"
 
 See [host ingress setup, application publication and recovery](HOST-INGRESS.md) for independent multi-application HTTPS hosting through the native CLI and RPC API.
 
+## Application migrations and diagnostics
+
+`@omnitron-dev/omnitron/migration` provides migration definitions, the shared
+Kysera-backed runner, PostgreSQL pool adapters and configuration helpers. It can
+be imported without starting the daemon. Applications need no direct Kysera
+installation. Use `omnitron migrate status`, `up --dry-run`, `up`, `verify` or
+`down --steps 1` with `omnitron.migrations.ts`. `--daemon` explicitly selects the
+daemon's own registry; status never applies changes.
+
+`@omnitron-dev/omnitron/diagnostics` exposes the shared Titan finding contract,
+redacted cause formatting and an adapter for the existing durable alert outbox.
+CLI health, doctor and Console node details report unresolved runtime failures
+with evidence and recovery guidance. The bounded health projection lives in the
+daemon process; structured logs remain the persistent record.
+
 ## License
 
 MIT

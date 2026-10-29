@@ -53,6 +53,7 @@ import { DockerHealthIndicator } from '../monitoring/docker-health.indicator.js'
 import { AppHealthIndicator } from '../monitoring/app-health.indicator.js';
 import { EventLoopWatch } from '../monitoring/event-loop-watch.js';
 import { EventLoopStallIndicator } from '../monitoring/event-loop-stall.indicator.js';
+import { runtimeDiagnostics } from '../monitoring/runtime-diagnostics.js';
 import { registerDaemonJobs } from './daemon-scheduler.js';
 import { METRICS_SERVICE_TOKEN as TITAN_METRICS_TOKEN, type IMetricsService } from '@omnitron-dev/titan-metrics';
 import type { LogManager } from '../monitoring/log-manager.js';
@@ -381,6 +382,7 @@ export class OmnitronDaemon {
 
     const loggerModule = await this.app.container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN);
     const logger = loggerModule.logger;
+    runtimeDiagnostics.setLogger(logger);
 
     // As soon as there is somewhere to say it, so a stall in the boot's own
     // steps — infrastructure, migrations — is seen too. A node whose loop
@@ -1591,11 +1593,11 @@ export class OmnitronDaemon {
 
     try {
       await runOmnitronMigrations(logger);
+      runtimeDiagnostics.resolve('database.migration.failed');
     } catch (err) {
-      logger.error(
-        { error: (err as Error).message },
-        'Omnitron database migrations FAILED — alerts, sessions, logs and metrics will not work until this is resolved'
-      );
+      runtimeDiagnostics.failure('database.migration.failed',
+        'Database migrations failed — database-backed features are unavailable', err,
+        'Run omnitron migrate status --daemon and verify --daemon; reconcile the schema before retrying.');
     }
   }
 
@@ -1615,6 +1617,7 @@ export class OmnitronDaemon {
 
       // Managed apps health indicator
       titanHealth.registerIndicator(new AppHealthIndicator(orchestrator));
+      titanHealth.registerIndicator(runtimeDiagnostics);
 
       // How long the loop has stood still, and when — the number the console
       // reads for a node that went quiet.
@@ -1625,8 +1628,8 @@ export class OmnitronDaemon {
       // here. Registered beside the indicators rather than in the wiring
       // above, because this is the object that has just been given them.
       this.nodeManagerRpcService?.setTitanHealth(titanHealth);
-    } catch {
-      // Health module may not be available — non-critical
+    } catch (error) {
+      runtimeDiagnostics.failure('runtime.health-registration', 'Health indicators could not be registered', error);
     }
   }
 
@@ -1813,6 +1816,7 @@ export class OmnitronDaemon {
 
       registerDaemonJobs(scheduler, {
         logger,
+        diagnostics: runtimeDiagnostics,
         orchestrator,
         authService,
         metricsService: titanMetrics,
@@ -1832,7 +1836,8 @@ export class OmnitronDaemon {
       titanMetrics.start();
       logger.info('Daemon scheduler started with all periodic jobs');
     } catch (err) {
-      logger.warn({ error: (err as Error).message }, 'Failed to start scheduler — falling back to manual timers');
+      runtimeDiagnostics.failure('runtime.scheduler-startup', 'Periodic daemon jobs could not be registered', err,
+        'Repair the scheduler or its dependencies and restart safely; there is no manual timer fallback.');
     }
   }
 
@@ -1856,7 +1861,7 @@ export class OmnitronDaemon {
         await telemetryRelay.start();
         logger.info({ nodeId: telemetryRelay.nodeId, role: telemetryRelay.role }, 'Telemetry relay started');
       } catch (err) {
-        logger.warn({ error: (err as Error).message }, 'Telemetry relay failed to start');
+        runtimeDiagnostics.failure('runtime.telemetry-startup', 'Telemetry relay failed to start', err);
       }
     }
 
@@ -1873,8 +1878,8 @@ export class OmnitronDaemon {
           role: 'leader',
           metadata: { pid: process.pid, version: CLI_VERSION, httpPort: this.dc.httpPort, rpcPort: this.rpcHttpPort },
         });
-      } catch {
-        // Non-critical — DB may not be ready
+      } catch (error) {
+        runtimeDiagnostics.failure('runtime.fleet-registration', 'The daemon could not register its fleet identity', error);
       }
     }
 
@@ -1895,7 +1900,7 @@ export class OmnitronDaemon {
         traceCollector.start();
         logger.info('Trace collector started');
       } catch (err) {
-        logger.warn({ error: (err as Error).message }, 'Trace collector failed to start');
+        runtimeDiagnostics.failure('runtime.trace-startup', 'Trace collector failed to start', err);
       }
     }
 
@@ -1910,7 +1915,7 @@ export class OmnitronDaemon {
         const { ConfigSyncService } = await import('../cluster/config-sync.js');
         this.configSyncService = new ConfigSyncService(config, loggerModule.logger);
       } catch (err) {
-        logger.warn({ error: (err as Error).message }, 'Leader election failed to start');
+        runtimeDiagnostics.failure('runtime.leader-startup', 'Leader election failed to start', err);
       }
     }
   }

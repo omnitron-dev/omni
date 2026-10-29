@@ -47,6 +47,7 @@ import { OMNITRON_MIGRATIONS } from '../database/migrations/index.js';
 import type { ProcessInfoDto } from '../config/types.js';
 import { compareTrees, listTree, processPredatesBuild } from '../shared/build-freshness.js';
 import { describeError } from '../shared/describe-error.js';
+import type { DiagnosticFinding } from '@omnitron-dev/titan/diagnostics';
 import {
   findDominantErrors,
   findRepetitionLoad,
@@ -97,16 +98,8 @@ const CONTAINER_SETTLE_MS = 15_000;
 
 export type FindingSeverity = 'error' | 'warning' | 'info';
 
-export interface Finding {
-  /** Stable identifier, so scripts can match on it. */
-  id: string;
+export interface Finding extends DiagnosticFinding {
   severity: FindingSeverity;
-  /** One line: what is wrong. */
-  title: string;
-  /** What was actually observed — the reason to believe the title. */
-  evidence: string[];
-  /** What the operator should do next. Omitted only when nothing to do. */
-  remedy?: string;
 }
 
 /** Collected during a run; rendered together at the end. */
@@ -1005,6 +998,24 @@ async function checkDaemon(findings: Findings, client: ReturnType<typeof createD
   }
 }
 
+export async function checkRuntimeDiagnostics(findings: Findings, client: Pick<ReturnType<typeof createDaemonClient>, 'getHealth'>): Promise<void> {
+  const health = await client.getHealth({});
+  const indicator = health.daemon?.indicators.find(item => item.name === 'runtime-diagnostics');
+  if (!indicator) {
+    findings.skip('daemon.runtime-diagnostics', 'this daemon did not expose its runtime diagnostic indicator');
+    return;
+  }
+  const active = health.daemon?.diagnostics ?? [];
+  if (indicator.status === 'pass' && !active.length) return;
+  findings.add({
+    id: 'daemon.runtime-diagnostics',
+    severity: active.some(({ event }) => event.severity === 'error' || event.severity === 'critical') ? 'error' : 'warning',
+    title: 'The daemon has unresolved runtime failures',
+    evidence: active.length ? active.map(({ event, occurrences }) => `${event.id} (${occurrences}): ${event.title}; ${event.evidence.join('; ')}`) : [indicator.message ?? 'Runtime diagnostics are degraded'],
+    remedy: active.map(({ event }) => event.remedy).filter(Boolean).join(' ') || 'Inspect omnitron logs and confirm recovery of the failing component.',
+  });
+}
+
 /**
  * Is the daemon running the code in this checkout?
  *
@@ -1795,6 +1806,7 @@ export async function doctorCommand(): Promise<void> {
     // is the whole point of running them together.
     for (const check of [
       () => checkDaemon(findings, client),
+      () => checkRuntimeDiagnostics(findings, client),
       () => checkApps(findings, client, apps),
       () => checkAppInternals(findings, apps),
       () => checkPorts(findings, apps),

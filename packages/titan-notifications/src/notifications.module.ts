@@ -264,8 +264,8 @@ export class NotificationsModule {
       [
         NOTIFICATIONS_HEALTH,
         {
-          useFactory: async (transport: MessagingTransport) => new NotificationsHealthIndicator(transport),
-          inject: [NOTIFICATIONS_TRANSPORT],
+          useFactory: async (transport: MessagingTransport, events: NotificationsEventEmitter) => new NotificationsHealthIndicator(transport, events),
+          inject: [NOTIFICATIONS_TRANSPORT, NOTIFICATIONS_EVENT_EMITTER],
           scope: Scope.Singleton,
         },
       ],
@@ -504,8 +504,8 @@ export class NotificationsModule {
     providers.push([
       NOTIFICATIONS_HEALTH,
       {
-        useFactory: async (transport: MessagingTransport) => new NotificationsHealthIndicator(transport),
-        inject: [NOTIFICATIONS_TRANSPORT],
+        useFactory: async (transport: MessagingTransport, events: NotificationsEventEmitter) => new NotificationsHealthIndicator(transport, events),
+        inject: [NOTIFICATIONS_TRANSPORT, NOTIFICATIONS_EVENT_EMITTER],
         scope: Scope.Singleton,
       },
     ]);

@@ -11,7 +11,7 @@
  * so the registry cannot silently fall behind again.
  */
 
-import type { Migration } from '@kysera/migrations';
+import type { Migration } from '../../migration/index.js';
 
 import * as m001 from './001_initial_schema.js';
 import * as m002 from './002_metrics_raw.js';

@@ -327,34 +327,36 @@ export class EventsService implements ILifecycle {
    * Emit an event asynchronously in parallel
    */
   async emitAsync<T = any>(event: string, data?: T, options?: EmitOptions): Promise<any[]> {
+    const started = Date.now();
     const metadata = this.metadataService.createMetadata({
       ...options?.metadata,
       async: true,
     });
 
-    const results: any[] = [];
+    const tasks: Array<Promise<any[]>> = [];
 
     // Handle wildcard subscriptions for async
     if (this.wildcardSubscriptions) {
-      const wildcardPromises: Promise<any>[] = [];
       for (const [pattern, subscription] of this.wildcardSubscriptions) {
         if (subscription.pattern.test(event)) {
-          wildcardPromises.push(
-            Promise.resolve(subscription.handler(data)).catch((error) =>
-              this.logger?.error(`Error in wildcard async handler for pattern ${pattern}:`, error)
-            )
-          );
+          // Schedule through a promise so synchronous throws and rejections
+          // have the same semantics. One failure must not skip other handlers.
+          tasks.push(Promise.resolve().then(async () => [await subscription.handler(data, { ...metadata, event })]));
         }
       }
-      const wildcardResults = await Promise.all(wildcardPromises);
-      results.push(...wildcardResults.filter((r) => r !== undefined));
     }
 
     // Handle regular event handlers via the emitter
-    const emitterResults = await this.emitter.emitParallel(event, data, metadata);
-    results.push(...emitterResults);
-
-    return results;
+    tasks.push(Promise.resolve().then(() => this.emitter.emitParallel(event, data, metadata)));
+    const settled = await Promise.allSettled(tasks);
+    const failures = settled.filter(result => result.status === 'rejected').map(result => result.reason);
+    if (failures.length) {
+      const error = failures.length === 1 ? failures[0] : new AggregateError(failures, `Event ${event} delivery failed`);
+      this.updateStats(event, false, Date.now() - started, error as Error);
+      throw error;
+    }
+    this.updateStats(event, true, Date.now() - started);
+    return settled.flatMap(result => result.status === 'fulfilled' ? result.value : []);
   }
 
   /**

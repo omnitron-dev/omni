@@ -37,6 +37,7 @@ import { FormAlert } from '@omnitron-dev/prism/components/alert';
 import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { useSnackbar } from '@omnitron-dev/prism/components/snackbar';
 import { FleetRollout } from 'src/components/fleet-rollout';
+import { RuntimeDiagnosticDetails } from 'src/components/runtime-diagnostic-details';
 import { nodes as nodesRpc } from 'src/netron/client';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 // One contract, imported. These four were local copies of types the daemon
@@ -851,7 +852,7 @@ function NodeUpgrade({ data }: { data: INodeUpgradeProgress }) {
   );
 }
 
-function NodeIndicators({ data }: { data: INodeIndicators | null }) {
+function NodeIndicators({ data, nodeName }: { data: INodeIndicators | null; nodeName?: string }) {
   if (!data) {
     return (
       <Typography variant="body2" sx={{ py: 1, color: 'text.secondary' }}>
@@ -910,6 +911,7 @@ function NodeIndicators({ data }: { data: INodeIndicators | null }) {
           )}
         </Stack>
       ))}
+      <RuntimeDiagnosticDetails active={entries.find(([name]) => name === 'runtime-diagnostics')?.[1].details?.['active']} nodeName={nodeName} />
     </Box>
   );
 }
@@ -1289,7 +1291,7 @@ function NodeDiagnosisDialog({
         <Typography variant="overline" sx={{ color: 'text.secondary' }}>
           Indicators, from the node&apos;s own titan-health
         </Typography>
-        <NodeIndicators data={indicators} />
+        <NodeIndicators data={indicators} nodeName={node.name} />
 
         <Divider sx={{ my: 2 }} />
 

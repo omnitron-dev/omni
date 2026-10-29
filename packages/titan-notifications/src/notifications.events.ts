@@ -7,6 +7,8 @@
 
 import { Injectable, Optional, Inject } from '@omnitron-dev/titan/decorators';
 import { EVENTS_SERVICE_TOKEN, type EventsService } from '@omnitron-dev/titan-events';
+import { LOGGER_SERVICE_TOKEN, type ILoggerModule } from '@omnitron-dev/titan/module/logger';
+import { describeError } from '@omnitron-dev/titan/diagnostics';
 import type { NotificationPayload, NotificationRecipient, SendResult, BroadcastResult } from './notifications.types.js';
 
 // Event names
@@ -108,7 +110,18 @@ export class NotificationsEventEmitter {
   // 'EVENTS_SERVICE_TOKEN' — the string never matched the token created via
   // createToken('EventsService'), so this emitter silently never received the
   // service and every lifecycle event was dropped.
-  constructor(@Optional() @Inject(EVENTS_SERVICE_TOKEN) private readonly events?: EventsService) {}
+  private failures = 0;
+  private readonly unresolved = new Map<string, { message: string; timestamp: number }>();
+
+  constructor(
+    @Optional() @Inject(EVENTS_SERVICE_TOKEN) private readonly events?: EventsService,
+    @Optional() @Inject(LOGGER_SERVICE_TOKEN) private readonly loggerService?: ILoggerModule,
+  ) {}
+
+  snapshot() {
+    return { enabled: this.isAvailable, failures: this.failures,
+      unresolved: [...this.unresolved].map(([event, failure]) => ({ event, ...failure })) };
+  }
 
   /**
    * Check if events are available
@@ -228,9 +241,23 @@ export class NotificationsEventEmitter {
     }
 
     try {
-      await this.events.emit(event, data);
-    } catch {
-      // Silently ignore event emission errors
+      await this.events.emitAsync(event, data);
+      this.unresolved.delete(event);
+    } catch (error) {
+      this.failures++;
+      const message = describeError(error);
+      const previous = this.unresolved.get(event);
+      this.unresolved.set(event, { message, timestamp: Date.now() });
+      // Observers run after delivery too: throwing here could retry a message
+      // that was already sent. Preserve the failure in health and the log.
+      if (!previous || previous.message !== message) {
+        const diagnostic = { id: 'notifications.event-handler-failed', severity: 'error', event, evidence: [message],
+          remedy: 'Repair the event handler and verify its next successful invocation; do not resend an already delivered notification.' };
+        try {
+          if (this.loggerService) this.loggerService.logger.error({ diagnostic }, 'Notification lifecycle event failed');
+          else console.error(JSON.stringify({ diagnostic }));
+        } catch { /* health retains the failure even if logging is unavailable */ }
+      }
     }
   }
 }

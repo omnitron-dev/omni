@@ -36,6 +36,7 @@ function createMockTransaction(): Transaction<unknown> {
   };
   return {
     _tag: 'mock-transaction',
+    isTransaction: true,
     selectFrom: vi.fn().mockReturnThis(),
     insertInto: vi.fn().mockReturnThis(),
     getExecutor: () => executor,

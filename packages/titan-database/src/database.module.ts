@@ -22,7 +22,7 @@ import {
 import { Module } from '@omnitron-dev/titan/decorators';
 import { DatabaseManager } from './database.manager.js';
 import { DatabaseHealthIndicator } from './database.health.js';
-// Migrations delegated to @kysera/migrations — use kysera CLI or createMigrationRunner()
+// Migrations use the shared engine through the migration entry point.
 import {
   getRepositoryMetadata,
   getDecoratorPlugins,
@@ -298,8 +298,8 @@ export class TitanDatabaseModule {
       },
     ]);
 
-    // Migrations handled externally via @kysera/migrations + kysera CLI
-    // No auto-migrate in DI — use `createMigrationRunner()` or `kysera migrate up`
+    // Schema changes are explicit deployment operations, not DI side effects.
+    // Use the migration entry point or `omnitron migrate` in Omnitron applications.
 
     const exports: Array<ServiceIdentifier<unknown>> = [
       DATABASE_MANAGER,

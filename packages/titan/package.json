@@ -1,7 +1,7 @@
 {
   "name": "@omnitron-dev/titan",
   "version": "0.3.1",
-  "description": "Enterprise backend framework — core DI, Netron RPC, decorators, and validation",
+  "description": "Enterprise backend framework \u2014 core DI, Netron RPC, decorators, and validation",
   "keywords": [
     "backend",
     "framework",
@@ -107,6 +107,10 @@
     "./tracing": {
       "types": "./dist/tracing/index.d.ts",
       "default": "./dist/tracing/index.js"
+    },
+    "./diagnostics": {
+      "types": "./dist/diagnostics/index.d.ts",
+      "default": "./dist/diagnostics/index.js"
     }
   },
   "files": [

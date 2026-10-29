@@ -163,6 +163,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
+  '@kysera/migrations': file:vendor/kysera-migrations-0.10.0-a6577d24685f.tgz
   web-worker: 1.5.0
   rollup-plugin-dts: 6.5.1
   '@typescript-eslint/eslint-plugin': 8.72.1
@@ -260,9 +261,6 @@ importers:
 
   apps/omnitron:
     dependencies:
-      '@kysera/migrations':
-        specifier: ^0.10.0
-        version: 0.10.0(kysely@0.29.7)(zod@4.6.7)
       '@omnitron-dev/access':
         specifier: workspace:*
         version: link:../../packages/access
@@ -1261,6 +1259,9 @@ importers:
       '@kysera/core':
         specifier: ^0.10.0
         version: 0.10.0(kysely@0.29.7)
+      '@kysera/dal':
+        specifier: ^0.10.0
+        version: 0.10.0(kysely@0.29.7)
       '@kysera/dialects':
         specifier: ^0.10.0
         version: 0.10.0(kysely@0.29.7)
@@ -1271,8 +1272,8 @@ importers:
         specifier: ^0.10.0
         version: 0.10.0(kysely@0.29.7)
       '@kysera/migrations':
-        specifier: ^0.10.0
-        version: 0.10.0(kysely@0.29.7)(zod@4.6.7)
+        specifier: file:../../vendor/kysera-migrations-0.10.0-a6577d24685f.tgz
+        version: file:vendor/kysera-migrations-0.10.0-a6577d24685f.tgz(kysely@0.29.7)(zod@4.6.7)
       '@kysera/repository':
         specifier: ^0.10.0
         version: 0.10.0(kysely@0.29.7)(zod@4.6.7)
@@ -2519,8 +2520,9 @@ packages:
     peerDependencies:
       kysely: '>=0.29.0'
 
-  '@kysera/migrations@0.10.0':
-    resolution: {integrity: sha512-ZgXYzuvN68tnkT+1oHKwxZJkgqAXA7JBC2joV5x886DZn+byIsMDkw+fhOMfi8Ews4DKcASvIqlWyizMsZdBGQ==}
+  '@kysera/migrations@file:vendor/kysera-migrations-0.10.0-a6577d24685f.tgz':
+    resolution: {integrity: sha512-hMuqsZ3/l2xj1r/7U+hJZ+dZygFJJzZXw8ufghL8x1ab27+9pF3cF2tOJZrFlrNiRVqubXKjJIagC5ifA95k0w==, tarball: file:vendor/kysera-migrations-0.10.0-a6577d24685f.tgz}
+    version: 0.10.0
     engines: {bun: '>=1.0.0', node: '>=22.0.0'}
     peerDependencies:
       kysely: '>=0.29.0'
@@ -8309,7 +8311,7 @@ snapshots:
       '@kysera/core': 0.10.0(kysely@0.29.7)
       kysely: 0.29.7
 
-  '@kysera/migrations@0.10.0(kysely@0.29.7)(zod@4.6.7)':
+  '@kysera/migrations@file:vendor/kysera-migrations-0.10.0-a6577d24685f.tgz(kysely@0.29.7)(zod@4.6.7)':
     dependencies:
       '@kysera/core': 0.10.0(kysely@0.29.7)
       kysely: 0.29.7

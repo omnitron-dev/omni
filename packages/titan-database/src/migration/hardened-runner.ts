@@ -1,517 +1,137 @@
 /**
- * HardenedMigrationRunner — production-safe migration execution on top of
- * `@kysera/migrations`.
- *
- * The vanilla kysera runner has three gaps that bit us in production:
- *
- *   1. `useTransactions` defaulted to false. A migration that fails halfway
- *      through left the schema partially applied, and the bookkeeping row
- *      never got written, so the next run started from the beginning and
- *      blew up on `CREATE TABLE … already exists`.
- *
- *   2. The migration body and the bookkeeping write are NOT in the same
- *      transaction. If the DB connection drops between `executeMigration`
- *      and `markAsExecuted`, the migration is applied but unrecorded — the
- *      next run re-applies it.
- *
- *   3. There is no integrity check. A migration that has been applied in
- *      prod can be edited in source, and nothing surfaces the drift.
- *      Anyone reading the migrations directory thinks the on-disk file is
- *      the source of truth, but production is running a different version.
- *
- * Hardening:
- *
- *   - **One transaction per migration**: schema changes + bookkeeping +
- *     checksum write are atomic. If any step fails, the row never appears
- *     in `migrations`, so the next run will re-apply cleanly.
- *
- *   - **Postgres advisory lock** (`pg_try_advisory_lock`) gates every
- *     up/down. Two concurrent deploys racing on the same database refuse
- *     instead of corrupting bookkeeping.
- *
- *   - **Content checksums** stored in a sidecar table
- *     (`migration_checksums`). On startup we recompute every applied
- *     migration's checksum and compare it to the recorded value. Any drift
- *     halts the runner with a clear error pointing at the offending file.
- *
- *   - **Trust-on-first-use backfill**: on first run against an existing
- *     DB we backfill missing checksums (so legacy environments don't
- *     immediately error). The backfill is logged and the operator can
- *     run `verify` to see the recorded values.
+ * Compatibility facade for Titan's original migration API.
+ * Kysera owns execution, locking, transactions, journals and integrity checks.
+ * Existing journals, checksum encoding and lock identity are preserved.
  */
-
-import type { Kysely, Transaction } from 'kysely';
-import { sql } from 'kysely';
 import { createHash } from 'node:crypto';
-import { setupMigrations as kyseraSetupMigrations, type Migration } from '@kysera/migrations';
+import type { Kysely } from 'kysely';
+import {
+  MigrationRunner,
+  MigrationLockError as KyseraLockError,
+  MigrationChecksumError as KyseraChecksumError,
+  createMigrationHistory,
+  type Migration,
+} from '@kysera/migrations';
 
 export type HardenedMigration<DB = unknown> = Migration<DB>;
-
 export interface HardenedLogger {
-  info: (msg: string) => void;
-  warn: (msg: string) => void;
-  error: (msg: string) => void;
+  info: (message: string) => void;
+  warn: (message: string) => void;
+  error: (message: string) => void;
 }
-
-export interface HardenedRunnerOptions {
-  /**
-   * Postgres advisory-lock key. When the dialect is `'postgres'` this key
-   * is acquired via `pg_try_advisory_lock` and held for the duration of
-   * the run. Pass `null` to disable locking entirely (e.g. for SQLite).
-   * Default: 0xDA05_DA05.
-   */
-  advisoryLockKey?: bigint | number | null;
-  /** Wrap each migration + bookkeeping in one transaction. Default true. */
-  useTransactions?: boolean;
-  /**
-   * Refuse to run if a recorded migration's checksum no longer matches
-   * the source. Default true. Set false to bypass the check (e.g. when
-   * recovering from a known-safe edit).
-   */
-  enforceChecksums?: boolean;
-  /**
-   * If `true`, backfill missing checksums on startup for migrations that
-   * are already recorded as applied. This avoids hard-failing the first
-   * run after upgrading a long-lived environment. Default true.
-   */
-  backfillMissingChecksums?: boolean;
-  /** `'postgres'` enables advisory lock. Default `'postgres'`. */
-  dialect?: 'postgres' | 'other';
-  logger?: HardenedLogger;
-  /**
-   * Override the advisory-lock acquire/release pair. Tests inject fakes
-   * here; production callers leave it unset (the runner falls back to
-   * `pg_try_advisory_lock` over the live connection).
-   */
-  lockProvider?: AdvisoryLockProvider;
-}
-
-/**
- * The acquire/release pair used to gate concurrent runners. Both calls
- * receive the configured key (a positive bigint). `acquire` returns true
- * if the lock was obtained, false otherwise. `release` is best-effort.
- */
 export interface AdvisoryLockProvider {
   acquire: (key: bigint) => Promise<boolean>;
   release: (key: bigint) => Promise<void>;
 }
-
-export interface HardenedUpResult {
-  executed: string[];
-  skipped: string[];
-  failed: string[];
+export interface HardenedRunnerOptions {
+  /** Stable legacy key by default. null disables locking explicitly. */
+  advisoryLockKey?: bigint | number | null;
+  /** Default true; DDL atomicity depends on the database dialect. */
+  useTransactions?: boolean;
+  enforceChecksums?: boolean;
+  /** Legacy trust-on-first-use policy. New applications should use explicit adoption. */
+  backfillMissingChecksums?: boolean;
+  dialect?: 'postgres' | 'other';
+  logger?: HardenedLogger;
+  lockProvider?: AdvisoryLockProvider;
+  /** Wait for overlapping deployments without application retry loops. */
+  lockTimeoutMs?: number;
 }
-
-export interface HardenedDownResult {
-  rolledBack: string[];
-  failed: string[];
-}
-
+export interface HardenedUpResult { executed: string[]; skipped: string[]; failed: string[] }
+export interface HardenedDownResult { rolledBack: string[]; failed: string[] }
 export interface HardenedStatus {
   executed: { name: string; checksum: string | null }[];
   pending: string[];
   drift: { name: string; recorded: string; current: string }[];
   missingFiles: string[];
+  unknownChecksums: string[];
 }
-
 export class MigrationLockError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'MigrationLockError';
-  }
+  readonly code = 'MIGRATION_LOCKED';
+  constructor(message: string, options?: ErrorOptions) { super(message, options); this.name = 'MigrationLockError'; }
 }
-
 export class MigrationChecksumError extends Error {
-  readonly drift: ReadonlyArray<{ name: string; recorded: string; current: string }>;
-  constructor(message: string, drift: ReadonlyArray<{ name: string; recorded: string; current: string }>) {
-    super(message);
+  readonly code = 'MIGRATION_CHECKSUM_MISMATCH';
+  constructor(message: string, readonly drift: ReadonlyArray<HardenedStatus['drift'][number]>, options?: ErrorOptions) {
+    super(message, options);
     this.name = 'MigrationChecksumError';
-    this.drift = drift;
   }
 }
 
-const DEFAULT_LOCK_KEY = 0xda05_da05;
-const CHECKSUMS_TABLE = 'migration_checksums';
-
-/**
- * A failure that says the thing is already there.
- *
- * Postgres: `relation "buckets" already exists`. SQLite: `table widgets
- * already exists`. Both are the shape one migration leaves for another that
- * creates the same objects under a different name.
- */
-const ALREADY_EXISTS = /already exists/i;
-const NOOP_LOGGER: HardenedLogger = { info: () => {}, warn: () => {}, error: () => {} };
-
-interface NormalizedOptions {
-  useTransactions: boolean;
-  enforceChecksums: boolean;
-  backfillMissingChecksums: boolean;
-  dialect: 'postgres' | 'other';
-  logger: HardenedLogger;
-  advisoryLockKey: bigint | null;
-  lockProvider: AdvisoryLockProvider | null;
-}
+const LEGACY_LOCK_KEY = 3657816581n;
+const silent = { info: (_: string) => {}, warn: (_: string) => {}, error: (_: string) => {} };
 
 export class HardenedMigrationRunner<DB = unknown> {
-  private readonly db: Kysely<DB>;
-  private readonly migrations: HardenedMigration<DB>[];
-  private readonly opts: NormalizedOptions;
-  private setupDone = false;
+  private readonly runner: MigrationRunner<DB>;
+  private readonly logger: HardenedLogger;
+  private readonly enforceChecksums: boolean;
 
-  constructor(
-    db: Kysely<DB>,
-    migrations: HardenedMigration<DB>[],
-    options: HardenedRunnerOptions = {},
-  ) {
-    this.db = db;
-    this.migrations = [...migrations].sort((a, b) => a.name.localeCompare(b.name));
-    const lockKey = options.advisoryLockKey;
-    this.opts = {
+  constructor(db: Kysely<DB>, migrations: HardenedMigration<DB>[], options: HardenedRunnerOptions = {}) {
+    const key = options.advisoryLockKey === null ? null : BigInt(options.advisoryLockKey ?? LEGACY_LOCK_KEY);
+    const locking = options.dialect !== 'other' && key !== null;
+    this.logger = options.logger ?? silent;
+    this.enforceChecksums = options.enforceChecksums ?? true;
+    const provider = options.lockProvider;
+    this.runner = new MigrationRunner(db, [...migrations]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(migration => ({ ...migration, checksum: migration.checksum ?? HardenedMigrationRunner.computeChecksum(migration) })), {
+      history: createMigrationHistory({ checksumTable: 'migration_checksums' }),
+      advisoryLock: locking,
+      ...(key !== null ? { advisoryLockKey: key } : {}),
+      ...(locking && provider ? { lockProvider: { acquire: () => provider.acquire(key!), release: () => provider.release(key!) } } : {}),
+      lockTimeoutMs: options.lockTimeoutMs ?? 1,
       useTransactions: options.useTransactions ?? true,
-      enforceChecksums: options.enforceChecksums ?? true,
+      enforceChecksums: this.enforceChecksums,
       backfillMissingChecksums: options.backfillMissingChecksums ?? true,
-      dialect: options.dialect ?? 'postgres',
-      logger: options.logger ?? NOOP_LOGGER,
-      advisoryLockKey:
-        lockKey === null
-          ? null
-          : lockKey === undefined
-            ? BigInt(DEFAULT_LOCK_KEY)
-            : typeof lockKey === 'number'
-              ? BigInt(lockKey)
-              : lockKey,
-      lockProvider: options.lockProvider ?? null,
-    };
-  }
-
-  /** Compute sha256 of `up.toString() + (down?.toString() ?? '')`. */
-  static computeChecksum<D = unknown>(m: HardenedMigration<D>): string {
-    const body = m.up.toString() + (m.down ? m.down.toString() : '');
-    return createHash('sha256').update(body).digest('hex');
-  }
-
-  /** Idempotent: kysera `migrations` table + our `migration_checksums` sidecar. */
-  private async ensureSetup(): Promise<void> {
-    if (this.setupDone) return;
-    await kyseraSetupMigrations(this.db as unknown as Kysely<unknown>);
-    await sql`
-      CREATE TABLE IF NOT EXISTS ${sql.raw(`"${CHECKSUMS_TABLE}"`)} (
-        name varchar(255) PRIMARY KEY,
-        checksum varchar(64) NOT NULL,
-        recorded_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )
-    `.execute(this.db as unknown as Kysely<unknown>);
-    this.setupDone = true;
-  }
-
-  private async getExecutedNames(): Promise<string[]> {
-    const rows = (await (this.db as unknown as Kysely<{ migrations: { name: string } }>)
-      .selectFrom('migrations')
-      .select(['name'])
-      .execute()) as { name: string }[];
-    return rows.map((r) => r.name);
-  }
-
-  private async getRecordedChecksums(): Promise<Map<string, string>> {
-    const rows = (await (this.db as unknown as Kysely<{
-      [CHECKSUMS_TABLE]: { name: string; checksum: string };
-    }>)
-      .selectFrom(CHECKSUMS_TABLE as never)
-      .select(['name', 'checksum'] as never)
-      .execute()) as { name: string; checksum: string }[];
-    return new Map(rows.map((r) => [r.name, r.checksum]));
-  }
-
-  /**
-   * Backfill checksum rows for migrations that are recorded as applied
-   * in `migrations` but absent from `migration_checksums`. Called once
-   * during ensureSetup-after-up to migrate legacy environments forward
-   * without forcing manual intervention.
-   */
-  private async backfillMissingChecksums(): Promise<string[]> {
-    if (!this.opts.backfillMissingChecksums) return [];
-    const executed = new Set(await this.getExecutedNames());
-    const recorded = await this.getRecordedChecksums();
-    const missing = this.migrations.filter((m) => executed.has(m.name) && !recorded.has(m.name));
-    for (const m of missing) {
-      const checksum = HardenedMigrationRunner.computeChecksum(m);
-      await (this.db as unknown as Kysely<{ [k: string]: { name: string; checksum: string } }>)
-        .insertInto(CHECKSUMS_TABLE as never)
-        .values({ name: m.name, checksum } as never)
-        .execute();
-    }
-    return missing.map((m) => m.name);
-  }
-
-  /**
-   * Names this database records as applied that the current build does not
-   * ship.
-   *
-   * A rename or a deletion leaves a row nothing will match again. On its own
-   * that is harmless bookkeeping — squashing a history is a normal thing to
-   * do. Paired with a pending migration that creates what the orphan already
-   * created, it is the entire explanation of an error that mentions neither.
-   *
-   * Measured on a deployed node, where `@sample/storage` shipped
-   * `001_initial_schema` and the database recorded `001_initial` — an older
-   * compiled copy of the same migration under its pre-rename name, applied
-   * from a stale `dist` minutes earlier:
-   *
-   *     ✗ 001_initial_schema: relation "buckets" already exists
-   *
-   * Nine tables existed, the tenth did not, and the only thing anybody could
-   * read said the schema was ahead of the migration. Every retry failed the
-   * same way, because nothing about a retry changes the bookkeeping.
-   */
-  private async orphanRecords(): Promise<string[]> {
-    const shipped = new Set(this.migrations.map((m) => m.name));
-    return (await this.getExecutedNames()).filter((n) => !shipped.has(n));
-  }
-
-  async verifyChecksums(): Promise<HardenedStatus['drift']> {
-    if (!this.opts.enforceChecksums) return [];
-    const recorded = await this.getRecordedChecksums();
-    const drift: HardenedStatus['drift'] = [];
-    for (const [name, expected] of recorded) {
-      const m = this.migrations.find((x) => x.name === name);
-      if (!m) continue; // file missing — different concern, surfaced via status
-      const current = HardenedMigrationRunner.computeChecksum(m);
-      if (expected !== current) drift.push({ name, recorded: expected, current });
-    }
-    return drift;
-  }
-
-  private async withAdvisoryLock<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.opts.dialect !== 'postgres' || this.opts.advisoryLockKey === null) {
-      return fn();
-    }
-    const key = this.opts.advisoryLockKey;
-
-    // Custom providers (tests, external lock services) own their session.
-    if (this.opts.lockProvider) {
-      return this.withProvidedLock(this.opts.lockProvider, key, fn);
-    }
-
-    // Advisory locks are SESSION-scoped: acquire and release must run on the
-    // SAME connection. Through the pool, the lock landed on an arbitrary
-    // client — release returned false, the lock survived until pool death,
-    // and a concurrent/crashed run blocked `--redo` with MigrationLockError.
-    // Pin one connection for the entire run; migrations inside fn() still
-    // use the pool normally.
-    const db = this.db as unknown as Kysely<unknown>;
-    return db.connection().execute(async (conn) => {
-      const res = (await sql<{
-        ok: boolean;
-      }>`SELECT pg_try_advisory_lock(${key.toString()}::bigint) AS ok`.execute(conn)) as {
-        rows: { ok: boolean }[];
-      };
-      if (!res.rows[0]?.ok) {
-        throw new MigrationLockError(
-          `Could not acquire migration advisory lock (key=${key}). Another runner is in progress; refusing to proceed.`,
-        );
-      }
-      try {
-        return await fn();
-      } finally {
-        try {
-          await sql`SELECT pg_advisory_unlock(${key.toString()}::bigint)`.execute(conn);
-        } catch (e) {
-          this.opts.logger.warn(`pg_advisory_unlock failed: ${(e as Error).message}`);
-        }
-      }
+      // Preserve the legacy emergency rollback policy; the modern API fails closed.
+      rollbackChecksumPolicy: 'warn',
+      logger: { ...this.logger, trace: () => {}, debug: () => {}, fatal: this.logger.error },
     });
   }
 
-  private async withProvidedLock<T>(
-    provider: AdvisoryLockProvider,
-    key: Parameters<AdvisoryLockProvider['acquire']>[0],
-    fn: () => Promise<T>,
-  ): Promise<T> {
-    const ok = await provider.acquire(key);
-    if (!ok) {
-      throw new MigrationLockError(
-        `Could not acquire migration advisory lock (key=${key}). Another runner is in progress; refusing to proceed.`,
-      );
-    }
-    try {
-      return await fn();
-    } finally {
-      try {
-        await provider.release(key);
-      } catch (e) {
-        this.opts.logger.warn(`pg_advisory_unlock failed: ${(e as Error).message}`);
-      }
-    }
+  /** Legacy digest only. New definitions should supply a stable content checksum. */
+  static computeChecksum<D>(migration: HardenedMigration<D>): string {
+    return createHash('sha256').update(migration.up.toString() + (migration.down?.toString() ?? '')).digest('hex');
+  }
+
+  private rethrow(error: unknown): never {
+    if (error instanceof KyseraLockError) throw new MigrationLockError(error.message, { cause: error });
+    if (error instanceof KyseraChecksumError) throw new MigrationChecksumError(error.message, error.drift, { cause: error });
+    throw error;
   }
 
   async up(): Promise<HardenedUpResult> {
-    return this.withAdvisoryLock(async () => {
-      await this.ensureSetup();
-      const backfilled = await this.backfillMissingChecksums();
-      if (backfilled.length > 0) {
-        this.opts.logger.warn(
-          `Backfilled ${backfilled.length} missing checksum(s): ${backfilled.join(', ')}. ` +
-            `Source files were assumed to match the live DB; run \`migrate verify\` to inspect.`,
-        );
-      }
-
-      const drift = await this.verifyChecksums();
-      if (drift.length > 0) {
-        const lines = drift
-          .map(
-            (d) =>
-              `  ${d.name}: recorded=${d.recorded.slice(0, 12)} current=${d.current.slice(0, 12)}`,
-          )
-          .join('\n');
-        throw new MigrationChecksumError(
-          `Migration checksum drift detected — refusing to proceed. Add a NEW migration file rather than editing an applied one.\n${lines}`,
-          drift,
-        );
-      }
-
-      // Said before anything runs, so it is above the failure rather than
-      // buried under a stack trace — and said even when nothing collides,
-      // because bookkeeping that names a migration nobody ships is worth
-      // one line either way.
-      const orphans = await this.orphanRecords();
-      if (orphans.length > 0) {
-        this.opts.logger.warn(
-          `${orphans.length} migration(s) recorded in this database are not in this build: ${orphans.join(', ')}. ` +
-            `A renamed or deleted migration leaves a row nothing matches again; if a pending migration now fails ` +
-            `because the objects it creates already exist, this is why.`,
-        );
-      }
-
-      const executed = new Set(await this.getExecutedNames());
-      const result: HardenedUpResult = { executed: [], skipped: [], failed: [] };
-
-      for (const m of this.migrations) {
-        if (executed.has(m.name)) {
-          result.skipped.push(m.name);
-          continue;
-        }
-        const checksum = HardenedMigrationRunner.computeChecksum(m);
+    try {
+      return await this.runner.up();
+    } catch (error) {
+      if (error instanceof Error && /already exists/i.test(error.message)) {
+        // A diagnostic must never replace the original failure.
         try {
-          await this.runMigration(m, 'up', checksum);
-          result.executed.push(m.name);
-          this.opts.logger.info(`✓ ${m.name}`);
-        } catch (err) {
-          result.failed.push(m.name);
-          this.opts.logger.error(`✗ ${m.name}: ${(err as Error).message}`);
-          if (orphans.length > 0 && ALREADY_EXISTS.test((err as Error).message)) {
-            // The original error still propagates — the exit code and the
-            // stack belong to the database. This only says the part the
-            // database cannot know.
-            this.opts.logger.error(
-              `${m.name} failed on something that already exists, and this database records ` +
-                `${orphans.join(', ')}, which this build does not ship. The objects were almost certainly ` +
-                `created under the old name, so a retry will fail identically: reconcile the bookkeeping first.`,
-            );
-          }
-          throw err;
-        }
+          const { missingFiles } = await this.runner.inspect();
+          if (missingFiles.length) this.logger.error(`The database records ${missingFiles.join(', ')}, which this build does not ship. A retry will fail identically if these created the same objects; reconcile the bookkeeping first.`);
+        } catch { /* The original failure is retained below. */ }
       }
-      return result;
-    });
+      this.rethrow(error);
+    }
   }
 
   async down(steps = 1): Promise<HardenedDownResult> {
-    if (steps < 1) return { rolledBack: [], failed: [] };
-    return this.withAdvisoryLock(async () => {
-      await this.ensureSetup();
-      // We surface drift on rollback as a warning rather than a failure,
-      // so operators can recover from an emergency edit-then-rollback.
-      const drift = await this.verifyChecksums();
-      for (const d of drift) {
-        this.opts.logger.warn(
-          `checksum drift on ${d.name}: recorded=${d.recorded.slice(0, 12)} current=${d.current.slice(0, 12)}`,
-        );
-      }
-      const executed = await this.getExecutedNames();
-      const lastN = executed.slice(-steps).reverse();
-      const result: HardenedDownResult = { rolledBack: [], failed: [] };
+    try {
+      const result = await this.runner.down(steps);
+      return { rolledBack: result.executed, failed: result.failed };
+    } catch (error) { this.rethrow(error); }
+  }
 
-      for (const name of lastN) {
-        const m = this.migrations.find((x) => x.name === name);
-        if (!m || !m.down) {
-          this.opts.logger.warn(
-            `Skipping rollback of ${name} (no down() function or migration file missing)`,
-          );
-          continue;
-        }
-        try {
-          await this.runMigration(m, 'down', null);
-          result.rolledBack.push(m.name);
-          this.opts.logger.info(`↺ ${m.name}`);
-        } catch (err) {
-          result.failed.push(m.name);
-          this.opts.logger.error(`✗ rollback ${m.name}: ${(err as Error).message}`);
-          throw err;
-        }
-      }
-      return result;
-    });
+  async verifyChecksums(): Promise<HardenedStatus['drift']> {
+    return this.enforceChecksums ? (await this.runner.inspect()).drift : [];
   }
 
   async status(): Promise<HardenedStatus> {
-    await this.ensureSetup();
-    const executedNames = await this.getExecutedNames();
-    const recorded = await this.getRecordedChecksums();
-    const exSet = new Set(executedNames);
-    return {
-      executed: executedNames.map((name) => ({ name, checksum: recorded.get(name) ?? null })),
-      pending: this.migrations.filter((m) => !exSet.has(m.name)).map((m) => m.name),
-      drift: await this.verifyChecksums(),
-      missingFiles: await this.orphanRecords(),
-    };
-  }
-
-  /** All migration logic + bookkeeping in ONE transaction. */
-  private async runMigration(
-    m: HardenedMigration<DB>,
-    op: 'up' | 'down',
-    checksum: string | null,
-  ): Promise<void> {
-    const apply = async (tx: Kysely<DB> | Transaction<DB>) => {
-      if (op === 'up') {
-        await m.up(tx);
-        await (tx as unknown as Kysely<{ migrations: { name: string } }>)
-          .insertInto('migrations')
-          .values({ name: m.name })
-          .execute();
-        if (checksum) {
-          await (tx as unknown as Kysely<{ [k: string]: { name: string; checksum: string } }>)
-            .insertInto(CHECKSUMS_TABLE as never)
-            .values({ name: m.name, checksum } as never)
-            .execute();
-        }
-      } else {
-        if (!m.down) throw new Error(`Migration ${m.name} has no down()`);
-        await m.down(tx);
-        await (tx as unknown as Kysely<{ migrations: { name: string } }>)
-          .deleteFrom('migrations')
-          .where('name', '=', m.name)
-          .execute();
-        await (tx as unknown as Kysely<{ migration_checksums: { name: string; checksum: string } }>)
-          .deleteFrom('migration_checksums')
-          .where('name', '=', m.name)
-          .execute();
-      }
-    };
-    if (this.opts.useTransactions) {
-      await this.db.transaction().execute(async (tx) => apply(tx));
-    } else {
-      await apply(this.db);
-    }
+    const report = await this.runner.inspect();
+    return { ...report, drift: this.enforceChecksums ? report.drift : [] };
   }
 }
 
-/** Convenience constructor mirroring `createMigrationRunner`. */
-export function createHardenedRunner<DB = unknown>(
-  db: Kysely<DB>,
-  migrations: HardenedMigration<DB>[],
-  options?: HardenedRunnerOptions,
-): HardenedMigrationRunner<DB> {
-  return new HardenedMigrationRunner<DB>(db, migrations, options);
+export function createHardenedRunner<DB = unknown>(db: Kysely<DB>, migrations: HardenedMigration<DB>[], options?: HardenedRunnerOptions): HardenedMigrationRunner<DB> {
+  return new HardenedMigrationRunner(db, migrations, options);
 }

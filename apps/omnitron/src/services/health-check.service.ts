@@ -178,7 +178,7 @@ export class HealthCheckService {
 
   // ---------------------------------------------------------------------------
 
-  private appChecks(name: string, status: string, pid: number | null, port: number | null): Promise<HealthCheckResult[]> {
+  private async appChecks(name: string, status: string, pid: number | null, port: number | null): Promise<HealthCheckResult[]> {
     const checks: Array<Promise<HealthCheckResult>> = [
       timed(`${name} process`, async () =>
         status === 'online'
@@ -186,6 +186,13 @@ export class HealthCheckService {
           : { status: PROCESS_WARN.has(status) ? 'warn' : 'fail', message: status },
       ),
     ];
+    if (this.orchestrator.getHandle?.(name)?.entry.readiness) {
+      const start = Date.now();
+      const health = (await this.orchestrator.getHealth(name))[name];
+      const measured = health?.checks.map(check => ({ ...check, name: `${name} ${check.name}`, duration: Date.now() - start })) ??
+        [{ name: `${name} readiness`, status: 'warn' as const, message: 'No readiness measurement returned', duration: Date.now() - start }];
+      return [...await Promise.all(checks), ...measured];
+    }
     if (port) {
       // titan answers `/health` with 200 while its HTTP server is online and
       // 503 otherwise: this is the server taking a request, not the app's

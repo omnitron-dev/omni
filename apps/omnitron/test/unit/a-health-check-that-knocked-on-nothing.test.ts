@@ -237,3 +237,17 @@ describe('the command says it with its exit code', () => {
     }
   });
 });
+
+describe('declared readiness is shared with health-check', () => {
+  it('uses domain checks without guessing another HTTP endpoint', async () => {
+    const before = knocks;
+    const app = { name: 'sample/dev/frontend', status: 'online', pid: 11, port: okPort };
+    const getHealth = vi.fn(async () => ({ [app.name]: { status: 'unhealthy', checks: [{ name: 'index', status: 'fail', message: 'http_contract_mismatch: inspect the deployed artifact' }] } }));
+    const checker = new HealthCheckService({ ...orchestratorOf([app]), getHandle: () => ({ entry: { readiness: {} } }), getHealth } as never);
+    const result = await checker.checkApp(app.name);
+    expect(result.overall).toBe('unhealthy');
+    expect(result.checks[1]?.message).toContain('http_contract_mismatch');
+    expect(getHealth).toHaveBeenCalledWith(app.name);
+    expect(knocks).toBe(before);
+  });
+});

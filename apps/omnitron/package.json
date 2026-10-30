@@ -58,6 +58,10 @@
     "./diagnostics": {
       "types": "./dist/diagnostics/index.d.ts",
       "default": "./dist/diagnostics/index.js"
+    },
+    "./health": {
+      "types": "./dist/health/index.d.ts",
+      "default": "./dist/health/index.js"
     }
   },
   "scripts": {

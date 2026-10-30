@@ -14,6 +14,7 @@ import { fork, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
+import { randomUUID } from 'node:crypto';
 import type { IEcosystemAppEntry } from '../config/types.js';
 import type { AppHandle } from './app-handle.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
@@ -41,11 +42,15 @@ export async function launchClassic(
     }
   }
 
+  handle.healthRunId = randomUUID();
+  const heartbeat = entry.readiness?.probes.find((probe) => probe.type === 'heartbeat');
   const env: Record<string, string | undefined> = {
     ...process.env,
     ...entry.env,
     OMNITRON_MANAGED: '1',
     OMNITRON_APP_NAME: entry.name,
+    OMNITRON_RUN_ID: handle.healthRunId,
+    OMNITRON_HEALTH_FILE: heartbeat?.type === 'heartbeat' ? path.resolve(cwd, heartbeat.file) : undefined,
   };
 
   handle.markStarting();

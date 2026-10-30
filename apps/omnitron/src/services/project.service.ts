@@ -91,6 +91,7 @@ import { migrationOutput } from './migration-output.js';
 import type { LoadedRelease } from '../release/load.js';
 import type { SyncService } from './sync.service.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
+import type { InfrastructureHealthContext } from '../monitoring/infrastructure-health.js';
 import { ExecutionService, type SSHTarget } from '../execution/execution.service.js';
 
 
@@ -2133,6 +2134,30 @@ export class ProjectService extends EventEmitter {
    */
   getInfraManager(): StackInfrastructureManager {
     return this.infraManager;
+  }
+
+  /** Cached declarations plus persisted intent; this query never starts infrastructure. */
+  getInfrastructureHealthContext(): InfrastructureHealthContext {
+    const context: InfrastructureHealthContext = { stacks: [], requiredContainers: [], unresolvedStacks: [] };
+    const apps = this.orchestrator.list();
+    for (const project of this.registry.list()) {
+      const config = this.getLoadedConfig(project.name);
+      if (!config) continue; // Unknown ownership must remain visible to the indicator.
+      const running = this.getRunningStacks(project.name);
+      for (const [stack, declaration] of Object.entries(this.resolveStacks(config, project.name))) {
+        if (declaration.type !== 'local') continue;
+        const prefix = `${project.name}/${stack}/`;
+        const active = project.enabledStacks?.includes(stack) || running.includes(stack) ||
+          apps.some(app => app.name.startsWith(prefix) && ['online', 'starting', 'restarting'].includes(app.status));
+        const intent = active ? 'running' : project.enabledStacks ? 'inactive' : 'unknown';
+        context.stacks.push({ project: project.name, stack, intent });
+        if (intent !== 'running') continue;
+        const infra = this.infraManager.getInstance(project.name, stack);
+        if (infra) context.requiredContainers.push(...infra.getDesiredServices().map(service => service.name));
+        else if (mergeInfrastructure(config, declaration)) context.unresolvedStacks.push(`${project.name}/${stack}`);
+      }
+    }
+    return context;
   }
 
   // ===========================================================================

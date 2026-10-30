@@ -27,6 +27,7 @@
  *     → Two Netron instances: PM management plane + app HTTP data plane
  */
 
+import { ReadinessMonitor } from '../health/readiness.js';
 import fs from 'node:fs';
 import { readDeclaredConfig, withDeclaredConfig } from '../project/declared-config.js';
 import path from 'node:path';
@@ -261,6 +262,8 @@ export class OrchestratorService extends EventEmitter {
    * crashed app still answers operator commands while it waits.
    */
   private readonly coolDownTimers = new Map<string, NodeJS.Timeout>();
+  private readonly readinessMonitor = new ReadinessMonitor();
+  private readonly readinessSignatures = new WeakMap<AppHandle, string>();
   private config: IEcosystemConfig | null = null;
   private readonly cwd: string;
   private metricsTimer: NodeJS.Timeout | null = null;
@@ -1696,12 +1699,12 @@ export class OrchestratorService extends EventEmitter {
 
     const result: Record<string, IHealthStatus | null> = {};
 
-    for (const [appName, handle] of this.handles) {
-      if (wanted && appName !== wanted) continue;
+    const entries = [...this.handles].filter(([appName]) => !wanted || appName === wanted);
+    const measure = async ([appName, handle]: [string, AppHandle]) => {
 
       if (handle.status !== 'online') {
         result[appName] = notRunningHealth(handle.status);
-        continue;
+        return;
       }
 
       if (handle.mode === 'bootstrap' && handle.supervisor) {
@@ -1712,13 +1715,34 @@ export class OrchestratorService extends EventEmitter {
         for (const [pool, instance] of handle.topologyPools) {
           answers.push([pool, poolHealth((instance as unknown as { metrics?: IPoolMetrics }).metrics)] as const);
         }
-        const health = answers.length > 0 ? combineProcessHealth(answers) : handle.lastHealth;
+        if (handle.entry?.readiness) answers.push(['readiness', await this.readinessMonitor.check(handle, handle.entry, handle.healthRunId)]);
+        const health = handle.status !== 'online' ? notRunningHealth(handle.status)
+          : answers.length > 0 ? combineProcessHealth(answers) : handle.lastHealth;
         handle.lastHealth = health;
         result[appName] = health;
       } else {
-        result[appName] = handle.lastHealth;
+        const runId = handle.healthRunId;
+        const declaration = handle.entry;
+        const measured = await this.readinessMonitor.check(handle, declaration, runId);
+        if (runId !== handle.healthRunId || declaration !== handle.entry) {
+          result[appName] = { timestamp: Date.now(), status: 'degraded', checks: [{ name: 'readiness', status: 'warn', message: 'measurement_superseded: application restarted or its declaration changed during this probe; request a fresh measurement.' }] };
+          return;
+        }
+        const health = handle.status === 'online' ? measured : notRunningHealth(handle.status);
+        handle.lastHealth = health;
+        result[appName] = health;
+        const signature = JSON.stringify([health.status, health.checks.map(c => [c.name, c.status, c.status === 'pass' ? '' : c.message])]);
+        if (this.readinessSignatures.get(handle) !== signature) {
+          this.readinessSignatures.set(handle, signature);
+          const details = { event: 'application.readiness.changed', app: appName, status: health.status, checks: health.checks };
+          if (health.status === 'healthy') this.logger.info(details, 'Application readiness verified');
+          else if (health.status === 'degraded') this.logger.warn(details, 'Application readiness needs attention');
+          else this.logger.error(details, 'Application readiness failed');
+        }
       }
-    }
+    };
+    // Keep a fleet of failed endpoints from serializing the entire health response.
+    for (let offset = 0; offset < entries.length; offset += 4) await Promise.all(entries.slice(offset, offset + 4).map(measure));
 
     return result;
   }

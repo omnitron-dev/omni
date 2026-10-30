@@ -77,6 +77,8 @@ export class AppHandle {
   public childMetrics: Map<string, { cpu: number; memory: number }> = new Map();
 
   public lastHealth: IHealthStatus | null = null;
+  /** Identity of this classic launch, also propagated to its heartbeat writer. */
+  public healthRunId: string | undefined;
 
   /** PM supervisor managing this app's processes (bootstrap mode) */
   public supervisor: ProcessSupervisor | null = null;

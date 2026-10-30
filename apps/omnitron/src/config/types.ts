@@ -620,6 +620,8 @@ export interface IWebSocketTransportConfig {
 
 export interface IEcosystemAppEntry {
   name: string;
+  /** External readiness, independent of process liveness. Re-read applies probes without restarting the app. */
+  readiness?: import('../health/contracts.js').AppReadinessConfig;
   /** Bootstrap mode: app exports defineSystem() */
   bootstrap?: string;
   /** Classic mode: fork existing main.ts */

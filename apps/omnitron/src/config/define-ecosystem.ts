@@ -4,8 +4,17 @@
 
 import type { IEcosystemConfig } from './types.js';
 import { DEFAULT_ECOSYSTEM } from './defaults.js';
+import { validateReadiness } from '../health/contracts.js';
 
 export function defineEcosystem(config: Partial<IEcosystemConfig> & Pick<IEcosystemConfig, 'apps'>): IEcosystemConfig {
+  for (const app of config.apps) {
+    if (app.readiness !== undefined) {
+      validateReadiness(app.readiness);
+      if (app.bootstrap && app.readiness.probes.some(probe => probe.type === 'heartbeat')) {
+        throw new Error('readiness_invalid: bootstrap applications publish domain health through hooks.onHealthCheck; heartbeat files are for classic scripts.');
+      }
+    }
+  }
   return {
     ...DEFAULT_ECOSYSTEM,
     ...config,

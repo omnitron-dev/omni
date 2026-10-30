@@ -20,8 +20,9 @@
 import { HealthIndicator, type HealthIndicatorResult } from '@omnitron-dev/titan-health';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import type { ContainerState } from '../infrastructure/types.js';
+import type { InfrastructureHealthContext } from './infrastructure-health.js';
 
-type Seen = Pick<ContainerState, 'name' | 'status' | 'health'>;
+type Seen = Pick<ContainerState, 'name' | 'status' | 'health' | 'project' | 'stack'>;
 
 export class DockerHealthIndicator extends HealthIndicator {
   readonly name = 'docker';
@@ -33,13 +34,14 @@ export class DockerHealthIndicator extends HealthIndicator {
       const { listManagedContainers } = await import('../infrastructure/container-runtime.js');
       return listManagedContainers({ orThrow: true });
     },
+    private readonly getContext?: () => InfrastructureHealthContext,
   ) {
     super();
   }
 
   async check(): Promise<HealthIndicatorResult> {
     const infra = this.getInfra();
-    if (infra) return this.judge(Object.values(infra.getState().services), 'reconciler');
+    if (infra && !this.getContext) return this.judge(Object.values(infra.getState().services), 'reconciler');
 
     let seen: Seen[];
     try {
@@ -47,7 +49,37 @@ export class DockerHealthIndicator extends HealthIndicator {
     } catch (err) {
       return this.unhealthy(`Docker did not answer: ${(err as Error).message}`);
     }
-    return this.judge(seen, 'docker');
+    if (!this.getContext) return this.judge(seen, 'docker');
+    let context: InfrastructureHealthContext;
+    try { context = this.getContext(); }
+    catch { return this.degraded('Docker answered, but local stack intent could not be read. Check project configuration and daemon logs.'); }
+    const required = new Set([...context.requiredContainers, ...(infra?.getDesiredServices().map(s => s.name) ?? [])]);
+    const scopes = new Map(context.stacks.map(s => [`${s.project}/${s.stack}`, s.intent]));
+    const failures: string[] = [];
+    const warnings: string[] = context.unresolvedStacks.map(s => `${s}: enabled infrastructure has not been reconciled; inspect stack startup logs`);
+    const inactive: string[] = [];
+    for (const name of required) {
+      if (!seen.some(s => s.name === name)) failures.push(`${name}: required container is missing; inspect stack provisioning`);
+    }
+    for (const service of seen) {
+      const intent = required.has(service.name) ? 'running' : scopes.get(`${service.project}/${service.stack}`) ?? 'unknown';
+      if (service.status !== 'running') {
+        if (intent === 'inactive' && ['exited', 'created'].includes(service.status)) {
+          inactive.push(service.name);
+        } else {
+          const message = `${service.name}: ${service.status}; ${intent === 'running' ? 'required by an active stack, inspect container logs' : 'desired state is not established, inspect stack ownership'}`;
+          (intent === 'running' ? failures : warnings).push(message);
+        }
+      } else if (service.health === 'unhealthy' || service.health === 'starting') {
+        warnings.push(`${service.name}: healthcheck ${service.health}; inspect its probe output`);
+      }
+    }
+    const details = { source: 'docker+desired-state', total: seen.length, running: seen.filter(s => s.status === 'running').length,
+      inactive, failures, warnings, services: seen.map(s => ({ ...s, intent: required.has(s.name) ? 'running' : scopes.get(`${s.project}/${s.stack}`) ?? 'unknown' })) };
+    const message = [...failures, ...warnings].join('; ');
+    if (failures.length) return this.unhealthy(message, details);
+    if (warnings.length) return this.degraded(message, details);
+    return this.healthy(`${details.running} managed containers running${inactive.length ? `; ${inactive.length} intentionally stopped in disabled local stacks: ${inactive.join(', ')}` : ''}.`, details);
   }
 
   private judge(services: Seen[], source: 'reconciler' | 'docker'): HealthIndicatorResult {

@@ -84,6 +84,20 @@ export async function migrateOmnitronDb(db: Kysely<unknown>, logger?: ILogger): 
   return { applied: (await createOmnitronMigrationRunner(db, logger).up()).executed };
 }
 
+/** Read-only replacement readiness. Schema changes need a separate reviewed transition. */
+export async function assertOmnitronMigrationsCurrent(connection?: Kysely<unknown>): Promise<void> {
+  const db = connection ?? await createOmnitronDb<unknown>({ max: 1 });
+  try {
+    const report = await createOmnitronMigrationRunner(db).inspect();
+    const issues = [
+      ...(report.pending.length ? [`pending: ${report.pending.join(', ')}`] : []),
+      ...(report.drift.length ? [`changed: ${report.drift.map(row => row.name).join(', ')}`] : []),
+      ...(report.missingFiles.length ? [`unknown: ${report.missingFiles.join(', ')}`] : []),
+    ];
+    if (issues.length) throw new Error(`Backend schema is not ready (${issues.join('; ')}). Inspect omnitron migrate status --daemon and verify --daemon; prepare the schema separately before replacing the backend.`);
+  } finally { if (!connection) await db.destroy(); }
+}
+
 export async function runOmnitronMigrations(logger?: ILogger): Promise<MigrationRunOutcome> {
   const db = await createOmnitronDb<unknown>({ max: 1 });
   try {

@@ -261,6 +261,8 @@ export interface SyncBufferTable {
   createdAt: CreatedAt;
   /** When the entry was successfully synced to master (null = pending) */
   syncedAt: Timestamp | null;
+  /** SQLite receipt classification; an old master can only release without proof. */
+  syncOutcome: Generated<'committed' | 'discarded' | 'unverified' | null>;
 }
 
 /**
@@ -275,6 +277,8 @@ export interface SyncIngestedTable {
   nodeId: string;
   entryId: string;
   ingestedAt: CreatedAt;
+  /** Metrics sinks and legacy receipts do not prove durable payload storage. */
+  outcome: Generated<'committed' | 'discarded' | 'unverified'>;
 }
 
 // =============================================================================

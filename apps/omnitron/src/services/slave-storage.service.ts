@@ -25,6 +25,7 @@ import { Kysely, SqliteDialect, sql } from 'kysely';
 import { withDateBinding } from '../database/sqlite-date-binding.js';
 import { DEFAULT_ALERT_RULES } from '../database/migrations/011_alerts_nobody_had_to_write.js';
 import { DISK_ALERT_RULE } from '../database/migrations/012_a_disk_nobody_watched.js';
+import { migrateSlaveDb } from '../database/slave-migrations/index.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
 
@@ -111,6 +112,7 @@ export interface SlaveDatabase {
 export class SlaveStorageService {
   private db: Kysely<SlaveDatabase> | null = null;
   private initialized = false;
+  private initialization: Promise<Kysely<SlaveDatabase>> | null = null;
 
   constructor(
     private readonly logger: ILogger,
@@ -122,7 +124,17 @@ export class SlaveStorageService {
    * Returns a typed Kysely<SlaveDatabase> ready for queries.
    */
   async getDb(): Promise<Kysely<SlaveDatabase>> {
-    if (this.db) return this.db;
+    if (this.db && this.initialized) return this.db;
+    this.initialization ??= this.initialize().catch(async error => {
+      await this.db?.destroy();
+      this.db = null;
+      this.initialized = false;
+      throw error;
+    }).finally(() => { this.initialization = null; });
+    return this.initialization;
+  }
+
+  private async initialize(): Promise<Kysely<SlaveDatabase>> {
 
     // Ensure directory exists
     fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
@@ -134,7 +146,7 @@ export class SlaveStorageService {
     // Enable WAL mode for concurrent access
     database.pragma('journal_mode = WAL');
     database.pragma('busy_timeout = 5000');
-    database.pragma('synchronous = NORMAL');
+    database.pragma('synchronous = FULL');
     // An alert rule's events go with it (`alert_events.ruleId … ON DELETE
     // CASCADE`). SQLite enforces a foreign key only when asked, per
     // connection; better-sqlite3 13 is built asking by default, and this keeps
@@ -162,9 +174,11 @@ export class SlaveStorageService {
    * Close the database connection.
    */
   async dispose(): Promise<void> {
+    await this.initialization?.catch(() => {});
     if (this.db) {
       await this.db.destroy();
       this.db = null;
+      this.initialized = false;
     }
   }
 
@@ -222,6 +236,7 @@ export class SlaveStorageService {
     `.execute(this.db);
 
     await this.createBufferStats();
+    await migrateSlaveDb(this.db as Kysely<unknown>);
     await this.createAlertTables();
 
     // logs — column names match OmnitronDatabase.LogsTable (camelCase)

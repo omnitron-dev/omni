@@ -500,6 +500,12 @@ export class OmnitronDaemon {
     // command. Adoption only reads native container identities; it never
     // deploys an app or applies a new infrastructure declaration.
     if (options?.backendHandoff) {
+      if (this.dc.role === 'master') {
+        // Replacement must not mutate shared schema behind a rollback binary.
+        // Check the existing Kysera journal before admitting public requests.
+        const { assertOmnitronMigrationsCurrent } = await import('../database/migration-runner.js');
+        await assertOmnitronMigrationsCurrent();
+      }
       const projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
       await projects.adoptHandoff(options.backendHandoff.projects);
       if (options.backendHandoff.infrastructure) {

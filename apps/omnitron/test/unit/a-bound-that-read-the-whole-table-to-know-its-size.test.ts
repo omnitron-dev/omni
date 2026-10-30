@@ -112,8 +112,8 @@ describe('a bound that read the whole table to know its size', () => {
         );
         steps.push(`insert ${n}`);
       } else if (roll < 0.7) {
-        const pending = await db.selectFrom('sync_buffer').select('id').where('syncedAt', 'is', null).execute();
-        const ids = pending.filter(() => rand() < 0.5).map((r) => String(r.id));
+        const pending = (await roomy.drainBuffer(10_000)).entries;
+        const ids = pending.filter(() => rand() < 0.5).map((r) => r.id);
         await roomy.ackDrained(ids);
         steps.push(`ack ${ids.length}`);
       } else if (roll < 0.85) {

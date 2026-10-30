@@ -8,7 +8,7 @@ import { log, table, note, prism } from '@xec-sh/kit';
 import { createDaemonClient, LONG_REQUEST_TIMEOUT, isRequestTimeout } from '../daemon/daemon-client.js';
 import type { IProjectRpcService } from '../shared/dto/services.js';
 import { emitJson, emitError, emitStep, emitSuccess, emitInfo, isJsonMode } from './output.js';
-import { syncFinding, syncWords, inSync } from '../shared/sync-reading.js';
+import { syncFinding, syncWords, syncSeverity } from '../shared/sync-reading.js';
 
 // =============================================================================
 // Helpers
@@ -163,7 +163,8 @@ export async function stackStatusCommand(projectName: string, stackName: string)
             ? (() => {
                 const finding = syncFinding(n.syncStatus);
                 const words = syncWords(finding);
-                return inSync(finding) ? prism.green(words) : finding.state === 'behind' ? prism.yellow(words) : prism.cyan(words);
+                const severity = syncSeverity(finding);
+                return severity === 'success' ? prism.green(words) : severity === 'warning' ? prism.yellow(words) : prism.cyan(words);
               })()
             : '',
         })),

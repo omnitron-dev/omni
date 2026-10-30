@@ -12,7 +12,7 @@ export interface BackendArtifact {
   runtimeRoot: string; runtimeHash: string; execPath: string;
 }
 
-async function migrationDigest(directory: string): Promise<string> {
+export async function backendMigrationDigest(directory: string): Promise<string> {
   const hash = createHash('sha256');
   const walk = async (root: string, prefix = ''): Promise<void> => {
     for (const item of (await fs.readdir(root, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
@@ -23,7 +23,13 @@ async function migrationDigest(directory: string): Promise<string> {
       } else if (item.isSymbolicLink()) throw new Error('Database migration files must not be symlinks');
     }
   };
-  await walk(path.join(directory, 'database', 'migrations'));
+  await walk(path.join(directory, 'database', 'migrations'), 'master');
+  const local = path.join(directory, 'database', 'slave-migrations');
+  // Earlier releases have no local migration registry. Its first appearance
+  // is a schema transition too, not a way around the master-only check.
+  try { await fs.access(local); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return hash.digest('hex'); throw error; }
+  await walk(local, 'node');
   return hash.digest('hex');
 }
 
@@ -48,7 +54,7 @@ export async function checkBackendCandidate(directory: string, currentEntry?: st
   if (answer.protocol !== 1 || answer.build?.commit !== build.commit || answer.build.dirty) throw new Error('Candidate execution protocol or build identity does not match');
   if (currentEntry) {
     const currentDist = path.dirname(path.dirname(await fs.realpath(currentEntry)));
-    const [current, next] = await Promise.all([migrationDigest(currentDist), migrationDigest(directory)]);
+    const [current, next] = await Promise.all([backendMigrationDigest(currentDist), backendMigrationDigest(directory)]);
     if (current !== next) throw new Error('This update changes database migrations. Prepare a separate compatible database transition before a hot backend replacement.');
   }
   return { directory, entry, entryHash, build, runtimeRoot, runtimeHash: runtime.sha256, execPath };

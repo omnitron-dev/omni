@@ -4,6 +4,7 @@ import os from 'node:os';
 import { afterEach, expect, it } from 'vitest';
 import { ExecutionJournal, readPrivateRecord, writePrivateRecord } from '../../src/daemon/execution-journal.js';
 import { runtimeArtifactDigest, verifyRuntimeArtifact } from '../../src/shared/runtime-artifact.js';
+import { backendMigrationDigest } from '../../src/daemon/backend-candidate.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => fs.rm(root, { recursive: true, force: true }))); });
@@ -39,4 +40,19 @@ it('detects changed dependency bytes and refuses links outside a sealed runtime'
   await expect(verifyRuntimeArtifact(directory)).rejects.toThrow('changed after sealing');
   await fs.symlink(process.execPath, path.join(directory, 'external-node'));
   await expect(runtimeArtifactDigest(directory)).rejects.toThrow('escapes its release');
+});
+
+it('includes both master and local node migrations in backend compatibility', async () => {
+  const directory = await root();
+  await fs.mkdir(path.join(directory, 'database/migrations'), { recursive: true });
+  await fs.writeFile(path.join(directory, 'database/migrations/001.js'), 'export const up = () => {};');
+  const masterOnly = await backendMigrationDigest(directory);
+  await fs.mkdir(path.join(directory, 'database/slave-migrations'));
+  await fs.writeFile(path.join(directory, 'database/slave-migrations/001.js'), 'export const up = () => {};');
+  const withNode = await backendMigrationDigest(directory);
+  expect(withNode).not.toBe(masterOnly);
+  await fs.writeFile(path.join(directory, 'database/slave-migrations/001.js'), 'export const up = () => { throw Error(); };');
+  expect(await backendMigrationDigest(directory)).not.toBe(withNode);
+  await fs.symlink(path.join(directory, 'database/migrations/001.js'), path.join(directory, 'database/slave-migrations/002.js'));
+  await expect(backendMigrationDigest(directory)).rejects.toThrow('must not be symlinks');
 });

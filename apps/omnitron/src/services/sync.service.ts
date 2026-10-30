@@ -1,40 +1,16 @@
 /**
- * SyncService — Ultra-reliable slave→master data replication
+ * Buffered node→master replication over Netron.
  *
- * Architecture:
- * - Every slave daemon collects ALL metrics, logs, events, alerts locally
- * - Data is buffered in a local append-only WAL (write-ahead log) in omnitron-pg
- * - Periodically, slave attempts to push buffered data to master via Netron TCP
- * - On success: the entries the master confirms are marked as synced
- * - On failure: exponential backoff, retry later — the entries stay pending
- * - Sync batches are idempotent: the master keeps a ledger of what it took
+ * Nodes persist configured telemetry in SQLite with FULL WAL durability.
+ * Pull (and legacy push) releases only identified acknowledgements; failures
+ * remain pending with bounded backoff. The PostgreSQL ledger deduplicates
+ * entries within its retention window, using node identity and wire entry ID.
  *
- * Guarantees:
- * 1. No loss on delivery failure — an entry is released only once the master
- *    has confirmed it holds it. Bounded by (5): when the buffer is over
- *    budget, undelivered entries are dropped oldest-first, loudly.
- * 2. Autonomous operation — slave works normally without master
- * 3. Eventual consistency — master sees all data when connectivity restores
- * 4. Conflict-free — operational data is append-only, config uses master-wins
- * 5. Bounded buffer — oldest entries evicted when maxBufferSize reached
- *
- * Four of these were stated here long before anything implemented them, and
- * every one of the failures was silent: replication that drops data still
- * reports a successful cycle, because what would have noticed is what was
- * missing. Guarantee 1 said "zero data loss" while both transports discarded
- * whatever the master rejected; the batches were called idempotent with
- * `batchId` used only inside log strings; and `maxBufferSize` was read from
- * config, defaulted to 500 MB, and never referenced again.
- *
- * Guarantee 1 is now stated as what it can be. "Zero data loss" was not
- * achievable alongside a bounded buffer, and writing it down did not make it
- * so — a slave that cannot reach its master eventually has to choose between
- * dropping data and filling the disk. It drops, oldest first, at warning
- * level with a count. See `sync-policy.ts`.
- *
- * WAL table: `sync_buffer` in slave's local omnitron-pg
- * Each entry: { id, category, payload (jsonb), createdAt, syncedAt (null until synced) }
- * Dedup ledger (master side): `sync_ingested`, keyed on (nodeId, slave entry id)
+ * Queue release, committed payloads, permanent rejections and eviction losses
+ * are distinct durable evidence. Metrics delivered to the in-memory sink and
+ * unclassified older-peer receipts are unverified, never durable commits.
+ * Overflow evicts delivered rows first, then pending rows with a loss record.
+ * Delivery is therefore bounded at-least-once, not an unlimited no-loss promise.
  */
 
 import type { Insertable, Kysely, Transaction } from 'kysely';
@@ -44,6 +20,7 @@ import type { ISyncConfig, DaemonRole } from '../config/types.js';
 import type { ISyncStatus } from '../shared/dto/project.js';
 import { toIsoUtc } from '../database/sqlite-date-binding.js';
 import { describeError } from '../shared/describe-error.js';
+import { readReplicationEvidence, receiptGroups, type ReplicationReceipt } from './replication-evidence.js';
 import {
   classifyIngestFailure,
   deliveredIds,
@@ -107,6 +84,9 @@ export type SyncExecutor = Kysely<OmnitronDatabase> | Transaction<OmnitronDataba
  * delivered, which is how the "zero data loss" guarantee was losing data.
  */
 export interface IngestBatchResult {
+  /** Durable payload receipts; omitted by older peers. */
+  receiptVersion?: 1;
+  committedIds?: string[];
   accepted: number;
   duplicates: number;
   acceptedIds: string[];
@@ -261,6 +241,7 @@ export class SyncService {
   private ledgerTimer: NodeJS.Timeout | null = null;
   /** Whether this database keeps the buffer's figures; null until asked. See `keptBufferStats`. */
   private bufferStatsKept: boolean | null = null;
+  private evidenceKept: boolean | null = null;
   private isSyncing = false;
   private backoff: SyncBackoffState = { attempt: 0, nextRetryAt: 0 };
   private lastSyncAt: number | null = null;
@@ -478,9 +459,8 @@ export class SyncService {
    * everything between the two — the network, the checksum, the ingestion —
    * can fail without the slave forgetting the data.
    */
-  async ackDrained(ids: string[]): Promise<{ released: number }> {
-    if (ids.length === 0) return { released: 0 };
-    return { released: await this.markSynced(ids) };
+  async ackDrained(ids: string[], receipt?: ReplicationReceipt): Promise<{ released: number }> {
+    return { released: await this.markSynced(ids, receipt) };
   }
 
   // ===========================================================================
@@ -538,7 +518,7 @@ export class SyncService {
 
         const outcome = await this.pushBatch(batch);
         const delivered = deliveredIds(outcome);
-        totalSynced += await this.markSynced(delivered);
+        totalSynced += await this.markSynced(delivered, outcome.receipt);
         totalRefused += outcome.failed.length;
 
         // Entries the master rejected stay pending, so the next fetch
@@ -613,18 +593,23 @@ export class SyncService {
   }
 
   private async fetchPendingBatch(limit?: number): Promise<SyncBatch> {
+    const requested = limit ?? this.config.batchSize;
+    if (!Number.isSafeInteger(requested) || requested < 1 || requested > 10_000) throw new Error('Replication batch limit must be between 1 and 10000');
+    const tracked = await this.replicationEvidence();
+    const { sql } = await import('kysely');
     const rows = await this.db
       .selectFrom('sync_buffer')
-      .selectAll()
+      .select(['category', 'payload', 'createdAt'])
+      .select(sql<string>`cast(id as text)`.as('id'))
       .where('syncedAt', 'is', null)
       .orderBy('createdAt', 'asc')
-      .limit(limit ?? this.config.batchSize)
+      .limit(requested)
       .execute();
 
     const batchId = `${this.nodeId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     const entries = rows.map((r) => ({
-      id: String(r.id),
+      id: tracked && BigInt(r.id) >= BigInt(tracked.namespaceFrom) ? `${tracked.evidence.epoch}:${r.id}` : String(r.id),
       category: r.category as SyncCategory,
       payload: (typeof r.payload === 'string' ? JSON.parse(r.payload) : r.payload) as Record<string, unknown>,
       // Whatever spelling the local column holds, the master receives a
@@ -651,11 +636,10 @@ export class SyncService {
    * The return value used to be discarded, and `receiveBatch` swallows
    * per-entry ingestion failures into a warning — so the caller marked every
    * entry delivered whether or not any of them arrived. A master response
-   * without the id lists is treated as "all delivered", which is what an
-   * older master would mean by it; that is the only reading that does not
-   * silently retry everything against a peer that cannot tell us otherwise.
+   * without ID lists can release a batch only when its counts cover every
+   * offered entry. Such a receipt still cannot certify durable payloads.
    */
-  private async pushBatch(batch: SyncBatch): Promise<IngestOutcome> {
+  private async pushBatch(batch: SyncBatch): Promise<IngestOutcome & { receipt?: ReplicationReceipt }> {
     if (!this.masterInvoke) throw new Error('No master connection');
 
     const response = (await this.masterInvoke('OmnitronSync', 'receiveBatch', [batch])) as
@@ -664,6 +648,11 @@ export class SyncService {
 
     const allIds = batch.entries.map((e) => e.id);
     if (!response || !Array.isArray(response.acceptedIds)) {
+      if (!response || !Number.isSafeInteger(response.accepted) || Number(response.accepted) < 0 ||
+          !Number.isSafeInteger(response.duplicates ?? 0) || Number(response.duplicates ?? 0) < 0 ||
+          Number(response.accepted) + Number(response.duplicates ?? 0) !== allIds.length) {
+        throw new Error('The master did not identify all delivered entries; the batch remains pending');
+      }
       return { accepted: allIds, duplicates: [], failed: [], discarded: [] };
     }
     return {
@@ -673,19 +662,67 @@ export class SyncService {
       // An older master answers without this field. Treating a missing list
       // as an empty one is right: it discarded nothing.
       discarded: Array.isArray(response.discardedIds) ? response.discardedIds : [],
+      ...(response.receiptVersion === 1 && Array.isArray(response.committedIds) && { receipt: {
+        version: 1 as const, committedIds: response.committedIds, discardedIds: response.discardedIds ?? [],
+      } }),
     };
   }
 
-  private async markSynced(ids: string[]): Promise<number> {
+  private async replicationEvidence() {
+    if (this.evidenceKept === false) return null;
+    try {
+      const reading = await readReplicationEvidence(this.db as Kysely<unknown>);
+      this.evidenceKept = true;
+      return reading;
+    } catch (error) {
+      // An older schema is compatible. Corrupt state and I/O errors are not
+      // evidence of an empty queue and must reach the caller.
+      if (/no such table: sync_replication_state|relation ["']?sync_replication_state["']? does not exist/i.test(describeError(error))) {
+        this.evidenceKept = false;
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  private async markSynced(ids: string[], receipt?: ReplicationReceipt): Promise<number> {
+    const groups = receiptGroups(ids, receipt);
     if (ids.length === 0) return 0;
     const now = Date.now();
-    const result = await this.db
-      .updateTable('sync_buffer')
-      .set({ syncedAt: new Date(now) })
-      .where('id', 'in', ids)
-      .where('syncedAt', 'is', null)
-      .executeTakeFirst();
-    const released = Number(result.numUpdatedRows);
+    const tracked = await this.replicationEvidence();
+    let released: number;
+    if (tracked) {
+      // Classification, queue release and durable evidence commit together.
+      released = await this.db.transaction().execute(async transaction => {
+        let count = 0;
+        for (const [outcome, wireIds] of Object.entries(groups)) {
+          if (!wireIds.length) continue;
+          const values = wireIds.map(id => {
+            if (!id.includes(':')) {
+              if (!/^[1-9]\d*$/.test(id) || BigInt(id) >= BigInt(tracked.namespaceFrom)) {
+                throw new Error('Replication receipt is missing its buffer epoch');
+              }
+              return id; // IDs offered before migration retain their original wire representation.
+            }
+            const [epoch, sequence, extra] = id.split(':');
+            if (epoch !== tracked.evidence.epoch || !sequence || !/^[1-9]\d*$/.test(sequence) || extra !== undefined ||
+                BigInt(sequence) < BigInt(tracked.namespaceFrom) || BigInt(sequence) > 9223372036854775807n) {
+              throw new Error('Replication receipt belongs to a different buffer epoch');
+            }
+            return sequence;
+          });
+          const result = await transaction.updateTable('sync_buffer')
+            .set({ syncedAt: new Date(now), syncOutcome: outcome as 'committed' | 'discarded' | 'unverified' })
+            .where('id', 'in', values).where('syncedAt', 'is', null).executeTakeFirst();
+          count += Number(result.numUpdatedRows);
+        }
+        return count;
+      });
+    } else {
+      const result = await this.db.updateTable('sync_buffer').set({ syncedAt: new Date(now) })
+        .where('id', 'in', [...new Set(ids)]).where('syncedAt', 'is', null).executeTakeFirst();
+      released = Number(result.numUpdatedRows);
+    }
     if (released > 0) {
       this.lastSyncAt = now;
       const second = Math.floor(now / 1000);
@@ -708,8 +745,7 @@ export class SyncService {
   /**
    * Keep the WAL inside `maxBufferSize`.
    *
-   * Guarantee 5 in the header of this file — "bounded buffer, oldest entries
-   * evicted when maxBufferSize reached" — had no implementation:
+   * The original bounded-buffer promise had no implementation:
    * `maxBufferSize` was read from config, defaulted to 500 MB, and never
    * referenced again. The only eviction was of *synced* rows older than a
    * day, so a slave that lost its master buffered until the disk filled. The
@@ -925,6 +961,11 @@ export class SyncService {
     if (typeof batch.nodeId !== 'string' || batch.nodeId.trim() === '') {
       throw new Error('Sync batch rejected: `nodeId` is required and must be a non-empty string.');
     }
+    if (!Array.isArray(batch.entries) || batch.entries.length > 10_000 || batch.entries.some(entry =>
+      !entry || typeof entry.id !== 'string' || !entry.id.length || entry.id.length > 64 ||
+      typeof entry.category !== 'string' || !entry.payload || typeof entry.payload !== 'object' || Array.isArray(entry.payload))) {
+      throw new Error('Sync batch rejected: at most 10000 entries with bounded IDs and object payloads are required');
+    }
 
     // Rate limiting — prevent flood from misbehaving slaves
     if (!this.checkRateLimit(batch.nodeId)) {
@@ -963,18 +1004,26 @@ export class SyncService {
       );
     }
 
+    const released = deliveredIds(outcome);
+    const receipts = released.length ? await this.db.selectFrom('sync_ingested').select(['entryId', 'outcome'])
+      .where('nodeId', '=', batch.nodeId).where('entryId', 'in', released).execute() : [];
+    const discarded = new Set(receipts.filter(row => row.outcome === 'discarded').map(row => row.entryId));
+    const acceptedIds = outcome.accepted.filter(id => !discarded.has(id));
+    const duplicateIds = outcome.duplicates.filter(id => !discarded.has(id));
     return {
+      receiptVersion: 1,
+      committedIds: receipts.filter(row => row.outcome === 'committed').map(row => row.entryId),
       // Kept as a number for the existing RPC contract; the id lists are
       // what the slave needs to know which entries it may release.
-      accepted: outcome.accepted.length,
-      duplicates: outcome.duplicates.length,
-      acceptedIds: outcome.accepted,
-      duplicateIds: outcome.duplicates,
+      accepted: acceptedIds.length,
+      duplicates: duplicateIds.length,
+      acceptedIds,
+      duplicateIds,
       failedIds: outcome.failed,
       // Released, not stored. The slave must let these go or it offers them
       // forever; the ERROR beside each one is the only record that they
       // existed.
-      discardedIds: outcome.discarded,
+      discardedIds: [...discarded],
     };
   }
 
@@ -1030,7 +1079,7 @@ export class SyncService {
     const taken: SyncBatch['entries'] = [];
 
     await this.db.transaction().execute(async (trx) => {
-      const claimed = await this.claimAll(trx, nodeId, entries.map((e) => e.id));
+      const claimed = await this.claimAll(trx, nodeId, entries);
       for (const entry of entries) {
         if (claimed.delete(entry.id)) {
           outcome.accepted.push(entry.id);
@@ -1105,8 +1154,11 @@ export class SyncService {
    * Sorted, so that two transactions claiming overlapping batches take the
    * ledger's rows in the same order and cannot deadlock on each other.
    */
-  private async claimAll(db: SyncExecutor, nodeId: string, ids: string[]): Promise<Set<string>> {
-    const rows = [...new Set(ids)].sort().map((entryId) => ({ nodeId, entryId }));
+  private async claimAll(db: SyncExecutor, nodeId: string, entries: SyncBatch['entries']): Promise<Set<string>> {
+    const byId = new Map<string, IngestEntry>();
+    for (const entry of entries) if (!byId.has(entry.id)) byId.set(entry.id, entry);
+    const rows = [...byId.values()].sort((a, b) => a.id.localeCompare(b.id))
+      .map(entry => ({ nodeId, entryId: entry.id, outcome: this.receiptOutcome(entry.category) }));
     const claimed = new Set<string>();
     for (const part of statementsOf(rows)) {
       const taken = await db
@@ -1227,6 +1279,13 @@ export class SyncService {
    * lost acknowledgement, which is delivery, not failure. Throws when
    * ingestion fails, leaving nothing recorded.
    */
+  private receiptOutcome(category: SyncCategory): 'committed' | 'discarded' | 'unverified' {
+    // The metrics sink is outside the database transaction. Its successful
+    // callback cannot certify durable storage, including across a lost ACK.
+    if (category === 'metrics') return 'unverified';
+    return ['logs', 'alerts', 'traces', 'events', 'state'].includes(category) ? 'committed' : 'discarded';
+  }
+
   private async claimAndIngest(
     nodeId: string,
     entry: { id: string; category: SyncCategory; payload: Record<string, unknown>; createdAt: string }
@@ -1244,12 +1303,13 @@ export class SyncService {
       // The claim is made in its own transaction because the one above rolled
       // back with the failure, taking the claim with it. Claiming it here is
       // what stops it coming back.
-      await this.db
+      const recorded = await this.db
         .insertInto('sync_ingested')
-        .values({ nodeId, entryId: entry.id })
+        .values({ nodeId, entryId: entry.id, outcome: 'discarded' })
         .onConflict((oc) => oc.columns(['nodeId', 'entryId']).doNothing())
-        .execute()
-        .catch(() => undefined);
+        .returning('entryId').executeTakeFirst();
+      if (!recorded) return 'duplicate'; // The canonical receipt decides which outcome won.
+
 
       // ERROR, with everything needed to find the entry: this is data that
       // will never arrive, and the node has been told to forget it.
@@ -1268,7 +1328,7 @@ export class SyncService {
     return this.db.transaction().execute(async (trx) => {
       const claim = await trx
         .insertInto('sync_ingested')
-        .values({ nodeId, entryId: entry.id })
+        .values({ nodeId, entryId: entry.id, outcome: this.receiptOutcome(entry.category) })
         .onConflict((oc) => oc.columns(['nodeId', 'entryId']).doNothing())
         .returning('entryId')
         .executeTakeFirst();
@@ -1402,31 +1462,32 @@ export class SyncService {
     let pendingItems = 0;
     let bufferSize = 0;
     let oldestPendingAgeMs: number | null = null;
+    let lastSyncAt = this.lastSyncAt;
+    let tracked: Awaited<ReturnType<typeof readReplicationEvidence>> | null = null;
 
     if (this.role === 'slave') {
-      const result = await this.db
-        .selectFrom('sync_buffer')
-        .select((eb) => [
-          eb.fn.count('id').as('count'),
-          eb.fn.min('createdAt').as('oldest'),
-        ])
-        .where('syncedAt', 'is', null)
-        .executeTakeFirst();
-      pendingItems = Number(result?.count ?? 0);
-      if (result?.oldest != null) oldestPendingAgeMs = Math.max(0, Date.now() - Date.parse(toIsoUtc(result.oldest)));
-      // Estimate buffer size: pending rows * ~256 bytes average row size
-      bufferSize = pendingItems * 256;
-      // A failed read reaches the caller as unavailable, never as an empty queue.
+      tracked = await this.replicationEvidence();
+      if (tracked) {
+        ({ pendingItems, bufferSize, oldestPendingAgeMs, lastSyncAt } = tracked);
+      } else {
+        const { sql } = await import('kysely');
+        const result = await this.db.selectFrom('sync_buffer').select(eb => [
+          eb.fn.count('id').as('count'), eb.fn.min('createdAt').as('oldest'),
+          sql<number>`coalesce(sum(octet_length(cast(payload as text))), 0)`.as('bytes'),
+        ]).where('syncedAt', 'is', null).executeTakeFirst();
+        pendingItems = Number(result?.count ?? 0);
+        bufferSize = Number(result?.bytes ?? 0);
+        if (result?.oldest != null) oldestPendingAgeMs = Math.max(0, Date.now() - Date.parse(toIsoUtc(result.oldest)));
+      }
     }
 
     return {
       connected: this.masterInvoke !== null,
-      lastSyncAt: this.lastSyncAt,
-      pendingItems,
-      oldestPendingAgeMs,
-      lastSyncAgeMs: this.lastSyncAt === null ? null : Math.max(0, Date.now() - this.lastSyncAt),
+      lastSyncAt, pendingItems, oldestPendingAgeMs,
+      lastSyncAgeMs: lastSyncAt === null ? null : Math.max(0, Date.now() - lastSyncAt),
       deliveryRatePerSecond: this.deliveryRate(Date.now()),
-      bufferSize,
+      bufferSize, bufferSizeAccuracy: 'measured',
+      ...(tracked && { evidence: tracked.evidence, retainedBufferSize: tracked.retainedBufferSize }),
       lastError: this.lastError,
       failedAttempts: this.backoff.attempt,
     };

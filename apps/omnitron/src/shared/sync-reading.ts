@@ -1,18 +1,23 @@
 /** Replication evidence shared by the CLI and Console; safe to import in a browser. */
-import type { ISyncStatus } from './dto/project.js';
+import type { ISyncStatus, ReplicationEvidence } from './dto/project.js';
 import type { IMeshNodeStatus } from './dto/nodes.js';
 
 /** Four missed default heartbeat sweeps. */
 export const PULL_OVERDUE_MS = 60_000;
 
 type PendingFinding = { readonly pending: number; readonly lastPullMs: number | null; readonly oldestPendingMs: number | null };
-export type SyncFinding =
+type QueueFinding =
   | { readonly state: 'synced' }
   | (PendingFinding & { readonly state: 'pulling' | 'catching-up' | 'behind' | 'unknown' });
+export type SyncFinding = QueueFinding & { readonly evidence?: ReplicationEvidence };
 
-type SyncEvidence = Pick<ISyncStatus, 'pendingItems' | 'lastSyncAt' | 'lastSyncAgeMs' | 'oldestPendingAgeMs'>;
+type SyncEvidence = Pick<ISyncStatus, 'pendingItems' | 'lastSyncAt' | 'lastSyncAgeMs' | 'oldestPendingAgeMs' | 'evidence'>;
 
 export function syncFinding(status: SyncEvidence, now: number = Date.now()): SyncFinding {
+  return { ...queueFinding(status, now), ...(status.evidence && { evidence: status.evidence }) };
+}
+
+function queueFinding(status: SyncEvidence, now: number): QueueFinding {
   if (status.pendingItems === 0) return { state: 'synced' };
   // Prefer durations measured on the node, not subtraction across host clocks.
   const lastPullMs = status.lastSyncAgeMs !== undefined ? status.lastSyncAgeMs
@@ -28,9 +33,26 @@ export function syncFinding(status: SyncEvidence, now: number = Date.now()): Syn
 /** Only verified empty or young queues count as keeping up. */
 export const inSync = (finding: SyncFinding): boolean => finding.state === 'synced' || finding.state === 'pulling';
 export const syncSeverity = (finding: SyncFinding): 'success' | 'info' | 'warning' =>
-  inSync(finding) ? 'success' : finding.state === 'behind' ? 'warning' : 'info';
+  finding.evidence && finding.evidence.discardedRows + finding.evidence.evictedRows > 0 ? 'warning'
+    : finding.state === 'behind' ? 'warning' : finding.evidence?.unverifiedRows ? 'info' : inSync(finding) ? 'success' : 'info';
 
 export function syncWords(finding: SyncFinding): string {
+  const words = [queueWords(finding)];
+  if (finding.evidence) {
+    const { discardedRows, evictedRows, unverifiedRows } = finding.evidence;
+    if (discardedRows) words.push(`${discardedRows} rejected permanently`);
+    if (evictedRows) words.push(`${evictedRows} lost to buffer limits`);
+    if (unverifiedRows) words.push(`${unverifiedRows} receipts without durable payload proof`);
+  }
+  return words.join(' · ');
+}
+
+export function syncProgressWords(evidence: ReplicationEvidence): string {
+  return `Evidence from #${evidence.firstTrackedId} · produced through #${evidence.producedThrough}` +
+    ` · released through #${evidence.releasedThrough} · durably committed through #${evidence.committedThrough}`;
+}
+
+function queueWords(finding: QueueFinding): string {
   if (finding.state === 'synced') return 'in sync';
   if (finding.state === 'unknown') return `delivery active · ${finding.pending} waiting, queue age unavailable`;
   if (finding.state === 'pulling' || finding.state === 'catching-up') {

@@ -170,6 +170,24 @@ export interface IStackNodeStatus {
  * Sync status for a slave daemon.
  * Tracks local buffer state and last successful sync to master.
  */
+export interface ReplicationEvidence {
+  /** Scope of the durable evidence. No guarantee is inferred before this epoch. */
+  epoch: string;
+  since: string;
+  firstTrackedId: string;
+  producedThrough: string;
+  /** Includes discards and evictions; this is not proof of delivery. */
+  releasedThrough: string;
+  /** Contiguous, durable master receipts starting at firstTrackedId. */
+  committedThrough: string;
+  committedRows: number;
+  discardedRows: number;
+  unverifiedRows: number;
+  evictedRows: number;
+  lastCommittedAt: number | null;
+  lastLossAt: number | null;
+}
+
 export interface ISyncStatus {
   /**
    * Whether the slave holds a PUSH channel to the master.
@@ -196,8 +214,13 @@ export interface ISyncStatus {
   lastSyncAgeMs?: number | null;
   /** Actual rows acknowledged per second over the last 60 seconds, including idle time. */
   deliveryRatePerSecond?: number;
-  /** Local buffer size in bytes, estimated from `pendingItems`. */
+  /** Pending payload bytes (UTF-8), measured on new nodes; older nodes estimate it. */
   bufferSize: number;
+  bufferSizeAccuracy?: 'measured';
+  /** All retained payload bytes, including released records awaiting cleanup. */
+  retainedBufferSize?: number;
+  /** Durable receipts and explicit gaps; absent on peers without evidence tracking. */
+  evidence?: ReplicationEvidence;
   /**
    * Last sync error. ALWAYS NULL today: written only by `noteSyncFailure()`,
    * which belongs to the push cycle that has no caller.

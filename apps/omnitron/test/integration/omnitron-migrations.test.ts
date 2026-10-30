@@ -111,6 +111,20 @@ describe.skipIf(!testPg.ok)('Omnitron migrations (integration)', () => {
     expect(second.applied).toEqual([]);
   });
 
+  it('checks replacement readiness without creating history, applying or repairing migrations', async () => {
+    const { assertOmnitronMigrationsCurrent, migrateOmnitronDb, createOmnitronMigrationRunner } = await import('../../src/database/migration-runner.js');
+    await expect(assertOmnitronMigrationsCurrent(db)).rejects.toThrow('pending: 001_initial_schema');
+    expect(await listTables(db)).not.toContain('migrations');
+    await migrateOmnitronDb(db);
+    await expect(assertOmnitronMigrationsCurrent(db)).resolves.toBeUndefined();
+    await createOmnitronMigrationRunner(db).down(1);
+    await expect(assertOmnitronMigrationsCurrent(db)).rejects.toThrow('pending: 014_replication_receipts');
+    expect((await createOmnitronMigrationRunner(db).inspect()).pending).toEqual(['014_replication_receipts']);
+    const { sql } = await import('kysely');
+    const columns = await sql<{ column_name: string }>`select column_name from information_schema.columns where table_schema = 'public' and table_name = 'sync_ingested'`.execute(db);
+    expect(columns.rows.map(row => row.column_name)).not.toContain('outcome');
+  });
+
   it('adopts a pre-existing Kysely migration history instead of re-applying it', async () => {
     // Reproduces the first boot after the switch to @kysera/migrations on an
     // installation migrated by the old Kysely `Migrator`: the schema is fully

@@ -822,7 +822,9 @@ export class SlaveConnector {
         ];
         if (conn.peer !== peer || conn.status !== 'connected') return;
         if (delivered.length > 0) {
-          await syncProxy.ackDrained({ ids: delivered });
+          await syncProxy.ackDrained({ ids: delivered, ...(result.receiptVersion === 1 && { receipt: {
+            version: 1, committedIds: result.committedIds ?? [], discardedIds: result.discardedIds ?? [],
+          } }) });
           if (conn.peer === peer) conn.lastPullAt = Date.now();
         }
         totalPulled += delivered.length;

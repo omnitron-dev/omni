@@ -50,7 +50,7 @@ import type {
 } from '@omnitron-dev/omnitron/dto/services';
 import { verdictOf, omnitronVerdict, firstReason, clusterDisagreement, type LayerVerdict } from 'src/utils/node-diagnosis';
 import { omnitronFinding } from '@omnitron-dev/omnitron/node-check';
-import { meshReading, syncFinding, syncSeverity, syncWords } from '@omnitron-dev/omnitron/sync-reading';
+import { meshReading, syncFinding, syncSeverity, syncWords, syncProgressWords } from '@omnitron-dev/omnitron/sync-reading';
 import { appsMemoryOf } from 'src/utils/daemon-memory';
 import { logHref } from 'src/utils/log-location';
 import { useRealtimeStore } from 'src/stores/realtime.store';
@@ -957,14 +957,19 @@ export function NodeSyncStatus({ data }: { data: INodeSyncStatus | null }) {
           sx={{ height: 20, fontSize: 11 }}
         />
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          {syncWords(finding)} · {Math.round(s.bufferSize / 1024)} KB · last delivery{' '}
-          {s.lastSyncAt ? formatAge(new Date(s.lastSyncAt).toISOString()) : 'never'}
+          {syncWords(finding)} · {s.bufferSizeAccuracy !== 'measured' && '~'}{Math.round(s.bufferSize / 1024)} KB pending · last release{' '}
+          {s.lastSyncAt ? formatAge(new Date(s.lastSyncAgeMs != null ? Date.now() - s.lastSyncAgeMs : s.lastSyncAt).toISOString()) : 'not recorded'}
           {s.deliveryRatePerSecond !== undefined && ` · ${s.deliveryRatePerSecond.toFixed(1)} entries/s (60 s)`}
         </Typography>
         {s.failedAttempts > 0 && (
           <Chip size="small" color="error" label={`${s.failedAttempts} failed attempts`} sx={{ height: 18, fontSize: 10 }} />
         )}
       </Stack>
+      {s.evidence && (
+        <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', overflowWrap: 'anywhere', fontVariantNumeric: 'tabular-nums' }}>
+          {syncProgressWords(s.evidence)}. Released entries may include losses; evidence began {new Date(s.evidence.since).toLocaleString()}.
+        </Typography>
+      )}
       {s.lastError && (
         <Typography
           variant="caption"

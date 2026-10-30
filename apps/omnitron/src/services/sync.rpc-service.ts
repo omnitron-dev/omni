@@ -14,6 +14,7 @@ import { CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
 import type { SyncService, SyncBatch, IngestBatchResult } from './sync.service.js';
 export type { SyncBatch };
 import type { ISyncStatus } from '../shared/dto/project.js';
+import type { ReplicationReceipt } from './replication-evidence.js';
 
 @Service({ name: 'OmnitronSync' })
 export class SyncRpcService {
@@ -56,8 +57,8 @@ export class SyncRpcService {
    * Release entries the master has confirmed it holds.
    */
   @Public({ auth: { roles: ['admin', 'operator', 'service_role'] } })
-  async ackDrained(data: { ids: string[] }): Promise<{ released: number }> {
-    return this.syncService.ackDrained(data?.ids ?? []);
+  async ackDrained(data: { ids: string[]; receipt?: ReplicationReceipt }): Promise<{ released: number }> {
+    return this.syncService.ackDrained(data?.ids ?? [], data?.receipt);
   }
 
   /**

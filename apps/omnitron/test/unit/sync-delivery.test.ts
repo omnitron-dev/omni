@@ -1,5 +1,5 @@
 /**
- * The push path, end to end over a stub database.
+ * The push path, end to end over a real legacy SQLite buffer.
  *
  * `sync-policy.test.ts` pins the decisions; this pins that the service acts
  * on them. The defect was precisely a correct-looking decision never
@@ -7,12 +7,15 @@
  * marked the whole batch, so a partially-ingested batch left the rejected
  * entries flagged delivered on the slave and absent on the master.
  *
- * The stub records which ids reach `markSynced`. That is the only
+ * A SQLite trigger records which rows actually change. That is the only
  * observation that distinguishes the fix from the bug — both log a
  * successful sync cycle.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import Database from 'better-sqlite3';
+import { Kysely, SqliteDialect } from 'kysely';
+import { withDateBinding } from '../../src/database/sqlite-date-binding.js';
 
 import { SyncService } from '../../src/services/sync.service.js';
 
@@ -26,57 +29,21 @@ const silentLogger: any = {
   child: () => silentLogger,
 };
 
-/**
- * Minimal Kysely stand-in: serves one page of pending rows, then nothing,
- * and records the ids passed to the `sync_buffer` update.
- */
+const databases: Kysely<any>[] = [];
+afterEach(async () => { await Promise.all(databases.splice(0).map(db => db.destroy())); });
+
+/** A real legacy SQLite buffer: receipt and query behavior must match storage. */
 function stubDb(pending: Array<{ id: string }>) {
+  const raw = new Database(':memory:');
+  raw.exec(`CREATE TABLE sync_buffer (id TEXT PRIMARY KEY, category TEXT, payload TEXT, createdAt TEXT NOT NULL, syncedAt TEXT)`);
+  const insert = raw.prepare('INSERT INTO sync_buffer (id, category, payload, createdAt) VALUES (?, ?, ?, ?)');
+  for (const row of pending) insert.run(row.id, 'metrics', JSON.stringify({ name: 'cpu', value: 1 }), new Date().toISOString());
   const markedSynced: string[] = [];
-  let served = false;
-
-  const db: any = {
-    selectFrom: () => ({
-      selectAll: () => ({
-        where: () => ({
-          orderBy: () => ({
-            limit: () => ({
-              execute: async () => {
-                if (served) return [];
-                served = true;
-                return pending.map((r) => ({
-                  id: r.id,
-                  category: 'metrics',
-                  payload: { name: 'cpu', value: 1 },
-                  createdAt: new Date('2026-09-05T00:00:00Z'),
-                  syncedAt: null,
-                }));
-              },
-            }),
-          }),
-        }),
-      }),
-      select: () => ({
-        orderBy: () => ({
-          orderBy: () => ({ limit: () => ({ execute: async () => [] }) }),
-        }),
-      }),
-    }),
-    updateTable: () => ({
-      set: () => ({
-        where: (_col: string, _op: string, ids: string[]) => ({
-          where: () => ({ executeTakeFirst: async () => {
-            const released = ids.filter(id => !markedSynced.includes(id));
-            markedSynced.push(...released);
-            return { numUpdatedRows: BigInt(released.length) };
-          } }),
-        }),
-      }),
-    }),
-    deleteFrom: () => ({
-      where: () => ({ where: () => ({ execute: async () => {} }), execute: async () => {} }),
-    }),
-  };
-
+  raw.function('record_release', (id: unknown) => { markedSynced.push(String(id)); return 1; });
+  raw.exec(`CREATE TRIGGER record_release AFTER UPDATE OF syncedAt ON sync_buffer
+    WHEN OLD.syncedAt IS NULL AND NEW.syncedAt IS NOT NULL BEGIN SELECT record_release(NEW.id); END`);
+  const db = new Kysely<any>({ dialect: new SqliteDialect({ database: withDateBinding(raw) }) });
+  databases.push(db);
   return { db, markedSynced };
 }
 
@@ -137,6 +104,10 @@ describe('sync cycle — what gets marked delivered', () => {
     // has the data and cannot say so.
     const { markedSynced } = await runCycle(['a', 'b'], { accepted: 2 });
     expect(markedSynced.sort()).toEqual(['a', 'b']);
+  });
+
+  it.each([{ accepted: 1 }, undefined])('keeps an ambiguous legacy response pending: %j', async response => {
+    expect((await runCycle(['a', 'b'], response)).markedSynced).toEqual([]);
   });
 
   it('releases nothing when the push itself throws', async () => {

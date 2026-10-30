@@ -131,6 +131,8 @@ describe.skipIf(!testPg.ok)('a batch received one entry at a time', () => {
 
     expect(result.accepted).toBe(1_000);
     expect(result.failedIds).toEqual([]);
+    expect(result.receiptVersion).toBe(1);
+    expect(new Set(result.committedIds)).toEqual(new Set(entries.filter(e => e.category !== 'metrics').map(e => e.id)));
 
     const claims = statements.filter((s) => /^insert into "sync_ingested"/i.test(s)).length;
     const writes = statements.filter((s) => /^insert into/i.test(s)).length;
@@ -163,6 +165,7 @@ describe.skipIf(!testPg.ok)('a batch received one entry at a time', () => {
 
     expect(again.accepted).toBe(0);
     expect(again.duplicateIds).toHaveLength(200);
+    expect(new Set(again.committedIds)).toEqual(new Set(entries.filter(e => e.category !== 'metrics').map(e => e.id)));
     expect(await count('logs')).toBe(120);
     expect(recorded, 'metrics recorded once, not again for the duplicate').toHaveLength(60);
   });
@@ -193,6 +196,41 @@ describe.skipIf(!testPg.ok)('a batch received one entry at a time', () => {
     expect(await count('logs')).toBe(50);
     const alerts = await sql<{ node: string }>`SELECT annotations->>'node' AS node FROM alert_events`.execute(db);
     expect(alerts.rows).toEqual([{ node: NODE }]);
+    // A lost reply must not turn a permanent rejection into a committed duplicate.
+    const repeated = await master().receiveBatch(batch([bad, good]));
+    expect(repeated.discardedIds).toEqual([bad.id]);
+    expect(repeated.duplicateIds).toEqual([good.id]);
+    expect(repeated.committedIds).toEqual([good.id]);
+  });
+
+  it('keeps old receipts unverified and unknown categories discarded across a repeated batch', async () => {
+    const legacy = entry('logs', { app: 'main', message: 'legacy' });
+    await db.insertInto('sync_ingested').values({ nodeId: NODE, entryId: legacy.id }).execute();
+    const unknown = entry('future-category' as SyncCategory, { value: 1 });
+    const payload = batch([legacy, unknown]);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await master().receiveBatch(payload);
+      expect(result.committedIds).toEqual([]);
+      expect(result.duplicateIds).toEqual([legacy.id]);
+      expect(result.discardedIds).toEqual([unknown.id]);
+    }
+  });
+
+  it('leaves a permanent rejection pending if its discard receipt cannot be committed', async () => {
+    await sql`CREATE FUNCTION refuse_discard_receipt() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.outcome = 'discarded' THEN RAISE EXCEPTION 'receipt storage unavailable' USING ERRCODE = '40001'; END IF;
+      RETURN NEW; END $$`.execute(db);
+    await sql`CREATE TRIGGER refuse_discard_receipt BEFORE INSERT ON sync_ingested FOR EACH ROW EXECUTE FUNCTION refuse_discard_receipt()`.execute(db);
+    try {
+      const bad = entry('alerts', { ruleId: 'unknown' });
+      const result = await master().receiveBatch(batch([bad]));
+      expect(result.failedIds).toEqual([bad.id]);
+      expect(result.discardedIds).toEqual([]);
+      expect(await count('sync_ingested')).toBe(0);
+    } finally {
+      await sql`DROP TRIGGER refuse_discard_receipt ON sync_ingested`.execute(db);
+      await sql`DROP FUNCTION refuse_discard_receipt()`.execute(db);
+    }
   });
 
   it('records a metric in the console store once, after it is stored, and not when it was not', async () => {

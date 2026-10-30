@@ -26,6 +26,22 @@ it('preserves quotes, literal dollar signs, backslashes and systemd specifiers',
   expect(() => renderSystemdUnit({ ...inputs, workdir: '/opt/omni\nExecStart=bad' })).toThrow();
 });
 
+it('retains structured stdout and runtime stderr for both supervised jobs', () => {
+  for (const role of ['owner', 'backend']) {
+    const job = { ...inputs, label: `dev.omnitron.${role}`, args: [role], stderrLog: `/opt/omni/${role}.log` };
+    const plist = renderLaunchdPlist(job);
+    expect(plist).toContain(`<key>StandardOutPath</key>\n  <string>/opt/omni/${role}.log</string>`);
+    expect(plist).toContain(`<key>StandardErrorPath</key>\n  <string>/opt/omni/${role}.log</string>`);
+    const unit = renderSystemdUnit(job);
+    expect(unit).toContain('StandardOutput=journal\nStandardError=journal');
+  }
+  expect(renderLaunchdPlist({ ...inputs, stdoutLog: '/opt/a&b/out.log' }))
+    .toContain('<key>StandardOutPath</key>\n  <string>/opt/a&amp;b/out.log</string>');
+  for (const stdoutLog of ['/dev/null', 'relative.log', '/opt/log\nfile']) {
+    expect(() => renderLaunchdPlist({ ...inputs, stdoutLog })).toThrow('absolute file path');
+  }
+});
+
 it('refuses uncertain owner restart on the same boot and any malformed shutdown receipt', () => {
   expect(() => assertCleanOwnerBoot({ pid: 123, bootId: 'boot-a', clean: false }, 'boot-a')).toThrow('did not shut down cleanly');
   for (const invalid of [{}, { pid: 123, bootId: 'boot-a', clean: 'true' }, false, 'corrupt', { pid: 0, bootId: 'boot-a', clean: true }]) {

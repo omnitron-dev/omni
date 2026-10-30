@@ -55,6 +55,8 @@ export interface UnitInputs {
   readonly path: string;
   /** Where stderr is kept. */
   readonly stderrLog: string;
+  /** launchd stdout destination; defaults to stderrLog so structured logs survive. */
+  readonly stdoutLog?: string;
   /** Only meaningful for `system` scope. */
   readonly identity?: ServiceIdentity | undefined;
   /** Independent owner/backend jobs share the renderer and its escaping. */
@@ -233,6 +235,8 @@ export function renderSystemdUnit(inputs: UnitInputs): string {
     ...Object.entries(inputs.environment ?? {}).map(([key, value]) => environmentLine(key, value)),
     inputs.restart === false ? 'Restart=no' : 'Restart=on-failure',
     'KillMode=control-group',
+    'StandardOutput=journal',
+    'StandardError=journal',
     'RestartSec=10',
     'TimeoutStopSec=30',
     '',
@@ -261,6 +265,11 @@ export function renderSystemdUnit(inputs: UnitInputs): string {
  * a job between classes by its XPC transactions, and this daemon has none.
  */
 export function renderLaunchdPlist(inputs: UnitInputs): string {
+  for (const file of [inputs.stdoutLog ?? inputs.stderrLog, inputs.stderrLog]) {
+    if (!file.startsWith('/') || hasControlCharacter(file) || file === '/dev/null') {
+      throw new Error('Service logs require an absolute file path, not a discarded stream');
+    }
+  }
   const args = [inputs.execPath, ...(inputs.nodeArgs ?? ['--import', 'tsx/esm']), inputs.entryPath, ...(inputs.args ?? [])];
   const argsXml = args.map((a) => `    <string>${xmlEscape(a)}</string>`).join('\n');
 
@@ -313,7 +322,7 @@ ${inputs.restart === false ? '  <false/>' : `  <dict>
   <key>ProcessType</key>
   <string>Interactive</string>
   <key>StandardOutPath</key>
-  <string>/dev/null</string>
+  <string>${xmlEscape(inputs.stdoutLog ?? inputs.stderrLog)}</string>
   <key>StandardErrorPath</key>
   <string>${xmlEscape(inputs.stderrLog)}</string>
 </dict>

@@ -9,15 +9,14 @@ import type { BackendRpcService } from './backend.rpc-service.js';
 import type { BackendControlService } from './backend-control.js';
 import { privateControlClient, withControlDeadline } from './private-control-client.js';
 import { checkBackendCandidate, verifyBackendEntry, type BackendArtifact } from './backend-candidate.js';
-import { readBackendBootRecord, type BackendBootRecord } from './backend-handoff-types.js';
+import { readBackendBootRecord, checkpointInstanceHome, type BackendBootRecord } from './backend-handoff-types.js';
 import { writePrivateRecord } from './execution-journal.js';
 import { ExecutionClient } from './execution-client.js';
 import { executionDirectory } from './execution-launcher.js';
 import { PidManager } from './pid-manager.js';
 import type { BackendRuntimeStatus } from '../shared/dto/backend.js';
-import { DEFAULT_SOCKET_PATH } from '../config/defaults.js';
+import { OMNITRON_HOME } from '../config/defaults.js';
 import { RuntimeInstallation } from './runtime-installation.js';
-import { expandPath } from '../shared/paths.js';
 import { observeBackendChild, supervisesBackendChildren } from './backend-child.js';
 import { readManagedRuntime, managedSupervisorSocket } from './managed-runtime.js';
 import type { BackendSupervisorService } from './backend-supervisor.js';
@@ -117,12 +116,6 @@ async function freshRecoveryRecord(record: BackendBootRecord): Promise<{ file: s
 export async function replaceBackend(directory: string, options: {
   socket?: string; checkOnly?: boolean; progress?: (message: string) => void;
 } = {}): Promise<BackendReplacementResult | { checked: true; build: BackendArtifact['build'] }> {
-  const managed = await readManagedRuntime();
-  if (managed && !supervisesBackendChildren()) {
-    const supervisor = await privateControlClient<BackendSupervisorService>(managedSupervisorSocket(managed), 'OmnitronSupervisor', 600_000);
-    try { return await supervisor.service.upgrade({ directory, checkOnly: options.checkOnly === true }); }
-    finally { await supervisor.close(); }
-  }
   const progress = options.progress ?? (() => {});
   const client = createDaemonClient(options.socket, 15_000);
   let address: { socket: string };
@@ -135,11 +128,28 @@ export async function replaceBackend(directory: string, options: {
   const control = await privateControlClient<BackendControlService>(address.socket, 'OmnitronBackendControl');
   try {
     const previous = await control.service.status();
+    if (typeof previous.instanceHome !== 'string' || !path.isAbsolute(previous.instanceHome)) {
+      throw new Error('The selected backend did not provide an absolute instance identity');
+    }
+    // A custom public socket can belong to a different instance than this CLI.
+    // Resolve its private control identity before choosing any OS supervisor.
+    const managed = await readManagedRuntime(previous.instanceHome);
+    if (managed && path.resolve(managed.directory) !== path.dirname(path.resolve(address.socket))) {
+      throw new Error('The selected backend control socket belongs to a different supervised instance');
+    }
+    if (supervisesBackendChildren() && path.resolve(previous.instanceHome) !== path.resolve(OMNITRON_HOME)) {
+      throw new Error('A guardian cannot replace another instance');
+    }
+    if (managed && !supervisesBackendChildren()) {
+      const supervisor = await privateControlClient<BackendSupervisorService>(managedSupervisorSocket(managed), 'OmnitronSupervisor', 600_000);
+      try { return await supervisor.service.upgrade({ directory, checkOnly: options.checkOnly === true }); }
+      finally { await supervisor.close(); }
+    }
     progress('Validating candidate and rollback artifacts');
     const artifact = await checkBackendCandidate(directory, previous.entry);
     const rollback = await checkBackendCandidate(path.dirname(path.dirname(previous.entry)));
     if (options.checkOnly) return { checked: true, build: artifact.build };
-    const installation = await RuntimeInstallation.open(previous.instanceHome ?? path.dirname(options.socket ?? DEFAULT_SOCKET_PATH));
+    const installation = await RuntimeInstallation.open(previous.instanceHome);
     if (!installation) throw new Error('Could not open the runtime installation');
     try { return await installation.exclusive(async () => {
       if (installation.activation()) throw new Error('A previous activation is unfinished; inspect its recovery checkpoint first');
@@ -210,14 +220,19 @@ export async function replaceBackend(directory: string, options: {
 
 /** Explicit recovery for an interrupted upgrade. Never preempts a live backend. */
 export async function recoverBackend(file: string): Promise<BackendReplacementResult> {
-  const managed = await readManagedRuntime();
+  const previous = await readBackendBootRecord(file);
+  const instanceHome = checkpointInstanceHome(previous);
+  const directory = executionDirectory(previous.daemonConfig);
+  if (path.dirname(path.resolve(file)) !== path.resolve(directory)) throw new Error('Checkpoint is outside its execution directory');
+  if (supervisesBackendChildren() && instanceHome !== path.resolve(OMNITRON_HOME)) throw new Error('A guardian cannot recover another instance');
+  const managed = await readManagedRuntime(instanceHome);
+  if (managed && path.resolve(managed.directory) !== path.resolve(directory)) throw new Error('Checkpoint belongs to a different supervised execution directory');
   if (managed && !supervisesBackendChildren()) {
     const supervisor = await privateControlClient<BackendSupervisorService>(managedSupervisorSocket(managed), 'OmnitronSupervisor', 600_000);
     try { return await supervisor.service.recover({ checkpoint: file }); }
     finally { await supervisor.close(); }
   }
-  const previous = await readBackendBootRecord(file);
-  const installation = await RuntimeInstallation.open(previous.environment['OMNITRON_HOME'] ?? path.dirname(expandPath(previous.daemonConfig.pidFile)));
+  const installation = await RuntimeInstallation.open(instanceHome);
   if (!installation) throw new Error('Cannot open runtime installation for recovery');
   try { return await installation.exclusive(async () => {
     const activation = installation.activation();
@@ -279,7 +294,7 @@ export async function abortBackendReplacement(file: string): Promise<void> {
   }
   const socket = path.join(executionDirectory(record.daemonConfig), `c-${record.state.ticket.from.controllerId}.sock`);
   const control = await privateControlClient<BackendControlService>(socket, 'OmnitronBackendControl');
-  const installation = await RuntimeInstallation.open(record.environment['OMNITRON_HOME'] ?? path.dirname(expandPath(record.daemonConfig.pidFile)), { existing: true });
+  const installation = await RuntimeInstallation.open(checkpointInstanceHome(record), { existing: true });
   try {
     if (installation) {
       await installation.exclusive(async () => {

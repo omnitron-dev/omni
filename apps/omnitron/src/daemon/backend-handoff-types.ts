@@ -4,6 +4,7 @@ import type { ProjectService } from '../services/project.service.js';
 import type { InfrastructureHandoffState } from '../infrastructure/infrastructure.service.js';
 import path from 'node:path';
 import { readPrivateRecord } from './execution-journal.js';
+import { expandPath } from '../shared/paths.js';
 
 /** Private controller checkpoint; contains resolved configuration and must never enter public diagnostics. */
 export interface BackendHandoffState {
@@ -24,6 +25,19 @@ export interface BackendBootRecord {
   createdAt: string;
   cwd: string;
   environment: Record<string, string>;
+}
+
+/** Resolve the selected checkpoint, never the invoking shell's default instance. */
+export function checkpointInstanceHome(record: Pick<BackendBootRecord, 'environment' | 'daemonConfig'>): string {
+  const home = record.environment['OMNITRON_HOME'];
+  if (home !== undefined) {
+    if (!path.isAbsolute(home)) throw new Error('Checkpoint instance home must be absolute');
+    return path.resolve(home);
+  }
+  // Older checkpoints did not explicitly capture the default instance home.
+  const marker = record.daemonConfig.pidFile;
+  if (typeof marker !== 'string' || !path.isAbsolute(expandPath(marker))) throw new Error('Checkpoint has no absolute instance identity');
+  return path.dirname(expandPath(marker));
 }
 
 export async function readBackendBootRecord(file: string | undefined): Promise<BackendBootRecord> {

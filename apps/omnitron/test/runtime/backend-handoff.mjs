@@ -29,6 +29,9 @@ if (master) {
 }
 const instance = path.join(directory, 'i');
 await fs.mkdir(instance, { mode: 0o700 });
+// Imports below cache instance defaults. Keep the coordinator as isolated as
+// its child backends even when the invoking user has a managed installation.
+process.env.OMNITRON_HOME = instance;
 await fs.writeFile(path.join(instance, 'config.json'), JSON.stringify({
   executionHost: { enabled: true, directory: path.join(directory, 'e') },
 }), { mode: 0o600 });

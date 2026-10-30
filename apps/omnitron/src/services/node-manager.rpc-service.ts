@@ -793,6 +793,9 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
         syncStatus: conn?.syncStatus ?? null,
         syncStatusAt: conn?.syncStatusAt ?? null,
         lastSyncStatusError: conn?.lastSyncStatusError ?? null,
+        credentialExpiresAt: conn?.credentialExpiresAt ?? null,
+        credentialRefreshedAt: conn?.credentialRefreshedAt ?? null,
+        lastCredentialError: conn?.lastCredentialError ?? null,
         lastPullError: conn?.lastPullError ?? null,
         lastPullAt: conn?.lastPullAt ?? null,
       };

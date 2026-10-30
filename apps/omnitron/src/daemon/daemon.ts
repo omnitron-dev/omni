@@ -115,9 +115,9 @@ import { JWT_SERVICE_TOKEN, type IJWTService } from '@omnitron-dev/titan-auth';
 import {
   AuthenticationManager,
   AuthorizationManager,
-  type AuthContext,
 } from '@omnitron-dev/titan/netron/auth';
 import { createAuthContextWrapper } from '../services/auth-context.js';
+import { createDaemonTokenValidator, createDaemonPrincipalValidator } from '../services/daemon-authority.js';
 import { ROLES } from '../shared/roles.js';
 import { expandPath } from '../shared/paths.js';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
@@ -729,6 +729,11 @@ export class OmnitronDaemon {
 
   private async registerTransports(dc: IDaemonConfig): Promise<void> {
     if (!this.app?.netron) return;
+    const isSlave = dc.role === 'slave';
+    const authService = !isSlave
+      ? await this.app.container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN)
+      : null;
+    const validatePrincipal = createDaemonPrincipalValidator(authService);
 
     // Unix socket — local CLI <-> daemon (primary, high-performance)
     this.app.netron.registerTransport('unix', () => new UnixSocketTransport());
@@ -757,7 +762,7 @@ export class OmnitronDaemon {
         // operator's deployment read exactly like the daemon's own boot
         // autostart. No proxy stands in front of a unix socket, so the
         // wrapper trusts no forwarded address — its default.
-        invocationWrapper: createAuthContextWrapper({ assertReady: () => this.assertBackendReady() }),
+        invocationWrapper: createAuthContextWrapper({ assertReady: () => this.assertBackendReady(), validatePrincipal }),
       },
     });
 
@@ -822,62 +827,20 @@ export class OmnitronDaemon {
         port: dc.port,
         host: tcpHost,
         // Carry the authenticated mesh identity into service-level guards and audit.
-        invocationWrapper: createAuthContextWrapper({ assertReady: () => this.assertBackendReady() }),
+        invocationWrapper: createAuthContextWrapper({ assertReady: () => this.assertBackendReady(), validatePrincipal }),
       },
     });
 
     // Auth — JWT validation + session check + role extraction
-    const isSlave = dc.role === 'slave';
     const jwtService = await this.app.container.resolveAsync<IJWTService>(JWT_SERVICE_TOKEN);
     const logModule = await this.app.container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN);
     const authLogger = logModule.logger.child({ component: 'auth' });
-
-    // On master: full JWT + session validation via AuthService (PG-backed)
-    // On slave: JWT-only validation (no session DB — no PG)
-    const authService = !isSlave
-      ? await this.app.container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN)
-      : null;
 
     const authManager = new AuthenticationManager(authLogger, {
       authenticate: async () => {
         throw new Error('Credential authentication not supported. Use JWT Bearer token.');
       },
-      validateToken: async (token: string): Promise<AuthContext> => {
-        // JWT verification with caching via titan-auth JWTService
-        const payload = await jwtService.verify(token);
-        let role = (payload['role'] as string) ?? 'viewer';
-
-        // Session validation — master only (requires PG for omnitron_sessions)
-        if (authService) {
-          const sessionId = payload['sid'] as string | undefined;
-          if (sessionId) {
-            const session = await authService.validateToken(token);
-            if (!session) {
-              const err = new Error('Session has been revoked or expired');
-              (err as any).code = 'SESSION_REVOKED';
-              (err as any).statusCode = 401;
-              throw err;
-            }
-            // Human roles come from the current account, not an hour-old JWT.
-            role = session.role;
-          }
-        }
-
-        // Service identities on nodes retain their signed role; human sessions
-        // on the master use the current database role (cache bounded to 10s).
-        const sessionId = payload['sid'] as string | undefined;
-
-        return {
-          userId: payload.sub,
-          roles: [role],
-          permissions: [],
-          token: { type: 'bearer' },
-          metadata: {
-            sessionId,
-            isServiceRole: role === 'service_role',
-          },
-        };
-      },
+      validateToken: createDaemonTokenValidator(token => jwtService.verify(token), authService),
       tokenCache: { enabled: true, ttl: 10_000 },
     });
     // Wire the AuthorizationManager so the `@Public({ auth: { roles } })`
@@ -898,6 +861,7 @@ export class OmnitronDaemon {
     const authContextWrapper = createAuthContextWrapper({
       trustProxy: dc.httpRateLimit?.trustProxy === true,
       assertReady: () => this.assertBackendReady(),
+      validatePrincipal,
     });
 
     // HTTP / WS bind also defaults to 127.0.0.1. The webapp talks to
@@ -1214,7 +1178,8 @@ export class OmnitronDaemon {
 
     // Event Broadcaster RPC service (WebSocket subscriptions)
     this.eventBroadcaster = new EventBroadcasterService(loggerModule.logger);
-    const eventBroadcasterRpcService = new EventBroadcasterRpcService(this.eventBroadcaster, this.app.netron);
+    const eventBroadcasterRpcService = new EventBroadcasterRpcService(this.eventBroadcaster, this.app.netron,
+      createDaemonPrincipalValidator(isSlave ? null : await container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN)));
     await this.app.netron.peer.exposeService(eventBroadcasterRpcService);
 
     // Node manager — file-based, no PG (master only — manages infrastructure nodes)

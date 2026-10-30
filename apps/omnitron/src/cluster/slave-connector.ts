@@ -79,6 +79,9 @@ export interface SlaveConnection {
   link: MeshLink | null;
   /** Set only after this peer accepts the credential; cleared before closing it. */
   authenticated?: boolean;
+  credentialRefreshedAt?: number | null;
+  lastCredentialError?: string | null;
+  credentialRefresh?: { peer: unknown; promise: Promise<void> } | null;
   /**
    * What the node last said about its own replication, or null for a node we
    * have not heard from. Null is the honest answer: the console used to
@@ -111,7 +114,9 @@ export interface SlaveConnection {
 
 /** The part of a peer this needs: netron's `authenticate` core-task. */
 export interface AuthenticatingPeer {
-  runTask?: (task: string, payload: unknown) => Promise<{ success?: boolean; error?: string } | undefined>;
+  runTask?: (task: string, payload: unknown) => Promise<{
+    success?: boolean; error?: string; context?: { metadata?: Record<string, unknown> };
+  } | undefined>;
 }
 
 /**
@@ -141,6 +146,13 @@ export async function authenticatePeer(peer: AuthenticatingPeer, link: MeshLink)
   if (!auth?.success) {
     link.onRejected?.(auth?.error);
     throw new Error(`node refused the master's credential: ${auth?.error ?? 'no reason given'}`);
+  }
+  const expiresAt = auth.context?.metadata?.['expiresAt'];
+  if (typeof expiresAt === 'number' && Number.isFinite(expiresAt)) {
+    link.expiresAt = Math.min(link.expiresAt ?? expiresAt, expiresAt);
+  }
+  if (link.expiresAt !== undefined && (!Number.isFinite(link.expiresAt) || link.expiresAt <= Date.now())) {
+    throw new Error('Node accepted a service credential that is already expired');
   }
 }
 
@@ -368,6 +380,9 @@ export class SlaveConnector {
     via: MeshLink['via'] | null;
     /** False here means `ping` works and no data can be pulled. */
     authenticated: boolean;
+    credentialExpiresAt: number | null;
+    credentialRefreshedAt: number | null;
+    lastCredentialError: string | null;
     /** The node's own replication state, or null if it has not been heard. */
     syncStatus: ISyncStatus | null;
     syncStatusAt: number | null;
@@ -386,7 +401,11 @@ export class SlaveConnector {
       lastHeartbeat: conn.lastHeartbeat,
       lastError: conn.lastError,
       via: conn.link?.via ?? null,
-      authenticated: conn.status === 'connected' && conn.authenticated === true,
+      authenticated: conn.status === 'connected' && conn.authenticated === true &&
+        (conn.link?.expiresAt === undefined || conn.link.expiresAt > Date.now()),
+      credentialExpiresAt: conn.link?.expiresAt ?? null,
+      credentialRefreshedAt: conn.credentialRefreshedAt ?? null,
+      lastCredentialError: conn.lastCredentialError ?? null,
       syncStatus: conn.syncStatus,
       syncStatusAt: conn.syncStatusAt ?? null,
       lastSyncStatusError: conn.lastSyncStatusError,
@@ -465,6 +484,7 @@ export class SlaveConnector {
     }
     const peer = conn.peer;
     try {
+      await this.ensureCredential(conn, peer);
       const proxy = await peer.queryInterface(service);
       const fn = (proxy as any)[method];
       if (typeof fn !== 'function') throw new Error(`Method ${method} not found on service ${service}`);
@@ -540,6 +560,8 @@ export class SlaveConnector {
       conn.peer = peer;
       conn.status = 'connected';
       conn.authenticated = Boolean(connectedLink.token);
+      conn.credentialRefreshedAt = conn.authenticated ? Date.now() : null;
+      conn.lastCredentialError = null;
       conn.lastHeartbeat = Date.now();
       conn.lastError = null;
       conn.cleanupError = null;
@@ -592,6 +614,7 @@ export class SlaveConnector {
     conn.link = null;
     conn.peer = null;
     conn.authenticated = false;
+    conn.credentialRefresh = null;
     conn.status = 'disconnected';
     conn.syncStatus = null;
     conn.syncStatusAt = null;
@@ -632,6 +655,46 @@ export class SlaveConnector {
   // Private — Heartbeat
   // ===========================================================================
 
+  /** Coalesce renewal across calls and polling. Never replay a business invocation. */
+  private async ensureCredential(conn: SlaveConnection, peer: unknown): Promise<void> {
+    if (conn.peer !== peer || conn.status !== 'connected') throw new Error('RPC connection changed before authentication');
+    const link = conn.link;
+    if (!link?.token) return;
+    const pending = conn.credentialRefresh;
+    if (pending && pending.peer === peer) { await pending.promise; return; }
+    if (link.expiresAt === undefined || link.expiresAt - Date.now() > 30_000) return;
+    // A non-renewable caller may use its valid token until expiry; it must
+    // redial afterwards. Built-in mesh credentials always support renewal.
+    if (!link.refreshCredential && link.expiresAt > Date.now()) return;
+    const refresh = { peer, promise: undefined! as Promise<void> };
+    const current = () => conn.peer === peer && conn.link === link && conn.status === 'connected';
+    refresh.promise = bounded((async () => {
+      if (!link.refreshCredential) throw new Error('Service credential expired; a new connection is required');
+      const credential = await link.refreshCredential();
+      if (!current()) throw new Error('RPC connection changed during credential renewal');
+      if (!credential.token || !Number.isFinite(credential.expiresAt) || credential.expiresAt <= Date.now()) {
+        throw new Error('Credential renewal returned an expired or invalid credential');
+      }
+      const renewed = { ...link, ...credential };
+      await authenticatePeer(peer as AuthenticatingPeer, renewed);
+      if (!current()) throw new Error('RPC connection changed during authentication');
+      link.token = renewed.token;
+      link.expiresAt = renewed.expiresAt;
+      conn.credentialRefreshedAt = Date.now();
+      conn.lastCredentialError = null;
+    })(), 10_000, 'Service credential renewal timed out').catch(async error => {
+      if (current()) {
+        conn.lastCredentialError = error instanceof Error ? error.message : String(error);
+        await this.connectionLost(`${conn.config.host}:${conn.config.port}`, conn, error);
+      }
+      throw error;
+    }).finally(() => {
+      if (conn.credentialRefresh === refresh) conn.credentialRefresh = null;
+    });
+    conn.credentialRefresh = refresh;
+    await refresh.promise;
+  }
+
   private startHeartbeatLoop(): void {
     this.heartbeatTimer = setInterval(() => {
       this.heartbeatSweep().catch((err) => {
@@ -650,6 +713,7 @@ export class SlaveConnector {
         const peer = conn.peer;
         try {
           await bounded((async () => {
+            await this.ensureCredential(conn, peer);
             const daemon = await peer.queryInterface('OmnitronDaemon');
             await daemon.ping();
           })(), 10_000, 'Heartbeat timeout');
@@ -684,6 +748,7 @@ export class SlaveConnector {
     const peer = conn.peer;
     try {
       const status = await bounded((async () => {
+        await this.ensureCredential(conn, peer);
         const syncProxy = await peer.queryInterface('OmnitronSync');
         return await syncProxy.getSyncStatus() as ISyncStatus | undefined;
       })(), 10_000, 'Replication status read timed out');
@@ -789,6 +854,7 @@ export class SlaveConnector {
     conn.pull = pull;
 
     try {
+      await this.ensureCredential(conn, peer);
       const syncProxy = await peer.queryInterface('OmnitronSync');
       let totalPulled = 0;
       const seen = new Set<string>();
@@ -803,6 +869,7 @@ export class SlaveConnector {
 
       // Pull in batches until slave buffer is empty
       while (conn.peer === peer && conn.status === 'connected') {
+        await this.ensureCredential(conn, peer);
         const drained = await syncProxy.drainBuffer({ limit: 1000 });
         if (!drained || !drained.entries || drained.entries.length === 0) break;
         const batch = { ...drained, nodeId };
@@ -822,6 +889,7 @@ export class SlaveConnector {
         ];
         if (conn.peer !== peer || conn.status !== 'connected') return;
         if (delivered.length > 0) {
+          await this.ensureCredential(conn, peer);
           await syncProxy.ackDrained({ ids: delivered, ...(result.receiptVersion === 1 && { receipt: {
             version: 1, committedIds: result.committedIds ?? [], discardedIds: result.discardedIds ?? [],
           } }) });

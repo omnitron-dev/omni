@@ -65,7 +65,7 @@ describe('a daemon event', () => {
     });
     await server.start();
     broadcaster = new EventBroadcasterService(logger as never);
-    await server.peer.exposeService(new EventBroadcasterRpcService(broadcaster, server as never));
+    await server.peer.exposeService(new EventBroadcasterRpcService(broadcaster, server as never, async () => {}));
     clients = [];
   });
 

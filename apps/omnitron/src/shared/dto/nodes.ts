@@ -171,6 +171,10 @@ export interface IMeshNodeStatus {
   via: 'direct' | 'ssh-tunnel' | null;
   /** False on a live connection means pings work and no data can be pulled. */
   authenticated: boolean;
+  /** Optional on older peers; no token or signing material is exposed. */
+  credentialExpiresAt?: number | null;
+  credentialRefreshedAt?: number | null;
+  lastCredentialError?: string | null;
   lastHeartbeat: number | null;
   lastError: string | null;
   /** Absent on older daemons. A transport connection alone does not prove delivery. */

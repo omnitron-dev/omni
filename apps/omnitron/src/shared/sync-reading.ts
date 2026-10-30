@@ -72,10 +72,11 @@ export function meshReading(mesh: IMeshNodeStatus, now = Date.now()): {
   replication: string;
 } {
   const fresh = mesh.lastHeartbeat !== null && now - mesh.lastHeartbeat < PULL_OVERDUE_MS;
+  const credentialCurrent = mesh.authenticated && (mesh.credentialExpiresAt == null || mesh.credentialExpiresAt > now);
   const state = !mesh.inMesh ? 'not-joined'
     : mesh.status === 'connecting' ? 'connecting'
       : mesh.status !== 'connected' ? 'reconnecting'
-        : !fresh ? 'stale' : !mesh.authenticated ? 'unauthenticated' : 'connected';
+        : !fresh ? 'stale' : !credentialCurrent ? 'unauthenticated' : 'connected';
   const retry = mesh.reconnectAt == null ? 'No retry time reported.'
     : `Retry in ${Math.max(0, Math.ceil((mesh.reconnectAt - now) / 1000))} s (attempt ${mesh.reconnectAttempt ?? 1}).`;
   const connection = state === 'connected' ? `RPC connected ${mesh.via === 'ssh-tunnel' ? 'through SSH' : 'directly'}.`
@@ -83,7 +84,7 @@ export function meshReading(mesh: IMeshNodeStatus, now = Date.now()): {
       : state === 'unauthenticated' ? 'RPC reachable without a verified service credential.'
         : state === 'stale' ? 'RPC heartbeat is stale; current reachability is unknown.'
           : state === 'not-joined' ? 'This node is not joined to the mesh.' : `RPC disconnected. ${retry}`;
-  const error = [mesh.lastError, mesh.cleanupError].filter(Boolean).join(' ');
+  const error = [...new Set([mesh.lastError, mesh.lastCredentialError, mesh.cleanupError].filter(Boolean))].join(' ');
   const measured = mesh.syncStatus && mesh.syncStatusAt != null && now - mesh.syncStatusAt < PULL_OVERDUE_MS;
   const replicationError = mesh.lastPullError ?? mesh.lastSyncStatusError;
   const replication = state !== 'connected' ? 'Unknown: no current authenticated RPC connection.'

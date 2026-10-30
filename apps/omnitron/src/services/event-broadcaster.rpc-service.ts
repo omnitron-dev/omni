@@ -22,24 +22,38 @@
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 import { NETRON_EVENT_PEER_DISCONNECT } from '@omnitron-dev/titan/netron';
+import type { AuthContext } from '@omnitron-dev/titan/netron/auth';
 import type { EventBroadcasterService } from './event-broadcaster.service.js';
 import { VIEWER_ROLES } from '../shared/roles.js';
-import { ALL_EVENT_CHANNELS, DAEMON_EVENT_TASK } from '../shared/events.js';
+import { ALL_EVENT_CHANNELS, DAEMON_EVENT_TASK, type DaemonEvent } from '../shared/events.js';
 import { getRequestContext } from './auth-context.js';
 
 /** What this service needs of Netron: the connected peers, and its own peer's events. */
 export interface EventPeers {
-  peers: Map<string, { id: string; runTask(name: string, ...args: unknown[]): Promise<unknown> }>;
+  peers: Map<string, {
+    id: string; runTask(name: string, ...args: unknown[]): Promise<unknown>;
+    getAuthContext(): AuthContext | undefined; close(): Promise<unknown>;
+  }>;
   peer: { subscribe(event: string, handler: (...args: any[]) => void): unknown };
 }
 
 const KNOWN = new Set<string>(ALL_EVENT_CHANNELS);
 const GROUPS = new Set<string>(ALL_EVENT_CHANNELS.map((channel) => channel.slice(0, channel.indexOf('.'))));
+const MAX_QUEUED_EVENTS = 256;
+const MAX_QUEUED_BYTES = 1024 * 1024;
+const MAX_EVENT_BYTES = 256 * 1024;
+
+interface Subscription {
+  id: string;
+  queue: Array<{ event: DaemonEvent; bytes: number }>;
+  queuedBytes: number;
+  sending: boolean;
+}
 
 /** The channels asked for, each one the daemon emits — or the refusal that names the rest. */
 export function readChannels(input: unknown): string[] {
   const channels = Array.isArray(input) ? input : null;
-  if (!channels || channels.length === 0 || !channels.every((c) => typeof c === 'string')) {
+  if (!channels || channels.length === 0 || channels.length > 128 || !channels.every((c) => typeof c === 'string' && c.length <= 128)) {
     throw Errors.badRequest('OmnitronEvents.subscribe: channels must be a non-empty list of channel names');
   }
   const unknown = (channels as string[]).filter(
@@ -54,11 +68,12 @@ export function readChannels(input: unknown): string[] {
 @Service({ name: 'OmnitronEvents' })
 export class EventBroadcasterRpcService {
   /** peer id → its one subscription */
-  private readonly byPeer = new Map<string, string>();
+  private readonly byPeer = new Map<string, Subscription>();
 
   constructor(
     private readonly broadcaster: EventBroadcasterService,
     private readonly netron: EventPeers,
+    private readonly validatePrincipal: (context: AuthContext) => Promise<void>,
   ) {
     netron.peer.subscribe(NETRON_EVENT_PEER_DISCONNECT, (event: { peerId?: string } | undefined) => {
       if (event?.peerId) this.release(event.peerId);
@@ -78,12 +93,22 @@ export class EventBroadcasterRpcService {
     }
 
     this.release(peer.id);
-    const subscriberId = this.broadcaster.subscribe(channels, (event) => {
-      // A connection that cannot take an event is gone or going: let it go
-      // rather than try it again on every event after.
-      peer.runTask('emit', DAEMON_EVENT_TASK, event).catch(() => this.release(peer.id));
+    const subscription: Subscription = { id: '', queue: [], queuedBytes: 0, sending: false };
+    const subscriberId = this.broadcaster.subscribe(channels, event => {
+      if (this.byPeer.get(peer.id) !== subscription) return;
+      let bytes: number;
+      let serialized: string;
+      try { serialized = JSON.stringify(event); bytes = Buffer.byteLength(serialized); }
+      catch { this.refuse(peer.id, subscription); return; }
+      if (bytes > MAX_EVENT_BYTES || subscription.queue.length >= MAX_QUEUED_EVENTS || subscription.queuedBytes + bytes > MAX_QUEUED_BYTES) {
+        this.refuse(peer.id, subscription); return;
+      }
+      subscription.queue.push({ event: JSON.parse(serialized) as DaemonEvent, bytes });
+      subscription.queuedBytes += bytes;
+      void this.deliver(peer.id, subscription);
     });
-    this.byPeer.set(peer.id, subscriberId);
+    subscription.id = subscriberId;
+    this.byPeer.set(peer.id, subscription);
     return { subscriberId, channels };
   }
 
@@ -102,9 +127,52 @@ export class EventBroadcasterRpcService {
   }
 
   private release(peerId: string): void {
-    const subscriberId = this.byPeer.get(peerId);
-    if (subscriberId === undefined) return;
-    this.broadcaster.unsubscribe(subscriberId);
+    const subscription = this.byPeer.get(peerId);
+    if (!subscription) return;
+    this.broadcaster.unsubscribe(subscription.id);
+    subscription.queue.length = 0;
+    subscription.queuedBytes = 0;
     this.byPeer.delete(peerId);
+  }
+
+  private refuse(peerId: string, subscription: Subscription): void {
+    if (this.byPeer.get(peerId) !== subscription) return;
+    this.release(peerId);
+    // A closed stream is visible to Console, which resumes polling. Never
+    // silently leave a tab claiming live delivery after revocation or loss.
+    void this.netron.peers.get(peerId)?.close().catch(() => undefined);
+  }
+
+  private async deliver(peerId: string, subscription: Subscription): Promise<void> {
+    if (subscription.sending) return;
+    subscription.sending = true;
+    const current = () => this.byPeer.get(peerId) === subscription;
+    try {
+      while (current() && subscription.queue.length) {
+        const peer = this.netron.peers.get(peerId);
+        const context = peer?.getAuthContext();
+        if (!peer || !context) throw Errors.unauthorized('Event subscription authority expired');
+        const packet = subscription.queue.shift()!;
+        subscription.queuedBytes -= packet.bytes;
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        let timedOut = false;
+        try {
+          await Promise.race([
+            (async () => {
+              await this.validatePrincipal(context);
+              // Replaced/revoked peers and late DB replies cannot emit another event.
+              if (timedOut || !current()) return;
+              if (peer.getAuthContext() !== context) throw Errors.unauthorized('Event subscription authority changed');
+              await peer.runTask('emit', DAEMON_EVENT_TASK, packet.event);
+            })(),
+            new Promise<never>((_, reject) => {
+              timeout = setTimeout(() => { timedOut = true; reject(new Error('Event delivery timed out')); }, 5000);
+              timeout.unref();
+            }),
+          ]);
+        } finally { if (timeout) clearTimeout(timeout); }
+      }
+    } catch { this.refuse(peerId, subscription); }
+    finally { subscription.sending = false; }
   }
 }

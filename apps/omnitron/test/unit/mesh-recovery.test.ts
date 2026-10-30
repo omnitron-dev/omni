@@ -70,6 +70,96 @@ describe('mesh recovery and resource ownership', () => {
     expect(c.getConnections()[0]?.authenticated).toBe(false);
   });
 
+  it('renews once for concurrent calls on the same peer without replaying any operation or replacing its tunnel', async () => {
+    const effects = vi.fn(async () => 'done');
+    const remote = { ...peer(), runTask: vi.fn(async () => ({ success: true })) };
+    const discover = remote.queryInterface;
+    remote.queryInterface = vi.fn(async (name: string) => name === 'Mutations' ? { execute: effects } : discover(name)) as any;
+    network.peers.push(remote);
+    const close = vi.fn(async () => {});
+    const renew = vi.fn(async () => ({ token: 'renewed', expiresAt: Date.now() + 300_000 }));
+    const c = connector(async () => ({ url: 'tcp://127.0.0.1:1', via: 'ssh-tunnel', token: 'initial',
+      expiresAt: Date.now() + 300_000, refreshCredential: renew, close }));
+    await c.addSlave(config); await settle();
+    vi.setSystemTime(Date.now() + 275_000);
+    await Promise.all(Array.from({ length: 12 }, () => c.invokeOnSlave(config.host, 9700, 'Mutations', 'execute', [])));
+    expect(renew).toHaveBeenCalledOnce();
+    expect(remote.runTask.mock.calls).toEqual([
+      ['authenticate', { token: 'initial' }], ['authenticate', { token: 'renewed' }],
+    ]);
+    expect(effects).toHaveBeenCalledTimes(12);
+    expect(close).not.toHaveBeenCalled();
+    expect(network.instances).toHaveLength(1);
+    expect(c.getConnections()[0]).toMatchObject({ authenticated: true, credentialExpiresAt: Date.now() + 300_000,
+      credentialRefreshedAt: Date.now(), lastCredentialError: null });
+  });
+
+  it('refuses a mutation after renewal rejection and reports the actual authentication failure', async () => {
+    const remote = { ...peer(), runTask: vi.fn().mockResolvedValueOnce({ success: true }).mockResolvedValue({ success: false, error: 'signature mismatch' }) };
+    network.peers.push(remote);
+    const rejected = vi.fn();
+    const c = connector(async () => ({ url: 'tcp://127.0.0.1:1', via: 'direct', token: 'initial', expiresAt: Date.now() + 300_000,
+      refreshCredential: async () => ({ token: 'renewed', expiresAt: Date.now() + 300_000 }), onRejected: rejected }));
+    await c.addSlave(config); await settle();
+    const calls = remote.ping.mock.calls.length;
+    vi.setSystemTime(Date.now() + 275_000);
+    await expect(c.invokeOnSlave(config.host, 9700, 'OmnitronDaemon', 'ping', [])).rejects.toThrow('signature mismatch');
+    expect(remote.ping).toHaveBeenCalledTimes(calls);
+    expect(rejected).toHaveBeenCalledWith('signature mismatch');
+    expect(c.getConnections()[0]).toMatchObject({ authenticated: false, status: 'error', lastCredentialError: expect.stringContaining('signature mismatch') });
+  });
+
+  it('never publishes a late refresh into a replacement connection', async () => {
+    let finish!: (value: { token: string; expiresAt: number }) => void;
+    const remote = { ...peer(), runTask: vi.fn(async () => ({ success: true })) };
+    const next = { ...peer(), runTask: vi.fn(async () => ({ success: true })) };
+    network.peers.push(remote, next);
+    const firstLink = { url: 'tcp://127.0.0.1:1', via: 'direct', token: 'initial', expiresAt: Date.now() + 300_000,
+      refreshCredential: () => new Promise(resolve => { finish = resolve; }) };
+    const nextLink = { url: 'tcp://127.0.0.1:2', via: 'direct', token: 'replacement', expiresAt: Date.now() + 900_000 };
+    const c = connector(vi.fn().mockResolvedValueOnce(firstLink).mockResolvedValue(nextLink));
+    await c.addSlave(config); await settle(); vi.setSystemTime(Date.now() + 275_000);
+    const result = c.invokeOnSlave(config.host, 9700, 'OmnitronDaemon', 'ping', []).catch(error => error);
+    await settle();
+    network.instances[0].handlers.get('peer:disconnect')(); await settle();
+    await vi.advanceTimersByTimeAsync(5000);
+    finish({ token: 'late-old-token', expiresAt: Date.now() + 300_000 }); await settle();
+    expect((await result).message).toContain('connection changed');
+    expect(c.getConnections()[0]).toMatchObject({ status: 'connected', authenticated: true, lastCredentialError: null });
+    expect(remote.runTask).toHaveBeenCalledTimes(1);
+    expect(next.runTask).toHaveBeenCalledWith('authenticate', { token: 'replacement' });
+    expect(nextLink.token).toBe('replacement');
+  });
+
+  it('expires non-renewable credentials before dispatch and never advertises expired authority', async () => {
+    const remote = { ...peer(), runTask: vi.fn(async () => ({ success: true })) };
+    network.peers.push(remote);
+    const c = connector(async () => ({ url: 'tcp://127.0.0.1:1', via: 'direct', token: 'initial', expiresAt: Date.now() + 300_000 }));
+    await c.addSlave(config); await settle();
+    vi.setSystemTime(Date.now() + 300_001);
+    expect(c.getConnections()[0]?.authenticated).toBe(false);
+    const calls = remote.ping.mock.calls.length;
+    await expect(c.invokeOnSlave(config.host, 9700, 'OmnitronDaemon', 'ping', [])).rejects.toThrow('credential expired');
+    expect(remote.ping).toHaveBeenCalledTimes(calls);
+  });
+
+  it('bounds a stuck refresh and fences a late authentication completion after timeout', async () => {
+    let accept!: (value: { success: boolean }) => void;
+    const remote = { ...peer(), runTask: vi.fn().mockResolvedValueOnce({ success: true })
+      .mockImplementation(() => new Promise(resolve => { accept = resolve; })) };
+    network.peers.push(remote);
+    const link = { url: 'tcp://127.0.0.1:1', via: 'direct', token: 'initial', expiresAt: Date.now() + 300_000,
+      refreshCredential: async () => ({ token: 'late', expiresAt: Date.now() + 300_000 }) };
+    const c = connector(async () => link);
+    await c.addSlave(config); await settle(); vi.setSystemTime(Date.now() + 275_000);
+    const result = c.invokeOnSlave(config.host, 9700, 'OmnitronDaemon', 'ping', []).catch(error => error);
+    await settle(); await vi.advanceTimersByTimeAsync(10_000);
+    expect((await result).message).toContain('renewal timed out');
+    accept({ success: true }); await settle();
+    expect(link.token).toBe('initial');
+    expect(c.getConnections()[0]).toMatchObject({ authenticated: false, lastCredentialError: 'Service credential renewal timed out' });
+  });
+
   it('recovers past a stuck tunnel close and ignores callbacks from the old connection', async () => {
     const first = peer(), next = peer(); network.peers.push(first, next);
     const dial = vi.fn()

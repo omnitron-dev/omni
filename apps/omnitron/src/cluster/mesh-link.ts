@@ -35,6 +35,7 @@
 
 import net from 'node:net';
 import { createHash } from 'node:crypto';
+import { decodeJwt } from 'jose';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { ExecutionService, SSHTarget } from '../execution/execution.service.js';
 
@@ -44,6 +45,10 @@ export interface MeshLink {
   url: string;
   /** Presented with `runTask('authenticate')`, when the node needs one. */
   token?: string | undefined;
+  /** Local renewal deadline; the node independently verifies the token. */
+  expiresAt?: number | undefined;
+  /** Renew identity on the same peer without replacing its transport. */
+  refreshCredential?: (() => Promise<{ token: string; expiresAt: number }>) | undefined;
   /** How the master got there, for the operator reading a node card. */
   via: 'direct' | 'ssh-tunnel';
   /**
@@ -178,6 +183,12 @@ export function createMeshDialer(options: MeshDialerOptions): MeshDialer {
     const ssh = await sshTargetFor(target).catch(() => null);
 
     const token = ssh ? await tokenFor(key, ssh) : undefined;
+    const expiresAt = token ? decodeJwt(token).exp! * 1000 : undefined;
+    const refreshCredential = ssh && token ? async () => {
+      const renewed = await tokenFor(key, ssh);
+      if (!renewed) throw new Error('Node service credential could not be renewed');
+      return { token: renewed, expiresAt: decodeJwt(renewed).exp! * 1000 };
+    } : undefined;
     const onRejected = (reason?: string) => {
       secrets.delete(key);
       logger.warn(
@@ -190,7 +201,7 @@ export function createMeshDialer(options: MeshDialerOptions): MeshDialer {
     };
 
     if (await probeTcp(target.host, target.port, probeTimeout)) {
-      return { url: `tcp://${target.host}:${target.port}`, token, via: 'direct', onRejected };
+      return { url: `tcp://${target.host}:${target.port}`, token, expiresAt, refreshCredential, via: 'direct', onRejected };
     }
 
     if (!ssh) {
@@ -210,6 +221,8 @@ export function createMeshDialer(options: MeshDialerOptions): MeshDialer {
     return {
       url: `tcp://${tunnel.host}:${tunnel.port}`,
       token,
+      expiresAt,
+      refreshCredential,
       via: 'ssh-tunnel',
       close: tunnel.close,
       onRejected,

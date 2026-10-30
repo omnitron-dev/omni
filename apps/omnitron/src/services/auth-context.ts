@@ -88,10 +88,13 @@ export function runWithAuth<T>(authContext: AuthContext, fn: () => T | Promise<T
  *
  * This is the standard Titan pattern — same as apps/main bootstrap.
  */
-export function createAuthContextWrapper(options: { trustProxy?: boolean; assertReady?: () => void } = {}) {
+export function createAuthContextWrapper(options: {
+  trustProxy?: boolean; assertReady?: () => void; validatePrincipal?: (context: AuthContext) => Promise<void>;
+} = {}) {
   return async (metadata: Map<string, unknown>, fn: () => Promise<unknown>): Promise<unknown> => {
     options.assertReady?.();
     const authCtx = metadata.get('authContext') as AuthContext | undefined;
+    if (authCtx) await options.validatePrincipal?.(authCtx);
     const requestCtx: RequestContext = {};
 
     const ip = resolveClientIp(metadata, options.trustProxy === true);

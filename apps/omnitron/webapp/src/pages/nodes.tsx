@@ -1990,6 +1990,7 @@ export default function NodesPage() {
 
   /** Why the uptime bars are not current, when they are not. */
   const [barsError, setBarsError] = useState<string | null>(null);
+  const [checksError, setChecksError] = useState<string | null>(null);
 
   /** The last list that arrived, so a failed poll can return it unchanged. */
   const nodeListRef = useRef<INodeWithStatus[]>([]);
@@ -2003,6 +2004,20 @@ export default function NodesPage() {
       const list: INodeWithStatus[] = await nodesRpc.listNodes();
       setNodeList(list);
       setListError(null);
+      // Freshness follows current checks, not the five-minute aggregation
+      // of historical bars. Otherwise the UI's own cache creates an outage.
+      const latest = await Promise.allSettled(list.map(async node => ({
+        id: node.id,
+        at: (await nodesRpc.getCheckHistory({ nodeId: node.id, limit: 1 }))[0]?.checkedAt ?? null,
+      })));
+      const recorded: Record<string, string | null> = {};
+      let failure: string | null = null;
+      for (const result of latest) {
+        if (result.status === 'fulfilled') recorded[result.value.id] = result.value.at;
+        else failure ??= result.reason?.message ?? 'Could not read the latest recorded checks';
+      }
+      setLastCheckAt(previous => ({ ...previous, ...recorded }));
+      setChecksError(failure);
       return list;
     } catch (err) {
       // Keep whatever was on screen. This page polls, so blanking the list
@@ -2050,22 +2065,16 @@ export default function NodesPage() {
 
   const fetchUptimeBars = useCallback(async (nodes: INodeWithStatus[]) => {
     const results: Record<string, UptimeBucket[]> = {};
-    const lastChecks: Record<string, string | null> = {};
     let failure: string | null = null;
     await Promise.allSettled(nodes.map(async (node) => {
       try {
         // Request more buckets than can fit — UptimeStrip will trim to visible width
         const { uptimeIntervalMs, retentionDays } = historyRef.current;
-        const [bars, latest] = await Promise.all([
-          nodesRpc.getUptimeBar({
+        results[node.id] = await nodesRpc.getUptimeBar({
             nodeId: node.id,
             bucketCount: bucketsFor(retentionDays, uptimeIntervalMs),
             intervalMs: uptimeIntervalMs,
-          }),
-          nodesRpc.getCheckHistory({ nodeId: node.id, limit: 1 }).catch(() => null),
-        ]);
-        results[node.id] = bars;
-        if (latest) lastChecks[node.id] = latest[0]?.checkedAt ?? null;
+          });
       } catch (err) {
         // Two things this used to do, both wrong in the same way as blanking
         // the list above. It wrote `[]`, which the strip draws as a row of
@@ -2078,7 +2087,6 @@ export default function NodesPage() {
     }));
     // Merge, so a node whose call failed keeps the bars it had.
     setUptimeBars((previous) => ({ ...previous, ...results }));
-    setLastCheckAt((previous) => ({ ...previous, ...lastChecks }));
     setBarsError(failure);
   }, []);
 
@@ -2313,9 +2321,9 @@ export default function NodesPage() {
         </FormAlert>
       )}
 
-      {barsError && (
-        <FormAlert severity="warning" onClose={() => setBarsError(null)}>
-          Could not refresh the uptime history — {barsError}. The strips below are
+      {(barsError || checksError) && (
+        <FormAlert severity="warning" onClose={() => { setBarsError(null); setChecksError(null); }}>
+          Could not refresh the uptime history — {barsError || checksError}. The strips below are
           the last aggregation that arrived, and may be behind the cards.
         </FormAlert>
       )}

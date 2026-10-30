@@ -21,7 +21,9 @@ async function legacyHistory(db: Kysely<unknown>): Promise<MigrationRecord[]> {
 }
 
 export function createOmnitronMigrationRunner(db: Kysely<unknown>, logger?: ILogger, options: { dryRun?: boolean } = {}) {
-  const history = createMigrationHistory();
+  // Preserve the deployed names and timestamps. Kysera adds only a nullable
+  // checksum column during locked setup; old rows remain honestly unverified.
+  const history = createMigrationHistory({ checksumColumn: 'checksum' });
   const known = new Set(OMNITRON_MIGRATIONS.map(m => m.name));
   return createMigrationRunner(db, OMNITRON_MIGRATIONS, {
     dryRun: options.dryRun ?? false,

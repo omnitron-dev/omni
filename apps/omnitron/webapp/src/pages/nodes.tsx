@@ -1331,7 +1331,9 @@ function NodeDiagnosisSession({
           <Box sx={{ py: 1, overflowWrap: 'anywhere' }}>
             <Typography variant="body2">{meshReading(connection).connection}</Typography>
             {meshReading(connection).error && <Typography variant="caption" color="error.main">{meshReading(connection).error}</Typography>}
-            <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>Replication: {meshReading(connection).replication}</Typography>
+            {!(sync?.reachable && sync.sync) && (
+              <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>Replication: {meshReading(connection).replication}</Typography>
+            )}
           </Box>
         )}
         <NodeSyncStatus data={sync} />

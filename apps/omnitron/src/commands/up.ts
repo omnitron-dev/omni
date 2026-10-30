@@ -22,7 +22,7 @@ import { spinner } from './spinner.js';
 import { ProjectRegistry } from '../project/registry.js';
 import { loadEcosystemConfig, loadEcosystemConfigFile } from '../config/loader.js';
 import { DEFAULT_DAEMON_CONFIG, OMNITRON_HOME } from '../config/defaults.js';
-import { OmnitronDaemon } from '../daemon/daemon.js';
+import { OmnitronDaemon, effectiveBindHost } from '../daemon/daemon.js';
 import { PidManager } from '../daemon/pid-manager.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { DaemonRole, IDaemonConfig } from '../config/types.js';
@@ -55,6 +55,8 @@ export interface SavedDaemonConfig {
   httpRateLimit?: IDaemonConfig['httpRateLimit'];
   /** Administrator file exports for this daemon, including an explicit disabled policy. */
   files?: IDaemonConfig['files'];
+  /** Exact-name HTTP readiness for immutable application releases. */
+  applicationReadiness?: IDaemonConfig['applicationReadiness'];
 
   /**
    * Transport bind address and the address slaves dial to reach a master.
@@ -84,6 +86,22 @@ export function readSavedDaemonConfig(configPath = DAEMON_CONFIG_PATH): SavedDae
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw new Error(`Cannot read daemon configuration ${configPath}; refusing to replace its access policy with defaults`, { cause: error });
   }
+}
+
+/** One persisted-settings boundary for foreground and detached daemon startup. */
+export function savedDaemonOverrides(saved: SavedDaemonConfig | null): Partial<IDaemonConfig> {
+  if (!saved) return {};
+  return {
+    role: saved.role,
+    ...(saved.master ? { master: saved.master } : {}),
+    ...(saved.httpRateLimit ? { httpRateLimit: saved.httpRateLimit } : {}),
+    ...(saved.files !== undefined ? { files: saved.files } : {}),
+    ...(saved.applicationReadiness !== undefined ? { applicationReadiness: saved.applicationReadiness } : {}),
+    host: effectiveBindHost(saved),
+    ...(saved.port ? { port: saved.port } : {}),
+    ...(saved.httpPort ? { httpPort: saved.httpPort } : {}),
+    ...(saved.advertiseHost ? { advertiseHost: saved.advertiseHost } : {}),
+  };
 }
 
 export function writeSavedDaemonConfig(config: SavedDaemonConfig): void {
@@ -296,9 +314,7 @@ export async function upCommand(options?: UpCommandOptions): Promise<void> {
   // 2. Check if already running
   const dc = {
     ...DEFAULT_DAEMON_CONFIG,
-    role: savedConfig.role,
-    ...(savedConfig.master ? { master: savedConfig.master } : {}),
-    ...(savedConfig.files !== undefined ? { files: savedConfig.files } : {}),
+    ...savedDaemonOverrides(savedConfig),
   };
   const pidFile = expandPath(dc.pidFile);
   const socketPath = expandPath(dc.socketPath);

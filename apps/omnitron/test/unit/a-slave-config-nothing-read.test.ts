@@ -81,24 +81,13 @@ describe('a slave binds where it can be reached', () => {
 // The settings have to reach the daemon at all
 // =============================================================================
 
-const { readSavedDaemonConfig } = await import('../../src/commands/up.js');
+const { readSavedDaemonConfig, savedDaemonOverrides } = await import('../../src/commands/up.js');
 
 describe('the file the daemon actually boots from', () => {
   it('merges the transport settings into the running config', async () => {
-    // The pin that matters: not that the field can be WRITTEN, but that the
-    // daemon reads it. `daemon-entry` copies from the saved file field by
-    // field, so a field added to the type and not to that list is still
-    // invisible — which is how `host` spent its life.
-    const entry = await import('node:fs/promises')
-      .then(() => import('node:url'))
-      .then(({ fileURLToPath }) => fileURLToPath(new URL('../../src/daemon/daemon-entry.ts', import.meta.url)));
-    const source = await (await import('node:fs/promises')).readFile(entry, 'utf8');
-
-    for (const field of ['host', 'port', 'httpPort', 'advertiseHost', 'role', 'master', 'files']) {
-      expect(source, `daemon-entry drops savedConfig.${field}`).toMatch(
-        new RegExp(`savedConfig\\.${field}`),
-      );
-    }
+    const transport = { role: 'slave' as const, master: { host: '192.0.2.10', port: 9700 },
+      host: '127.0.0.1', port: 9710, httpPort: 9810, advertiseHost: 'node.example.com', files: { enabled: false } };
+    expect(savedDaemonOverrides({ ...transport, initialized: true, initializedAt: '2026-10-30' })).toEqual(transport);
   });
 
   it('can carry the transport settings', () => {

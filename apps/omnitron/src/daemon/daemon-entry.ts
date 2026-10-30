@@ -8,10 +8,9 @@
 
 import { loadDaemonBootConfig } from '../config/loader.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
-import { effectiveBindHost } from './daemon.js';
 import { ProjectRegistry } from '../project/registry.js';
 import { OmnitronDaemon } from './daemon.js';
-import { readSavedDaemonConfig, ensurePersistedJwtSecret } from '../commands/up.js';
+import { readSavedDaemonConfig, savedDaemonOverrides, ensurePersistedJwtSecret } from '../commands/up.js';
 import { getEnv } from '../shared/env-config.js';
 import { runtimeDiagnostics } from '../monitoring/runtime-diagnostics.js';
 
@@ -53,29 +52,7 @@ async function main() {
   const jwtSecret = ensurePersistedJwtSecret();
   const dc = {
     ...DEFAULT_DAEMON_CONFIG,
-    ...(savedConfig
-      ? {
-          role: savedConfig.role,
-          ...(savedConfig.master ? { master: savedConfig.master } : {}),
-          // Persisted alongside role/master because the daemon boots from the
-          // saved config, not the project's ecosystem file — a `trustProxy`
-          // set only in the latter never reached the running daemon.
-          ...(savedConfig.httpRateLimit ? { httpRateLimit: savedConfig.httpRateLimit } : {}),
-          ...(savedConfig.files !== undefined ? { files: savedConfig.files } : {}),
-          // The transport settings, for the same reason and by the same
-          // route. Without these `daemon.host` was documented, meaningful to
-          // the code that reads it, and unreachable from any file an operator
-          // or a provisioning run could write.
-          // Not `savedConfig.host` directly: a slave with no host set must
-          // bind where a master can reach it, and that decision can only be
-          // made here, while "unset" is still distinguishable from
-          // "127.0.0.1, deliberately".
-          host: effectiveBindHost(savedConfig),
-          ...(savedConfig.port ? { port: savedConfig.port } : {}),
-          ...(savedConfig.httpPort ? { httpPort: savedConfig.httpPort } : {}),
-          ...(savedConfig.advertiseHost ? { advertiseHost: savedConfig.advertiseHost } : {}),
-        }
-      : {}),
+    ...savedDaemonOverrides(savedConfig),
     auth: { ...DEFAULT_DAEMON_CONFIG.auth, jwtSecret },
   };
 

@@ -23,7 +23,7 @@ if (schemaCandidate) assert.ok(master && schemaCandidate.includes('omnitron-hand
 let databaseAdmin, databaseName, databaseUrl;
 if (master) {
   const testUrl = new URL(process.env.TEST_DATABASE_URL ?? 'postgresql://test:test@127.0.0.1:15432/test');
-  assert.ok(['127.0.0.1', 'localhost'].includes(testUrl.hostname) && testUrl.port === '15432', 'Use the dedicated local test PostgreSQL on port 15432');
+  assert.ok(['127.0.0.1', 'localhost'].includes(testUrl.hostname) && testUrl.username === 'test' && testUrl.pathname === '/test' && testUrl.port !== '5480', 'Use a dedicated loopback PostgreSQL test database and test account');
   const { Pool } = createRequire(import.meta.url)('pg');
   databaseAdmin = new Pool({ connectionString: testUrl.href, connectionTimeoutMillis: 5000 });
   databaseName = `handoff_test_${randomUUID().replaceAll('-', '')}`;

@@ -1,66 +1,47 @@
-/**
- * A DDL failure must not mark the storage ready.
- *
- * `ensureTable()` swallows the create-table error under the reason "Table may
- * already exist or schema API not available" — both benign — and then set
- * `initialized = true` outside the try. A DDL that genuinely failed
- * (permissions, a full disk, a locked database) was therefore declared done,
- * and every subsequent write went to a table that does not exist, reporting a
- * missing-table error whose actual cause had been discarded one call earlier.
- *
- * This class has no logger to report the swallow through, so keeping
- * `initialized` false is the only available way to leave the failure
- * recoverable: the next write retries the DDL.
- */
-import { describe, it, expect, vi } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import Database from 'better-sqlite3';
+import { Kysely, SqliteDialect } from 'kysely';
+import { SQLiteMetricsStorage, type MetricsDatabase } from '../src/sql-storage.js';
 
-import { SQLiteMetricsStorage } from '../src/storage.js';
-
-function fakeDb(createTable: () => any) {
-  const executed: unknown[][] = [];
-  return {
-    executed,
-    schema: {
-      createTable,
-      createIndex: () => ({
-        ifNotExists: () => ({ on: () => ({ columns: () => ({ execute: async () => undefined }) }) }),
-      }),
-    },
-    insertInto: () => ({
-      values: (rows: unknown[]) => ({
-        execute: async () => {
-          executed.push(rows);
-        },
-      }),
-    }),
-  } as any;
+const cleanup: Array<() => Promise<void> | void> = [];
+afterEach(async () => { for (const undo of cleanup.splice(0).reverse()) await undo(); });
+const sample = { id: 'sample-1', name: 'cpu', value: 1, timestamp: Date.now(), labels: { app: 'api' } };
+function connection() {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'titan-metrics-'));
+  cleanup.push(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const raw = new Database(path.join(directory, 'metrics.sqlite'));
+  raw.pragma('journal_mode=WAL'); raw.pragma('synchronous=FULL');
+  const db = new Kysely<MetricsDatabase>({ dialect: new SqliteDialect({ database: raw }) });
+  cleanup.push(() => db.destroy());
+  return { db, raw };
 }
 
-describe('SQLiteMetricsStorage - DDL failure', () => {
-  it('retries the DDL on the next write instead of declaring itself ready', async () => {
-    let attempts = 0;
-    const createTable = vi.fn(() => ({
-      ifNotExists: () => ({
-        addColumn: function addColumn() {
-          return this;
-        },
-        execute: async () => {
-          attempts += 1;
-          if (attempts === 1) throw new Error('SQLITE_READONLY: attempt to write a readonly database');
-        },
-      }),
-    }));
+describe('SQLite persistence refuses incomplete setup', () => {
+  it('rejects the failed DDL, retries setup, and returns only after the row is queryable', async () => {
+    const { db, raw } = connection();
+    const storage = new SQLiteMetricsStorage(db);
+    raw.pragma('query_only=ON');
+    await expect(storage.write([sample])).rejects.toThrow(/readonly/i);
+    raw.pragma('query_only=OFF');
+    await storage.write([sample]);
+    expect(storage.capabilities.durability).toBe('persistent');
+    expect(await new SQLiteMetricsStorage(db).query({ names: ['cpu'] })).toMatchObject([{ points: [{ value: 1 }] }]);
+    await storage.write([sample]);
+    expect(raw.prepare('SELECT count(*) AS n FROM metrics_samples').get()).toEqual({ n: 1 });
+    await expect(storage.write([{ ...sample, value: 2 }])).rejects.toThrow('identity conflicts');
+  });
 
-    const db = fakeDb(createTable);
-    const storage = new SQLiteMetricsStorage(db, { batchSize: 1_000_000, flushInterval: 1_000_000 });
-
-    await storage.write([{ name: 'm', value: 1, timestamp: Date.now(), app: 'a', labels: {} } as any]);
-    await storage.write([{ name: 'm', value: 2, timestamp: Date.now(), app: 'a', labels: {} } as any]);
-
-    // Before the fix the first (failed) attempt set `initialized = true` and
-    // the DDL was never tried again.
-    expect(attempts).toBe(2);
-
-    await storage.close?.();
+  it('refuses relaxed disk durability, including a later connection reconfiguration', async () => {
+    const { db, raw } = connection();
+    const storage = new SQLiteMetricsStorage(db);
+    raw.pragma('synchronous=NORMAL');
+    await expect(storage.write([sample])).rejects.toThrow('synchronous=FULL');
+    raw.pragma('synchronous=FULL');
+    await storage.write([sample]);
+    raw.pragma('synchronous=OFF');
+    await expect(storage.write([{ ...sample, id: 'sample-2' }])).rejects.toThrow('synchronous=FULL');
   });
 });

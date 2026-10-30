@@ -15,6 +15,8 @@ export type MetricType = 'counter' | 'gauge' | 'histogram';
 
 /** A single metric data point */
 export interface MetricSample {
+  /** Stable identity for idempotent database retries; assigned when queued if omitted. */
+  id?: string;
   /** Metric name (e.g., 'cpu_percent', 'rpc_requests_total') */
   name: string;
   /** Metric value */
@@ -79,6 +81,10 @@ export interface IMetricsStorageConfig {
   batchSize?: number;
   /** Flush interval in ms (default: 5000) */
   flushInterval?: number;
+  /** Maximum queued samples, including writes in flight (default: 50000). */
+  maxBufferSize?: number;
+  /** Maximum queued JSON bytes (default: 16 MiB); overflow is reported as loss. */
+  maxBufferBytes?: number;
 }
 
 /** Data retention config */
@@ -99,6 +105,8 @@ export interface IMetricsSyncConfig {
 
 /** Root module options for TitanMetricsModule.forRoot() */
 export interface IMetricsModuleOptions {
+  /** Reports background failures; explicit flush/write calls still reject. */
+  onError?: (error: Error, operation: 'write' | 'cleanup' | 'sync') => void;
   /** Application / daemon name */
   appName: string;
   /** Collection configuration */
@@ -183,7 +191,9 @@ export interface IMetricsLatestOptions {
 
 /** Pluggable storage backend contract */
 export interface IMetricsStorage {
-  /** Persist a batch of samples */
+  /** Missing capabilities mean unknown, never proof of durability. */
+  readonly capabilities?: MetricsStorageCapabilities;
+  /** Resolves after the storage completes the write; rejects on failure. */
   write(samples: MetricSample[]): Promise<void>;
   /** Query time-series (supports time-bucket aggregation) */
   query(filter: MetricsQueryFilter): Promise<MetricsTimeSeries[]>;
@@ -201,6 +211,9 @@ export interface IMetricsStorage {
 
 /** Public contract for the metrics service */
 export interface IMetricsService {
+  /** Await a database commit. Volatile/unknown storage cannot issue this receipt. */
+  recordDurable(samples: MetricSample[]): Promise<MetricsWriteReceipt>;
+  getStorageStatus(): MetricsStorageStatus;
   /** Record a single metric sample */
   record(sample: MetricSample): void;
   /** Record a batch of samples */
@@ -257,4 +270,32 @@ export interface IMetricsRegistry {
   counter(name: string, labels?: Record<string, string>, delta?: number): void;
   gauge(name: string, labels: Record<string, string>, value: number): void;
   histogram(name: string, labels: Record<string, string>, value: number): void;
+}
+
+export interface MetricsStorageCapabilities {
+  type: 'memory' | 'postgres' | 'sqlite' | 'custom';
+  durability: 'persistent' | 'volatile' | 'unknown';
+}
+
+export interface MetricsWriteReceipt {
+  durability: 'persistent';
+  samples: number;
+  committedAt: string;
+}
+
+/** Counts describe this process; database history survives its restart. */
+export interface MetricsStorageStatus extends MetricsStorageCapabilities {
+  pendingSamples: number;
+  capacity: number;
+  pendingBytes: number;
+  capacityBytes: number;
+  oldestPendingAt: string | null;
+  writing: boolean;
+  writtenSamples: number;
+  droppedSamples: number;
+  failedWrites: number;
+  lastWriteAt: string | null;
+  lastError: string | null;
+  cleanupError: string | null;
+  syncError: string | null;
 }

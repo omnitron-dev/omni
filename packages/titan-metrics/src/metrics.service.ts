@@ -17,10 +17,13 @@ import type {
   MetricsSnapshot,
   MetricsQueryFilter,
   MetricsTimeSeries,
+  MetricsStorageStatus,
+  MetricsWriteReceipt,
 } from './types.js';
 import { MetricsRegistry } from './registry.js';
 import { MetricsCollector } from './collector.js';
 import { parseMaxAge } from './storage.js';
+import { prepareMetricSample } from './sql-storage.js';
 
 // ---------------------------------------------------------------------------
 // Defaults
@@ -72,7 +75,22 @@ export class MetricsService implements IMetricsService {
   private storageBuffer: MetricSample[] = [];
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
-  private flushing = false;
+  private flushing: Promise<void> | null = null;
+  private readonly durableWrites = new Set<Promise<MetricsWriteReceipt>>();
+  private readonly capacity: number;
+  private readonly capacityBytes: number;
+  private pendingBytes = 0;
+  private readonly queuedMetadata = new Map<MetricSample, { at: number; bytes: number }>();
+  private readonly onError: IMetricsModuleOptions['onError'];
+  private queued = 0;
+  private completed = 0;
+  private dropped = 0;
+  private failedWrites = 0;
+  private writtenSamples = 0;
+  private lastWriteAt: string | null = null;
+  private lastError: string | null = null;
+  private cleanupError: string | null = null;
+  private syncError: string | null = null;
   private started = false;
 
   constructor(
@@ -82,6 +100,11 @@ export class MetricsService implements IMetricsService {
   ) {
     this.registry = new MetricsRegistry();
     this.storage = storage;
+    this.capacity = options.storage?.maxBufferSize ?? 50_000;
+    this.capacityBytes = options.storage?.maxBufferBytes ?? 16 * 1024 * 1024;
+    this.onError = options.onError;
+    if (!Number.isSafeInteger(this.capacity) || this.capacity < 1) throw new RangeError('Metrics maxBufferSize must be a positive integer');
+    if (!Number.isSafeInteger(this.capacityBytes) || this.capacityBytes < 1) throw new RangeError('Metrics maxBufferBytes must be a positive integer');
     this.syncConfig = options.sync;
     this.maxAgeMs = parseMaxAge(options.retention?.maxAge ?? DEFAULT_MAX_AGE);
     this.batchSize = options.storage?.batchSize ?? DEFAULT_BATCH_SIZE;
@@ -92,6 +115,7 @@ export class MetricsService implements IMetricsService {
     // sign that their value had been dropped.
     this.flushIntervalMs = options.storage?.flushInterval ?? DEFAULT_FLUSH_INTERVAL;
     this.cleanupIntervalMs = options.retention?.cleanupInterval ?? DEFAULT_CLEANUP_INTERVAL;
+    if ([this.batchSize, this.flushIntervalMs, this.cleanupIntervalMs, this.maxAgeMs].some(value => !Number.isSafeInteger(value) || value <= 0)) throw new RangeError('Metrics batch size, intervals and retention must be positive integers');
 
     // Build collection config with defaults
     const collConfig: Required<IMetricsCollectionConfig> = {
@@ -122,21 +146,16 @@ export class MetricsService implements IMetricsService {
 
   record(sample: MetricSample): void {
     this.registry.record(sample);
-    this.storageBuffer.push(sample);
-    // Auto-flush when buffer is large
-    if (this.storageBuffer.length >= this.batchSize) {
-      void this.flush();
-    }
+    this.enqueue([sample]);
+    this.autoFlush();
   }
 
   recordBatch(samples: MetricSample[]): void {
     for (const s of samples) {
       this.registry.record(s);
     }
-    this.storageBuffer.push(...samples);
-    if (this.storageBuffer.length >= this.batchSize) {
-      void this.flush();
-    }
+    this.enqueue(samples);
+    this.autoFlush();
   }
 
   /**
@@ -179,10 +198,8 @@ export class MetricsService implements IMetricsService {
         this.registry.gauge(name, labels, value);
         break;
     }
-    this.storageBuffer.push({ name, value, timestamp: Date.now(), labels });
-    if (this.storageBuffer.length >= this.batchSize) {
-      void this.flush();
-    }
+    this.enqueue([{ name, value, timestamp: Date.now(), labels }]);
+    this.autoFlush();
   }
 
   async getSnapshot(): Promise<MetricsSnapshot> {
@@ -190,6 +207,7 @@ export class MetricsService implements IMetricsService {
   }
 
   async evictApp(app: string): Promise<void> {
+    await this.flush();
     this.registry.evictApp(app);
     await this.storage.evictApp(app);
   }
@@ -211,21 +229,20 @@ export class MetricsService implements IMetricsService {
 
     // Start periodic flush
     const flushMs = this.flushIntervalMs;
-    this.flushTimer = setInterval(() => void this.flush(), flushMs);
+    this.flushTimer = setInterval(() => { if (!this.flushing) void this.flush().catch(() => { /* reported in flush */ }); }, flushMs);
     if (this.flushTimer && typeof this.flushTimer === 'object' && 'unref' in this.flushTimer) {
       this.flushTimer.unref();
     }
 
     // Start periodic cleanup
     const cleanupMs = this.cleanupIntervalMs;
-    this.cleanupTimer = setInterval(() => void this.cleanup(), cleanupMs);
+    this.cleanupTimer = setInterval(() => { void this.cleanup().catch(() => { /* reported in cleanup */ }); }, cleanupMs);
     if (this.cleanupTimer && typeof this.cleanupTimer === 'object' && 'unref' in this.cleanupTimer) {
       this.cleanupTimer.unref();
     }
   }
 
   async stop(): Promise<void> {
-    if (!this.started) return;
     this.started = false;
 
     this.collector?.stop();
@@ -242,57 +259,128 @@ export class MetricsService implements IMetricsService {
     // Drain collector buffer
     if (this.collector) {
       const collectorSamples = this.collector.drain();
-      this.storageBuffer.push(...collectorSamples);
+      this.enqueue(collectorSamples);
     }
 
     // Final flush
     await this.flush();
+    await Promise.all(this.durableWrites);
   }
 
   async flush(): Promise<void> {
-    if (this.flushing) return;
-    this.flushing = true;
-    try {
-      // Drain collector buffer first
-      if (this.collector) {
-        const collectorSamples = this.collector.drain();
-        this.storageBuffer.push(...collectorSamples);
+    if (this.collector) this.enqueue(this.collector.drain());
+    const target = this.queued;
+    if (this.flushing) await this.flushing;
+    // Each caller waits for all samples accepted before its call, including a
+    // previous writer. A boolean guard used to resolve while its write ran.
+    while (this.completed < target) {
+      if (!this.flushing) {
+        const batch = this.storageBuffer.slice(0, Math.max(this.batchSize, 1));
+        this.flushing = this.writeBatch(batch).finally(() => { this.flushing = null; });
       }
-
-      if (this.storageBuffer.length === 0) return;
-
-      // T#70: re-enqueue on storage failure. Pre-T#70 the buffer was
-      // `splice(0)`-emptied BEFORE the await on `storage.write`, so a
-      // transient storage failure (PG outage, disk full, network blip)
-      // permanently dropped the batch with no retry path — the same
-      // class of bug T#68 fixed inside `PostgresMetricsStorage`, but
-      // one layer up. The fix mirrors the pattern: on write failure
-      // we `unshift` the batch back to the head of the buffer so the
-      // next periodic flush retries it. The storage layer's own cap
-      // (`maxBufferSize`, T#68) catches genuine OOM scenarios.
-      const batch = this.storageBuffer.splice(0);
-      try {
-        await this.storage.write(batch);
-      } catch (error) {
-        this.storageBuffer.unshift(...batch);
-        throw error;
-      }
-
-      // Slave → master sync
-      if (this.syncConfig?.enabled && this.syncConfig.onFlush) {
-        try {
-          await this.syncConfig.onFlush(batch);
-        } catch {
-          // Sync failure should not break local metrics
-        }
-      }
-    } finally {
-      this.flushing = false;
+      await this.flushing;
     }
   }
 
   async cleanup(): Promise<void> {
-    await this.storage.cleanup(this.maxAgeMs);
+    try {
+      await this.storage.cleanup(this.maxAgeMs);
+      this.cleanupError = null;
+    } catch (error) {
+      this.cleanupError = this.report(error, 'cleanup');
+      throw error;
+    }
+  }
+
+  async recordDurable(samples: MetricSample[]): Promise<MetricsWriteReceipt> {
+    if (this.storage.capabilities?.durability !== 'persistent') throw new Error('Metrics storage cannot confirm durable writes');
+    const prepared = samples.map(prepareMetricSample);
+    const operation = this.writeDurable(prepared);
+    this.durableWrites.add(operation);
+    try { return await operation; }
+    finally { this.durableWrites.delete(operation); }
+  }
+
+  private async writeDurable(prepared: MetricSample[]): Promise<MetricsWriteReceipt> {
+    try {
+      await this.storage.write(prepared);
+      this.writtenSamples += prepared.length;
+      this.lastWriteAt = new Date().toISOString();
+      this.lastError = null;
+      for (const sample of prepared) this.registry.record(sample);
+      return { durability: 'persistent', samples: prepared.length, committedAt: this.lastWriteAt };
+    } catch (error) {
+      this.failedWrites++;
+      this.lastError = this.report(error, 'write');
+      throw error;
+    }
+  }
+
+  getStorageStatus(): MetricsStorageStatus {
+    return {
+      ...this.storage.capabilities ?? { type: 'custom', durability: 'unknown' },
+      pendingSamples: this.storageBuffer.length, capacity: this.capacity, writing: this.flushing !== null || this.durableWrites.size > 0,
+      pendingBytes: this.pendingBytes, capacityBytes: this.capacityBytes,
+      oldestPendingAt: this.storageBuffer.length ? new Date(this.queuedMetadata.get(this.storageBuffer[0]!)!.at).toISOString() : null,
+      writtenSamples: this.writtenSamples, droppedSamples: this.dropped + (this.collector?.totalDropped ?? 0),
+      failedWrites: this.failedWrites, lastWriteAt: this.lastWriteAt, lastError: this.lastError,
+      cleanupError: this.cleanupError, syncError: this.syncError,
+    };
+  }
+
+  private enqueue(samples: MetricSample[]): void {
+    for (const sample of samples) {
+      // Keep the in-flight prefix intact; neither overflow nor retry may
+      // change an already-issued write. Loss is cumulative and visible.
+      if (this.storageBuffer.length >= this.capacity) { this.dropped++; continue; }
+      try {
+        const prepared = prepareMetricSample(sample);
+        const bytes = Buffer.byteLength(JSON.stringify(prepared));
+        if (this.pendingBytes + bytes > this.capacityBytes) { this.dropped++; continue; }
+        this.storageBuffer.push(prepared);
+        this.queuedMetadata.set(prepared, { at: Date.now(), bytes });
+        this.pendingBytes += bytes;
+        this.queued++;
+      } catch (error) {
+        this.dropped++;
+        this.lastError = this.report(error, 'write');
+      }
+    }
+  }
+
+  private autoFlush(): void {
+    if (!this.flushing && this.storageBuffer.length >= this.batchSize) void this.flush().catch(() => { /* reported in writeBatch */ });
+  }
+
+  private async writeBatch(batch: MetricSample[]): Promise<void> {
+    try {
+      await this.storage.write(batch);
+    } catch (error) {
+      this.failedWrites++;
+      this.lastError = this.report(error, 'write');
+      throw error;
+    }
+    this.storageBuffer.splice(0, batch.length);
+    for (const sample of batch) {
+      this.pendingBytes -= this.queuedMetadata.get(sample)!.bytes;
+      this.queuedMetadata.delete(sample);
+    }
+    this.completed += batch.length;
+    this.writtenSamples += batch.length;
+    this.lastWriteAt = new Date().toISOString();
+    this.lastError = null;
+    // This hook is an observation, not a transactional outbox. A callback
+    // failure must never retry an already committed storage write.
+    if (this.syncConfig?.enabled && this.syncConfig.onFlush) {
+      try { await this.syncConfig.onFlush(batch); this.syncError = null; }
+      catch (error) { this.syncError = this.report(error, 'sync'); }
+    }
+  }
+
+  private report(error: unknown, operation: 'write' | 'cleanup' | 'sync'): string {
+    const failure = error instanceof Error ? error : new Error(String(error));
+    try { this.onError?.(failure, operation); } catch { /* reporting must not change storage outcome */ }
+    return failure.message || failure.name;
   }
 
   // -------------------------------------------------------------------------

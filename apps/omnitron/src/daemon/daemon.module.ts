@@ -5,6 +5,7 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import { Module } from '@omnitron-dev/titan/decorators';
 import { Scope } from '@omnitron-dev/titan/nexus';
 import { ConfigModule } from '@omnitron-dev/titan/module/config';
@@ -13,7 +14,7 @@ import { ProcessManagerModule, PM_MANAGER_TOKEN, type ProcessManager } from '@om
 import { TitanAuthModule } from '@omnitron-dev/titan-auth';
 import { SchedulerModule } from '@omnitron-dev/titan-scheduler';
 import { TitanHealthModule } from '@omnitron-dev/titan-health';
-import { TitanMetricsModule } from '@omnitron-dev/titan-metrics';
+import { TitanMetricsModule, METRICS_STORAGE_TOKEN, PostgresMetricsStorage, SQLiteMetricsStorage, type MetricsDatabase } from '@omnitron-dev/titan-metrics';
 
 import { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import type { OrchestratorControl } from '../orchestrator/execution-contract.js';
@@ -45,6 +46,7 @@ import {
   INFRASTRUCTURE_GATE_TOKEN,
   PROJECT_SERVICE_TOKEN,
   SLAVE_STORAGE_TOKEN,
+  SYNC_SERVICE_TOKEN,
   JWT_SECRET_TOKEN,
   FLEET_SELF_NODE_ID_TOKEN,
   SECRETS_PASSPHRASE_TOKEN,
@@ -67,8 +69,9 @@ import { AuditService } from '../services/audit.service.js';
 import { createTelemetryRelay } from '../services/telemetry.service.js';
 import { ProjectService, MASTER_PROJECT_SERVICE_PROVIDER, SLAVE_PROJECT_SERVICE_PROVIDER } from '../services/project.service.js';
 import { SlaveStorageService } from '../services/slave-storage.service.js';
+import { SyncService } from '../services/sync.service.js';
 import { Writable } from 'node:stream';
-import type { Kysely } from 'kysely';
+import type { Kysely, Transaction } from 'kysely';
 import type { OmnitronDatabase } from '../database/schema.js';
 import type { IEcosystemConfig, IDaemonConfig } from '../config/types.js';
 import { expandPath } from '../shared/paths.js';
@@ -175,6 +178,8 @@ export function getDaemonLogCollectorStream(): LogCollectorStream | null {
  */
 export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemonConfig, execution?: OrchestratorControl) {
   const isSlave = dc.role === 'slave';
+  let metricsLogger: ILoggerModule | undefined;
+  let lastMetricsErrorAt = 0;
 
   // Single source of truth for the JWT secret. AuthService (mint) and
   // TitanAuthModule (verify) MUST use the same key or every locally-
@@ -257,13 +262,19 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
           rpc: true,
         },
         storage: {
-          type: 'memory',
+          type: isSlave ? 'sqlite' : 'postgres',
           flushInterval: 5_000,
         },
         retention: {
           maxAge: '7d',
         },
         isGlobal: true,
+        onError: (error, operation) => {
+          // One failed storage should not generate a second unbounded telemetry stream.
+          if (Date.now() - lastMetricsErrorAt < 30_000) return;
+          lastMetricsErrorAt = Date.now();
+          metricsLogger?.logger.error({ operation, error: error.message }, 'Metrics persistence failed; inspect metrics storage diagnostics');
+        },
       }),
 
       // Health — built-in memory indicator + custom indicators
@@ -281,6 +292,30 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
       }),
     ],
     providers: [
+      [SYNC_SERVICE_TOKEN, {
+        useFactory: async (database: Kysely<OmnitronDatabase> | SlaveStorageService, logger: ILoggerModule) => {
+          const db = isSlave ? await (database as SlaveStorageService).getDb() : database;
+          return new SyncService(db as Kysely<OmnitronDatabase>, logger.logger.child({ component: 'sync' }), `${os.hostname()}-${dc.port}`, dc.role, dc.sync);
+        },
+        inject: [isSlave ? SLAVE_STORAGE_TOKEN : OMNITRON_DB_TOKEN, LOGGER_SERVICE_TOKEN],
+        scope: Scope.Singleton,
+      }],
+      [METRICS_STORAGE_TOKEN, {
+        useFactory: async (database: Kysely<OmnitronDatabase> | SlaveStorageService, logger: ILoggerModule, sync: SyncService) => {
+          metricsLogger = logger;
+          if (!isSlave) return new PostgresMetricsStorage(database as Kysely<OmnitronDatabase>);
+          const db = await (database as SlaveStorageService).getDb();
+          const storage = new SQLiteMetricsStorage(db as unknown as Kysely<MetricsDatabase>, {
+            afterWrite: (trx, samples) => sync.bufferBatch(samples.map(sample => ({ category: 'metrics',
+              payload: { name: sample.name, app: sample.labels['app'], labels: sample.labels, timestamp: sample.timestamp, value: sample.value },
+            })), trx as unknown as Transaction<OmnitronDatabase>),
+          });
+          await storage.initialize();
+          return storage;
+        },
+        inject: [isSlave ? SLAVE_STORAGE_TOKEN : OMNITRON_DB_TOKEN, LOGGER_SERVICE_TOKEN, SYNC_SERVICE_TOKEN],
+        scope: Scope.Singleton,
+      }],
       // Ecosystem config
       [ECOSYSTEM_CONFIG_TOKEN, { useValue: ecosystemConfig }],
 

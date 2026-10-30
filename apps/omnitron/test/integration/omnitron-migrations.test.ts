@@ -41,6 +41,7 @@ const EXPECTED_TABLES = [
   'alert_rules',
   'pipelines',
   'traces',
+  'metrics_samples',
 ];
 
 /** Tables a later migration removes: 002 made `metrics_raw`, 010 drops it (no reader, no pruning). */
@@ -119,7 +120,7 @@ describe.skipIf(!testPg.ok)('Omnitron migrations (integration)', () => {
     const history = createMigrationHistory();
     await createMigrationRunner(db, old, { history }).up();
     const before = await history.read(db);
-    expect((await migrateOmnitronDb(db)).applied).toEqual(['014_replication_receipts']);
+    expect((await migrateOmnitronDb(db)).applied).toEqual(['015_persistent_metrics']);
     const after = await createOmnitronMigrationRunner(db).inspect();
     expect(after.executed.slice(0, -1)).toEqual(before);
     expect(after.executed.at(-1)?.checksum).toBe(OMNITRON_MIGRATIONS.at(-1)?.checksum);
@@ -134,8 +135,8 @@ describe.skipIf(!testPg.ok)('Omnitron migrations (integration)', () => {
     const history = createMigrationHistory();
     await history.insert(db, { name: '999_unreviewed_schema', checksum: 'f'.repeat(64), executedAt: new Date() });
     const before = await createOmnitronMigrationRunner(db).inspect();
-    await expect(migrateOmnitronDb(db)).rejects.toThrow('No matching schema expansion receipt');
-    await expect(createOmnitronMigrationRunner(db).down(1)).rejects.toThrow('No matching schema expansion receipt');
+    await expect(migrateOmnitronDb(db)).rejects.toThrow(/No matching schema expansion receipt|immutable installed runtime/);
+    await expect(createOmnitronMigrationRunner(db).down(1)).rejects.toThrow(/No matching schema expansion receipt|immutable installed runtime/);
     expect(await createOmnitronMigrationRunner(db).inspect()).toEqual(before);
     expect(await listTables(db)).toContain('sync_ingested');
   });
@@ -147,11 +148,11 @@ describe.skipIf(!testPg.ok)('Omnitron migrations (integration)', () => {
     await migrateOmnitronDb(db);
     await expect(assertOmnitronMigrationsCurrent(db)).resolves.toBeUndefined();
     await createOmnitronMigrationRunner(db).down(1);
-    await expect(assertOmnitronMigrationsCurrent(db)).rejects.toThrow('pending: 014_replication_receipts');
-    expect((await createOmnitronMigrationRunner(db).inspect()).pending).toEqual(['014_replication_receipts']);
+    await expect(assertOmnitronMigrationsCurrent(db)).rejects.toThrow('pending: 015_persistent_metrics');
+    expect((await createOmnitronMigrationRunner(db).inspect()).pending).toEqual(['015_persistent_metrics']);
     const { sql } = await import('kysely');
-    const columns = await sql<{ column_name: string }>`select column_name from information_schema.columns where table_schema = 'public' and table_name = 'sync_ingested'`.execute(db);
-    expect(columns.rows.map(row => row.column_name)).not.toContain('outcome');
+    const table = await sql<{ table: string | null }>`select to_regclass('public.metrics_samples')::text as table`.execute(db);
+    expect(table.rows[0]?.table).toBeNull();
   });
 
   it('adopts a pre-existing Kysely migration history instead of re-applying it', async () => {

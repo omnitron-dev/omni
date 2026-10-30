@@ -9,6 +9,8 @@ import { createDaemonClient } from '../daemon/daemon-client.js';
 import { formatMemoryColored, formatCpu, formatMemory } from '../shared/format.js';
 import { emitJson, emitError } from './output.js';
 import { requireDaemon } from './daemon-required.js';
+import { metricsStorageReading } from '../shared/metrics-storage-reading.js';
+import type { IOmnitronMetricsService } from '../shared/dto/services.js';
 
 export async function metricsCommand(appName?: string): Promise<void> {
   const client = createDaemonClient();
@@ -20,8 +22,12 @@ export async function metricsCommand(appName?: string): Promise<void> {
 
   try {
     const metrics = await client.getMetrics(appName ? { name: appName } : {});
+    const storageResult = await client.service<IOmnitronMetricsService>('OmnitronMetrics')
+      .then(service => service.getStorageStatus()).then(status => ({ status, error: null }))
+      .catch((error: unknown) => ({ status: null, error: error instanceof Error ? error.message : String(error) }));
+    const storageReading = metricsStorageReading(storageResult.status);
 
-    if (emitJson({ totals: metrics.totals, apps: metrics.apps })) {
+    if (emitJson({ totals: metrics.totals, apps: metrics.apps, storage: { ...storageResult, ...storageReading } })) {
       await client.disconnect();
       return;
     }
@@ -71,6 +77,7 @@ export async function metricsCommand(appName?: string): Promise<void> {
 
     console.log();
     log.info(`Totals: CPU ${formatCpu(metrics.totals.cpu)}, Memory ${formatMemory(metrics.totals.memory)}`);
+    log.info(`${storageReading.summary}. ${storageReading.detail}${storageResult.error ? `. ${storageResult.error}` : ''}`);
     log.info(
       prism.dim(
         `REQUESTS and ERRORS (5xx) since each process started, probes excluded; HELD = of REQUESTS, long polls, whose wait is kept out of the latency; latency over the last minute${

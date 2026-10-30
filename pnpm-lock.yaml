@@ -1513,6 +1513,12 @@ importers:
       '@typescript/native':
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
+      better-sqlite3:
+        specifier: ^13.0.3
+        version: 13.0.3
+      kysely:
+        specifier: ^0.29.7
+        version: 0.29.7
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'

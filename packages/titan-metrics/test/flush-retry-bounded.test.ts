@@ -1,151 +1,65 @@
-/**
- * Regression test for T#68 — `PostgresMetricsStorage` /
- * `SQLiteMetricsStorage` retried failed flushes by re-enqueueing
- * the full batch at the head of the buffer, with no upper bound.
- * During a sustained PG outage the buffer grew without limit:
- *
- *     write()     → buffer.push(...samples)
- *     flush()     → splice, insert FAILS, buffer.unshift(...batch)
- *     write()     → buffer.push(...newSamples)     (newer than the failed batch)
- *     flush()     → splice, insert FAILS, buffer.unshift(...batch)
- *     ...
- *
- * 5 s flush interval × 24 h outage × 100 samples/s ≈ 8.6 M samples
- * in memory. A typical sample is ~100 bytes; that's nearly 1 GB
- * just for the failure backlog — the daemon ran out of RAM long
- * before the operator noticed.
- *
- * Fix: cap the in-memory buffer at `maxBufferSize` (default 50k).
- * On overflow drop OLDEST samples (the failed-batch front of the
- * buffer) and report the cumulative dropped count via the optional
- * `onDrop` callback so the operator sees the data loss.
- */
-
 import { describe, it, expect, vi } from 'vitest';
-import { PostgresMetricsStorage, DAEMON_APP_LABEL } from '../src/index.js';
+import { MetricsService } from '../src/metrics.service.js';
+import { MemoryMetricsStorage } from '../src/storage.js';
 import type { MetricSample } from '../src/types.js';
 
-function failingDb() {
-  return {
-    insertInto: () => ({
-      values: () => ({
-        execute: vi.fn().mockRejectedValue(new Error('connection refused')),
-      }),
-    }),
-    selectFrom: () => ({}),
-    deleteFrom: () => ({}),
-    schema: { createTable: vi.fn(), createIndex: vi.fn() },
-  } as any;
-}
+const sample = (value: number): MetricSample => ({ name: 'cpu', value, timestamp: Date.now(), labels: { app: 'api' } });
 
-function smp(name: string, value: number): MetricSample {
-  return { name, value, timestamp: Date.now(), labels: { app: 'main' } };
-}
-
-describe('PostgresMetricsStorage — bounded retry on flush failure (T#68)', () => {
-  it('caps the buffer at maxBufferSize when the DB is down', async () => {
-    const dropEvents: number[] = [];
-    const storage = new PostgresMetricsStorage(failingDb(), {
-      batchSize: 10_000_000, // disable size-driven auto-flush
-      flushInterval: 60_000, // disable periodic flush in this test
-      maxBufferSize: 100, // small cap so we hit it quickly
-      onDrop: (n) => dropEvents.push(n),
+describe('one bounded queue and an awaited write boundary', () => {
+  it('waits for in-flight and queued writes, retries the same identities and keeps loss evidence', async () => {
+    const storage = new MemoryMetricsStorage();
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const batches: MetricSample[][] = [];
+    let attempt = 0;
+    vi.spyOn(storage, 'write').mockImplementation(async batch => {
+      batches.push(batch);
+      if (++attempt === 1) await gate;
+      if (attempt === 2) throw new Error('database unavailable');
     });
-
-    // Write 250 samples — 150 over the cap.
-    const batch: MetricSample[] = [];
-    for (let i = 0; i < 250; i++) batch.push(smp('rpc_requests_total', i));
-    await storage.write(batch);
-
-    // Buffer must not exceed the cap.
-    expect((storage as any).buffer.length).toBeLessThanOrEqual(100);
-
-    // The onDrop callback fired with the dropped count.
-    expect(dropEvents.length).toBeGreaterThan(0);
-    const lastReport = dropEvents[dropEvents.length - 1]!;
-    expect(lastReport).toBe(150);
-
-    storage.dispose();
+    const errors = vi.fn();
+    const svc = new MetricsService({ appName: 'test', collection: { enabled: false }, onError: errors,
+      storage: { type: 'memory', batchSize: 2, maxBufferSize: 4 } }, storage);
+    svc.recordBatch([sample(1), sample(2)]);
+    svc.recordBatch([sample(3), sample(4), sample(5)]);
+    let finished = false;
+    const pending = svc.flush().finally(() => { finished = true; });
+    const refusal = expect(pending).rejects.toThrow('database unavailable');
+    await Promise.resolve();
+    expect(finished).toBe(false);
+    expect(svc.getStorageStatus()).toMatchObject({ pendingSamples: 4, writing: true, droppedSamples: 1, writtenSamples: 0 });
+    release();
+    await refusal;
+    expect(svc.getStorageStatus()).toMatchObject({ pendingSamples: 2, failedWrites: 1, lastError: 'database unavailable' });
+    await svc.stop();
+    expect(batches[2]!.map(s => s.id)).toEqual(batches[1]!.map(s => s.id));
+    expect(svc.getStorageStatus()).toMatchObject({ pendingSamples: 0, pendingBytes: 0, writtenSamples: 4, droppedSamples: 1, lastError: null });
+    expect(errors).toHaveBeenCalledTimes(1);
   });
 
-  it('preserves NEWEST samples (drops oldest) when re-enqueueing a failed batch', async () => {
-    const storage = new PostgresMetricsStorage(failingDb(), {
-      batchSize: 10_000_000,
-      flushInterval: 60_000,
-      maxBufferSize: 5,
-    });
-
-    // 5 samples written, buffer at the cap.
-    for (let i = 0; i < 5; i++) await storage.write([smp('a', i)]);
-    expect((storage as any).buffer.length).toBe(5);
-
-    // Manually trigger a flush — DB fails, batch re-enqueued at the
-    // front, ENFORCEMENT drops oldest. But the buffer was already
-    // at the cap, so all 5 originals come back through unshift, no
-    // newer samples arrived in between, so cap stays at 5 with the
-    // SAME samples (idempotent under outage with no new traffic).
-    await (storage as any).flushBuffer();
-    expect((storage as any).buffer.length).toBe(5);
-    expect((storage as any).buffer.map((s: MetricSample) => s.value)).toEqual([0, 1, 2, 3, 4]);
-
-    // Now write 5 NEW samples while the DB is still down.
-    for (let i = 5; i < 10; i++) await storage.write([smp('a', i)]);
-    // The cap was enforced on each write; the oldest 5 dropped to
-    // make room for the newest 5.
-    expect((storage as any).buffer.length).toBe(5);
-    expect((storage as any).buffer.map((s: MetricSample) => s.value)).toEqual([5, 6, 7, 8, 9]);
-
-    storage.dispose();
+  it('bounds UTF-8 bytes and exposes rejected samples without an unhandled rejection', async () => {
+    const storage = new MemoryMetricsStorage();
+    vi.spyOn(storage, 'write').mockRejectedValue(new Error('offline'));
+    const svc = new MetricsService({ appName: 'test', collection: { enabled: false },
+      storage: { type: 'memory', maxBufferBytes: 300, batchSize: 1 } }, storage);
+    svc.record(sample(1));
+    await vi.waitFor(() => expect(svc.getStorageStatus().failedWrites).toBe(1));
+    svc.record({ ...sample(2), labels: { text: 'я'.repeat(1000) } });
+    expect(svc.getStorageStatus().pendingBytes).toBeLessThanOrEqual(300);
+    expect(svc.getStorageStatus().droppedSamples).toBe(1);
+    await expect(svc.recordDurable([sample(3)])).rejects.toThrow('cannot confirm durable');
   });
 
-  it('resets the dropped counter after a successful flush', async () => {
-    let succeed = false;
-    const db: any = {
-      insertInto: () => ({
-        values: () => ({
-          execute: vi.fn(async () => {
-            if (!succeed) throw new Error('down');
-          }),
-        }),
-      }),
-      selectFrom: () => ({}),
-      deleteFrom: () => ({}),
-    };
-
-    const storage = new PostgresMetricsStorage(db, {
-      batchSize: 10_000_000,
-      flushInterval: 60_000,
-      maxBufferSize: 3,
-    });
-
-    // Phase 1: outage. Push enough to overflow.
-    for (let i = 0; i < 10; i++) await storage.write([smp('a', i)]);
-    expect((storage as any).droppedDuringOutage).toBeGreaterThan(0);
-
-    // Phase 2: DB recovers; manual flush drains and clears counter.
-    succeed = true;
-    await (storage as any).flushBuffer();
-    expect((storage as any).buffer.length).toBe(0);
-    expect((storage as any).droppedDuringOutage).toBe(0);
-
-    storage.dispose();
-  });
-
-  it('daemon-scoped samples (T#63) participate in the same cap', async () => {
-    const storage = new PostgresMetricsStorage(failingDb(), {
-      batchSize: 10_000_000,
-      flushInterval: 60_000,
-      maxBufferSize: 5,
-    });
-    // Mix of app samples and daemon-scoped (no app label) samples.
-    for (let i = 0; i < 10; i++) {
-      await storage.write([{ name: 'd', value: i, timestamp: Date.now(), labels: {} }]);
-    }
-    expect((storage as any).buffer.length).toBe(5);
-    // All surviving samples were normalised to __daemon__.
-    expect(
-      (storage as any).buffer.every((s: MetricSample) => s.labels.app === DAEMON_APP_LABEL),
-    ).toBe(true);
-    storage.dispose();
+  it('does not retry committed storage when a notification fails', async () => {
+    const storage = new MemoryMetricsStorage();
+    const write = vi.spyOn(storage, 'write');
+    const svc = new MetricsService({ appName: 'test', collection: { enabled: false }, sync: {
+      enabled: true, onFlush: async () => { throw new Error('notification unavailable'); },
+    } }, storage);
+    svc.record(sample(1));
+    await svc.flush();
+    await svc.flush();
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(svc.getStorageStatus()).toMatchObject({ pendingSamples: 0, syncError: 'notification unavailable' });
   });
 });

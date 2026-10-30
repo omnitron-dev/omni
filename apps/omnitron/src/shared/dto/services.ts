@@ -751,6 +751,7 @@ export interface IOmnitronNodesService {
  * its only callers.
  */
 export interface IOmnitronMetricsService {
+  getStorageStatus(): Promise<import('./metrics.js').MetricsStorageStatus>;
   getSnapshot(): Promise<MetricsSnapshot>;
   querySeries(data: MetricsQueryFilter): Promise<MetricsTimeSeries[]>;
   getPrometheusText(): Promise<string>;

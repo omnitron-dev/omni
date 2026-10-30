@@ -7,6 +7,7 @@
  */
 
 import type { Generated, ColumnType } from 'kysely';
+import type { MetricsDatabase } from '@omnitron-dev/titan-metrics';
 
 // =============================================================================
 // Common Column Types
@@ -21,7 +22,7 @@ type JsonB<T = Record<string, unknown>> = ColumnType<T, string | T, string | T>;
 // Database Interface
 // =============================================================================
 
-export interface OmnitronDatabase {
+export interface OmnitronDatabase extends MetricsDatabase {
   /** Cluster nodes — leader/follower/worker topology */
   nodes: NodesTable;
   /** Portal users — Omnitron dashboard access */

@@ -7,13 +7,15 @@
  * entries within its retention window, using node identity and wire entry ID.
  *
  * Queue release, committed payloads, permanent rejections and eviction losses
- * are distinct durable evidence. Metrics delivered to the in-memory sink and
- * unclassified older-peer receipts are unverified, never durable commits.
+ * are distinct durable evidence. Metrics and their receipts share one transaction;
+ * unclassified older-peer receipts remain unverified, never retroactive commits.
  * Overflow evicts delivered rows first, then pending rows with a loss record.
  * Delivery is therefore bounded at-least-once, not an unlimited no-loss promise.
  */
 
 import type { Insertable, Kysely, Transaction } from 'kysely';
+import { createHash } from 'node:crypto';
+import { prepareMetricSample, type MetricSample, type PostgresMetricsStorage } from '@omnitron-dev/titan-metrics';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { OmnitronDatabase } from '../database/schema.js';
 import type { ISyncConfig, DaemonRole } from '../config/types.js';
@@ -54,6 +56,7 @@ export type MetricsSink = (sample: {
   app: string;
   labels: Record<string, string>;
   value: number;
+  timestamp: number;
 }) => void;
 
 export interface SyncEntry {
@@ -232,6 +235,7 @@ interface ResolvedSyncConfig {
 }
 
 export class SyncService {
+  private metricsStorage: PostgresMetricsStorage<OmnitronDatabase> | null = null;
   /** Set on a master; see `setMetricsSink`. */
   private metricsSink: MetricsSink | null = null;
 
@@ -385,35 +389,27 @@ export class SyncService {
     }
   }
 
-  /**
-   * Where ingested remote metrics are recorded, on a master.
-   *
-   * Set by the daemon to `MetricsService.recordTyped` — the store the
-   * console's charts read, with the node as a label. It is the only place a
-   * remote metric goes: the `metrics_raw` table it was also written to had
-   * no reader and no pruning (migration 010). Without a sink, remote metrics
-   * are claimed and go nowhere.
-   *
-   * A sink rather than a constructor dependency: this service is built by
-   * hand in `daemon.ts` with five positional arguments, and a sixth is a
-   * change every caller has to get right at runtime rather than at compile
-   * time.
-   */
+  /** Optional post-commit exposition observer. It is never the durable destination. */
   setMetricsSink(sink: MetricsSink | null): void {
     this.metricsSink = sink;
+  }
+
+  /** Required for metric ingestion. The adapter writes inside the receipt transaction. */
+  setMetricsStorage(storage: PostgresMetricsStorage<OmnitronDatabase>): void {
+    this.metricsStorage = storage;
   }
 
   /**
    * Buffer multiple entries at once (batch optimization).
    */
-  async bufferBatch(entries: SyncEntry[]): Promise<void> {
+  async bufferBatch(entries: SyncEntry[], transaction?: Transaction<OmnitronDatabase>): Promise<void> {
     if (this.role !== 'slave' || entries.length === 0) return;
 
     const filteredEntries = entries.filter((e) => this.config.categories.includes(e.category));
     if (filteredEntries.length === 0) return;
 
     try {
-      await this.db.insertInto('sync_buffer').values(
+      await (transaction ?? this.db).insertInto('sync_buffer').values(
         filteredEntries.map((e) => ({
           category: e.category,
           payload: JSON.stringify(e.payload),
@@ -428,6 +424,7 @@ export class SyncService {
         { nodeId: this.nodeId, count: filteredEntries.length, category: filteredEntries[0]?.category, error: (err as Error).message },
         'Failed to buffer sync batch — these entries will not reach the master',
       );
+      throw err;
     }
   }
 
@@ -1177,7 +1174,8 @@ export class SyncService {
    * table (per `MAX_BOUND_PARAMETERS` rows). Both roads write through here,
    * so an entry lands as the same row whichever one took it.
    */
-  private async writeRows(db: SyncExecutor, nodeId: string, entries: SyncBatch['entries']): Promise<void> {
+  private async writeRows(db: Transaction<OmnitronDatabase>, nodeId: string, entries: SyncBatch['entries']): Promise<void> {
+    const metrics: MetricSample[] = [];
     const logs: Insertable<OmnitronDatabase['logs']>[] = [];
     const alerts: Insertable<OmnitronDatabase['alert_events']>[] = [];
     const traces: Insertable<OmnitronDatabase['traces']>[] = [];
@@ -1186,9 +1184,7 @@ export class SyncService {
     for (const entry of entries) {
       switch (entry.category) {
         case 'metrics':
-          // No row: a metric's only store is the sink, after the claim
-          // commits (`recordMetrics`). Its claim is what stops a retry from
-          // recording it twice.
+          metrics.push(this.metricSample(nodeId, entry));
           break;
         case 'logs':
           logs.push(logRow(nodeId, entry));
@@ -1215,6 +1211,10 @@ export class SyncService {
     for (const part of statementsOf(logs)) await db.insertInto('logs').values(part).execute();
     for (const part of statementsOf(alerts)) await db.insertInto('alert_events').values(part).execute();
     for (const part of statementsOf(traces)) await db.insertInto('traces').values(part).execute();
+    if (metrics.length) {
+      if (!this.metricsStorage) throw new Error('Persistent metric storage is unavailable; payloads remain pending on the node');
+      await this.metricsStorage.writeInTransaction(db, metrics);
+    }
 
     if (unknown.length > 0) {
       // An unknown category is not a failure to retry — retrying cannot make
@@ -1233,36 +1233,17 @@ export class SyncService {
     }
   }
 
-  /**
-   * Hand claimed remote metrics to the store the console reads.
-   *
-   * The sink records each sample into titan-metrics, which is what the
-   * console's `getSnapshot` and `querySeries` read, tagged with `node` so a
-   * remote reading is a label dimension rather than a second table. The
-   * `metrics_raw` table these were also written to was kept «until the
-   * console is observed showing the label»; it was observed (2026-09-23: 19
-   * series labelled with the test node), and the table — written ~0.93
-   * million rows a day, read and pruned by nothing — is gone (migration 010).
-   * History now lives in titan-metrics' store (in memory, 7 days, lost with a
-   * master restart); how long it should be kept is that store's question.
-   *
-   * AFTER the commit. The sink is not part of the transaction, and it used to
-   * be called inside it, before the row was written: an entry whose write
-   * then failed was recorded anyway, and recorded again by the retry that
-   * stored it. With a batch rolled back and retried entry by entry, that
-   * would have been every metric in it.
-   */
+  /** Update live exposition after the payload and receipt commit atomically. */
   private recordMetrics(nodeId: string, entries: SyncBatch['entries']): void {
     if (!this.metricsSink) return;
     try {
       for (const entry of entries) {
         if (entry.category !== 'metrics') continue;
+        const sample = this.metricSample(nodeId, entry);
         this.metricsSink({
           node: nodeId,
-          name: String(entry.payload['name'] ?? 'unknown'),
-          app: String(entry.payload['app'] ?? 'unknown'),
-          labels: (entry.payload['labels'] ?? {}) as Record<string, string>,
-          value: Number(entry.payload['value'] ?? 0),
+          ...sample,
+          app: sample.labels['app']!,
         });
       }
     } catch (err) {
@@ -1280,10 +1261,26 @@ export class SyncService {
    * ingestion fails, leaving nothing recorded.
    */
   private receiptOutcome(category: SyncCategory): 'committed' | 'discarded' | 'unverified' {
-    // The metrics sink is outside the database transaction. Its successful
-    // callback cannot certify durable storage, including across a lost ACK.
-    if (category === 'metrics') return 'unverified';
-    return ['logs', 'alerts', 'traces', 'events', 'state'].includes(category) ? 'committed' : 'discarded';
+    return ['metrics', 'logs', 'alerts', 'traces', 'events', 'state'].includes(category) ? 'committed' : 'discarded';
+  }
+
+  private metricSample(nodeId: string, entry: IngestEntry): MetricSample {
+    try {
+      const labels = entry.payload['labels'] ?? {};
+      if (typeof labels !== 'object' || labels === null || Array.isArray(labels)) throw new TypeError('Invalid metric labels');
+      const timestamp = entry.payload['timestamp'] ?? entry.createdAt;
+      return prepareMetricSample({
+        id: `replicated:${createHash('sha256').update(JSON.stringify([nodeId, entry.id])).digest('hex')}`,
+        name: entry.payload['name'] as string,
+        value: entry.payload['value'] as number,
+        timestamp: typeof timestamp === 'number' ? timestamp : Date.parse(String(timestamp)),
+        labels: { ...labels as Record<string, string>,
+          ...entry.payload['app'] !== undefined ? { app: entry.payload['app'] as string } : {}, node: nodeId },
+      });
+    } catch (cause) {
+      // Malformed telemetry is a permanent refusal; database/network failures are retryable.
+      throw Object.assign(new Error(`Invalid replicated metric: ${describeError(cause)}`), { code: '22023' });
+    }
   }
 
   private async claimAndIngest(

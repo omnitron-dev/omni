@@ -10,6 +10,7 @@ const { api } = vi.hoisted(() => ({
     apps: vi.fn(),
     stacks: vi.fn(),
     series: vi.fn(),
+    storage: vi.fn(),
     stats: vi.fn(),
     ingestion: vi.fn(),
     nodes: vi.fn(),
@@ -18,7 +19,7 @@ const { api } = vi.hoisted(() => ({
 vi.mock('src/netron/client', () => ({
   daemon: { list: api.list },
   project: { getProjectApps: api.apps, listStacks: api.stacks },
-  metrics: { querySeries: api.series },
+  metrics: { querySeries: api.series, getStorageStatus: api.storage },
   logs: { getLogStats: api.stats, getIngestionStats: api.ingestion },
   nodes: { listNodes: api.nodes },
 }));
@@ -51,6 +52,7 @@ const app = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  api.storage.mockResolvedValue({ type: 'postgres', durability: 'persistent', pendingSamples: 0, capacity: 50000, pendingBytes: 0, capacityBytes: 16777216, writing: false, writtenSamples: 123, droppedSamples: 0, failedWrites: 0, lastWriteAt: new Date().toISOString(), oldestPendingAt: null, lastError: null, cleanupError: null, syncError: null });
   api.list.mockResolvedValue([
     { ...app, name: app.handleKey },
     { ...app, name: 'other/dev/worker', memory: 1e9 },

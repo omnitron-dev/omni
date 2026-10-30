@@ -12,6 +12,7 @@ import type {
   MetricsSnapshot,
   MetricsQueryFilter,
   MetricsTimeSeries,
+  MetricsStorageStatus,
 } from './types.js';
 
 @Service({ name: 'OmnitronMetrics' })
@@ -40,6 +41,12 @@ import type {
  */
 export class MetricsRpcService {
   constructor(private readonly metrics: IMetricsService) {}
+
+  /** Authenticated operational diagnostics; contains no database credentials. */
+  @Public()
+  async getStorageStatus(): Promise<MetricsStorageStatus> {
+    return this.metrics.getStorageStatus();
+  }
 
   /**
    * Get a real-time snapshot of all app metrics.

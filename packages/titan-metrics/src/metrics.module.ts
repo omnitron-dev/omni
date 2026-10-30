@@ -77,6 +77,11 @@ export class TitanMetricsModule {
   static forRootAsync(factory: {
     useFactory: (...args: never[]) => Promise<IMetricsModuleOptions> | IMetricsModuleOptions;
     inject?: unknown[];
+    storage?: {
+      useFactory: (...args: never[]) => IMetricsStorage | Promise<IMetricsStorage>;
+      inject?: unknown[];
+    };
+    isGlobal?: boolean;
   }): any {
     const providers: Array<[unknown, Record<string, unknown>]> = [
       // Async options
@@ -88,11 +93,17 @@ export class TitanMetricsModule {
         },
       ],
 
-      // Memory storage (default — override with METRICS_STORAGE_TOKEN for pg)
+      // Async configuration must never silently downgrade requested persistence.
       [
         METRICS_STORAGE_TOKEN,
         {
-          useFactory: (): IMetricsStorage => new MemoryMetricsStorage(),
+          ...factory.storage ?? {
+            useFactory: (opts: IMetricsModuleOptions): IMetricsStorage => {
+              if (opts.storage && opts.storage.type !== 'memory') throw new Error('Persistent metrics require forRootAsync.storage or an external METRICS_STORAGE_TOKEN provider');
+              return new MemoryMetricsStorage();
+            },
+            inject: [METRICS_OPTIONS_TOKEN],
+          },
           scope: 'singleton',
         },
       ],
@@ -114,6 +125,7 @@ export class TitanMetricsModule {
 
     return {
       module: TitanMetricsModule,
+      global: factory.isGlobal ?? false,
       providers: providers as any,
       exports: [METRICS_SERVICE_TOKEN, METRICS_OPTIONS_TOKEN, METRICS_STORAGE_TOKEN],
     };

@@ -23,6 +23,8 @@
     "paths": {
       "src/*": ["./src/*"],
       "@omnitron-dev/omnitron/dto/services": ["../src/shared/dto/services.ts"],
+      "@omnitron-dev/titan-metrics/types": ["../../../packages/titan-metrics/src/types.ts"],
+      "@omnitron-dev/omnitron/metrics-storage-reading": ["../src/shared/metrics-storage-reading.ts"],
       "@omnitron-dev/omnitron/sync-reading": ["../src/shared/sync-reading.ts"]
     }
   },

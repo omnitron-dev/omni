@@ -13,6 +13,7 @@ import {
   Typography,
 } from '@mui/material';
 import { Alert } from '@omnitron-dev/prism/components/alert';
+import { metricsStorageReading } from '@omnitron-dev/omnitron/metrics-storage-reading';
 import { StatCard } from '@omnitron-dev/prism/components/card';
 import { Chart, useChart } from '@omnitron-dev/prism/components/chart';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
@@ -66,6 +67,8 @@ function MetricsReader({
   const [refreshing, setRefreshing] = useState(false);
   const previousIngestion = useRef<{ total: number; at: number } | null>(null);
   const period = METRIC_WINDOWS[window];
+  const storage = usePolledResource(() => metrics.getStorageStatus(), { intervalMs: 10_000, enabled: autoRefresh });
+  const storageReading = metricsStorageReading(storage.error ? null : storage.data);
 
   const inventory = usePolledResource(
     async () => {
@@ -136,7 +139,7 @@ function MetricsReader({
   const refresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([inventory.refresh(), history.refresh(), ingestion.refresh()]);
+      await Promise.all([inventory.refresh(), history.refresh(), ingestion.refresh(), storage.refresh()]);
     } finally {
       setRefreshing(false);
     }
@@ -175,6 +178,10 @@ function MetricsReader({
           </Stack>
         }
       />
+      <Alert severity={storageReading.severity} variant="outlined" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+        <Typography variant="body2">{storageReading.summary}</Typography>
+        <Typography variant="caption">{storageReading.detail}{storage.error ? `. ${storage.error}` : ''}</Typography>
+      </Alert>
       {inventory.error && (
         <Alert severity="warning" variant="outlined">
           Application readings: {inventory.error}.{' '}

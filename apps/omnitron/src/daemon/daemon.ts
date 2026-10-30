@@ -59,7 +59,7 @@ import { EventLoopWatch } from '../monitoring/event-loop-watch.js';
 import { EventLoopStallIndicator } from '../monitoring/event-loop-stall.indicator.js';
 import { runtimeDiagnostics } from '../monitoring/runtime-diagnostics.js';
 import { registerDaemonJobs } from './daemon-scheduler.js';
-import { METRICS_SERVICE_TOKEN as TITAN_METRICS_TOKEN, type IMetricsService } from '@omnitron-dev/titan-metrics';
+import { METRICS_SERVICE_TOKEN as TITAN_METRICS_TOKEN, METRICS_STORAGE_TOKEN, type IMetricsService, PostgresMetricsStorage } from '@omnitron-dev/titan-metrics';
 import type { LogManager } from '../monitoring/log-manager.js';
 import type { StateStore } from './state-store.js';
 import type { AuthService } from '../services/auth.service.js';
@@ -91,7 +91,7 @@ import {
   DEPLOY_SERVICE_TOKEN,
   INFRASTRUCTURE_GATE_TOKEN,
   PROJECT_SERVICE_TOKEN,
-  SLAVE_STORAGE_TOKEN,
+  SYNC_SERVICE_TOKEN,
 } from '../shared/tokens.js';
 import {
   APP_EVENTS,
@@ -988,7 +988,7 @@ export class OmnitronDaemon {
 
     // Metrics RPC service — provided by TitanMetricsModule
     const metricsService = await container.resolveAsync<IMetricsService>(TITAN_METRICS_TOKEN);
-    const { MetricsRpcService: MetricsRpc } = await import('@omnitron-dev/titan-metrics');
+    const { OmnitronMetricsRpcService: MetricsRpc } = await import('../services/metrics.rpc-service.js');
     const metricsRpcService = new MetricsRpc(metricsService);
     await this.app.netron.peer.exposeService(metricsRpcService);
 
@@ -1106,36 +1106,19 @@ export class OmnitronDaemon {
       await this.app.netron.peer.exposeService(new ReleaseRpcService(this.releaseService, audit, projectService));
     }
 
-    // Sync service (slave→master data replication)
-    const syncNodeId = `${os.hostname()}-${dc.port}`;
+    // One service owns both the SQLite outbox writer and the replication transport.
+    this.syncService = await container.resolveAsync<SyncService>(SYNC_SERVICE_TOKEN);
 
-    let syncDb: any;
-    if (isSlave) {
-      const slaveStorage = await container.resolveAsync(SLAVE_STORAGE_TOKEN);
-      syncDb = await (slaveStorage as any).getDb();
-    } else {
-      syncDb = await container.resolveAsync(OMNITRON_DB_TOKEN);
-    }
-    this.syncService = new SyncService(syncDb, loggerModule.logger.child({ component: 'sync' }), syncNodeId, dc.role, dc.sync);
-
-    // Remote metrics into the store the console actually reads.
-    //
-    // `ingestMetric` wrote them to `metrics_raw`, and nothing in this
-    // repository reads that table — the metrics page queries titan-metrics'
-    // own storage. So once the pipeline carried anything, it would have
-    // carried it somewhere invisible. Recording through the same service the
-    // master uses for its own readings makes a remote node a LABEL on the
-    // existing series instead of a second store of the same concept.
-    //
-    // `node` is a distinct argument in the sink's signature rather than a
-    // key a caller may forget to put in `labels`: a sample recorded without
-    // it merges with the master's own, and the chart then shows two machines
-    // summed under one name.
+    // The database is the history read by Console. Exposition is updated only after commit.
     if (!isSlave) {
       const syncMetrics = await container.resolveAsync<IMetricsService>(TITAN_METRICS_TOKEN);
+      const storage = await container.resolveAsync(METRICS_STORAGE_TOKEN);
+      if (!(storage instanceof PostgresMetricsStorage)) throw new Error('Master replication requires PostgreSQL metrics storage');
+      this.syncService.setMetricsStorage(storage);
       this.syncService.setMetricsSink((sample) => {
         try {
-          syncMetrics.recordTyped('gauge', sample.name, { ...sample.labels, app: sample.app, node: sample.node }, sample.value);
+          // The transaction already persisted this sample; update exposition only.
+          syncMetrics.getRegistry().gauge(sample.name, { ...sample.labels, app: sample.app, node: sample.node }, sample.value);
         } catch (err) {
           loggerModule.logger.warn(
             { node: sample.node, name: sample.name, error: (err as Error).message },
@@ -1788,6 +1771,8 @@ export class OmnitronDaemon {
 
       // Managed apps health indicator
       titanHealth.registerIndicator(new AppHealthIndicator(orchestrator));
+      const { MetricsStorageIndicator } = await import('../monitoring/metrics-storage.indicator.js');
+      titanHealth.registerIndicator(new MetricsStorageIndicator(await this.app.container.resolveAsync<IMetricsService>(TITAN_METRICS_TOKEN)));
 
       // How long the loop has stood still, and when — the number the console
       // reads for a node that went quiet.
@@ -1998,7 +1983,6 @@ export class OmnitronDaemon {
         // Only a slave replicates. `bufferBatch` is itself a no-op for any
         // other role, but passing null keeps the job from registering at all
         // and makes the scheduler's own "skipped, because" line say so.
-        syncService: isSlave ? this.syncService : null,
         metricsInterval: config.monitoring.metrics.interval,
         healthCheckInterval: config.monitoring.healthCheck.interval,
       });
@@ -2776,7 +2760,9 @@ export class OmnitronDaemon {
       try {
         const mc = await container.resolveAsync<IMetricsService>(TITAN_METRICS_TOKEN);
         await mc.stop();
-      } catch { /* non-critical */ }
+      } catch (error) {
+        runtimeDiagnostics.failure('metrics.shutdown', 'Final metric flush failed; buffered samples were not confirmed', error);
+      }
 
       try {
         const fleet = await container.resolveAsync<FleetService>(FLEET_SERVICE_TOKEN);

@@ -26,6 +26,7 @@ import type { TelemetryRelayService } from '@omnitron-dev/titan-telemetry-relay'
 import type { InfrastructureGate } from '../infrastructure/infrastructure-gate.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import type { ProjectService } from '../services/project.service.js';
+import type { SyncService } from '../services/sync.service.js';
 
 type Token<T> = ReturnType<typeof createToken<T>>;
 
@@ -110,3 +111,4 @@ export const SECRETS_LEGACY_PATH_TOKEN: Token<string | undefined> =
 export { SlaveStorageService } from '../services/slave-storage.service.js';
 import type { SlaveStorageService } from '../services/slave-storage.service.js';
 export const SLAVE_STORAGE_TOKEN: Token<SlaveStorageService> = createToken<SlaveStorageService>('SlaveStorage');
+export const SYNC_SERVICE_TOKEN: Token<SyncService> = createToken<SyncService>('SyncService');

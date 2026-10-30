@@ -25,7 +25,13 @@ export type {
   IMetricsStorage,
   IMetricsService,
   IMetricsRegistry,
+  MetricsStorageCapabilities,
+  MetricsStorageStatus,
+  MetricsWriteReceipt,
 } from './types.js';
+
+export { METRICS_POSTGRES_SCHEMA_V1, METRICS_SQLITE_SCHEMA_V1, prepareMetricSample } from './sql-storage.js';
+export type { MetricsDatabase, SqlMetricsStorageOptions } from './sql-storage.js';
 
 // Tokens
 export {

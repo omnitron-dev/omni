@@ -167,7 +167,7 @@ describe('an ingested remote metric carries the node it came from', () => {
     // master's own readings and the chart shows two machines as one.
     expect(sunk).toHaveLength(1);
     expect(sunk[0]).toMatchObject({ node: 'edge-7', name: 'cpu_percent', app: 'payments', value: 42 });
-    expect(sunk[0]!.labels).toEqual({ region: 'eu' });
+    expect(sunk[0]!.labels).toEqual({ region: 'eu', node: 'edge-7', app: 'payments' });
   });
 
   it('refuses a batch that does not say which node it came from', async () => {

@@ -1,7 +1,7 @@
 {
   "name": "@omnitron-dev/titan-metrics",
   "version": "0.3.1",
-  "description": "Titan-native metrics module — counters, gauges, histograms, time-series storage",
+  "description": "Titan-native metrics module \u2014 counters, gauges, histograms, time-series storage",
   "author": "LuxQuant",
   "license": "MIT",
   "type": "module",
@@ -11,6 +11,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
     }
   },
   "files": [
@@ -23,13 +27,21 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@omnitron-dev/titan": "workspace:*"
+    "@omnitron-dev/titan": "workspace:*",
+    "kysely": "^0.29.7"
   },
   "devDependencies": {
     "@omnitron-dev/titan": "workspace:*",
     "@types/node": "26.6.6",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^5.0.5",
-    "@typescript/native": "npm:typescript@^7.0.2"
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "kysely": "^0.29.7",
+    "better-sqlite3": "^13.0.3"
+  },
+  "peerDependenciesMeta": {
+    "kysely": {
+      "optional": true
+    }
   }
 }

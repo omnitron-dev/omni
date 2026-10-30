@@ -28,6 +28,7 @@
  * Requires the test infrastructure: `pnpm test:up` (postgres on :15432).
  */
 
+import { PostgresMetricsStorage } from '@omnitron-dev/titan-metrics';
 import { createHash } from 'node:crypto';
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { sql, type Kysely } from 'kysely';
@@ -65,7 +66,7 @@ afterAll(async () => {
 beforeEach(async () => {
   if (!testPg.ok) return;
   // `alert_rules` too: its names are unique, and two tests make a rule.
-  await sql`TRUNCATE sync_ingested, logs, alert_events, alert_rules, traces`.execute(db);
+  await sql`TRUNCATE metrics_samples, sync_ingested, logs, alert_events, alert_rules, traces`.execute(db);
   statements.length = 0;
 });
 
@@ -88,11 +89,12 @@ function batch(entries: Entry[]): SyncBatch {
 
 function master(sink?: (sample: { node: string; name: string; value: number }) => void) {
   const svc = new SyncService(db, createNullLogger(), 'MacBook-Pro-9700', 'master', {});
+  svc.setMetricsStorage(new PostgresMetricsStorage(db));
   if (sink) svc.setMetricsSink(sink as never);
   return svc;
 }
 
-async function count(table: 'sync_ingested' | 'logs' | 'alert_events' | 'traces'): Promise<number> {
+async function count(table: 'sync_ingested' | 'logs' | 'alert_events' | 'traces' | 'metrics_samples'): Promise<number> {
   const r = await sql<{ n: string }>`SELECT count(*) AS n FROM ${sql.table(table)}`.execute(db);
   return Number(r.rows[0]!.n);
 }
@@ -132,15 +134,15 @@ describe.skipIf(!testPg.ok)('a batch received one entry at a time', () => {
     expect(result.accepted).toBe(1_000);
     expect(result.failedIds).toEqual([]);
     expect(result.receiptVersion).toBe(1);
-    expect(new Set(result.committedIds)).toEqual(new Set(entries.filter(e => e.category !== 'metrics').map(e => e.id)));
+    expect(new Set(result.committedIds)).toEqual(new Set(entries.map(e => e.id)));
 
     const claims = statements.filter((s) => /^insert into "sync_ingested"/i.test(s)).length;
     const writes = statements.filter((s) => /^insert into/i.test(s)).length;
     // Measured on the per-entry path: 1 000 claims and 1 000 data inserts.
     expect(claims, 'claim statements for 1 000 entries').toBeLessThanOrEqual(2);
     expect(writes, 'insert statements for 1 000 entries in three tables').toBeLessThanOrEqual(6);
-    // A metric is recorded where the console reads it, under the node — and
-    // written to no table: `metrics_raw` had no reader (migration 010).
+    // History and receipts share a transaction; the obsolete metrics_raw stays absent.
+    expect(await count('metrics_samples')).toBe(300);
     expect(statements.some((s) => /metrics_raw/i.test(s)), 'a statement naming metrics_raw').toBe(false);
 
     // And every entry landed where it belongs, under the node's name.
@@ -165,7 +167,7 @@ describe.skipIf(!testPg.ok)('a batch received one entry at a time', () => {
 
     expect(again.accepted).toBe(0);
     expect(again.duplicateIds).toHaveLength(200);
-    expect(new Set(again.committedIds)).toEqual(new Set(entries.filter(e => e.category !== 'metrics').map(e => e.id)));
+    expect(new Set(again.committedIds)).toEqual(new Set(entries.map(e => e.id)));
     expect(await count('logs')).toBe(120);
     expect(recorded, 'metrics recorded once, not again for the duplicate').toHaveLength(60);
   });
@@ -250,7 +252,7 @@ describe.skipIf(!testPg.ok)('a batch received one entry at a time', () => {
 
     // A metric whose claim could not be stored this time is retried later —
     // and recording it now would count it twice once the retry succeeds. Its
-    // claim is the only thing the master stores for it.
+    // payload and claim must either both commit or both roll back.
     recorded.length = 0;
     await sql`ALTER TABLE sync_ingested RENAME TO sync_ingested_away`.execute(db);
     try {

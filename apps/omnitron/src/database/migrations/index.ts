@@ -27,6 +27,7 @@ import * as m011 from './011_alerts_nobody_had_to_write.js';
 import * as m012 from './012_a_disk_nobody_watched.js';
 import * as m013 from './013_an_alarm_delivered.js';
 import * as m014 from './014_replication_receipts.js';
+import * as m015 from './015_persistent_metrics.js';
 
 /**
  * Every Omnitron migration, in apply order.
@@ -49,4 +50,5 @@ export const OMNITRON_MIGRATIONS: Migration[] = [
   { name: '012_a_disk_nobody_watched', up: m012.up, down: m012.down },
   { name: '013_an_alarm_delivered', up: m013.up, down: m013.down },
   m014.migration,
+  m015.migration,
 ];

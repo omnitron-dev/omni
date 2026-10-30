@@ -6,6 +6,7 @@ import type { IEcosystemConfig, IDaemonConfig } from '../config/types.js';
 import type { ProjectService } from '../services/project.service.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import { runtimeDiagnostics } from '../monitoring/runtime-diagnostics.js';
+import { OMNITRON_HOME } from '../config/defaults.js';
 
 /** Certify quiet controller state without draining public ingress or Docker. */
 export class BackendRecoveryMonitor {
@@ -58,7 +59,7 @@ export class BackendRecoveryMonitor {
         registryDigest: source.projects.recoveryRegistryDigest(),
         daemonConfig: this.config, previousEntry: this.artifact.entry, previousPid: process.pid,
         createdAt: this.startedAt, cwd: process.cwd(),
-        environment: Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)),
+        environment: { ...Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)), OMNITRON_HOME },
       };
       if (this.closed || !recoveryState.unchanged(token)) return;
       const serialized = JSON.stringify(record);

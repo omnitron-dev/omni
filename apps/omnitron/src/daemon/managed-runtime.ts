@@ -17,13 +17,14 @@ export interface ManagedRuntime {
   backend: { label: string; unit: string; artifact: string };
 }
 
-export const managedRuntimeFile = () => path.join(OMNITRON_HOME, 'runtime', 'supervision.json');
+export const managedRuntimeFile = (instanceHome = OMNITRON_HOME) => path.join(instanceHome, 'runtime', 'supervision.json');
 export const managedSupervisorSocket = (config: ManagedRuntime) => path.join(config.directory, 'supervisor.sock');
 
-export async function readManagedRuntime(): Promise<ManagedRuntime | null> {
-  const config = await readPrivateRecord<ManagedRuntime>(managedRuntimeFile());
+export async function readManagedRuntime(instanceHome = OMNITRON_HOME): Promise<ManagedRuntime | null> {
+  if (typeof instanceHome !== 'string' || !path.isAbsolute(instanceHome)) throw new Error('An absolute instance home is required');
+  const config = await readPrivateRecord<ManagedRuntime>(managedRuntimeFile(instanceHome));
   if (!config) return null;
-  if (config.protocol !== 1 || path.resolve(config.instanceHome) !== path.resolve(OMNITRON_HOME) ||
+  if (config.protocol !== 1 || typeof config.instanceHome !== 'string' || path.resolve(config.instanceHome) !== path.resolve(instanceHome) ||
       !path.isAbsolute(config.directory) || !path.isAbsolute(config.cwd) ||
       !['user', 'system'].includes(config.scope) || !config.environment ||
       config.environment['OMNITRON_HOME'] !== config.instanceHome ||

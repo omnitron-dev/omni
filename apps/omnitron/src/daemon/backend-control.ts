@@ -42,7 +42,7 @@ export class BackendControlService {
       this.prepared = { protocol: 1, state, daemonConfig: this.daemon.daemonConfig,
         previousEntry: fileURLToPath(new URL('./daemon-entry.js', import.meta.url)), previousPid: process.pid,
         createdAt: new Date().toISOString(), cwd: process.cwd(),
-        environment: Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)),
+        environment: { ...Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)), OMNITRON_HOME },
       };
       const file = path.join(executionDirectory(this.daemon.daemonConfig), `handoff-${state.ticket.id}.json`);
       try { await writePrivateRecord(file, this.prepared); }

@@ -266,7 +266,7 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
           flushInterval: 5_000,
         },
         retention: {
-          maxAge: '7d',
+          maxAge: ecosystemConfig.monitoring.metrics.historyMaxAge ?? '7d',
         },
         isGlobal: true,
         onError: (error, operation) => {

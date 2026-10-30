@@ -927,7 +927,13 @@ export interface IEcosystemConfig {
 
   monitoring: {
     healthCheck: { interval: number; timeout: number };
-    metrics: { interval: number; retention: number };
+    metrics: {
+      interval: number;
+      /** @deprecated Legacy in-memory setting; persistent history uses historyMaxAge. */
+      retention: number;
+      /** Persistent metric history duration. Default: '7d'. Validated by Titan Metrics. */
+      historyMaxAge?: string;
+    };
     /**
      * Where this project's platform takes omnitron's critical alerts: a
      * service method in one of its apps, which each daemon calls — through

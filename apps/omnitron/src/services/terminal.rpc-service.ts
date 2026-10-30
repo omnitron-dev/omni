@@ -1,3 +1,4 @@
+import { RecoveryMutation } from '../daemon/recovery-state.js';
 import { randomUUID, createHash } from 'node:crypto';
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
@@ -209,6 +210,7 @@ export class TerminalRpcService implements IOmnitronTerminalService {
     });
   }
 
+  @RecoveryMutation()
   @Public({ auth: { roles: ADMIN_ROLES } })
   async open(data: { nodeId: string; cols: number; rows: number }): Promise<TerminalSession> {
     const owner = await this.owner();

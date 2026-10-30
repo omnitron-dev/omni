@@ -1,3 +1,4 @@
+import { RecoveryMutation } from '../daemon/recovery-state.js';
 /**
  * Releases, as the daemon holds them.
  *
@@ -123,6 +124,7 @@ export class ReleaseService {
    * unable to tell which set of gate failures belonged to which. One at a
    * time, and the refusal names the one that is running.
    */
+  @RecoveryMutation()
   start(
     request: BuildRequest & { env?: Record<string, string> },
     requestedBy: string | null,

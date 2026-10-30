@@ -1,3 +1,4 @@
+import { RecoveryMutation } from '../daemon/recovery-state.js';
 import { randomUUID } from 'node:crypto';
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import type { AuthContext } from '@omnitron-dev/titan/netron/auth';
@@ -234,6 +235,7 @@ export class FilesRpcService implements IOmnitronFilesService {
     }
     return plan;
   }
+  @RecoveryMutation()
   @Public({ auth: { roles: ADMIN_ROLES } })
   async copy(data: FileCopyRequest): Promise<FileTransfer> {
     if (!data || !Array.isArray(data.sources) || !data.sources.length || data.sources.length > 200)
@@ -422,6 +424,7 @@ export class FilesRpcService implements IOmnitronFilesService {
       .map((j) => this.view(j))
       .reverse();
   }
+  @RecoveryMutation()
   @Public({ auth: { roles: ADMIN_ROLES } })
   async controlTransfer(data: { id: string; action: 'pause' | 'resume' | 'cancel' }): Promise<FileTransfer> {
     const owner = await this.owner('transfer.control', { id: data.id, action: data.action }),

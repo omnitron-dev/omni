@@ -1,3 +1,4 @@
+import { RecoveryMutation, RecoveryBusyError } from '../daemon/recovery-state.js';
 /**
  * ProjectService — Manages projects and their stacks
  *
@@ -249,6 +250,26 @@ export interface ProjectServiceOptions {
 const CREDENTIALED_SERVICES = ['postgres', 'redis', 'minio'] as const;
 
 export class ProjectService extends EventEmitter {
+  recoveryRegistryDigest(): string { return this.registry.recoveryDigest(); }
+  /** Read-only bookkeeping; no timers are stopped and no Docker call runs. */
+  captureRecoveryState(): Awaited<ReturnType<ProjectService['prepareHandoff']>> {
+    if (this.ownershipFrozen || this.startsInFlight.size || this.reconcilingStacks ||
+        [...this.stackStates.values()].some(state => state.status === 'starting' || state.status === 'stopping')) {
+      throw new RecoveryBusyError('Project ownership is changing; a recovery snapshot is not ready');
+    }
+    return this.projectSnapshot(this.infraManager.captureRecoveryState(), this.resumeTimer !== null);
+  }
+
+  private projectSnapshot(
+    infrastructure: Awaited<ReturnType<StackInfrastructureManager['prepareHandoff']>>, reconciling: boolean,
+  ): Awaited<ReturnType<ProjectService['prepareHandoff']>> {
+    return structuredClone({
+      projects: [...this.configRegistry], infrastructure,
+      resumeBackoff: [...this.resumeBackoff], reconciling,
+      stacks: [...this.stackStates].map(([key, { infraService: _infra, ...state }]) => [key, state] as [string, Omit<StackRuntimeState, 'infraService'>]),
+    });
+  }
+
   /** Capture controllers' bookkeeping, retaining native application ownership in the execution host. */
   async prepareHandoff(): Promise<{
     projects: Array<[string, LoadedProject]>;
@@ -266,11 +287,7 @@ export class ProjectService extends EventEmitter {
     this.resumeTimer = null;
     try {
       const infrastructure = await this.infraManager.prepareHandoff();
-      return structuredClone({
-        projects: [...this.configRegistry], infrastructure,
-        resumeBackoff: [...this.resumeBackoff], reconciling: this.handoffReconciling,
-        stacks: [...this.stackStates].map(([key, { infraService: _infra, ...state }]) => [key, state] as [string, Omit<StackRuntimeState, 'infraService'>]),
-      });
+      return this.projectSnapshot(infrastructure, this.handoffReconciling);
     } catch (error) { this.resumeAfterHandoff(); throw error; }
   }
 
@@ -438,6 +455,7 @@ export class ProjectService extends EventEmitter {
     return this.toProjectInfo(project);
   }
 
+  @RecoveryMutation()
   async addProject(name: string, projectPath: string): Promise<IProjectInfo & { reread?: { redefined: number } }> {
     // Already registered AT THIS PATH: read it again rather than refuse.
     //
@@ -470,6 +488,7 @@ export class ProjectService extends EventEmitter {
    * app, only where something changed (`decideRedeploy`). Returns how many
    * running apps were redefined.
    */
+  @RecoveryMutation()
   async rereadProject(name: string): Promise<number> {
     this.configRegistry.delete(name);
     const config = await this.loadProjectConfig(name);
@@ -500,6 +519,7 @@ export class ProjectService extends EventEmitter {
   }
 
   /** Refresh only local container monitoring from the current validated project config. */
+  @RecoveryMutation()
   async refreshInfrastructureOwnership(projectName: string, stackName: string): Promise<{ released: string[]; adopted: string[] }> {
     const project = this.registry.get(projectName);
     if (!project) throw new Error(`Project '${projectName}' not found`);
@@ -517,6 +537,7 @@ export class ProjectService extends EventEmitter {
     return this.infraManager.refreshOwnership(projectName, stackName, stack, effective as InfrastructureConfig, definitions, project.path);
   }
 
+  @RecoveryMutation()
   updateProject(name: string, data: { path?: string }): IProjectInfo {
     const project = this.registry.get(name);
     if (!project) throw new Error(`Project '${name}' not found`);
@@ -540,6 +561,7 @@ export class ProjectService extends EventEmitter {
     return this.toProjectInfo(project);
   }
 
+  @RecoveryMutation()
   removeProject(name: string): void {
     // Stop all running stacks for this project first
     const runningStacks = this.getRunningStacks(name);
@@ -588,6 +610,7 @@ export class ProjectService extends EventEmitter {
   // User Stacks — persisted in omnitron.stacks.json in project root
   // ===========================================================================
 
+  @RecoveryMutation()
   async createStack(project: string, input: {
     name: string;
     type: 'local' | 'remote' | 'cluster';
@@ -709,6 +732,7 @@ export class ProjectService extends EventEmitter {
     return this.toStackInfo(project, input.name, stackConfig);
   }
 
+  @RecoveryMutation()
   async deleteStack(project: string, stackName: string): Promise<void> {
     // Cannot delete config-defined stacks
     const config = await this.loadProjectConfig(project);
@@ -820,6 +844,7 @@ export class ProjectService extends EventEmitter {
    */
   private readonly startsInFlight = new Map<string, Promise<IStackInfo>>();
 
+  @RecoveryMutation()
   async startStack(
     projectName: string,
     stackName: string,
@@ -1172,6 +1197,7 @@ export class ProjectService extends EventEmitter {
     }
   }
 
+  @RecoveryMutation()
   async stopStack(projectName: string, stackName: string): Promise<IStackInfo> {
     const stateKey = `${projectName}/${stackName}`;
     const state = this.stackStates.get(stateKey);
@@ -2247,6 +2273,7 @@ export class ProjectService extends EventEmitter {
     this.logger.info({ intervalMs }, 'Enabled-stacks reconciler started');
   }
 
+  @RecoveryMutation()
   private async reconcileEnabledStacks(): Promise<void> {
     // Collect the divergence set first — cheap, no I/O.
     const pending: Array<{ project: string; stack: string }> = [];
@@ -2325,6 +2352,7 @@ export class ProjectService extends EventEmitter {
   // Config Management
   // ===========================================================================
 
+  @RecoveryMutation()
   async loadProjectConfig(projectName: string): Promise<IEcosystemConfig> {
     const project = this.registry.get(projectName);
     if (!project) throw new Error(`Project '${projectName}' not found`);
@@ -2364,6 +2392,7 @@ export class ProjectService extends EventEmitter {
     return pending;
   }
 
+  @RecoveryMutation()
   async reloadConfig(projectName?: string): Promise<void> {
     if (projectName) {
       await this.loadProjectConfig(projectName);

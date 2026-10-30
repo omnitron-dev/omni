@@ -1,3 +1,4 @@
+import { RecoveryMutation } from '../daemon/recovery-state.js';
 /** Durable control-plane state over Xec's execution, graph and cancellation contracts. */
 import { randomUUID, createHash } from 'node:crypto';
 import type { Kysely, Selectable } from 'kysely';
@@ -194,6 +195,7 @@ export class PipelineService {
     });
   }
 
+  @RecoveryMutation()
   async executePipeline(
     id: string,
     params: Record<string, unknown> = {},

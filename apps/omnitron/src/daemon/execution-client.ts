@@ -11,6 +11,7 @@ import type { ExecutionMetricsSink } from '../observability/metrics-bridge.js';
 import { withControlDeadline, assertPrivateControlSocket } from './private-control-client.js';
 import { runtimeDiagnostics } from '../monitoring/runtime-diagnostics.js';
 import { RpcConnection } from './rpc-connection.js';
+import { recoveryState } from './recovery-state.js';
 
 /** One controller's connection to a resident process owner. Disconnect never stops applications. */
 export class ExecutionClient {
@@ -75,6 +76,15 @@ export class ExecutionClient {
     await this.refresh();
   }
 
+  /** An authoritative, bounded observation for recovery certification. */
+  async recoverySnapshot(): Promise<ExecutionSnapshot> {
+    if (this.closed || this.ownerChanged) throw new Error('Execution observation is unavailable');
+    const remote = await this.observations.service<ExecutionHostService>('OmnitronExecution');
+    const snapshot = await remote.snapshot({ afterEvent: this.eventCursor });
+    this.apply(snapshot);
+    return snapshot;
+  }
+
   /** A private-socket administrator explicitly replaces a dead or retiring controller. */
   async acquire(): Promise<ControllerGrant> {
     const snapshot = await this.rpc().snapshot();
@@ -127,6 +137,11 @@ export class ExecutionClient {
       snapshot = await this.rpc().snapshot();
     }
     return (await this.rpc().prepare({ grant: snapshot.status.controller, candidateId })).ticket;
+  }
+
+  /** Undo an uncommitted local recovery when its journal could not be persisted. */
+  async cancelReplacement(ticket: HandoffTicket): Promise<void> {
+    await this.rpc().abort({ grant: ticket.from, ticket });
   }
 
   async close(): Promise<void> {
@@ -237,6 +252,13 @@ export class ExecutionClient {
   }
 
   private async submit(method: ExecutionMutation, args: unknown[]): Promise<unknown> {
+    // Sampling drains are not lifecycle changes and run every tick. All
+    // other control mutations invalidate recovery before reaching the owner.
+    return method === 'drainChildSamples' ? this.submitMutation(method, args)
+      : recoveryState.run(`execution.${method}`, () => this.submitMutation(method, args));
+  }
+
+  private async submitMutation(method: ExecutionMutation, args: unknown[]): Promise<unknown> {
     const reply = await this.rpc().mutate({ grant: this.currentGrant(), sequence: ++this.sequence, method, args });
     this.apply(reply.snapshot);
     if (['startApp', 'startKnownApp', 'restartApp', 'restartAfterChange', 'reloadApp', 'scaleApp'].includes(method)) {

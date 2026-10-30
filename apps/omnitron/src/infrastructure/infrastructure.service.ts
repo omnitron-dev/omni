@@ -1,3 +1,4 @@
+import { RecoveryMutation, RecoveryBusyError } from '../daemon/recovery-state.js';
 /**
  * InfrastructureService — Self-healing infrastructure provisioner
  *
@@ -218,6 +219,7 @@ export class InfrastructureService {
    * (image / env / ports), log a structured warning so the operator
    * can reconcile intent vs. config.
    */
+  @RecoveryMutation()
   addAppContainers(containers: ResolvedContainer[]): void {
     for (const c of containers) {
       const existing = this.desiredContainers.find((d) => d.name === c.name);
@@ -244,6 +246,7 @@ export class InfrastructureService {
    * Ensures Docker is available, pulls images, creates/starts containers,
    * runs post-provisioning setup, and starts the health monitor.
    */
+  @RecoveryMutation()
   async provision(): Promise<InfrastructureState> {
     // 1. Verify Docker is available
     if (!(await isDockerAvailable())) {
@@ -430,6 +433,7 @@ export class InfrastructureService {
    * running with exact native ownership and spec labels. Freeze and drain all
    * earlier monitor/reconcile work before acknowledging a handoff.
    */
+  @RecoveryMutation()
   async refreshOwnershipFrom(candidate: InfrastructureService): Promise<{ released: string[]; adopted: string[] }> {
     if (this.ownershipFrozen) throw new Error('Infrastructure ownership refresh already in progress');
     this.ownershipFrozen = true;
@@ -486,15 +490,26 @@ export class InfrastructureService {
       await InfrastructureService.validateHandoffContainers(this.desiredContainers,
         this.needsControlPlaneDatabase && !this.usingGlobalOmnitronPg ? this.omnitronPgContainer : undefined);
       this.dispose();
-      return structuredClone({
-        config: this.config, containers: this.desiredContainers, normalizedServices: this.normalizedServices,
-        ...(this.serviceOverrides && { serviceOverrides: this.serviceOverrides }),
-        state: this.state, usingGlobalOmnitronPg: this.usingGlobalOmnitronPg,
-        needsControlPlaneDatabase: this.needsControlPlaneDatabase, monitoring: this.handoffMonitoring,
-        controlPlaneContainer: this.omnitronPgContainer, janitorNetworks: this.janitorNetworks,
-        unhealthyTicks: [...this.unhealthyTicks], restartBackoff: [...this.restartBackoff],
-      });
+      return this.ownershipSnapshot(this.handoffMonitoring);
     } catch (error) { this.resumeAfterHandoff(); throw error; }
+  }
+
+  captureRecoveryState(): InfrastructureHandoffState {
+    if (this.ownershipFrozen || this.activeSweeps.size || this.reconcileTasks.size) {
+      throw new RecoveryBusyError('Infrastructure ownership is changing; a recovery snapshot is not ready');
+    }
+    return this.ownershipSnapshot(this.healthTimer !== null);
+  }
+
+  private ownershipSnapshot(monitoring: boolean): InfrastructureHandoffState {
+    return structuredClone({
+      config: this.config, containers: this.desiredContainers, normalizedServices: this.normalizedServices,
+      ...(this.serviceOverrides && { serviceOverrides: this.serviceOverrides }),
+      state: this.state, usingGlobalOmnitronPg: this.usingGlobalOmnitronPg,
+      needsControlPlaneDatabase: this.needsControlPlaneDatabase, monitoring,
+      controlPlaneContainer: this.omnitronPgContainer, janitorNetworks: this.janitorNetworks,
+      unhealthyTicks: [...this.unhealthyTicks], restartBackoff: [...this.restartBackoff],
+    });
   }
 
   resumeAfterHandoff(): void {
@@ -563,6 +578,7 @@ export class InfrastructureService {
   }
 
   /** Explicit infrastructure removal; process disposal alone preserves containers. */
+  @RecoveryMutation()
   async teardown(): Promise<void> {
     this.dispose();
     // Remove all containers in parallel for fast shutdown — the control-plane
@@ -603,6 +619,7 @@ export class InfrastructureService {
    * the daemon. Replaced whole, as the constructor sets it; `setConfigRoots`
    * and `addAppContainers` then work on this set, as on a first call.
    */
+  @RecoveryMutation()
   redefine(
     config: InfrastructureConfig,
     normalizedServices: Record<string, import('./types.js').IServiceRequirement>,
@@ -733,6 +750,7 @@ export class InfrastructureService {
    * Called before `provision()`, so the recreation the changed spec hash
    * implies happens on the first pass rather than the second.
    */
+  @RecoveryMutation()
   setConfigRoots(
     roots: Map<string, string>,
     staticRoots: Map<string, string>,
@@ -774,6 +792,7 @@ export class InfrastructureService {
     }
   }
 
+  @RecoveryMutation()
   private async reconcileServiceLocked(desired: ResolvedContainer): Promise<void> {
     const actual = await getContainerState(desired.name);
     if (this.ownershipFrozen) return;

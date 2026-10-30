@@ -23,6 +23,7 @@ import { OMNITRON_HOME } from '../config/defaults.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 import type { ISeedProject, IProjectRegistry } from '../config/types.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import { CONFIG_FILE_NAMES } from '../config/loader.js';
@@ -179,6 +180,20 @@ export class ProjectRegistry {
 
   list(): ISeedProject[] {
     return Array.from(this.projects.values());
+  }
+
+  /** Detect external registry edits instead of certifying a stale in-memory cache. */
+  recoveryDigest(): string {
+    const normalize = (projects: ISeedProject[]) => JSON.stringify(projects.map(project => ({
+      name: project.name, path: project.path, registeredAt: project.registeredAt,
+      enabledStacks: [...(project.enabledStacks ?? [])].sort(),
+    })).sort((a, b) => a.name.localeCompare(b.name)));
+    const stored = this.store.selectProjectsSync().map(row => ({ name: row.name, path: row.path, registeredAt: row.added_at,
+      enabledStacks: this.store.kvGetSync<string[]>(ENABLED_STACKS_KV_KEY(row.name)) ?? [],
+    }));
+    const durable = normalize(stored);
+    if (normalize(this.list()) !== durable) throw new Error('Project registry changed outside this controller; refresh it before certifying recovery');
+    return createHash('sha256').update(durable).digest('hex');
   }
 
   getConfigPath(name: string): string | null {

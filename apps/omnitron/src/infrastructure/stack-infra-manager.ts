@@ -1,3 +1,4 @@
+import { RecoveryMutation } from '../daemon/recovery-state.js';
 import { usesGatewayTemplate, withInfrastructureScope } from './service-resolver.js';
 /**
  * StackInfrastructureManager — Per-stack infrastructure isolation
@@ -45,6 +46,14 @@ const REDIS_DB_RANGE_SIZE = 5;
 // =============================================================================
 
 export class StackInfrastructureManager {
+  captureRecoveryState(): Awaited<ReturnType<StackInfrastructureManager['prepareHandoff']>> {
+    return [...this.instances].map(([key, service]) => {
+      const allocation = this.portAllocations.get(key);
+      if (!allocation) throw new Error(`Infrastructure port ownership is missing for ${key}`);
+      return { key, allocation: structuredClone(allocation), infrastructure: service.captureRecoveryState() };
+    });
+  }
+
   async prepareHandoff(): Promise<Array<{
     key: string; allocation: StackPortAllocation;
     infrastructure: import('./infrastructure.service.js').InfrastructureHandoffState;
@@ -88,6 +97,7 @@ export class StackInfrastructureManager {
    * Create and provision infrastructure for a stack.
    * Returns the InfrastructureService instance (already provisioned).
    */
+  @RecoveryMutation()
   async provisionStack(
     project: string,
     stack: string,
@@ -138,6 +148,7 @@ export class StackInfrastructureManager {
   }
 
   /** Resolve the current declaration without provisioning or changing containers. */
+  @RecoveryMutation()
   async refreshOwnership(
     project: string, stack: string, stackConfig: IStackConfig, baseInfraConfig: InfrastructureConfig,
     appDefinitions?: Map<string, import('../config/types.js').IAppDefinition>, projectRoot?: string,
@@ -292,6 +303,7 @@ export class StackInfrastructureManager {
   /**
    * Teardown infrastructure for a stack.
    */
+  @RecoveryMutation()
   async teardownStack(project: string, stack: string): Promise<void> {
     const key = `${project}/${stack}`;
     const infraService = this.instances.get(key);
@@ -321,6 +333,7 @@ export class StackInfrastructureManager {
   /**
    * Explicitly remove all stack infrastructure.
    */
+  @RecoveryMutation()
   async teardownAll(): Promise<void> {
     const entries = [...this.instances.entries()];
     for (const [key, infraService] of entries) {

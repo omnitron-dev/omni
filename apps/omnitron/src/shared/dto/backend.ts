@@ -11,6 +11,7 @@ export interface BackendRuntimeStatus {
     observedAt: string | null;
     error: string | null;
   };
+  recovery?: { status: 'pending' | 'ready' | 'unavailable'; at: string | null; reason: string | null };
   blockers: { terminalSessions: number; fileTransfers: number; pipelineRuns: number; releaseBuilds: number };
 }
 

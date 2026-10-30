@@ -34,6 +34,9 @@ export function BackendRuntimeCard() {
             {!error && connection?.error && <Alert severity="warning">{connection.error}. Application state is unknown; a lost control channel does not establish that applications stopped.</Alert>}
             {data.reason && <Typography variant="body2" color="text.secondary">{data.reason}</Typography>}
             {data.mode === 'resident' && !connection && <Typography variant="body2" color="text.secondary">This backend does not report owner connection freshness.</Typography>}
+            {data.recovery && <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+              Recovery checkpoint: {data.recovery.status}{data.recovery.reason ? ` · ${data.recovery.reason}` : ''}
+            </Typography>}
           </>}
         </Stack>
       </CardContent>

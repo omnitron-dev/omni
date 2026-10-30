@@ -1,3 +1,7 @@
+import { RecoveryMutation, RecoveryBusyError } from './recovery-state.js';
+import { BackendRecoveryMonitor } from './backend-recovery-monitor.js';
+import { checkBackendCandidate, type BackendArtifact } from './backend-candidate.js';
+import { fileURLToPath } from 'node:url';
 /**
  * OmnitronDaemon — The daemon IS a Titan Application
  *
@@ -339,6 +343,7 @@ export class OmnitronDaemon {
   private backendAdmitted = true;
   private stopApplicationsOnExit = false;
   private backendControl: Awaited<ReturnType<typeof startBackendControl>> | null = null;
+  private recoveryMonitor: BackendRecoveryMonitor | null = null;
 
   /** Daemon config accessor for external use (e.g., DaemonRpcService) */
   get daemonConfig(): IDaemonConfig { return this.dc; }
@@ -358,6 +363,7 @@ export class OmnitronDaemon {
       mode: this.execution ? 'resident' : 'coupled', handoffSupported: !!this.execution,
       ...(!this.execution ? { reason: 'This daemon owns application forks and threads directly. Installing the resident owner requires one controlled application restart; hot adoption is unavailable.' } : {}),
       ...(owner ?? {}),
+      ...(this.recoveryMonitor ? { recovery: this.recoveryMonitor.status() } : {}),
       blockers: {
         terminalSessions: this.terminalRpcService?.activeSessionCount() ?? 0,
         fileTransfers: this.filesRpcService?.activeTransferCount() ?? 0,
@@ -378,6 +384,8 @@ export class OmnitronDaemon {
     };
     assertIdle();
     this.preparingBackend = true;
+    await this.recoveryMonitor?.close(true);
+    this.recoveryMonitor = null;
     const gate = this.app.netron.inbound;
     let projects: ProjectService | undefined;
     try {
@@ -400,6 +408,7 @@ export class OmnitronDaemon {
       this.infraService?.resumeAfterHandoff();
       gate.reopen();
       this.preparingBackend = false;
+      await (await this.initializeRecoveryMonitor())?.start();
       throw error;
     }
   }
@@ -412,6 +421,7 @@ export class OmnitronDaemon {
     this.infraService?.resumeAfterHandoff();
     this.app.netron?.inbound.reopen();
     this.preparingBackend = false;
+    await (await this.initializeRecoveryMonitor())?.start();
   }
 
   async retireBackend(): Promise<void> {
@@ -444,6 +454,7 @@ export class OmnitronDaemon {
     if (this.dc.executionHost?.enabled) {
       const connection = await connectExecutionOwner(config, this.dc, createNullLogger(), options?.backendHandoff?.ticket);
       this.execution = connection.client;
+      await this.initializeRecoveryMonitor();
     } else if (options?.backendHandoff) {
       throw new Error('Backend handoff requires the resident execution owner');
     }
@@ -668,12 +679,39 @@ export class OmnitronDaemon {
       this.infraService?.resumeAfterHandoff();
     }
     this.backendAdmitted = true;
+    await this.recoveryMonitor?.start();
 
     // 15. Broadcast daemon.started event
     this.eventBroadcaster?.broadcast(DAEMON_EVENTS.STARTED, {
       version: CLI_VERSION,
       pid: process.pid,
     });
+  }
+
+  private async initializeRecoveryMonitor(): Promise<BackendRecoveryMonitor | null> {
+    if (!this.execution || this.recoveryMonitor) return this.recoveryMonitor;
+    const directory = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+    // Source checkouts remain usable. Automatic recovery requires a sealed
+    // artifact, whose closure can be verified before another process runs it.
+    let artifact: BackendArtifact;
+    try { artifact = await checkBackendCandidate(directory); }
+    catch (error) {
+      runtimeDiagnostics.record({ id: 'execution.recovery-artifact', severity: 'warning',
+        title: 'Automatic backend recovery requires a verified runtime', evidence: [error instanceof Error ? error.message : String(error)],
+        remedy: 'Build and install a sealed backend runtime before enabling automatic controller recovery.' });
+      return null;
+    }
+    // A verified installation must invalidate its previous certificate before
+    // proceeding. A journal failure cannot silently disable this guard.
+    const { executionDirectory } = await import('./execution-launcher.js');
+    this.recoveryMonitor = new BackendRecoveryMonitor(executionDirectory(this.dc), artifact, this.dc, this.execution, () => {
+      if (!this.app || !this.watchConfig || this.preparingBackend || this.handingOffBackend) throw new RecoveryBusyError('Backend ownership is not ready for recovery');
+      const blockers = Object.entries(this.backendRuntimeStatus().blockers).filter(([, count]) => count > 0);
+      if (blockers.length) throw new RecoveryBusyError(`Active work has no automatic recovery checkpoint: ${blockers.map(([name, count]) => `${name}=${count}`).join(', ')}`);
+      return { watchConfig: this.watchConfig, projects: this.app.container.resolve<ProjectService>(PROJECT_SERVICE_TOKEN), infrastructure: this.infraService };
+    });
+    runtimeDiagnostics.resolve('execution.recovery-artifact');
+    return this.recoveryMonitor;
   }
 
   // ============================================================================
@@ -2122,7 +2160,6 @@ export class OmnitronDaemon {
     try {
       const titanPm = await import('@omnitron-dev/titan-pm');
       const { SystemWorkerManager } = await import('../workers/system-worker-manager.js');
-      const { fileURLToPath } = await import('node:url');
       const nodePath = await import('node:path');
       const { omnitronPgConnectionString } = await import('../database/connection.js');
 
@@ -2481,6 +2518,7 @@ export class OmnitronDaemon {
   // Watch Mode Control (used by DaemonRpcService)
   // ============================================================================
 
+  @RecoveryMutation()
   async enableWatch(apps?: string[]): Promise<Array<{ name: string; directory: string }>> {
     if (!this.app) throw new Error('Daemon not started');
     const config = this.watchConfig;
@@ -2514,6 +2552,7 @@ export class OmnitronDaemon {
    * reload updates, which is exactly how the watcher came to be left out of
    * both.
    */
+  @RecoveryMutation()
   async applyWatchConfig(config: IEcosystemConfig): Promise<void> {
     this.watchConfig = config;
     this.fileWatcher?.applyConfig(config);
@@ -2534,6 +2573,7 @@ export class OmnitronDaemon {
     }
   }
 
+  @RecoveryMutation()
   async disableWatch(): Promise<void> {
     this.fileWatcher?.stop();
     this.fileWatcher = null;
@@ -2584,6 +2624,7 @@ export class OmnitronDaemon {
    * Reloads via the same code path the `reloadConfig` RPC uses so
    * orchestrator + RPC service both pick up the new entries.
    */
+  @RecoveryMutation()
   private async reloadConfigOnHup(): Promise<void> {
     if (!this.app) return;
     // Loading first, on its own: a malformed file must be rejected before
@@ -2656,6 +2697,10 @@ export class OmnitronDaemon {
    */
   private registerShutdownTasks(app: Application): void {
     const container = app.container;
+    app.registerShutdownTask('close-recovery-journal', async () => {
+      await this.recoveryMonitor?.close(this.stopApplicationsOnExit || this.handingOffBackend);
+      this.recoveryMonitor = null;
+    }, ShutdownPriority.First);
 
     // Broadcast DAEMON_EVENTS.STOPPING on shutdown start
     app.on(ApplicationEvent.ShutdownStart, ({ reason, details }: any) => {

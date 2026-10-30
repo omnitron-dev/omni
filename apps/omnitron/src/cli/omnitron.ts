@@ -91,8 +91,8 @@ backend.command('upgrade <dist>').description('Activate a built backend artifact
     const { backendUpgradeCommand } = await import('../commands/backend.js');
     await backendUpgradeCommand(dist, options);
   });
-backend.command('recover <checkpoint>').description('Restore a backend from a private checkpoint after confirming no backend is alive')
-  .action(async (checkpoint: string) => {
+backend.command('recover [checkpoint]').description('Recover a dead backend from its certified state, or reconcile an explicit activation checkpoint')
+  .action(async (checkpoint?: string) => {
     const { backendRecoverCommand } = await import('../commands/backend.js');
     await backendRecoverCommand(checkpoint);
   });

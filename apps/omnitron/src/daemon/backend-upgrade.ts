@@ -28,7 +28,7 @@ export interface BackendReplacementResult {
   build: BackendArtifact['build'];
 }
 
-async function spawnReplacement(artifact: BackendArtifact, file: string, record: BackendBootRecord,
+export async function spawnReplacement(artifact: BackendArtifact, file: string, record: BackendBootRecord,
   onSpawn: (child: ChildProcess) => void): Promise<BackendReplacementResult> {
   await verifyBackendEntry(artifact);
   const log = await fs.open(path.join(executionDirectory(record.daemonConfig), `backend-${record.state.ticket.to.controllerId}.log`), 'a', 0o600);
@@ -81,7 +81,7 @@ async function spawnReplacement(artifact: BackendArtifact, file: string, record:
 }
 
 /** Only a process this coordinator spawned can be terminated on failed activation. */
-async function stopFailedCandidate(child: ChildProcess | null): Promise<void> {
+export async function stopFailedCandidate(child: ChildProcess | null): Promise<void> {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
   const exited = once(child, 'exit');
   child.kill('SIGTERM');

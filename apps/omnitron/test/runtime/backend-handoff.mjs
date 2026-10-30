@@ -3,7 +3,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
-import { fork } from 'node:child_process';
+import { fork, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -28,6 +29,9 @@ if (master) {
 }
 const instance = path.join(directory, 'i');
 await fs.mkdir(instance, { mode: 0o700 });
+await fs.writeFile(path.join(instance, 'config.json'), JSON.stringify({
+  executionHost: { enabled: true, directory: path.join(directory, 'e') },
+}), { mode: 0o600 });
 const url = relative => pathToFileURL(path.join(dist, relative)).href;
 const { createDaemonClient } = await import(url('daemon/daemon-client.js'));
 const { replaceBackend, recoverBackend } = await import(url('daemon/backend-upgrade.js'));
@@ -202,6 +206,31 @@ try {
   assert.equal(reconciled.pid, awaitingSelection.pid);
   assert.equal(reconciled.ownerPid, ownerPid);
   await verifyAuthority();
+  client = createDaemonClient(socket, 30_000);
+  const backend = await client.service('OmnitronBackend');
+  await client.setMetricsEnabled({ name: 'counter', enabled: false });
+  assert.equal((await backend.status()).recovery?.status, 'pending');
+  let certificate;
+  for (let attempt = 0; attempt < 60; attempt++) {
+    certificate = (await backend.status()).recovery;
+    if (certificate?.status === 'ready') break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  assert.equal(certificate?.status, 'ready', JSON.stringify(certificate));
+  const runRecovery = () => promisify(execFile)(path.join(runtimeRoot, 'node'), [path.join(dist, 'cli/omnitron.js'), 'backend', 'recover', '--json'], {
+    cwd: directory, env: { ...process.env, OMNITRON_HOME: instance, ...(databaseUrl ? { OMNITRON_DATABASE_URL: databaseUrl } : {}) },
+    timeout: 150_000, maxBuffer: 1024 * 1024,
+  });
+  await assert.rejects(runRecovery, /still alive/);
+  await client.disconnect();
+  assert.ok(ownedBackends.has(reconciled.pid));
+  process.kill(reconciled.pid, 'SIGKILL');
+  await waitDead(reconciled.pid);
+  const recoveredCrash = JSON.parse((await runRecovery()).stdout).data;
+  ownedBackends.add(recoveredCrash.pid);
+  assert.equal(recoveredCrash.ownerPid, ownerPid);
+  assert.ok(recoveredCrash.epoch > reconciled.epoch);
+  await verifyAuthority();
   const after = await probe();
   assert.ok(after.counter > before.counter);
   clearInterval(sampler);
@@ -209,7 +238,8 @@ try {
   assert.equal(failures, 0);
   console.log(JSON.stringify({ test: 'backend-replacement-and-rollback', role:master?'master':'slave', verifiedRoles:[...sessions.keys()], directory, ownerPid,
     applicationPid: before.pid, poolPids:[...poolPids], backendPids: [...ownedBackends], epoch: recovered.execution.epoch,
-    samples, failures, selectorReconciliationPreservedPid: true, counterBefore: before.counter, counterAfter: after.counter }));
+    samples, failures, selectorReconciliationPreservedPid: true, actualBackendCrashRecovered: true,
+    counterBefore: before.counter, counterAfter: after.counter }));
 } finally {
   if (sampler) clearInterval(sampler);
   await topologyConnection?.close();

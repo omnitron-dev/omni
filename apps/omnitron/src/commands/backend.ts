@@ -11,6 +11,7 @@ import { expandPath } from '../shared/paths.js';
 import { executionDirectory } from '../daemon/execution-launcher.js';
 import { readSavedDaemonConfig, savedDaemonOverrides } from './up.js';
 import { checkBackendCandidate } from '../daemon/backend-candidate.js';
+import { recoverBackendAfterCrash } from '../daemon/backend-crash-recovery.js';
 
 export async function backendInstallCommand(directory: string): Promise<void> {
   let installation: RuntimeInstallation | null = null;
@@ -90,6 +91,7 @@ export async function backendStatusCommand(): Promise<void> {
     if (execution.reason) emitInfo(execution.reason);
     if ('owner' in execution && execution.owner) emitInfo(`Execution owner PID ${execution.owner.pid}; epoch ${execution.epoch}; ${execution.phase}`);
     if ('connection' in execution && execution.connection) emitInfo(`Owner connection: ${execution.connection.status}; last observation ${execution.connection.observedAt ?? 'unknown'}${execution.connection.error ? `; ${execution.connection.error}` : ''}`);
+    if ('recovery' in execution && execution.recovery) emitInfo(`Recovery checkpoint: ${execution.recovery.status}${execution.recovery.reason ? `; ${execution.recovery.reason}` : ''}`);
     if (inventoryError) emitInfo(`Application inventory unavailable: ${inventoryError}`);
   } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
   finally { await client.disconnect(); }
@@ -113,9 +115,10 @@ export async function backendUpgradeCommand(directory: string, options: { check?
   } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
 }
 
-export async function backendRecoverCommand(file: string): Promise<void> {
+export async function backendRecoverCommand(file?: string): Promise<void> {
   try {
-    const result = await recoverBackend(path.resolve(file));
+    const config = { ...DEFAULT_DAEMON_CONFIG, ...savedDaemonOverrides(readSavedDaemonConfig()) };
+    const result = file ? await recoverBackend(path.resolve(file)) : await recoverBackendAfterCrash(executionDirectory(config));
     if (!emitJson(result)) emitInfo(`Backend recovered as PID ${result.pid}; execution owner ${result.ownerPid}`);
   } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
 }

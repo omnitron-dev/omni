@@ -318,6 +318,10 @@ export async function acknowledgeReconciliation(db: Kysely<unknown>, nodeId: str
   if (mode !== 'wal' || sync === undefined || sync < 2) throw new Error('Reconciliation acknowledgement requires SQLite WAL and synchronous FULL or EXTRA');
   await prepareReconciliationStore(db);
   return db.transaction().execute(async transaction => {
+    // Reserve the SQLite writer before reading its snapshot. A deferred read
+    // transaction cannot upgrade after the live daemon commits another write;
+    // busy_timeout cannot wait away that stale snapshot (SQLITE_BUSY_SNAPSHOT).
+    await sql`UPDATE sync_replication_state SET id=id WHERE id=1`.execute(transaction);
     const state = (await sql<{ epoch: string; namespaceFrom: string; firstTrackedId: string }>`SELECT epoch,
       cast(namespaceFrom as text) namespaceFrom,cast(firstTrackedId as text) firstTrackedId FROM sync_replication_state WHERE id=1`.execute(transaction)).rows[0];
     if (!state) throw new Error('Replication state is unavailable');

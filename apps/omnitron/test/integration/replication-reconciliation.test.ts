@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { Worker } from 'node:worker_threads';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { sql, type Kysely } from 'kysely';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
@@ -95,6 +97,24 @@ describe.skipIf(!available.ok)('historical metric reconciliation against real Po
     const reopenedDb = await reopened.getDb();
     expect((await readUnverifiedMetrics(reopenedDb as Kysely<unknown>, node)).entries).toEqual([]);
     expect(await reconciliationSummaries(reopenedDb as Kysely<unknown>)).toMatchObject([{ restoredRows: 3 }]);
+  });
+
+  it('waits for a live SQLite writer before reading the acknowledgement snapshot', async () => {
+    const { db, page, storage, file, sync } = await source();
+    const result = await reconcileMetricPage(own.db, storage, page, { restore: true });
+    await prepareReconciliationStore(db as Kysely<unknown>);
+    const worker = new Worker(`
+      const { parentPort, workerData } = require('node:worker_threads');
+      const Database = require(workerData.driver), db = new Database(workerData.file);
+      db.exec('BEGIN IMMEDIATE');
+      db.prepare('UPDATE sync_replication_state SET id=id WHERE id=1').run();
+      parentPort.postMessage('locked');
+      setTimeout(() => { db.exec('COMMIT'); db.close(); }, 150);
+    `, { eval: true, workerData: { file, driver: createRequire(import.meta.url).resolve('better-sqlite3') } });
+    cleanup.push(() => worker.terminate().then(() => {}));
+    await new Promise<void>((resolve, reject) => { worker.once('message', () => resolve()); worker.once('error', reject); });
+    expect(await acknowledgeReconciliation(db as Kysely<unknown>, node, result.proofs)).toEqual({ reconciled: 3 });
+    expect(await sync.getStatus()).toMatchObject({ evidence: { unverifiedRows: 0, committedRows: 3 } });
   });
 
   it('rolls back payload, proof and totals when the actual PostgreSQL COMMIT fails', async () => {

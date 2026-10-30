@@ -100,4 +100,17 @@ describe('metrics for the selected deployment', () => {
     );
     expect(screen.getByRole('region', { name: 'Resident memory chart' })).toHaveTextContent('worker');
   });
+  it('replaces a previous confirmation with an explicit warning when storage diagnostics stop responding', async () => {
+    render(<MemoryRouter><MetricsPage /></MemoryRouter>);
+    await screen.findByText('postgres · database writes confirmed');
+    api.storage.mockRejectedValue(new Error('Storage diagnostics unavailable'));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh metrics' }));
+    await screen.findByText('Metrics persistence is not reported');
+    expect(screen.queryByText('postgres · database writes confirmed')).not.toBeInTheDocument();
+    expect(screen.getByText(/Storage diagnostics unavailable/)).toBeInTheDocument();
+    api.storage.mockResolvedValue({ type: 'postgres', durability: 'persistent', pendingSamples: 2,
+      capacity: 50000, droppedSamples: 0, lastWriteAt: null, lastError: 'database is read-only' });
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh metrics' }));
+    await screen.findByText(/Write failed: database is read-only/);
+  });
 });

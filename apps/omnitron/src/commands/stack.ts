@@ -163,7 +163,7 @@ export async function stackStatusCommand(projectName: string, stackName: string)
             ? (() => {
                 const finding = syncFinding(n.syncStatus);
                 const words = syncWords(finding);
-                return inSync(finding) ? prism.green(words) : prism.red(words);
+                return inSync(finding) ? prism.green(words) : finding.state === 'behind' ? prism.yellow(words) : prism.cyan(words);
               })()
             : '',
         })),

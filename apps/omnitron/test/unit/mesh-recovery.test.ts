@@ -18,7 +18,7 @@ vi.mock('@omnitron-dev/titan/netron', () => ({
 }));
 const connectors: SlaveConnector[] = [];
 const config = { host: 'test.invalid', port: 9700, nodeId: 'registered-id', project: 'project', stack: 'production' };
-const status = (pendingItems = 0) => ({ connected: false, pendingItems, bufferSize: 100, lastSyncAt: Date.now(), failedAttempts: 0, lastError: null });
+const status = (pendingItems = 0) => ({ connected: false, oldestPendingAgeMs: 1000, pendingItems, bufferSize: 100, lastSyncAt: Date.now(), failedAttempts: 0, lastError: null });
 function peer() {
   const ping = vi.fn(async () => ({ version: 'test' }));
   const getSyncStatus = vi.fn(async () => status());
@@ -38,6 +38,21 @@ afterEach(async () => {
 const settle = () => vi.advanceTimersByTimeAsync(0);
 
 describe('mesh recovery and resource ownership', () => {
+  it('reports authentication only after this peer verifies the credential and drops it on disconnect', async () => {
+    let accept!: (value: { success: boolean }) => void;
+    const authenticated = { ...peer(), runTask: vi.fn(() => new Promise(resolve => { accept = resolve; })) };
+    network.peers.push(authenticated, peer());
+    const c = connector(async () => ({ url: 'tcp://127.0.0.1:1', via: 'direct', token: 'test-credential', close: async () => {} }));
+    await c.addSlave(config); await settle();
+    expect(c.getConnections()[0]).toMatchObject({ status: 'connecting', authenticated: false });
+    accept({ success: true }); await settle();
+    expect(c.getConnections()[0]).toMatchObject({ status: 'connected', authenticated: true });
+    network.instances[0].handlers.get('peer:disconnect')(); await settle();
+    expect(c.getConnections()[0]?.authenticated).toBe(false);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(c.getConnections()[0]?.authenticated).toBe(false);
+  });
+
   it('recovers past a stuck tunnel close and ignores callbacks from the old connection', async () => {
     const first = peer(), next = peer(); network.peers.push(first, next);
     const dial = vi.fn()
@@ -116,7 +131,7 @@ it('reports connection, retries, fresh acknowledgements and unknown stale readin
   const now = Date.now();
   const mesh = { nodeId: 'node', inMesh: true, status: 'connected' as const, via: 'ssh-tunnel' as const,
     authenticated: true, lastHeartbeat: now, lastError: null, syncStatus: status(5), syncStatusAt: now };
-  expect(meshReading(mesh, now)).toMatchObject({ state: 'connected', replication: 'in sync · 5 since the last pull' });
+  expect(meshReading(mesh, now)).toMatchObject({ state: 'connected', replication: 'keeping up · 5 waiting, oldest 1 s' });
   expect(meshReading(mesh, now + 61000)).toMatchObject({ state: 'stale', replication: expect.stringContaining('Unknown') });
   expect(meshReading({ ...mesh, lastPullError: 'database unavailable' }, now).replication).toContain('database unavailable');
   const lost = meshReading({ ...mesh, status: 'error', lastError: 'Heartbeat timeout', reconnectAt: now + 3000, reconnectAttempt: 2 }, now);

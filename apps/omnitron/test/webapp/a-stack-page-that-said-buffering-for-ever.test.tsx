@@ -52,6 +52,7 @@ const testStack = (lastSyncAgoMs: number) => ({
         connected: false,
         lastSyncAt: Date.now() - lastSyncAgoMs,
         pendingItems: 258,
+        oldestPendingAgeMs: 12_000,
         bufferSize: 258_000,
         lastError: null,
         failedAttempts: 0,
@@ -91,7 +92,7 @@ describe('a stack page that said buffering for ever', () => {
     select(15_000);
     await renderAt('/stacks/test');
 
-    expect(await screen.findByText('in sync · 258 since the last pull')).toBeInTheDocument();
+    expect(await screen.findByText('keeping up · 258 waiting, oldest 12 s')).toBeInTheDocument();
     expect(screen.getByText(/replication in sync/)).toBeInTheDocument();
     expect(screen.queryByText(/Buffering|items pending sync/)).not.toBeInTheDocument();
   });

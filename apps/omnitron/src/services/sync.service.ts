@@ -264,6 +264,8 @@ export class SyncService {
   private isSyncing = false;
   private backoff: SyncBackoffState = { attempt: 0, nextRetryAt: 0 };
   private lastSyncAt: number | null = null;
+  /** At most 60 one-second buckets, independent of batch size and polling rate. */
+  private readonly deliveries = new Map<number, number>();
   private lastError: string | null = null;
   private disposed = false;
 
@@ -478,9 +480,7 @@ export class SyncService {
    */
   async ackDrained(ids: string[]): Promise<{ released: number }> {
     if (ids.length === 0) return { released: 0 };
-    await this.markSynced(ids);
-    this.lastSyncAt = Date.now();
-    return { released: ids.length };
+    return { released: await this.markSynced(ids) };
   }
 
   // ===========================================================================
@@ -538,8 +538,7 @@ export class SyncService {
 
         const outcome = await this.pushBatch(batch);
         const delivered = deliveredIds(outcome);
-        await this.markSynced(delivered);
-        totalSynced += delivered.length;
+        totalSynced += await this.markSynced(delivered);
         totalRefused += outcome.failed.length;
 
         // Entries the master rejected stay pending, so the next fetch
@@ -582,7 +581,6 @@ export class SyncService {
 
       // Reset backoff on success
       this.backoff = { attempt: 0, nextRetryAt: 0 };
-      this.lastSyncAt = Date.now();
       this.lastError = null;
     } catch (err) {
       this.noteSyncFailure(describeError(err));
@@ -678,13 +676,33 @@ export class SyncService {
     };
   }
 
-  private async markSynced(ids: string[]): Promise<void> {
-    if (ids.length === 0) return;
-    await this.db
+  private async markSynced(ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    const now = Date.now();
+    const result = await this.db
       .updateTable('sync_buffer')
-      .set({ syncedAt: new Date() })
+      .set({ syncedAt: new Date(now) })
       .where('id', 'in', ids)
-      .execute();
+      .where('syncedAt', 'is', null)
+      .executeTakeFirst();
+    const released = Number(result.numUpdatedRows);
+    if (released > 0) {
+      this.lastSyncAt = now;
+      const second = Math.floor(now / 1000);
+      this.deliveries.set(second, (this.deliveries.get(second) ?? 0) + released);
+      this.deliveryRate(now);
+    }
+    return released;
+  }
+
+  private deliveryRate(now: number): number {
+    const cutoff = Math.floor(now / 1000) - 59;
+    let count = 0;
+    for (const [second, entries] of this.deliveries) {
+      if (second < cutoff) this.deliveries.delete(second);
+      else count += entries;
+    }
+    return count / 60;
   }
 
   /**
@@ -1383,28 +1401,31 @@ export class SyncService {
   async getStatus(): Promise<ISyncStatus> {
     let pendingItems = 0;
     let bufferSize = 0;
+    let oldestPendingAgeMs: number | null = null;
 
     if (this.role === 'slave') {
-      try {
-        const result = await this.db
-          .selectFrom('sync_buffer')
-          .select((eb) => [
-            eb.fn.count('id').as('count'),
-          ])
-          .where('syncedAt', 'is', null)
-          .executeTakeFirst();
-        pendingItems = Number(result?.count ?? 0);
-        // Estimate buffer size: pending rows * ~256 bytes average row size
-        bufferSize = pendingItems * 256;
-      } catch {
-        // Table may not exist yet
-      }
+      const result = await this.db
+        .selectFrom('sync_buffer')
+        .select((eb) => [
+          eb.fn.count('id').as('count'),
+          eb.fn.min('createdAt').as('oldest'),
+        ])
+        .where('syncedAt', 'is', null)
+        .executeTakeFirst();
+      pendingItems = Number(result?.count ?? 0);
+      if (result?.oldest != null) oldestPendingAgeMs = Math.max(0, Date.now() - Date.parse(toIsoUtc(result.oldest)));
+      // Estimate buffer size: pending rows * ~256 bytes average row size
+      bufferSize = pendingItems * 256;
+      // A failed read reaches the caller as unavailable, never as an empty queue.
     }
 
     return {
       connected: this.masterInvoke !== null,
       lastSyncAt: this.lastSyncAt,
       pendingItems,
+      oldestPendingAgeMs,
+      lastSyncAgeMs: this.lastSyncAt === null ? null : Math.max(0, Date.now() - this.lastSyncAt),
+      deliveryRatePerSecond: this.deliveryRate(Date.now()),
       bufferSize,
       lastError: this.lastError,
       failedAttempts: this.backoff.attempt,

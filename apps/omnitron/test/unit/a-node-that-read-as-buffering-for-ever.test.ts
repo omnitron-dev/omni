@@ -18,6 +18,7 @@ const status = (pendingItems: number, lastSyncAgoMs: number | null, connected = 
   pendingItems,
   lastSyncAt: lastSyncAgoMs === null ? null : NOW - lastSyncAgoMs,
   connected,
+  oldestPendingAgeMs: 12_000,
 });
 
 describe('a node that read as buffering for ever', () => {
@@ -30,7 +31,7 @@ describe('a node that read as buffering for ever', () => {
   it('is in sync with the entries since a recent pull waiting', () => {
     const finding = syncFinding(status(515, 18_000), NOW);
     expect(inSync(finding)).toBe(true);
-    expect(syncWords(finding)).toBe('in sync · 515 since the last pull');
+    expect(syncWords(finding)).toBe('keeping up · 515 waiting, oldest 12 s');
   });
 
   it('is behind when entries wait and no pull has come', () => {

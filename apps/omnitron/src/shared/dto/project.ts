@@ -190,6 +190,12 @@ export interface ISyncStatus {
   lastSyncAt: number | null;
   /** Number of buffered items pending sync. Counted from `sync_buffer`. */
   pendingItems: number;
+  /** Age of the oldest pending row, measured on the node (no clock skew). Absent on older nodes. */
+  oldestPendingAgeMs?: number | null;
+  /** Age of the last actual acknowledgement, measured on the node. */
+  lastSyncAgeMs?: number | null;
+  /** Actual rows acknowledged per second over the last 60 seconds, including idle time. */
+  deliveryRatePerSecond?: number;
   /** Local buffer size in bytes, estimated from `pendingItems`. */
   bufferSize: number;
   /**

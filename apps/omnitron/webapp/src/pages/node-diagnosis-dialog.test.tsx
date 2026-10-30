@@ -68,7 +68,7 @@ it('explains the separate master relay without treating access failures as unsup
 });
 
 it('uses delivery acknowledgements instead of the unused push-connection flag', () => {
-  const data = { nodeId: 'remote', reachable: true, error: null, sync: { connected: false, pendingItems: 30, bufferSize: 4096, lastSyncAt: Date.now(), lastError: null, failedAttempts: 0 } };
+  const data = { nodeId: 'remote', reachable: true, error: null, sync: { connected: false, oldestPendingAgeMs: 1000, pendingItems: 30, bufferSize: 4096, lastSyncAt: Date.now(), lastError: null, failedAttempts: 0 } };
   const rendered = render(<NodeSyncStatus data={data} />);
   expect(screen.getByText('keeping up')).toBeTruthy();
   rendered.rerender(<NodeSyncStatus data={{ ...data, sync: { ...data.sync, lastSyncAt: Date.now() - 120000 } }} />);

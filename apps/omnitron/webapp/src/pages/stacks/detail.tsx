@@ -39,7 +39,7 @@ import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
 import { StackReleaseCard } from 'src/components/stack-release-card';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import type { IStackAppStatus, IStackInfo, IStackNodeStatus } from '@omnitron-dev/omnitron/dto/services';
-import { inSync, syncFinding, syncWords } from '@omnitron-dev/omnitron/sync-reading';
+import { syncFinding, syncWords, syncSeverity } from '@omnitron-dev/omnitron/sync-reading';
 
 const STATUS_COLORS: Record<string, string> = {
   running: '#22c55e',
@@ -486,10 +486,13 @@ function InfoRow({ label, value, mono }: { label: string; value: string; mono?: 
  */
 function replicationWords(nodes: IStackNodeStatus[]): string {
   const findings = nodes.map((n) => (n.syncStatus ? syncFinding(n.syncStatus) : null));
-  const behind = findings.filter((f) => f && !inSync(f)).length;
+  const behind = findings.filter((f) => f?.state === 'behind').length;
+  const catchingUp = findings.filter((f) => f?.state === 'catching-up').length;
+  const unknown = findings.filter((f) => f?.state === 'unknown').length;
   const silent = findings.filter((f) => f === null).length;
-  if (behind === 0 && silent === 0) return 'replication in sync';
-  return [behind > 0 && `${behind} of ${nodes.length} behind`, silent > 0 && `${silent} not reporting`]
+  if (behind + catchingUp + unknown + silent === 0) return 'replication in sync';
+  return [behind > 0 && `${behind} of ${nodes.length} behind`, catchingUp > 0 && `${catchingUp} catching up`,
+    unknown > 0 && `${unknown} queue age unavailable`, silent > 0 && `${silent} not reporting`]
     .filter(Boolean)
     .join(', ');
 }
@@ -528,7 +531,7 @@ function NodeSyncRow({ node }: { node: IStackNodeStatus }) {
             <Chip
               label={syncWords(finding)}
               size="small"
-              color={inSync(finding) ? 'success' : 'error'}
+              color={syncSeverity(finding)}
               variant="outlined"
               sx={{ height: 20, fontSize: '0.6rem', fontWeight: 600 }}
             />

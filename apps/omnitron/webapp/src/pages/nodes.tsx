@@ -50,7 +50,7 @@ import type {
 } from '@omnitron-dev/omnitron/dto/services';
 import { verdictOf, omnitronVerdict, firstReason, clusterDisagreement, type LayerVerdict } from 'src/utils/node-diagnosis';
 import { omnitronFinding } from '@omnitron-dev/omnitron/node-check';
-import { meshReading, syncFinding } from '@omnitron-dev/omnitron/sync-reading';
+import { meshReading, syncFinding, syncSeverity, syncWords } from '@omnitron-dev/omnitron/sync-reading';
 import { appsMemoryOf } from 'src/utils/daemon-memory';
 import { logHref } from 'src/utils/log-location';
 import { useRealtimeStore } from 'src/stores/realtime.store';
@@ -947,22 +947,19 @@ export function NodeSyncStatus({ data }: { data: INodeSyncStatus | null }) {
 
   const s = data.sync;
   const finding = syncFinding(s);
-  const stalled = finding.state === 'behind';
   return (
     <Box sx={{ py: 0.5 }}>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: 0.5 }}>
         <Chip
           size="small"
-          label={stalled ? 'behind' : finding.state === 'pulling' ? 'keeping up' : 'in sync'}
-          color={stalled ? 'warning' : 'success'}
+          label={finding.state === 'unknown' ? 'delivery active' : finding.state === 'pulling' ? 'keeping up' : finding.state === 'synced' ? 'in sync' : finding.state.replace('-', ' ')}
+          color={syncSeverity(finding)}
           sx={{ height: 20, fontSize: 11 }}
         />
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          {/* A count with no age is half the answer: a buffer of 40,000 that
-              drained a second ago is healthy, and one of 12 that has not moved
-              since yesterday is not. */}
-          {s.pendingItems} pending · {Math.round(s.bufferSize / 1024)} KB · last delivery{' '}
+          {syncWords(finding)} · {Math.round(s.bufferSize / 1024)} KB · last delivery{' '}
           {s.lastSyncAt ? formatAge(new Date(s.lastSyncAt).toISOString()) : 'never'}
+          {s.deliveryRatePerSecond !== undefined && ` · ${s.deliveryRatePerSecond.toFixed(1)} entries/s (60 s)`}
         </Typography>
         {s.failedAttempts > 0 && (
           <Chip size="small" color="error" label={`${s.failedAttempts} failed attempts`} sx={{ height: 18, fontSize: 10 }} />

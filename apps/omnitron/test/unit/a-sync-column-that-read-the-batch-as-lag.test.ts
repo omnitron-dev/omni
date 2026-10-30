@@ -27,7 +27,7 @@ describe('the Sync column', () => {
 
   it('tells a node keeping up from one falling behind', () => {
     const now = Date.UTC(2026, 8, 23, 13, 30, 0);
-    const keeping = syncFinding({ pendingItems: 258, lastSyncAt: now - 12_000 }, now);
+    const keeping = syncFinding({ pendingItems: 258, lastSyncAt: now - 12_000, oldestPendingAgeMs: 11_000 }, now);
     const behind = syncFinding({ pendingItems: 258, lastSyncAt: now - 300_000 }, now);
     expect(inSync(keeping)).toBe(true);
     expect(inSync(behind)).toBe(false);

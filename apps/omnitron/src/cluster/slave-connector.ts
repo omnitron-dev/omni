@@ -77,6 +77,8 @@ export interface SlaveConnection {
   reconnectTimer: NodeJS.Timeout | null;
   /** How this connection was reached, and what has to be released. */
   link: MeshLink | null;
+  /** Set only after this peer accepts the credential; cleared before closing it. */
+  authenticated?: boolean;
   /**
    * What the node last said about its own replication, or null for a node we
    * have not heard from. Null is the honest answer: the console used to
@@ -384,7 +386,7 @@ export class SlaveConnector {
       lastHeartbeat: conn.lastHeartbeat,
       lastError: conn.lastError,
       via: conn.link?.via ?? null,
-      authenticated: Boolean(conn.link?.token),
+      authenticated: conn.status === 'connected' && conn.authenticated === true,
       syncStatus: conn.syncStatus,
       syncStatusAt: conn.syncStatusAt ?? null,
       lastSyncStatusError: conn.lastSyncStatusError,
@@ -504,6 +506,7 @@ export class SlaveConnector {
   private async connectSlave(key: string, conn: SlaveConnection): Promise<void> {
     if (this.disposed || conn.removed || conn.status === 'connected' || conn.status === 'connecting') return;
     conn.status = 'connecting';
+    conn.authenticated = false;
     const generation = (conn.generation ?? 0) + 1;
     conn.generation = generation;
     conn.reconnectAt = null;
@@ -536,12 +539,13 @@ export class SlaveConnector {
       if (!current()) { await this.closeResources(netron, link); return; }
       conn.peer = peer;
       conn.status = 'connected';
+      conn.authenticated = Boolean(connectedLink.token);
       conn.lastHeartbeat = Date.now();
       conn.lastError = null;
       conn.cleanupError = null;
       conn.reconnectAttempt = 0;
       this.logger.info({ host: conn.config.host, port: conn.config.port,
-        slaveVersion: pingResult?.version, via: link.via, authenticated: Boolean(link.token) },
+        slaveVersion: pingResult?.version, via: link.via, authenticated: conn.authenticated },
       'Node joined the mesh');
       void this.refreshSyncStatus(conn);
       void this.pullSyncData(key, conn);
@@ -587,6 +591,7 @@ export class SlaveConnector {
     conn.netron = null;
     conn.link = null;
     conn.peer = null;
+    conn.authenticated = false;
     conn.status = 'disconnected';
     conn.syncStatus = null;
     conn.syncStatusAt = null;

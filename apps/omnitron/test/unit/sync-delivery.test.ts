@@ -64,9 +64,11 @@ function stubDb(pending: Array<{ id: string }>) {
     updateTable: () => ({
       set: () => ({
         where: (_col: string, _op: string, ids: string[]) => ({
-          execute: async () => {
-            markedSynced.push(...ids);
-          },
+          where: () => ({ executeTakeFirst: async () => {
+            const released = ids.filter(id => !markedSynced.includes(id));
+            markedSynced.push(...released);
+            return { numUpdatedRows: BigInt(released.length) };
+          } }),
         }),
       }),
     }),

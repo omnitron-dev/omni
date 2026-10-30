@@ -2587,7 +2587,7 @@ export class OrchestratorService extends EventEmitter {
       // The app re-entered a live state — drop the previous crash
       // context so a future `omnitron inspect` shows the *next*
       // crash, not the last one.
-      handle.clearLastExit();
+      if (handle.status === 'online') handle.clearLastExit();
     });
 
     // A child that is down leaves the app partial until it is back — a
@@ -2686,12 +2686,9 @@ export class OrchestratorService extends EventEmitter {
         expected: false,
         message: error.message,
       });
-      // The supervisor gives up on a non-critical child whose start failed (a
-      // critical one throws, and `startApp` says so). That went unseen while
-      // the first child's start made the app `online`; now the app would wait
-      // for a child that is not coming, in `starting` — which `omnitron start`
-      // takes for a start in progress and leaves alone. A declared process
-      // that did not start is an app that did not start.
+      // The supervisor retries within its configured budget. Until a real
+      // ready event arrives, the application is unavailable, not still booting.
+      handle.childGone(childName);
       if (handle.status === 'starting') handle.markErrored();
       this.logger.error(
         { app: entry.name, child: childName, err: error.message },
@@ -2704,6 +2701,16 @@ export class OrchestratorService extends EventEmitter {
       handle.restarts = attempt;
       this.logger.info({ app: entry.name, child: childName, attempt }, 'Process restarting');
       this.emit('app:restart', entry.name, attempt);
+    });
+
+    supervisor.on('child:recovery-stopped', (childName: string, error: Error) => {
+      handle.status = 'crashed';
+      this.logger.error(
+        { app: entry.name, child: childName, reason: error.message },
+        'Process recovery stopped by restart policy; inspect the last failure before retrying',
+      );
+      this.persistState();
+      this.emit('app:escalated', entry.name, childName);
     });
 
     supervisor.on('escalate', (childName: string, _error: Error) => {

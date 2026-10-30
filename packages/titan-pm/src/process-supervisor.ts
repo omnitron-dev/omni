@@ -41,11 +41,16 @@ import { SUPERVISOR_METADATA_KEY } from './decorators.js';
  *       Emitted on every startup failure, including non-critical/optional
  *       children that no longer propagate the exception. Subscribe to
  *       observe partial-startup conditions instead of polling.
+ *   - 'child:recovery-stopped' (name, error) — policy refused further recovery
  *   - 'escalate' (name, error) — critical child exceeded max restarts
  *   - 'shutdown' () — supervisor shutting down
  */
 export class ProcessSupervisor extends EventEmitter {
   private children = new Map<string, { info: ISupervisorChild; proxy: any }>();
+  private childDefinitions = new Map<string, ISupervisorChild>();
+  private failedChildren = new Map<string, { info: ISupervisorChild; error: Error }>();
+  private pendingRecovery = new Map<string, { info: ISupervisorChild; error: Error }>();
+  private recoveryPromise: Promise<void> | null = null;
   /** Reverse lookup map for O(1) processId -> name resolution */
   private readonly processIdToName = new Map<string, string>();
   private restartCounts = new Map<string, number>();
@@ -173,6 +178,7 @@ export class ProcessSupervisor extends EventEmitter {
 
     // Resolve children: config-based or decorator-based
     const childrenMap = this.configChildren ?? this.getDecoratorChildren();
+    this.childDefinitions = new Map(childrenMap);
 
     // T#52: register the crash handler BEFORE starting any children.
     // The historical order was:
@@ -198,6 +204,7 @@ export class ProcessSupervisor extends EventEmitter {
     }
 
     this.isStarted = true;
+    this.beginRecovery();
   }
 
   /**
@@ -212,6 +219,10 @@ export class ProcessSupervisor extends EventEmitter {
    * loop that was tearing it down.
    */
   async stop(): Promise<void> {
+    await this.stopInternal(true);
+  }
+
+  private async stopInternal(joinRecovery: boolean): Promise<void> {
     // A stop() issued while start() is still in flight used to read
     // `isStarted === false` — the flag `doStart()` only assigns after its last
     // child has spawned — conclude there was nothing to stop and return. The
@@ -230,7 +241,9 @@ export class ProcessSupervisor extends EventEmitter {
 
     // Nothing was ever started, and nothing was left half-started by a start()
     // that threw.
-    if (!this.isStarted && this.children.size === 0) {
+    if (!this.isStarted && this.children.size === 0 && !this.crashHandler && !this.recoveryPromise) {
+      this.failedChildren.clear();
+      this.pendingRecovery.clear();
       this.isStopping = false;
       return;
     }
@@ -253,6 +266,10 @@ export class ProcessSupervisor extends EventEmitter {
       sleep.resolve();
     }
     this.pendingBackoffSleeps.clear();
+    this.pendingRecovery.clear();
+    // A restart may already be waiting for a child to become ready. Join it
+    // before taking the shutdown inventory, so no late child escapes stop().
+    if (joinRecovery) await this.recoveryPromise;
 
     // Stop all children in reverse order
     const names = Array.from(this.children.keys()).reverse();
@@ -261,6 +278,8 @@ export class ProcessSupervisor extends EventEmitter {
     }
 
     this.isStarted = false;
+    this.failedChildren.clear();
+    this.pendingRecovery.clear();
     this.isStopping = false;
   }
 
@@ -290,11 +309,11 @@ export class ProcessSupervisor extends EventEmitter {
    * Restart a specific child
    */
   async restartChild(name: string): Promise<void> {
-    const child = this.children.get(name);
-    if (!child) return;
+    const definition = this.children.get(name)?.info ?? this.failedChildren.get(name)?.info;
+    if (!definition) return;
 
     await this.stopChild(name);
-    await this.startChild(name, child.info);
+    await this.startChild(name, definition);
   }
 
   // ============================================================================
@@ -409,6 +428,8 @@ export class ProcessSupervisor extends EventEmitter {
       }
 
       this.children.set(name, { info: childDef, proxy });
+      this.failedChildren.delete(name);
+      this.pendingRecovery.delete(name);
       // P1-D — DO NOT reset `restartCounts` on successful start.
       // Pre-fix this zeroed the counter every time a child came back
       // up, so a crash → quick-restart → 2s of life → crash → restart
@@ -440,9 +461,13 @@ export class ProcessSupervisor extends EventEmitter {
       // regardless of caller behavior.
       this.emit('child:start-failed', name, error as Error);
 
-      if (!childDef.optional && childDef.critical) {
+      this.failedChildren.set(name, { info: childDef, error: error as Error });
+      // Required critical startup still fails the supervisor immediately.
+      // Once running, failed restarts consume the same budget as crashes.
+      if (!this.isStarted && !childDef.optional && childDef.critical) {
         throw error;
       }
+      this.queueRecovery(name, childDef, error as Error);
     }
   }
 
@@ -523,7 +548,7 @@ export class ProcessSupervisor extends EventEmitter {
         // being killed again moments later. Emitting `child:crash`
         // (without restart) preserves observability for tests that
         // assert on the event.
-        if (this.isStopping || this.isEscalating || !this.isStarted) {
+        if (this.isStopping || this.isEscalating) {
           const name = this.processIdToName.get(info.id);
           if (name) this.emit('child:crash', name, error);
           return;
@@ -533,7 +558,8 @@ export class ProcessSupervisor extends EventEmitter {
           const child = this.children.get(name);
           if (child) {
             this.emit('child:crash', name, error);
-            await this.handleChildCrash(name, child.info, error);
+            this.queueRecovery(name, child.info, error);
+            await this.recoveryPromise;
           }
         }
       } catch (handlerError) {
@@ -542,6 +568,37 @@ export class ProcessSupervisor extends EventEmitter {
     };
 
     this.manager.on('process:crash', this.crashHandler);
+  }
+
+  private queueRecovery(name: string, info: ISupervisorChild, error: Error): void {
+    if (this.isStopping || this.isEscalating) return;
+    this.pendingRecovery.set(name, { info, error });
+    this.beginRecovery();
+  }
+
+  /** One recovery loop also serializes ONE_FOR_ALL/REST_FOR_ONE sibling changes. */
+  private beginRecovery(): void {
+    if (this.recoveryPromise || !this.isStarted || this.isStopping || this.isEscalating || !this.pendingRecovery.size) return;
+    this.recoveryPromise = this.drainRecovery().catch((error: unknown) => {
+      this.logger.error({ err: error }, 'Supervisor recovery failed');
+    }).finally(() => {
+      this.recoveryPromise = null;
+      this.beginRecovery();
+    });
+  }
+
+  private async drainRecovery(): Promise<void> {
+    while (this.isStarted && !this.isStopping && !this.isEscalating && this.pendingRecovery.size) {
+      const [name, failure] = this.pendingRecovery.entries().next().value!;
+      this.pendingRecovery.delete(name);
+      try {
+        await this.handleChildCrash(name, failure.info, failure.error);
+      } catch (error) {
+        this.logger.error({ err: error, child: name, originalError: String(failure.error) }, 'Error in crash handler');
+        this.emit('child:recovery-stopped', name,
+          new Error(`Recovery policy failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error }));
+      }
+    }
   }
 
   private async handleChildCrash(name: string, childDef: ISupervisorChild, error: Error): Promise<void> {
@@ -561,6 +618,7 @@ export class ProcessSupervisor extends EventEmitter {
         break;
       case RestartDecision.IGNORE:
       default:
+        this.emit('child:recovery-stopped', name, error);
         break;
     }
   }
@@ -710,27 +768,36 @@ export class ProcessSupervisor extends EventEmitter {
   }
 
   private async restartAll(): Promise<void> {
-    const children = Array.from(this.children.entries());
+    const children = this.restartEntries();
     for (const [name] of children) {
       await this.stopChild(name);
     }
-    for (const [name, child] of children) {
-      await this.startChild(name, child.info);
+    for (const [name, definition] of children) {
+      if (this.isStopping) break;
+      await this.startChild(name, definition);
     }
   }
 
   private async restartRestForOne(failedChild: string): Promise<void> {
-    const children = Array.from(this.children.entries());
+    const children = this.restartEntries();
     const failedIndex = children.findIndex(([name]) => name === failedChild);
     if (failedIndex === -1) return;
 
     for (let i = failedIndex; i < children.length; i++) {
       const entry = children[i];
       if (!entry) continue;
-      const [name, child] = entry;
+      const [name, definition] = entry;
+      if (this.isStopping) break;
       await this.stopChild(name);
-      await this.startChild(name, child.info);
+      await this.startChild(name, definition);
     }
+  }
+
+  private restartEntries(): Array<[string, ISupervisorChild]> {
+    const definitions = new Map(this.childDefinitions);
+    for (const [name, child] of this.children) definitions.set(name, child.info);
+    for (const [name, child] of this.failedChildren) definitions.set(name, child.info);
+    return [...definitions].filter(([name]) => this.children.has(name) || this.failedChildren.has(name));
   }
 
   /**
@@ -793,21 +860,23 @@ export class ProcessSupervisor extends EventEmitter {
         // iterator advanced past while the previous stopChild was
         // awaiting. Result: siblings silently survived an escalation
         // that was supposed to stop them.
-        const siblings = Array.from(this.children.keys());
+        const siblings = this.restartEntries().map(([childName]) => childName);
         this.logger.warn({ child: name, strategy, stopping: siblings }, 'Stopping all siblings per ONE_FOR_ALL escalation');
         for (const siblingName of siblings) {
+          this.pendingRecovery.delete(siblingName);
           await this.stopChild(siblingName).catch((err) =>
             this.logger.error({ err, child: siblingName }, 'Error stopping sibling during escalation')
           );
         }
       } else {
         // REST_FOR_ONE
-        const order = Array.from(this.children.keys());
+        const order = this.restartEntries().map(([childName]) => childName);
         const failedIndex = order.indexOf(name);
         if (failedIndex === -1) return;
         const tail = order.slice(failedIndex);
         this.logger.warn({ child: name, strategy, stopping: tail }, 'Stopping failed + later siblings per REST_FOR_ONE escalation');
         for (const siblingName of tail) {
+          this.pendingRecovery.delete(siblingName);
           await this.stopChild(siblingName).catch((err) =>
             this.logger.error({ err, child: siblingName }, 'Error stopping sibling during escalation')
           );
@@ -821,7 +890,8 @@ export class ProcessSupervisor extends EventEmitter {
   private async shutdownAll(): Promise<void> {
     this.logger.info('Shutting down supervisor due to child failure');
     this.emit('shutdown');
-    await this.stop();
+    // A shutdown decision can originate inside the recovery loop itself.
+    await this.stopInternal(false);
   }
 
   // ============================================================================

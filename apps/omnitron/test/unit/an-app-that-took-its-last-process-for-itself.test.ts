@@ -68,6 +68,7 @@ function orchestratorWith(workers: Record<string, number>) {
   const self = Object.create(OrchestratorService.prototype) as Record<string, unknown>;
   const emitted: string[] = [];
   Object.assign(self, {
+    ownerOptions: {},
     pm: {
       createSupervisor: (cfg: { children: Array<{ name: string }> }) => (supervisor = new ScriptedSupervisor(cfg)),
       getWorkerHandle: (id: string) => (id in workers ? { pid: workers[id] } : undefined),
@@ -144,6 +145,12 @@ describe('an app is online when all its processes are, and not before', () => {
     sup.started(NOTIFY, 'p-notify');
 
     expect(handle.status).toBe('errored');
+    expect(handle.lastExit?.message).toBe('startup timed out');
+    sup.emit('child:recovery-stopped', CAPTCHA, new Error('startup timed out'));
+    expect(handle.status).toBe('crashed');
+    sup.started(CAPTCHA, 'p-captcha');
+    expect(handle.status).toBe('online');
+    expect(handle.lastExit).toBeNull();
   });
 });
 

@@ -223,6 +223,7 @@ describe('T#60 — supervisor T3 polish regressions', () => {
         m,
         {
           strategy: SupervisionStrategy.ONE_FOR_ONE,
+          maxRestarts: 0, // This test observes the first failure; retries have a separate suite.
           children: [{ name: 'a', process: FakeProcess as any, critical: false }],
         } as any,
         noopLogger,

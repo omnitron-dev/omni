@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { INodeWithStatus } from '@omnitron-dev/omnitron/dto/services';
-import { NodeDiagnosisDialog } from './nodes';
+import { NodeDiagnosisDialog, NodeRelay } from './nodes';
 
 const rpc = vi.hoisted(() => Object.fromEntries([
   'getCheckHistory', 'getNodeIndicators', 'getNodeSyncStatus', 'getNodeRelayStats', 'getNodeHealthSummaries',
@@ -55,4 +55,14 @@ it('does not overwrite a newer manual check with an older in-flight response', a
   await act(async () => { older.resolve(indicators('local', 'obsolete measurement')); });
   expect(screen.getByText('latest measurement')).toBeTruthy();
   expect(screen.queryByText('obsolete measurement')).toBeNull();
+});
+
+it('explains the separate master relay without treating access failures as unsupported features', () => {
+  const rendered = render(<NodeRelay data={{ nodeId: 'remote', reachable: false, relay: null, error: "Service 'OmnitronTelemetry' not found" }} />);
+  expect(screen.getByText('not exposed')).toBeTruthy();
+  expect(screen.getByText(/Slave daemons replicate logs and metrics/)).toBeTruthy();
+  rendered.rerender(<NodeRelay data={{ nodeId: 'remote', reachable: false, relay: null, error: 'Missing required role' }} />);
+  expect(screen.getByText('Missing required role')).toBeTruthy();
+  expect(screen.getByText('unavailable')).toBeTruthy();
+  expect(screen.queryByText(/Slave daemons replicate logs and metrics/)).toBeNull();
 });

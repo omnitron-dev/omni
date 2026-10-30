@@ -1032,12 +1032,15 @@ export function NodeRelay({ data }: { data: INodeRelayStats | null }) {
   // «Missing required role», so the empty space WAS the permanent state and
   // nothing anywhere said why.
   if (!data.reachable || !data.relay) {
+    const notExposed = data.error === "Service 'OmnitronTelemetry' not found";
     return (
       <Stack direction="row" spacing={1} sx={{ py: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
         <Typography variant="caption" sx={{ minWidth: 96, color: 'text.secondary' }}>telemetry</Typography>
-        <Chip size="small" label="not asked" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
+        <Chip size="small" label={notExposed ? 'not exposed' : 'unavailable'} variant="outlined" sx={{ height: 18, fontSize: 10 }} />
         <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
-          {data.error ?? 'no reason given'}
+          {notExposed
+            ? 'The separate telemetry relay is not exposed on this node. Slave daemons replicate logs and metrics through the channel above. If this should be a master, inspect its startup logs.'
+            : data.error ?? 'No relay measurement was returned; check node connectivity and access.'}
         </Typography>
       </Stack>
     );

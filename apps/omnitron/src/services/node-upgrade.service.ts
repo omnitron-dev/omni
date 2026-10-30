@@ -30,41 +30,8 @@ import { planUpgrade } from './node-upgrade.js';
 
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
-export type UpgradePhase =
-  /**
-   * Accepted by the rollout and waiting for a slot.
-   *
-   * Without this, a queued node is indistinguishable from a node nobody
-   * asked about: both have no progress record, and the console can only
-   * show «nothing is happening». On a fleet rolled out at concurrency 2,
-   * waiting is the state MOST nodes are in for MOST of the run, so it is
-   * the one that has to be nameable.
-   */
-  | 'queued'
-  | 'building'
-  | 'transferring'
-  | 'activating'
-  | 'done'
-  | 'failed'
-  | 'refused';
-
-export interface NodeUpgradeProgress {
-  readonly nodeId: string;
-  readonly phase: UpgradePhase;
-  /** 0-100, for a bar that means something rather than a spinner. */
-  readonly percent: number;
-  readonly message: string;
-  /** The version being installed, once the build has named one. */
-  readonly version: string | null;
-  readonly at: string;
-  /**
-   * Place in the queue, 1-based, while `phase` is `queued`.
-   *
-   * Absent once the node starts: a number that keeps its old value after the
-   * wait is over says something false about the present.
-   */
-  readonly position?: number;
-}
+import type { UpgradePhase, NodeUpgradeProgress } from '../shared/dto/nodes.js';
+export type { UpgradePhase, NodeUpgradeProgress } from '../shared/dto/nodes.js';
 
 /** What this service needs from the node registry. */
 export interface UpgradeNodeSource {

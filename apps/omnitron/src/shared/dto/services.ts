@@ -107,12 +107,12 @@ import type { INodeHealthSummary } from '../../workers/types.js';
 import type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries } from './metrics.js';
 
 export type { MetricsSnapshot, MetricsQueryFilter, MetricsTimeSeries, MetricsAppSnapshot } from './metrics.js';
-import type { HealthCheckRow, UptimeBucket } from '../../services/node-health.repository.js';
+import type { HealthCheckRow, UptimeBucket } from './health.js';
 
 export type { INode, INodeStatus, INodeWithStatus, AddNodeInput, UpdateNodeInput, SshKeyInfo, NodeCheckConfig, FleetHistoryConfig, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState, INodeDaemonAnswer, INodeUpgradePlan, INodeUpgradePlanRow, INodeRolloutStart } from './nodes.js';
 
 /** Where a node's upgrade got to — see `NodeUpgradeService`. */
-export type { NodeUpgradeProgress, UpgradePhase } from '../../services/node-upgrade.service.js';
+export type { NodeUpgradeProgress, UpgradePhase } from './nodes.js';
 
 export type { BackupInfo } from './backups.js';
 export type { K8sPod, K8sDeployment, K8sService } from './kubernetes.js';
@@ -551,7 +551,7 @@ export interface IOmnitronBackupsService {
   listSchedules(): Promise<Record<string, string>>;
   removeSchedule(data: { database: string }): Promise<{ success: boolean }>;
   /** Each schedule's last pass and next run, and which stacks this host backs up. */
-  getBackupStatus(): Promise<import('../../services/backup.service.js').BackupStatus>;
+  getBackupStatus(): Promise<import('./backups.js').BackupStatus>;
 }
 
 /** Kubernetes workloads on the cluster this daemon is pointed at. */
@@ -589,8 +589,8 @@ export interface IOmnitronDiscoveryService {
  * Admin-only: the rows name people, resources and addresses.
  */
 export interface IOmnitronAuditService {
-  list(data?: import('../../services/audit.service.js').AuditQuery): Promise<
-    import('../../services/audit.service.js').AuditRow[]
+  list(data?: import('./audit.js').AuditQuery): Promise<
+    import('./audit.js').AuditRow[]
   >;
   available(): Promise<{ available: boolean }>;
 }
@@ -671,7 +671,7 @@ export interface IOmnitronNodesService {
    * Started and polled: a build is minutes.
    */
   upgradeNode(data: { nodeId: string }): Promise<{ started: boolean; reason?: string }>;
-  getUpgradeProgress(): Promise<import('../../services/node-upgrade.service.js').NodeUpgradeProgress[]>;
+  getUpgradeProgress(): Promise<import('./nodes.js').NodeUpgradeProgress[]>;
 
   // ---------------------------------------------------------------------------
   // Fleet rollout — many nodes, from the console
@@ -766,7 +766,7 @@ export type {
   PruneResult,
 } from '../../release/store.js';
 export type { ReleaseManifest, GateOutcome, ReleaseArtifact, StackReleaseRequirements } from '../../release/manifest.js';
-export type { BuildRecord, BuildRequest } from '../../services/release.service.js';
+export type { BuildRecord, BuildRequest } from './releases.js';
 export type { StoredAttestation } from '../../release/attest.js';
 
 /** Whether this master can build a release, and where they are kept. */
@@ -841,8 +841,8 @@ export interface IOmnitronReleaseService {
   list(): Promise<{ releases: import('../../release/store.js').ReleaseSummary[]; root: string }>;
   get(data: { id: string }): Promise<import('../../release/store.js').ReleaseDetail>;
   getLog(data: { id: string; name: string; lines?: number }): Promise<{ name: string; bytes: number; tail: string }>;
-  builds(): Promise<import('../../services/release.service.js').BuildRecord[]>;
-  getBuild(data: { buildId: string }): Promise<import('../../services/release.service.js').BuildRecord | null>;
+  builds(): Promise<import('./releases.js').BuildRecord[]>;
+  getBuild(data: { buildId: string }): Promise<import('./releases.js').BuildRecord | null>;
   build(data: {
     project: string;
     projectCommit?: string;
@@ -851,8 +851,8 @@ export interface IOmnitronReleaseService {
     skipGates?: boolean;
     keepSource?: boolean;
     env?: Record<string, string>;
-  }): Promise<import('../../services/release.service.js').BuildRecord>;
-  stopBuild(data: { buildId: string }): Promise<import('../../services/release.service.js').BuildRecord>;
+  }): Promise<import('./releases.js').BuildRecord>;
+  stopBuild(data: { buildId: string }): Promise<import('./releases.js').BuildRecord>;
   prune(data: { keep?: number; apply?: boolean; protect?: string[]; allowUnprotected?: boolean }): Promise<ReleasePruneAnswer>;
   deployments(data?: { limit?: number }): Promise<ReleaseDeploymentDto[]>;
   /** Take what a stack measured about this release, or refuse it by name. */

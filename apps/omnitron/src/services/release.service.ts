@@ -31,38 +31,9 @@ import {
   type ReleaseDetail,
   type ReleaseSummary,
 } from '../release/store.js';
-import type { GateOutcome } from '../release/manifest.js';
 
-/** What the caller asked for, as it is shown back to them. */
-export interface BuildRequest {
-  readonly project: string;
-  readonly projectCommit?: string | undefined;
-  readonly omniCommit?: string | undefined;
-  readonly forStack?: string | undefined;
-  readonly skipGates?: boolean | undefined;
-  readonly keepSource?: boolean | undefined;
-  /** Names only — a value here would be in every console's memory. */
-  readonly envKeys?: readonly string[] | undefined;
-}
-
-export interface BuildRecord {
-  readonly buildId: string;
-  readonly request: BuildRequest;
-  /** Known once the two commits are resolved, a few seconds in. */
-  releaseId: string | null;
-  state: 'running' | 'done' | 'failed' | 'stopped';
-  phase: string;
-  percent: number;
-  startedAt: string;
-  finishedAt: string | null;
-  durationMs: number;
-  gates: GateOutcome[];
-  error: string | null;
-  /** Who asked, as the request proved it. */
-  readonly requestedBy: string | null;
-  /** Every phase line, in order — the console's live log. */
-  readonly history: BuildPhase[];
-}
+import type { BuildRequest, BuildRecord } from '../shared/dto/releases.js';
+export type { BuildRequest, BuildRecord } from '../shared/dto/releases.js';
 
 /** How many finished builds are kept for looking back at. */
 const KEEP_RECORDS = 20;

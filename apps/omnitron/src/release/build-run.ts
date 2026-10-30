@@ -98,15 +98,8 @@ export function checkedEnv(env: Record<string, string> | undefined): Record<stri
 }
 
 /** Where a build has got to. One sentence, one number, and the time. */
-export interface BuildPhase {
-  readonly phase: string;
-  readonly percent: number;
-  readonly at: string;
-  /** Known once the commits are resolved. */
-  readonly releaseId?: string;
-  /** Filled the moment the gates answer, so the console can show them running. */
-  readonly gates?: readonly GateOutcome[];
-}
+import type { BuildPhase } from '../shared/dto/releases.js';
+export type { BuildPhase } from '../shared/dto/releases.js';
 
 export interface BuildOutcome {
   readonly id: string;

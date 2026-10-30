@@ -1084,13 +1084,20 @@ export function NodeRelay({ data }: { data: INodeRelayStats | null }) {
  * returned all of it and had no caller anywhere in this console; the uptime
  * bar showed THAT a node was down and never why.
  */
-function NodeDiagnosisDialog({
-  open, onClose, node,
-}: {
+type NodeDiagnosisProps = {
   open: boolean;
   onClose: () => void;
   node: INodeWithStatus | null;
-}) {
+};
+
+/** A new subject must never inherit another node's readings, even for one render. */
+export function NodeDiagnosisDialog(props: NodeDiagnosisProps) {
+  return <NodeDiagnosisSession key={props.open ? props.node?.id ?? 'none' : 'closed'} {...props} />;
+}
+
+function NodeDiagnosisSession({
+  open, onClose, node,
+}: NodeDiagnosisProps) {
   const [history, setHistory] = useState<HealthCheckRow[]>([]);
   const [indicators, setIndicators] = useState<INodeIndicators | null>(null);
   const [sync, setSync] = useState<INodeSyncStatus | null>(null);
@@ -1105,8 +1112,10 @@ function NodeDiagnosisDialog({
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const snackbar = useSnackbar();
+  const request = useRef(0);
 
   const load = useCallback(async (nodeId: string, n: number) => {
+    const current = ++request.current;
     setLoading(true);
     setError(null);
     try {
@@ -1124,6 +1133,7 @@ function NodeDiagnosisDialog({
         nodesRpc.getUpgradeProgress(),
         nodesRpc.getNodeDaemonHealth({ nodeId }),
       ]);
+      if (current !== request.current) return;
       setAppHealth(health.status === 'fulfilled' ? health.value : {
         nodeId, reachable: false, answer: null, error: 'Application health could not be read',
       });
@@ -1149,17 +1159,20 @@ function NodeDiagnosisDialog({
       if (rows.status === 'rejected') throw rows.reason;
       setHistory(rows.value as HealthCheckRow[]);
     } catch (err) {
+      if (current !== request.current) return;
       // An empty list and a failed read are different answers, and a reader
       // who cannot tell them apart concludes the node has never been checked.
       setError(err instanceof Error ? err.message : String(err));
       setHistory([]);
     } finally {
-      setLoading(false);
+      if (current === request.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    const cursor = request;
     if (open && node) void load(node.id, limit);
+    return () => { cursor.current++; };
   }, [open, node, limit, load]);
 
   // While an upgrade is running, this dialog is the only place it is
@@ -1229,6 +1242,7 @@ function NodeDiagnosisDialog({
       </DialogTitle>
 
       <DialogContent dividers>
+        {loading && <LinearProgress aria-label="Loading node diagnostics" sx={{ mb: 2 }} />}
         <Typography variant="overline" sx={{ color: 'text.secondary' }}>Last check</Typography>
         {summary && (summary.consecutiveFailures > 0 || summary.lastSeenOnline) && (
           <Stack direction="row" spacing={1} sx={{ mb: 1, alignItems: 'center', flexWrap: 'wrap' }}>

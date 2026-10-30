@@ -18,7 +18,7 @@ function fixture() {
   fs.writeFileSync(path.join(source, 'BUNDLE.json'), JSON.stringify({ version, commit: 'a'.repeat(40) }));
   fs.writeFileSync(path.join(source, 'dist/cli/omnitron.js'), '#!/bin/sh\nprintf "%s\\n" "'+version+'"\n'.replaceAll('\\n', '\n'));
   // A real child process mutates only its staged dependency tree; no network.
-  fs.writeFileSync(path.join(bin, 'npm'), '#!/bin/sh\nprintf x >> "$INSTALL_COUNTER"\nmkdir -p node_modules\nprintf dependency > node_modules/value\nif [ "$ABSOLUTE_LINK" = yes ]; then ln -s "$PWD/node_modules/value" node_modules/absolute; fi\nif [ "$FAIL_INSTALL" = yes ]; then exit 17; fi\n'.replaceAll('\\n', '\n'), { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, 'npm'), '#!/bin/sh\nprintf x >> "$INSTALL_COUNTER"\nprintf "%s" "$1" > "$INSTALL_COUNTER.mode"\nmkdir -p node_modules\nprintf dependency > node_modules/value\nif [ "$ALTER_LOCK" = yes ]; then printf changed > package-lock.json; fi\nif [ "$ABSOLUTE_LINK" = yes ]; then ln -s "$PWD/node_modules/value" node_modules/absolute; fi\nif [ "$FAIL_INSTALL" = yes ]; then exit 17; fi\n'.replaceAll('\\n', '\n'), { mode: 0o755 });
   const archive = path.join(root, 'bundle.tgz');
   const pack = () => execFileSync('tar', ['-czf', archive, '-C', source, '.'], { env: { ...process.env, COPYFILE_DISABLE: '1' } });
   pack();
@@ -33,6 +33,24 @@ function fixture() {
   return { root, source, archive, prefix, layout, dir, counter, pack, run };
 }
 describe('immutable native bundle installation', () => {
+  it('installs a prepared dependency lock with ci and preserves it in the installed receipt', () => {
+    const f = fixture();
+    const lock = JSON.stringify({ name: 'fixture', version: f.layout.version, lockfileVersion: 3, packages: {} });
+    fs.writeFileSync(path.join(f.source, 'package-lock.json'), lock); f.pack();
+    f.run();
+    expect(fs.readFileSync(f.counter + '.mode', 'utf8')).toBe('ci');
+    expect(fs.readFileSync(path.join(f.dir, 'package-lock.json'), 'utf8')).toBe(lock);
+    const receipt = JSON.parse(fs.readFileSync(path.join(f.dir, '.omnitron-install.json'), 'utf8'));
+    expect(receipt.entries['package-lock.json'].sha256).toBe(createHash('sha256').update(lock).digest('hex'));
+  });
+  it('refuses a modified lock before publishing the candidate or changing the serving version', () => {
+    const f = fixture(), old = path.join(f.prefix, 'versions', '0.2.0');
+    fs.mkdirSync(old, { recursive: true }); fs.symlinkSync(old, path.join(f.prefix, 'current'));
+    fs.writeFileSync(path.join(f.source, 'package-lock.json'), '{}'); f.pack();
+    expect(() => f.run({ ALTER_LOCK: 'yes' })).toThrow(/Dependency lock changed/);
+    expect(fs.existsSync(f.dir)).toBe(false);
+    expect(fs.realpathSync(path.join(f.prefix, 'current'))).toBe(old);
+  });
   it('publishes only a completely installed sibling and reuses it without reinstalling the current version', () => {
     const f = fixture(); expect(f.run().trim()).toBe(f.layout.version);
     fs.symlinkSync(f.dir, path.join(f.prefix, 'current'));
@@ -40,6 +58,7 @@ describe('immutable native bundle installation', () => {
     expect(f.run().trim()).toBe(f.layout.version);
     expect(fs.statSync(f.dir).ino).toBe(before);
     expect(fs.readFileSync(f.counter, 'utf8')).toBe('x');
+    expect(fs.readFileSync(f.counter + '.mode', 'utf8')).toBe('install');
     expect(fs.realpathSync(path.join(f.prefix, 'current'))).toBe(f.dir);
     const receipt=JSON.parse(fs.readFileSync(path.join(f.dir,'.omnitron-install.json'),'utf8'));
     expect(receipt.entries['node_modules/value'].sha256).toBe(createHash('sha256').update('dependency').digest('hex'));

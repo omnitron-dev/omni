@@ -1278,7 +1278,11 @@ cp.execFileSync('tar',['-xzf',archive,'-C',stage],{timeout:300000,stdio:'inherit
 identity(stage);
 if(present(stage+'/'+record))throw Error('Archive may not supply an installation receipt');
 fs.chmodSync(stage+'/dist/cli/omnitron.js',0o755);
-cp.execFileSync('npm',['install','--omit=dev','--no-audit','--no-fund'],{cwd:stage,timeout:900000,stdio:'inherit'});
+const lock=stage+'/package-lock.json',locked=present(lock),lockHash=locked?sha(fs.readFileSync(lock)):null;
+// A prepared lock is part of the reviewed artifact. Never repair it or
+// resolve different dependencies on each node. Legacy bundles remain usable.
+cp.execFileSync('npm',[locked?'ci':'install','--omit=dev','--no-audit','--no-fund'],{cwd:stage,timeout:900000,stdio:'inherit'});
+if(locked && (!present(lock) || sha(fs.readFileSync(lock))!==lockHash))throw Error('Dependency lock changed during installation');
 check(stage);
 const entries=snapshot(stage);
 fs.writeFileSync(stage+'/'+record,JSON.stringify({schema:1,version,archiveSha256:archiveHash,entries})+'\n',{flag:'wx',mode:0o600});

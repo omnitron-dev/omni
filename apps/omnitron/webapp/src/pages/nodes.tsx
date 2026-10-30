@@ -50,6 +50,7 @@ import type {
 } from '@omnitron-dev/omnitron/dto/services';
 import { verdictOf, omnitronVerdict, firstReason, clusterDisagreement, type LayerVerdict } from 'src/utils/node-diagnosis';
 import { omnitronFinding } from '@omnitron-dev/omnitron/node-check';
+import { meshReading, syncFinding } from '@omnitron-dev/omnitron/sync-reading';
 import { appsMemoryOf } from 'src/utils/daemon-memory';
 import { logHref } from 'src/utils/log-location';
 import { useRealtimeStore } from 'src/stores/realtime.store';
@@ -929,30 +930,31 @@ function NodeIndicators({ data, nodeName }: { data: INodeIndicators | null; node
  * written — its own docblock says "for webapp monitoring", and this console
  * never knew the service existed.
  */
-function NodeSyncStatus({ data }: { data: INodeSyncStatus | null }) {
+export function NodeSyncStatus({ data }: { data: INodeSyncStatus | null }) {
   if (!data) {
     return <Typography variant="body2" sx={{ py: 1, color: 'text.secondary' }}>Not read.</Typography>;
   }
   if (!data.reachable || !data.sync) {
     return (
       <Stack direction="row" spacing={1} sx={{ py: 1, alignItems: 'baseline' }}>
-        <Chip size="small" label="not asked" variant="outlined" sx={{ height: 20, fontSize: 11 }} />
+        <Chip size="small" label="unavailable" variant="outlined" sx={{ height: 20, fontSize: 11 }} />
         <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
-          {data.error ?? 'no reason given'}
+          {data.error ?? 'No replication reading was returned.'}
         </Typography>
       </Stack>
     );
   }
 
   const s = data.sync;
-  const stalled = s.pendingItems > 0 && !s.connected;
+  const finding = syncFinding(s);
+  const stalled = finding.state === 'behind';
   return (
     <Box sx={{ py: 0.5 }}>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: 0.5 }}>
         <Chip
           size="small"
-          label={s.connected ? 'delivering' : s.pendingItems > 0 ? 'holding' : 'idle'}
-          color={stalled ? 'warning' : s.connected ? 'success' : 'default'}
+          label={stalled ? 'behind' : finding.state === 'pulling' ? 'keeping up' : 'in sync'}
+          color={stalled ? 'warning' : 'success'}
           sx={{ height: 20, fontSize: 11 }}
         />
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
@@ -1104,6 +1106,7 @@ function NodeDiagnosisSession({
   const [history, setHistory] = useState<HealthCheckRow[]>([]);
   const [indicators, setIndicators] = useState<INodeIndicators | null>(null);
   const [sync, setSync] = useState<INodeSyncStatus | null>(null);
+  const [connection, setConnection] = useState<IMeshNodeStatus | null>(null);
   const [relay, setRelay] = useState<INodeRelayStats | null>(null);
   const [summary, setSummary] = useState<{ status: string; lastSeenOnline: string | null; consecutiveFailures: number } | null>(null);
   const [limit, setLimit] = useState<number>(50);
@@ -1111,7 +1114,7 @@ function NodeDiagnosisSession({
   const [appHealth, setAppHealth] = useState<INodeDaemonAnswer<AggregatedHealthDto> | null>(null);
   const [upgrade, setUpgrade] = useState<INodeUpgradeProgress | null>(null);
   const [upgrading, setUpgrading] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const snackbar = useSnackbar();
@@ -1126,7 +1129,7 @@ function NodeDiagnosisSession({
       // history comes from this master's database and the indicators from the
       // node itself, and a node that cannot be reached still has a history
       // worth reading — that history is how you find out when it stopped.
-      const [rows, ind, syn, rel, sums, running, upgrades, health] = await Promise.allSettled([
+      const [rows, ind, syn, rel, sums, running, upgrades, health, mesh] = await Promise.allSettled([
         nodesRpc.getCheckHistory({ nodeId, limit: n }),
         nodesRpc.getNodeIndicators({ nodeId }),
         nodesRpc.getNodeSyncStatus({ nodeId }),
@@ -1135,8 +1138,10 @@ function NodeDiagnosisSession({
         nodesRpc.getNodeDaemonStatus({ nodeId }),
         nodesRpc.getUpgradeProgress(),
         nodesRpc.getNodeDaemonHealth({ nodeId }),
+        nodesRpc.getMeshStatus(),
       ]);
       if (current !== request.current) return;
+      setConnection(mesh.status === 'fulfilled' ? mesh.value.find(item => item.nodeId === nodeId) ?? null : null);
       setAppHealth(health.status === 'fulfilled' ? health.value : {
         nodeId, reachable: false, answer: null, error: 'Application health could not be read',
       });
@@ -1147,7 +1152,7 @@ function NodeDiagnosisSession({
           : null,
       );
       setIndicators(ind.status === 'fulfilled' ? (ind.value as INodeIndicators) : null);
-      setSync(syn.status === 'fulfilled' ? (syn.value as INodeSyncStatus) : null);
+      setSync(syn.status === 'fulfilled' ? (syn.value as INodeSyncStatus) : { nodeId, reachable: false, sync: null, error: syn.reason instanceof Error ? syn.reason.message : String(syn.reason) });
       setRelay(rel.status === 'fulfilled' ? (rel.value as INodeRelayStats) : null);
       // `consecutiveFailures` and `lastSeenOnline` live only here: a node that
       // blinked once and a node that has been down since Tuesday look the same
@@ -1178,16 +1183,16 @@ function NodeDiagnosisSession({
     return () => { cursor.current++; };
   }, [open, node, limit, load]);
 
-  // While an upgrade is running, this dialog is the only place it is
-  // visible. Five seconds is slow enough not to matter and fast enough that
-  // a phase change does not look like a hang.
+  // Connection recovery, replication and upgrades can change while this
+  // dialog is open. The initial request above owns the first loading state;
+  // subsequent polls pause while a request is still in flight.
   const upgradeRunning =
     upgrade !== null && upgrade.phase !== 'done' && upgrade.phase !== 'failed' && upgrade.phase !== 'refused';
   usePollingEffect(
     () => {
-      if (open && node) void load(node.id, limit);
+      if (open && node && !loading) void load(node.id, limit);
     },
-    { intervalMs: 5_000, enabled: open && upgradeRunning },
+    { intervalMs: 5_000, enabled: open },
   );
 
   /**
@@ -1320,6 +1325,13 @@ function NodeDiagnosisSession({
         <Divider sx={{ my: 2 }} />
 
         <Typography variant="overline" sx={{ color: 'text.secondary' }}>Replication</Typography>
+        {!node.isLocal && connection && (
+          <Box sx={{ py: 1, overflowWrap: 'anywhere' }}>
+            <Typography variant="body2">{meshReading(connection).connection}</Typography>
+            {meshReading(connection).error && <Typography variant="caption" color="error.main">{meshReading(connection).error}</Typography>}
+            <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>Replication: {meshReading(connection).replication}</Typography>
+          </Box>
+        )}
         <NodeSyncStatus data={sync} />
         <NodeRelay data={relay} />
 
@@ -1582,9 +1594,9 @@ function NodeCard({
  */
 export type MeshStanding =
   | { text: 'not joined'; tone: 'idle'; tooltip: string }
-  | { text: 'failing'; tone: 'bad'; tooltip: string }
+  | { text: 'disconnected' | 'retrying'; tone: 'bad'; tooltip: string }
   | { text: 'joining'; tone: 'quiet'; tooltip: string }
-  | { text: 'unauthenticated'; tone: 'warn'; tooltip: string }
+  | { text: 'unauthenticated' | 'stale heartbeat'; tone: 'warn'; tooltip: string }
   | { text: 'over SSH'; tone: 'info'; tooltip: string }
   | { text: 'direct'; tone: 'good'; tooltip: string };
 
@@ -1598,42 +1610,18 @@ export type MeshStanding =
  * replicates nothing — is the one that looks best and carries least.
  */
 export function meshStanding(mesh: IMeshNodeStatus): MeshStanding {
-  const heartbeat = mesh.lastHeartbeat
-    ? ` Last heartbeat ${formatAge(new Date(mesh.lastHeartbeat).toISOString())}.`
-    : '';
-
-  if (!mesh.inMesh || mesh.status === 'disconnected') {
-    return {
-      text: 'not joined',
-      tone: 'idle',
-      tooltip: mesh.lastError ?? 'This master is not connected to the node. Nothing it collects is being replicated.',
-    };
+  const reading = meshReading(mesh);
+  const tooltip = [reading.connection, reading.error, `Replication: ${reading.replication}`].filter(Boolean).join(' ');
+  switch (reading.state) {
+    case 'not-joined': return { text: 'not joined', tone: 'idle', tooltip };
+    case 'reconnecting': return { text: mesh.reconnectAt == null ? 'disconnected' : 'retrying', tone: 'bad', tooltip };
+    case 'connecting': return { text: 'joining', tone: 'quiet', tooltip };
+    case 'stale': return { text: 'stale heartbeat', tone: 'warn', tooltip };
+    case 'unauthenticated': return { text: 'unauthenticated', tone: 'warn', tooltip };
+    case 'connected': return mesh.via === 'ssh-tunnel'
+      ? { text: 'over SSH', tone: 'info', tooltip }
+      : { text: 'direct', tone: 'good', tooltip };
   }
-  if (mesh.status === 'error') {
-    return { text: 'failing', tone: 'bad', tooltip: mesh.lastError ?? 'The connection to this node is failing.' };
-  }
-  if (mesh.status === 'connecting') {
-    return { text: 'joining', tone: 'quiet', tooltip: 'Connecting.' };
-  }
-  if (!mesh.authenticated) {
-    return {
-      text: 'unauthenticated',
-      tone: 'warn',
-      tooltip: 'Connected, but without a credential this node accepts — it answers pings and replicates nothing.',
-    };
-  }
-  if (mesh.via === 'ssh-tunnel') {
-    return {
-      text: 'over SSH',
-      tone: 'info',
-      tooltip: `Replicating through an SSH tunnel: this node's daemon port is not open to this master.${heartbeat}`,
-    };
-  }
-  return {
-    text: 'direct',
-    tone: 'good',
-    tooltip: `Replicating over a direct connection to the daemon port.${heartbeat}`,
-  };
 }
 
 const MESH_TONE: Record<MeshStanding['tone'], string> = {

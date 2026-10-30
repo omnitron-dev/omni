@@ -176,7 +176,7 @@ overrides:
   react: 19.3.1
   react-dom: 19.3.1
   react-router-dom: 7.18.5
-  '@xec-sh/core': file:vendor/xec-sh-core-0.11.1-2fb49c74aa63.tgz
+  '@xec-sh/core': file:vendor/xec-sh-core-0.11.1-c9f7d57ad306.tgz
   '@xec-sh/kit': file:vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz
   '@xec-sh/loader': file:vendor/xec-sh-loader-0.11.1-52fcf8dc7c0c.tgz
   '@xec-sh/ops': file:vendor/xec-sh-ops-0.11.1-e559606232c0.tgz
@@ -295,8 +295,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/titan-telemetry-relay
       '@xec-sh/core':
-        specifier: file:../../vendor/xec-sh-core-0.11.1-2fb49c74aa63.tgz
-        version: file:vendor/xec-sh-core-0.11.1-2fb49c74aa63.tgz
+        specifier: file:../../vendor/xec-sh-core-0.11.1-c9f7d57ad306.tgz
+        version: file:vendor/xec-sh-core-0.11.1-c9f7d57ad306.tgz
       '@xec-sh/kit':
         specifier: file:../../vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz
         version: file:vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz
@@ -4229,8 +4229,8 @@ packages:
   '@vitest/utils@5.0.5':
     resolution: {integrity: sha512-/rBu7gzLDQI/SC79Tn98b5DwOgaHU/Gt4I9OVeP3YofzNaYtbImRCOJQmT1S6vOJg9gEIlWC+r3QxKkjuSa1nQ==}
 
-  '@xec-sh/core@file:vendor/xec-sh-core-0.11.1-2fb49c74aa63.tgz':
-    resolution: {integrity: sha512-3YeW5HyTf8ofg74U0a3kS+QlstySTEMDHHpwEtRZw2wnuqyTXtp/zD+1bFnTGs0kkv5w7Dm0MGa5DmTJEyRSzQ==, tarball: file:vendor/xec-sh-core-0.11.1-2fb49c74aa63.tgz}
+  '@xec-sh/core@file:vendor/xec-sh-core-0.11.1-c9f7d57ad306.tgz':
+    resolution: {integrity: sha512-2h5HqddnAbEPYFSEIASQROM4CX0YPsm0W63pZ155Fv5PuLekUuU7uPQ4GzkWSpBLniP8OnnXStsYr1nFdWB66A==, tarball: file:vendor/xec-sh-core-0.11.1-c9f7d57ad306.tgz}
     version: 0.11.1
     engines: {node: '>=20.0.0'}
 
@@ -9893,7 +9893,7 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.2.0
 
-  '@xec-sh/core@file:vendor/xec-sh-core-0.11.1-2fb49c74aa63.tgz':
+  '@xec-sh/core@file:vendor/xec-sh-core-0.11.1-c9f7d57ad306.tgz':
     dependencies:
       ssh2: 1.17.0
 
@@ -9908,7 +9908,7 @@ snapshots:
 
   '@xec-sh/ops@file:vendor/xec-sh-ops-0.11.1-e559606232c0.tgz':
     dependencies:
-      '@xec-sh/core': file:vendor/xec-sh-core-0.11.1-2fb49c74aa63.tgz
+      '@xec-sh/core': file:vendor/xec-sh-core-0.11.1-c9f7d57ad306.tgz
       '@xec-sh/kit': file:vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz
       '@xec-sh/loader': file:vendor/xec-sh-loader-0.11.1-52fcf8dc7c0c.tgz
       dotenv: 18.0.9

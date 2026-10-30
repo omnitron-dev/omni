@@ -19,6 +19,7 @@
  */
 
 import type { ISyncStatus } from './dto/project.js';
+import type { IMeshNodeStatus } from './dto/nodes.js';
 
 /** Entries waiting and no pull for this long is a node falling behind: four missed default sweeps. */
 export const PULL_OVERDUE_MS = 60_000;
@@ -52,4 +53,33 @@ export function syncWords(finding: SyncFinding): string {
   return finding.lastPullMs === null
     ? `behind · ${finding.pending} waiting, never pulled`
     : `behind · ${finding.pending} waiting, last pull ${Math.round(finding.lastPullMs / 1000)} s ago`;
+}
+
+/** Shared by Console and CLI: transport reachability is separate from delivery. */
+export function meshReading(mesh: IMeshNodeStatus, now = Date.now()): {
+  state: 'not-joined' | 'connecting' | 'reconnecting' | 'stale' | 'unauthenticated' | 'connected';
+  connection: string;
+  error: string;
+  replication: string;
+} {
+  const fresh = mesh.lastHeartbeat !== null && now - mesh.lastHeartbeat < PULL_OVERDUE_MS;
+  const state = !mesh.inMesh ? 'not-joined'
+    : mesh.status === 'connecting' ? 'connecting'
+      : mesh.status !== 'connected' ? 'reconnecting'
+        : !fresh ? 'stale' : !mesh.authenticated ? 'unauthenticated' : 'connected';
+  const retry = mesh.reconnectAt == null ? 'No retry time reported.'
+    : `Retry in ${Math.max(0, Math.ceil((mesh.reconnectAt - now) / 1000))} s (attempt ${mesh.reconnectAttempt ?? 1}).`;
+  const connection = state === 'connected' ? `RPC connected ${mesh.via === 'ssh-tunnel' ? 'through SSH' : 'directly'}.`
+    : state === 'connecting' ? 'Opening and authenticating RPC connection.'
+      : state === 'unauthenticated' ? 'RPC reachable without a verified service credential.'
+        : state === 'stale' ? 'RPC heartbeat is stale; current reachability is unknown.'
+          : state === 'not-joined' ? 'This node is not joined to the mesh.' : `RPC disconnected. ${retry}`;
+  const error = [mesh.lastError, mesh.cleanupError].filter(Boolean).join(' ');
+  const measured = mesh.syncStatus && mesh.syncStatusAt != null && now - mesh.syncStatusAt < PULL_OVERDUE_MS;
+  const replicationError = mesh.lastPullError ?? mesh.lastSyncStatusError;
+  const replication = state !== 'connected' ? 'Unknown: no current authenticated RPC connection.'
+    : replicationError ? `Failing: ${replicationError}`
+      : !measured ? 'Unknown: no recent replication reading.'
+        : syncWords(syncFinding(mesh.syncStatus!, now));
+  return { state, connection, error, replication };
 }

@@ -29,6 +29,7 @@ import {
   containerSpecHash,
 } from '../infrastructure/container-runtime.js';
 import { resolveOmnitronNginx } from '../infrastructure/service-resolver.js';
+import { consoleContainerName, assertConsoleOwnership } from './console-container.js';
 
 const exec = promisify(execFile);
 
@@ -221,7 +222,6 @@ export class WebappService {
     // Generated configuration belongs to the instance. Writing into the
     // package would invalidate a sealed backend artifact on its first boot.
     this.configDir = path.join(OMNITRON_HOME, 'webapp', 'nginx');
-    fs.mkdirSync(this.configDir, { recursive: true });
   }
 
   /**
@@ -294,6 +294,8 @@ export class WebappService {
     });
     desiredSpec.volumes.push({ source: configPath, target: '/etc/nginx/nginx.conf', readonly: true });
     const desiredHash = containerSpecHash(desiredSpec);
+    const state = await getContainerState(desiredSpec.name);
+    if (state) assertConsoleOwnership(state);
 
     // 2. Keep a healthy container only when it is running the current config
     //    AND the current spec.
@@ -308,7 +310,6 @@ export class WebappService {
     //    Every other managed container is reconciled on this hash already;
     //    the console was the one that reconciled on a file instead.
     if (!force && !configChanged) {
-      const state = await getContainerState('omnitron-nginx');
       if (state?.status === 'running') {
         if (state.specHash && state.specHash !== desiredHash) {
           this.logger.info(
@@ -333,11 +334,12 @@ export class WebappService {
       await this.build();
     }
 
+    fs.mkdirSync(this.configDir, { recursive: true });
     fs.writeFileSync(configPath, nginxConfig, 'utf-8');
     this.logger.info({ configPath }, 'Generated nginx config');
 
     // 4. Remove existing container if any
-    await removeContainer('omnitron-nginx');
+    if (state) await removeContainer(state.containerId ?? state.name);
 
     // 5. Create container
     // Same spec the comparison above used, so what runs is what was compared.
@@ -347,11 +349,11 @@ export class WebappService {
     await createContainer(containerSpec);
 
     // 6. Wait for healthy
-    const healthy = await waitForHealthy('omnitron-nginx', 30_000);
+    const healthy = await waitForHealthy(desiredSpec.name, 30_000);
     if (healthy) {
       this.logger.info({ port: this.publicPort }, 'Omnitron Console available');
     } else {
-      this.logger.warn('Nginx started but health check not passing yet');
+      throw new Error('Console container started but did not become healthy within 30 seconds');
     }
   }
 
@@ -359,12 +361,12 @@ export class WebappService {
    * Stop the omnitron-nginx container.
    */
   async stop(): Promise<void> {
-    try {
-      await stopContainer('omnitron-nginx', 5);
-    } catch {
-      // Already stopped
-    }
-    await removeContainer('omnitron-nginx');
+    const state = await getContainerState(consoleContainerName());
+    if (!state) return;
+    assertConsoleOwnership(state);
+    const target = state.containerId ?? state.name;
+    await stopContainer(target, 5);
+    await removeContainer(target);
     this.logger.info('Omnitron Console stopped');
   }
 
@@ -372,7 +374,8 @@ export class WebappService {
    * Get status of the nginx container.
    */
   async status(): Promise<{ running: boolean; port: number; healthy: boolean }> {
-    const state = await getContainerState('omnitron-nginx');
+    const state = await getContainerState(consoleContainerName());
+    if (state) assertConsoleOwnership(state);
     return {
       running: state?.status === 'running',
       port: this.publicPort,

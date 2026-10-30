@@ -179,10 +179,10 @@ describe('the daemon answers for an app it does not run from the stored rows', (
       {} as never,
       {} as never,
     );
-    const asked: string[] = [];
+    const asked: Array<{ app: string; localOnly: boolean | undefined }> = [];
     svc.setLogStore({
-      storedEntries: async (app: string) => {
-        asked.push(app);
+      storedEntries: async (app: string, _lines: number, localOnly?: boolean) => {
+        asked.push({ app, localOnly });
         return [{ timestamp: 1, app, level: 'info', message: 'from the node', data: { sourceNode: 'n1' } }];
       },
     });
@@ -192,13 +192,20 @@ describe('the daemon answers for an app it does not run from the stored rows', (
   it('reads the table for a name this machine does not run', async () => {
     const { svc, asked } = rpc({ local: [], handle: false });
     const out = await svc.getLogs({ name: 'sample/deployed/payments', lines: 5 });
-    expect(asked).toEqual(['sample/deployed/payments']);
+    expect(asked).toEqual([{ app: 'sample/deployed/payments', localOnly: false }]);
     expect(out[0]!.message).toBe('from the node');
   });
 
-  it('answers from its own capture for an app it runs', async () => {
+  it('recovers local history when a retained handle has no volatile records', async () => {
     const { svc, asked } = rpc({ local: [], handle: true });
-    expect(await svc.getLogs({ name: 'sample/dev/main', lines: 5 })).toEqual([]);
+    expect(await svc.getLogs({ name: 'sample/dev/main', lines: 5 })).toHaveLength(1);
+    expect(asked).toEqual([{ app: 'sample/dev/main', localOnly: true }]);
+  });
+
+  it('keeps current capture without querying history', async () => {
+    const line = { timestamp: 1, app: 'sample/dev/main', level: 'error', message: 'current' };
+    const { svc, asked } = rpc({ local: [line], handle: true });
+    expect(await svc.getLogs({ name: 'sample/dev/main', lines: 5 })).toEqual([line]);
     expect(asked).toEqual([]);
   });
 });

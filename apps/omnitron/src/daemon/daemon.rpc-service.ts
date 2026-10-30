@@ -422,14 +422,18 @@ export class DaemonRpcService implements IDaemonService {
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async getLogs(data: { name?: string; lines?: number }): Promise<LogEntryDto[]> {
     const local = this.logManager.getLogs(data.name, data.lines);
-    if (data.name === undefined || local.length > 0 || this.orchestrator.getHandle(data.name)) return local;
-    return this.logStore ? this.logStore.storedEntries(data.name, data.lines ?? 100) : local;
+    if (data.name === undefined || local.length > 0) return local;
+    // A retained handle can belong to a crashed process, or to a process
+    // adopted after handoff. An empty volatile buffer is not empty history.
+    return this.logStore
+      ? this.logStore.storedEntries(data.name, data.lines ?? 100, !!this.orchestrator.getHandle(data.name))
+      : local;
   }
 
   /** Where the stored rows are — the daemon hands it over once it has one (`daemon.ts`). */
-  private logStore: { storedEntries(app: string, lines: number): Promise<LogEntryDto[]> } | null = null;
+  private logStore: { storedEntries(app: string, lines: number, localOnly?: boolean): Promise<LogEntryDto[]> } | null = null;
 
-  setLogStore(store: { storedEntries(app: string, lines: number): Promise<LogEntryDto[]> }): void {
+  setLogStore(store: { storedEntries(app: string, lines: number, localOnly?: boolean): Promise<LogEntryDto[]> }): void {
     this.logStore = store;
   }
 

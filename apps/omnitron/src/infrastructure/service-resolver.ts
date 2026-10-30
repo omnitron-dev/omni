@@ -9,12 +9,15 @@
  */
 
 import fs from 'node:fs';
+import path from 'node:path';
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 import { configFilesHash, type ConfigFile } from './config-payload.js';
 import { gatewayStaticLinkName } from '../services/static-carry-forward.js';
 import { CONFIG_ROOT_PREFIX, shippedMountPath } from './shipped-config.js';
 import { bindService } from './service-binding.js';
+import { OMNITRON_HOME } from '../config/defaults.js';
+import { consoleContainerName, CONSOLE_INSTANCE_LABEL } from '../webapp/console-container.js';
 
 import type {
   InfrastructureConfig,
@@ -913,7 +916,7 @@ export function resolveOmnitronNginx(options?: {
   }
 
   return applyManagedDefaults({
-    name: `${getContainerPrefix()}-nginx`,
+    name: consoleContainerName(),
     image,
     ports: [{ host: port, container: 80, bindHost: options?.bindHost ?? '127.0.0.1' }],
     environment: {
@@ -943,6 +946,7 @@ export function resolveOmnitronNginx(options?: {
       'omnitron.managed': 'true',
       'omnitron.service': 'omnitron-nginx',
       'omnitron.internal': 'true',
+      [CONSOLE_INSTANCE_LABEL]: path.resolve(OMNITRON_HOME),
     },
     restart: 'unless-stopped',
   });

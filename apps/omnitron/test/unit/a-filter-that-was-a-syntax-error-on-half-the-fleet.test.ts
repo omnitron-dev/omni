@@ -188,3 +188,17 @@ describe('the dialect decides how to ask', () => {
     expect(jsonContains(db, 'labels', {}).compile(db).sql).toBe('(1 = 1)');
   });
 });
+
+
+it('recovers the last local failure without mixing a remote app with the same name', async () => {
+  const db = sqliteDb();
+  try {
+    await db.insertInto('logs').values({ id: 'local', timestamp: '2026-09-16T00:00:00.000Z',
+      app: 'payments', level: 'error', message: 'database unavailable', nodeId: null }).execute();
+    const collector = new LogCollectorService(db, undefined as never);
+    const local = await collector.storedEntries('payments', 10, true);
+    expect(local.map(entry => entry.message)).toEqual(['database unavailable']);
+    expect(local[0]!.data?.['sourceNode']).toBeNull();
+    expect(await collector.storedEntries('payments', 10)).toHaveLength(4);
+  } finally { await db.destroy(); }
+});

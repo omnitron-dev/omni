@@ -566,11 +566,12 @@ export class LogCollectorService extends EventEmitter {
    * Returns the last N entries matching the filter, ordered oldest-first
    * (so the caller can append them in chronological order).
    */
-  async getRecentLogs(filter: LogQueryFilter & { tail?: number }): Promise<LogEntryRow[]> {
+  async getRecentLogs(filter: LogQueryFilter & { tail?: number }, localOnly = false): Promise<LogEntryRow[]> {
     validateLogQuery(filter);
     const tail = filter.tail ?? 50;
 
     let query = this.db.selectFrom('logs').selectAll();
+    if (localOnly) query = query.where('nodeId', 'is', null);
 
     if (filter.app) query = query.where('app', '=', filter.app);
     if (filter.level) {
@@ -619,8 +620,8 @@ export class LogCollectorService extends EventEmitter {
    * the rest of `data` is the record's fields, and records carry `nodeId`s of
    * their own (the daemon logs them).
    */
-  async storedEntries(app: string, lines: number): Promise<LogEntryDto[]> {
-    const rows = await this.getRecentLogs({ app, tail: Math.max(1, Math.min(lines, 10_000)) });
+  async storedEntries(app: string, lines: number, localOnly = false): Promise<LogEntryDto[]> {
+    const rows = await this.getRecentLogs({ app, tail: Math.max(1, Math.min(lines, 10_000)) }, localOnly);
     return rows.map((row) => {
       const metadata = typeof row.metadata === 'string' ? safeJson(row.metadata) : row.metadata;
       return {

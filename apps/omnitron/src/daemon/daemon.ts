@@ -673,7 +673,7 @@ export class OmnitronDaemon {
 
     // 13. Register shutdown tasks — Application handles SIGTERM/SIGINT
     // and calls shutdown tasks in priority order before process.exit()
-    this.registerShutdownTasks(this.app);
+    this.registerShutdownTasks(this.app, logger);
     await this.execution?.activateObservations();
 
     if (options?.backendHandoff) {
@@ -2698,7 +2698,7 @@ export class OmnitronDaemon {
    *   VeryLow (90)  — Dispose project service, teardown infrastructure
    *   Last (100)    — Remove PID file
    */
-  private registerShutdownTasks(app: Application): void {
+  private registerShutdownTasks(app: Application, logger: ILogger): void {
     const container = app.container;
     app.registerShutdownTask('close-recovery-journal', async () => {
       await this.recoveryMonitor?.close(this.stopApplicationsOnExit || this.handingOffBackend);
@@ -2758,11 +2758,19 @@ export class OmnitronDaemon {
         } catch { /* non-critical */ }
         this.metricsServer = null;
       }
-      // Stop webapp nginx container (non-blocking — don't wait if slow)
-      try {
-        const { removeContainer } = await import('../infrastructure/container-runtime.js');
-        if (!this.handingOffBackend && (!this.execution || this.stopApplicationsOnExit)) void removeContainer('omnitron-nginx');
-      } catch { /* non-critical */ }
+      // Only an explicit instance shutdown owns its configured Console.
+      // Backend replacement and instances without a Console must leave it up.
+      if (!this.handingOffBackend && (!this.execution || this.stopApplicationsOnExit)) {
+        try {
+          const { readSavedDaemonConfig } = await import('../commands/up.js');
+          if (readSavedDaemonConfig()?.webapp) {
+            const { WebappService } = await import('../webapp/webapp.service.js');
+            await new WebappService(logger).stop();
+          }
+        } catch (error) {
+          logger.warn({ error }, 'Could not stop this instance’s Console');
+        }
+      }
     }, ShutdownPriority.First);
 
     // A release build outlives its daemon otherwise.

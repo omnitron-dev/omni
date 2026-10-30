@@ -5,6 +5,7 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { createMigrationRunner, createMigrationHistory, type MigrationRecord } from '../migration/index.js';
 import { createOmnitronDb } from './connection.js';
 import { OMNITRON_MIGRATIONS } from './migrations/index.js';
+import { compatibleFutureMigrations } from './schema-compatibility.js';
 
 export interface MigrationRunOutcome { applied: string[] }
 
@@ -24,6 +25,10 @@ export function createOmnitronMigrationRunner(db: Kysely<unknown>, logger?: ILog
   const known = new Set(OMNITRON_MIGRATIONS.map(m => m.name));
   return createMigrationRunner(db, OMNITRON_MIGRATIONS, {
     dryRun: options.dryRun ?? false,
+    // setup runs under Kysera's advisory lock and rejects every unknown row
+    // without exact expansion evidence. The engine then reports that scoped
+    // future history without rejecting a proven-compatible rollback binary.
+    missingMigrationPolicy: 'warn',
     // Preserve the deployed journal and lock identity. New applications use
     // the modern history defaults through the public migration entry point.
     history: {
@@ -37,6 +42,8 @@ export function createOmnitronMigrationRunner(db: Kysely<unknown>, logger?: ILog
           .sort((a, b) => new Date(a.executedAt!).getTime() - new Date(b.executedAt!).getTime() || a.name.localeCompare(b.name));
       },
       async remove(connection, name) {
+        const future = (await history.read(connection)).filter(row => !known.has(row.name));
+        if (future.length) throw new Error('Cannot roll back migrations with a compatibility runtime; use the release that owns the complete schema');
         await history.remove(connection, name);
         // A rolled-back legacy row must not be adopted again on the next boot.
         // This runs in the same transaction as the down body and current journal.
@@ -46,6 +53,9 @@ export function createOmnitronMigrationRunner(db: Kysely<unknown>, logger?: ILog
         }
       },
       async setup(connection) {
+        const future = (await history.read(connection)).filter(row => !known.has(row.name));
+        const compatible = await compatibleFutureMigrations(connection as Kysely<unknown>, future);
+        if (future.length !== compatible.length) throw new Error(`Applied migrations not in this build: ${future.map(row => row.name).join(', ')}. No matching schema expansion receipt authorizes this runtime.`);
         // Called only while the runner holds its advisory lock. Adoption is
         // atomic and also repairs partially adopted history from older builds.
         const adopt = async (tx: typeof connection) => {
@@ -82,6 +92,21 @@ export function createOmnitronMigrationRunner(db: Kysely<unknown>, logger?: ILog
 
 export async function migrateOmnitronDb(db: Kysely<unknown>, logger?: ILogger): Promise<MigrationRunOutcome> {
   return { applied: (await createOmnitronMigrationRunner(db, logger).up()).executed };
+}
+
+/** Read-only replacement readiness. Schema changes need a separate reviewed transition. */
+export async function assertOmnitronMigrationsCurrent(connection?: Kysely<unknown>): Promise<void> {
+  const db = connection ?? await createOmnitronDb<unknown>({ max: 1 });
+  try {
+    const report = await createOmnitronMigrationRunner(db).inspect();
+    const compatible = await compatibleFutureMigrations(db, report.executed.filter(row => report.missingFiles.includes(row.name)));
+    const issues = [
+      ...(report.pending.length ? [`pending: ${report.pending.join(', ')}`] : []),
+      ...(report.drift.length ? [`changed: ${report.drift.map(row => row.name).join(', ')}`] : []),
+      ...(report.missingFiles.some(name => !compatible.includes(name)) ? [`unknown: ${report.missingFiles.filter(name => !compatible.includes(name)).join(', ')}`] : []),
+    ];
+    if (issues.length) throw new Error(`Backend schema is not ready (${issues.join('; ')}). Inspect omnitron migrate status --daemon and verify --daemon; prepare the schema separately before replacing the backend.`);
+  } finally { if (!connection) await db.destroy(); }
 }
 
 export async function runOmnitronMigrations(logger?: ILogger): Promise<MigrationRunOutcome> {

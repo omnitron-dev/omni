@@ -111,6 +111,19 @@ describe.skipIf(!testPg.ok)('Omnitron migrations (integration)', () => {
     expect(second.applied).toEqual([]);
   });
 
+  it('refuses unknown modern history under the migration lock without changing schema or history', async () => {
+    const { migrateOmnitronDb, createOmnitronMigrationRunner } = await import('../../src/database/migration-runner.js');
+    const { createMigrationHistory } = await import('../../src/migration/index.js');
+    await migrateOmnitronDb(db);
+    const history = createMigrationHistory();
+    await history.insert(db, { name: '999_unreviewed_schema', checksum: 'f'.repeat(64), executedAt: new Date() });
+    const before = await createOmnitronMigrationRunner(db).inspect();
+    await expect(migrateOmnitronDb(db)).rejects.toThrow('No matching schema expansion receipt');
+    await expect(createOmnitronMigrationRunner(db).down(1)).rejects.toThrow('No matching schema expansion receipt');
+    expect(await createOmnitronMigrationRunner(db).inspect()).toEqual(before);
+    expect(await listTables(db)).toContain('sync_ingested');
+  });
+
   it('adopts a pre-existing Kysely migration history instead of re-applying it', async () => {
     // Reproduces the first boot after the switch to @kysera/migrations on an
     // installation migrated by the old Kysely `Migrator`: the schema is fully

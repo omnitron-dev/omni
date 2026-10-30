@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 async function main() {
   // Preflight must never open databases, listeners or start applications.
   if (process.argv[2] === '--check-backend') {
-    process.stdout.write(JSON.stringify({ protocol: 1, build: OWN_BUILD }) + '\n');
+    process.stdout.write(JSON.stringify({ protocol: 1, schemaExpansionProtocol: 1, build: OWN_BUILD }) + '\n');
     return;
   }
   if (process.argv[2] === '--backend-handoff') {

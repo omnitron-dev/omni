@@ -20,7 +20,7 @@
  *   on stack stop → disconnect() cleanup
  */
 
-import { Netron } from '@omnitron-dev/titan/netron';
+import { Netron, NETRON_EVENT_PEER_DISCONNECT } from '@omnitron-dev/titan/netron';
 import { TcpTransport } from '@omnitron-dev/titan/netron/transport/tcp';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
@@ -94,6 +94,13 @@ export interface SlaveConnection {
    * as «no pull running», which is what it means.
    */
   pull?: { peer: unknown; startedAt: number; sweepsSkipped: number } | null;
+  generation?: number;
+  removed?: boolean;
+  cleanup?: Promise<void> | null;
+  reconnectAt?: number | null;
+  syncStatusAt?: number | null;
+  lastPullAt?: number | null;
+  cleanupError?: string | null;
 }
 
 // =============================================================================
@@ -145,6 +152,17 @@ export async function authenticatePeer(peer: AuthenticatingPeer, link: MeshLink)
  */
 const SLAVE_REQUEST_TIMEOUT = 10 * 60_000;
 
+/** A failed resource must not prevent the next connection from being opened. */
+async function bounded<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([work, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), ms);
+      timer.unref();
+    })]);
+  } finally { if (timer) clearTimeout(timer); }
+}
+
 /**
  * Whether an error means the connection is gone rather than the call failed.
  *
@@ -176,6 +194,8 @@ export class SlaveConnector {
   /** Said once per master, not once per node: it is a property of this daemon. */
   private noSyncServiceReported = false;
   private disposed = false;
+  private heartbeatRunning = false;
+  private readonly cleanupTimeout: number;
 
   /** Heartbeat interval — how often we ping each slave (ms) */
   private readonly heartbeatInterval: number;
@@ -194,11 +214,12 @@ export class SlaveConnector {
   constructor(
     private readonly logger: ILogger,
     private readonly syncService: SyncService | null,
-    options?: { heartbeatInterval?: number; maxBackoff?: number; dial?: MeshDialer },
+    options?: { heartbeatInterval?: number; maxBackoff?: number; dial?: MeshDialer; cleanupTimeout?: number },
   ) {
     this.heartbeatInterval = options?.heartbeatInterval ?? 15_000;
     this.maxBackoff = options?.maxBackoff ?? 120_000;
     this.dial = options?.dial ?? directLink;
+    this.cleanupTimeout = options?.cleanupTimeout ?? 5_000;
   }
 
   // ===========================================================================
@@ -303,8 +324,9 @@ export class SlaveConnector {
     const conn = this.connections.get(key);
     if (!conn) return;
 
-    await this.disconnectSlave(conn);
+    conn.removed = true;
     this.connections.delete(key);
+    await this.disconnectSlave(conn);
     this.logger.info({ host, port }, 'Slave removed');
   }
 
@@ -346,6 +368,13 @@ export class SlaveConnector {
     authenticated: boolean;
     /** The node's own replication state, or null if it has not been heard. */
     syncStatus: ISyncStatus | null;
+    syncStatusAt: number | null;
+    lastSyncStatusError: string | null;
+    lastPullError: string | null;
+    lastPullAt: number | null;
+    reconnectAt: number | null;
+    reconnectAttempt: number;
+    cleanupError: string | null;
   }> {
     return [...this.connections.values()].map((conn) => ({
       host: conn.config.host,
@@ -357,6 +386,13 @@ export class SlaveConnector {
       via: conn.link?.via ?? null,
       authenticated: Boolean(conn.link?.token),
       syncStatus: conn.syncStatus,
+      syncStatusAt: conn.syncStatusAt ?? null,
+      lastSyncStatusError: conn.lastSyncStatusError,
+      lastPullError: conn.lastPullError,
+      lastPullAt: conn.lastPullAt ?? null,
+      reconnectAt: conn.reconnectAt ?? null,
+      reconnectAttempt: conn.reconnectAttempt,
+      cleanupError: conn.cleanupError ?? null,
     }));
   }
 
@@ -403,8 +439,10 @@ export class SlaveConnector {
         { host, port, service, method, error: (err as Error).message },
         'The mesh connection was already gone — reconnecting and trying once more',
       );
-      await this.removeSlave(host, port);
-      await this.addSlave({ host, port });
+      const key = `${host}:${port}`;
+      const conn = this.connections.get(key);
+      if (conn) await this.connectionLost(key, conn, err);
+      else await this.addSlave({ host, port });
       if (!(await this.waitUntilConnected(host, port, 60_000))) {
         // The symptom is «did not come back»; the diagnosis is in what
         // dropped it, and without the cause the second failure hides the
@@ -420,12 +458,19 @@ export class SlaveConnector {
   private async callOnSlave(host: string, port: number, service: string, method: string, args: unknown[]): Promise<unknown> {
     const key = `${host}:${port}`;
     const conn = this.connections.get(key);
-    if (!conn?.peer) throw new Error(`Slave ${key} not connected`);
-
-    const proxy = await conn.peer.queryInterface(service);
-    const fn = (proxy as any)[method];
-    if (typeof fn !== 'function') throw new Error(`Method ${method} not found on service ${service}`);
-    return fn.call(proxy, ...args);
+    if (conn?.status !== 'connected' || !conn.peer) {
+      throw new Error(`Slave ${key} not connected${conn?.lastError ? `: ${conn.lastError}` : ''}`);
+    }
+    const peer = conn.peer;
+    try {
+      const proxy = await peer.queryInterface(service);
+      const fn = (proxy as any)[method];
+      if (typeof fn !== 'function') throw new Error(`Method ${method} not found on service ${service}`);
+      return await fn.call(proxy, ...args);
+    } catch (error) {
+      if (conn.peer === peer && isConnectionGone(error)) void this.connectionLost(key, conn, error);
+      throw error;
+    }
   }
 
   /**
@@ -457,161 +502,105 @@ export class SlaveConnector {
   // ===========================================================================
 
   private async connectSlave(key: string, conn: SlaveConnection): Promise<void> {
-    if (this.disposed || conn.status === 'connected') return;
-
+    if (this.disposed || conn.removed || conn.status === 'connected' || conn.status === 'connecting') return;
     conn.status = 'connecting';
-
-    // Anything left from a previous attempt goes back before a new one is
-    // made. The disconnect path releases it too; this is the guarantee that
-    // does not depend on which path got here.
-    await this.releaseLink(conn);
-
+    const generation = (conn.generation ?? 0) + 1;
+    conn.generation = generation;
+    conn.reconnectAt = null;
+    const current = () => !this.disposed && !conn.removed && conn.generation === generation;
+    let link: MeshLink | null = null;
+    let netron: Netron | null = null;
     try {
-      const link = await this.dial({ host: conn.config.host, port: conn.config.port });
+      if (conn.cleanup) await conn.cleanup;
+      if (!current()) return;
+      link = await this.dial({ host: conn.config.host, port: conn.config.port });
+      if (!current()) { await this.closeResources(null, link); return; }
       conn.link = link;
-
-      const netron = new Netron(createNullLogger(), { id: `master-to-${key}` });
-      netron.registerTransport('tcp', () => new TcpTransport());
-      // The calls this connection carries ARE the work: a container set
-      // coming up, an image being pulled, a bundle being installed. netron's
-      // default is five seconds, and the failure it produces names a
-      // timeout while the node goes on doing exactly what it was asked:
-      //
-      //     Could not bring up this node's infrastructure:
-      //       RPC request timed out after 5000ms
-      //
-      // measured against a node that provisioned it successfully.
-      //
-      // The one call that must fail fast is the heartbeat, and it is bounded
-      // by its own race rather than by this — which is why raising this does
-      // not make a dead node look alive.
-      netron.setTransportOptions('tcp', { requestTimeout: SLAVE_REQUEST_TIMEOUT });
-
-      const peer = await netron.connect(link.url, false);
-
-      // Present the credential before asking for anything that needs it.
-      //
-      // `ping` is reachable without one, which is why this connection looked
-      // healthy while every data call behind it answered `Authentication
-      // required` — the connector's only failure signal was a debug line in
-      // the pull, and a slave with nothing to say looks the same as one that
-      // is refusing.
-      if (link.token) {
-        const runTask = (peer as { runTask?: (task: string, payload: unknown) => Promise<{ success?: boolean; error?: string }> })
-          .runTask;
-        if (typeof runTask !== 'function') {
-          throw new Error(`cannot present a credential over ${link.url} — this transport has no authenticate task`);
-        }
-await authenticatePeer(peer as AuthenticatingPeer, link);
-      }
-
-      // Verify slave is alive
-      const daemon = await peer.queryInterface<any>('OmnitronDaemon');
-      const pingResult = await daemon.ping();
-
+      netron = new Netron(createNullLogger(), { id: `master-to-${key}` });
       conn.netron = netron;
+      netron.registerTransport('tcp', () => new TcpTransport());
+      netron.setTransportOptions('tcp', { requestTimeout: SLAVE_REQUEST_TIMEOUT });
+      const ownedNetron = netron;
+      netron.on(NETRON_EVENT_PEER_DISCONNECT, () => {
+        if (conn.netron !== ownedNetron || conn.status !== 'connected') return;
+        void this.connectionLost(key, conn, new Error('RPC transport disconnected'));
+      });
+      const peer = await netron.connect(link.url, false);
+      if (!current()) { await this.closeResources(netron, link); return; }
+      const connectedLink = link;
+      const pingResult = await bounded<{ version?: string }>((async () => {
+        if (connectedLink.token) await authenticatePeer(peer as AuthenticatingPeer, connectedLink);
+        const daemon = await peer.queryInterface<any>('OmnitronDaemon');
+        return daemon.ping();
+      })(), 10_000, 'RPC authentication or initial heartbeat timed out');
+      if (!current()) { await this.closeResources(netron, link); return; }
       conn.peer = peer;
       conn.status = 'connected';
       conn.lastHeartbeat = Date.now();
       conn.lastError = null;
+      conn.cleanupError = null;
       conn.reconnectAttempt = 0;
-
-      this.logger.info(
-        {
-          host: conn.config.host,
-          port: conn.config.port,
-          slaveVersion: pingResult?.version,
-          via: link.via,
-          authenticated: Boolean(link.token),
-        },
-        'Node joined the mesh'
-      );
-
-      // Ask what it is holding, then start pulling it. Both in that order
-      // and neither waiting on the other: without the first call here a node
-      // that just joined shows an empty «Sync» column until the sweep fifteen
-      // seconds later, which is exactly when somebody is looking, and putting
-      // it after the drain would queue it behind up to 10 000 entries.
+      this.logger.info({ host: conn.config.host, port: conn.config.port,
+        slaveVersion: pingResult?.version, via: link.via, authenticated: Boolean(link.token) },
+      'Node joined the mesh');
       void this.refreshSyncStatus(conn);
       void this.pullSyncData(key, conn);
-
-      // Monitor for disconnection
-      netron.on('peer:disconnected', () => {
-        if (this.disposed) return;
-        this.logger.warn({ host: conn.config.host, port: conn.config.port }, 'Slave disconnected');
-        // Give back the netron and the link BEFORE reconnecting.
-        //
-        // This dropped the peer and kept both, and `connectSlave` overwrites
-        // them with the new ones — so every reconnect leaked a Netron and,
-        // for a node reached over SSH, a tunnel holding an open SSH session.
-        // The nodes that reconnect are the ones on a poor link, so the leak
-        // is fastest exactly where it is worst, and it ends at sshd's
-        // session limit: the master locked out of the node entirely,
-        // including the path it deploys over.
-        void this.disconnectSlave(conn).finally(() => this.scheduleReconnect(key, conn));
-      });
-
-    } catch (err) {
-      conn.status = 'error';
-      conn.lastError = (err as Error).message;
-      conn.netron = null;
-      conn.peer = null;
-      // A tunnel outlives the netron that failed over it, and each one holds
-      // an SSH connection. Released here or they accumulate one per retry.
-      await this.releaseLink(conn);
-
-      this.logger.debug(
-        { host: conn.config.host, port: conn.config.port, error: conn.lastError, attempt: conn.reconnectAttempt },
-        'Slave connection failed'
-      );
-
-      this.scheduleReconnect(key, conn);
+    } catch (error) {
+      if (current()) await this.connectionLost(key, conn, error);
+      else await this.closeResources(netron, link);
     }
+  }
+
+  private async connectionLost(key: string, conn: SlaveConnection, error: unknown): Promise<void> {
+    if (this.disposed || conn.removed) return;
+    conn.lastError = error instanceof Error ? error.message : String(error);
+    if (conn.cleanup) await conn.cleanup;
+    else await this.disconnectSlave(conn);
+    if (this.disposed || conn.removed || conn.status === 'connected' || conn.status === 'connecting') return;
+    conn.status = 'error';
+    this.scheduleReconnect(key, conn);
+  }
+
+  private async closeResources(netron: Netron | null, link: MeshLink | null): Promise<string | null> {
+    try {
+      // Release both independently: neither a stuck peer nor a half-open SSH
+      // socket may prevent closing the other, or scheduling the next attempt.
+      const results = await bounded(Promise.allSettled([
+        Promise.resolve().then(() => netron?.stop()),
+        Promise.resolve().then(() => link?.close?.()),
+      ]), this.cleanupTimeout, 'Connection cleanup timed out; retry will use a new connection');
+      return results.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+        .map(r => r.reason instanceof Error ? r.reason.message : String(r.reason)).join('; ') || null;
+    } catch (error) { return error instanceof Error ? error.message : String(error); }
   }
 
   private async disconnectSlave(conn: SlaveConnection): Promise<void> {
-    if (conn.reconnectTimer) {
-      clearTimeout(conn.reconnectTimer);
-      conn.reconnectTimer = null;
-    }
-
-    if (conn.netron) {
-      try {
-        await conn.netron.stop();
-      } catch {
-        // Already stopped
-      }
-      conn.netron = null;
-    }
-
-    await this.releaseLink(conn);
-
+    if (conn.reconnectTimer) clearTimeout(conn.reconnectTimer);
+    conn.reconnectTimer = null;
+    conn.reconnectAt = null;
+    if (conn.cleanup) { await conn.cleanup; return; }
+    conn.generation = (conn.generation ?? 0) + 1;
+    const netron = conn.netron;
+    const link = conn.link;
+    // Revoke ownership before closing. A late callback belongs to these old
+    // resources and cannot disconnect or overwrite the replacement connection.
+    conn.netron = null;
+    conn.link = null;
     conn.peer = null;
     conn.status = 'disconnected';
-    // What it last told us about its buffer is no longer something we know.
-    // Keeping the last figure would report a stale «0 pending» about a node
-    // that has been silent for hours, which is the exact reading this whole
-    // path exists to prevent.
     conn.syncStatus = null;
-  }
-
-  /** Give back whatever was opened to make this connection possible. */
-  private async releaseLink(conn: SlaveConnection): Promise<void> {
-    const close = conn.link?.close;
-    conn.link = null;
-    if (!close) return;
-    try {
-      await close();
-    } catch (err) {
-      this.logger.debug(
-        { host: conn.config.host, error: (err as Error).message },
-        'Releasing the mesh link failed',
-      );
-    }
+    conn.syncStatusAt = null;
+    const cleanup = this.closeResources(netron, link).then(error => {
+      conn.cleanupError = error;
+      if (error) this.logger.warn({ host: conn.config.host, port: conn.config.port, error },
+        'Mesh resource cleanup failed; reconnect remains enabled');
+    });
+    conn.cleanup = cleanup;
+    try { await cleanup; } finally { if (conn.cleanup === cleanup) conn.cleanup = null; }
   }
 
   private scheduleReconnect(key: string, conn: SlaveConnection): void {
-    if (this.disposed) return;
+    if (this.disposed || conn.removed) return;
     if (conn.reconnectTimer) return;
 
     conn.reconnectAttempt++;
@@ -620,8 +609,12 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
       this.maxBackoff,
     );
 
+    conn.reconnectAt = Date.now() + delay;
+    this.logger.warn({ host: conn.config.host, port: conn.config.port, attempt: conn.reconnectAttempt,
+      retryInMs: delay, error: conn.lastError, cleanupError: conn.cleanupError ?? null }, 'Mesh disconnected; reconnect scheduled');
     conn.reconnectTimer = setTimeout(() => {
       conn.reconnectTimer = null;
+      conn.reconnectAt = null;
       if (!this.disposed) {
         this.connectSlave(key, conn);
       }
@@ -644,56 +637,26 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
   }
 
   private async heartbeatSweep(): Promise<void> {
-    for (const [key, conn] of this.connections) {
-      if (conn.status !== 'connected' || !conn.peer) continue;
-
-      try {
-        const daemon = await conn.peer.queryInterface('OmnitronDaemon');
-        await Promise.race([
-          daemon.ping(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Heartbeat timeout')), 10_000)),
-        ]);
-
-        // This connection's own record, and the only one this class keeps.
-        // It also wrote the node into the fleet table — the control plane's
-        // registry of daemons, where a managed machine has no row — so every
-        // one of those UPDATEs reached nothing. A machine's liveness has one
-        // writer: the health monitor, into the node registry.
-        conn.lastHeartbeat = Date.now();
-      } catch (err) {
-        this.logger.warn(
-          { host: conn.config.host, port: conn.config.port, error: (err as Error).message },
-          'Heartbeat failed — marking slave as disconnected'
-        );
-
-        conn.status = 'disconnected';
-        conn.lastError = (err as Error).message;
-
-        // Force reconnect
-        await this.disconnectSlave(conn);
-        this.scheduleReconnect(key, conn);
-      }
-    }
-
-    // Pull sync data from all connected slaves during heartbeat
-    for (const [key, conn] of this.connections) {
-      if (conn.status === 'connected' && conn.peer) {
-        // The status is read BEFORE the drain, and independently of it.
-        //
-        // It used to be chained onto the drain's completion, on the reasoning
-        // that `pendingItems` should mean «what is still waiting» rather than
-        // «what was waiting before this sweep touched it». The stand refuted
-        // that within the hour: a node with a real backlog drains 10 000
-        // entries per sweep — the safety limit — and the first status did not
-        // arrive until 40 s after the master connected, because it was queued
-        // behind the very work it measures. A backlog large enough to matter
-        // is exactly a backlog large enough to delay the figure describing
-        // it, and a diagnostic that waits on the thing it diagnoses is not
-        // available when it is needed.
-        void this.refreshSyncStatus(conn);
-        void this.pullSyncData(key, conn);
-      }
-    }
+    if (this.heartbeatRunning || this.disposed) return;
+    this.heartbeatRunning = true;
+    try {
+      await Promise.all([...this.connections].map(async ([key, conn]) => {
+        if (conn.status !== 'connected' || !conn.peer) return;
+        const peer = conn.peer;
+        try {
+          await bounded((async () => {
+            const daemon = await peer.queryInterface('OmnitronDaemon');
+            await daemon.ping();
+          })(), 10_000, 'Heartbeat timeout');
+          if (conn.peer !== peer || conn.status !== 'connected') return;
+          conn.lastHeartbeat = Date.now();
+          void this.refreshSyncStatus(conn);
+          void this.pullSyncData(key, conn);
+        } catch (error) {
+          if (conn.peer === peer) await this.connectionLost(key, conn, error);
+        }
+      }));
+    } finally { this.heartbeatRunning = false; }
   }
 
   /**
@@ -713,14 +676,22 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
   private async refreshSyncStatus(conn: SlaveConnection): Promise<void> {
     if (conn.status !== 'connected' || !conn.peer) return;
 
+    const peer = conn.peer;
     try {
-      const syncProxy = await conn.peer.queryInterface('OmnitronSync');
-      const status = (await syncProxy.getSyncStatus()) as ISyncStatus | undefined;
+      const status = await bounded((async () => {
+        const syncProxy = await peer.queryInterface('OmnitronSync');
+        return await syncProxy.getSyncStatus() as ISyncStatus | undefined;
+      })(), 10_000, 'Replication status read timed out');
+      if (conn.peer !== peer || conn.status !== 'connected') return;
       conn.syncStatus = status ?? null;
+      conn.syncStatusAt = Date.now();
       // Cleared on success, so a refusal that comes BACK is reported again
       // rather than being swallowed as «already said that once».
       conn.lastSyncStatusError = null;
     } catch (err) {
+      if (conn.peer !== peer || conn.status !== 'connected') return;
+      conn.syncStatusAt = null;
+      if (isConnectionGone(err)) void this.connectionLost(`${conn.config.host}:${conn.config.port}`, conn, err);
       // A node that cannot answer is a node we do not know about, not a node
       // with an empty buffer. The heartbeat above is what decides whether it
       // is still connected; this only decides what we claim to know.
@@ -786,6 +757,7 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
     // not wired. Measured on the stand — 33 614 → 34 189 pending over 40 s
     // with not one line about it.
     if (!this.syncService) {
+      conn.lastPullError = 'Replication is unavailable: this master has no sync service';
       if (!this.noSyncServiceReported) {
         this.noSyncServiceReported = true;
         this.logger.warn(
@@ -825,7 +797,7 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
       const nodeId = conn.config.nodeId ?? stableNodeUuid(conn.config.host, conn.config.port);
 
       // Pull in batches until slave buffer is empty
-      while (true) {
+      while (conn.peer === peer && conn.status === 'connected') {
         const drained = await syncProxy.drainBuffer({ limit: 1000 });
         if (!drained || !drained.entries || drained.entries.length === 0) break;
         const batch = { ...drained, nodeId };
@@ -843,7 +815,11 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
           ...(result.duplicateIds ?? []),
           ...(result.discardedIds ?? []),
         ];
-        if (delivered.length > 0) await syncProxy.ackDrained({ ids: delivered });
+        if (conn.peer !== peer || conn.status !== 'connected') return;
+        if (delivered.length > 0) {
+          await syncProxy.ackDrained({ ids: delivered });
+          if (conn.peer === peer) conn.lastPullAt = Date.now();
+        }
         totalPulled += delivered.length;
 
         // Entries the master rejected stay pending on the slave, so the next
@@ -851,11 +827,7 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
         // re-reject the same page until the safety limit.
         const ids: string[] = batch.entries.map((e: { id: string }) => e.id);
         if (!ids.some((id) => !seen.has(id))) {
-          this.logger.warn(
-            { host: conn.config.host, pending: ids.length },
-            'Sync pull stalled — the master is rejecting the slave\'s oldest entries'
-          );
-          break;
+          throw new Error(`Replication stalled: ${ids.length} oldest entries remain pending after ingestion; inspect master sync errors`);
         }
         for (const id of ids) seen.add(id);
 
@@ -863,6 +835,7 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
         if (totalPulled >= 10_000) break;
       }
 
+      if (conn.peer !== peer || conn.status !== 'connected') return;
       conn.lastPullError = null;
 
       if (totalPulled > 0) {
@@ -880,6 +853,8 @@ await authenticatePeer(peer as AuthenticatingPeer, link);
         );
       }
     } catch (err) {
+      if (conn.peer !== peer || conn.status !== 'connected') return;
+      if (isConnectionGone(err)) void this.connectionLost(`${conn.config.host}:${conn.config.port}`, conn, err);
       // Same rule as the status read beside it: once at warn, quietly after,
       // cleared on success. A pull that keeps failing is a backlog that keeps
       // growing, and the column showing the backlog cannot say why.

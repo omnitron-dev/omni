@@ -2,10 +2,10 @@
   {
     "name": "@xec-sh/core",
     "version": "0.11.1",
-    "filename": "xec-sh-core-0.11.1-2fb49c74aa63.tgz",
-    "sha256": "2fb49c74aa63581d6844206ac63229ee46b04c75e49ed9b7be4ba6d3a1f6d5a7",
-    "integrity": "sha512-3YeW5HyTf8ofg74U0a3kS+QlstySTEMDHHpwEtRZw2wnuqyTXtp/zD+1bFnTGs0kkv5w7Dm0MGa5DmTJEyRSzQ==",
-    "sourceRevision": "827eabe3fbff55d6203474e1198765b4a3e59a33",
+    "filename": "xec-sh-core-0.11.1-c9f7d57ad306.tgz",
+    "sha256": "c9f7d57ad30684b0c992f64b7dbdc54631c14a12f01738db70c7ccef40e72c83",
+    "integrity": "sha512-2h5HqddnAbEPYFSEIASQROM4CX0YPsm0W63pZ155Fv5PuLekUuU7uPQ4GzkWSpBLniP8OnnXStsYr1nFdWB66A==",
+    "sourceRevision": "3769b826432f17f19a631fa7ca6318bce7dabf3a",
     "sourceDirty": false,
     "dependencies": {
       "ssh2": "^1.17.0"

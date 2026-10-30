@@ -8,7 +8,8 @@
 import { log, password, table } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { requireDaemon } from './daemon-required.js';
-import type { INodeStatus, INodeWithStatus } from '../shared/dto/nodes.js';
+import type { INodeStatus, INodeWithStatus, IMeshNodeStatus } from '../shared/dto/nodes.js';
+import { meshReading } from '../shared/sync-reading.js';
 
 /**
  * Render `sshConnected`, which has three states and not two.
@@ -119,6 +120,7 @@ interface NodesService {
   removeNode(data: { id: string }): Promise<void>;
   checkNodeStatus(data: { id: string }): Promise<INodeStatus>;
   checkAllNodes(): Promise<INodeStatus[]>;
+  getMeshStatus(): Promise<IMeshNodeStatus[]>;
   listSshKeys(): Promise<Array<{ name: string; type: string; path: string }>>;
 }
 
@@ -372,6 +374,17 @@ export async function nodeCheckCommand(id?: string): Promise<void> {
         log.warn(`Omnitron error: ${status.omnitronError}`);
       }
       log.info(`Checked ${formatCheckedAt(status.checkedAt)}`);
+      if (!node.isLocal) {
+        try {
+          const mesh = (await nodes.getMeshStatus()).find(n => n.nodeId === node.id);
+          if (mesh) {
+            const reading = meshReading(mesh);
+            log.info(reading.connection);
+            if (reading.error) log.warn(reading.error);
+            log.info(`Replication: ${reading.replication}`);
+          } else log.warn('RPC and replication: no mesh reading for this node.');
+        } catch (error) { log.warn(`RPC diagnostics unavailable: ${(error as Error).message}`); }
+      }
     } else {
       // The registry decides what is printed, and each line says how old its
       // reading is. The statuses came back keyed by id, and a status whose id

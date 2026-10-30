@@ -787,6 +787,14 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
         authenticated: conn?.authenticated ?? false,
         lastHeartbeat: conn?.lastHeartbeat ?? null,
         lastError: conn?.lastError ?? null,
+        reconnectAt: conn?.reconnectAt ?? null,
+        reconnectAttempt: conn?.reconnectAttempt ?? 0,
+        cleanupError: conn?.cleanupError ?? null,
+        syncStatus: conn?.syncStatus ?? null,
+        syncStatusAt: conn?.syncStatusAt ?? null,
+        lastSyncStatusError: conn?.lastSyncStatusError ?? null,
+        lastPullError: conn?.lastPullError ?? null,
+        lastPullAt: conn?.lastPullAt ?? null,
       };
     });
   }

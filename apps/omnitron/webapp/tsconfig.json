@@ -28,7 +28,8 @@
     "tsBuildInfoFile": "node_modules/.cache/tsconfig.tsbuildinfo",
     "paths": {
       "src/*": ["./src/*"],
-      "@omnitron-dev/omnitron/dto/services": ["../src/shared/dto/services.ts"]
+      "@omnitron-dev/omnitron/dto/services": ["../src/shared/dto/services.ts"],
+      "@omnitron-dev/omnitron/sync-reading": ["../src/shared/sync-reading.ts"]
     }
   },
   "include": ["src"]

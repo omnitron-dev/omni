@@ -173,6 +173,15 @@ export interface IMeshNodeStatus {
   authenticated: boolean;
   lastHeartbeat: number | null;
   lastError: string | null;
+  /** Absent on older daemons. A transport connection alone does not prove delivery. */
+  reconnectAt?: number | null;
+  reconnectAttempt?: number;
+  cleanupError?: string | null;
+  syncStatus?: import('./project.js').ISyncStatus | null;
+  syncStatusAt?: number | null;
+  lastSyncStatusError?: string | null;
+  lastPullError?: string | null;
+  lastPullAt?: number | null;
 }
 
 /**

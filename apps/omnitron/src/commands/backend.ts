@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs/promises';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { BackendRpcService } from '../daemon/backend.rpc-service.js';
 import { replaceBackend, recoverBackend, abortBackendReplacement } from '../daemon/backend-upgrade.js';
@@ -54,6 +55,10 @@ export async function backendSelectCommand(id: string): Promise<void> {
       if (installation!.activation()) throw new Error('An activation is unfinished; recover or abort its checkpoint before selecting another release');
       const selected = installation!.selection();
       const artifact = await installation!.artifact(id);
+      if (!selected?.bootstrap) {
+        try { await fs.access(path.join(artifact.directory, 'cli/installed.js')); }
+        catch { throw new Error('This release predates managed installation. Select a management-capable release first so rollback and recovery remain available.'); }
+      }
       if (selected) {
         const previous = await installation!.artifact(selected.current);
         await checkBackendCandidate(artifact.directory, previous.entry);

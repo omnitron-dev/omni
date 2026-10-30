@@ -15,7 +15,7 @@ export interface RuntimeSelection {
   revision: number;
   current: string;
   previous: string | null;
-  /** The launcher itself stays pinned; changing the backend never removes it. */
+  /** A management-capable release remains available even after rollback to a legacy backend. */
   bootstrap: string | null;
   selectedAt: string;
 }
@@ -184,7 +184,10 @@ export class RuntimeInstallation {
 
   async select(id: string, expectedRevision: number): Promise<RuntimeSelection> {
     if (!this.lease) throw new Error('Runtime selection requires an exclusive operation');
-    await this.artifact(id);
+    const artifact = await this.artifact(id);
+    let hasLauncher = false;
+    try { hasLauncher = (await fs.lstat(path.join(artifact.directory, 'cli/installed.js'))).isFile(); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     return this.store.initSync().transaction(() => {
       const previous = this.selection();
       if ((previous?.revision ?? 0) !== expectedRevision) throw new Error('Runtime selection changed; review the active installation before retrying');
@@ -193,7 +196,7 @@ export class RuntimeInstallation {
       const value: RuntimeSelection = {
         protocol: 1, revision: expectedRevision + 1, current: id,
         previous: previous?.current === id ? previous.previous : previous?.current ?? null,
-        bootstrap: previous?.bootstrap ?? null, selectedAt: new Date().toISOString(),
+        bootstrap: previous?.bootstrap ?? (hasLauncher ? id : null), selectedAt: new Date().toISOString(),
       };
       this.store.kvSetSync('runtime.selection', value);
       this.store.kvDeleteSync('runtime.activation');
@@ -221,14 +224,24 @@ export class RuntimeInstallation {
 }
 
 /** Resolving a startup always revalidates Node, backend and the entire dependency closure. */
-export async function selectedBackend(home = OMNITRON_HOME, purpose: 'startup' | 'control' = 'startup'): Promise<BackendArtifact | null> {
+export async function selectedBackend(home = OMNITRON_HOME, purpose: 'startup' | 'control' | 'management' = 'startup'): Promise<BackendArtifact | null> {
   const installation = await RuntimeInstallation.open(home, { existing: true });
   if (!installation) return null;
   try {
     const activation = installation.activation();
     if (activation && purpose === 'startup') throw new Error(`Runtime activation is unfinished. Inspect and recover its checkpoint before cold start: ${activation.checkpoint}`);
     const selection = installation.selection();
-    return selection ? await installation.artifact(activation && purpose === 'control' ? selection.bootstrap ?? selection.current : selection.current) : null;
+    if (!selection) return null;
+    if (activation && purpose !== 'startup') return await installation.artifact(selection.bootstrap ?? selection.current);
+    const current = await installation.artifact(selection.current);
+    if (purpose === 'management' && selection.bootstrap) {
+      try { await fs.access(path.join(current.directory, 'cli/installed.js')); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        return await installation.artifact(selection.bootstrap);
+      }
+    }
+    return current;
   } finally { await installation.close(); }
 }
 

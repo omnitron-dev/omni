@@ -22,7 +22,7 @@ async function fixture() {
   const store = await RuntimeInstallation.open(home);
   if (!store) throw new Error('Fixture store was not opened');
   stores.push(store);
-  const make = async (name: string) => {
+  const make = async (name: string, launcher = true) => {
     const source = path.join(root, name);
     const dist = path.join(source, 'packages/0/dist');
     const build = { commit: name === 'first' ? 'a'.repeat(40) : 'b'.repeat(40), dirty: false, builtAt: new Date().toISOString() };
@@ -31,7 +31,7 @@ async function fixture() {
     await fs.mkdir(path.join(dist, 'database/migrations'), { recursive: true });
     await fs.writeFile(path.join(dist, 'BUILD.json'), JSON.stringify(build));
     await fs.writeFile(path.join(dist, 'daemon/daemon-entry.js'), 'export {};');
-    await fs.writeFile(path.join(dist, 'cli/installed.js'), 'export {};');
+    if (launcher) await fs.writeFile(path.join(dist, 'cli/installed.js'), 'export {};');
     // Only the preflight protocol is exercised here; runtime integration tests
     // use the sealed real Node executable and actual application processes.
     await fs.writeFile(path.join(source, 'node'), `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify({ protocol: 1, build })}'\n`, { mode: 0o700 });
@@ -67,6 +67,20 @@ it('persists startup selection and rollback while keeping a stable bootstrap lau
   });
   expect(store.selection()).toMatchObject({ current: next.hash, previous: first.hash, bootstrap: first.hash, revision: 2 });
   expect((await selectedBackend(home))?.runtimeHash).toBe(next.hash);
+});
+
+it('retains installation and recovery commands after rollback to a backend without an installation CLI', async () => {
+  const { store, home, make } = await fixture();
+  const legacy = await make('first', false), current = await make('current');
+  await store.exclusive(async () => {
+    await store.install(legacy.source); await store.install(current.source);
+    await store.select(current.hash, 0); await store.writeLauncher();
+    await store.select(legacy.hash, 1);
+    const launcher = await store.writeLauncher();
+    expect(await fs.readFile(launcher, 'utf8')).toContain(current.hash);
+  });
+  expect((await selectedBackend(home))?.runtimeHash).toBe(legacy.hash);
+  expect((await selectedBackend(home, 'management'))?.runtimeHash).toBe(current.hash);
 });
 
 it('blocks cold start after an interrupted activation until a proven commit or abort', async () => {

@@ -186,7 +186,7 @@ export class HealthCheckService {
           : { status: PROCESS_WARN.has(status) ? 'warn' : 'fail', message: status },
       ),
     ];
-    if (this.orchestrator.getHandle?.(name)?.entry.readiness) {
+    if (this.orchestrator.hasDeclaredReadiness?.(name) ?? this.orchestrator.getHandle?.(name)?.entry.readiness) {
       const start = Date.now();
       const health = (await this.orchestrator.getHealth(name))[name];
       const measured = health?.checks.map(check => ({ ...check, name: `${name} ${check.name}`, duration: Date.now() - start })) ??

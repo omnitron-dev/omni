@@ -157,3 +157,25 @@ process.send({type:'ready'}); setInterval(() => {}, 1000);`);
     }
   });
 });
+
+describe('operator declarations for immutable deployments', () => {
+  it('uses an exact-name HTTP fallback and never replaces an app-owned contract', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => { calls.push(url); return new Response('{"status":"ok"}'); });
+    const monitor = new ReadinessMonitor();
+    monitor.configure({ 'project/live/api': http('http://localhost/operator') });
+    const entry = { name: 'project/live/api', cwd: '/' };
+    expect(monitor.isConfigured(entry)).toBe(true);
+    expect((await monitor.check({}, entry)).status).toBe('healthy');
+    expect((await monitor.check({}, { ...entry, name: 'project/test/api' })).status).toBe('degraded');
+    await monitor.check({}, { ...entry, readiness: http('http://localhost/application') });
+    expect(calls).toEqual(['http://localhost/operator', 'http://localhost/application']);
+  });
+  it('validates the whole replacement atomically and refuses wildcards or heartbeat injection', async () => {
+    const monitor = new ReadinessMonitor();
+    monitor.configure({ 'p/s/a': http('http://localhost/health') });
+    expect(() => monitor.configure({ '*': http('http://localhost/') })).toThrow();
+    expect(() => monitor.configure({ 'p/s/a': heartbeat() })).toThrow();
+    expect(monitor.isConfigured({ name: 'p/s/a' })).toBe(true);
+  });
+});

@@ -109,9 +109,26 @@ export async function checkReadiness(config: AppReadinessConfig | undefined, cwd
 /** Per-launch/config cache with shared in-flight work; a re-read never reuses an old declaration's verdict. */
 export class ReadinessMonitor {
   private readonly cache = new WeakMap<object, { key: string; expires: number; result?: IHealthStatus; pending?: Promise<IHealthStatus> }>();
+  private operatorDeclarations: Record<string, AppReadinessConfig> = {};
+
+  /** Fallback declarations never replace application-owned readiness or native domain health. */
+  configure(declarations: Record<string, AppReadinessConfig>): void {
+    if (!declarations || typeof declarations !== 'object' || Array.isArray(declarations) || Object.keys(declarations).length > 1024) throw new Error('applicationReadiness must be an object with at most 1024 qualified app names.');
+    for (const [name, config] of Object.entries(declarations)) {
+      if (!/^[\w.-]+\/[\w.-]+\/[\w.-]+$/.test(name)) throw new Error('applicationReadiness requires exact project/stack/app names.');
+      validateReadiness(config);
+      if (config.probes.some(probe => probe.type !== 'http')) throw new Error('Operator readiness supports HTTP only; heartbeat channels belong in application configuration.');
+    }
+    this.operatorDeclarations = structuredClone(declarations);
+  }
+
+  isConfigured(entry: IEcosystemAppEntry): boolean {
+    return Boolean(entry.readiness ?? this.operatorDeclarations[entry.name]);
+  }
 
   check(owner: object, entry: IEcosystemAppEntry, runId?: string): Promise<IHealthStatus> {
-    const key = JSON.stringify([entry.cwd, entry.readiness, runId]);
+    const config = entry.readiness ?? this.operatorDeclarations[entry.name];
+    const key = JSON.stringify([entry.cwd, config, runId]);
     let cached = this.cache.get(owner);
     if (cached?.key === key) {
       if (cached.pending) return cached.pending;
@@ -120,9 +137,9 @@ export class ReadinessMonitor {
     cached = { key, expires: 0 };
     this.cache.set(owner, cached);
     const current = cached;
-    const pending = checkReadiness(entry.readiness, entry.cwd ?? process.cwd(), runId).then((result) => {
+    const pending = checkReadiness(config, entry.cwd ?? process.cwd(), runId).then((result) => {
       current.result = result;
-      current.expires = Date.now() + (entry.readiness?.intervalMs ?? 5000);
+      current.expires = Date.now() + (config?.intervalMs ?? 5000);
       return result;
     }).finally(() => { delete current.pending; });
     current.pending = pending;

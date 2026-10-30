@@ -2150,10 +2150,14 @@ export class ProjectService extends EventEmitter {
         const active = project.enabledStacks?.includes(stack) || running.includes(stack) ||
           apps.some(app => app.name.startsWith(prefix) && ['online', 'starting', 'restarting'].includes(app.status));
         const intent = active ? 'running' : project.enabledStacks ? 'inactive' : 'unknown';
-        context.stacks.push({ project: project.name, stack, intent });
+        const scope: InfrastructureHealthContext['stacks'][number] = { project: project.name, stack, intent };
+        context.stacks.push(scope);
         if (intent !== 'running') continue;
         const infra = this.infraManager.getInstance(project.name, stack);
-        if (infra) context.requiredContainers.push(...infra.getDesiredServices().map(service => service.name));
+        if (infra) {
+          scope.containers = infra.getDesiredServices().map(service => service.name);
+          context.requiredContainers.push(...scope.containers);
+        }
         else if (mergeInfrastructure(config, declaration)) context.unresolvedStacks.push(`${project.name}/${stack}`);
       }
     }

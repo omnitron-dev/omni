@@ -55,16 +55,22 @@ export class DockerHealthIndicator extends HealthIndicator {
     catch { return this.degraded('Docker answered, but local stack intent could not be read. Check project configuration and daemon logs.'); }
     const required = new Set([...context.requiredContainers, ...(infra?.getDesiredServices().map(s => s.name) ?? [])]);
     const scopes = new Map(context.stacks.map(s => [`${s.project}/${s.stack}`, s.intent]));
+    const inventories = new Map(context.stacks.filter(s => s.containers !== undefined).map(s => [`${s.project}/${s.stack}`, new Set(s.containers)]));
     const failures: string[] = [];
     const warnings: string[] = context.unresolvedStacks.map(s => `${s}: enabled infrastructure has not been reconciled; inspect stack startup logs`);
     const inactive: string[] = [];
+    const retired: string[] = [];
     for (const name of required) {
       if (!seen.some(s => s.name === name)) failures.push(`${name}: required container is missing; inspect stack provisioning`);
     }
     for (const service of seen) {
       const intent = required.has(service.name) ? 'running' : scopes.get(`${service.project}/${service.stack}`) ?? 'unknown';
+      const inventory = inventories.get(`${service.project}/${service.stack}`);
+      const noLongerDeclared = !required.has(service.name) && inventory !== undefined && !inventory.has(service.name);
       if (service.status !== 'running') {
-        if (intent === 'inactive' && ['exited', 'created'].includes(service.status)) {
+        if (noLongerDeclared && ['exited', 'created'].includes(service.status)) {
+          retired.push(service.name);
+        } else if (intent === 'inactive' && ['exited', 'created'].includes(service.status)) {
           inactive.push(service.name);
         } else {
           const message = `${service.name}: ${service.status}; ${intent === 'running' ? 'required by an active stack, inspect container logs' : 'desired state is not established, inspect stack ownership'}`;
@@ -72,14 +78,16 @@ export class DockerHealthIndicator extends HealthIndicator {
         }
       } else if (service.health === 'unhealthy' || service.health === 'starting') {
         warnings.push(`${service.name}: healthcheck ${service.health}; inspect its probe output`);
+      } else if (noLongerDeclared) {
+        warnings.push(`${service.name}: running outside the stack's current reconciler inventory; review the retired service before cleanup`);
       }
     }
     const details = { source: 'docker+desired-state', total: seen.length, running: seen.filter(s => s.status === 'running').length,
-      inactive, failures, warnings, services: seen.map(s => ({ ...s, intent: required.has(s.name) ? 'running' : scopes.get(`${s.project}/${s.stack}`) ?? 'unknown' })) };
+      inactive, retired, failures, warnings, services: seen.map(s => ({ ...s, intent: required.has(s.name) ? 'running' : scopes.get(`${s.project}/${s.stack}`) ?? 'unknown' })) };
     const message = [...failures, ...warnings].join('; ');
     if (failures.length) return this.unhealthy(message, details);
     if (warnings.length) return this.degraded(message, details);
-    return this.healthy(`${details.running} managed containers running${inactive.length ? `; ${inactive.length} intentionally stopped in disabled local stacks: ${inactive.join(', ')}` : ''}.`, details);
+    return this.healthy(`${details.running} managed containers running${inactive.length ? `; ${inactive.length} intentionally stopped in disabled local stacks: ${inactive.join(', ')}` : ''}${retired.length ? `; ${retired.length} stopped containers no longer declared by their stack: ${retired.join(', ')}` : ''}.`, details);
   }
 
   private judge(services: Seen[], source: 'reconciler' | 'docker'): HealthIndicatorResult {

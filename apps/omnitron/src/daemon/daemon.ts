@@ -1641,13 +1641,14 @@ export class OmnitronDaemon {
       const orchestrator = await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
 
       // Docker containers health indicator
+      titanHealth.registerIndicator(runtimeDiagnostics);
+      orchestrator.configureReadiness(this.dc.applicationReadiness ?? {});
       const projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
       titanHealth.registerIndicator(new DockerHealthIndicator(() => this.infraService, undefined,
         () => projects.getInfrastructureHealthContext()));
 
       // Managed apps health indicator
       titanHealth.registerIndicator(new AppHealthIndicator(orchestrator));
-      titanHealth.registerIndicator(runtimeDiagnostics);
 
       // How long the loop has stood still, and when — the number the console
       // reads for a node that went quiet.

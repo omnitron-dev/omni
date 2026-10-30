@@ -59,9 +59,24 @@ describe('stack intent is derived without changing infrastructure', () => {
     };
     const out = ProjectService.prototype.getInfrastructureHealthContext.call(self as never);
     expect(out.stacks).toContainEqual({ project: 'sample', stack: 'dev', intent: 'inactive' });
-    expect(out.stacks).toContainEqual({ project: 'sample', stack: 'live', intent: 'running' });
+    expect(out.stacks).toContainEqual({ project: 'sample', stack: 'live', intent: 'running', containers: ['database'] });
     expect(out.stacks).toContainEqual({ project: 'unspecified', stack: 'dev', intent: 'unknown' });
     expect(out.stacks.some(s => s.project === 'unloaded' || s.stack === 'remote')).toBe(false);
     expect(out.requiredContainers).toEqual(['database']);
+  });
+});
+
+describe('retired services in an otherwise active stack', () => {
+  const desired: InfrastructureHealthContext = { ...context, stacks: [{ project: 'sample', stack: 'live', intent: 'running', containers: ['database'] }] };
+  it('requires a reconciler inventory before calling a stopped service retired', async () => {
+    const out = await check([up, { ...down, stack: 'live' }], desired);
+    expect(out.status).toBe('healthy');
+    expect(out.message).toContain('stopped containers no longer declared');
+    expect(out.details).toMatchObject({ retired: ['old-worker'] });
+    expect((await check([up, { ...down, stack: 'live' }])).status).toBe('unhealthy');
+  });
+  it('keeps missing required and still-running retired containers visible', async () => {
+    expect((await check([{ ...down, stack: 'live' }], desired)).status).toBe('unhealthy');
+    expect((await check([up, { ...down, stack: 'live', status: 'running', health: 'healthy' }], desired)).status).toBe('degraded');
   });
 });

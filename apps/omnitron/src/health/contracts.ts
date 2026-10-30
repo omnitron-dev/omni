@@ -25,7 +25,8 @@ const object = (value: unknown): value is Record<string, unknown> =>
 const integer = (n: unknown, min: number, max: number): n is number =>
   typeof n === 'number' && Number.isSafeInteger(n) && n >= min && n <= max;
 const text = (value: unknown, max: number): value is string =>
-  typeof value === 'string' && value.trim().length > 0 && value.length <= max && !/[\u0000-\u001f]/.test(value);
+  typeof value === 'string' && value.trim().length > 0 && value.length <= max &&
+  !Array.from(value).some(character => character.charCodeAt(0) < 32);
 const only = (value: Record<string, unknown>, keys: string[]) => Object.keys(value).every((key) => keys.includes(key));
 
 export function validateReadiness(value: unknown): asserts value is AppReadinessConfig {

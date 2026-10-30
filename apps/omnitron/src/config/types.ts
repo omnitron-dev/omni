@@ -699,6 +699,8 @@ export interface IWatchConfig {
 // =============================================================================
 
 export interface IDaemonConfig {
+  /** Operator-owned HTTP readiness for immutable classic releases lacking an app declaration. Exact qualified app names only. */
+  applicationReadiness?: Record<string, import('../health/contracts.js').AppReadinessConfig>;
   /** Administrator file access. Defaults to / within daemon OS permissions; explicit roots replace it. */
   files?: { enabled?: boolean; roots?: import('../shared/dto/files.js').FileRootConfig[] };
   /** Interactive SSH: admin-only, pinned host keys, server-enforced session limits. */

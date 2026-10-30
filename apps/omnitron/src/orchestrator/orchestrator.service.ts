@@ -1684,6 +1684,15 @@ export class OrchestratorService extends EventEmitter {
     return result;
   }
 
+  configureReadiness(declarations: NonNullable<import('../config/types.js').IDaemonConfig['applicationReadiness']>): void {
+    this.readinessMonitor.configure(declarations);
+  }
+
+  hasDeclaredReadiness(name: string): boolean {
+    const handle = this.getHandle(name);
+    return Boolean(handle && this.readinessMonitor.isConfigured(handle.entry));
+  }
+
   /**
    * Each app's health, asked of every process it runs — its supervisor
    * children and its worker pools — and combined (`app-health.ts`).
@@ -1715,7 +1724,7 @@ export class OrchestratorService extends EventEmitter {
         for (const [pool, instance] of handle.topologyPools) {
           answers.push([pool, poolHealth((instance as unknown as { metrics?: IPoolMetrics }).metrics)] as const);
         }
-        if (handle.entry?.readiness) answers.push(['readiness', await this.readinessMonitor.check(handle, handle.entry, handle.healthRunId)]);
+        if (handle.entry && this.readinessMonitor.isConfigured(handle.entry)) answers.push(['readiness', await this.readinessMonitor.check(handle, handle.entry, handle.healthRunId)]);
         const health = handle.status !== 'online' ? notRunningHealth(handle.status)
           : answers.length > 0 ? combineProcessHealth(answers) : handle.lastHealth;
         handle.lastHealth = health;

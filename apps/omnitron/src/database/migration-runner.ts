@@ -20,8 +20,14 @@ async function legacyHistory(db: Kysely<unknown>): Promise<MigrationRecord[]> {
   });
 }
 
-export function createOmnitronMigrationRunner(db: Kysely<unknown>, logger?: ILogger, options: { dryRun?: boolean } = {}) {
-  const history = createMigrationHistory();
+export function createOmnitronMigrationRunner(db: Kysely<unknown>, logger?: ILogger, options: {
+  dryRun?: boolean;
+  /** Internal transition fence, invoked on the locked connection before any history write. */
+  beforeSetup?: (connection: Kysely<unknown>) => Promise<void>;
+} = {}) {
+  // Preserve the deployed names and timestamps. Kysera adds only a nullable
+  // checksum column during locked setup; old rows remain honestly unverified.
+  const history = createMigrationHistory({ checksumColumn: 'checksum' });
   const known = new Set(OMNITRON_MIGRATIONS.map(m => m.name));
   return createMigrationRunner(db, OMNITRON_MIGRATIONS, {
     dryRun: options.dryRun ?? false,
@@ -53,6 +59,7 @@ export function createOmnitronMigrationRunner(db: Kysely<unknown>, logger?: ILog
         }
       },
       async setup(connection) {
+        await options.beforeSetup?.(connection as Kysely<unknown>);
         const future = (await history.read(connection)).filter(row => !known.has(row.name));
         const compatible = await compatibleFutureMigrations(connection as Kysely<unknown>, future);
         if (future.length !== compatible.length) throw new Error(`Applied migrations not in this build: ${future.map(row => row.name).join(', ')}. No matching schema expansion receipt authorizes this runtime.`);

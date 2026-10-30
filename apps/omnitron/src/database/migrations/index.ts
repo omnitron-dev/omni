@@ -48,5 +48,5 @@ export const OMNITRON_MIGRATIONS: Migration[] = [
   { name: '011_alerts_nobody_had_to_write', up: m011.up, down: m011.down },
   { name: '012_a_disk_nobody_watched', up: m012.up, down: m012.down },
   { name: '013_an_alarm_delivered', up: m013.up, down: m013.down },
-  { name: '014_replication_receipts', up: m014.up, down: m014.down },
+  m014.migration,
 ];

@@ -59,14 +59,15 @@ export class BackendSupervisorService {
   async status(): Promise<SupervisorStatus> { return { ...this.state }; }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async upgrade(data: { directory: string; checkOnly?: boolean }): Promise<BackendReplacementResult | { checked: true; build: BackendArtifact['build'] }> {
+  async upgrade(data: { directory: string; checkOnly?: boolean; schemaPlan?: string }): Promise<BackendReplacementResult | { checked: true; build: BackendArtifact['build'] }> {
     if (!path.isAbsolute(data.directory)) throw new Error('An absolute installed candidate path is required');
     return this.exclusive(async () => {
       await this.isolation();
       const candidate = await checkBackendCandidate(data.directory);
       try { await fs.access(path.join(candidate.directory, 'daemon/managed-entry.js')); }
       catch { throw new Error('This candidate predates independent supervision and cannot replace an OS-managed backend'); }
-      const result = await replaceBackend(data.directory, { socket: this.daemonConfig.socketPath, checkOnly: data.checkOnly === true });
+      const result = await replaceBackend(data.directory, { socket: this.daemonConfig.socketPath, checkOnly: data.checkOnly === true,
+        ...(data.schemaPlan ? { schemaPlan: data.schemaPlan } : {}) });
       if (!('checked' in result)) await this.ready(result.pid);
       return result;
     });

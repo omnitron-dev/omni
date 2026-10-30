@@ -1,11 +1,8 @@
-import type { Kysely } from 'kysely';
+import { defineSqlMigration } from '../../migration/index.js';
 
 /** Preserve the outcome across a lost acknowledgement and a repeated batch. */
-export async function up(db: Kysely<unknown>): Promise<void> {
-  await db.schema.alterTable('sync_ingested')
-    .addColumn('outcome', 'varchar(16)', column => column.notNull().defaultTo('unverified')).execute();
-}
-
-export async function down(db: Kysely<unknown>): Promise<void> {
-  await db.schema.alterTable('sync_ingested').dropColumn('outcome').execute();
-}
+export const migration = defineSqlMigration('014_replication_receipts',
+  `ALTER TABLE sync_ingested ADD COLUMN outcome varchar(16) NOT NULL DEFAULT 'unverified'`,
+  'ALTER TABLE sync_ingested DROP COLUMN outcome');
+export const up = migration.up;
+export const down = migration.down!;

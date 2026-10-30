@@ -17,6 +17,9 @@ assert.ok(dist.includes('omnitron-handoff-'), 'Use the disposable handoff test a
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-backend-'));
 await fs.chmod(directory, 0o700);
 const master = process.argv.includes('--master');
+const schemaCandidateArg = process.argv.indexOf('--schema-candidate');
+const schemaCandidate = schemaCandidateArg === -1 ? null : path.resolve(process.argv[schemaCandidateArg + 1]);
+if (schemaCandidate) assert.ok(master && schemaCandidate.includes('omnitron-handoff-'), 'Use an isolated master schema candidate');
 let databaseAdmin, databaseName, databaseUrl;
 if (master) {
   const testUrl = new URL(process.env.TEST_DATABASE_URL ?? 'postgresql://test:test@127.0.0.1:15432/test');
@@ -234,6 +237,70 @@ try {
   assert.equal(recoveredCrash.ownerPid, ownerPid);
   assert.ok(recoveredCrash.epoch > reconciled.epoch);
   await verifyAuthority();
+  let schemaTransition;
+  if (schemaCandidate) {
+    // Execute the candidate's management code against the old, real backend.
+    // A sealed fixture-only entry fails activation once, then the SAME artifact
+    // succeeds, proving the receipt is tied to content, not a mutable release.
+    const nextRoot = path.join(directory, 'schema-candidate');
+    await fs.cp(path.resolve(schemaCandidate, '../../..'), nextRoot, { recursive: true, verbatimSymlinks: true, mode: fs.constants.COPYFILE_FICLONE });
+    const nextDist = path.join(nextRoot, 'packages/0/dist');
+    const fault = path.join(directory, 'fail-schema-candidate');
+    const nextEntry = path.join(nextDist, 'daemon/daemon-entry.js');
+    await fs.rename(nextEntry, path.join(nextDist, 'daemon/daemon-entry-original.js'));
+    await fs.writeFile(nextEntry, `import fs from 'node:fs'; if(!process.argv.includes('--check-backend') && fs.existsSync(${JSON.stringify(fault)})) process.exit(55); else await import('./daemon-entry-original.js');`);
+    const nextManifest = JSON.parse(await fs.readFile(path.join(nextRoot, 'RUNTIME.json'), 'utf8'));
+    nextManifest.sha256 = await runtimeArtifactDigest(nextRoot);
+    await fs.writeFile(path.join(nextRoot, 'RUNTIME.json'), JSON.stringify(nextManifest));
+    const management = await import(pathToFileURL(path.join(nextDist, 'daemon/schema-transition.js')).href);
+    const nextUpgrade = (await import(pathToFileURL(path.join(nextDist, 'daemon/backend-upgrade.js')).href)).replaceBackend;
+    // The prior recovery is ready publicly before its next certificate is durable.
+    const observer = createDaemonClient(socket);
+    try {
+      for (let i = 0; i < 80; i++) {
+        if ((await (await observer.service('OmnitronBackend')).status()).recovery?.status === 'ready') break;
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+    } finally { await observer.disconnect(); }
+    const plan = await management.prepareSchemaTransition(nextRoot, socket);
+    await assert.rejects(nextUpgrade(nextDist, { socket, checkOnly: true }), /changes database migrations/);
+    await assert.rejects(nextUpgrade(nextDist, { socket, checkOnly: true, schemaPlan: plan.file }), /applied schema plan/);
+    await management.applySchemaTransition(plan.file);
+    // Idempotent retry uses the exact history and does not run DDL twice.
+    await management.applySchemaTransition(plan.file);
+    await fs.writeFile(fault, 'fixture');
+    await assert.rejects(nextUpgrade(nextDist, { socket, schemaPlan: plan.file }), /previous backend was restored/);
+    const restoredClient = createDaemonClient(socket);
+    const restored = await restoredClient.status();
+    ownedBackends.add(restored.pid);
+    await restoredClient.disconnect();
+    assert.equal(restored.execution.owner.pid, ownerPid);
+    await fs.unlink(fault);
+    // Wait for a new certificate after automatic rollback before preparing another handoff.
+    const waitCertificate = async () => {
+      const observer = createDaemonClient(socket);
+      try {
+        for (let i = 0; i < 80; i++) {
+          if ((await (await observer.service('OmnitronBackend')).status()).recovery?.status === 'ready') return;
+          await new Promise(resolve => setTimeout(resolve, 250));
+        }
+        throw new Error('Schema runtime certificate did not become ready');
+      } finally { await observer.disconnect(); }
+    };
+    await waitCertificate();
+    const upgraded = await nextUpgrade(nextDist, { socket, schemaPlan: plan.file });
+    ownedBackends.add(upgraded.pid); assert.equal(upgraded.ownerPid, ownerPid);
+    await verifyAuthority();
+    await waitCertificate();
+    const rolledBack = await nextUpgrade(dist, { socket, schemaPlan: plan.file });
+    ownedBackends.add(rolledBack.pid); assert.equal(rolledBack.ownerPid, ownerPid);
+    await waitCertificate();
+    process.kill(rolledBack.pid, 'SIGKILL'); await waitDead(rolledBack.pid);
+    const cold = JSON.parse((await runRecovery()).stdout).data;
+    ownedBackends.add(cold.pid); assert.equal(cold.ownerPid, ownerPid);
+    await verifyAuthority();
+    schemaTransition = { plan: plan.file, failedCandidateRestored: true, upgrade: upgraded.pid, rollback: rolledBack.pid, coldRollback: cold.pid };
+  }
   const after = await probe();
   assert.ok(after.counter > before.counter);
   clearInterval(sampler);
@@ -241,7 +308,7 @@ try {
   assert.equal(failures, 0);
   console.log(JSON.stringify({ test: 'backend-replacement-and-rollback', role:master?'master':'slave', verifiedRoles:[...sessions.keys()], directory, ownerPid,
     applicationPid: before.pid, poolPids:[...poolPids], backendPids: [...ownedBackends], epoch: recovered.execution.epoch,
-    samples, failures, selectorReconciliationPreservedPid: true, actualBackendCrashRecovered: true,
+    samples, failures, selectorReconciliationPreservedPid: true, actualBackendCrashRecovered: true, schemaTransition,
     counterBefore: before.counter, counterAfter: after.counter }));
 } finally {
   if (sampler) clearInterval(sampler);

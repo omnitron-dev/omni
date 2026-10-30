@@ -111,6 +111,22 @@ describe.skipIf(!testPg.ok)('Omnitron migrations (integration)', () => {
     expect(second.applied).toEqual([]);
   });
 
+  it('persists new content checksums while preserving legacy names, timestamps and unknown integrity', async () => {
+    const { createMigrationRunner, createMigrationHistory } = await import('../../src/migration/index.js');
+    const { OMNITRON_MIGRATIONS } = await import('../../src/database/migrations/index.js');
+    const { migrateOmnitronDb, createOmnitronMigrationRunner } = await import('../../src/database/migration-runner.js');
+    const old = OMNITRON_MIGRATIONS.slice(0, -1);
+    const history = createMigrationHistory();
+    await createMigrationRunner(db, old, { history }).up();
+    const before = await history.read(db);
+    expect((await migrateOmnitronDb(db)).applied).toEqual(['014_replication_receipts']);
+    const after = await createOmnitronMigrationRunner(db).inspect();
+    expect(after.executed.slice(0, -1)).toEqual(before);
+    expect(after.executed.at(-1)?.checksum).toBe(OMNITRON_MIGRATIONS.at(-1)?.checksum);
+    expect(after.executed.at(-1)?.checksum).toMatch(/^[a-f0-9]{64}$/);
+    expect(after.unknownChecksums).toEqual(old.map(m => m.name));
+  });
+
   it('refuses unknown modern history under the migration lock without changing schema or history', async () => {
     const { migrateOmnitronDb, createOmnitronMigrationRunner } = await import('../../src/database/migration-runner.js');
     const { createMigrationHistory } = await import('../../src/migration/index.js');

@@ -114,7 +114,7 @@ async function freshRecoveryRecord(record: BackendBootRecord): Promise<{ file: s
 
 /** Installs verified local artifacts; never downloads packages, migrates schemas or restarts applications. */
 export async function replaceBackend(directory: string, options: {
-  socket?: string; checkOnly?: boolean; progress?: (message: string) => void;
+  socket?: string; checkOnly?: boolean; schemaPlan?: string; progress?: (message: string) => void;
 } = {}): Promise<BackendReplacementResult | { checked: true; build: BackendArtifact['build'] }> {
   const progress = options.progress ?? (() => {});
   const client = createDaemonClient(options.socket, 15_000);
@@ -142,12 +142,19 @@ export async function replaceBackend(directory: string, options: {
     }
     if (managed && !supervisesBackendChildren()) {
       const supervisor = await privateControlClient<BackendSupervisorService>(managedSupervisorSocket(managed), 'OmnitronSupervisor', 600_000);
-      try { return await supervisor.service.upgrade({ directory, checkOnly: options.checkOnly === true }); }
+      try { return await supervisor.service.upgrade({ directory, checkOnly: options.checkOnly === true,
+        ...(options.schemaPlan ? { schemaPlan: path.resolve(options.schemaPlan) } : {}) }); }
       finally { await supervisor.close(); }
     }
     progress('Validating candidate and rollback artifacts');
-    const artifact = await checkBackendCandidate(directory, previous.entry);
+    const artifact = await checkBackendCandidate(directory, options.schemaPlan ? undefined : previous.entry);
     const rollback = await checkBackendCandidate(path.dirname(path.dirname(previous.entry)));
+    const validateSchema = async () => {
+      if (!options.schemaPlan) return;
+      const { validateSchemaTransitionForUpgrade } = await import('./schema-transition.js');
+      await validateSchemaTransitionForUpgrade(options.schemaPlan, rollback, artifact, previous.instanceHome);
+    };
+    await validateSchema();
     if (options.checkOnly) return { checked: true, build: artifact.build };
     const installation = await RuntimeInstallation.open(previous.instanceHome);
     if (!installation) throw new Error('Could not open the runtime installation');
@@ -161,6 +168,7 @@ export async function replaceBackend(directory: string, options: {
         throw new Error('The running backend differs from the startup selection; reconcile the installation before upgrading');
       }
       const selected = selection ?? await installation.select(installedRollback.runtimeHash, 0);
+      await validateSchema();
       await installation.writeLauncher(installedCandidate.runtimeHash);
       progress('Draining backend requests and execution mutations');
       const prepared = await control.service.prepare({ candidateId: randomUUID() });

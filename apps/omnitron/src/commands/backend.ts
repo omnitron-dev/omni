@@ -13,6 +13,26 @@ import { readSavedDaemonConfig, savedDaemonOverrides } from './up.js';
 import { checkBackendCandidate } from '../daemon/backend-candidate.js';
 import { recoverBackendAfterCrash } from '../daemon/backend-crash-recovery.js';
 
+export async function backendSchemaPrepareCommand(directory: string): Promise<void> {
+  try {
+    const { prepareSchemaTransition } = await import('../daemon/schema-transition.js');
+    const result = await prepareSchemaTransition(path.resolve(directory));
+    if (!emitJson(result)) {
+      emitInfo(`Schema plan: ${result.file}`);
+      for (const migration of result.plan.additions) emitInfo(`${migration.name}: ${migration.description}`);
+      emitInfo('Review the plan, then apply it before replacing the backend.');
+    }
+  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+}
+
+export async function backendSchemaApplyCommand(file: string): Promise<void> {
+  try {
+    const { applySchemaTransition } = await import('../daemon/schema-transition.js');
+    const result = await applySchemaTransition(path.resolve(file));
+    if (!emitJson(result)) emitInfo(`Schema expansion ${result.id} applied; the compatibility runtime can be retained for rollback.`);
+  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+}
+
 export async function backendSupervisorPrepareCommand(directory: string): Promise<void> {
   try {
     const { prepareSupervisorTransition } = await import('../daemon/supervisor-transition.js');
@@ -117,7 +137,7 @@ export async function backendStatusCommand(): Promise<void> {
   finally { await client.disconnect(); }
 }
 
-export async function backendUpgradeCommand(directory: string, options: { check?: boolean }): Promise<void> {
+export async function backendUpgradeCommand(directory: string, options: { check?: boolean; schemaPlan?: string }): Promise<void> {
   try {
     // Legacy versions have no OmnitronBackend service. Ask their stable
     // status first to explain the capability boundary without draining them.
@@ -129,7 +149,8 @@ export async function backendUpgradeCommand(directory: string, options: { check?
       const backend = await client.service<BackendRpcService>('OmnitronBackend');
       await backend.status();
     } finally { await client.disconnect(); }
-    const result = await replaceBackend(path.resolve(directory), { checkOnly: options.check === true, progress: emitStep });
+    const result = await replaceBackend(path.resolve(directory), { checkOnly: options.check === true, progress: emitStep,
+      ...(options.schemaPlan ? { schemaPlan: path.resolve(options.schemaPlan) } : {}) });
     if (!emitJson(result)) emitInfo('checked' in result ? `Candidate ${result.build.commit} verified; no activation performed`
       : `Backend PID ${result.pid}; execution owner PID ${result.ownerPid} retained; epoch ${result.epoch}`);
   } catch (error) { emitError((error as Error).message); process.exitCode = 1; }

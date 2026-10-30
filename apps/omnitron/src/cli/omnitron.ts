@@ -61,6 +61,17 @@ program.hook('preAction', async (cmd, actionCommand) => {
 // ============================================================================
 
 const backend = program.command('backend').description('Inspect and replace the control plane without restarting resident applications');
+const schema = backend.command('schema').description('Prepare and apply reviewed compatible schema expansions');
+schema.command('prepare <runtime>').description('Inspect the current schema and save an exact expansion plan without database writes')
+  .action(async (runtime: string) => {
+    const { backendSchemaPrepareCommand } = await import('../commands/backend.js');
+    await backendSchemaPrepareCommand(runtime);
+  });
+schema.command('apply <plan>').description('Apply or resume a reviewed expansion under the shared migration lock')
+  .action(async (plan: string) => {
+    const { backendSchemaApplyCommand } = await import('../commands/backend.js');
+    await backendSchemaApplyCommand(plan);
+  });
 const guardian = backend.command('guardian').description('Update independent user-service supervision without restarting applications');
 guardian.command('prepare <runtime>').description('Install a sealed management runtime and save a private guardian transition plan')
   .action(async (runtime: string) => {
@@ -98,7 +109,8 @@ backend.command('status').description('Show backend and execution-owner capabili
 });
 backend.command('upgrade <dist>').description('Activate a built backend artifact; retain application processes')
   .option('--check', 'Validate compatibility without draining or activating')
-  .action(async (dist: string, options: { check?: boolean }) => {
+  .option('--schema-plan <path>', 'Require the exact applied expansion plan for a schema-changing upgrade or rollback')
+  .action(async (dist: string, options: { check?: boolean; schemaPlan?: string }) => {
     const { backendUpgradeCommand } = await import('../commands/backend.js');
     await backendUpgradeCommand(dist, options);
   });

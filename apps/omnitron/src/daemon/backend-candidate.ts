@@ -10,6 +10,7 @@ const execute = promisify(execFile);
 export interface BackendArtifact {
   directory: string; entry: string; entryHash: string; build: BuildStamp;
   runtimeRoot: string; runtimeHash: string; execPath: string;
+  schemaExpansionProtocol?: number;
 }
 
 export async function backendMigrationDigest(directory: string): Promise<string> {
@@ -50,14 +51,15 @@ export async function checkBackendCandidate(directory: string, currentEntry?: st
   if (!build || build.dirty) throw new Error('Backend activation requires a stamped build from a clean commit');
   const entryHash = createHash('sha256').update(await fs.readFile(entry)).digest('hex');
   const checked = await execute(execPath, [entry, '--check-backend'], { timeout: 30_000, maxBuffer: 1024 * 1024 });
-  const answer = JSON.parse(checked.stdout.trim()) as { protocol?: number; build?: BuildStamp };
+  const answer = JSON.parse(checked.stdout.trim()) as { protocol?: number; schemaExpansionProtocol?: number; build?: BuildStamp };
   if (answer.protocol !== 1 || answer.build?.commit !== build.commit || answer.build.dirty) throw new Error('Candidate execution protocol or build identity does not match');
   if (currentEntry) {
     const currentDist = path.dirname(path.dirname(await fs.realpath(currentEntry)));
     const [current, next] = await Promise.all([backendMigrationDigest(currentDist), backendMigrationDigest(directory)]);
     if (current !== next) throw new Error('This update changes database migrations. Prepare a separate compatible database transition before a hot backend replacement.');
   }
-  return { directory, entry, entryHash, build, runtimeRoot, runtimeHash: runtime.sha256, execPath };
+  return { directory, entry, entryHash, build, runtimeRoot, runtimeHash: runtime.sha256, execPath,
+    ...(answer.schemaExpansionProtocol === 1 ? { schemaExpansionProtocol: 1 } : {}) };
 }
 
 export async function verifyBackendEntry(artifact: BackendArtifact): Promise<void> {

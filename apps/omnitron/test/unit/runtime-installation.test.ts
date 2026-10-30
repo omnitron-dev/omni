@@ -83,6 +83,23 @@ it('retains installation and recovery commands after rollback to a backend witho
   expect((await selectedBackend(home, 'management'))?.runtimeHash).toBe(current.hash);
 });
 
+it('promotes proven management code and keeps it available through a subsequent interrupted activation', async () => {
+  const { store, home, root, make } = await fixture();
+  const first = await make('first'), next = await make('next');
+  await store.exclusive(async () => {
+    await store.install(first.source); await store.install(next.source);
+    await store.select(first.hash, 0); await store.writeLauncher();
+    store.beginActivation(next.hash, first.hash, path.join(root, 'first-transition.json'));
+    expect((await selectedBackend(home, 'management'))?.runtimeHash).toBe(first.hash);
+    await store.select(next.hash, 1, true);
+    store.beginActivation(first.hash, next.hash, path.join(root, 'next-transition.json'));
+    expect((await selectedBackend(home, 'management'))?.runtimeHash).toBe(next.hash);
+    store.abortActivation();
+    await store.select(first.hash, 2);
+    expect(store.selection()?.bootstrap).toBe(next.hash);
+  });
+});
+
 it('blocks cold start after an interrupted activation until a proven commit or abort', async () => {
   const { store, home, root, make } = await fixture(); const first = await make('first'), next = await make('next');
   await store.exclusive(async () => {

@@ -18,6 +18,9 @@ import type { BackendRuntimeStatus } from '../shared/dto/backend.js';
 import { DEFAULT_SOCKET_PATH } from '../config/defaults.js';
 import { RuntimeInstallation } from './runtime-installation.js';
 import { expandPath } from '../shared/paths.js';
+import { observeBackendChild, supervisesBackendChildren } from './backend-child.js';
+import { readManagedRuntime, managedSupervisorSocket } from './managed-runtime.js';
+import type { BackendSupervisorService } from './backend-supervisor.js';
 
 export interface BackendReplacementResult {
   pid: number;
@@ -36,12 +39,13 @@ export async function spawnReplacement(artifact: BackendArtifact, file: string, 
   try {
     // Resolve tsx from the candidate installation, not the operator's cwd.
     child = fork(artifact.entry, ['--backend-handoff', file], {
-      cwd: path.dirname(artifact.directory), env: record.environment, detached: true,
+      cwd: path.dirname(artifact.directory), env: record.environment, detached: !supervisesBackendChildren(),
       execPath: artifact.execPath,
       execArgv: ['--import', 'tsx/esm'], stdio: ['ignore', log.fd, log.fd, 'ipc'],
     });
   } finally { await log.close(); }
   onSpawn(child);
+  observeBackendChild(child);
   const ready = new Promise<BackendRuntimeStatus>((resolve, reject) => {
     const cleanup = () => { child.off('message', message); child.off('exit', exited); child.off('error', failed); };
     const failed = (error: Error) => { cleanup(); reject(error); };
@@ -113,6 +117,12 @@ async function freshRecoveryRecord(record: BackendBootRecord): Promise<{ file: s
 export async function replaceBackend(directory: string, options: {
   socket?: string; checkOnly?: boolean; progress?: (message: string) => void;
 } = {}): Promise<BackendReplacementResult | { checked: true; build: BackendArtifact['build'] }> {
+  const managed = await readManagedRuntime();
+  if (managed && !supervisesBackendChildren()) {
+    const supervisor = await privateControlClient<BackendSupervisorService>(managedSupervisorSocket(managed), 'OmnitronSupervisor', 600_000);
+    try { return await supervisor.service.upgrade({ directory, checkOnly: options.checkOnly === true }); }
+    finally { await supervisor.close(); }
+  }
   const progress = options.progress ?? (() => {});
   const client = createDaemonClient(options.socket, 15_000);
   let address: { socket: string };
@@ -182,7 +192,10 @@ export async function replaceBackend(directory: string, options: {
       // Selection commits only after public readiness and application identity
       // checks. A failed commit leaves the activation journal, blocking cold boot.
       await control.service.complete({ ticketId: prepared.ticketId });
-      await installation.select(installedCandidate.runtimeHash, selected.revision);
+      // The proven ready management code becomes the recovery bootstrap.
+      // A failed candidate never replaces management, and legacy rollback
+      // retains this capable bootstrap instead of losing service delegation.
+      await installation.select(installedCandidate.runtimeHash, selected.revision, true);
       // The private checkpoint remains a receipt, never a cold-start project snapshot.
       try {
         await writePrivateRecord(path.join(executionDirectory(record.daemonConfig), 'active-backend.json'), { protocol: 1, artifact: installedCandidate, checkpoint: prepared.file });
@@ -197,6 +210,12 @@ export async function replaceBackend(directory: string, options: {
 
 /** Explicit recovery for an interrupted upgrade. Never preempts a live backend. */
 export async function recoverBackend(file: string): Promise<BackendReplacementResult> {
+  const managed = await readManagedRuntime();
+  if (managed && !supervisesBackendChildren()) {
+    const supervisor = await privateControlClient<BackendSupervisorService>(managedSupervisorSocket(managed), 'OmnitronSupervisor', 600_000);
+    try { return await supervisor.service.recover({ checkpoint: file }); }
+    finally { await supervisor.close(); }
+  }
   const previous = await readBackendBootRecord(file);
   const installation = await RuntimeInstallation.open(previous.environment['OMNITRON_HOME'] ?? path.dirname(expandPath(previous.daemonConfig.pidFile)));
   if (!installation) throw new Error('Cannot open runtime installation for recovery');

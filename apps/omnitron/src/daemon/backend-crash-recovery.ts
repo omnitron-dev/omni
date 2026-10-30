@@ -13,9 +13,18 @@ import { PidManager } from './pid-manager.js';
 import { spawnReplacement, stopFailedCandidate, type BackendReplacementResult } from './backend-upgrade.js';
 import type { BackendBootRecord } from './backend-handoff-types.js';
 import { expandPath } from '../shared/paths.js';
+import { readManagedRuntime, managedSupervisorSocket } from './managed-runtime.js';
+import { supervisesBackendChildren } from './backend-child.js';
+import { privateControlClient } from './private-control-client.js';
+import type { BackendSupervisorService } from './backend-supervisor.js';
 
 /** Recover only a dead controller with a certified, unchanged resident owner. */
 export async function recoverBackendAfterCrash(directory: string): Promise<BackendReplacementResult> {
+  const managed = await readManagedRuntime();
+  if (managed && !supervisesBackendChildren()) {
+    const supervisor = await privateControlClient<BackendSupervisorService>(managedSupervisorSocket(managed), 'OmnitronSupervisor', 600_000);
+    try { return await supervisor.service.recover({}); } finally { await supervisor.close(); }
+  }
   const installation = await RuntimeInstallation.open(OMNITRON_HOME, { existing: true });
   if (!installation) throw new Error('No permanent runtime is installed for automatic recovery');
   try { return await installation.exclusive(async () => {

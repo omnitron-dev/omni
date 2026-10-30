@@ -28,6 +28,9 @@ export function BackendRuntimeCard() {
             {data.owner && <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' }}>
               Owner PID {data.owner.pid} · epoch {data.epoch} · {data.phase}
             </Typography>}
+            {data.supervision && <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+              Independent OS supervision · guardian PID {data.supervision.guardianPid}
+            </Typography>}
             {connection?.observedAt && <Typography variant="caption" color="text.secondary">
               Last owner observation: {formatDateShort(connection.observedAt)}
             </Typography>}

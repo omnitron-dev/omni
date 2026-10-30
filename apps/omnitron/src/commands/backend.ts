@@ -92,6 +92,7 @@ export async function backendStatusCommand(): Promise<void> {
     if ('owner' in execution && execution.owner) emitInfo(`Execution owner PID ${execution.owner.pid}; epoch ${execution.epoch}; ${execution.phase}`);
     if ('connection' in execution && execution.connection) emitInfo(`Owner connection: ${execution.connection.status}; last observation ${execution.connection.observedAt ?? 'unknown'}${execution.connection.error ? `; ${execution.connection.error}` : ''}`);
     if ('recovery' in execution && execution.recovery) emitInfo(`Recovery checkpoint: ${execution.recovery.status}${execution.recovery.reason ? `; ${execution.recovery.reason}` : ''}`);
+    if ('supervision' in execution && execution.supervision) emitInfo(`Independent OS supervision: guardian PID ${execution.supervision.guardianPid}; owner ${execution.supervision.ownerUnit}; backend ${execution.supervision.backendUnit}`);
     if (inventoryError) emitInfo(`Application inventory unavailable: ${inventoryError}`);
   } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
   finally { await client.disconnect(); }

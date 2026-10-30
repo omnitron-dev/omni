@@ -11,6 +11,8 @@ import { PidManager } from './pid-manager.js';
 import { ExecutionClient } from './execution-client.js';
 import { ExecutionJournal } from './execution-journal.js';
 import { residentOwnerRefusal } from './execution-platform.js';
+import { readManagedRuntime, managedJobPid, verifyManagedIsolation } from './managed-runtime.js';
+import type { BackendRuntimeStatus } from '../shared/dto/backend.js';
 
 export function executionDirectory(dc: IDaemonConfig): string {
   return expandPath(dc.executionHost?.directory ?? path.join(path.dirname(expandPath(dc.pidFile)), 'execution'));
@@ -18,8 +20,9 @@ export function executionDirectory(dc: IDaemonConfig): string {
 
 export async function connectExecutionOwner(
   config: IEcosystemConfig, dc: IDaemonConfig, logger: ILogger, ticket?: HandoffTicket,
-): Promise<{ client: ExecutionClient; reused: boolean }> {
-  const refusal = residentOwnerRefusal();
+): Promise<{ client: ExecutionClient; reused: boolean; supervision?: NonNullable<BackendRuntimeStatus['supervision']> }> {
+  const managed = await readManagedRuntime();
+  const refusal = managed ? null : residentOwnerRefusal();
   if (refusal) throw new Error(refusal);
   const directory = executionDirectory(dc);
   if (Buffer.byteLength(path.join(directory, `c-${randomUUID()}.sock`)) > 100) {
@@ -31,6 +34,10 @@ export async function connectExecutionOwner(
       (process.getuid && stat.uid !== process.getuid())) throw new Error('Execution directory must be private and owned by this user');
   const marker = new PidManager(path.join(directory, 'owner.pid'));
   const reused = marker.isRunning();
+  if (managed) {
+    if (path.resolve(managed.directory) !== path.resolve(directory) || !reused) throw new Error('The independently supervised execution owner is not ready');
+    await verifyManagedIsolation(managed, marker.getPid()!, await managedJobPid(managed, 'backend'), process.pid);
+  }
   if (!reused) {
     if (ticket) throw new Error('The execution owner died during handoff; refusing to restart or adopt applications silently');
     const entry = fileURLToPath(new URL('./execution-entry.js', import.meta.url));
@@ -78,6 +85,8 @@ export async function connectExecutionOwner(
       if (reused && snapshot.apps.length > 0) throw new Error('Resident applications are already running. Restore the saved backend handoff instead of running startup reconciliation.');
       await client.acquire();
     }
-    return { client, reused };
+    return { client, reused, ...(managed ? { supervision: { type: 'independent' as const, guardianPid: process.ppid,
+      ownerUnit: process.platform === 'darwin' ? managed.owner.label : managed.owner.unit,
+      backendUnit: process.platform === 'darwin' ? managed.backend.label : managed.backend.unit } } : {}) };
   } catch (error) { await client.close(); throw error; }
 }

@@ -21,11 +21,11 @@ export async function assertPrivateControlSocket(socket: string): Promise<void> 
 }
 
 /** Local UID authority only; never turns a public bearer token into host execution rights. */
-export async function privateControlClient<T>(socket: string, service: string): Promise<{ service: T; close(): Promise<void> }> {
+export async function privateControlClient<T>(socket: string, service: string, requestTimeout = 150_000): Promise<{ service: T; close(): Promise<void> }> {
   await assertPrivateControlSocket(socket);
   const netron = new Netron(createNullLogger(), { id: `local-control-${randomUUID()}` });
   netron.registerTransport('unix', () => new UnixSocketTransport());
-  netron.setTransportOptions('unix', { requestTimeout: 150_000 });
+  netron.setTransportOptions('unix', { requestTimeout });
   const close = () => withControlDeadline(netron.stop(), 2000, 'Private control disconnect timed out').catch(() => undefined);
   try {
     await netron.start();

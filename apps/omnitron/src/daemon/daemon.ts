@@ -344,6 +344,7 @@ export class OmnitronDaemon {
   private stopApplicationsOnExit = false;
   private backendControl: Awaited<ReturnType<typeof startBackendControl>> | null = null;
   private recoveryMonitor: BackendRecoveryMonitor | null = null;
+  private supervision: BackendRuntimeStatus['supervision'];
 
   /** Daemon config accessor for external use (e.g., DaemonRpcService) */
   get daemonConfig(): IDaemonConfig { return this.dc; }
@@ -364,6 +365,7 @@ export class OmnitronDaemon {
       ...(!this.execution ? { reason: 'This daemon owns application forks and threads directly. Installing the resident owner requires one controlled application restart; hot adoption is unavailable.' } : {}),
       ...(owner ?? {}),
       ...(this.recoveryMonitor ? { recovery: this.recoveryMonitor.status() } : {}),
+      ...(this.supervision ? { supervision: this.supervision } : {}),
       blockers: {
         terminalSessions: this.terminalRpcService?.activeSessionCount() ?? 0,
         fileTransfers: this.filesRpcService?.activeTransferCount() ?? 0,
@@ -454,6 +456,7 @@ export class OmnitronDaemon {
     if (this.dc.executionHost?.enabled) {
       const connection = await connectExecutionOwner(config, this.dc, createNullLogger(), options?.backendHandoff?.ticket);
       this.execution = connection.client;
+      this.supervision = connection.supervision;
       await this.initializeRecoveryMonitor();
     } else if (options?.backendHandoff) {
       throw new Error('Backend handoff requires the resident execution owner');

@@ -12,6 +12,7 @@ export interface BackendRuntimeStatus {
     error: string | null;
   };
   recovery?: { status: 'pending' | 'ready' | 'unavailable'; at: string | null; reason: string | null };
+  supervision?: { type: 'independent'; guardianPid: number; ownerUnit: string; backendUnit: string };
   blockers: { terminalSessions: number; fileTransfers: number; pipelineRuns: number; releaseBuilds: number };
 }
 

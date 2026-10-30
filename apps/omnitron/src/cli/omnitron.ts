@@ -146,7 +146,8 @@ service
     '--scope <scope>',
     'user (stops at logout) or system (starts at boot, needs root). Default: system for a slave, user otherwise',
   )
-  .action(async (options: { scope?: string }) => {
+  .option('--prepare', 'Write an independent supervision plan without stopping processes or loading OS services')
+  .action(async (options: { scope?: string; prepare?: boolean }) => {
     if (options.scope && options.scope !== 'user' && options.scope !== 'system') {
       const { log } = await import('@xec-sh/kit');
       log.error(`Unknown scope ${JSON.stringify(options.scope)}. Use 'user' or 'system'.`);
@@ -154,7 +155,7 @@ service
       return;
     }
     const { serviceInstall } = await import('../commands/service.js');
-    await serviceInstall(options.scope ? { scope: options.scope as 'user' | 'system' } : {});
+    await serviceInstall({ ...(options.scope ? { scope: options.scope as 'user' | 'system' } : {}), ...(options.prepare ? { prepare: true } : {}) });
   });
 
 service

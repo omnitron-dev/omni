@@ -182,7 +182,7 @@ export class RuntimeInstallation {
     }
   }
 
-  async select(id: string, expectedRevision: number): Promise<RuntimeSelection> {
+  async select(id: string, expectedRevision: number, promoteManagement = false): Promise<RuntimeSelection> {
     if (!this.lease) throw new Error('Runtime selection requires an exclusive operation');
     const artifact = await this.artifact(id);
     let hasLauncher = false;
@@ -196,7 +196,7 @@ export class RuntimeInstallation {
       const value: RuntimeSelection = {
         protocol: 1, revision: expectedRevision + 1, current: id,
         previous: previous?.current === id ? previous.previous : previous?.current ?? null,
-        bootstrap: previous?.bootstrap ?? (hasLauncher ? id : null), selectedAt: new Date().toISOString(),
+        bootstrap: promoteManagement && hasLauncher ? id : previous?.bootstrap ?? (hasLauncher ? id : null), selectedAt: new Date().toISOString(),
       };
       this.store.kvSetSync('runtime.selection', value);
       this.store.kvDeleteSync('runtime.activation');

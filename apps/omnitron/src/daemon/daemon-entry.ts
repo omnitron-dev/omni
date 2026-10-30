@@ -6,11 +6,9 @@
  * Daemon can start with default config if no projects registered.
  */
 
-import { loadDaemonBootConfig } from '../config/loader.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
-import { ProjectRegistry } from '../project/registry.js';
 import { OmnitronDaemon } from './daemon.js';
-import { readSavedDaemonConfig, savedDaemonOverrides, ensurePersistedJwtSecret } from '../commands/up.js';
+import { loadStartupConfig } from './startup-config.js';
 import { getEnv } from '../shared/env-config.js';
 import { runtimeDiagnostics } from '../monitoring/runtime-diagnostics.js';
 import { OWN_BUILD } from '../shared/build-stamp.js';
@@ -62,25 +60,7 @@ async function coldStart(): Promise<void> {
     pidManager.cleanupStale(expandPath(DEFAULT_DAEMON_CONFIG.socketPath));
   }
 
-  const registry = ProjectRegistry.open();
-
-  // Try auto-detect from CWD, then first registered project, then defaults
-  const detected = registry.autoDetect(cwd);
-  const projectName = detected?.name ?? registry.list()[0]?.name;
-  const configPath = projectName ? registry.getConfigPath(projectName) : null;
-  const config = await loadDaemonBootConfig(configPath, cwd);
-
-  // Read saved daemon config for role/master settings.
-  const savedConfig = readSavedDaemonConfig();
-  // Resolve (and on first boot generate+persist) the JWT signing secret so the
-  // console's sessions survive daemon restarts instead of 401-ing every RPC.
-  // An explicit env/config-supplied secret still wins in daemon.module.ts.
-  const jwtSecret = ensurePersistedJwtSecret();
-  const dc = {
-    ...DEFAULT_DAEMON_CONFIG,
-    ...savedDaemonOverrides(savedConfig),
-    auth: { ...DEFAULT_DAEMON_CONFIG.auth, jwtSecret },
-  };
+  const { config, daemonConfig: dc } = await loadStartupConfig(cwd);
 
   // A node does not watch.
   //

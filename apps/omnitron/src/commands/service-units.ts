@@ -57,21 +57,31 @@ export interface UnitInputs {
   readonly stderrLog: string;
   /** Only meaningful for `system` scope. */
   readonly identity?: ServiceIdentity | undefined;
+  /** Independent owner/backend jobs share the renderer and its escaping. */
+  readonly label?: string;
+  readonly args?: readonly string[];
+  readonly nodeArgs?: readonly string[];
+  readonly environment?: Readonly<Record<string, string>>;
+  readonly restart?: boolean;
 }
 
 export const LAUNCHD_LABEL = 'dev.omnitron.daemon';
 export const SYSTEMD_UNIT = 'omnitron-daemon.service';
+export const OWNER_LAUNCHD_LABEL = 'dev.omnitron.owner';
+export const OWNER_SYSTEMD_UNIT = 'omnitron-owner.service';
 
 /** Where the definition file lives, for a scope and a home directory. */
-export function unitPathFor(platform: NodeJS.Platform, scope: ServiceScope, home: string): string {
+export function unitPathFor(platform: NodeJS.Platform, scope: ServiceScope, home: string, owner = false): string {
+  const label = owner ? OWNER_LAUNCHD_LABEL : LAUNCHD_LABEL;
+  const unit = owner ? OWNER_SYSTEMD_UNIT : SYSTEMD_UNIT;
   if (platform === 'darwin') {
     return scope === 'system'
-      ? `/Library/LaunchDaemons/${LAUNCHD_LABEL}.plist`
-      : `${home}/Library/LaunchAgents/${LAUNCHD_LABEL}.plist`;
+      ? `/Library/LaunchDaemons/${label}.plist`
+      : `${home}/Library/LaunchAgents/${label}.plist`;
   }
   return scope === 'system'
-    ? `/etc/systemd/system/${SYSTEMD_UNIT}`
-    : `${home}/.config/systemd/user/${SYSTEMD_UNIT}`;
+    ? `/etc/systemd/system/${unit}`
+    : `${home}/.config/systemd/user/${unit}`;
 }
 
 function xmlEscape(s: string): string {
@@ -131,6 +141,10 @@ export function escapeSpecifiers(value: string): string {
   return value.replace(/%/g, '%%');
 }
 
+function hasControlCharacter(value: string): boolean {
+  return [...value].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127);
+}
+
 /**
  * A value for a directive that parses its argument as a LIST — `ExecStart=`'s
  * command line, where whitespace separates arguments.
@@ -146,14 +160,16 @@ export function escapeSpecifiers(value: string): string {
  * trades a quiet defect for a loud one.
  */
 export function unitValue(value: string): string {
-  const escaped = escapeSpecifiers(value);
-  return /\s/.test(escaped) ? `"${escaped}"` : escaped;
+  if (hasControlCharacter(value)) throw new Error('Control characters are not valid in a service argument');
+  const escaped = escapeSpecifiers(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '$$$$');
+  return /[\s"'\\]/.test(value) || value.length === 0 ? `"${escaped}"` : escaped;
 }
 
 /** One `Environment=` line, quoted as a whole assignment when it needs to be. */
 export function environmentLine(name: string, value: string): string {
-  const assignment = `${name}=${value.replace(/%/g, '%%')}`;
-  return `Environment=${/\s/.test(assignment) ? `"${assignment}"` : assignment}`;
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || hasControlCharacter(value)) throw new Error('Invalid service environment assignment');
+  const assignment = `${name}=${escapeSpecifiers(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}`;
+  return `Environment=${/[\s"'\\]/.test(assignment) ? `"${assignment}"` : assignment}`;
 }
 
 /**
@@ -166,7 +182,10 @@ export function environmentLine(name: string, value: string): string {
  * resolve its own loader. Measured there: ERR_MODULE_NOT_FOUND.
  */
 export function renderSystemdUnit(inputs: UnitInputs): string {
-  const exec = [inputs.execPath, '--import', 'tsx/esm', inputs.entryPath]
+  if (hasControlCharacter(inputs.workdir) || (inputs.identity && !/^[a-z_][a-z0-9_.-]*[$]?$/i.test(inputs.identity.user))) {
+    throw new Error('Invalid service working directory or account');
+  }
+  const exec = [inputs.execPath, ...(inputs.nodeArgs ?? ['--import', 'tsx/esm']), inputs.entryPath, ...(inputs.args ?? [])]
     .map(unitValue)
     .join(' ');
 
@@ -211,7 +230,9 @@ export function renderSystemdUnit(inputs: UnitInputs): string {
   lines.push(
     environmentLine('OMNITRON_CWD', inputs.workdir),
     environmentLine('PATH', inputs.path),
-    'Restart=on-failure',
+    ...Object.entries(inputs.environment ?? {}).map(([key, value]) => environmentLine(key, value)),
+    inputs.restart === false ? 'Restart=no' : 'Restart=on-failure',
+    'KillMode=control-group',
     'RestartSec=10',
     'TimeoutStopSec=30',
     '',
@@ -240,7 +261,7 @@ export function renderSystemdUnit(inputs: UnitInputs): string {
  * a job between classes by its XPC transactions, and this daemon has none.
  */
 export function renderLaunchdPlist(inputs: UnitInputs): string {
-  const args = [inputs.execPath, '--import', 'tsx/esm', inputs.entryPath];
+  const args = [inputs.execPath, ...(inputs.nodeArgs ?? ['--import', 'tsx/esm']), inputs.entryPath, ...(inputs.args ?? [])];
   const argsXml = args.map((a) => `    <string>${xmlEscape(a)}</string>`).join('\n');
 
   const system = inputs.scope === 'system';
@@ -261,7 +282,7 @@ export function renderLaunchdPlist(inputs: UnitInputs): string {
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>${LAUNCHD_LABEL}</string>
+  <string>${xmlEscape(inputs.label ?? LAUNCHD_LABEL)}</string>
 ${identityKeys}  <key>ProgramArguments</key>
   <array>
 ${argsXml}
@@ -274,14 +295,17 @@ ${homeEnv}    <key>OMNITRON_CWD</key>
     <string>${xmlEscape(inputs.workdir)}</string>
     <key>PATH</key>
     <string>${xmlEscape(inputs.path)}</string>
+${Object.entries(inputs.environment ?? {}).map(([key, value]) => `    <key>${xmlEscape(key)}</key>\n    <string>${xmlEscape(value)}</string>`).join('\n')}
   </dict>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
-  <dict>
+${inputs.restart === false ? '  <false/>' : `  <dict>
     <key>SuccessfulExit</key>
     <false/>
-  </dict>
+  </dict>`}
+  <key>AbandonProcessGroup</key>
+  <false/>
   <key>ThrottleInterval</key>
   <integer>10</integer>
   <key>ExitTimeOut</key>

@@ -59,7 +59,9 @@ availability evidence.
 `record`, `recordBatch` and `recordTyped` queue measurements; they are not commit
 acknowledgements. The service assigns stable IDs before enqueueing. `flush` awaits
 the writes accepted before the call, including a writer already in progress.
-`stop` stops collection and awaits the final flush. Failed batches remain queued
+`stop` stops collection and awaits the final flush and active durable writes.
+Titan DI invokes `onDestroy` to await that stop before disposing storage providers.
+Call `stop` yourself when constructing the service outside DI. Failed batches remain queued
 for retry. Before commit the collection buffer is volatile.
 
 The queue includes in-flight data and is bounded by `storage.maxBufferSize`

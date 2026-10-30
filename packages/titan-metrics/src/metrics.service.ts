@@ -267,6 +267,11 @@ export class MetricsService implements IMetricsService {
     await Promise.all(this.durableWrites);
   }
 
+  /** Titan disposes dependents before their storage/connection providers. */
+  async onDestroy(): Promise<void> {
+    await this.stop();
+  }
+
   async flush(): Promise<void> {
     if (this.collector) this.enqueue(this.collector.drain());
     const target = this.queued;

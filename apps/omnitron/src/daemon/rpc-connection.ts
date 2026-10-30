@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Interface, Netron, NETRON_EVENT_PEER_DISCONNECT, type RemotePeer } from '@omnitron-dev/titan/netron';
-import { createNullLogger } from '@omnitron-dev/titan/module/logger';
+import { createNullLogger, type ILogger } from '@omnitron-dev/titan/module/logger';
 
 const CONNECT_TIMEOUT = 15_000;
 const CLOSE_TIMEOUT = 1_000;
@@ -37,6 +37,13 @@ export class RpcConnection {
   constructor(
     private readonly address: string,
     private readonly configure: (netron: Netron) => void,
+    private readonly options: {
+      logger?: ILogger;
+      peerName?: string;
+      beforeConnect?: () => Promise<void>;
+      /** Validate using this peer directly, before any retained handle can invoke it. */
+      afterConnect?: (peer: RemotePeer) => Promise<void>;
+    } = {},
   ) {}
 
   private async close(session: Session): Promise<void> {
@@ -54,7 +61,7 @@ export class RpcConnection {
     }
     if (previous) void this.close(previous);
 
-    const netron = new Netron(createNullLogger(), { id: `omnitron-${process.pid}-${randomUUID()}` });
+    const netron = new Netron(this.options.logger ?? createNullLogger(), { id: `omnitron-${process.pid}-${randomUUID()}` });
     this.configure(netron);
     const session: Session = { netron, ready: undefined!, interfaces: new Map() };
     this.session = session;
@@ -63,22 +70,28 @@ export class RpcConnection {
       // Netron removes the peer from discovery before emitting this event.
       // Settle its outstanding requests now, with transport loss rather than
       // a misleading request timeout. This never resubmits an invocation.
-      session.peer.handleTransportLost('daemon connection closed');
+      session.peer.handleTransportLost(`${this.options.peerName ?? 'daemon'} connection closed`);
       if (this.session === session) this.session = undefined;
       void this.close(session);
     });
     session.ready = deadline(
-      netron.connect(this.address, false).then(async peer => {
+      Promise.resolve().then(async () => {
+        await this.options.beforeConnect?.();
+        if (this.session !== session) throw new Error('RPC connection was closed before admission');
+        return netron.connect(this.address, false);
+      }).then(async peer => {
         const remote = peer as RemotePeer;
         if (this.session !== session) {
           await remote.disconnect();
           throw new Error('RPC connection was closed before it became ready');
         }
         session.peer = remote;
+        await this.options.afterConnect?.(remote);
+        if (this.session !== session) throw new Error('RPC connection was closed during peer validation');
         return remote;
       }),
       CONNECT_TIMEOUT,
-      `the daemon did not complete a connection within ${CONNECT_TIMEOUT / 1000}s`,
+      `the ${this.options.peerName ?? 'daemon'} did not complete a connection within ${CONNECT_TIMEOUT / 1000}s`,
     ).catch(error => {
       if (this.session === session) this.session = undefined;
       void this.close(session);

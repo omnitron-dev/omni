@@ -1,4 +1,5 @@
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
+import { BackendRuntimeCard } from 'src/components/backend-runtime';
 /**
  * Omnitron Console — Settings Page
  *
@@ -101,6 +102,7 @@ function GeneralSection() {
   if (!user) return null;
 
   return (
+    <Stack spacing={2}>
     <Card variant="outlined" sx={{ ...cardSx, maxWidth: 480 }}>
       <CardHeader title="Profile" subheader="Account information" />
       <CardContent sx={{ ...cardContentSx, pt: 0 }}>
@@ -112,6 +114,8 @@ function GeneralSection() {
         </Stack>
       </CardContent>
     </Card>
+    <BackendRuntimeCard />
+    </Stack>
   );
 }
 

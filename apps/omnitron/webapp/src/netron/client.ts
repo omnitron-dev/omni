@@ -17,6 +17,7 @@ import {
 
 import type {
   IOmnitronAccessService,
+  IOmnitronBackendService,
   IOmnitronFilesService,
   IOmnitronTerminalService,
   IDaemonService,
@@ -48,6 +49,7 @@ import type {
 export interface OmnitronConsoleSchema extends BackendSchema {
   daemon: {
     OmnitronAccess: IOmnitronAccessService;
+    OmnitronBackend: IOmnitronBackendService;
     OmnitronFiles: IOmnitronFilesService;
     OmnitronTerminal: IOmnitronTerminalService;
     OmnitronDaemon: IDaemonService;
@@ -232,6 +234,8 @@ export const kubernetes = daemonClient.daemon.OmnitronKubernetes;
 
 /** Health checks */
 export const health = daemonClient.daemon.OmnitronHealth;
+/** Backend/owner connection status, independent of application inventory. */
+export const backendRuntime = daemonClient.daemon.OmnitronBackend;
 
 /** Discovery scanning */
 export const discovery = daemonClient.daemon.OmnitronDiscovery;

@@ -22,6 +22,7 @@ export type {
   AppDiagnosticsDto,
 };
 export type { AppStatus, SubProcessInfoDto } from '../../config/types.js';
+export type { BackendRuntimeStatus, IOmnitronBackendService } from './backend.js';
 export type { IOmnitronAccessService, ConsoleAccess, ConsoleCapability, ConsoleAccount, ConsoleRole } from './access.js';
 export { consolePasswordError } from './auth.js';
 

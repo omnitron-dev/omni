@@ -61,7 +61,7 @@ export function countedApps(
   status: { apps?: ReadonlyArray<{ status: string }> } | null,
   deployments: PromiseSettledResult<IProjectAppStatus[] | null>,
 ): ReadonlyArray<{ status: string }> | null {
-  if (!project) return status?.apps ?? [];
+  if (!project) return status?.apps ?? null;
   return deployments.status === 'fulfilled' && deployments.value ? deploymentsIn(deployments.value, stack) : null;
 }
 

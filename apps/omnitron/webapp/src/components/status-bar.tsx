@@ -98,6 +98,8 @@ function StatusLabel({ label, value }: { label: string; value: string | number }
 
 interface StatusData {
   daemonOnline: boolean;
+  appsCurrent: boolean;
+  appsKnown: boolean;
   appsOnline: number;
   appsTotal: number;
   nodesOnline: number;
@@ -128,7 +130,7 @@ export function StatusBar({ docked = false }: { docked?: boolean }) {
    * cleared. That direction is the safe one: a stale count sends someone to
    * the alerts page, a false zero sends them nowhere.
    */
-  const lastKnown = useRef({ nodesOnline: 0, nodesTotal: 0, firingAlerts: 0, appsOnline: 0, appsTotal: 0 });
+  const lastKnown = useRef({ nodesOnline: 0, nodesTotal: 0, firingAlerts: 0, appsOnline: 0, appsTotal: 0, appsKnown: false });
   const wsConnected = useRealtimeStore((s) => s.connected);
   const lastEvent = useRealtimeStore((s) => s.lastEvent);
   const activeProject = useProjectStore((s) => s.activeProject);
@@ -143,11 +145,9 @@ export function StatusBar({ docked = false }: { docked?: boolean }) {
   // from a hidden tab, forever, with no guard against a slow daemon making
   // them overlap.
   //
-  // `daemonOnline: !!st` is kept as-is on purpose. Here a failed `status()`
-  // really does mean the daemon did not answer, and the bar shows that as
-  // "Offline" beside a stale timestamp rather than asserting anything about
-  // why — the banner is the surface that tells an operator what to DO, and
-  // that one now distinguishes a timeout from a refusal.
+  // Application inventory depends on the resident owner. Its failure does
+  // not establish that the backend is offline: use the independent ping,
+  // and mark retained application counts as stale.
   const { data: polled, refresh } = usePolledResource(
     async () => {
       const [status, deployments, nodesList, alertsResult] = await Promise.allSettled([
@@ -158,11 +158,12 @@ export function StatusBar({ docked = false }: { docked?: boolean }) {
       ]);
 
       const st = status.status === 'fulfilled' ? (status.value as any) : null;
+      const reachable = st ? true : await daemon.ping().then(() => true, () => false);
       const nd = nodesList.status === 'fulfilled' ? (nodesList.value as any[]) : [];
       const al = alertsResult.status === 'fulfilled' ? (alertsResult.value as any) : null;
 
       const apps = countedApps(activeProject, activeStack, st, deployments);
-      if (apps) Object.assign(lastKnown.current, tally(apps));
+      if (apps) Object.assign(lastKnown.current, tally(apps), { appsKnown: true });
 
       // A sub-query that failed contributes nothing rather than zero.
       if (nodesList.status === 'fulfilled' && Array.isArray(nd)) {
@@ -174,7 +175,9 @@ export function StatusBar({ docked = false }: { docked?: boolean }) {
       }
 
       return {
-        daemonOnline: !!st,
+        daemonOnline: reachable,
+        appsCurrent: !!apps,
+        appsKnown: lastKnown.current.appsKnown,
         appsOnline: lastKnown.current.appsOnline,
         appsTotal: lastKnown.current.appsTotal,
         nodesOnline: lastKnown.current.nodesOnline,
@@ -230,7 +233,7 @@ export function StatusBar({ docked = false }: { docked?: boolean }) {
 
       const st = status.value as any;
       const apps = countedApps(project, stack, st, deployments);
-      if (apps) Object.assign(lastKnown.current, tally(apps));
+      if (apps) Object.assign(lastKnown.current, tally(apps), { appsKnown: true });
       setData((prev) =>
         prev
           ? {
@@ -238,6 +241,8 @@ export function StatusBar({ docked = false }: { docked?: boolean }) {
               daemonOnline: true,
               appsOnline: lastKnown.current.appsOnline,
               appsTotal: lastKnown.current.appsTotal,
+              appsCurrent: !!apps,
+              appsKnown: lastKnown.current.appsKnown,
               firingAlerts: lastKnown.current.firingAlerts,
               uptimeMs: st?.uptime ?? prev.uptimeMs,
               version: st?.version ?? prev.version,
@@ -250,10 +255,11 @@ export function StatusBar({ docked = false }: { docked?: boolean }) {
   }, [lastEvent]);
 
   if (!data) return null;
+  const appCount = data.appsKnown ? `${data.appsOnline}/${data.appsTotal}${data.appsCurrent ? '' : ' stale'}` : 'unknown';
 
   return (
     <Box
-      aria-label={`Infrastructure status: ${data.daemonOnline ? 'online' : 'offline'}, applications ${data.appsOnline}/${data.appsTotal}, nodes ${data.nodesOnline}/${data.nodesTotal}, ${data.firingAlerts} alerts`}
+      aria-label={`Infrastructure status: ${data.daemonOnline ? 'online' : 'offline'}, applications ${appCount}, nodes ${data.nodesOnline}/${data.nodesTotal}, ${data.firingAlerts} alerts`}
       sx={{
         position: docked ? 'relative' : 'fixed',
         bottom: 0,
@@ -295,7 +301,7 @@ export function StatusBar({ docked = false }: { docked?: boolean }) {
 
       {/* Apps */}
       <StatusItem>
-        <StatusLabel label="Apps" value={`${data.appsOnline}/${data.appsTotal}`} />
+        <StatusLabel label="Apps" value={appCount} />
       </StatusItem>
 
       {/* Nodes */}

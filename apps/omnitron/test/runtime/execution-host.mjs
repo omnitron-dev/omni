@@ -67,6 +67,7 @@ try {
   const before = await probe();
   assert.equal(before.pid, launched.pid);
   assert.equal(before.parent, owner.pid);
+  await first.activateObservations();
   let inProbe = false;
   sampler = setInterval(async () => {
     if (inProbe) return;
@@ -81,6 +82,18 @@ try {
     finally { inProbe = false; }
   }, 10);
   let current = first;
+  // Force genuine transport closure while retaining both facade and grant.
+  // Neither a re-created owner nor an application restart may repair this.
+  for (let index = 0; index < 3; index++) {
+    const prior = current.state();
+    await Promise.all([current.connection.disconnect(), current.observations.disconnect()]);
+    await current.refresh();
+    assert.equal(current.state().connection.status, 'connected');
+    assert.equal(current.state().owner.id, prior.owner.id);
+    assert.equal(current.state().epoch, prior.epoch);
+    assert.equal(current.orchestrator.getApp('fixture/local/counter').pid, before.pid);
+    assert.equal(await current.orchestrator.getDependencyGraph('fixture/local/counter'), null);
+  }
   for (let index = 0; index < 10; index++) {
     const next = new ExecutionClient(path.join(directory, 'owner.sock'), logger);
     clients.push(next);
@@ -108,7 +121,7 @@ try {
   const [code] = await ownerExited;
   assert.equal(code, 0);
   console.log(JSON.stringify({ test: 'resident-owner-handoff', transfers: 10, ownerPid: before.parent,
-    applicationPid: before.pid, restarts: 0, httpSamples: samples, failedSamples: failures,
+    applicationPid: before.pid, restarts: 0, reconnects: 3, httpSamples: samples, failedSamples: failures,
     counterBefore: before.counter, counterAfter: after.counter, directory }));
 } finally {
   if (sampler) clearInterval(sampler);

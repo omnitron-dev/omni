@@ -20,11 +20,12 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 
 const status = vi.fn();
+const ping = vi.fn();
 const listNodes = vi.fn();
 const getSummary = vi.fn();
 
 vi.mock('src/netron/client', () => ({
-  daemon: { status: () => status() },
+  daemon: { status: () => status(), ping: () => ping() },
   nodes: { listNodes: () => listNodes() },
   alerts: { getSummary: () => getSummary() },
 }));
@@ -64,6 +65,8 @@ const alertChip = () =>
 
 beforeEach(() => {
   status.mockReset();
+  ping.mockReset();
+  ping.mockResolvedValue({ pid: 1, uptime: 1000, version: '1.0.0' });
   listNodes.mockReset();
   getSummary.mockReset();
   status.mockResolvedValue({ apps: [], uptime: 1000, version: '1.0.0', pid: 1 });
@@ -72,6 +75,28 @@ beforeEach(() => {
 });
 
 describe('StatusBar', () => {
+  it('keeps a reachable backend online when owner inventory is unavailable without inventing zero apps', async () => {
+    status.mockRejectedValue(new Error('Execution owner inventory is stale'));
+    getSummary.mockResolvedValue({ firing: 0 });
+    render(<StatusBar />);
+    await waitFor(() => expect(screen.getByLabelText(/Infrastructure status: online, applications unknown/)).toBeTruthy());
+    expect(ping).toHaveBeenCalled();
+    expect(screen.getByText('unknown')).toBeTruthy();
+  });
+
+  it('retains the actual application count and marks it stale after owner observation fails', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      status.mockResolvedValueOnce({ apps: [{ status: 'online' }], uptime: 1000, version: '1.0.0', pid: 1 });
+      status.mockRejectedValue(new Error('Execution owner inventory is stale'));
+      getSummary.mockResolvedValue({ firing: 0 });
+      render(<StatusBar />);
+      await vi.waitFor(() => expect(screen.getByLabelText(/applications 1\/1,/)).toBeTruthy());
+      await act(async () => { await vi.advanceTimersByTimeAsync(31_000); });
+      await vi.waitFor(() => expect(screen.getByLabelText(/Infrastructure status: online, applications 1\/1 stale/)).toBeTruthy());
+    } finally { vi.useRealTimers(); }
+  });
+
   it('keeps the alert count when the alerts query fails', async () => {
     getSummary.mockResolvedValueOnce({ firing: 3 });
     getSummary.mockRejectedValue(new Error('daemon unreachable'));

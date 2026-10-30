@@ -13,12 +13,16 @@ export async function withControlDeadline<T>(work: Promise<T>, ms: number, messa
   } finally { if (timer) clearTimeout(timer); }
 }
 
-/** Local UID authority only; never turns a public bearer token into host execution rights. */
-export async function privateControlClient<T>(socket: string, service: string): Promise<{ service: T; close(): Promise<void> }> {
+export async function assertPrivateControlSocket(socket: string): Promise<void> {
   const stat = await fs.lstat(socket);
   if (!stat.isSocket() || (stat.mode & 0o077) !== 0 || (process.getuid && stat.uid !== process.getuid())) {
     throw new Error('Backend control requires a private Unix socket owned by this user');
   }
+}
+
+/** Local UID authority only; never turns a public bearer token into host execution rights. */
+export async function privateControlClient<T>(socket: string, service: string): Promise<{ service: T; close(): Promise<void> }> {
+  await assertPrivateControlSocket(socket);
   const netron = new Netron(createNullLogger(), { id: `local-control-${randomUUID()}` });
   netron.registerTransport('unix', () => new UnixSocketTransport());
   netron.setTransportOptions('unix', { requestTimeout: 150_000 });

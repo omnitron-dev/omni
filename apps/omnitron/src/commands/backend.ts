@@ -75,13 +75,22 @@ export async function backendSelectCommand(id: string): Promise<void> {
 export async function backendStatusCommand(): Promise<void> {
   const client = createDaemonClient();
   try {
-    const status = await client.status();
+    const status = await client.status().catch(async error => {
+      // App inventory can be unavailable while the backend is healthy. The
+      // dedicated control status does not read that inventory or its cache.
+      const backend = await client.service<BackendRpcService>('OmnitronBackend');
+      const [execution, ping] = await Promise.all([backend.status(), client.ping()]);
+      return { ...ping, execution, build: undefined, inventoryError: error instanceof Error ? error.message : String(error) };
+    });
     const execution = status.execution ?? { mode: 'coupled', handoffSupported: false,
       reason: 'The running backend predates resident execution. Its application processes cannot be adopted without an initial controlled restart.' };
-    if (emitJson({ pid: status.pid, build: status.build, execution })) return;
+    const inventoryError = 'inventoryError' in status ? status.inventoryError : undefined;
+    if (emitJson({ pid: status.pid, build: status.build, execution, ...(inventoryError && { inventoryError }) })) return;
     emitInfo(`Backend PID ${status.pid}: ${execution.mode}`);
     if (execution.reason) emitInfo(execution.reason);
     if ('owner' in execution && execution.owner) emitInfo(`Execution owner PID ${execution.owner.pid}; epoch ${execution.epoch}; ${execution.phase}`);
+    if ('connection' in execution && execution.connection) emitInfo(`Owner connection: ${execution.connection.status}; last observation ${execution.connection.observedAt ?? 'unknown'}${execution.connection.error ? `; ${execution.connection.error}` : ''}`);
+    if (inventoryError) emitInfo(`Application inventory unavailable: ${inventoryError}`);
   } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
   finally { await client.disconnect(); }
 }

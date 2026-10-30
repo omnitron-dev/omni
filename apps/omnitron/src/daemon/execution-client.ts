@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { Netron, type RemotePeer } from '@omnitron-dev/titan/netron';
 import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import type { ControllerGrant, HandoffTicket } from '@omnitron-dev/titan-pm';
@@ -9,17 +8,21 @@ import type { OrchestratorService } from '../orchestrator/orchestrator.service.j
 import type { ExecutionHostService, ExecutionSnapshot, ExecutionMutation, ExecutionRead } from './execution-host.js';
 import { EXECUTION_MUTATIONS, EXECUTION_READS, EXECUTION_METRICS } from './execution-host.js';
 import type { ExecutionMetricsSink } from '../observability/metrics-bridge.js';
-import { withControlDeadline } from './private-control-client.js';
+import { withControlDeadline, assertPrivateControlSocket } from './private-control-client.js';
 import { runtimeDiagnostics } from '../monitoring/runtime-diagnostics.js';
+import { RpcConnection } from './rpc-connection.js';
 
 /** One controller's connection to a resident process owner. Disconnect never stops applications. */
 export class ExecutionClient {
   readonly orchestrator: OrchestratorControl;
-  private readonly netron: Netron;
-  private peer: RemotePeer | null = null;
+  private readonly connection: RpcConnection;
+  private readonly observations: RpcConnection;
   private remote: ExecutionHostService | null = null;
   private inventory: ExecutionSnapshot | null = null;
   private observedAt = 0;
+  private lastObservedAt: string | null = null;
+  private observationError: string | null = null;
+  private ownerChanged = false;
   private grant: ControllerGrant | null = null;
   private sequence = 0;
   private eventCursor = 0;
@@ -34,20 +37,33 @@ export class ExecutionClient {
   private closed = false;
 
   constructor(readonly socketPath: string, logger: ILogger, readonly controllerId: string = randomUUID()) {
-    this.netron = new Netron(logger, { id: `controller-${this.controllerId}` });
-    this.netron.registerTransport('unix', () => new UnixSocketTransport());
-    this.netron.setTransportOptions('unix', { requestTimeout: 10 * 60_000 });
+    const channel = (requestTimeout: number) => new RpcConnection(`unix://${socketPath}`, netron => {
+      netron.registerTransport('unix', () => new UnixSocketTransport());
+      netron.setTransportOptions('unix', { requestTimeout });
+    }, {
+      logger, peerName: 'execution owner',
+      beforeConnect: () => assertPrivateControlSocket(socketPath),
+      afterConnect: async peer => {
+        const owner = await peer.queryInterface<ExecutionHostService>('OmnitronExecution');
+        // Check identity before sending a cursor, acknowledgment or mutation
+        // retained from an earlier connection. A different owner is not adopted.
+        this.validateOwner(await owner.snapshot());
+      },
+    });
+    this.connection = channel(10 * 60_000);
+    // Monitoring has a transport-level deadline of its own. A silent owner
+    // cannot accumulate ten minutes of abandoned polls, and a monitoring
+    // timeout must not tear down an application mutation still in progress.
+    this.observations = channel(4000);
     this.orchestrator = this.facade();
   }
 
   setLogger(logger: ILogger): void { runtimeDiagnostics.setLogger(logger); }
 
   async connect(): Promise<ExecutionSnapshot> {
-    await this.netron.start();
-    this.peer = await withControlDeadline(this.netron.connect(`unix://${this.socketPath}`, false), 15_000,
-      'Execution owner handshake timed out; applications may still be running') as RemotePeer;
-    this.remote = await this.peer.queryInterface<ExecutionHostService>('OmnitronExecution');
-    const snapshot = await this.remote.snapshot();
+    if (this.closed) throw new Error('Execution client has been closed');
+    this.remote = await this.connection.service<ExecutionHostService>('OmnitronExecution');
+    const snapshot = await withControlDeadline(this.remote.snapshot(), 4000, 'Execution owner observation timed out');
     this.apply(snapshot);
     this.eventCursor = snapshot.acknowledgedEvent;
     return snapshot;
@@ -117,18 +133,24 @@ export class ExecutionClient {
     this.closed = true;
     if (this.poll) clearInterval(this.poll);
     this.poll = null;
-    await withControlDeadline(this.netron.stop(), 2000, 'Execution owner disconnect timed out').catch(() => undefined);
-    this.peer = null;
+    await Promise.all([this.connection.disconnect(), this.observations.disconnect()]);
     this.remote = null;
   }
 
-  state(): { owner: ExecutionSnapshot['status']['owner']; phase: string; epoch: number; observedAgeMs: number } | null {
+  state(): { owner: ExecutionSnapshot['status']['owner']; phase: string; epoch: number; observedAgeMs: number;
+    connection: { status: 'connected' | 'unavailable' | 'owner-changed'; observedAt: string | null; error: string | null } } | null {
     if (!this.inventory) return null;
+    const age = performance.now() - this.observedAt;
+    const error = this.observationError ?? (this.closed ? 'Execution client is closed'
+      : age > 5000 ? 'No execution owner observation within 5 seconds' : null);
     return { owner: this.inventory.status.owner, phase: this.inventory.status.phase,
-      epoch: this.inventory.status.controller.epoch, observedAgeMs: performance.now() - this.observedAt };
+      epoch: this.inventory.status.controller.epoch, observedAgeMs: age,
+      connection: { status: this.ownerChanged ? 'owner-changed' : error ? 'unavailable' : 'connected',
+        observedAt: this.lastObservedAt, error } };
   }
 
   private rpc(): ExecutionHostService {
+    if (this.ownerChanged) throw new Error('Execution owner identity changed; automatic process adoption is refused');
     if (!this.remote || this.closed) throw new Error('Execution owner connection is closed; application state is unknown');
     return this.remote;
   }
@@ -139,7 +161,7 @@ export class ExecutionClient {
   }
 
   private view(): ExecutionSnapshot {
-    if (this.closed || !this.inventory || performance.now() - this.observedAt > 5000) {
+    if (this.closed || this.ownerChanged || !this.inventory || performance.now() - this.observedAt > 5000) {
       throw new Error('Execution owner inventory is stale; applications may still be running. Restore the owner connection before controlling them.');
     }
     return this.inventory;
@@ -148,25 +170,41 @@ export class ExecutionClient {
   private async refresh(): Promise<void> {
     if (this.polling || this.closed) return;
     this.polling = true;
+    let observed = false;
     try {
-      this.apply(await withControlDeadline(this.rpc().snapshot({ afterEvent: this.eventCursor }), 4000, 'Execution owner observation timed out'));
-      if (this.deliverEvents && this.grant) await this.rpc().acknowledge({ grant: this.grant, cursor: this.eventCursor });
+      if (this.ownerChanged) throw new Error('Execution owner identity changed; automatic process adoption is refused');
+      const remote = await this.observations.service<ExecutionHostService>('OmnitronExecution');
+      this.apply(await remote.snapshot({ afterEvent: this.eventCursor }));
+      observed = true;
       runtimeDiagnostics.resolve('execution.observation-unavailable');
+      if (this.deliverEvents && this.grant) await remote.acknowledge({ grant: this.grant, cursor: this.eventCursor });
+      runtimeDiagnostics.resolve('execution.acknowledgment-unavailable');
     }
     catch (error) {
-      if (!this.closed) runtimeDiagnostics.failure('execution.observation-unavailable', 'Execution owner observation is unavailable; application state is unknown', error,
-        'Inspect the private execution-owner log and socket. Do not restart applications merely because the backend lost its observation channel.');
+      if (!this.closed) {
+        if (!observed) this.observationError = error instanceof Error ? error.message : String(error);
+        runtimeDiagnostics.failure(observed ? 'execution.acknowledgment-unavailable' : 'execution.observation-unavailable',
+          observed ? 'Execution observations are readable, but their acknowledgment failed' : 'Execution owner observation is unavailable; application state is unknown', error,
+          'Inspect the private execution-owner log, controller grant and socket. Do not restart applications merely because the backend lost its observation channel.');
+      }
     }
     finally { this.polling = false; }
   }
 
-  private apply(snapshot: ExecutionSnapshot): void {
-    if (snapshot.protocol !== 1 || (this.inventory && snapshot.status.owner.id !== this.inventory.status.owner.id)) {
+  private validateOwner(snapshot: ExecutionSnapshot): void {
+    if (snapshot?.protocol !== 1 || !snapshot.status?.owner?.id || (this.inventory && snapshot.status.owner.id !== this.inventory.status.owner.id)) {
+      if (this.inventory) this.ownerChanged = true;
       throw new Error('Execution owner identity or protocol changed; automatic process adoption is refused');
     }
+  }
+
+  private apply(snapshot: ExecutionSnapshot): void {
+    this.validateOwner(snapshot);
     if (this.inventory && snapshot.revision < this.inventory.revision) return;
     this.inventory = snapshot;
     this.observedAt = performance.now();
+    this.lastObservedAt = new Date().toISOString();
+    this.observationError = null;
     if (!this.deliverEvents) return;
     if (snapshot.droppedEvents) runtimeDiagnostics.record({ id: 'execution.live-event-gap', severity: 'warning',
       title: 'Execution live-event backlog exceeded capacity', evidence: [`${snapshot.droppedEvents} live observations were evicted`],

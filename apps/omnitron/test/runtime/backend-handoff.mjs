@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
 import { fork } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
 // Always pass a disposable compiled artifact. This harness writes test build
@@ -13,6 +15,17 @@ const runtimeRoot = path.resolve(dist, '../../..');
 assert.ok(dist.includes('omnitron-handoff-'), 'Use the disposable handoff test artifact');
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-backend-'));
 await fs.chmod(directory, 0o700);
+const master = process.argv.includes('--master');
+let databaseAdmin, databaseName, databaseUrl;
+if (master) {
+  const testUrl = new URL(process.env.TEST_DATABASE_URL ?? 'postgresql://test:test@127.0.0.1:15432/test');
+  assert.ok(['127.0.0.1', 'localhost'].includes(testUrl.hostname) && testUrl.port === '15432', 'Use the dedicated local test PostgreSQL on port 15432');
+  const { Pool } = createRequire(import.meta.url)('pg');
+  databaseAdmin = new Pool({ connectionString: testUrl.href, connectionTimeoutMillis: 5000 });
+  databaseName = `handoff_test_${randomUUID().replaceAll('-', '')}`;
+  await databaseAdmin.query(`CREATE DATABASE "${databaseName}"`);
+  testUrl.pathname = `/${databaseName}`; databaseUrl = testUrl.href;
+}
 const instance = path.join(directory, 'i');
 await fs.mkdir(instance, { mode: 0o700 });
 const url = relative => pathToFileURL(path.join(dist, relative)).href;
@@ -58,12 +71,13 @@ await fs.writeFile(boot, `
 import { OmnitronDaemon } from ${JSON.stringify(url('daemon/daemon.js'))};
 import { DEFAULT_ECOSYSTEM, DEFAULT_DAEMON_CONFIG } from ${JSON.stringify(url('config/defaults.js'))};
 const daemon=new OmnitronDaemon();
+${master ? `await (await import(${JSON.stringify(url('database/migration-runner.js'))})).runOmnitronMigrations();` : ''}
 const config={...DEFAULT_ECOSYSTEM,apps:[{name:'counter',script:${JSON.stringify(script)},cwd:${JSON.stringify(directory)},enabled:true},{name:'topology',bootstrap:${JSON.stringify(topology)},cwd:${JSON.stringify(directory)},enabled:true}]};
-await daemon.start(config,{noInfra:true,noWatch:true},{...DEFAULT_DAEMON_CONFIG,role:'slave',port:0,httpPort:${httpBase},executionHost:{enabled:true,directory:${JSON.stringify(path.join(directory, 'e'))}},auth:{jwtSecret:'isolated-test-secret-not-for-production'}});
+await daemon.start(config,{noInfra:true,noWatch:true},{...DEFAULT_DAEMON_CONFIG,role:${JSON.stringify(master ? 'master' : 'slave')},port:0,httpPort:${httpBase},executionHost:{enabled:true,directory:${JSON.stringify(path.join(directory, 'e'))}},auth:{jwtSecret:'isolated-test-secret-not-for-production'}});
 process.send({type:'ready',execution:daemon.backendRuntimeStatus()}); process.disconnect();
 `);
 const output = await fs.open(path.join(directory, 'initial.log'), 'a', 0o600);
-const initial = fork(boot, [], { cwd: directory, env: { ...process.env, OMNITRON_HOME: instance },
+const initial = fork(boot, [], { cwd: directory, env: { ...process.env, OMNITRON_HOME: instance, ...(databaseUrl ? { OMNITRON_DATABASE_URL: databaseUrl } : {}) },
   execArgv: [], stdio: ['ignore', output.fd, output.fd, 'ipc'] });
 await output.close();
 const ownedBackends = new Set();
@@ -84,6 +98,32 @@ try {
   let client = createDaemonClient(socket, 30_000);
   await client.startApp({ name: 'counter' });
   await client.startApp({ name: 'topology' });
+  const sessions = new Map();
+  if (master) {
+    const accounts = await client.service('OmnitronAccess');
+    const auth = await client.service('OmnitronAuth');
+    for (const role of ['viewer', 'operator', 'admin']) {
+      const username = `fixture-${role}`, password = 'Test-fixture-only-passphrase!';
+      await accounts.createUser({ username, password, role });
+      sessions.set(role, (await auth.signIn({ username, password })).accessToken);
+    }
+  }
+  const verifyAuthority = async () => {
+    for (const [role, token] of sessions) {
+      for (const [service, method, input, expected] of [
+        ['OmnitronBackend', 'status', [], 200],
+        ['OmnitronBackend', 'controlAddress', [], 403],
+        ['OmnitronTraces', 'ingestBatch', [{spans:[]}], role === 'viewer' ? 403 : 200],
+      ]) {
+        const response = await fetch(`http://127.0.0.1:${httpBase + 1}/netron/invoke`, {
+          method:'POST', headers:{'content-type':'application/json',authorization:`Bearer ${token}`},
+          body:JSON.stringify({id:randomUUID(),service,method,input}), signal:AbortSignal.timeout(5000),
+        });
+        await response.arrayBuffer(); assert.equal(response.status,expected,`${role} ${service}.${method}`);
+      }
+    }
+  };
+  await verifyAuthority();
   const { privateControlClient } = await import(url('daemon/private-control-client.js'));
   topologyConnection = await privateControlClient(path.join(directory,'e/owner.sock'),'FixturePool');
   const poolPids = new Set();
@@ -108,6 +148,7 @@ try {
   const result = await replaceBackend(dist, { socket, progress: message => console.log(message) });
   ownedBackends.add(result.pid);
   assert.notEqual(result.pid, initial.pid); assert.equal(result.ownerPid, ownerPid);
+  await verifyAuthority();
   await waitDead(initial.pid);
   // A candidate that passes preflight but crashes before readiness must roll
   // back to the old artifact under a fresh epoch, never re-use an old grant.
@@ -128,12 +169,13 @@ try {
   await client.disconnect();
   assert.equal(recovered.execution.owner.pid, ownerPid);
   assert.ok(recovered.execution.epoch > result.epoch);
+  await verifyAuthority();
   const after = await probe();
   assert.ok(after.counter > before.counter);
   clearInterval(sampler);
   while (inProbe) await new Promise(resolve => setTimeout(resolve, 5));
   assert.equal(failures, 0);
-  console.log(JSON.stringify({ test: 'backend-replacement-and-rollback', directory, ownerPid,
+  console.log(JSON.stringify({ test: 'backend-replacement-and-rollback', role:master?'master':'slave', verifiedRoles:[...sessions.keys()], directory, ownerPid,
     applicationPid: before.pid, poolPids:[...poolPids], backendPids: [...ownedBackends], epoch: recovered.execution.epoch,
     samples, failures, counterBefore: before.counter, counterAfter: after.counter }));
 } finally {
@@ -147,4 +189,8 @@ try {
   if (!ownerPid) ownerPid = new PidManager(path.join(directory, 'e/owner.pid')).getPid();
   for (const pid of ownedBackends) if (PidManager.isProcessAlive(pid)) { process.kill(pid, 'SIGTERM'); await waitDead(pid); }
   if (ownerPid && PidManager.isProcessAlive(ownerPid)) { process.kill(ownerPid, 'SIGTERM'); await waitDead(ownerPid); }
+  if (databaseAdmin) {
+    try { await databaseAdmin.query(`DROP DATABASE "${databaseName}" WITH (FORCE)`); }
+    finally { await databaseAdmin.end(); }
+  }
 }

@@ -38,6 +38,23 @@ afterEach(async () => {
 const settle = () => vi.advanceTimersByTimeAsync(0);
 
 describe('mesh recovery and resource ownership', () => {
+  it('survives twenty successive transport losses without accumulating connections or changing registry identity', async () => {
+    for (let n = 0; n < 21; n++) network.peers.push(peer());
+    const closed = vi.fn(async () => {});
+    const c = connector(async () => ({ url: 'tcp://127.0.0.1:1', via: 'ssh-tunnel', close: closed }));
+    await c.addSlave(config); await settle();
+    for (let cycle = 0; cycle < 20; cycle++) {
+      network.instances[cycle].handlers.get('peer:disconnect')(); await settle();
+      expect(c.getConnections()[0]).toMatchObject({ status: 'error', reconnectAttempt: 1 });
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(c.getConnections()).toHaveLength(1);
+      expect(c.getConnections()[0]).toMatchObject({ status: 'connected', reconnectAttempt: 0 });
+      expect((c as any).connections.get('test.invalid:9700').config).toEqual(config);
+    }
+    expect(closed).toHaveBeenCalledTimes(20);
+    for (const old of network.instances.slice(0, -1)) expect(old.stop).toHaveBeenCalledOnce();
+  });
+
   it('reports authentication only after this peer verifies the credential and drops it on disconnect', async () => {
     let accept!: (value: { success: boolean }) => void;
     const authenticated = { ...peer(), runTask: vi.fn(() => new Promise(resolve => { accept = resolve; })) };

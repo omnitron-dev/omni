@@ -191,6 +191,22 @@ afterEach(async () => {
 });
 
 describe('a pull that started again before it had finished', () => {
+  it('drains a large queue over bounded sweeps while fresh entries keep arriving', async () => {
+    const n = node(50_000);
+    const m = master();
+    const { connector } = connected(n.peer, m.service);
+    let expected = 50_000;
+    for (let sweepNumber = 0; sweepNumber < 6; sweepNumber++) {
+      n.add(100); expected += 100;
+      const before = n.pending;
+      await sweep(connector);
+      await vi.waitFor(() => expect(n.pending).toBe(Math.max(0, before - 10_000)));
+    }
+    expect(n.pending).toBe(0);
+    expect(m.received).toHaveLength(expected);
+    expect(new Set(m.received).size).toBe(expected);
+  });
+
   it('does not start a second pull on a connection whose first is still running', async () => {
     const n = node(2_500);
     const m = master();

@@ -47,6 +47,9 @@ async function theDaemonsUnixServer(): Promise<{ options: Record<string, unknown
   // module, the JWT service and the session store. None is called here.
   const deps = { logger, verify: async () => ({}), validateToken: async () => null };
   const daemon: any = Object.create(OmnitronDaemon.prototype);
+  // The constructor normally admits a coupled backend. This fixture skips
+  // it, but exercises the ready transport rather than checkpoint adoption.
+  daemon.backendAdmitted = true;
   daemon.app = {
     netron: {
       registerTransport: () => {},

@@ -20,10 +20,9 @@
  *   const stacks = await project.listStacks({ project: 'omni' });
  */
 
-import { Netron, type RemotePeer } from '@omnitron-dev/titan/netron';
 import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';
 import { TcpTransport } from '@omnitron-dev/titan/netron/transport/tcp';
-import { createNullLogger } from '@omnitron-dev/titan/module/logger';
+import { RpcConnection } from './rpc-connection.js';
 import { getEnv } from '../shared/env-config.js';
 import type {
   IDaemonService,
@@ -50,50 +49,6 @@ const CLI_REQUEST_TIMEOUT = 60_000;
 const REACHABILITY_TIMEOUT = 5_000;
 
 /**
- * How long a connection to the daemon's socket may take to complete.
- *
- * `netron.connect` had none, and a unix socket whose listener exists but
- * whose event loop is starved accepts the connection and never finishes the
- * handshake. So the connect does not fail — it waits, for ever.
- *
- * `isReachable` looked bounded and was not: it races a 5-second timer against
- * `ping()`, which bounds how long IT waits, while `daemonPing` awaits
- * `client.ping()` directly. Measured 2026-09-15 with the development daemon
- * starved by unrelated load at a load average of 107:
- *
- *     $ time omnitron ping
- *     (no output at all)
- *     0.97s user  0.65s system  1% cpu  2:00.10 total
- *
- * Two minutes of nothing, at one percent CPU — waiting, not working — and
- * killed by the shell's own timeout rather than reporting anything. Every
- * command in the CLI goes through this method.
- *
- * Longer than the reachability check, because this bounds a real operation
- * rather than a probe: a loaded host can take seconds to schedule the
- * daemon's accept.
- */
-const CONNECT_TIMEOUT = 15_000;
-
-/**
- * Reject a promise that has not settled in time.
- *
- * The underlying work is not cancelled — nothing here can cancel a socket
- * handshake — so the flag it would have set is left alone by the caller. The
- * point is that the CALLER stops waiting and can say what happened.
- */
-function withDeadline<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(message)), ms);
-    timer.unref?.();
-    work.then(
-      (value) => { clearTimeout(timer); resolve(value); },
-      (err) => { clearTimeout(timer); reject(err); },
-    );
-  });
-}
-
-/**
  * Why a daemon did not answer.
  *
  * Three different situations, three different things for an operator to do,
@@ -109,16 +64,6 @@ export type DaemonAbsence =
   | { kind: 'silent'; pid: number; waitedMs: number }
   /** The pid file could not be read, so the question stays open. */
   | { kind: 'unknown'; reason: string };
-
-/**
- * How long `disconnect()` waits for an in-flight connect to settle.
- *
- * Short on purpose: the only reason to wait at all is to stop a connect that
- * is about to succeed from resurrecting state behind the teardown. A connect
- * that has not settled in a second against a local unix socket is not about
- * to succeed.
- */
-const DISCONNECT_SETTLE_TIMEOUT = 1_000;
 
 /**
  * Timeout for calls that legitimately take minutes — starting or stopping a
@@ -161,74 +106,23 @@ export function isRequestTimeout(err: unknown): boolean {
 // =============================================================================
 
 export class DaemonClient implements IDaemonService {
-  private netron: Netron;
-  private peer: RemotePeer | null = null;
+  private readonly connection: RpcConnection;
   private proxy: IDaemonService | null = null;
-  private connected = false;
-  /** The in-flight connect, shared by everyone who arrives during it. */
-  private connecting: Promise<void> | null = null;
-  private readonly serviceCache = new Map<string, unknown>();
 
-  constructor(
-    private readonly socketPath: string = DEFAULT_SOCKET_PATH,
-    requestTimeout: number = CLI_REQUEST_TIMEOUT
-  ) {
-    this.netron = new Netron(createNullLogger(), { id: `omnitron-${process.pid}` });
-    this.netron.registerTransport('unix', () => new UnixSocketTransport());
-    this.netron.setTransportOptions('unix', { requestTimeout });
-  }
-
-  /**
-   * Connect once, however many callers arrive at once.
-   *
-   * `connected` is set after the awaits, so on its own it guards the second
-   * CALL and not the second CALLER: every method here opens with
-   * `await this.ensureConnected()`, so `Promise.all([a(), b()])` had both see
-   * `false`, both open a socket, and both `queryInterface`. The last
-   * assignment wins and the earlier peer is leaked — `disconnect()` can only
-   * tear down the one the fields point at.
-   *
-   * Sharing the in-flight promise covers exactly the window the flag was
-   * written for. It is released in a `finally` however the attempt ends:
-   * holding a rejected promise would replay the first failure forever, so a
-   * daemon that was merely still starting could never be reached again.
-   */
-  private async ensureConnected(): Promise<void> {
-    if (this.connected) return;
-    // Awaited rather than returned: the method's contract is `Promise<void>`,
-    // and handing back the shared promise makes its resolved value part of
-    // the contract by accident.
-    if (this.connecting) {
-      await this.connecting;
-      return;
-    }
-
-    this.connecting = withDeadline(
-      (async () => {
-        this.peer = (await this.netron.connect(`unix://${this.socketPath}`, false)) as RemotePeer;
-        this.proxy = await this.peer.queryInterface<IDaemonService>(DAEMON_SERVICE_ID);
-        this.connected = true;
-      })(),
-      CONNECT_TIMEOUT,
-      `the daemon did not complete a connection within ${CONNECT_TIMEOUT / 1000}s`,
-    ).finally(() => {
-      this.connecting = null;
+  constructor(socketPath: string = DEFAULT_SOCKET_PATH, requestTimeout: number = CLI_REQUEST_TIMEOUT) {
+    this.connection = new RpcConnection(`unix://${socketPath}`, netron => {
+      netron.registerTransport('unix', () => new UnixSocketTransport());
+      netron.setTransportOptions('unix', { requestTimeout });
     });
-
-    await this.connecting;
   }
 
-  // ---------------------------------------------------------------------------
-  // Typed service proxy for any Netron service
-  // ---------------------------------------------------------------------------
+  private async ensureConnected(): Promise<void> {
+    this.proxy = await this.service<IDaemonService>(DAEMON_SERVICE_ID);
+  }
 
+  /** Retain this handle across backend replacements; failed calls are never replayed. */
   async service<T>(serviceName: string): Promise<T> {
-    await this.ensureConnected();
-    const cached = this.serviceCache.get(serviceName);
-    if (cached) return cached as T;
-    const proxy = await this.peer!.queryInterface<T>(serviceName);
-    this.serviceCache.set(serviceName, proxy);
-    return proxy;
+    return this.connection.service<T>(serviceName);
   }
 
   // ---------------------------------------------------------------------------
@@ -451,57 +345,7 @@ export class DaemonClient implements IDaemonService {
   }
 
   async disconnect(): Promise<void> {
-    try {
-      // Settle an in-flight connect before tearing anything down. Otherwise
-      // the connect completes AFTER the disconnect and sets `connected` back
-      // to true around a peer nothing points at — a socket that survives a
-      // clean shutdown and surfaces a lifetime later.
-      //
-      // BOUNDED, because "settle" is not something the other end guarantees.
-      // A daemon that accepts the connection and then answers nothing leaves
-      // this promise pending for ever, and every CLI command disconnects in a
-      // `finally` — so the command could not exit, and could not print the
-      // error it had already produced. Measured 2026-09-14 against a wedged
-      // daemon: `omnitron ping`, `omnitron ls` and `omnitron node list` each
-      // produced NO output and never returned. The symptom that matters is
-      // not the hang, it is that the tool lost the ability to report the hang.
-      //
-      // On expiry we tear down anyway and clear `connecting` by hand: the
-      // comment that said clearing it is unnecessary was true only while this
-      // wait could not expire.
-      if (this.connecting) {
-        await Promise.race([
-          this.connecting.catch(() => undefined),
-          new Promise<void>((resolve) => setTimeout(resolve, DISCONNECT_SETTLE_TIMEOUT).unref?.()),
-        ]);
-        this.connecting = null;
-      }
-
-      // Stopped unconditionally. It used to run only when `connected` was
-      // true, which is exactly false in the case that needs it most: a
-      // connect that never completed still holds an open socket, and skipping
-      // the teardown leaves it open with nothing pointing at it.
-      //
-      // Bounded for the same reason the settle above is. `netron.stop()`
-      // closes transports and waits for them; a half-open socket to a daemon
-      // whose event loop is starved has no other end to answer, and the wait
-      // does not end. Measured 2026-09-15 at a load average of 107: with the
-      // connect bounded, `omnitron ping` printed its diagnosis and then did
-      // not exit — the command had said everything it had to say and still
-      // could not return. A teardown is best-effort by nature: the process is
-      // leaving, and the OS closes what it held.
-      await withDeadline(
-        this.netron.stop(),
-        DISCONNECT_SETTLE_TIMEOUT,
-        'the transport did not close in time',
-      ).catch(() => undefined);
-      this.connected = false;
-      this.peer = null;
-      this.proxy = null;
-      this.serviceCache.clear();
-    } catch {
-      // Already disconnected
-    }
+    await this.connection.disconnect();
   }
 }
 
@@ -510,49 +354,16 @@ export class DaemonClient implements IDaemonService {
 // =============================================================================
 
 export class RemoteDaemonClient {
-  private netron: Netron;
-  private peer: RemotePeer | null = null;
-  private connected = false;
-  /** The in-flight connect, shared by everyone who arrives during it. */
-  private connecting: Promise<void> | null = null;
-  private readonly serviceCache = new Map<string, unknown>();
+  private readonly connection: RpcConnection;
 
-  constructor(
-    private readonly host: string,
-    private readonly port: number
-  ) {
-    this.netron = new Netron(createNullLogger(), { id: `omnitron-remote-${process.pid}` });
-    this.netron.registerTransport('tcp', () => new TcpTransport());
-  }
-
-  /** As `DaemonClient.ensureConnected` — the same shape over TCP. */
-  private async ensureConnected(): Promise<void> {
-    if (this.connected) return;
-    // Awaited rather than returned: the method's contract is `Promise<void>`,
-    // and handing back the shared promise makes its resolved value part of
-    // the contract by accident.
-    if (this.connecting) {
-      await this.connecting;
-      return;
-    }
-
-    this.connecting = (async () => {
-      this.peer = (await this.netron.connect(`tcp://${this.host}:${this.port}`, false)) as RemotePeer;
-      this.connected = true;
-    })().finally(() => {
-      this.connecting = null;
+  constructor(host: string, port: number) {
+    this.connection = new RpcConnection(`tcp://${host}:${port}`, netron => {
+      netron.registerTransport('tcp', () => new TcpTransport());
     });
-
-    await this.connecting;
   }
 
   async service<T>(serviceName: string): Promise<T> {
-    await this.ensureConnected();
-    const cached = this.serviceCache.get(serviceName);
-    if (cached) return cached as T;
-    const proxy = await this.peer!.queryInterface<T>(serviceName);
-    this.serviceCache.set(serviceName, proxy);
-    return proxy;
+    return this.connection.service<T>(serviceName);
   }
 
   async ping(): Promise<{ uptime: number; version: string; pid: number }> {
@@ -590,41 +401,7 @@ export class RemoteDaemonClient {
   }
 
   async disconnect(): Promise<void> {
-    try {
-      // Settle an in-flight connect before tearing anything down. Otherwise
-      // the connect completes AFTER the disconnect and sets `connected` back
-      // to true around a peer nothing points at — a socket that survives a
-      // clean shutdown and surfaces a lifetime later.
-      //
-      // BOUNDED, because "settle" is not something the other end guarantees.
-      // A daemon that accepts the connection and then answers nothing leaves
-      // this promise pending for ever, and every CLI command disconnects in a
-      // `finally` — so the command could not exit, and could not print the
-      // error it had already produced. Measured 2026-09-14 against a wedged
-      // daemon: `omnitron ping`, `omnitron ls` and `omnitron node list` each
-      // produced NO output and never returned. The symptom that matters is
-      // not the hang, it is that the tool lost the ability to report the hang.
-      //
-      // On expiry we tear down anyway and clear `connecting` by hand: the
-      // comment that said clearing it is unnecessary was true only while this
-      // wait could not expire.
-      if (this.connecting) {
-        await Promise.race([
-          this.connecting.catch(() => undefined),
-          new Promise<void>((resolve) => setTimeout(resolve, DISCONNECT_SETTLE_TIMEOUT).unref?.()),
-        ]);
-        this.connecting = null;
-      }
-
-      if (this.connected) {
-        await this.netron.stop();
-        this.connected = false;
-        this.peer = null;
-        this.serviceCache.clear();
-      }
-    } catch {
-      // Already disconnected
-    }
+    await this.connection.disconnect();
   }
 }
 

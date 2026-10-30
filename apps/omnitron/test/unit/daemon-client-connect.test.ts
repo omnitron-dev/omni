@@ -30,16 +30,27 @@ vi.mock('@omnitron-dev/titan/netron', async () => {
   return {
     ...actual,
     Netron: class {
+      peers = new Map();
+      on = vi.fn();
       registerTransport = netron.registerTransport;
       setTransportOptions = netron.setTransportOptions;
-      connect = (...args: unknown[]) => netron.connect(...args);
-      stop = (...args: unknown[]) => netron.stop(...args);
+      connect = async (...args: unknown[]) => {
+        const peer = await netron.connect(...args);
+        this.peers.set(peer.id, peer);
+        return peer;
+      };
+      stop = async (...args: unknown[]) => { this.peers.clear(); await netron.stop(...args); };
     },
   };
 });
 
 const peer = {
-  queryInterface: vi.fn(async () => ({ ping: vi.fn(async () => ({ uptime: 1, version: 'x', pid: 1 })) })),
+  id: 'test-peer',
+  disconnect: vi.fn(async () => undefined),
+  queryInterface: vi.fn(async () => ({
+    $def: { id: 'test-service', meta: { methods: { ping: {} }, properties: {} } },
+    $peer: { call: vi.fn(async () => ({ uptime: 1, version: 'x', pid: 1 })) },
+  })),
 };
 
 beforeEach(() => {
@@ -190,4 +201,51 @@ describe('RemoteDaemonClient.ensureConnected', () => {
 
     expect(netron.connects).toBe(1);
   });
+});
+
+it('fences a handshake that completes after bounded disconnect and a new connection', async () => {
+  vi.useFakeTimers();
+  try {
+    const { DaemonClient } = await freshClients();
+    const client = new DaemonClient('/tmp/does-not-matter.sock');
+    const old = client.service('A').catch(error => error as Error);
+    const completeOld = netron.release!;
+    const closing = client.disconnect();
+    await vi.advanceTimersByTimeAsync(1001);
+    await closing;
+    const next = client.service<{ ping(): Promise<unknown> }>('A');
+    netron.release!(peer);
+    const handle = await next;
+    completeOld(peer);
+    expect(await old).toBeInstanceOf(Error);
+    expect(peer.disconnect).toHaveBeenCalled();
+    await handle.ping();
+    expect(netron.connects).toBe(2);
+    await client.disconnect();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('bounds a silent handshake and teardown independently of the reachability probe', async () => {
+  vi.useFakeTimers();
+  try {
+    const { DaemonClient } = await freshClients();
+    const client = new DaemonClient('/tmp/does-not-matter.sock');
+    let settled = false;
+    const call = client.service('A').catch(error => { settled = true; return error as Error; });
+    const probe = client.isReachable();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(await probe).toBe(false);
+    expect(settled).toBe(false);
+    netron.stop.mockImplementation(() => new Promise(() => {}));
+    await vi.advanceTimersByTimeAsync(10000);
+    expect((await call).message).toContain('did not complete a connection within 15s');
+    await vi.advanceTimersByTimeAsync(1001);
+    await client.disconnect();
+    expect(netron.connects).toBe(1);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
 });

@@ -35,56 +35,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const clientSrc = fs.readFileSync(path.join(root, 'src/daemon/daemon-client.ts'), 'utf8');
 const cliSrc = fs.readFileSync(path.join(root, 'src/cli/omnitron.ts'), 'utf8');
 
-describe('every wait the CLI makes on the daemon is bounded', () => {
-  it('bounds the connect itself', () => {
-    // Asserted on the source because reaching it needs a socket that accepts
-    // and then answers nothing — which is a starved daemon, not something a
-    // unit test can conjure. What is checkable is that the connect is not
-    // awaited bare.
-    const connect = clientSrc.slice(
-      clientSrc.indexOf('private async ensureConnected'),
-      clientSrc.indexOf('private async ensureConnected') + 1200,
-    );
-
-    expect(connect, 'ensureConnected awaits netron.connect with no deadline').toContain('withDeadline');
-    expect(connect).toContain('CONNECT_TIMEOUT');
-  });
-
-  it('bounds the teardown', () => {
-    const disconnect = clientSrc.slice(
-      clientSrc.indexOf('  async disconnect()'),
-      clientSrc.indexOf('  async disconnect()') + 2600,
-    );
-
-    expect(disconnect, 'netron.stop() is awaited with no deadline').toMatch(/withDeadline\(\s*\n?\s*this\.netron\.stop\(\)/);
-  });
-
-  it('gives the connect more room than the probe', () => {
-    // They answer different questions. The probe asks "is anything there",
-    // and five seconds is generous for a unix socket. The connect is real
-    // work, and a loaded host can take seconds just to schedule the accept —
-    // so a connect bounded by the probe's budget would fail on a machine that
-    // is merely busy.
-    const connectMs = Number(/const CONNECT_TIMEOUT = ([\d_]+);/.exec(clientSrc)?.[1]?.replace(/_/g, ''));
-    const probeMs = Number(/const REACHABILITY_TIMEOUT = ([\d_]+);/.exec(clientSrc)?.[1]?.replace(/_/g, ''));
-
-    expect(connectMs).toBeGreaterThan(probeMs);
-  });
-
-  it('does not keep the process alive with its own timers', () => {
-    // A deadline that holds the event loop open would replace one hang with
-    // another, quieter one.
-    const deadline = clientSrc.slice(clientSrc.indexOf('function withDeadline'), clientSrc.indexOf('function withDeadline') + 600);
-
-    expect(deadline).toContain('timer.unref');
-    // And it must clear the timer on both outcomes, or a fast success still
-    // waits for the deadline before the process can leave.
-    expect((deadline.match(/clearTimeout/g) ?? []).length).toBeGreaterThanOrEqual(2);
-  });
-});
+// Connection, probe and teardown deadlines are exercised with a silent
+// transport in daemon-client-connect.test.ts, rather than inferred from source.
 
 describe('the CLI leaves when its work is done', () => {
   it('exits rather than waiting for handles it cannot close', () => {

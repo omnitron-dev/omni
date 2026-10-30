@@ -33,6 +33,8 @@ import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { OmnitronDaemon } from '../../src/daemon/daemon.js';
 import { createDaemonClient } from '../../src/daemon/daemon-client.js';
 import { AuditService, currentActor } from '../../src/services/audit.service.js';
+import { createDaemonTokenValidator } from '../../src/services/daemon-authority.js';
+import { runWithAuth } from '../../src/services/auth-context.js';
 
 const logger: Record<string, unknown> = {};
 for (const level of ['info', 'warn', 'error', 'debug', 'trace', 'fatal']) logger[level] = () => {};
@@ -154,6 +156,24 @@ describe('a call over the unix socket is the local operator', () => {
     // A boot autostart runs outside any call: no transport, no context.
     await audit.record({ action: 'stack.start', resourceType: 'stack', resourceId: 'sample/dev', details: { source: 'boot' } });
     expect(inserted[0]).toMatchObject({ actorId: null, actorType: 'system' });
+  });
+});
+
+describe('authenticated service subjects retain their identity and kind', () => {
+  it('records the context admitted by the daemon token validator as a service', async () => {
+    const context = await createDaemonTokenValidator(async () => ({
+      sub: 'master-control', role: 'service_role', iss: 'omnitron', exp: Math.floor(Date.now() / 1000) + 300,
+    }), null)('verified-service-token');
+    await runWithAuth(context, () => audit.record({ action: 'stack.start', resourceType: 'stack', resourceId: 'sample/test' }));
+    expect(inserted[0]).toMatchObject({ actorId: 'master-control', actorType: 'service' });
+  });
+
+  it('does not infer a service identity from a human account name', async () => {
+    const context = await createDaemonTokenValidator(async () => ({
+      sub: 'master-control', sid: 'human-session', role: 'admin', iss: 'omnitron', exp: Math.floor(Date.now() / 1000) + 300,
+    }), { validateSessionAuthority: async () => ({ userId: 'master-control', sessionId: 'human-session', role: 'admin' }) })('verified-human-token');
+    await runWithAuth(context, () => audit.record({ action: 'stack.start', resourceType: 'stack', resourceId: 'sample/test' }));
+    expect(inserted[0]).toMatchObject({ actorId: 'master-control', actorType: 'user' });
   });
 });
 

@@ -23,7 +23,7 @@ export interface ActorWords {
 }
 
 export function actorWords(actorId: string | null, actorType: string): ActorWords {
-  if (actorId === LOCAL_CALLER) {
+  if (actorId === LOCAL_CALLER && actorType === 'user') {
     return {
       text: LOCAL_CALLER,
       title:
@@ -32,7 +32,9 @@ export function actorWords(actorId: string | null, actorType: string): ActorWord
     };
   }
   if (actorId) {
-    return { text: GENERATED_ID.test(actorId) ? `${actorId.slice(0, 8)}…` : actorId, title: actorId, id: true };
+    const label = GENERATED_ID.test(actorId) ? `${actorId.slice(0, 8)}…` : actorId;
+    return { text: actorType === 'user' ? label : `${actorType}: ${label}`,
+      title: actorType === 'user' ? actorId : `${actorType}: ${actorId}`, id: true };
   }
   if (actorType === 'service') {
     return { text: 'service', title: 'Another omnitron acting as the control plane — service_role, no account behind it', id: false };

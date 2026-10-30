@@ -164,8 +164,8 @@ export function currentActor(): { actorId: string | null; actorType: ActorType }
 
   const roles = auth.roles ?? [];
   // A master reaching a node carries `service_role` and no human behind it.
-  if (roles.includes('service_role') && !auth.userId) {
-    return { actorId: null, actorType: 'service' };
+  if (roles.includes('service_role')) {
+    return { actorId: auth.userId || null, actorType: 'service' };
   }
   return { actorId: auth.userId ?? null, actorType: auth.userId ? 'user' : 'system' };
 }

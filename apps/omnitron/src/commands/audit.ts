@@ -158,7 +158,8 @@ function cellsOf(row: AuditRow): Record<ColumnKey, Cell> {
     resource: plain(row.resourceId ? `${row.resourceType}:${row.resourceId}` : row.resourceType),
     // The id when there is one — `omnitron-local` for the CLI, an account for
     // the console — and otherwise the kind, which `--actor` also takes.
-    actor: row.actorId ? plain(row.actorId) : { text: row.actorType, shown: prism.dim(row.actorType) },
+    actor: row.actorId ? plain(row.actorType === 'user' ? row.actorId : `${row.actorType}:${row.actorId}`)
+      : { text: row.actorType, shown: prism.dim(row.actorType) },
     // `boot` and `auto-resume` are the daemon's own starts; `operator` is a
     // person's. Recorded since the service began writing the row, and never
     // printed until now.

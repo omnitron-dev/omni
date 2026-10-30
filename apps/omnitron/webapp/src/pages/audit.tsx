@@ -153,7 +153,7 @@ function Event({ row }: { row: AuditRow }) {
 /** `user` is a person; everything else is the machine, and says which. */
 function Actor({ actorId, actorType }: { actorId: string | null; actorType: string }) {
   const me = useAuthStore((st) => st.user);
-  if (actorId && me && actorId === me.id) {
+  if (actorType === 'user' && actorId && me && actorId === me.id) {
     return (
       <Tooltip title={actorId} arrow>
         <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>

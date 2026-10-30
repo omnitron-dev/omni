@@ -161,6 +161,11 @@ describe('a boot autostart does not read like a deployment', () => {
 });
 
 describe('--actor takes what the ACTOR column prints', () => {
+  it('shows a service subject as a service rather than a human account', async () => {
+    rows = [row({ actorId: 'master-control', actorType: 'service' })];
+    const { out } = await run({});
+    expect(out).toContain('service:master-control');
+  });
   it('asks for a kind of actor by its kind', async () => {
     for (const kind of ['system', 'service', 'user']) {
       asked.length = 0;

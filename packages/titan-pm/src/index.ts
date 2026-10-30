@@ -153,3 +153,6 @@ export type {
 
 // Common types (for testing utilities)
 export type { ProcessMethod, AsyncProcessMethod, ServiceMethodMap } from './common-types.js';
+
+export { ControllerHandoff, ControllerFencedError, HandoffBusyError } from './controller-handoff.js';
+export type { ExecutionOwnerIdentity, ControllerGrant, HandoffTicket, ControllerHandoffStatus } from './controller-handoff.js';

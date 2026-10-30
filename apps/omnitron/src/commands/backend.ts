@@ -13,6 +13,25 @@ import { readSavedDaemonConfig, savedDaemonOverrides } from './up.js';
 import { checkBackendCandidate } from '../daemon/backend-candidate.js';
 import { recoverBackendAfterCrash } from '../daemon/backend-crash-recovery.js';
 
+export async function backendSupervisorPrepareCommand(directory: string): Promise<void> {
+  try {
+    const { prepareSupervisorTransition } = await import('../daemon/supervisor-transition.js');
+    const result = await prepareSupervisorTransition(path.resolve(directory));
+    if (!emitJson(result)) {
+      emitInfo(`Guardian plan: ${result.file}`);
+      emitInfo(`Owner PID ${result.plan.ownerPid} and the selected backend release will be preserved.`);
+    }
+  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+}
+
+export async function backendSupervisorApplyCommand(file: string): Promise<void> {
+  try {
+    const { applySupervisorTransition } = await import('../daemon/supervisor-transition.js');
+    const result = await applySupervisorTransition(path.resolve(file));
+    if (!emitJson(result)) emitInfo(`Guardian PID ${result.result?.guardianPid}; backend PID ${result.result?.backendPid}; execution owner PID ${result.ownerPid} preserved`);
+  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+}
+
 export async function backendInstallCommand(directory: string): Promise<void> {
   let installation: RuntimeInstallation | null = null;
   try {

@@ -61,6 +61,17 @@ program.hook('preAction', async (cmd, actionCommand) => {
 // ============================================================================
 
 const backend = program.command('backend').description('Inspect and replace the control plane without restarting resident applications');
+const guardian = backend.command('guardian').description('Update independent user-service supervision without restarting applications');
+guardian.command('prepare <runtime>').description('Install a sealed management runtime and save a private guardian transition plan')
+  .action(async (runtime: string) => {
+    const { backendSupervisorPrepareCommand } = await import('../commands/backend.js');
+    await backendSupervisorPrepareCommand(runtime);
+  });
+guardian.command('apply <plan>').description('Apply or resume a prepared guardian transition; preserve execution ownership')
+  .action(async (plan: string) => {
+    const { backendSupervisorApplyCommand } = await import('../commands/backend.js');
+    await backendSupervisorApplyCommand(plan);
+  });
 backend.command('install <runtime>').description('Copy a sealed runtime into permanent storage without activation')
   .action(async (runtime: string) => {
     const { backendInstallCommand } = await import('../commands/backend.js');

@@ -26,7 +26,7 @@ export class BackendControlService {
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async status() {
-    return { runtime: this.daemon.backendRuntimeStatus(), retired: this.retired,
+    return { pid: process.pid, runtime: this.daemon.backendRuntimeStatus(), retired: this.retired,
       instanceHome: OMNITRON_HOME,
       ticketId: this.prepared?.state.ticket.id ?? null, build: OWN_BUILD,
       entry: fileURLToPath(new URL('./daemon-entry.js', import.meta.url)) };

@@ -11,6 +11,8 @@ import { randomUUID } from 'node:crypto';
 assert.equal(process.platform, 'darwin', 'This fixture exercises actual launchd isolation');
 const dist = path.resolve(process.argv[2]);
 assert.ok(dist.includes('omnitron-handoff-'), 'Use a disposable sealed test artifact');
+const managementDist = process.argv[3] ? path.resolve(process.argv[3]) : undefined;
+if (managementDist) assert.ok(managementDist.includes('omnitron-handoff-'), 'Use a disposable management artifact');
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-managed-'));
 const instance = path.join(root, 'i'), execution = path.join(root, 'e');
 for (const directory of [instance, execution]) await fs.mkdir(directory, { mode: 0o700 });
@@ -121,6 +123,53 @@ try {
   const afterGuardian = await until(async () => { const value = await status(); return value.pid !== recovered.pid ? value : null; }, 'OS did not recover the killed guardian');
   assert.equal(afterGuardian.execution.owner.pid, ownerPid);
   await waitCertificate();
+  if (managementDist) {
+    const settledGuardian = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor');
+    try {
+      await until(async () => {
+        const state = await settledGuardian.service.status();
+        return state.state === 'ready' && state.backendPid === afterGuardian.pid;
+      }, 'Guardian has not finished publishing the recovered selection');
+    } finally { await settledGuardian.close(); }
+    const { prepareSupervisorTransition, applySupervisorTransition } = await import(pathToFileURL(path.join(managementDist, 'daemon/supervisor-transition.js')).href);
+    const plan = await prepareSupervisorTransition(path.resolve(managementDist, '../../..'), socket);
+    assert.equal((await status()).pid, afterGuardian.pid, 'Preparation changed the backend');
+    const prepared = JSON.parse(await fs.readFile(plan.file, 'utf8'));
+    // Refuse edited native units BEFORE draining a backend.
+    await fs.appendFile(prepared.unit.file, '\n<!-- changed after preparation -->\n');
+    await assert.rejects(applySupervisorTransition(plan.file), /unit changed since preparation/);
+    assert.equal((await status()).pid, afterGuardian.pid);
+    await fs.writeFile(prepared.unit.file, prepared.unit.before);
+    const transitioned = await applySupervisorTransition(plan.file);
+    assert.equal(transitioned.phase, 'complete');
+    assert.equal(transitioned.result.ownerPid, ownerPid);
+    assert.notEqual(transitioned.result.backendPid, afterGuardian.pid);
+    assert.notEqual(transitioned.result.guardianPid, prepared.guardianPid);
+    assert.equal((await applySupervisorTransition(plan.file)).result.backendPid, transitioned.result.backendPid, 'A repeated apply started another backend');
+    console.log(JSON.stringify({ stage: 'guardian-transition-complete', result: transitioned.result }));
+    await waitCertificate();
+    const rollback = await prepareSupervisorTransition(path.resolve(dist, '../../..'), socket);
+    const runner = path.resolve(managementDist, '../../../node');
+    const script = `import { applySupervisorTransition } from ${JSON.stringify(pathToFileURL(path.join(managementDist, 'daemon/supervisor-transition.js')).href)};await applySupervisorTransition(${JSON.stringify(rollback.file)});`;
+    let completed = false;
+    const coordinator = execFile(runner, ['--input-type=module', '--eval', script], {
+      env: { ...process.env, OMNITRON_HOME: instance }, cwd: root, timeout: 180_000, maxBuffer: 1024 * 1024,
+    }, () => { completed = true; });
+    try {
+      const interrupted = await until(async () => {
+        const saved = JSON.parse(await fs.readFile(rollback.file, 'utf8'));
+        if (['retired', 'stopped', 'configured', 'started'].includes(saved.phase)) return saved;
+        if (completed || saved.phase === 'complete') throw new Error('Coordinator finished before interruption');
+        return null;
+      }, 'Coordinator never reached a recoverable transition phase', 60_000);
+      coordinator.kill('SIGKILL');
+      await until(() => completed, 'Fixture coordinator did not exit', 5000);
+      console.log(JSON.stringify({ stage: 'guardian-coordinator-killed', phase: interrupted.phase }));
+      const resumed = await applySupervisorTransition(rollback.file);
+      assert.equal(resumed.phase, 'complete'); assert.equal(resumed.result.ownerPid, ownerPid);
+      console.log(JSON.stringify({ stage: 'guardian-transition-resumed', result: resumed.result }));
+    } finally { if (!completed) coordinator.kill('SIGKILL'); }
+  }
   const after = await probe(); assert.ok(after.value > before.value); assert.equal(failures, 0);
   console.log(JSON.stringify({ test: 'independent-launchd-supervision', root, ownerPid, applicationPid,
     backends: [first.pid, upgraded.pid, recovered.pid, afterGuardian.pid], killedGuardian: guardian.pid, samples, failures }));

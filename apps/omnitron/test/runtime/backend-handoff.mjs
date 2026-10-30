@@ -71,6 +71,8 @@ await fs.writeFile(boot, `
 import { OmnitronDaemon } from ${JSON.stringify(url('daemon/daemon.js'))};
 import { DEFAULT_ECOSYSTEM, DEFAULT_DAEMON_CONFIG } from ${JSON.stringify(url('config/defaults.js'))};
 const daemon=new OmnitronDaemon();
+// Console initialization must not mutate the sealed runtime dependency tree.
+new (await import(${JSON.stringify(url('webapp/webapp.service.js'))})).WebappService({});
 ${master ? `await (await import(${JSON.stringify(url('database/migration-runner.js'))})).runOmnitronMigrations();` : ''}
 const config={...DEFAULT_ECOSYSTEM,apps:[{name:'counter',script:${JSON.stringify(script)},cwd:${JSON.stringify(directory)},enabled:true},{name:'topology',bootstrap:${JSON.stringify(topology)},cwd:${JSON.stringify(directory)},enabled:true}]};
 await daemon.start(config,{noInfra:true,noWatch:true},{...DEFAULT_DAEMON_CONFIG,role:${JSON.stringify(master ? 'master' : 'slave')},port:0,httpPort:${httpBase},executionHost:{enabled:true,directory:${JSON.stringify(path.join(directory, 'e'))}},auth:{jwtSecret:'isolated-test-secret-not-for-production'}});

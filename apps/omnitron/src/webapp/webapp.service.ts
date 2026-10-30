@@ -15,6 +15,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { OMNITRON_HOME } from '../config/defaults.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
@@ -217,7 +218,9 @@ export class WebappService {
     // thisDir = .../apps/omnitron/src/webapp/ or .../apps/omnitron/dist/webapp/
     const omnitronRoot = path.resolve(thisDir, '..', '..');
     this.webappDir = path.join(omnitronRoot, 'webapp');
-    this.configDir = path.join(omnitronRoot, 'node_modules', '.omnitron-nginx');
+    // Generated configuration belongs to the instance. Writing into the
+    // package would invalidate a sealed backend artifact on its first boot.
+    this.configDir = path.join(OMNITRON_HOME, 'webapp', 'nginx');
     fs.mkdirSync(this.configDir, { recursive: true });
   }
 

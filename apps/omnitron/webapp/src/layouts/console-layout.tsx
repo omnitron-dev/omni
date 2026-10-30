@@ -13,6 +13,8 @@ import { useSettingsStore } from '@omnitron-dev/prism/state';
 import type { ThemeMode } from '@omnitron-dev/prism/theme';
 import type { LayoutNavData } from '@omnitron-dev/prism/layouts';
 import { StatusBar } from 'src/components/status-bar';
+import { DaemonOfflineBanner } from 'src/components/daemon-offline-banner';
+import { ConsoleUpdateBanner } from 'src/components/console-update-banner';
 import { OmnitronLogo } from 'src/components/omnitron-logo';
 
 import {
@@ -360,6 +362,9 @@ export function ConsoleLayout() {
       headerSlots={{
         leftArea: <ProjectSwitcher />,
         rightArea: <HeaderRight />,
+        // Notices take space inside Prism's bounded workspace, so the footer
+        // and terminal stay inside the viewport when a notice appears.
+        bottomArea: <><DaemonOfflineBanner /><ConsoleUpdateBanner /></>,
       }}
       slotProps={{
         main: {

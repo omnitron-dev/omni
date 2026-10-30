@@ -37,10 +37,29 @@ export default defineConfig({
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
   },
   plugins: [nodeBuiltinsStub(), react()],
+  build: {
+    rolldownOptions: {
+      output: {
+        // MUI and Emotion contain order-sensitive module initialization.
+        strictExecutionOrder: true,
+        codeSplitting: {
+          includeDependenciesRecursively: false,
+          groups: [
+            { name: 'react', test: /node_modules\/(react|react-dom|scheduler)\//, priority: 20 },
+            { name: 'mui', test: /node_modules\/(?:@mui|@emotion)\//, maxSize: 350_000, priority: 10 },
+            { name: 'charts', test: /node_modules\/apexcharts\/dist\//, maxSize: 300_000, priority: 10 },
+          ],
+        },
+      },
+    },
+  },
   resolve: {
     dedupe: ['react', 'react-dom', 'react/jsx-runtime', '@emotion/react', '@emotion/styled'],
     alias: {
       src: path.resolve(here, 'src'),
+      // react-apexcharts imports /client. Register the renderers and accessible
+      // interactions this Console uses, while keeping chart loading lazy.
+      'apexcharts/client': path.resolve(here, 'src/charts.ts'),
       // Prism subpath aliases BEFORE the root alias (Vite uses prefix matching)
       '@omnitron-dev/prism/auth': path.resolve(here, '../../../packages/prism/src/auth/index.ts'),
       '@omnitron-dev/prism/netron': path.resolve(here, '../../../packages/prism/src/netron/index.ts'),

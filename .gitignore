@@ -67,3 +67,7 @@ playwright-report/
 # Misc
 *.tgz
 *.map.gz
+
+# Console publication state belongs to this installation, not the source tree.
+apps/omnitron/webapp/dist.publications.json
+apps/omnitron/webapp/dist.publish-lock/

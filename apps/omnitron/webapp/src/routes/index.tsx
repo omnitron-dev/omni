@@ -81,10 +81,13 @@ export function Router() {
         */}
         <Route path="releases" element={<Page><ReleasesPage /></Page>} />
         <Route path="releases/:id" element={<Page><ReleaseDetailPage /></Page>} />
+        {/* A daemon handle identifies the app without a selected workspace.
+            The global dashboard links here too; project selection is a filter,
+            while PageAccess and the daemon retain authorization checks. */}
+        <Route path="apps/:name" element={<Page><AppDetailPage /></Page>} />
 
         {/* Project-scoped — redirect to / if no active project */}
         <Route path="apps" element={<ProjectRoute><AppsListPage /></ProjectRoute>} />
-        <Route path="apps/:name" element={<ProjectRoute><AppDetailPage /></ProjectRoute>} />
         <Route path="stacks" element={<ProjectRoute><StacksPage /></ProjectRoute>} />
         <Route path="stacks/:name" element={<ProjectRoute><StackDetailPage /></ProjectRoute>} />
         <Route path="metrics" element={<ProjectRoute><MetricsPage /></ProjectRoute>} />

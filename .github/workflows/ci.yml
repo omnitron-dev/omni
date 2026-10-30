@@ -54,6 +54,8 @@ jobs:
         run: pnpm build
       - name: Verify package archive exports
         run: pnpm check:packages
+      - name: Console publication and recovery
+        run: node --test apps/omnitron/scripts/console-publication.test.mjs
       - name: Pure access policy and browser bundle boundary
         run: |
           pnpm --filter @omnitron-dev/access test

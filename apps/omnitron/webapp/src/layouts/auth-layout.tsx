@@ -2,6 +2,8 @@ import { Suspense } from 'react';
 import { Outlet } from 'react-router-dom';
 import { AuthCenteredLayout } from '@omnitron-dev/prism/layouts';
 import { SplashScreen } from '@omnitron-dev/prism/components/loading-screen';
+import { DaemonOfflineBanner } from 'src/components/daemon-offline-banner';
+import { ConsoleUpdateBanner } from 'src/components/console-update-banner';
 
 /**
  * The sign-in shell.
@@ -20,6 +22,8 @@ import { SplashScreen } from '@omnitron-dev/prism/components/loading-screen';
 export function AuthLayout() {
   return (
     <AuthCenteredLayout maxWidth={460}>
+      <DaemonOfflineBanner />
+      <ConsoleUpdateBanner />
       <Suspense fallback={<SplashScreen message="Loading sign-in…" />}>
         <Outlet />
       </Suspense>

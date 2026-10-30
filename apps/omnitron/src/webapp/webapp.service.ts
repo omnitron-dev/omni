@@ -168,6 +168,12 @@ ${securityHeaders('            ')}
 ${securityHeaders('            ')}
         }
 
+        location = /console-version.json {
+            add_header Cache-Control "no-store" always;
+${securityHeaders('            ')}
+            try_files $uri =404;
+        }
+
         # SPA fallback — all non-file routes serve index.html
         location / {
             try_files $uri $uri/ /index.html;
@@ -222,11 +228,17 @@ export class WebappService {
     const start = Date.now();
     this.logger.info('Building Omnitron Console webapp...');
 
+    const builder = path.join(this.webappDir, '../scripts/build-console.mjs');
+    if (!fs.existsSync(builder) || !fs.existsSync(path.join(this.webappDir, 'src'))) {
+      throw new Error('Console source is not installed. Build from the Omnitron source checkout and deploy its prebuilt webapp/dist.');
+    }
+
     try {
-      // Use vite build directly from webapp dir (avoids needing monorepo root for pnpm --filter)
-      await exec('npx', ['vite', 'build'], {
+      // The same staged, typechecked publication as `pnpm build`. Never run
+      // Vite against the directory nginx is serving: it empties outDir first.
+      await exec(process.execPath, [builder], {
         cwd: this.webappDir,
-        timeout: 120_000,
+        timeout: 600_000,
       });
     } catch (err: any) {
       throw new Error(`Webapp build failed: ${err.stderr?.slice(0, 300) ?? err.message}`, { cause: err });

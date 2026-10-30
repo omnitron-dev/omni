@@ -1074,7 +1074,7 @@ export default function AppDetailPage() {
       <Breadcrumbs
         linkComponent={RouterLink}
         links={[
-          { name: 'Applications', href: '/apps' },
+          activeProject ? { name: 'Applications', href: '/apps' } : { name: 'Overview', href: '/' },
           { name: name ?? '' },
         ]}
         action={

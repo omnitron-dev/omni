@@ -14,6 +14,7 @@ describe('persistent metrics owned by Titan DI', () => {
   it('awaits the final commit on container disposal and leaves the caller connection open', async () => {
     const root = await mkdtemp(join(tmpdir(), 'titan-metrics-shutdown-'));
     const sqlite = new Database(join(root, 'metrics.db'));
+    sqlite.pragma('journal_mode=WAL');
     sqlite.pragma('synchronous=FULL');
     const db = new Kysely<MetricsDatabase>({ dialect: new SqliteDialect({ database: sqlite }) });
     const storage = new SQLiteMetricsStorage(db);

@@ -111,7 +111,7 @@ class SqlMetricsStorage<DB extends MetricsDatabase> implements IMetricsStorage {
     }
   }
 
-  /** SQLite's connection must already use FULL/EXTRA synchronous; never changes a caller's PRAGMA. */
+  /** Verify the caller's journaling/sync policy without changing its connection. */
   async initialize(): Promise<void> {
     if (this.initialized || this.dialect === 'postgres') return;
     if (!this.initializing) this.initializing = this.initializeSqlite().finally(() => { this.initializing = null; });
@@ -122,10 +122,7 @@ class SqlMetricsStorage<DB extends MetricsDatabase> implements IMetricsStorage {
     const { sql } = await import('kysely');
     const databases = await sql<{ name: string; file: string }>`PRAGMA database_list`.execute(this.db);
     const persistent = !!databases.rows.find(row => row.name === 'main')?.file;
-    if (persistent) {
-      const sync = await sql<{ synchronous: number }>`PRAGMA synchronous`.execute(this.db);
-      if (Number(sync.rows[0]?.synchronous) < 2) throw new Error('Persistent metrics require SQLite synchronous=FULL or EXTRA');
-    }
+    if (persistent) await this.assertSqliteDurability(this.db);
     if (this.options.initializeSchema !== false) {
       await this.db.transaction().execute(async trx => {
         for (const statement of METRICS_SQLITE_SCHEMA_V1) await sql.raw(statement).execute(trx);
@@ -133,6 +130,22 @@ class SqlMetricsStorage<DB extends MetricsDatabase> implements IMetricsStorage {
     }
     this.capabilities.durability = persistent ? 'persistent' : 'volatile';
     this.initialized = true;
+  }
+
+  private async assertSqliteDurability(db: Kysely<MetricsDatabase>): Promise<void> {
+    const { sql } = await import('kysely');
+    const sync = Number((await sql<{ synchronous: number }>`PRAGMA synchronous`.execute(db)).rows[0]?.synchronous);
+    const mode = (await sql<{ journal_mode: string }>`PRAGMA journal_mode`.execute(db)).rows[0]?.journal_mode;
+    // FULL does not promise power-loss durability with a rollback journal.
+    // See https://sqlite.org/pragma.html#pragma_synchronous.
+    if (!mode || !['wal', 'delete', 'truncate', 'persist'].includes(mode)) {
+      throw new Error('Persistent metrics require SQLite WAL or a disk rollback journal; OFF/MEMORY cannot confirm durability');
+    }
+    if (!Number.isInteger(sync) || sync > 3 || sync < (mode === 'wal' ? 2 : 3)) {
+      throw new Error(mode === 'wal'
+        ? 'Persistent metrics require SQLite synchronous=FULL or EXTRA in WAL mode'
+        : 'Persistent metrics require SQLite synchronous=EXTRA with a rollback journal (or WAL with FULL)');
+    }
   }
 
   async write(samples: MetricSample[]): Promise<void> {
@@ -157,8 +170,7 @@ class SqlMetricsStorage<DB extends MetricsDatabase> implements IMetricsStorage {
         (SELECT relpersistence FROM pg_class WHERE oid = 'metrics_samples'::regclass) AS persistence`.execute(executor);
       if (durability.rows[0]?.fsync !== 'on' || durability.rows[0]?.full_pages !== 'on' || durability.rows[0]?.persistence !== 'p') throw new Error('Durable metrics require PostgreSQL fsync=on, full_page_writes=on and a logged metrics_samples table');
     } else if (this.capabilities.durability === 'persistent') {
-      const durability = await sql<{ synchronous: number }>`PRAGMA synchronous`.execute(executor);
-      if (Number(durability.rows[0]?.synchronous) < 2) throw new Error('Persistent metrics require SQLite synchronous=FULL or EXTRA');
+      await this.assertSqliteDurability(executor);
     }
     const prepared = samples.map(prepareMetricSample);
     const rows = prepared.map(sample => {

@@ -44,4 +44,32 @@ describe('SQLite persistence refuses incomplete setup', () => {
     raw.pragma('synchronous=OFF');
     await expect(storage.write([{ ...sample, id: 'sample-2' }])).rejects.toThrow('synchronous=FULL');
   });
+
+  it.each(['OFF', 'MEMORY'])('refuses %s journaling before setup and after a committed write', async mode => {
+    const { db, raw } = connection();
+    // The driver's defensive default refuses OFF; exercise callers that relax it.
+    raw.unsafeMode(true);
+    const storage = new SQLiteMetricsStorage(db);
+    raw.pragma(`journal_mode=${mode}`);
+    expect(raw.pragma('journal_mode', { simple: true })).toBe(mode.toLowerCase());
+    await expect(storage.write([sample])).rejects.toThrow('OFF/MEMORY');
+    raw.pragma('journal_mode=WAL');
+    await storage.write([sample]);
+    raw.pragma(`journal_mode=${mode}`);
+    await expect(storage.write([{ ...sample, id: 'sample-2' }])).rejects.toThrow('OFF/MEMORY');
+    expect(raw.prepare('SELECT count(*) AS n FROM metrics_samples').get()).toEqual({ n: 1 });
+  });
+
+  it.each(['DELETE', 'TRUNCATE', 'PERSIST'])('requires EXTRA for the %s rollback journal', async mode => {
+    const { db, raw } = connection();
+    raw.pragma(`journal_mode=${mode}`);
+    const storage = new SQLiteMetricsStorage(db);
+    await expect(storage.write([sample])).rejects.toThrow('synchronous=EXTRA');
+    raw.pragma('synchronous=EXTRA');
+    await storage.write([sample]);
+    expect(storage.capabilities.durability).toBe('persistent');
+    raw.pragma('synchronous=FULL');
+    await expect(storage.write([{ ...sample, id: 'sample-2' }])).rejects.toThrow('synchronous=EXTRA');
+    expect(raw.prepare('SELECT count(*) AS n FROM metrics_samples').get()).toEqual({ n: 1 });
+  });
 });

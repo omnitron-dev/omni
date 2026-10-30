@@ -36,7 +36,10 @@ await that transaction's commit. Initialize SQLite before using this method.
 
 PostgreSQL requires a logged table, `fsync=on` and `full_page_writes=on`; writes set
 transaction-local `synchronous_commit=on`. Persistent SQLite requires
-`synchronous=FULL` or `EXTRA`. An in-memory SQLite database remains volatile.
+WAL with `synchronous=FULL`/`EXTRA`, or a disk rollback journal with
+`synchronous=EXTRA`. OFF/MEMORY journaling is rejected. These settings are checked
+again within each write transaction. See [SQLite's durability matrix](https://sqlite.org/pragma.html#pragma_synchronous).
+An in-memory SQLite database remains volatile.
 
 ```ts
 const metrics = new MetricsService(

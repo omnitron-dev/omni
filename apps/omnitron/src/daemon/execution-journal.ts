@@ -42,6 +42,10 @@ export async function readPrivateRecord<T>(file: string): Promise<T | null> {
 }
 
 export async function writePrivateRecord(file: string, record: unknown): Promise<void> {
+  await writePrivateFile(file, JSON.stringify(record));
+}
+
+export async function writePrivateFile(file: string, contents: string, mode: 0o600 | 0o700 = 0o600): Promise<void> {
   const directory = path.dirname(file);
   await fs.mkdir(directory, { recursive: true, mode: 0o700 });
   const stat = await fs.lstat(directory);
@@ -49,9 +53,9 @@ export async function writePrivateRecord(file: string, record: unknown): Promise
       (process.getuid && stat.uid !== process.getuid())) throw new Error('Execution directory must be private and owned by this user');
   const temporary = path.join(directory, `.grant-${randomUUID()}`);
   try {
-    const handle = await fs.open(temporary, 'wx', 0o600);
+    const handle = await fs.open(temporary, 'wx', mode);
     try {
-      await handle.writeFile(JSON.stringify(record));
+      await handle.writeFile(contents);
       await handle.sync();
     } finally { await handle.close(); }
     await fs.rename(temporary, file);

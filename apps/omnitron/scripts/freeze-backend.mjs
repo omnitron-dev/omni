@@ -59,6 +59,7 @@ const skip = name => ['node_modules', '.git', '.DS_Store', '.codex', '.agents', 
 for (const [id, item] of packages.entries()) {
   const destination = path.join(output, 'packages', String(id));
   const copy = (from, to) => fs.cpSync(from, to, { recursive: true, dereference: true,
+    mode: fs.constants.COPYFILE_FICLONE,
     filter: file => !skip(path.basename(file)) });
   fs.mkdirSync(destination, { recursive: true });
   // Local workspaces may contain private developer files. Copy their declared
@@ -81,7 +82,7 @@ for (const [id, item] of packages.entries()) {
     fs.symlinkSync(path.relative(path.dirname(link), path.join(output, 'packages', String(child))), link);
   }
 }
-fs.copyFileSync(process.execPath, path.join(output, 'node'));
+fs.copyFileSync(process.execPath, path.join(output, 'node'), fs.constants.COPYFILE_FICLONE);
 fs.chmodSync(path.join(output, 'node'), 0o500);
 const manifest = { protocol: 1, sha256: await runtimeArtifactDigest(output), platform: process.platform,
   arch: process.arch, nodeVersion: process.version, packages: packages.length };

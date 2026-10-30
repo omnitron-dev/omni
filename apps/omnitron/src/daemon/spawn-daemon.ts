@@ -35,6 +35,8 @@ import { fork } from 'node:child_process';
 import { PidManager } from './pid-manager.js';
 
 export interface SpawnDaemonOptions {
+  /** The Node binary sealed with the selected runtime, when installed. */
+  readonly execPath?: string | undefined;
   /** Absolute path to `daemon-entry.js`. */
   readonly entryPath: string;
   /**
@@ -81,6 +83,7 @@ export function spawnDaemon(options: SpawnDaemonOptions): SpawnedDaemon {
   }
 
   const child = fork(options.entryPath, [], {
+    ...(options.execPath ? { execPath: options.execPath } : {}),
     detached: true,
     // `'ipc'` is not optional. `fork` is `spawn` plus a message channel, and
     // giving it an explicit stdio array without one makes it throw

@@ -3,6 +3,69 @@ import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { BackendRpcService } from '../daemon/backend.rpc-service.js';
 import { replaceBackend, recoverBackend, abortBackendReplacement } from '../daemon/backend-upgrade.js';
 import { emitJson, emitError, emitInfo, emitStep } from './output.js';
+import { RuntimeInstallation } from '../daemon/runtime-installation.js';
+import { PidManager } from '../daemon/pid-manager.js';
+import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
+import { expandPath } from '../shared/paths.js';
+import { executionDirectory } from '../daemon/execution-launcher.js';
+import { readSavedDaemonConfig, savedDaemonOverrides } from './up.js';
+import { checkBackendCandidate } from '../daemon/backend-candidate.js';
+
+export async function backendInstallCommand(directory: string): Promise<void> {
+  let installation: RuntimeInstallation | null = null;
+  try {
+    installation = await RuntimeInstallation.open();
+    if (!installation) throw new Error('Cannot open runtime installation');
+    const artifact = await installation.exclusive(() => installation!.install(path.resolve(directory)));
+    if (!emitJson({ id: artifact.runtimeHash, directory: artifact.runtimeRoot, build: artifact.build, selected: false })) {
+      emitInfo(`Installed ${artifact.build.commit}: ${artifact.runtimeHash}`);
+      emitInfo('Running applications and the startup selection are unchanged.');
+    }
+  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+  finally { await installation?.close(); }
+}
+
+export async function backendInstallationCommand(): Promise<void> {
+  let installation: RuntimeInstallation | null = null;
+  try {
+    installation = await RuntimeInstallation.open(undefined, { existing: true });
+    const state = { directory: installation?.directory ?? null, selection: installation?.selection() ?? null,
+      activation: installation?.activation() ?? null };
+    if (!emitJson(state)) {
+      emitInfo(state.selection ? `Cold-start runtime: ${state.selection.current} (revision ${state.selection.revision})` : 'No runtime is selected for cold start');
+      if (state.directory) emitInfo(`Installation: ${state.directory}`);
+      if (state.activation) emitInfo(`Unfinished activation: ${state.activation.checkpoint}`);
+    }
+  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+  finally { await installation?.close(); }
+}
+
+export async function backendSelectCommand(id: string): Promise<void> {
+  let installation: RuntimeInstallation | null = null;
+  try {
+    installation = await RuntimeInstallation.open();
+    if (!installation) throw new Error('Cannot open runtime installation');
+    const result = await installation.exclusive(async () => {
+      const config = { ...DEFAULT_DAEMON_CONFIG, ...savedDaemonOverrides(readSavedDaemonConfig()) };
+      if (new PidManager(expandPath(config.pidFile)).isRunning() ||
+          new PidManager(path.join(executionDirectory(config), 'owner.pid')).isRunning()) {
+        throw new Error('A backend or execution owner is running; use backend upgrade to retain application ownership');
+      }
+      if (installation!.activation()) throw new Error('An activation is unfinished; recover or abort its checkpoint before selecting another release');
+      const selected = installation!.selection();
+      const artifact = await installation!.artifact(id);
+      if (selected) {
+        const previous = await installation!.artifact(selected.current);
+        await checkBackendCandidate(artifact.directory, previous.entry);
+      }
+      const selection = await installation!.select(id, selected?.revision ?? 0);
+      const launcher = await installation!.writeLauncher();
+      return { selection, launcher };
+    });
+    if (!emitJson(result)) emitInfo(`Selected ${id}. Launch with ${result.launcher} up`);
+  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+  finally { await installation?.close(); }
+}
 
 export async function backendStatusCommand(): Promise<void> {
   const client = createDaemonClient();

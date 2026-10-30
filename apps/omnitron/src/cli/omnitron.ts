@@ -61,6 +61,21 @@ program.hook('preAction', async (cmd, actionCommand) => {
 // ============================================================================
 
 const backend = program.command('backend').description('Inspect and replace the control plane without restarting resident applications');
+backend.command('install <runtime>').description('Copy a sealed runtime into permanent storage without activation')
+  .action(async (runtime: string) => {
+    const { backendInstallCommand } = await import('../commands/backend.js');
+    await backendInstallCommand(runtime);
+  });
+backend.command('installation').description('Inspect the cold-start selection and any unfinished activation')
+  .action(async () => {
+    const { backendInstallationCommand } = await import('../commands/backend.js');
+    await backendInstallationCommand();
+  });
+backend.command('select <sha256>').description('Select an installed runtime while backend and execution owner are stopped')
+  .action(async (sha256: string) => {
+    const { backendSelectCommand } = await import('../commands/backend.js');
+    await backendSelectCommand(sha256);
+  });
 backend.command('abort <checkpoint>').description('Cancel preparation before backend retirement')
   .action(async (checkpoint: string) => {
     const { backendAbortCommand } = await import('../commands/backend.js');

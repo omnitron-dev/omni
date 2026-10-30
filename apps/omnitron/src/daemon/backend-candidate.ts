@@ -28,13 +28,13 @@ async function migrationDigest(directory: string): Promise<string> {
 }
 
 /** Validate an already-built local artifact; never build, install dependencies or migrate here. */
-export async function checkBackendCandidate(directory: string, currentEntry?: string): Promise<BackendArtifact> {
+export async function checkBackendCandidate(directory: string, currentEntry?: string, expectedRuntimeHash?: string): Promise<BackendArtifact> {
   directory = await fs.realpath(directory);
   const runtimeRoot = path.resolve(directory, '../../..');
   if (directory !== path.join(runtimeRoot, 'packages/0/dist')) {
     throw new Error('Backend replacement requires an isolated runtime from scripts/freeze-backend.mjs; pass its packages/0/dist directory');
   }
-  const runtime = await verifyRuntimeArtifact(runtimeRoot);
+  const runtime = await verifyRuntimeArtifact(runtimeRoot, expectedRuntimeHash);
   const execPath = path.join(runtimeRoot, 'node');
   const entry = path.join(directory, 'daemon', 'daemon-entry.js');
   const stat = await fs.lstat(entry);

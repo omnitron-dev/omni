@@ -9,6 +9,7 @@
  */
 
 import path from 'node:path';
+import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { log } from '@xec-sh/kit';
 import { spinner } from './spinner.js';
@@ -41,6 +42,13 @@ export async function daemonStart(options: { foreground?: boolean; config?: stri
   }
 
   if (options.foreground) {
+    const { selectedBackend, withRuntimeStartup } = await import('../daemon/runtime-installation.js');
+    const installed = await selectedBackend();
+    if (installed && (installed.directory !== path.resolve(__dirname, '..') || installed.execPath !== realpathSync(process.execPath))) {
+      const { runRuntimeEntry } = await import('../daemon/runtime-launcher.js');
+      await runRuntimeEntry(installed, 'cli', ['up', '--foreground', ...(options.config ? ['--config', path.resolve(options.config)] : [])]);
+      return;
+    }
     const { loadEcosystemConfig } = await import('../config/loader.js');
     const { defineEcosystem } = await import('../config/define-ecosystem.js');
     let config;
@@ -50,14 +58,16 @@ export async function daemonStart(options: { foreground?: boolean; config?: stri
       config = defineEcosystem({ apps: [] });
     }
     const daemon = new OmnitronDaemon();
-    await daemon.start(config);
+    await withRuntimeStartup(path.resolve(__dirname, '..'), () => daemon.start(config));
     return;
   }
 
   const s = spinner();
   s.start('Starting Omnitron daemon...');
 
-  const daemonScript = path.resolve(__dirname, '../daemon/daemon-entry.js');
+  const { selectedBackend } = await import('../daemon/runtime-installation.js');
+  const installed = await selectedBackend();
+  const daemonScript = installed?.entry ?? path.resolve(__dirname, '../daemon/daemon-entry.js');
   // The package root: `dist/commands` → up two. This is where the daemon's
   // `node_modules` is, and it has to be the child's working directory.
   //
@@ -81,7 +91,8 @@ export async function daemonStart(options: { foreground?: boolean; config?: stri
   // its own dependencies live.
   const spawned = spawnDaemon({
     entryPath: daemonScript,
-    packageRoot: path.resolve(__dirname, '../..'),
+    execPath: installed?.execPath,
+    packageRoot: installed ? path.dirname(installed.directory) : path.resolve(__dirname, '../..'),
     operatorCwd: process.cwd(),
     bootLogPath: path.join(expandPath(DEFAULT_DAEMON_CONFIG.logDir), 'daemon-boot.err.log'),
   });

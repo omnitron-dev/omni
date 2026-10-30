@@ -30,9 +30,11 @@ const instance = path.join(directory, 'i');
 await fs.mkdir(instance, { mode: 0o700 });
 const url = relative => pathToFileURL(path.join(dist, relative)).href;
 const { createDaemonClient } = await import(url('daemon/daemon-client.js'));
-const { replaceBackend } = await import(url('daemon/backend-upgrade.js'));
+const { replaceBackend, recoverBackend } = await import(url('daemon/backend-upgrade.js'));
+const { RuntimeInstallation, selectedBackend } = await import(url('daemon/runtime-installation.js'));
 const { PidManager } = await import(url('daemon/pid-manager.js'));
 const stamp = JSON.parse(await fs.readFile(path.join(dist, 'BUILD.json'), 'utf8'));
+const sourceHash = JSON.parse(await fs.readFile(path.join(runtimeRoot, 'RUNTIME.json'), 'utf8')).sha256;
 const { runtimeArtifactDigest } = await import(url('shared/runtime-artifact.js')); 
 const reserve = () => new Promise((resolve, reject) => {
   const server = net.createServer();
@@ -155,7 +157,7 @@ try {
   // A candidate that passes preflight but crashes before readiness must roll
   // back to the old artifact under a fresh epoch, never re-use an old grant.
   const bad = path.join(directory, 'bad');
-  await fs.cp(runtimeRoot, bad, { recursive: true, verbatimSymlinks: true });
+  await fs.cp(runtimeRoot, bad, { recursive: true, verbatimSymlinks: true, mode: fs.constants.COPYFILE_FICLONE });
   const badDist = path.join(bad, 'packages/0/dist');
   const badStamp = { ...stamp, commit: '1'.repeat(40) };
   await fs.writeFile(path.join(badDist, 'BUILD.json'), JSON.stringify(badStamp));
@@ -172,6 +174,34 @@ try {
   assert.equal(recovered.execution.owner.pid, ownerPid);
   assert.ok(recovered.execution.epoch > result.epoch);
   await verifyAuthority();
+  // A coordinator/storage failure after public readiness must not launch a
+  // second controller. The durable activation journal fences cold starts;
+  // explicit recovery proves the live result and completes the selector.
+  const originalSelect = RuntimeInstallation.prototype.select;
+  RuntimeInstallation.prototype.select = async function () { throw new Error('fixture: selector publication failed'); };
+  try {
+    await assert.rejects(() => replaceBackend(dist, { socket }), /selector publication failed/);
+  } finally { RuntimeInstallation.prototype.select = originalSelect; }
+  client = createDaemonClient(socket, 30_000);
+  const awaitingSelection = await client.status();
+  ownedBackends.add(awaitingSelection.pid);
+  await client.disconnect();
+  assert.notEqual(awaitingSelection.pid, recovered.pid);
+  assert.equal(awaitingSelection.execution.owner.pid, ownerPid);
+  await assert.rejects(() => selectedBackend(instance), /activation is unfinished/);
+  const registry = await RuntimeInstallation.open(instance);
+  let reconciled;
+  try {
+    const pending = registry.activation();
+    assert.ok(pending);
+    reconciled = await recoverBackend(pending.checkpoint);
+    assert.equal(registry.activation(), null);
+    assert.equal(registry.selection().current, sourceHash);
+    assert.equal((await selectedBackend(instance)).runtimeHash, sourceHash);
+  } finally { await registry.close(); }
+  assert.equal(reconciled.pid, awaitingSelection.pid);
+  assert.equal(reconciled.ownerPid, ownerPid);
+  await verifyAuthority();
   const after = await probe();
   assert.ok(after.counter > before.counter);
   clearInterval(sampler);
@@ -179,7 +209,7 @@ try {
   assert.equal(failures, 0);
   console.log(JSON.stringify({ test: 'backend-replacement-and-rollback', role:master?'master':'slave', verifiedRoles:[...sessions.keys()], directory, ownerPid,
     applicationPid: before.pid, poolPids:[...poolPids], backendPids: [...ownedBackends], epoch: recovered.execution.epoch,
-    samples, failures, counterBefore: before.counter, counterAfter: after.counter }));
+    samples, failures, selectorReconciliationPreservedPid: true, counterBefore: before.counter, counterAfter: after.counter }));
 } finally {
   if (sampler) clearInterval(sampler);
   await topologyConnection?.close();

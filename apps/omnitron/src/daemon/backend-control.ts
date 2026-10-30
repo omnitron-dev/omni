@@ -12,6 +12,7 @@ import { executionDirectory } from './execution-launcher.js';
 import { ExecutionJournal, writePrivateRecord } from './execution-journal.js';
 import { PidManager } from './pid-manager.js';
 import { OWN_BUILD } from '../shared/build-stamp.js';
+import { OMNITRON_HOME } from '../config/defaults.js';
 
 /** Kept separate from public ingress: it must answer while that ingress is drained. */
 @Service({ name: 'OmnitronBackendControl' })
@@ -26,6 +27,7 @@ export class BackendControlService {
   @Public({ auth: { roles: ADMIN_ROLES } })
   async status() {
     return { runtime: this.daemon.backendRuntimeStatus(), retired: this.retired,
+      instanceHome: OMNITRON_HOME,
       ticketId: this.prepared?.state.ticket.id ?? null, build: OWN_BUILD,
       entry: fileURLToPath(new URL('./daemon-entry.js', import.meta.url)) };
   }

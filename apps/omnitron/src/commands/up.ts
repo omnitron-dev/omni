@@ -270,6 +270,21 @@ async function provisionOmnitronPg(): Promise<void> {
 }
 
 export async function upCommand(options?: UpCommandOptions): Promise<void> {
+  const { selectedBackend } = await import('../daemon/runtime-installation.js');
+  const installed = await selectedBackend();
+  if (options?.foreground && installed && (installed.directory !== path.resolve(__dirname, '..') || installed.execPath !== fs.realpathSync(process.execPath))) {
+    const { runRuntimeEntry } = await import('../daemon/runtime-launcher.js');
+    const args = ['up', '--foreground'];
+    if (options.configPath) args.push('--config', path.resolve(options.configPath));
+    if (options.project) args.push('--project', options.project);
+    if (options.noInfra) args.push('--no-infra');
+    if (options.noWatch) args.push('--no-watch');
+    if (options.master) args.push('--master');
+    if (options.slave) args.push('--slave', ...(typeof options.slave === 'string' ? [options.slave] : []));
+    if (options.webapp !== undefined) args.push(options.webapp ? '--webapp' : '--no-webapp');
+    await runRuntimeEntry(installed, 'cli', args);
+    return;
+  }
   // 1. First-run setup — configure daemon role
   const savedConfig = await ensureDaemonConfig(options);
 
@@ -344,7 +359,8 @@ export async function upCommand(options?: UpCommandOptions): Promise<void> {
 
   // 3. Foreground mode — blocks terminal
   if (options?.foreground) {
-    await startForeground(config, options, registry, dc);
+    const { withRuntimeStartup } = await import('../daemon/runtime-installation.js');
+    await withRuntimeStartup(path.resolve(__dirname, '..'), () => startForeground(config, options, registry, dc));
     return;
   }
 
@@ -448,12 +464,15 @@ async function startBackground(
   let spawned: import('../daemon/spawn-daemon.js').SpawnedDaemon | null = null;
   if (!viaService) {
     const { spawnDaemon } = await import('../daemon/spawn-daemon.js');
+    const { selectedBackend } = await import('../daemon/runtime-installation.js');
+    const installed = await selectedBackend();
     spawned = spawnDaemon({
-      entryPath: path.resolve(__dirname, '../daemon/daemon-entry.js'),
+      entryPath: installed?.entry ?? path.resolve(__dirname, '../daemon/daemon-entry.js'),
+      execPath: installed?.execPath,
       // Where `node_modules` is — see `spawn-daemon.ts`. This file used to
       // fork without it, and the child looked for `tsx` in the operator's
       // login directory.
-      packageRoot: path.resolve(__dirname, '../..'),
+      packageRoot: installed ? path.dirname(installed.directory) : path.resolve(__dirname, '../..'),
       operatorCwd: process.cwd(),
       bootLogPath: path.join(expandPath(dc.logDir), 'daemon-boot.err.log'),
       env: {

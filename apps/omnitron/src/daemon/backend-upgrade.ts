@@ -15,6 +15,9 @@ import { ExecutionClient } from './execution-client.js';
 import { executionDirectory } from './execution-launcher.js';
 import { PidManager } from './pid-manager.js';
 import type { BackendRuntimeStatus } from '../shared/dto/backend.js';
+import { DEFAULT_SOCKET_PATH } from '../config/defaults.js';
+import { RuntimeInstallation } from './runtime-installation.js';
+import { expandPath } from '../shared/paths.js';
 
 export interface BackendReplacementResult {
   pid: number;
@@ -106,7 +109,7 @@ async function freshRecoveryRecord(record: BackendBootRecord): Promise<{ file: s
   } finally { await execution.close(); }
 }
 
-/** No network artifacts, installs, schema migrations or application restarts occur in this operation. */
+/** Installs verified local artifacts; never downloads packages, migrates schemas or restarts applications. */
 export async function replaceBackend(directory: string, options: {
   socket?: string; checkOnly?: boolean; progress?: (message: string) => void;
 } = {}): Promise<BackendReplacementResult | { checked: true; build: BackendArtifact['build'] }> {
@@ -126,52 +129,127 @@ export async function replaceBackend(directory: string, options: {
     const artifact = await checkBackendCandidate(directory, previous.entry);
     const rollback = await checkBackendCandidate(path.dirname(path.dirname(previous.entry)));
     if (options.checkOnly) return { checked: true, build: artifact.build };
-    progress('Draining backend requests and execution mutations');
-    const prepared = await control.service.prepare({ candidateId: randomUUID() });
-    const record = await readBackendBootRecord(prepared.file);
-    // All fallible pre-retirement checks still have an abort path.
-    try { await verifyBackendEntry(artifact); await verifyBackendEntry(rollback); }
-    catch (error) { await control.service.abort({ ticketId: prepared.ticketId }); throw error; }
-    progress('Retiring the old backend; application processes remain with their owner');
-    await control.service.retire({ ticketId: prepared.ticketId });
-    let candidate: ChildProcess | null = null;
-    let result: BackendReplacementResult;
-    try {
-      result = await spawnReplacement(artifact, prepared.file, record, child => { candidate = child; });
-    } catch (error) {
-      progress('Candidate failed; restoring the previous backend with a fresh controller epoch');
-      await stopFailedCandidate(candidate);
-      const recovery = await freshRecoveryRecord(record);
-      let restored: ChildProcess | null = null;
-      try { await spawnReplacement(rollback, recovery.file, recovery.record, child => { restored = child; }); }
-      catch (restoreError) {
-        await stopFailedCandidate(restored);
-        throw new AggregateError([error, restoreError], `Backend restoration failed. Applications remain with the resident owner. Recovery checkpoint: ${recovery.file}`, { cause: restoreError });
+    const installation = await RuntimeInstallation.open(previous.instanceHome ?? path.dirname(options.socket ?? DEFAULT_SOCKET_PATH));
+    if (!installation) throw new Error('Could not open the runtime installation');
+    try { return await installation.exclusive(async () => {
+      if (installation.activation()) throw new Error('A previous activation is unfinished; inspect its recovery checkpoint first');
+      progress('Installing verified candidate and rollback releases in permanent storage');
+      const installedCandidate = await installation.install(artifact.runtimeRoot);
+      const installedRollback = await installation.install(rollback.runtimeRoot);
+      const selection = installation.selection();
+      if (selection && selection.current !== installedRollback.runtimeHash) {
+        throw new Error('The running backend differs from the startup selection; reconcile the installation before upgrading');
       }
+      const selected = selection ?? await installation.select(installedRollback.runtimeHash, 0);
+      await installation.writeLauncher(installedCandidate.runtimeHash);
+      progress('Draining backend requests and execution mutations');
+      const prepared = await control.service.prepare({ candidateId: randomUUID() });
+      let record: BackendBootRecord;
+      // All fallible pre-retirement checks still have an abort path.
+      try {
+        record = await readBackendBootRecord(prepared.file);
+        record.previousEntry = installedRollback.entry;
+        await writePrivateRecord(prepared.file, record);
+        await verifyBackendEntry(installedCandidate); await verifyBackendEntry(installedRollback);
+        installation.beginActivation(installedCandidate.runtimeHash, installedRollback.runtimeHash, prepared.file);
+      }
+      catch (error) { await control.service.abort({ ticketId: prepared.ticketId }); throw error; }
+      progress('Retiring the old backend; application processes remain with their owner');
+      try { await control.service.retire({ ticketId: prepared.ticketId }); }
+      catch (error) {
+        // Retirement can fail after stopping part of the controller. Keep the
+        // activation journal: a cold start must not guess which phase committed.
+        throw new Error(`Backend retirement was not acknowledged; inspect ${prepared.file} before recovery`, { cause: error });
+      }
+      let candidate: ChildProcess | null = null;
+      let result: BackendReplacementResult;
+      try {
+        result = await spawnReplacement(installedCandidate, prepared.file, record, child => { candidate = child; });
+      } catch (error) {
+        progress('Candidate failed; restoring the previous backend with a fresh controller epoch');
+        await stopFailedCandidate(candidate);
+        const recovery = await freshRecoveryRecord(record);
+        let restored: ChildProcess | null = null;
+        try { await spawnReplacement(installedRollback, recovery.file, recovery.record, child => { restored = child; }); }
+        catch (restoreError) {
+          await stopFailedCandidate(restored);
+          throw new AggregateError([error, restoreError], `Backend restoration failed. Applications remain with the resident owner. Recovery checkpoint: ${recovery.file}`, { cause: restoreError });
+        }
+        await control.service.complete({ ticketId: prepared.ticketId });
+        await installation.select(installedRollback.runtimeHash, selected.revision);
+        throw new Error('Candidate activation failed; the previous backend was restored. Application ownership was preserved.', { cause: error });
+      }
+      // Selection commits only after public readiness and application identity
+      // checks. A failed commit leaves the activation journal, blocking cold boot.
       await control.service.complete({ ticketId: prepared.ticketId });
-      throw new Error('Candidate activation failed; the previous backend was restored. Application ownership was preserved.', { cause: error });
-    }
-    // This is an operator receipt, not a cold-start selector. Startup must use
-    // the activated artifact's CLI; it must never silently replay old ownership.
-    try {
-      await writePrivateRecord(path.join(executionDirectory(record.daemonConfig), 'active-backend.json'), { protocol: 1, artifact, checkpoint: prepared.file });
-    } catch (error) {
-      progress(`Replacement is running, but its activation receipt could not be saved: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    await control.service.complete({ ticketId: prepared.ticketId });
-    progress('Replacement backend is ready');
-    return result;
+      await installation.select(installedCandidate.runtimeHash, selected.revision);
+      // The private checkpoint remains a receipt, never a cold-start project snapshot.
+      try {
+        await writePrivateRecord(path.join(executionDirectory(record.daemonConfig), 'active-backend.json'), { protocol: 1, artifact: installedCandidate, checkpoint: prepared.file });
+      } catch (error) {
+        progress(`Replacement is running, but its activation receipt could not be saved: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      progress('Replacement backend is ready');
+      return result;
+    }); } finally { await installation.close(); }
   } finally { await control.close(); }
 }
 
 /** Explicit recovery for an interrupted upgrade. Never preempts a live backend. */
 export async function recoverBackend(file: string): Promise<BackendReplacementResult> {
   const previous = await readBackendBootRecord(file);
-  const artifact = await checkBackendCandidate(path.dirname(path.dirname(previous.previousEntry)));
-  const recovery = await freshRecoveryRecord(previous);
-  let candidate: ChildProcess | null = null;
-  try { return await spawnReplacement(artifact, recovery.file, recovery.record, child => { candidate = child; }); }
-  catch (error) { await stopFailedCandidate(candidate); throw error; }
+  const installation = await RuntimeInstallation.open(previous.environment['OMNITRON_HOME'] ?? path.dirname(expandPath(previous.daemonConfig.pidFile)));
+  if (!installation) throw new Error('Cannot open runtime installation for recovery');
+  try { return await installation.exclusive(async () => {
+    const activation = installation.activation();
+    const selected = installation.selection();
+    const currentPid = new PidManager(previous.daemonConfig.pidFile).getPid();
+    if (currentPid) {
+      if (!activation || currentPid === previous.previousPid) throw new Error('A backend still owns the daemon marker; recovery is refused');
+      // The coordinator may have died after readiness but before committing
+      // selection. Reconcile that result; never launch a second controller.
+      const client = createDaemonClient(previous.daemonConfig.socketPath, 15_000);
+      let address: { socket: string };
+      try { address = await (await client.service<BackendRpcService>('OmnitronBackend')).controlAddress(); }
+      finally { await client.disconnect(); }
+      const control = await privateControlClient<BackendControlService>(address.socket, 'OmnitronBackendControl');
+      try {
+        const state = await control.service.status();
+        const artifact = await checkBackendCandidate(path.dirname(path.dirname(state.entry)));
+        const owner = state.runtime.owner;
+        if ((artifact.runtimeHash !== activation.candidate && artifact.runtimeHash !== activation.previous) ||
+            !owner || owner.id !== previous.state.ticket.ownerId || state.runtime.phase !== 'active' ||
+            !state.runtime.epoch || state.runtime.epoch <= previous.state.ticket.from.epoch) {
+          throw new Error('Live backend identity does not match the unfinished activation; refusing reconciliation');
+        }
+        const observer = new ExecutionClient(path.join(executionDirectory(previous.daemonConfig), 'owner.sock'), createNullLogger());
+        try {
+          if ((await observer.connect()).inventoryDigest !== previous.state.executionInventory) throw new Error('Execution inventory changed; automatic activation reconciliation is refused');
+        } finally { await observer.close(); }
+        await completeRetiredBackend(await readBackendBootRecord(activation.checkpoint));
+        await installation.select(artifact.runtimeHash, selected?.revision ?? 0);
+        return { pid: currentPid, ownerPid: owner.pid, ownerId: owner.id, epoch: state.runtime.epoch, checkpoint: file, build: artifact.build };
+      } finally { await control.close(); }
+    }
+    const artifact = activation ? await installation.artifact(activation.previous)
+      : await installation.install(path.resolve(path.dirname(path.dirname(previous.previousEntry)), '../../..'));
+    const recovery = await freshRecoveryRecord(previous);
+    let candidate: ChildProcess | null = null;
+    let result: BackendReplacementResult;
+    try { result = await spawnReplacement(artifact, recovery.file, recovery.record, child => { candidate = child; }); }
+    catch (error) { await stopFailedCandidate(candidate); throw error; }
+    await completeRetiredBackend(activation ? await readBackendBootRecord(activation.checkpoint) : previous);
+    await installation.select(artifact.runtimeHash, selected?.revision ?? 0);
+    return result;
+  }); } finally { await installation.close(); }
+}
+
+async function completeRetiredBackend(record: BackendBootRecord): Promise<void> {
+  if (!PidManager.isProcessAlive(record.previousPid)) return;
+  const socket = path.join(executionDirectory(record.daemonConfig), `c-${record.state.ticket.from.controllerId}.sock`);
+  const control = await privateControlClient<BackendControlService>(socket, 'OmnitronBackendControl');
+  try { await control.service.complete({ ticketId: record.state.ticket.id }); }
+  finally { await control.close(); }
 }
 
 /** Undo preparation while the original backend still owns its private channel. */
@@ -182,6 +260,16 @@ export async function abortBackendReplacement(file: string): Promise<void> {
   }
   const socket = path.join(executionDirectory(record.daemonConfig), `c-${record.state.ticket.from.controllerId}.sock`);
   const control = await privateControlClient<BackendControlService>(socket, 'OmnitronBackendControl');
-  try { await control.service.abort({ ticketId: record.state.ticket.id }); }
-  finally { await control.close(); }
+  const installation = await RuntimeInstallation.open(record.environment['OMNITRON_HOME'] ?? path.dirname(expandPath(record.daemonConfig.pidFile)), { existing: true });
+  try {
+    if (installation) {
+      await installation.exclusive(async () => {
+        const activation = installation.activation();
+        if (activation && activation.checkpoint !== file) throw new Error('Another activation checkpoint owns the installation');
+        await control.service.abort({ ticketId: record.state.ticket.id });
+        installation.abortActivation();
+      });
+    } else await control.service.abort({ ticketId: record.state.ticket.id });
+  }
+  finally { await installation?.close(); await control.close(); }
 }

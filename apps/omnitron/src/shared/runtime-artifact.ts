@@ -43,7 +43,11 @@ export async function runtimeArtifactDigest(root: string): Promise<string> {
 }
 
 export async function verifyRuntimeArtifact(root: string, expectedHash?: string): Promise<RuntimeArtifact> {
-  const manifest = JSON.parse(await fs.readFile(path.join(root, 'RUNTIME.json'), 'utf8')) as RuntimeArtifact;
+  const manifestFile = path.join(root, 'RUNTIME.json');
+  const stat = await fs.lstat(manifestFile);
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 16_384 || (stat.mode & 0o022) !== 0 ||
+      (process.getuid && stat.uid !== process.getuid())) throw new Error('Runtime manifest must be a bounded regular file owned by this user');
+  const manifest = JSON.parse(await fs.readFile(manifestFile, 'utf8')) as RuntimeArtifact;
   if (manifest.protocol !== 1 || !/^[a-f0-9]{64}$/.test(manifest.sha256) ||
       manifest.platform !== process.platform || manifest.arch !== process.arch ||
       (expectedHash && expectedHash !== manifest.sha256)) throw new Error('Runtime manifest does not match this release or host');

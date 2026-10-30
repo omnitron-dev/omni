@@ -15,6 +15,8 @@ import { getEnv } from '../shared/env-config.js';
 import { runtimeDiagnostics } from '../monitoring/runtime-diagnostics.js';
 import { OWN_BUILD } from '../shared/build-stamp.js';
 import { readBackendBootRecord } from './backend-handoff-types.js';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 async function main() {
   // Preflight must never open databases, listeners or start applications.
@@ -32,6 +34,13 @@ async function main() {
     return;
   }
   if (process.argv[2]) throw new Error(`Unsupported backend entry mode: ${process.argv[2]}`);
+  const { forwardSelectedRuntime } = await import('./runtime-launcher.js');
+  if (await forwardSelectedRuntime('daemon', process.argv[1]!, [])) return;
+  const { withRuntimeStartup } = await import('./runtime-installation.js');
+  await withRuntimeStartup(path.dirname(path.dirname(fileURLToPath(import.meta.url))), coldStart);
+}
+
+async function coldStart(): Promise<void> {
   const env = getEnv();
   const cwd = env.OMNITRON_CWD ?? process.cwd();
   process.chdir(cwd);

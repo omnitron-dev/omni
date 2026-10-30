@@ -5,7 +5,7 @@
  */
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
-import { VIEWER_ROLES } from '../shared/roles.js';
+import { OPERATOR_ROLES, VIEWER_ROLES } from '../shared/roles.js';
 import type {
   TraceCollectorService,
   TraceSpan,
@@ -20,13 +20,13 @@ import type { IOmnitronTracesService } from '../shared/dto/services.js';
 export class TraceRpcService implements IOmnitronTracesService {
   constructor(private readonly traces: TraceCollectorService) {}
 
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  @Public({ auth: { roles: OPERATOR_ROLES } })
   async ingestSpan(data: TraceSpan): Promise<{ success: boolean }> {
     await this.traces.ingestSpan(data);
     return { success: true };
   }
 
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  @Public({ auth: { roles: OPERATOR_ROLES } })
   async ingestBatch(data: { spans: TraceSpan[] }): Promise<{ success: boolean }> {
     await this.traces.ingestBatch(data.spans);
     return { success: true };

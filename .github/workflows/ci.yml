@@ -56,6 +56,8 @@ jobs:
         run: pnpm check:packages
       - name: Console publication and recovery
         run: node --test apps/omnitron/scripts/console-publication.test.mjs
+      - name: RPC role boundaries
+        run: pnpm --filter @omnitron-dev/omnitron exec vitest run test/integration/trace-authorization.test.ts test/unit/rpc-authorization.test.ts test/unit/daemon-role-policy.test.ts
       - name: Pure access policy and browser bundle boundary
         run: |
           pnpm --filter @omnitron-dev/access test

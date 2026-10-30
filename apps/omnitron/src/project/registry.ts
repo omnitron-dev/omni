@@ -1,3 +1,4 @@
+import { OMNITRON_HOME } from '../config/defaults.js';
 /**
  * Project Registry — Manages seed projects registered with omnitron.
  *
@@ -22,7 +23,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { expandPath } from '../shared/paths.js';
 import type { ISeedProject, IProjectRegistry } from '../config/types.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import { CONFIG_FILE_NAMES } from '../config/loader.js';
@@ -32,7 +32,7 @@ import { CONFIG_FILE_NAMES } from '../config/loader.js';
 // inside a static method that callers can't `await`.
 const requireCjs = createRequire(import.meta.url);
 
-const PROJECTS_DIR = expandPath('~/.omnitron/projects');
+const PROJECTS_DIR = path.join(OMNITRON_HOME, 'projects');
 const LEGACY_REGISTRY_FILE = path.join(PROJECTS_DIR, 'registry.json');
 const ENABLED_STACKS_KV_KEY = (name: string) => `project:${name}:enabled-stacks`;
 

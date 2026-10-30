@@ -50,6 +50,7 @@ function location(data: FileLocation): FileLocation {
 /** Shared Console/CLI file API. File contents are administrative data, not a viewer capability. */
 @Service({ name: 'OmnitronFiles' })
 export class FilesRpcService implements IOmnitronFilesService {
+  activeTransferCount(): number { return [...this.jobs.values()].filter(job => activeStates.has(job.view.state)).length; }
   private jobs = new Map<string, Job>();
   private active = new Map<string, { stop?: 'paused' | 'cancelled'; done: Promise<void> }>();
   private stopped = false;

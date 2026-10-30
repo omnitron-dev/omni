@@ -13,8 +13,25 @@ import { OmnitronDaemon } from './daemon.js';
 import { readSavedDaemonConfig, savedDaemonOverrides, ensurePersistedJwtSecret } from '../commands/up.js';
 import { getEnv } from '../shared/env-config.js';
 import { runtimeDiagnostics } from '../monitoring/runtime-diagnostics.js';
+import { OWN_BUILD } from '../shared/build-stamp.js';
+import { readBackendBootRecord } from './backend-handoff-types.js';
 
 async function main() {
+  // Preflight must never open databases, listeners or start applications.
+  if (process.argv[2] === '--check-backend') {
+    process.stdout.write(JSON.stringify({ protocol: 1, build: OWN_BUILD }) + '\n');
+    return;
+  }
+  if (process.argv[2] === '--backend-handoff') {
+    const record = await readBackendBootRecord(process.argv[3]);
+    process.chdir(record.cwd);
+    const daemon = new OmnitronDaemon();
+    await daemon.start(record.state.watchConfig, { backendHandoff: record.state }, record.daemonConfig);
+    process.send?.({ type: 'backend-ready', pid: process.pid, execution: daemon.backendRuntimeStatus(), build: OWN_BUILD });
+    process.disconnect?.();
+    return;
+  }
+  if (process.argv[2]) throw new Error(`Unsupported backend entry mode: ${process.argv[2]}`);
   const env = getEnv();
   const cwd = env.OMNITRON_CWD ?? process.cwd();
   process.chdir(cwd);

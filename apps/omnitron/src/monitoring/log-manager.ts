@@ -17,7 +17,7 @@ import { createReadStream, createWriteStream } from 'node:fs';
 import { ensurePrivateDir, sealFile, PRIVATE_FILE_MODE } from '../shared/private-files.js';
 import { pipeline } from 'node:stream/promises';
 import type { LogEntryDto } from '../config/types.js';
-import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
+import type { OrchestratorControl as OrchestratorService } from '../orchestrator/execution-contract.js';
 import { expandPath } from '../shared/paths.js';
 import { LineAssembler, fileLineOf, type LogRecord } from './log-line.js';
 

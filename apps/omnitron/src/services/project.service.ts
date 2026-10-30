@@ -34,7 +34,7 @@ interface NodeReach {
   /** Nodes that took it with infrastructure not up: `host:port: <the node's words>`. */
   readonly notReady: readonly string[];
 }
-import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
+import type { OrchestratorControl as OrchestratorService } from '../orchestrator/execution-contract.js';
 import { effectiveAppName } from '../orchestrator/orchestrator.service.js';
 import type {
   IEcosystemConfig,
@@ -249,6 +249,54 @@ export interface ProjectServiceOptions {
 const CREDENTIALED_SERVICES = ['postgres', 'redis', 'minio'] as const;
 
 export class ProjectService extends EventEmitter {
+  /** Capture controllers' bookkeeping, retaining native application ownership in the execution host. */
+  async prepareHandoff(): Promise<{
+    projects: Array<[string, LoadedProject]>;
+    stacks: Array<[string, Omit<StackRuntimeState, 'infraService'>]>;
+    infrastructure: Awaited<ReturnType<StackInfrastructureManager['prepareHandoff']>>;
+    resumeBackoff: Array<[string, { nextAt: number; delayMs: number }]>;
+    reconciling: boolean;
+  }> {
+    if (this.startsInFlight.size || this.reconcilingStacks || [...this.stackStates.values()].some(state => state.status === 'starting' || state.status === 'stopping')) {
+      throw new Error('A stack lifecycle operation is active; finish it before transferring the backend');
+    }
+    this.handoffReconciling = this.resumeTimer !== null;
+    this.ownershipFrozen = true;
+    if (this.resumeTimer) clearInterval(this.resumeTimer);
+    this.resumeTimer = null;
+    try {
+      const infrastructure = await this.infraManager.prepareHandoff();
+      return structuredClone({
+        projects: [...this.configRegistry], infrastructure,
+        resumeBackoff: [...this.resumeBackoff], reconciling: this.handoffReconciling,
+        stacks: [...this.stackStates].map(([key, { infraService: _infra, ...state }]) => [key, state] as [string, Omit<StackRuntimeState, 'infraService'>]),
+      });
+    } catch (error) { this.resumeAfterHandoff(); throw error; }
+  }
+
+  resumeAfterHandoff(): void {
+    this.ownershipFrozen = false;
+    this.infraManager.resumeAfterHandoff();
+    if (this.handoffReconciling) this.startEnabledStacksReconciler();
+    this.handoffReconciling = false;
+  }
+
+  async adoptHandoff(snapshot: Awaited<ReturnType<ProjectService['prepareHandoff']>>): Promise<void> {
+    if (this.stackStates.size) throw new Error('Project runtime is not empty before adoption');
+    for (const [name, project] of snapshot.projects) {
+      const registered = this.registry.get(name);
+      if (!registered) throw new Error(`Project disappeared during backend transfer: ${name}`);
+      this.configRegistry.set(name, project);
+    }
+    await this.infraManager.adoptHandoff(snapshot.infrastructure);
+    for (const [key, value] of snapshot.resumeBackoff) this.resumeBackoff.set(key, value);
+    this.handoffReconciling = snapshot.reconciling;
+    this.ownershipFrozen = true;
+    for (const [key, state] of snapshot.stacks) {
+      this.stackStates.set(key, { ...state, infraService: this.infraManager.getInstance(state.project, state.stack) });
+    }
+  }
+
   private readonly registry: ProjectRegistry;
   private readonly configRegistry = new Map<string, LoadedProject>();
   private readonly stackStates = new Map<string, StackRuntimeState>();
@@ -259,6 +307,9 @@ export class ProjectService extends EventEmitter {
   private resumeTimer: NodeJS.Timeout | null = null;
   private readonly resumeBackoff = new Map<string, { nextAt: number; delayMs: number }>();
   private dockerWasAvailable: boolean | null = null;
+  private reconcilingStacks = false;
+  private handoffReconciling = false;
+  private ownershipFrozen = false;
 
   private readonly syncService: SyncService | undefined;
   private readonly secrets: import('./secrets.service.js').SecretsService | undefined;
@@ -774,6 +825,7 @@ export class ProjectService extends EventEmitter {
     stackName: string,
     opts?: { source?: StackStartSource; allowDirty?: boolean; release?: string; reinstall?: boolean },
   ): Promise<IStackInfo> {
+    if (this.ownershipFrozen) throw new Error('Project ownership is frozen for backend transfer');
     const inFlightKey = `${projectName}/${stackName}`;
     const running = this.startsInFlight.get(inFlightKey);
     if (running) {
@@ -2185,9 +2237,11 @@ export class ProjectService extends EventEmitter {
   startEnabledStacksReconciler(intervalMs = 60_000): void {
     if (this.resumeTimer) return;
     this.resumeTimer = setInterval(() => {
+      if (this.ownershipFrozen || this.reconcilingStacks) return;
+      this.reconcilingStacks = true;
       void this.reconcileEnabledStacks().catch((err) => {
         this.logger.warn({ error: (err as Error).message }, 'Enabled-stacks reconciler tick failed');
-      });
+      }).finally(() => { this.reconcilingStacks = false; });
     }, intervalMs);
     this.resumeTimer.unref();
     this.logger.info({ intervalMs }, 'Enabled-stacks reconciler started');

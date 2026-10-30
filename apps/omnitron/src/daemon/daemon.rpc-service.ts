@@ -32,7 +32,7 @@ import { effectiveAppName } from '../orchestrator/orchestrator.service.js';
 import { worstVerdict } from '../orchestrator/app-health.js';
 import { redactEnv } from '../shared/redact-env.js';
 import type { AuditService } from '../services/audit.service.js';
-import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
+import type { OrchestratorControl as OrchestratorService } from '../orchestrator/execution-contract.js';
 import type { IHealthService } from '@omnitron-dev/titan-health';
 import type { LogManager } from '../monitoring/log-manager.js';
 import type { IEcosystemConfig } from '../config/types.js';
@@ -285,6 +285,7 @@ export class DaemonRpcService implements IDaemonService {
       version: CLI_VERSION,
       // Which commit is running: the package version is 0.2.0 on every build.
       build: OWN_BUILD,
+      execution: this.daemon.backendRuntimeStatus(),
       pid: process.pid,
       uptime: Date.now() - this.startedAt,
       apps,
@@ -474,7 +475,7 @@ export class DaemonRpcService implements IDaemonService {
     // orchestrator.restartApp kept reading the old ones (mode, env,
     // dependsOn, restart policy all silently stale until next daemon
     // restart).
-    this.orchestrator.setConfig(newConfig);
+    await this.orchestrator.setConfig(newConfig);
     // Same omission as the config refs above, one layer out: the file
     // watcher keeps its own app list, so without this a reload changed
     // which apps get restarted but not which are watched.

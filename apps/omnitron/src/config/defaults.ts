@@ -8,7 +8,11 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { IEcosystemConfig, IDaemonConfig } from './types.js';
 
-export const OMNITRON_HOME = path.join(os.homedir(), '.omnitron');
+// Explicit instance isolation for services, integration tests and operators
+// running more than one control plane. The login HOME is never repurposed.
+const instanceHome = process.env['OMNITRON_HOME'];
+if (instanceHome !== undefined && !path.isAbsolute(instanceHome)) throw new Error('OMNITRON_HOME must be an absolute directory');
+export const OMNITRON_HOME = instanceHome ?? path.join(os.homedir(), '.omnitron');
 
 /** Read version from package.json at build/runtime */
 export const CLI_VERSION: string = (() => {

@@ -88,6 +88,7 @@ function textId(value: unknown): string {
 /** One owner per shell. No public attach token, raw command logs, or persisted transcript. */
 @Service({ name: 'OmnitronTerminal' })
 export class TerminalRpcService implements IOmnitronTerminalService {
+  activeSessionCount(): number { return [...this.sessions.values()].filter(session => session.closedAt === undefined).length; }
   private readonly sessions = new Map<string, Session>();
   private readonly probing = new Set<string>();
   private readonly policy: TerminalPolicy;

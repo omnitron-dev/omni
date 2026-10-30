@@ -45,7 +45,7 @@ import { SyncRpcService } from '../services/sync.rpc-service.js';
 import { SystemInfoService } from '../services/system-info.service.js';
 import { SystemInfoRpcService } from '../services/system-info.rpc-service.js';
 import { PidManager } from './pid-manager.js';
-import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
+import type { OrchestratorControl as OrchestratorService } from '../orchestrator/execution-contract.js';
 import { FileWatcher } from '../orchestrator/file-watcher.js';
 import { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import type { InfrastructureGate } from '../infrastructure/infrastructure-gate.js';
@@ -116,6 +116,14 @@ import {
 import { createAuthContextWrapper } from '../services/auth-context.js';
 import { ROLES } from '../shared/roles.js';
 import { expandPath } from '../shared/paths.js';
+import { createNullLogger } from '@omnitron-dev/titan/module/logger';
+import { connectExecutionOwner } from './execution-launcher.js';
+import type { ExecutionClient } from './execution-client.js';
+import type { BackendHandoffState } from './backend-handoff-types.js';
+import type { BackendRuntimeStatus } from '../shared/dto/backend.js';
+import { BackendRpcService } from './backend.rpc-service.js';
+import { startBackendControl } from './backend-control.js';
+import { Errors } from '@omnitron-dev/titan/errors';
 
 /**
  * Deadline for a request on the daemon's unix socket.
@@ -128,6 +136,8 @@ const DAEMON_SOCKET_REQUEST_TIMEOUT = 60_000;
 
 
 export interface DaemonStartOptions {
+  /** Internal, private checkpoint from a drained controller; never supplied by an application. */
+  backendHandoff?: BackendHandoffState;
   /** Enable file watching — restarts apps on source file changes */
   watch?: boolean;
   /** Only watch these apps (default: all enabled apps) */
@@ -323,13 +333,97 @@ export class OmnitronDaemon {
   private metricsServer: import('../observability/index.js').MetricsServer | null = null;
   private metricsBridge: import('../observability/index.js').MetricsBridge | null = null;
   private dc: IDaemonConfig = DEFAULT_DAEMON_CONFIG;
+  private execution: ExecutionClient | null = null;
+  private handingOffBackend = false;
+  private preparingBackend = false;
+  private backendAdmitted = true;
+  private stopApplicationsOnExit = false;
+  private backendControl: Awaited<ReturnType<typeof startBackendControl>> | null = null;
 
   /** Daemon config accessor for external use (e.g., DaemonRpcService) */
   get daemonConfig(): IDaemonConfig { return this.dc; }
 
+  private assertBackendReady(): void {
+    if (!this.backendAdmitted) throw Errors.unavailable('Omnitron backend', 'The replacement is restoring its checkpoint; retry after readiness');
+  }
+
+  backendControlAddress(): string {
+    if (!this.backendControl) throw new Error(this.backendRuntimeStatus().reason ?? 'Backend control is not ready');
+    return this.backendControl.socket;
+  }
+
+  backendRuntimeStatus(): BackendRuntimeStatus {
+    const owner = this.execution?.state();
+    return {
+      mode: this.execution ? 'resident' : 'coupled', handoffSupported: !!this.execution,
+      ...(!this.execution ? { reason: 'This daemon owns application forks and threads directly. Installing the resident owner requires one controlled application restart; hot adoption is unavailable.' } : {}),
+      ...(owner ?? {}),
+      blockers: {
+        terminalSessions: this.terminalRpcService?.activeSessionCount() ?? 0,
+        fileTransfers: this.filesRpcService?.activeTransferCount() ?? 0,
+        pipelineRuns: this.pipelineService?.activeRunCount() ?? 0,
+        releaseBuilds: this.releaseService?.builds().filter(build => build.state === 'running').length ?? 0,
+      },
+    };
+  }
+
+  /** Called after the initiating RPC has returned, so it is not waiting for itself. */
+  async prepareBackendHandoff(candidateId: string): Promise<BackendHandoffState> {
+    if (!this.execution || !this.app?.netron || !this.watchConfig) throw new Error(this.backendRuntimeStatus().reason ?? 'Backend is not ready');
+    if (this.handingOffBackend || this.preparingBackend) throw new Error('A backend handoff is already in progress');
+    const assertIdle = () => {
+      const blockers = this.backendRuntimeStatus().blockers;
+      const active = Object.entries(blockers).filter(([, count]) => count > 0);
+      if (active.length) throw new Error(`Finish active work before replacing the backend: ${active.map(([name, count]) => `${name}=${count}`).join(', ')}`);
+    };
+    assertIdle();
+    this.preparingBackend = true;
+    const gate = this.app.netron.inbound;
+    let projects: ProjectService | undefined;
+    try {
+      projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
+      const drained = await gate.drain(30_000);
+      if (!drained.drained) throw new Error(`${drained.left} inbound request(s) have not drained; backend transfer was refused`);
+      assertIdle();
+      const projectState = await projects.prepareHandoff();
+      const infrastructure = await this.infraService?.prepareHandoff() ?? null;
+      let timer: NodeJS.Timeout | undefined;
+      const prepared = await Promise.race([
+        this.execution.prepare(candidateId),
+        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('Execution mutations have not drained; the current backend will remain active')), 30_000); }),
+      ]).finally(() => { if (timer) clearTimeout(timer); });
+      return { protocol: 1, ticket: prepared.ticket, projects: projectState, infrastructure,
+        executionInventory: prepared.snapshot.inventoryDigest, watchConfig: this.watchConfig };
+    } catch (error) {
+      await this.execution.abortCandidate(candidateId);
+      projects?.resumeAfterHandoff();
+      this.infraService?.resumeAfterHandoff();
+      gate.reopen();
+      this.preparingBackend = false;
+      throw error;
+    }
+  }
+
+  async abortBackendHandoff(state: BackendHandoffState): Promise<void> {
+    if (!this.execution || !this.app || this.handingOffBackend) throw new Error('The old backend can no longer resume; restore a controller through the resident owner');
+    await this.execution.abort(state.ticket);
+    const projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
+    projects.resumeAfterHandoff();
+    this.infraService?.resumeAfterHandoff();
+    this.app.netron?.inbound.reopen();
+    this.preparingBackend = false;
+  }
+
+  async retireBackend(): Promise<void> {
+    if (!this.execution || !this.app?.netron?.inbound.isDraining) throw new Error('Backend must be drained with a resident owner before retirement');
+    this.handingOffBackend = true;
+    await this.app.stop({ timeout: 60_000 });
+  }
+
   async start(config: IEcosystemConfig, options?: DaemonStartOptions, daemonConfig?: IDaemonConfig): Promise<void> {
+    this.backendAdmitted = !options?.backendHandoff;
     this.dc = daemonConfig ?? DEFAULT_DAEMON_CONFIG;
-    this.watchConfig = config;
+    this.watchConfig = options?.backendHandoff?.watchConfig ?? config;
 
     const pidFile = expandPath(this.dc.pidFile);
     this.pidManager = new PidManager(pidFile);
@@ -347,7 +441,13 @@ export class OmnitronDaemon {
     this.pidManager.write();
 
     // 1. Create Titan Application (the daemon itself)
-    const DaemonModule = createDaemonModule(config, this.dc);
+    if (this.dc.executionHost?.enabled) {
+      const connection = await connectExecutionOwner(config, this.dc, createNullLogger(), options?.backendHandoff?.ticket);
+      this.execution = connection.client;
+    } else if (options?.backendHandoff) {
+      throw new Error('Backend handoff requires the resident execution owner');
+    }
+    const DaemonModule = createDaemonModule(config, this.dc, this.execution?.orchestrator);
 
     this.app = await Application.create(DaemonModule, {
       name: 'omnitron',
@@ -382,11 +482,25 @@ export class OmnitronDaemon {
     // 3. Resolve and expose RPC services via Netron
     await this.exposeRpcServices(config, this.dc);
 
+    // Reconcile bookkeeping before any new public listener can admit a
+    // command. Adoption only reads native container identities; it never
+    // deploys an app or applies a new infrastructure declaration.
+    if (options?.backendHandoff) {
+      const projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
+      await projects.adoptHandoff(options.backendHandoff.projects);
+      if (options.backendHandoff.infrastructure) {
+        const logging = await this.app.container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN);
+        this.infraService = await InfrastructureService.adoptHandoff(logging.logger, options.backendHandoff.infrastructure);
+      }
+    }
+
     // 4. Start the Titan Application (boots DI, starts Netron, opens transports)
     await this.app.start();
 
     const loggerModule = await this.app.container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN);
     const logger = loggerModule.logger;
+    this.execution?.setLogger(logger);
+    if (this.execution) this.backendControl = await startBackendControl(this, this.execution.controllerId, logger);
     runtimeDiagnostics.setLogger(logger);
 
     // As soon as there is somewhere to say it, so a stall in the boot's own
@@ -413,16 +527,19 @@ export class OmnitronDaemon {
     await this.wireLogPersistence();
 
     // 5.5. Check for crash recovery
-    await this.checkCrashRecovery(logger);
+    if (!this.execution) await this.checkCrashRecovery(logger);
 
     // 6. Provision infrastructure (omnitron-pg + app infra from config.infrastructure)
-    await this.startInfrastructure(config, options, logger);
+    if (options?.backendHandoff) {
+      const gate = await this.app.container.resolveAsync<InfrastructureGate>(INFRASTRUCTURE_GATE_TOKEN);
+      gate.markReady(this.infraService?.getState() ?? { services: {}, ready: true });
+    } else await this.startInfrastructure(config, options, logger);
 
     // 7. Register custom health indicators (Docker + apps)
     await this.registerHealthIndicators();
 
     // 8. File watching (dev mode)
-    await this.startFileWatcher(config, options, logger);
+    if (!options?.backendHandoff) await this.startFileWatcher(config, options, logger);
 
     // 8.5. Wire daemon Netron to orchestrator for native topology routing
     {
@@ -465,7 +582,7 @@ export class OmnitronDaemon {
       const { readSavedDaemonConfig } = await import('../commands/up.js');
       const savedConfig = readSavedDaemonConfig();
 
-      if (savedConfig?.webapp) {
+      if (savedConfig?.webapp && !options?.backendHandoff) {
         try {
           const { WebappService } = await import('../webapp/webapp.service.js');
 
@@ -527,7 +644,7 @@ export class OmnitronDaemon {
     });
 
     // 9. Start managed apps (waits for infra gate if apps have `requires`)
-    await this.startApps(config, logger);
+    if (!options?.backendHandoff) await this.startApps(config, logger);
 
     // 10. Start background tasks via titan-scheduler (replaces bare setInterval)
     await this.startScheduledTasks(config, logger);
@@ -543,6 +660,14 @@ export class OmnitronDaemon {
     // 13. Register shutdown tasks — Application handles SIGTERM/SIGINT
     // and calls shutdown tasks in priority order before process.exit()
     this.registerShutdownTasks(this.app);
+    await this.execution?.activateObservations();
+
+    if (options?.backendHandoff) {
+      const projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
+      projects.resumeAfterHandoff();
+      this.infraService?.resumeAfterHandoff();
+    }
+    this.backendAdmitted = true;
 
     // 15. Broadcast daemon.started event
     this.eventBroadcaster?.broadcast(DAEMON_EVENTS.STARTED, {
@@ -585,7 +710,7 @@ export class OmnitronDaemon {
         // operator's deployment read exactly like the daemon's own boot
         // autostart. No proxy stands in front of a unix socket, so the
         // wrapper trusts no forwarded address — its default.
-        invocationWrapper: createAuthContextWrapper(),
+        invocationWrapper: createAuthContextWrapper({ assertReady: () => this.assertBackendReady() }),
       },
     });
 
@@ -650,7 +775,7 @@ export class OmnitronDaemon {
         port: dc.port,
         host: tcpHost,
         // Carry the authenticated mesh identity into service-level guards and audit.
-        invocationWrapper: createAuthContextWrapper(),
+        invocationWrapper: createAuthContextWrapper({ assertReady: () => this.assertBackendReady() }),
       },
     });
 
@@ -725,6 +850,7 @@ export class OmnitronDaemon {
     // we may believe? Two separate switches would eventually disagree.
     const authContextWrapper = createAuthContextWrapper({
       trustProxy: dc.httpRateLimit?.trustProxy === true,
+      assertReady: () => this.assertBackendReady(),
     });
 
     // HTTP / WS bind also defaults to 127.0.0.1. The webapp talks to
@@ -840,6 +966,7 @@ export class OmnitronDaemon {
 
     const rpcService = new DaemonRpcService(orchestrator, titanHealth, logManager, config, this);
     await this.app.netron.peer.exposeService(rpcService);
+    await this.app.netron.peer.exposeService(new BackendRpcService(this));
 
     // Logs RPC service (works on both master and slave — uses PG or SQLite)
     const logsRpcService = new LogsRpcService(logCollector);
@@ -1306,7 +1433,7 @@ export class OmnitronDaemon {
     const logCollector = await this.app.container.resolveAsync<LogCollectorService>(LOG_COLLECTOR_TOKEN);
 
     orchestrator.onAppLog((appName, line) => {
-      logManager.appendToFile(appName, line);
+      if (!this.execution) logManager.appendToFile(appName, line);
       logCollector.ingestPinoLine(appName, line);
     });
 
@@ -1642,7 +1769,7 @@ export class OmnitronDaemon {
 
       // Docker containers health indicator
       titanHealth.registerIndicator(runtimeDiagnostics);
-      orchestrator.configureReadiness(this.dc.applicationReadiness ?? {});
+      await orchestrator.configureReadiness(this.dc.applicationReadiness ?? {});
       const projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
       titanHealth.registerIndicator(new DockerHealthIndicator(() => this.infraService, undefined,
         () => projects.getInfrastructureHealthContext()));
@@ -1678,6 +1805,7 @@ export class OmnitronDaemon {
     const enabled = !!options?.watch && !options?.noWatch;
     orchestrator.devMode = enabled;
     await orchestrator.setWatchMode(enabled, options?.watchApps);
+    if (this.execution) return;
     if (!enabled) return;
     this.fileWatcher = new FileWatcher(logger, orchestrator, config, process.cwd());
     this.fileWatcher.start(options?.watchApps);
@@ -2361,6 +2489,12 @@ export class OmnitronDaemon {
     const orchestrator = await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
     const loggerModule = await this.app.container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN);
 
+    if (this.execution) {
+      orchestrator.devMode = true;
+      await orchestrator.setWatchMode(true, apps);
+      return orchestrator.getBuildWatchedApps();
+    }
+
     if (this.fileWatcher) {
       this.fileWatcher.stop();
     }
@@ -2420,9 +2554,9 @@ export class OmnitronDaemon {
       ? await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN) : null;
     const apps = [...(this.fileWatcher?.getWatchedApps() ?? []), ...(orchestrator?.getBuildWatchedApps() ?? [])];
     return {
-      enabled: !!this.fileWatcher,
+      enabled: this.execution ? !!orchestrator?.devMode : !!this.fileWatcher,
       watching: apps.length > 0,
-      ...(apps.length ? {} : { reason: this.fileWatcher ? 'no enabled app matches the watch policy' : 'watching is disabled' }),
+      ...(apps.length ? {} : { reason: (this.execution ? orchestrator?.devMode : this.fileWatcher) ? 'no enabled app matches the watch policy' : 'watching is disabled' }),
       apps,
     };
   }
@@ -2437,6 +2571,7 @@ export class OmnitronDaemon {
    */
   async stop(): Promise<void> {
     if (!this.app) return;
+    this.stopApplicationsOnExit = true;
     await this.app.shutdown(ShutdownReason.Manual);
     // Application doesn't process.exit() for Manual reason — do it explicitly
     process.exit(0);
@@ -2472,7 +2607,7 @@ export class OmnitronDaemon {
         name: 'orchestrator',
         apply: async (cfg) => {
           const orchestrator = await this.app!.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
-          orchestrator.setConfig(cfg);
+          await orchestrator.setConfig(cfg);
         },
       },
       {
@@ -2578,7 +2713,7 @@ export class OmnitronDaemon {
       // Stop webapp nginx container (non-blocking — don't wait if slow)
       try {
         const { removeContainer } = await import('../infrastructure/container-runtime.js');
-        void removeContainer('omnitron-nginx');
+        if (!this.handingOffBackend && (!this.execution || this.stopApplicationsOnExit)) void removeContainer('omnitron-nginx');
       } catch { /* non-critical */ }
     }, ShutdownPriority.First);
 
@@ -2599,6 +2734,7 @@ export class OmnitronDaemon {
 
     // --- Priority: VeryHigh (10) — Stop managed apps (fast — 5s per app max) ---
     app.registerShutdownTask('stop-managed-apps', async () => {
+      if (this.handingOffBackend || (this.execution && !this.stopApplicationsOnExit)) return;
       const orchestrator = await container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
       await orchestrator.stopAll(true); // force=true for fast shutdown (SIGTERM + 5s → SIGKILL)
     }, ShutdownPriority.VeryHigh);
@@ -2695,7 +2831,7 @@ export class OmnitronDaemon {
 
       try {
         const stateStore = await container.resolveAsync<StateStore>(STATE_STORE_TOKEN);
-        stateStore.clear();
+        if (!this.execution) stateStore.clear();
       } catch { /* non-critical */ }
     }, ShutdownPriority.Low);
 
@@ -2719,7 +2855,7 @@ export class OmnitronDaemon {
         // lifetime. Locally it still tears down — `omnitron down` there means
         // "I am done for the day" — and on either, `omnitron infra down` is
         // the command that removes containers on purpose.
-        if (this.dc.role === 'slave') {
+        if (this.dc.role === 'slave' || this.handingOffBackend || (this.execution && !this.stopApplicationsOnExit)) {
           // Said on the way out, because the absence of a teardown is
           // otherwise indistinguishable from a teardown that failed.
           this.infraService.dispose();
@@ -2733,7 +2869,13 @@ export class OmnitronDaemon {
 
     // --- Priority: Last (100) — PID file removal ---
     app.registerShutdownTask('remove-pid', () => {
-      this.pidManager?.remove();
+      this.pidManager?.removeOwned();
+    }, ShutdownPriority.Last);
+    app.registerShutdownTask('release-execution-controller', async () => {
+      if (!this.execution) return;
+      if (!this.handingOffBackend && this.stopApplicationsOnExit) await this.execution.shutdownOwner();
+      await this.execution.close();
+      if (!this.handingOffBackend) await this.backendControl?.stop();
     }, ShutdownPriority.Last);
   }
 }

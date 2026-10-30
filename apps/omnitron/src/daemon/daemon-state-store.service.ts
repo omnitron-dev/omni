@@ -1,3 +1,4 @@
+import { OMNITRON_HOME } from '../config/defaults.js';
 /**
  * DaemonStateStore — unified SQLite-backed persistence for daemon-
  * local state that must survive daemon restarts.
@@ -40,7 +41,6 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { Kysely, SqliteDialect, sql } from 'kysely';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
-import { expandPath } from '../shared/paths.js';
 import { ensurePrivateDir, sealFile } from '../shared/private-files.js';
 
 // `better-sqlite3` is loaded sync via createRequire because `initSync()`
@@ -135,7 +135,7 @@ export class DaemonStateStore {
 
   constructor(
     private readonly logger: ILogger,
-    dbPath: string = expandPath('~/.omnitron/data/daemon-state.db'),
+    dbPath: string = path.join(OMNITRON_HOME, 'data/daemon-state.db'),
   ) {
     this.dbPath = dbPath;
   }

@@ -36,6 +36,8 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { isProcessAlive } from '@omnitron-dev/titan/utils';
 
 export interface ProcessJanitorOptions {
+  /** A resident owner may reap only its own children, never another owner's orphans. */
+  readonly reapForeignOrphans?: boolean;
   /** Interval between sweeps. Default 30s. */
   readonly intervalMs?: number;
   /** Grace period after SIGTERM before SIGKILL. Default 3s. */
@@ -139,11 +141,13 @@ export class ProcessJanitor {
   private readonly listProcesses: () => readonly PsRow[] | null | Promise<readonly PsRow[] | null>;
   private readonly kill: (pid: number, signal: NodeJS.Signals) => void;
   private readonly isAlive: (pid: number) => boolean;
+  private readonly reapForeignOrphans: boolean;
 
   private timer: NodeJS.Timeout | null = null;
   private inFlight = false;
 
   constructor(options: ProcessJanitorOptions) {
+    this.reapForeignOrphans = options.reapForeignOrphans ?? true;
     this.intervalMs = options.intervalMs ?? 30_000;
     this.gracefulMs = options.gracefulMs ?? 3_000;
     this.minProcessAgeSeconds = options.minProcessAgeSeconds ?? 60;
@@ -164,6 +168,7 @@ export class ProcessJanitor {
    * before SIGKILL. Returns the count of processes reaped.
    */
   async coldStartSweep(): Promise<number> {
+    if (!this.reapForeignOrphans) return 0;
     const myPid = process.pid;
     const listed = await this.listProcesses();
     if (listed === null) {
@@ -306,7 +311,7 @@ export class ProcessJanitor {
       // here for as long as the daemon ran. Measured 2026-09-14 minutes after
       // a restart: a `fork-worker.js` with `ppid = 1`, five minutes old,
       // surveyed by every sweep and reaped by none.
-      if (this.hasDeadParent(row)) return true;
+      if (this.reapForeignOrphans && this.hasDeadParent(row)) return true;
       // Some other parent — not ours, leave alone.
       return false;
     });

@@ -1,3 +1,4 @@
+import { OMNITRON_HOME } from '../config/defaults.js';
 /**
  * SlaveStorageService — SQLite-backed local storage for slave daemons
  *
@@ -26,7 +27,7 @@ import { DEFAULT_ALERT_RULES } from '../database/migrations/011_alerts_nobody_ha
 import { DISK_ALERT_RULE } from '../database/migrations/012_a_disk_nobody_watched.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
-const OMNITRON_HOME = path.join(process.env['HOME'] ?? '/tmp', '.omnitron');
+
 const DATA_DIR = path.join(OMNITRON_HOME, 'data');
 const DEFAULT_DB_PATH = path.join(DATA_DIR, 'slave.db');
 

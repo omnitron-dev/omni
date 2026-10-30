@@ -45,6 +45,35 @@ const REDIS_DB_RANGE_SIZE = 5;
 // =============================================================================
 
 export class StackInfrastructureManager {
+  async prepareHandoff(): Promise<Array<{
+    key: string; allocation: StackPortAllocation;
+    infrastructure: import('./infrastructure.service.js').InfrastructureHandoffState;
+  }>> {
+    const records = [];
+    try {
+      for (const [key, service] of this.instances) {
+        const allocation = this.portAllocations.get(key);
+        if (!allocation) throw new Error(`Infrastructure port ownership is missing for ${key}`);
+        records.push({ key, allocation, infrastructure: await service.prepareHandoff() });
+      }
+      return structuredClone(records);
+    } catch (error) { this.resumeAfterHandoff(); throw error; }
+  }
+
+  resumeAfterHandoff(): void {
+    for (const service of this.instances.values()) service.resumeAfterHandoff();
+  }
+
+  async adoptHandoff(records: Awaited<ReturnType<StackInfrastructureManager['prepareHandoff']>>): Promise<void> {
+    if (this.instances.size) throw new Error('Infrastructure must be empty before handoff adoption');
+    for (const record of records) {
+      if (this.instances.has(record.key)) throw new Error(`Duplicate infrastructure owner ${record.key}`);
+      const service = await InfrastructureService.adoptHandoff(this.logger, record.infrastructure);
+      this.instances.set(record.key, service);
+      this.portAllocations.set(record.key, structuredClone(record.allocation));
+    }
+  }
+
   /** Active infrastructure services keyed by `${project}/${stack}` */
   private readonly instances = new Map<string, InfrastructureService>();
 

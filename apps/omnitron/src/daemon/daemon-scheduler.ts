@@ -12,7 +12,7 @@
 
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { IMetricsService } from '@omnitron-dev/titan-metrics';
-import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
+import type { OrchestratorControl as OrchestratorService } from '../orchestrator/execution-contract.js';
 import type { AuthService } from '../services/auth.service.js';
 import type { AlertService } from '../services/alert.service.js';
 import type { FleetService } from '../services/fleet.service.js';

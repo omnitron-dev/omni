@@ -1,3 +1,4 @@
+import { OMNITRON_HOME } from '../config/defaults.js';
 /**
  * BackupService — Database backup and restore automation
  *
@@ -19,7 +20,6 @@ import path from 'node:path';
 import { Injectable, Inject, Optional } from '@omnitron-dev/titan/decorators';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
 import { DAEMON_STATE_STORE_TOKEN, PROJECT_SERVICE_TOKEN } from '../shared/tokens.js';
-import { expandPath } from '../shared/paths.js';
 import { getEnv } from '../shared/env-config.js';
 import { resolveOmnitronPgConfig } from '../database/connection.js';
 import { ensurePrivateDir, sealFile, sealDirContents } from '../shared/private-files.js';
@@ -416,7 +416,7 @@ export class BackupService {
     @Optional() @Inject(PROJECT_SERVICE_TOKEN) private readonly projects?: ProjectService,
   ) {
     this.logger = loggerModule.logger;
-    this.backupDir = expandPath('~/.omnitron/backups');
+    this.backupDir = path.join(OMNITRON_HOME, 'backups');
     // 0700 on the directory, 0600 on every file in it — see `private-files`.
     // The sweep reaches backwards on purpose: the files written before this
     // existed are the ones that have been world-readable the longest, and a
@@ -880,7 +880,7 @@ export class BackupService {
 
   /** Online snapshot of the daemon-state DB (encrypted secrets + backup index). */
   async createSecretsBackup(): Promise<BackupInfo> {
-    const src = expandPath('~/.omnitron/data/daemon-state.db');
+    const src = path.join(OMNITRON_HOME, 'data/daemon-state.db');
     if (!fs.existsSync(src)) throw new Error('daemon-state.db not found');
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
     const filepath = path.join(this.backupDir, `daemon-state_${ts}_${randomUUID().slice(0, 8)}.db`);

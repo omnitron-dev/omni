@@ -51,6 +51,7 @@ export interface PhantomEndpointJanitorOptions {
 export class PhantomEndpointJanitor {
   private timer: NodeJS.Timeout | null = null;
   private sweeping = false;
+  private sweepFinished: Promise<void> = Promise.resolve();
 
   constructor(private readonly opts: PhantomEndpointJanitorOptions) {}
 
@@ -75,10 +76,18 @@ export class PhantomEndpointJanitor {
     this.timer = null;
   }
 
+  /** Stop scheduling and await an already admitted Docker sweep. */
+  async drain(): Promise<void> {
+    this.stop();
+    await this.sweepFinished;
+  }
+
   /** Run a single sweep across every managed network. Public for tests + ops triggers. */
   async sweepAll(): Promise<number> {
     if (this.sweeping) return 0;
     this.sweeping = true;
+    let finished!: () => void;
+    this.sweepFinished = new Promise<void>(resolve => { finished = resolve; });
     let totalCleaned = 0;
     try {
       for (const net of this.opts.networks) {
@@ -95,6 +104,7 @@ export class PhantomEndpointJanitor {
       }
     } finally {
       this.sweeping = false;
+      finished();
     }
     return totalCleaned;
   }

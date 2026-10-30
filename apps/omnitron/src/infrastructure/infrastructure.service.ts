@@ -118,11 +118,26 @@ export function decideControlPlaneDatabase(input: {
   return { action: 'reconcile', reconcileName: input.running.name ?? input.desiredName };
 }
 
+export interface InfrastructureHandoffState {
+  config: InfrastructureConfig;
+  containers: ResolvedContainer[];
+  normalizedServices: Record<string, import('./types.js').IServiceRequirement>;
+  serviceOverrides?: Record<string, import('./types.js').IServiceOverride>;
+  state: InfrastructureState;
+  usingGlobalOmnitronPg: boolean;
+  needsControlPlaneDatabase: boolean;
+  monitoring: boolean;
+  controlPlaneContainer: ResolvedContainer;
+  janitorNetworks: string[];
+  unhealthyTicks: Array<[string, number]>;
+  restartBackoff: Array<[string, { failures: number; nextAttemptAt: number }]>;
+}
+
 export class InfrastructureService {
   private desiredContainers: ResolvedContainer[] = [];
   /** What the most recent reconcile did to each service. */
   private readonly lastActions = new Map<string, string>();
-  private readonly omnitronPgContainer: ResolvedContainer;
+  private omnitronPgContainer: ResolvedContainer;
   private usingGlobalOmnitronPg = false;
   private healthTimer: NodeJS.Timeout | null = null;
   private readonly state: InfrastructureState = { services: {}, ready: false };
@@ -155,6 +170,8 @@ export class InfrastructureService {
    * once we know Docker is reachable; torn down in `teardown()`.
    */
   private phantomJanitor: PhantomEndpointJanitor | null = null;
+  private handoffMonitoring = false;
+  private janitorNetworks: string[] = [];
 
   constructor(
     private readonly logger: ILogger,
@@ -360,8 +377,9 @@ export class InfrastructureService {
     // a Docker daemon restart / host suspend doesn't leave us
     // unable to recreate containers ("endpoint with name X
     // already exists in network ...").
+    this.janitorNetworks = [getManagedNetwork()];
     this.phantomJanitor = new PhantomEndpointJanitor({
-      networks: [getManagedNetwork()],
+      networks: this.janitorNetworks,
       intervalMs: 60_000,
       logger: this.logger,
     });
@@ -453,6 +471,67 @@ export class InfrastructureService {
       return { released, adopted };
     } finally {
       this.ownershipFrozen = false;
+    }
+  }
+
+  /** Freeze and drain Docker mutations before another backend takes monitoring ownership. */
+  async prepareHandoff(): Promise<InfrastructureHandoffState> {
+    if (this.ownershipFrozen) throw new Error('Infrastructure ownership is already frozen');
+    this.ownershipFrozen = true;
+    this.handoffMonitoring = this.healthTimer !== null;
+    try {
+      const settled = await Promise.allSettled([...this.activeSweeps, ...this.reconcileTasks.values()]);
+      if (settled.some(result => result.status === 'rejected')) throw new Error('Infrastructure reconciliation failed while draining');
+      await this.phantomJanitor?.drain();
+      await InfrastructureService.validateHandoffContainers(this.desiredContainers,
+        this.needsControlPlaneDatabase && !this.usingGlobalOmnitronPg ? this.omnitronPgContainer : undefined);
+      this.dispose();
+      return structuredClone({
+        config: this.config, containers: this.desiredContainers, normalizedServices: this.normalizedServices,
+        ...(this.serviceOverrides && { serviceOverrides: this.serviceOverrides }),
+        state: this.state, usingGlobalOmnitronPg: this.usingGlobalOmnitronPg,
+        needsControlPlaneDatabase: this.needsControlPlaneDatabase, monitoring: this.handoffMonitoring,
+        controlPlaneContainer: this.omnitronPgContainer, janitorNetworks: this.janitorNetworks,
+        unhealthyTicks: [...this.unhealthyTicks], restartBackoff: [...this.restartBackoff],
+      });
+    } catch (error) { this.resumeAfterHandoff(); throw error; }
+  }
+
+  resumeAfterHandoff(): void {
+    this.ownershipFrozen = false;
+    if (this.handoffMonitoring) this.startHealthMonitor();
+    if (!this.phantomJanitor && this.janitorNetworks.length) {
+      this.phantomJanitor = new PhantomEndpointJanitor({ networks: this.janitorNetworks, intervalMs: 60_000, logger: this.logger });
+      this.phantomJanitor.start();
+    }
+    this.handoffMonitoring = false;
+  }
+
+  /** Read and validate existing containers. Never provision, start or recreate during adoption. */
+  static async adoptHandoff(logger: ILogger, snapshot: InfrastructureHandoffState): Promise<InfrastructureService> {
+    await InfrastructureService.validateHandoffContainers(snapshot.containers,
+      snapshot.needsControlPlaneDatabase && !snapshot.usingGlobalOmnitronPg ? snapshot.controlPlaneContainer : undefined);
+    const service = new InfrastructureService(logger, snapshot.config, snapshot.normalizedServices,
+      undefined, snapshot.serviceOverrides, snapshot.needsControlPlaneDatabase);
+    service.desiredContainers = structuredClone(snapshot.containers);
+    service.omnitronPgContainer = structuredClone(snapshot.controlPlaneContainer);
+    service.janitorNetworks = [...snapshot.janitorNetworks];
+    service.unhealthyTicks = new Map(snapshot.unhealthyTicks);
+    service.restartBackoff = new Map(snapshot.restartBackoff);
+    Object.assign(service.state, structuredClone(snapshot.state));
+    service.usingGlobalOmnitronPg = snapshot.usingGlobalOmnitronPg;
+    service.handoffMonitoring = snapshot.monitoring;
+    service.ownershipFrozen = true;
+    return service;
+  }
+
+  private static async validateHandoffContainers(containers: ResolvedContainer[], controlPlane?: ResolvedContainer): Promise<void> {
+    for (const desired of [...containers, ...(controlPlane ? [controlPlane] : [])]) {
+      const actual = await getContainerState(desired.name);
+      if (!actual || actual.specHash !== containerSpecHash(desired) ||
+          Object.entries(desired.labels).some(([key, value]) => actual.labels?.[key] !== value)) {
+        throw new Error(`Infrastructure identity or specification changed during handoff: ${desired.name}`);
+      }
     }
   }
 
@@ -1037,6 +1116,7 @@ export class InfrastructureService {
   // ===========================================================================
 
   private startHealthMonitor(): void {
+    if (this.healthTimer) return;
     this.healthTimer = setInterval(() => {
       this.healthSweep().catch((err) => {
         this.logger.error({ error: (err as Error).message }, 'Health sweep failed');

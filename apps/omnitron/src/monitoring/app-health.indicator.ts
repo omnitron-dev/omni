@@ -7,7 +7,7 @@
  */
 
 import { HealthIndicator, type HealthIndicatorResult } from '@omnitron-dev/titan-health';
-import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
+import type { OrchestratorControl as OrchestratorService } from '../orchestrator/execution-contract.js';
 
 export class AppHealthIndicator extends HealthIndicator {
   readonly name = 'apps';

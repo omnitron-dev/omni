@@ -23,7 +23,7 @@ import {
   normalizeCheckConfig,
   assertNodeHost,
 } from './remote-ops.service.js';
-import { CLI_VERSION } from '../config/defaults.js';
+import { OMNITRON_HOME, CLI_VERSION } from '../config/defaults.js';
 import type { INodeHealthSummary, INodeCheckTarget, NodeHealthStatus } from '../workers/types.js';
 import type { SecretsService } from './secrets.service.js';
 import type {
@@ -71,7 +71,7 @@ export interface NodeMeshCaller {
 // Constants
 // =============================================================================
 
-const OMNITRON_HOME = path.join(os.homedir(), '.omnitron');
+
 const NODES_FILE = path.join(OMNITRON_HOME, 'nodes.json');
 const LOCAL_NODE_ID = 'local';
 

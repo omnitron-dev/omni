@@ -28,7 +28,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { IEcosystemConfig, IEcosystemAppEntry, IWatchConfig } from '../config/types.js';
-import type { OrchestratorService } from './orchestrator.service.js';
+import type { OrchestratorControl as OrchestratorService } from './execution-contract.js';
 
 /** Directories/patterns to always ignore */
 /**

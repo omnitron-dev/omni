@@ -16,7 +16,8 @@ import { TitanHealthModule } from '@omnitron-dev/titan-health';
 import { TitanMetricsModule } from '@omnitron-dev/titan-metrics';
 
 import { OrchestratorService } from '../orchestrator/orchestrator.service.js';
-import { LogManager } from '../monitoring/log-manager.js';
+import type { OrchestratorControl } from '../orchestrator/execution-contract.js';
+import { executionProcessConfig, executionLogManager } from './execution-config.js';
 import { StateStore } from './state-store.js';
 import { DaemonStateStore } from './daemon-state-store.service.js';
 import { InfrastructureGate } from '../infrastructure/infrastructure-gate.js';
@@ -49,7 +50,7 @@ import {
   SECRETS_PASSPHRASE_TOKEN,
   SECRETS_LEGACY_PATH_TOKEN,
 } from '../shared/tokens.js';
-import { DEFAULT_SECRETS_PASSPHRASE } from '../config/defaults.js';
+import { DEFAULT_SECRETS_PASSPHRASE, DEFAULT_SECRETS_PATH } from '../config/defaults.js';
 import { AuthService } from '../services/auth.service.js';
 import { LogCollectorService } from '../services/log-collector.service.js';
 import { FleetService } from '../services/fleet.service.js';
@@ -172,7 +173,7 @@ export function getDaemonLogCollectorStream(): LogCollectorStream | null {
  * The daemon itself runs ProcessManagerModule in 'child' isolation
  * with IPC transport — matching how PM manages child processes.
  */
-export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemonConfig) {
+export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemonConfig, execution?: OrchestratorControl) {
   const isSlave = dc.role === 'slave';
 
   // Single source of truth for the JWT secret. AuthService (mint) and
@@ -225,37 +226,7 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
       // PM Module — child process isolation with Unix socket transport for Netron RPC.
       // IPC channel (process.send) remains for PM control plane (ready/error/shutdown).
       // Unix sockets provide the Netron data plane (service calls, health, metrics).
-      ProcessManagerModule.forRoot({
-        isolation: 'child',
-        transport: 'unix',
-        // The orchestrator subscribes to `onLog` itself and feeds
-        // `LogCollector` under the app's own name. PM's default forwarding
-        // re-logs the same line through the daemon's logger, where it is
-        // ingested a second time as `omnitron` — so every child line was
-        // stored twice: the table paid for both copies (13 GB here, roughly
-        // half of it the second one), and every per-app count was wrong by
-        // whichever component happened to emit the line.
-        //
-        // Measured on this host before the fix: 42 958 rows under `omnitron`
-        // against 36 160 under every app combined, for the same hour.
-        forwardChildLogs: false,
-        restartPolicy: {
-          enabled: true,
-          maxRestarts: ecosystemConfig.supervision.maxRestarts,
-          window: ecosystemConfig.supervision.window,
-          backoff: ecosystemConfig.supervision.backoff,
-        },
-        resources: {
-          timeout: 60_000, // Allow up to 60s for tsx/bootstrap startup
-        },
-        monitoring: {
-          healthCheck: {
-            interval: ecosystemConfig.monitoring.healthCheck.interval,
-            timeout: ecosystemConfig.monitoring.healthCheck.timeout,
-          },
-          metrics: true,
-        },
-      }),
+      ProcessManagerModule.forRoot(executionProcessConfig(ecosystemConfig)),
 
       // Auth — JWT verification + caching via titan-auth (same as main/storage/messaging/payments)
       TitanAuthModule.forRoot({
@@ -373,7 +344,7 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
         ORCHESTRATOR_TOKEN,
         {
           useFactory: (loggerModule: ILoggerModule, pm: ProcessManager, stateStore: StateStore) =>
-            new OrchestratorService(loggerModule.logger, pm, stateStore),
+            execution ?? new OrchestratorService(loggerModule.logger, pm, stateStore),
           inject: [LOGGER_SERVICE_TOKEN, PM_MANAGER_TOKEN, STATE_STORE_TOKEN],
           scope: Scope.Singleton,
         },
@@ -383,33 +354,7 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
       [
         LOG_MANAGER_TOKEN,
         {
-          useFactory: (orchestrator: OrchestratorService) => {
-            // Build per-app rotation overrides from ecosystem config
-            const perApp = new Map<string, { maxSize?: string; maxFiles?: number; compress?: boolean }>();
-            for (const app of ecosystemConfig.apps) {
-              const logging = (app as any).observability?.logging;
-              if (logging?.maxSize || logging?.maxFiles != null || logging?.compress != null) {
-                perApp.set(app.name, {
-                  maxSize: logging.maxSize,
-                  maxFiles: logging.maxFiles,
-                  compress: logging.compress,
-                });
-              }
-            }
-            const baseDir = expandPath(dc.logDir).replace(/\/logs\/?$/, '');
-            return new LogManager(
-              {
-                baseDir,
-                defaults: {
-                  maxSize: ecosystemConfig.logging.maxSize,
-                  maxFiles: ecosystemConfig.logging.maxFiles,
-                  compress: ecosystemConfig.logging.compress,
-                },
-                perApp,
-              },
-              orchestrator,
-            );
-          },
+          useFactory: (orchestrator: OrchestratorControl) => executionLogManager(ecosystemConfig, dc, orchestrator),
           inject: [ORCHESTRATOR_TOKEN],
           scope: Scope.Singleton,
         },
@@ -479,7 +424,7 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
         {
           useValue: dc.secrets?.path
             ? expandPath(dc.secrets.path)
-            : expandPath('~/.omnitron/secrets.enc'),
+            : DEFAULT_SECRETS_PATH,
         },
       ],
 

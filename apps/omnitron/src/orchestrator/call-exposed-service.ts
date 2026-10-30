@@ -25,7 +25,7 @@
  */
 import { Errors } from '@omnitron-dev/titan/errors';
 
-interface ExposingProcess {
+export interface ExposingProcess {
   getExposedServices?: () => Promise<Array<{ name: string; version?: string; methods: string[] }>>;
   callExposedService?: (service: string, method: string, args: unknown[]) => Promise<unknown>;
 }

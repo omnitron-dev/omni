@@ -18,7 +18,7 @@ import { Injectable, Inject, Optional } from '@omnitron-dev/titan/decorators';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
 import { OMNITRON_DB_TOKEN, ORCHESTRATOR_TOKEN, HEALTH_CHECK_SERVICE_TOKEN } from '../shared/tokens.js';
 import type { OmnitronDatabase } from '../database/schema.js';
-import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
+import type { OrchestratorControl as OrchestratorService } from '../orchestrator/execution-contract.js';
 import type { HealthCheckService } from './health-check.service.js';
 
 // =============================================================================

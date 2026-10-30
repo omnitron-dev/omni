@@ -1,5 +1,5 @@
+import { OMNITRON_HOME } from '../config/defaults.js';
 import path from 'node:path';
-import os from 'node:os';
 import { constants } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import { createHash, createPrivateKey, randomUUID, X509Certificate } from 'node:crypto';
@@ -25,7 +25,7 @@ async function durableFile(file: string, contents: string | Buffer): Promise<voi
 export class HostIngressService {
   readonly root: string;
   private readonly runtime: HostIngressRuntime;
-  constructor(root = path.join(os.homedir(), '.omnitron', 'host-ingress'), runtime?: HostIngressRuntime, private readonly lock: IngressLock = withIngressLock) {
+  constructor(root = path.join(OMNITRON_HOME, 'host-ingress'), runtime?: HostIngressRuntime, private readonly lock: IngressLock = withIngressLock) {
     this.root = path.resolve(root);
     if (/[\0\r\n,]/.test(this.root)) throw new Error('Invalid host ingress state root');
     this.runtime = runtime ?? new DockerHostIngressRuntime(this.root);

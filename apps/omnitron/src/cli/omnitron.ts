@@ -60,6 +60,28 @@ program.hook('preAction', async (cmd, actionCommand) => {
 // Daemon Lifecycle
 // ============================================================================
 
+const backend = program.command('backend').description('Inspect and replace the control plane without restarting resident applications');
+backend.command('abort <checkpoint>').description('Cancel preparation before backend retirement')
+  .action(async (checkpoint: string) => {
+    const { backendAbortCommand } = await import('../commands/backend.js');
+    await backendAbortCommand(checkpoint);
+  });
+backend.command('status').description('Show backend and execution-owner capabilities').action(async () => {
+  const { backendStatusCommand } = await import('../commands/backend.js');
+  await backendStatusCommand();
+});
+backend.command('upgrade <dist>').description('Activate a built backend artifact; retain application processes')
+  .option('--check', 'Validate compatibility without draining or activating')
+  .action(async (dist: string, options: { check?: boolean }) => {
+    const { backendUpgradeCommand } = await import('../commands/backend.js');
+    await backendUpgradeCommand(dist, options);
+  });
+backend.command('recover <checkpoint>').description('Restore a backend from a private checkpoint after confirming no backend is alive')
+  .action(async (checkpoint: string) => {
+    const { backendRecoverCommand } = await import('../commands/backend.js');
+    await backendRecoverCommand(checkpoint);
+  });
+
 program
   .command('up')
   .description('Start omnitron daemon (background by default)')

@@ -31,6 +31,11 @@ import { isProcessAlive } from '@omnitron-dev/titan/utils';
 export class PidManager {
   constructor(private readonly pidFile: string) {}
 
+  /** A retiring controller must never unlink the successor's marker. */
+  removeOwned(): void {
+    if (this.readPid() === process.pid) this.remove();
+  }
+
   /**
    * Check if another daemon is already running.
    * Uses process.kill(pid, 0) to verify liveness AND argv signature

@@ -1,3 +1,4 @@
+import { OMNITRON_HOME } from '../config/defaults.js';
 /**
  * omnitron service install|uninstall|status — OS-level daemon supervision.
  *
@@ -155,7 +156,7 @@ function servicePath(): string {
 }
 
 function logsDir(): string {
-  const dir = path.join(os.homedir(), '.omnitron', 'logs');
+  const dir = path.join(OMNITRON_HOME, 'logs');
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }

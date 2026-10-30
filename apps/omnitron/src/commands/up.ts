@@ -35,6 +35,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // =============================================================================
 
 export interface SavedDaemonConfig {
+  executionHost?: IDaemonConfig['executionHost'];
   role: DaemonRole;
   master?: { host: string; port: number };
   initialized: boolean;
@@ -97,6 +98,7 @@ export function savedDaemonOverrides(saved: SavedDaemonConfig | null): Partial<I
     ...(saved.httpRateLimit ? { httpRateLimit: saved.httpRateLimit } : {}),
     ...(saved.files !== undefined ? { files: saved.files } : {}),
     ...(saved.applicationReadiness !== undefined ? { applicationReadiness: saved.applicationReadiness } : {}),
+    ...(saved.executionHost !== undefined ? { executionHost: saved.executionHost } : {}),
     host: effectiveBindHost(saved),
     ...(saved.port ? { port: saved.port } : {}),
     ...(saved.httpPort ? { httpPort: saved.httpPort } : {}),

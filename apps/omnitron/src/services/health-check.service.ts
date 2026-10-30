@@ -30,7 +30,7 @@
  */
 
 import { Injectable, Inject, Optional } from '@omnitron-dev/titan/decorators';
-import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
+import type { OrchestratorControl as OrchestratorService } from '../orchestrator/execution-contract.js';
 import type { ProjectService } from './project.service.js';
 import type { ContainerState } from '../infrastructure/types.js';
 import { ORCHESTRATOR_TOKEN, PROJECT_SERVICE_TOKEN } from '../shared/tokens.js';

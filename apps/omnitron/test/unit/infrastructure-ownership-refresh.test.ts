@@ -27,6 +27,35 @@ function deferred<T>() { let resolve!: (value: T) => void; let reject!: (reason:
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 beforeEach(() => { vi.clearAllMocks(); runtime.get.mockResolvedValue(null); });
 describe('native monitoring ownership refresh', () => {
+  it('transfers restart backoff and unhealthy observations without Docker mutations', async () => {
+    const redis = desired('redis'), original = service(redis);
+    runtime.get.mockResolvedValue(actual(redis));
+    original.unhealthyTicks.set('redis', 1);
+    original.restartBackoff.set('redis', { failures: 4, nextAttemptAt: Date.now() + 120_000 });
+    const checkpoint = await original.prepareHandoff();
+    const restored = await InfrastructureService.adoptHandoff(logger, checkpoint);
+    const second = await (async () => { restored.resumeAfterHandoff(); return restored.prepareHandoff(); })();
+    expect(second.unhealthyTicks).toEqual(checkpoint.unhealthyTicks);
+    expect(second.restartBackoff).toEqual(checkpoint.restartBackoff);
+    expect(runtime.create).not.toHaveBeenCalled(); expect(runtime.remove).not.toHaveBeenCalled(); expect(runtime.start).not.toHaveBeenCalled();
+    original.dispose(); restored.dispose();
+  });
+  it('refuses a checkpoint whose native container identity no longer matches', async () => {
+    const redis = desired('redis'), original = service(redis);
+    runtime.get.mockResolvedValue(actual(redis));
+    const checkpoint = await original.prepareHandoff();
+    runtime.get.mockResolvedValue(actual(redis, { specHash: 'another-release' }));
+    await expect(InfrastructureService.adoptHandoff(logger, checkpoint)).rejects.toThrow('identity or specification changed');
+    expect(runtime.create).not.toHaveBeenCalled(); expect(runtime.remove).not.toHaveBeenCalled();
+    original.resumeAfterHandoff(); original.dispose();
+  });
+  it('refuses mismatched native ownership before retiring the existing backend', async () => {
+    const original = service(desired('redis'));
+    await expect(original.prepareHandoff()).rejects.toThrow('identity or specification changed');
+    expect(original.ownershipFrozen).toBe(false);
+    expect(runtime.create).not.toHaveBeenCalled(); expect(runtime.remove).not.toHaveBeenCalled();
+    original.dispose();
+  });
   it('releases only omitted names and never mutates Docker', async () => {
     const origin = desired('origin'), redis = desired('redis'); const svc = service(origin, redis);
     svc.state.services.origin = actual(origin);

@@ -55,6 +55,7 @@ export async function statusCommand(): Promise<void> {
       if (emitJson({
         version: status.version,
         ...(status.build !== undefined ? { build: status.build } : {}),
+        ...(status.execution !== undefined ? { execution: status.execution } : {}),
         pid: status.pid,
         uptime: status.uptime,
         memoryBytes: status.totalMemory,
@@ -74,6 +75,8 @@ export async function statusCommand(): Promise<void> {
     const headerLines = [
       `Version:    ${prism.bold(status.version)}${describeBuild(status.build)}`,
       `PID:        ${status.pid}`,
+      ...(status.execution?.owner ? [`Owner:      ${status.execution.owner.pid} · epoch ${status.execution.epoch} · ${status.execution.phase}`]
+        : status.execution ? ['Handoff:    initial owner installation requires a controlled restart'] : []),
       `Uptime:     ${formatUptime(status.uptime)}`,
       // The daemon's own memory and the apps' apart; a daemon on an older
       // build answers only the sum, and says so.

@@ -699,6 +699,8 @@ export interface IWatchConfig {
 // =============================================================================
 
 export interface IDaemonConfig {
+  /** Keep supervised applications in a resident owner while backend processes are replaced. */
+  executionHost?: { enabled: boolean; directory?: string };
   /** Operator-owned HTTP readiness for immutable classic releases lacking an app declaration. Exact qualified app names only. */
   applicationReadiness?: Record<string, import('../health/contracts.js').AppReadinessConfig>;
   /** Administrator file access. Defaults to / within daemon OS permissions; explicit roots replace it. */
@@ -1019,6 +1021,7 @@ export interface SubProcessInfoDto {
 }
 
 export interface DaemonStatusDto {
+  execution?: import('../shared/dto/backend.js').BackendRuntimeStatus;
   version: string;
   /**
    * What this daemon's `dist` was compiled from (`dist/BUILD.json`); `null`

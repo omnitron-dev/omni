@@ -4,7 +4,7 @@
 
 import { createToken } from '@omnitron-dev/titan/nexus';
 import type { Kysely } from 'kysely';
-import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
+import type { OrchestratorControl as OrchestratorService } from '../orchestrator/execution-contract.js';
 import type { LogManager } from '../monitoring/log-manager.js';
 import type { StateStore } from '../daemon/state-store.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';

@@ -32,7 +32,7 @@
 import type { IMetricsService } from '@omnitron-dev/titan-metrics';
 import type { ResetInfo } from '@omnitron-dev/titan/utils';
 import type { JanitorSweepMetrics } from '../orchestrator/process-janitor.js';
-import type { OrchestratorService } from '../orchestrator/orchestrator.service.js';
+import type { OrchestratorControl as OrchestratorService } from '../orchestrator/execution-contract.js';
 import type { AppStatus } from '../config/types.js';
 
 // All known statuses; we emit one row per (app, status) so Grafana can
@@ -46,6 +46,11 @@ const APP_STATUSES = [
   'errored',
   'crashed',
 ] as const satisfies readonly AppStatus[];
+
+/** The execution layer reports observations without depending on a registry or backend. */
+export type ExecutionMetricsSink = Pick<MetricsBridge, 'attachOrchestrator' | 'recordAppRestart' |
+  'recordAppCrash' | 'recordAppEscalated' | 'recordJanitorSweep' | 'evictApp' |
+  'recordResilientHandleReset' | 'recordEsbuildBuild'>;
 
 export class MetricsBridge {
   private readonly metrics: IMetricsService;

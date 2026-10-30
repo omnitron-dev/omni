@@ -117,6 +117,7 @@ import { combineProcessTraffic } from './app-traffic.js';
 import type { StateStore } from '../daemon/state-store.js';
 import { CLI_VERSION } from '../config/defaults.js';
 import type { Netron } from '@omnitron-dev/titan/netron';
+import { applicationBootstrapRuntime } from './application-runtime.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -413,13 +414,14 @@ export class OrchestratorService extends EventEmitter {
    * the metrics module. Null means metrics are disabled (tests, slim
    * bootstraps).
    */
-  private metricsBridge: import('../observability/metrics-bridge.js').MetricsBridge | null = null;
+  private metricsBridge: import('../observability/metrics-bridge.js').ExecutionMetricsSink | null = null;
 
   constructor(
     private readonly logger: ILogger,
     private readonly pm: ProcessManager,
     private readonly stateStore: StateStore,
-    cwd?: string
+    cwd?: string,
+    private readonly ownerOptions: { reapForeignOrphans?: boolean; applicationRuntime?: boolean } = {},
   ) {
     super();
     this.cwd = cwd ?? process.cwd();
@@ -439,12 +441,16 @@ export class OrchestratorService extends EventEmitter {
     this.logger.info({ socketPath }, 'Daemon Netron set for native topology routing');
   }
 
+  private bootstrapRuntime(bootstrap: string): string {
+    return this.ownerOptions.applicationRuntime ? applicationBootstrapRuntime(bootstrap, BOOTSTRAP_PROCESS_PATH) : BOOTSTRAP_PROCESS_PATH;
+  }
+
   /**
    * Wire the metrics bridge. Called once during daemon bootstrap.
    * After this, janitor sweeps, esbuild rebuilds, and orchestrator
    * lifecycle events are forwarded to Prometheus.
    */
-  setMetricsBridge(bridge: import('../observability/metrics-bridge.js').MetricsBridge): void {
+  setMetricsBridge(bridge: import('../observability/metrics-bridge.js').ExecutionMetricsSink): void {
     this.metricsBridge = bridge;
     bridge.attachOrchestrator(this);
     this.wireOrchestratorTelemetry();
@@ -663,6 +669,7 @@ export class OrchestratorService extends EventEmitter {
   private ensureJanitor(): ProcessJanitor {
     if (this.janitor) return this.janitor;
     this.janitor = new ProcessJanitor({
+      reapForeignOrphans: this.ownerOptions.reapForeignOrphans ?? true,
       logger: this.logger,
       getOwnedPids: () => this.collectOwnedPids(),
       onMetrics: (m) => this.metricsBridge?.recordJanitorSweep(m),
@@ -2144,7 +2151,7 @@ export class OrchestratorService extends EventEmitter {
       );
 
       // pm.pool() returns a Proxy wrapping ProcessPool — execute() dispatches to pool workers
-      const pool = await this.pm.pool(BOOTSTRAP_PROCESS_PATH, poolOptions) as unknown as
+      const pool = await this.pm.pool(this.bootstrapRuntime(bootstrapAbsPath), poolOptions) as unknown as
         ProcessPool<unknown> & { execute(method: string, ...args: unknown[]): Promise<unknown> };
       poolNames.push(procEntry.name);
 
@@ -2275,7 +2282,7 @@ export class OrchestratorService extends EventEmitter {
 
       children.push({
         name: `${entry.name}/${procEntry.name}`,
-        process: BOOTSTRAP_PROCESS_PATH,
+        process: this.bootstrapRuntime(bootstrapAbsPath),
         spawnOptions: spawnOpts,
         critical: procEntry.critical ?? entry.critical ?? false,
       });
@@ -2471,7 +2478,7 @@ export class OrchestratorService extends EventEmitter {
 
     const childConfig: ISupervisorChildConfig = {
       name: entry.name,
-      process: BOOTSTRAP_PROCESS_PATH,
+      process: this.bootstrapRuntime(bootstrapAbsPath),
       spawnOptions: spawnOpts,
       critical: entry.critical ?? false,
     };

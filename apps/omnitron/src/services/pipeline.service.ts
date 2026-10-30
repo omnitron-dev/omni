@@ -105,6 +105,7 @@ export class PipelineOutput {
 }
 
 export class PipelineService {
+  activeRunCount(): number { return this.activeRuns.size; }
   private readonly activeRuns = new Map<string, ActiveRun>();
   private initialization?: Promise<void>;
   private stopped = false;

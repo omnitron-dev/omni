@@ -31,6 +31,7 @@ import { STATUS_COLORS, LEVEL_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { countedTraffic, daemonNameFor, latencyCaption, measuredProcess, requestsCaption } from 'src/utils/app-address';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
+import { AppHealth } from 'src/components/app-health';
 
 import type {
   ProcessInfoDto,
@@ -1003,6 +1004,7 @@ export default function AppDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [tab, setTab] = useState(0);
+  const [healthRefresh, setHealthRefresh] = useState(0);
 
   const fetchApp = useCallback(async () => {
     if (!daemonName) return;
@@ -1056,6 +1058,7 @@ export default function AppDetailPage() {
       } else await daemon.restartApp({ name: daemonName });
       await fetchApp();
       await fetchDiagnostics();
+      setHealthRefresh(value => value + 1);
     } catch (err: any) {
       setError(`Failed to ${action} "${name}": ${err?.message ?? 'Unknown error'}`);
     } finally {
@@ -1099,7 +1102,7 @@ export default function AppDetailPage() {
                   </Button></Can>
                 </>
               )}
-              <IconButton onClick={() => { fetchApp(); fetchDiagnostics(); }} size="small" title="Refresh">
+              <IconButton onClick={() => { fetchApp(); fetchDiagnostics(); setHealthRefresh(value => value + 1); }} size="small" title="Refresh">
                 <RefreshIcon />
               </IconButton>
             </Stack>
@@ -1131,7 +1134,10 @@ export default function AppDetailPage() {
           </Tabs>
 
           <TabPanel value={tab} index={0}>
-            <OverviewTab app={app} diagnostics={diagnostics} diagLoading={diagLoading} />
+            <Stack spacing={2}>
+              <AppHealth key={app.name} appName={app.name} refreshToken={healthRefresh} onLogs={() => setTab(1)} />
+              <OverviewTab app={app} diagnostics={diagnostics} diagLoading={diagLoading} />
+            </Stack>
           </TabPanel>
           {/* The handle the daemon answered with, not the URL's name: an older
               link says `main`, and every log and metric is keyed by the handle. */}

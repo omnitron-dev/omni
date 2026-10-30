@@ -59,7 +59,7 @@ import { EventLoopWatch } from '../monitoring/event-loop-watch.js';
 import { EventLoopStallIndicator } from '../monitoring/event-loop-stall.indicator.js';
 import { runtimeDiagnostics } from '../monitoring/runtime-diagnostics.js';
 import { registerDaemonJobs } from './daemon-scheduler.js';
-import { METRICS_SERVICE_TOKEN as TITAN_METRICS_TOKEN, METRICS_STORAGE_TOKEN, type IMetricsService, PostgresMetricsStorage } from '@omnitron-dev/titan-metrics';
+import { METRICS_SERVICE_TOKEN as TITAN_METRICS_TOKEN, METRICS_STORAGE_TOKEN, type IMetricsService, PostgresMetricsStorage, parseMaxAge } from '@omnitron-dev/titan-metrics';
 import type { LogManager } from '../monitoring/log-manager.js';
 import type { StateStore } from './state-store.js';
 import type { AuthService } from '../services/auth.service.js';
@@ -1114,7 +1114,7 @@ export class OmnitronDaemon {
       const syncMetrics = await container.resolveAsync<IMetricsService>(TITAN_METRICS_TOKEN);
       const storage = await container.resolveAsync(METRICS_STORAGE_TOKEN);
       if (!(storage instanceof PostgresMetricsStorage)) throw new Error('Master replication requires PostgreSQL metrics storage');
-      this.syncService.setMetricsStorage(storage);
+      this.syncService.setMetricsStorage(storage, parseMaxAge(config.monitoring.metrics.historyMaxAge ?? '7d'));
       this.syncService.setMetricsSink((sample) => {
         try {
           // The transaction already persisted this sample; update exposition only.

@@ -15,6 +15,7 @@ import type { SyncService, SyncBatch, IngestBatchResult } from './sync.service.j
 export type { SyncBatch };
 import type { ISyncStatus } from '../shared/dto/project.js';
 import type { ReplicationReceipt } from './replication-evidence.js';
+import type { ReconciliationProof } from './replication-reconciliation.js';
 
 @Service({ name: 'OmnitronSync' })
 export class SyncRpcService {
@@ -59,6 +60,18 @@ export class SyncRpcService {
   @Public({ auth: { roles: ['admin', 'operator', 'service_role'] } })
   async ackDrained(data: { ids: string[]; receipt?: ReplicationReceipt }): Promise<{ released: number }> {
     return this.syncService.ackDrained(data?.ids ?? [], data?.receipt);
+  }
+
+  /** Administrative recovery reads only released, retained metrics, in bounded pages. */
+  @Public({ auth: { roles: ['admin', 'service_role'] } })
+  readUnverifiedMetrics(data?: { after?: string; through?: string; epoch?: string; limit?: number }) {
+    return this.syncService.readUnverifiedMetrics(data);
+  }
+
+  /** A separate, payload-bound proof settles history without rewriting the original receipt. */
+  @Public({ auth: { roles: ['admin', 'service_role'] } })
+  acknowledgeReconciliation(data: { proofs: ReconciliationProof[] }) {
+    return this.syncService.acknowledgeReconciliation(data.proofs);
   }
 
   /**

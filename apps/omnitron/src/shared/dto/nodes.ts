@@ -406,3 +406,25 @@ export interface NodeUpgradeProgress {
    */
   readonly position?: number;
 }
+/** One bounded historical metrics inspection/repair; reuse the cursor after success. */
+export interface INodeReconciliationRequest {
+  nodeId: string;
+  restore?: boolean;
+  after?: string;
+  through?: string;
+  epoch?: string;
+}
+
+export interface INodeReconciliationResult {
+  nodeId: string;
+  epoch: string;
+  through: string;
+  next: string | null;
+  examined: number;
+  present: number;
+  missing: number;
+  alreadyReconciled: number;
+  reconciled: number;
+  unresolvedSourceRows: number;
+  restored: boolean;
+}

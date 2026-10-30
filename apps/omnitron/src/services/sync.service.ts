@@ -14,8 +14,7 @@
  */
 
 import type { Insertable, Kysely, Transaction } from 'kysely';
-import { createHash } from 'node:crypto';
-import { prepareMetricSample, type MetricSample, type PostgresMetricsStorage } from '@omnitron-dev/titan-metrics';
+import { type MetricSample, type PostgresMetricsStorage } from '@omnitron-dev/titan-metrics';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { OmnitronDatabase } from '../database/schema.js';
 import type { ISyncConfig, DaemonRole } from '../config/types.js';
@@ -23,6 +22,8 @@ import type { ISyncStatus } from '../shared/dto/project.js';
 import { toIsoUtc } from '../database/sqlite-date-binding.js';
 import { describeError } from '../shared/describe-error.js';
 import { readReplicationEvidence, receiptGroups, type ReplicationReceipt } from './replication-evidence.js';
+import { acknowledgeReconciliation, readUnverifiedMetrics, reconcileMetricPage, reconciliationSummaries, reconciledMetricIds, replicatedMetric,
+  type ReconciliationPage, type ReconciliationProof } from './replication-reconciliation.js';
 import {
   classifyIngestFailure,
   deliveredIds,
@@ -236,6 +237,7 @@ interface ResolvedSyncConfig {
 
 export class SyncService {
   private metricsStorage: PostgresMetricsStorage<OmnitronDatabase> | null = null;
+  private metricsHistoryMaxAgeMs = 7 * 86400_000;
   /** Set on a master; see `setMetricsSink`. */
   private metricsSink: MetricsSink | null = null;
 
@@ -395,8 +397,27 @@ export class SyncService {
   }
 
   /** Required for metric ingestion. The adapter writes inside the receipt transaction. */
-  setMetricsStorage(storage: PostgresMetricsStorage<OmnitronDatabase>): void {
+  setMetricsStorage(storage: PostgresMetricsStorage<OmnitronDatabase>, historyMaxAgeMs = 7 * 86400_000): void {
+    if (!Number.isSafeInteger(historyMaxAgeMs) || historyMaxAgeMs < 1) throw new Error('Invalid metrics history horizon');
     this.metricsStorage = storage;
+    this.metricsHistoryMaxAgeMs = historyMaxAgeMs;
+  }
+
+  getReconciliationSummaries() { return reconciliationSummaries(this.db as Kysely<unknown>); }
+
+  readUnverifiedMetrics(options?: Parameters<typeof readUnverifiedMetrics>[2]) {
+    if (this.role !== 'slave') throw new Error('Only a node owns retained replication entries');
+    return readUnverifiedMetrics(this.db as Kysely<unknown>, this.nodeId, options);
+  }
+
+  reconcileMetrics(page: ReconciliationPage, restore: boolean) {
+    if (this.role !== 'master' || !this.metricsStorage) throw new Error('Reconciliation requires a master with persistent metrics');
+    return reconcileMetricPage(this.db, this.metricsStorage, page, { restore, maxAgeMs: this.metricsHistoryMaxAgeMs });
+  }
+
+  acknowledgeReconciliation(proofs: ReconciliationProof[]) {
+    if (this.role !== 'slave') throw new Error('Only a node can settle its replication evidence');
+    return acknowledgeReconciliation(this.db as Kysely<unknown>, this.nodeId, proofs);
   }
 
   /**
@@ -1005,11 +1026,13 @@ export class SyncService {
     const receipts = released.length ? await this.db.selectFrom('sync_ingested').select(['entryId', 'outcome'])
       .where('nodeId', '=', batch.nodeId).where('entryId', 'in', released).execute() : [];
     const discarded = new Set(receipts.filter(row => row.outcome === 'discarded').map(row => row.entryId));
+    const unverified = new Set(receipts.filter(row => row.outcome === 'unverified').map(row => row.entryId));
+    const reconciled = await reconciledMetricIds(this.db as Kysely<unknown>, batch.nodeId, batch.entries.filter(entry => unverified.has(entry.id)));
     const acceptedIds = outcome.accepted.filter(id => !discarded.has(id));
     const duplicateIds = outcome.duplicates.filter(id => !discarded.has(id));
     return {
       receiptVersion: 1,
-      committedIds: receipts.filter(row => row.outcome === 'committed').map(row => row.entryId),
+      committedIds: [...receipts.filter(row => row.outcome === 'committed').map(row => row.entryId), ...reconciled],
       // Kept as a number for the existing RPC contract; the id lists are
       // what the slave needs to know which entries it may release.
       accepted: acceptedIds.length,
@@ -1266,17 +1289,7 @@ export class SyncService {
 
   private metricSample(nodeId: string, entry: IngestEntry): MetricSample {
     try {
-      const labels = entry.payload['labels'] ?? {};
-      if (typeof labels !== 'object' || labels === null || Array.isArray(labels)) throw new TypeError('Invalid metric labels');
-      const timestamp = entry.payload['timestamp'] ?? entry.createdAt;
-      return prepareMetricSample({
-        id: `replicated:${createHash('sha256').update(JSON.stringify([nodeId, entry.id])).digest('hex')}`,
-        name: entry.payload['name'] as string,
-        value: entry.payload['value'] as number,
-        timestamp: typeof timestamp === 'number' ? timestamp : Date.parse(String(timestamp)),
-        labels: { ...labels as Record<string, string>,
-          ...entry.payload['app'] !== undefined ? { app: entry.payload['app'] as string } : {}, node: nodeId },
-      });
+      return replicatedMetric(nodeId, entry);
     } catch (cause) {
       // Malformed telemetry is a permanent refusal; database/network failures are retryable.
       throw Object.assign(new Error(`Invalid replicated metric: ${describeError(cause)}`), { code: '22023' });
@@ -1461,11 +1474,16 @@ export class SyncService {
     let oldestPendingAgeMs: number | null = null;
     let lastSyncAt = this.lastSyncAt;
     let tracked: Awaited<ReturnType<typeof readReplicationEvidence>> | null = null;
+    let reconciliationError: string | undefined;
 
     if (this.role === 'slave') {
       tracked = await this.replicationEvidence();
       if (tracked) {
         ({ pendingItems, bufferSize, oldestPendingAgeMs, lastSyncAt } = tracked);
+        try {
+          const reconciled = (await this.getReconciliationSummaries()).find(r => r.nodeId === this.nodeId && r.epoch === tracked!.evidence.epoch);
+          if (reconciled) tracked.evidence.reconciliation = { ...reconciled, scope: 'source' };
+        } catch (error) { reconciliationError = describeError(error); }
       } else {
         const { sql } = await import('kysely');
         const result = await this.db.selectFrom('sync_buffer').select(eb => [
@@ -1485,6 +1503,7 @@ export class SyncService {
       deliveryRatePerSecond: this.deliveryRate(Date.now()),
       bufferSize, bufferSizeAccuracy: 'measured',
       ...(tracked && { evidence: tracked.evidence, retainedBufferSize: tracked.retainedBufferSize }),
+      ...(reconciliationError && { reconciliationError }),
       lastError: this.lastError,
       failedAttempts: this.backoff.attempt,
     };

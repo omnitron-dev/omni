@@ -1132,6 +1132,17 @@ k8sDeploy
 
 const node = program.command('node').description('Manage infrastructure nodes (machines)');
 
+node.command('reconcile <node>').description('Inspect historical metric receipts; explicitly restore missing retained payloads')
+  .option('--restore', 'Restore missing samples and settle source evidence after the database commits')
+  .option('--pages <count>', 'Maximum pages of 256 entries', '1')
+  .option('--after <sequence>', 'Resume after this source sequence')
+  .option('--through <sequence>', 'Fixed source frontier returned by a previous page')
+  .option('--epoch <id>', 'Require the buffer epoch returned by a previous page')
+  .action(async (name: string, options) => {
+    const { nodeReconcileCommand } = await import('../commands/node-reconcile.js');
+    await nodeReconcileCommand(name, options);
+  });
+
 node
   .command('list')
   .alias('ls')

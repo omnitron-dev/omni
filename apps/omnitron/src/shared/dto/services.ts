@@ -631,6 +631,7 @@ export interface IOmnitronNodesService {
    * it". A node can pass every reachability check and deliver nothing.
    */
   getMeshStatus(): Promise<IMeshNodeStatus[]>;
+  reconcileNodeMetrics(data: import('./nodes.js').INodeReconciliationRequest): Promise<import('./nodes.js').INodeReconciliationResult>;
   /**
    * The node's OWN titan-health report, asked over the mesh.
    *

@@ -186,6 +186,8 @@ export interface ReplicationEvidence {
   evictedRows: number;
   lastCommittedAt: number | null;
   lastLossAt: number | null;
+  /** Later verification/restoration, distinct from the original delivery acknowledgement. */
+  reconciliation?: { verifiedRows: number; restoredRows: number; lastReconciledAt: string | null; scope: 'source' | 'master' };
 }
 
 export interface ISyncStatus {
@@ -221,6 +223,8 @@ export interface ISyncStatus {
   retainedBufferSize?: number;
   /** Durable receipts and explicit gaps; absent on peers without evidence tracking. */
   evidence?: ReplicationEvidence;
+  /** A failed reconciliation-history read must not disappear behind healthy transport. */
+  reconciliationError?: string;
   /**
    * Last sync error. ALWAYS NULL today: written only by `noteSyncFailure()`,
    * which belongs to the push cycle that has no caller.

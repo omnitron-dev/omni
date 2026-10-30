@@ -35,6 +35,9 @@ import type { FleetHistoryConfig, IMeshNodeStatus, INodeIndicators, INodeSyncSta
   INodeUpgradePlan, INodeRolloutStart } from '../shared/dto/nodes.js';
 import type { DaemonStatusDto, AggregatedHealthDto, AggregatedMetricsDto } from '../config/types.js';
 import type { ISyncStatus } from '../shared/dto/project.js';
+import type { SyncService } from './sync.service.js';
+import type { ReconciliationPage } from './replication-reconciliation.js';
+import type { INodeReconciliationRequest, INodeReconciliationResult } from '../shared/dto/nodes.js';
 import type { INodeHealthSummary } from '../workers/types.js';
 import type { NodeHealthRepository, HealthCheckRow, UptimeBucket } from './node-health.repository.js';
 
@@ -77,7 +80,7 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
 
   private titanHealth: { check(): Promise<{ status: string; indicators: Record<string, unknown> }> } | null = null;
 
-  private syncService: { getStatus(): Promise<ISyncStatus> } | null = null;
+  private syncService: (Pick<SyncService, 'getStatus'> & Partial<Pick<SyncService, 'reconcileMetrics' | 'getReconciliationSummaries'>>) | null = null;
 
   private telemetryRelay: { stats(): unknown } | null = null;
 
@@ -534,7 +537,7 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   }
 
   /** This daemon's own replication state, for the local node. */
-  setSyncService(service: { getStatus(): Promise<ISyncStatus> } | null): void {
+  setSyncService(service: NonNullable<NodeManagerRpcService['syncService']> | null): void {
     this.syncService = service;
   }
 
@@ -698,9 +701,14 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
       [],
       this.syncService ? () => this.syncService!.getStatus() : null,
     );
-    return r.ok
-      ? { nodeId: data.nodeId, reachable: true, error: null, sync: r.value }
-      : { nodeId: data.nodeId, reachable: false, error: r.error, sync: null };
+    if (!r.ok) return { nodeId: data.nodeId, reachable: false, error: r.error, sync: null };
+    const sync = { ...r.value };
+    try {
+      const summary = (await this.syncService?.getReconciliationSummaries?.() ?? [])
+        .find(row => row.nodeId === data.nodeId && row.epoch === sync.evidence?.epoch);
+      if (summary && sync.evidence) sync.evidence = { ...sync.evidence, reconciliation: { ...summary, scope: 'master' } };
+    } catch (error) { sync.reconciliationError = (error as Error).message; }
+    return { nodeId: data.nodeId, reachable: true, error: null, sync };
   }
 
 /**
@@ -776,9 +784,19 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   async getMeshStatus(): Promise<IMeshNodeStatus[]> {
     const connections = this.slaveConnector?.getConnections() ?? [];
     const byAddress = new Map(connections.map((c) => [`${c.host}:${c.port}`, c]));
+    let summaries: Awaited<ReturnType<SyncService['getReconciliationSummaries']>> = [];
+    let reconciliationError: string | undefined;
+    try { summaries = await this.syncService?.getReconciliationSummaries?.() ?? []; }
+    catch (error) { reconciliationError = (error as Error).message; }
 
     return this.nodeManager.listNodes().map((node) => {
       const conn = byAddress.get(`${node.host}:${node.daemonPort}`);
+      const reconciled = summaries.find(r => r.nodeId === node.id && r.epoch === conn?.syncStatus?.evidence?.epoch);
+      const syncStatus = conn?.syncStatus ? { ...conn.syncStatus,
+        ...(reconciliationError && { reconciliationError }),
+        ...(reconciled && conn.syncStatus.evidence && { evidence: { ...conn.syncStatus.evidence,
+          reconciliation: { ...reconciled, scope: 'master' as const } } }),
+      } : null;
       return {
         nodeId: node.id,
         inMesh: Boolean(conn),
@@ -790,7 +808,7 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
         reconnectAt: conn?.reconnectAt ?? null,
         reconnectAttempt: conn?.reconnectAttempt ?? 0,
         cleanupError: conn?.cleanupError ?? null,
-        syncStatus: conn?.syncStatus ?? null,
+        syncStatus,
         syncStatusAt: conn?.syncStatusAt ?? null,
         lastSyncStatusError: conn?.lastSyncStatusError ?? null,
         credentialExpiresAt: conn?.credentialExpiresAt ?? null,
@@ -800,6 +818,40 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
         lastPullAt: conn?.lastPullAt ?? null,
       };
     });
+  }
+
+  /** Inspection is the default; restore and source acknowledgement require an administrator. */
+  @Public({ auth: { roles: ['admin'] } })
+  async reconcileNodeMetrics(data: INodeReconciliationRequest): Promise<INodeReconciliationResult> {
+    if (!this.syncService?.reconcileMetrics) throw new Error('Persistent replication reconciliation is unavailable');
+    if (data.restore !== undefined && typeof data.restore !== 'boolean') throw new Error('restore must be boolean');
+    const read = await this.askNode<ReconciliationPage>(data.nodeId, 'OmnitronSync', 'readUnverifiedMetrics',
+      [{ after: data.after, through: data.through, epoch: data.epoch }], null);
+    if (!read.ok) {
+      // Older nodes can still prove that no unverified history remains. Any
+      // actual repair needs the bounded protocol or a reviewed maintenance worker.
+      const status = await this.getNodeSyncStatus({ nodeId: data.nodeId });
+      const evidence = status.sync?.evidence;
+      if (status.reachable && evidence?.unverifiedRows === 0 && (!data.epoch || data.epoch === evidence.epoch)) {
+        return { nodeId: data.nodeId, epoch: evidence.epoch, through: evidence.producedThrough, next: null,
+          examined: 0, present: 0, missing: 0, alreadyReconciled: 0, reconciled: 0, unresolvedSourceRows: 0, restored: data.restore === true };
+      }
+      throw new Error(`Cannot inspect retained node metrics: ${read.error}. Update the node protocol or use a reviewed maintenance worker; evidence was not changed.`);
+    }
+    const page = read.value;
+    if (page.nodeId !== data.nodeId) throw new Error('Reconciliation node identity does not match the registry');
+    const result = await this.syncService.reconcileMetrics(page, data.restore === true);
+    let reconciled = 0;
+    if (data.restore && result.proofs.length) {
+      const ack = await this.askNode<{ reconciled: number }>(data.nodeId, 'OmnitronSync', 'acknowledgeReconciliation', [{ proofs: result.proofs }], null);
+      if (!ack.ok) throw new Error(`Database repair committed; source acknowledgement failed. Retry the same cursor: ${ack.error}`);
+      reconciled = ack.value.reconciled;
+      await this.audit?.record({ action: 'node.replication.reconcile', resourceType: 'node', resourceId: data.nodeId,
+        details: { epoch: page.epoch, examined: page.entries.length, present: result.present, restored: result.missing, reconciled } });
+    }
+    return { nodeId: data.nodeId, epoch: page.epoch, through: page.through, next: page.next,
+      examined: page.entries.length, present: result.present, missing: result.missing, alreadyReconciled: result.alreadyReconciled,
+      reconciled, unresolvedSourceRows: Math.max(0, page.unverifiedRows - reconciled), restored: data.restore === true };
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })

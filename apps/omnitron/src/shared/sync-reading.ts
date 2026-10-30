@@ -9,12 +9,13 @@ type PendingFinding = { readonly pending: number; readonly lastPullMs: number | 
 type QueueFinding =
   | { readonly state: 'synced' }
   | (PendingFinding & { readonly state: 'pulling' | 'catching-up' | 'behind' | 'unknown' });
-export type SyncFinding = QueueFinding & { readonly evidence?: ReplicationEvidence };
+export type SyncFinding = QueueFinding & { readonly evidence?: ReplicationEvidence; readonly reconciliationError?: string };
 
-type SyncEvidence = Pick<ISyncStatus, 'pendingItems' | 'lastSyncAt' | 'lastSyncAgeMs' | 'oldestPendingAgeMs' | 'evidence'>;
+type SyncEvidence = Pick<ISyncStatus, 'pendingItems' | 'lastSyncAt' | 'lastSyncAgeMs' | 'oldestPendingAgeMs' | 'evidence' | 'reconciliationError'>;
 
 export function syncFinding(status: SyncEvidence, now: number = Date.now()): SyncFinding {
-  return { ...queueFinding(status, now), ...(status.evidence && { evidence: status.evidence }) };
+  return { ...queueFinding(status, now), ...(status.evidence && { evidence: status.evidence }),
+    ...(status.reconciliationError && { reconciliationError: status.reconciliationError }) };
 }
 
 function queueFinding(status: SyncEvidence, now: number): QueueFinding {
@@ -33,7 +34,7 @@ function queueFinding(status: SyncEvidence, now: number): QueueFinding {
 /** Only verified empty or young queues count as keeping up. */
 export const inSync = (finding: SyncFinding): boolean => finding.state === 'synced' || finding.state === 'pulling';
 export const syncSeverity = (finding: SyncFinding): 'success' | 'info' | 'warning' =>
-  finding.evidence && finding.evidence.discardedRows + finding.evidence.evictedRows > 0 ? 'warning'
+  finding.reconciliationError || (finding.evidence && finding.evidence.discardedRows + finding.evidence.evictedRows > 0) ? 'warning'
     : finding.state === 'behind' ? 'warning' : finding.evidence?.unverifiedRows ? 'info' : inSync(finding) ? 'success' : 'info';
 
 export function syncWords(finding: SyncFinding): string {
@@ -43,7 +44,11 @@ export function syncWords(finding: SyncFinding): string {
     if (discardedRows) words.push(`${discardedRows} rejected permanently`);
     if (evictedRows) words.push(`${evictedRows} lost to buffer limits`);
     if (unverifiedRows) words.push(`${unverifiedRows} receipts without durable payload proof`);
+    const reconciled = finding.evidence.reconciliation;
+    if (reconciled?.verifiedRows) words.push(`${reconciled.verifiedRows} historical payloads verified in database`);
+    if (reconciled?.restoredRows) words.push(`${reconciled.restoredRows} historical payloads restored on master`);
   }
+  if (finding.reconciliationError) words.push(`Reconciliation history unavailable: ${finding.reconciliationError}`);
   return words.join(' · ');
 }
 

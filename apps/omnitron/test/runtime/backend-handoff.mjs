@@ -31,6 +31,11 @@ if (master) {
   assert.ok(['127.0.0.1', 'localhost'].includes(testUrl.hostname) && testUrl.username === 'test' && testUrl.pathname === '/test' && testUrl.port !== '5480', 'Use a dedicated loopback PostgreSQL test database and test account');
   const { Pool } = createRequire(import.meta.url)('pg');
   databaseAdmin = new Pool({ connectionString: testUrl.href, connectionTimeoutMillis: 5000 });
+  const {rows: [durability]} = await databaseAdmin.query("SELECT current_setting('fsync') AS fsync, current_setting('full_page_writes') AS full_page_writes, current_setting('synchronous_commit') AS synchronous_commit");
+  if (Object.values(durability).some(value => value !== 'on')) {
+    await databaseAdmin.end();
+    throw new Error('Use a durable test PostgreSQL: fsync, full_page_writes and synchronous_commit must all be on');
+  }
   databaseName = `handoff_test_${randomUUID().replaceAll('-', '')}`;
   await databaseAdmin.query(`CREATE DATABASE "${databaseName}"`);
   testUrl.pathname = `/${databaseName}`; databaseUrl = testUrl.href;

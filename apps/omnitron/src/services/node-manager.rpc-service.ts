@@ -80,7 +80,7 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
 
   private titanHealth: { check(): Promise<{ status: string; indicators: Record<string, unknown> }> } | null = null;
 
-  private syncService: (Pick<SyncService, 'getStatus'> & Partial<Pick<SyncService, 'reconcileMetrics' | 'getReconciliationSummaries'>>) | null = null;
+  private syncService: (Pick<SyncService, 'getStatus'> & Partial<Pick<SyncService, 'reconcileMetrics' | 'getReconciliationSummaries' | 'getHistoryCoverage'>>) | null = null;
 
   private telemetryRelay: { stats(): unknown } | null = null;
 
@@ -707,6 +707,7 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
       const summary = (await this.syncService?.getReconciliationSummaries?.() ?? [])
         .find(row => row.nodeId === data.nodeId && row.epoch === sync.evidence?.epoch);
       if (summary && sync.evidence) sync.evidence = { ...sync.evidence, reconciliation: { ...summary, scope: 'master' } };
+      sync.history = (await this.syncService?.getHistoryCoverage?.() ?? []).filter(row => row.nodeId === data.nodeId);
     } catch (error) { sync.reconciliationError = (error as Error).message; }
     return { nodeId: data.nodeId, reachable: true, error: null, sync };
   }
@@ -785,14 +786,19 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
     const connections = this.slaveConnector?.getConnections() ?? [];
     const byAddress = new Map(connections.map((c) => [`${c.host}:${c.port}`, c]));
     let summaries: Awaited<ReturnType<SyncService['getReconciliationSummaries']>> = [];
+    let history: Awaited<ReturnType<SyncService['getHistoryCoverage']>> = [];
     let reconciliationError: string | undefined;
-    try { summaries = await this.syncService?.getReconciliationSummaries?.() ?? []; }
+    try {
+      summaries = await this.syncService?.getReconciliationSummaries?.() ?? [];
+      history = await this.syncService?.getHistoryCoverage?.() ?? [];
+    }
     catch (error) { reconciliationError = (error as Error).message; }
 
     return this.nodeManager.listNodes().map((node) => {
       const conn = byAddress.get(`${node.host}:${node.daemonPort}`);
       const reconciled = summaries.find(r => r.nodeId === node.id && r.epoch === conn?.syncStatus?.evidence?.epoch);
       const syncStatus = conn?.syncStatus ? { ...conn.syncStatus,
+        history: history.filter(row => row.nodeId === node.id),
         ...(reconciliationError && { reconciliationError }),
         ...(reconciled && conn.syncStatus.evidence && { evidence: { ...conn.syncStatus.evidence,
           reconciliation: { ...reconciled, scope: 'master' as const } } }),

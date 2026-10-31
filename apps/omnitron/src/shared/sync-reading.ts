@@ -9,13 +9,13 @@ type PendingFinding = { readonly pending: number; readonly lastPullMs: number | 
 type QueueFinding =
   | { readonly state: 'synced' }
   | (PendingFinding & { readonly state: 'pulling' | 'catching-up' | 'behind' | 'unknown' });
-export type SyncFinding = QueueFinding & { readonly evidence?: ReplicationEvidence; readonly reconciliationError?: string };
+export type SyncFinding = QueueFinding & { readonly evidence?: ReplicationEvidence; readonly reconciliationError?: string; readonly history?: ISyncStatus['history'] };
 
-type SyncEvidence = Pick<ISyncStatus, 'pendingItems' | 'lastSyncAt' | 'lastSyncAgeMs' | 'oldestPendingAgeMs' | 'evidence' | 'reconciliationError'>;
+type SyncEvidence = Pick<ISyncStatus, 'pendingItems' | 'lastSyncAt' | 'lastSyncAgeMs' | 'oldestPendingAgeMs' | 'evidence' | 'reconciliationError' | 'history'>;
 
 export function syncFinding(status: SyncEvidence, now: number = Date.now()): SyncFinding {
   return { ...queueFinding(status, now), ...(status.evidence && { evidence: status.evidence }),
-    ...(status.reconciliationError && { reconciliationError: status.reconciliationError }) };
+    ...(status.reconciliationError && { reconciliationError: status.reconciliationError }), ...(status.history && { history: status.history }) };
 }
 
 function queueFinding(status: SyncEvidence, now: number): QueueFinding {
@@ -49,7 +49,21 @@ export function syncWords(finding: SyncFinding): string {
     if (reconciled?.restoredRows) words.push(`${reconciled.restoredRows} historical payloads restored on master`);
   }
   if (finding.reconciliationError) words.push(`Reconciliation history unavailable: ${finding.reconciliationError}`);
+  if (finding.history?.length) {
+    const checked = finding.history.reduce((sum, row) => sum + row.processedRows, 0);
+    words.push(`${checked} retained pre-receipt rows checked${finding.history.some(row => row.status === 'partial') ? ' (audit incomplete)' : ''}`);
+    if (finding.history.some(row => row.gaps.length)) words.push('earlier history has explicit coverage gaps');
+  }
   return words.join(' · ');
+}
+
+export function historyWords(history: NonNullable<ISyncStatus['history']>[number]): string {
+  const coverage = `${history.category} before receipts: ${history.processedRows}/${history.expectedRows} retained rows checked` +
+    ` (${history.presentRows} present, ${history.restoredRows} restored, ${history.expiredRows} outside retention and kept in source archives), ${history.firstAt}–${history.lastAt}`;
+  const state = history.status === 'verified' ? `verified at ${history.verifiedAt}` : 'audit incomplete';
+  const precision = history.precision === 'millisecond' ? '; log comparison at retained millisecond precision' : '';
+  const gaps = history.gaps.map(gap => `${gap.reason}${gap.rows === null ? ' (unknown row count)' : ` (${gap.rows} rows)`}`).join('; ');
+  return `${coverage}; ${state}${precision}${gaps ? `; gaps: ${gaps}` : ''}`;
 }
 
 export function syncProgressWords(evidence: ReplicationEvidence): string {

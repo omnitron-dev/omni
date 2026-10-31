@@ -50,7 +50,7 @@ import type {
 } from '@omnitron-dev/omnitron/dto/services';
 import { verdictOf, omnitronVerdict, firstReason, clusterDisagreement, type LayerVerdict } from 'src/utils/node-diagnosis';
 import { omnitronFinding } from '@omnitron-dev/omnitron/node-check';
-import { meshReading, syncFinding, syncSeverity, syncWords, syncProgressWords } from '@omnitron-dev/omnitron/sync-reading';
+import { meshReading, syncFinding, syncSeverity, syncWords, syncProgressWords, historyWords } from '@omnitron-dev/omnitron/sync-reading';
 import { appsMemoryOf } from 'src/utils/daemon-memory';
 import { logHref } from 'src/utils/log-location';
 import { useRealtimeStore } from 'src/stores/realtime.store';
@@ -977,6 +977,18 @@ export function NodeSyncStatus({ data }: { data: INodeSyncStatus | null }) {
         >
           {s.lastError}
         </Typography>
+      )}
+      {Boolean(s.history?.length) && (
+        <Box component="details" sx={{ mt: 1, minWidth: 0, '& summary': { cursor: 'pointer', typography: 'caption', color: 'text.secondary' } }}>
+          <summary>History before receipts · coverage and gaps</summary>
+          <Stack spacing={1} sx={{ pt: 1 }}>
+            {s.history!.map(history => (
+              <Typography key={history.sourceId} variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
+                {historyWords(history)}
+              </Typography>
+            ))}
+          </Stack>
+        </Box>
       )}
     </Box>
   );

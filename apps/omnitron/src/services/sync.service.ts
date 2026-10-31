@@ -37,6 +37,7 @@ import {
   type IngestOutcome,
 } from './sync-policy.js';
 import { planRetention, batchesPerPass, type RetentionPlan } from './log-retention.js';
+import { historyCoverage } from './replication-history.js';
 
 // =============================================================================
 // Types
@@ -404,6 +405,7 @@ export class SyncService {
   }
 
   getReconciliationSummaries() { return reconciliationSummaries(this.db as Kysely<unknown>); }
+  getHistoryCoverage() { return historyCoverage(this.db as Kysely<unknown>); }
 
   readUnverifiedMetrics(options?: Parameters<typeof readUnverifiedMetrics>[2]) {
     if (this.role !== 'slave') throw new Error('Only a node owns retained replication entries');

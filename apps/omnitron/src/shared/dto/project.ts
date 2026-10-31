@@ -190,6 +190,24 @@ export interface ReplicationEvidence {
   reconciliation?: { verifiedRows: number; restoredRows: number; lastReconciledAt: string | null; scope: 'source' | 'master' };
 }
 
+/** A bounded audit of retained sources; never implies coverage before firstAt. */
+export interface HistoryCoverage {
+  sourceId: string;
+  category: 'metrics' | 'logs';
+  status: 'partial' | 'verified';
+  expectedRows: number;
+  processedRows: number;
+  presentRows: number;
+  restoredRows: number;
+  /** Missing from the live table after configured retention; source archive remains. */
+  expiredRows: number;
+  firstAt: string;
+  lastAt: string;
+  verifiedAt: string | null;
+  precision: 'original' | 'millisecond';
+  gaps: Array<{ reason: string; from: string | null; to: string | null; rows: number | null }>;
+}
+
 export interface ISyncStatus {
   /**
    * Whether the slave holds a PUSH channel to the master.
@@ -225,6 +243,8 @@ export interface ISyncStatus {
   evidence?: ReplicationEvidence;
   /** A failed reconciliation-history read must not disappear behind healthy transport. */
   reconciliationError?: string;
+  /** Earlier source coverage is independent of the current receipt frontier. */
+  history?: HistoryCoverage[];
   /**
    * Last sync error. ALWAYS NULL today: written only by `noteSyncFailure()`,
    * which belongs to the push cycle that has no caller.

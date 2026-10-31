@@ -9,7 +9,7 @@ import { log, password, table } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { requireDaemon } from './daemon-required.js';
 import type { INodeStatus, INodeWithStatus, IMeshNodeStatus } from '../shared/dto/nodes.js';
-import { meshReading, syncProgressWords } from '../shared/sync-reading.js';
+import { meshReading, syncProgressWords, historyWords } from '../shared/sync-reading.js';
 
 /**
  * Render `sshConnected`, which has three states and not two.
@@ -383,6 +383,7 @@ export async function nodeCheckCommand(id?: string): Promise<void> {
             if (reading.error) log.warn(reading.error);
             log.info(`Replication: ${reading.replication}`);
             if (mesh.syncStatus?.evidence) log.info(syncProgressWords(mesh.syncStatus.evidence));
+            for (const history of mesh.syncStatus?.history ?? []) log.info(historyWords(history));
           } else log.warn('RPC and replication: no mesh reading for this node.');
         } catch (error) { log.warn(`RPC diagnostics unavailable: ${(error as Error).message}`); }
       }

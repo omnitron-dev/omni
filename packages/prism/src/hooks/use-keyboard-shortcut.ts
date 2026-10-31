@@ -174,6 +174,7 @@ export function useKeyboardShortcut(
       if (!enabled) return;
 
       const keyEvent = e as KeyboardEvent;
+      if (keyEvent.defaultPrevented || keyEvent.isComposing) return;
 
       // Ignore if focused on input element
       if (ignoreInputs && isInputElement(keyEvent.target)) {

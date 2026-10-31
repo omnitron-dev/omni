@@ -141,3 +141,25 @@ describe('CommandPalette', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 });
+
+describe('Command palette ownership and visual order', () => {
+  it('does not execute an IME commit and follows the displayed group order', () => {
+    const actions = makeActions();
+    const mixed = [actions[0]!, actions[2]!, actions[1]!];
+    render(<CommandPalette actions={mixed} open disableShortcut />);
+    const input = screen.getByRole('combobox');
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+    expect(actions[0]!.onSelect).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(actions[1]!.onSelect).toHaveBeenCalledOnce();
+    expect(actions[2]!.onSelect).not.toHaveBeenCalled();
+  });
+  it('does not reopen on a shortcut already consumed by a child', () => {
+    render(<CommandPalette actions={makeActions()} />);
+    const event = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, cancelable: true });
+    event.preventDefault();
+    fireEvent(window, event);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});

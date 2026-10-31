@@ -366,13 +366,9 @@ export function Table<T>({
                     key={key}
                     hover
                     selected={isSelected}
-                    tabIndex={onRowClick ? 0 : undefined}
+                    tabIndex={onRowClick || selectable ? -1 : undefined}
                     onKeyDown={(event) => {
-                      if (
-                        event.target === event.currentTarget &&
-                        onRowClick &&
-                        (event.key === 'Enter' || event.key === ' ')
-                      ) {
+                      if (event.target === event.currentTarget && onRowClick && event.key === 'Enter') {
                         event.preventDefault();
                         onRowClick(row, index);
                       }

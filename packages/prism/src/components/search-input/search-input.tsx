@@ -131,6 +131,7 @@ export function SearchInput({
 
   return (
     <InputBase
+      data-keyboard-search
       ref={ref}
       fullWidth={fullWidth}
       placeholder={placeholder}

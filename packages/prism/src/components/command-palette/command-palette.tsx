@@ -26,14 +26,7 @@
  * />
  * ```
  */
-import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useId, useRef, useState } from 'react';
 import Dialog from '@mui/material/Dialog';
 import DialogContent from '@mui/material/DialogContent';
 import TextField from '@mui/material/TextField';
@@ -76,6 +69,8 @@ export interface CommandPaletteProps {
   open?: boolean;
   /** Open-state setter for the controlled mode. */
   onOpenChange?: (open: boolean) => void;
+  /** Runs after the modal releases focus; useful for commands that focus another control. */
+  onClosed?: () => void;
   /**
    * Global keyboard shortcut to open. Default `'k'` (paired with the
    * platform meta key — ⌘ on macOS, Ctrl elsewhere).
@@ -93,6 +88,7 @@ export function CommandPalette({
   actions,
   open: controlledOpen,
   onOpenChange,
+  onClosed,
   triggerKey = 'k',
   disableShortcut = false,
   placeholder = 'Type a command or search…',
@@ -105,19 +101,19 @@ export function CommandPalette({
       if (controlledOpen === undefined) setInternalOpen(next);
       onOpenChange?.(next);
     },
-    [controlledOpen, onOpenChange],
+    [controlledOpen, onOpenChange]
   );
 
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const listId = useId();
 
-  // Global shortcut. We listen on `keydown` capture-phase so editors
-  // (TipTap, Monaco, etc.) can preventDefault before us if they need
-  // the same key for something — they own focus, so they get priority.
+  // Bubble after the focused control. An editor can reserve its own shortcut.
   useEffect(() => {
     if (disableShortcut) return undefined;
     const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing || e.repeat) return;
       const meta = e.metaKey || e.ctrlKey;
       if (meta && e.key.toLowerCase() === triggerKey.toLowerCase() && !e.altKey && !e.shiftKey) {
         e.preventDefault();
@@ -141,7 +137,10 @@ export function CommandPalette({
     return undefined;
   }, [open]);
 
-  const filtered = useMemo(() => filterActions(actions, query), [actions, query]);
+  const filtered = useMemo(
+    () => groupActions(filterActions(actions, query)).flatMap((group) => group.items.map((item) => item.action)),
+    [actions, query]
+  );
 
   // Re-clamp the highlight when filtering changes.
   useEffect(() => {
@@ -160,11 +159,12 @@ export function CommandPalette({
         // crash the palette host.
       }
     },
-    [setOpen],
+    [setOpen]
   );
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (e.nativeEvent.isComposing) return;
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setHighlight((h) => (filtered.length === 0 ? 0 : (h + 1) % filtered.length));
@@ -180,7 +180,7 @@ export function CommandPalette({
         setOpen(false);
       }
     },
-    [filtered, highlight, runAction, setOpen],
+    [filtered, highlight, runAction, setOpen]
   );
 
   // Group rows for rendering. Within each group we record the absolute
@@ -190,11 +190,13 @@ export function CommandPalette({
 
   return (
     <Dialog
+      aria-label="Command palette"
       open={open}
       onClose={() => setOpen(false)}
       fullWidth
       maxWidth="sm"
       slotProps={{
+        transition: { onExited: onClosed },
         paper: {
           sx: { borderRadius: 2, mt: '10vh', alignSelf: 'flex-start' },
         },
@@ -224,11 +226,22 @@ export function CommandPalette({
                   </InputAdornment>
                 ),
               },
+              htmlInput: {
+                role: 'combobox',
+                'aria-label': placeholder,
+                'aria-autocomplete': 'list',
+                'aria-expanded': open,
+                'aria-controls': listId,
+                'aria-activedescendant': filtered[highlight] ? `${listId}-${filtered[highlight]!.id}` : undefined,
+              },
             }}
           />
         </Box>
         <Divider />
         <Box
+          id={listId}
+          role="listbox"
+          aria-label="Commands"
           sx={{
             maxHeight: 360,
             overflowY: 'auto',
@@ -237,9 +250,12 @@ export function CommandPalette({
         >
           {filtered.length === 0 ? (
             <Box sx={{ p: 3, textAlign: 'center' }}>
-              <Typography variant="body2" sx={{
-                color: "text.secondary"
-              }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: 'text.secondary',
+                }}
+              >
                 {emptyMessage}
               </Typography>
             </Box>
@@ -250,19 +266,21 @@ export function CommandPalette({
                   <Typography
                     variant="caption"
                     sx={{
-                      color: "text.secondary",
+                      color: 'text.secondary',
                       px: 2,
                       py: 0.75,
                       display: 'block',
                       textTransform: 'uppercase',
-                      letterSpacing: 0.5
-                    }}>
+                      letterSpacing: 0.5,
+                    }}
+                  >
                     {g.label}
                   </Typography>
                 ) : null}
                 {g.items.map((entry) => (
                   <Row
                     key={entry.action.id}
+                    id={`${listId}-${entry.action.id}`}
                     action={entry.action}
                     selected={entry.flatIndex === highlight}
                     onSelect={() => void runAction(entry.action)}
@@ -279,11 +297,13 @@ export function CommandPalette({
 }
 
 function Row({
+  id,
   action,
   selected,
   onSelect,
   onHover,
 }: {
+  id: string;
   action: CommandAction;
   selected: boolean;
   onSelect: () => void;
@@ -300,6 +320,10 @@ function Row({
 
   return (
     <Box
+      id={id}
+      role="option"
+      aria-selected={selected}
+      aria-disabled={action.disabled || undefined}
       ref={ref}
       onMouseEnter={onHover}
       onClick={onSelect}
@@ -313,28 +337,32 @@ function Row({
         opacity: action.disabled ? 0.5 : 1,
         bgcolor: selected ? alpha(theme.palette.primary.main, 0.12) : 'transparent',
         '&:hover': {
-          bgcolor: selected
-            ? alpha(theme.palette.primary.main, 0.16)
-            : alpha(theme.palette.action.hover, 1),
+          bgcolor: selected ? alpha(theme.palette.primary.main, 0.16) : alpha(theme.palette.action.hover, 1),
         },
       })}
     >
       {action.icon ? (
-        <Box sx={{ display: 'flex', alignItems: 'center', width: 20, opacity: 0.8 }}>
-          {action.icon}
-        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', width: 20, opacity: 0.8 }}>{action.icon}</Box>
       ) : null}
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Stack direction="row" spacing={1} sx={{
-          alignItems: "baseline"
-        }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{
+            alignItems: 'baseline',
+          }}
+        >
           <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
             {action.title}
           </Typography>
           {action.subtitle ? (
-            <Typography variant="caption" noWrap sx={{
-              color: "text.secondary"
-            }}>
+            <Typography
+              variant="caption"
+              noWrap
+              sx={{
+                color: 'text.secondary',
+              }}
+            >
               {action.subtitle}
             </Typography>
           ) : null}
@@ -364,10 +392,7 @@ function Row({
 // at the top, which matches user mental models for command palettes.
 // ---------------------------------------------------------------------------
 
-function filterActions(
-  actions: readonly CommandAction[],
-  query: string,
-): readonly CommandAction[] {
+function filterActions(actions: readonly CommandAction[], query: string): readonly CommandAction[] {
   const q = query.trim().toLowerCase();
   if (!q) return actions;
 

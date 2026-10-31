@@ -190,3 +190,18 @@ sidebar. Pass a compact symbol that fits beside the collapse control; the full
 `logo` remains visible in expanded and mobile navigation. Omitting the prop
 preserves the existing logo behavior. The sidebar control stays centred on its
 boundary in either text direction, including enlarged accessible hit targets.
+
+### Keyboard ownership
+
+`CommandPalette` exposes a labelled combobox and listbox, follows the displayed
+order of grouped commands and ignores consumed or composing key events. Use
+`disableShortcut` when a workspace owns the shortcut. `onClosed` runs after the
+modal releases focus: use it for commands that focus another control or open a
+dialog. Command handlers remain responsible for errors and authorization.
+
+`TableViewport` lets a focused table browse rows with arrows, Home/End and
+Page Up/Down. Enter invokes the row action, Space toggles its checkbox and Escape
+returns to the viewport. Inputs, links and buttons keep their native keys.
+Specialized workspaces can set `keyboardNavigation={false}` and supply their own
+interaction model. `SearchInput` exposes `data-keyboard-search` for a workspace's
+focus-search command. These primitives do not install application-wide shortcuts.

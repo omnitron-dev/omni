@@ -156,3 +156,6 @@ export type { ProcessMethod, AsyncProcessMethod, ServiceMethodMap } from './comm
 
 export { ControllerHandoff, ControllerFencedError, HandoffBusyError } from './controller-handoff.js';
 export type { ExecutionOwnerIdentity, ControllerGrant, HandoffTicket, ControllerHandoffStatus } from './controller-handoff.js';
+
+export { OutputCapture } from './output-capture.js';
+export type { ProcessOutputContext, ProcessOutputHandler } from './output-capture.js';

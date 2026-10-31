@@ -13,7 +13,7 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { createInterface } from 'node:readline';
+import { OutputCapture, type ProcessOutputContext } from './output-capture.js';
 import net from 'node:net';
 import { Errors } from '@omnitron-dev/titan/errors';
 import { isAlive as isPidAlive } from './liveness.js';
@@ -218,7 +218,7 @@ export async function killChildAndVerify(
 export class WorkerHandle extends EventEmitter implements IWorkerHandle {
   private _status: ProcessStatus;
   private messageHandlers = new Map<string, (data: any) => void>();
-  private logHandlers = new Set<(line: string, stream: 'stdout' | 'stderr') => void>();
+  private logHandlers = new Set<(line: string, stream: 'stdout' | 'stderr', context?: ProcessOutputContext) => void>();
   /**
    * Lines the child printed before anyone was listening.
    *
@@ -235,7 +235,7 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
    * first: a child that floods before anyone listens keeps the tail, which is
    * the part next to the failure.
    */
-  private earlyLogs: Array<{ line: string; stream: 'stdout' | 'stderr' }> | null = [];
+  private earlyLogs: Array<{ line: string; stream: 'stdout' | 'stderr'; context?: ProcessOutputContext }> | null = [];
   private earlyLogBytes = 0;
   private earlyLogsDropped = 0;
   /**
@@ -259,7 +259,8 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
     public readonly proxy?: any,
     initialStatus: ProcessStatus = ProcessStatus.STARTING,
     public readonly transportConfig?: ITransportConfig,
-    forwardChildLogs: boolean = true
+    forwardChildLogs: boolean = true,
+    private readonly captureInstalled = false
   ) {
     super();
     this._status = initialStatus;
@@ -615,7 +616,7 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
     }
   }
 
-  onLog(handler: (line: string, stream: 'stdout' | 'stderr') => void): void {
+  onLog(handler: (line: string, stream: 'stdout' | 'stderr', context?: ProcessOutputContext) => void): void {
     const first = this.logHandlers.size === 0;
     this.logHandlers.add(handler);
     if (!first) return;
@@ -634,14 +635,17 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
       );
     }
     for (const entry of buffered) {
-      handler(entry.line, entry.stream);
+      handler(entry.line, entry.stream, entry.context);
     }
   }
 
   /** @internal */
-  emitLog(line: string, stream: 'stdout' | 'stderr'): void {
+  hasLogConsumers(): boolean { return this.logHandlers.size > 0; }
+
+  /** @internal */
+  emitLog(line: string, stream: 'stdout' | 'stderr', context?: ProcessOutputContext): void {
     if (this.logHandlers.size === 0 && this.earlyLogs) {
-      this.earlyLogs.push({ line, stream });
+      this.earlyLogs.push({ line, stream, ...(context ? { context } : {}) });
       this.earlyLogBytes += line.length;
       while (this.earlyLogBytes > EARLY_LOG_MAX_BYTES && this.earlyLogs.length > 1) {
         const dropped = this.earlyLogs.shift()!;
@@ -651,7 +655,7 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
       return;
     }
     for (const handler of this.logHandlers) {
-      handler(line, stream);
+      handler(line, stream, context);
     }
   }
 
@@ -705,7 +709,7 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
       });
 
       // Capture stdout/stderr for structured log routing
-      this.setupLogCapture(child);
+      if (!this.captureInstalled) this.setupLogCapture(child);
     }
   }
 
@@ -714,18 +718,9 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
    * Emits each line to registered log handlers for external consumers.
    */
   private setupLogCapture(child: ChildProcess): void {
-    if (child.stdout) {
-      const rl = createInterface({ input: child.stdout, crlfDelay: Infinity });
-      rl.on('line', (line: string) => {
-        if (line.trim()) this.emitLog(line, 'stdout');
-      });
-    }
-    if (child.stderr) {
-      const rl = createInterface({ input: child.stderr, crlfDelay: Infinity });
-      rl.on('line', (line: string) => {
-        if (line.trim()) this.emitLog(line, 'stderr');
-      });
-    }
+    const capture = new OutputCapture(this.id, (line, stream, context) => this.emitLog(line, stream, context));
+    capture.attach(child.stdout, 'stdout');
+    capture.attach(child.stderr, 'stderr');
   }
 
   /**
@@ -970,6 +965,27 @@ export class ProcessSpawner implements IProcessSpawner {
 
     let worker: Worker | ChildProcess | undefined;
     let netronClient: NetronClient | null = null;
+    let outputHandle: WorkerHandle | undefined;
+    const early: Array<{ line: string; stream: 'stdout' | 'stderr'; context: ProcessOutputContext }> = [];
+    let earlyBytes = 0;
+    let earlyDropped = 0;
+    const tails = { stdout: '', stderr: '' };
+    const capture = new OutputCapture(processId, (line, stream, outputContext) => {
+      // The durable consumer runs first. Failure pauses the pipe and retries this ID.
+      options.onOutput?.(line, stream, outputContext);
+      tails[stream] = (tails[stream] + line + '\n').slice(-64 * 1024);
+      if (outputHandle) {
+        if (!options.onOutput || this.config.forwardChildLogs !== false || outputHandle.hasLogConsumers()) outputHandle.emitLog(line, stream, outputContext);
+      }
+      else if (!options.onOutput || this.config.forwardChildLogs !== false) {
+        early.push({ line, stream, context: outputContext });
+        earlyBytes += line.length;
+        while (earlyBytes > EARLY_LOG_MAX_BYTES && early.length > 1) {
+          earlyBytes -= early.shift()!.line.length;
+          earlyDropped++;
+        }
+      }
+    });
 
     try {
       // Spawn based on configuration
@@ -994,9 +1010,14 @@ export class ProcessSpawner implements IProcessSpawner {
         worker = await this.spawnChildProcess(context, options.execArgv);
       }
 
+      // An early Worker error precedes creation of the handle's lifecycle listener.
+      worker.on('error', () => { /* waitForReady/WorkerHandle own the diagnosis */ });
+      capture.attach(worker.stdout, 'stdout');
+      capture.attach(worker.stderr, 'stderr');
+
       // Wait for worker to be ready — returns actual service name from the child
       const startupTimeout = options.startupTimeout ?? this.config.resources?.timeout ?? 30_000;
-      const readyInfo = await this.waitForReady(worker, useWorkerThreads, startupTimeout);
+      const readyInfo = await this.waitForReady(worker, useWorkerThreads, startupTimeout, tails, !!options.onOutput);
 
       // Use the child's reported service name/version (from @Process decorator)
       // if available, falling back to the spawn options
@@ -1037,9 +1058,13 @@ export class ProcessSpawner implements IProcessSpawner {
           proxy,
           ProcessStatus.RUNNING,
           transport,
-          this.config.forwardChildLogs ?? true
+          this.config.forwardChildLogs ?? true,
+          true
         );
-        handle.seedStartupOutput(readyInfo.startupOutput);
+        outputHandle = handle;
+        if (earlyDropped) handle.emitLog(`[titan-pm] ${earlyDropped} lines exceeded the optional readiness replay buffer`, 'stderr');
+        for (const item of early) handle.emitLog(item.line, item.stream, item.context);
+        early.length = 0;
         return handle;
       } else {
         // Direct communication without Netron
@@ -1055,9 +1080,13 @@ export class ProcessSpawner implements IProcessSpawner {
           undefined,
           ProcessStatus.RUNNING,
           transport,
-          this.config.forwardChildLogs ?? true
+          this.config.forwardChildLogs ?? true,
+          true
         );
-        handle.seedStartupOutput(readyInfo.startupOutput);
+        outputHandle = handle;
+        if (earlyDropped) handle.emitLog(`[titan-pm] ${earlyDropped} lines exceeded the optional readiness replay buffer`, 'stderr');
+        for (const item of early) handle.emitLog(item.line, item.stream, item.context);
+        early.length = 0;
         return handle;
       }
     } catch (error) {
@@ -1103,6 +1132,12 @@ export class ProcessSpawner implements IProcessSpawner {
         });
       }
 
+      // A process exit precedes pipe EOF. Give the pipes a turn to deliver the tail.
+      await new Promise<void>(resolve => setImmediate(resolve));
+      if (error instanceof Error) (error as Error & { details?: object }).details = {
+        ...((error as Error & { details?: object }).details ?? {}), ...tails,
+        outputCaptured: !!options.onOutput,
+      };
       throw error;
     } finally {
       // The spawn has settled. From here the WorkerHandle registry is the
@@ -1297,6 +1332,8 @@ export class ProcessSpawner implements IProcessSpawner {
 
     const worker = new Worker(this.workerRuntimePath, {
       workerData: serializableContext,
+      stdout: true,
+      stderr: true,
       env: childEnv(),
     });
 
@@ -1401,36 +1438,11 @@ export class ProcessSpawner implements IProcessSpawner {
   private async waitForReady(
     worker: Worker | ChildProcess,
     isWorkerThread: boolean,
-    timeout: number = 5000
+    timeout: number = 5000,
+    tails: { stdout: string; stderr: string } = { stdout: '', stderr: '' },
+    outputCaptured = false
   ): Promise<{ serviceName?: string; serviceVersion?: string; startupOutput?: IStartupOutput }> {
     return new Promise((resolve, reject) => {
-      // Capture full stderr/stdout for diagnostics — bounded by total bytes
-      // (not lines) so a single long traceback survives intact.
-      // 64 KiB is enough for typical Node stack traces + module-resolution
-      // errors and stays cheap memory-wise.
-      const STDERR_CAP_BYTES = 64 * 1024;
-      const stderrBuf: string[] = [];
-      const stdoutBuf: string[] = [];
-      const stderrBytes = 0;
-      const stdoutBytes = 0;
-
-      const appendBounded = (
-        target: string[],
-        bytesRef: { v: number },
-        chunk: string,
-      ) => {
-        target.push(chunk);
-        bytesRef.v += chunk.length;
-        // Drop oldest chunks until under cap — never drop the chunk just added.
-        while (bytesRef.v > STDERR_CAP_BYTES && target.length > 1) {
-          const dropped = target.shift()!;
-          bytesRef.v -= dropped.length;
-        }
-      };
-
-      const stderrRef = { v: stderrBytes };
-      const stdoutRef = { v: stdoutBytes };
-
       /**
        * How late OUR OWN timers ran while the child was starting.
        *
@@ -1479,32 +1491,13 @@ export class ProcessSpawner implements IProcessSpawner {
       }, LAG_PROBE_INTERVAL_MS);
       lagProbe.unref?.();
 
-      if (!isWorkerThread) {
-        const child = worker as ChildProcess;
-        child.stderr?.on('data', (chunk: Buffer) => {
-          appendBounded(stderrBuf, stderrRef, chunk.toString());
-        });
-        child.stdout?.on('data', (chunk: Buffer) => {
-          appendBounded(stdoutBuf, stdoutRef, chunk.toString());
-        });
-      }
-
-      // Build a context object with full stderr/stdout — passed in error
-      // details so callers (e.g. supervisor → daemon log) get the actual
-      // failure cause, not just "timed out after 30s".
-      const buildDiagnostics = () => {
-        const stderr = stderrBuf.join('').trimEnd();
-        const stdout = stdoutBuf.join('').trimEnd();
-        return {
-          stderr: stderr || undefined,
-          stdout: stdout || undefined,
-          stderrBytes: stderrRef.v,
-          stdoutBytes: stdoutRef.v,
-        };
-      };
+      const buildDiagnostics = () => ({
+        stdout: tails.stdout || undefined, stderr: tails.stderr || undefined,
+        stdoutBytes: Buffer.byteLength(tails.stdout), stderrBytes: Buffer.byteLength(tails.stderr), outputCaptured,
+      });
 
       const timer = setTimeout(() => {
-        clearInterval(lagProbe);
+        cleanup();
         const pid = !isWorkerThread ? (worker as ChildProcess).pid : undefined;
         const pidHint = pid ? ` (pid: ${pid})` : '';
         const diag = buildDiagnostics();
@@ -1564,15 +1557,24 @@ export class ProcessSpawner implements IProcessSpawner {
       }, timeout);
 
       const cleanup = () => {
+        worker.off('error', errorHandler);
         clearTimeout(timer);
         clearInterval(lagProbe);
         if (isWorkerThread) {
           (worker as Worker).off('message', messageHandler);
+          (worker as Worker).off('exit', exitHandler);
         } else {
           (worker as ChildProcess).off('message', messageHandler);
-          (worker as ChildProcess).off('exit', exitHandler);
+          (worker as ChildProcess).off('close', exitHandler);
         }
       };
+
+      const errorHandler = (error: Error) => {
+        cleanup();
+        (error as Error & { details?: unknown }).details = buildDiagnostics();
+        reject(error);
+      };
+      worker.on('error', errorHandler);
 
       const messageHandler = (data: any) => {
         if (data && typeof data === 'object' && 'type' in data) {
@@ -1587,7 +1589,7 @@ export class ProcessSpawner implements IProcessSpawner {
             resolve({
               serviceName: data.serviceName,
               serviceVersion: data.serviceVersion,
-              startupOutput: { stdout: stdoutBuf.join(''), stderr: stderrBuf.join('') },
+              startupOutput: { ...tails },
             });
           } else if (data.type === 'error') {
             cleanup();
@@ -1628,9 +1630,10 @@ export class ProcessSpawner implements IProcessSpawner {
 
       if (isWorkerThread) {
         (worker as Worker).on('message', messageHandler);
+        (worker as Worker).on('exit', exitHandler);
       } else {
         (worker as ChildProcess).on('message', messageHandler);
-        (worker as ChildProcess).on('exit', exitHandler);
+        (worker as ChildProcess).on('close', exitHandler);
       }
     });
   }

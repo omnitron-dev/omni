@@ -576,13 +576,19 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
    * of it there is no handle for `kill()` to act on. Honouring the request
    * here, where the handle first exists, is the only place that can close it.
    */
+  readonly outputCaptureVersion = 1;
+
   private async spawnAndHonourKill<T>(
     processId: string,
     processInfo: IProcessInfo,
     processPathOrClass: string | (new (...args: any[]) => T),
     spawnOptions: Parameters<IProcessSpawner['spawn']>[1]
   ): Promise<IWorkerHandle> {
-    const handle = await this.spawner.spawn(processPathOrClass, spawnOptions);
+    const handle = await this.spawner.spawn(processPathOrClass, { ...spawnOptions,
+      ...(this.listenerCount('process:output') > 0 ? { onOutput: (line: string, stream: 'stdout' | 'stderr', context: import('./output-capture.js').ProcessOutputContext) => {
+        this.emit('process:output', processInfo.name, line, stream, context);
+      } } : {}),
+    });
 
     if (!this.killRequested.delete(processId)) return handle;
 

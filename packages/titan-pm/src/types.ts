@@ -1141,7 +1141,7 @@ export interface IWorkerHandle {
   isAlive(): boolean;
   send?(message: any): Promise<void>;
   onMessage?(handler: (data: any) => void): void;
-  onLog?(handler: (line: string, stream: 'stdout' | 'stderr') => void): void;
+  onLog?(handler: (line: string, stream: 'stdout' | 'stderr', context?: import('./output-capture.js').ProcessOutputContext) => void): void;
   /**
    * Subscribe to the underlying process's lifecycle exit. Fires
    * exactly once per physical termination — for both clean
@@ -1160,6 +1160,8 @@ export interface IWorkerHandle {
  * Spawn options
  */
 export interface ISpawnOptions {
+  /** Parent-only capture, installed before worker readiness. Throw to apply pipe backpressure. */
+  onOutput?: import('./output-capture.js').ProcessOutputHandler;
   processId?: string;
   name?: string;
   version?: string;

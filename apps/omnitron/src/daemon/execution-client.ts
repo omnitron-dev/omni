@@ -314,6 +314,7 @@ export class ExecutionClient {
       ...snapshot.info, entry: snapshot.entry, startedAt: snapshot.startedAt,
       instanceCount: snapshot.instanceCount, lastMetrics: snapshot.lastMetrics, lastExit: snapshot.lastExit,
       childMetrics: new Map(snapshot.childMetrics), topologyProcesses: snapshot.topology,
+      bootstrapMetadata: snapshot.bootstrapMetadata ?? null,
       topologyPools: new Map(snapshot.pools.map(pool => [pool.name, { getWorkerIds: () => [...pool.workerIds] }])),
       supervisor: snapshot.children ? {
         getChildNames: () => snapshot.children!.map(child => child.name),

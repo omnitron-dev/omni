@@ -10,7 +10,7 @@
  * now.
  *
  * It reads the definition as the daemon would have in its own process: the
- * same loader code (`loadBootstrapConfig`, dev mode, in-process), the same Node
+ * same loader code (`loadBootstrapConfig`, selected mode, in-process), the same Node
  * flags (`--import tsx/esm` among them), working directory and environment.
  * Then it answers once over IPC and exits, whatever the definition left open —
  * a client, a timer — since nothing here will ever use it.
@@ -38,7 +38,7 @@ function answer(message: FreshGraphAnswer): void {
 const bootstrapPath = process.argv[2];
 try {
   if (!bootstrapPath) throw new Error('no definition path was given');
-  const definition = await loadBootstrapConfig(bootstrapPath, { devMode: true });
+  const definition = await loadBootstrapConfig(bootstrapPath, { devMode: process.argv[3] !== 'production' });
   const data = definitionAsData(definition);
   if (data === undefined) throw new Error('the definition loaded, but could not be read as data');
   answer({ type: FRESH_GRAPH_ANSWER, ok: true, definition: data });

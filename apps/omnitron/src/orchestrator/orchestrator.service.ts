@@ -93,7 +93,8 @@ function qualifyChildName(appName: string, childName: string): string {
 const TOPOLOGY_EXPOSE_TIMEOUT_MS = 30_000;
 const TOPOLOGY_EXPOSE_POLL_MS = 250;
 import { ServiceRouter } from './service-router.js';
-import { loadBootstrapConfig, clearCacheFor } from './bootstrap-loader.js';
+import { clearCacheFor } from './bootstrap-loader.js';
+import { readBootstrapMetadata } from '../project/bootstrap-metadata.js';
 
 /** Levels a pino logger accepts. A child is spawned with nothing else. */
 const PINO_LEVELS = new Set(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']);
@@ -1905,7 +1906,9 @@ export class OrchestratorService extends EventEmitter {
     let topology: IProcessEntry[] | undefined;
     let definition: IAppDefinition | undefined;
     try {
-      definition = await loadBootstrapConfig(bootstrapAbsPath, { devMode: this.devMode, freshModuleGraph: true });
+      const captured = await readBootstrapMetadata(bootstrapAbsPath, this.devMode, 60_000);
+      definition = captured.definition;
+      handle.bootstrapMetadata = captured.metadata;
       topology = definition.processes;
     } catch (err) {
       // Refused, with the reason. This fell back to «single-process mode» at
@@ -1956,7 +1959,7 @@ export class OrchestratorService extends EventEmitter {
 
     // Resolve infrastructure config and inject as env vars.
     // Skip if already injected by project.service.ts (stack flow sets OMNITRON_STACK).
-    const alreadyResolved = !!(entry.env?.['OMNITRON_STACK'] && entry.env?.['DATABASE_URL']);
+    const alreadyResolved = !!entry.env?.['OMNITRON_STACK'];
     if (!alreadyResolved && (definition?.requires || definition?.omnitronConfig)) {
       try {
         const { resolveStack, resolvedConfigToEnv } = await import('../project/config-resolver.js');
@@ -1975,7 +1978,7 @@ export class OrchestratorService extends EventEmitter {
         if (appConfig) {
           const envVars = resolvedConfigToEnv(appConfig, entry.name, stackName);
           if (Object.keys(envVars).length > 0) {
-            entry.env = { ...entry.env, ...envVars };
+            entry.env = { ...envVars, ...entry.env };
             this.logger.debug(
               { app: entry.name, envCount: Object.keys(envVars).length },
               'Injected resolved infrastructure config as env vars'

@@ -10,6 +10,7 @@ import type { IProcessMetrics, IHealthStatus, IProcessPool } from '@omnitron-dev
 import type { ProcessSupervisor } from '@omnitron-dev/titan-pm';
 import type { AppStatus, IEcosystemAppEntry, IProcessEntry } from '../config/types.js';
 import type { ServiceRouter } from './service-router.js';
+import type { BootstrapMetadata } from '../project/bootstrap-metadata.js';
 
 /**
  * Last-known exit context retained on the AppHandle after a child
@@ -42,6 +43,7 @@ export interface LastExitInfo {
 }
 
 export class AppHandle {
+  public bootstrapMetadata: BootstrapMetadata | null = null;
   public pid: number | null = null;
   public status: AppStatus = 'stopped';
   public startedAt: number = 0;

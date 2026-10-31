@@ -158,6 +158,7 @@ interface TopologyState {
   apps: AppNodeData[];
   daemonStatus: DaemonStatusDto | null;
   coverageWarnings: import('@omnitron-dev/omnitron/dto/services').ProjectTopology['warnings'];
+  declarationCoverage: NonNullable<import('@omnitron-dev/omnitron/dto/services').ProjectTopology['coverage']>;
 
   // UI state
   loading: boolean;
@@ -560,6 +561,7 @@ export const useTopologyStore = create<TopologyState>((set, get) => {
     apps: [],
     daemonStatus: null,
     coverageWarnings: [],
+    declarationCoverage: [],
     loading: true,
     error: null,
     scope: { project: null, stack: null },
@@ -660,8 +662,6 @@ export const useTopologyStore = create<TopologyState>((set, get) => {
           unavailable.push('configured dependencies (a compatible backend is required)');
         if (inventoryAnswer.status === 'rejected') unavailable.push('fleet placement inventory');
         const failedSources = unavailable.length;
-        if (coverageWarnings.length)
-          unavailable.push(`${coverageWarnings.length} dependency declarations (see coverage details)`);
         const placementStacks = scope.project
           ? (stacks ?? [])
           : inventoryAnswer.status === 'fulfilled'
@@ -682,6 +682,8 @@ export const useTopologyStore = create<TopologyState>((set, get) => {
 
         set({
           coverageWarnings,
+          declarationCoverage: dependenciesAnswer.status === 'fulfilled'
+            ? (dependenciesAnswer.value.coverage ?? []).filter(item => scope.project || visibleApps.has(`${item.project}/${item.stack}/${item.app}`)) : [],
           apps: bands.flatMap((band) => band.apps),
           daemonStatus: statusAnswer.status === 'fulfilled' ? statusAnswer.value : null,
           nodes,
@@ -695,7 +697,7 @@ export const useTopologyStore = create<TopologyState>((set, get) => {
           })(),
           loading: false,
           error:
-            unavailable.length === 0 && unreadPlacements.length === 0
+            unavailable.length === 0 && unreadPlacements.length === 0 && coverageWarnings.length === 0
               ? null
               : failedSources >= asked
                 ? 'Could not reach the daemon — this diagram is empty because nothing could be read, not because nothing is running.'
@@ -703,6 +705,7 @@ export const useTopologyStore = create<TopologyState>((set, get) => {
                   ? `Could not read ${scope.project}'s stacks — this diagram is empty because they could not be read, not because nothing is running.`
                   : [
                       unavailable.length ? `Incomplete: could not read ${unavailable.join(', ')}.` : '',
+                      coverageWarnings.length ? `${coverageWarnings.length} dependency coverage warnings; inspect declaration details.` : '',
                       ...unreadPlacements,
                     ]
                       .filter(Boolean)
@@ -727,6 +730,7 @@ export const useTopologyStore = create<TopologyState>((set, get) => {
         nodes: [],
         edges: [],
         coverageWarnings: [],
+        declarationCoverage: [],
         apps: [],
         error: null,
         detailPanel: { open: false, nodeId: null, nodeType: null, data: null },

@@ -105,7 +105,7 @@ describe('an empty topology', () => {
     const useStore = await store();
     await useStore.getState().fetchAll();
     expect(useStore.getState().coverageWarnings).toHaveLength(1);
-    expect(useStore.getState().error).toContain('1 dependency declarations');
+    expect(useStore.getState().error).toContain('1 dependency coverage warnings');
   });
   it('reports no error when the platform really is empty', async () => {
     allAnswerEmpty();

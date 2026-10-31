@@ -3,6 +3,7 @@ import type { AppHandle } from './app-handle.js';
 import type { OrchestratorService } from './orchestrator.service.js';
 import type { ExposingSupervisor } from './call-exposed-service.js';
 import type { IProcessEntry } from '../config/types.js';
+import type { BootstrapMetadata } from '../project/bootstrap-metadata.js';
 
 type ExecutionTopology = Array<Pick<IProcessEntry, 'name' | 'instances' | 'transports'>> | null;
 
@@ -11,6 +12,7 @@ export interface AppExecutionView extends Pick<AppHandle,
   'entry' | 'name' | 'mode' | 'pid' | 'status' | 'startedAt' | 'restarts' | 'port' |
   'lastMetrics' | 'lastExit' | 'uptime' | 'instanceCount' | 'childMetrics'> {
   topologyProcesses: ExecutionTopology;
+  bootstrapMetadata?: BootstrapMetadata | null;
   supervisor: (ExposingSupervisor & {
     getChildProcessId(name: string): string | null | undefined;
     restartChild(name: string): Promise<void>;
@@ -37,6 +39,7 @@ export interface OrchestratorControl extends Methods {
 }
 
 export interface ExecutionAppSnapshot {
+  bootstrapMetadata?: BootstrapMetadata | null;
   info: ReturnType<OrchestratorService['list']>[number];
   entry: AppHandle['entry'];
   startedAt: number;

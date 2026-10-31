@@ -1,4 +1,5 @@
 import { TopologyWorkspaceLauncher } from 'src/components/topology/topology-editor';
+import { TopologyMetadataDialog } from 'src/components/topology/topology-metadata-dialog';
 /** Deployment topology: machines, declared dependencies, applications and ingress. */
 import { useEffect, useCallback, useMemo, useState, useRef } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
@@ -110,10 +111,12 @@ function TopologyWorkspace() {
     closeDetail,
     apps,
     coverageWarnings,
+    declarationCoverage,
   } = useTopologyStore();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<TopologyNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [editingTopology, setEditingTopology] = useState(false);
+  const [updatingMetadata, setUpdatingMetadata] = useState(false);
   const [locked, setLocked] = useState(true);
   const [listView, setListView] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -378,6 +381,8 @@ function TopologyWorkspace() {
           />
           <Stack direction="row" useFlexGap spacing={0.25} sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
             <Button size="small" disabled={!can('OmnitronProject.getTopologyWorkspace')} onClick={() => setEditingTopology(true)}>Workspace</Button>
+            {activeProject && can('OmnitronProject.refreshTopologyMetadata') &&
+              <Button size="small" onClick={() => setUpdatingMetadata(true)}>Declarations</Button>}
             <Button size="small" sx={{ minWidth: 0 }} aria-pressed={listView} onClick={() => setListView(!listView)}>
               {listView ? 'Graph' : 'List'}
             </Button>
@@ -463,6 +468,16 @@ function TopologyWorkspace() {
             Scroll to pan · + / − zoom · 0 fit · 1 readable
           </Typography>
         </Stack>
+        {declarationCoverage.length > 0 && <Box component="details" sx={{ px: 1, pb: 1, fontSize: '0.75rem', color: 'text.secondary' }}>
+          <Box component="summary" sx={{ cursor: 'pointer' }}>
+            {declarationCoverage.filter(item => item.source !== 'missing').length}/{declarationCoverage.length} declarations available
+          </Box>
+          <Stack spacing={0.5} sx={{ mt: 1, maxHeight: 160, overflowY: 'auto' }}>
+            {declarationCoverage.map(item => <Typography variant="caption" key={`${item.project}/${item.stack}/${item.app}`} sx={{ overflowWrap: 'anywhere' }}>
+              {item.project}/{item.stack}/{item.app} · {item.source}{item.capturedAt ? ` · ${new Date(item.capturedAt).toLocaleString()}` : ''}
+            </Typography>)}
+          </Stack>
+        </Box>}
         <Box sx={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0, position: 'relative', overflow: 'hidden' }}>
           <Box
             ref={canvas}
@@ -646,6 +661,7 @@ function TopologyWorkspace() {
             )}
           </Box>
           {editingTopology && <TopologyWorkspaceLauncher initialProject={activeProject} initialStack={activeStack} onClose={() => setEditingTopology(false)} onApplied={() => void fetchAll()} />}
+          {updatingMetadata && activeProject && <TopologyMetadataDialog project={activeProject} stack={activeStack} onClose={() => setUpdatingMetadata(false)} onUpdated={fetchAll} />}
       <DetailPanel container={fullscreen ? container.current : undefined} />
         </Box>
         <Menu

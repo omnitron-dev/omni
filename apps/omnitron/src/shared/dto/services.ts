@@ -1,7 +1,7 @@
 import type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace } from './topology.js';
 export type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace, TopologyChange, TopologyIssue } from './topology.js';
 import type { ProjectTopology } from './project.js';
-export type { ConfigurationImport, ProjectConfigurationInfo, RuntimeStackScope, ProjectDependency, ProjectTopology } from './project.js';
+export type { ConfigurationImport, ProjectConfigurationInfo, RuntimeStackScope, ProjectDependency, ProjectTopology, TopologyMetadataRefresh } from './project.js';
 import type { LogIngestionStats } from './logs.js';
 /**
  * Omnitron Daemon RPC Service Interfaces
@@ -331,6 +331,7 @@ export interface IProjectRpcService {
 
   // --- Stacks (Viewer) ---
   getTopology(data: { project?: string; stack?: string }): Promise<ProjectTopology>;
+  refreshTopologyMetadata(data: { project: string; stack?: string }): Promise<import('./project.js').TopologyMetadataRefresh>;
   listStacks(data: { project: string }): Promise<IStackInfo[]>;
   getStack(data: { project: string; stack: string }): Promise<IStackInfo>;
   getStackStatus(data: { project: string; stack: string }): Promise<StackRuntime>;

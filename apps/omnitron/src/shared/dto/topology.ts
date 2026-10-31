@@ -1,4 +1,4 @@
-import type { IStackInfo, ProjectDependency } from './project.js';
+import type { IStackInfo, ProjectDependency, ProjectTopology } from './project.js';
 
 /** Portable desired placement. Application definitions, credentials and service bindings remain in project config. */
 export interface TopologySpec {
@@ -50,6 +50,7 @@ export interface TopologyPlan extends TopologyScope {
   appliedAt?: string;
 }
 export interface TopologyWorkspace extends TopologyScope {
+  coverage?: ProjectTopology['coverage'];
   revision: string;
   /** Executable project configuration, independent of accepted target intent. */
   configured: TopologySpec;

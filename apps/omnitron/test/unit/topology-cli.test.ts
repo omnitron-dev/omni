@@ -4,10 +4,19 @@ import os from 'node:os';
 import path from 'node:path';
 import { setEnvOverride, resetEnvCache } from '../../src/shared/env-config.js';
 import { topologyCommand } from '../../src/commands/topology.js';
-const api = vi.hoisted(() => ({ getTopologyWorkspace: vi.fn(), saveTopologyDraft: vi.fn(), disconnect: vi.fn(async () => {}) }));
+const api = vi.hoisted(() => ({ getTopologyWorkspace: vi.fn(), saveTopologyDraft: vi.fn(), refreshTopologyMetadata: vi.fn(), disconnect: vi.fn(async () => {}) }));
 vi.mock('../../src/daemon/daemon-client.js', () => ({ createDaemonClient: () => ({ service: async () => api, disconnect: api.disconnect }) }));
 afterEach(() => { vi.restoreAllMocks(); resetEnvCache(); });
 describe('portable topology CLI documents', () => {
+  it('refreshes declarations for a complete project through the administrative RPC', async () => {
+    api.refreshTopologyMetadata.mockResolvedValue({ refreshed: 3, failures: [] });
+    setEnvOverride({ OMNITRON_OUTPUT: 'json' });
+    let output = '';
+    vi.spyOn(process.stdout, 'write').mockImplementation((value: any) => { output += String(value); return true; });
+    await topologyCommand('refresh', 'sample');
+    expect(api.refreshTopologyMetadata).toHaveBeenCalledWith({ project: 'sample' });
+    expect(JSON.parse(output)).toEqual({ ok: true, data: { refreshed: 3, failures: [] } });
+  });
   it('exports raw JSON in normal mode and round-trips it through the draft command', async () => {
     const spec = { version: 1, type: 'local', apps: ['api'], nodes: [] };
     api.getTopologyWorkspace.mockResolvedValue({ revision: 'current', desired: spec, draft: null });

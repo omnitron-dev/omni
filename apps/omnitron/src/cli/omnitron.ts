@@ -272,6 +272,12 @@ project
 // ============================================================================
 
 const topology = program.command('topology').description('Inspect, edit and plan desired application placement');
+topology.command('refresh <project> [stack]')
+  .description('Read trusted bootstrap declarations in isolated processes; save metadata without restarting workloads (admin)')
+  .action(async (projectName, stackName) => {
+    const { topologyCommand } = await import('../commands/topology.js');
+    await topologyCommand('refresh', projectName, stackName);
+  });
 for (const action of ['show', 'export', 'plan'] as const) {
   topology.command(`${action} <project> <stack>`)
     .description(action === 'export'

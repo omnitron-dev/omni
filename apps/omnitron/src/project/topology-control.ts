@@ -68,6 +68,7 @@ export class TopologyControl {
       availableNodes: this.sources.nodes(),
       observed: publicStack(observed),
       dependencies: graph.dependencies,
+      coverage: graph.coverage ?? [],
       warnings: graph.warnings.map((warning) => `${warning.app ?? scope.stack}: ${warning.reason}`),
     };
   }

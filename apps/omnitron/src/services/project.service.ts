@@ -9,6 +9,7 @@ import { resolveNodePlacements } from '../project/stack-placement.js';
 import { configurationInfo, publicStackName, validateConfigurationNames, type ConfigurationImport, type RuntimeStackScope } from '../project/configuration-catalog.js';
 import { nodePlacement, observeStack } from '../project/stack-observation.js';
 import { getCachedBootstrapDefinition } from '../orchestrator/bootstrap-loader.js';
+import { BootstrapMetadataStore, readBootstrapMetadata, metadataSourceChanged, TOPOLOGY_REFRESH_TIMEOUT_MS } from '../project/bootstrap-metadata.js';
 import { appDependencies } from '../project/dependency-topology.js';
 import { isControlPlaneWorkspace } from '../project/workspace-kind.js';
 import { RecoveryMutation, RecoveryBusyError } from '../daemon/recovery-state.js';
@@ -311,6 +312,7 @@ export class ProjectService extends EventEmitter {
   private readonly registry: ProjectRegistry;
   private readonly topologyControl: TopologyControl;
   private readonly bootstrapTopology = new Map<string, Pick<IAppDefinition, 'requires' | 'omnitronConfig'>>();
+  private readonly bootstrapMetadata: BootstrapMetadataStore;
   private readonly configRegistry = new Map<string, LoadedProject>();
   private readonly stackStates = new Map<string, StackRuntimeState>();
   private readonly infraManager: StackInfrastructureManager;
@@ -352,6 +354,7 @@ export class ProjectService extends EventEmitter {
     // pid-lock, etc.). The registry itself is unchanged in API;
     // only its backing storage moved.
     this.registry = new ProjectRegistry(daemonStateStore);
+    this.bootstrapMetadata = new BootstrapMetadataStore(daemonStateStore);
     this.topologyControl = new TopologyControl(new TopologyStateStore(daemonStateStore), {
       configuration: async (scope) => {
         const config = await this.loadProjectConfig(scope.project);
@@ -956,7 +959,7 @@ export class ProjectService extends EventEmitter {
 
   /** Configuration evidence from the launch builder; it never starts, probes or modifies applications. */
   async getTopology(scope: { project?: string; stack?: string }): Promise<import('../shared/dto/project.js').ProjectTopology> {
-    const result: import('../shared/dto/project.js').ProjectTopology = { version: 1, generatedAt: new Date().toISOString(), dependencies: [], warnings: [] };
+    const result: import('../shared/dto/project.js').ProjectTopology = { version: 1, generatedAt: new Date().toISOString(), dependencies: [], warnings: [], coverage: [] };
     const projects = scope.project ? [scope.project] : this.listProjectRegistrations().map(project => project.name);
     for (const project of projects) {
       let config: IEcosystemConfig;
@@ -969,11 +972,25 @@ export class ProjectService extends EventEmitter {
           const definitions = new Map<string, IAppDefinition>();
           const directory = this.registry.get(project)?.path;
           for (const entry of entries) {
-            if (!entry.bootstrap || !directory) continue;
+            if (!entry.bootstrap) {
+              result.coverage!.push({ project, stack, app: entry.name, source: 'entry' });
+              continue;
+            }
+            if (!directory) continue;
             const bootstrap = path.resolve(directory, entry.bootstrap);
-            const metadata = getCachedBootstrapDefinition(bootstrap) ?? this.bootstrapTopology.get(bootstrap);
+            const state = this.bootstrapMetadata?.readState(bootstrap);
+            const saved = state?.metadata;
+            const launched = this.orchestrator?.getHandle(ProjectService.handleKey(project, stack, entry.name))?.bootstrapMetadata;
+            const observed = launched?.bootstrap === bootstrap ? launched : null;
+            const record = observed && (!saved || observed.capturedAt > saved.capturedAt) ? observed : saved;
+            const metadata = record?.definition ?? getCachedBootstrapDefinition(bootstrap) ?? this.bootstrapTopology.get(bootstrap);
             const declared = readDeclaredConfig(bootstrap);
-            if (!metadata) result.warnings.push({ project, stack, app: entry.name, reason: 'Bootstrap metadata not loaded; only file declarations and explicit environment are known' });
+            result.coverage!.push({ project, stack, app: entry.name,
+              source: record ? record === observed ? 'launch' : 'snapshot' : metadata ? 'memory' : 'missing',
+              ...(record && { capturedAt: record.capturedAt }) });
+            if (!metadata) result.warnings.push({ project, stack, app: entry.name, reason: 'Bootstrap metadata not loaded; refresh declarations before relying on complete dependency coverage' });
+            if (state?.failure) result.warnings.push({ project, stack, app: entry.name, reason: state.failure.reason });
+            if (record && metadataSourceChanged(record)) result.warnings.push({ project, stack, app: entry.name, reason: 'Bootstrap file changed after declaration capture; refresh metadata to inspect the current configuration' });
             if (declared.malformed) result.warnings.push({ project, stack, app: entry.name, reason: 'Application configuration is malformed; file declarations are unavailable' });
             if (metadata || declared.omnitron) definitions.set(entry.name, withDeclaredConfig({ name: entry.name, version: '', processes: [], ...metadata }, declared));
           }
@@ -987,6 +1004,40 @@ export class ProjectService extends EventEmitter {
         } catch { result.warnings.push({ project, stack, reason: 'Launch configuration could not be resolved; dependencies are incomplete' }); }
       }
     }
+    return result;
+  }
+
+  /** Explicit administrative discovery. Imports trusted declarations in bounded child processes, never starts a stack. */
+  @RecoveryMutation()
+  async refreshTopologyMetadata(scope: { project: string; stack?: string }, deadline = Date.now() + TOPOLOGY_REFRESH_TIMEOUT_MS): Promise<import('../shared/dto/project.js').TopologyMetadataRefresh> {
+    const config = await this.ensureConfig(scope.project);
+    const directory = this.registry.get(scope.project)?.path;
+    if (!directory) throw new Error('Project is not registered');
+    const bootstraps = new Map<string, string>();
+    const stacks = this.resolveStacks(config, scope.project);
+    if (scope.stack && !stacks[scope.stack]) throw new Error('Stack is not configured');
+    for (const [name, stack] of Object.entries(stacks)) {
+      if (scope.stack && scope.stack !== name) continue;
+      for (const app of this.resolveStackApps(stack, config))
+        if (app.bootstrap) bootstraps.set(path.resolve(directory, app.bootstrap), app.name);
+    }
+    const result: import('../shared/dto/project.js').TopologyMetadataRefresh = { refreshed: 0, failures: [] };
+    for (const [bootstrap, app] of bootstraps) {
+      try {
+        const remaining = Math.min(30_000, deadline - Date.now());
+        if (remaining <= 0) throw new Error('Declaration refresh deadline exceeded; this application was not read');
+        const { metadata: record } = await readBootstrapMetadata(bootstrap, false, remaining);
+        this.bootstrapMetadata.save(record);
+        this.bootstrapTopology.set(bootstrap, record.definition);
+        result.refreshed += 1;
+      } catch (error) {
+        this.bootstrapMetadata.fail(bootstrap);
+        this.logger.error({ project: scope.project, app, error }, 'Bootstrap metadata refresh failed; previous declaration retained');
+        result.failures.push({ project: scope.project, app, reason: 'Declaration read failed; inspect the daemon log. Previous metadata was retained.' });
+      }
+    }
+    await this.audit?.record({ action: 'topology.metadata.refresh', resourceType: 'project', resourceId: scope.project,
+      details: { stack: scope.stack, refreshed: result.refreshed, failures: result.failures.length } });
     return result;
   }
 
@@ -4387,8 +4438,8 @@ export class ProjectService extends EventEmitter {
       if (entry.bootstrap && project) {
         try {
           const bootstrapAbsPath = path.resolve(project.path, entry.bootstrap);
-          const { loadBootstrapConfig } = await import('../orchestrator/bootstrap-loader.js');
-          const loaded = await loadBootstrapConfig(bootstrapAbsPath, { devMode: false });
+          const { definition: loaded, metadata } = await readBootstrapMetadata(bootstrapAbsPath);
+          this.bootstrapMetadata.save(metadata);
           // Preserve only declarative data across backend handoffs, never executable hooks.
           this.bootstrapTopology.set(bootstrapAbsPath, structuredClone({ ...(loaded.requires ? { requires: loaded.requires } : {}), ...(loaded.omnitronConfig ? { omnitronConfig: loaded.omnitronConfig } : {}) }));
 
@@ -4407,6 +4458,7 @@ export class ProjectService extends EventEmitter {
 
           appDefinitions.set(entry.name, definition);
         } catch (err) {
+          this.bootstrapMetadata.fail(path.resolve(project.path, entry.bootstrap));
           // An app can start without its definition; a STACK cannot be
           // provisioned without it. The definition is where an application
           // declares what it needs — its database, its cache, its chain

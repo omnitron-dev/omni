@@ -6,14 +6,25 @@ import { emitJson, emitError, emitInfo, isJsonMode } from './output.js';
 
 /** The same draft, validation and revision protocol used by Console. */
 export async function topologyCommand(
-  action: 'show' | 'export' | 'draft' | 'plan' | 'apply',
+  action: 'show' | 'export' | 'draft' | 'plan' | 'apply' | 'refresh',
   project: string,
-  stack: string,
+  stack: string = '',
   argument?: string
 ): Promise<void> {
-  const client = createDaemonClient();
+  const client = action === 'refresh' ? createDaemonClient(undefined, 120_000) : createDaemonClient();
   try {
     const service = await client.service<IProjectRpcService>('OmnitronProject');
+    if (action === 'refresh') {
+      const result = await service.refreshTopologyMetadata({ project, ...(stack ? { stack } : {}) });
+      if (isJsonMode()) emitJson(result);
+      else {
+        emitInfo(`Captured ${result.refreshed} application declarations; workloads unchanged.`);
+        for (const failure of result.failures) emitInfo(`${failure.project}/${failure.app}: ${failure.reason}`);
+      }
+      if (result.failures.length) process.exitCode = 1;
+      return;
+    }
+    if (!stack) throw new Error('A stack is required');
     const scope = { project, stack };
     if (action === 'apply') {
       if (!argument) throw new Error('An explicit plan ID is required');
@@ -66,6 +77,8 @@ export async function topologyCommand(
     else {
       emitInfo(`${project}/${stack} · ${workspace.desired.type} · revision ${workspace.revision}`);
       emitInfo(`Applications: ${workspace.desired.apps.join(', ') || '(none)'}`);
+      for (const declaration of workspace.coverage ?? [])
+        emitInfo(`${declaration.app}: declarations from ${declaration.source}${declaration.capturedAt ? ` at ${declaration.capturedAt}` : ''}`);
       for (const node of workspace.desired.nodes)
         emitInfo(`${node.host}:${node.port} · ${node.role} · ${node.apps.join(', ') || 'infrastructure only'}`);
       for (const placement of workspace.observed.placements ?? [])

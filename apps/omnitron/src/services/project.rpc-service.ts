@@ -93,6 +93,7 @@ export class ProjectRpcService {
       plans: workspace.plans.map(plan => ({ ...plan, ...data })),
       observed: { ...workspace.observed, name: data.stack, runtimeScope: scope },
       dependencies: workspace.dependencies.map(edge => ({ ...edge, ...data })),
+      coverage: workspace.coverage?.map(item => ({ ...item, ...data })),
     };
   }
 
@@ -113,11 +114,27 @@ export class ProjectRpcService {
     return { ...plan, project: data.project, stack: data.stack };
   }
 
-  /** Sanitized configuration graph; the resolver never returns environment values or credentials. */
+  /** Explicit administrative imports; all configurations share one bounded read window. */
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async refreshTopologyMetadata(data: { project: string; stack?: string }): Promise<import('../shared/dto/project.js').TopologyMetadataRefresh> {
+    const result: import('../shared/dto/project.js').TopologyMetadataRefresh = { refreshed: 0, failures: [] };
+    const { TOPOLOGY_REFRESH_TIMEOUT_MS } = await import('../project/bootstrap-metadata.js');
+    const deadline = Date.now() + TOPOLOGY_REFRESH_TIMEOUT_MS;
+    const selected = data.stack ? await this.projectService.resolveProjectStack({ project: data.project, stack: data.stack }) : null;
+    for (const record of this.projectService.projectConfigurations(data.project)) {
+      if (selected && selected.project !== record.name) continue;
+      const refresh = await this.projectService.refreshTopologyMetadata({ project: record.name, ...(selected ? { stack: selected.stack } : {}) }, deadline);
+      result.refreshed += refresh.refreshed;
+      result.failures.push(...refresh.failures.map(failure => ({ ...failure, project: data.project })));
+    }
+    return result;
+  }
+
+  /** Sanitized configuration graph; reading it never imports bootstrap code. */
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getTopology(data: { project?: string; stack?: string }): Promise<import('../shared/dto/project.js').ProjectTopology> {
     const result: import('../shared/dto/project.js').ProjectTopology = {
-      version: 1, generatedAt: new Date().toISOString(), dependencies: [], warnings: [], scopes: [],
+      version: 1, generatedAt: new Date().toISOString(), dependencies: [], warnings: [], scopes: [], coverage: [],
     };
     const projects = data.project ? [data.project] : this.projectService.listProjects().map(project => project.name);
     for (const project of projects) {
@@ -129,6 +146,7 @@ export class ProjectRpcService {
         for (const stack of this.projectService.listStacks(record.name))
           result.scopes!.push({ project, stack: stackName(stack.name), runtimeProject: record.name, runtimeStack: stack.name });
         result.dependencies.push(...graph.dependencies.map(edge => ({ ...edge, project, stack: stackName(edge.stack) })));
+        result.coverage!.push(...(graph.coverage ?? []).map(item => ({ ...item, project, stack: stackName(item.stack) })));
         result.warnings.push(...graph.warnings.map(warning => ({ ...warning, project, ...(warning.stack ? { stack: stackName(warning.stack) } : {}) })));
       }
     }

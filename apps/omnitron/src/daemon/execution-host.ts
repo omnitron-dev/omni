@@ -104,6 +104,7 @@ export class ExecutionHostService {
       });
       return {
         info, entry: handle.entry, startedAt: handle.startedAt, instanceCount: handle.instanceCount,
+        bootstrapMetadata: handle.bootstrapMetadata,
         lastMetrics: handle.lastMetrics, lastExit: handle.lastExit, childMetrics: [...handle.childMetrics],
         // Topology hooks are executable code and stay in the owner. A
         // controller needs topology identity and transport declarations.

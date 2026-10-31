@@ -31,6 +31,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { randomUUID } from 'node:crypto';
 // os import removed — cache dir is inside monorepo for package resolution
 
 // =============================================================================
@@ -103,7 +104,9 @@ export async function compileTypeScript(sourcePath: string): Promise<CompileResu
   // The file is named with .omnitron-compiled.mjs suffix and gitignored via *.omnitron-compiled.mjs
   const sourceDir = path.dirname(absSource);
   const baseName = path.basename(absSource, path.extname(absSource));
-  const outputPath = path.join(sourceDir, `${baseName}.omnitron-compiled.mjs`);
+  // Owner and metadata readers can compile the same source concurrently.
+  // Each import must own its output until it has completed and unlinked it.
+  const outputPath = path.join(sourceDir, `${baseName}.${randomUUID()}.omnitron-compiled.mjs`);
 
   const result = await esbuild.build({
     entryPoints: [absSource],

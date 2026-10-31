@@ -457,8 +457,16 @@ export interface ProjectTopology {
   version: 1;
   generatedAt: string;
   dependencies: ProjectDependency[];
+  /** Snapshot provenance. Captured declarations do not assert live traffic or connection health. */
+  coverage?: Array<{ project: string; stack: string; app: string;
+    source: 'entry' | 'launch' | 'snapshot' | 'memory' | 'missing'; capturedAt?: string }>;
   /** Canonical ownership of unchanged runtime/history namespaces. */
   scopes?: Array<{ project: string; stack: string; runtimeProject: string; runtimeStack: string }>;
   /** Missing definitions/configuration are explicit; a partial graph is not a complete census. */
   warnings: Array<{ project: string; stack?: string; app?: string; reason: string }>;
+}
+
+export interface TopologyMetadataRefresh {
+  refreshed: number;
+  failures: Array<{ project: string; app: string; reason: string }>;
 }

@@ -77,3 +77,22 @@ it('compiles the complete source topology in production and does not arm a watch
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+it.each([false, true])('preserves explicit Redis-only infrastructure when stack-resolved=%s', async (stackResolved) => {
+  const root = mkdtempSync(join(tmpdir(), 'omni-redis-launch-'));
+  const service = new OrchestratorService(createNullLogger(), {} as never, {} as never, root);
+  const internal = service as any;
+  try {
+    writeFileSync(join(root, 'package.json'), '{"type":"module"}');
+    writeFileSync(join(root, 'bootstrap.js'), "export default {name:'cache-user',version:'1',processes:[{name:'main',module:'./worker.js'}],omnitronConfig:{redis:true}};");
+    internal.launchTopology = vi.fn(async () => {});
+    const entry = { name: 'cache-user', cwd: root, bootstrap: './bootstrap.js', env: {
+      REDIS_URL: 'redis://private.example:16379/7', ...(stackResolved ? { OMNITRON_STACK: 'production' } : {}),
+    } };
+    const handle = new AppHandle(entry, 'bootstrap');
+    await internal.launchBootstrapMode(entry, handle, {});
+    expect(entry.env.REDIS_URL).toBe('redis://private.example:16379/7');
+    expect(internal.launchTopology).toHaveBeenCalledOnce();
+    expect(handle.bootstrapMetadata?.definition.omnitronConfig).toEqual({ redis: true });
+  } finally { await internal.buildService?.dispose(); rmSync(root, { recursive: true, force: true }); }
+});

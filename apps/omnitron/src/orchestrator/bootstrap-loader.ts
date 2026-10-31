@@ -11,7 +11,7 @@
  *   Always load from source .ts so that code changes are picked up immediately
  *   without requiring a separate build step. tsx handles transpilation on the fly.
  *
- * **Dev mode, read by the daemon (`freshModuleGraph`):**
+ * **Definitions read by the daemon (`freshModuleGraph`):**
  *   In a short-lived process of its own, which answers with the definition as
  *   data. The `?t=` below makes Node import the definition FILE again, but not
  *   the packages it imports: those stay in the importing process's module graph
@@ -94,10 +94,10 @@ export interface LoadBootstrapOptions {
   /** Skip cache and prefer source .ts over compiled dist/ */
   devMode?: boolean;
   /**
-   * With `devMode`: read the definition in a short-lived process of its own —
+   * Read the definition in a short-lived process of its own —
    * a module graph that is new on every read — and get it back as data.
-   * Without `devMode` it changes nothing: a production load is cached for the
-   * life of the process by design.
+   * Production keeps its compiled-file preference; development reads source.
+   * Both modes avoid retaining an earlier package module graph in the daemon.
    *
    * For a long-lived READER of definitions, which is the daemon. What it reads
    * is data — the topology, `requires`, `config`, `omnitronConfig`,
@@ -114,17 +114,25 @@ export interface LoadBootstrapOptions {
   freshModuleGraph?: boolean | { timeoutMs?: number };
 }
 
+/** The same input selected by the definition loader, for declaration provenance. */
+export function bootstrapDefinitionSource(bootstrapPath: string, devMode = false): string {
+  const resolved = path.resolve(bootstrapPath);
+  if (devMode || canLoadTypeScript()) return resolved;
+  const compiled = toCompiledPath(resolved);
+  return compiled && fs.existsSync(compiled) ? compiled : resolved;
+}
+
 export async function loadBootstrapConfig(
   bootstrapPath: string,
   options?: LoadBootstrapOptions
 ): Promise<IAppDefinition> {
   const resolved = path.resolve(bootstrapPath);
 
-  if (options?.devMode && options.freshModuleGraph) {
+  if (options?.freshModuleGraph) {
     const timeoutMs =
       (typeof options.freshModuleGraph === 'object' ? options.freshModuleGraph.timeoutMs : undefined) ??
       FRESH_GRAPH_TIMEOUT_MS;
-    const definition = await readInFreshProcess(resolved, timeoutMs);
+    const definition = await readInFreshProcess(resolved, timeoutMs, options.devMode ?? false);
     assertDefinition(definition, bootstrapPath);
     // As every dev load has done: the cache is not read, and is left holding
     // the latest read for a production load of the same path.
@@ -388,7 +396,7 @@ function isAnswer(message: unknown): message is FreshGraphAnswer {
  * message when it answered with one, and otherwise with how it ended and the
  * last of its stderr.
  */
-function readInFreshProcess(resolved: string, timeoutMs: number): Promise<unknown> {
+function readInFreshProcess(resolved: string, timeoutMs: number, devMode: boolean): Promise<unknown> {
   if (process.env[READING_PROCESS_MARK]) {
     return Promise.reject(
       new Error(`a process reading a definition does not start another (asked for ${resolved})`),
@@ -402,7 +410,7 @@ function readInFreshProcess(resolved: string, timeoutMs: number): Promise<unknow
   return new Promise<unknown>((resolve, reject) => {
     let child: ChildProcess;
     try {
-      child = fork(entryPath, [resolved], {
+      child = fork(entryPath, [resolved, devMode ? 'development' : 'production'], {
         execArgv,
         env: { ...process.env, [READING_PROCESS_MARK]: '1' },
         // Output goes where this process's goes, as an in-process import's

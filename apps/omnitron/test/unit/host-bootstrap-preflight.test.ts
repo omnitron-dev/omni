@@ -26,7 +26,9 @@ function fixture() {
   fs.symlinkSync(fs.realpathSync(process.execPath), proc + '/exe');
   fs.symlinkSync(operator, proc + '/cwd');
   fs.writeFileSync(proc + '/cmdline', [process.execPath, '--import', 'tsx/esm', previous + '/dist/daemon/daemon-entry.js', ''].join('\0'));
-  fs.writeFileSync(proc + '/environ', 'PREFLIGHT_VALUE=a=b\0');
+  // Linux exposes the original fork environment after Node consumed its IPC
+  // descriptors. Reusing them in a non-IPC probe aborts before its entry runs.
+  fs.writeFileSync(proc + '/environ', 'PREFLIGHT_VALUE=a=b\0NODE_CHANNEL_FD=9999\0NODE_CHANNEL_SERIALIZATION_MODE=json\0NODE_UNIQUE_ID=100\0');
   const plan: HostUpgradePlan = {
     previous: { root: previous, version: 'old', commit: 'a'.repeat(40) },
     candidate: { root: candidate, version: 'new', commit: 'b'.repeat(40) }, apps: [], online: ['p/prod/api', 'p/prod/worker', 'p/prod/classic'], offline: ['p/idle/api'],

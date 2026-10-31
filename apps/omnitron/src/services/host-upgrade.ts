@@ -327,6 +327,9 @@ export function bootstrapPreflightCommand(plan: HostUpgradePlan, procRoot = '/pr
        fs.realpathSync(argv[${runtime.execArgv.length + 1}])!==${JSON.stringify(plan.previous.root + '/dist/daemon/daemon-entry.js')} ||
        JSON.stringify(argv.slice(1,${runtime.execArgv.length + 1}))!==${JSON.stringify(JSON.stringify(runtime.execArgv))}) throw Error('Serving process changed before bootstrap preflight');
     const env=Object.fromEntries(fs.readFileSync(proc+'/environ','utf8').split('\\0').filter(v=>v.includes('=')).map(v=>[v.slice(0,v.indexOf('=')),v.slice(v.indexOf('=')+1)]));
+    // procfs retains startup IPC descriptors that Node consumes during boot.
+    // They belong to the serving daemon's parent, never to an execFile child.
+    delete env.NODE_CHANNEL_FD; delete env.NODE_CHANNEL_SERIALIZATION_MODE; delete env.NODE_UNIQUE_ID;
     if(/--(?:inspect|debug|watch)/.test(env.NODE_OPTIONS||'')) throw Error('Unsupported debugging/watch NODE_OPTIONS for bootstrap preflight');
     if(env.OMNITRON_CWD===${JSON.stringify(plan.previous.root)}) env.OMNITRON_CWD=${JSON.stringify(plan.candidate.root)};
     const deadline=Date.now()+${HOST_BOOTSTRAP_PREFLIGHT_TIMEOUT_MS},checked=[],seen=new Set();
@@ -339,7 +342,7 @@ export function bootstrapPreflightCommand(plan: HostUpgradePlan, procRoot = '/pr
         'await loadBootstrapConfig('+JSON.stringify(app.bootstrap)+',{freshModuleGraph:{timeoutMs:'+Math.max(1, timeout-500)+'}});';
       try {execFileSync(${JSON.stringify(runtime.executable)},[...${JSON.stringify(execArgv)},'--input-type=module','--eval',script],
         {cwd:${JSON.stringify(plan.candidate.root)},env,timeout,maxBuffer:256*1024,stdio:['ignore','ignore','pipe']});}
-      catch(error){throw Error('Candidate bootstrap preflight failed for '+app.name+': '+(error.stderr?.toString().slice(-4000)||error.message));}
+      catch(error){throw Error('Candidate bootstrap preflight failed for '+app.name+' (exit '+error.status+', signal '+error.signal+', code '+error.code+'): '+(error.stderr?.toString().slice(-4000)||error.message));}
       seen.add(app.bootstrap);checked.push(app.name);
     }
     console.log(JSON.stringify({checked,classic:${online.filter(a => a.bootstrap === null).length},total:${online.length}}));`);

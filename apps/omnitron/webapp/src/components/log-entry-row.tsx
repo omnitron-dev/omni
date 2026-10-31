@@ -1,6 +1,6 @@
 import { Fragment, useId, useRef, useState } from 'react';
 import { Box, Button, ButtonBase, Collapse, Tooltip, Typography } from '@mui/material';
-import { alpha, keyframes, useTheme, type Theme } from '@mui/material/styles';
+import { alpha, getContrastRatio, keyframes, useTheme, type Theme } from '@mui/material/styles';
 import { ChevronRightIcon, CopyIcon, CheckIcon } from '@omnitron-dev/prism/icons';
 import { useCopyToClipboard } from '@omnitron-dev/prism/core';
 import type { LogEntryRow } from '@omnitron-dev/omnitron/dto/services';
@@ -19,7 +19,14 @@ const arrive = keyframes`from { opacity: 0; } to { opacity: 1; }`;
 export function logLevelColor(level: string, theme: Theme): string {
   const tones = { info: 'info', warn: 'warning', error: 'error', fatal: 'error' } as const;
   const tone = tones[level as keyof typeof tones];
-  return tone ? theme.palette[tone][theme.palette.mode === 'light' ? 'dark' : 'light'] : theme.palette.text.secondary;
+  if (!tone) return theme.palette.text.secondary;
+  const palette = theme.palette[tone];
+  // Prism adapts shade semantics to the mode; a literal "light" shade is not always bright.
+  return (
+    [palette.main, palette.dark, palette.light].find(
+      (color) => getContrastRatio(color, theme.palette.background.paper) >= 4.5
+    ) ?? theme.palette.text.primary
+  );
 }
 
 function timeOf(value: Date | string): string {
@@ -143,7 +150,17 @@ export function LogEntryRowView({
         aria-expanded={expanded}
         aria-controls={expanded ? id : undefined}
         aria-label={`${timeOf(log.timestamp)} ${log.app} ${log.level}: ${log.message}`}
-        onClick={() => setExpanded((value) => !value)}
+        onClick={(event) => {
+          const selection = window.getSelection();
+          if (
+            selection &&
+            !selection.isCollapsed &&
+            event.currentTarget.contains(selection.anchorNode) &&
+            event.currentTarget.contains(selection.focusNode)
+          )
+            return;
+          setExpanded((value) => !value);
+        }}
         sx={{
           width: '100%',
           minWidth: 0,
@@ -205,7 +222,7 @@ export function LogEntryRowView({
             fontFamily: MONO,
             fontSize: 11.5,
             lineHeight: '20px',
-            color: ['error', 'fatal'].includes(log.level) ? tone : 'text.primary',
+            color: 'text.primary',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: expanded ? 'pre-wrap' : 'nowrap',

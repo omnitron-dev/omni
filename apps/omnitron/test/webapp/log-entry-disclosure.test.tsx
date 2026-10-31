@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { ThemeProvider, createTheme, getContrastRatio } from '@mui/material/styles';
 import '@testing-library/jest-dom/vitest';
-import { LogEntryRowView } from '../../webapp/src/components/log-entry-row.js';
+import { LogEntryRowView, logLevelColor } from '../../webapp/src/components/log-entry-row.js';
+import { createPrismTheme } from '@omnitron-dev/prism/theme';
 import type { LogEntryRow } from '../../src/shared/dto/logs.js';
 const clipboard = vi.hoisted(() => ({ state: 'ready', copy: vi.fn() }));
 vi.mock('@omnitron-dev/prism/core', () => ({ useCopyToClipboard: () => clipboard }));
@@ -44,4 +45,11 @@ it('preserves multiline text and complete raw evidence in a keyboard-accessible 
   fireEvent.keyDown(raw, { key: 'Escape' });
   expect(toggle).toHaveFocus();
   expect(toggle).toHaveAttribute('aria-expanded', 'false');
+});
+
+it.each(['light', 'dark'] as const)('keeps severity labels readable with Prism %s shade semantics', (mode) => {
+  const theme = createPrismTheme({ mode });
+  for (const level of ['info', 'warn', 'error', 'fatal']) {
+    expect(getContrastRatio(logLevelColor(level, theme), theme.palette.background.paper)).toBeGreaterThanOrEqual(4.5);
+  }
 });

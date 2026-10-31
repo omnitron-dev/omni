@@ -1,3 +1,11 @@
+import { publicStack } from '../project/public-stack.js';
+import { TopologyStateStore } from '../project/topology-state.js';
+import { TopologyControl } from '../project/topology-control.js';
+import { mergeInfrastructure } from '../infrastructure/merge-config.js';
+export { mergeInfrastructure } from '../infrastructure/merge-config.js';
+import type { TopologyScope, TopologySpec, TopologyPlan, TopologyWorkspace } from '../shared/dto/topology.js';
+import { currentActor } from './audit.service.js';
+import { resolveNodePlacements } from '../project/stack-placement.js';
 import { nodePlacement, observeStack } from '../project/stack-observation.js';
 import { getCachedBootstrapDefinition } from '../orchestrator/bootstrap-loader.js';
 import { appDependencies } from '../project/dependency-topology.js';
@@ -113,28 +121,6 @@ function samePath(a: string, b: string): boolean {
   return real(a) === real(b);
 }
 
-/**
- * The infrastructure a stack actually gets: the ecosystem's, plus its own.
- *
- * Shallow for the top-level keys — a stack that declares `postgres` replaces
- * the ecosystem's — and merged for `services`, because those are named
- * things and a stack adding one must not remove the rest.
- */
-export function mergeInfrastructure(
-  ecosystemConfig: { infrastructure?: InfrastructureConfig | undefined },
-  stackConfig: { infrastructure?: Partial<InfrastructureConfig> | undefined },
-): InfrastructureConfig | undefined {
-  if (!stackConfig.infrastructure && !ecosystemConfig.infrastructure) return undefined;
-
-  return {
-    ...ecosystemConfig.infrastructure,
-    ...stackConfig.infrastructure,
-    services: {
-      ...ecosystemConfig.infrastructure?.services,
-      ...stackConfig.infrastructure?.services,
-    },
-  } as InfrastructureConfig;
-}
 
 // =============================================================================
 // Config Registry — holds loaded configs per project
@@ -322,6 +308,7 @@ export class ProjectService extends EventEmitter {
   }
 
   private readonly registry: ProjectRegistry;
+  private readonly topologyControl: TopologyControl;
   private readonly bootstrapTopology = new Map<string, Pick<IAppDefinition, 'requires' | 'omnitronConfig'>>();
   private readonly configRegistry = new Map<string, LoadedProject>();
   private readonly stackStates = new Map<string, StackRuntimeState>();
@@ -343,7 +330,7 @@ export class ProjectService extends EventEmitter {
   constructor(
     private readonly logger: ILogger,
     private readonly orchestrator: OrchestratorService,
-    daemonStateStore: import('../daemon/daemon-state-store.service.js').DaemonStateStore,
+    private readonly daemonStateStore: import('../daemon/daemon-state-store.service.js').DaemonStateStore,
     /**
      * Optional local collaborators — by NAME. Both daemon roles have a vault. These were four more
      * positional parameters, and the daemon's factory passed them through an
@@ -364,6 +351,19 @@ export class ProjectService extends EventEmitter {
     // pid-lock, etc.). The registry itself is unchanged in API;
     // only its backing storage moved.
     this.registry = new ProjectRegistry(daemonStateStore);
+    this.topologyControl = new TopologyControl(new TopologyStateStore(daemonStateStore), {
+      configuration: async (scope) => {
+        const config = await this.loadProjectConfig(scope.project);
+        const stack = this.resolveStacks(config, scope.project)[scope.stack];
+        if (!stack) throw new Error(`Stack '${scope.stack}' not found`);
+        return { config, stack, apps: this.resolveStackApps(stack, config), userStacks: this.loadUserStacks(scope.project) };
+      },
+      observation: scope => this.withRemoteAppStatuses(scope.project, this.getStack(scope.project, scope.stack)),
+      dependencies: scope => this.getTopology(scope),
+      nodes: () => daemonStateStore.selectNodesSync().map(node => ({
+        id: node.id, name: node.name, host: node.host, port: node.port,
+      })),
+    });
     this.infraManager = new StackInfrastructureManager(logger);
     // The deployer reaches nodes through the same SSH implementation as the
     // health checks, which is the only one that can present a password or a
@@ -660,7 +660,11 @@ export class ProjectService extends EventEmitter {
       type: input.type,
       apps: input.apps,
       ...(input.nodeIds && input.type !== 'local' && {
-        nodes: input.nodeIds.map((id) => ({ host: id, role: 'app' as const })),
+        nodes: input.nodeIds.map((id) => {
+          const node = this.daemonStateStore.selectNodesSync().find(candidate => candidate.id === id);
+          if (!node) throw new Error(`Fleet node '${id}' not found; register it before creating a stack`);
+          return { host: node.host, port: node.port, label: node.name, role: 'app' as const };
+        }),
       }),
     };
 
@@ -779,9 +783,12 @@ export class ProjectService extends EventEmitter {
     const filePath = this.getUserStacksPath(project);
     try {
       const raw = fs.readFileSync(filePath, 'utf-8');
-      return JSON.parse(raw) as Record<string, IStackConfig>;
-    } catch {
-      return {};
+      const stacks = JSON.parse(raw);
+      if (!stacks || typeof stacks !== 'object' || Array.isArray(stacks)) throw new Error('Expected an object of stacks');
+      return stacks as Record<string, IStackConfig>;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
+      throw new Error(`Cannot read stack overrides for '${project}'; file left intact`, { cause: error });
     }
   }
 
@@ -802,6 +809,67 @@ export class ProjectService extends EventEmitter {
   // ===========================================================================
   // Stacks
   // ===========================================================================
+
+  /** Remote deployments across projects; local process/container inventory has its own authoritative source. */
+  async getTopologyInventory(): Promise<import('../shared/dto/topology.js').TopologyInventory> {
+    const result: import('../shared/dto/topology.js').TopologyInventory = {
+      generatedAt: new Date().toISOString(), deployments: [], errors: [],
+    };
+    for (const project of this.listProjects()) {
+      try {
+        await this.ensureConfig(project.name);
+        const stacks = this.listStacks(project.name).filter(stack => stack.type !== 'local');
+        for (let offset = 0; offset < stacks.length; offset += 4) {
+          const observations = await Promise.allSettled(
+            stacks.slice(offset, offset + 4).map(stack => this.withRemoteAppStatuses(project.name, stack)),
+          );
+          observations.forEach((observation, index) => {
+            if (observation.status === 'fulfilled') {
+              result.deployments.push({ project: project.name, stack: publicStack(observation.value) });
+            } else {
+              result.errors.push({
+                project: project.name, stack: stacks[offset + index]!.name, reason: 'Node inventory could not be read',
+              });
+            }
+          });
+        }
+      } catch {
+        result.errors.push({ project: project.name, reason: 'Project configuration could not be read' });
+      }
+    }
+    return result;
+  }
+
+  async getTopologyWorkspace(scope: TopologyScope): Promise<TopologyWorkspace> {
+    return this.topologyControl.workspace(scope);
+  }
+
+  @RecoveryMutation()
+  async saveTopologyDraft(data: TopologyScope & { baseRevision: string; expectedDraft: number | null; spec: TopologySpec }) {
+    return this.topologyControl.saveDraft(data);
+  }
+
+  @RecoveryMutation()
+  async planTopology(data: TopologyScope & { draftRevision: number }): Promise<TopologyPlan> {
+    return this.topologyControl.plan(data);
+  }
+
+  @RecoveryMutation()
+  async applyTopologyPlan(data: TopologyScope & { plan: string }): Promise<TopologyPlan> {
+    const result = await this.topologyControl.apply(data, currentActor());
+    if (result.changed) {
+      // The local FULL commit already contains intent and its receipt; this is a searchable audit copy.
+      await this.audit?.record({
+        action: 'topology.apply', resourceType: 'stack', resourceId: `${data.project}/${data.stack}`,
+        details: {
+          plan: result.plan.id, revision: result.plan.baseRevision,
+          effect: result.plan.effect, changes: result.plan.changes,
+        },
+      });
+      this.emit('project:updated', data.project, {});
+    }
+    return result.plan;
+  }
 
   /** Configuration evidence from the launch builder; it never starts, probes or modifies applications. */
   async getTopology(scope: { project?: string; stack?: string }): Promise<import('../shared/dto/project.js').ProjectTopology> {
@@ -1058,7 +1126,7 @@ export class ProjectService extends EventEmitter {
     // With a release the disk has already been held to the release's commit
     // (`admitRelease`) — stricter than HEAD, and the artifacts are not built
     // from it at all.
-    if (stackConfig.type === 'remote' && !release) {
+    if (stackConfig.type !== 'local' && !release) {
       if (!allowDirty) {
         for (const { root, tree: t } of trees) {
           const refusal = refusalForDirtyTree(t, `${projectName}/${stackName}`);
@@ -1149,10 +1217,8 @@ export class ProjectService extends EventEmitter {
     try {
       if (stackConfig.type === 'local') {
         await this.startLocalStack(projectName, stackName, stackConfig, config);
-      } else if (stackConfig.type === 'remote') {
+      } else {
         reach = await this.startRemoteStack(projectName, stackName, stackConfig, config, release, reinstall);
-      } else if (stackConfig.type === 'cluster') {
-        await this.startClusterStack(projectName, stackName, stackConfig, config);
       }
 
       state.status = 'running';
@@ -2977,6 +3043,7 @@ export class ProjectService extends EventEmitter {
 
     // Build artifacts for apps in this stack
     const appEntries = this.resolveStackApps(stackConfig, ecosystemConfig);
+    const placements = resolveNodePlacements(stackConfig, appEntries);
     // What the stack gives its apps, vault references resolved — before any
     // node is touched: a key the vault does not hold refuses the deployment
     // here, not after a node was provisioned (project/stack-env.ts). A remote
@@ -3122,7 +3189,9 @@ export class ProjectService extends EventEmitter {
         const locks = new Map<string, MaintenanceLock>();
         try {
         // Deploy to each node: provision slave → deploy artifacts → connect
-        for (const node of nodes) {
+        for (const { node, apps: nodeApps } of placements) {
+          const selectedNames = new Set(nodeApps.map(app => app.name));
+          const nodeArtifacts = artifacts.filter(artifact => selectedNames.has(artifact.app));
           const nodeKey = `${node.host}:${node.port ?? 9700}`;
           if (!leases.has(nodeKey)) {
             skipped.push(nodeKey);
@@ -3280,26 +3349,26 @@ export class ProjectService extends EventEmitter {
             ecosystemConfig,
             projectName,
             stackConfig,
-            appEntries,
+            nodeApps,
             deployedInfra as import('../infrastructure/types.js').InfrastructureConfig | undefined,
           );
           // The stack's own, over the computed — as on a local stack, where
           // `settings.env` wins over both.
-          for (const [app, env] of Object.entries(stackEnv)) appEnv[app] = { ...(appEnv[app] ?? {}), ...env };
+          for (const [app, env] of Object.entries(stackEnv).filter(([name]) => selectedNames.has(name))) appEnv[app] = { ...(appEnv[app] ?? {}), ...env };
 
           // 3. Deploy app artifacts via SSH
-          if (artifacts.length > 0) {
+          if (nodeArtifacts.length > 0) {
             const unsubDeploy = this.deployer.onProgress((progress) => {
               this.emit('stack:deploy_progress', projectName, stackName, progress);
             });
             // The definitions travel with the artifacts. A node that receives
             // one without the other has files it cannot run, and says so only if
             // someone asks it directly.
-            await leases.confirm(nodeKey, `delivering ${artifacts.length} artifact(s) to ${node.host}`);
-            phases.enter(`delivering ${artifacts.length} artifact(s) to ${node.host}`);
+            await leases.confirm(nodeKey, `delivering ${nodeArtifacts.length} artifact(s) to ${node.host}`);
+            phases.enter(`delivering ${nodeArtifacts.length} artifact(s) to ${node.host}`);
             const sink = ecosystemConfig.monitoring?.alertSink;
-            const results = await this.deployer.deployToStack([target], artifacts, projectName, {
-              apps: appEntries,
+            const results = await this.deployer.deployToStack([target], nodeArtifacts, projectName, {
+              apps: nodeApps,
               appEnv,
               stack: stackName,
               // Past the node's record of what each app runs: ship and restart all.
@@ -3525,9 +3594,9 @@ export class ProjectService extends EventEmitter {
       // `postgres:postgres` in the first place.
       this.logger.error(
         { project: projectName, error: (err as Error).message },
-        'Could not resolve what the deployed apps connect to — they will start with their declared env only',
+        'Could not resolve application service bindings; deployment refused before application delivery',
       );
-      return {};
+      throw new Error('Could not resolve application service bindings', { cause: err });
     }
   }
 
@@ -3961,129 +4030,6 @@ export class ProjectService extends EventEmitter {
     }
   }
 
-  private async startClusterStack(
-    projectName: string,
-    stackName: string,
-    stackConfig: IStackConfig,
-    ecosystemConfig: IEcosystemConfig,
-  ): Promise<void> {
-    const nodes = stackConfig.nodes ?? [];
-    if (nodes.length === 0) {
-      throw new Error(`Cluster stack '${stackName}' has no nodes configured`);
-    }
-
-    this.logger.info(
-      { project: projectName, stack: stackName, nodes: nodes.length },
-      'Starting cluster stack — coordinating slave daemons'
-    );
-
-    const connector = this.getSlaveConnector();
-
-    // Build artifacts
-    const appEntries = this.resolveStackApps(stackConfig, ecosystemConfig);
-    const project = this.registry.get(projectName);
-    let artifacts: import('../project/artifact-builder.js').ArtifactInfo[] = [];
-
-    if (project) {
-      try {
-        const { ArtifactBuilder } = await import('../project/artifact-builder.js');
-        const builder = new ArtifactBuilder(project.path, undefined, {
-          info: (msg) => this.logger.info({ project: project.name }, msg),
-        });
-        const outcome = await builder.buildAll(appEntries);
-        artifacts = outcome.built;
-        for (const f of outcome.failed) {
-          this.logger.error({ app: f.app, error: f.error }, 'Artifact build failed');
-        }
-      } catch (err) {
-        this.logger.error({ error: (err as Error).message }, 'Artifact build failed');
-      }
-    }
-
-    // Resolve master address (from the SLAVE's perspective — what it dials)
-    const { DEFAULT_DAEMON_CONFIG: _dc } = await import('../config/defaults.js');
-    const { resolveMasterHost } = await import('./master-address.js');
-    const masterPort = _dc.port;
-
-    // Provision all slave nodes in parallel (install runtime + omnitron + config)
-    const appNodes = nodes.filter((n) => n.role !== 'database' && n.role !== 'cache');
-    // One writer per machine, as for a remote stack — see `deployRemoteStack`
-    // and `node-deploy-lease.ts`.
-    const targets = new Map<string, DeployTarget>();
-    for (const node of appNodes) {
-      targets.set(`${node.host}:${node.port ?? 9700}`, await this.targetForStackNode(node));
-    }
-    await withNodeLeases(
-      [...targets].map(([node, target]) => ({
-        node,
-        machine: `${target.host}:${target.sshPort ?? 22}`,
-        run: this.deployer.leaseRunner(target),
-      })),
-      `${projectName}/${stackName}`,
-      this.logger,
-      async (leases) => {
-        const leased = appNodes.filter((n) => leases.has(`${n.host}:${n.port ?? 9700}`));
-        for (const [node, because] of leases.unreachable) {
-          this.logger.error({ node, because }, 'Could not reach this node to lease it — skipping');
-        }
-        for (const node of leased) {
-          const nodeKey = `${node.host}:${node.port ?? 9700}`;
-          const unsubProvision = this.deployer.onProgress((progress) => {
-            this.emit('stack:deploy_progress', projectName, stackName, progress);
-          });
-          const target = targets.get(nodeKey)!;
-          const master = await resolveMasterHost(
-            { advertiseHost: _dc.advertiseHost, bindHost: _dc.host },
-            target,
-          );
-          this.logger.info(
-            { node: node.host, masterHost: master.host ?? '(none — this node is pulled from)', from: master.source },
-            'Resolved the master address this slave will dial',
-          );
-          await leases.confirm(nodeKey, `provisioning ${node.host}`);
-          await this.deployer.provisionSlaveNode(target, master.host, masterPort, projectName);
-          unsubProvision();
-        }
-
-        // Deploy app artifacts to all provisioned nodes
-        if (artifacts.length > 0 && leased.length > 0) {
-          for (const node of leased) {
-            await leases.confirm(`${node.host}:${node.port ?? 9700}`, `delivering to ${node.host}`);
-          }
-          const unsubDeploy = this.deployer.onProgress((progress) => {
-            this.emit('stack:deploy_progress', projectName, stackName, progress);
-          });
-          const results = await this.deployer.deployToStack(
-            leased.map((n) => targets.get(`${n.host}:${n.port ?? 9700}`)!),
-            artifacts,
-            projectName,
-            // Same on the cluster path: artifacts without definitions are files a
-            // node cannot run.
-            { concurrency: 5, apps: appEntries },
-          );
-          unsubDeploy();
-          const successful = results.filter((r) => r.status === 'success').length;
-          const failed = results.filter((r) => r.status === 'failed').length;
-          this.logger.info(
-            { successful, failed, total: results.length },
-            'Cluster deployment complete'
-          );
-        }
-      },
-    );
-
-    // Connect to all slave daemons
-    for (const node of nodes) {
-      await connector.addSlave({
-        host: node.host,
-        port: node.port ?? 9700,
-        label: node.label,
-        stack: stackName,
-        project: projectName,
-      });
-    }
-  }
-
   // ===========================================================================
   // Private — Utilities
   // ===========================================================================
@@ -4234,6 +4180,8 @@ export class ProjectService extends EventEmitter {
 
     if (projectName) {
       const userStacks = this.loadUserStacks(projectName);
+      // Saved topology intent is deliberately separate from executable configuration.
+      // A daemon restart, auto-resume or ordinary stack start must not admit a migration.
       return { ...userStacks, ...configStacks };
     }
 
@@ -4532,7 +4480,11 @@ export class ProjectService extends EventEmitter {
     info: IStackInfo,
   ): Promise<{ info: IStackInfo; answered: number }> {
     if (info.type !== 'remote' && info.type !== 'cluster') return { info, answered: 0 };
-    const nodes = info.config.nodes ?? [];
+    const nodes = [...(info.config.nodes ?? [])];
+    // Keep the last actual runtime footprint visible if its source configuration changes.
+    // Unadmitted target plans are never evidence that a workload ran on a node.
+    for (const old of this.stackStates.get(`${projectName}/${info.name}`)?.config.nodes ?? [])
+      if (!nodes.some(node => node.host === old.host && (node.port ?? 9700) === (old.port ?? 9700))) nodes.push({ ...old, apps: [] });
     if (nodes.length === 0) return { info, answered: 0 };
     if (!this.slaveConnector) return {
       info: observeStack(info, nodes.map(node => nodePlacement(projectName, info, node, null, null, new Date().toISOString()))),

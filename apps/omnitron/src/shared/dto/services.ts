@@ -1,3 +1,5 @@
+import type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace } from './topology.js';
+export type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace, TopologyChange, TopologyIssue } from './topology.js';
 import type { ProjectTopology } from './project.js';
 export type { ProjectDependency, ProjectTopology } from './project.js';
 import type { LogIngestionStats } from './logs.js';
@@ -303,6 +305,11 @@ export interface DeployProgressRecord {
 }
 
 export interface IProjectRpcService {
+  getTopologyInventory(): Promise<TopologyInventory>;
+  getTopologyWorkspace(data: TopologyScope): Promise<TopologyWorkspace>;
+  saveTopologyDraft(data: TopologyScope & { baseRevision: string; expectedDraft: number | null; spec: TopologySpec }): Promise<TopologyDraft>;
+  planTopology(data: TopologyScope & { draftRevision: number }): Promise<TopologyPlan>;
+  applyTopologyPlan(data: TopologyScope & { plan: string }): Promise<TopologyPlan>;
   // --- Projects (Viewer) ---
   listProjects(): Promise<IProjectInfo[]>;
   getProject(data: { name: string }): Promise<IProjectInfo>;

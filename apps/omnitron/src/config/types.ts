@@ -290,7 +290,7 @@ export interface IStackNode {
   port?: number;
   /** Node role in the stack */
   role: 'app' | 'database' | 'cache' | 'gateway' | 'worker' | 'master';
-  /** Which apps run on this node (default: all) */
+  /** Explicit application placement. Defaults to all, except cluster database/cache nodes (none). */
   apps?: string[];
   /** SSH connection config for remote access */
   ssh?: ISSHConfig;

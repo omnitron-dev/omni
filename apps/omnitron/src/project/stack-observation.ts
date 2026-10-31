@@ -1,4 +1,6 @@
 import type { IStackConfig, ProcessInfoDto } from '../config/types.js';
+import { nodeApplicationNames, stackNodeKey } from './stack-placement.js';
+export { stackNodeKey } from './stack-placement.js';
 import type {
   IStackInfo,
   IStackPlacement,
@@ -6,10 +8,6 @@ import type {
   IStackAppStatus,
   StackStatus,
 } from '../shared/dto/project.js';
-
-export function stackNodeKey(host: string, port = 9700): string {
-  return `${host.includes(':') ? `[${host}]` : host}:${port}`;
-}
 
 /** Names are qualified by project AND stack; a foreign `api` is never this app. */
 export function nodePlacement(
@@ -20,8 +18,21 @@ export function nodePlacement(
   infrastructure: IStackInfraStatus | null,
   observedAt: string
 ): IStackPlacement {
-  const selected = new Set(node.apps ?? info.apps.map((app) => app.name));
-  const apps = info.apps.flatMap((app) => {
+  const selected = new Set(
+    nodeApplicationNames(
+      info.config,
+      node,
+      info.apps.map((app) => app.name)
+    )
+  );
+  const discovered = (processes ?? []).flatMap((process) => {
+    const parts = process.name.split('/');
+    return parts.length === 3 && parts[0] === project && (parts[1] === info.name || parts[1] === 'deployed')
+      ? [parts[2]!]
+      : [];
+  });
+  const apps = [...new Set([...info.apps.map((app) => app.name), ...discovered])].flatMap((name) => {
+    const app = { name };
     const qualified = `${project}/${info.name}/${app.name}`;
     const legacy = `${project}/deployed/${app.name}`;
     const process = processes?.find((p) => p.name === qualified) ?? processes?.find((p) => p.name === legacy) ?? null;

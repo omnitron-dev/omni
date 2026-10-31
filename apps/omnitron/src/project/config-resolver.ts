@@ -647,16 +647,16 @@ function resolveStackAddresses(
     return {
       postgres: {
         host: dbNode?.host ?? LOCAL_INFRA_HOST,
-        port: dbNode?.port ?? 5432,
+        port: portAllocation?.postgresPort ?? infra?.postgres?.port ?? 5432,
         user: getEnv().POSTGRES_USER ?? 'postgres',
         password: defaultPgPassword,
       },
       redis: {
         host: cacheNode?.host ?? LOCAL_INFRA_HOST,
-        port: cacheNode?.port ?? 6379,
+        port: portAllocation?.redisPort ?? infra?.redis?.port ?? 6379,
         password: defaultRedisPassword,
       },
-      gateway: gwNode ? { host: gwNode.host, port: gwNode.port ?? 8080 } : undefined,
+      gateway: gwNode ? { host: gwNode.host, port: infra?.gateway?.port ?? 8080 } : undefined,
     };
   }
 

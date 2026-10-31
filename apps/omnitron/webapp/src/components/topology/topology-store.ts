@@ -72,6 +72,8 @@ export interface InfraNodeData {
 export interface AppNodeData {
   nodeType: 'app';
   label: string;
+  project?: string | null | undefined;
+  logicalApp?: string | undefined;
   /**
    * The name the platform's records keep it under: this daemon's handle
    * (`sample/dev/main`), or for a remote app the node's (`sample/deployed/main`)
@@ -216,6 +218,10 @@ function appFromProcess(process: ProcessInfoDto, stack: string | null): AppNodeD
     name: process.name,
     stack,
     remote: false,
+    nodeKey: 'local',
+    host: 'localhost',
+    project: process.name.split('/').length === 3 ? process.name.split('/')[0] : undefined,
+    logicalApp: lastSegment(process.name),
     port: process.port,
     status: process.status,
     pid: process.pid,
@@ -418,7 +424,12 @@ export function daemonBands(processes: ProcessInfoDto[], containers: ContainerSt
 
   return [...bands].map(([key, members]) => {
     const stack = key ? lastSegment(key) : null;
-    const services = members.containers.map((c) => serviceNode(c.service ?? c.name, stack, null, c));
+    const services = members.containers.map((c) => ({
+      ...serviceNode(c.service ?? c.name, stack, null, c),
+      nodeKey: 'local',
+      host: 'localhost',
+      project: c.project,
+    }));
     return {
       stack: key || null,
       servers: [],
@@ -443,12 +454,18 @@ export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeDa
 
   for (const band of bands) {
     const key = band.placementKey ?? band.stack ?? 'daemon';
+    const resources: Node<TopologyNodeData>[] = [];
+    const deploymentKey = band.placementKey ?? band.stack ?? null;
     for (const server of band.servers) {
       // A machine that runs two stacks is one machine.
       const placed = serversPlaced.get(server.address);
       if (placed) {
         const data = placed.data as ServerNodeData;
-        placed.data = { ...data, stacks: [...data.stacks, ...server.stacks], apps: [...data.apps, ...server.apps] };
+        placed.data = {
+          ...data,
+          stacks: [...new Set([...data.stacks, ...server.stacks])],
+          apps: [...new Set([...data.apps, ...server.apps])],
+        };
         continue;
       }
       const node: Node<TopologyNodeData> = {
@@ -462,11 +479,11 @@ export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeDa
     }
 
     for (const service of band.services) {
-      nodes.push({
+      resources.push({
         id: `infra-${key}-${service.identity ?? service.service}`,
         type: 'infraNode',
         position: { x: 0, y: 0 },
-        data: service,
+        data: { ...service, deploymentKey },
       });
     }
 
@@ -474,7 +491,7 @@ export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeDa
       // Keyed by band too: every remote stack's node names its apps alike,
       // `sample/deployed/main`.
       const id = `app-${key}-${app.name}`;
-      nodes.push({ id, type: 'appNode', position: { x: 0, y: 0 }, data: app });
+      resources.push({ id, type: 'appNode', position: { x: 0, y: 0 }, data: { ...app, deploymentKey } });
 
       for (const service of band.services) {
         if (!service.app || service.app !== lastSegment(app.name)) continue;
@@ -498,47 +515,34 @@ export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeDa
     }
 
     if (band.gateway) {
-      nodes.push({
+      resources.push({
         id: `gateway-${key}`,
         type: 'gatewayNode',
         position: { x: 0, y: 0 },
-        data: band.gateway,
+        data: { ...band.gateway, deploymentKey },
       });
     }
+    nodes.push(...resources);
     if (band.placementKey && band.servers.length === 1) {
       const server = serversPlaced.get(band.servers[0]!.address)!;
-      for (const resource of nodes.filter(
-        (node) => node.id !== server.id && node.data.nodeKey === server.data.nodeKey
-      )) {
+      for (const resource of resources) {
         const id = `placement:${server.id}:${resource.id}`;
-        if (!edges.some((edge) => edge.id === id))
-          edges.push({
-            id,
-            source: server.id,
-            target: resource.id,
-            type: 'smoothstep',
-            label: resource.data.present === false ? 'expected on' : 'hosts',
-            data: {
-              evidence: resource.data.present === false ? 'declaration' : 'placement',
-              via: [resource.data.present === false ? 'stack configuration' : 'node inventory'],
-            },
-            style: { strokeWidth: 1, opacity: 0.45 },
-          });
+        edges.push({
+          id,
+          source: server.id,
+          target: resource.id,
+          type: 'smoothstep',
+          label: resource.data.present === false ? 'expected on' : 'hosts',
+          data: {
+            evidence: resource.data.present === false ? 'declaration' : 'placement',
+            via: [resource.data.present === false ? 'stack configuration' : 'node inventory'],
+          },
+          style: { strokeWidth: 1, opacity: 0.45 },
+        });
       }
     }
   }
 
-  for (const node of nodes) {
-    if (node.data.nodeType !== 'server') {
-      const band = bands.find(
-        (band) =>
-          band.apps.includes(node.data as AppNodeData) ||
-          band.services.includes(node.data as InfraNodeData) ||
-          band.gateway === node.data
-      );
-      node.data.deploymentKey = band?.placementKey ?? band?.stack ?? null;
-    }
-  }
   return { nodes: arrangeTopologyNodes(nodes, 3), edges };
 }
 
@@ -546,159 +550,213 @@ export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeDa
 // Store creation
 // ---------------------------------------------------------------------------
 
-export const useTopologyStore = create<TopologyState>((set, get) => ({
-  nodes: [],
-  edges: [],
-  apps: [],
-  daemonStatus: null,
-  coverageWarnings: [],
-  loading: true,
-  error: null,
-  scope: { project: null, stack: null },
-  detailPanel: { open: false, nodeId: null, nodeType: null, data: null },
+export const useTopologyStore = create<TopologyState>((set, get) => {
+  // Polls and manual refreshes share a read per scope. Slow peers cannot create an accumulating RPC queue.
+  const reads = new WeakMap<TopologyScope, Promise<void>>();
+  return {
+    nodes: [],
+    edges: [],
+    apps: [],
+    daemonStatus: null,
+    coverageWarnings: [],
+    loading: true,
+    error: null,
+    scope: { project: null, stack: null },
+    detailPanel: { open: false, nodeId: null, nodeType: null, data: null },
 
-  fetchAll: async () => {
-    const { scope } = get();
-    // Each question settles on its own, a throw included: one source that
-    // cannot answer thins the diagram, it does not blank it.
-    const ask = <T>(question: () => Promise<T>) => Promise.resolve().then(question);
-    const [stacksAnswer, processesAnswer, containersAnswer, statusAnswer, dependenciesAnswer] =
-      await Promise.allSettled([
-        scope.project ? ask(() => project.listStacks({ project: scope.project! })) : Promise.resolve(null),
-        ask(() => daemon.list()),
-        ask(() => infra.listContainers()),
-        ask(() => daemon.status()),
-        ask(() =>
-          project.getTopology({
-            ...(scope.project ? { project: scope.project } : {}),
-            ...(scope.stack ? { stack: scope.stack } : {}),
-          })
-        ),
-      ]);
-    // An answer for a scope the page has since left is not drawn.
-    if (get().scope !== scope) return;
-
-    const processes = processesAnswer.status === 'fulfilled' ? processesAnswer.value : [];
-    const containers = containersAnswer.status === 'fulfilled' ? containersAnswer.value : [];
-    const stacks = stacksAnswer.status === 'fulfilled' ? stacksAnswer.value : null;
-
-    const bands = scope.project
-      ? stackBands(stacks ?? [], scope, processes, containers)
-      : daemonBands(processes, containers);
-    const { nodes, edges } = layoutBands(bands);
-    if (dependenciesAnswer.status === 'fulfilled')
-      connectDependencies(nodes, edges, dependenciesAnswer.value.dependencies, scope);
-    // The system view shows this daemon's apps. An inactive registration or a
-    // remote deployment must not make those apps look partially unreadable.
-    const visibleApps = new Set(bands.flatMap((band) => band.apps.map((app) => app.name)));
-    const coverageWarnings =
-      dependenciesAnswer.status === 'fulfilled'
-        ? dependenciesAnswer.value.warnings.filter(
-            (warning) =>
-              scope.project || !warning.app || visibleApps.has(`${warning.project}/${warning.stack}/${warning.app}`)
-          )
-        : [];
-
-    // Which sources could not answer — named, because a blank or thinned
-    // diagram is otherwise a picture of a platform with less in it, which is
-    // a different claim from "I could not find out".
-    const unavailable: string[] = [];
-    if (stacksAnswer.status === 'rejected') unavailable.push(`${scope.project}'s stacks`);
-    if (processesAnswer.status === 'rejected') unavailable.push("this daemon's processes");
-    if (containersAnswer.status === 'rejected') unavailable.push('container health');
-    if (statusAnswer.status === 'rejected') unavailable.push('daemon status');
-    if (dependenciesAnswer.status === 'rejected')
-      unavailable.push('configured dependencies (a compatible backend is required)');
-    const failedSources = unavailable.length;
-    if (coverageWarnings.length)
-      unavailable.push(`${coverageWarnings.length} dependency declarations (see coverage details)`);
-    const unreadPlacements = (stacks ?? [])
-      .filter((s) => !scope.stack || s.name === scope.stack)
-      .flatMap((s) =>
-        (s.placements ?? []).flatMap((p) => p.errors.map((reason) => `${s.name}@${p.nodeKey}: ${reason}`))
-      );
-    const asked = scope.project ? 5 : 4;
-
-    set({
-      coverageWarnings,
-      apps: bands.flatMap((band) => band.apps),
-      daemonStatus: statusAnswer.status === 'fulfilled' ? statusAnswer.value : null,
-      nodes,
-      edges,
-      detailPanel: (() => {
-        const current = get().detailPanel;
-        const selected = nodes.find((node) => node.id === current.nodeId);
-        return current.open && selected
-          ? { ...current, data: selected.data }
-          : { open: false, nodeId: null, nodeType: null, data: null };
-      })(),
-      loading: false,
-      error:
-        unavailable.length === 0 && unreadPlacements.length === 0
-          ? null
-          : failedSources >= asked
-            ? 'Could not reach the daemon — this diagram is empty because nothing could be read, not because nothing is running.'
-            : stacksAnswer.status === 'rejected'
-              ? `Could not read ${scope.project}'s stacks — this diagram is empty because they could not be read, not because nothing is running.`
-              : [unavailable.length ? `Incomplete: could not read ${unavailable.join(', ')}.` : '', ...unreadPlacements]
-                  .filter(Boolean)
-                  .join(' '),
-    });
-  },
-
-  setScope: (scope) => {
-    const current = get().scope;
-    if (current.project === scope.project && current.stack === scope.stack) return;
-    set({
-      scope,
-      loading: true,
-      nodes: [],
-      edges: [],
-      coverageWarnings: [],
-      apps: [],
-      error: null,
-      detailPanel: { open: false, nodeId: null, nodeType: null, data: null },
-    });
-    void get().fetchAll();
-  },
-
-  openDetail: (nodeId, nodeType, data) => set({ detailPanel: { open: true, nodeId, nodeType, data } }),
-
-  closeDetail: () => set({ detailPanel: { open: false, nodeId: null, nodeType: null, data: null } }),
-
-  restartApp: async (name) => {
-    try {
-      await daemon.restartApp({ name });
-      await get().fetchAll();
-    } catch (err: any) {
-      set({ error: `Failed to restart ${name}: ${err?.message}` });
-    }
-  },
-
-  stopApp: async (name) => {
-    try {
-      // `stopApp` does NOT throw on failure — it answers
-      // `{ success: false, error }` on purpose, so a Netron client can render
-      // the reason. The `catch` below is therefore on the wrong path: it
-      // exists, reads as error handling, and never runs, so a stop that
-      // failed looked exactly like one that worked.
-      const result = await daemon.stopApp({ name });
-      if (!result.success) {
-        set({ error: `Failed to stop ${name}: ${result.error ?? 'the daemon reported failure'}` });
+    fetchAll: async () => {
+      const { scope } = get();
+      const pending = reads.get(scope);
+      if (pending) {
+        await pending;
         return;
       }
-      await get().fetchAll();
-    } catch (err: any) {
-      set({ error: `Failed to stop ${name}: ${err?.message}` });
-    }
-  },
+      const read = async () => {
+        // Each question settles on its own, a throw included: one source that
+        // cannot answer thins the diagram, it does not blank it.
+        const ask = <T>(question: () => Promise<T>) => Promise.resolve().then(question);
+        const [stacksAnswer, processesAnswer, containersAnswer, statusAnswer, dependenciesAnswer, inventoryAnswer] =
+          await Promise.allSettled([
+            scope.project ? ask(() => project.listStacks({ project: scope.project! })) : Promise.resolve(null),
+            ask(() => daemon.list()),
+            ask(() => infra.listContainers()),
+            ask(() => daemon.status()),
+            ask(() =>
+              project.getTopology({
+                ...(scope.project ? { project: scope.project } : {}),
+                ...(scope.stack ? { stack: scope.stack } : {}),
+              })
+            ),
+            scope.project ? Promise.resolve(null) : ask(() => project.getTopologyInventory()),
+          ]);
+        // An answer for a scope the page has since left is not drawn.
+        if (get().scope !== scope) return;
 
-  startApp: async (name) => {
-    try {
-      await daemon.startApp({ name });
-      await get().fetchAll();
-    } catch (err: any) {
-      set({ error: `Failed to start ${name}: ${err?.message}` });
-    }
-  },
-}));
+        const processes = processesAnswer.status === 'fulfilled' ? processesAnswer.value : [];
+        const containers = containersAnswer.status === 'fulfilled' ? containersAnswer.value : [];
+        const stacks = stacksAnswer.status === 'fulfilled' ? stacksAnswer.value : null;
+
+        const bands: TopologyBand[] = scope.project
+          ? stackBands(stacks ?? [], scope, processes, containers)
+          : [
+              ...daemonBands(processes, containers),
+              ...(inventoryAnswer.status === 'fulfilled' ? (inventoryAnswer.value?.deployments ?? []) : []).flatMap(
+                (deployment) =>
+                  stackBands(
+                    [deployment.stack],
+                    { project: deployment.project, stack: deployment.stack.name },
+                    [],
+                    []
+                  ).map((band) => ({
+                    ...band,
+                    placementKey: `${deployment.project}/${band.placementKey ?? band.stack}`,
+                    apps: band.apps.map((app) => ({ ...app, label: `${deployment.project}/${app.label}` })),
+                    servers: band.servers.map((server) => ({
+                      ...server,
+                      stacks: server.stacks.map((stack) => `${deployment.project}/${stack}`),
+                    })),
+                  }))
+              ),
+            ];
+        const { nodes, edges } = layoutBands(bands);
+        if (dependenciesAnswer.status === 'fulfilled')
+          connectDependencies(nodes, edges, dependenciesAnswer.value.dependencies, scope);
+        // Logical ownership survives a remote node's legacy process namespace.
+        const visibleApps = new Set(
+          bands.flatMap((band) => band.apps.map((app) => `${app.project}/${app.stack}/${app.logicalApp}`))
+        );
+        const coverageWarnings =
+          dependenciesAnswer.status === 'fulfilled'
+            ? dependenciesAnswer.value.warnings.filter(
+                (warning) =>
+                  scope.project || !warning.app || visibleApps.has(`${warning.project}/${warning.stack}/${warning.app}`)
+              )
+            : [];
+
+        // Which sources could not answer — named, because a blank or thinned
+        // diagram is otherwise a picture of a platform with less in it, which is
+        // a different claim from "I could not find out".
+        const unavailable: string[] = [];
+        if (stacksAnswer.status === 'rejected') unavailable.push(`${scope.project}'s stacks`);
+        if (processesAnswer.status === 'rejected') unavailable.push("this daemon's processes");
+        if (containersAnswer.status === 'rejected') unavailable.push('container health');
+        if (statusAnswer.status === 'rejected') unavailable.push('daemon status');
+        if (dependenciesAnswer.status === 'rejected')
+          unavailable.push('configured dependencies (a compatible backend is required)');
+        if (inventoryAnswer.status === 'rejected') unavailable.push('fleet placement inventory');
+        const failedSources = unavailable.length;
+        if (coverageWarnings.length)
+          unavailable.push(`${coverageWarnings.length} dependency declarations (see coverage details)`);
+        const placementStacks = scope.project
+          ? (stacks ?? [])
+          : inventoryAnswer.status === 'fulfilled'
+            ? (inventoryAnswer.value?.deployments ?? []).map((value) => value.stack)
+            : [];
+        const unreadPlacements = placementStacks
+          .filter((s) => !scope.stack || s.name === scope.stack)
+          .flatMap((s) =>
+            (s.placements ?? []).flatMap((p) => p.errors.map((reason) => `${s.name}@${p.nodeKey}: ${reason}`))
+          );
+        if (inventoryAnswer.status === 'fulfilled')
+          unreadPlacements.push(
+            ...(inventoryAnswer.value?.errors ?? []).map(
+              (error) => `${error.project}${error.stack ? `/${error.stack}` : ''}: ${error.reason}`
+            )
+          );
+        const asked = 5;
+
+        set({
+          coverageWarnings,
+          apps: bands.flatMap((band) => band.apps),
+          daemonStatus: statusAnswer.status === 'fulfilled' ? statusAnswer.value : null,
+          nodes,
+          edges,
+          detailPanel: (() => {
+            const current = get().detailPanel;
+            const selected = nodes.find((node) => node.id === current.nodeId);
+            return current.open && selected
+              ? { ...current, data: selected.data }
+              : { open: false, nodeId: null, nodeType: null, data: null };
+          })(),
+          loading: false,
+          error:
+            unavailable.length === 0 && unreadPlacements.length === 0
+              ? null
+              : failedSources >= asked
+                ? 'Could not reach the daemon — this diagram is empty because nothing could be read, not because nothing is running.'
+                : stacksAnswer.status === 'rejected'
+                  ? `Could not read ${scope.project}'s stacks — this diagram is empty because they could not be read, not because nothing is running.`
+                  : [
+                      unavailable.length ? `Incomplete: could not read ${unavailable.join(', ')}.` : '',
+                      ...unreadPlacements,
+                    ]
+                      .filter(Boolean)
+                      .join(' '),
+        });
+      };
+      const operation = read();
+      reads.set(scope, operation);
+      try {
+        await operation;
+      } finally {
+        reads.delete(scope);
+      }
+    },
+
+    setScope: (scope) => {
+      const current = get().scope;
+      if (current.project === scope.project && current.stack === scope.stack) return;
+      set({
+        scope,
+        loading: true,
+        nodes: [],
+        edges: [],
+        coverageWarnings: [],
+        apps: [],
+        error: null,
+        detailPanel: { open: false, nodeId: null, nodeType: null, data: null },
+      });
+      void get().fetchAll();
+    },
+
+    openDetail: (nodeId, nodeType, data) => set({ detailPanel: { open: true, nodeId, nodeType, data } }),
+
+    closeDetail: () => set({ detailPanel: { open: false, nodeId: null, nodeType: null, data: null } }),
+
+    restartApp: async (name) => {
+      try {
+        await daemon.restartApp({ name });
+        await get().fetchAll();
+      } catch (err: any) {
+        set({ error: `Failed to restart ${name}: ${err?.message}` });
+      }
+    },
+
+    stopApp: async (name) => {
+      try {
+        // `stopApp` does NOT throw on failure — it answers
+        // `{ success: false, error }` on purpose, so a Netron client can render
+        // the reason. The `catch` below is therefore on the wrong path: it
+        // exists, reads as error handling, and never runs, so a stop that
+        // failed looked exactly like one that worked.
+        const result = await daemon.stopApp({ name });
+        if (!result.success) {
+          set({ error: `Failed to stop ${name}: ${result.error ?? 'the daemon reported failure'}` });
+          return;
+        }
+        await get().fetchAll();
+      } catch (err: any) {
+        set({ error: `Failed to stop ${name}: ${err?.message}` });
+      }
+    },
+
+    startApp: async (name) => {
+      try {
+        await daemon.startApp({ name });
+        await get().fetchAll();
+      } catch (err: any) {
+        set({ error: `Failed to start ${name}: ${err?.message}` });
+      }
+    },
+  };
+});

@@ -84,10 +84,12 @@ describe('node-qualified stack observations', () => {
     expect(disconnected.apps[0]!.status).toBe('unknown');
   });
   it('allows an infrastructure-only node without inventing application replicas', () => {
-    const onlyServices = nodePlacement('sample', base, { host: 'db', role: 'database', apps: [] }, [], infra, at);
+    const onlyServices = nodePlacement('sample', base, { host: 'db', role: 'database' }, [], infra, at);
     const result = observeStack(base, [node(0, [process()]), onlyServices]);
     expect(result.apps[0]).toMatchObject({ status: 'online', instances: 1 });
     expect(onlyServices.apps).toEqual([]);
+    const explicit = nodePlacement('sample', base, { host: 'db', role: 'database', apps: ['api'] }, [], infra, at);
+    expect(explicit.apps).toEqual([{ name: 'api', expected: true, process: null }]);
   });
   it('reports unexpected replicas instead of silently counting them as desired', () => {
     const misplaced = nodePlacement('sample', base, { host: 'db', role: 'database', apps: [] }, [process()], infra, at);

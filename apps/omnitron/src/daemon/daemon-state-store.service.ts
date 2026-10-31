@@ -176,15 +176,34 @@ export class DaemonStateStore {
    * completed at least once. Returns null on missing key or
    * parse failure.
    */
-  kvGetSync<T>(key: string): T | null {
+  kvGetSync<T>(key: string, options: { strict?: boolean } = {}): T | null {
     const db = this.rawSqlite ?? this.initSync();
     const row = db.prepare('SELECT value FROM state_kv WHERE key = ?').get(key) as { value: string } | undefined;
     if (!row) return null;
     try {
       return JSON.parse(row.value) as T;
     } catch (err) {
+      if (options.strict) throw new Error(`Corrupt daemon state: ${key}`, { cause: err });
       this.logger.warn({ key, err: (err as Error).message }, 'state_kv: JSON parse failed (sync)');
       return null;
+    }
+  }
+
+  /** Atomic read/compare/write for control-plane intent; returns only after a FULL WAL commit. */
+  kvUpdateSync<T>(key: string, update: (current: T | null) => T): T {
+    const db = this.rawSqlite ?? this.initSync();
+    if (db.inTransaction) throw new Error('Daemon state is busy in another transaction; retry the operation');
+    const previous = db.pragma('synchronous', { simple: true });
+    db.pragma('synchronous = FULL');
+    try {
+      return db.transaction(() => {
+        const current = this.kvGetSync<T>(key, { strict: true });
+        const next = update(current);
+        this.kvSetSync(key, next);
+        return next;
+      }).immediate();
+    } finally {
+      db.pragma(`synchronous = ${Number(previous)}`);
     }
   }
 

@@ -252,6 +252,32 @@ project
 // Stack Management
 // ============================================================================
 
+const topology = program.command('topology').description('Inspect, edit and plan desired application placement');
+for (const action of ['show', 'export', 'plan'] as const) {
+  topology.command(`${action} <project> <stack>`)
+    .description(action === 'export'
+      ? 'Export portable topology JSON'
+      : action === 'plan'
+        ? 'Validate the saved draft and preview changes'
+        : 'Show desired placement and observation gaps')
+    .action(async (projectName, stackName) => {
+      const { topologyCommand } = await import('../commands/topology.js');
+      await topologyCommand(action, projectName, stackName);
+    });
+}
+topology.command('draft <project> <stack> <file>')
+  .description('Save a versioned draft from JSON; no workloads change')
+  .action(async (projectName, stackName, file) => {
+    const { topologyCommand } = await import('../commands/topology.js');
+    await topologyCommand('draft', projectName, stackName, file);
+  });
+topology.command('apply <project> <stack> <plan>')
+  .description('Accept a reviewed target; executable deployment configuration is unchanged')
+  .action(async (projectName, stackName, plan) => {
+    const { topologyCommand } = await import('../commands/topology.js');
+    await topologyCommand('apply', projectName, stackName, plan);
+  });
+
 const stack = program.command('stack').aliases(['stacks']).description('Manage deployment stacks across projects');
 
 stack

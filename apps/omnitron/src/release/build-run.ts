@@ -299,7 +299,7 @@ async function buildStaticsFor(
   }
   const stackConfig = { ...userStacks, ...(config.stacks ?? {}) }[stack] as { infrastructure?: unknown } | undefined;
   if (!stackConfig) throw new Error(`There is no stack '${stack}' at this commit`);
-  const { mergeInfrastructure } = await import('../services/project.service.js');
+  const { mergeInfrastructure } = await import('../infrastructure/merge-config.js');
   const infra = mergeInfrastructure(config as never, stackConfig as never) as
     | {
         gateway?: { staticDir?: string; staticEnv?: Record<string, string> };

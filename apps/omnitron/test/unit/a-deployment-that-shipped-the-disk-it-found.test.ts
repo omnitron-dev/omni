@@ -134,7 +134,7 @@ describe('the refusal a dirty tree earns', () => {
 });
 
 describe('a remote stack will not start from a tree that is not its commit', () => {
-  function service(type: 'remote' | 'local', dir: string) {
+  function service(type: 'remote' | 'local' | 'cluster', dir: string) {
     const started: string[] = [];
     const warned: any[] = [];
     const svc: any = Object.create(ProjectService.prototype);
@@ -178,6 +178,16 @@ describe('a remote stack will not start from a tree that is not its commit', () 
   it('proceeds on a clean tree', async () => {
     const { svc, started } = service('remote', repo());
     await svc.startStack('sample', 'test', { source: 'operator' });
+    expect(started).toEqual(['remote']);
+  });
+
+  it('uses the same admission and deployment path for a cluster', async () => {
+    const dir = repo();
+    writeFileSync(join(dir, 'app.ts'), 'edited\n');
+    const { svc, started } = service('cluster', dir);
+    await expect(svc.startStack('sample', 'test', { source: 'operator' })).rejects.toThrow(/differ from the commit/);
+    expect(started).toEqual([]);
+    await svc.startStack('sample', 'test', { source: 'operator', allowDirty: true });
     expect(started).toEqual(['remote']);
   });
 

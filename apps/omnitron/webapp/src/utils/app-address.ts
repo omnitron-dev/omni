@@ -74,7 +74,7 @@ export interface ShownApp {
   stack: string | null;
   /** Run by a node rather than by this daemon. */
   remote: boolean;
-  status: ProcessInfoDto['status'];
+  status: IProjectAppStatus['status'];
   pid: number | null;
   uptime: number;
   cpu: number;

@@ -1,3 +1,4 @@
+import { TopologyWorkspaceLauncher } from 'src/components/topology/topology-editor';
 /** Deployment topology: machines, declared dependencies, applications and ingress. */
 import { useEffect, useCallback, useMemo, useState, useRef } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
@@ -112,6 +113,7 @@ function TopologyWorkspace() {
   } = useTopologyStore();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<TopologyNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [editingTopology, setEditingTopology] = useState(false);
   const [locked, setLocked] = useState(true);
   const [listView, setListView] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -375,6 +377,7 @@ function TopologyWorkspace() {
             }}
           />
           <Stack direction="row" useFlexGap spacing={0.25} sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
+            <Button size="small" disabled={!can('OmnitronProject.getTopologyWorkspace')} onClick={() => setEditingTopology(true)}>Workspace</Button>
             <Button size="small" sx={{ minWidth: 0 }} aria-pressed={listView} onClick={() => setListView(!listView)}>
               {listView ? 'Graph' : 'List'}
             </Button>
@@ -642,7 +645,8 @@ function TopologyWorkspace() {
               </>
             )}
           </Box>
-          <DetailPanel container={fullscreen ? container.current : undefined} />
+          {editingTopology && <TopologyWorkspaceLauncher initialProject={activeProject} initialStack={activeStack} onClose={() => setEditingTopology(false)} onApplied={() => void fetchAll()} />}
+      <DetailPanel container={fullscreen ? container.current : undefined} />
         </Box>
         <Menu
           open={!!menu}

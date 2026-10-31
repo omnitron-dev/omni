@@ -86,6 +86,16 @@ describe('RPC authorization metadata', () => {
     expect(fromDecorators.METHOD_AUTH).toBe('method:auth');
   });
 
+  it('makes topology reads available to viewers and target mutations administrator-only', async () => {
+    const { ProjectRpcService } = await import('../../src/services/project.rpc-service.js');
+    for (const method of ['getTopology', 'getTopologyInventory', 'getTopologyWorkspace'])
+      expect(Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, ProjectRpcService.prototype, method))
+        .toEqual({ roles: ['admin', 'operator', 'viewer'] });
+    for (const method of ['saveTopologyDraft', 'planTopology', 'applyTopologyPlan'])
+      expect(Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, ProjectRpcService.prototype, method))
+        .toEqual({ roles: ['admin'] });
+  });
+
   it('declares an auth block on every exposed method', async () => {
     // A method reachable over RPC with no `auth` at all is open to anyone
     // the transport lets through. That may be intended — a health ping, a

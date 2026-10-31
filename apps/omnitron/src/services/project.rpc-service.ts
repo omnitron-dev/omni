@@ -1,3 +1,5 @@
+import { publicStack } from '../project/public-stack.js';
+import type { TopologyScope, TopologySpec } from '../shared/dto/topology.js';
 /**
  * ProjectRpcService — OmnitronProject Netron RPC endpoints
  *
@@ -77,6 +79,31 @@ export class ProjectRpcService {
   // Projects — Admin
   // ===========================================================================
 
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getTopologyInventory() {
+    return this.projectService.getTopologyInventory();
+  }
+
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getTopologyWorkspace(data: TopologyScope) {
+    return this.projectService.getTopologyWorkspace(data);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async saveTopologyDraft(data: TopologyScope & { baseRevision: string; expectedDraft: number | null; spec: TopologySpec }) {
+    return this.projectService.saveTopologyDraft(data);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async planTopology(data: TopologyScope & { draftRevision: number }) {
+    return this.projectService.planTopology(data);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async applyTopologyPlan(data: TopologyScope & { plan: string }) {
+    return this.projectService.applyTopologyPlan(data);
+  }
+
   /** Sanitized configuration graph; the resolver never returns environment values or credentials. */
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getTopology(data: { project?: string; stack?: string }): Promise<import('../shared/dto/project.js').ProjectTopology> {
@@ -134,7 +161,7 @@ export class ProjectRpcService {
     return Promise.all(
       this.projectService
         .listStacks(data.project)
-        .map((info) => this.projectService.withRemoteAppStatuses(data.project, info)),
+        .map(async (info) => publicStack(await this.projectService.withRemoteAppStatuses(data.project, info))),
     );
   }
 
@@ -143,10 +170,10 @@ export class ProjectRpcService {
     // Loaded on demand in the first seconds after a daemon start rather than
     // refused (`ensureConfig`).
     await this.projectService.ensureConfig(data.project);
-    return this.projectService.withRemoteAppStatuses(
+    return publicStack(await this.projectService.withRemoteAppStatuses(
       data.project,
       this.projectService.getStack(data.project, data.stack),
-    );
+    ));
   }
 
   /**
@@ -209,7 +236,7 @@ export class ProjectRpcService {
         ...(data.reinstall === true ? { reinstall: true } : {}),
       }),
     );
-    return info;
+    return publicStack(info);
   }
 
   /**
@@ -233,7 +260,7 @@ export class ProjectRpcService {
       resourceId: `${data.project}/${data.stack}`,
       details: { type: info.type },
     });
-    return info;
+    return publicStack(info);
   }
 
   // ===========================================================================

@@ -837,8 +837,15 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
           maxWidth: 'calc(100vw - 32px)',
           boxShadow: `0 0 2px 0 rgba(${getGreyChannel(theme)} / 0.24), -20px 20px 40px -4px rgba(${getGreyChannel(theme)} / 0.24)`,
         }),
-        list: {
+      },
+    },
+    MuiMenuList: {
+      styleOverrides: {
+        root: {
           padding: 4,
+          // A menu group has equal breathing room above and below its divider.
+          // Applies to Select, action/context menus and standalone MenuList.
+          '& > .MuiDivider-root': { margin: '8px 6px' },
         },
       },
     },

@@ -17,11 +17,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const daemon = { list: vi.fn(), status: vi.fn() };
 const infra = { listContainers: vi.fn() };
+const project = { getTopology: vi.fn() };
 
 vi.mock('src/netron/client', () => ({
   daemon: { list: (...a: unknown[]) => daemon.list(...a), status: (...a: unknown[]) => daemon.status(...a) },
   infra: { listContainers: (...a: unknown[]) => infra.listContainers(...a) },
-  project: {},
+  project: { getTopology: (...a: unknown[]) => project.getTopology(...a) },
   metrics: {},
   daemonClient: { use: () => {}, daemon: {} },
 }));
@@ -31,6 +32,7 @@ function allAnswerEmpty() {
   daemon.list.mockResolvedValue([]);
   daemon.status.mockResolvedValue({ apps: [], totalCpu: 0, totalMemory: 0 });
   infra.listContainers.mockResolvedValue([]);
+  project.getTopology.mockResolvedValue({ version: 1, dependencies: [], warnings: [] });
 }
 
 /** Nothing answers — the daemon is down. */
@@ -39,6 +41,7 @@ function allFail() {
   daemon.list.mockImplementation(down);
   daemon.status.mockImplementation(down);
   infra.listContainers.mockImplementation(down);
+  project.getTopology.mockImplementation(down);
 }
 
 async function store() {
@@ -49,9 +52,26 @@ async function store() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  allAnswerEmpty();
 });
 
 describe('an empty topology', () => {
+  it('limits app coverage warnings to the apps displayed in the daemon view', async () => {
+    daemon.list.mockResolvedValue([{ name: 'sample/dev/api', status: 'online' }]);
+    project.getTopology.mockResolvedValue({
+      version: 1,
+      dependencies: [],
+      warnings: [
+        { project: 'sample', stack: 'dev', app: 'api', reason: 'Bootstrap metadata not loaded' },
+        { project: 'sample', stack: 'prod', app: 'api', reason: 'Bootstrap metadata not loaded' },
+        { project: 'archived', stack: 'dev', app: 'worker', reason: 'Bootstrap metadata not loaded' },
+      ],
+    });
+    const useStore = await store();
+    await useStore.getState().fetchAll();
+    expect(useStore.getState().coverageWarnings).toHaveLength(1);
+    expect(useStore.getState().error).toContain('1 dependency declarations');
+  });
   it('reports no error when the platform really is empty', async () => {
     allAnswerEmpty();
     const useStore = await store();

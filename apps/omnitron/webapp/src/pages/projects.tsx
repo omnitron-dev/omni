@@ -1,4 +1,4 @@
-import { Can } from 'src/auth/access';
+import { Can, useAccess } from 'src/auth/access';
 /**
  * ProjectsPage — Project management in the Omnitron system workspace
  *
@@ -12,7 +12,7 @@ import { Can } from 'src/auth/access';
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -42,13 +42,7 @@ import { useProjectStore } from 'src/stores/project.store';
 import type { IProjectInfo } from '@omnitron-dev/omnitron/dto/services';
 import { timeAgo } from 'src/utils/formatters';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
-import {
-  PlusIcon,
-  RefreshIcon,
-  SettingsIcon,
-  DeleteIcon,
-  ProjectIcon,
-} from 'src/assets/icons';
+import { PlusIcon, RefreshIcon, SettingsIcon, DeleteIcon, ProjectIcon } from 'src/assets/icons';
 
 // =============================================================================
 // Project Card
@@ -88,27 +82,37 @@ function ProjectCard({
         <Stack
           direction="row"
           sx={{
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            mb: 1.5
-          }}>
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            mb: 1.5,
+          }}
+        >
           <Stack
             direction="row"
             spacing={1}
             sx={{
-              alignItems: "center",
-              minWidth: 0
-            }}>
+              alignItems: 'center',
+              minWidth: 0,
+            }}
+          >
             <ProjectIcon sx={{ fontSize: 28, color: hasRunning ? 'primary.main' : 'text.secondary', flexShrink: 0 }} />
             <Box sx={{ minWidth: 0 }}>
-              <Typography variant="subtitle2" noWrap sx={{
-                fontWeight: 700
-              }}>
+              <Typography
+                variant="subtitle2"
+                noWrap
+                sx={{
+                  fontWeight: 700,
+                }}
+              >
                 {project.displayName}
               </Typography>
-              <Typography variant="caption" noWrap sx={{
-                color: "text.disabled"
-              }}>
+              <Typography
+                variant="caption"
+                noWrap
+                sx={{
+                  color: 'text.disabled',
+                }}
+              >
                 {project.name}
               </Typography>
             </Box>
@@ -124,13 +128,14 @@ function ProjectCard({
         <DetailRow label="Path" value={project.path} mono />
 
         {/* Stats */}
-        <Stack spacing={0.5} sx={{
-          mt: 1
-        }}>
+        <Stack
+          spacing={0.5}
+          sx={{
+            mt: 1,
+          }}
+        >
           <DetailRow label="Stacks" value={`${project.runningStacks} / ${project.totalStacks}`} />
-          {project.enabledStacks.length > 0 && (
-            <DetailRow label="Enabled" value={project.enabledStacks.join(', ')} />
-          )}
+          {project.enabledStacks.length > 0 && <DetailRow label="Enabled" value={project.enabledStacks.join(', ')} />}
           <DetailRow label="Registered" value={timeAgo(project.registeredAt)} />
         </Stack>
 
@@ -142,8 +147,9 @@ function ProjectCard({
             useFlexGap
             sx={{
               mt: 1.5,
-              flexWrap: "wrap"
-            }}>
+              flexWrap: 'wrap',
+            }}
+          >
             {project.enabledStacks.map((s) => (
               <Chip key={s} label={s} size="small" variant="outlined" sx={{ height: 22, fontSize: 11 }} />
             ))}
@@ -151,21 +157,20 @@ function ProjectCard({
         )}
       </CardContent>
       <CardActions sx={{ px: 2, pb: 1.5, justifyContent: 'space-between' }} onClick={(e) => e.stopPropagation()}>
-        <Can permission="OmnitronProject.removeProject"><Tooltip title="Remove project">
-          <IconButton
-            size="small"
-            color="error"
-            onClick={() => onRemove(project.name)}
-            disabled={hasRunning}
-          >
-            <DeleteIcon sx={{ fontSize: 18 }} />
-          </IconButton>
-        </Tooltip></Can>
-        <Can permission="OmnitronProject.updateProject"><Tooltip title="Settings">
-          <IconButton size="small" onClick={() => onEdit(project)}>
-            <SettingsIcon sx={{ fontSize: 18 }} />
-          </IconButton>
-        </Tooltip></Can>
+        <Can permission="OmnitronProject.removeProject">
+          <Tooltip title="Remove project">
+            <IconButton size="small" color="error" onClick={() => onRemove(project.name)} disabled={hasRunning}>
+              <DeleteIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+        </Can>
+        <Can permission="OmnitronProject.updateProject">
+          <Tooltip title="Settings">
+            <IconButton size="small" onClick={() => onEdit(project)}>
+              <SettingsIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+        </Can>
       </CardActions>
     </Card>
   );
@@ -177,15 +182,17 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
       direction="row"
       spacing={1}
       sx={{
-        justifyContent: "space-between",
-        alignItems: "center"
-      }}>
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}
+    >
       <Typography
         variant="caption"
         sx={{
-          color: "text.disabled",
-          flexShrink: 0
-        }}>
+          color: 'text.disabled',
+          flexShrink: 0,
+        }}
+      >
         {label}
       </Typography>
       <Typography
@@ -196,8 +203,9 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
           fontWeight: 500,
           textAlign: 'right',
           minWidth: 0,
-          ...(mono && { fontFamily: 'monospace', fontSize: 11 })
-        }}>
+          ...(mono && { fontFamily: 'monospace', fontSize: 11 }),
+        }}
+      >
         {value}
       </Typography>
     </Stack>
@@ -238,9 +246,12 @@ function EditProjectDialog({
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Project Settings — {project.displayName}</DialogTitle>
       <DialogContent>
-        <Stack spacing={2.5} sx={{
-          mt: 1
-        }}>
+        <Stack
+          spacing={2.5}
+          sx={{
+            mt: 1,
+          }}
+        >
           <TextField
             label="Project Name"
             value={project.displayName}
@@ -248,13 +259,7 @@ function EditProjectDialog({
             fullWidth
             helperText="Derived from omnitron.config.ts — change it there to rename."
           />
-          <TextField
-            label="Registry Name"
-            value={project.name}
-            disabled
-            fullWidth
-            size="small"
-          />
+          <TextField label="Registry Name" value={project.name} disabled fullWidth size="small" />
           <TextField
             label="Project Path"
             value={path}
@@ -278,14 +283,18 @@ function EditProjectDialog({
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} color="inherit">Cancel</Button>
-        <Can permission="OmnitronProject.updateProject"><Button
-          variant="contained"
-          onClick={() => onSave(project.name, { path: path.trim() })}
-          disabled={!canSubmit || loading}
-        >
-          Save
-        </Button></Can>
+        <Button onClick={onClose} color="inherit">
+          Cancel
+        </Button>
+        <Can permission="OmnitronProject.updateProject">
+          <Button
+            variant="contained"
+            onClick={() => onSave(project.name, { path: path.trim() })}
+            disabled={!canSubmit || loading}
+          >
+            Save
+          </Button>
+        </Can>
       </DialogActions>
     </Dialog>
   );
@@ -310,7 +319,10 @@ function AddProjectDialog({
   const [path, setPath] = useState('');
 
   useEffect(() => {
-    if (open) { setName(''); setPath(''); }
+    if (open) {
+      setName('');
+      setPath('');
+    }
   }, [open]);
 
   const canSubmit = name.trim().length > 0 && path.trim().length > 0;
@@ -319,9 +331,12 @@ function AddProjectDialog({
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Add Project</DialogTitle>
       <DialogContent>
-        <Stack spacing={2.5} sx={{
-          mt: 1
-        }}>
+        <Stack
+          spacing={2.5}
+          sx={{
+            mt: 1,
+          }}
+        >
           <TextField
             label="Project Name"
             value={name}
@@ -347,14 +362,14 @@ function AddProjectDialog({
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} color="inherit">Cancel</Button>
-        <Can permission="OmnitronProject.addProject"><Button
-          variant="contained"
-          onClick={() => onAdd(name.trim(), path.trim())}
-          disabled={!canSubmit || loading}
-        >
-          Add Project
-        </Button></Can>
+        <Button onClick={onClose} color="inherit">
+          Cancel
+        </Button>
+        <Can permission="OmnitronProject.addProject">
+          <Button variant="contained" onClick={() => onAdd(name.trim(), path.trim())} disabled={!canSubmit || loading}>
+            Add Project
+          </Button>
+        </Can>
       </DialogActions>
     </Dialog>
   );
@@ -378,9 +393,25 @@ export default function ProjectsPage() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const snackbar = useSnackbar();
+  const { can } = useAccess();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [editProject, setEditProject] = useState<IProjectInfo | null>(null);
-  const [addOpen, setAddOpen] = useState(false);
+  const addOpen = searchParams.get('create') === '1' && can('OmnitronProject.addProject');
+  const setAddOpen = useCallback(
+    (open: boolean) => {
+      setSearchParams(
+        (previous) => {
+          const next = new URLSearchParams(previous);
+          if (open) next.set('create', '1');
+          else next.delete('create');
+          return next;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -409,7 +440,7 @@ export default function ProjectsPage() {
         setSubmitting(false);
       }
     },
-    [addProject, snackbar]
+    [addProject, snackbar, setAddOpen]
   );
 
   const handleSave = useCallback(
@@ -450,7 +481,8 @@ export default function ProjectsPage() {
         links={[{ name: 'Projects' }]}
         action={
           <Stack direction="row" spacing={1}>
-            <Button data-console-command="refresh"
+            <Button
+              data-console-command="refresh"
               variant="outlined"
               size="small"
               startIcon={<RefreshIcon sx={{ fontSize: 18 }} />}
@@ -458,20 +490,24 @@ export default function ProjectsPage() {
             >
               Refresh
             </Button>
-            <Can permission="OmnitronProject.addProject"><Button
-              variant="contained"
-              size="small"
-              startIcon={<PlusIcon sx={{ fontSize: 18 }} />}
-              onClick={() => setAddOpen(true)}
-            >
-              Add Project
-            </Button></Can>
+            <Can permission="OmnitronProject.addProject">
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<PlusIcon sx={{ fontSize: 18 }} />}
+                onClick={() => setAddOpen(true)}
+              >
+                Add Project
+              </Button>
+            </Can>
           </Stack>
         }
       />
 
       {error && (
-        <Alert closable severity="error" onClose={clearError}>{error}</Alert>
+        <Alert closable severity="error" onClose={clearError}>
+          {error}
+        </Alert>
       )}
 
       {loading && projects.length === 0 ? (
@@ -493,12 +529,7 @@ export default function ProjectsPage() {
         <Grid container spacing={3}>
           {projects.map((p) => (
             <Grid key={p.name} size={{ xs: 12, sm: 6, md: 4 }}>
-              <ProjectCard
-                project={p}
-                onEdit={setEditProject}
-                onRemove={setConfirmRemove}
-                onOpen={handleOpenProject}
-              />
+              <ProjectCard project={p} onEdit={setEditProject} onRemove={setConfirmRemove} onOpen={handleOpenProject} />
             </Grid>
           ))}
         </Grid>
@@ -514,20 +545,15 @@ export default function ProjectsPage() {
       />
 
       {/* Add dialog */}
-      <AddProjectDialog
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        onAdd={handleAdd}
-        loading={submitting}
-      />
+      <AddProjectDialog open={addOpen} onClose={() => setAddOpen(false)} onAdd={handleAdd} loading={submitting} />
 
       {/* Remove confirmation */}
       <Dialog open={!!confirmRemove} onClose={() => setConfirmRemove(null)} maxWidth="xs" fullWidth>
         <DialogTitle>Remove Project</DialogTitle>
         <DialogContent>
           <Typography variant="body2">
-            Remove <strong>{confirmProject?.displayName ?? confirmRemove}</strong> from the registry?
-            This does not delete any files on disk.
+            Remove <strong>{confirmProject?.displayName ?? confirmRemove}</strong> from the registry? This does not
+            delete any files on disk.
           </Typography>
           {confirmProject && confirmProject.runningStacks > 0 && (
             <Alert severity="warning" sx={{ mt: 2 }}>
@@ -536,15 +562,19 @@ export default function ProjectsPage() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmRemove(null)} color="inherit">Cancel</Button>
-          <Can permission="OmnitronProject.removeProject"><Button
-            onClick={handleRemove}
-            color="error"
-            variant="contained"
-            disabled={submitting || (confirmProject?.runningStacks ?? 0) > 0}
-          >
-            Remove
-          </Button></Can>
+          <Button onClick={() => setConfirmRemove(null)} color="inherit">
+            Cancel
+          </Button>
+          <Can permission="OmnitronProject.removeProject">
+            <Button
+              onClick={handleRemove}
+              color="error"
+              variant="contained"
+              disabled={submitting || (confirmProject?.runningStacks ?? 0) > 0}
+            >
+              Remove
+            </Button>
+          </Can>
         </DialogActions>
       </Dialog>
     </Stack>

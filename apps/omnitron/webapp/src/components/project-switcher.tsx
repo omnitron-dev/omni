@@ -9,25 +9,27 @@
  * project-scoped sections: Apps, Stacks, Logs, Metrics, etc.
  */
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useId } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
-import MenuList from '@mui/material/MenuList';
+import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import Typography from '@mui/material/Typography';
 import ButtonBase from '@mui/material/ButtonBase';
-import Button, { buttonClasses } from '@mui/material/Button';
 import Tooltip from '@mui/material/Tooltip';
 import type { SxProps, Theme } from '@mui/material/styles';
 
-import { CustomPopover, usePopover } from '@omnitron-dev/prism/components/popover';
+import { usePopover } from '@omnitron-dev/prism/components/popover';
 import { Label } from '@omnitron-dev/prism/components/label';
 import { PlusIcon, ChipIcon, FolderIcon } from '../assets/icons';
 import { useProjectStore, useActiveProject } from '../stores/project.store';
+import { useAccess } from '../auth/access';
 
 export function ProjectSwitcher() {
   const { open, anchorEl, onClose, onOpen } = usePopover();
+  const menuId = useId();
+  const { can } = useAccess();
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
@@ -85,18 +87,17 @@ export function ProjectSwitcher() {
     <>
       {/* Trigger button */}
       <ButtonBase
-        aria-label={`Switch workspace: ${isOmnitron ? 'Omnitron' : activeInfo?.displayName ?? activeProject}`}
+        id={`${menuId}-trigger`}
+        aria-label={`Switch workspace: ${isOmnitron ? 'Omnitron' : (activeInfo?.displayName ?? activeProject)}`}
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
         disableRipple
         onClick={onOpen}
         sx={{ minWidth: 0, maxWidth: '100%', py: 0.5, gap: { xs: 0.5, sm: 1 }, '&::before': buttonBg }}
       >
         <Box sx={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {isOmnitron
-            ? <ChipIcon sx={{ fontSize: 20 }} />
-            : <FolderIcon sx={{ fontSize: 20 }} />
-          }
+          {isOmnitron ? <ChipIcon sx={{ fontSize: 20 }} /> : <FolderIcon sx={{ fontSize: 20 }} />}
         </Box>
 
         <Box
@@ -104,10 +105,14 @@ export function ProjectSwitcher() {
           sx={{
             typography: 'subtitle2',
             display: { xs: 'none', sm: 'block' },
-            minWidth: 0, maxWidth: { sm: 180, md: 240 }, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            minWidth: 0,
+            maxWidth: { sm: 180, md: 240 },
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
           }}
         >
-          {isOmnitron ? 'Omnitron' : activeInfo?.displayName ?? activeProject}
+          {isOmnitron ? 'Omnitron' : (activeInfo?.displayName ?? activeProject)}
         </Box>
 
         {activeInfo && (
@@ -119,92 +124,82 @@ export function ProjectSwitcher() {
           </Label>
         )}
 
-        <Box
-          component="svg"
-          viewBox="0 0 16 16"
-          sx={{ width: 16, height: 16, color: 'text.disabled', flexShrink: 0 }}
-        >
+        <Box component="svg" viewBox="0 0 16 16" sx={{ width: 16, height: 16, color: 'text.disabled', flexShrink: 0 }}>
           <path fill="currentColor" d="M11.2 5.6L8 2.4 4.8 5.6m0 4.8L8 13.6l3.2-3.2" />
         </Box>
       </ButtonBase>
 
       {/* Popover menu */}
-      <CustomPopover
+      <Menu
+        id={menuId}
         open={open}
         anchorEl={anchorEl}
         onClose={onClose}
-        arrow={{ placement: 'top-left' }}
-        slotProps={{ paper: { sx: { mt: 0.5, ml: -1.55, width: 280, maxWidth: 'calc(100vw - 32px)' } } }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        slotProps={{
+          paper: { sx: { width: 300, maxWidth: 'calc(100vw - 32px)', maxHeight: 'min(560px, calc(100dvh - 96px))' } },
+          list: { 'aria-labelledby': `${menuId}-trigger` },
+        }}
       >
-        <Box sx={{ maxHeight: 320, overflow: 'auto' }}>
-          <MenuList>
-            {/* Omnitron — always first, system-level context */}
+        {/* Omnitron — always first, system-level context */}
+        <MenuItem selected={isOmnitron} onClick={handleSelectOmnitron} sx={{ height: 48, gap: 1.5 }}>
+          <ChipIcon sx={isOmnitron ? menuIconActiveSx : menuIconSx} />
+
+          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+            <Typography noWrap variant="body2" sx={{ fontWeight: 'fontWeightMedium' }}>
+              Omnitron
+            </Typography>
+            <Typography noWrap variant="caption" color="text.disabled">
+              System
+            </Typography>
+          </Box>
+        </MenuItem>
+
+        {projects.length > 0 && <Divider />}
+
+        {/* Registered projects */}
+        {projects.map((p) => {
+          const isActive = p.name === activeProject;
+
+          return (
             <MenuItem
-              selected={isOmnitron}
-              onClick={handleSelectOmnitron}
+              key={p.name}
+              selected={isActive}
+              onClick={() => handleSelectProject(p.name)}
               sx={{ height: 48, gap: 1.5 }}
             >
-              <ChipIcon sx={isOmnitron ? menuIconActiveSx : menuIconSx} />
+              <FolderIcon sx={isActive ? menuIconActiveSx : menuIconSx} />
 
-              <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                <Typography noWrap variant="body2" sx={{ fontWeight: 'fontWeightMedium' }}>
-                  Omnitron
-                </Typography>
-                <Typography noWrap variant="caption" color="text.disabled">
-                  System
-                </Typography>
-              </Box>
+              <Tooltip describeChild title={p.path} placement="right" arrow enterDelay={500}>
+                <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                  <Typography noWrap variant="body2" sx={{ fontWeight: 'fontWeightMedium' }}>
+                    {p.displayName}
+                  </Typography>
+                </Box>
+              </Tooltip>
+
+              <Label color={p.runningStacks > 0 ? 'success' : 'default'}>
+                {p.runningStacks > 0 ? `${p.runningStacks} live` : 'idle'}
+              </Label>
             </MenuItem>
-
-            {projects.length > 0 && <Divider sx={{ my: 0.5, borderStyle: 'dashed' }} />}
-
-            {/* Registered projects */}
-            {projects.map((p) => {
-              const isActive = p.name === activeProject;
-
-              return (
-                <Tooltip describeChild key={p.name} title={p.path} placement="right" arrow enterDelay={500}>
-                  <MenuItem
-                    selected={isActive}
-                    onClick={() => handleSelectProject(p.name)}
-                    sx={{ height: 48, gap: 1.5 }}
-                  >
-                    <FolderIcon sx={isActive ? menuIconActiveSx : menuIconSx} />
-
-                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                      <Typography noWrap variant="body2" sx={{ fontWeight: 'fontWeightMedium' }}>
-                        {p.displayName}
-                      </Typography>
-                    </Box>
-
-                    <Label color={p.runningStacks > 0 ? 'success' : 'default'}>
-                      {p.runningStacks > 0 ? `${p.runningStacks} live` : 'idle'}
-                    </Label>
-                  </MenuItem>
-                </Tooltip>
-              );
-            })}
-          </MenuList>
-        </Box>
-
-        <Divider sx={{ my: 0.5, borderStyle: 'dashed' }} />
-
-        <Button
-          fullWidth
-          startIcon={<PlusIcon sx={{ fontSize: 18 }} />}
-          onClick={onClose}
-          sx={{
-            gap: 2,
-            justifyContent: 'flex-start',
-            fontWeight: 'fontWeightMedium',
-            [`& .${buttonClasses.startIcon}`]: {
-              m: 0, width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            },
-          }}
-        >
-          Add project
-        </Button>
-      </CustomPopover>
+          );
+        })}
+        {can('OmnitronProject.addProject') && <Divider />}
+        {can('OmnitronProject.addProject') && (
+          <MenuItem
+            onClick={() => {
+              onClose();
+              deselectProject('/projects');
+              navigate('/projects?create=1');
+            }}
+            sx={{ minHeight: 44, gap: 1.5, color: 'primary.main' }}
+          >
+            <PlusIcon sx={{ fontSize: 22 }} />
+            Add project
+          </MenuItem>
+        )}
+      </Menu>
     </>
   );
 }

@@ -15,7 +15,6 @@ function InfraNodeComponent({ data, selected, sourcePosition, targetPosition }: 
       icon={<BackupIcon />}
       status={serviceState(service)}
       selected={selected}
-      target={false}
       meta={service.port != null ? `:${service.port}` : undefined}
     >
       <Typography noWrap color="text.secondary" title={service.image}>

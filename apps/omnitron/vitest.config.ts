@@ -5,6 +5,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   resolve: {
     alias: {
+      // Exercise current source contracts without rebuilding packages used by live applications.
+      '@omnitron-dev/titan-pm': path.resolve(import.meta.dirname, '../../packages/titan-pm/src/index.ts'),
+      '@omnitron-dev/titan/utils': path.resolve(import.meta.dirname, '../../packages/titan/src/utils/index.ts'),
       // The console's own alias, mirrored from `webapp/vite.config.ts`. Its
       // 146 `src/...` imports are unresolvable without it, so a test that
       // touches any console module fails to transform rather than to

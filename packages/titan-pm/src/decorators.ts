@@ -240,22 +240,36 @@ export function Child(options: Partial<ISupervisorChild> = {}): PropertyDecorato
 // Workflow Decorators
 // ============================================================================
 
+interface WorkflowMetadata {
+  stages: Map<string, IWorkflowStage>;
+  compensations: Map<string, NonNullable<IWorkflowStage['compensate']>>;
+  declaredStages: Set<string>;
+  target?: unknown;
+}
+
+function ownWorkflowMetadata(target: object): WorkflowMetadata {
+  const own = Reflect.getOwnMetadata(WORKFLOW_METADATA_KEY, target) as WorkflowMetadata | undefined;
+  if (own) return own;
+  const inherited = Reflect.getMetadata(WORKFLOW_METADATA_KEY, target) as WorkflowMetadata | undefined;
+  const metadata: WorkflowMetadata = {
+    stages: new Map([...(inherited?.stages ?? [])].map(([name, stage]) => [name, { ...stage }])),
+    compensations: new Map(inherited?.compensations ?? []),
+    declaredStages: new Set(),
+  };
+  Reflect.defineMetadata(WORKFLOW_METADATA_KEY, metadata, target);
+  return metadata;
+}
+
 /**
  * Mark a class as a Workflow
  */
 export function Workflow(): ClassDecorator {
   return (target: any) => {
-    // Get existing metadata (may have been set by Stage decorators)
-    const existingMetadata = Reflect.getMetadata(WORKFLOW_METADATA_KEY, target) || {};
-
-    // Merge with new options, preserving existing stages Map
-    const metadata = {
-      ...existingMetadata,
-      target,
-      stages: existingMetadata.stages || new Map<string, IWorkflowStage>(),
-    };
-
-    Reflect.defineMetadata(WORKFLOW_METADATA_KEY, metadata, target);
+    const metadata = ownWorkflowMetadata(target);
+    for (const name of metadata.compensations.keys())
+      if (!metadata.stages.has(name))
+        throw Errors.badRequest(`Compensation refers to unknown workflow stage '${name}'`);
+    metadata.target = target;
     return target;
   };
 }
@@ -265,9 +279,7 @@ export function Workflow(): ClassDecorator {
  */
 export function Stage(options: Partial<IWorkflowStage> = {}): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const metadata = Reflect.getMetadata(WORKFLOW_METADATA_KEY, target.constructor) || {
-      stages: new Map(),
-    };
+    const metadata = ownWorkflowMetadata(target.constructor);
 
     // Normalize dependsOn to always be an array
     const normalizedOptions = { ...options };
@@ -277,11 +289,14 @@ export function Stage(options: Partial<IWorkflowStage> = {}): MethodDecorator {
 
     // Use options.name if provided, otherwise use propertyKey
     const stageName = options.name || String(propertyKey);
+    if (metadata.declaredStages.has(stageName)) throw Errors.badRequest(`Duplicate workflow stage '${stageName}'`);
+    metadata.declaredStages.add(stageName);
 
     const stage: IWorkflowStage = {
+      ...normalizedOptions,
       name: stageName,
       handler: descriptor.value,
-      ...normalizedOptions,
+      ...(metadata.compensations.has(stageName) ? { compensate: metadata.compensations.get(stageName)! } : {}),
     };
 
     // Store with the stage name as key (for @Compensate to find)
@@ -295,13 +310,11 @@ export function Stage(options: Partial<IWorkflowStage> = {}): MethodDecorator {
  */
 export function Compensate(stageName: string): MethodDecorator {
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const metadata = Reflect.getMetadata(WORKFLOW_METADATA_KEY, target.constructor) || {
-      stages: new Map(),
-    };
-
+    const metadata = ownWorkflowMetadata(target.constructor);
+    metadata.compensations.set(stageName, descriptor.value);
     const stage = metadata.stages.get(stageName);
     if (stage) {
-      (stage as any).compensate = descriptor.value;
+      stage.compensate = descriptor.value;
     }
 
     Reflect.defineMetadata(WORKFLOW_METADATA_KEY, metadata, target.constructor);
@@ -447,7 +460,6 @@ export function CircuitBreaker(options: ICircuitBreakerOptions): MethodDecorator
   };
 }
 
-
 /**
  * Make a method idempotent: a repeated call carrying the same key returns the
  * first call's result instead of running the body again.
@@ -555,8 +567,6 @@ export function Idempotent(options: { key: string; ttl?: string }): MethodDecora
   };
 }
 
-
-
 // ============================================================================
 // Lifecycle Decorators
 // ============================================================================
@@ -612,11 +622,6 @@ export function OnShutdown(): MethodDecorator {
     Reflect.defineMetadata('on-shutdown', propertyKey, target);
   };
 }
-
-
-
-
-
 
 // ============================================================================
 // Helper Functions

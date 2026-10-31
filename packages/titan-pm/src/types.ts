@@ -591,6 +591,8 @@ export interface IWorkflowStage {
   dependsOn?: string | string[];
   timeout?: number;
   retries?: number;
+  /** Compensation runs only after all active stages have a known outcome. */
+  compensate?: (result: any) => Promise<void>;
 }
 
 /**
@@ -608,11 +610,12 @@ export interface IWorkflowContext {
  */
 export interface IStageResult {
   stage: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'unknown';
   result?: any;
   error?: Error;
   startTime?: number;
   endTime?: number;
+  compensation?: { status: 'completed' | 'failed'; error?: Error };
 }
 
 // ============================================================================

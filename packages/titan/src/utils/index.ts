@@ -17,6 +17,7 @@
  */
 
 export * from './error-classification.js';
+export * from './dependency-plan.js';
 export * from './backoff.js';
 export * from './periodic-probe.js';
 export * from './failure-tracker.js';

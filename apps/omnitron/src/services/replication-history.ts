@@ -25,6 +25,8 @@ export interface HistoryManifest {
   /** The final hash chain over all ordered pages; not an arbitrary success flag. */
   rootDigest: string;
   gaps: Array<{ reason: string; from: string | null; to: string | null; rows: number | null }>;
+  /** A reviewed, bounded recovery of one previously identified gap. Original proofs stay immutable. */
+  resolvesGap?: { sourceId: string; gapIndex: number; gapDigest: string; evidenceDigest: string; explanation: string };
 }
 export interface HistoryPage {
   index: number;
@@ -50,6 +52,7 @@ export function historyJson(value: unknown): string {
   return JSON.stringify(value);
 }
 export function historyPageDigest(page: HistoryPage): string { return hash(historyJson(page)); }
+export function historyGapDigest(gap: HistoryManifest['gaps'][number]): string { return hash(historyJson(gap)); }
 
 export function historicalLog(payload: Record<string, unknown>) {
   const timestamp = new Date(String(payload['timestamp'])).toISOString();
@@ -90,14 +93,41 @@ export async function historyCoverage(db: Kysely<unknown>): Promise<Array<Histor
   let rows: HistoryDatabase['sync_history_sources'][];
   try { rows = await (db as Kysely<HistoryDatabase>).selectFrom('sync_history_sources').selectAll().execute(); }
   catch (error) { if (/no such table: sync_history_sources|relation ["']?sync_history_sources["']? does not exist/i.test(String(error))) return []; throw error; }
+  const resolutions = new Map<string, NonNullable<HistoryCoverage['gaps'][number]['resolution']>>();
+  for (const row of rows) {
+    const manifest = JSON.parse(row.manifest) as HistoryManifest;
+    if (!manifest.resolvesGap || !row.verifiedAt) continue;
+    const parent = rows.find(r => r.id === manifest.resolvesGap!.sourceId);
+    validateGapRecovery(manifest, parent);
+    const key = `${manifest.resolvesGap.sourceId}:${manifest.resolvesGap.gapIndex}`;
+    if (resolutions.has(key)) throw new Error('Multiple historical sources claim the same gap');
+    resolutions.set(key, { sourceId: row.id, explanation: manifest.resolvesGap.explanation, verifiedAt: row.verifiedAt });
+  }
   return rows.map(row => {
     const manifest = JSON.parse(row.manifest) as HistoryManifest;
     return { sourceId: row.id, nodeId: row.nodeId, category: manifest.category, expectedRows: manifest.expectedRows,
       processedRows: row.processedRows, presentRows: row.presentRows, restoredRows: row.restoredRows, expiredRows: row.expiredRows,
-      firstAt: manifest.firstAt, lastAt: manifest.lastAt, verifiedAt: row.verifiedAt, gaps: manifest.gaps,
+      firstAt: manifest.firstAt, lastAt: manifest.lastAt, verifiedAt: row.verifiedAt,
+      gaps: manifest.gaps.map((gap, index) => {
+        const resolution = resolutions.get(`${row.id}:${index}`);
+        return { ...gap, ...(resolution && { resolution }) };
+      }),
       precision: manifest.category === 'logs' ? 'millisecond' : 'original',
       status: row.verifiedAt ? 'verified' : 'partial' };
   });
+}
+
+function validateGapRecovery(manifest: HistoryManifest, parent: HistoryDatabase['sync_history_sources'] | undefined): void {
+  const reference = manifest.resolvesGap!;
+  const original = parent && JSON.parse(parent.manifest) as HistoryManifest | undefined;
+  const gap = original?.gaps[reference.gapIndex];
+  if (!parent?.verifiedAt || !original || original.nodeId !== manifest.nodeId || original.category !== manifest.category
+    || !gap || historyGapDigest(gap) !== reference.gapDigest || gap.rows === null || gap.rows < 1
+    || gap.rows !== manifest.expectedRows || manifest.gaps.length
+    || (gap.from !== null && Date.parse(manifest.firstAt) < Date.parse(gap.from))
+    || (gap.to !== null && Date.parse(manifest.lastAt) > Date.parse(gap.to))) {
+    throw new Error('Historical gap recovery does not match a verified, bounded source gap');
+  }
 }
 
 function validate(manifest: HistoryManifest, page: HistoryPage): void {
@@ -112,6 +142,13 @@ function validate(manifest: HistoryManifest, page: HistoryPage): void {
     || !page || !Number.isSafeInteger(page.index) || page.index < 0 || page.index >= manifest.expectedPages
     || !digest.test(page.previousDigest) || !Array.isArray(page.entries) || !page.entries.length
     || page.entries.length > HISTORY_PAGE_SIZE || Buffer.byteLength(historyJson(page)) > 4 * 1024 * 1024) throw new Error('Invalid historical source manifest or bounded page');
+  const reference = manifest.resolvesGap;
+  if (reference && (!digest.test(reference.sourceId) || reference.sourceId === manifest.id
+    || !Number.isSafeInteger(reference.gapIndex) || reference.gapIndex < 0 || reference.gapIndex >= 100
+    || !digest.test(reference.gapDigest) || !digest.test(reference.evidenceDigest)
+    || typeof reference.explanation !== 'string' || !reference.explanation.trim() || reference.explanation.length > 1000)) {
+    throw new Error('Invalid historical gap recovery reference');
+  }
   let count = 0;
   const ids = new Set<string>();
   for (const entry of page.entries) {
@@ -170,6 +207,14 @@ export async function reconcileHistoryPage(db: Kysely<OmnitronDatabase>, storage
       }
       if (source.processedPages !== page.index || source.chainDigest !== page.previousDigest) throw new Error('Historical page is out of order or has a broken hash chain');
     }
+    if (manifest.resolvesGap) {
+      const parent = await journal.selectFrom('sync_history_sources').selectAll().where('id', '=', manifest.resolvesGap.sourceId).executeTakeFirst();
+      validateGapRecovery(manifest, parent);
+      const conflicts = await sql`SELECT id FROM sync_history_sources WHERE "nodeId"=${manifest.nodeId} AND id<>${manifest.id}
+        AND manifest::jsonb->'resolvesGap'->>'sourceId'=${manifest.resolvesGap.sourceId}
+        AND manifest::jsonb->'resolvesGap'->>'gapIndex'=${String(manifest.resolvesGap.gapIndex)} LIMIT 1`.execute(trx);
+      if (conflicts.rows.length) throw new Error('Another historical source already claims this gap');
+    }
     let present = 0, missing = 0, expired = 0;
     if (manifest.category === 'metrics') {
       // Query by stable identity AND original content. Resampled old gauges
@@ -225,6 +270,7 @@ export async function reconcileHistoryPage(db: Kysely<OmnitronDatabase>, storage
     }
     if (options.restore) {
       const rows = present + missing + expired, total = source!.processedRows + rows, complete = page.index + 1 === manifest.expectedPages;
+      if (manifest.resolvesGap && expired) throw new Error('Expired history cannot resolve a gap in the live database');
       if (total > manifest.expectedRows || (complete && (total !== manifest.expectedRows || digest !== manifest.rootDigest))) throw new Error('Historical source row count or final hash does not match its manifest');
       const at = new Date().toISOString();
       await journal.insertInto('sync_history_pages').values({ sourceId: manifest.id, page: page.index, digest, rows,

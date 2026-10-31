@@ -2,10 +2,10 @@ import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';
 import { PostgresMetricsStorage } from '@omnitron-dev/titan-metrics';
-import { HISTORY_EMPTY_DIGEST, historicalLog, historyCoverage, historyJson, historyLogKey,
+import { HISTORY_EMPTY_DIGEST, historicalLog, historyCoverage, historyGapDigest, historyJson, historyLogKey,
   historyPageDigest, reconcileHistoryPage, type HistoryEntry, type HistoryManifest, type HistoryPage } from '../../src/services/replication-history.js';
 import { replicatedMetric } from '../../src/services/replication-reconciliation.js';
-import { historyWords } from '../../src/shared/sync-reading.js';
+import { historyWords, syncFinding, syncWords } from '../../src/shared/sync-reading.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
 import { databaseOfItsOwn, type OwnDatabase } from './a-database-of-its-own.js';
 
@@ -124,5 +124,86 @@ describe.skipIf(!available.ok)('pre-receipt history with PostgreSQL transaction 
     try { await expect(reconcile(manifest, pages[1]!)).rejects.toThrow('logged PostgreSQL'); }
     finally { await sql`ALTER TABLE sync_history_pages SET LOGGED`.execute(own.db); }
     expect((await historyCoverage(own.db))[0]).toMatchObject({ status: 'partial', processedRows: 1 });
+  });
+  it('resolves a reviewed collision through a separate commit without rewriting the original audit', async () => {
+    const timestamp = new Date(Date.now() - 3600000).toISOString();
+    const entry = (workerId: string): HistoryEntry => {
+      const payload = { timestamp, app: 'api', level: 'info', message: 'Worker exited cleanly', metadata: { workerId } };
+      return { id: historyLogKey(payload), payload, createdAt: timestamp };
+    };
+    const original = source('logs', [[entry('first')]]);
+    original.manifest.gaps = [{ reason: 'Same time and message, unresolved worker identity', from: timestamp, to: timestamp, rows: 1 }];
+    await reconcile(original.manifest, original.pages[0]!);
+    const recovery = source('logs', [[entry('second')]]);
+    recovery.manifest = { ...recovery.manifest, id: 'c'.repeat(64), gaps: [], resolvesGap: {
+      sourceId: original.manifest.id, gapIndex: 0, gapDigest: historyGapDigest(original.manifest.gaps[0]!),
+      evidenceDigest: 'd'.repeat(64), explanation: 'Independent worker identities confirmed in the original archive',
+    } };
+    expect(await reconcile(recovery.manifest, recovery.pages[0]!, false)).toMatchObject({ present: 0, missing: 1 });
+    expect((await historyCoverage(own.db))[0]!.gaps[0]!.resolution).toBeUndefined();
+    expect(await reconcile(recovery.manifest, recovery.pages[0]!)).toMatchObject({ present: 0, missing: 1 });
+    expect(await reconcile(recovery.manifest, recovery.pages[0]!)).toMatchObject({ replay: true });
+    expect(await reconcile(recovery.manifest, recovery.pages[0]!, false)).toMatchObject({ present: 1, missing: 0 });
+    const coverage = await historyCoverage(own.db), parent = coverage.find(r => r.sourceId === original.manifest.id)!;
+    expect(parent.gaps[0]).toMatchObject({ ...original.manifest.gaps[0], resolution: { sourceId: recovery.manifest.id } });
+    expect(historyWords(parent)).toContain('resolved: Independent worker identities');
+    expect(historyWords(parent)).not.toContain('; gaps:');
+    expect(syncWords(syncFinding({ pendingItems: 0, lastSyncAt: null, history: coverage }))).not.toContain('coverage gaps');
+    const stored = (await sql<{ manifest: string }>`SELECT manifest FROM sync_history_sources WHERE id=${original.manifest.id}`.execute(own.db)).rows[0]!;
+    expect(stored.manifest).toBe(historyJson(original.manifest));
+    expect((await sql<{ n: string }>`SELECT count(*) n FROM logs`.execute(own.db)).rows[0]!.n).toBe('2');
+    const duplicate = { ...recovery.manifest, id: 'e'.repeat(64) };
+    await expect(reconcile(duplicate, recovery.pages[0]!)).rejects.toThrow('already claims');
+    expect(await historyCoverage(own.db)).toHaveLength(2);
+  });
+  it('refuses changed gap fingerprints, unknown counts and incomplete parents', async () => {
+    const now = Date.now() - 3600000;
+    const original = source('metrics', [[metric('10', now)], [metric('11', now + 5)]]);
+    original.manifest.gaps[0]!.rows = 1;
+    const recovered = metric('12', Number(original.pages[0]!.entries[0]!.payload['timestamp']));
+    const repair = source('metrics', [[recovered]]);
+    repair.manifest = { ...repair.manifest, id: 'c'.repeat(64), gaps: [], resolvesGap: {
+      sourceId: original.manifest.id, gapIndex: 0, gapDigest: historyGapDigest(original.manifest.gaps[0]!),
+      evidenceDigest: 'd'.repeat(64), explanation: 'Reviewed retained source',
+    } };
+    await reconcile(original.manifest, original.pages[0]!);
+    await expect(reconcile(repair.manifest, repair.pages[0]!)).rejects.toThrow('verified, bounded');
+    await reconcile(original.manifest, original.pages[1]!);
+    repair.manifest.resolvesGap!.gapDigest = 'e'.repeat(64);
+    await expect(reconcile(repair.manifest, repair.pages[0]!)).rejects.toThrow('verified, bounded');
+    const unknown = source('metrics', [[metric('10', now)]]);
+    unknown.manifest.id = 'e'.repeat(64);
+    await reconcile(unknown.manifest, unknown.pages[0]!);
+    repair.manifest.resolvesGap = { ...repair.manifest.resolvesGap!, sourceId: unknown.manifest.id,
+      gapDigest: historyGapDigest(unknown.manifest.gaps[0]!) };
+    await expect(reconcile(repair.manifest, repair.pages[0]!)).rejects.toThrow('verified, bounded');
+    expect(await historyCoverage(own.db)).toHaveLength(2);
+    expect((await sql<{ n: string }>`SELECT count(*) n FROM metrics_samples`.execute(own.db)).rows[0]!.n).toBe('2');
+  });
+  it('does not close a gap until every recovery page commits and rejects expired recovery', async () => {
+    const now = Date.now() - 3600000;
+    const original = source('metrics', [[metric('10', now)]]);
+    original.manifest.gaps = [{ reason: 'Two retained originals missing', from: null, to: null, rows: 2 }];
+    await reconcile(original.manifest, original.pages[0]!);
+    const repair = source('metrics', [[metric('11', now + 5)], [metric('12', now + 10)]]);
+    repair.manifest = { ...repair.manifest, id: 'c'.repeat(64), gaps: [], resolvesGap: {
+      sourceId: original.manifest.id, gapIndex: 0, gapDigest: historyGapDigest(original.manifest.gaps[0]!),
+      evidenceDigest: 'd'.repeat(64), explanation: 'Both originals recovered',
+    } };
+    await reconcile(repair.manifest, repair.pages[0]!);
+    expect((await historyCoverage(own.db)).find(r => r.sourceId === original.manifest.id)!.gaps[0]!.resolution).toBeUndefined();
+    await reconcile(repair.manifest, repair.pages[1]!);
+    expect((await historyCoverage(own.db)).find(r => r.sourceId === original.manifest.id)!.gaps[0]!.resolution).toBeDefined();
+
+    const payload = { timestamp: new Date(Date.now() - 15 * 86400000).toISOString(), message: 'old event' };
+    const expired = source('logs', [[{ id: historyLogKey(payload), payload, createdAt: payload.timestamp }]]);
+    const parent = { ...expired.manifest, id: 'e'.repeat(64), gaps: [{ reason: 'Old missing event', from: null, to: null, rows: 1 }] };
+    await reconcile(parent, expired.pages[0]!);
+    expired.manifest = { ...expired.manifest, id: 'f'.repeat(64), gaps: [], resolvesGap: {
+      sourceId: parent.id, gapIndex: 0, gapDigest: historyGapDigest(parent.gaps[0]!),
+      evidenceDigest: 'd'.repeat(64), explanation: 'Cannot restore an expired event',
+    } };
+    await expect(reconcile(expired.manifest, expired.pages[0]!)).rejects.toThrow('Expired history');
+    expect((await historyCoverage(own.db)).find(r => r.sourceId === parent.id)!.gaps[0]!.resolution).toBeUndefined();
   });
 });

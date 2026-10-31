@@ -205,7 +205,9 @@ export interface HistoryCoverage {
   lastAt: string;
   verifiedAt: string | null;
   precision: 'original' | 'millisecond';
-  gaps: Array<{ reason: string; from: string | null; to: string | null; rows: number | null }>;
+  gaps: Array<{ reason: string; from: string | null; to: string | null; rows: number | null;
+    /** A separate committed source proof; the original audit is retained. */
+    resolution?: { sourceId: string; explanation: string; verifiedAt: string } }>;
 }
 
 export interface ISyncStatus {

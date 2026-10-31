@@ -52,7 +52,7 @@ export function syncWords(finding: SyncFinding): string {
   if (finding.history?.length) {
     const checked = finding.history.reduce((sum, row) => sum + row.processedRows, 0);
     words.push(`${checked} retained pre-receipt rows checked${finding.history.some(row => row.status === 'partial') ? ' (audit incomplete)' : ''}`);
-    if (finding.history.some(row => row.gaps.length)) words.push('earlier history has explicit coverage gaps');
+    if (finding.history.some(row => row.gaps.some(gap => !gap.resolution))) words.push('earlier history has explicit coverage gaps');
   }
   return words.join(' · ');
 }
@@ -62,8 +62,10 @@ export function historyWords(history: NonNullable<ISyncStatus['history']>[number
     ` (${history.presentRows} present, ${history.restoredRows} restored, ${history.expiredRows} outside retention and kept in source archives), ${history.firstAt}–${history.lastAt}`;
   const state = history.status === 'verified' ? `verified at ${history.verifiedAt}` : 'audit incomplete';
   const precision = history.precision === 'millisecond' ? '; log comparison at retained millisecond precision' : '';
-  const gaps = history.gaps.map(gap => `${gap.reason}${gap.rows === null ? ' (unknown row count)' : ` (${gap.rows} rows)`}`).join('; ');
-  return `${coverage}; ${state}${precision}${gaps ? `; gaps: ${gaps}` : ''}`;
+  const gaps = history.gaps.filter(gap => !gap.resolution).map(gap => `${gap.reason}${gap.rows === null ? ' (unknown row count)' : ` (${gap.rows} rows)`}`).join('; ');
+  const resolved = history.gaps.flatMap(gap => gap.resolution
+    ? [`${gap.resolution.explanation} (verified at ${gap.resolution.verifiedAt}, source ${gap.resolution.sourceId})`] : []).join('; ');
+  return `${coverage}; ${state}${precision}${gaps ? `; gaps: ${gaps}` : ''}${resolved ? `; resolved: ${resolved}` : ''}`;
 }
 
 export function syncProgressWords(evidence: ReplicationEvidence): string {

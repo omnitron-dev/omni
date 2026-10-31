@@ -1,3 +1,4 @@
+import { nodePlacement, observeStack } from '../project/stack-observation.js';
 import { getCachedBootstrapDefinition } from '../orchestrator/bootstrap-loader.js';
 import { appDependencies } from '../project/dependency-topology.js';
 import { isControlPlaneWorkspace } from '../project/workspace-kind.js';
@@ -1323,19 +1324,8 @@ export class ProjectService extends EventEmitter {
     if (!stackConfig) throw new Error(`Stack '${stackName}' not found`);
 
     const prefix = `${projectName}/${stackName}/`;
-    // Match by namespaced prefix OR by bare-name when the bare entry's
-    // effective name is part of this stack's configured app set. See
-    // toStackInfo for the full rationale; we keep the same rule here so
-    // CLI `omnitron list` and the webapp's stack status agree.
-    const configForStatus = this.getLoadedConfig(projectName);
-    const configuredNames = configForStatus
-      ? new Set(this.resolveStackApps(stackConfig, configForStatus).map((a) => a.name))
-      : new Set<string>();
-    const apps = this.orchestrator.list().filter((a) => {
-      if (a.name.startsWith(prefix)) return true;
-      if (a.name.includes('/')) return false;
-      return configuredNames.has(effectiveAppName(a.name));
-    });
+    // A bare process name proves neither project nor stack ownership.
+    const apps = this.orchestrator.list().filter((a) => a.name.startsWith(prefix));
     const onlineApps = apps.filter((a) => a.status === 'online');
 
     // Derive status from app health if running
@@ -4521,9 +4511,8 @@ export class ProjectService extends EventEmitter {
    * deployment fails a script; and the console's stack page shows the same
    * six rows, stopped.
    *
-   * A node that cannot be asked leaves its apps exactly as they were, with a
-   * line saying why. "We could not ask" is not "they are down" — and the
-   * local rows are at least honest about being local.
+   * Each node retains its own observation. An unavailable source is unknown;
+   * a replica on another node cannot turn that missing observation into online.
    */
   async withRemoteAppStatuses(projectName: string, info: IStackInfo): Promise<IStackInfo> {
     return (await this.askNodes(projectName, info)).info;
@@ -4544,92 +4533,29 @@ export class ProjectService extends EventEmitter {
   ): Promise<{ info: IStackInfo; answered: number }> {
     if (info.type !== 'remote' && info.type !== 'cluster') return { info, answered: 0 };
     const nodes = info.config.nodes ?? [];
-    if (nodes.length === 0 || !this.slaveConnector) return { info, answered: 0 };
-
-    const reported = new Map<string, import('../config/types.js').ProcessInfoDto>();
-    let remoteInfra: IStackInfraStatus | null = null;
-    let answered = 0;
-    for (const node of nodes) {
-      try {
-        const status = (await this.slaveConnector.invokeOnSlave(
-          node.host,
-          node.port ?? 9700,
-          'OmnitronDaemon',
-          'status',
-          [],
-        )) as import('../config/types.js').DaemonStatusDto;
-        answered += 1;
-
-        // The containers are on the node too — `infraManager.getInstance`
-        // answers about THIS machine, where a remote stack has none, so the
-        // stack read "Infrastructure: not provisioned" beside a node running
-        // postgres, redis, minio, the gateway and tor.
-        remoteInfra ??= await this.remoteInfraStatus(projectName, info.name, node);
-        for (const app of status?.apps ?? []) {
-          // The node names them `<project>/deployed/<app>`; the stack knows
-          // them by the app's own name.
-          const bare = app.name.includes('/') ? app.name.slice(app.name.lastIndexOf('/') + 1) : app.name;
-          reported.set(bare, app);
-        }
-      } catch (err) {
-        this.logger.warn(
-          { project: projectName, stack: info.name, node: node.host, error: (err as Error).message },
-          'Could not ask this node what it is running — its apps are reported as this master sees them',
-        );
-      }
-    }
-
-    if (answered === 0) return { info, answered };
-
-    const apps = info.apps.map((app) => {
-      const running = reported.get(app.name);
-      if (!running) return app;
-      return {
-        ...app,
-        handleKey: running.name,
-        status: running.status,
-        pid: running.pid,
-        instances: running.instances,
-        uptime: running.uptime,
-        restarts: running.restarts,
-        cpu: running.cpu,
-        memory: running.memory,
-        port: running.port ?? null,
-      };
-    });
-
-    // The stack's own status is this master's memory of having started it,
-    // and a daemon restart forgets it — so a stack whose six applications
-    // are running on a node read `stopped` a minute after an upgrade. The
-    // apps are the fact here too.
-    const online = apps.filter((a) => a.status === 'online').length;
-    const status: StackStatus =
-      online === apps.length && apps.length > 0
-        ? 'running'
-        : online > 0
-          ? 'degraded'
-          : info.status;
-
-    // And when the stack started is when its applications did: the
-    // longest-running one a node reports online. An uptime is a duration the
-    // node measured on its own clock, so taking it from this one needs no
-    // agreement between the two clocks.
-    const longest = apps.reduce(
-      (max, a) => (reported.has(a.name) && a.status === 'online' && a.uptime > max ? a.uptime : max),
-      0,
-    );
-
-    return {
-      info: {
-        ...info,
-        status,
-        infrastructure: remoteInfra ?? info.infrastructure,
-        apps,
-        startedAt: longest > 0 ? new Date(Date.now() - longest).toISOString() : null,
-        uptime: longest,
-      },
-      answered,
+    if (nodes.length === 0) return { info, answered: 0 };
+    if (!this.slaveConnector) return {
+      info: observeStack(info, nodes.map(node => nodePlacement(projectName, info, node, null, null, new Date().toISOString()))),
+      answered: 0,
     };
+
+    const placements: import('../shared/dto/project.js').IStackPlacement[] = [];
+    // Bounded fan-out: one failed peer must not hide the other peers' inventory.
+    for (let offset = 0; offset < nodes.length; offset += 4) {
+      placements.push(...await Promise.all(nodes.slice(offset, offset + 4).map(async node => {
+        const [processAnswer, infrastructureAnswer] = await Promise.allSettled([
+          this.slaveConnector!.invokeOnSlave(node.host, node.port ?? 9700, 'OmnitronDaemon', 'status', []),
+          this.remoteInfraStatus(projectName, info.name, node),
+        ]);
+        const status = processAnswer.status === 'fulfilled'
+          ? processAnswer.value as import('../config/types.js').DaemonStatusDto : null;
+        const processes = status && Array.isArray(status.apps) ? status.apps : null;
+        return nodePlacement(projectName, info, node, processes,
+          infrastructureAnswer.status === 'fulfilled' ? infrastructureAnswer.value : null,
+          new Date().toISOString());
+      })));
+    }
+    return { info: observeStack(info, placements), answered: placements.filter(node => node.appsObserved).length };
   }
 
 
@@ -4638,8 +4564,8 @@ export class ProjectService extends EventEmitter {
    *
    * The node's container names carry ITS prefix (`sample-test-postgres`), and
    * a reader wants the service — `postgres` — so the same stripping the
-   * local path does is done here. `null` when the node cannot answer or has
-   * no infrastructure of its own, which leaves the master's view in place.
+   * local path does is done here. `null` means the node could not answer;
+   * an empty inventory is an observed absence, never this master's inventory.
    */
   private async remoteInfraStatus(
     projectName: string,
@@ -4673,28 +4599,35 @@ export class ProjectService extends EventEmitter {
             'listContainers',
             [],
           )) as import('../infrastructure/types.js').ContainerState[] ?? [])
-            .filter((c) => c.name.startsWith(prefix))
             .map((c) => [c.name, c]);
 
-      if (entries.length === 0) return null;
+      const owned = entries.filter(([, service]) => service.project || service.stack
+        ? service.project === projectName && service.stack === stackName
+        : service.name.startsWith(prefix));
 
-      for (const [containerName, svc] of entries) {
+      for (const [containerName, svc] of owned) {
         const name = containerName.startsWith(prefix) ? containerName.slice(prefix.length) : containerName;
         services[name] = {
           status: svc.status === 'running' ? 'running' : svc.error ? 'error' : 'stopped',
           containerName: svc.name,
           port: svc.ports ? Object.values(svc.ports)[0] ?? null : null,
+          service: svc.service ?? name,
+          ...(svc.containerId ? { containerId: svc.containerId } : {}),
+          ...(svc.image ? { image: svc.image } : {}),
+          ...(svc.ports ? { ports: svc.ports } : {}),
+          ...(svc.app ? { app: svc.app } : {}),
+          health: svc.status === 'running' ? svc.health ?? 'none' : 'none',
         };
       }
 
       // Without the node's own verdict, "ready" is what the containers say:
       // every one of them running.
-      const ready = state?.ready ?? Object.values(services).every((svc) => svc.status === 'running');
+      const ready = Object.values(services).every(svc => svc.status === 'running' && svc.health !== 'unhealthy' && svc.health !== 'starting');
       return { ready, services };
     } catch (err) {
       this.logger.warn(
         { project: projectName, stack: stackName, node: node.host, error: (err as Error).message },
-        'Could not ask this node about its infrastructure — the stack shows this master\'s view',
+        'Node infrastructure inventory unavailable; placement state is unknown',
       );
       return null;
     }

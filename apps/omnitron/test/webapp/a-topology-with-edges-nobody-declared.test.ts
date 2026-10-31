@@ -31,7 +31,10 @@ const { client } = vi.hoisted(() => ({
 }));
 
 vi.mock('src/netron/client', () => ({
-  project: { listStacks: client.listStacks, getTopology: vi.fn(async () => ({ version: 1, dependencies: [], warnings: [] })) },
+  project: {
+    listStacks: client.listStacks,
+    getTopology: vi.fn(async () => ({ version: 1, dependencies: [], warnings: [] })),
+  },
   daemon: { list: client.list, status: client.status },
   infra: { listContainers: client.listContainers },
 }));
@@ -162,6 +165,7 @@ describe('a topology with edges nobody declared', () => {
     expect(dev!.services.map((s) => [s.service, s.health, s.app ?? null])).toEqual([
       ['postgres', 'healthy', null],
       ['bitcoin', 'healthy', 'payments'],
+      ['tor', 'healthy', null],
     ]);
     // A remote stack's containers run on its node: reported, not inspected.
     expect(test!.services.map((s) => [s.service, s.status, s.health])).toEqual([['postgres', 'running', 'unknown']]);
@@ -202,7 +206,7 @@ describe('a topology with edges nobody declared', () => {
     const bands = daemonBands(PROCESSES, CONTAINERS);
 
     expect(bands.map((b) => [b.stack, b.apps.map((a) => a.name), b.services.map((s) => s.service)])).toEqual([
-      ['sample/dev', ['sample/dev/main'], ['postgres', 'bitcoin']],
+      ['sample/dev', ['sample/dev/main'], ['postgres', 'bitcoin', 'tor']],
       [null, ['omnitron-helper'], ['omnitron-pg']],
     ]);
     expect(bands[0]!.gateway).toMatchObject({ hasTor: true });
@@ -252,6 +256,7 @@ describe('a topology that could not read one of its sources', () => {
     expect(services.map((s) => [s.service, s.health])).toEqual([
       ['postgres', 'unknown'],
       ['bitcoin', 'unknown'],
+      ['tor', 'unknown'],
     ]);
     expect(state.error).toMatch(/incomplete: could not read container health/i);
   });
@@ -259,12 +264,52 @@ describe('a topology that could not read one of its sources', () => {
     await fetchFor('dev');
     const selected = useTopologyStore.getState().nodes.find((node) => node.data.nodeType === 'app')!;
     useTopologyStore.getState().openDetail(selected.id, 'app', selected.data);
-    client.listStacks.mockResolvedValue(STACKS.map((stack) => ({ ...stack, apps: stack.apps.map((app) => ({ ...app, cpu: 150 })) })));
+    client.listStacks.mockResolvedValue(
+      STACKS.map((stack) => ({ ...stack, apps: stack.apps.map((app) => ({ ...app, cpu: 150 })) }))
+    );
     await useTopologyStore.getState().fetchAll();
     expect(useTopologyStore.getState().detailPanel.data).toMatchObject({ cpu: 150 });
     useTopologyStore.getState().setScope(scope('test'));
     expect(useTopologyStore.getState().detailPanel.open).toBe(false);
     expect(useTopologyStore.getState().nodes).toEqual([]);
   });
+});
 
+describe('physical placements in the infrastructure map', () => {
+  it('retains replicas and infrastructure on each node, without claiming unavailable instances are present', async () => {
+    const { nodePlacement, observeStack } = await import('../../src/project/stack-observation.js');
+    const base = {
+      ...STACKS[1]!,
+      type: 'cluster' as const,
+      config: {
+        ...STACKS[1]!.config,
+        type: 'cluster' as const,
+        nodes: [
+          { host: 'a', role: 'app' as const },
+          { host: 'b', role: 'app' as const },
+        ],
+      },
+    };
+    const process = {
+      ...base.apps[0]!,
+      name: 'sample/deployed/main',
+      mode: 'bootstrap',
+      critical: false,
+    } as ProcessInfoDto;
+    const placements = [
+      nodePlacement('sample', base, base.config.nodes[0]!, [process], base.infrastructure, '2026-10-31T00:00:00Z'),
+      nodePlacement('sample', base, base.config.nodes[1]!, null, null, '2026-10-31T00:00:00Z'),
+    ];
+    const { nodes, edges } = layoutBands(stackBands([observeStack(base, placements)], scope('test'), [], []));
+    const main = nodes.filter((n) => n.data.logicalApp === 'main');
+    expect(main).toHaveLength(2);
+    expect(main.map((n) => [n.data.nodeKey, n.data.status])).toEqual([
+      ['a:9700', 'online'],
+      ['b:9700', 'unknown'],
+    ]);
+    expect(new Set(nodes.map((n) => n.id)).size).toBe(nodes.length);
+    expect(edges.find((e) => e.target === main[0]!.id)?.data?.evidence).toBe('placement');
+    expect(edges.find((e) => e.target === main[1]!.id)?.data?.evidence).toBe('declaration');
+    expect(nodes.filter((n) => n.type === 'serverNode').map((n) => n.data.status)).toEqual(['online', 'unknown']);
+  });
 });

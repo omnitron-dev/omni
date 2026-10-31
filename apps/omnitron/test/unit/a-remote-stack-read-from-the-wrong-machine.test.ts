@@ -158,7 +158,7 @@ describe('a remote stack\'s infrastructure is on its nodes too', () => {
     expect(out.infrastructure.services['tor']!.status).toBe('stopped');
   });
 
-  it('keeps this master\'s view when the node cannot say', async () => {
+  it('does not claim infrastructure readiness when the node cannot say', async () => {
     const svc = service(async (_h, _p, service_) => {
       if (service_ === 'OmnitronInfra') throw new Error('no route');
       return nodeStatus([]);
@@ -168,7 +168,7 @@ describe('a remote stack\'s infrastructure is on its nodes too', () => {
       infrastructure: { ready: boolean };
     };
 
-    expect(out.infrastructure.ready).toBe(true);
+    expect(out.infrastructure.ready).toBe(false);
   });
 });
 
@@ -256,7 +256,7 @@ describe('a remote stack is read from the machines it runs on', () => {
 
     const out = await svc.withRemoteAppStatuses('sample', info('remote'));
 
-    expect(out.apps.map((a) => a.status)).toEqual(['stopped', 'stopped', 'stopped']);
+    expect(out.apps.map((a) => a.status)).toEqual(['unknown', 'unknown', 'unknown']);
     expect(out.apps.map((a) => a.handleKey)).toEqual([
       'sample/test/main',
       'sample/test/geo',

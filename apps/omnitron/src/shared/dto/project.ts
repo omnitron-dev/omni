@@ -5,11 +5,7 @@
  * and the daemon's ProjectService.
  */
 
-import type {
-  DaemonRole,
-  IStackConfig,
-  AppStatus,
-} from '../../config/types.js';
+import type { DaemonRole, IStackConfig, AppStatus } from '../../config/types.js';
 
 // =============================================================================
 // Project DTOs
@@ -102,7 +98,7 @@ export interface IStackAccountRemoved {
   vaultKeyRemoved: string | null;
 }
 
-export type StackStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'degraded' | 'error';
+export type StackStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'degraded' | 'error' | 'unknown';
 
 export interface IStackInfo {
   /** Stack name (e.g., 'dev', 'test', 'prod') */
@@ -119,6 +115,8 @@ export interface IStackInfo {
   apps: IStackAppStatus[];
   /** Infrastructure services provisioned for this stack */
   infrastructure: IStackInfraStatus;
+  /** Node-qualified observations. Missing peers are retained as unknown placements. */
+  placements?: IStackPlacement[];
   /** Port range allocated to this stack */
   portRange: { start: number; end: number } | null;
   /**
@@ -187,7 +185,12 @@ export interface ReplicationEvidence {
   lastCommittedAt: number | null;
   lastLossAt: number | null;
   /** Later verification/restoration, distinct from the original delivery acknowledgement. */
-  reconciliation?: { verifiedRows: number; restoredRows: number; lastReconciledAt: string | null; scope: 'source' | 'master' };
+  reconciliation?: {
+    verifiedRows: number;
+    restoredRows: number;
+    lastReconciledAt: string | null;
+    scope: 'source' | 'master';
+  };
 }
 
 /** A bounded audit of retained sources; never implies coverage before firstAt. */
@@ -205,9 +208,14 @@ export interface HistoryCoverage {
   lastAt: string;
   verifiedAt: string | null;
   precision: 'original' | 'millisecond';
-  gaps: Array<{ reason: string; from: string | null; to: string | null; rows: number | null;
+  gaps: Array<{
+    reason: string;
+    from: string | null;
+    to: string | null;
+    rows: number | null;
     /** A separate committed source proof; the original audit is retained. */
-    resolution?: { sourceId: string; explanation: string; verifiedAt: string } }>;
+    resolution?: { sourceId: string; explanation: string; verifiedAt: string };
+  }>;
 }
 
 export interface ISyncStatus {
@@ -265,7 +273,7 @@ export interface IStackAppStatus {
   /** Namespaced handle key: project/stack/app */
   handleKey: string;
   /** Current status */
-  status: AppStatus;
+  status: AppStatus | 'degraded' | 'unknown';
   /** PID (null if not running) */
   pid: number | null;
   /** Number of instances */
@@ -297,11 +305,41 @@ export interface IStackInfraStatus {
   /** Whether infrastructure is provisioned and healthy */
   ready: boolean;
   /** Individual service statuses */
-  services: Record<string, {
-    status: 'running' | 'stopped' | 'error';
-    containerName: string;
-    port: number | null;
+  services: Record<
+    string,
+    {
+      status: 'running' | 'stopped' | 'error';
+      containerName: string;
+      port: number | null;
+      service?: string;
+      nodeKey?: string;
+      containerId?: string;
+      image?: string;
+      health?: 'healthy' | 'unhealthy' | 'starting' | 'none';
+      ports?: Record<string, number>;
+      app?: string;
+    }
+  >;
+}
+
+/** One node's observations, distinct from the desired placement in config.nodes. */
+export interface IStackPlacement {
+  nodeKey: string;
+  host: string;
+  port: number;
+  label: string | null;
+  observedAt: string | null;
+  appsObserved: boolean;
+  infrastructureObserved: boolean;
+  apps: Array<{
+    name: string;
+    expected: boolean;
+    /** Null means absent on an answering node, unknown on a non-answering node. */
+    process: import('../../config/types.js').ProcessInfoDto | null;
   }>;
+  infrastructure: IStackInfraStatus | null;
+  /** Safe source-level reasons, with no credentials or launch environment. */
+  errors: string[];
 }
 
 // =============================================================================
@@ -344,14 +382,17 @@ export interface StackRuntime {
 
 export interface IProjectRequirements {
   /** Per-app infrastructure requirements */
-  apps: Record<string, {
-    postgres: boolean;
-    redis: boolean;
-    s3: boolean;
-    discovery: boolean;
-    notifications: boolean;
-    custom: string[];
-  }>;
+  apps: Record<
+    string,
+    {
+      postgres: boolean;
+      redis: boolean;
+      s3: boolean;
+      discovery: boolean;
+      notifications: boolean;
+      custom: string[];
+    }
+  >;
   /** Aggregated: does any app need postgres? */
   needsPostgres: boolean;
   /** Aggregated: does any app need redis? */

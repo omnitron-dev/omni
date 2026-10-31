@@ -94,6 +94,8 @@ export interface AppNodeData {
     type: string;
     status: string;
     pid: number | null;
+    instances?: number;
+    declaredInstances?: number;
   }>;
   [key: string]: unknown;
 }
@@ -180,6 +182,8 @@ interface TopologyState {
 /** One stack's part of the diagram, or this daemon's own when `stack` is null. */
 export interface TopologyBand {
   stack: string | null;
+  /** Physical deployment group; one logical stack may span several hosts. */
+  placementKey?: string;
   servers: ServerNodeData[];
   services: InfraNodeData[];
   gateway: GatewayNodeData | null;
@@ -193,7 +197,16 @@ const firstPublishedPort = (container: ContainerState | undefined): number | nul
 
 const processesOf = (process: ProcessInfoDto | undefined): Pick<AppNodeData, 'processes'> =>
   process?.processes
-    ? { processes: process.processes.map(({ name, type, status, pid }) => ({ name, type, status, pid })) }
+    ? {
+        processes: process.processes.map(({ name, type, status, pid, instances, declaredInstances }) => ({
+          name,
+          type,
+          status,
+          pid,
+          ...(instances !== undefined ? { instances } : {}),
+          ...(declaredInstances !== undefined ? { declaredInstances } : {}),
+        })),
+      }
     : {};
 
 function appFromProcess(process: ProcessInfoDto, stack: string | null): AppNodeData {
@@ -247,7 +260,7 @@ function withGateway(stack: string | null, services: InfraNodeData[]): Pick<Topo
   if (!gateway) return { services, gateway: null };
   const tor = services.find((s) => s.service === 'tor');
   return {
-    services: services.filter((s) => s !== gateway && s !== tor),
+    services: services.filter((s) => s !== gateway),
     gateway: {
       nodeType: 'gateway',
       label: 'Gateway',
@@ -256,6 +269,9 @@ function withGateway(stack: string | null, services: InfraNodeData[]): Pick<Topo
       health: gateway.health,
       status: gateway.status,
       hasTor: tor?.status === 'running',
+      nodeKey: gateway.nodeKey,
+      host: gateway.host,
+      project: gateway.project,
     },
   };
 }
@@ -270,14 +286,82 @@ export function stackBands(
   const processByHandle = new Map(processes.map((p) => [p.name, p]));
   return stacks
     .filter((s) => !scope.stack || s.name === scope.stack)
-    .map((s) => {
+    .flatMap((s): TopologyBand[] => {
       const remote = s.type !== 'local';
+      if (remote && s.placements)
+        return s.placements.map((placement) => {
+          const apps: AppNodeData[] = placement.apps.map(({ name, expected, process }) => ({
+            nodeType: 'app',
+            label: `${s.name}/${name}`,
+            name: process?.name ?? `${scope.project}/${s.name}/${name}`,
+            logicalApp: name,
+            project: scope.project,
+            stack: s.name,
+            nodeKey: placement.nodeKey,
+            host: placement.host,
+            expected,
+            present: Boolean(process),
+            observed: placement.appsObserved,
+            remote: true,
+            status: placement.appsObserved ? (process?.status ?? 'stopped') : 'unknown',
+            port: process?.port ?? null,
+            pid: process?.pid ?? null,
+            cpu: process?.cpu ?? 0,
+            memory: process?.memory ?? 0,
+            uptime: process?.uptime ?? 0,
+            restarts: process?.restarts ?? 0,
+            instances: process?.instances ?? 0,
+            ...processesOf(process ?? undefined),
+          }));
+          const services: InfraNodeData[] = Object.entries(placement.infrastructure?.services ?? {}).map(
+            ([name, service]) => ({
+              nodeType: 'infra',
+              label: service.service ?? name,
+              service: service.service ?? name,
+              identity: name,
+              project: scope.project,
+              stack: s.name,
+              nodeKey: placement.nodeKey,
+              host: placement.host,
+              port: service.port,
+              status: service.status,
+              health: service.health ?? 'unknown',
+              containerId: service.containerId,
+              image: service.image,
+              app: service.app,
+            })
+          );
+          const declared = s.nodes.find((node) => node.host === placement.host && node.port === placement.port);
+          const server: ServerNodeData = {
+            nodeType: 'server',
+            label: placement.label ?? placement.host,
+            hostname: placement.host,
+            address: placement.nodeKey,
+            nodeKey: placement.nodeKey,
+            role: declared?.daemonRole ?? 'slave',
+            status: placement.appsObserved ? 'online' : 'unknown',
+            stacks: [s.name],
+            apps: apps.map((app) => app.name),
+            observationErrors: placement.errors,
+            observedAt: placement.observedAt,
+          };
+          return {
+            stack: s.name,
+            placementKey: `${s.name}@${placement.nodeKey}`,
+            servers: [server],
+            apps,
+            ...withGateway(s.name, services),
+          };
+        });
       const apps = s.apps.map((a): AppNodeData => ({
         nodeType: 'app',
         label: `${s.name}/${a.name}`,
         name: a.handleKey,
         stack: s.name,
         remote,
+        project: scope.project,
+        logicalApp: a.name,
+        nodeKey: remote ? (s.nodes.length === 1 ? `${s.nodes[0]!.host}:${s.nodes[0]!.port}` : undefined) : 'local',
         port: a.port,
         status: a.status,
         pid: a.pid,
@@ -295,9 +379,12 @@ export function stackBands(
           ? []
           : containers.filter((c) => c.project === scope.project && c.stack === s.name).map((c) => [c.name, c] as const)
       );
-      const services = Object.entries(s.infrastructure?.services ?? {}).map(([service, reported]) =>
-        serviceNode(service, s.name, reported, byName.get(reported.containerName))
-      );
+      const services = Object.entries(s.infrastructure?.services ?? {}).map(([service, reported]) => ({
+        ...serviceNode(service, s.name, reported, byName.get(reported.containerName)),
+        project: scope.project,
+        nodeKey: remote ? (s.nodes.length === 1 ? `${s.nodes[0]!.host}:${s.nodes[0]!.port}` : undefined) : 'local',
+        host: remote ? (s.nodes.length === 1 ? s.nodes[0]!.host : undefined) : 'localhost',
+      }));
       const servers = s.nodes.map((n): ServerNodeData => ({
         nodeType: 'server',
         label: n.label ?? n.host,
@@ -308,7 +395,7 @@ export function stackBands(
         stacks: [s.name],
         apps: s.apps.map((a) => `${s.name}/${a.name}`),
       }));
-      return { stack: s.name, servers, apps, ...withGateway(s.name, services) };
+      return [{ stack: s.name, servers, apps, ...withGateway(s.name, services) }];
     });
 }
 
@@ -355,7 +442,7 @@ export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeDa
   const serversPlaced = new Map<string, Node<TopologyNodeData>>();
 
   for (const band of bands) {
-    const key = band.stack ?? 'daemon';
+    const key = band.placementKey ?? band.stack ?? 'daemon';
     for (const server of band.servers) {
       // A machine that runs two stacks is one machine.
       const placed = serversPlaced.get(server.address);
@@ -376,7 +463,7 @@ export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeDa
 
     for (const service of band.services) {
       nodes.push({
-        id: `infra-${key}-${service.service}`,
+        id: `infra-${key}-${service.identity ?? service.service}`,
         type: 'infraNode',
         position: { x: 0, y: 0 },
         data: service,
@@ -392,8 +479,8 @@ export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeDa
       for (const service of band.services) {
         if (!service.app || service.app !== lastSegment(app.name)) continue;
         const edge: BuiltInEdge = {
-          id: `edge-${key}-${service.service}-${app.name}`,
-          source: `infra-${key}-${service.service}`,
+          id: `edge-${key}-${service.identity ?? service.service}-${app.name}`,
+          source: `infra-${key}-${service.identity ?? service.service}`,
           target: id,
           type: 'smoothstep',
           pathOptions: { offset: 8, borderRadius: 4 },
@@ -418,17 +505,39 @@ export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeDa
         data: band.gateway,
       });
     }
+    if (band.placementKey && band.servers.length === 1) {
+      const server = serversPlaced.get(band.servers[0]!.address)!;
+      for (const resource of nodes.filter(
+        (node) => node.id !== server.id && node.data.nodeKey === server.data.nodeKey
+      )) {
+        const id = `placement:${server.id}:${resource.id}`;
+        if (!edges.some((edge) => edge.id === id))
+          edges.push({
+            id,
+            source: server.id,
+            target: resource.id,
+            type: 'smoothstep',
+            label: resource.data.present === false ? 'expected on' : 'hosts',
+            data: {
+              evidence: resource.data.present === false ? 'declaration' : 'placement',
+              via: [resource.data.present === false ? 'stack configuration' : 'node inventory'],
+            },
+            style: { strokeWidth: 1, opacity: 0.45 },
+          });
+      }
+    }
   }
 
   for (const node of nodes) {
-    if (node.data.nodeType !== 'server')
-      node.data.deploymentKey =
-        bands.find(
-          (band) =>
-            band.apps.some((app) => app === node.data) ||
-            band.services.some((service) => service === node.data) ||
-            band.gateway === node.data
-        )?.stack ?? null;
+    if (node.data.nodeType !== 'server') {
+      const band = bands.find(
+        (band) =>
+          band.apps.includes(node.data as AppNodeData) ||
+          band.services.includes(node.data as InfraNodeData) ||
+          band.gateway === node.data
+      );
+      node.data.deploymentKey = band?.placementKey ?? band?.stack ?? null;
+    }
   }
   return { nodes: arrangeTopologyNodes(nodes, 3), edges };
 }
@@ -500,8 +609,14 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
     if (statusAnswer.status === 'rejected') unavailable.push('daemon status');
     if (dependenciesAnswer.status === 'rejected')
       unavailable.push('configured dependencies (a compatible backend is required)');
-    else if (coverageWarnings.length)
+    const failedSources = unavailable.length;
+    if (coverageWarnings.length)
       unavailable.push(`${coverageWarnings.length} dependency declarations (see coverage details)`);
+    const unreadPlacements = (stacks ?? [])
+      .filter((s) => !scope.stack || s.name === scope.stack)
+      .flatMap((s) =>
+        (s.placements ?? []).flatMap((p) => p.errors.map((reason) => `${s.name}@${p.nodeKey}: ${reason}`))
+      );
     const asked = scope.project ? 5 : 4;
 
     set({
@@ -519,13 +634,15 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
       })(),
       loading: false,
       error:
-        unavailable.length === 0
+        unavailable.length === 0 && unreadPlacements.length === 0
           ? null
-          : unavailable.length >= asked
+          : failedSources >= asked
             ? 'Could not reach the daemon — this diagram is empty because nothing could be read, not because nothing is running.'
             : stacksAnswer.status === 'rejected'
               ? `Could not read ${scope.project}'s stacks — this diagram is empty because they could not be read, not because nothing is running.`
-              : `Incomplete: could not read ${unavailable.join(', ')}. The rest of the diagram is current.`,
+              : [unavailable.length ? `Incomplete: could not read ${unavailable.join(', ')}.` : '', ...unreadPlacements]
+                  .filter(Boolean)
+                  .join(' '),
     });
   },
 

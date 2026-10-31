@@ -129,6 +129,17 @@ function AppOverview({ data }: { data: AppNodeData }) {
           }}
         />
       </InfoRow>
+      {typeof data.nodeKey === 'string' && <InfoRow label="Node">{data.nodeKey}</InfoRow>}
+      {data.expected === false && (
+        <Typography color="warning.main" variant="body2">
+          Running outside the configured placement.
+        </Typography>
+      )}
+      {data.observed === false && (
+        <Typography color="warning.main" variant="body2">
+          This node could not report its applications. The process state is unknown.
+        </Typography>
+      )}
       <InfoRow label="PID">{data.pid ?? '--'}</InfoRow>
       <InfoRow label="Port">{data.port ?? '--'}</InfoRow>
       <InfoRow label="Instances">{data.instances}</InfoRow>
@@ -175,6 +186,11 @@ function AppOverview({ data }: { data: AppNodeData }) {
                   size="small"
                   sx={{ height: 20, fontSize: 10, bgcolor: 'action.hover', color: 'text.secondary' }}
                 />
+                {proc.instances !== undefined && (
+                  <Typography variant="caption" color="text.secondary">
+                    {proc.instances}/{proc.declaredInstances ?? proc.instances} instances
+                  </Typography>
+                )}
                 {proc.pid && (
                   <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 11, color: 'text.secondary' }}>
                     {proc.pid}
@@ -268,6 +284,13 @@ function ServerOverview({ data }: { data: ServerNodeData }) {
     <Stack spacing={2}>
       <InfoRow label="Hostname">{data.hostname}</InfoRow>
       <InfoRow label="Address">{data.address}</InfoRow>
+      {typeof data.observedAt === 'string' && <InfoRow label="Observed">{formatTimestamp(data.observedAt)}</InfoRow>}
+      {Array.isArray(data.observationErrors) &&
+        data.observationErrors.map((reason: string) => (
+          <Typography key={reason} color="warning.main" variant="body2">
+            {reason}
+          </Typography>
+        ))}
       <InfoRow label="Stacks">{data.stacks.join(', ')}</InfoRow>
       <InfoRow label="Role">
         <Chip
@@ -558,20 +581,47 @@ export function DetailPanel({ container }: { container?: HTMLElement | null }) {
   );
   const tabs = [
     { value: 'Overview', label: 'Overview', content: overview },
-    { value: 'Connections', label: 'Connections', content: <Stack spacing={1} sx={{ pt: 1 }}>
-      <Typography variant="caption" color="text.secondary">Configuration and ownership evidence. Connection health is not measured by these links.</Typography>
-      {edges.filter(edge => edge.source === detailPanel.nodeId || edge.target === detailPanel.nodeId).map(edge => {
-        const outgoing = edge.source === detailPanel.nodeId;
-        const peer = nodes.find(node => node.id === (outgoing ? edge.target : edge.source));
-        if (!peer) return null;
-        return <Box key={edge.id} sx={{ borderBottom: '1px solid', borderColor: 'divider', py: 1 }}>
-          <Button size="small" sx={{ textAlign: 'left', overflowWrap: 'anywhere' }} onClick={() => openDetail(peer.id, peer.data.nodeType, peer.data)}>{outgoing ? '→' : '←'} {peer.data.label}</Button>
-          <Typography variant="caption" component="div" sx={{ overflowWrap: 'anywhere' }}>{String(edge.label ?? 'Dependency')} · {String(edge.data?.evidence ?? 'declaration')} · {(edge.data?.via as string[] | undefined)?.join(', ')}</Typography>
-          {typeof edge.data?.endpoint === 'string' && <Typography variant="caption">{edge.data.endpoint}</Typography>}
-        </Box>;
-      })}
-      {!edges.some(edge => edge.source === detailPanel.nodeId || edge.target === detailPanel.nodeId) && <Typography variant="body2" color="text.secondary">No relationships could be established from the available configuration.</Typography>}
-    </Stack> },
+    {
+      value: 'Connections',
+      label: 'Connections',
+      content: (
+        <Stack spacing={1} sx={{ pt: 1 }}>
+          <Typography variant="caption" color="text.secondary">
+            Configuration and ownership evidence. Connection health is not measured by these links.
+          </Typography>
+          {edges
+            .filter((edge) => edge.source === detailPanel.nodeId || edge.target === detailPanel.nodeId)
+            .map((edge) => {
+              const outgoing = edge.source === detailPanel.nodeId;
+              const peer = nodes.find((node) => node.id === (outgoing ? edge.target : edge.source));
+              if (!peer) return null;
+              return (
+                <Box key={edge.id} sx={{ borderBottom: '1px solid', borderColor: 'divider', py: 1 }}>
+                  <Button
+                    size="small"
+                    sx={{ textAlign: 'left', overflowWrap: 'anywhere' }}
+                    onClick={() => openDetail(peer.id, peer.data.nodeType, peer.data)}
+                  >
+                    {outgoing ? '→' : '←'} {peer.data.label}
+                  </Button>
+                  <Typography variant="caption" component="div" sx={{ overflowWrap: 'anywhere' }}>
+                    {String(edge.label ?? 'Dependency')} · {String(edge.data?.evidence ?? 'declaration')} ·{' '}
+                    {(edge.data?.via as string[] | undefined)?.join(', ')}
+                  </Typography>
+                  {typeof edge.data?.endpoint === 'string' && (
+                    <Typography variant="caption">{edge.data.endpoint}</Typography>
+                  )}
+                </Box>
+              );
+            })}
+          {!edges.some((edge) => edge.source === detailPanel.nodeId || edge.target === detailPanel.nodeId) && (
+            <Typography variant="body2" color="text.secondary">
+              No relationships could be established from the available configuration.
+            </Typography>
+          )}
+        </Stack>
+      ),
+    },
     ...(app && !app.remote
       ? [
           ...(can('OmnitronDaemon.inspect')
@@ -632,7 +682,8 @@ export function DetailPanel({ container }: { container?: HTMLElement | null }) {
         </IconButton>
       </Stack>
       <Box
-        data-keyboard-region="Node details" tabIndex={-1}
+        data-keyboard-region="Node details"
+        tabIndex={-1}
         sx={{ p: 1.5, overflow: 'auto', minHeight: 0, minWidth: 0, flex: 1 }}
         onKeyDown={(event) => {
           if (event.key === 'Escape') closeDetail();

@@ -118,6 +118,7 @@ export async function stackStatusCommand(projectName: string, stackName: string)
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
     const stack = await svc.getStack({ project: projectName, stack: stackName });
+    if (isJsonMode()) { emitJson(stack); return; }
 
     const typeLabel = stack.type === 'local' ? 'local' : stack.type === 'remote' ? 'remote(ssh)' : 'cluster';
     note(
@@ -135,7 +136,10 @@ export async function stackStatusCommand(projectName: string, stackName: string)
 
     // Infrastructure
     const infraReady = stack.infrastructure.ready;
-    log.info(`Infrastructure: ${infraReady ? prism.green('ready') : prism.dim('not provisioned')}`);
+    log.info(`Infrastructure: ${infraReady ? prism.green('ready') : prism.yellow('not ready or incompletely observed')}`);
+    for (const placement of stack.placements ?? []) {
+      for (const reason of placement.errors) log.warn(`${placement.nodeKey}: ${reason}`);
+    }
     for (const [name, svcInfo] of Object.entries(stack.infrastructure.services)) {
       const sym = svcInfo.status === 'running' ? prism.green('●') : svcInfo.status === 'error' ? prism.red('●') : prism.dim('○');
       log.info(`  ${sym} ${name}${svcInfo.port ? ` :${svcInfo.port}` : ''} ${prism.dim(`(${svcInfo.containerName})`)}`);
@@ -174,6 +178,28 @@ export async function stackStatusCommand(projectName: string, stackName: string)
           { key: 'role', header: 'Role', width: 8 },
           { key: 'label', header: 'Label', width: 12 },
           { key: 'sync', header: 'Sync', width: 14 },
+        ],
+      });
+    }
+
+    if (stack.placements?.length) {
+      table({
+        width: 'auto',
+        data: stack.placements.flatMap(node => node.apps.map(app => ({
+          node: node.nodeKey,
+          app: app.name,
+          state: node.appsObserved ? app.process?.status ?? 'absent' : 'unknown',
+          placement: app.expected ? 'expected' : 'unexpected',
+          instances: app.process ? String(app.process.instances) : '--',
+          pid: app.process?.pid ? String(app.process.pid) : '--',
+        }))),
+        columns: [
+          { key: 'node', header: 'Node', width: 24 },
+          { key: 'app', header: 'App', width: 20 },
+          { key: 'state', header: 'State', width: 12 },
+          { key: 'placement', header: 'Placement', width: 12 },
+          { key: 'instances', header: 'Instances', width: 10 },
+          { key: 'pid', header: 'PID', width: 8 },
         ],
       });
     }

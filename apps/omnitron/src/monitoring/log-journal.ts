@@ -1,7 +1,8 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { ensurePrivateDir, sealFile } from '../shared/private-files.js';
+import { readProcessLifetime } from './process-lifetime.js';
 
 export interface JournalItem<T> { id: string; digest: string; value: T }
 export interface LogFileIntent { offset: number; inode: number; prefix: string }
@@ -11,8 +12,13 @@ export interface LogJournalStats { pending: number; assembling: number; bytes: n
 export class LogJournal<T> {
   private readonly db: InstanceType<typeof Database>;
   private error: string | null = null;
+  private recoveryError: string | null = null;
+  private lastRecovery = -Infinity;
+  private readonly writerIdentity: string;
 
   constructor(readonly filename: string, private readonly requireMirror = false) {
+    const lifetime = readProcessLifetime(process.pid);
+    this.writerIdentity = lifetime.state === 'alive' ? lifetime.identity : `unverified:${randomUUID()}`;
     if (filename !== ':memory:') ensurePrivateDir(path.dirname(filename));
     this.db = new Database(filename);
     this.db.pragma('busy_timeout = 5000');
@@ -22,18 +28,17 @@ export class LogJournal<T> {
       sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE,
       payload TEXT NOT NULL, digest TEXT NOT NULL, writer INTEGER NOT NULL, delivered INTEGER NOT NULL DEFAULT 0, mirrored INTEGER NOT NULL DEFAULT 1, ready INTEGER NOT NULL CHECK(ready IN (0,1))
     ); CREATE INDEX IF NOT EXISTS records_ready ON records(ready, sequence);`);
+    this.db.transaction(() => {
+      if (!(this.db.pragma('table_info(records)') as Array<{ name: string }>).some(column => column.name === 'writer_identity')) {
+        this.db.exec('ALTER TABLE records ADD COLUMN writer_identity TEXT');
+      }
+    }).immediate();
     this.db.exec(`CREATE TABLE IF NOT EXISTS file_intents (
       id TEXT NOT NULL, file TEXT NOT NULL, offset INTEGER NOT NULL, inode INTEGER NOT NULL, prefix TEXT NOT NULL,
       PRIMARY KEY(id,file)
     );`);
     this.db.exec('CREATE TABLE IF NOT EXISTS imported_files (name TEXT PRIMARY KEY, digest TEXT NOT NULL)');
-    // A previous capture died while assembling these records. Their bytes and
-    // original identities survive; further output belongs to a new process.
-    for (const row of this.db.prepare('SELECT DISTINCT writer FROM records WHERE ready = 0').all() as Array<{ writer: number }>) {
-      let alive = true;
-      try { process.kill(row.writer, 0); } catch (error) { alive = (error as NodeJS.ErrnoException).code !== 'ESRCH'; }
-      if (!alive) this.db.prepare('UPDATE records SET ready = 1 WHERE ready = 0 AND writer = ?').run(row.writer);
-    }
+    this.recoverPending();
     this.db.exec(`CREATE TABLE IF NOT EXISTS totals (singleton INTEGER PRIMARY KEY CHECK(singleton=1), pending INTEGER NOT NULL, assembling INTEGER NOT NULL, bytes INTEGER NOT NULL);
       INSERT OR IGNORE INTO totals SELECT 1, COUNT(*), COALESCE(SUM(1-ready),0), COALESCE(SUM(LENGTH(CAST(payload AS BLOB))),0) FROM records;
       CREATE TRIGGER IF NOT EXISTS log_added AFTER INSERT ON records BEGIN
@@ -52,9 +57,9 @@ export class LogJournal<T> {
       this.db.transaction(() => {
         const old = this.db.prepare('SELECT ready, digest FROM records WHERE id = ?').get(id) as { ready: number; digest: string } | undefined;
         if (old?.ready && old.digest !== digest) throw new Error(`Immutable log identity conflict: ${id}`);
-        this.db.prepare(`INSERT INTO records(id, payload, digest, ready, writer, mirrored) VALUES (?, ?, ?, ?, ?, ?)
+        this.db.prepare(`INSERT INTO records(id, payload, digest, ready, writer, mirrored, writer_identity) VALUES (?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, digest=excluded.digest, ready=MAX(records.ready,excluded.ready)`)
-          .run(id, payload, digest, ready ? 1 : 0, process.pid, this.requireMirror ? 0 : 1);
+          .run(id, payload, digest, ready ? 1 : 0, process.pid, this.requireMirror ? 0 : 1, this.writerIdentity);
       })();
       this.error = null;
     } catch (error) {
@@ -64,6 +69,7 @@ export class LogJournal<T> {
   }
 
   peek(limit = 500, maxBytes = 2 * 1024 * 1024, consumer: 'database' | 'file' = 'database'): JournalItem<T>[] {
+    this.recoverPending();
     const result: JournalItem<T>[] = [];
     let bytes = 0;
     for (const row of this.db.prepare(`SELECT id, payload, digest FROM records WHERE ready = 1 AND ${consumer === 'file' ? 'mirrored' : 'delivered'} = 0 ORDER BY sequence LIMIT ?`).iterate(limit)) {
@@ -123,9 +129,27 @@ export class LogJournal<T> {
   }
 
   stats(): LogJournalStats {
+    this.recoverPending();
     const row = this.db.prepare('SELECT pending, assembling, bytes FROM totals WHERE singleton=1')
       .get() as Omit<LogJournalStats, 'error'>;
-    return { ...row, error: this.error };
+    return { ...row, error: this.error ?? this.recoveryError };
+  }
+
+  private recoverPending(): void {
+    if (Date.now() - this.lastRecovery < 5000) return;
+    this.lastRecovery = Date.now();
+    this.recoveryError = null;
+    const writers = this.db.prepare('SELECT DISTINCT writer, writer_identity FROM records WHERE ready = 0').all() as Array<{ writer: number; writer_identity: string | null }>;
+    for (const row of writers) {
+      if (row.writer === process.pid && row.writer_identity === this.writerIdentity) continue;
+      const current = readProcessLifetime(row.writer);
+      const verifiedIdentity = row.writer_identity && !row.writer_identity.startsWith('unverified:');
+      if (current.state === 'dead' || (current.state === 'alive' && verifiedIdentity && current.identity !== row.writer_identity)) {
+        this.db.prepare('UPDATE records SET ready = 1 WHERE ready = 0 AND writer = ? AND writer_identity IS ?').run(row.writer, row.writer_identity);
+      } else if (current.state === 'unknown' || !verifiedIdentity) {
+        this.recoveryError = `Unfinished logs retained: cannot verify the original writer lifetime for PID ${row.writer}`;
+      }
+    }
   }
 
   close(): void { this.db.close(); }

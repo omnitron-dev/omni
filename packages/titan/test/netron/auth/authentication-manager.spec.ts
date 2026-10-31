@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { AuthenticationManager } from '../../../src/netron/auth/authentication-manager.js';
+import { AuthenticationManager, AuthenticationUnavailableError } from '../../../src/netron/auth/authentication-manager.js';
 import type { AuthCredentials, AuthContext, NetronAuthConfig } from '../../../src/netron/auth/types.js';
 
 describe('AuthenticationManager', () => {
@@ -648,14 +648,14 @@ describe('AuthenticationManager', () => {
       authManager.setTimeout(1000);
 
       const resultPromise = authManager.authenticate(credentials);
+      const rejected = expect(resultPromise).rejects.toBeInstanceOf(AuthenticationUnavailableError);
 
-      // Fast-forward time
-      vi.advanceTimersByTime(1000);
-
-      const result = await resultPromise;
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('timed out');
+      await vi.advanceTimersByTimeAsync(1000);
+      await rejected;
+      await expect(resultPromise).rejects.toMatchObject({
+        details: { errorCode: 'authentication_unavailable' },
+        cause: { message: 'Authentication timed out after 1000ms' },
+      });
     });
 
     it('should allow setting custom timeout', () => {

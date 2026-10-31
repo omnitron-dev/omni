@@ -102,6 +102,25 @@ describe('stale socket sweep', () => {
     expect(existsSync(live), "another process's live socket was deleted").toBe(true);
   });
 
+  it('allows a live server to send its greeting before closing the liveness probe', async () => {
+    const dir = tempDir(), live = join(dir, 'established.sock');
+    let delivered!: (value: boolean) => void;
+    const greeting = new Promise<boolean>(resolve => { delivered = resolve; });
+    const server = await listenAt(live);
+    server.on('connection', socket => {
+      socket.on('error', () => {});
+      setTimeout(() => {
+        if (socket.destroyed) { delivered(false); return; }
+        socket.write('server greeting', error => delivered(!error));
+      }, 20);
+    });
+    const old = new Date(Date.now() - 60 * 60 * 1000);
+    utimesSync(live, old, old);
+    await (spawnerOn(dir) as unknown as { sweepStaleSockets(): Promise<void> }).sweepStaleSockets();
+    expect(await greeting).toBe(true);
+    expect(existsSync(live)).toBe(true);
+  });
+
   it('cleanup touches only the sockets this spawner made', async () => {
     const dir = tempDir();
     const theirs = join(dir, 'theirs.sock');

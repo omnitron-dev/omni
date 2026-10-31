@@ -4,8 +4,8 @@
  * @module @omnitron-dev/titan/netron/auth/test
  */
 
-import { describe, expect, it, beforeEach, vi } from 'vitest';
-import { AuthenticationManager } from '../../../src/netron/auth/authentication-manager.js';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
+import { AuthenticationManager, AuthenticationUnavailableError } from '../../../src/netron/auth/authentication-manager.js';
 import type { AuthCredentials, AuthContext } from '../../../src/netron/auth/types.js';
 
 // Mock logger
@@ -35,6 +35,8 @@ describe('AuthenticationManager Security Tests', () => {
     mockAuditLogger = createMockAuditLogger();
     authManager = new AuthenticationManager(mockLogger as any, undefined, mockAuditLogger as any);
   });
+
+  afterEach(() => { vi.useRealTimers(); });
 
   describe('Credential Security', () => {
     describe('Null/Undefined Credentials Handling', () => {
@@ -747,13 +749,13 @@ describe('AuthenticationManager Security Tests', () => {
           password: 'test',
         });
 
-        vi.advanceTimersByTime(1000);
-
-        const result = await resultPromise;
-        expect(result.success).toBe(false);
-        expect(result.error).toContain('timed out');
-
-        vi.useRealTimers();
+        const rejected = expect(resultPromise).rejects.toBeInstanceOf(AuthenticationUnavailableError);
+        await vi.advanceTimersByTimeAsync(1000);
+        await rejected;
+        await expect(resultPromise).rejects.toMatchObject({
+          details: { errorCode: 'authentication_unavailable' },
+          cause: { message: 'Authentication timed out after 1000ms' },
+        });
       });
 
       it('should enforce timeout on token validation', async () => {
@@ -768,13 +770,13 @@ describe('AuthenticationManager Security Tests', () => {
 
         const resultPromise = authManager.validateToken('some-token');
 
-        vi.advanceTimersByTime(500);
-
-        const result = await resultPromise;
-        expect(result.success).toBe(false);
-        expect(result.error).toContain('timed out');
-
-        vi.useRealTimers();
+        const rejected = expect(resultPromise).rejects.toBeInstanceOf(AuthenticationUnavailableError);
+        await vi.advanceTimersByTimeAsync(500);
+        await rejected;
+        await expect(resultPromise).rejects.toMatchObject({
+          details: { errorCode: 'authentication_unavailable' },
+          cause: { message: 'Token validation timed out after 500ms' },
+        });
       });
     });
 

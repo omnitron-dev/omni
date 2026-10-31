@@ -706,9 +706,10 @@ export class RemotePeer extends AbstractPeer {
    * Mark this peer as having lost its transport.
    *
    * Rejects every in-flight response handler with {@link TransportLostError}
-   * so awaiting callers wake up with a typed, retryable error instead of
+   * so awaiting callers wake up with a typed error instead of
    * waiting for the request timeout (which is misleading — the transport
-   * went away, the request didn't time out).
+   * went away, the request didn't time out). A lost reply leaves a mutation's
+   * outcome unknown; only the caller can decide whether replay is safe.
    *
    * Idempotent: safe to call from both the manual `disconnect()` path
    * AND the netron-level "peer disconnected" handler. The second call
@@ -1028,11 +1029,12 @@ export class RemotePeer extends AbstractPeer {
       }
     }
 
-    // The inbound gate: once stopping has begun, a call, get or set off the
+    // The inbound gate: once stopping has begun, a call, get, set or task off the
     // wire is refused and never reaches a service; one admitted before is
     // counted until it answers, so `Application.stop()` can wait for it
     // before tearing anything down (`inbound-gate.ts`).
-    const gate = pType === TYPE_SET || pType === TYPE_GET || pType === TYPE_CALL ? this.netron.inbound : undefined;
+    const gate = pType === TYPE_SET || pType === TYPE_GET || pType === TYPE_CALL || pType === TYPE_TASK
+      ? this.netron.inbound : undefined;
     if (gate && !gate.enter()) {
       try {
         await this.sendErrorResponse(packet, shuttingDownError());

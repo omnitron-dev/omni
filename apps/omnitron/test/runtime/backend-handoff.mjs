@@ -16,6 +16,11 @@ const runtimeRoot = path.resolve(dist, '../../..');
 assert.ok(dist.includes('omnitron-handoff-'), 'Use the disposable handoff test artifact');
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-backend-'));
 await fs.chmod(directory, 0o700);
+// Spawner socket sweeps must be confined to this fixture, including when it
+// starts backend system workers beside a real running installation.
+const temporary = path.join(directory, 'tmp');
+await fs.mkdir(temporary, {mode: 0o700});
+process.env.TMPDIR = temporary;
 const master = process.argv.includes('--master');
 const schemaCandidateArg = process.argv.indexOf('--schema-candidate');
 const schemaCandidate = schemaCandidateArg === -1 ? null : path.resolve(process.argv[schemaCandidateArg + 1]);
@@ -54,7 +59,7 @@ const reserve = () => new Promise((resolve, reject) => {
 const httpBase = await reserve();
 const boot = path.join(directory, 'boot.mjs');
 const script = path.join(directory, 'counter.mjs');
-const applicationPackage = path.resolve(import.meta.dirname, '../..');
+const applicationPackage = path.resolve(dist, '..');
 const appModules = path.join(directory, 'node_modules/@omnitron-dev');
 await fs.mkdir(appModules, {recursive:true});
 await fs.symlink(applicationPackage, path.join(appModules,'omnitron'));
@@ -74,9 +79,12 @@ await fs.writeFile(topology, JSON.stringify({name:'topology',processes:[
  {name:'single',module:'./Single.mjs',topology:{expose:true}}
 ]}).replace(/^/,'export default ')+';');
 
+const logPrefix = `handoff-continuity/${randomUUID()}/`;
 await fs.writeFile(script, `import http from 'node:http'; import fs from 'node:fs';
 let counter=0; const started=Date.now(); setInterval(()=>counter++,5);
-const server=http.createServer((_q,r)=>r.end(JSON.stringify({pid:process.pid,parent:process.ppid,started,counter})));
+let outputSequence=0;
+const output=setInterval(()=>{const sequence=++outputSequence;console.log(JSON.stringify({time:new Date().toISOString(),level:30,msg:${JSON.stringify(logPrefix)}+sequence+'\\n    preserved detail '+sequence}));},50);
+const server=http.createServer((q,r)=>{if(q.url==='/seal-output')clearInterval(output);r.end(JSON.stringify({pid:process.pid,parent:process.ppid,started,counter,outputSequence}));});
 server.listen(0,'127.0.0.1',()=>{fs.writeFileSync(${JSON.stringify(path.join(directory, 'address.json'))},JSON.stringify({port:server.address().port}));process.send?.({type:'ready'});});
 process.on('SIGTERM',()=>server.close(()=>process.exit(0)));`);
 await fs.writeFile(boot, `
@@ -303,13 +311,34 @@ try {
   }
   const after = await probe();
   assert.ok(after.counter > before.counter);
+  let delivery;
+  if (master) {
+    const sealed = await (await fetch(`http://127.0.0.1:${port}/seal-output`)).json();
+    const {Pool} = createRequire(import.meta.url)('pg');
+    const database = new Pool({connectionString:databaseUrl, connectionTimeoutMillis:5000});
+    try {
+      let rows=[];
+      for(let attempt=0;attempt<120;attempt++) {
+        rows=(await database.query('SELECT id, message FROM logs WHERE message LIKE $1',[logPrefix+'%'])).rows;
+        if(rows.length>=sealed.outputSequence)break;
+        await new Promise(resolve=>setTimeout(resolve,250));
+      }
+      assert(sealed.outputSequence>0);
+      assert.equal(rows.length,sealed.outputSequence,'Every emitted event must be committed across replacement, rollback and crash recovery');
+      assert.equal(new Set(rows.map(row=>row.id)).size,rows.length);
+      const messages=new Set(rows.map(row=>row.message));
+      assert.equal(messages.size,rows.length,'No duplicate source events');
+      for(let sequence=1;sequence<=sealed.outputSequence;sequence++)assert(messages.has(logPrefix+sequence+'\n    preserved detail '+sequence),'Missing or truncated event '+sequence);
+      delivery={emitted:sealed.outputSequence,committed:rows.length,missing:0,duplicates:0,multilinePreserved:true};
+    }finally{await database.end()}
+  }
   clearInterval(sampler);
   while (inProbe) await new Promise(resolve => setTimeout(resolve, 5));
   assert.equal(failures, 0);
   console.log(JSON.stringify({ test: 'backend-replacement-and-rollback', role:master?'master':'slave', verifiedRoles:[...sessions.keys()], directory, ownerPid,
     applicationPid: before.pid, poolPids:[...poolPids], backendPids: [...ownedBackends], epoch: recovered.execution.epoch,
     samples, failures, selectorReconciliationPreservedPid: true, actualBackendCrashRecovered: true, schemaTransition,
-    counterBefore: before.counter, counterAfter: after.counter }));
+    counterBefore: before.counter, counterAfter: after.counter, delivery }));
 } finally {
   if (sampler) clearInterval(sampler);
   await topologyConnection?.close();

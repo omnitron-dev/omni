@@ -67,10 +67,8 @@ export class RpcConnection {
     this.session = session;
     netron.on(NETRON_EVENT_PEER_DISCONNECT, ({ peerId }: { peerId: string }) => {
       if (session.peer?.id !== peerId) return;
-      // Netron removes the peer from discovery before emitting this event.
-      // Settle its outstanding requests now, with transport loss rather than
-      // a misleading request timeout. This never resubmits an invocation.
-      session.peer.handleTransportLost(`${this.options.peerName ?? 'daemon'} connection closed`);
+      // Netron settles pending requests and removes the lost peer before this
+      // event. Omnitron only invalidates its retained-handle connection.
       if (this.session === session) this.session = undefined;
       void this.close(session);
     });

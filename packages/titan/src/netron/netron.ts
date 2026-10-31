@@ -48,7 +48,7 @@ import { registerStreamReference } from './streams/register-stream-reference.js'
 
 // Import transport layer
 import { TransportRegistry } from './transport/transport-registry.js';
-import { TransportConnectionFactory } from './transport/transport-adapter.js';
+import { BinaryTransportAdapter, TransportConnectionFactory } from './transport/transport-adapter.js';
 import type {
   ITransport,
   ITransportServer,
@@ -192,6 +192,10 @@ export class Netron extends EventEmitter implements INetron {
    * one netron id.
    */
   private stopPromise: Promise<void> | null = null;
+  /** Handshakes and reconnect timers belong to this lifecycle, even before a peer is published. */
+  private connectionEpoch = 0;
+  private readonly pendingConnects = new Set<() => void>();
+  private readonly reconnectTimers = new Set<ReturnType<typeof setTimeout>>();
 
   /**
    * Map of exposed services.
@@ -806,6 +810,7 @@ export class Netron extends EventEmitter implements INetron {
 
         // Create RemotePeer with transport adapter for backward compatibility
         const adapter = TransportConnectionFactory.fromConnection(connection);
+        adapter.setLogger(this.logger.child({ connectionId: connection.id, transport: name }));
         // `getOptions(name)` is the CLIENT connection-options store; the server
         // config registered by `registerTransportServer` is a different map.
         // On this path — a connection the server ACCEPTED — the server's own
@@ -862,6 +867,7 @@ export class Netron extends EventEmitter implements INetron {
         // from seeing the handshake message and logging "non-binary message" warnings.
         // peer.init() is deferred until after handshake completes.
         adapter.once('message', async (data: Buffer | ArrayBuffer, isBinary?: boolean) => {
+          if (adapter.readyState !== BinaryTransportAdapter.OPEN) return;
           if (!isBinary) {
             try {
               const str = Buffer.isBuffer(data) ? data.toString() : Buffer.from(data).toString();
@@ -876,6 +882,7 @@ export class Netron extends EventEmitter implements INetron {
                 // Initialize peer AFTER handshake completes — this registers
                 // the binary packet handler without interfering with text handshake
                 await peer.init(false, this.options);
+                if (adapter.readyState !== BinaryTransportAdapter.OPEN || this.peers.get(peer.id) !== peer) return;
 
                 // Emit connect event after we have the actual client ID
                 this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
@@ -887,12 +894,14 @@ export class Netron extends EventEmitter implements INetron {
         });
 
         connection.on('disconnect', async () => {
+          clearTimeout(greetingTimer);
           this.logger.info({ peerId: peer.id, transport: name }, 'Peer disconnected');
 
           // Guard: only delete from peers map if THIS peer object is still the active one.
           // When a client reconnects with the same ID, the new peer overwrites the old entry
           // in the map. The old connection's delayed disconnect must NOT delete the new peer.
-          if (this.peers.get(peer.id) === peer) {
+          const current = this.peers.get(peer.id) === peer;
+          if (current) {
             this.peers.delete(peer.id);
           }
 
@@ -905,14 +914,27 @@ export class Netron extends EventEmitter implements INetron {
           // Clean up services exposed by this peer via exposeRemoteService().
           // Without this, services remain as stale entries in netron.services after
           // the owning peer disconnects — causing memory leaks and ghost service calls.
-          await this.cleanupPeerServices(peer);
-
-          this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peer.id), { peerId: peer.id });
+          if (current) {
+            await this.cleanupPeerServices(peer);
+            this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peer.id), { peerId: peer.id });
+          }
         });
 
         // Send our ID to peer through the adapter (with small delay to ensure client is ready)
-        setTimeout(() => {
-          adapter.send(Buffer.from(JSON.stringify({ type: 'id', id: this.id })));
+        const greetingTimer = setTimeout(() => {
+          if (adapter.readyState !== BinaryTransportAdapter.OPEN) return;
+          adapter.send(Buffer.from(JSON.stringify({ type: 'id', id: this.id })), (error?: Error) => {
+            if (!error) return;
+            // A probe may close between the state check and the write. It
+            // never became an RPC peer; other write failures remain visible.
+            const context = { error, connectionId: connection.id, transport: name, phase: 'handshake' };
+            if (adapter.readyState !== BinaryTransportAdapter.OPEN) {
+              this.logger.debug(context, 'Peer closed before the server greeting was delivered');
+            } else {
+              this.logger.error(context, 'Failed to send the server greeting');
+            }
+            void connection.close().catch(closeError => this.logger.debug({ error: closeError }, 'Handshake cleanup failed'));
+          });
         }, 10);
       });
 
@@ -954,6 +976,11 @@ export class Netron extends EventEmitter implements INetron {
 
   private async doStop(): Promise<void> {
     this.logger.debug('Stopping Netron instance');
+    this.connectionEpoch++;
+    for (const cancel of this.pendingConnects) cancel();
+    this.pendingConnects.clear();
+    for (const timer of this.reconnectTimers) clearTimeout(timer);
+    this.reconnectTimers.clear();
 
     // Let an in-flight start() finish first. Tearing down while it is still
     // creating transport servers meant the teardown ran against a set that did
@@ -1030,6 +1057,8 @@ export class Netron extends EventEmitter implements INetron {
    */
   async connect(address: string, reconnect = true): Promise<RemotePeer | HttpRemotePeer> {
     this.logger.debug({ address, reconnect }, 'Connecting to remote peer');
+    if (this.stopPromise) throw NetronErrors.connectionClosed('netron', 'Netron is stopping');
+    const epoch = this.connectionEpoch;
 
     // Check if this is an HTTP connection
     const isHttp = address.startsWith('http://') || address.startsWith('https://');
@@ -1097,17 +1126,30 @@ export class Netron extends EventEmitter implements INetron {
         // pending forever, and a test waiting on it failed as «Test timed out
         // in 120000ms» — on an authorization spec, with nothing to say why.
         let opened: ITransportConnection | undefined;
-        let timedOut = false;
-        const timeoutId = setTimeout(() => {
-          timedOut = true;
-          this.logger.warn({ address, transportConnected: opened !== undefined }, 'Connection timeout');
-          // Close what was opened: the socket must not outlive the promise
-          // that owned it, nor complete a handshake nobody is waiting for.
-          opened?.close().catch((closeErr: unknown) => {
-            this.logger.debug({ err: closeErr, address }, 'Closing a timed-out connection failed');
+        let peer: RemotePeer | undefined;
+        let abandoned = false;
+        let resolved = false;
+        const closeOpened = () => {
+          void opened?.close().catch((error: unknown) => {
+            this.logger.debug({ error, address }, 'Closing an unfinished connection failed');
           });
-          reject(NetronErrors.connectionTimeout(transport.name, address));
+        };
+        const fail = (error: unknown) => {
+          if (abandoned || resolved) return;
+          abandoned = true;
+          clearTimeout(timeoutId);
+          this.pendingConnects.delete(cancel);
+          if (peer && this.peers.get(peer.id) === peer) this.peers.delete(peer.id);
+          peer?.handleTransportLost('handshake failed');
+          reject(error);
+          closeOpened();
+        };
+        const cancel = () => fail(NetronErrors.transportLost(transport.name, peer?.id ?? address, undefined, 'Netron stopped during handshake'));
+        const timeoutId = setTimeout(() => {
+          this.logger.warn({ address, transportConnected: opened !== undefined }, 'Connection timeout');
+          fail(NetronErrors.connectionTimeout(transport.name, address));
         }, connectTimeout);
+        this.pendingConnects.add(cancel);
 
         // Wrap async logic in an IIFE
         (async () => {
@@ -1118,7 +1160,7 @@ export class Netron extends EventEmitter implements INetron {
               headers: { 'x-netron-id': this.id },
             });
             opened = connection;
-            if (timedOut) {
+            if (abandoned || epoch !== this.connectionEpoch) {
               // The transport came up after the deadline had already answered.
               await connection.close();
               return;
@@ -1126,23 +1168,38 @@ export class Netron extends EventEmitter implements INetron {
 
             // Create RemotePeer with transport adapter
             const adapter = TransportConnectionFactory.fromConnection(connection);
+            adapter.setLogger(this.logger.child({ connectionId: connection.id, address }));
             // RemotePeer accepts any socket-like object (WebSocket or TransportAdapter)
-            const peer = new RemotePeer(adapter as RemotePeerSocket, this, address, transportOpts.requestTimeout);
-
-            let resolved = false;
+            const connectedPeer = new RemotePeer(adapter as RemotePeerSocket, this, address, transportOpts.requestTimeout);
+            peer = connectedPeer;
+            // Listen before the greeting: disconnect can precede handshake
+            // completion, and published peers must settle all pending RPCs
+            // before discovery or cleanup awaits anything else.
+            connection.once('disconnect', async () => {
+              if (!resolved) {
+                fail(NetronErrors.transportLost(transport.name, connectedPeer.id, undefined, 'Connection closed during handshake'));
+                return;
+              }
+              connectedPeer.handleTransportLost('peer disconnected');
+              const current = this.peers.get(connectedPeer.id) === connectedPeer;
+              if (current) {
+                this.peers.delete(connectedPeer.id);
+                await this.cleanupPeerServices(connectedPeer);
+                this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(connectedPeer.id), { peerId: connectedPeer.id });
+              }
+              if (reconnect && current) attemptReconnect();
+            });
+            connectedPeer.once('manual-disconnect', () => { manuallyDisconnected = true; });
 
             // Handle first message (handshake)
             adapter.once('message', async (data: Buffer | ArrayBuffer, isBinary?: boolean) => {
-              if (timedOut) return;
-              // The server has answered; what remains is local work whose
-              // failures reach the catch below.
-              clearTimeout(timeoutId);
+              if (abandoned || epoch !== this.connectionEpoch) return;
               try {
+                if (isBinary) throw NetronErrors.invalidRequest('Expected a server greeting before binary packets');
                 const str = Buffer.isBuffer(data) ? data.toString() : Buffer.from(data).toString();
                 const message = JSON.parse(str) as { type: 'id'; id: string };
-                if (message.type === 'id') {
-                  peer.id = message.id;
-                  this.peers.set(peer.id, peer);
+                if (message.type === 'id' && typeof message.id === 'string' && message.id.length > 0) {
+                  connectedPeer.id = message.id;
 
                   // Send our ID back to the server.
                   //
@@ -1154,54 +1211,37 @@ export class Netron extends EventEmitter implements INetron {
                   // catch twelve lines below that exists for exactly this.
                   await connection.send(Buffer.from(JSON.stringify({ type: 'client-id', id: this.id })));
 
-                  await peer.init(true, this.options);
-
-                  peer.once('manual-disconnect', () => {
-                    this.logger.info({ peerId: peer.id }, 'Manual disconnect requested');
-                    manuallyDisconnected = true;
-                  });
-
-                  connection.once('disconnect', async () => {
-                    this.logger.info({ peerId: peer.id }, 'Connection closed');
-                    this.peers.delete(peer.id);
-
-                    // Clean up services exposed by this peer
-                    await this.cleanupPeerServices(peer);
-
-                    this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(peer.id), { peerId: peer.id });
-
-                    if (reconnect && !manuallyDisconnected) {
-                      attemptReconnect();
-                    }
-                  });
-
+                  if (abandoned || epoch !== this.connectionEpoch) return;
+                  await connectedPeer.init(true, this.options);
+                  if (abandoned || adapter.readyState !== BinaryTransportAdapter.OPEN || epoch !== this.connectionEpoch) {
+                    fail(NetronErrors.transportLost(transport.name, connectedPeer.id, undefined, 'Connection closed during handshake'));
+                    return;
+                  }
+                  this.peers.set(connectedPeer.id, connectedPeer);
                   resolved = true;
+                  clearTimeout(timeoutId);
+                  this.pendingConnects.delete(cancel);
                   reconnectAttempts = 0;
-                  this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(peer.id), { peerId: peer.id });
-                  this.logger.info({ peerId: peer.id }, 'Peer connection established');
-                  resolve(peer);
+                  this.emitSpecial(NETRON_EVENT_PEER_CONNECT, getPeerEventName(connectedPeer.id), { peerId: connectedPeer.id });
+                  this.logger.info({ peerId: connectedPeer.id }, 'Peer connection established');
+                  resolve(connectedPeer);
                 } else {
                   this.logger.warn({ type: message.type }, 'Invalid handshake message type');
-                  await connection.close();
-                  reject(NetronErrors.invalidRequest('Invalid handshake message type', { type: message.type }));
+                  fail(NetronErrors.invalidRequest('Invalid handshake message type or peer identity', { type: message.type }));
                 }
               } catch (error) {
-                this.logger.error({ error }, 'Error parsing handshake message');
-                await connection.close();
-                reject(error);
+                if (!abandoned) this.logger.error({ error, address }, 'Handshake failed');
+                fail(error);
               }
             });
 
             connection.on('error', (err: Error) => {
               this.logger.error({ error: err }, 'Connection error');
-              clearTimeout(timeoutId);
-              if (!resolved) {
-                reject(err);
-              }
+              if (!resolved) fail(err);
+              else connectedPeer.handleTransportLost('connection error');
             });
           } catch (error) {
-            clearTimeout(timeoutId);
-            reject(error);
+            fail(error);
           }
         })(); // Execute the async IIFE
       });
@@ -1215,6 +1255,7 @@ export class Netron extends EventEmitter implements INetron {
      * try to reconnect simultaneously after a server restart.
      */
     const attemptReconnect = () => {
+      if (manuallyDisconnected || epoch !== this.connectionEpoch) return;
       // Get reconnection options from transport
       const transport = this.getTransportForAddress(address);
       const transportOpts = this.transportRegistry.getOptions(transport.name) || {};
@@ -1235,7 +1276,9 @@ export class Netron extends EventEmitter implements INetron {
         'Scheduling reconnection with backoff'
       );
 
-      setTimeout(async () => {
+      const timer = setTimeout(async () => {
+        this.reconnectTimers.delete(timer);
+        if (manuallyDisconnected || epoch !== this.connectionEpoch) return;
         reconnectAttempts++;
         try {
           await connectPeer();
@@ -1248,6 +1291,7 @@ export class Netron extends EventEmitter implements INetron {
           attemptReconnect();
         }
       }, delay);
+      this.reconnectTimers.add(timer);
     };
 
     return connectPeer();

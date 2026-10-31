@@ -357,7 +357,8 @@ describe('Netron Auth Integration Tests', () => {
       });
 
       expect(authResult.success).toBe(false);
-      expect(authResult.error).toContain('timed out');
+      expect(authResult.error).toBe('Authentication service is temporarily unavailable');
+      expect(authResult.metadata?.errorCode).toBe(503);
 
       await peer.disconnect();
     });

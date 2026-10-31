@@ -92,7 +92,7 @@ describe.each(['unix', 'tcp'] as const)('retained daemon service over %s', trans
     await server.stop();
     const error = await outcome;
     expect(error).toBeInstanceOf(Error);
-    expect(error.message).toContain('daemon connection closed');
+    expect(error).toMatchObject({ name: 'TransportLostError', pendingPacketId: expect.any(Number) });
     expect(probe.writes).toBe(1);
     probe.finish?.();
     // There is no retry timer or queued write waiting for the next daemon.

@@ -103,7 +103,13 @@ async function isSocketRefused(socketPath: string, timeoutMs = 250): Promise<boo
 
     const socket = net.connect({ path: socketPath });
     const timer = setTimeout(() => done(false), timeoutMs);
-    socket.once('connect', () => done(false));
+    // A live Netron listener sends a greeting after accepting. Closing in
+    // `connect` races that write (including on older running workers during
+    // a backend handoff). Read its first bytes before releasing the probe.
+    // Silent/non-Netron endpoints still have the same bounded deadline.
+    socket.once('data', () => done(false));
+    socket.once('end', () => done(false));
+    socket.once('close', () => done(false));
     socket.once('error', (error: NodeJS.ErrnoException) => done(error.code === 'ECONNREFUSED'));
   });
 }

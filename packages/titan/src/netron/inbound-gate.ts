@@ -3,7 +3,7 @@
  * decides whether it may.
  *
  * Inbound means taken off the wire: an HTTP `/netron/invoke`, `/batch` or
- * `/authenticate`, and a remote peer's `call`/`get`/`set` packet (WebSocket,
+ * `/authenticate`, and a remote peer's `call`/`get`/`set`/`task` packet (WebSocket,
  * TCP, unix). Calls through the local peer and outbound S2S clients do not pass
  * here — they belong to the process's own work, its teardown included.
  *

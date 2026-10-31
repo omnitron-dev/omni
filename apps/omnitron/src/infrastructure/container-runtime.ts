@@ -90,7 +90,8 @@ async function getAdapter(): Promise<any> {
  * a docker-daemon restart would leave us forever trying to talk to a
  * dead socket.
  */
-const ADAPTER_DEAD_PATTERNS = /(?:cannot connect to the docker daemon|docker daemon is not running|connect ENOENT|connect ECONNREFUSED.*docker|EOF$|connection reset)/i;
+const ADAPTER_DEAD_PATTERNS =
+  /(?:cannot connect to the docker daemon|docker daemon is not running|connect ENOENT|connect ECONNREFUSED.*docker|EOF$|connection reset)/i;
 
 function isAdapterDeadError(err: unknown): boolean {
   if (!err) return false;
@@ -133,7 +134,7 @@ async function withAdapter<T>(op: (adapter: any) => Promise<T>): Promise<T> {
  * its socket open behind it.
  */
 export async function countContainersByState(
-  timeoutMs = 10_000,
+  timeoutMs = 10_000
 ): Promise<{ running: number; paused: number; stopped: number }> {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
@@ -142,7 +143,10 @@ export async function countContainersByState(
     timeout: timeoutMs,
   });
   const counts = { running: 0, paused: 0, stopped: 0 };
-  for (const state of String(stdout).split('\n').map((line) => line.trim()).filter(Boolean)) {
+  for (const state of String(stdout)
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)) {
     if (state === 'running') counts.running++;
     else if (state === 'paused') counts.paused++;
     else counts.stopped++;
@@ -197,7 +201,7 @@ export async function listManagedContainers(options: { orThrow?: boolean } = {})
         image: info.Config?.Image ?? '',
         status: mapInspectStatus(info.State?.Status),
         containerId: info.Id?.slice(0, 12),
-        health: mapInspectHealth(info.State?.Health?.Status),
+        health: mapInspectHealth(info.State?.Health?.Status, info.State?.Status),
         startedAt: info.State?.StartedAt,
         ports: publishedPorts(info),
         service: info.Config?.Labels?.['omnitron.service'],
@@ -303,13 +307,14 @@ export async function getContainerState(name: string): Promise<ContainerState | 
         image: info.Config?.Image ?? '',
         status: mapInspectStatus(info.State?.Status),
         containerId: info.Id?.slice(0, 12),
-        health: mapInspectHealth(info.State?.Health?.Status),
+        health: mapInspectHealth(info.State?.Health?.Status, info.State?.Status),
         startedAt: info.State?.StartedAt,
         ports: publishedPorts(info),
         specHash: info.Config?.Labels?.[SPEC_HASH_LABEL],
         labels: info.Config?.Labels,
         mounts: (info.Mounts ?? []).map((mount: { Source: string; Destination: string }) => ({
-          source: mount.Source, target: mount.Destination,
+          source: mount.Source,
+          target: mount.Destination,
         })),
         service: info.Config?.Labels?.['omnitron.service'],
         networkAttached,
@@ -400,11 +405,10 @@ export async function containerHoldingPort(hostPort: number): Promise<string | n
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   try {
-    const { stdout } = await promisify(execFile)(
-      'docker',
-      ['ps', '-a', '--format', '{{.Names}}\t{{.Ports}}'],
-      { encoding: 'utf-8', timeout: 20_000 },
-    );
+    const { stdout } = await promisify(execFile)('docker', ['ps', '-a', '--format', '{{.Names}}\t{{.Ports}}'], {
+      encoding: 'utf-8',
+      timeout: 20_000,
+    });
     for (const line of String(stdout).split('\n')) {
       const [name, ports] = line.split('\t');
       if (!name || !ports) continue;
@@ -429,7 +433,7 @@ export async function describeBindFailure(
   config: { name: string; ports: Array<{ host: number; bindHost?: string | undefined }> },
   original: string,
   /** The lookup, as a parameter so this is answerable without a docker. */
-  lookup: (hostPort: number) => Promise<string | null> = containerHoldingPort,
+  lookup: (hostPort: number) => Promise<string | null> = containerHoldingPort
 ): Promise<string> {
   for (const port of config.ports) {
     const holder = await lookup(port.host);
@@ -513,9 +517,10 @@ export async function createContainer(config: ResolvedContainer): Promise<string
 
   // Health check
   if (config.healthCheck) {
-    const test = config.healthCheck.test.length === 2 && config.healthCheck.test[0] === 'CMD-SHELL'
-      ? config.healthCheck.test[1]!
-      : config.healthCheck.test.filter((t) => t !== 'CMD-SHELL' && t !== 'CMD').join(' ');
+    const test =
+      config.healthCheck.test.length === 2 && config.healthCheck.test[0] === 'CMD-SHELL'
+        ? config.healthCheck.test[1]!
+        : config.healthCheck.test.filter((t) => t !== 'CMD-SHELL' && t !== 'CMD').join(' ');
     args.push('--health-cmd', test);
     if (config.healthCheck.interval) args.push('--health-interval', config.healthCheck.interval);
     if (config.healthCheck.timeout) args.push('--health-timeout', config.healthCheck.timeout);
@@ -666,10 +671,7 @@ async function scrubStaleContainerState(name: string, network?: string): Promise
  * so a transient docker hiccup never triggers a needless rebuild of a
  * container that is in fact fine.
  */
-async function arePortsPublished(
-  name: string,
-  ports: Array<{ host: number; container: number }>,
-): Promise<boolean> {
+async function arePortsPublished(name: string, ports: Array<{ host: number; container: number }>): Promise<boolean> {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const execFileAsync = promisify(execFile);
@@ -909,8 +911,10 @@ function mapInspectStatus(status?: string): ContainerStatus {
   return 'not_found';
 }
 
-function mapInspectHealth(health?: string): 'healthy' | 'unhealthy' | 'starting' | 'none' {
-  if (!health) return 'none';
+function mapInspectHealth(health?: string, status?: string): 'healthy' | 'unhealthy' | 'starting' | 'none' {
+  // Docker retains its last probe after a stop. That historical verdict must
+  // not be presented as a current measurement in CLI, Console or topology.
+  if (status?.toLowerCase() !== 'running' || !health) return 'none';
   if (health === 'healthy') return 'healthy';
   if (health === 'unhealthy') return 'unhealthy';
   if (health === 'starting') return 'starting';

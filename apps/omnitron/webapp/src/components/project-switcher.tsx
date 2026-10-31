@@ -138,7 +138,7 @@ export function ProjectSwitcher() {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
         transformOrigin={{ vertical: 'top', horizontal: 'left' }}
         slotProps={{
-          paper: { sx: { width: 300, maxWidth: 'calc(100vw - 32px)', maxHeight: 'min(560px, calc(100dvh - 96px))' } },
+          paper: { sx: { width: 300, maxWidth: 'calc(100vw - 32px)', maxHeight: 'min(640px, calc(100dvh - 96px))' } },
           list: { 'aria-labelledby': `${menuId}-trigger` },
         }}
       >
@@ -193,7 +193,7 @@ export function ProjectSwitcher() {
               deselectProject('/projects');
               navigate('/projects?create=1');
             }}
-            sx={{ minHeight: 44, gap: 1.5, color: 'primary.main' }}
+            sx={{ minHeight: { xs: 44, sm: 44 }, gap: 1.5, color: 'primary.main' }}
           >
             <PlusIcon sx={{ fontSize: 22 }} />
             Add project

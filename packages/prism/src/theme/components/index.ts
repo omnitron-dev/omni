@@ -778,6 +778,12 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
         root: {
           paddingTop: density === 'compact' ? 4 : 8,
           paddingBottom: density === 'compact' ? 4 : 8,
+          // MenuList renders a MuiList root; it does not consume a separate
+          // MuiMenuList style override. Cover standalone and Select menus too.
+          '&[role="menu"], &[role="listbox"]': {
+            padding: 4,
+            '& > .MuiDivider-root': { margin: '8px 6px' },
+          },
         },
       },
     },
@@ -834,19 +840,10 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
         paper: ({ theme }) => ({
           borderRadius,
           marginTop: 4,
+          scrollPaddingBlock: 6,
           maxWidth: 'calc(100vw - 32px)',
           boxShadow: `0 0 2px 0 rgba(${getGreyChannel(theme)} / 0.24), -20px 20px 40px -4px rgba(${getGreyChannel(theme)} / 0.24)`,
         }),
-      },
-    },
-    MuiMenuList: {
-      styleOverrides: {
-        root: {
-          padding: 4,
-          // A menu group has equal breathing room above and below its divider.
-          // Applies to Select, action/context menus and standalone MenuList.
-          '& > .MuiDivider-root': { margin: '8px 6px' },
-        },
       },
     },
     MuiMenuItem: {

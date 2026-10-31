@@ -14,7 +14,7 @@ vi.mock('../../src/infrastructure/container-runtime.js', () => ({
   stopContainer: runtime.stop, createContainer: runtime.create,
   containerSpecHash: () => 'fixture', ensureImage: vi.fn(), waitForHealthy: vi.fn(),
 }));
-vi.mock('../../src/commands/up.js', () => ({ readSavedDaemonConfig: () => ({ webapp: false }) }));
+vi.mock('../../src/config/saved.js', async (original) => ({ ...await original<object>(), readSavedDaemonConfig: () => ({ webapp: false }) }));
 import { WebappService } from '../../src/webapp/webapp.service.js';
 import { OmnitronDaemon } from '../../src/daemon/daemon.js';
 

@@ -33,6 +33,7 @@ export async function webappBuildCommand(): Promise<void> {
     log.info(`Built in ${Math.round(duration / 1000)}s → ${distPath}`);
   } catch (err) {
     log.error((err as Error).message);
+    process.exitCode = 1;
   }
 }
 
@@ -46,6 +47,7 @@ export async function webappStartCommand(options?: { force?: boolean }): Promise
   if (!pidManager.isRunning()) {
     log.error('Omnitron daemon is not running.');
     log.info('Start the daemon first: omnitron up');
+    process.exitCode = 1;
     return;
   }
 
@@ -55,7 +57,7 @@ export async function webappStartCommand(options?: { force?: boolean }): Promise
     log.info(`Omnitron Console: http://localhost:9800`);
 
     // Persist — auto-start webapp on future daemon restarts
-    const { readSavedDaemonConfig, writeSavedDaemonConfig } = await import('./up.js');
+    const { readSavedDaemonConfig, writeSavedDaemonConfig } = await import('../config/saved.js');
     const saved = readSavedDaemonConfig();
     if (saved && !saved.webapp) {
       saved.webapp = true;
@@ -63,6 +65,7 @@ export async function webappStartCommand(options?: { force?: boolean }): Promise
     }
   } catch (err) {
     log.error((err as Error).message);
+    process.exitCode = 1;
   }
 }
 
@@ -71,7 +74,7 @@ export async function webappStopCommand(): Promise<void> {
   await svc.stop();
 
   // Persist — don't auto-start webapp on future daemon restarts
-  const { readSavedDaemonConfig, writeSavedDaemonConfig } = await import('./up.js');
+  const { readSavedDaemonConfig, writeSavedDaemonConfig } = await import('../config/saved.js');
   const saved = readSavedDaemonConfig();
   if (saved && saved.webapp) {
     saved.webapp = false;

@@ -81,7 +81,7 @@ describe('a slave binds where it can be reached', () => {
 // The settings have to reach the daemon at all
 // =============================================================================
 
-const { readSavedDaemonConfig, savedDaemonOverrides } = await import('../../src/commands/up.js');
+const { readSavedDaemonConfig, savedDaemonOverrides } = await import('../../src/config/saved.js');
 
 describe('the file the daemon actually boots from', () => {
   it('merges the transport settings into the running config', async () => {

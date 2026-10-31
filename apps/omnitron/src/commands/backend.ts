@@ -9,7 +9,7 @@ import { PidManager } from '../daemon/pid-manager.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { expandPath } from '../shared/paths.js';
 import { executionDirectory } from '../daemon/execution-launcher.js';
-import { readSavedDaemonConfig, savedDaemonOverrides } from './up.js';
+import { readSavedDaemonConfig, savedDaemonOverrides } from '../config/saved.js';
 import { checkBackendCandidate } from '../daemon/backend-candidate.js';
 import { recoverBackendAfterCrash } from '../daemon/backend-crash-recovery.js';
 

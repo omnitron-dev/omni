@@ -9,7 +9,7 @@ import { readPrivateRecord, writePrivateRecord, writePrivateFile } from '../daem
 import { managedRuntimeFile, type ManagedRuntime } from '../daemon/managed-runtime.js';
 import { BackendRecoveryJournal } from '../daemon/backend-recovery-journal.js';
 import { expandPath } from '../shared/paths.js';
-import { readSavedDaemonConfig, savedDaemonOverrides } from './up.js';
+import { readSavedDaemonConfig, savedDaemonOverrides } from '../config/saved.js';
 import { LAUNCHD_LABEL, SYSTEMD_UNIT, OWNER_LAUNCHD_LABEL, OWNER_SYSTEMD_UNIT,
   renderLaunchdPlist, renderSystemdUnit, unitPathFor, type UnitInputs } from './service-units.js';
 

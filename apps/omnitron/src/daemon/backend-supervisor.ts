@@ -5,7 +5,7 @@ import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { ADMIN_ROLES } from '../shared/roles.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
-import { readSavedDaemonConfig, savedDaemonOverrides } from '../commands/up.js';
+import { readSavedDaemonConfig, savedDaemonOverrides } from '../config/saved.js';
 import { expandPath } from '../shared/paths.js';
 import { createDaemonClient } from './daemon-client.js';
 import { PidManager } from './pid-manager.js';

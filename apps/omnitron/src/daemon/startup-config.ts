@@ -1,7 +1,7 @@
 import { loadDaemonBootConfig } from '../config/loader.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { ProjectRegistry } from '../project/registry.js';
-import { readSavedDaemonConfig, savedDaemonOverrides, ensurePersistedJwtSecret } from '../commands/up.js';
+import { readSavedDaemonConfig, savedDaemonOverrides, ensurePersistedJwtSecret } from '../config/saved.js';
 
 /** Shared cold-start configuration for the control plane and resident owner. */
 export async function loadStartupConfig(cwd: string) {

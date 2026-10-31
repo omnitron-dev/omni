@@ -51,7 +51,7 @@ function mb(bytes: number): string {
  * anything, so a missing store is said as such rather than as a vault miss.
  */
 async function openStore(): Promise<S3ObjectStore> {
-  const { readSavedDaemonConfig } = await import('./up.js');
+  const { readSavedDaemonConfig } = await import('../config/saved.js');
   const saved = readSavedDaemonConfig() as { releaseStore?: unknown } | null;
   const config = parseStoreConfig(saved?.releaseStore, CONFIG_SOURCE);
 

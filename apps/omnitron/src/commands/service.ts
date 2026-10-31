@@ -294,7 +294,7 @@ export async function serviceInstall(options: { scope?: ServiceScope; prepare?: 
 
   // The scope decides whether this survives a logout, which for a slave is
   // the whole point of installing it. See `service-units.ts`.
-  const { readSavedDaemonConfig } = await import('./up.js');
+  const { readSavedDaemonConfig } = await import('../config/saved.js');
   const decision = decideScope({
     requested: options.scope,
     role: readSavedDaemonConfig()?.role,

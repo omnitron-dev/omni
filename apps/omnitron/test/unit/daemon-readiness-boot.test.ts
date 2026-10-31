@@ -8,14 +8,17 @@ vi.mock('../../src/daemon/daemon.js', async importOriginal => {
   const original = await importOriginal<typeof import('../../src/daemon/daemon.js')>();
   return { ...original, OmnitronDaemon: class { start = boot.start; } };
 });
-vi.mock('../../src/commands/up.js', async importOriginal => {
-  const original = await importOriginal<typeof import('../../src/commands/up.js')>();
+vi.mock('../../src/config/saved.js', async importOriginal => {
+  const original = await importOriginal<typeof import('../../src/config/saved.js')>();
   return { ...original, readSavedDaemonConfig: () => original.readSavedDaemonConfig(boot.file), ensurePersistedJwtSecret: () => 'test-only' };
 });
 vi.mock('../../src/project/registry.js', () => ({ ProjectRegistry: { open: () => ({ autoDetect: () => null, list: () => [] }) } }));
 vi.mock('../../src/config/loader.js', () => ({ loadDaemonBootConfig: async () => ({ apps: [] }) }));
 vi.mock('../../src/shared/env-config.js', () => ({ getEnv: () => ({ OMNITRON_CWD: boot.cwd }) }));
 vi.mock('../../src/daemon/pid-manager.js', () => ({ PidManager: class { isRunning() { return false; } cleanupStale() {} } }));
+
+vi.mock('../../src/daemon/runtime-launcher.js', () => ({ forwardSelectedRuntime: async () => false }));
+vi.mock('../../src/daemon/runtime-installation.js', () => ({ withRuntimeStartup: async (_directory: string, start: () => Promise<void>) => start() }));
 
 afterEach(() => vi.restoreAllMocks());
 

@@ -8,7 +8,7 @@ import { planHostUpgrade, receiptCommand } from '../../src/services/host-upgrade
 import type { HostInventory, HostUpgradeReceipt, InstalledBundle } from '../../src/services/host-upgrade.js';
 
 const logger: any = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn(), fatal: vi.fn(), child: () => logger };
-function node(missingContract = false, failCandidate = false, failHealth = false) {
+function node(missingContract = false, failCandidate = false, failHealth = false, failPreflight = false) {
   const prefix = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'host-adapter-')));
   const previous: InstalledBundle = { root: `${prefix}/versions/0.2.0+old.1`, version: '0.2.0+old.1', commit: 'a'.repeat(40) };
   const candidate: InstalledBundle = { root: `${prefix}/versions/0.2.0+new.2`, version: '0.2.0+new.2', commit: 'b'.repeat(40) };
@@ -17,7 +17,8 @@ function node(missingContract = false, failCandidate = false, failHealth = false
   const status = () => ({ version: '0.2.0', build: { commit: active.commit, dirty: false }, pid: 100,
     apps: running && !(failCandidate && active === candidate) ? apps.map(name => ({ name, status: 'online' })) : [] });
   const inventory = (): HostInventory => ({
-    runtime: { kind: 'fork', cwd: prefix }, status: status(),
+    runtime: { kind: 'fork', cwd: prefix, executable: process.execPath, execArgv: [] }, status: status(),
+    launches: ['one', 'two'].flatMap(project => ['prod/benchmarks', 'idle/worker'].map(app => ({ name: `${project}/${app}`, bootstrap: null }))),
     projects: ['one', 'two'].map(name => ({ name, path: `${prefix}/${name}`, enabledStacks: ['prod'] })),
     stacks: ['one', 'two'].map(project => ({ project, path: `${prefix}/${project}`, stacks: [
       { name: 'prod', type: 'local', apps: [{ handleKey: `${project}/prod/benchmarks`, status: 'online' }] },
@@ -33,8 +34,12 @@ function node(missingContract = false, failCandidate = false, failHealth = false
     commands.push(command);
     if (command.includes('/platform-operations')) return execSync(command, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     if (command.includes('const records=ids.map')) return execSync(command, { encoding: 'utf8' });
+    if (command.includes('Candidate bootstrap preflight failed')) {
+      if (failPreflight) throw new Error('Candidate bootstrap preflight failed for one/prod/benchmarks');
+      return JSON.stringify({ checked: [], classic: 2, total: 2 });
+    }
     if (command.includes('BUNDLE.json')) return JSON.stringify(command.includes(`versions/${candidate.version}`) ? candidate : previous);
-    if (command.includes('/proc/')) return JSON.stringify({ kind: 'fork', cwd: prefix });
+    if (command.includes('/proc/')) return JSON.stringify(inventory().runtime);
     if (command.includes('const projects=')) return JSON.stringify(inventory());
     if (command.includes('const status=await client.status()')) return JSON.stringify(status());
     throw Error(`Unexpected read: ${command}`);
@@ -67,6 +72,17 @@ describe('RemoteDeployer controlled host-upgrade adapter', () => {
       const retention = host.commands.find(c => c.includes('awk -v keep=1'))!;
       expect(retention).toContain(host.previous.root);
       expect(host.commands.findIndex(c => c.includes('upgrade-receipts'))).toBeLessThan(host.commands.findIndex(c => c.endsWith(' down')));
+      expect(host.commands.findIndex(c => c.includes('Candidate bootstrap preflight failed'))).toBeLessThan(host.commands.findIndex(c => c.endsWith(' down')));
+    } finally { host.clean(); }
+  });
+  it('rejects a failed candidate reader before any stop, binding change or upgrade receipt', async () => {
+    const host = node(false, false, false, true);
+    try {
+      expect(await host.deployer.activateBundle({ host: 'test' }, host.candidate.version, host.prefix)).toBe(false);
+      expect(host.state().active).toBe(host.previous); expect(host.state().running).toBe(true);
+      expect(host.commands.some(c => c.includes('ln -sfn') || c.endsWith(' down'))).toBe(false);
+      expect(fs.existsSync(path.join(host.prefix, 'upgrade-receipts'))).toBe(false);
+      expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ error: expect.stringContaining('Candidate bootstrap preflight failed') }), expect.any(String));
     } finally { host.clean(); }
   });
   it('blocks unrelated fleet/app operations while allowing only the exact recovering workflow', async () => {

@@ -586,6 +586,12 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
   const plan = { ...workspacePlan, overrides: { ...inherited.overrides, ...workspacePlan.overrides } };
 
   const tree = await describeTree(workspaceRoot);
+  // Every entry point that packages the daemon must enforce its provenance,
+  // including callers of this generic builder rather than buildOwnBundle.
+  if (options.rootPackage === OMNITRON_PACKAGE) {
+    const refusal = ownBuildRefusal({ packageDir: directoryOf(workspace.get(options.rootPackage)!), tree });
+    if (refusal) throw new Error(refusal);
+  }
   const version = localVersion(plan.root.version, tree.commit, new Date());
 
   const outDir = path.resolve(options.outDir);
@@ -1013,14 +1019,6 @@ export async function buildOwnBundle(options: {
   readonly label: string;
   readonly logger?: { info(message: string): void };
 }): Promise<OwnBundle> {
-  const own = readWorkspaces([path.resolve(options.workspaceRoot)]).get(OMNITRON_PACKAGE);
-  if (own) {
-    const refusal = ownBuildRefusal({
-      packageDir: directoryOf(own),
-      tree: await describeTree(path.resolve(options.workspaceRoot)),
-    });
-    if (refusal) throw new Error(refusal);
-  }
   const staging = ownBundleStaging(options.label);
   const archivePath = `${staging}.tar.gz`;
   const built = await buildBundle({

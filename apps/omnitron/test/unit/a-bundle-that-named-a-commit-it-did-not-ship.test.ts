@@ -21,7 +21,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { buildOwnBundle, ownBuildRefusal } from '../../src/services/bundle-builder.js';
+import { buildBundle, buildOwnBundle, ownBuildRefusal } from '../../src/services/bundle-builder.js';
 import { readBuildStamp } from '../../src/shared/build-stamp.js';
 import { describeBuild } from '../../src/commands/status.js';
 
@@ -105,6 +105,12 @@ describe('the bundle builder asks before it copies', () => {
     await expect(buildOwnBundle({ workspaceRoot: root, label: `stamp-${process.pid}` })).rejects.toThrow(
       /was compiled from bbbbbbbb .* the tree is at/,
     );
+    const outDir = path.join(root, 'output');
+    await expect(buildBundle({ workspaceRoot: root, rootPackage: '@omnitron-dev/omnitron', outDir })).rejects.toThrow(/was compiled from bbbbbbbb/);
+    fs.unlinkSync(path.join(pkg, 'dist/BUILD.json'));
+    await expect(buildBundle({ workspaceRoot: root, rootPackage: '@omnitron-dev/omnitron', outDir })).rejects.toThrow(/no build stamp/);
+    expect(fs.existsSync(outDir)).toBe(false);
+    expect(fs.existsSync(outDir + '.building')).toBe(false);
   });
 });
 

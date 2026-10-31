@@ -85,6 +85,7 @@ import {
   hookCommand, inventoryCommand, planHostUpgrade, receiptCommand, verifyRestoredInventory,
   updateContractBindingsCommand, runtimeProbeCommand, runtimeStartCommand, runtimeStopCommand,
   appHealthCommand, pendingReceiptsCommand, recoverHostUpgrade, stoppedDaemonCommand,
+  bootstrapPreflightCommand, HOST_BOOTSTRAP_PREFLIGHT_TIMEOUT_MS,
   type InstalledBundle, type HostInventory, type HostRuntime, type HostUpgradePlan, type HostUpgradeActions, type HostUpgradeReceipt,
 } from './host-upgrade.js';
 import { gunzipSync } from 'node:zlib';
@@ -1722,6 +1723,8 @@ export class RemoteDeployer {
           await this.sshExec(target, hookCommand(app, previous, 'verify'), 330_000);
           if (plan.online.includes(app.name)) await this.sshExec(target, appHealthCommand(app, previous), 330_000);
         }
+        this.emitProgress(nodeKey, '*', 'verifying', 0, 'Checking candidate bootstrap readers before stopping applications');
+        await this.sshExecData(target, bootstrapPreflightCommand(plan), HOST_BOOTSTRAP_PREFLIGHT_TIMEOUT_MS + 10_000);
         const id = `${new Date().toISOString().replace(/[:.]/g, '-')}-${crypto.randomUUID()}`;
         const receiptPath = `${prefix}/upgrade-receipts/${id}.json`;
         const receipt = await executeHostUpgrade(plan, id, this.hostUpgradeActions(target, prefix, keepVersions, plan, verifyPlatform));

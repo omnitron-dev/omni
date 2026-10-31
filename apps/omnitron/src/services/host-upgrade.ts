@@ -14,11 +14,13 @@ export interface AppUpgradeContract {
     kind: 'hook'; bundleRoot: string; bundleEnv: string; rebind: string[]; verify: string[];
   };
 }
-export type HostRuntime = { kind: 'fork'; cwd: string; executable?: string } | {
-  kind: 'systemd'; cwd: string; scope: 'system' | 'user'; file: string; contents: string; enabled: boolean;
-};
+export type HostRuntime = { cwd: string; executable?: string; execArgv?: string[] } & (
+  { kind: 'fork' } | { kind: 'systemd'; scope: 'system' | 'user'; file: string; contents: string; enabled: boolean }
+);
 export interface HostInventory {
   runtime: HostRuntime;
+  /** Disk boot entries; optional only for recovery of receipts written by older controllers. */
+  launches?: { name: string; bootstrap: string | null }[];
   status: { version: string; build: { commit: string; dirty: boolean }; pid: number; apps: { name: string; status: string }[] };
   projects: { name: string; path: string; enabledStacks: string[] }[];
   stacks: { project: string; path: string; stacks: {
@@ -239,7 +241,7 @@ export function inventoryCommand(bundle: InstalledBundle, full: boolean): string
       const status=await client.status();
       ${full ? `const service=await client.service('OmnitronProject');
       const {loadEcosystemConfig}=await import(pathToFileURL(${JSON.stringify(`${bundle.root}/dist/config/loader.js`)}).href);
-      const projects=await service.listProjects(); const stacks=[]; const contracts=[];
+      const projects=await service.listProjects(); const stacks=[]; const contracts=[]; const launches=[];
       for(const project of projects){
         const live=await service.listStacks({project:project.name});
         stacks.push({project:project.name,path:project.path,stacks:live});
@@ -257,12 +259,13 @@ export function inventoryCommand(bundle: InstalledBundle, full: boolean): string
             const name=project.name+'/'+stackName+'/'+app.name; boot.push(name);
             const binding=contract?.apps?.find(a=>a.name===name);
             if(!binding || path.resolve(project.path,app.cwd||'.')!==binding.cwd) throw Error('Boot release differs from upgrade contract: '+name);
+            launches.push({name,bootstrap:app.bootstrap?path.resolve(project.path,app.bootstrap):null});
           }
         }
         const expected=live.filter(s=>s.type==='local').flatMap(s=>s.apps.map(a=>a.handleKey)).sort();
         if(JSON.stringify(boot.sort())!==JSON.stringify(expected)) throw Error('Boot configuration differs from serving app inventory: '+project.name);
       }
-      console.log(JSON.stringify({status,projects,stacks,contracts}));` : 'console.log(JSON.stringify(status));'}
+      console.log(JSON.stringify({status,projects,stacks,contracts,launches}));` : 'console.log(JSON.stringify(status));'}
     } finally { await client.disconnect(); }`);
 }
 export function hookCommand(app: AppUpgradeContract, bundle: InstalledBundle, operation: 'rebind' | 'verify'): string {
@@ -291,6 +294,55 @@ export function contractPreflightCommand(apps: AppUpgradeContract[]): string {
         if(!candidates.some(p=>{try{fs.accessSync(p,fs.constants.X_OK);return fs.statSync(p).isFile()}catch{return false}})) throw Error('Missing hook executable: '+executable);
       }
     }`);
+}
+
+export const HOST_BOOTSTRAP_PREFLIGHT_TIMEOUT_MS = 120_000;
+
+/**
+ * Exercise the candidate's fresh reader before stopping anything. Dependency
+ * hooks remain separate: definitions still see the serving application's bindings.
+ * procRoot permits inspection of a mounted procfs (and isolated process fixtures).
+ * Environment bytes stay on the host, outside inventory and recovery receipts.
+ */
+export function bootstrapPreflightCommand(plan: HostUpgradePlan, procRoot = '/proc'): string {
+  const runtime = plan.inventory.runtime;
+  const launches = plan.inventory.launches;
+  if (!Array.isArray(launches) || new Set(launches.map(a => a.name)).size !== launches.length ||
+      JSON.stringify(launches.map(a => a.name).sort()) !== JSON.stringify([...plan.online, ...plan.offline].sort()) ||
+      launches.some(a => a.bootstrap !== null && (typeof a.bootstrap !== 'string' || !a.bootstrap.startsWith('/')))) {
+    fail('missing or inconsistent bootstrap launch inventory');
+  }
+  if (!runtime.executable?.startsWith('/') || !Array.isArray(runtime.execArgv) ||
+      runtime.execArgv.some(a => typeof a !== 'string' || /^(--inspect|--debug|--watch|--eval|--print|--input-type|-e$|-p$)/.test(a))) {
+    fail('missing or unsupported captured Node arguments for bootstrap preflight');
+  }
+  const online = launches.filter(a => plan.online.includes(a.name));
+  const cwd = runtime.cwd === plan.previous.root ? plan.candidate.root : runtime.cwd;
+  const execArgv = runtime.execArgv.map(a => a.replaceAll(plan.previous.root, plan.candidate.root));
+  return remoteNode(`${fsPrelude} import {execFileSync} from 'node:child_process';
+    const proc=path.join(${JSON.stringify(procRoot)},String(${plan.inventory.status.pid}));
+    const argv=fs.readFileSync(proc+'/cmdline','utf8').split('\\0').filter(Boolean);
+    if(fs.realpathSync(proc+'/exe')!==${JSON.stringify(runtime.executable)} ||
+       fs.realpathSync(proc+'/cwd')!==${JSON.stringify(runtime.cwd)} ||
+       fs.realpathSync(argv[${runtime.execArgv.length + 1}])!==${JSON.stringify(plan.previous.root + '/dist/daemon/daemon-entry.js')} ||
+       JSON.stringify(argv.slice(1,${runtime.execArgv.length + 1}))!==${JSON.stringify(JSON.stringify(runtime.execArgv))}) throw Error('Serving process changed before bootstrap preflight');
+    const env=Object.fromEntries(fs.readFileSync(proc+'/environ','utf8').split('\\0').filter(v=>v.includes('=')).map(v=>[v.slice(0,v.indexOf('=')),v.slice(v.indexOf('=')+1)]));
+    if(/--(?:inspect|debug|watch)/.test(env.NODE_OPTIONS||'')) throw Error('Unsupported debugging/watch NODE_OPTIONS for bootstrap preflight');
+    if(env.OMNITRON_CWD===${JSON.stringify(plan.previous.root)}) env.OMNITRON_CWD=${JSON.stringify(plan.candidate.root)};
+    const deadline=Date.now()+${HOST_BOOTSTRAP_PREFLIGHT_TIMEOUT_MS},checked=[],seen=new Set();
+    for(const app of ${JSON.stringify(online)}){
+      if(app.bootstrap===null || seen.has(app.bootstrap)) continue;
+      const remaining=deadline-Date.now();if(remaining<1000) throw Error('Bootstrap preflight exceeded its total deadline');
+      const timeout=Math.min(30000,remaining);
+      const script='process.chdir('+JSON.stringify(${JSON.stringify(cwd)})+');' +
+        'const {loadBootstrapConfig}=await import('+JSON.stringify(pathToFileURL(${JSON.stringify(plan.candidate.root + '/dist/orchestrator/bootstrap-loader.js')}).href)+');' +
+        'await loadBootstrapConfig('+JSON.stringify(app.bootstrap)+',{freshModuleGraph:{timeoutMs:'+Math.max(1, timeout-500)+'}});';
+      try {execFileSync(${JSON.stringify(runtime.executable)},[...${JSON.stringify(execArgv)},'--input-type=module','--eval',script],
+        {cwd:${JSON.stringify(plan.candidate.root)},env,timeout,maxBuffer:256*1024,stdio:['ignore','ignore','pipe']});}
+      catch(error){throw Error('Candidate bootstrap preflight failed for '+app.name+': '+(error.stderr?.toString().slice(-4000)||error.message));}
+      seen.add(app.bootstrap);checked.push(app.name);
+    }
+    console.log(JSON.stringify({checked,classic:${online.filter(a => a.bootstrap === null).length},total:${online.length}}));`);
 }
 
 /** Only the declared dependency binding changes; release paths, versions, and app data stay intact. */
@@ -328,7 +380,8 @@ export function runtimeProbeCommand(bundle: InstalledBundle, pid: number): strin
     if(candidates.length>1) throw Error('Multiple supervisor scopes are unsupported');
     const executable=fs.realpathSync('/proc/'+pid+'/exe');
     fs.accessSync(executable,fs.constants.X_OK);
-    if(!candidates.length) { console.log(JSON.stringify({kind:'fork',cwd,executable})); }
+    const execArgv=argv.slice(1,argv.indexOf(entry));
+    if(!candidates.length) { console.log(JSON.stringify({kind:'fork',cwd,executable,execArgv})); }
     else {
       const unit=candidates[0]; const args=unit.scope==='user'?['--user']:[];
       const output=execFileSync('systemctl',[...args,'show','omnitron-daemon.service','--property=MainPID,ActiveState,UnitFileState,FragmentPath,DropInPaths'],{encoding:'utf8'});
@@ -341,7 +394,7 @@ export function runtimeProbeCommand(bundle: InstalledBundle, pid: number): strin
       const operatorCwd=lines.filter(l=>/^Environment="?OMNITRON_CWD=/.test(l));
       if(operatorCwd.length!==1 || !aliases.some(p=>operatorCwd[0]==='Environment=OMNITRON_CWD='+p || operatorCwd[0]==='Environment="OMNITRON_CWD='+p+'"')) throw Error('Unsupported supervisor operator cwd');
       if(lines.some(l=>!l.startsWith('ExecStart=')&&!l.startsWith('WorkingDirectory=')&&!/^Environment="?OMNITRON_CWD=/.test(l)&&l.includes(root))) throw Error('Additional static framework paths in service need an explicit migration');
-      console.log(JSON.stringify({kind:'systemd',cwd,...unit,contents,enabled:properties.UnitFileState==='enabled'}));
+      console.log(JSON.stringify({kind:'systemd',cwd,executable,execArgv,...unit,contents,enabled:properties.UnitFileState==='enabled'}));
     }`);
 }
 export function runtimeStopCommand(runtime: HostRuntime, bundle: InstalledBundle): string {

@@ -68,6 +68,17 @@ Titan's functionality is extended through official modules:
 | Scheduler | `@omnitron-dev/titan-scheduler` | Job scheduling |
 | Telemetry | `@omnitron-dev/titan-telemetry-relay` | Telemetry pipeline |
 
+## Log delivery
+
+Custom logger destinations are asynchronous by default. `await loggerModule.flush()`
+waits for queued destination writes and transport writes before flushing transports;
+call it during graceful shutdown. A synchronous local journal can opt in with
+`destinations: [{ stream: journal, delivery: 'sync' }]`. This invokes the sink before
+returning from the logging call, at the cost of that sink's write latency. The sink
+is responsible for durable storage; asynchronous network delivery is not a commit.
+An abrupt termination can still discard output buffered inside an application before
+it reaches its destination.
+
 ## License
 
 MIT

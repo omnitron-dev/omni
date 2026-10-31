@@ -49,7 +49,12 @@ export interface ILoggerModuleOptions {
    * Each stream receives pino-formatted JSON lines alongside stdout.
    * Use `pino.destination()` or `fs.createWriteStream()` for file targets.
    */
-  destinations?: Array<NodeJS.WritableStream | { stream: NodeJS.WritableStream; level?: LogLevel }>;
+  destinations?: Array<NodeJS.WritableStream | {
+    stream: NodeJS.WritableStream;
+    level?: LogLevel;
+    /** Invoke a durable local sink before returning. Async forwarding remains the default. */
+    delivery?: 'sync' | 'async';
+  }>;
 }
 
 /**

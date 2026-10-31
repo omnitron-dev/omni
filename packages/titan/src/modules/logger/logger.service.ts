@@ -74,11 +74,9 @@ function wrapAsyncStream(dest: NodeJS.WritableStream): NodeJS.WritableStream {
       // stream can't run in the same tick as pino's logging call.
       setImmediate(() => {
         try {
-          // Mirror Node's "drain"-style backpressure signal by
-          // ignoring the return value — `_write` is non-blocking,
-          // and bookkeeping on the inner stream is its own concern.
-          dest.write(chunk);
-          callback();
+          if (dest instanceof Writable) dest.write(chunk, callback);
+          else if (dest.write(chunk) === false) dest.once('drain', callback);
+          else callback();
         } catch (err) {
           callback(err as Error);
         }
@@ -203,6 +201,7 @@ export class LoggerService implements ILoggerModule {
   private rootLogger!: PinoLogger;
   private globalLogger!: ILogger;
   private transports: ITransport[] = [];
+  private destinationStreams: NodeJS.WritableStream[] = [];
   private processors: ILogProcessor[] = [];
   private transportFanout?: NodeJS.WritableStream;
   private context: object = {};
@@ -334,7 +333,7 @@ export class LoggerService implements ILoggerModule {
         for (const dest of destinations!) {
           if ('stream' in dest && dest.stream) {
             streams.push({
-              stream: wrapAsyncStream((dest as any).stream),
+              stream: dest.delivery === 'sync' ? dest.stream : wrapAsyncStream(dest.stream),
               level: (dest as any).level,
             });
           } else {
@@ -349,6 +348,7 @@ export class LoggerService implements ILoggerModule {
         // path via this fan-out stream (reads `this.transports` by reference).
         streams.push({ stream: this.createTransportFanout() });
       }
+      this.destinationStreams = streams.slice(1).map(item => item.stream);
       this.rootLogger = pino(pinoOptions, multistream(streams as any));
     } else if (prettyPrint) {
       // Dev pretty output straight to stdout. pino-pretty manages its own
@@ -608,13 +608,14 @@ export class LoggerService implements ILoggerModule {
     // is both shorter and the honest description of what it uses.
     const fanout = new Writable({
       write: (chunk: Buffer, _enc: BufferEncoding, callback: (err?: Error | null) => void) => {
+        if (!chunk.length) { callback(); return; }
         const transports = this.transports;
         if (transports.length === 0) {
           callback();
           return;
         }
         const line = chunk.toString();
-        setImmediate(() => {
+        setImmediate(async () => {
           let record: any;
           try {
             record = JSON.parse(line);
@@ -623,18 +624,13 @@ export class LoggerService implements ILoggerModule {
           }
           for (const transport of transports) {
             try {
-              const result = transport.write(record);
-              if (result && typeof (result as Promise<void>).then === 'function') {
-                (result as Promise<void>).catch(() => {
-                  /* a transport's async failure must never break logging */
-                });
-              }
+              await transport.write(record);
             } catch {
               /* a transport must never break logging */
             }
           }
+          callback();
         });
-        callback();
       },
     });
     this.transportFanout = fanout as unknown as NodeJS.WritableStream;
@@ -662,6 +658,12 @@ export class LoggerService implements ILoggerModule {
    * Flush all transports
    */
   async flush(): Promise<void> {
+    await new Promise<void>((resolve, reject) => this.rootLogger.flush(error => error ? reject(error) : resolve()));
+    // A zero-byte barrier waits for queued writes without ending shared sinks.
+    // Fan-out transports also complete their callbacks only after delivery.
+    await Promise.all(this.destinationStreams.map(stream => stream instanceof Writable
+      ? new Promise<void>((resolve, reject) => stream.write(Buffer.alloc(0), error => error ? reject(error) : resolve()))
+      : Promise.resolve()));
     await Promise.all(this.transports.filter((t) => t.flush).map((t) => t.flush!()));
   }
 }

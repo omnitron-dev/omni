@@ -138,6 +138,7 @@ it('removes an expired tab without asking to close an already ended session', as
   await open();
   await screen.findByRole('tab', { name: /Remote 1 · closed/ });
   expect(screen.getByText(/Session ended: idle timeout/)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Terminal input unavailable' })).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: 'Close Remote 1' }));
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(screen.queryByRole('tab')).not.toBeInTheDocument();
@@ -207,7 +208,8 @@ it('does not claim a failed read closed the server session until closure is ackn
 
 it('distinguishes an unconfirmed open from a rejected connection', async () => {
   api.open.mockRejectedValueOnce(Object.assign(new Error('Request timeout after 30000ms'), { code: 'TIMEOUT' }));
-  mount(); await open();
+  mount();
+  await open();
   await screen.findByRole('tab', { name: /Remote · unconfirmed/ });
   expect(screen.getByRole('alert')).toHaveTextContent('An unattached shell may still exist');
   expect(api.open).toHaveBeenCalledOnce();

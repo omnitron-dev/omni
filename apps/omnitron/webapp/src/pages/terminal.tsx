@@ -579,6 +579,7 @@ function TerminalPane({
   const { copy } = useCopyToClipboard();
   const currentSession = useRef(session);
   currentSession.current = session;
+  const inputAvailable = session.state === 'open' && !error;
 
   useEffect(() => {
     if (!host.current) return undefined;
@@ -823,17 +824,34 @@ function TerminalPane({
           }
           sx={{ height: 20, maxWidth: 110, fontSize: 10 }}
         />
-        <Tooltip title={readOnly ? 'Enable terminal input' : 'Make terminal read only'}>
-          <Button
-            size="small"
-            aria-label={readOnly ? 'Enable terminal input' : 'Make terminal read only'}
-            aria-pressed={readOnly}
-            color={readOnly ? 'warning' : 'inherit'}
-            onClick={() => setReadOnly((v) => !v)}
-            sx={{ minWidth: 40, fontFamily: 'monospace', fontSize: 10, px: 0.5 }}
-          >
-            {readOnly ? 'READ' : 'INPUT'}
-          </Button>
+        <Tooltip
+          title={
+            !inputAvailable
+              ? 'Input unavailable: the session is closed or unconfirmed'
+              : readOnly
+                ? 'Enable terminal input'
+                : 'Make terminal read only'
+          }
+        >
+          <span>
+            <Button
+              size="small"
+              disabled={!inputAvailable}
+              aria-label={
+                !inputAvailable
+                  ? 'Terminal input unavailable'
+                  : readOnly
+                    ? 'Enable terminal input'
+                    : 'Make terminal read only'
+              }
+              aria-pressed={readOnly || !inputAvailable}
+              color={readOnly ? 'warning' : 'inherit'}
+              onClick={() => setReadOnly((v) => !v)}
+              sx={{ minWidth: 40, fontFamily: 'monospace', fontSize: 10, px: 0.5 }}
+            >
+              {readOnly || !inputAvailable ? 'READ' : 'INPUT'}
+            </Button>
+          </span>
         </Tooltip>
         <Tooltip title="Find in scrollback (Ctrl/⌘ Shift F)">
           <IconButton

@@ -7,8 +7,11 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
 
-assert.equal(process.platform, 'darwin', 'This fixture exercises actual launchd isolation');
+assert.ok(['darwin', 'linux'].includes(process.platform), 'This fixture requires native service supervision');
+const linux = process.platform === 'linux';
+if (linux) assert.equal(process.getuid(), 0, 'Linux fixture needs an isolated system service, independent of SSH login');
 const dist = path.resolve(process.argv[2]);
 assert.ok(dist.includes('omnitron-handoff-'), 'Use a disposable sealed test artifact');
 const managementDist = process.argv[3] ? path.resolve(process.argv[3]) : undefined;
@@ -19,12 +22,12 @@ for (const directory of [instance, execution]) await fs.mkdir(directory, { mode:
 process.env.OMNITRON_HOME = instance;
 const load = file => import(pathToFileURL(path.join(dist, file)).href);
 const { RuntimeInstallation } = await load('daemon/runtime-installation.js');
-const { renderLaunchdPlist } = await load('commands/service-units.js');
+const { renderLaunchdPlist, renderSystemdUnit } = await load('commands/service-units.js');
 const { createDaemonClient } = await load('daemon/daemon-client.js');
 const { privateControlClient } = await load('daemon/private-control-client.js');
 const { PidManager } = await load('daemon/pid-manager.js');
 const run = promisify(execFile);
-const native = args => run('/bin/launchctl', args, { timeout: 30_000, maxBuffer: 1024 * 1024 });
+const native = args => run(linux ? 'systemctl' : '/bin/launchctl', args, { timeout: 45_000, maxBuffer: 1024 * 1024 });
 const domain = `gui/${process.getuid()}`;
 const id = randomUUID();
 const installation = await RuntimeInstallation.open(instance);
@@ -42,7 +45,7 @@ const reserve = () => new Promise((resolve, reject) => {
   server.listen(0, '127.0.0.1', () => { const value = server.address().port; server.close(() => resolve(value)); });
 });
 const port = await reserve(), tcpPort = await reserve();
-const config = { protocol: 1, instanceHome: instance, directory: execution, scope: 'user', cwd: root,
+const config = { protocol: 1, instanceHome: instance, directory: execution, scope: linux ? 'system' : 'user', cwd: root,
   environment: { OMNITRON_HOME: instance, OMNITRON_NO_INFRA: '1', OMNITRON_NO_WATCH: '1', PATH: process.env.PATH },
   owner: { label: `dev.omnitron.fixture.${id}.owner`, unit: `omnitron-fixture-${id}-owner.service`, artifact: artifact.runtimeHash },
   backend: { label: `dev.omnitron.fixture.${id}.backend`, unit: `omnitron-fixture-${id}-backend.service`, artifact: artifact.runtimeHash },
@@ -51,21 +54,25 @@ await fs.writeFile(path.join(instance, 'config.json'), JSON.stringify({ role: 's
   executionHost: { enabled: true, directory: execution } }), { mode: 0o600 });
 await fs.writeFile(path.join(instance, 'runtime/supervision.json'), JSON.stringify(config), { mode: 0o600 });
 await fs.writeFile(path.join(root, 'counter.mjs'), `import http from 'node:http';import fs from 'node:fs';
- let value=0;setInterval(()=>value++,5);
- const server=http.createServer((q,r)=>r.end(JSON.stringify({pid:process.pid,parent:process.ppid,value})));
+ let value=0,sequence=0,paused=false;setInterval(()=>value++,5);
+ setInterval(()=>{if(paused)return;const record={level:30,time:new Date().toISOString(),msg:'fixture:${id}:'+sequence+++'\\n  first continuation\\n  second continuation'};
+ fs.appendFileSync(${JSON.stringify(path.join(root, 'expected.jsonl'))},JSON.stringify(record)+'\\n');process.stdout.write(JSON.stringify(record)+'\\n');},50);
+ const server=http.createServer((q,r)=>{if(q.url==='/pause')paused=true;r.end(JSON.stringify({pid:process.pid,parent:process.ppid,value}));});
  server.listen(0,'127.0.0.1',()=>{fs.writeFileSync(${JSON.stringify(path.join(root, 'address.json'))},JSON.stringify(server.address()));process.send?.({type:'ready'});});
  process.on('SIGTERM',()=>server.close(()=>process.exit(0)));`);
 await fs.writeFile(path.join(root, 'omnitron.config.mjs'), `export default {apps:[{name:'counter',script:'./counter.mjs',cwd:${JSON.stringify(root)},enabled:true}]};`);
 const units = [];
 for (const mode of ['owner', 'backend']) {
-  const file = path.join(root, `${mode}.plist`);
-  await fs.writeFile(file, renderLaunchdPlist({ scope: 'user', execPath: artifact.execPath,
+  const file = linux ? `/run/systemd/system/${config[mode].unit}` : path.join(root, `${mode}.plist`);
+  const render = linux ? renderSystemdUnit : renderLaunchdPlist;
+  await fs.writeFile(file, render({ scope: config.scope, execPath: artifact.execPath,
     entryPath: path.join(artifact.directory, 'daemon/managed-entry.js'), args: [mode], label: config[mode].label,
     nodeArgs: [],
     restart: mode === 'backend', workdir: path.dirname(artifact.directory), path: process.env.PATH,
+    identity: linux ? { user: 'root', home: os.homedir() } : undefined,
     environment: { OMNITRON_HOME: instance }, stderrLog: path.join(root, `${mode}.log`) }));
-  await run('/usr/bin/plutil', ['-lint', file]);
-  units.push({ file, job: `${domain}/${config[mode].label}` });
+  await run(linux ? 'systemd-analyze' : '/usr/bin/plutil', linux ? ['verify', file] : ['-lint', file]);
+  units.push({ file, job: linux ? config[mode].unit : `${domain}/${config[mode].label}` });
 }
 const socket = path.join(instance, 'daemon.sock');
 const status = async () => {
@@ -82,9 +89,10 @@ const until = async (work, message, ms = 150_000) => {
   throw new Error(`${message}; inspect ${root}; ${cause?.message ?? ''}`);
 };
 const waitCertificate = () => until(async () => (await status()).execution?.recovery?.status === 'ready', 'No recovery certificate');
-let sampler, inFlight = false, samples = 0, failures = 0, ownerPid, applicationPid;
+let sampler, inFlight = false, samples = 0, failures = 0, ownerPid, applicationPid, ownerClient;
 try {
-  for (const unit of units) await native(['bootstrap', domain, unit.file]);
+  if (linux) await native(['daemon-reload']);
+  for (const unit of units) await native(linux ? ['start', unit.job] : ['bootstrap', domain, unit.file]);
   let first = await until(status, 'Initial managed backend did not start');
   console.log(JSON.stringify({ stage: 'cold-start', root, backend: first.pid, owner: first.execution.owner.pid }));
   ownerPid = first.execution.owner.pid;
@@ -95,9 +103,14 @@ try {
   const before = await probe(); applicationPid = before.pid;
   console.log(JSON.stringify({ stage: 'application-ready', applicationPid }));
   assert.equal(before.parent, ownerPid);
+  ownerClient = await privateControlClient(path.join(execution, 'owner.sock'), 'OmnitronExecution', 3000);
   sampler = setInterval(async () => {
     if (inFlight) return; inFlight = true;
-    try { const now = await probe(); assert.equal(now.pid, applicationPid); assert.equal(now.parent, ownerPid); samples++; }
+    try {
+      const [now, snapshot] = await Promise.all([probe(), ownerClient.service.snapshot()]);
+      assert.equal(now.pid, applicationPid); assert.equal(now.parent, ownerPid);
+      assert.equal(snapshot.status.owner.pid, ownerPid); samples++;
+    }
     catch { failures++; } finally { inFlight = false; }
   }, 20);
   const cli = (...args) => run(artifact.execPath, [path.join(artifact.directory, 'cli/omnitron.js'), ...args, '--json'], {
@@ -123,6 +136,13 @@ try {
   const afterGuardian = await until(async () => { const value = await status(); return value.pid !== recovered.pid ? value : null; }, 'OS did not recover the killed guardian');
   assert.equal(afterGuardian.execution.owner.pid, ownerPid);
   await waitCertificate();
+  const committedGuardian = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor');
+  try {
+    await until(async () => {
+      const value = await committedGuardian.service.status();
+      return value.state === 'ready' && value.backendPid === afterGuardian.pid;
+    }, 'Guardian has not committed its recovered backend selection');
+  } finally { await committedGuardian.close(); }
   if (managementDist) {
     const settledGuardian = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor');
     try {
@@ -171,12 +191,44 @@ try {
     } finally { if (!completed) coordinator.kill('SIGKILL'); }
   }
   const after = await probe(); assert.ok(after.value > before.value); assert.equal(failures, 0);
-  console.log(JSON.stringify({ test: 'independent-launchd-supervision', root, ownerPid, applicationPid,
-    backends: [first.pid, upgraded.pid, recovered.pid, afterGuardian.pid], killedGuardian: guardian.pid, samples, failures }));
+  if (linux && process.env.OMNITRON_RUNTIME_PROBE) {
+    const { runtimeProbeCommand } = await import(pathToFileURL(process.env.OMNITRON_RUNTIME_PROBE).href);
+    const bundle = { root: path.dirname(dist), version: first.version, commit: first.build.commit };
+    const options = { env: { ...process.env, OMNITRON_HOME: instance }, timeout: 60_000, maxBuffer: 1024 * 1024 };
+    const detected = JSON.parse((await run('/bin/sh', ['-c', runtimeProbeCommand(bundle, afterGuardian.pid)], options)).stdout);
+    assert.equal(detected.kind, 'managed'); assert.equal(detected.ownerPid, ownerPid);
+    await assert.rejects(run('/bin/sh', ['-c', runtimeProbeCommand(bundle, applicationPid)], options), /no recognized entry/);
+    console.log(JSON.stringify({ stage: 'remote-inspection-verified', ownerPid, backendPid: afterGuardian.pid }));
+  }
+  await fetch(`http://127.0.0.1:${address.port}/pause`);
+  const expected = (await fs.readFile(path.join(root, 'expected.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  const require = createRequire(path.join(artifact.directory, '../package.json'));
+  const Database = require('better-sqlite3');
+  await until(async () => {
+    const db = new Database(path.join(instance, 'data/slave.db'), { readonly: true, fileMustExist: true });
+    try {
+      const records = db.prepare("SELECT payload FROM sync_buffer WHERE category='logs'").all()
+        .map(row => JSON.parse(row.payload)).filter(row => row.message?.startsWith(`fixture:${id}:`));
+      if (records.length < expected.length) return false;
+      assert.equal(records.length, expected.length, 'Duplicate fixture log deliveries');
+      const actual = records.map(row => ({ time: new Date(row.timestamp).toISOString(), msg: row.message }))
+        .sort((a, b) => a.msg.localeCompare(b.msg));
+      assert.deepEqual(actual, expected.map(({ time, msg }) => ({ time, msg })).sort((a, b) => a.msg.localeCompare(b.msg)));
+      return true;
+    } finally { db.close(); }
+  }, 'Exact multiline logs did not reach the durable outbox');
+  console.log(JSON.stringify({ test: linux ? 'independent-systemd-supervision' : 'independent-launchd-supervision', root, ownerPid, applicationPid,
+    backends: [first.pid, upgraded.pid, recovered.pid, afterGuardian.pid], killedGuardian: guardian.pid, samples, failures, verifiedLogs: expected.length }));
 } finally {
   if (sampler) clearInterval(sampler);
   while (inFlight) await new Promise(resolve => setTimeout(resolve, 10));
-  for (const unit of units.toReversed()) await native(['bootout', unit.job]).catch(() => {});
+  await ownerClient?.close();
+  for (const unit of units.toReversed()) await native(linux ? ['stop', unit.job] : ['bootout', unit.job]).catch(() => {});
   if (ownerPid) await until(() => !PidManager.isProcessAlive(ownerPid), 'Fixture owner did not stop', 35_000);
   if (applicationPid) assert.equal(PidManager.isProcessAlive(applicationPid), false, 'Fixture app survived normal owner shutdown');
+  if (linux) {
+    for (const unit of units) await fs.unlink(unit.file);
+    await native(['daemon-reload']);
+    await native(['reset-failed', ...units.map(unit => unit.job)]).catch(() => {});
+  }
 }

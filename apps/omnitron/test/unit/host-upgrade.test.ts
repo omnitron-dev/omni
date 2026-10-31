@@ -6,7 +6,7 @@ import { execSync } from 'node:child_process';
 import {
   planHostUpgrade, executeHostUpgrade, recoverHostUpgrade, verifyRestoredInventory, bundleProbeCommand,
   hookCommand, receiptCommand, updateContractBindingsCommand, runtimeStartCommand, runtimeStopCommand,
-  inventoryCommand,
+  inventoryCommand, runtimeProbeCommand,
   type HostInventory, type InstalledBundle, type HostUpgradeActions,
 } from '../../src/services/host-upgrade.js';
 import { pruneSteps } from '../../src/services/bundle-builder.js';
@@ -44,6 +44,16 @@ function actions() {
   return { calls, api };
 }
 describe('host upgrade inventory preflight', () => {
+  it.each([0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1])('rejects invalid probe PID %s before a remote command', pid => {
+    expect(() => runtimeProbeCommand(old, pid)).toThrow(/PID/);
+  });
+  it('never uses the coupled stop/rebind lifecycle for independently supervised applications', () => {
+    const i = inventory();
+    i.runtime = { kind: 'managed', cwd: '/runtime', scope: 'system', ownerPid: 40, guardianPid: 50, artifact: 'a'.repeat(64) };
+    expect(() => planHostUpgrade(old, next, i)).toThrow(/Use backend upgrade/);
+    expect(() => runtimeStopCommand(i.runtime, old)).toThrow(/backend upgrade/);
+    expect(() => runtimeStartCommand(i.runtime, old, next)).toThrow(/backend upgrade/);
+  });
   it('keeps qualified names from different projects and disabled apps distinct', () => {
     const p = planHostUpgrade(old, next, inventory());
     expect(p.online).toEqual(['one/prod/benchmarks', 'two/prod/benchmarks']);

@@ -87,6 +87,15 @@ for (const [id, item] of packages.entries()) {
 }
 fs.copyFileSync(process.execPath, path.join(output, 'node'), fs.constants.COPYFILE_FICLONE);
 fs.chmodSync(path.join(output, 'node'), 0o500);
+// Some Linux copy implementations retain the source uid when copying as root
+// (including official Node archives). Only this new, isolated tree belongs to
+// the instance owner; never chown the serving runtime or relax its verifier.
+function ownCopy(file) {
+  const stat = fs.lstatSync(file);
+  if (process.getuid && stat.uid !== process.getuid()) fs.lchownSync(file, process.getuid(), process.getgid());
+  if (stat.isDirectory()) for (const name of fs.readdirSync(file)) ownCopy(path.join(file, name));
+}
+ownCopy(output);
 const manifest = { protocol: 1, sha256: await runtimeArtifactDigest(output), platform: process.platform,
   arch: process.arch, nodeVersion: process.version, packages: packages.length };
 fs.writeFileSync(path.join(output, 'RUNTIME.json'), JSON.stringify(manifest) + '\n', { flag: 'wx', mode: 0o600 });

@@ -15,7 +15,8 @@ export interface AppUpgradeContract {
   };
 }
 export type HostRuntime = { cwd: string; executable?: string; execArgv?: string[] } & (
-  { kind: 'fork' } | { kind: 'systemd'; scope: 'system' | 'user'; file: string; contents: string; enabled: boolean }
+  { kind: 'fork' } | { kind: 'systemd'; scope: 'system' | 'user'; file: string; contents: string; enabled: boolean } |
+  { kind: 'managed'; scope: 'system' | 'user'; ownerPid: number; guardianPid: number; artifact: string }
 );
 export interface HostInventory {
   runtime: HostRuntime;
@@ -63,6 +64,7 @@ export function planHostUpgrade(previous: InstalledBundle, candidate: InstalledB
         !bundle.root?.startsWith('/') || !bundle.root.endsWith(`/versions/${bundle.version}`) || !/^[a-f0-9]{40}$/.test(bundle.commit)) fail('invalid recorded bundle identity');
   }
   assertServingBundle(previous, inventory.status);
+  if (inventory.runtime?.kind === 'managed') fail('Independent owner detected. Use backend upgrade with a sealed runtime on this node; coupled host upgrades cannot stop or rebind its applications.');
   if (!inventory.runtime || !['fork', 'systemd'].includes(inventory.runtime.kind) || !inventory.runtime.cwd?.startsWith('/')) fail('missing supported runtime snapshot');
   if (!Array.isArray(inventory.projects) || !Array.isArray(inventory.stacks) || !Array.isArray(inventory.contracts)) fail('incomplete project inventory');
   const all = new Map<string, boolean>();
@@ -372,18 +374,38 @@ export function updateContractBindingsCommand(plan: HostUpgradePlan, bundle: Ins
 
 /** Linux process identity + supervisor state. Other platforms and custom/drop-in units fail closed. */
 export function runtimeProbeCommand(bundle: InstalledBundle, pid: number): string {
-  return remoteNode(`${fsPrelude} import os from 'node:os'; import {execFileSync} from 'node:child_process';
+  if (!Number.isSafeInteger(pid) || pid < 1) throw new Error('A live daemon PID is required for runtime inspection');
+  const probe = `${fsPrelude} import os from 'node:os'; import {execFileSync} from 'node:child_process';
     if(process.platform!=='linux') throw Error('Controlled host upgrade currently requires Linux runtime inspection');
     const root=${JSON.stringify(bundle.root)}; const pid=${JSON.stringify(pid)};
     const argv=fs.readFileSync('/proc/'+pid+'/cmdline','utf8').split('\\0').filter(Boolean);
     const entry=argv.find(a=>a.endsWith('/dist/daemon/daemon-entry.js'));
-    if(!entry || fs.realpathSync(entry)!==root+'/dist/daemon/daemon-entry.js') throw Error('Serving daemon entry does not bind installed bundle');
+    if(!entry) throw Error('Serving daemon has no recognized entry');
     const cwd=fs.realpathSync('/proc/'+pid+'/cwd');
-    const candidates=[{scope:'system',file:'/etc/systemd/system/omnitron-daemon.service'},{scope:'user',file:path.join(os.homedir(),'.config/systemd/user/omnitron-daemon.service')}].filter(c=>fs.existsSync(c.file));
-    if(candidates.length>1) throw Error('Multiple supervisor scopes are unsupported');
     const executable=fs.realpathSync('/proc/'+pid+'/exe');
     fs.accessSync(executable,fs.constants.X_OK);
     const execArgv=argv.slice(1,argv.indexOf(entry));
+    if(fs.realpathSync(entry)!==root+'/dist/daemon/daemon-entry.js') {
+      const {readManagedRuntime,managedJobPid,verifyManagedIsolation}=await import(pathToFileURL(root+'/dist/daemon/managed-runtime.js').href);
+      const {RuntimeInstallation}=await import(pathToFileURL(root+'/dist/daemon/runtime-installation.js').href);
+      const config=await readManagedRuntime();
+      if(!config) throw Error('Serving daemon entry does not bind installed bundle or an independent owner');
+      const installation=await RuntimeInstallation.open(config.instanceHome,{existing:true});
+      if(!installation) throw Error('Managed runtime registry is missing');
+      try {
+        const selection=installation.selection();
+        if(!selection || installation.activation()) throw Error('Managed backend selection is not settled');
+        const artifact=await installation.artifact(selection.current);
+        if(fs.realpathSync(entry)!==artifact.entry || executable!==artifact.execPath || artifact.build.commit!==${JSON.stringify(bundle.commit)}) throw Error('Serving process does not match its selected sealed backend');
+        const ownerPid=await managedJobPid(config,'owner'),guardianPid=await managedJobPid(config,'backend');
+        await verifyManagedIsolation(config,ownerPid,guardianPid,pid);
+        const stat=fs.readFileSync('/proc/'+pid+'/stat','utf8');
+        if(Number(stat.slice(stat.lastIndexOf(')')+2).split(' ')[1])!==guardianPid) throw Error('Serving backend is not a child of its native guardian');
+        console.log(JSON.stringify({kind:'managed',cwd,executable,execArgv,scope:config.scope,ownerPid,guardianPid,artifact:selection.current}));
+      } finally { await installation.close(); }
+    } else {
+    const candidates=[{scope:'system',file:'/etc/systemd/system/omnitron-daemon.service'},{scope:'user',file:path.join(os.homedir(),'.config/systemd/user/omnitron-daemon.service')}].filter(c=>fs.existsSync(c.file));
+    if(candidates.length>1) throw Error('Multiple supervisor scopes are unsupported');
     if(!candidates.length) { console.log(JSON.stringify({kind:'fork',cwd,executable,execArgv})); }
     else {
       const unit=candidates[0]; const args=unit.scope==='user'?['--user']:[];
@@ -398,13 +420,22 @@ export function runtimeProbeCommand(bundle: InstalledBundle, pid: number): strin
       if(operatorCwd.length!==1 || !aliases.some(p=>operatorCwd[0]==='Environment=OMNITRON_CWD='+p || operatorCwd[0]==='Environment="OMNITRON_CWD='+p+'"')) throw Error('Unsupported supervisor operator cwd');
       if(lines.some(l=>!l.startsWith('ExecStart=')&&!l.startsWith('WorkingDirectory=')&&!/^Environment="?OMNITRON_CWD=/.test(l)&&l.includes(root))) throw Error('Additional static framework paths in service need an explicit migration');
       console.log(JSON.stringify({kind:'systemd',cwd,executable,execArgv,...unit,contents,enabled:properties.UnitFileState==='enabled'}));
-    }`);
+    } }`;
+  // SSH's default Node may have a different native-module ABI. Read the
+  // selected SQLite registry with the executable of the actual serving process.
+  return remoteNode(`${fsPrelude} import {execFileSync} from 'node:child_process';
+    if(process.platform!=='linux') throw Error('Controlled host upgrade currently requires Linux runtime inspection');
+    const executable=fs.realpathSync('/proc/'+${pid}+'/exe');
+    process.stdout.write(execFileSync(executable,['--input-type=module','--eval',${JSON.stringify(probe)}],
+      {encoding:'utf8',timeout:60000,maxBuffer:1024*1024}));`);
 }
 export function runtimeStopCommand(runtime: HostRuntime, bundle: InstalledBundle): string {
+  if (runtime.kind === 'managed') throw new Error('Use backend upgrade for an independently supervised runtime');
   if (runtime.kind === 'fork') return `${runtime.executable ? shellEscape(runtime.executable) + ' ' : ''}${shellEscape(`${bundle.root}/dist/cli/omnitron.js`)} down`;
   return `systemctl ${runtime.scope === 'user' ? '--user ' : ''}stop omnitron-daemon.service`;
 }
 export function runtimeStartCommand(runtime: HostRuntime, previous: InstalledBundle, bundle: InstalledBundle, allowedCurrentRoots: string[] = [previous.root, bundle.root]): string {
+  if (runtime.kind === 'managed') throw new Error('Use backend upgrade for an independently supervised runtime');
   if (runtime.kind === 'fork') {
     if (runtime.executable && !runtime.executable.startsWith('/')) throw new Error('Captured Node executable must be absolute');
     const executable = runtime.executable ? shellEscape(runtime.executable) + ' ' : '';

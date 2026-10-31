@@ -182,18 +182,33 @@ export class HealthCheckService {
     const checks: Array<Promise<HealthCheckResult>> = [
       timed(`${name} process`, async () =>
         status === 'online'
-          ? { status: 'pass', message: `online, pid ${pid}` }
+          ? { status: 'pass', message: pid ? `online, pid ${pid}` : 'online, supervised application' }
           : { status: PROCESS_WARN.has(status) ? 'warn' : 'fail', message: status },
       ),
     ];
-    if (this.orchestrator.hasDeclaredReadiness?.(name) ?? this.orchestrator.getHandle?.(name)?.entry.readiness) {
+    const declaredReadiness = this.orchestrator.hasDeclaredReadiness?.(name) ?? this.orchestrator.getHandle?.(name)?.entry.readiness;
+    const measured: HealthCheckResult[] = [];
+    if (status === 'online') {
       const start = Date.now();
-      const health = (await this.orchestrator.getHealth(name))[name];
-      const measured = health?.checks.map(check => ({ ...check, name: `${name} ${check.name}`, duration: Date.now() - start })) ??
-        [{ name: `${name} readiness`, status: 'warn' as const, message: 'No readiness measurement returned', duration: Date.now() - start }];
-      return [...await Promise.all(checks), ...measured];
+      try {
+        const health = (await this.orchestrator.getHealth(name))[name];
+        if (!health) {
+          measured.push({ name: `${name} readiness`, status: 'warn', message: 'No application health measurement returned', duration: Date.now() - start });
+        } else {
+          measured.push(...health.checks.map(check => ({ ...check, name: `${name} ${check.name}`, duration: Date.now() - start })));
+          // A hook may return only its verdict. Never let HTTP 200 or a live
+          // process overrule a failed domain check, including older workers.
+          const verdict = health.status === 'unhealthy' ? 'fail' : 'warn';
+          if (health.status !== 'healthy' && !measured.some(check => check.status === verdict || check.status === 'fail')) measured.push({ name: `${name} application health`,
+            status: health.status === 'unhealthy' ? 'fail' : 'warn',
+            message: `Application reports ${health.status}`, duration: Date.now() - start });
+        }
+      } catch (error) {
+        measured.push({ name: `${name} application health`, status: 'fail',
+          message: `Health measurement failed: ${error instanceof Error ? error.message : String(error)}`, duration: Date.now() - start });
+      }
     }
-    if (port) {
+    if (port && !declaredReadiness) {
       // titan answers `/health` with 200 while its HTTP server is online and
       // 503 otherwise: this is the server taking a request, not the app's
       // own verdict on itself — that is `omnitron health`.
@@ -206,7 +221,7 @@ export class HealthCheckService {
         }),
       );
     }
-    return Promise.all(checks);
+    return [...await Promise.all(checks), ...measured];
   }
 
   private containerCheck(

@@ -59,6 +59,7 @@ type App = { name: string; status: string; pid: number | null; port: number | nu
 const orchestratorOf = (apps: App[]) => ({
   list: () => apps,
   getApp: (name: string) => apps.find((a) => a.name === name || a.name.endsWith(`/${name}`)) ?? null,
+  getHealth: async (name: string) => ({ [name]: { status: 'healthy', checks: [] } }),
 });
 
 const container = (name: string, service: string, over: Record<string, unknown> = {}) => ({
@@ -229,6 +230,20 @@ describe('the command says it with its exit code', () => {
       answers.push(async () => ({ apps: await report('healthy')(), infra: await report('degraded')(), overall: 'degraded' }));
       await healthCheckCommand();
       expect(process.exitCode).toBe(1);
+
+      const { setEnvOverride, resetEnvCache } = await import('../../src/shared/env-config.js');
+      const output = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+      try {
+        setEnvOverride({ OMNITRON_OUTPUT: 'json' });
+        answers.push(report('unhealthy'));
+        await healthCheckCommand('main');
+        expect(process.exitCode).toBe(1);
+        expect(output).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(String(output.mock.calls[0]![0]))).toMatchObject({ ok: true, data: { overall: 'unhealthy' } });
+      } finally {
+        output.mockRestore();
+        resetEnvCache();
+      }
     } finally {
       process.exitCode = 0;
       vi.doUnmock('../../src/daemon/daemon-client.js');
@@ -249,5 +264,30 @@ describe('declared readiness is shared with health-check', () => {
     expect(result.checks[1]?.message).toContain('http_contract_mismatch');
     expect(getHealth).toHaveBeenCalledWith(app.name);
     expect(knocks).toBe(before);
+  });
+
+  it('keeps a failed application verdict even when HTTP responds 200', async () => {
+    const app = { name: 'sample/dev/worker', status: 'online', pid: 11, port: okPort };
+    const checker = new HealthCheckService({ ...orchestratorOf([app]), getHealth: async () => ({
+      [app.name]: { status: 'unhealthy', checks: [{ name: 'runtime', status: 'fail', message: 'runtime_changed' }] },
+    }) } as never);
+    const result = await checker.checkApp(app.name);
+    expect(result.overall).toBe('unhealthy');
+    expect(result.checks).toContainEqual(expect.objectContaining({ message: 'runtime_changed', status: 'fail' }));
+    expect(result.checks).toContainEqual(expect.objectContaining({ name: `sample/dev/worker HTTP :${okPort}/health`, status: 'pass' }));
+  });
+
+  it.each(['unhealthy', 'degraded'])('retains a %s verdict with no individual checks', async status => {
+    const app = { name: 'sample/dev/worker', status: 'online', pid: null, port: null };
+    const checker = new HealthCheckService({ ...orchestratorOf([app]), getHealth: async () => ({ [app.name]: { status, checks: [] } }) } as never);
+    expect((await checker.checkApp(app.name)).overall).toBe(status);
+  });
+
+  it('reports an unavailable health channel instead of treating process liveness as readiness', async () => {
+    const app = { name: 'sample/dev/worker', status: 'online', pid: 11, port: null };
+    const checker = new HealthCheckService({ ...orchestratorOf([app]), getHealth: async () => { throw Error('RPC disconnected'); } } as never);
+    expect(await checker.checkApp(app.name)).toMatchObject({ overall: 'unhealthy', checks: expect.arrayContaining([
+      expect.objectContaining({ message: 'Health measurement failed: RPC disconnected', status: 'fail' }),
+    ]) });
   });
 });

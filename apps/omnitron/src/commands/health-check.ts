@@ -11,10 +11,11 @@
  * Exits 1 unless everything checked is healthy.
  */
 
-import { box, log, prism } from '@xec-sh/kit';
+import { box, prism } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { HealthReport, PlatformHealthReport } from '../services/health-check.service.js';
 import { requireDaemon } from './daemon-required.js';
+import { emitJson, emitError } from './output.js';
 
 /**
  * Typed proxy for the `OmnitronHealth` Netron service exposed directly
@@ -49,13 +50,16 @@ export async function healthCheckCommand(appName?: string): Promise<void> {
       // ("omni/dev/main") forms work — matching `inspect`.
       const report = await health.checkApp({ appName });
 
-      renderHealthReport(`Health Check: ${appName}`, report);
       // A script asks `health-check && deploy`; it used to get 0 whatever
       // the report said.
       if (report.overall !== 'healthy') process.exitCode = 1;
+      if (emitJson(report)) return;
+      renderHealthReport(`Health Check: ${appName}`, report);
     } else {
       // Full platform health check via OmnitronHealth.checkAll
       const result = await health.checkAll();
+      if (result.overall !== 'healthy') process.exitCode = 1;
+      if (emitJson(result)) return;
 
       const lines: string[] = [];
 
@@ -77,14 +81,13 @@ export async function healthCheckCommand(appName?: string): Promise<void> {
       renderChecks(lines, result.infra);
 
       box(lines.join('\n'), 'Health Check — this machine');
-      if (result.overall !== 'healthy') process.exitCode = 1;
     }
   } catch (err) {
-    log.error(`Health check failed: ${(err as Error).message}`);
+    emitError(`Health check failed: ${(err as Error).message}`);
     process.exitCode = 1;
+  } finally {
+    await client.disconnect();
   }
-
-  await client.disconnect();
 }
 
 function renderHealthReport(title: string, report: any): void {

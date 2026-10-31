@@ -56,7 +56,7 @@ function service() {
   const at = (level: string) => (a: unknown, b?: string) =>
     said.push({ level, fields: typeof a === 'object' && a ? (a as Record<string, unknown>) : {}, msg: typeof a === 'string' ? a : (b ?? '') });
   const logger: any = { info: at('info'), warn: at('warn'), error: at('error'), debug: at('debug'), trace() {}, fatal() {}, child: () => logger };
-  const stateStore: any = { save() {}, load: () => null, get: () => null, set() {} };
+  const stateStore: any = { selectProjectsSync: () => [], kvGetSync: () => null, save() {}, load: () => null, get: () => null, set() {} };
   const svc: any = new ProjectService(logger, { list: () => [], listHandleNames: () => [] } as never, stateStore);
   const migrate = (root: string) =>
     svc.runStackMigrations(

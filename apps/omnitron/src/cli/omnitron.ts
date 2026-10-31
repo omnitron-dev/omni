@@ -236,6 +236,25 @@ project
     await projectRemoveCommand(name);
   });
 
+const configuration = project.command('configuration').description('Manage configuration sources inside one project');
+configuration.command('list <project>').description('Show project stack sources and preserved runtime identities')
+  .action(async name => {
+    const { projectConfigurationCommand } = await import('../commands/project.js');
+    await projectConfigurationCommand('list', name);
+  });
+configuration.command('import <project> <name> <path>').description('Import stack configuration without restarting applications')
+  .option('--registration <name>', 'Preserve an existing registration and its execution/history namespace')
+  .requiredOption('--stack <source=target...>', 'Map each source stack to its name inside the project')
+  .action(async (projectName, name, directory, options) => {
+    const { projectConfigurationCommand } = await import('../commands/project.js');
+    await projectConfigurationCommand('import', projectName, name, directory, options);
+  });
+configuration.command('detach <project> <name>').description('Undo a configuration import; keep processes and history intact')
+  .action(async (projectName, name) => {
+    const { projectConfigurationCommand } = await import('../commands/project.js');
+    await projectConfigurationCommand('detach', projectName, name);
+  });
+
 project
   .command('scan')
   .description('Scan app bootstraps and show infrastructure requirements')

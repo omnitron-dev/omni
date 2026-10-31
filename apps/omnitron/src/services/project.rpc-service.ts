@@ -1,5 +1,6 @@
 import { publicStack } from '../project/public-stack.js';
 import type { TopologyScope, TopologySpec } from '../shared/dto/topology.js';
+import { publicStackName, type ConfigurationImport } from '../project/configuration-catalog.js';
 /**
  * ProjectRpcService — OmnitronProject Netron RPC endpoints
  *
@@ -86,28 +87,63 @@ export class ProjectRpcService {
 
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getTopologyWorkspace(data: TopologyScope) {
-    return this.projectService.getTopologyWorkspace(data);
+    const scope = await this.projectService.resolveProjectStack(data);
+    const workspace = await this.projectService.getTopologyWorkspace(scope);
+    return { ...workspace, ...data,
+      plans: workspace.plans.map(plan => ({ ...plan, ...data })),
+      observed: { ...workspace.observed, name: data.stack, runtimeScope: scope },
+      dependencies: workspace.dependencies.map(edge => ({ ...edge, ...data })),
+    };
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async saveTopologyDraft(data: TopologyScope & { baseRevision: string; expectedDraft: number | null; spec: TopologySpec }) {
-    return this.projectService.saveTopologyDraft(data);
+    return this.projectService.saveTopologyDraft(await this.projectService.resolveProjectStack(data));
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async planTopology(data: TopologyScope & { draftRevision: number }) {
-    return this.projectService.planTopology(data);
+    const plan = await this.projectService.planTopology(await this.projectService.resolveProjectStack(data));
+    return { ...plan, project: data.project, stack: data.stack };
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async applyTopologyPlan(data: TopologyScope & { plan: string }) {
-    return this.projectService.applyTopologyPlan(data);
+    const plan = await this.projectService.applyTopologyPlan(await this.projectService.resolveProjectStack(data));
+    return { ...plan, project: data.project, stack: data.stack };
   }
 
   /** Sanitized configuration graph; the resolver never returns environment values or credentials. */
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getTopology(data: { project?: string; stack?: string }): Promise<import('../shared/dto/project.js').ProjectTopology> {
-    return this.projectService.getTopology(data);
+    const result: import('../shared/dto/project.js').ProjectTopology = {
+      version: 1, generatedAt: new Date().toISOString(), dependencies: [], warnings: [], scopes: [],
+    };
+    const projects = data.project ? [data.project] : this.projectService.listProjects().map(project => project.name);
+    for (const project of projects) {
+      const selected = data.stack ? await this.projectService.resolveProjectStack({ project, stack: data.stack }) : null;
+      for (const record of this.projectService.projectConfigurations(project)) {
+        if (selected && selected.project !== record.name) continue;
+        const graph = await this.projectService.getTopology({ project: record.name, ...(selected ? { stack: selected.stack } : {}) });
+        const stackName = (stack: string) => record.name === project ? stack : publicStackName(record, stack);
+        for (const stack of this.projectService.listStacks(record.name))
+          result.scopes!.push({ project, stack: stackName(stack.name), runtimeProject: record.name, runtimeStack: stack.name });
+        result.dependencies.push(...graph.dependencies.map(edge => ({ ...edge, project, stack: stackName(edge.stack) })));
+        result.warnings.push(...graph.warnings.map(warning => ({ ...warning, project, ...(warning.stack ? { stack: stackName(warning.stack) } : {}) })));
+      }
+    }
+    return result;
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async importConfiguration(data: ConfigurationImport): Promise<IProjectInfo> {
+    return this.projectService.importProjectConfiguration(data);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async detachConfiguration(data: { project: string; name: string; expectedRevision: string }): Promise<{ success: true }> {
+    await this.projectService.detachProjectConfiguration(data);
+    return { success: true };
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
@@ -130,6 +166,7 @@ export class ProjectRpcService {
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async refreshInfrastructureOwnership(data: { project: string; stack: string }): Promise<{ released: string[]; adopted: string[] }> {
+    data = await this.projectService.resolveProjectStack(data);
     const result = await this.projectService.refreshInfrastructureOwnership(data.project, data.stack);
     await this.audit?.record({ action: 'project.infrastructure.ownership', resourceType: 'project', resourceId: data.project, details: { stack: data.stack, ...result } });
     return result;
@@ -157,23 +194,30 @@ export class ProjectRpcService {
     // nodes are asked here, where the call can be awaited. And the config is
     // loaded if the daemon has not got to it yet: `listStacks` answers [] for
     // a project not loaded, which read as «this project has no stacks».
-    await this.projectService.ensureConfig(data.project);
-    return Promise.all(
-      this.projectService
-        .listStacks(data.project)
-        .map(async (info) => publicStack(await this.projectService.withRemoteAppStatuses(data.project, info))),
-    );
+    const result: IStackInfo[] = [];
+    for (const source of this.projectService.projectConfigurations(data.project)) {
+      await this.projectService.ensureConfig(source.name);
+      for (const info of this.projectService.listStacks(source.name)) {
+        const observed = await this.projectService.withRemoteAppStatuses(source.name, info);
+        result.push(this.projectService.publicStackInfo(data.project, source, observed));
+      }
+    }
+    if (new Set(result.map(stack => stack.name)).size !== result.length) throw new Error('Conflicting stack names in project configurations');
+    return result;
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getStack(data: { project: string; stack: string }): Promise<IStackInfo> {
     // Loaded on demand in the first seconds after a daemon start rather than
     // refused (`ensureConfig`).
+    const logicalName = data.stack;
+    data = await this.projectService.resolveProjectStack(data);
     await this.projectService.ensureConfig(data.project);
-    return publicStack(await this.projectService.withRemoteAppStatuses(
+    const info = publicStack(await this.projectService.withRemoteAppStatuses(
       data.project,
       this.projectService.getStack(data.project, data.stack),
     ));
+    return { ...info, name: logicalName, runtimeScope: { project: data.project, stack: data.stack } };
   }
 
   /**
@@ -187,12 +231,14 @@ export class ProjectRpcService {
       'services' | 'overrides'
     >,
   ): Promise<Array<{ node: string; inspection?: import('../infrastructure/host-inspection.js').HostInspection; error?: string }>> {
-    return this.projectService.inspectStackHost(data);
+    return this.projectService.inspectStackHost(await this.projectService.resolveProjectStack(data));
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getStackStatus(data: { project: string; stack: string }): Promise<StackRuntime> {
-    return this.projectService.getStackStatus(data.project, data.stack);
+    const scope = await this.projectService.resolveProjectStack(data);
+    await this.projectService.ensureConfig(scope.project);
+    return { ...await this.projectService.getStackStatus(scope.project, scope.stack), name: data.stack };
   }
 
   /**
@@ -219,6 +265,8 @@ export class ProjectRpcService {
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async startStack(data: { project: string; stack: string; allowDirty?: boolean; release?: string; reinstall?: boolean }): Promise<IStackInfo> {
+    const logicalName = data.stack;
+    data = await this.projectService.resolveProjectStack(data);
     // The report an operator acts on, and a script exits on: `only 0/6 apps
     // came online` about six that were running.
     //
@@ -236,7 +284,7 @@ export class ProjectRpcService {
         ...(data.reinstall === true ? { reinstall: true } : {}),
       }),
     );
-    return publicStack(info);
+    return { ...publicStack(info), name: logicalName, runtimeScope: { project: data.project, stack: data.stack } };
   }
 
   /**
@@ -248,11 +296,14 @@ export class ProjectRpcService {
    */
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async checkRelease(data: { project: string; stack: string; release: string }): Promise<{ ok: boolean; because: string }> {
+    data = await this.projectService.resolveProjectStack(data);
     return this.projectService.checkRelease(data.project, data.stack, data.release);
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async stopStack(data: { project: string; stack: string }): Promise<IStackInfo> {
+    const logicalName = data.stack;
+    data = await this.projectService.resolveProjectStack(data);
     const info = await this.projectService.stopStack(data.project, data.stack);
     await this.audit?.record({
       action: 'stack.stop',
@@ -260,7 +311,7 @@ export class ProjectRpcService {
       resourceId: `${data.project}/${data.stack}`,
       details: { type: info.type },
     });
-    return publicStack(info);
+    return { ...publicStack(info), name: logicalName, runtimeScope: { project: data.project, stack: data.stack } };
   }
 
   // ===========================================================================
@@ -280,6 +331,7 @@ export class ProjectRpcService {
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async deleteStack(data: { project: string; stack: string }): Promise<{ success: boolean }> {
+    data = await this.projectService.resolveProjectStack(data);
     await this.projectService.deleteStack(data.project, data.stack);
     return { success: true };
   }
@@ -299,6 +351,7 @@ export class ProjectRpcService {
     displayName?: string;
     vaultKey?: string;
   }): Promise<IStackAccount> {
+    data = await this.projectService.resolveProjectStack(data);
     const row = { action: 'stack.account.create', resourceType: 'stack', resourceId: `${data.project}/${data.stack}` };
     try {
       const made = await this.projectService.createOperatorAccount(data.project, data.stack, {
@@ -332,6 +385,7 @@ export class ProjectRpcService {
    */
   @Public({ auth: { roles: ADMIN_ROLES } })
   async censusStackAccounts(data: { project: string; stack: string }): Promise<IStackAccountCensus> {
+    data = await this.projectService.resolveProjectStack(data);
     return this.projectService.censusOperatorAccounts(data.project, data.stack);
   }
 
@@ -348,6 +402,7 @@ export class ProjectRpcService {
     mode: 'census' | 'rehearse' | 'apply';
     also?: string[];
   }): Promise<IStackLeftoversCensus> {
+    data = await this.projectService.resolveProjectStack(data);
     return this.projectService.probeLeftovers(data.project, data.stack, { mode: data.mode, also: data.also });
   }
 
@@ -362,6 +417,7 @@ export class ProjectRpcService {
     action: 'status' | 'on' | 'off';
     minutes?: number;
   }): Promise<IStackMaintenance> {
+    data = await this.projectService.resolveProjectStack(data);
     return this.projectService.stackMaintenance(data.project, data.stack, { action: data.action, minutes: data.minutes });
   }
 
@@ -371,6 +427,7 @@ export class ProjectRpcService {
    */
   @Public({ auth: { roles: ADMIN_ROLES } })
   async showStackAccount(data: { project: string; stack: string; username: string }): Promise<IStackAccountLookup> {
+    data = await this.projectService.resolveProjectStack(data);
     return this.projectService.showOperatorAccount(data.project, data.stack, data.username);
   }
 
@@ -386,6 +443,7 @@ export class ProjectRpcService {
     id: string;
     vaultKey?: string;
   }): Promise<IStackAccountRemoved> {
+    data = await this.projectService.resolveProjectStack(data);
     const row = { action: 'stack.account.remove', resourceType: 'stack', resourceId: `${data.project}/${data.stack}` };
     try {
       const removed = await this.projectService.removeOperatorAccount(data.project, data.stack, {

@@ -86,7 +86,7 @@ function attestation(rm: (command: string) => { stdout: string; stderr: string; 
 
   const project = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-attest-project-'));
   cleanup.push(project);
-  const stateStore: any = { save() {}, load: () => null, get: () => null, set() {} };
+  const stateStore: any = { selectProjectsSync: () => [], kvGetSync: () => null, save() {}, load: () => null, get: () => null, set() {} };
   const svc: any = new ProjectService(logger, { list: () => [], listHandleNames: () => [] } as never, stateStore);
   svc.deployer = deployer;
   svc.registry = { get: () => ({ path: project }) };

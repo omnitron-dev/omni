@@ -422,7 +422,7 @@ describe('the audit rows', () => {
 
   it('records who was made and where the password is kept', async () => {
     const record = vi.fn(async () => undefined);
-    const rpc = new ProjectRpcService({ createOperatorAccount: vi.fn(async () => MADE) } as never, { record } as never);
+    const rpc = new ProjectRpcService({ resolveProjectStack: async (scope: unknown) => scope, createOperatorAccount: vi.fn(async () => MADE) } as never, { record } as never);
 
     await rpc.createStackAccount({ project: 'sample', stack: 'test', username: 'superadmin' });
 
@@ -440,6 +440,7 @@ describe('the audit rows', () => {
     const refused = new Error("sample/test on 37.27.130.185:22: the stand refused: 'superadmin' already exists");
     const rpc = new ProjectRpcService(
       {
+        resolveProjectStack: async (scope: unknown) => scope,
         createOperatorAccount: vi.fn(async () => {
           throw refused;
         }),
@@ -456,7 +457,7 @@ describe('the audit rows', () => {
   it('records a removal both ways', async () => {
     const record = vi.fn(async () => undefined);
     const removed = { username: 'superadmin', id: ID, node: '37.27.130.185:22', commit: HEAD, vaultKeyRemoved: null };
-    const ok = new ProjectRpcService({ removeOperatorAccount: vi.fn(async () => removed) } as never, { record } as never);
+    const ok = new ProjectRpcService({ resolveProjectStack: async (scope: unknown) => scope, removeOperatorAccount: vi.fn(async () => removed) } as never, { record } as never);
     await ok.removeStackAccount({ project: 'sample', stack: 'test', username: 'superadmin', id: ID });
     expect(record).toHaveBeenCalledWith({
       action: 'stack.account.remove',
@@ -469,6 +470,7 @@ describe('the audit rows', () => {
     const refusal = new Error('was not removed');
     const failed = new ProjectRpcService(
       {
+        resolveProjectStack: async (scope: unknown) => scope,
         removeOperatorAccount: vi.fn(async () => {
           throw refusal;
         }),

@@ -81,7 +81,7 @@ const nodeStatus = (apps: Array<{ name: string; status: string; port?: number }>
 
 function service(invoke: (host: string, port: number, svc: string, method: string) => Promise<unknown>) {
   const orchestrator: any = { list: () => [], listHandleNames: () => [] };
-  const stateStore: any = { kvGetSync: () => null, save() {}, load: () => null, get: () => null, set() {} };
+  const stateStore: any = { selectProjectsSync: () => [], kvGetSync: () => null, save() {}, load: () => null, get: () => null, set() {} };
   const svc = new ProjectService(logger, orchestrator, stateStore) as unknown as {
     slaveConnector: unknown;
     withRemoteAppStatuses(project: string, info: never): Promise<{ apps: Array<{ name: string; status: string; port: number | null; handleKey: string }> }>;

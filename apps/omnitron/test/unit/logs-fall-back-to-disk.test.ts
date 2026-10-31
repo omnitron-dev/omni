@@ -57,6 +57,7 @@ vi.mock('../../src/daemon/daemon-client.js', () => ({
       const dir = path.join(TMP, 'projects', project!, stack!, 'logs', rest.join('/'));
       return { name, logPaths: { app: path.join(dir, 'app.log'), error: path.join(dir, 'error.log') } };
     },
+    service: async () => ({ listProjects: async () => [] }),
     getLogs: async () => daemonEntries.value,
     disconnect: async () => { disconnected.count++; },
   }),

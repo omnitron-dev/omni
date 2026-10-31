@@ -7,6 +7,29 @@
 
 import type { DaemonRole, IStackConfig, AppStatus } from '../../config/types.js';
 
+export interface ConfigurationImport {
+  project: string;
+  name: string;
+  path: string;
+  /** Existing namespace for migration; new imports receive a stable generated namespace. */
+  registration?: string;
+  /** Source stack name -> public stack name within the owning project. */
+  stacks: Record<string, string>;
+  expectedRevision: string;
+}
+
+export interface ProjectConfigurationInfo {
+  name: string;
+  path: string;
+  runtimeProject: string;
+  stacks: Record<string, string>;
+}
+
+export interface RuntimeStackScope {
+  project: string;
+  stack: string;
+}
+
 // =============================================================================
 // Project DTOs
 // =============================================================================
@@ -26,6 +49,9 @@ export interface IProjectInfo {
   runningStacks: number;
   /** Total number of configured stacks */
   totalStacks: number;
+  /** Configuration sources belong to this project; runtime namespaces are retained for history and recovery. */
+  configurations?: ProjectConfigurationInfo[];
+  catalogRevision?: string;
   /**
    * Set only on the answer to an add of a project already registered at that
    * path: its config was read again, and this many running apps took the new
@@ -101,6 +127,8 @@ export interface IStackAccountRemoved {
 export type StackStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'degraded' | 'error' | 'unknown';
 
 export interface IStackInfo {
+  /** Execution/history identity, which can predate this stack's public project/name. */
+  runtimeScope?: RuntimeStackScope;
   /** Stack name (e.g., 'dev', 'test', 'prod') */
   name: string;
   /** Stack deployment type */
@@ -429,6 +457,8 @@ export interface ProjectTopology {
   version: 1;
   generatedAt: string;
   dependencies: ProjectDependency[];
+  /** Canonical ownership of unchanged runtime/history namespaces. */
+  scopes?: Array<{ project: string; stack: string; runtimeProject: string; runtimeStack: string }>;
   /** Missing definitions/configuration are explicit; a partial graph is not a complete census. */
   warnings: Array<{ project: string; stack?: string; app?: string; reason: string }>;
 }

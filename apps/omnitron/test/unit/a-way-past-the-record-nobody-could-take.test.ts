@@ -45,7 +45,7 @@ const RELEASE = {
 /** A remote start, with every node-facing step answered — what reaches the deployer is the question. */
 function remoteStart() {
   const quiet: any = { info() {}, warn() {}, error() {}, debug() {}, trace() {}, fatal() {}, child: () => quiet };
-  const stateStore: any = { save() {}, load: () => null, get: () => null, set() {} };
+  const stateStore: any = { selectProjectsSync: () => [], kvGetSync: () => null, save() {}, load: () => null, get: () => null, set() {} };
   const svc: any = new ProjectService(quiet, { list: () => [], listHandleNames: () => [] } as never, stateStore, {
     secrets: { get: async () => null } as never,
   });
@@ -106,7 +106,8 @@ describe('`--reinstall`, from the daemon\'s door to the start', () => {
     const opts: Array<Record<string, unknown> | undefined> = [];
     const rpc: any = Object.create(ProjectRpcService.prototype);
     rpc.projectService = {
-      startStack: async (_p: string, _s: string, o?: Record<string, unknown>) => (opts.push(o), { apps: [] }),
+      resolveProjectStack: async (scope: unknown) => scope,
+      startStack: async (_p: string, _s: string, o?: Record<string, unknown>) => (opts.push(o), { apps: [], config: { type: 'remote' } }),
       withRemoteAppStatuses: async (_p: string, info: unknown) => info,
     };
     await rpc.startStack({ project: 'sample', stack: 'test', release: 'r', reinstall: true });
@@ -118,7 +119,7 @@ describe('`--reinstall`, from the daemon\'s door to the start', () => {
   it('is carried by the service down its positional chain to the run', async () => {
     const quiet: any = { info() {}, warn() {}, error() {}, debug() {}, trace() {}, fatal() {}, child: () => quiet };
     const svc: any = new ProjectService(quiet, { list: () => [], listHandleNames: () => [] } as never, {
-      save() {}, load: () => null, get: () => null, set() {},
+      selectProjectsSync: () => [], kvGetSync: () => null, save() {}, load: () => null, get: () => null, set() {},
     } as never, { secrets: { get: async () => null } as never });
     const seen: unknown[][] = [];
     svc.runStackStart = async (...args: unknown[]) => (seen.push(args), { apps: [] });

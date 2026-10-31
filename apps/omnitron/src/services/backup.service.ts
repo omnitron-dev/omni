@@ -522,7 +522,7 @@ export class BackupService {
     if (!projects) return null;
     try {
       const mgr = projects.getInfraManager();
-      for (const p of projects.listProjects()) {
+      for (const p of projects.listProjectRegistrations()) {
         let stacks: string[] = [];
         try { stacks = projects.getRunningStacks(p.name); } catch { continue; }
         for (const stack of stacks) {
@@ -1504,7 +1504,7 @@ export class BackupService {
     if (!projects) return { databases, stacks };
     try {
       const infraManager = projects.getInfraManager();
-      for (const p of projects.listProjects()) {
+      for (const p of projects.listProjectRegistrations()) {
         let running: string[] = [];
         try { running = projects.getRunningStacks(p.name); } catch { continue; }
         for (const stack of running) {

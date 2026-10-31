@@ -17,6 +17,7 @@ import { ProjectRegistry } from '../project/registry.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { IProjectRpcService, IProjectInfo } from '../shared/dto/services.js';
 import { emitJson } from './output.js';
+import { configurationInfo } from '../project/configuration-catalog.js';
 
 /** Width of the Path column in `project list`. */
 const PATH_WIDTH = 50;
@@ -105,7 +106,8 @@ export async function projectListCommand(): Promise<void> {
     const { projects, online } = await withProjectService(
       async (svc) => ({ projects: await svc.listProjects(), online: true }),
       () => {
-        const seeds = ProjectRegistry.open().list();
+        const registry = ProjectRegistry.open();
+        const seeds = registry.list();
         const fromRegistry = seeds.map<IProjectInfo>((p) => ({
           name: p.name,
           displayName: p.name,
@@ -114,6 +116,8 @@ export async function projectListCommand(): Promise<void> {
           enabledStacks: p.enabledStacks ?? [],
           runningStacks: 0,
           totalStacks: 0,
+          configurations: registry.registrations(p.name).map(configurationInfo),
+          catalogRevision: registry.catalogRevision(),
         }));
         return { projects: fromRegistry, online: false };
       },
@@ -168,6 +172,45 @@ export async function projectRemoveCommand(name: string): Promise<void> {
     log.error((err as Error).message);
     process.exitCode = 1;
   }
+}
+
+export async function projectConfigurationCommand(
+  action: 'list' | 'import' | 'detach',
+  project: string,
+  name?: string,
+  directory?: string,
+  options: { registration?: string; stack?: string[] } = {}
+): Promise<void> {
+  try {
+    const result = await withProjectService(async service => {
+      const info = await service.getProject({ name: project });
+      if (!info.catalogRevision) throw new Error('This daemon does not support project configuration imports');
+      if (action === 'list') return info;
+      if (!name) throw new Error('A configuration name is required');
+      if (action === 'detach') {
+        await service.detachConfiguration({ project, name, expectedRevision: info.catalogRevision });
+        return service.getProject({ name: project });
+      }
+      if (!directory) throw new Error('A configuration directory is required');
+      const stacks: Record<string, string> = {};
+      for (const mapping of options.stack ?? []) {
+        const parts = mapping.split('=');
+        if (parts.length !== 2 || !parts[0] || !parts[1] || Object.hasOwn(stacks, parts[0]))
+          throw new Error('Use --stack source=project-stack once for each source stack');
+        stacks[parts[0]] = parts[1];
+      }
+      const path = await import('node:path');
+      return service.importConfiguration({ project, name, path: path.resolve(directory), stacks,
+        ...(options.registration ? { registration: options.registration } : {}), expectedRevision: info.catalogRevision });
+    }, () => { throw new Error('Configuration import/inspection requires a reachable daemon'); });
+    if (emitJson(result)) return;
+    log.info(`${result.displayName} — one project, ${result.totalStacks} stacks`);
+    for (const source of result.configurations ?? []) {
+      log.info(`${source.name}: ${source.path}`);
+      for (const [runtime, stack] of Object.entries(source.stacks))
+        log.info(`  ${project}/${stack} ← ${source.runtimeProject}/${runtime} (preserved execution/history identity)`);
+    }
+  } catch (error) { log.error((error as Error).message); process.exitCode = 1; }
 }
 
 /** The same configuration evidence the Console draws; no probes or mutations. */

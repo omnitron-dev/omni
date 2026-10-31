@@ -36,6 +36,8 @@ export interface LogIngestionStats {
 
 export interface LogQueryFilter {
   app?: string | undefined;
+  /** Union of explicit runtime namespaces, e.g. project/ or project/stack/. */
+  appPrefixes?: string[];
   /**
    * Restrict to one cluster node.
    *

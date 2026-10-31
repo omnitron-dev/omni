@@ -126,7 +126,7 @@ describe('a remote stack', () => {
 
   function deployment(vault: Record<string, string>) {
     const quiet: any = { info() {}, warn() {}, error() {}, debug() {}, trace() {}, fatal() {}, child: () => quiet };
-    const stateStore: any = { save() {}, load: () => null, get: () => null, set() {} };
+    const stateStore: any = { selectProjectsSync: () => [], kvGetSync: () => null, save() {}, load: () => null, get: () => null, set() {} };
     const svc: any = new ProjectService(quiet, { list: () => [], listHandleNames: () => [] } as never, stateStore, {
       secrets: { get: async (key: string) => vault[key] ?? null } as never,
     });

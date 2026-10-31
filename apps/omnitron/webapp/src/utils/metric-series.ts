@@ -14,7 +14,7 @@ export function metricScope(
 ): MetricScope {
   const selected = stacks.filter((item) => !stack || item.name === stack);
   return {
-    localPrefixes: selected.filter((item) => item.type === 'local').map((item) => `${project}/${item.name}/`),
+    localPrefixes: selected.filter((item) => item.type === 'local').map((item) => `${item.runtimeScope?.project ?? project}/${item.runtimeScope?.stack ?? item.name}/`),
     remote: selected
       .filter((item) => item.type !== 'local')
       .flatMap((item) =>

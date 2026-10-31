@@ -33,6 +33,8 @@ const stack = (name: string, type: IStackInfo['type'], apps: IStackAppStatus[]) 
 
 /** A project with a local dev stack and a remote test stack, both running main and payments. */
 const projectService = {
+  projectConfigurations: () => [{ name: 'sample' }],
+  publicStackInfo: (_project: string, _source: unknown, info: IStackInfo) => info,
   // Loaded already: `listStacks` asks for the project's config first (60362827).
   ensureConfig: async () => undefined,
   listStacks: () => [

@@ -28,6 +28,7 @@ import { createHash } from 'node:crypto';
 import type { ISeedProject, IProjectRegistry } from '../config/types.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import { CONFIG_FILE_NAMES } from '../config/loader.js';
+import { validateConfigurationNames, type ConfigurationImport, type RuntimeStackScope } from './configuration-catalog.js';
 
 // CJS-style require for the open() factory's lazy DaemonStateStore
 // load. The module shape is ESM but we need a synchronous import
@@ -37,6 +38,24 @@ const requireCjs = createRequire(import.meta.url);
 const PROJECTS_DIR = path.join(OMNITRON_HOME, 'projects');
 const LEGACY_REGISTRY_FILE = path.join(PROJECTS_DIR, 'registry.json');
 const ENABLED_STACKS_KV_KEY = (name: string) => `project:${name}:enabled-stacks`;
+const CONFIGURATIONS_KEY = (name: string) => `project:${name}:configurations`;
+interface ConfigurationState { version: 1; sources: ISeedProject[] }
+
+function configurationState(value: ConfigurationState | null): ConfigurationState {
+  if (!value) return { version: 1, sources: [] };
+  if (value.version !== 1 || !Array.isArray(value.sources)) throw new Error('Unsupported project configuration catalogue');
+  for (const source of value.sources) {
+    if (!source.configuration || typeof source.name !== 'string' || typeof source.path !== 'string')
+      throw new Error('Corrupt project configuration catalogue');
+    validateConfigurationNames(source.configuration.name, source.configuration.stacks);
+  }
+  return value;
+}
+
+function isWithin(parent: string, child: string): boolean {
+  const relative = path.relative(fs.realpathSync(parent), fs.realpathSync(child));
+  return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
+}
 
 /**
  * The config file a project directory must have, whichever spelling.
@@ -69,6 +88,7 @@ export class ProjectRegistry {
    * and update the cache on success.
    */
   private projects = new Map<string, ISeedProject>();
+  private cachedRevision = "";
 
   constructor(private readonly store: DaemonStateStore) {
     fs.mkdirSync(PROJECTS_DIR, { recursive: true });
@@ -112,7 +132,12 @@ export class ProjectRegistry {
   // CRUD — synchronous through-write
   // ===========================================================================
 
+  private assertFresh(): void {
+    if (this.cachedRevision !== this.catalogRevision()) throw new Error('Project catalogue changed outside this controller; reload before editing');
+  }
+
   add(name: string, projectPath: string): ISeedProject {
+    this.assertFresh();
     const absPath = path.resolve(projectPath);
     if (isControlPlaneWorkspace(absPath)) throw new Error('The Omnitron control plane is already the system workspace; register an application project instead');
 
@@ -123,6 +148,9 @@ export class ProjectRegistry {
     if (this.projects.has(name)) {
       throw new Error(`Project '${name}' already registered. Use 'omnitron project remove ${name}' first.`);
     }
+
+    const owner = this.list().find(project => fs.existsSync(project.path) && isWithin(project.path, absPath));
+    if (owner) throw new Error(`This directory belongs to project '${owner.name}'. Import its stack configuration with 'omnitron project configuration import'; do not register another project.`);
 
     const project: ISeedProject = {
       name,
@@ -137,6 +165,7 @@ export class ProjectRegistry {
       last_seen: project.registeredAt,
     });
     this.projects.set(name, project);
+    this.cachedRevision = this.catalogRevision();
 
     const projectDir = path.join(PROJECTS_DIR, name);
     fs.mkdirSync(projectDir, { recursive: true });
@@ -145,18 +174,24 @@ export class ProjectRegistry {
   }
 
   remove(name: string): void {
-    if (!this.projects.has(name)) throw new Error(`Project '${name}' not found`);
+    this.assertFresh();    if (!this.projects.has(name)) throw new Error(`Project '${name}' not found`);
+    if (this.get(name)?.configuration) throw new Error('This is a stack configuration, not a separate project');
+    if (this.registrations(name).length > 1) throw new Error(`Project '${name}' has imported stack configurations; detach them before removing the project`);
     this.store.deleteProjectSync(name);
     this.store.kvDeleteSync?.(ENABLED_STACKS_KV_KEY(name));
     this.projects.delete(name);
+    this.cachedRevision = this.catalogRevision();
   }
 
   updatePath(name: string, newPath: string): ISeedProject {
-    if (isControlPlaneWorkspace(newPath)) throw new Error('The Omnitron control plane is already the system workspace');
+    this.assertFresh();    if (isControlPlaneWorkspace(newPath)) throw new Error('The Omnitron control plane is already the system workspace');
     const project = this.projects.get(name);
     if (!project) throw new Error(`Project '${name}' not found`);
 
     const absPath = path.resolve(newPath);
+    if (!project.configuration && this.registrations(name).length > 1 &&
+        fs.realpathSync(project.path) !== fs.realpathSync(absPath))
+      throw new Error('Relocate imported configurations explicitly before moving the project root');
     if (!findProjectConfig(absPath)) {
       throw new Error(`No ${CONFIG_FILE_NAMES.join(' / ')} found at ${absPath}`);
     }
@@ -167,13 +202,19 @@ export class ProjectRegistry {
       ...project,
       path: absPath,
     };
-    this.store.upsertProjectSync({
+    if (project.configuration) {
+      this.store.kvUpdateSync<ConfigurationState>(CONFIGURATIONS_KEY(project.configuration.project), current => {
+        const state = configurationState(current);
+        return { ...state, sources: state.sources.map(source => source.name === name ? { ...source, path: absPath } : source) };
+      });
+    } else this.store.upsertProjectSync({
       name: updated.name,
       path: updated.path,
       added_at: updated.registeredAt,
       last_seen: new Date().toISOString(),
     });
     this.projects.set(name, updated);
+    this.cachedRevision = this.catalogRevision();
     return updated;
   }
 
@@ -182,7 +223,98 @@ export class ProjectRegistry {
   }
 
   list(): ISeedProject[] {
+    return this.listRegistrations().filter(project => !project.configuration);
+  }
+
+  /** Execution/recovery inventory, including imported configurations with their original identities. */
+  listRegistrations(): ISeedProject[] {
     return Array.from(this.projects.values());
+  }
+
+  registrations(project: string): ISeedProject[] {
+    const root = this.get(project);
+    if (!root) throw new Error(`Project '${project}' not found`);
+    // Legacy namespace calls stay valid, but do not become separate catalogue projects.
+    if (root.configuration) return [root];
+    return this.listRegistrations().filter(record => record.name === project || record.configuration?.project === project);
+  }
+
+  resolveStack(scope: RuntimeStackScope): RuntimeStackScope {
+    const registration = this.get(scope.project);
+    if (!registration) throw new Error(`Project '${scope.project}' not found`);
+    if (registration.configuration) return { ...scope };
+    for (const source of this.registrations(scope.project)) {
+      const match = Object.entries(source.configuration?.stacks ?? {}).find(([, name]) => name === scope.stack);
+      if (match) return { project: source.name, stack: match[0] };
+    }
+    return { ...scope };
+  }
+
+  catalogRevision(): string {
+    const rows = this.store.selectProjectsSync().map(row => ({
+      name: row.name, path: row.path, registeredAt: row.added_at,
+      configurations: configurationState(this.store.kvGetSync<ConfigurationState>(CONFIGURATIONS_KEY(row.name), { strict: true })),
+    })).sort((a, b) => a.name.localeCompare(b.name));
+    return createHash('sha256').update(JSON.stringify(rows)).digest('hex');
+  }
+
+  /** Atomic ownership migration. No process, secret, enabled-stack or telemetry namespace is renamed. */
+  prepareConfiguration(input: ConfigurationImport): ISeedProject {
+    validateConfigurationNames(input.name, input.stacks);
+    if (this.cachedRevision !== input.expectedRevision) throw new Error('Project catalogue changed; reload this controller before importing');
+    const owner = this.get(input.project);
+    if (!owner || owner.configuration) throw new Error('Configuration owner must be a registered project');
+    const location = path.resolve(input.path);
+    if (!findProjectConfig(location)) throw new Error(`No ecosystem configuration found at ${location}`);
+    if (!isWithin(owner.path, location)) throw new Error('A stack configuration must belong to its project repository. Use an explicit service binding for another project.');
+    const runtimeId = input.registration ?? `${input.project}--${input.name}`;
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(runtimeId)) throw new Error('Invalid runtime namespace');
+    if (runtimeId === input.project) throw new Error('The default project configuration cannot be imported into itself');
+    const existing = this.get(runtimeId);
+    if (existing && !isWithin(existing.path, location)) throw new Error('The runtime namespace belongs to another configuration path');
+    if (existing && fs.realpathSync(existing.path) !== fs.realpathSync(location)) throw new Error('Configuration path does not match the existing registration');
+    if (existing?.configuration && existing.configuration.project !== input.project) throw new Error('Configuration already belongs to another project');
+    if (existing && !existing.configuration && this.registrations(runtimeId).length > 1) throw new Error('Cannot import a project that owns other configurations');
+    const occupied = this.listRegistrations().find(record => record.name !== runtimeId && fs.existsSync(record.path) && fs.realpathSync(record.path) === fs.realpathSync(location));
+    if (occupied) throw new Error(`This configuration is already registered as '${occupied.name}'; use its existing runtime namespace`);
+    const record: ISeedProject = {
+      name: runtimeId, path: location, registeredAt: existing?.registeredAt ?? new Date().toISOString(),
+      configuration: { project: input.project, name: input.name, stacks: { ...input.stacks } },
+    };
+    return record;
+  }
+
+  importConfiguration(input: ConfigurationImport): ISeedProject {
+    const record = this.prepareConfiguration(input);
+    const runtimeId = record.name;
+    this.store.kvUpdateSync<ConfigurationState>(CONFIGURATIONS_KEY(input.project), current => {
+      if (this.catalogRevision() !== input.expectedRevision) throw new Error('Project catalogue changed; refresh before importing');
+      const state = configurationState(current);
+      const others = state.sources.filter(source => source.name !== runtimeId);
+      if (others.some(source => source.configuration!.name === input.name)) throw new Error('Configuration name already exists in this project');
+      const names = new Set(others.flatMap(source => Object.values(source.configuration!.stacks)));
+      if (Object.values(input.stacks).some(name => names.has(name))) throw new Error('Project stack name is already assigned to another configuration');
+      this.store.deleteProjectSync(runtimeId);
+      return { version: 1, sources: [...others, record] };
+    });
+    this.loadFromStore();
+    return this.get(runtimeId)!;
+  }
+
+  /** Metadata-only inverse used for rollback; execution namespaces and their state remain intact. */
+  detachConfiguration(project: string, name: string, expectedRevision: string): void {
+    if (this.cachedRevision !== expectedRevision) throw new Error('Project catalogue changed; reload this controller before detaching');
+    this.store.kvUpdateSync<ConfigurationState>(CONFIGURATIONS_KEY(project), current => {
+      if (this.catalogRevision() !== expectedRevision) throw new Error('Project catalogue changed; refresh before detaching');
+      const state = configurationState(current);
+      const source = state.sources.find(record => record.configuration?.name === name);
+      if (!source) throw new Error('Project configuration not found');
+      if (this.store.selectProjectsSync().some(row => row.name === source.name))
+        throw new Error('Runtime namespace is already registered as a project; detach refused');
+      this.store.upsertProjectSync({ name: source.name, path: source.path, added_at: source.registeredAt, last_seen: new Date().toISOString() });
+      return { version: 1, sources: state.sources.filter(record => record !== source) };
+    });
+    this.loadFromStore();
   }
 
   /** Detect external registry edits instead of certifying a stale in-memory cache. */
@@ -190,19 +322,22 @@ export class ProjectRegistry {
     const normalize = (projects: ISeedProject[]) => JSON.stringify(projects.map(project => ({
       name: project.name, path: project.path, registeredAt: project.registeredAt,
       enabledStacks: [...(project.enabledStacks ?? [])].sort(),
+      ...(project.configuration ? { configuration: project.configuration } : {}),
     })).sort((a, b) => a.name.localeCompare(b.name)));
-    const stored = this.store.selectProjectsSync().map(row => ({ name: row.name, path: row.path, registeredAt: row.added_at,
+    const stored = this.store.selectProjectsSync().flatMap(row => [{ name: row.name, path: row.path, registeredAt: row.added_at,
       enabledStacks: this.store.kvGetSync<string[]>(ENABLED_STACKS_KV_KEY(row.name)) ?? [],
-    }));
+    }, ...configurationState(this.store.kvGetSync<ConfigurationState>(CONFIGURATIONS_KEY(row.name), { strict: true })).sources.map(source => ({ ...source,
+      enabledStacks: this.store.kvGetSync<string[]>(ENABLED_STACKS_KV_KEY(source.name)) ?? [],
+    }))]);
     const durable = normalize(stored);
-    if (normalize(this.list()) !== durable) throw new Error('Project registry changed outside this controller; refresh it before certifying recovery');
+    if (normalize(this.listRegistrations()) !== durable) throw new Error('Project registry changed outside this controller; refresh it before certifying recovery');
     return createHash('sha256').update(durable).digest('hex');
   }
 
   getConfigPath(name: string): string | null {
     const project = this.get(name);
     if (!project) return null;
-    return path.join(project.path, 'omnitron.config.ts');
+    return findProjectConfig(project.path);
   }
 
   getWorkspaceDir(name: string): string {
@@ -217,6 +352,7 @@ export class ProjectRegistry {
    * unchanged.
    */
   persist(): void {
+    if (this.cachedRevision !== this.catalogRevision()) throw new Error('Project catalogue changed; reload before persisting runtime state');
     // Mutations to name/path already wrote through; touch last_seen on
     // every project so an external "I'm still here" ping is cheap to
     // record without restructuring callers.
@@ -229,7 +365,7 @@ export class ProjectRegistry {
     // boot-time stack auto-resume in daemon.startApps() always saw an
     // empty list — apps stayed down after every daemon crash.
     for (const project of this.projects.values()) {
-      this.store.upsertProjectSync({
+      if (!project.configuration) this.store.upsertProjectSync({
         name: project.name,
         path: project.path,
         added_at: project.registeredAt,
@@ -268,24 +404,20 @@ export class ProjectRegistry {
   // ===========================================================================
 
   private loadFromStore(): void {
-    try {
-      const rows = this.store.selectProjectsSync();
-      for (const row of rows) {
-        // Rebuild ISeedProject from the row. enabledStacks lives in
-        // state_kv (not the projects table) so each project's
-        // optional list is fetched separately.
-        const enabledStacks = this.store.kvGetSync<string[]>(ENABLED_STACKS_KV_KEY(row.name)) ?? undefined;
-        const project: ISeedProject = {
-          name: row.name,
-          path: row.path,
-          registeredAt: row.added_at,
-          ...(enabledStacks && { enabledStacks }),
-        };
-        this.projects.set(row.name, project);
+    const projects = new Map<string, ISeedProject>();
+    const roots = this.store.selectProjectsSync();
+    const rootNames = new Set(roots.map(row => row.name));
+    for (const row of roots) {
+      const sources = configurationState(this.store.kvGetSync<ConfigurationState>(CONFIGURATIONS_KEY(row.name), { strict: true })).sources;
+      for (const record of [{ name: row.name, path: row.path, registeredAt: row.added_at }, ...sources] as ISeedProject[]) {
+        if (projects.has(record.name) || (record.configuration && (record.configuration.project !== row.name || rootNames.has(record.name))))
+          throw new Error(`Conflicting project configuration identity '${record.name}'`);
+        const enabledStacks = this.store.kvGetSync<string[]>(ENABLED_STACKS_KV_KEY(record.name), { strict: true }) ?? undefined;
+        projects.set(record.name, { ...record, ...(enabledStacks ? { enabledStacks } : {}) });
       }
-    } catch {
-      // First boot — table empty.
     }
+    this.projects = projects;
+    this.cachedRevision = this.catalogRevision();
   }
 
   /**
@@ -317,6 +449,7 @@ export class ProjectRegistry {
           }
         }
       }
+      this.loadFromStore();
       // Done — drop the file so subsequent boots skip this branch.
       try { fs.unlinkSync(LEGACY_REGISTRY_FILE); } catch { /* best-effort */ }
     } catch (err) {

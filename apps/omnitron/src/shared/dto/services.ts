@@ -1,7 +1,7 @@
 import type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace } from './topology.js';
 export type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace, TopologyChange, TopologyIssue } from './topology.js';
 import type { ProjectTopology } from './project.js';
-export type { ProjectDependency, ProjectTopology } from './project.js';
+export type { ConfigurationImport, ProjectConfigurationInfo, RuntimeStackScope, ProjectDependency, ProjectTopology } from './project.js';
 import type { LogIngestionStats } from './logs.js';
 /**
  * Omnitron Daemon RPC Service Interfaces
@@ -191,6 +191,7 @@ export interface IOmnitronAuthService {
 export interface IOmnitronLogsService {
   queryLogs(data: {
     app?: string;
+    appPrefixes?: string[];
     nodeId?: string;
     level?: string | string[];
     search?: string;
@@ -209,6 +210,7 @@ export interface IOmnitronLogsService {
 
   streamLogs(data: {
     app?: string;
+    appPrefixes?: string[];
     level?: string | string[];
     search?: string;
     nodeId?: string;
@@ -305,6 +307,8 @@ export interface DeployProgressRecord {
 }
 
 export interface IProjectRpcService {
+  importConfiguration(data: import('./project.js').ConfigurationImport): Promise<IProjectInfo>;
+  detachConfiguration(data: { project: string; name: string; expectedRevision: string }): Promise<{ success: true }>;
   getTopologyInventory(): Promise<TopologyInventory>;
   getTopologyWorkspace(data: TopologyScope): Promise<TopologyWorkspace>;
   saveTopologyDraft(data: TopologyScope & { baseRevision: string; expectedDraft: number | null; spec: TopologySpec }): Promise<TopologyDraft>;

@@ -27,6 +27,7 @@ export class LogsRpcService {
   @Public({ auth: { roles: VIEWER_ROLES } })
   async queryLogs(data: {
     app?: string;
+    appPrefixes?: string[];
     nodeId?: string;
     level?: string | string[];
     search?: string;
@@ -71,6 +72,7 @@ export class LogsRpcService {
   @Public({ auth: { roles: VIEWER_ROLES } })
   async streamLogs(data: {
     app?: string;
+    appPrefixes?: string[];
     level?: string | string[];
     search?: string;
     /** One cluster node, as on `queryLogs`. */

@@ -6,6 +6,7 @@ export { mergeInfrastructure } from '../infrastructure/merge-config.js';
 import type { TopologyScope, TopologySpec, TopologyPlan, TopologyWorkspace } from '../shared/dto/topology.js';
 import { currentActor } from './audit.service.js';
 import { resolveNodePlacements } from '../project/stack-placement.js';
+import { configurationInfo, publicStackName, validateConfigurationNames, type ConfigurationImport, type RuntimeStackScope } from '../project/configuration-catalog.js';
 import { nodePlacement, observeStack } from '../project/stack-observation.js';
 import { getCachedBootstrapDefinition } from '../orchestrator/bootstrap-loader.js';
 import { appDependencies } from '../project/dependency-topology.js';
@@ -454,13 +455,92 @@ export class ProjectService extends EventEmitter {
   }
 
   listProjects(): IProjectInfo[] {
-    return this.registry.list().filter(project => !isControlPlaneWorkspace(project.path)).map((p) => this.toProjectInfo(p));
+    const revision = this.registry.catalogRevision();
+    return this.registry.list().filter(project => !isControlPlaneWorkspace(project.path)).map(project => {
+      const records = this.registry.registrations(project.name);
+      const infos = records.map(record => this.toProjectInfo(record));
+      return {
+        ...this.toProjectInfo(project),
+        enabledStacks: records.flatMap(record => (record.enabledStacks ?? []).map(stack => publicStackName(record, stack))),
+        runningStacks: infos.reduce((count, info) => count + info.runningStacks, 0),
+        totalStacks: infos.reduce((count, info) => count + info.totalStacks, 0),
+        configurations: records.map(configurationInfo),
+        catalogRevision: revision,
+      };
+    });
+  }
+
+  /** Source inventory for execution, backup and recovery; not the public project catalogue. */
+  listProjectRegistrations(): IProjectInfo[] {
+    return this.registry.listRegistrations().filter(project => !isControlPlaneWorkspace(project.path)).map(project => this.toProjectInfo(project));
+  }
+
+  projectConfigurations(project: string): ISeedProject[] {
+    return this.registry.registrations(project);
+  }
+
+  async resolveProjectStack<T extends RuntimeStackScope>(scope: T): Promise<T> {
+    const resolved = this.registry.resolveStack(scope);
+    if (resolved.project !== scope.project) {
+      const config = await this.ensureConfig(scope.project);
+      if (Object.hasOwn(this.resolveStacks(config, scope.project), scope.stack))
+        throw new Error(`Ambiguous stack '${scope.stack}': both default and imported configurations declare it`);
+    }
+    return { ...scope, ...resolved };
+  }
+
+  publicStackInfo(project: string, source: ISeedProject, info: IStackInfo): IStackInfo {
+    return {
+      ...publicStack(info),
+      name: project === source.name ? info.name : publicStackName(source, info.name),
+      runtimeScope: { project: source.name, stack: info.name },
+    };
+  }
+
+  @RecoveryMutation()
+  async importProjectConfiguration(input: ConfigurationImport): Promise<IProjectInfo> {
+    validateConfigurationNames(input?.name, input?.stacks);
+    if (typeof input.project !== 'string' || typeof input.path !== 'string' || typeof input.expectedRevision !== 'string')
+      throw new Error('Project, configuration path and catalogue revision are required');
+    this.registry.prepareConfiguration(input);
+    const { loadEcosystemConfig } = await import('../config/loader.js');
+    const source = await loadEcosystemConfig(path.resolve(input.path));
+    const sourceStacks = this.resolveStacks(source, input.registration ?? `${input.project}--${input.name}`);
+    const declared = Object.keys(sourceStacks);
+    if (declared.length !== Object.keys(input.stacks).length || declared.some(name => !Object.hasOwn(input.stacks, name)))
+      throw new Error('Map every configured source stack explicitly; none may disappear during import');
+    const owner = await this.ensureConfig(input.project);
+    const occupied = new Set(Object.keys(this.resolveStacks(owner, input.project)));
+    for (const name of Object.values(input.stacks))
+      if (occupied.has(name)) throw new Error(`Stack '${name}' already exists in the project default configuration`);
+    if (input.registration) {
+      for (const name of this.registry.get(input.registration)?.enabledStacks ?? [])
+        if (!input.stacks[name]) throw new Error(`Auto-start source stack '${name}' is missing from the mapping`);
+      for (const name of this.getRunningStacks(input.registration))
+        if (!input.stacks[name]) throw new Error(`Running source stack '${name}' is missing from the mapping`);
+      for (const name of Object.keys(this.loadUserStacks(input.registration)))
+        if (!input.stacks[name]) throw new Error(`User-defined source stack '${name}' is missing from the mapping`);
+    }
+    const record = this.registry.importConfiguration(input);
+    this.configRegistry.set(record.name, { config: source, loadedAt: Date.now() });
+    await this.audit?.record({ action: 'project.configuration.import', resourceType: 'project', resourceId: input.project,
+      details: { configuration: input.name, runtimeProject: record.name, stacks: input.stacks } });
+    this.emit('project:updated', input.project, {});
+    return this.getProject(input.project);
+  }
+
+  @RecoveryMutation()
+  async detachProjectConfiguration(data: { project: string; name: string; expectedRevision: string }): Promise<void> {
+    this.registry.detachConfiguration(data.project, data.name, data.expectedRevision);
+    await this.audit?.record({ action: 'project.configuration.detach', resourceType: 'project', resourceId: data.project,
+      details: { configuration: data.name } });
+    this.emit('project:updated', data.project, {});
   }
 
   getProject(name: string): IProjectInfo {
     const project = this.registry.get(name);
     if (!project) throw new Error(`Project '${name}' not found`);
-    return this.toProjectInfo(project);
+    return this.listProjects().find(record => record.name === (project.configuration?.project ?? name))!;
   }
 
   @RecoveryMutation()
@@ -651,7 +731,8 @@ export class ProjectService extends EventEmitter {
     const config = await this.loadProjectConfig(project);
     const allStacks = this.resolveStacks(config, project);
 
-    if (allStacks[input.name]) {
+    if (allStacks[input.name] || this.registry.registrations(project).some(source =>
+      Object.values(source.configuration?.stacks ?? {}).includes(input.name))) {
       throw new Error(`Stack '${input.name}' already exists`);
     }
 
@@ -815,7 +896,9 @@ export class ProjectService extends EventEmitter {
     const result: import('../shared/dto/topology.js').TopologyInventory = {
       generatedAt: new Date().toISOString(), deployments: [], errors: [],
     };
-    for (const project of this.listProjects()) {
+    for (const project of this.listProjectRegistrations()) {
+      const source = this.registry.get(project.name)!;
+      const owner = source.configuration?.project ?? project.name;
       try {
         await this.ensureConfig(project.name);
         const stacks = this.listStacks(project.name).filter(stack => stack.type !== 'local');
@@ -825,16 +908,16 @@ export class ProjectService extends EventEmitter {
           );
           observations.forEach((observation, index) => {
             if (observation.status === 'fulfilled') {
-              result.deployments.push({ project: project.name, stack: publicStack(observation.value) });
+              result.deployments.push({ project: owner, stack: this.publicStackInfo(owner, source, observation.value) });
             } else {
               result.errors.push({
-                project: project.name, stack: stacks[offset + index]!.name, reason: 'Node inventory could not be read',
+                project: owner, stack: publicStackName(source, stacks[offset + index]!.name), reason: 'Node inventory could not be read',
               });
             }
           });
         }
       } catch {
-        result.errors.push({ project: project.name, reason: 'Project configuration could not be read' });
+        result.errors.push({ project: owner, reason: `Configuration '${source.configuration?.name ?? 'default'}' could not be read` });
       }
     }
     return result;
@@ -874,7 +957,7 @@ export class ProjectService extends EventEmitter {
   /** Configuration evidence from the launch builder; it never starts, probes or modifies applications. */
   async getTopology(scope: { project?: string; stack?: string }): Promise<import('../shared/dto/project.js').ProjectTopology> {
     const result: import('../shared/dto/project.js').ProjectTopology = { version: 1, generatedAt: new Date().toISOString(), dependencies: [], warnings: [] };
-    const projects = scope.project ? [scope.project] : this.listProjects().map(project => project.name);
+    const projects = scope.project ? [scope.project] : this.listProjectRegistrations().map(project => project.name);
     for (const project of projects) {
       let config: IEcosystemConfig;
       try { config = await this.ensureConfig(project); }
@@ -2317,7 +2400,7 @@ export class ProjectService extends EventEmitter {
   getInfrastructureHealthContext(): InfrastructureHealthContext {
     const context: InfrastructureHealthContext = { stacks: [], requiredContainers: [], unresolvedStacks: [] };
     const apps = this.orchestrator.list();
-    for (const project of this.registry.list()) {
+    for (const project of this.registry.listRegistrations()) {
       const config = this.getLoadedConfig(project.name);
       if (!config) continue; // Unknown ownership must remain visible to the indicator.
       const running = this.getRunningStacks(project.name);
@@ -2376,7 +2459,7 @@ export class ProjectService extends EventEmitter {
   private async reconcileEnabledStacks(): Promise<void> {
     // Collect the divergence set first — cheap, no I/O.
     const pending: Array<{ project: string; stack: string }> = [];
-    for (const project of this.registry.list()) {
+    for (const project of this.registry.listRegistrations()) {
       for (const stackName of project.enabledStacks ?? []) {
         const state = this.stackStates.get(`${project.name}/${stackName}`);
         const status = state?.status;
@@ -2497,7 +2580,7 @@ export class ProjectService extends EventEmitter {
       await this.loadProjectConfig(projectName);
       this.emit('project:config_reloaded', projectName);
     } else {
-      for (const project of this.registry.list()) {
+      for (const project of this.registry.listRegistrations()) {
         await this.loadProjectConfig(project.name);
         this.emit('project:config_reloaded', project.name);
       }

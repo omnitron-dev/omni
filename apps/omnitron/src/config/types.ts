@@ -403,6 +403,12 @@ export interface ISeedProject {
   registeredAt: string;
   /** Stacks that are currently enabled (running or should auto-start) */
   enabledStacks?: string[];
+  /** Imported stack configuration. Its name remains a stable runtime namespace, not another project. */
+  configuration?: {
+    project: string;
+    name: string;
+    stacks: Record<string, string>;
+  };
 }
 
 export interface IProjectRegistry {

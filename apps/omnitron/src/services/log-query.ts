@@ -5,6 +5,10 @@ const levels = new Set(['trace', 'debug', 'info', 'warn', 'error', 'fatal']);
 export function validateLogQuery(filter: LogQueryFilter & { tail?: number }): void {
   if (!filter || typeof filter !== 'object' || Array.isArray(filter))
     throw new Error('A log filter object is required');
+  if (filter.appPrefixes !== undefined && (!Array.isArray(filter.appPrefixes) || !filter.appPrefixes.length ||
+    filter.appPrefixes.length > 256 || filter.appPrefixes.some(prefix => typeof prefix !== 'string' || prefix.length > 260 ||
+      !/^[a-zA-Z0-9_.-]+\/(?:[a-zA-Z0-9_.-]+\/)?$/.test(prefix))))
+    throw new Error('Invalid log namespace prefixes');
   for (const [key, max] of [
     ['limit', 1000],
     ['tail', 10000],

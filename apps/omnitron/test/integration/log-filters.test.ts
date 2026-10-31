@@ -26,6 +26,7 @@ import { LogCollectorService } from '../../src/services/log-collector.service.js
 const NODE_A = '11111111-1111-4111-8111-111111111111';
 const NODE_B = '22222222-2222-4222-8222-222222222222';
 const APP = `log-filter-probe-${process.pid}`;
+const namespaceApps = [`${APP}/local/api`, `${APP}_research/local/api`, `${APP}Xresearch/local/api`];
 
 /**
  * Whether the omnitron Postgres answered, decided before any test is
@@ -68,7 +69,7 @@ let collector: LogCollectorService;
 
 beforeAll(async () => {
   db = await connect();
-  collector = new LogCollectorService(db as never, undefined as never);
+  collector = new LogCollectorService(db as never);
 
   await sql`
     INSERT INTO logs (id, timestamp, "nodeId", app, level, message, labels)
@@ -77,14 +78,26 @@ beforeAll(async () => {
       (gen_random_uuid(), now(), ${NODE_B}::uuid, ${APP}, 'info', 'from node b', '{"env":"staging"}'::jsonb),
       (gen_random_uuid(), now(), NULL,            ${APP}, 'info', 'from the master', NULL)
   `.execute(db);
+  for (const app of namespaceApps) await sql`
+    INSERT INTO logs (id, timestamp, app, level, message) VALUES (gen_random_uuid(), now(), ${app}, 'info', 'namespace probe')
+  `.execute(db);
 });
 
 afterAll(async () => {
-  await sql`DELETE FROM logs WHERE app = ${APP}`.execute(db);
+  await collector.dispose();
+  await db.deleteFrom('logs').where('app', 'in', [APP, ...namespaceApps]).execute();
   await db.destroy();
 });
 
 describe.skipIf(!reachable)('queryLogs', () => {
+  it('reads project namespaces identically in pages, totals and live tail without LIKE wildcard leakage', async () => {
+    const filter = { appPrefixes: [`${APP}/`, `${APP}_research/`] };
+    const result = await collector.queryLogs(filter);
+    expect(result.entries.map(entry => entry.app).sort()).toEqual(namespaceApps.slice(0, 2).sort());
+    expect(result.total).toBe(2);
+    expect(result.byLevel).toEqual([{ level: 'info', count: 2 }]);
+    expect((await collector.getRecentLogs(filter)).map(entry => entry.app).sort()).toEqual(namespaceApps.slice(0, 2).sort());
+  });
   it('narrows to one cluster node', async () => {
     const result = await collector.queryLogs({ app: APP, nodeId: NODE_A });
 

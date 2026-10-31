@@ -1102,7 +1102,7 @@ export async function checkProjectConfigs(findings: Findings): Promise<void> {
   let projects: Array<{ name: string; path: string }>;
   try {
     const { ProjectRegistry } = await import('../project/registry.js');
-    projects = ProjectRegistry.open().list();
+    projects = ProjectRegistry.open().listRegistrations();
   } catch (err) {
     findings.skip('project.config-unloadable', `the project registry could not be opened: ${describeError(err)}`);
     return;

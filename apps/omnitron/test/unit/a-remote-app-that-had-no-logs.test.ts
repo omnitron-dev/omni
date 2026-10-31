@@ -47,6 +47,7 @@ vi.mock('../../src/daemon/daemon-client.js', () => ({
     service: async (svc: string) =>
       svc === 'OmnitronProject'
         ? {
+            listProjects: async () => [],
             getStack: async () => ({
               name: 'test',
               type: 'remote',

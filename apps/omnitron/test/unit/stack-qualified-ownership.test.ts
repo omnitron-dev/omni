@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { ProjectService } from '../../src/services/project.service.js';
 const logger: any = { info() {}, warn() {}, error() {}, debug() {}, trace() {}, fatal() {}, child() { return logger; } };
 function stackView(handles: any[]) {
-  const service: any = new ProjectService(logger, { list: () => handles } as any, { get: () => null, set() {} } as any);
+  const service: any = new ProjectService(logger, { list: () => handles } as any, { selectProjectsSync: () => [], kvGetSync: () => null, get: () => null, set() {} } as any);
   service.getLoadedConfig = () => ({ apps: [{ name: 'api', script: './api.js' }] });
   service.resolveStackApps = () => [{ name: 'api', script: './api.js' }];
   return (project: string) => service.toStackInfo(project, 'prod', { type: 'local', apps: ['api'] });

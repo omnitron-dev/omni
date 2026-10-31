@@ -29,7 +29,7 @@
  * answers as scripted — with the error netron itself raises.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { NetronErrors } from '@omnitron-dev/titan/errors';
 
 // Leasing and the master's address have courts of their own; here every
@@ -47,6 +47,8 @@ vi.mock('../../src/services/master-address.js', async (importOriginal) => ({
 import { ProjectService } from '../../src/services/project.service.js';
 import { SlaveConnector, isConnectionGone } from '../../src/cluster/slave-connector.js';
 
+const connectors: SlaveConnector[] = [];
+afterEach(async () => { for (const connector of connectors.splice(0)) await connector.dispose(); });
 const NODE = { host: '10.0.0.9', port: 9700 };
 const DECLARED = 'postgres';
 const GENERATED = 'kV7yR2pL9sQ4mN8tB3wX6zC1dF5gH0jK2lP7oI9uY4e';
@@ -83,6 +85,7 @@ function deployment(answer: (service: string, n: number) => Promise<Record<strin
   // The connector is real down to the peer: its retry, its judgement of
   // what a dead connection looks like, its second call.
   const connector = new SlaveConnector(logger, null);
+  connectors.push(connector);
   let n = 0;
   const peer = {
     queryInterface: async () => ({
@@ -90,15 +93,25 @@ function deployment(answer: (service: string, n: number) => Promise<Record<strin
     }),
   };
   const c: any = connector;
-  c.connections.set(`${NODE.host}:${NODE.port}`, { peer, status: 'connected', config: { ...NODE } });
+  c.connections.set(`${NODE.host}:${NODE.port}`, { peer, status: 'connected', config: { ...NODE }, reconnectAttempt: 0 });
   const reconnected: string[] = [];
   c.removeSlave = async (host: string, port: number) => void reconnected.push(`${host}:${port}`);
-  c.addSlave = async () => {};
-  c.waitUntilConnected = async () => true;
+  c.addSlave = async () => { c.connections.set(`${NODE.host}:${NODE.port}`, { peer, status: 'connected', config: { ...NODE }, reconnectAttempt: 0 }); };
+  c.waitUntilConnected = async () => {
+    const key = `${NODE.host}:${NODE.port}`, connection = c.connections.get(key);
+    if (connection.status !== 'connected') {
+      clearTimeout(connection.reconnectTimer);
+      connection.reconnectTimer = null;
+      connection.peer = peer;
+      connection.status = 'connected';
+      reconnected.push(key);
+    }
+    return true;
+  };
 
   const delivered: string[] = [];
   let configuredWith: any;
-  const stateStore: any = { save() {}, load: () => null, get: () => null, set() {} };
+  const stateStore: any = { selectProjectsSync: () => [], kvGetSync: () => null, save() {}, load: () => null, get: () => null, set() {} };
   const svc: any = new ProjectService(logger, { list: () => [], listHandleNames: () => [] } as never, stateStore);
   svc.slaveConnector = connector;
   svc.registry = { get: () => ({ name: 'sample', path: '/nowhere' }), list: () => [] };

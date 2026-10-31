@@ -9,7 +9,7 @@ import { ProjectService } from '../../src/services/project.service.js';
 const logger:any={info(){},warn(){},error(){},debug(){},child(){return logger;}};
 it('daemon disposal cancels resource monitors without deleting live stack containers; explicit teardown still deletes',async()=>{
   removed.length=0;
-  const service:any=new ProjectService(logger,{list:()=>[]} as any,{get:()=>null,set(){}} as any);
+  const service:any=new ProjectService(logger,{list:()=>[]} as any,{selectProjectsSync:()=>[],kvGetSync:()=>null,get:()=>null,set(){}} as any);
   const infra=new InfrastructureService(logger,{services:{}} as any);
   (infra as any).desiredContainers=[{name:'one-prod-postgres'},{name:'one-prod-origin'}];
   (infra as any).usingGlobalOmnitronPg=true;

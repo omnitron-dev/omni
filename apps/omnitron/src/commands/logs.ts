@@ -24,7 +24,7 @@ import { BackwardAssembler, LineAssembler, LEVEL_RANK, levelRank, type KnownLeve
 import { emitJson, emitError, isJsonMode } from './output.js';
 import { describeAbsence } from './daemon-required.js';
 import { resolveNodeArgument } from './node.js';
-import type { IOmnitronLogsService } from '../shared/dto/services.js';
+import type { IOmnitronLogsService, IProjectRpcService } from '../shared/dto/services.js';
 
 const LOG_DIR = path.join(OMNITRON_HOME, 'logs');
 const PROJECTS_DIR = path.join(OMNITRON_HOME, 'projects');
@@ -136,6 +136,18 @@ export async function logsCommand(appName?: string, options: LogsOptions = {}): 
   }
 
   try {
+    const parts = appName.split('/');
+    if (parts.length >= 3) {
+      const projects = await client.service<IProjectRpcService>('OmnitronProject');
+      const catalogue = await projects.listProjects();
+      const owner = catalogue.find(project => project.name === parts[0]);
+      const source = owner?.configurations?.find(item => Object.values(item.stacks).includes(parts[1]!));
+      if (source) {
+        const resolved = await projects.getStack({ project: owner!.name, stack: parts[1]! });
+        if (!resolved.runtimeScope) throw new Error('Stack runtime identity is unavailable; refresh the project catalogue');
+        appName = [resolved.runtimeScope.project, resolved.runtimeScope.stack, ...parts.slice(2)].join('/');
+      }
+    }
     const diag = await inspectApp(client, appName);
 
     if (diag) {
@@ -175,7 +187,7 @@ export async function logsCommand(appName?: string, options: LogsOptions = {}): 
     const window = wanted.minLevel !== null || wanted.pattern ? STORED_WINDOW : wanted.lines;
     let stored = await client.getLogs({ name: appName, lines: window });
     let note: string | undefined;
-    let fetch = () => client.getLogs({ name: appName, lines: FOLLOW_WINDOW });
+    let fetch = () => client.getLogs({ name: appName!, lines: FOLLOW_WINDOW });
 
     if (!stored.some((e) => typeof e.data?.['sourceNode'] === 'string')) {
       // Only this machine's own records, or none: an app that ran here left

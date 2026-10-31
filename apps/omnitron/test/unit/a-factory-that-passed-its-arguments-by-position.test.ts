@@ -42,7 +42,7 @@ function container() {
   const values = new Map<unknown, unknown>([
     [LOGGER_SERVICE_TOKEN, { logger: silent }],
     [ORCHESTRATOR_TOKEN, { list: () => [], listHandleNames: () => [] }],
-    [DAEMON_STATE_STORE_TOKEN, { save() {}, load: () => null, get: () => null, set() {} }],
+    [DAEMON_STATE_STORE_TOKEN, { selectProjectsSync: () => [], kvGetSync: () => null, save() {}, load: () => null, get: () => null, set() {} }],
     [SECRETS_SERVICE_TOKEN, vault],
     [AUDIT_SERVICE_TOKEN, audit],
     // Present in the container, and asked for by nothing any more.

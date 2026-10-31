@@ -1554,7 +1554,7 @@ export class OmnitronDaemon {
     // stack auto-detection upstream); the daemon does not provision it
     // again here.
     const { ProjectRegistry } = await import('../project/registry.js');
-    const projects = ProjectRegistry.open().list();
+    const projects = ProjectRegistry.open().listRegistrations();
     const projectModeActive = projects.some(
       (p) => Array.isArray(p.enabledStacks) && p.enabledStacks.length > 0,
     );
@@ -1830,14 +1830,14 @@ export class OmnitronDaemon {
     if (!this.app) return;
 
     const projectService = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
-    let allProjects = projectService.listProjects();
+    let allProjects = projectService.listProjectRegistrations();
 
     // Auto-register project from CWD if no projects registered
     if (allProjects.length === 0) {
       try {
         // Use ProjectService's own registry to auto-detect — keeps in-memory state consistent
         projectService.autoDetectProject();
-        allProjects = projectService.listProjects();
+        allProjects = projectService.listProjectRegistrations();
         if (allProjects.length > 0) {
           const p = allProjects[0]!;
           await projectService.loadProjectConfig(p.name);

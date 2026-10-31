@@ -91,7 +91,7 @@ describe('RPC authorization metadata', () => {
     for (const method of ['getTopology', 'getTopologyInventory', 'getTopologyWorkspace'])
       expect(Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, ProjectRpcService.prototype, method))
         .toEqual({ roles: ['admin', 'operator', 'viewer'] });
-    for (const method of ['saveTopologyDraft', 'planTopology', 'applyTopologyPlan'])
+    for (const method of ['saveTopologyDraft', 'planTopology', 'applyTopologyPlan', 'importConfiguration', 'detachConfiguration'])
       expect(Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, ProjectRpcService.prototype, method))
         .toEqual({ roles: ['admin'] });
   });

@@ -109,7 +109,7 @@ type StackSpec = { project: string; stack: string; type: 'local' | 'remote'; hos
 function fakeProjects(specs: StackSpec[]): never {
   const find = (p: string, s: string) => specs.find((x) => x.project === p && x.stack === s);
   return {
-    listProjects: () => [...new Set(specs.map((s) => s.project))].map((name) => ({ name })),
+    listProjectRegistrations: () => [...new Set(specs.map((s) => s.project))].map((name) => ({ name })),
     getRunningStacks: (p: string) => specs.filter((s) => s.project === p).map((s) => s.stack),
     getInfraManager: () => ({
       getInstance: (p: string, s: string) => {

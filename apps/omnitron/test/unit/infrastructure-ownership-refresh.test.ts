@@ -121,7 +121,7 @@ describe('native monitoring ownership refresh', () => {
 import { ProjectService } from '../../src/services/project.service.js';
 import { ProjectRpcService } from '../../src/services/project.rpc-service.js';
 it('project refresh rereads validated config and refuses absent or remote stacks', async () => {
-  const svc: any = new ProjectService(logger, { list: () => [] } as any, {} as any);
+  const svc: any = new ProjectService(logger, { list: () => [] } as any, { selectProjectsSync: () => [], kvGetSync: () => null } as any);
   svc.registry = { get: () => ({ path: '/immutable/release' }) };
   svc.configRegistry.set('tenant', { stale: true });
   svc.loadProjectConfig = vi.fn(async () => { expect(svc.configRegistry.has('tenant')).toBe(false); return {}; });
@@ -131,7 +131,7 @@ it('project refresh rereads validated config and refuses absent or remote stacks
 });
 it('native project RPC forwards the qualified identity and records released/adopted names', async () => {
   const refresh = vi.fn().mockResolvedValue({ released: ['tenant-prod-origin'], adopted: [] });
-  const record = vi.fn(); const rpc = new ProjectRpcService({ refreshInfrastructureOwnership: refresh } as any, { record } as any);
+  const record = vi.fn(); const rpc = new ProjectRpcService({ resolveProjectStack: async (scope: unknown) => scope, refreshInfrastructureOwnership: refresh } as any, { record } as any);
   await expect(rpc.refreshInfrastructureOwnership({ project: 'tenant', stack: 'prod' })).resolves.toEqual({ released: ['tenant-prod-origin'], adopted: [] });
   expect(refresh).toHaveBeenCalledWith('tenant', 'prod');
   expect(record).toHaveBeenCalledWith(expect.objectContaining({ resourceId: 'tenant', details: { stack: 'prod', released: ['tenant-prod-origin'], adopted: [] } }));

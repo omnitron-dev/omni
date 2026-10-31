@@ -42,7 +42,7 @@ function service(appStatus: 'online' | 'crashed') {
     listHandleNames: () => ['demo/dev/main'],
     stopApp: async () => {},
   };
-  const stateStore: any = { save() {}, load: () => null, get: () => null, set() {} };
+  const stateStore: any = { selectProjectsSync: () => [], kvGetSync: () => null, save() {}, load: () => null, get: () => null, set() {} };
   const svc: any = new ProjectService(logger, orchestrator, stateStore);
 
   svc.loadProjectConfig = async () => ({ apps: [{ name: 'main', script: './main.js' }] });

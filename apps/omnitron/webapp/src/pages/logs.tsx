@@ -370,7 +370,7 @@ export default function LogsPage() {
     return () => { active = false; clearInterval(timer); };
   }, []);
   const theme = useTheme();
-  const { activeProject, namespacePrefix, filterApps, displayName } = useStackContext();
+  const { activeProject, namespacePrefixes, matchesNamespace, filterApps, displayName } = useStackContext();
   const daemonMode = !activeProject;
   const [params, setParams] = useSearchParams();
   const clipboard = useCopyToClipboard();
@@ -389,6 +389,11 @@ export default function LogsPage() {
     return next;
   }, { replace: true });
   const [nodeNames, setNodeNames] = useState<Array<{ id: string; hostname: string }>>([]);
+  useEffect(() => {
+    if (activeProject && app && !matchesNamespace(app)) {
+      setParams(previous => { const next = new URLSearchParams(previous); next.set('app', ''); return next; }, { replace: true });
+    }
+  }, [activeProject, app, matchesNamespace, setParams]);
   /** The same list the Node dropdown shows, keyed for the row detail. */
   const nodeNameById = useMemo(
     () => Object.fromEntries(nodeNames.map((n) => [n.id, n.hostname])),
@@ -439,7 +444,7 @@ export default function LogsPage() {
     lastTimestampRef.current = null;
     setTailLimited(false);
     return () => { generation.current++; };
-  }, [app, nodeFilter, selectedLevels, debouncedSearch, labelInput, timeRangeKey, customFrom, customTo]);
+  }, [app, namespacePrefixes, nodeFilter, selectedLevels, debouncedSearch, labelInput, timeRangeKey, customFrom, customTo]);
 
   // ---- Scroll ----
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -556,7 +561,7 @@ export default function LogsPage() {
     // leftovers — have no prefix to match, so they stay visible in every
     // scope. Same rule the metrics page applies to its series.
     const inScope = (name: string) =>
-      name === app || !namespacePrefix || name.startsWith(namespacePrefix) || !name.includes('/');
+      name === app || matchesNamespace(name) || !name.includes('/');
     const values = [...new Set([...liveApps, ...loggedApps, ...(app ? [app] : [])])].filter(inScope).sort();
 
     // Two values can render to one label — `main` and `acme/dev/main` both
@@ -573,7 +578,7 @@ export default function LogsPage() {
       const label = displayName(value);
       return { value, label: daemonMode || labelCounts.get(label)! > 1 ? value : label };
     });
-  }, [liveApps, loggedApps, namespacePrefix, displayName, app, daemonMode]);
+  }, [liveApps, loggedApps, matchesNamespace, displayName, app, daemonMode]);
 
   // ---- Build filter ----
   const buildFilter = useCallback(
@@ -583,6 +588,7 @@ export default function LogsPage() {
         offset,
       };
       if (app) filter.app = app;
+      if (activeProject) filter.appPrefixes = namespacePrefixes;
       if (selectedLevels.length > 0) filter.level = selectedLevels;
       if (debouncedSearch.trim()) filter.search = debouncedSearch.trim();
 
@@ -606,7 +612,7 @@ export default function LogsPage() {
 
       return filter;
     },
-    [app, nodeFilter, selectedLevels, debouncedSearch, labelInput, timeRangeKey, customFrom, customTo],
+    [app, activeProject, namespacePrefixes, nodeFilter, selectedLevels, debouncedSearch, labelInput, timeRangeKey, customFrom, customTo],
   );
 
   // ---- Fetch logs (paginated mode) ----
@@ -668,6 +674,7 @@ export default function LogsPage() {
     // different question than the one it was showing.
     const f: Record<string, unknown> = { tail: 100 };
     if (app) f.app = app;
+    if (activeProject) f.appPrefixes = namespacePrefixes;
     if (selectedLevels.length > 0) f.level = selectedLevels;
     if (debouncedSearch.trim()) f.search = debouncedSearch.trim();
     if (nodeFilter) f.nodeId = nodeFilter;
@@ -676,7 +683,7 @@ export default function LogsPage() {
     if (labels && Object.keys(labels).length > 0) f.labels = labels;
 
     return f;
-  }, [app, selectedLevels, debouncedSearch, nodeFilter, labelInput]);
+  }, [app, activeProject, namespacePrefixes, selectedLevels, debouncedSearch, nodeFilter, labelInput]);
 
   // Initial live fetch
   useEffect(() => {

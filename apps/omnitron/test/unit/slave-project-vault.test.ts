@@ -4,7 +4,7 @@ import { ProjectService, SLAVE_PROJECT_SERVICE_PROVIDER } from '../../src/servic
 import { AUDIT_SERVICE_TOKEN, DAEMON_STATE_STORE_TOKEN, FLEET_SERVICE_TOKEN, ORCHESTRATOR_TOKEN, SECRETS_SERVICE_TOKEN } from '../../src/shared/tokens.js';
 const logger: any = { info() {}, warn() {}, error() {}, debug() {}, trace() {}, fatal() {}, child() { return logger; } };
 const orchestrator: any = { list: () => [], listHandleNames: () => [] };
-const state: any = { save() {}, load: () => null, get: () => null, set() {} };
+const state: any = { selectProjectsSync: () => [], kvGetSync: () => null, save() {}, load: () => null, get: () => null, set() {} };
 const stack: any = { settings: { appEnv: { api: { DATABASE_URL: { secret: 'application.database' } } } } };
 type Resolution = { stackEnvFor(project: string, stack: string, definition: unknown, apps: string[]): Promise<unknown> };
 function service(value: string | null) {

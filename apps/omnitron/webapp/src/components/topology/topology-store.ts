@@ -293,13 +293,14 @@ export function stackBands(
   return stacks
     .filter((s) => !scope.stack || s.name === scope.stack)
     .flatMap((s): TopologyBand[] => {
+      const runtimeScope = s.runtimeScope ?? { project: scope.project, stack: s.name };
       const remote = s.type !== 'local';
       if (remote && s.placements)
         return s.placements.map((placement) => {
           const apps: AppNodeData[] = placement.apps.map(({ name, expected, process }) => ({
             nodeType: 'app',
             label: `${s.name}/${name}`,
-            name: process?.name ?? `${scope.project}/${s.name}/${name}`,
+            name: process?.name ?? `${runtimeScope.project}/${runtimeScope.stack}/${name}`,
             logicalApp: name,
             project: scope.project,
             stack: s.name,
@@ -383,7 +384,7 @@ export function stackBands(
       const byName = new Map(
         remote
           ? []
-          : containers.filter((c) => c.project === scope.project && c.stack === s.name).map((c) => [c.name, c] as const)
+          : containers.filter((c) => c.project === runtimeScope.project && c.stack === runtimeScope.stack).map((c) => [c.name, c] as const)
       );
       const services = Object.entries(s.infrastructure?.services ?? {}).map(([service, reported]) => ({
         ...serviceNode(service, s.name, reported, byName.get(reported.containerName)),
@@ -618,6 +619,20 @@ export const useTopologyStore = create<TopologyState>((set, get) => {
                   }))
               ),
             ];
+        if (!scope.project && dependenciesAnswer.status === 'fulfilled') {
+          const scopes = new Map((dependenciesAnswer.value.scopes ?? []).map(item => [`${item.runtimeProject}/${item.runtimeStack}`, item]));
+          for (const band of bands) {
+            for (const app of band.apps) {
+              const [runtimeProject, runtimeStack] = app.name.split('/');
+              const identity = scopes.get(`${runtimeProject}/${runtimeStack}`);
+              if (identity) { app.project = identity.project; app.stack = identity.stack; }
+            }
+            for (const service of [...band.services, ...(band.gateway ? [band.gateway] : [])]) {
+              const identity = scopes.get(`${service.project}/${service.stack}`);
+              if (identity) { service.project = identity.project; service.stack = identity.stack; }
+            }
+          }
+        }
         const { nodes, edges } = layoutBands(bands);
         if (dependenciesAnswer.status === 'fulfilled')
           connectDependencies(nodes, edges, dependenciesAnswer.value.dependencies, scope);

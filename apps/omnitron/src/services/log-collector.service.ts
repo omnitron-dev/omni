@@ -18,7 +18,7 @@ import { logEntryOf } from '../monitoring/log-entry.js';
 import { assertLogDurability } from '../database/log-durability.js';
 import type { LogIngestionStats } from '../shared/dto/logs.js';
 import type { ProcessOutputContext } from '@omnitron-dev/titan-pm';
-import { type Kysely, type ExpressionBuilder, type Expression, type SqlBool, type Transaction } from 'kysely';
+import { sql, type Kysely, type ExpressionBuilder, type Expression, type SqlBool, type Transaction } from 'kysely';
 
 import { planRetention, batchesPerPass } from './log-retention.js';
 import { jsonContains, dialectOf, type SqlDialect } from '../database/dialect.js';
@@ -43,6 +43,10 @@ export type { LogEntry, LogQueryFilter, LogEntryRow, LogQueryResult, LogStats } 
 /** Escape LIKE pattern metacharacters to prevent injection */
 function escapeLike(str: string): string {
   return str.replace(/[%_\\]/g, '\\$&');
+}
+
+function logNamespaces(eb: ExpressionBuilder<OmnitronDatabase, 'logs'>, prefixes: string[]): Expression<SqlBool> {
+  return eb.or(prefixes.map(prefix => sql<SqlBool>`${sql.ref('app')} like ${escapeLike(prefix) + '%'} escape ${'\\'}`));
 }
 
 /** A JSON column read back as text (SQLite), or nothing if it is not an object. */
@@ -342,6 +346,7 @@ export class LogCollectorService extends EventEmitter {
       const clauses: Expression<SqlBool>[] = [];
 
       if (filter.app) clauses.push(eb('app', '=', filter.app));
+      if (filter.appPrefixes) clauses.push(logNamespaces(eb, filter.appPrefixes!));
 
       if (filter.level) {
         clauses.push(
@@ -473,6 +478,7 @@ export class LogCollectorService extends EventEmitter {
     if (localOnly) query = query.where('nodeId', 'is', null);
 
     if (filter.app) query = query.where('app', '=', filter.app);
+    if (filter.appPrefixes) query = query.where(eb => logNamespaces(eb, filter.appPrefixes!));
     if (filter.level) {
       if (Array.isArray(filter.level)) {
         query = query.where('level', 'in', filter.level);

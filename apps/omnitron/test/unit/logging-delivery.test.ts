@@ -43,6 +43,19 @@ function collector(db: Kysely<OmnitronDatabase>, filename: string) {
 }
 
 describe('durable log delivery', () => {
+  it('uses exact namespace boundaries and identical project filters for entries, counts and live tail', async () => {
+    const dir = directory(), db = database(dir), service = collector(db, path.join(dir, 'queue.sqlite'));
+    await service.persistCaptured(['sample/local/api', 'sample_research/local/api', 'sampleXresearch/local/api', 'sample-other/local/api'].map((app, i) => ({
+      id: randomUUID(), app, level: i === 1 ? 'error' : 'info', message: String(i), timestamp: '2026-10-31T01:02:03.004Z',
+    })));
+    const filter = { appPrefixes: ['sample/', 'sample_research/'] };
+    const result = await service.queryLogs(filter);
+    expect(result.entries.map(row => row.app).sort()).toEqual(['sample/local/api', 'sample_research/local/api']);
+    expect(result.total).toBe(2);
+    expect(Object.fromEntries(result.byLevel.map(row => [row.level, row.count]))).toMatchObject({ info: 1, error: 1 });
+    expect((await service.getRecentLogs(filter)).map(row => row.app).sort()).toEqual(result.entries.map(row => row.app).sort());
+    expect((await service.queryLogs({ ...filter, app: 'sample-other/local/api' })).total).toBe(0);
+  });
   it('preserves trailing spaces and blank lines inside a captured multiline message', () => {
     const records: LogRecord[] = [];
     const assembler = new LineAssembler((_app, record) => records.push(record));

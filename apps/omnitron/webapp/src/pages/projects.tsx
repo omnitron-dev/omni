@@ -38,6 +38,8 @@ import { EmptyContent } from '@omnitron-dev/prism/components/empty-content';
 import { Label } from '@omnitron-dev/prism/components/label';
 import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { useSnackbar } from '@omnitron-dev/prism/components/snackbar';
+import { project as projectRpc } from 'src/netron/client';
+import { ImportStacksDialog } from 'src/components/import-stacks-dialog';
 import { useProjectStore } from 'src/stores/project.store';
 import type { IProjectInfo } from '@omnitron-dev/omnitron/dto/services';
 import { timeAgo } from 'src/utils/formatters';
@@ -53,11 +55,13 @@ function ProjectCard({
   onEdit,
   onRemove,
   onOpen,
+  onImport,
 }: {
   project: IProjectInfo;
   onEdit: (p: IProjectInfo) => void;
   onRemove: (name: string) => void;
   onOpen: (name: string) => void;
+  onImport: (p: IProjectInfo) => void;
 }) {
   const hasRunning = project.runningStacks > 0;
 
@@ -157,6 +161,9 @@ function ProjectCard({
         )}
       </CardContent>
       <CardActions sx={{ px: 2, pb: 1.5, justifyContent: 'space-between' }} onClick={(e) => e.stopPropagation()}>
+        <Can permission="OmnitronProject.importConfiguration">
+          <Button size="small" onClick={() => onImport(project)}>Import stacks</Button>
+        </Can>
         <Can permission="OmnitronProject.removeProject">
           <Tooltip title="Remove project">
             <IconButton size="small" color="error" onClick={() => onRemove(project.name)} disabled={hasRunning}>
@@ -273,6 +280,17 @@ function EditProjectDialog({
               },
             }}
           />
+          {(project.configurations?.length ?? 0) > 1 && (
+            <Stack spacing={1}>
+              <Typography variant="subtitle2">Stack configurations</Typography>
+              {project.configurations?.map(source => (
+                <Box key={source.runtimeProject} sx={{ minWidth: 0 }}>
+                  <Typography variant="body2">{source.name} · {Object.values(source.stacks).join(', ') || 'Default stacks'}</Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>{source.path}</Typography>
+                </Box>
+              ))}
+            </Stack>
+          )}
           <TextField
             label="Registered"
             value={new Date(project.registeredAt).toLocaleString()}
@@ -397,6 +415,7 @@ export default function ProjectsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [editProject, setEditProject] = useState<IProjectInfo | null>(null);
+  const [importProject, setImportProject] = useState<IProjectInfo | null>(null);
   const addOpen = searchParams.get('create') === '1' && can('OmnitronProject.addProject');
   const setAddOpen = useCallback(
     (open: boolean) => {
@@ -529,12 +548,14 @@ export default function ProjectsPage() {
         <Grid container spacing={3}>
           {projects.map((p) => (
             <Grid key={p.name} size={{ xs: 12, sm: 6, md: 4 }}>
-              <ProjectCard project={p} onEdit={setEditProject} onRemove={setConfirmRemove} onOpen={handleOpenProject} />
+              <ProjectCard project={p} onEdit={setEditProject} onRemove={setConfirmRemove} onOpen={handleOpenProject} onImport={setImportProject} />
             </Grid>
           ))}
         </Grid>
       )}
 
+      {importProject && <ImportStacksDialog project={importProject} onClose={() => setImportProject(null)}
+        onImport={async input => { await projectRpc.importConfiguration(input); await fetchProjects(); }} />}
       {/* Edit dialog */}
       <EditProjectDialog
         open={!!editProject}

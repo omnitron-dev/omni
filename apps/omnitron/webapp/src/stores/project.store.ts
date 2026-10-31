@@ -14,6 +14,7 @@ import { create } from 'zustand';
 import { useShallow } from 'zustand/shallow';
 import { project as projectRpc } from '../netron/client';
 import { readStored, writeStored, removeStored, readStoredJson, writeStoredJson } from '../utils/storage';
+import { restoredProjectScope } from '../utils/project-scope';
 import type {
   IProjectInfo,
   IStackInfo,
@@ -41,7 +42,7 @@ interface ProjectState {
   loading: boolean;
   error: string | null;
 
-  fetchProjects: () => Promise<void>;
+  fetchProjects: (currentPath?: string) => Promise<string | void>;
   fetchStacks: (project: string) => Promise<void>;
   fetchStackStatus: (project: string, stack: string) => Promise<StackRuntime | null>;
   /** Select a project workspace. Saves current route for old workspace, returns saved route for new. */
@@ -127,7 +128,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   loading: false,
   error: null,
 
-  fetchProjects: async () => {
+  fetchProjects: async (currentPath?: string) => {
     try {
       set({ loading: true, error: null });
       const projects = await projectRpc.listProjects();
@@ -136,9 +137,20 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       // Restore persisted project — validate it still exists
       const current = get().activeProject;
       if (current) {
-        const exists = projects.some((p) => p.name === current);
-        if (exists) {
-          get().fetchStacks(current);
+        const restored = restoredProjectScope(projects, current, get().activeStack);
+        if (restored) {
+          const previousStack = get().activeStack;
+          if (restored.project !== current) {
+            const rewriteRoute = (route: string) => previousStack && restored.stack && route === `/stacks/${previousStack}`
+              ? `/stacks/${restored.stack}` : route;
+            const routes = { ...get().workspaceRoutes };
+            if (routes[current] && !routes[restored.project]) routes[restored.project] = rewriteRoute(routes[current]!);
+            set({ activeProject: restored.project, activeStack: restored.stack, workspaceRoutes: routes });
+            persistWorkspace(restored.project, restored.stack);
+            persistRoutes(routes);
+            void get().fetchStacks(restored.project);
+            if (currentPath && rewriteRoute(currentPath) !== currentPath) return rewriteRoute(currentPath);
+          } else void get().fetchStacks(current);
         } else {
           // Project no longer exists — clear persisted state
           set({ activeProject: null, activeStack: null });
@@ -154,6 +166,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     } catch (err) {
       set({ error: (err as Error).message, loading: false });
     }
+    return undefined;
   },
 
   fetchStacks: async (projectName: string) => {

@@ -13,6 +13,7 @@ vi.mock('../../src/shared/paths.js', async (original) => {
   const module = await original<typeof import('../../src/shared/paths.js')>();
   return { ...module, expandPath: (value: string) => value.startsWith('~/') ? `${sandbox}/${value.slice(2)}` : module.expandPath(value) };
 });
+vi.mock('../../src/config/defaults.js', async original => ({ ...await original<typeof import('../../src/config/defaults.js')>(), OMNITRON_HOME: sandbox }));
 import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
 import { ProjectRegistry } from '../../src/project/registry.js';
 import { ProjectService } from '../../src/services/project.service.js';
@@ -45,14 +46,17 @@ describe('immutable releases preserve project identity', () => {
     const workspace = registry.getWorkspaceDir(project.name);
     fs.writeFileSync(path.join(workspace, 'retained.log'), 'history');
     // Another project can already have the same name as the new directory basename.
-    registry.add('production', original);
+    const independent = path.join(path.dirname(original), 'independent');
+    fs.mkdirSync(independent);
+    fs.copyFileSync(path.join(original, 'omnitron.config.mjs'), path.join(independent, 'omnitron.config.mjs'));
+    registry.add('production', independent);
     const updated = registry.updatePath(project.name, release);
     expect(updated).toEqual({ ...project, path: release });
     expect(fs.readFileSync(path.join(workspace, 'retained.log'), 'utf8')).toBe('history');
     await store.dispose();
     const reopened = new ProjectRegistry(store);
     expect(reopened.get(project.name)).toEqual(updated);
-    expect(reopened.get('production')?.path).toBe(original);
+    expect(reopened.get('production')?.path).toBe(independent);
     expect(reopened.list()).toHaveLength(2);
   });
 

@@ -398,7 +398,7 @@ async function startForeground(
   registry: ProjectRegistry,
   dc: import('../config/types.js').IDaemonConfig,
 ): Promise<void> {
-  const projects = registry.list();
+  const projects = registry.listRegistrations();
 
   log.info(`Starting omnitron daemon (role: ${dc.role}, foreground)`);
   log.info(`Projects: ${projects.length > 0 ? projects.map((p) => p.name).join(', ') : '(auto-detected)'}`);

@@ -13,7 +13,7 @@ const state = vi.hoisted(() => ({
   activeProject: null as string | null,
   loading: false,
   error: null,
-  fetchProjects: vi.fn(),
+  fetchProjects: vi.fn(async () => undefined),
   clearError: vi.fn(),
   addProject: vi.fn(),
   updateProject: vi.fn(),

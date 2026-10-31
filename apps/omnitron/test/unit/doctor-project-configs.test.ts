@@ -26,7 +26,7 @@ let root: string;
 const projects: Array<{ name: string; path: string }> = [];
 
 vi.mock('../../src/project/registry.js', () => ({
-  ProjectRegistry: { open: () => ({ list: () => projects }) },
+  ProjectRegistry: { open: () => ({ listRegistrations: () => projects }) },
 }));
 
 function project(name: string, config: string | null): void {

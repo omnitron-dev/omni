@@ -9,7 +9,7 @@
  * project-scoped sections: Apps, Stacks, Logs, Metrics, etc.
  */
 
-import { useEffect, useCallback, useId } from 'react';
+import { useEffect, useCallback, useId, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
@@ -32,6 +32,8 @@ export function ProjectSwitcher() {
   const { can } = useAccess();
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const route = useRef(pathname);
+  route.current = pathname;
 
   const projects = useProjectStore((s) => s.projects);
   const activeProject = useActiveProject();
@@ -40,8 +42,8 @@ export function ProjectSwitcher() {
   const fetchProjects = useProjectStore((s) => s.fetchProjects);
 
   useEffect(() => {
-    fetchProjects();
-  }, [fetchProjects]);
+    void fetchProjects(route.current).then(next => { if (next) navigate(next, { replace: true }); });
+  }, [fetchProjects, navigate]);
 
   const handleSelectOmnitron = useCallback(() => {
     const targetRoute = deselectProject(pathname);

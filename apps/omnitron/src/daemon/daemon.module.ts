@@ -91,24 +91,28 @@ import { isProduction } from '../shared/env-config.js';
  * and opens a new one at the same path. This ensures pino writes to the new
  * file rather than the old (renamed) inode.
  */
-class ReopenableFileStream extends Writable {
+export class ReopenableFileStream extends Writable {
   private fd: number;
   private reopenRequested = false;
 
   constructor(private readonly filePath: string) {
     super();
-    this.fd = fs.openSync(filePath, 'a');
+    this.fd = fs.openSync(filePath, 'a', 0o600);
   }
 
   override _write(chunk: Buffer, _encoding: string, callback: (error?: Error | null) => void): void {
-    if (!chunk.length) { callback(); return; }
+    // LoggerService.flush writes an empty barrier after all queued records.
+    if (!chunk.length) { fs.fsync(this.fd, callback); return; }
     let offset = 0;
     const write = () => fs.write(this.fd, chunk, offset, chunk.length - offset, null, (error, bytes) => {
       if (error) { callback(error); return; }
       if (bytes === 0) { callback(new Error('Log write made no progress')); return; }
       offset += bytes;
       if (offset < chunk.length) write();
-      else { if (this.reopenRequested) this.openNext(); callback(); }
+      else {
+        try { if (this.reopenRequested) this.openNext(); callback(); }
+        catch (reopenError) { callback(reopenError as Error); }
+      }
     });
     write();
   }
@@ -120,13 +124,11 @@ class ReopenableFileStream extends Writable {
   }
 
   private openNext(): void {
+    const next = fs.openSync(this.filePath, 'a', 0o600);
+    try { fs.fsyncSync(this.fd); fs.closeSync(this.fd); }
+    catch (error) { fs.closeSync(next); throw error; }
+    this.fd = next;
     this.reopenRequested = false;
-    try {
-      fs.closeSync(this.fd);
-    } catch {
-      // fd may already be closed
-    }
-    this.fd = fs.openSync(this.filePath, 'a');
   }
 
   override _destroy(_error: Error | null, callback: (error?: Error | null) => void): void {

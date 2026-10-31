@@ -1,16 +1,24 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { validateLogQuery } from './log-query.js';
 /**
  * Log Collector Service
  *
  * Writes structured logs to omnitron-pg instead of (or alongside) files.
- * Buffers entries in memory and flushes periodically for efficiency.
+ * Uses a private durable journal and bounded, idempotent database transactions.
  *
  * Designed to be wired into orchestrator.onAppLog() to capture all child
  * process log lines, parse pino JSON, and persist to the logs table.
  */
 
-import { randomUUID } from 'node:crypto';
-import { type Kysely, type ExpressionBuilder, type Expression, type SqlBool } from 'kysely';
+import { createHash, randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
+import { LogJournal } from '../monitoring/log-journal.js';
+import { logEntryOf } from '../monitoring/log-entry.js';
+import { assertLogDurability } from '../database/log-durability.js';
+import type { LogIngestionStats } from '../shared/dto/logs.js';
+import type { ProcessOutputContext } from '@omnitron-dev/titan-pm';
+import { type Kysely, type ExpressionBuilder, type Expression, type SqlBool, type Transaction } from 'kysely';
 
 import { planRetention, batchesPerPass } from './log-retention.js';
 import { jsonContains, dialectOf, type SqlDialect } from '../database/dialect.js';
@@ -27,34 +35,6 @@ import { LineAssembler, type LogRecord } from '../monitoring/log-line.js';
 // =============================================================================
 
 export type { LogEntry, LogQueryFilter, LogEntryRow, LogQueryResult, LogStats } from '../shared/dto/logs.js';
-
-// =============================================================================
-// Capture order within a millisecond
-// =============================================================================
-
-/**
- * A millisecond's capture sequence, written as its microseconds.
- *
- * Records captured in one millisecond were stored with equal timestamps and
- * read back in whatever order the database chose for the tie — on the master
- * a uuid's, which is to say none — so the lines of one dump, and bursts of
- * records, came back shuffled. The column is `timestamptz`, which keeps
- * microseconds, and no source stamps finer than a millisecond: so the
- * microseconds carry the order the records were captured in, 0–999 within
- * their millisecond. `ORDER BY timestamp` then IS capture order, with no
- * migration and no second sort key — and the string travels to the master
- * inside the replicated entry, whose ingest passes it through unchanged.
- *
- * The millisecond itself stays the record's own. Past 999 records in one
- * millisecond the rest share .999 — a tie, never a later time.
- */
-export function timestampWithSequence(ms: number, sequence: number): string {
-  const iso = new Date(ms).toISOString();
-  return `${iso.slice(0, -1)}${String(Math.min(sequence, 999)).padStart(3, '0')}Z`;
-}
-
-/** Milliseconds whose sequence is remembered — far more than one flush spans. */
-const SEQUENCED_MILLISECONDS = 4096;
 
 // =============================================================================
 // Log Collector Service
@@ -76,6 +56,34 @@ function safeJson(text: string): Record<string, unknown> | null {
 }
 
 
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonical(item)]));
+  return value;
+}
+
+/** PostgreSQL decodes JSON; SQLite stores it as text. RPC exposes one shape. */
+function decodedLogRows(rows: unknown[]): LogEntryRow[] {
+  return (rows as LogEntryRow[]).map(row => ({ ...row,
+    labels: typeof row.labels === 'string' ? safeJson(row.labels) : row.labels,
+    metadata: typeof row.metadata === 'string' ? safeJson(row.metadata) : row.metadata,
+  }));
+}
+
+/** Preserve full source-time precision in conflict checks, even when a driver returns a Date. */
+function prepareEntry(entry: LogEntry): LogEntry & { id: string; timestamp: string } {
+  const { _omnitronPayloadSha256: _previousProof, ...metadata } = entry.metadata ?? {};
+  const prepared = { ...entry, id: entry.id ?? randomUUID(),
+    timestamp: entry.timestamp instanceof Date ? entry.timestamp.toISOString() : entry.timestamp ?? new Date().toISOString(), metadata };
+  const proofInput = { ...prepared };
+  const capture = metadata['_omnitron'] as Record<string, unknown> | undefined;
+  if (capture?.['timeBasis'] === 'observed') {
+    proofInput.timestamp = 'legacy-observation';
+    proofInput.metadata = { ...metadata, _omnitron: { ...capture, capturedAt: null, eventTime: null } };
+  }
+  return { ...prepared, metadata: { ...metadata, _omnitronPayloadSha256: createHash('sha256').update(JSON.stringify(canonical(proofInput))).digest('hex') } };
+}
+
 const FLUSH_INTERVAL_MS = 1_000;
 
 /**
@@ -96,65 +104,35 @@ const RETENTION_FIRST_PASS_DELAY_MS = 60_000;
 /** Cadence while a backlog is still draining — see `scheduleRetention`. */
 const RETENTION_BACKLOG_INTERVAL_MS = 60 * 1_000;
 const FLUSH_THRESHOLD = 100;
-/**
- * Hard ceiling on buffered entries. During a DB outage every flush fails and
- * requeues while new entries keep arriving — without a ceiling the buffer
- * grows for as long as the outage lasts. The 2026-07-11 daemon crash was
- * exactly this: hours of omnitron-pg downtime grew the buffer into the
- * hundreds of thousands, and the then-`unshift(...batch)` requeue blew the
- * argument-spread call-stack limit (RangeError → unhandled rejection →
- * daemon exit). Newest entries win; the oldest overflow is counted and
- * dropped.
- */
-const MAX_BUFFER = 50_000;
-/** Per-flush insert ceiling — bounds both the INSERT payload and the requeue. */
+/** Maximum rows considered by one journal drain; payload bytes are bounded separately. */
 const FLUSH_BATCH_MAX = 5_000;
 
 @Injectable()
 export class LogCollectorService extends EventEmitter {
-  private buffer: LogEntry[] = [];
+  private startupDirectory: string | null = null;
+  setStartupDirectory(directory: string): void { this.startupDirectory = directory; }
+  private sourceJournal: LogJournal<{ app: string; record: LogRecord }> | null = null;
+  setSourceJournal(journal: LogJournal<{ app: string; record: LogRecord }>): void { this.sourceJournal = journal; }
+  private journal = new LogJournal<LogEntry>(':memory:');
+  private ownsJournal = true;
+  private sourceStats: (() => LogIngestionStats['journal'] | null) | null = null;
+  setSourceStats(read: () => LogIngestionStats['journal'] | null): void { this.sourceStats = read; }
+  private startupError: string | null = null;
+  private lastCommitAt: string | null = null;
+  private lastError: string | null = null;
+  private durability: LogIngestionStats['durability'] = 'unknown';
+  private capture: LogIngestionStats['capture'] = 'unknown';
+  private ownerPending: number | null = null;
+  private ownerError: string | null = null;
   private flushTimer: NodeJS.Timeout | null = null;
   private flushing = false;
   private disposed = false;
-  /** Entries dropped to the MAX_BUFFER ceiling since the last successful flush. */
-  private droppedSinceFlush = 0;
-  /**
-   * Lifetime counters, in memory.
-   *
-   * The console's "Log Ingestion" card was a hardcoded `0 lines/s`, and the
-   * only alternative source is `getLogStats`, which runs three `count(*)`
-   * over the whole table — 22.5 million rows on this host, so not something
-   * to poll. A counter costs an addition per flush and answers the question
-   * the card was asking.
-   *
-   * `droppedTotal` matters more than the rate. The buffer sheds its oldest
-   * entries at the MAX_BUFFER ceiling during a database outage, and until
-   * now that happened with no counter anyone could read — logs vanished and
-   * the only trace was an event nobody was listening to.
-   */
+  /** Committed local rows; drops remain zero because unacknowledged records are never evicted. */
   private ingestedTotal = 0;
   private droppedTotal = 0;
 
-  /**
-   * Where persisted batches also go, on a slave.
-   *
-   * A slave keeps its logs locally and replicates them to the master; the
-   * replication half was fully built — a WAL, a dedup ledger on the master,
-   * backoff, eviction — and `SyncService.buffer`/`bufferBatch` had **zero
-   * callers**. Everything downstream of them worked and moved nothing,
-   * because nothing upstream ever enqueued. This is the missing producer.
-   *
-   * A sink rather than a constructor dependency, for the reason the
-   * retention setter below gives: this service is registered with `useClass`
-   * and takes the database as its only injected argument, and adding a
-   * second is a change to module wiring that fails at runtime rather than at
-   * compile time.
-   *
-   * Set only on a slave. `bufferBatch` is itself a no-op for any other role,
-   * so a mis-wire costs nothing, but not wiring it on a master also avoids
-   * the work.
-   */
-  private syncSink: ((entries: LogEntry[]) => void) | null = null;
+  /** The slave replication enqueue participates in the same transaction as its log rows. */
+  private syncSink: ((entries: LogEntry[], transaction: Transaction<OmnitronDatabase>) => Promise<unknown>) | null = null;
 
   private retentionTimer: NodeJS.Timeout | null = null;
   /** Days of history to keep in the table. Zero or less disables pruning. */
@@ -174,9 +152,11 @@ export class LogCollectorService extends EventEmitter {
   } | null = null;
 
   /** Lines become records here exactly as they do for the files — `log-line.ts`. */
-  private readonly assembler = new LineAssembler((app, record) => this.ingestRecord(app, record));
-  /** Next capture sequence per millisecond — see `timestampWithSequence`. */
-  private readonly sequenceByMs = new Map<number, number>();
+  private readonly assembler = new LineAssembler((app, record) => this.ingestRecord(app, record), {
+    onPending: (app, record) => this.journal.put(record.id!, logEntryOf(app, record), false),
+    onError: error => { this.lastError = String(error); },
+  });
+
   private dialect: SqlDialect | null = null;
 
   constructor(@Inject(OMNITRON_DB_TOKEN) private readonly db: Kysely<OmnitronDatabase>) {
@@ -184,23 +164,8 @@ export class LogCollectorService extends EventEmitter {
     this.startFlushTimer();
   }
 
-  /**
-   * Turn on table retention.
-   *
-   * Off until called, because the number belongs to the daemon config and
-   * this service is constructed before it is read. A default chosen here
-   * would be a policy decision made in the wrong place — and a wrong one
-   * deletes an operator's history.
-   */
-  /**
-   * Replicate persisted batches to the master (slave role only).
-   *
-   * Called with the entries that REACHED the table, not the ones that were
-   * offered: a flush that fails puts its batch back at the front of the
-   * buffer and retries, and queueing on the attempt would send every retried
-   * line twice.
-   */
-  setSyncSink(sink: ((entries: LogEntry[]) => void) | null): void {
+  /** Configure transactional replication; never acknowledge a fire-and-forget sink. */
+  setSyncSink(sink: ((entries: LogEntry[], transaction: Transaction<OmnitronDatabase>) => Promise<unknown>) | null): void {
     this.syncSink = sink;
   }
 
@@ -306,101 +271,36 @@ export class LogCollectorService extends EventEmitter {
   // Ingestion
   // ===========================================================================
 
-  /** Drop the oldest overflow so the buffer never exceeds MAX_BUFFER. */
-  private enforceCap(): void {
-    const overflow = this.buffer.length - MAX_BUFFER;
-    if (overflow > 0) {
-      this.buffer.splice(0, overflow);
-      this.droppedSinceFlush += overflow;
-      this.droppedTotal += overflow;
-    }
+  useJournal(journal: LogJournal<LogEntry>, ownsJournal = true): void {
+    this.assembler.sealAll();
+    for (const item of this.journal.peek(1_000_000, Number.MAX_SAFE_INTEGER)) journal.put(item.id, item.value);
+    this.journal.close();
+    this.journal = journal;
+    this.ownsJournal = ownsJournal;
   }
 
-  /** Ingest a single log entry into the buffer */
+  setCaptureStatus(capture: LogIngestionStats['capture'], ownerPending: number | null = null, ownerError: string | null = null): void {
+    this.capture = capture;
+    this.ownerPending = ownerPending;
+    this.ownerError = ownerError;
+  }
+
   ingestLog(entry: LogEntry): void {
-    if (this.disposed) return;
-
-    this.buffer.push(entry);
-    this.enforceCap();
-
-    if (this.buffer.length >= FLUSH_THRESHOLD) {
-      void this.flush();
-    }
+    if (this.disposed) throw new Error('Log collector has closed; capture must retain the record');
+    const prepared = { ...entry, id: entry.id ?? randomUUID(),
+      timestamp: entry.timestamp instanceof Date ? entry.timestamp.toISOString() : entry.timestamp ?? new Date().toISOString() };
+    this.journal.put(prepared.id, prepared);
+    if (this.journal.stats().pending >= FLUSH_THRESHOLD) void this.flush();
   }
 
-  /** Ingest a batch of log entries */
-  ingestBatch(entries: LogEntry[]): void {
-    if (this.disposed) return;
+  ingestBatch(entries: LogEntry[]): void { for (const entry of entries) this.ingestLog(entry); }
 
-    // concat, not push(...entries) — spreading a large array as arguments
-    // risks the same call-stack blowup the flush requeue hit.
-    this.buffer = this.buffer.concat(entries);
-    this.enforceCap();
-
-    if (this.buffer.length >= FLUSH_THRESHOLD) {
-      void this.flush();
-    }
+  ingestPinoLine(appName: string, line: string, context?: ProcessOutputContext): void {
+    if (this.disposed) throw new Error('Log collector has closed');
+    this.assembler.push(appName, line, context);
   }
 
-  /**
-   * Take one line of an app's output (or of the daemon's own, as `omnitron`).
-   * This is the primary integration point with orchestrator.onAppLog().
-   *
-   * The line is read by the one classifier (`log-line.ts`) and joined into a
-   * record there. What the table held before: a line that was not JSON became
-   * a row at level `info`, and every indented line of a dump a row of its own
-   * — on the master, payments from the test node: 3 `error` rows, 1 264 995
-   * `info`, 1 216 292 of those dump fragments.
-   */
-  ingestPinoLine(appName: string, line: string): void {
-    if (this.disposed) return;
-    this.assembler.push(appName, line);
-  }
-
-  /** One record, as a row. */
-  private ingestRecord(appName: string, record: LogRecord): void {
-    const timestamp = this.sequenced(record.time);
-
-    if (record.kind !== 'json' || !record.data) {
-      this.ingestLog({ app: appName, level: record.level, message: record.message, timestamp });
-      return;
-    }
-
-    const parsed = record.data;
-    // Extract well-known fields, put the rest into metadata
-    const { level: _l, msg: _m, message: _msg, time: _t, pid: _pid, hostname: _hostname, ...rest } = parsed;
-
-    // Extract labels if present
-    const labels = (parsed['labels'] as Record<string, unknown> | undefined) ?? undefined;
-    const traceId = (parsed['traceId'] ?? parsed['trace_id'] ?? undefined) as string | undefined;
-    const spanId = (parsed['spanId'] ?? parsed['span_id'] ?? undefined) as string | undefined;
-
-    // Everything else goes into metadata
-    const metadata = Object.keys(rest).length > 0 ? rest : undefined;
-
-    this.ingestLog({
-      app: appName,
-      level: record.level,
-      message: record.message,
-      timestamp,
-      ...(labels !== undefined ? { labels } : {}),
-      ...(traceId !== undefined ? { traceId } : {}),
-      ...(spanId !== undefined ? { spanId } : {}),
-      ...(metadata !== undefined ? { metadata } : {}),
-    });
-  }
-
-  /** The record's millisecond, and its place among the records captured in it. */
-  private sequenced(ms: number): string {
-    const at = Number.isFinite(ms) ? Math.floor(ms) : Date.now();
-    const next = this.sequenceByMs.get(at) ?? 0;
-    this.sequenceByMs.set(at, next + 1);
-    if (this.sequenceByMs.size > SEQUENCED_MILLISECONDS) {
-      const oldest = this.sequenceByMs.keys().next().value;
-      if (oldest !== undefined) this.sequenceByMs.delete(oldest);
-    }
-    return timestampWithSequence(at, next);
-  }
+  ingestRecord(appName: string, record: LogRecord): void { this.ingestLog(logEntryOf(appName, record)); }
 
   // ===========================================================================
   // Querying
@@ -495,7 +395,7 @@ export class LogCollectorService extends EventEmitter {
       .groupBy('level');
 
     const [entries, levels] = await Promise.all([
-      query.orderBy('timestamp', 'desc').limit(limit).offset(offset).execute(),
+      query.orderBy('timestamp', 'desc').orderBy('id', 'desc').limit(limit).offset(offset).execute(),
       levelsQuery.execute(),
     ]);
 
@@ -503,7 +403,7 @@ export class LogCollectorService extends EventEmitter {
     const total = byLevel.reduce((sum, { count }) => sum + count, 0);
 
     return {
-      entries: entries as unknown as LogEntryRow[],
+      entries: decodedLogRows(entries),
       total,
       byLevel,
       hasMore: offset + limit < total,
@@ -518,12 +418,11 @@ export class LogCollectorService extends EventEmitter {
    * rate of zero with a growing `bufferSize` beside it — which is the state
    * an operator needs to be able to tell from "nothing is being logged".
    */
-  getIngestionStats(): { ingestedTotal: number; droppedTotal: number; bufferSize: number } {
-    return {
-      ingestedTotal: this.ingestedTotal,
-      droppedTotal: this.droppedTotal,
-      bufferSize: this.buffer.length,
-    };
+  getIngestionStats(): LogIngestionStats {
+    const journal = this.journal.stats();
+    return { ingestedTotal: this.ingestedTotal, droppedTotal: this.droppedTotal, bufferSize: journal.pending,
+      durability: this.durability, journal, capture: this.capture, ownerPending: this.ownerPending, ownerError: this.ownerError,
+      lastCommitAt: this.lastCommitAt, lastError: this.lastError ?? this.startupError };
   }
 
   async getLogStats(): Promise<LogStats> {
@@ -595,7 +494,7 @@ export class LogCollectorService extends EventEmitter {
     // Range filters — critical for efficient live polling (since parameter)
     if (filter.from) {
       const from = typeof filter.from === 'string' ? new Date(filter.from) : filter.from;
-      query = query.where('timestamp', '>', from);
+      query = query.where('timestamp', '>=', from);
     }
     if (filter.to) {
       const to = typeof filter.to === 'string' ? new Date(filter.to) : filter.to;
@@ -605,10 +504,11 @@ export class LogCollectorService extends EventEmitter {
     // Get the last N entries, then reverse for chronological order
     const entries = await query
       .orderBy('timestamp', 'desc')
+      .orderBy('id', 'desc')
       .limit(tail)
       .execute();
 
-    return (entries as unknown as LogEntryRow[]).reverse();
+    return decodedLogRows(entries).reverse();
   }
 
   /**
@@ -638,81 +538,138 @@ export class LogCollectorService extends EventEmitter {
   // Buffer Flush
   // ===========================================================================
 
-  /** Flush buffered entries to the database */
+  /** Commit records and the replication outbox atomically. Replays verify identities. */
+  async persistCaptured(batch: LogEntry[], requirePersistent = true): Promise<void> {
+    if (!batch.length) return;
+    // A repeated ID inside one RPC batch must not enqueue replication twice.
+    const unique = new Map<string, ReturnType<typeof prepareEntry>>();
+    for (const entry of batch) {
+      const prepared = prepareEntry(entry), previous = unique.get(prepared.id);
+      if (previous && previous.metadata!['_omnitronPayloadSha256'] !== prepared.metadata!['_omnitronPayloadSha256']) {
+        this.lastError = `Log identity conflict: ${prepared.id}; conflicting batch retained`;
+        throw new Error(this.lastError);
+      }
+      unique.set(prepared.id, previous ?? prepared);
+    }
+    const prepared = [...unique.values()];
+    this.dialect ??= dialectOf(this.db);
+    let written = 0;
+    await this.db.transaction().execute(async trx => {
+      this.durability = await assertLogDurability(trx);
+      if (requirePersistent && this.durability !== 'persistent') throw new Error('Volatile storage cannot acknowledge durable captured logs');
+      for (let offset = 0; offset < prepared.length; offset += 500) {
+        const part = prepared.slice(offset, offset + 500);
+        const rows = part.map(entry => ({ id: entry.id,
+          timestamp: this.dialect === 'postgres' ? entry.timestamp : new Date(entry.timestamp),
+          nodeId: entry.nodeId ?? null, app: entry.app, level: entry.level, message: entry.message,
+          labels: entry.labels ? JSON.stringify(entry.labels) : null,
+          traceId: entry.traceId ?? null, spanId: entry.spanId ?? null,
+          metadata: entry.metadata ? JSON.stringify(entry.metadata) : null }));
+        const inserted = await trx.insertInto('logs').values(rows).onConflict(oc => oc.column('id').doNothing()).returning('id').execute();
+        const ids = new Set(inserted.map(row => row.id));
+        const duplicates = rows.filter(row => !ids.has(row.id));
+        if (duplicates.length) {
+          const existing = await trx.selectFrom('logs').selectAll().where('id', 'in', duplicates.map(row => row.id)).execute();
+          const normalize = (row: Record<string, unknown>) => ({ ...row,
+            timestamp: new Date(row['timestamp'] as string).toISOString(),
+            labels: typeof row['labels'] === 'string' ? JSON.parse(row['labels']) : row['labels'],
+            metadata: typeof row['metadata'] === 'string' ? JSON.parse(row['metadata']) : row['metadata'] });
+          for (const row of duplicates) {
+            const old = existing.find(value => value.id === row.id);
+            const before = old ? normalize(old) : null;
+            const incoming = normalize(row);
+            for (const value of [before, incoming]) {
+              const capture = value?.metadata?._omnitron;
+              if (capture?.timeBasis === 'observed') {
+                value!.timestamp = 'legacy-observation';
+                value!.metadata = { ...value!.metadata, _omnitron: { ...capture, capturedAt: null, eventTime: null } };
+              }
+            }
+            if (!before || !isDeepStrictEqual(before, incoming)) throw new Error(`Log identity conflict: ${row.id}; original and pending records preserved`);
+          }
+        }
+        // An outbox failure rolls back the local rows as well. No fire-and-forget replication.
+        if (this.syncSink && ids.size) await this.syncSink(part.filter(entry => ids.has(entry.id)), trx);
+        written += ids.size;
+      }
+    }).catch(error => { this.lastError = error instanceof Error ? error.message : String(error); throw error; });
+    this.ingestedTotal += written;
+    this.lastCommitAt = new Date().toISOString();
+    this.lastError = null;
+    // Observer failures cannot turn a committed batch into another write attempt.
+    try { this.emit('flushed', written); } catch { /* the commit remains authoritative */ }
+  }
+
+  private recoverStartupFailures(): void {
+    if (!this.startupDirectory) return;
+    let files: string[];
+    try { files = fs.readdirSync(this.startupDirectory); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
+    let recovered = 0;
+    const failures: string[] = [];
+    for (const name of files) {
+      const match = /^([a-f0-9-]{36})\.(json|partial)$/.exec(name);
+      if (!match) continue;
+      // A complete fsynced file may survive before its atomic rename. Both
+      // names share one import checkpoint; evidence files are never removed.
+      const id = match[1]!, key = `${id}.json`;
+      if (this.journal.importedFile(key)) continue;
+      try {
+        const filename = path.join(this.startupDirectory, name);
+        const stat = fs.lstatSync(filename);
+        if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 1024 * 1024 || (stat.mode & 0o077)) throw new Error('must be a private bounded file');
+        const bytes = fs.readFileSync(filename);
+        const source = JSON.parse(bytes.toString('utf8')) as Record<string, unknown>;
+        const capture = source['_omnitron'] as Record<string, unknown> | undefined;
+        if (capture?.['id'] !== id || source['event'] !== 'runtime.startup_failed'
+          || typeof source['time'] !== 'string' || !Number.isFinite(Date.parse(source['time']))) throw new Error('invalid startup evidence');
+        const entry: LogEntry = { id, app: 'omnitron', level: 'fatal',
+          message: String(source['msg']), timestamp: source['time'],
+          metadata: { component: source['component'], event: source['event'], err: source['err'], _omnitron: capture } };
+        this.journal.importFile(key, createHash('sha256').update(bytes).digest('hex'), id, entry);
+        if (++recovered >= 100) break;
+      } catch (error) {
+        // One damaged evidence file must not block valid files or ordinary
+        // application capture. Report its name, never its potentially secret bytes.
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') failures.push(name);
+      }
+    }
+    if (failures.length) throw new Error(`Startup evidence needs inspection: ${failures.slice(0, 5).join(', ')}${failures.length > 5 ? ` and ${failures.length - 5} more` : ''}; originals retained`);
+  }
+
   async flush(): Promise<void> {
-    if (this.flushing || this.buffer.length === 0) return;
-
+    if (this.flushing) return;
     this.flushing = true;
-    // Bounded batch — caps the INSERT payload AND the requeue-on-failure so
-    // an outage backlog drains in chunks instead of one giant statement.
-    // The 1s flush timer + threshold-triggered flushes drain the remainder.
-    const batch = this.buffer.splice(0, FLUSH_BATCH_MAX);
-
     try {
-      if (batch.length === 0) return;
-
-      // Postgres keeps the microseconds that carry capture order, so it gets
-      // the string as sequenced. SQLite (a slave) stores this column as TEXT
-      // and compares it as text, where `.123004Z` sorts BEFORE `.123Z` — its
-      // rows keep the millisecond form every other writer and every bound
-      // there uses. The order still reaches the master: the replicated entry
-      // carries the sequenced string, not this row.
-      this.dialect ??= dialectOf(this.db);
-      const keepsSequence = this.dialect === 'postgres';
-
-      const rows = batch.map((entry) => ({
-        id: randomUUID(),
-        timestamp: entry.timestamp
-          ? (typeof entry.timestamp === 'string'
-              ? (keepsSequence ? entry.timestamp : new Date(entry.timestamp))
-              : entry.timestamp)
-          : new Date(),
-        nodeId: entry.nodeId ?? null,
-        app: entry.app,
-        level: entry.level,
-        message: entry.message,
-        labels: entry.labels ? JSON.stringify(entry.labels) : null,
-        traceId: entry.traceId ?? null,
-        spanId: entry.spanId ?? null,
-        metadata: entry.metadata ? JSON.stringify(entry.metadata) : null,
-      }));
-
-      await this.db.insertInto('logs').values(rows).execute();
-
-      // After the write, never instead of it: what the master receives is
-      // what this node actually holds. Guarded because a sink that throws
-      // must not turn a successful flush into a failed one — the batch is
-      // already persisted and re-queueing it would duplicate the rows.
-      if (this.syncSink) {
-        try {
-          // The BATCH, not `rows`. `rows` has `labels`/`metadata` already
-          // serialised for this table, and the master's `ingestLog`
-          // serialises what it is given — so shipping rows would store
-          // `"{\"a\":1}"` as a label object on the other side. `LogEntry`
-          // is the unencoded shape both ends already agree on.
-          this.syncSink(batch);
-        } catch (err) {
-          this.emit('sync_error', err);
+      try { this.recoverStartupFailures(); this.startupError = null; }
+      catch (error) { this.startupError = error instanceof Error ? error.message : String(error); }
+      if (this.sourceJournal) {
+        const source = this.sourceJournal.peek();
+        const stats = this.sourceStats?.() ?? this.sourceJournal.stats();
+        this.ownerPending = stats.pending;
+        this.ownerError = stats.error;
+        if (source.length) {
+          await this.persistCaptured(source.map(item => logEntryOf(item.value.app, item.value.record)));
+          this.sourceJournal.acknowledge(source);
         }
       }
+      const batch = this.journal.peek(FLUSH_BATCH_MAX);
+      if (!batch.length) return;
+      await this.persistCaptured(batch.map(item => item.value), this.journal.filename !== ':memory:');
+      this.journal.acknowledge(batch);
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
+      try { this.emit('flush_error', error); } catch { /* journal still retains the batch */ }
+    } finally { this.flushing = false; }
+  }
 
-      if (this.droppedSinceFlush > 0) {
-        this.emit('dropped', this.droppedSinceFlush);
-        this.droppedSinceFlush = 0;
-      }
-      this.ingestedTotal += batch.length;
-      this.emit('flushed', batch.length);
-    } catch (err) {
-      // On failure, put the batch back at the FRONT of the buffer so order
-      // is preserved. concat (never unshift(...batch)) — spreading a large
-      // batch as arguments overflows the call stack, which is precisely how
-      // the 2026-07-11 daemon crash happened. The ceiling then drops the
-      // oldest overflow.
-      this.buffer = batch.concat(this.buffer);
-      this.enforceCap();
-      this.emit('flush_error', err);
-    } finally {
-      this.flushing = false;
+  /** A legacy owner cannot release its event cursor before every received line commits. */
+  async confirmPending(): Promise<void> {
+    this.assembler.sealAll();
+    while (this.flushing) await new Promise(resolve => setTimeout(resolve, 10));
+    while (this.journal.peek(1).length || this.sourceJournal?.peek(1).length) {
+      await this.flush();
+      if (this.lastError) throw new Error(this.lastError);
     }
   }
 
@@ -728,8 +685,8 @@ export class LogCollectorService extends EventEmitter {
   }
 
   async dispose(): Promise<void> {
-    // Held records (a dump waiting for its last lines) go into the buffer
-    // before the final flush, not out with the process.
+    if (this.disposed) return;
+    // Seal pending multiline records before the final durable drain.
     this.assembler.dispose();
     this.disposed = true;
 
@@ -748,7 +705,7 @@ export class LogCollectorService extends EventEmitter {
       await new Promise((r) => setTimeout(r, 50));
     }
 
-    // Final flush of remaining buffered entries
-    await this.flush();
+    // Drain all batches. During an outage retain them for the next process.
+    try { await this.confirmPending(); } finally { if (this.ownsJournal) this.journal.close(); }
   }
 }

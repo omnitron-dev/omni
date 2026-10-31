@@ -34,6 +34,10 @@ async function readWhenReady(file: string, expected: string, timeoutMs = 2000): 
 describe('LogManager', () => {
   let tmpDir: string;
   let config: LogManagerConfig;
+  const managers: LogManager[] = [];
+  const makeManager = (...args: ConstructorParameters<typeof LogManager>): LogManager => {
+    const result = new LogManager(...args); managers.push(result); return result;
+  };
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-logs-'));
@@ -46,43 +50,44 @@ describe('LogManager', () => {
     };
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    for (const manager of managers.splice(0)) await manager.dispose();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   describe('parseSize', () => {
     it('parses bytes', () => {
-      const lm = new LogManager(config, createMockOrchestrator());
+      const lm = makeManager(config, createMockOrchestrator());
       expect(lm.parseSize('100b')).toBe(100);
     });
 
     it('parses kilobytes', () => {
-      const lm = new LogManager(config, createMockOrchestrator());
+      const lm = makeManager(config, createMockOrchestrator());
       expect(lm.parseSize('1kb')).toBe(1024);
     });
 
     it('parses megabytes', () => {
-      const lm = new LogManager(config, createMockOrchestrator());
+      const lm = makeManager(config, createMockOrchestrator());
       expect(lm.parseSize('50mb')).toBe(50 * 1024 * 1024);
     });
 
     it('parses gigabytes', () => {
-      const lm = new LogManager(config, createMockOrchestrator());
+      const lm = makeManager(config, createMockOrchestrator());
       expect(lm.parseSize('2gb')).toBe(2 * 1024 * 1024 * 1024);
     });
 
     it('returns default 10MB for invalid size', () => {
-      const lm = new LogManager(config, createMockOrchestrator());
+      const lm = makeManager(config, createMockOrchestrator());
       expect(lm.parseSize('invalid')).toBe(10 * 1024 * 1024);
     });
 
     it('handles decimal values', () => {
-      const lm = new LogManager(config, createMockOrchestrator());
+      const lm = makeManager(config, createMockOrchestrator());
       expect(lm.parseSize('1.5mb')).toBe(Math.floor(1.5 * 1024 * 1024));
     });
 
     it('is case insensitive', () => {
-      const lm = new LogManager(config, createMockOrchestrator());
+      const lm = makeManager(config, createMockOrchestrator());
       expect(lm.parseSize('10MB')).toBe(10 * 1024 * 1024);
       expect(lm.parseSize('10Mb')).toBe(10 * 1024 * 1024);
     });
@@ -110,15 +115,16 @@ describe('LogManager', () => {
     };
 
     it('writes a JSON line as written, and a plain one with the time it was captured', async () => {
-      const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
+      const lm = makeManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
       const json = '{"level":30,"time":1790000000000,"msg":"started"}';
       const before = Date.now();
       lm.appendToFile('main', json);
       lm.appendToFile('main', 'hello world');
-      lm.dispose(); // seals held records, then flushes and closes the streams
+      await lm.dispose(); // seals held records, then flushes and closes the streams
 
       const [first, second] = await linesOf(path.join(tmpDir, 'logs', 'main', 'app.log'), 2);
-      expect(first).toBe(json);
+      expect(JSON.parse(first!)).toMatchObject(JSON.parse(json));
+      expect(JSON.parse(first!)._omnitron.timeBasis).toBe('reported');
       const envelope = JSON.parse(second!);
       expect(envelope).toMatchObject({ msg: 'hello world', format: 'text' });
       // Nothing in the line says its level, so none is claimed.
@@ -127,10 +133,10 @@ describe('LogManager', () => {
     });
 
     it('puts a pino-pretty ERROR in error.log — 95 of them never reached it', async () => {
-      const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
+      const lm = makeManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
       lm.appendToFile('payments', '[2026-09-23 08:49:07.229] ERROR (payments/41 on host): Monero chain has not advanced');
       lm.appendToFile('payments', '[2026-09-23 08:49:08.000] INFO (payments/41 on host): scanning');
-      lm.dispose();
+      await lm.dispose();
 
       const errors = await linesOf(path.join(tmpDir, 'logs', 'payments', 'error.log'), 1);
       expect(errors).toHaveLength(1);
@@ -138,30 +144,30 @@ describe('LogManager', () => {
     });
 
     it('creates separate files per app', async () => {
-      const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
+      const lm = makeManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
       lm.appendToFile('main', '{"level":30,"msg":"main log"}');
       lm.appendToFile('storage', '{"level":30,"msg":"storage log"}');
-      lm.dispose();
+      await lm.dispose();
 
-      expect(await linesOf(path.join(tmpDir, 'logs', 'main', 'app.log'), 1)).toEqual(['{"level":30,"msg":"main log"}']);
-      expect(await linesOf(path.join(tmpDir, 'logs', 'storage', 'app.log'), 1)).toEqual(['{"level":30,"msg":"storage log"}']);
+      expect(await linesOf(path.join(tmpDir, 'logs', 'main', 'app.log'), 1)).toEqual([expect.stringContaining('main log')]);
+      expect(await linesOf(path.join(tmpDir, 'logs', 'storage', 'app.log'), 1)).toEqual([expect.stringContaining('storage log')]);
     });
   });
 
   describe('getLogFilePath', () => {
     it('returns correct path', () => {
-      const lm = new LogManager(config, createMockOrchestrator());
+      const lm = makeManager(config, createMockOrchestrator());
       expect(lm.getLogFilePath('main')).toBe(path.join(tmpDir, 'logs', 'main', 'app.log'));
     });
   });
 
   describe('rotateLog', () => {
-    it('rotates current log to .1', () => {
-      const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
+    it('rotates current log to .1', async () => {
+      const lm = makeManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
       const logFile = lm.getLogFilePath('main'); // also creates the logs/main/ dir
       fs.writeFileSync(logFile, 'original content');
 
-      lm.rotateLog('main');
+      await lm.rotateLog('main');
 
       // The current file is recreated empty (so the write stream can keep going);
       // the content is what moved to .1.
@@ -169,14 +175,14 @@ describe('LogManager', () => {
       expect(fs.readFileSync(`${logFile}.1`, 'utf-8')).toBe('original content');
     });
 
-    it('cascades rotation: .1 -> .2, current -> .1', () => {
-      const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
+    it('cascades rotation: .1 -> .2, current -> .1', async () => {
+      const lm = makeManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
       const logFile = lm.getLogFilePath('main');
 
       fs.writeFileSync(`${logFile}.1`, 'old content');
       fs.writeFileSync(logFile, 'current content');
 
-      lm.rotateLog('main');
+      await lm.rotateLog('main');
 
       expect(fs.readFileSync(`${logFile}.1`, 'utf-8')).toBe('current content');
       expect(fs.readFileSync(`${logFile}.2`, 'utf-8')).toBe('old content');
@@ -185,12 +191,12 @@ describe('LogManager', () => {
 
   describe('getRotatedFiles', () => {
     it('returns empty for no files', () => {
-      const lm = new LogManager(config, createMockOrchestrator());
+      const lm = makeManager(config, createMockOrchestrator());
       expect(lm.getRotatedFiles('nonexistent')).toEqual([]);
     });
 
     it('returns current and rotated files', () => {
-      const lm = new LogManager(config, createMockOrchestrator());
+      const lm = makeManager(config, createMockOrchestrator());
       const logFile = lm.getLogFilePath('main');
       fs.writeFileSync(logFile, 'current');
       fs.writeFileSync(`${logFile}.1`, 'rotated1');
@@ -204,23 +210,23 @@ describe('LogManager', () => {
   // `getLogs` answers from the records as captured — dated once, when they
   // were captured, never again by the time of the question.
   describe('getLogs', () => {
-    it('reads captured records: a JSON one by its own fields, a plain one as unknown', () => {
-      const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
+    it('reads captured records: a JSON one by its own fields, a plain one as unknown', async () => {
+      const lm = makeManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
       lm.appendToFile('main', '{"time":"2024-01-01T00:00:00Z","level":30,"msg":"json line"}');
       lm.appendToFile('main', 'plain text line');
-      lm.dispose();
+      await lm.dispose();
 
       const logs = lm.getLogs('main', 10);
       expect(logs.map((l) => `${l.level}:${l.message}`)).toEqual(['info:json line', 'unknown:plain text line']);
       expect(logs[0]!.timestamp).toBe(Date.parse('2024-01-01T00:00:00Z'));
     });
 
-    it('handles pino log levels', () => {
-      const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
+    it('handles pino log levels', async () => {
+      const lm = makeManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
       for (const [level, name] of [[10, 'trace'], [20, 'debug'], [30, 'info'], [40, 'warn'], [50, 'error'], [60, 'fatal']] as const) {
         lm.appendToFile('test', JSON.stringify({ level, msg: name }));
       }
-      lm.dispose();
+      await lm.dispose();
 
       expect(lm.getLogs('test', 10).map((l) => l.level)).toEqual(['trace', 'debug', 'info', 'warn', 'error', 'fatal']);
     });
@@ -228,9 +234,9 @@ describe('LogManager', () => {
     it('dates a record once — a second question gets the same time', async () => {
       // `omnitron logs -f` printed 26 lines 304 times in 7 s: every poll
       // re-dated the same non-JSON lines to the moment of the poll.
-      const lm = new LogManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
+      const lm = makeManager({ ...config, maxSize: '10mb' }, createMockOrchestrator());
       lm.appendToFile('payments', 'Monero chain has not advanced');
-      lm.dispose();
+      await lm.dispose();
       const first = lm.getLogs('payments', 10).map((l) => l.timestamp);
       await new Promise((r) => setTimeout(r, 20));
       expect(lm.getLogs('payments', 10).map((l) => l.timestamp)).toEqual(first);

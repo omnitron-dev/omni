@@ -1,3 +1,4 @@
+import type { ProcessOutputContext } from '@omnitron-dev/titan-pm';
 /**
  * OrchestratorService — Core orchestration logic
  *
@@ -268,7 +269,7 @@ export class OrchestratorService extends EventEmitter {
   private config: IEcosystemConfig | null = null;
   private readonly cwd: string;
   private metricsTimer: NodeJS.Timeout | null = null;
-  private readonly appLogHandlers: Array<(appName: string, line: string) => void> = [];
+  private readonly appLogHandlers: Array<(appName: string, line: string, context?: ProcessOutputContext) => void> = [];
 
   /** Dev mode — when true, child processes are bundled from source .ts via esbuild */
   devMode = false;
@@ -425,6 +426,12 @@ export class OrchestratorService extends EventEmitter {
   ) {
     super();
     this.cwd = cwd ?? process.cwd();
+    if (pm.outputCaptureVersion === 1) pm.on('process:output', (name: string, line: string, stream: 'stdout' | 'stderr', context: ProcessOutputContext) => {
+      const app = [...this.handles.keys()].filter(key => name === key || name.startsWith(`${key}/`) || name.startsWith(`${key}-`))
+        .sort((a, b) => b.length - a.length)[0];
+      const handle = app ? this.handles.get(app) : undefined;
+      if (app && handle) this.childLogForwarder(app, handle)(line, stream, context);
+    });
     this.daemonNetronReady = new Promise<void>((resolve) => {
       this.resolveDaemonNetronReady = resolve;
     });
@@ -1844,7 +1851,7 @@ export class OrchestratorService extends EventEmitter {
    * Register a handler that receives every log line from managed apps.
    * Used by LogManager to persist logs to disk with rotation.
    */
-  onAppLog(handler: (appName: string, line: string) => void): void {
+  onAppLog(handler: (appName: string, line: string, context?: ProcessOutputContext) => void): void {
     this.appLogHandlers.push(handler);
   }
 
@@ -2677,8 +2684,10 @@ export class OrchestratorService extends EventEmitter {
       // module that throws on import does — so the streams below are often
       // empty and the only account of what happened is on the error.
       this.persistChildFailure(entry.name, childName, error);
-      this.persistChildOutput(entry.name, childName, details?.stdout, 'stdout');
-      this.persistChildOutput(entry.name, childName, details?.stderr, 'stderr');
+      if (this.pm.outputCaptureVersion !== 1) {
+        this.persistChildOutput(entry.name, childName, details?.stdout, 'stdout');
+        this.persistChildOutput(entry.name, childName, details?.stderr, 'stderr');
+      }
 
       handle.recordExit({
         code: null,
@@ -2726,12 +2735,11 @@ export class OrchestratorService extends EventEmitter {
    * Routes child stdout/stderr lines to AppHandle ring buffer for `getLogs()`.
    */
   private attachLogCapture(appName: string, childName: string, handle: AppHandle): void {
+    if (this.pm.outputCaptureVersion === 1) return;
     const supervisor = handle.supervisor;
     if (!supervisor) return;
-
     const processId = supervisor.getChildProcessId(childName);
     if (!processId) return;
-
     const workerHandle = this.pm.getWorkerHandle(processId);
     if (!workerHandle?.onLog) return;
 
@@ -2758,6 +2766,7 @@ export class OrchestratorService extends EventEmitter {
     handle: AppHandle,
     pool: { getWorkerIds(): string[]; getWorkerHandle(id: string): unknown }
   ): void {
+    if (this.pm.outputCaptureVersion === 1) return;
     const forward = this.childLogForwarder(appName, handle);
     let attached = 0;
     for (const workerId of pool.getWorkerIds()) {
@@ -2775,9 +2784,13 @@ export class OrchestratorService extends EventEmitter {
   private childLogForwarder(
     appName: string,
     handle: AppHandle
-  ): (line: string, stream: 'stdout' | 'stderr') => void {
-    return (line: string, stream: 'stdout' | 'stderr') => {
+  ): (line: string, stream: 'stdout' | 'stderr', context?: ProcessOutputContext) => void {
+    return (line: string, stream: 'stdout' | 'stderr', context?: ProcessOutputContext) => {
       // In-memory ring buffer (for live CLI tailing)
+      // Accept durable capture before updating volatile views: a retry keeps
+      // the same ID and must not duplicate the diagnostic ring.
+      for (const handler of this.appLogHandlers) handler(appName, line, context);
+
       handle.appendLog(line);
 
       // Separate stderr ring — feeds `lastExit.stderrTail` on death.
@@ -2787,14 +2800,6 @@ export class OrchestratorService extends EventEmitter {
         handle.appendStderr(line);
       }
 
-      // Persist to disk via registered log handlers (LogManager)
-      for (const handler of this.appLogHandlers) {
-        try {
-          handler(appName, line);
-        } catch {
-          // Log handler failure must not break the app
-        }
-      }
     };
   }
 

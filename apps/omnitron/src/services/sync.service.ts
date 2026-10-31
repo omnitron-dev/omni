@@ -1,3 +1,4 @@
+import { assertLogDurability } from '../database/log-durability.js';
 /**
  * Buffered node→master replication over Netron.
  *
@@ -1233,6 +1234,7 @@ export class SyncService {
       }
     }
 
+    if (logs.length) await assertLogDurability(db);
     for (const part of statementsOf(logs)) await db.insertInto('logs').values(part).execute();
     for (const part of statementsOf(alerts)) await db.insertInto('alert_events').values(part).execute();
     for (const part of statementsOf(traces)) await db.insertInto('traces').values(part).execute();

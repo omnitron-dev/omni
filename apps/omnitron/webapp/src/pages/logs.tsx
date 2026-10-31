@@ -1,3 +1,5 @@
+import { readLogIngestion, readLogTime } from '../../../src/shared/log-ingestion-reading';
+import type { LogIngestionStats } from '@omnitron-dev/omnitron/dto/services';
 /**
  * Logs Page — Production-grade streaming log viewer.
  *
@@ -306,6 +308,7 @@ function LogRow({ log, isNew, nodeNames }: LogRowProps) {
                 {'\n'}
               </span>
             )}
+            {readLogTime(log.metadata) && <span>{readLogTime(log.metadata)}{'\n'}</span>}
             {log.traceId && (
               <span>
                 <Box component="span" sx={{ color: 'text.secondary' }}>traceId: </Box>
@@ -350,6 +353,22 @@ function LogRow({ log, isNew, nodeNames }: LogRowProps) {
 // =============================================================================
 
 export default function LogsPage() {
+  const [ingestion, setIngestion] = useState<LogIngestionStats | null>(null);
+  const ingestionReading = readLogIngestion(ingestion);
+  useEffect(() => {
+    let active = true;
+    let inFlight = false;
+    const poll = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try { const value = await logs.getIngestionStats(); if (active) setIngestion(value); }
+      catch { if (active) setIngestion(null); }
+      finally { inFlight = false; }
+    };
+    void poll();
+    const timer = setInterval(() => { void poll(); }, 5000);
+    return () => { active = false; clearInterval(timer); };
+  }, []);
   const theme = useTheme();
   const { activeProject, namespacePrefix, filterApps, displayName } = useStackContext();
   const daemonMode = !activeProject;
@@ -845,6 +864,9 @@ export default function LogsPage() {
             <Stack direction="row" spacing={0.5} sx={{
               alignItems: "center", flexWrap: 'wrap'
             }}>
+              <Tooltip title={`Current node: ${ingestionReading.detail}`}>
+                <Chip size="small" color={ingestionReading.severity} variant="outlined" label={ingestionReading.title} />
+              </Tooltip>
               {isLive && (
                 <Chip
                   label={paused ? 'PAUSED' : 'LIVE'}

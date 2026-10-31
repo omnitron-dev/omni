@@ -38,7 +38,7 @@ export function executionProcessConfig(ecosystemConfig: IEcosystemConfig): IProc
 };
 }
 
-export function executionLogManager(ecosystemConfig: IEcosystemConfig, dc: IDaemonConfig, orchestrator: OrchestratorControl): LogManager {
+export function executionLogManager(ecosystemConfig: IEcosystemConfig, dc: IDaemonConfig, orchestrator: OrchestratorControl, capture = true): LogManager {
   // Build per-app rotation overrides from ecosystem config
   const perApp = new Map<string, { maxSize?: string; maxFiles?: number; compress?: boolean }>();
   for (const app of ecosystemConfig.apps) {
@@ -55,6 +55,7 @@ export function executionLogManager(ecosystemConfig: IEcosystemConfig, dc: IDaem
   return new LogManager(
     {
       baseDir,
+      ...(capture ? { journalPath: `${baseDir}/data/application-logs.sqlite` } : {}),
       defaults: {
         maxSize: ecosystemConfig.logging.maxSize,
         maxFiles: ecosystemConfig.logging.maxFiles,

@@ -1,3 +1,4 @@
+import { OutputCapture, type ProcessOutputContext } from '@omnitron-dev/titan-pm';
 /**
  * Classic Launcher — Fork existing main.ts as a child process
  *
@@ -25,7 +26,7 @@ export async function launchClassic(
   handle: AppHandle,
   cwd: string,
   logger: ILogger,
-  logHandlers: Array<(appName: string, line: string) => void> = []
+  logHandlers: Array<(appName: string, line: string, context?: ProcessOutputContext) => void> = []
 ): Promise<ChildProcess> {
   cwd = path.resolve(cwd, entry.cwd ?? '.');
   let scriptPath = path.resolve(cwd, entry.script!);
@@ -80,24 +81,13 @@ export async function launchClassic(
   handle.childProcess = child;
   handle.pid = child.pid ?? null;
 
-  // Capture stdout/stderr → ring buffer + optional log handlers (disk persistence)
-  const captureOutput = (chunk: Buffer) => {
-    const lines = chunk.toString().split('\n').filter(Boolean);
-    for (const line of lines) {
-      handle.appendLog(line);
-      // Persist to disk via registered log handlers (LogManager)
-      for (const handler of logHandlers) {
-        try {
-          handler(entry.name, line);
-        } catch {
-          /* must not break the app */
-        }
-      }
-    }
-  };
-
-  child.stdout?.on('data', captureOutput);
-  child.stderr?.on('data', captureOutput);
+  const capture = new OutputCapture(handle.healthRunId!, (line, stream, context) => {
+    for (const handler of logHandlers) handler(entry.name, line, context);
+    handle.appendLog(line);
+    if (stream === 'stderr') handle.appendStderr(line);
+  });
+  capture.attach(child.stdout, 'stdout');
+  capture.attach(child.stderr, 'stderr');
 
   // Wait for readiness
   await waitForReady(child, handle, logger);

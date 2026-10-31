@@ -25,7 +25,7 @@ import {
   levelOf,
   type LogRecord,
 } from '../../src/monitoring/log-line.js';
-import { LogCollectorService, timestampWithSequence } from '../../src/services/log-collector.service.js';
+import { LogCollectorService } from '../../src/services/log-collector.service.js';
 import { DaemonRpcService } from '../../src/daemon/daemon.rpc-service.js';
 
 const REF = Date.parse('2026-09-23T13:30:00.000Z');
@@ -150,7 +150,7 @@ describe('a file read backwards gives the same records', () => {
 describe('the table keeps a record as one row, at its level, in capture order', () => {
   const collector = () => {
     const c = new LogCollectorService({} as never);
-    return { c, rows: () => (c as unknown as { buffer: Array<Record<string, unknown>> }).buffer };
+    return { c, rows: () => (c as any).journal.peek().map((item: any) => item.value) };
   };
 
   it('stores a dump as one row and a plain line as unknown, not info', async () => {
@@ -160,13 +160,15 @@ describe('the table keeps a record as one row, at its level, in capture order', 
     c.ingestPinoLine('sample/deployed/payments', '{"level":40,"msg":"retrying"}');
 
     expect(rows().map((r) => `${r['level']}:${String(r['message']).split('\n').length}`)).toEqual(['unknown:2', 'warn:1']);
-    await c.dispose();
+    await expect(c.dispose()).rejects.toThrow();
   });
 
-  it('writes the capture order into the microseconds of one millisecond', () => {
-    expect(timestampWithSequence(Date.parse('2026-09-23T13:30:00.123Z'), 0)).toBe('2026-09-23T13:30:00.123000Z');
-    expect(timestampWithSequence(Date.parse('2026-09-23T13:30:00.123Z'), 7)).toBe('2026-09-23T13:30:00.123007Z');
-    expect(timestampWithSequence(Date.parse('2026-09-23T13:30:00.123Z'), 5000)).toBe('2026-09-23T13:30:00.123999Z');
+  it('keeps equal source times equal, with independent capture identities', () => {
+    const got: LogRecord[] = [];
+    const assembler = new LineAssembler((_key, record) => got.push(record));
+    for (const msg of ['one', 'two']) assembler.push('app', JSON.stringify({ time: '2026-09-23T13:30:00.123456Z', msg }));
+    expect(got.map(record => record.timestamp)).toEqual(['2026-09-23T13:30:00.123456Z', '2026-09-23T13:30:00.123456Z']);
+    expect(got[0]!.id).not.toBe(got[1]!.id);
   });
 });
 

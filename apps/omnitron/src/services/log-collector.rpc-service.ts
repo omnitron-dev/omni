@@ -1,3 +1,4 @@
+import type { LogIngestionStats } from '../shared/dto/logs.js';
 /**
  * Omnitron Logs RPC Service
  *
@@ -52,7 +53,7 @@ export class LogsRpcService {
    * arriving". This is.
    */
   @Public({ auth: { roles: VIEWER_ROLES } })
-  async getIngestionStats(): Promise<{ ingestedTotal: number; droppedTotal: number; bufferSize: number }> {
+  async getIngestionStats(): Promise<LogIngestionStats> {
     return this.logCollector.getIngestionStats();
   }
 

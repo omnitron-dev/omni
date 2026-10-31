@@ -1,4 +1,7 @@
-import { randomUUID } from 'node:crypto';
+import type { LogCollectorService } from '../services/log-collector.service.js';
+import { logEntryOf } from '../monitoring/log-entry.js';
+import type { ProcessOutputContext } from '@omnitron-dev/titan-pm';
+import { createHash, randomUUID } from 'node:crypto';
 import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import type { ControllerGrant, HandoffTicket } from '@omnitron-dev/titan-pm';
@@ -30,12 +33,14 @@ export class ExecutionClient {
   private deliverEvents = false;
   private metrics: ExecutionMetricsSink | null = null;
   private readonly emitter = new EventEmitter();
-  private logHandlers: Array<(name: string, line: string) => void> = [];
+  private logHandlers: Array<(name: string, line: string, context?: ProcessOutputContext) => void> = [];
   private poll: NodeJS.Timeout | null = null;
   private polling = false;
   private setup: Promise<void> = Promise.resolve();
   private setupFailure: unknown;
   private closed = false;
+  private logs: LogCollectorService | null = null;
+  setLogCollector(logs: LogCollectorService): void { this.logs = logs; }
 
   constructor(readonly socketPath: string, logger: ILogger, readonly controllerId: string = randomUUID()) {
     const channel = (requestTimeout: number) => new RpcConnection(`unix://${socketPath}`, netron => {
@@ -192,7 +197,26 @@ export class ExecutionClient {
       this.apply(await remote.snapshot({ afterEvent: this.eventCursor }));
       observed = true;
       runtimeDiagnostics.resolve('execution.observation-unavailable');
-      if (this.deliverEvents && this.grant) await remote.acknowledge({ grant: this.grant, cursor: this.eventCursor });
+      if (this.deliverEvents && this.grant) {
+        if (this.inventory?.logs?.protocol === 1) {
+          if (!this.logs) throw new Error('Durable log consumer is unavailable; owner journal retained');
+          this.logs.setCaptureStatus('durable-owner', this.inventory.logs.journal.pending, this.inventory.logs.journal.error);
+          const batch = await remote.readLogs();
+          if (batch.length) {
+            await this.logs.persistCaptured(batch.map(item => logEntryOf(item.value.app, item.value.record)));
+            await remote.acknowledgeLogs({ grant: this.grant, records: batch.map(({ id, digest }) => ({ id, digest })) });
+          }
+          runtimeDiagnostics.resolve('logs.legacy-owner');
+        } else {
+          this.logs?.setCaptureStatus('legacy-owner');
+          runtimeDiagnostics.record({ id: 'logs.legacy-owner', severity: 'warning', title: 'Execution owner uses legacy log delivery',
+            evidence: ['The owner has no durable log journal; raw event delivery may truncate output and cannot prove capture time.'],
+            remedy: 'Activate an owner with durable capture during an approved application maintenance window.' });
+          if (!this.logs) throw new Error('Log collector is not ready; event acknowledgment withheld');
+          await this.logs.confirmPending();
+        }
+        await remote.acknowledge({ grant: this.grant, cursor: this.eventCursor });
+      }
       runtimeDiagnostics.resolve('execution.acknowledgment-unavailable');
     }
     catch (error) {
@@ -227,7 +251,11 @@ export class ExecutionClient {
     for (const event of snapshot.events) {
       if (event.sequence <= this.eventCursor) continue;
       if (event.kind === 'log') {
-        for (const handler of this.logHandlers) handler(event.app, String(event.detail));
+        const hex = createHash('sha256').update(`${snapshot.status.owner.id}:${event.sequence}`).digest('hex');
+        const id = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+        const context: ProcessOutputContext = { id, processId: snapshot.status.owner.id, stream: 'stdout',
+          sequence: event.sequence, capturedAt: new Date().toISOString(), timeBasis: 'observed' };
+        for (const handler of this.logHandlers) handler(event.app, String(event.detail), context);
       } else if (event.kind === 'metric') {
         const metric = event.detail;
         if (this.metrics && metric && typeof metric === 'object' && EXECUTION_METRICS.includes(metric.method)) {
@@ -313,7 +341,7 @@ export class ExecutionClient {
       getLogs: (name?: string, lines = 100) => this.view().apps.filter(app => !name || app.info.name === this.resolve(name))
         .map(app => ({ app: app.info.name, lines: app.logs.slice(-lines) })),
       hasDeclaredReadiness: (name: string) => this.view().apps.find(app => app.info.name === this.resolve(name))?.declaredReadiness ?? false,
-      onAppLog: (handler: (name: string, line: string) => void) => { this.logHandlers.push(handler); },
+      onAppLog: (handler: (name: string, line: string, context?: ProcessOutputContext) => void) => { this.logHandlers.push(handler); },
       // Child-to-parent routing terminates at the stable owner's socket.
       setDaemonNetron: () => {},
       setMetricsBridge: (bridge: Parameters<OrchestratorService['setMetricsBridge']>[0]) => {

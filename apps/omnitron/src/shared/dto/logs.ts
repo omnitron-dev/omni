@@ -8,6 +8,8 @@
  */
 
 export interface LogEntry {
+  /** Assigned once at capture. Retries must keep this identity. */
+  id?: string;
   app: string;
   level: string;
   message: string;
@@ -17,6 +19,19 @@ export interface LogEntry {
   traceId?: string;
   spanId?: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface LogIngestionStats {
+  ingestedTotal: number;
+  droppedTotal: number;
+  bufferSize: number;
+  durability: 'persistent' | 'volatile' | 'unknown';
+  journal: { pending: number; assembling: number; bytes: number; error: string | null };
+  capture: 'durable-owner' | 'local' | 'legacy-owner' | 'unknown';
+  ownerPending: number | null;
+  ownerError: string | null;
+  lastCommitAt: string | null;
+  lastError: string | null;
 }
 
 export interface LogQueryFilter {

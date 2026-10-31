@@ -1,3 +1,4 @@
+import { readLogIngestion } from '../shared/log-ingestion-reading.js';
 /**
  * omnitron logs [app] [-n N] [-f] [--file] [--level LEVEL] [--grep PATTERN]
  *
@@ -43,6 +44,7 @@ const FOLLOW_WINDOW = 200;
 const FOLLOW_INTERVAL_MS = 1000;
 
 export interface LogsOptions {
+  status?: boolean;
   node?: string;
   lines?: number;
   follow?: boolean;
@@ -73,6 +75,18 @@ interface Source {
 }
 
 export async function logsCommand(appName?: string, options: LogsOptions = {}): Promise<void> {
+  if (options.status) {
+    const client = createDaemonClient();
+    try {
+      const service = await client.service<IOmnitronLogsService>('OmnitronLogs');
+      const stats = await service.getIngestionStats();
+      const reading = readLogIngestion(stats);
+      if (isJsonMode()) emitJson({ ...stats, reading });
+      else log.info(`${reading.title}\n${reading.detail}`);
+    } catch (error) { emitError(`Log persistence status unavailable: ${error instanceof Error ? error.message : String(error)}`); }
+    finally { await client.disconnect(); }
+    return;
+  }
   const checked = readOptions(options);
   if (!checked.ok) {
     refuse(checked.error, appName);
@@ -565,6 +579,8 @@ async function showFile(app: string, file: string, wanted: Wanted, match: Match,
 
 /** What identifies a record across two reads of the same window. */
 function fingerprint(e: LogEntryDto): string {
+  const capture = e.data?.['_omnitron'];
+  if (capture && typeof capture === 'object' && 'id' in capture && typeof capture.id === 'string') return capture.id;
   return `${e.timestamp}\u0000${e.app}\u0000${e.level}\u0000${e.message}`;
 }
 

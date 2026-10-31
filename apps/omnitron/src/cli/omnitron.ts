@@ -442,9 +442,11 @@ program
   .option('-g, --grep <pattern>', 'Filter by message pattern (regex)')
   .option('--node <node>', 'Read replicated logs from one registered node (name or ID)')
   .option('--file', 'Read from log files instead of daemon (auto when daemon offline)')
+  .option('--status', 'Show local capture, durable queue and database commit status')
   .action(async (app, opts) => {
     const { logsCommand } = await import('../commands/logs.js');
     await logsCommand(app, {
+      status: opts.status,
       lines: parseInt(opts.lines, 10),
       follow: opts.follow,
       file: opts.file,

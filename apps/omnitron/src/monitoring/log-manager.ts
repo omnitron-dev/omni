@@ -1,3 +1,6 @@
+import type { ProcessOutputContext } from '@omnitron-dev/titan-pm';
+import { LogJournal } from './log-journal.js';
+import { runtimeDiagnostics } from './runtime-diagnostics.js';
 /**
  * LogManager — Project-scoped log routing, error log separation, per-app rotation
  *
@@ -32,6 +35,7 @@ export interface LogRotationConfig {
 }
 
 export interface LogManagerConfig {
+  journalPath?: string;
   baseDir: string;                                       // ~/.omnitron
   defaults: LogRotationConfig;                           // Global defaults
   perApp?: Map<string, Partial<LogRotationConfig>>;      // Per-app overrides (keyed by short name)
@@ -71,17 +75,15 @@ export class LogManager {
   private readonly perApp: Map<string, Partial<LogRotationConfig>>;
   private rotationCheckTimer: NodeJS.Timeout | null = null;
 
-  /**
-   * Async write-stream cache keyed by absolute log path. Pre-fix
-   * `appendToFile` issued `fs.appendFileSync` per line — under a
-   * managed app spamming 100k log lines/sec the daemon's event loop
-   * blocked on disk every iteration; `omnitron list` timed out, WS
-   * clients disconnected, the file watcher debounce fired repeatedly.
-   * Streams hand the writes to Node's threadpool with native
-   * backpressure (`write()` returns false when the buffer fills,
-   * callers can pause or queue). P1-K.
-   */
-  private readonly writeStreams = new Map<string, fs.WriteStream>();
+  /** Serialize appends, rotation and compression for each file. */
+  private readonly writeTasks = new Map<string, Promise<void>>();
+  private mirrorRunning: Promise<void> | null = null;
+  private mirrorTimer: NodeJS.Timeout | null = null;
+  private mirrorError: string | null = null;
+  private disposed = false;
+  readonly journal: LogJournal<{ app: string; record: LogRecord }> | null;
+  private readonly recordHandlers: Array<(app: string, record: LogRecord) => void> = [];
+  onRecord(handler: (app: string, record: LogRecord) => void): void { this.recordHandlers.push(handler); }
 
   /**
    * An app's lines become records here, once, at capture — see `log-line.ts`.
@@ -92,7 +94,11 @@ export class LogManager {
    * poll made the same old lines new again. A record is dated when it is
    * captured and never again.
    */
-  private readonly assembler = new LineAssembler((app, record) => this.persist(app, record));
+  private readonly assembler = new LineAssembler((app, record) => this.persist(app, record), {
+    onPending: (app, record) => this.journal?.put(record.id!, { app, record }, false),
+    onError: error => runtimeDiagnostics.failure('logs.capture', 'Application log capture is waiting for local storage', error,
+      'Restore the local journal storage. Captured records are retained and child output is backpressured.'),
+  });
 
   /** Records as captured, per app, in the order they arrived. */
   private readonly captured = new Map<string, CapturedRing>();
@@ -115,6 +121,13 @@ export class LogManager {
       this.perApp = new Map();
     }
 
+    this.journal = 'journalPath' in config && config.journalPath ? new LogJournal(config.journalPath, true) : null;
+    if (this.journal) {
+      this.mirrorTimer = setInterval(() => { void this.flushMirror(); }, 1000);
+      this.mirrorTimer.unref();
+      void this.flushMirror();
+    }
+
     // Ensure base log dir exists
     ensurePrivateDir(path.join(this.baseDir, 'logs'));
 
@@ -126,7 +139,9 @@ export class LogManager {
     this.rotationCheckTimer.unref();
   }
 
-  dispose(): void {
+  async dispose(): Promise<void> {
+    if (this.disposed) return;
+    this.disposed = true;
     if (this.rotationCheckTimer) {
       clearInterval(this.rotationCheckTimer);
       this.rotationCheckTimer = null;
@@ -134,12 +149,22 @@ export class LogManager {
     // A record still waiting for its continuation lines is written before the
     // streams close, not dropped with them.
     this.assembler.dispose();
-    // Flush + close every active write stream so no buffered log
-    // lines are lost on daemon shutdown. `end()` is idempotent.
-    for (const stream of this.writeStreams.values()) {
-      try { stream.end(); } catch { /* best-effort */ }
-    }
-    this.writeStreams.clear();
+    if (this.mirrorTimer) clearInterval(this.mirrorTimer);
+    await this.flush();
+    this.journal?.close();
+  }
+
+  /** Seal capture and settle file projection while retaining database delivery state. */
+  async flush(): Promise<void> {
+    this.assembler.sealAll();
+    await this.flushMirror();
+    await Promise.all([...this.writeTasks.values()]);
+  }
+
+  journalStats(): ReturnType<LogJournal<unknown>['stats']> | null {
+    if (!this.journal) return null;
+    const stats = this.journal.stats();
+    return { ...stats, error: stats.error ?? this.mirrorError };
   }
 
   // -------------------------------------------------------------------------
@@ -215,8 +240,8 @@ export class LogManager {
    * for the indented lines that continue it, briefly. `persist` writes the
    * record — this is the moment of capture, and the only one.
    */
-  appendToFile(appName: string, line: string): void {
-    this.assembler.push(appName, line);
+  appendToFile(appName: string, line: string, context?: ProcessOutputContext): void {
+    this.assembler.push(appName, line, context);
   }
 
   /**
@@ -228,6 +253,13 @@ export class LogManager {
    * none. The level is now the classifier's, whatever the line looked like.
    */
   private persist(appName: string, record: LogRecord): void {
+    this.journal?.put(record.id!, { app: appName, record });
+    for (const handler of this.recordHandlers) handler(appName, record);
+    if (this.journal) {
+      this.remember(appName, record);
+      void this.flushMirror();
+      return;
+    }
     const line = fileLineOf(record);
 
     // All levels → app.log (async stream, native backpressure)
@@ -247,7 +279,8 @@ export class LogManager {
 
   /** Keep a record for `getLogs`, dropping the oldest past either bound. */
   private remember(appName: string, record: LogRecord): void {
-    const data = record.data ?? (record.source ? { source: record.source } : undefined);
+    const data = { ...(record.data ?? {}), ...(record.source ? { source: record.source } : {}),
+      ...(record.capture ? { _omnitron: { ...record.capture, eventTime: record.timestamp } } : {}) };
     const entry: LogEntryDto = {
       timestamp: record.time,
       app: appName,
@@ -273,43 +306,88 @@ export class LogManager {
     }
   }
 
-  /**
-   * Async append to a cached write stream. `write()` returns false
-   * when Node's internal buffer is full — we don't pause callers
-   * (logs are fire-and-forget), but the kernel-level buffer absorbs
-   * bursts and the event loop is never blocked on the syscall.
-   */
-  private writeLine(filePath: string, line: string): void {
-    let stream = this.writeStreams.get(filePath);
-    if (!stream) {
-      // Lazy-create the dir + stream. `flags: 'a'` = append + create.
-      ensurePrivateDir(path.dirname(filePath));
-      // An application log is not public. Measured on this host: `main`'s
-      // `error.log` and `app.log` each held a line with a user's plaintext
-      // password, written by netron's rejected-request path — and the file
-      // was 0644. That path is fixed, but a log is made of whatever the
-      // application decided to write, so the mode has to hold regardless.
-      stream = createWriteStream(filePath, { flags: 'a', encoding: 'utf-8', mode: PRIVATE_FILE_MODE });
-      sealFile(filePath);
-      stream.on('error', (err) => {
-         
-        console.warn(`[LogManager] write stream error on ${filePath}: ${err.message}`);
-        this.writeStreams.delete(filePath);
-      });
-      this.writeStreams.set(filePath, stream);
-    }
-    stream.write(line + '\n');
+  /** File projection is independently acknowledged, so an I/O failure cannot lose its backlog. */
+  private flushMirror(): Promise<void> {
+    if (!this.journal) return Promise.resolve();
+    if (this.mirrorRunning) return this.mirrorRunning;
+    this.mirrorRunning = (async () => {
+      for (;;) {
+        const batch = this.journal!.peek(100, 2 * 1024 * 1024, 'file');
+        if (!batch.length) break;
+        for (const item of batch) {
+          const { app, record } = item.value;
+          await this.appendMirror(app, 'app', record);
+          if (record.level === 'error' || record.level === 'fatal') await this.appendMirror(app, 'error', record);
+          this.journal!.acknowledge([item], 'file');
+        }
+      }
+      runtimeDiagnostics.resolve('logs.file-mirror');
+      this.mirrorError = null;
+    })().catch(error => {
+      this.mirrorError = error instanceof Error ? error.message : String(error);
+      runtimeDiagnostics.failure('logs.file-mirror', 'Log file projection is delayed; records remain in the journal', error,
+        'Restore file permissions/storage. Projection retries independently of database delivery.');
+    }).finally(() => { this.mirrorRunning = null; });
+    return this.mirrorRunning;
   }
 
-  /**
-   * Close + drop a cached stream. Called before rotating so the
-   * `renameSync` doesn't race a live writer.
-   */
-  private closeStream(filePath: string): void {
-    const stream = this.writeStreams.get(filePath);
-    if (!stream) return;
-    this.writeStreams.delete(filePath);
-    stream.end();
+  private appendMirror(app: string, type: LogType, record: LogRecord): Promise<void> {
+    return this.enqueue(this.getLogFilePath(app, type), () => this.appendMirrorFile(app, type, record));
+  }
+
+  private async appendMirrorFile(app: string, type: LogType, record: LogRecord): Promise<void> {
+    const file = this.getLogFilePath(app, type);
+    let intent = this.journal!.fileIntent(record.id!, file);
+    if (!intent) {
+      try { if ((await fs.promises.stat(file)).size >= this.getMaxSizeBytes(app)) await this.rotateFile(app, type); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    }
+    const output = await fs.promises.open(file, 'a+', PRIVATE_FILE_MODE);
+    try {
+      const stat = await output.stat();
+      if (!intent) {
+        const last = Buffer.alloc(1);
+        if (stat.size) await output.read(last, 0, 1, stat.size - 1);
+        // Keep a legacy unterminated tail intact; only append its delimiter.
+        intent = { offset: stat.size, inode: stat.ino, prefix: stat.size && last[0] !== 10 ? '\n' : '' };
+        this.journal!.prepareFile(record.id!, file, intent);
+      }
+      if (stat.ino !== intent.inode || stat.size < intent.offset) throw new Error(`Log file replaced during pending projection: ${file}; journal retained`);
+      const bytes = Buffer.from(intent.prefix + fileLineOf(record) + '\n');
+      const appended = stat.size - intent.offset;
+      if (appended) {
+        const actual = Buffer.alloc(Math.min(bytes.length, appended));
+        await output.read(actual, 0, actual.length, intent.offset);
+        if (!actual.equals(bytes.subarray(0, actual.length))) throw new Error(`Log projection differs at saved offset: ${file}; both sources retained`);
+        if (appended >= bytes.length) { await output.sync(); return; }
+        // This prefix is proven to be our interrupted append, after the saved
+        // original EOF. No bytes preceding the write intent are changed.
+        await output.truncate(intent.offset);
+      }
+      await output.writeFile(bytes);
+      await output.sync();
+    } finally { await output.close(); }
+    sealFile(file);
+  }
+
+  private enqueue(file: string, operation: () => Promise<void>): Promise<void> {
+    const previous = this.writeTasks.get(file) ?? Promise.resolve();
+    const result = previous.then(operation);
+    const next = result.catch(error => {
+      runtimeDiagnostics.failure('logs.file-mirror', 'A log file mirror could not be written', error,
+        'Inspect file permissions and storage. The durable journal/database remains the authoritative log source.');
+    });
+    this.writeTasks.set(file, next);
+    void next.then(() => { if (this.writeTasks.get(file) === next) this.writeTasks.delete(file); });
+    return result;
+  }
+
+  private writeLine(filePath: string, line: string): void {
+    void this.enqueue(filePath, async () => {
+      ensurePrivateDir(path.dirname(filePath));
+      await fs.promises.appendFile(filePath, line + '\n', { mode: PRIVATE_FILE_MODE });
+      sealFile(filePath);
+    }).catch(() => { /* enqueue reports failures; this legacy path has no durable receipt */ });
   }
 
   // -------------------------------------------------------------------------
@@ -352,16 +430,18 @@ export class LogManager {
    * Rotate log file: rename current → .1, .1 → .2, etc.
    * Remove files beyond maxFiles. Compress rotated files when enabled.
    */
-  rotateLog(appName: string, type: LogType = 'app'): void {
+  rotateLog(appName: string, type: LogType = 'app'): Promise<void> {
+    const file = this.getLogFilePath(appName, type);
+    return this.enqueue(file, async () => {
+      if (!this.journal?.hasFileIntent(file)) await this.rotateFile(appName, type);
+    });
+  }
+
+  private async rotateFile(appName: string, type: LogType): Promise<void> {
     const basePath = this.getLogFilePath(appName, type);
     const config = this.getRotationConfig(appName);
     const ext = config.compress ? '.gz' : '';
 
-    // Close any open write stream pointing at `basePath` before the
-    // rename, so the stream's fd doesn't keep writing into the now-
-    // .1 file. The next writeLine() lazily re-opens a fresh stream
-    // on the new `basePath`.
-    this.closeStream(basePath);
 
     // Shift ALREADY-rotated files: .{maxFiles-1} removed, .{i-1} → .{i}.
     //
@@ -414,7 +494,7 @@ export class LogManager {
     if (config.compress) {
       const rotatedPath = `${basePath}.1`;
       if (fs.existsSync(rotatedPath)) {
-        this.compressFile(rotatedPath).catch(() => {
+        await this.compressFile(rotatedPath).catch(() => {
           // Compression failed — rotated file remains uncompressed
         });
       }

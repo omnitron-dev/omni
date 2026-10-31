@@ -28,6 +28,7 @@ omnitron dev
 # View logs
 omnitron logs
 omnitron logs --level warn --grep "error"
+omnitron logs --status
 ```
 
 ## Host-owned public ingress
@@ -48,6 +49,15 @@ redacted cause formatting and an adapter for the existing durable alert outbox.
 CLI health, doctor and Console node details report unresolved runtime failures
 with evidence and recovery guidance. The bounded health projection lives in the
 daemon process; structured logs remain the persistent record.
+
+Application output is captured from spawn through EOF with stable IDs, source
+process/stream and capture timestamps. SQLite journals retain unfinished multiline
+messages and unacknowledged delivery. Files use replayable append offsets; database
+rows and node replication outbox entries commit atomically. Retries verify the
+original identity and content. `omnitron logs --status` and Console Logs share the
+same persistence verdict, including pending delivery, commit evidence and errors.
+An older resident owner is explicitly reported as `legacy-owner`; updating only
+the backend cannot replace its capture mechanism without an owner maintenance window.
 
 ## License
 

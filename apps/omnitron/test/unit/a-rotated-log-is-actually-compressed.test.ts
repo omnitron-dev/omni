@@ -28,12 +28,14 @@ import { gunzipSync } from 'node:zlib';
 import { LogManager } from '../../src/monitoring/log-manager.js';
 
 const made: string[] = [];
+const managers: LogManager[] = [];
 function tmpBase(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-logrot-'));
   made.push(dir);
   return dir;
 }
-afterEach(() => {
+afterEach(async () => {
+  for (const manager of managers.splice(0)) await manager.dispose();
   for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
 
@@ -53,6 +55,7 @@ function manager(baseDir: string, compress: boolean): LogManager {
     // which these tests do not touch.
     undefined as never,
   );
+  managers.push(mgr);
   return mgr;
 }
 
@@ -63,7 +66,7 @@ describe('rotating a log with compression on', () => {
     const live = mgr.getLogFilePath('demo', 'app');
 
     fs.writeFileSync(live, '{"msg":"one"}\n'.repeat(200));
-    mgr.rotateLog('demo', 'app');
+    await mgr.rotateLog('demo', 'app');
     await until(() => fs.existsSync(`${live}.1.gz`));
 
     expect(fs.existsSync(`${live}.1.gz`), 'no rotated file appeared').toBe(true);
@@ -80,7 +83,7 @@ describe('rotating a log with compression on', () => {
     const live = mgr.getLogFilePath('demo', 'app');
 
     fs.writeFileSync(live, 'x\n'.repeat(100));
-    mgr.rotateLog('demo', 'app');
+    await mgr.rotateLog('demo', 'app');
     await until(() => fs.existsSync(`${live}.1.gz`));
 
     expect(fs.existsSync(`${live}.1`), 'the pre-compression file was not removed').toBe(false);
@@ -92,11 +95,11 @@ describe('rotating a log with compression on', () => {
     const live = mgr.getLogFilePath('demo', 'app');
 
     fs.writeFileSync(live, 'first\n');
-    mgr.rotateLog('demo', 'app');
+    await mgr.rotateLog('demo', 'app');
     await until(() => fs.existsSync(`${live}.1.gz`));
 
     fs.writeFileSync(live, 'second\n');
-    mgr.rotateLog('demo', 'app');
+    await mgr.rotateLog('demo', 'app');
     // `.2.gz` appears during the synchronous shift; `.1.gz` only once the
     // asynchronous compression of the newly rotated file lands. Waiting on the
     // wrong one is a race, not a failure.
@@ -113,7 +116,7 @@ describe('rotating a log with compression on', () => {
 
     for (let i = 0; i < 6; i++) {
       fs.writeFileSync(live, `round-${i}\n`);
-      mgr.rotateLog('demo', 'app');
+      await mgr.rotateLog('demo', 'app');
       await until(() => fs.existsSync(`${live}.1.gz`));
     }
 
@@ -123,7 +126,7 @@ describe('rotating a log with compression on', () => {
 });
 
 describe('rotating with compression off', () => {
-  it('still rotates, with no .gz name anywhere', () => {
+  it('still rotates, with no .gz name anywhere', async () => {
     // This path was correct by coincidence before the fix; it must stay
     // correct now that the coincidence is gone.
     const base = tmpBase();
@@ -131,7 +134,7 @@ describe('rotating with compression off', () => {
     const live = mgr.getLogFilePath('demo', 'app');
 
     fs.writeFileSync(live, 'plain\n');
-    mgr.rotateLog('demo', 'app');
+    await mgr.rotateLog('demo', 'app');
 
     expect(fs.readFileSync(`${live}.1`, 'utf8')).toContain('plain');
     expect(fs.existsSync(`${live}.1.gz`)).toBe(false);
@@ -167,7 +170,7 @@ describe('a rotated .gz is complete the moment it has that name', () => {
       (_, i) => JSON.stringify({ i, msg: 'the quick brown fox jumps over the lazy dog' }),
     ).join('\n'));
 
-    mgr.rotateLog('demo', 'app');
+    await mgr.rotateLog('demo', 'app');
 
     const gz = `${live}.1.gz`;
     const deadline = Date.now() + 5_000;
@@ -195,7 +198,7 @@ describe('a rotated .gz is complete the moment it has that name', () => {
     fs.mkdirSync(path.dirname(live), { recursive: true });
     fs.writeFileSync(live, JSON.stringify({ msg: 'only line' }) + '\n');
 
-    mgr.rotateLog('demo', 'app');
+    await mgr.rotateLog('demo', 'app');
     await until(() => fs.existsSync(`${live}.1.gz`));
 
     const leftovers = fs.readdirSync(path.dirname(live)).filter((f) => f.includes('.partial'));

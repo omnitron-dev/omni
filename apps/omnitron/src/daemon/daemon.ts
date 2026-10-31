@@ -1141,15 +1141,8 @@ export class OmnitronDaemon {
     // has no master to ship to, and doing the work would be pure cost.
     if (isSlave) {
       const syncService = this.syncService;
-      logCollector.setSyncSink((entries) => {
-        void syncService
-          .bufferBatch(entries.map((e) => ({ category: 'logs' as const, payload: e as unknown as Record<string, unknown> })))
-          .catch(() => {
-            // `bufferBatch` logs its own failure. Swallowed here because the
-            // lines are already in the local table: losing the replica copy
-            // must not cost the flush that succeeded.
-          });
-      });
+      logCollector.setSyncSink((entries, transaction) => syncService.bufferBatch(
+        entries.map(entry => ({ category: 'logs' as const, payload: entry as unknown as Record<string, unknown> })), transaction));
     }
     const syncRpcService = new SyncRpcService(this.syncService);
     await this.app.netron.peer.exposeService(syncRpcService);
@@ -1427,10 +1420,18 @@ export class OmnitronDaemon {
     const logManager = await this.app.container.resolveAsync<LogManager>(LOG_MANAGER_TOKEN);
     const logCollector = await this.app.container.resolveAsync<LogCollectorService>(LOG_COLLECTOR_TOKEN);
 
-    orchestrator.onAppLog((appName, line) => {
-      if (!this.execution) logManager.appendToFile(appName, line);
-      logCollector.ingestPinoLine(appName, line);
-    });
+    if (this.execution) {
+      this.execution.setLogCollector(logCollector);
+      orchestrator.onAppLog((appName, line, context) => logCollector.ingestPinoLine(appName, line, context));
+    } else {
+      logCollector.setCaptureStatus('local');
+      if (logManager.journal) {
+        logCollector.setSourceJournal(logManager.journal);
+        logCollector.setSourceStats(() => logManager.journalStats());
+      }
+      else logManager.onRecord((appName, record) => logCollector.ingestRecord(appName, record));
+      orchestrator.onAppLog((appName, line, context) => logManager.appendToFile(appName, line, context));
+    }
 
     // Wire daemon's own logs into LogCollector (buffered since pino starts before DI)
     const collectorStream = getDaemonLogCollectorStream();
@@ -2835,13 +2836,8 @@ export class OmnitronDaemon {
       } catch { /* non-critical */ }
     }, ShutdownPriority.Normal);
 
-    // --- Priority: Low (80) — Flush logs, clear state ---
-    app.registerShutdownTask('flush-and-clear', async () => {
-      try {
-        const logCollector = await container.resolveAsync<LogCollectorService>(LOG_COLLECTOR_TOKEN);
-        await logCollector.dispose();
-      } catch { /* non-critical */ }
-
+    // --- Priority: Low (80) — Clear state ---
+    app.registerShutdownTask('clear-state', async () => {
       try {
         const stateStore = await container.resolveAsync<StateStore>(STATE_STORE_TOKEN);
         if (!this.execution) stateStore.clear();
@@ -2879,6 +2875,23 @@ export class OmnitronDaemon {
         this.infraService = null;
       }
     }, ShutdownPriority.VeryLow);
+
+    app.registerShutdownTask('flush-logs', async () => {
+      const logManager = await container.resolveAsync<LogManager>(LOG_MANAGER_TOKEN);
+      const logCollector = await container.resolveAsync<LogCollectorService>(LOG_COLLECTOR_TOKEN);
+      try {
+        await logManager.flush();
+        const module = await container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN);
+        await module.flush();
+        getDaemonLogCollectorStream()?.seal();
+        await logCollector.dispose();
+      } catch (error) {
+        runtimeDiagnostics.failure('logs.shutdown', 'Final log delivery remains pending in the local journal', error,
+          'The next backend retries the same records; inspect log persistence diagnostics.');
+      }
+      // The backend stream stays open for later Titan shutdown messages. Its
+      // synchronous journal captures those for replay by the next backend.
+    }, ShutdownPriority.Last);
 
     // --- Priority: Last (100) — PID file removal ---
     app.registerShutdownTask('remove-pid', () => {

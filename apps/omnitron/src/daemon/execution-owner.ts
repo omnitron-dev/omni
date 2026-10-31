@@ -50,7 +50,7 @@ export async function startExecutionOwner(options: {
   const orchestrator = new OrchestratorService(logger, pm, state, undefined, { reapForeignOrphans: false, applicationRuntime: true });
   orchestrator.setConfig(config);
   const logs = executionLogManager(config, daemonConfig, orchestrator);
-  orchestrator.onAppLog((app, line) => logs.appendToFile(app, line));
+  orchestrator.onAppLog((app, line, context) => logs.appendToFile(app, line, context));
   let watcher: FileWatcher | null = null;
 
   const netron = new Netron(logger, { id: `execution-${identity.id}` });
@@ -65,6 +65,7 @@ export async function startExecutionOwner(options: {
   }), new AuthorizationManager(logger));
   netron.setTransportAuthContext('unix', { userId: 'execution-local', roles: ['execution-controller'], permissions: [] });
   const service = new ExecutionHostService(orchestrator, fence, journal, {
+    logs,
     watch(enabled, apps) {
       watcher?.stop();
       watcher = null;
@@ -87,7 +88,7 @@ export async function startExecutionOwner(options: {
       await orchestrator.stopAll(false);
       await pm.shutdown({ timeout: 30_000 });
       await state.flush();
-      logs.dispose();
+      await logs.dispose();
       await netron.stop();
       await store.dispose();
       pid.removeOwned();

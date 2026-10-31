@@ -1,3 +1,10 @@
+import { startupFailureDirectory } from './startup-failure-journal.js';
+import { OutputCapture } from '@omnitron-dev/titan-pm';
+import { PassThrough } from 'node:stream';
+import { LogJournal } from '../monitoring/log-journal.js';
+import { LineAssembler } from '../monitoring/log-line.js';
+import { logEntryOf } from '../monitoring/log-entry.js';
+import type { LogEntry } from '../shared/dto/logs.js';
 /**
  * DaemonModule — Nexus DI module for the Omnitron daemon
  *
@@ -86,6 +93,7 @@ import { isProduction } from '../shared/env-config.js';
  */
 class ReopenableFileStream extends Writable {
   private fd: number;
+  private reopenRequested = false;
 
   constructor(private readonly filePath: string) {
     super();
@@ -93,11 +101,26 @@ class ReopenableFileStream extends Writable {
   }
 
   override _write(chunk: Buffer, _encoding: string, callback: (error?: Error | null) => void): void {
-    fs.write(this.fd, chunk, callback);
+    if (!chunk.length) { callback(); return; }
+    let offset = 0;
+    const write = () => fs.write(this.fd, chunk, offset, chunk.length - offset, null, (error, bytes) => {
+      if (error) { callback(error); return; }
+      if (bytes === 0) { callback(new Error('Log write made no progress')); return; }
+      offset += bytes;
+      if (offset < chunk.length) write();
+      else { if (this.reopenRequested) this.openNext(); callback(); }
+    });
+    write();
   }
 
   /** Close the current fd and open a fresh one at the same path. */
   reopen(): void {
+    if (this.writableLength) { this.reopenRequested = true; return; }
+    this.openNext();
+  }
+
+  private openNext(): void {
+    this.reopenRequested = false;
     try {
       fs.closeSync(this.fd);
     } catch {
@@ -136,30 +159,31 @@ export function getDaemonErrorStream(): ReopenableFileStream | null {
  * Buffers lines until setCollector() is called (LogCollector initializes after Logger).
  */
 class LogCollectorStream extends Writable {
-  private collector: import('../services/log-collector.service.js').LogCollectorService | null = null;
-  private pendingLines: string[] = [];
-
-  override _write(chunk: Buffer, _encoding: string, callback: (error?: Error | null) => void): void {
-    const line = chunk.toString().trimEnd();
-    if (!line) { callback(); return; }
-
-    if (this.collector) {
-      this.collector.ingestPinoLine('omnitron', line);
-    } else {
-      // Buffer until collector is available (cap at 500 to prevent unbounded growth)
-      if (this.pendingLines.length < 500) this.pendingLines.push(line);
-    }
-    callback();
+  private readonly input = new PassThrough();
+  private readonly journal: LogJournal<LogEntry>;
+  private readonly assembler: LineAssembler;
+  constructor(filename: string) {
+    super();
+    this.journal = new LogJournal(filename);
+    this.assembler = new LineAssembler((app, record) => this.journal.put(record.id!, logEntryOf(app, record)), {
+      onPending: (app, record) => this.journal.put(record.id!, logEntryOf(app, record), false),
+    });
+    const capture = new OutputCapture(`daemon:${process.pid}`, (line, _stream, context) => this.assembler.push('omnitron', line, context));
+    capture.attach(this.input, 'stdout');
   }
 
-  /** Wire the LogCollector once DI has resolved it */
-  setCollector(collector: import('../services/log-collector.service.js').LogCollectorService): void {
-    this.collector = collector;
-    // Flush buffered lines
-    for (const line of this.pendingLines) {
-      collector.ingestPinoLine('omnitron', line);
-    }
-    this.pendingLines = [];
+  override _write(chunk: Buffer, _encoding: string, callback: (error?: Error | null) => void): void {
+    if (this.input.write(chunk)) callback();
+    else this.input.once('drain', callback);
+  }
+
+  setCollector(collector: LogCollectorService): void { collector.useJournal(this.journal, false); collector.setStartupDirectory(startupFailureDirectory()); }
+
+  seal(): void { this.assembler.sealAll(); }
+
+  override _final(callback: (error?: Error | null) => void): void {
+    this.input.end();
+    try { this.assembler.sealAll(); callback(); } catch (error) { callback(error as Error); }
   }
 }
 
@@ -218,12 +242,12 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
           daemonErrorStream = new ReopenableFileStream(`${logDir}/omnitron.error.log`);
 
           // Feed daemon logs into LogCollector for webapp /logs page
-          daemonLogCollectorStream = new LogCollectorStream();
+          daemonLogCollectorStream = new LogCollectorStream(`${logDir}/../data/backend-logs.sqlite`);
 
           return [
             { stream: daemonLogStream },
             { stream: daemonErrorStream, level: 'error' as any },
-            { stream: daemonLogCollectorStream },
+            { stream: daemonLogCollectorStream, delivery: 'sync' as const },
           ];
         })(),
       }),
@@ -389,7 +413,7 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
       [
         LOG_MANAGER_TOKEN,
         {
-          useFactory: (orchestrator: OrchestratorControl) => executionLogManager(ecosystemConfig, dc, orchestrator),
+          useFactory: (orchestrator: OrchestratorControl) => executionLogManager(ecosystemConfig, dc, orchestrator, !execution),
           inject: [ORCHESTRATOR_TOKEN],
           scope: Scope.Singleton,
         },

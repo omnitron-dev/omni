@@ -62,10 +62,10 @@ export class RuntimeDiagnostics extends HealthIndicator {
     try {
       const level = event.state === 'resolved' || event.severity === 'info' ? 'info' : event.severity === 'warning' ? 'warn' : 'error';
       if (this.logger) this.logger[level]({ diagnostic: event, occurrences }, event.title);
-      else process.stderr.write(JSON.stringify({ level, diagnostic: event, occurrences }) + '\n');
+      else process.stderr.write(JSON.stringify({ level, time: event.timestamp, msg: event.title, diagnostic: event, occurrences }) + '\n');
     } catch {
       // A failing logger must not recurse into the promise rejection handler.
-      try { process.stderr.write(JSON.stringify({ diagnostic: event, loggingFailed: true }) + '\n'); } catch { /* no remaining writable output */ }
+      try { process.stderr.write(JSON.stringify({ level: 50, time: event.timestamp, msg: event.title, diagnostic: event, loggingFailed: true }) + '\n'); } catch { /* no remaining writable output */ }
     }
   }
 }

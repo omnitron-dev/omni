@@ -5,15 +5,28 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { once } from 'node:events';
+import { createRequire } from 'node:module';
 
 // An explicit compiled artifact: the test never rebuilds or edits a runtime
 // that might be serving real applications. Every file and process is ours.
 const dist = path.resolve(process.argv[2] ?? 'dist');
+const requireRuntime = createRequire(path.join(dist, 'index.js'));
+const { Kysely, SqliteDialect } = await import(pathToFileURL(requireRuntime.resolve('kysely')));
+const Database = requireRuntime('better-sqlite3');
+const { LogCollectorService } = await import(pathToFileURL(path.join(dist, 'services/log-collector.service.js')));
+const { logEntryOf } = await import(pathToFileURL(path.join(dist, 'monitoring/log-entry.js')));
+const { withDateBinding } = await import(pathToFileURL(path.join(dist, 'database/sqlite-date-binding.js')));
 const { ExecutionClient } = await import(pathToFileURL(path.join(dist, 'daemon/execution-client.js')));
 const { DEFAULT_ECOSYSTEM, DEFAULT_DAEMON_CONFIG } = await import(pathToFileURL(path.join(dist, 'config/defaults.js')));
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-owner-'));
 await fs.chmod(directory, 0o700);
 const config = { ...DEFAULT_ECOSYSTEM, apps: [] };
+const sqlite = new Database(path.join(directory, 'fixture-logs.sqlite'));
+sqlite.pragma('journal_mode=WAL'); sqlite.pragma('synchronous=FULL');
+sqlite.exec(`CREATE TABLE logs(id TEXT PRIMARY KEY,timestamp TEXT NOT NULL,nodeId TEXT,app TEXT NOT NULL,level TEXT NOT NULL,message TEXT NOT NULL,labels TEXT,traceId TEXT,spanId TEXT,metadata TEXT);`);
+const db = new Kysely({ dialect: new SqliteDialect({ database: withDateBinding(sqlite) }) });
+const collector = new LogCollectorService(db);
+const largeMessage = 'bootstrap:' + 'x'.repeat(8000);
 const daemonConfig = { ...DEFAULT_DAEMON_CONFIG, logDir: path.join(directory, 'logs') };
 const boot = path.join(directory, 'boot.json');
 const script = path.join(directory, 'counter.mjs');
@@ -21,6 +34,8 @@ await fs.writeFile(boot, JSON.stringify({ directory, cwd: directory, config, dae
 await fs.writeFile(script, `
 import http from 'node:http';
 import fs from 'node:fs';
+process.stdout.write(JSON.stringify({level:30,time:'2026-10-31T01:02:03.004567Z',msg:${JSON.stringify(largeMessage)}})+'\\n');
+process.stderr.write('Error: fixture boot detail\\n    at fixture\\n');
 let counter = 0;
 const started = Date.now();
 const timer = setInterval(() => { counter++; }, 5);
@@ -33,7 +48,7 @@ process.on('SIGTERM', () => { clearInterval(timer); server.close(() => process.e
 `, { mode: 0o600 });
 const output = await fs.open(path.join(directory, 'owner.log'), 'a', 0o600);
 const owner = fork(path.join(dist, 'daemon/execution-entry.js'), [boot], {
-  cwd: directory, execArgv: [], stdio: ['ignore', output.fd, output.fd, 'ipc'], detached: true,
+  cwd: directory, env: { ...process.env, OMNITRON_HOME: directory }, execArgv: [], stdio: ['ignore', output.fd, output.fd, 'ipc'], detached: true,
 });
 await output.close();
 const ownerExited = once(owner, 'exit');
@@ -67,7 +82,18 @@ try {
   const before = await probe();
   assert.equal(before.pid, launched.pid);
   assert.equal(before.parent, owner.pid);
+  first.setLogCollector(collector);
+  await new Promise(resolve => setTimeout(resolve, 200));
+  const capture = await first.remote.readLogs();
+  assert(capture.some(item => item.value.record.message === largeMessage));
+  assert(capture.some(item => item.value.record.message === 'Error: fixture boot detail\n    at fixture'));
+  // Commit, then deliberately lose its acknowledgment. The ordinary poll replays it.
+  await collector.persistCaptured(capture.map(item => logEntryOf(item.value.app, item.value.record)));
   await first.activateObservations();
+  const stored = await db.selectFrom('logs').selectAll().execute();
+  assert.equal(stored.filter(row => row.message === largeMessage).length, 1);
+  assert.equal(stored.filter(row => row.message === 'Error: fixture boot detail\n    at fixture').length, 1);
+  assert.equal((await first.remote.readLogs()).length, 0);
   let inProbe = false;
   sampler = setInterval(async () => {
     if (inProbe) return;
@@ -101,6 +127,7 @@ try {
     const prepared = await current.prepare(next.controllerId);
     assert.equal(prepared.snapshot.apps[0].info.pid, before.pid);
     await next.accept(prepared.ticket, prepared.snapshot.inventoryDigest);
+    await assert.rejects(() => next.remote.acknowledgeLogs({ grant: current.grant, records: [] }), /retired controller/);
     await assert.rejects(() => current.orchestrator.stopApp('fixture/local/counter'), /no longer owns|CONTROLLER_FENCED/);
     await current.close();
     current = next;
@@ -121,11 +148,13 @@ try {
   const [code] = await ownerExited;
   assert.equal(code, 0);
   console.log(JSON.stringify({ test: 'resident-owner-handoff', transfers: 10, ownerPid: before.parent,
-    applicationPid: before.pid, restarts: 0, reconnects: 3, httpSamples: samples, failedSamples: failures,
+    applicationPid: before.pid, durableLogRecords: stored.length, replayWithoutDuplicates: true, retiredLogAcknowledgmentsRefused: 10, restarts: 0, reconnects: 3, httpSamples: samples, failedSamples: failures,
     counterBefore: before.counter, counterAfter: after.counter, directory }));
 } finally {
   if (sampler) clearInterval(sampler);
   await Promise.allSettled(clients.map(client => client.close()));
+  await collector.dispose();
+  await db.destroy();
   // Only the process created above, never a discovered or production pid.
   if (owner.exitCode === null && owner.signalCode === null) {
     owner.kill('SIGTERM');

@@ -1,3 +1,6 @@
+import { generateUuidV7 } from '@omnitron-dev/titan/utils';
+import type { ProcessOutputContext } from '@omnitron-dev/titan-pm';
+
 /**
  * What one line of an application's output says about itself — the single
  * reading of a log line that every consumer of app output shares.
@@ -121,6 +124,12 @@ export type LineClass =
 
 /** A record: a line, or a header and the lines that continue it. */
 export interface LogRecord {
+  id?: string;
+  app?: string;
+  capture?: Omit<ProcessOutputContext, 'timeBasis'> & { timeBasis: 'reported' | 'captured' | 'inferred' | 'observed'; reportedTime?: string | number; continuationOf?: string };
+  /** Original timestamp string, including its supplied fractional precision. */
+  timestamp?: string;
+
   kind: 'json' | 'pretty' | 'text';
   level: string;
   /** Epoch ms: the record's own time, or the time it was captured. */
@@ -302,7 +311,7 @@ export function recordOf(klass: Exclude<LineClass, { kind: 'continuation' }>, li
 
 /** A continuation line as it joins a record: colour stripped, indentation kept. */
 function continuationText(line: string): string {
-  return stripAnsi(line.endsWith('\r') ? line.slice(0, -1) : line).trimEnd();
+  return stripAnsi(line.endsWith('\r') ? line.slice(0, -1) : line);
 }
 
 /** Trailing blank continuation lines end a dump, they are not part of it. */
@@ -314,7 +323,7 @@ function trimRecord(record: LogRecord): LogRecord {
 /**
  * The line a record occupies in an app's log file.
  *
- * A JSON record is written exactly as the app wrote it. Anything else is
+ * A JSON record retains its fields and gains capture metadata. Anything else is
  * written as a JSON line of its own — the level this module read (absent when
  * unknown, so `jq 'select(.level >= 50)'` does not take a string for a number),
  * the time it decided, the text — because a raw line in a file carries no time
@@ -322,11 +331,15 @@ function trimRecord(record: LogRecord): LogRecord {
  * module exists to end. `format` says what the app actually wrote.
  */
 export function fileLineOf(record: LogRecord): string {
-  if (record.kind === 'json' && record.raw !== undefined) return record.raw;
+  if (record.kind === 'json' && record.raw !== undefined && !record.capture) return record.raw;
+  if (record.kind === 'json' && record.data) return JSON.stringify({ ...record.data,
+    time: record.data['time'] ?? record.timestamp ?? new Date(record.time).toISOString(),
+    _omnitron: record.capture });
   const envelope: Record<string, unknown> = {};
   const rank = levelRank(record.level);
   if (rank !== undefined) envelope['level'] = rank;
-  envelope['time'] = new Date(record.time).toISOString();
+  envelope['time'] = record.timestamp ?? new Date(record.time).toISOString();
+  if (record.capture) envelope['_omnitron'] = record.capture;
   envelope['msg'] = record.message;
   if (record.source) envelope['source'] = record.source;
   envelope['format'] = record.kind;
@@ -346,6 +359,7 @@ interface Held {
   chars: number;
   lastAt: number;
   timer: ReturnType<typeof setTimeout> | null;
+  lastId: string | undefined;
 }
 
 export interface LineAssemblerOptions {
@@ -356,6 +370,9 @@ export interface LineAssemblerOptions {
    */
   idleMs?: number;
   now?: () => number;
+  /** Persist the current message BEFORE acknowledging any of its input lines. */
+  onPending?: (app: string, record: LogRecord) => void;
+  onError?: (error: unknown) => void;
 }
 
 /**
@@ -364,9 +381,8 @@ export interface LineAssemblerOptions {
  * A JSON line is a whole record and is delivered at once. A header or a plain
  * line is held until a line that is not its continuation arrives, or until
  * nothing has arrived for `idleMs` — then delivered with every indented line
- * after it. The key is what the caller can tell apart; the capture hands the
- * daemon an app's lines without saying which stream each came from, so that is
- * the app.
+ * after it. Capture identity isolates every process and stream; legacy callers
+ * without capture context are grouped by application.
  */
 export class LineAssembler {
   private readonly held = new Map<string, Held>();
@@ -375,28 +391,39 @@ export class LineAssembler {
 
   constructor(
     private readonly deliver: (key: string, record: LogRecord) => void,
-    options: LineAssemblerOptions = {},
+    private readonly options: LineAssemblerOptions = {},
   ) {
     this.idleMs = options.idleMs ?? 100;
     this.now = options.now ?? Date.now;
   }
 
-  push(key: string, line: string): void {
-    const now = this.now();
+  push(app: string, line: string, context?: ProcessOutputContext): void {
+    const now = context ? Date.parse(context.capturedAt) : this.now();
+    const key = context ? JSON.stringify([app, context.processId, context.stream]) : app;
     const klass = classifyLine(line, now);
-
-    if (klass.kind === 'continuation') {
-      this.continueWith(key, line, now);
+    const held = this.held.get(key);
+    // Re-delivery after a consumer/storage failure must not append a line twice.
+    if (context && held?.lastId === context.id) return;
+    if (!context?.fragmentOf && held && (klass.kind === 'continuation' || (klass.kind === 'text' && context?.stream === 'stderr' && held.record.kind === 'text'))) {
+      this.continueWith(key, line, now, context);
       return;
     }
-
     this.seal(key);
-    const record = recordOf(klass, line, now);
-    if (record.kind === 'json') {
-      this.emit(key, record);
+    const record = recordOf(klass.kind === 'continuation' ? { kind: 'text' } : klass, line, now);
+    const timeOnly = klass.kind === 'pretty' && /^\[\d{2}:/.test(stripAnsi(line));
+    const sourceTime = record.data?.['time'];
+    record.id = context?.id ?? generateUuidV7();
+    record.app = app;
+    record.timestamp = typeof sourceTime === 'string' && Number.isFinite(Date.parse(sourceTime))
+      ? sourceTime : new Date(record.time).toISOString();
+    record.capture = { ...(context ?? { id: record.id, processId: `collector:${process.pid}`, stream: 'stdout', sequence: 0,
+        capturedAt: new Date(now).toISOString() }), timeBasis: context?.timeBasis ?? (timeOnly ? 'inferred' : record.timeFromLine ? 'reported' : 'captured'),
+      ...(typeof sourceTime === 'string' || typeof sourceTime === 'number' ? { reportedTime: sourceTime } : {}) };
+    if (record.kind === 'json' || context?.fragmentOf) {
+      this.deliver(app, record);
       return;
     }
-    this.hold(key, record, now);
+    this.hold(key, record, now, context?.id);
   }
 
   /** Deliver every held record now — before a flush, a read, or shutdown. */
@@ -408,34 +435,29 @@ export class LineAssembler {
     this.sealAll();
   }
 
-  private continueWith(key: string, line: string, now: number): void {
+  private continueWith(key: string, line: string, now: number, context?: ProcessOutputContext): void {
     const text = continuationText(line);
     const held = this.held.get(key);
 
-    if (!held) {
-      // Nothing to continue: a JSON record is always one line, so an indented
-      // line after one — or at the start of a capture — is a record of its
-      // own. Further indented lines join it. A blank line is nothing at all.
-      if (text.trim() === '') return;
-      this.hold(key, { kind: 'text', level: UNKNOWN_LEVEL, time: now, timeFromLine: false, message: text, lines: 1 }, now);
-      return;
-    }
-
+    if (!held) return;
     if (held.chars + text.length + 1 > MAX_RECORD_CHARS) {
-      const { kind, level, time, timeFromLine, source } = held.record;
+      const next = { ...held.record, id: context?.id ?? generateUuidV7(), message: text, lines: 1 };
+      if (next.capture) next.capture = { ...next.capture, id: next.id, continuationOf: next.capture.continuationOf ?? held.record.id! };
       this.seal(key);
-      this.hold(key, { kind, level, time, timeFromLine, message: text, lines: 1, ...(source ? { source } : {}) }, now);
+      this.hold(key, next, now, context?.id);
       return;
     }
-
-    held.record.message += `\n${text}`;
-    held.record.lines += 1;
+    const next = { ...held.record, message: `${held.record.message}\n${text}`, lines: held.record.lines + 1 };
+    this.options.onPending?.(next.app ?? key, next);
+    held.record = next;
     held.chars += text.length + 1;
-    held.lastAt = now;
+    held.lastAt = this.now();
+    held.lastId = context?.id;
   }
 
-  private hold(key: string, record: LogRecord, now: number): void {
-    const held: Held = { record, chars: record.message.length, lastAt: now, timer: null };
+  private hold(key: string, record: LogRecord, _now: number, lastId?: string): void {
+    this.options.onPending?.(record.app ?? key, record);
+    const held: Held = { record, chars: record.message.length, lastAt: this.now(), timer: null, lastId };
     this.held.set(key, held);
     this.arm(key, held, this.idleMs);
   }
@@ -450,8 +472,10 @@ export class LineAssembler {
       setImmediate(() => {
         if (this.held.get(key) !== held) return;
         const idle = this.now() - held.lastAt;
-        if (idle >= this.idleMs) this.seal(key);
-        else this.arm(key, held, this.idleMs - idle);
+        if (idle >= this.idleMs) {
+          try { this.seal(key); }
+          catch (error) { this.options.onError?.(error); this.arm(key, held, 1000); }
+        } else this.arm(key, held, this.idleMs - idle);
       });
     }, delay);
     held.timer.unref?.();
@@ -460,20 +484,12 @@ export class LineAssembler {
   private seal(key: string): void {
     const held = this.held.get(key);
     if (!held) return;
+    // Leave the held record available for retry until the consumer accepts it.
+    this.deliver(held.record.app ?? key, held.record);
     this.held.delete(key);
     if (held.timer) clearTimeout(held.timer);
-    this.emit(key, trimRecord(held.record));
   }
 
-  private emit(key: string, record: LogRecord): void {
-    try {
-      this.deliver(key, record);
-    } catch {
-      // A consumer's failure must not reach the capture path: a seal can fire
-      // from a timer, where a throw would be the daemon's uncaught exception.
-      // The orchestrator guards its handlers for the same reason.
-    }
-  }
 }
 
 /**

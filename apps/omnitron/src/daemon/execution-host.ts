@@ -1,3 +1,6 @@
+import type { LogManager } from '../monitoring/log-manager.js';
+import type { LogRecord } from '../monitoring/log-line.js';
+import type { JournalItem, LogJournalStats } from '../monitoring/log-journal.js';
 import { createHash } from 'node:crypto';
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { ControllerHandoff } from '@omnitron-dev/titan-pm';
@@ -33,6 +36,7 @@ export interface ExecutionEvent {
 
 export interface ExecutionSnapshot {
   protocol: 1;
+  logs?: { protocol: 1; journal: LogJournalStats };
   revision: number;
   status: ControllerHandoffStatus;
   apps: ExecutionAppSnapshot[];
@@ -60,13 +64,14 @@ export class ExecutionHostService {
     readonly fence: ControllerHandoff,
     private readonly journal: ExecutionJournal,
     private readonly hooks: {
+      logs?: LogManager;
       watch?: (enabled: boolean, apps?: string[]) => void;
       watchConfig?: (config: Parameters<OrchestratorService['setConfig']>[0]) => void;
       watchedApps?: () => Array<{ name: string; directory: string }>;
       shutdown?: () => void;
     } = {},
   ) {
-    orchestrator.onAppLog((app, line) => this.record('log', app, line));
+    if (!hooks.logs?.journal) orchestrator.onAppLog((app, line) => this.record('log', app, line));
     orchestrator.on('app:online', (app: string) => this.record('online', app, null));
     orchestrator.on('app:crash', (app: string, error: Error) => this.record('crash', app, error.message));
     orchestrator.on('app:restart', (app: string, attempt: number) => this.record('restart', app, attempt));
@@ -125,6 +130,7 @@ export class ExecutionHostService {
     const workerIdentities = workers.map(worker => ({ id: worker.info.id, pid: worker.pid,
       startedAt: worker.info.startTime, restarts: worker.info.restartCount }));
     return {
+      ...(this.hooks.logs?.journal ? { logs: { protocol: 1 as const, journal: this.hooks.logs.journalStats()! } } : {}),
       protocol: 1, revision: ++this.revision, status: this.fence.status(), apps, workers,
       devMode: this.orchestrator.devMode, watchEnabled: this.orchestrator.devMode,
       watchedApps: [...this.orchestrator.getBuildWatchedApps(), ...(this.hooks.watchedApps?.() ?? [])],
@@ -143,6 +149,24 @@ export class ExecutionHostService {
     }
     if (!Number.isSafeInteger(data.cursor) || data.cursor < this.acknowledgedEvent || data.cursor > this.lastEvent) throw new Error('Invalid observation acknowledgment');
     this.acknowledgedEvent = data.cursor;
+  }
+
+  @Public({ auth: { roles: OWNER_ROLES } })
+  async readLogs(): Promise<Array<JournalItem<{ app: string; record: LogRecord }>>> {
+    if (!this.hooks.logs?.journal) throw new Error('This owner has no durable log journal');
+    return this.hooks.logs.journal.peek();
+  }
+
+  @Public({ auth: { roles: OWNER_ROLES } })
+  async acknowledgeLogs(data: { grant: ControllerGrant; records: Array<{ id: string; digest: string }> }): Promise<void> {
+    const current = this.fence.status().controller;
+    if (data.grant.ownerId !== current.ownerId || data.grant.controllerId !== current.controllerId || data.grant.epoch !== current.epoch) {
+      throw new Error('A retired controller cannot acknowledge captured logs');
+    }
+    if (!Array.isArray(data.records) || data.records.length > 500 || data.records.some(record =>
+      typeof record.id !== 'string' || typeof record.digest !== 'string' || record.digest.length !== 64)) throw new Error('Invalid log acknowledgment');
+    if (!this.hooks.logs?.journal) throw new Error('This owner has no durable log journal');
+    this.hooks.logs.journal.acknowledge(data.records);
   }
 
   @Public({ auth: { roles: OWNER_ROLES } })

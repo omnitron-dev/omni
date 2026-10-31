@@ -1,3 +1,4 @@
+import type { LogIngestionStats } from './logs.js';
 /**
  * Omnitron Daemon RPC Service Interfaces
  *
@@ -200,7 +201,7 @@ export interface IOmnitronLogsService {
   getLogStats(): Promise<LogStats>;
 
   /** In-memory ingestion counters — no database work, safe to poll. */
-  getIngestionStats(): Promise<{ ingestedTotal: number; droppedTotal: number; bufferSize: number }>;
+  getIngestionStats(): Promise<LogIngestionStats>;
 
   streamLogs(data: {
     app?: string;
@@ -889,3 +890,5 @@ export interface IOmnitronTerminalService {
 
 
 export type * from './files.js';
+
+export type { LogIngestionStats } from './logs.js';

@@ -1,3 +1,4 @@
+import { OperationStatus } from 'src/components/operation-status';
 import { Can, useAccess } from 'src/auth/access';
 /**
  * Nodes Page — Infrastructure node management
@@ -1865,7 +1866,7 @@ function NodeDialog({ open, onClose, onSubmit, editNode, sshKeys, loading, error
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} color="inherit">Cancel</Button>
-        <Button variant="contained" onClick={() => onSubmit(form)} disabled={!canSubmit || loading}>{isEdit ? 'Save' : 'Add Node'}</Button>
+        <Button variant="contained" loading={loading} onClick={() => onSubmit(form)} disabled={!canSubmit || loading}>{isEdit ? 'Save' : 'Add Node'}</Button>
       </DialogActions>
     </Dialog>
   );
@@ -1987,6 +1988,8 @@ export default function NodesPage() {
   const [nodeList, setNodeList] = useState<INodeWithStatus[]>([]);
   const [sshKeys, setSshKeys] = useState<SshKeyInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshInFlight = useRef(false);
   const [checkingId, setCheckingId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editNode, setEditNode] = useState<INodeWithStatus | null>(null);
@@ -2073,7 +2076,7 @@ export default function NodesPage() {
    */
   const fetchClusterStates = useCallback(async (nodes: INodeWithStatus[]) => {
     const settled = await Promise.allSettled(
-      nodes.map((n) => nodesRpc.getNodeClusterState({ nodeId: n.id })),
+      nodes.map(async (n) => nodesRpc.getNodeClusterState({ nodeId: n.id })),
     );
     const next: Record<string, INodeClusterState> = {};
     for (const r of settled) {
@@ -2314,8 +2317,13 @@ export default function NodesPage() {
               onClick={() => setSettingsOpen(true)}>
               Check Settings
             </Button></Can>
-            <Tooltip title="Refresh"><IconButton data-console-command="refresh" size="small" aria-label="Refresh"
-              onClick={async () => { const n = await fetchNodes(); await fetchUptimeBars(n); }}><RefreshIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip>
+            <Tooltip title="Refresh"><IconButton data-console-command="refresh" size="small" aria-label="Refresh" loading={refreshing}
+              onClick={async () => {
+                if (refreshInFlight.current) return;
+                refreshInFlight.current = true; setRefreshing(true);
+                try { const n = await fetchNodes(); await Promise.all([fetchUptimeBars(n), fetchMesh(), fetchClusterStates(n)]); }
+                finally { refreshInFlight.current = false; setRefreshing(false); }
+              }}><RefreshIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip>
             <Can permission="OmnitronNodes.addNode"><Button variant="contained" size="small" startIcon={<PlusIcon sx={{ fontSize: 18 }} />} onClick={handleOpenAdd}>
               Add Node
             </Button></Can>
@@ -2323,6 +2331,7 @@ export default function NodesPage() {
         }
       />
 
+      <OperationStatus active={refreshing} label="Refreshing node status" detail="Reading fleet, replication and uptime observations" />
       <ClusterAgreement states={clusterStates} />
 
       {/*

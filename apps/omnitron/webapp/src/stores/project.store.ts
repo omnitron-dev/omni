@@ -11,6 +11,8 @@
  */
 
 import { create } from 'zustand';
+import { isRpcTimeout } from '../utils/rpc-error';
+export { isRpcTimeout } from '../utils/rpc-error';
 import { useShallow } from 'zustand/shallow';
 import { project as projectRpc } from '../netron/client';
 import { readStored, writeStored, removeStored, readStoredJson, writeStoredJson } from '../utils/storage';
@@ -395,32 +397,6 @@ export const useProjectStore = create<ProjectState>((set, get) => {
 // =============================================================================
 // Helpers
 // =============================================================================
-
-/**
- * Was this the transport giving up, or the daemon reporting a real failure
- * that happens to mention a clock?
- *
- * The old predicate matched `/timeout|timed out|ETIMEDOUT|ECONNABORTED/` over
- * the message. Measured against the 89 error messages the daemon can throw,
- * six of them were swallowed by it — `restartApp(main) timed out after
- * 30000ms`, `Port-forward timed out`, `Step timed out after 60000ms`,
- * `Heartbeat timeout`, `Daemon socket connection timeout (…)` and the bare
- * `timeout` a TCP probe rejects with. Every one is a genuine failure the
- * operator needs, discarded because it contains the word. Deciding by the
- * words that name a condition instead of by the condition is the same mistake
- * either way; here it costs the one message that says what went wrong.
- *
- * The transport marks its own timeouts, so ask it instead. `http-client`
- * throws `new Error('Request timeout after Nms')` with `code = 'TIMEOUT'`;
- * `transport/http/connection` throws a `TitanError` with the same message and
- * `ErrorCode.REQUEST_TIMEOUT` (408). Both signals are checked because either
- * one alone depends on nothing in between re-wrapping the error.
- */
-export function isRpcTimeout(err: unknown): boolean {
-  const code = (err as { code?: unknown } | null)?.code;
-  if (code === 'TIMEOUT' || code === 408) return true;
-  return /\bRequest timeout after \d+ms\b/.test((err as Error | null)?.message ?? '');
-}
 
 /** Optimistically patch a single stack's status in the store */
 function patchStackStatus(

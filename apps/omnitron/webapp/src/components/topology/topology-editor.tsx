@@ -1,3 +1,4 @@
+import { OperationStatus } from 'src/components/operation-status';
 import { useEffect, useRef, useState } from 'react';
 import {
   Autocomplete,
@@ -9,7 +10,6 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
-  LinearProgress,
   MenuItem,
   Stack,
   TextField,
@@ -44,7 +44,8 @@ export function TopologyEditor({ projectName, stackName, onClose, onApplied }: P
   const [saved, setSaved] = useState('');
   const [plan, setPlan] = useState<TopologyPlan | null>(null);
   const [tab, setTab] = useState('placement');
-  const [busy, setBusy] = useState(false);
+  const [operation, setOperation] = useState<string | null>(null);
+  const busy = operation !== null;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -79,10 +80,10 @@ export function TopologyEditor({ projectName, stackName, onClose, onApplied }: P
     };
   }, [projectName, stackName]);
 
-  const run = async (work: () => Promise<void>) => {
+  const run = async (label: string, work: () => Promise<void>) => {
     if (inFlight.current) return;
     inFlight.current = true;
-    setBusy(true);
+    setOperation(label);
     setError(null);
     setMessage(null);
     try {
@@ -91,7 +92,7 @@ export function TopologyEditor({ projectName, stackName, onClose, onApplied }: P
       if (alive.current) setError(err instanceof Error ? err.message : 'Topology operation failed');
     } finally {
       inFlight.current = false;
-      if (alive.current) setBusy(false);
+      if (alive.current) setOperation(null);
     }
   };
   const change = (next: TopologySpec) => {
@@ -114,7 +115,7 @@ export function TopologyEditor({ projectName, stackName, onClose, onApplied }: P
     return draft;
   };
   const buildPlan = () =>
-    run(async () => {
+    run('Preparing topology plan', async () => {
       if (!workspace || !spec) return;
       const draft =
         dirty || !workspace.draft || workspace.draft.baseRevision !== workspace.revision
@@ -133,7 +134,7 @@ export function TopologyEditor({ projectName, stackName, onClose, onApplied }: P
     }
   };
   const reload = (keepEdits: boolean) =>
-    run(async () => {
+    run('Reloading topology', async () => {
       const next = await project.getTopologyWorkspace(scope);
       if (!alive.current) return;
       setWorkspace(next);
@@ -173,7 +174,7 @@ export function TopologyEditor({ projectName, stackName, onClose, onApplied }: P
             event.preventDefault();
             event.stopPropagation();
             if (writable && !busy && spec)
-              void run(async () => {
+              void run('Saving topology draft', async () => {
                 await save();
                 setMessage('Draft saved');
               });
@@ -194,7 +195,7 @@ export function TopologyEditor({ projectName, stackName, onClose, onApplied }: P
             <CloseIcon />
           </IconButton>
         </DialogTitle>
-        {(loading || busy) && <LinearProgress aria-label={loading ? 'Loading topology' : 'Saving topology'} />}
+        <Box sx={{ px: 2.5 }}><OperationStatus active={loading || busy} label={loading ? 'Loading topology' : operation ?? ''} /></Box>
         <DialogContent dividers sx={{ p: { xs: 1.5, sm: 2.5 }, minWidth: 0, overscrollBehavior: 'contain' }}>
           <Stack spacing={2}>
             {error && <Alert severity="error">{error}</Alert>}
@@ -451,8 +452,9 @@ export function TopologyEditor({ projectName, stackName, onClose, onApplied }: P
           )}
           <Box sx={{ flex: '1 1 0' }} />
           <Button
+            loading={operation === 'Saving topology draft'}
             onClick={() =>
-              void run(async () => {
+              void run('Saving topology draft', async () => {
                 await save();
                 setMessage('Draft saved');
               })
@@ -464,6 +466,7 @@ export function TopologyEditor({ projectName, stackName, onClose, onApplied }: P
           {tab === 'review' && plan && plan.status === 'planned' ? (
             <Button
               variant="contained"
+              loading={busy}
               disabled={
                 !can('OmnitronProject.applyTopologyPlan') ||
                 busy ||
@@ -471,7 +474,7 @@ export function TopologyEditor({ projectName, stackName, onClose, onApplied }: P
                 plan.issues.some((issue) => issue.severity === 'error')
               }
               onClick={() =>
-                void run(async () => {
+                void run('Accepting topology target', async () => {
                   const applied = await project.applyTopologyPlan({ ...scope, plan: plan.id });
                   if (!alive.current) return;
                   setPlan(applied);
@@ -491,6 +494,7 @@ export function TopologyEditor({ projectName, stackName, onClose, onApplied }: P
           ) : (
             <Button
               variant="contained"
+              loading={busy}
               disabled={!can('OmnitronProject.planTopology') || busy || !spec}
               onClick={() => void buildPlan()}
             >

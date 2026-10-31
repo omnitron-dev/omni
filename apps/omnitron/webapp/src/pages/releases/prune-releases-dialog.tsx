@@ -22,7 +22,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
-import CircularProgress from '@mui/material/CircularProgress';
+import { OperationStatus } from 'src/components/operation-status';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
@@ -47,12 +47,13 @@ export default function PruneReleasesDialog({
 }) {
   const [keep, setKeep] = useState(5);
   const [plan, setPlan] = useState<ReleasePruneAnswer | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [operation, setOperation] = useState<'measuring' | 'removing' | null>(null);
+  const busy = operation !== null;
   const [failure, setFailure] = useState<string | null>(null);
   const [removed, setRemoved] = useState<ReleasePruneAnswer | null>(null);
 
   const dryRun = useCallback(async () => {
-    setBusy(true);
+    setOperation('measuring');
     setFailure(null);
     try {
       setPlan(await releaseRpc.prune({ keep }));
@@ -60,7 +61,7 @@ export default function PruneReleasesDialog({
       setFailure((err as Error).message);
       setPlan(null);
     } finally {
-      setBusy(false);
+      setOperation(null);
     }
   }, [keep]);
 
@@ -72,7 +73,7 @@ export default function PruneReleasesDialog({
   }, [open, dryRun]);
 
   const apply = async () => {
-    setBusy(true);
+    setOperation('removing');
     setFailure(null);
     try {
       const result = await releaseRpc.prune({ keep, apply: true });
@@ -81,7 +82,7 @@ export default function PruneReleasesDialog({
     } catch (err) {
       setFailure((err as Error).message);
     } finally {
-      setBusy(false);
+      setOperation(null);
     }
   };
 
@@ -114,14 +115,7 @@ export default function PruneReleasesDialog({
             </Typography>
           )}
 
-          {busy && !removed && (
-            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-              <CircularProgress size={16} />
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                Measuring…
-              </Typography>
-            </Stack>
-          )}
+          <OperationStatus active={busy} label={operation === 'removing' ? 'Removing reviewed releases' : 'Measuring release storage'} />
 
           {removed && (
             <Alert severity="success">
@@ -171,6 +165,7 @@ export default function PruneReleasesDialog({
           <Button
             variant="contained"
             color="error"
+            loading={operation === 'removing'}
             size="small"
             disabled={busy || !plan || plan.doomed.length === 0 || plan.unknown !== null}
             onClick={apply}

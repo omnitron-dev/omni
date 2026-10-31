@@ -24,11 +24,13 @@ import {
   Typography,
 } from '@mui/material';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
+import { OperationStatus } from 'src/components/operation-status';
 import { Tabs } from '@omnitron-dev/prism/components/tabs';
 import { AddIcon, MoreIcon, SearchIcon, CloseIcon, ArrowUpIcon, ArrowDownIcon } from '@omnitron-dev/prism/icons';
 import { alpha, useTheme } from '@mui/material/styles';
 import { useCopyToClipboard } from '@omnitron-dev/prism/core';
 import type { TerminalSession, TerminalHostKey, TerminalPolicy } from '@omnitron-dev/omnitron/dto/services';
+import { isRpcTimeout } from 'src/utils/rpc-error';
 import { nodes, terminal } from 'src/netron/client';
 import { useAuthStore } from 'src/auth/store';
 import {
@@ -42,6 +44,8 @@ import {
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 type RemoteNode = { id: string; name: string; host: string; sshUser: string };
 const MAX_WORKSPACE_TABS = 32;
+const CONNECTING_TAB = 'pending-ssh-connection';
+type ConnectionAttempt = { node: RemoteNode; state: 'connecting' | 'failed'; error?: string; unconfirmed?: boolean };
 
 /** Kept mounted by ConsoleLayout: navigating to logs does not destroy SSH tabs. */
 export default function TerminalPage({ visible = true }: { visible?: boolean }) {
@@ -55,7 +59,11 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
   const [active, setActive] = useState('');
   const [split, setSplit] = useState(false);
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [operation, setOperation] = useState<string | null>(null);
+  const busy = operation !== null;
+  const acting = useRef(false);
+  const [connection, setConnection] = useState<ConnectionAttempt | null>(null);
+  const [preparing, setPreparing] = useState(true);
   const [host, setHost] = useState<TerminalHostKey | null>(null);
   const [fingerprint, setFingerprint] = useState('');
   const [pendingClose, setPendingClose] = useState<string | null>(null);
@@ -70,28 +78,43 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
   const generation = useRef(0);
   const { copy } = useCopyToClipboard();
 
+  const loadWorkspace = useCallback(async (run: number) => {
+    setPreparing(true);
+    setError('');
+    try {
+      const [list, caps] = await Promise.all([nodes.listNodes(), terminal.capabilities()]);
+      if (!mounted.current || run !== generation.current) return;
+      const remote = list.filter((n) => !n.isLocal);
+      setAvailable(remote);
+      setPolicy(caps);
+      setNodeId((id) => (remote.some((n) => n.id === id) ? id : (remote[0]?.id ?? '')));
+    } catch (reason) {
+      if (mounted.current && run === generation.current) setError(message(reason));
+    } finally {
+      if (mounted.current && run === generation.current) setPreparing(false);
+    }
+  }, []);
+
   useEffect(() => {
     mounted.current = true;
     const run = ++generation.current;
-    if (secure && user?.role === 'admin') {
-      void Promise.all([nodes.listNodes(), terminal.capabilities()])
-        .then(([list, caps]) => {
-          if (!mounted.current || run !== generation.current) return;
-          const remote = list.filter((n) => !n.isLocal);
-          setAvailable(remote);
-          setPolicy(caps);
-          setNodeId((id) => (remote.some((n) => n.id === id) ? id : (remote[0]?.id ?? '')));
-        })
-        .catch((e) => {
-          if (mounted.current && run === generation.current) setError(message(e));
-        });
-    }
+    setSessions([]);
+    setConnection(null);
+    setActive('');
+    setPolicy(null);
+    setPendingClose(null);
+    setHost(null);
+    setOperation(null);
+    acting.current = false;
+    tabNumbers.current.clear();
+    nextTabNumber.current = 1;
+    if (secure && user?.role === 'admin') void loadWorkspace(run);
     return () => {
       mounted.current = false;
       for (const session of sessionsRef.current)
         if (session.state !== 'closed') void terminal.close({ id: session.id }).catch(() => undefined);
     };
-  }, [user?.id, user?.role, secure]);
+  }, [user?.id, user?.role, secure, loadWorkspace]);
 
   useEffect(() => {
     const id = params.get('node');
@@ -99,7 +122,7 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
   }, [params, available]);
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
-      if (sessionsRef.current.some((s) => s.state !== 'closed')) {
+      if (sessionsRef.current.some((s) => s.state !== 'closed') || acting.current) {
         e.preventDefault();
         e.returnValue = '';
       }
@@ -112,53 +135,80 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
     (session: TerminalSession) => setSessions((all) => all.map((s) => (s.id === session.id ? session : s))),
     []
   );
-  const act = async (fn: () => Promise<void>) => {
-    setBusy(true);
+  const act = async (label: string, fn: () => Promise<void>) => {
+    if (acting.current) return;
+    const run = generation.current;
+    acting.current = true;
+    setOperation(label);
     setError('');
     try {
       await fn();
     } catch (e) {
-      setError(message(e));
+      if (mounted.current && run === generation.current) setError(message(e));
     } finally {
-      setBusy(false);
+      if (run === generation.current) {
+        acting.current = false;
+        if (mounted.current) setOperation(null);
+      }
     }
   };
-  const open = () =>
-    act(async () => {
+  const open = (targetId = nodeId) =>
+    act('Opening SSH session', async () => {
+      const target = available.find((node) => node.id === targetId);
+      if (!target) throw new Error('Select an available SSH node');
       if (sessionsRef.current.length >= MAX_WORKSPACE_TABS)
         throw new Error('Close an existing tab before opening another (32 tabs per workspace).');
-      const session = await terminal.open({ nodeId, cols: 100, rows: 28 });
-      if (!mounted.current) {
-        await terminal.close({ id: session.id });
-        return;
+      const run = generation.current;
+      setConnection({ node: target, state: 'connecting' });
+      setActive(CONNECTING_TAB);
+      try {
+        const session = await terminal.open({ nodeId: target.id, cols: 100, rows: 28 });
+        if (!mounted.current || run !== generation.current) {
+          await terminal.close({ id: session.id });
+          return;
+        }
+        tabNumbers.current.set(session.id, nextTabNumber.current++);
+        setSessions((all) => [...all, session]);
+        setConnection(null);
+        setActive((current) => (current === CONNECTING_TAB ? session.id : current));
+      } catch (reason) {
+        if (mounted.current && run === generation.current)
+          setConnection({ node: target, state: 'failed', error: message(reason), unconfirmed: isRpcTimeout(reason) });
       }
-      tabNumbers.current.set(session.id, nextTabNumber.current++);
-      setSessions((all) => [...all, session]);
-      setActive(session.id);
     });
   const inspect = () =>
-    act(async () => {
+    act('Checking SSH host identity', async () => {
       const key = await terminal.inspectHost({ nodeId });
       setHost(key);
       setFingerprint('');
     });
   const trust = () =>
-    act(async () => {
+    act('Saving verified host identity', async () => {
       if (!host) return;
       await terminal.trustHost({ nodeId: host.nodeId, fingerprint: fingerprint.trim(), previous: host.trusted });
       setHost(null);
     });
+  const removeTab = useCallback((id: string) => {
+    const all = sessionsRef.current;
+    const index = all.findIndex((s) => s.id === id);
+    const remaining = all.filter((s) => s.id !== id);
+    setSessions(remaining);
+    setActive((current) => (current === id ? ((remaining[index] ?? remaining[index - 1])?.id ?? '') : current));
+    tabNumbers.current.delete(id);
+    if (remaining.length < 2) setSplit(false);
+    setPendingClose(null);
+    if (!remaining.length) requestAnimationFrame(() => newTabButton.current?.focus());
+  }, []);
+  useEffect(() => {
+    // A confirmed remote exit turns the pending destructive action into local tab cleanup.
+    if (pendingClose && sessions.find((s) => s.id === pendingClose)?.state === 'closed') removeTab(pendingClose);
+  }, [sessions, pendingClose, removeTab]);
   const close = () =>
-    act(async () => {
+    act('Closing SSH session', async () => {
       if (!pendingClose) return;
-      await terminal.close({ id: pendingClose });
-      setSessions((all) => all.filter((s) => s.id !== pendingClose));
-      const index = sessions.findIndex((s) => s.id === pendingClose);
-      if (active === pendingClose) setActive((sessions[index + 1] ?? sessions[index - 1])?.id ?? '');
-      tabNumbers.current.delete(pendingClose);
-      if (sessions.length <= 2) setSplit(false);
-      if (sessions.length === 1) requestAnimationFrame(() => newTabButton.current?.focus());
-      setPendingClose(null);
+      if (sessionsRef.current.find((s) => s.id === pendingClose)?.state !== 'closed')
+        await terminal.close({ id: pendingClose });
+      removeTab(pendingClose);
     });
 
   if (user?.role !== 'admin') return <Alert severity="info">SSH terminals require an administrator account.</Alert>;
@@ -206,17 +256,27 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
           )
         }
       />
+      <OperationStatus active={preparing} label="Loading SSH workspace" detail="Reading nodes and terminal policy" />
+      <OperationStatus
+        active={busy && connection?.state !== 'connecting' && !host && !pendingClose}
+        label={operation ?? ''}
+      />
       {error && (
         <Alert severity="error" onClose={() => setError('')} sx={{ flexShrink: 0, overflowWrap: 'anywhere' }}>
           {error}
         </Alert>
       )}
+      {!preparing && !policy && (
+        <Button onClick={() => void loadWorkspace(generation.current)}>Retry loading SSH workspace</Button>
+      )}
+      {policy && !policy.enabled && <Alert severity="info">SSH terminals are disabled by this daemon’s policy.</Alert>}
       <Card variant="outlined" sx={{ p: 0.75, flexShrink: 0, borderRadius: 1, boxShadow: 'none', overflow: 'visible' }}>
         <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0 }}>
           <TextField
             select
             label="SSH node"
             value={nodeId}
+            disabled={busy || preparing}
             onChange={(e) => setNodeId(e.target.value)}
             size="small"
             sx={{
@@ -236,7 +296,8 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
             aria-label="New SSH tab"
             ref={newTabButton}
             startIcon={<AddIcon />}
-            onClick={open}
+            onClick={() => void open()}
+            loading={connection?.state === 'connecting'}
             sx={{
               minWidth: { xs: 36, sm: 112 },
               height: 36,
@@ -246,6 +307,7 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
             disabled={
               busy ||
               !policy ||
+              !policy.enabled ||
               !nodeId ||
               sessions.length >= MAX_WORKSPACE_TABS ||
               sessions.filter((s) => s.state !== 'closed').length >= policy.maxSessionsPerOwner
@@ -306,7 +368,7 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
           Audit trail
         </MenuItem>
       </Menu>
-      {sessions.length === 0 ? (
+      {sessions.length === 0 && !connection ? (
         <Box sx={{ flex: 1, display: 'grid', placeContent: 'center', minHeight: 0 }}>
           <Typography color="text.secondary" variant="body2" sx={{ maxWidth: 440, textAlign: 'center' }}>
             Select a node and open a tab. Sessions stay connected while you navigate. The shell uses that node’s SSH
@@ -319,18 +381,41 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
             value={active}
             onChange={setActive}
             onClose={(id) => {
+              if (id === CONNECTING_TAB) {
+                if (connection?.state === 'connecting') return;
+                setConnection(null);
+                setActive(sessions.at(-1)?.id ?? '');
+                return;
+              }
               const session = sessions.find((item) => item.id === id);
               if (!session) return;
+              if (session.state === 'closed') {
+                removeTab(id);
+                return;
+              }
+              setError('');
               setPendingCloseLabel(`${session.nodeName} ${tabNumbers.current.get(id)}`);
               setPendingClose(id);
             }}
-            tabs={sessions.map((session) => ({
-              value: session.id,
-              label: `${session.nodeName} ${tabNumbers.current.get(session.id)}${session.state === 'closed' ? ' · closed' : ''}`,
-              closable: true,
-              closeDisabled: busy,
-              closeLabel: `Close ${session.nodeName} ${tabNumbers.current.get(session.id)}`,
-            }))}
+            tabs={[
+              ...sessions.map((session) => ({
+                value: session.id,
+                label: `${session.nodeName} ${tabNumbers.current.get(session.id)}${session.state === 'closed' ? ' · closed' : ''}`,
+                closable: true,
+                closeDisabled: busy && session.state !== 'closed',
+                closeLabel: `Close ${session.nodeName} ${tabNumbers.current.get(session.id)}`,
+              })),
+              ...(connection
+                ? [
+                    {
+                      value: CONNECTING_TAB,
+                      label: `${connection.node.name} · ${connection.state === 'connecting' ? 'connecting…' : connection.unconfirmed ? 'unconfirmed' : 'failed'}`,
+                      closable: connection.state === 'failed',
+                      closeLabel: 'Close failed connection',
+                    },
+                  ]
+                : []),
+            ]}
             variant="scrollable"
             scrollButtons="auto"
             allowScrollButtonsMobile
@@ -363,6 +448,32 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
                 : {},
             }}
           >
+            {connection && active === CONNECTING_TAB && (
+              <Box
+                data-testid="terminal-connection"
+                sx={{ minWidth: 0, minHeight: 0, display: 'grid', placeContent: 'center', px: 2, overflow: 'auto' }}
+              >
+                <Box sx={{ maxWidth: 480 }}>
+                  <OperationStatus
+                    active={connection.state === 'connecting'}
+                    label={`Connecting to ${connection.node.name}`}
+                    detail={`${connection.node.sshUser}@${connection.node.host} · waiting for the remote shell`}
+                  />
+                  {connection.state === 'failed' && (
+                    <>
+                      <Alert severity={connection.unconfirmed ? 'warning' : 'error'} sx={{ overflowWrap: 'anywhere' }}>
+                        {connection.unconfirmed
+                          ? `Connection not confirmed: ${connection.error}. An unattached shell may still exist; the daemon closes it after ${Math.round((policy?.disconnectTimeoutMs ?? 30000) / 1000)} seconds without a client. No input was sent.`
+                          : connection.error}
+                      </Alert>
+                      <Button onClick={() => void open(connection.node.id)} disabled={busy} sx={{ mt: 1 }}>
+                        Retry connection
+                      </Button>
+                    </>
+                  )}
+                </Box>
+              </Box>
+            )}
             {sessions.map((session) => (
               <TerminalPane
                 key={session.id}
@@ -378,6 +489,12 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
       <Dialog open={host !== null} onClose={() => !busy && setHost(null)} maxWidth="sm" fullWidth>
         <DialogTitle>Verify SSH host identity</DialogTitle>
         <DialogContent>
+          <OperationStatus active={busy} label={operation ?? ''} />
+          {error && (
+            <Alert severity="error" sx={{ mb: 1, overflowWrap: 'anywhere' }}>
+              {error}
+            </Alert>
+          )}
           <Typography variant="body2">
             Compare this fingerprint with a trusted console or inventory for {host?.host}:{host?.port}. A network
             observation alone does not establish trust.
@@ -405,7 +522,7 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
           <Button disabled={busy} onClick={() => setHost(null)}>
             Cancel
           </Button>
-          <Button disabled={busy || !host || fingerprint.trim() !== host.observed} onClick={trust}>
+          <Button loading={busy} disabled={!host || fingerprint.trim() !== host.observed} onClick={trust}>
             Trust verified key
           </Button>
         </DialogActions>
@@ -413,6 +530,12 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
       <Dialog open={pendingClose !== null} onClose={() => !busy && setPendingClose(null)}>
         <DialogTitle>Close {pendingCloseLabel}?</DialogTitle>
         <DialogContent>
+          <OperationStatus active={busy} label={operation ?? ''} />
+          {error && (
+            <Alert severity="error" sx={{ mb: 1, overflowWrap: 'anywhere' }}>
+              Closure not confirmed: {error}. The tab is retained; retry when the connection is available.
+            </Alert>
+          )}
           The remote shell will disconnect. Foreground commands may stop; use a remote session manager for work that
           must survive disconnects.
         </DialogContent>
@@ -420,7 +543,7 @@ export default function TerminalPage({ visible = true }: { visible?: boolean }) 
           <Button disabled={busy} onClick={() => setPendingClose(null)}>
             Cancel
           </Button>
-          <Button disabled={busy} color="warning" onClick={close}>
+          <Button loading={busy} color="warning" onClick={close}>
             Close session
           </Button>
         </DialogActions>
@@ -454,6 +577,8 @@ function TerminalPane({
   const [paste, setPaste] = useState<string | null>(null);
   const [pasteNotice, setPasteNotice] = useState('');
   const { copy } = useCopyToClipboard();
+  const currentSession = useRef(session);
+  currentSession.current = session;
 
   useEffect(() => {
     if (!host.current) return undefined;
@@ -503,7 +628,13 @@ function TerminalPane({
       queuedBytes = 0;
       term.options.disableStdin = true;
       setError(message(e));
-      void terminal.close({ id: session.id }).catch(() => undefined);
+      void terminal
+        .close({ id: session.id })
+        .then(() => {
+          if (!disposed && currentSession.current.state !== 'closed')
+            update({ ...currentSession.current, state: 'closed', reason: 'Closed after connection failure' });
+        })
+        .catch(() => undefined);
     };
     const flush = async () => {
       if (sending || disposed || failed || !pending.length) return;
@@ -577,7 +708,7 @@ function TerminalPane({
       while (!disposed && !failed) {
         try {
           const answer = await terminal.read({ id: session.id, cursor });
-          if (disposed) return;
+          if (disposed || failed) return;
           if (answer.droppedBytes)
             term.writeln(`\r\n[${answer.droppedBytes} bytes no longer retained by the server]\r\n`);
           const bytes = Uint8Array.from(atob(answer.data), (c) => c.charCodeAt(0));
@@ -685,8 +816,11 @@ function TerminalPane({
         <Chip
           size="small"
           variant="outlined"
-          label={session.state === 'closed' ? (session.reason ?? 'closed') : session.state}
-          color={session.state === 'open' ? 'success' : 'default'}
+          label={session.state === 'closed' ? 'Closed' : error ? 'State unknown' : session.state}
+          title={session.state === 'closed' ? session.reason : error || undefined}
+          color={
+            session.state === 'closed' ? 'default' : error ? 'error' : session.state === 'open' ? 'success' : 'default'
+          }
           sx={{ height: 20, maxWidth: 110, fontSize: 10 }}
         />
         <Tooltip title={readOnly ? 'Enable terminal input' : 'Make terminal read only'}>
@@ -746,6 +880,17 @@ function TerminalPane({
           Reset text size · 14 px
         </MenuItem>
       </Menu>
+      {session.state === 'closed' && (
+        <Typography
+          role="status"
+          variant="caption"
+          color="text.secondary"
+          sx={{ px: 1, py: 0.75, overflowWrap: 'anywhere', flexShrink: 0 }}
+        >
+          Session ended{session.reason ? `: ${session.reason.replaceAll('_', ' ')}` : ''}
+          {session.exitCode !== undefined ? ` (exit ${session.exitCode})` : ''}. Scrollback remains available.
+        </Typography>
+      )}
       {error && (
         <Alert severity="error" sx={{ flexShrink: 0, maxHeight: 100, overflow: 'auto', overflowWrap: 'anywhere' }}>
           {error}

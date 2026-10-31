@@ -1,3 +1,4 @@
+import { OperationStatus } from 'src/components/operation-status';
 import { useState } from 'react';
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField, Typography } from '@mui/material';
 import { Alert } from '@omnitron-dev/prism/components/alert';
@@ -40,6 +41,7 @@ export function ImportStacksDialog({ project, onClose, onImport }: {
           <Typography variant="body2" color="text.secondary">
             Add stacks from a configuration in this repository. Running applications and their history stay in place.
           </Typography>
+          <OperationStatus active={busy} label="Importing stacks" detail="Validating the configuration and saving the project catalog" />
           {error && <Alert severity="error">{error}</Alert>}
           <TextField autoFocus label="Configuration name" value={name} onChange={event => setName(event.target.value)} disabled={busy} required />
           <TextField label="Configuration directory" value={path} onChange={event => setPath(event.target.value)} disabled={busy} required helperText={`Inside ${project.path}`} />
@@ -49,7 +51,7 @@ export function ImportStacksDialog({ project, onClose, onImport }: {
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={busy}>Cancel</Button>
-        <Button variant="contained" onClick={() => void submit()} disabled={busy || !name.trim() || !path.trim() || !mapping.trim() || !project.catalogRevision}>Import stacks</Button>
+        <Button variant="contained" loading={busy} onClick={() => void submit()} disabled={busy || !name.trim() || !path.trim() || !mapping.trim() || !project.catalogRevision}>Import stacks</Button>
       </DialogActions>
     </Dialog>
   );

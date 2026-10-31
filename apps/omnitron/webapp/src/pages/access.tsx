@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { OperationStatus } from 'src/components/operation-status';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Accordion,
@@ -41,6 +42,7 @@ export default function AccessPage() {
     data: page,
     error: listError,
     refresh,
+    loading,
   } = usePolledResource(async () => ({ cursor: after, result: await access.listUsers(after ? { after } : {}) }), {
     intervalMs: 15_000,
     enabled: can('OmnitronAccess.listUsers'),
@@ -54,7 +56,9 @@ export default function AccessPage() {
   }, [after, refresh, mayListUsers, page]);
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [operation, setOperation] = useState<string | null>(null);
+  const busy = operation !== null;
+  const acting = useRef(false);
   const [creating, setCreating] = useState(false);
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -63,16 +67,19 @@ export default function AccessPage() {
   const [editing, setEditing] = useState<ConsoleAccount | null>(null);
   const [revoking, setRevoking] = useState<ConsoleAccount | null>(null);
   const secure = secureTerminalOrigin(window.location);
-  const act = async (operation: () => Promise<void>) => {
-    setBusy(true);
+  const act = async (label: string, work: () => Promise<void>) => {
+    if (acting.current) return;
+    acting.current = true;
+    setOperation(label);
     setError('');
     try {
-      await operation();
+      await work();
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      acting.current = false;
+      setOperation(null);
     }
   };
   const closeCreate = () => {
@@ -90,6 +97,7 @@ export default function AccessPage() {
       <Typography color="text.secondary" sx={{ mb: 2 }}>
         Your role: <strong>{snapshot?.role}</strong>. Permissions below come from this daemon’s active RPC policy.
       </Typography>
+      <OperationStatus active={busy && !creating && !editing && !revoking} label={operation ?? ''} />
       {(error || listError) && (
         <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>
           {error || listError}
@@ -120,7 +128,7 @@ export default function AccessPage() {
             <Typography variant="subtitle1" sx={{ flex: '1 1 180px' }}>
               Console accounts
             </Typography>
-            <Button onClick={() => void refresh()}>Refresh</Button>
+            <Button loading={loading || busy} onClick={() => void act('Refreshing accounts', refresh)}>Refresh</Button>
             <Button
               variant="contained"
               disabled={!secure || !can('OmnitronAccess.createUser')}
@@ -260,6 +268,7 @@ export default function AccessPage() {
       >
         <DialogTitle>Create console account</DialogTitle>
         <DialogContent>
+          <OperationStatus active={busy} label={operation ?? ''} />
           {error && <Alert severity="error">{error}</Alert>}
           <Stack spacing={2} sx={{ pt: 1 }}>
             <TextField
@@ -285,9 +294,10 @@ export default function AccessPage() {
             Cancel
           </Button>
           <Button
+            loading={busy}
             disabled={busy || !secure || !username || !!consolePasswordError(password)}
             onClick={() =>
-              void act(async () => {
+              void act('Creating account', async () => {
                 await access.createUser({ username, displayName, password, role });
                 closeCreate();
               })
@@ -305,6 +315,7 @@ export default function AccessPage() {
       >
         <DialogTitle>Change role for {editing?.username}</DialogTitle>
         <DialogContent>
+          <OperationStatus active={busy} label={operation ?? ''} />
           {error && <Alert severity="error">{error}</Alert>}
           <Alert severity="warning" sx={{ mb: 2 }}>
             All sessions for this account will be revoked, including SSH terminals. The account must sign in again.
@@ -316,9 +327,10 @@ export default function AccessPage() {
             Cancel
           </Button>
           <Button
+            loading={busy}
             disabled={busy || !editing || role === editing.role}
             onClick={() =>
-              void act(async () => {
+              void act('Updating role', async () => {
                 if (editing) await access.setRole({ id: editing.id, role, previous: editing.role });
                 setEditing(null);
               })
@@ -334,6 +346,7 @@ export default function AccessPage() {
       >
         <DialogTitle>Revoke sessions for {revoking?.username}?</DialogTitle>
         <DialogContent>
+          <OperationStatus active={busy} label={operation ?? ''} />
           {error && <Alert severity="error">{error}</Alert>}Existing sessions and SSH terminals will close. The account
           may sign in again with its password.
         </DialogContent>
@@ -343,9 +356,10 @@ export default function AccessPage() {
           </Button>
           <Button
             color="warning"
+            loading={busy}
             disabled={busy}
             onClick={() =>
-              void act(async () => {
+              void act('Revoking sessions', async () => {
                 if (revoking) await access.revokeSessions({ id: revoking.id });
                 setRevoking(null);
               })

@@ -1,3 +1,4 @@
+import { OperationStatus } from 'src/components/operation-status';
 import { useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -77,6 +78,7 @@ export function PipelineEditor({
       >
         <DialogTitle>{definition ? 'Edit automation' : 'New automation'}</DialogTitle>
         <DialogContent dividers sx={{ minWidth: 0 }}>
+          <OperationStatus active={saving} label="Saving automation definition" />
           <Stack spacing={2}>
             {error && (
               <Alert severity="error" variant="outlined">
@@ -302,7 +304,7 @@ export function PipelineEditor({
           <Button onClick={close} disabled={saving}>
             Cancel
           </Button>
-          <Button variant="contained" onClick={save} disabled={saving || !name.trim()}>
+          <Button variant="contained" loading={saving} onClick={save} disabled={saving || !name.trim()}>
             {saving ? 'Saving…' : 'Save definition'}
           </Button>
         </DialogActions>

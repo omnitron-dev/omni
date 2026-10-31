@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { OperationStatus } from 'src/components/operation-status';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -61,7 +62,9 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
     compact = useMediaQuery(theme.breakpoints.down('md'));
   const [hosts, setHosts] = useState<FileHost[]>([]),
     [error, setError] = useState(''),
-    [busy, setBusy] = useState(false);
+    [operation, setOperation] = useState<string | null>(null);
+  const busy = operation !== null;
+  const [preparing, setPreparing] = useState(true);
   const [active, setActive] = useState<'left' | 'right'>('left'),
     [split, setSplit] = useState(50),
     [refreshKey, setRefreshKey] = useState(0);
@@ -99,23 +102,22 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
     .join(',');
   const mounted = useRef(true),
     acting = useRef(false);
+  const loadHosts = useCallback(async () => {
+    setPreparing(true); setError('');
+    try {
+      const list = await nodes.listNodes();
+      if (mounted.current) setHosts([
+        { id: 'local', name: 'Local', host: 'daemon', isLocal: true },
+        ...list.filter(n => !n.isLocal).map(n => ({ id: n.id, name: n.name, host: n.host, isLocal: false })),
+      ]);
+    } catch (e) { if (mounted.current) setError(describeFileError(e)); }
+    finally { if (mounted.current) setPreparing(false); }
+  }, []);
   useEffect(() => {
     mounted.current = true;
-    void nodes
-      .listNodes()
-      .then((list) => {
-        if (mounted.current)
-          setHosts([
-            { id: 'local', name: 'Local', host: 'daemon', isLocal: true },
-            ...list.filter((n) => !n.isLocal).map((n) => ({ id: n.id, name: n.name, host: n.host, isLocal: false })),
-          ]);
-      })
-      .catch((e) => setError(describeFileError(e)));
-    return () => {
-      mounted.current = false;
-      cancelled.current = true;
-    };
-  }, []);
+    void loadHosts();
+    return () => { mounted.current = false; cancelled.current = true; };
+  }, [loadHosts]);
   useEffect(() => {
     setRefreshKey((k) => k + 1);
   }, [completed]);
@@ -129,10 +131,10 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [browserTransfer]);
-  const act = async (run: () => Promise<void>) => {
+  const act = async (label: string, run: () => Promise<void>) => {
     if (acting.current) return;
     acting.current = true;
-    setBusy(true);
+    setOperation(label);
     setError('');
     try {
       await run();
@@ -140,7 +142,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
       setError(describeFileError(e));
     } finally {
       acting.current = false;
-      setBusy(false);
+      if (mounted.current) setOperation(null);
     }
   };
   const refresh = () => setRefreshKey((k) => k + 1);
@@ -157,7 +159,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
   const hostName = (id: string) => hosts.find((h) => h.id === id)?.name ?? id;
   const label = (location: FileLocation) => `${hostName(location.nodeId)} / ${location.rootId} / ${location.path}`;
   const open = async (_entry: FileEntry, location: FileLocation, readOnly: boolean) =>
-    act(async () => {
+    act(`Opening ${location.path}`, async () => {
       const id = JSON.stringify(location),
         existing = buffersRef.current.find((b) => b.id === id);
       if (!existing) {
@@ -170,7 +172,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
       setEditorOpen(true);
     });
   const save = (current: BufferState) =>
-    act(async () => {
+    act(`Saving ${current.location.path}`, async () => {
       if (current.readOnly || lineEnding(current.text) === 'mixed') throw new Error('This buffer is read only');
       const document = await files.saveText({
         ...current.location,
@@ -208,14 +210,14 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
       return;
     }
     if (key === 'trashList') {
-      void act(async () => setTrash({ pane, items: await files.trashList(pane.location) }));
+      void act('Loading trash', async () => setTrash({ pane, items: await files.trashList(pane.location) }));
       return;
     }
     setName(key === 'rename' ? (pane.entries[0]?.name ?? '') : '');
     setPending({ action: key, pane, ...(destination ? { destination } : {}) });
   };
   const confirm = () =>
-    act(async () => {
+    act(pending?.action === 'copy' ? 'Preparing file transfer' : pending?.action === 'trash' ? 'Moving files to trash' : 'Saving file changes', async () => {
       if (!pending) return;
       const { pane } = pending;
       if (pending.action === 'copy') {
@@ -382,6 +384,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
           {error}
         </Alert>
       )}
+      <OperationStatus active={busy && !pending && !editorOpen && !trash && !queueOpen} label={operation ?? ''} />
       {jobs.error && <Alert severity="warning">Transfer status unavailable: {jobs.error}</Alert>}
       <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 0.5, minWidth: 0 }}>
         {compact && (
@@ -435,7 +438,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
         <Box role="status">
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <Typography variant="caption" sx={{ flex: 1 }}>
-              {browserTransfer.label} · {fileBytes(browserTransfer.bytes)} / {fileBytes(browserTransfer.total)}
+              {browserTransfer.label} · {fileBytes(browserTransfer.bytes)} / {fileBytes(browserTransfer.total)}{browserTransfer.committing ? ' · confirming publication' : ''}
             </Typography>
             <Button
               size="small"
@@ -448,7 +451,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
             </Button>
           </Stack>
           <LinearProgress
-            variant="determinate"
+            variant={browserTransfer.committing ? 'indeterminate' : 'determinate'}
             value={browserTransfer.total ? (browserTransfer.bytes / browserTransfer.total) * 100 : 0}
           />
         </Box>
@@ -527,9 +530,10 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
             />
           </>
         ) : (
-          <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
-            Loading registered nodes…
-          </Typography>
+          <Box sx={{ p: 2 }}>
+            <OperationStatus active={preparing} label="Loading file workspace" detail="Reading registered nodes" />
+            {!preparing && <Button onClick={() => void loadHosts()}>Retry loading file workspace</Button>}
+          </Box>
         )}
       </Box>
       {running.length > 0 && (
@@ -568,6 +572,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
                 : 'New file'}
         </DialogTitle>
         <DialogContent>
+          <OperationStatus active={busy} label={operation ?? ''} />
           <Typography variant="caption" sx={{ display: 'block', mb: 2, overflowWrap: 'anywhere' }}>
             {pending && label(pending.pane.location)}
           </Typography>
@@ -591,7 +596,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
           <Button onClick={() => setPending(null)} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="contained" disabled={!name || busy} onClick={() => void confirm()}>
+          <Button variant="contained" loading={busy} disabled={!name || busy} onClick={() => void confirm()}>
             Apply
           </Button>
         </DialogActions>
@@ -609,6 +614,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
         onConfirm={confirm}
         content={
           <Stack spacing={1}>
+            <OperationStatus active={busy} label={operation ?? ''} />
             <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>
               {pending && label(pending.pane.location)}
             </Typography>
@@ -653,9 +659,11 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
         <Typography variant="caption" color="text.secondary" sx={{ px: 2, pb: 2 }}>
           Node transfers run in daemon. Interrupted jobs resume only on your command.
         </Typography>
+        <Box sx={{ px: 2 }}><OperationStatus active={busy} label={operation ?? ''} /></Box>
         {jobs.error && <Alert severity="error">{jobs.error}</Alert>}
         {error && <Alert severity="error">{error}</Alert>}
-        {!jobs.data?.length && (
+        {jobs.loading && !jobs.data && <Box sx={{ px: 2 }}><OperationStatus active label="Loading transfers" /></Box>}
+        {jobs.data?.length === 0 && (
           <Typography color="text.secondary" sx={{ p: 2 }}>
             No transfers yet
           </Typography>
@@ -712,7 +720,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
                   size="small"
                   disabled={busy}
                   onClick={() =>
-                    void act(async () => {
+                    void act('Pausing transfer', async () => {
                       await files.controlTransfer({ id: job.id, action: 'pause' });
                       await jobs.refresh();
                     })
@@ -726,7 +734,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
                   size="small"
                   disabled={busy}
                   onClick={() =>
-                    void act(async () => {
+                    void act('Resuming transfer', async () => {
                       await files.controlTransfer({ id: job.id, action: 'resume' });
                       await jobs.refresh();
                     })
@@ -740,7 +748,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
                   size="small"
                   disabled={busy}
                   onClick={() =>
-                    void act(async () => {
+                    void act('Cancelling transfer', async () => {
                       await files.controlTransfer({ id: job.id, action: 'cancel' });
                       await jobs.refresh();
                       refresh();
@@ -757,6 +765,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
       <Dialog open={Boolean(trash) && visible} onClose={() => setTrash(null)} fullWidth maxWidth="sm">
         <DialogTitle>Restore from trash</DialogTitle>
         <DialogContent>
+          <OperationStatus active={busy} label={operation ?? ''} />
           {error && <Alert severity="error">{error}</Alert>}
           {!trash?.items.length && <Typography color="text.secondary">Trash is empty</Typography>}
           {trash?.items.map((item) => (
@@ -772,7 +781,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
               <Button
                 disabled={busy}
                 onClick={() =>
-                  void act(async () => {
+                  void act('Restoring file', async () => {
                     await files.restore({ nodeId: trash.pane.location.nodeId, id: item.id });
                     setTrash({ ...trash, items: await files.trashList(trash.pane.location) });
                     refresh();
@@ -864,6 +873,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
               <Button
                 size="small"
                 variant="contained"
+                loading={operation?.startsWith('Saving ') ?? false}
                 disabled={
                   busy ||
                   buffer.readOnly ||
@@ -875,6 +885,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
                 Save
               </Button>
             </Stack>
+            <Box sx={{ px: 1 }}><OperationStatus active={busy} label={operation ?? ''} /></Box>
             {error && (
               <Alert severity="error" onClose={() => setError('')}>
                 {error}
@@ -922,7 +933,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
         loading={busy}
         onClose={() => setReloadBuffer(null)}
         onConfirm={() =>
-          act(async () => {
+          act('Reloading saved file', async () => {
             const current = buffersRef.current.find((b) => b.id === reloadBuffer);
             if (!current) return;
             const document = await files.readText(current.location);

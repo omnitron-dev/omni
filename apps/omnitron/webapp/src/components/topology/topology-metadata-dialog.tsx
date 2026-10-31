@@ -1,3 +1,4 @@
+import { OperationStatus } from 'src/components/operation-status';
 import { useState } from 'react';
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Typography } from '@mui/material';
 import { Alert } from '@omnitron-dev/prism/components/alert';
@@ -26,11 +27,11 @@ export function TopologyMetadataDialog({ project, stack, onClose, onUpdated }: {
       <Typography variant="body2">Read the registered applications’ bootstrap declarations and save a new dependency snapshot. Applications keep running.</Typography>
       <Alert severity="info">This imports trusted project code in separate processes. Import-time code can run; application lifecycle hooks are not started.</Alert>
       {error && <Alert severity="error" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{error}</Alert>}
-      {busy && <Typography role="status" variant="body2">Reading declarations… Up to 30 seconds per application, with a shared 90-second deadline.</Typography>}
+      <OperationStatus active={busy} label="Reading topology declarations" detail="Up to 30 seconds per application, with a shared 90-second deadline" />
     </Stack></DialogContent>
     <DialogActions>
       <Button autoFocus onClick={onClose} disabled={busy}>Cancel</Button>
-      <Button variant="contained" onClick={() => void capture()} disabled={busy}>Update declarations</Button>
+      <Button variant="contained" loading={busy} onClick={() => void capture()} disabled={busy}>Update declarations</Button>
     </DialogActions>
   </Dialog>;
 }

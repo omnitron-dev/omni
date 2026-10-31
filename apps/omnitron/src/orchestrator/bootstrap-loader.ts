@@ -361,6 +361,19 @@ function childExecArgv(parentArgv: readonly string[]): string[] {
       continue;
     }
     if (flag.startsWith('--inspect') || flag.startsWith('--debug') || flag.startsWith('--watch')) continue;
+    if (flag === '--import') {
+      const specifier = arg === flag ? parentArgv[i + 1] : arg.slice(flag.length + 1);
+      if (specifier === 'tsx' || specifier === 'tsx/esm') {
+        // The daemon starts in its installed package, then may chdir to the
+        // project or service home. A bare preload resolves from the child's
+        // cwd before its entry runs. Pin our loader to this runtime without
+        // changing the working directory seen by the application definition.
+        const loader = pathToFileURL(createRequire(import.meta.url).resolve(specifier)).href;
+        if (arg === flag) { kept.push(flag, loader); i++; }
+        else kept.push(`${flag}=${loader}`);
+        continue;
+      }
+    }
     kept.push(arg);
   }
   return kept;

@@ -100,6 +100,28 @@ function isAlive(pid: number): boolean {
 }
 
 describe('a definition read after a package it imports gained an export', () => {
+  it.each([
+    ['--import', 'tsx/esm'],
+    ['--import=tsx/esm'],
+  ])('keeps the runtime loader available after the daemon changes cwd (%s)', (...preload) => {
+    const p = project();
+    p.writeKit(KIT_BEFORE);
+    p.writeDefinition(DEFINITION_BEFORE.replace("name: 'probe'", 'name: process.cwd()'));
+    const script = [
+      `const { loadBootstrapConfig } = await import(${JSON.stringify(loaderUrl)});`,
+      `process.chdir(${JSON.stringify(p.root)});`,
+      `const definition = await loadBootstrapConfig(${JSON.stringify(p.definition)}, { freshModuleGraph: true });`,
+      `console.log(JSON.stringify({ cwd: definition.name, process: definition.processes[0].name }));`,
+    ].join('\n');
+    const result = spawnSync(process.execPath, [...preload, '--input-type=module', '-e', script], {
+      cwd: packageRoot,
+      encoding: 'utf8',
+      timeout: 30_000,
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout.trim())).toEqual({ cwd: p.root, process: 'a1' });
+  }, 40_000);
+
   it('is read against the package as it is now, by a reader started as the daemon is', () => {
     const p = project();
     p.writeKit(KIT_BEFORE);

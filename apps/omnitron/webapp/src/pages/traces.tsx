@@ -345,7 +345,7 @@ export default function TracesPage() {
       <Breadcrumbs
         links={[{ name: 'Traces' }]}
         action={
-          <IconButton size="small" onClick={() => void refresh()} title="Refresh">
+          <IconButton data-console-command="refresh" size="small" onClick={() => void refresh()} title="Refresh">
             <RefreshIcon />
           </IconButton>
         }

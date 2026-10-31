@@ -1,3 +1,4 @@
+import { isControlPlaneWorkspace } from './workspace-kind.js';
 import { OMNITRON_HOME } from '../config/defaults.js';
 /**
  * Project Registry — Manages seed projects registered with omnitron.
@@ -113,6 +114,7 @@ export class ProjectRegistry {
 
   add(name: string, projectPath: string): ISeedProject {
     const absPath = path.resolve(projectPath);
+    if (isControlPlaneWorkspace(absPath)) throw new Error('The Omnitron control plane is already the system workspace; register an application project instead');
 
     if (!findProjectConfig(absPath)) {
       throw new Error(`No ${CONFIG_FILE_NAMES.join(' / ')} found at ${absPath}`);
@@ -150,6 +152,7 @@ export class ProjectRegistry {
   }
 
   updatePath(name: string, newPath: string): ISeedProject {
+    if (isControlPlaneWorkspace(newPath)) throw new Error('The Omnitron control plane is already the system workspace');
     const project = this.projects.get(name);
     if (!project) throw new Error(`Project '${name}' not found`);
 
@@ -245,6 +248,7 @@ export class ProjectRegistry {
   // ===========================================================================
 
   autoDetect(cwd: string = process.cwd()): ISeedProject | null {
+    if (isControlPlaneWorkspace(cwd)) return null;
     const configPath = path.join(cwd, 'omnitron.config.ts');
     if (!fs.existsSync(configPath)) return null;
 

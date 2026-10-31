@@ -1,3 +1,4 @@
+import { TableViewport } from '@omnitron-dev/prism/components/table';
 /**
  * Audit — who changed this control plane, and what they changed.
  *
@@ -254,6 +255,7 @@ export default function AuditPage() {
 
       {data?.available && data.rows.length > 0 && (
         <Card variant="outlined">
+          <TableViewport label="Audit events">
           <Table size="small" sx={{ tableLayout: 'fixed' }}>
             <TableHead>
               <TableRow>
@@ -292,6 +294,7 @@ export default function AuditPage() {
               ))}
             </TableBody>
           </Table>
+          </TableViewport>
         </Card>
       )}
     </Box>

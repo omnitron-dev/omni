@@ -96,7 +96,7 @@ export default function ReleaseDetailPage() {
         links={[{ name: 'Releases', href: '/releases' }, { name: id }]}
         action={
           <Stack direction="row" spacing={1}>
-            <IconButton size="small" onClick={() => void refresh()} title="Refresh">
+            <IconButton data-console-command="refresh" size="small" onClick={() => void refresh()} title="Refresh">
               <RefreshIcon />
             </IconButton>
             <Button

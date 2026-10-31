@@ -62,6 +62,7 @@ import {
   arrangeTopologyNodes,
   nearestTopologyNode,
   readableTopologyViewport,
+  arrangeDependencyTopology,
   topologyColumns,
   TOPOLOGY_CARD_HEIGHT,
   TOPOLOGY_GAP,
@@ -107,6 +108,7 @@ function TopologyWorkspace() {
     openDetail,
     closeDetail,
     apps,
+    coverageWarnings,
   } = useTopologyStore();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<TopologyNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -129,7 +131,7 @@ function TopologyWorkspace() {
   const previousSize = useRef<typeof canvasSize | null>(null);
   const previousGeometry = useRef<Pick<Node, 'id' | 'position'>[]>([]);
   const columns = topologyColumns(canvasSize.width);
-  const arrangedNodes = useMemo(() => arrangeTopologyNodes(storeNodes, columns), [storeNodes, columns]);
+  const arrangedNodes = useMemo(() => storeEdges.some(edge => edge.data?.evidence === 'configuration' || edge.data?.evidence === 'declaration') ? arrangeDependencyTopology(storeNodes, columns) : arrangeTopologyNodes(storeNodes, columns), [storeNodes, storeEdges, columns]);
   const layoutKey = arrangedNodes.map((node) => `${node.id}:${node.position.x}:${node.position.y}`).join('|');
   const duration = reducedMotion ? 0 : 200;
 
@@ -160,8 +162,14 @@ function TopologyWorkspace() {
     });
   }, [arrangedNodes, manualLayout, setNodes]);
   useEffect(() => {
-    setEdges(storeEdges);
-  }, [storeEdges, setEdges]);
+    setEdges(storeEdges.map(edge => {
+      const related = !detailPanel.nodeId || edge.source === detailPanel.nodeId || edge.target === detailPanel.nodeId;
+      return { ...edge, label: detailPanel.nodeId && related ? edge.label : undefined,
+        style: { ...edge.style, stroke: theme.palette.text.secondary, opacity: related ? 0.85 : 0.15 },
+        labelStyle: { fill: theme.palette.text.primary, fontSize: 12 }, labelBgStyle: { fill: theme.palette.background.paper },
+      };
+    }));
+  }, [storeEdges, setEdges, detailPanel.nodeId, theme]);
   usePollingEffect(
     () => {
       void fetchAll();
@@ -376,6 +384,7 @@ function TopologyWorkspace() {
                   <IconButton
                     size="small"
                     aria-label={control.label}
+                    data-console-command={control.label === 'Fit graph' ? 'fit' : undefined}
                     disabled={control.disabled}
                     onClick={control.action}
                   >
@@ -401,7 +410,13 @@ function TopologyWorkspace() {
                 </IconButton>
               </Tooltip>
             )}
-            <IconButton size="small" aria-label="Refresh topology" disabled={refreshing} onClick={refresh}>
+            <IconButton
+              data-console-command="refresh"
+              size="small"
+              aria-label="Refresh topology"
+              disabled={refreshing}
+              onClick={refresh}
+            >
               <RefreshIcon fontSize="small" />
             </IconButton>
             {!listView && (
@@ -409,6 +424,7 @@ function TopologyWorkspace() {
                 <Button
                   size="small"
                   aria-label="Readable view"
+                  data-console-command="readable"
                   onClick={readable}
                   sx={{ minWidth: 40, px: 0.5, fontVariantNumeric: 'tabular-nums' }}
                 >
@@ -421,12 +437,20 @@ function TopologyWorkspace() {
         {(error || viewError) && (
           <Alert severity={error && !nodes.length ? 'error' : 'warning'} variant="outlined" sx={{ mt: 1 }}>
             {error || viewError}
+            {coverageWarnings.length > 0 && <Box component="details" sx={{ mt: 1 }}>
+              <Box component="summary" sx={{ cursor: 'pointer' }}>Dependency coverage</Box>
+              <Stack spacing={0.5} sx={{ mt: 1, maxHeight: 180, overflowY: 'auto' }}>
+                {coverageWarnings.map((warning, index) => <Typography variant="caption" key={index} sx={{ overflowWrap: 'anywhere' }}>
+                  {[warning.project, warning.stack, warning.app].filter(Boolean).join('/')} — {warning.reason}
+                </Typography>)}
+              </Stack>
+            </Box>}
           </Alert>
         )}
         <Stack direction="row" useFlexGap spacing={1} sx={{ flexWrap: 'wrap', px: 1, py: 0.75 }}>
           <Typography variant="caption" color="text.secondary">
             {apps.filter((app) => app.status === 'online').length}/{apps.length} apps online · {nodes.length} nodes ·{' '}
-            {edges.length} declared links
+            {edges.length} links · configured dependencies, not live traffic
           </Typography>
           <Typography
             variant="caption"
@@ -439,6 +463,7 @@ function TopologyWorkspace() {
         <Box sx={{ display: 'flex', flex: 1, minHeight: 0, minWidth: 0, position: 'relative', overflow: 'hidden' }}>
           <Box
             ref={canvas}
+            data-keyboard-region="Topology"
             tabIndex={0}
             role="region"
             aria-label="Deployment topology"

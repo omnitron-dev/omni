@@ -19,7 +19,7 @@ const order = { server: 0, gateway: 1, app: 2, infra: 3 };
 export function arrangeTopologyNodes<T extends Node<TopologyNodeData>>(nodes: T[], columns: number): T[] {
   const groups = new Map<string | null, T[]>();
   for (const node of nodes) {
-    const key = node.data.nodeType === 'server' ? (node.data.stacks[0] ?? null) : node.data.stack;
+    const key = typeof node.data.deploymentKey === 'string' ? node.data.deploymentKey : node.data.nodeType === 'server' ? (node.data.stacks[0] ?? null) : node.data.stack;
     const group = groups.get(key) ?? [];
     group.push(node);
     groups.set(key, group);
@@ -130,4 +130,31 @@ export function nearestTopologyNode(
     }
   }
   return nearest;
+}
+
+
+/** Consumer and provider lanes leave a clear gutter for shared dependencies. */
+export function arrangeDependencyTopology<T extends Node<TopologyNodeData>>(nodes: T[], columns: number): T[] {
+  const groups = new Map<string, T[]>();
+  for (const node of nodes) {
+    const key = String(node.data.deploymentKey ?? (node.data.nodeType === 'server' ? node.data.stacks[0] : node.data.stack) ?? '');
+    const group = groups.get(key) ?? []; group.push(node); groups.set(key, group);
+  }
+  let top = 0;
+  const placed: T[] = [];
+  for (const group of groups.values()) {
+    const apps = group.filter(node => node.data.nodeType === 'app');
+    const services = group.filter(node => node.data.nodeType === 'infra' || node.data.nodeType === 'gateway');
+    const servers = group.filter(node => node.data.nodeType === 'server');
+    const step = TOPOLOGY_CARD_HEIGHT + TOPOLOGY_GAP;
+    const put = (node: T, x: number, y: number, provider = false) => placed.push({ ...node,
+      position: { x, y }, sourcePosition: provider && columns > 1 ? Position.Left : Position.Right,
+      targetPosition: provider && columns > 1 ? Position.Left : Position.Right });
+    for (const server of servers) { put(server, 0, top); top += step; }
+    apps.forEach((node, row) => put(node, 0, top + row * step));
+    services.forEach((node, row) => put(node, columns > 1 ? TOPOLOGY_CARD_WIDTH + TOPOLOGY_GAP : 0,
+      top + (columns > 1 ? row : row + apps.length) * step, true));
+    top += (columns > 1 ? Math.max(apps.length, services.length) : apps.length + services.length) * step + TOPOLOGY_GAP;
+  }
+  return placed;
 }

@@ -15,6 +15,8 @@ import type { LayoutNavData } from '@omnitron-dev/prism/layouts';
 import { StatusBar } from 'src/components/status-bar';
 import { DaemonOfflineBanner } from 'src/components/daemon-offline-banner';
 import { ConsoleUpdateBanner } from 'src/components/console-update-banner';
+import { isVisible } from 'src/components/keyboard-model';
+import { ConsoleKeyboard, useConsoleKeyboard } from 'src/components/console-keyboard';
 import { OmnitronLogo } from 'src/components/omnitron-logo';
 
 import {
@@ -37,6 +39,7 @@ import {
   LogoutIcon,
   ReleaseIcon,
   FolderIcon,
+  SearchIcon,
 } from 'src/assets/icons';
 
 import { useAuthStore } from 'src/auth/store';
@@ -88,8 +91,9 @@ function useNavData(): LayoutNavData {
           items: [
             { id: 'projects', title: 'Projects', path: '/projects', icon: <ProjectIcon /> },
             { id: 'nodes', title: 'Nodes', path: '/nodes', icon: <NodesIcon /> },
+            { id: 'topology', title: 'Topology', path: '/topology', icon: <NodesIcon /> },
             { id: 'terminal', title: 'SSH workspace', path: '/terminal', icon: <ServerIcon /> },
-          { id: 'files', title: 'Files', path: '/files', icon: <FolderIcon /> },
+            { id: 'files', title: 'Files', path: '/files', icon: <FolderIcon /> },
             {
               id: 'pipelines',
               title: 'Pipelines',
@@ -281,6 +285,7 @@ const headerIconBtnSx = {
 } as const;
 
 function HeaderRight() {
+  const { openCommands, openHelp } = useConsoleKeyboard();
   const signOut = useAuthStore((s) => s.signOut);
   const { setMode } = usePrismContext();
   const mode = useSettingsStore((s: any) => s.mode) as string;
@@ -301,6 +306,18 @@ function HeaderRight() {
         alignItems: 'center',
       }}
     >
+      <Tooltip title="Commands · Ctrl / ⌘ K">
+        <IconButton aria-label="Open Console commands" onClick={openCommands} sx={headerIconBtnSx}>
+          <SearchIcon sx={{ fontSize: 20 }} />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title="Keyboard · Ctrl / ⌘ /">
+        <IconButton aria-label="Keyboard shortcuts" onClick={openHelp} sx={headerIconBtnSx}>
+          <Typography component="span" sx={{ fontWeight: 600, fontSize: 18 }}>
+            ?
+          </Typography>
+        </IconButton>
+      </Tooltip>
       <Tooltip title={themeTooltip}>
         <IconButton disableRipple onClick={handleCycleTheme} sx={headerIconBtnSx}>
           <ThemeModeIcon mode={mode} />
@@ -335,9 +352,15 @@ export function ConsoleLayout() {
   const terminalVisible = location.pathname === '/terminal';
   const filesVisible = location.pathname === '/files';
   const [filesVisited, setFilesVisited] = useState(filesVisible);
-  useEffect(() => { if (filesVisible) setFilesVisited(true); }, [filesVisible]);
   useEffect(() => {
-    document.getElementById('main-content')?.scrollTo({ top: 0 });
+    if (filesVisible) setFilesVisited(true);
+  }, [filesVisible]);
+  useEffect(() => {
+    const main = document.getElementById('main-content');
+    main?.scrollTo({ top: 0 });
+    // A retained page can hide the focused terminal/file row on navigation.
+    if (main && (!document.activeElement || !isVisible(document.activeElement as HTMLElement)))
+      main.focus({ preventScroll: true });
   }, [location.pathname]);
   const [terminalVisited, setTerminalVisited] = useState(terminalVisible);
   useEffect(() => {
@@ -348,73 +371,94 @@ export function ConsoleLayout() {
   useAlertNotifications(useAuthStore((s) => Boolean(s.user)));
 
   return (
-    <DashboardLayout
-      contentMode="workspace"
-      footer={<StatusBar docked />}
-      logo={<ConsoleLogo />}
-      navData={navData}
-      persistKey="console"
-      initialConfig={{
-        navigationMenuType: 'sidenav',
-        sidenavVariant: 'default',
-        navColor: 'default',
-      }}
-      headerSlots={{
-        leftArea: <ProjectSwitcher />,
-        rightArea: <HeaderRight />,
-        // Notices take space inside Prism's bounded workspace, so the footer
-        // and terminal stay inside the viewport when a notice appears.
-        bottomArea: <><DaemonOfflineBanner /><ConsoleUpdateBanner /></>,
-      }}
-      slotProps={{
-        main: {
-          sx:
-            terminalVisible || filesVisible || location.pathname === '/topology'
-              ? { p: { xs: 1, sm: 1.5, md: 2 }, minHeight: 0 }
-              : { minWidth: 0, minHeight: 0, overflowY: 'auto', p: { xs: 1.5, sm: 2, md: 2.5 } },
-        },
-      }}
-    >
-      <ErrorBoundary showDetails onError={reportCrash}>
-        {/*
+    <ConsoleKeyboard navigation={navData}>
+      <DashboardLayout
+        contentMode="workspace"
+        footer={<StatusBar docked />}
+        logo={<ConsoleLogo />}
+        navData={navData}
+        persistKey="console"
+        initialConfig={{
+          navigationMenuType: 'sidenav',
+          sidenavVariant: 'default',
+          navColor: 'default',
+        }}
+        headerSlots={{
+          leftArea: (
+            <Box data-keyboard-region="Workspace" tabIndex={-1}>
+              <ProjectSwitcher />
+            </Box>
+          ),
+          rightArea: <HeaderRight />,
+          // Notices take space inside Prism's bounded workspace, so the footer
+          // and terminal stay inside the viewport when a notice appears.
+          bottomArea: (
+            <>
+              <DaemonOfflineBanner />
+              <ConsoleUpdateBanner />
+            </>
+          ),
+        }}
+        slotProps={{
+          main: {
+            sx:
+              terminalVisible || filesVisible || location.pathname === '/topology'
+                ? { p: { xs: 1, sm: 1.5, md: 2 }, minHeight: 0 }
+                : { minWidth: 0, minHeight: 0, overflowY: 'auto', p: { xs: 1.5, sm: 2, md: 2.5 } },
+          },
+        }}
+      >
+        <ErrorBoundary showDetails onError={reportCrash}>
+          {/*
           A route chunk, not the app — so this stays contained rather than
           full-screen, and the chrome around it (sidebar, header) keeps
           rendering. What it gains is a message: measured on this host, a cold
           route took thirty seconds to arrive, and for all thirty a bare
           progress bar is indistinguishable from a page that broke.
         */}
-        <Suspense fallback={<SplashScreen variant="linear" message="Loading…" />}>
-          {!terminalVisible && !filesVisible && (
-            <PageAccess>
-              <Outlet />
-            </PageAccess>
+          <Suspense fallback={<SplashScreen variant="linear" message="Loading…" />}>
+            {!terminalVisible && !filesVisible && (
+              <PageAccess>
+                <Outlet />
+              </PageAccess>
+            )}
+          </Suspense>
+          {filesVisited && (
+            <Box
+              sx={{
+                display: filesVisible ? 'flex' : 'none',
+                flexDirection: 'column',
+                flex: 1,
+                minHeight: 0,
+                minWidth: 0,
+              }}
+            >
+              <Suspense fallback={<SplashScreen variant="linear" message="Loading files…" />}>
+                <AccessBoundary permission="OmnitronFiles.roots">
+                  <FilesPage visible={filesVisible} />
+                </AccessBoundary>
+              </Suspense>
+            </Box>
           )}
-        </Suspense>
-        {filesVisited && (
-          <Box sx={{ display: filesVisible ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
-            <Suspense fallback={<SplashScreen variant="linear" message="Loading files…" />}>
-              <AccessBoundary permission="OmnitronFiles.roots"><FilesPage visible={filesVisible} /></AccessBoundary>
-            </Suspense>
-          </Box>
-        )}
-        {terminalVisited && (
-          <Box
-            sx={{
-              display: terminalVisible ? 'flex' : 'none',
-              flexDirection: 'column',
-              flex: 1,
-              minHeight: 0,
-              minWidth: 0,
-            }}
-          >
-            <Suspense fallback={<SplashScreen variant="linear" message="Loading SSH workspace…" />}>
-              <AccessBoundary permission="OmnitronTerminal.open">
-                <TerminalPage visible={terminalVisible} />
-              </AccessBoundary>
-            </Suspense>
-          </Box>
-        )}
-      </ErrorBoundary>
-    </DashboardLayout>
+          {terminalVisited && (
+            <Box
+              sx={{
+                display: terminalVisible ? 'flex' : 'none',
+                flexDirection: 'column',
+                flex: 1,
+                minHeight: 0,
+                minWidth: 0,
+              }}
+            >
+              <Suspense fallback={<SplashScreen variant="linear" message="Loading SSH workspace…" />}>
+                <AccessBoundary permission="OmnitronTerminal.open">
+                  <TerminalPage visible={terminalVisible} />
+                </AccessBoundary>
+              </Suspense>
+            </Box>
+          )}
+        </ErrorBoundary>
+      </DashboardLayout>
+    </ConsoleKeyboard>
   );
 }

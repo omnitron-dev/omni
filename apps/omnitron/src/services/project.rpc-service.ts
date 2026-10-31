@@ -77,6 +77,12 @@ export class ProjectRpcService {
   // Projects — Admin
   // ===========================================================================
 
+  /** Sanitized configuration graph; the resolver never returns environment values or credentials. */
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getTopology(data: { project?: string; stack?: string }): Promise<import('../shared/dto/project.js').ProjectTopology> {
+    return this.projectService.getTopology(data);
+  }
+
   @Public({ auth: { roles: ADMIN_ROLES } })
   async addProject(data: { name: string; path: string }): Promise<IProjectInfo> {
     const project = await this.projectService.addProject(data.name, data.path);

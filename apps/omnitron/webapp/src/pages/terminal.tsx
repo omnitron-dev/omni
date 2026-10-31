@@ -646,6 +646,7 @@ function TerminalPane({
     <Card
       variant="outlined"
       data-testid="terminal-pane"
+      data-keyboard-region="SSH session"
       sx={{
         display: visible ? 'flex' : 'none',
         flexDirection: 'column',

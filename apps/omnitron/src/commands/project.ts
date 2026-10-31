@@ -169,3 +169,21 @@ export async function projectRemoveCommand(name: string): Promise<void> {
     process.exitCode = 1;
   }
 }
+
+/** The same configuration evidence the Console draws; no probes or mutations. */
+export async function projectTopologyCommand(name?: string, options: { stack?: string } = {}): Promise<void> {
+  try {
+    const result = await withProjectService(
+      svc => svc.getTopology({ ...(name ? { project: name } : {}), ...(options.stack ? { stack: options.stack } : {}) }),
+      () => { throw new Error('Topology requires a reachable daemon'); },
+    );
+    if (emitJson(result)) return;
+    log.info('Configured dependencies — not measured live connections');
+    for (const dependency of result.dependencies) {
+      const target = dependency.targetApp ?? `${dependency.service} ${dependency.host}:${dependency.port}`;
+      log.info(`${dependency.project}/${dependency.stack}/${dependency.app} → ${target} [${dependency.via}]`);
+    }
+    for (const warning of result.warnings) log.warn(`${[warning.project, warning.stack, warning.app].filter(Boolean).join('/')}: ${warning.reason}`);
+    if (!result.dependencies.length) log.info('No dependencies established from the available configuration.');
+  } catch (error) { log.error((error as Error).message); process.exitCode = 1; }
+}

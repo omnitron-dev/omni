@@ -11,7 +11,6 @@ import { ErrorBoundary } from '@omnitron-dev/prism/components/error-boundary';
 import { MultiBackendProvider } from '@omnitron-dev/prism/netron';
 import { daemonClient } from 'src/netron/client';
 import { Router } from 'src/routes';
-import { CommandPalette } from 'src/components/command-palette';
 import { useProjectStore } from 'src/stores/project.store';
 import { reportCrash } from 'src/utils/report-crash';
 import { consoleTheme } from 'src/theme';
@@ -32,7 +31,6 @@ function AppContent() {
     <>
       <NavigationProgress pathname={pathname} />
       <ScrollToTop pathname={pathname} />
-      <CommandPalette />
       <ErrorBoundary showDetails onError={reportCrash}>
         <Router />
       </ErrorBoundary>

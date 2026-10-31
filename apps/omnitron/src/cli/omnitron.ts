@@ -220,6 +220,15 @@ project
   });
 
 project
+  .command('topology [name]')
+  .description('Inspect configured dependencies without exposing credentials')
+  .option('--stack <name>', 'Limit to one stack')
+  .action(async (name, options) => {
+    const { projectTopologyCommand } = await import('../commands/project.js');
+    await projectTopologyCommand(name, options);
+  });
+
+project
   .command('remove <name>')
   .description('Remove a project from registry')
   .action(async (name) => {

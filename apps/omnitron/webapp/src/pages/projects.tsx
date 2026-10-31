@@ -450,7 +450,7 @@ export default function ProjectsPage() {
         links={[{ name: 'Projects' }]}
         action={
           <Stack direction="row" spacing={1}>
-            <Button
+            <Button data-console-command="refresh"
               variant="outlined"
               size="small"
               startIcon={<RefreshIcon sx={{ fontSize: 18 }} />}

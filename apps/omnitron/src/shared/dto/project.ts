@@ -370,3 +370,24 @@ export interface IStackMaintenance {
   retryAfter: number | null;
   notice: { startsAt: number; startsIn: number; reason: string; message: string | null } | null;
 }
+
+/** Configured dependencies, never a claim that a live socket is connected. */
+export interface ProjectDependency {
+  project: string;
+  stack: string;
+  app: string;
+  targetApp?: string;
+  service?: string;
+  host?: string;
+  port?: number;
+  /** Configuration key establishing this relationship, without its value. */
+  via: string;
+  evidence: 'configuration' | 'declaration';
+}
+export interface ProjectTopology {
+  version: 1;
+  generatedAt: string;
+  dependencies: ProjectDependency[];
+  /** Missing definitions/configuration are explicit; a partial graph is not a complete census. */
+  warnings: Array<{ project: string; stack?: string; app?: string; reason: string }>;
+}

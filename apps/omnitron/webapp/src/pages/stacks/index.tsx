@@ -143,7 +143,7 @@ export default function StacksPage() {
         links={[{ name: 'Stacks' }]}
         action={
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-            <IconButton size="small" onClick={() => fetchStacks(activeProject)} title="Refresh">
+            <IconButton data-console-command="refresh" size="small" onClick={() => fetchStacks(activeProject)} title="Refresh">
               <RefreshIcon />
             </IconButton>
             <Can permission="OmnitronProject.createStack"><Button

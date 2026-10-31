@@ -622,7 +622,7 @@ function LogsTab({ appName }: { appName: string }) {
           flexWrap: 'wrap'
         }}>
         {/* Search */}
-        <TextField
+        <TextField data-console-command="search"
           size="small"
           placeholder="Search logs..."
           value={searchInput}
@@ -1102,7 +1102,7 @@ export default function AppDetailPage() {
                   </Button></Can>
                 </>
               )}
-              <IconButton onClick={() => { fetchApp(); fetchDiagnostics(); setHealthRefresh(value => value + 1); }} size="small" title="Refresh">
+              <IconButton data-console-command="refresh" onClick={() => { fetchApp(); fetchDiagnostics(); setHealthRefresh(value => value + 1); }} size="small" title="Refresh">
                 <RefreshIcon />
               </IconButton>
             </Stack>

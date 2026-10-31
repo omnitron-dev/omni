@@ -305,7 +305,7 @@ export default function DeploymentsPage() {
         links={[{ name: 'Deployments' }]}
         action={
           <Stack direction="row" spacing={1}>
-            <IconButton size="small" onClick={fetchDeployments} title="Refresh">
+            <IconButton data-console-command="refresh" size="small" onClick={fetchDeployments} title="Refresh">
               <RefreshIcon />
             </IconButton>
             <Can permission="OmnitronDeploy.deployApp"><Button

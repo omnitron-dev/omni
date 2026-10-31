@@ -30,6 +30,7 @@
 import { create } from 'zustand';
 import type { Node, Edge, BuiltInEdge } from '@xyflow/react';
 import { daemon, infra, project } from 'src/netron/client';
+import { connectDependencies } from './dependency-graph';
 import { arrangeTopologyNodes } from './topology-layout';
 import type { ContainerState, DaemonStatusDto, IStackInfo, ProcessInfoDto } from '@omnitron-dev/omnitron/dto/services';
 
@@ -150,6 +151,7 @@ interface TopologyState {
   edges: Edge[];
   apps: AppNodeData[];
   daemonStatus: DaemonStatusDto | null;
+  coverageWarnings: import('@omnitron-dev/omnitron/dto/services').ProjectTopology['warnings'];
 
   // UI state
   loading: boolean;
@@ -393,7 +395,9 @@ export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeDa
           target: id,
           type: 'smoothstep',
           pathOptions: { offset: 8, borderRadius: 4 },
-          animated: service.status === 'running',
+          animated: false,
+          label: 'Provisioned for',
+          data: { evidence: 'ownership', via: ['omnitron.app'] },
           style: {
             stroke: service.health === 'healthy' || service.health === 'none' ? '#22c55e' : '#ef4444',
             strokeDasharray: '6 3',
@@ -414,6 +418,9 @@ export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeDa
     }
   }
 
+  for (const node of nodes) {
+    if (node.data.nodeType !== 'server') node.data.deploymentKey = bands.find(band => band.apps.some(app => app === node.data) || band.services.some(service => service === node.data) || band.gateway === node.data)?.stack ?? null;
+  }
   return { nodes: arrangeTopologyNodes(nodes, 3), edges };
 }
 
@@ -426,6 +433,7 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
   edges: [],
   apps: [],
   daemonStatus: null,
+  coverageWarnings: [],
   loading: true,
   error: null,
   scope: { project: null, stack: null },
@@ -436,11 +444,12 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
     // Each question settles on its own, a throw included: one source that
     // cannot answer thins the diagram, it does not blank it.
     const ask = <T>(question: () => Promise<T>) => Promise.resolve().then(question);
-    const [stacksAnswer, processesAnswer, containersAnswer, statusAnswer] = await Promise.allSettled([
+    const [stacksAnswer, processesAnswer, containersAnswer, statusAnswer, dependenciesAnswer] = await Promise.allSettled([
       scope.project ? ask(() => project.listStacks({ project: scope.project! })) : Promise.resolve(null),
       ask(() => daemon.list()),
       ask(() => infra.listContainers()),
       ask(() => daemon.status()),
+      ask(() => project.getTopology({ ...(scope.project ? { project: scope.project } : {}), ...(scope.stack ? { stack: scope.stack } : {}) })),
     ]);
     // An answer for a scope the page has since left is not drawn.
     if (get().scope !== scope) return;
@@ -453,6 +462,7 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
       ? stackBands(stacks ?? [], scope, processes, containers)
       : daemonBands(processes, containers);
     const { nodes, edges } = layoutBands(bands);
+    if (dependenciesAnswer.status === 'fulfilled') connectDependencies(nodes, edges, dependenciesAnswer.value.dependencies, scope);
 
     // Which sources could not answer — named, because a blank or thinned
     // diagram is otherwise a picture of a platform with less in it, which is
@@ -462,9 +472,12 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
     if (processesAnswer.status === 'rejected') unavailable.push("this daemon's processes");
     if (containersAnswer.status === 'rejected') unavailable.push('container health');
     if (statusAnswer.status === 'rejected') unavailable.push('daemon status');
-    const asked = scope.project ? 4 : 3;
+    if (dependenciesAnswer.status === 'rejected') unavailable.push('configured dependencies (a compatible backend is required)');
+    else if (dependenciesAnswer.value.warnings.length) unavailable.push(`${dependenciesAnswer.value.warnings.length} dependency declarations (see coverage details)`);
+    const asked = scope.project ? 5 : 4;
 
     set({
+      coverageWarnings: dependenciesAnswer.status === 'fulfilled' ? dependenciesAnswer.value.warnings : [],
       apps: bands.flatMap((band) => band.apps),
       daemonStatus: statusAnswer.status === 'fulfilled' ? statusAnswer.value : null,
       nodes,
@@ -496,6 +509,7 @@ export const useTopologyStore = create<TopologyState>((set, get) => ({
       loading: true,
       nodes: [],
       edges: [],
+      coverageWarnings: [],
       apps: [],
       error: null,
       detailPanel: { open: false, nodeId: null, nodeType: null, data: null },

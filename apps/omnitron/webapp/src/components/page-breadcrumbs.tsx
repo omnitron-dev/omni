@@ -41,6 +41,7 @@ export function Breadcrumbs({
       >
         {title}
       </Box>
+      <Box data-keyboard-region="Page tools" tabIndex={-1} sx={{ minWidth: 0, flexShrink: 0 }}>
       <PrismBreadcrumbs
         {...props}
         links={navigation}
@@ -60,6 +61,7 @@ export function Breadcrumbs({
           ...(Array.isArray(sx) ? sx : [sx]),
         ]}
       />
+      </Box>
     </>
   );
 }

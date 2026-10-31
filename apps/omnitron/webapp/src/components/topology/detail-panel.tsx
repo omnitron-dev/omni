@@ -539,7 +539,7 @@ function MetricsTab({ appName }: { appName: string }) {
 export function DetailPanel({ container }: { container?: HTMLElement | null }) {
   const theme = useTheme();
   const wide = useMediaQuery(theme.breakpoints.up('md'));
-  const { detailPanel, closeDetail } = useTopologyStore();
+  const { detailPanel, closeDetail, edges, nodes, openDetail } = useTopologyStore();
   const { can } = useAccess();
   const [tab, setTab] = useState('Overview');
   useEffect(() => {
@@ -558,6 +558,20 @@ export function DetailPanel({ container }: { container?: HTMLElement | null }) {
   );
   const tabs = [
     { value: 'Overview', label: 'Overview', content: overview },
+    { value: 'Connections', label: 'Connections', content: <Stack spacing={1} sx={{ pt: 1 }}>
+      <Typography variant="caption" color="text.secondary">Configuration and ownership evidence. Connection health is not measured by these links.</Typography>
+      {edges.filter(edge => edge.source === detailPanel.nodeId || edge.target === detailPanel.nodeId).map(edge => {
+        const outgoing = edge.source === detailPanel.nodeId;
+        const peer = nodes.find(node => node.id === (outgoing ? edge.target : edge.source));
+        if (!peer) return null;
+        return <Box key={edge.id} sx={{ borderBottom: '1px solid', borderColor: 'divider', py: 1 }}>
+          <Button size="small" sx={{ textAlign: 'left', overflowWrap: 'anywhere' }} onClick={() => openDetail(peer.id, peer.data.nodeType, peer.data)}>{outgoing ? '→' : '←'} {peer.data.label}</Button>
+          <Typography variant="caption" component="div" sx={{ overflowWrap: 'anywhere' }}>{String(edge.label ?? 'Dependency')} · {String(edge.data?.evidence ?? 'declaration')} · {(edge.data?.via as string[] | undefined)?.join(', ')}</Typography>
+          {typeof edge.data?.endpoint === 'string' && <Typography variant="caption">{edge.data.endpoint}</Typography>}
+        </Box>;
+      })}
+      {!edges.some(edge => edge.source === detailPanel.nodeId || edge.target === detailPanel.nodeId) && <Typography variant="body2" color="text.secondary">No relationships could be established from the available configuration.</Typography>}
+    </Stack> },
     ...(app && !app.remote
       ? [
           ...(can('OmnitronDaemon.inspect')
@@ -618,6 +632,7 @@ export function DetailPanel({ container }: { container?: HTMLElement | null }) {
         </IconButton>
       </Stack>
       <Box
+        data-keyboard-region="Node details" tabIndex={-1}
         sx={{ p: 1.5, overflow: 'auto', minHeight: 0, minWidth: 0, flex: 1 }}
         onKeyDown={(event) => {
           if (event.key === 'Escape') closeDetail();

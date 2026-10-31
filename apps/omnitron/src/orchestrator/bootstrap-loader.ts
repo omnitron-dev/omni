@@ -42,6 +42,11 @@ import type { IAppDefinition } from '../config/types.js';
 // Module cache — cleared on dev-mode restarts via clearCache()
 const cache = new Map<string, IAppDefinition>();
 
+/** Read-only diagnostics must not import application code or compile its source. */
+export function getCachedBootstrapDefinition(bootstrapPath: string): IAppDefinition | undefined {
+  return cache.get(path.resolve(bootstrapPath));
+}
+
 /**
  * Clear all cached bootstrap definitions.
  * Called by orchestrator before restarting apps in dev mode so that

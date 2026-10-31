@@ -1,3 +1,4 @@
+import { ArrowUpIcon } from '@omnitron-dev/prism/icons';
 import { readLogIngestion, readLogTime } from '../../../src/shared/log-ingestion-reading';
 import type { LogIngestionStats } from '@omnitron-dev/omnitron/dto/services';
 /**
@@ -22,8 +23,6 @@ import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import Collapse from '@mui/material/Collapse';
-import Fab from '@mui/material/Fab';
-import Badge from '@mui/material/Badge';
 import InputAdornment from '@mui/material/InputAdornment';
 import { alpha, keyframes, useTheme, type Theme } from '@mui/material/styles';
 
@@ -92,6 +91,7 @@ type TimeRangeKey = (typeof TIME_RANGES)[number]['key'];
 
 const PAGE_SIZE = 100;
 const STREAM_INTERVAL = 2000;
+const LIVE_TAIL_SIZE = 50;
 const SEARCH_DEBOUNCE = 300;
 const SCROLL_THRESHOLD = 80; // px from bottom to consider "at bottom"
 
@@ -420,6 +420,7 @@ export default function LogsPage() {
 
   // ---- Streaming ----
   const [streaming, setStreaming] = useState(false);
+  const [tailLimited, setTailLimited] = useState(false);
   const [paused, setPaused] = useState(false);
   const [newCount, setNewCount] = useState(0);
   const streamRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -436,6 +437,7 @@ export default function LogsPage() {
     setHasMore(false);
     setNewCount(0);
     lastTimestampRef.current = null;
+    setTailLimited(false);
     return () => { generation.current++; };
   }, [app, nodeFilter, selectedLevels, debouncedSearch, labelInput, timeRangeKey, customFrom, customTo]);
 
@@ -722,12 +724,12 @@ export default function LogsPage() {
       pending = true;
       try {
         const since = lastTimestampRef.current;
-        const filter = { ...streamFilter, tail: 50 } as any;
-        if (since) filter.since = since;
+        const filter = { ...streamFilter, tail: LIVE_TAIL_SIZE, ...(since ? { since } : {}) };
 
         const entries: LogEntryRow[] = await logs.streamLogs(filter);
         if (!active) return;
         setError(null);
+        if (entries.length === LIVE_TAIL_SIZE) setTailLimited(true);
         if (entries.length === 0) return;
 
         // Deduplicate by id
@@ -792,7 +794,7 @@ export default function LogsPage() {
   const scrollToTop = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    el.scrollTo({ top: 0, behavior: 'smooth' });
+    el.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     setNewCount(0);
   }, []);
 
@@ -869,7 +871,7 @@ export default function LogsPage() {
               </Tooltip>
               {isLive && (
                 <Chip
-                  label={paused ? 'PAUSED' : 'LIVE'}
+                  label={paused ? 'PAUSED' : 'LIVE TAIL'}
                   size="small"
                   sx={{
                     height: 20,
@@ -892,8 +894,8 @@ export default function LogsPage() {
                   </IconButton>
                 </Tooltip>
               )}
-              <Tooltip title="Refresh">
-                <IconButton
+              <Tooltip title="Refresh (R)">
+                <IconButton data-console-command="refresh" aria-label="Refresh logs"
                   size="small"
                   onClick={() => {
                     if (isLive) {
@@ -973,7 +975,7 @@ export default function LogsPage() {
             </TextField>
           )}
 
-          <TextField
+          <TextField data-console-command="search"
             size="small"
             placeholder="Search messages..."
             label="Search messages"
@@ -1232,11 +1234,11 @@ export default function LogsPage() {
             sx={{
               fontFamily: MONO,
               fontSize: 10,
-              color: theme.palette.success[theme.palette.mode === 'light' ? 'dark' : 'light'],
+              color: theme.palette[tailLimited ? 'warning' : 'success'][theme.palette.mode === 'light' ? 'dark' : 'light'],
               animation: `${pulse} 2s ease-in-out infinite`,
             }}
           >
-            streaming every 2s
+            {tailLimited ? 'Tail window filled · use history for the full record' : 'Recent tail · every 2s · up to 50 events per poll'}
           </Typography>
         )}
       </Stack>
@@ -1389,48 +1391,55 @@ export default function LogsPage() {
           )}
         </Box>
 
-        {/* "Scroll to top" FAB + new entries badge */}
         {isLive && !isAtBottom && (
-          <Fab
+          <Button
             size="small"
+            variant="contained"
             onClick={scrollToTop}
+            aria-label={newCount ? `Jump to latest logs, ${newCount} new entries` : 'Jump to latest logs'}
+            data-console-command="latest"
+            startIcon={<ArrowUpIcon />}
             sx={{
               position: 'absolute',
-              top: 48,
-              right: 16,
-              bgcolor: alpha('#58a6ff', 0.15),
-              color: theme.palette.info[theme.palette.mode === 'light' ? 'dark' : 'light'],
-              backdropFilter: 'blur(8px)',
-              border: '1px solid',
-              borderColor: alpha('#58a6ff', 0.2),
-              '&:hover': { bgcolor: alpha('#58a6ff', 0.25) },
-              width: 36,
-              height: 36,
+              bottom: { xs: 12, sm: 16 },
+              right: { xs: 12, sm: 16 },
+              minHeight: { xs: 44, sm: 36 },
+              px: 1.5,
+              gap: 0.75,
+              bgcolor: 'background.paper',
+              color: 'primary.main',
+              border: 1,
+              borderColor: 'divider',
+              boxShadow: theme.shadows[3],
+              '&:hover': { bgcolor: 'action.hover' },
+              '& .MuiButton-startIcon': { mr: 0.25 },
             }}
           >
-            <Badge
-              badgeContent={newCount > 0 ? newCount : undefined}
-              color="primary"
-              sx={{
-                '& .MuiBadge-badge': {
-                  fontFamily: MONO,
-                  fontSize: 9,
-                  minWidth: 16,
-                  height: 16,
-                },
-              }}
-            >
+            Latest
+            {newCount > 0 && (
               <Box
+                component="span"
+                aria-hidden="true"
                 sx={{
-                  width: 0,
-                  height: 0,
-                  borderLeft: '5px solid transparent',
-                  borderRight: '5px solid transparent',
-                  borderBottom: '6px solid currentColor',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minWidth: 22,
+                  height: 22,
+                  px: 0.75,
+                  borderRadius: 0.75,
+                  bgcolor: 'primary.main',
+                  color: 'primary.contrastText',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  lineHeight: 1,
+                  fontVariantNumeric: 'tabular-nums',
                 }}
-              />
-            </Badge>
-          </Fab>
+              >
+                {newCount > 999 ? '999+' : newCount}
+              </Box>
+            )}
+          </Button>
         )}
       </Box>
     </Box>

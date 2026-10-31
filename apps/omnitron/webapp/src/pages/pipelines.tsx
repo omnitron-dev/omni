@@ -248,7 +248,7 @@ export default function PipelinesPage() {
         links={[{ name: 'Pipelines' }]}
         action={
           <Stack direction="row" spacing={1}>
-            <IconButton size="small" title="Refresh pipelines" onClick={refresh}>
+            <IconButton data-console-command="refresh" size="small" title="Refresh pipelines" onClick={refresh}>
               <RefreshIcon />
             </IconButton>
             <Can permission="OmnitronPipelines.createPipeline">

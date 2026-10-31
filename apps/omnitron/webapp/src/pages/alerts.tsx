@@ -432,7 +432,7 @@ export default function AlertsPage() {
                 <Chip label="Firing" size="small" color="error" variant="outlined" />
               </Badge>
             )}
-            <IconButton size="small" onClick={fetchData} title="Refresh">
+            <IconButton data-console-command="refresh" size="small" onClick={fetchData} title="Refresh">
               <RefreshIcon />
             </IconButton>
             <Can permission="OmnitronAlerts.createRule"><Button

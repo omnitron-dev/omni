@@ -1,3 +1,5 @@
+import type { ProjectTopology } from './project.js';
+export type { ProjectDependency, ProjectTopology } from './project.js';
 import type { LogIngestionStats } from './logs.js';
 /**
  * Omnitron Daemon RPC Service Interfaces
@@ -317,6 +319,7 @@ export interface IProjectRpcService {
   getProjectApps(data: { project: string }): Promise<IProjectAppStatus[]>;
 
   // --- Stacks (Viewer) ---
+  getTopology(data: { project?: string; stack?: string }): Promise<ProjectTopology>;
   listStacks(data: { project: string }): Promise<IStackInfo[]>;
   getStack(data: { project: string; stack: string }): Promise<IStackInfo>;
   getStackStatus(data: { project: string; stack: string }): Promise<StackRuntime>;

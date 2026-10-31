@@ -274,7 +274,7 @@ export default function AppsListPage() {
         linkComponent={RouterLink}
         links={[{ name: 'Applications' }]}
         action={
-          <IconButton onClick={fetchApps} title="Refresh">
+          <IconButton data-console-command="refresh" onClick={fetchApps} title="Refresh">
             <RefreshIcon />
           </IconButton>
         }

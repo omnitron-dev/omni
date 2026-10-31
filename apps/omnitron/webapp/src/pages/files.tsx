@@ -144,6 +144,16 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
     }
   };
   const refresh = () => setRefreshKey((k) => k + 1);
+  const focusPane = (side: 'left' | 'right') => {
+    setActive(side);
+    requestAnimationFrame(() => {
+      const region = workspace.current?.querySelector<HTMLElement>(`[data-file-side="${side}"]`);
+      (
+        region?.querySelector<HTMLElement>('tr[data-cursor="true"]') ??
+        region?.querySelector<HTMLElement>('[data-keyboard-focus]')
+      )?.focus({ preventScroll: true });
+    });
+  };
   const hostName = (id: string) => hosts.find((h) => h.id === id)?.name ?? id;
   const label = (location: FileLocation) => `${hostName(location.nodeId)} / ${location.rootId} / ${location.path}`;
   const open = async (_entry: FileEntry, location: FileLocation, readOnly: boolean) =>
@@ -411,7 +421,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
           Upload
         </Button>
         <Box sx={{ flex: 1 }} />
-        <Tooltip title="Enter opens · Space selects · Shift+click selects a range · Alt+arrows navigate · F2 renames · F4 edits · F5 copies · Delete moves to trash">
+        <Tooltip title="Tab switches A/B · F6 changes region · Arrows browse · Enter opens · Space selects · Shift+click selects a range · Alt+arrows navigate · F2 renames · F4 edits · F5 copies · Delete moves to trash">
           <Typography
             variant="caption"
             color="text.disabled"
@@ -456,11 +466,13 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
             >
               <FilePane
                 side="left"
+                visible={visible}
                 hosts={hosts}
                 active={active === 'left'}
                 hidden={false}
                 refreshKey={refreshKey}
                 onFocus={() => setActive('left')}
+                onSwitchPanel={() => focusPane('right')}
                 onSelection={(value) => setPanes((p) => ({ ...p, left: value }))}
                 onOpen={(...args) => void open(...args)}
                 onAction={(key) => action('left', key)}
@@ -502,11 +514,13 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
             )}
             <FilePane
               side="right"
+              visible={visible}
               hosts={hosts}
               active={active === 'right'}
               hidden={compact && active !== 'right'}
               refreshKey={refreshKey}
               onFocus={() => setActive('right')}
+              onSwitchPanel={() => focusPane('left')}
               onSelection={(value) => setPanes((p) => ({ ...p, right: value }))}
               onOpen={(...args) => void open(...args)}
               onAction={(key) => action('right', key)}

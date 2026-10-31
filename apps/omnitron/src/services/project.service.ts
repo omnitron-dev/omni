@@ -1,3 +1,6 @@
+import { getCachedBootstrapDefinition } from '../orchestrator/bootstrap-loader.js';
+import { appDependencies } from '../project/dependency-topology.js';
+import { isControlPlaneWorkspace } from '../project/workspace-kind.js';
 import { RecoveryMutation, RecoveryBusyError } from '../daemon/recovery-state.js';
 /**
  * ProjectService — Manages projects and their stacks
@@ -265,6 +268,7 @@ export class ProjectService extends EventEmitter {
   ): Awaited<ReturnType<ProjectService['prepareHandoff']>> {
     return structuredClone({
       projects: [...this.configRegistry], infrastructure,
+      bootstrapTopology: [...this.bootstrapTopology],
       resumeBackoff: [...this.resumeBackoff], reconciling,
       stacks: [...this.stackStates].map(([key, { infraService: _infra, ...state }]) => [key, state] as [string, Omit<StackRuntimeState, 'infraService'>]),
     });
@@ -272,6 +276,7 @@ export class ProjectService extends EventEmitter {
 
   /** Capture controllers' bookkeeping, retaining native application ownership in the execution host. */
   async prepareHandoff(): Promise<{
+    bootstrapTopology?: Array<[string, Pick<IAppDefinition, 'requires' | 'omnitronConfig'>]>;
     projects: Array<[string, LoadedProject]>;
     stacks: Array<[string, Omit<StackRuntimeState, 'infraService'>]>;
     infrastructure: Awaited<ReturnType<StackInfrastructureManager['prepareHandoff']>>;
@@ -305,6 +310,7 @@ export class ProjectService extends EventEmitter {
       if (!registered) throw new Error(`Project disappeared during backend transfer: ${name}`);
       this.configRegistry.set(name, project);
     }
+    for (const [key, definition] of snapshot.bootstrapTopology ?? []) this.bootstrapTopology.set(key, definition);
     await this.infraManager.adoptHandoff(snapshot.infrastructure);
     for (const [key, value] of snapshot.resumeBackoff) this.resumeBackoff.set(key, value);
     this.handoffReconciling = snapshot.reconciling;
@@ -315,6 +321,7 @@ export class ProjectService extends EventEmitter {
   }
 
   private readonly registry: ProjectRegistry;
+  private readonly bootstrapTopology = new Map<string, Pick<IAppDefinition, 'requires' | 'omnitronConfig'>>();
   private readonly configRegistry = new Map<string, LoadedProject>();
   private readonly stackStates = new Map<string, StackRuntimeState>();
   private readonly infraManager: StackInfrastructureManager;
@@ -446,7 +453,7 @@ export class ProjectService extends EventEmitter {
   }
 
   listProjects(): IProjectInfo[] {
-    return this.registry.list().map((p) => this.toProjectInfo(p));
+    return this.registry.list().filter(project => !isControlPlaneWorkspace(project.path)).map((p) => this.toProjectInfo(p));
   }
 
   getProject(name: string): IProjectInfo {
@@ -794,6 +801,42 @@ export class ProjectService extends EventEmitter {
   // ===========================================================================
   // Stacks
   // ===========================================================================
+
+  /** Configuration evidence from the launch builder; it never starts, probes or modifies applications. */
+  async getTopology(scope: { project?: string; stack?: string }): Promise<import('../shared/dto/project.js').ProjectTopology> {
+    const result: import('../shared/dto/project.js').ProjectTopology = { version: 1, generatedAt: new Date().toISOString(), dependencies: [], warnings: [] };
+    const projects = scope.project ? [scope.project] : this.listProjects().map(project => project.name);
+    for (const project of projects) {
+      let config: IEcosystemConfig;
+      try { config = await this.ensureConfig(project); }
+      catch { result.warnings.push({ project, reason: 'Project configuration could not be read' }); continue; }
+      for (const [stack, stackConfig] of Object.entries(this.resolveStacks(config, project))) {
+        if (scope.stack && stack !== scope.stack) continue;
+        try {
+          const entries = this.resolveStackApps(stackConfig, config);
+          const definitions = new Map<string, IAppDefinition>();
+          const directory = this.registry.get(project)?.path;
+          for (const entry of entries) {
+            if (!entry.bootstrap || !directory) continue;
+            const bootstrap = path.resolve(directory, entry.bootstrap);
+            const metadata = getCachedBootstrapDefinition(bootstrap) ?? this.bootstrapTopology.get(bootstrap);
+            const declared = readDeclaredConfig(bootstrap);
+            if (!metadata) result.warnings.push({ project, stack, app: entry.name, reason: 'Bootstrap metadata not loaded; only file declarations and explicit environment are known' });
+            if (declared.malformed) result.warnings.push({ project, stack, app: entry.name, reason: 'Application configuration is malformed; file declarations are unavailable' });
+            if (metadata || declared.omnitron) definitions.set(entry.name, withDeclaredConfig({ name: entry.name, version: '', processes: [], ...metadata }, declared));
+          }
+          const env = await this.stackEnvFor(project, stack, stackConfig, entries.map(entry => entry.name));
+          const build = this.stackEntryBuilder(project, stack, stackConfig, config, definitions, env);
+          for (const entry of entries) {
+            if (entry.enabled === false) continue;
+            const definition = definitions.get(entry.name);
+            result.dependencies.push(...appDependencies(project, stack, build(entry), definition));
+          }
+        } catch { result.warnings.push({ project, stack, reason: 'Launch configuration could not be resolved; dependencies are incomplete' }); }
+      }
+    }
+    return result;
+  }
 
   listStacks(projectName: string): IStackInfo[] {
     const config = this.getLoadedConfig(projectName);
@@ -4325,6 +4368,8 @@ export class ProjectService extends EventEmitter {
           const bootstrapAbsPath = path.resolve(project.path, entry.bootstrap);
           const { loadBootstrapConfig } = await import('../orchestrator/bootstrap-loader.js');
           const loaded = await loadBootstrapConfig(bootstrapAbsPath, { devMode: false });
+          // Preserve only declarative data across backend handoffs, never executable hooks.
+          this.bootstrapTopology.set(bootstrapAbsPath, structuredClone({ ...(loaded.requires ? { requires: loaded.requires } : {}), ...(loaded.omnitronConfig ? { omnitronConfig: loaded.omnitronConfig } : {}) }));
 
           // The app's `config/default.json`, read now and put on a COPY of
           // the definition: the loaded one is the loader's cache entry, and

@@ -28,6 +28,7 @@ import { TableViewport } from '@omnitron-dev/prism/components/table';
 import { AddIcon, MoreIcon, ArrowUpIcon, ArrowLeftIcon, ArrowRightIcon } from '@omnitron-dev/prism/icons';
 import { FolderIcon, EditIcon, RefreshIcon } from 'src/assets/icons';
 import { files } from 'src/netron/client';
+import { useConsoleActions } from 'src/components/console-keyboard';
 import type { FileEntry, FileLocation, FileRoot } from '@omnitron-dev/omnitron/dto/services';
 import {
   describeFileError,
@@ -58,6 +59,8 @@ export function FilePane({
   onSelection,
   onOpen,
   onAction,
+  onSwitchPanel,
+  visible = true,
 }: {
   side: 'left' | 'right';
   hosts: FileHost[];
@@ -68,6 +71,8 @@ export function FilePane({
   onSelection: (value: PaneSelection | null) => void;
   onOpen: (entry: FileEntry, location: FileLocation, readOnly: boolean) => void;
   onAction: (action: FileAction) => void;
+  onSwitchPanel: () => void;
+  visible?: boolean;
 }) {
   const initial = useRef<Tab>({
     id: crypto.randomUUID(),
@@ -89,6 +94,8 @@ export function FilePane({
   const [next, setNext] = useState<string | null>(null),
     [revision, setRevision] = useState(''),
     [reload, setReload] = useState(0);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const listing = useRef<HTMLTableElement>(null);
   const [selected, setSelected] = useState<string[]>([]),
     [query, setQuery] = useState(''),
     [showHidden, setShowHidden] = useState(false);
@@ -111,7 +118,26 @@ export function FilePane({
     () => visibleEntries(entries, query, showHidden, sort, descending),
     [entries, query, showHidden, sort, descending]
   );
-  const selection = useMemo(() => rows.filter((e) => selected.includes(e.path)), [rows, selected]);
+  const currentPath = rows.some((row) => row.path === cursor) ? cursor : (rows[0]?.path ?? null);
+  const marked = useMemo(() => rows.filter((e) => selected.includes(e.path)), [rows, selected]);
+  const selection = useMemo(
+    () => (marked.length ? marked : rows.filter((e) => e.path === currentPath)),
+    [rows, marked, currentPath]
+  );
+  const focusRow = (index: number, range = false) => {
+    const row = rows[Math.max(0, Math.min(rows.length - 1, index))];
+    if (!row) return;
+    if (range) {
+      anchor.current ??= currentPath;
+      const start = rows.findIndex((entry) => entry.path === anchor.current),
+        end = rows.indexOf(row);
+      setSelected(rows.slice(Math.min(Math.max(0, start), end), Math.max(start, end) + 1).map((entry) => entry.path));
+    } else anchor.current = row.path;
+    setCursor(row.path);
+    const element = listing.current?.querySelectorAll<HTMLElement>('tbody > tr')[rows.indexOf(row)];
+    element?.focus({ preventScroll: true });
+    element?.scrollIntoView?.({ block: 'nearest' });
+  };
   const patch = (change: Partial<Tab>) => setTabs((all) => all.map((t) => (t.id === tab.id ? { ...t, ...change } : t)));
   const navigate = (path: string) => {
     patch({
@@ -120,13 +146,15 @@ export function FilePane({
       cursor: Math.min(tab.cursor + 1, 99),
     });
     setSelected([]);
+    setCursor(null);
     setQuery('');
     setEditingPath(false);
+    requestAnimationFrame(() => listing.current?.focus({ preventScroll: true }));
   };
   const travel = (offset: number) => {
-    const cursor = tab.cursor + offset;
-    if (cursor >= 0 && cursor < tab.history.length) {
-      patch({ cursor, path: tab.history[cursor]! });
+    const historyIndex = tab.cursor + offset;
+    if (historyIndex >= 0 && historyIndex < tab.history.length) {
+      patch({ cursor: historyIndex, path: tab.history[historyIndex]! });
       setSelected([]);
       setQuery('');
     }
@@ -212,6 +240,7 @@ export function FilePane({
     selectionCallback.current(root && !loading && !error ? { location, root, entries: selection } : null);
   }, [location, root, loading, error, selection]);
   const choose = (entry: FileEntry, range: boolean) => {
+    setCursor(entry.path);
     if (range && anchor.current) {
       const start = rows.findIndex((e) => e.path === anchor.current),
         end = rows.indexOf(entry);
@@ -243,16 +272,110 @@ export function FilePane({
     ['trash', 'Move to trash · Delete', !selection.length || Boolean(root?.readOnly)],
     ['trashList', 'Restore from trash', !root],
   ];
+  useConsoleActions(
+    [
+      {
+        id: 'files-rename',
+        title: 'Rename file',
+        group: 'Files',
+        key: 'F2',
+        shortcut: ['F2'],
+        disabled: selection.length !== 1 || Boolean(root?.readOnly) || loading,
+        onSelect: () => onAction('rename'),
+      },
+      {
+        id: 'files-edit',
+        title: 'Open selected file',
+        group: 'Files',
+        key: 'F4',
+        shortcut: ['F4'],
+        disabled: selection.length !== 1 || loading,
+        onSelect: () => open(selection[0]!),
+      },
+      {
+        id: 'files-copy',
+        title: 'Copy to other panel',
+        group: 'Files',
+        key: 'F5',
+        shortcut: ['F5'],
+        disabled: !selection.length || loading,
+        onSelect: () => onAction('copy'),
+      },
+      {
+        id: 'files-trash',
+        title: 'Move selection to trash…',
+        group: 'Files',
+        key: 'Delete',
+        shortcut: ['Delete'],
+        disabled: !selection.length || Boolean(root?.readOnly) || loading,
+        onSelect: () => onAction('trash'),
+      },
+    ],
+    visible && active && !hidden,
+    region
+  );
   return (
     <Paper
       component="section"
       variant="outlined"
       aria-label={`${side} file panel`}
       ref={region}
+      data-file-side={side}
+      data-keyboard-region={`Files ${side === 'left' ? 'A' : 'B'}`}
       onFocusCapture={onFocus}
       onPointerDown={onFocus}
       onKeyDown={(e) => {
-        if ((e.target as HTMLElement).closest('input,textarea,[contenteditable="true"]')) return;
+        if (e.defaultPrevented || e.nativeEvent.isComposing || e.repeat) return;
+        const target = e.target as HTMLElement;
+        if (target.closest('[role="dialog"],[role="alertdialog"],[role="menu"]')) return;
+        const inList = Boolean(target.closest('[data-file-list]'));
+        if (inList && e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          onSwitchPanel();
+          return;
+        }
+        if (target.closest('input:not([type="checkbox"]),textarea,select,[contenteditable="true"]')) return;
+        if (inList && e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          setSelected([]);
+          region.current
+            ?.querySelector<HTMLElement>(
+              '[data-file-tools] [role="combobox"],[data-file-tools] input,[data-file-tools] button'
+            )
+            ?.focus();
+          return;
+        }
+        if (inList && (e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'a') {
+          e.preventDefault();
+          setSelected(rows.map((entry) => entry.path));
+          return;
+        }
+        if (inList && !target.closest('input,button,a') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          const index = rows.findIndex((row) => row.path === currentPath);
+          const page = Math.max(1, Math.floor((listing.current?.parentElement?.clientHeight || 400) / 40));
+          const positions: Record<string, number> = {
+            ArrowDown: index + 1,
+            ArrowUp: index - 1,
+            Home: 0,
+            End: rows.length - 1,
+            PageDown: index + page,
+            PageUp: index - page,
+          };
+          if (e.key in positions) {
+            e.preventDefault();
+            focusRow(positions[e.key]!, e.shiftKey);
+            return;
+          }
+          const entry = rows[index];
+          if (entry && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            if (e.key === 'Enter') open(entry);
+            else choose(entry, e.shiftKey);
+            return;
+          }
+        }
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') {
           e.preventDefault();
           setPathInput('/' + tab.path);
@@ -266,18 +389,6 @@ export function FilePane({
         } else if (e.altKey && e.key === 'ArrowUp') {
           e.preventDefault();
           navigate(parentPath(tab.path));
-        } else if (e.key === 'F5' && selection.length) {
-          e.preventDefault();
-          onAction('copy');
-        } else if (e.key === 'F2' && selection.length === 1 && !root?.readOnly) {
-          e.preventDefault();
-          onAction('rename');
-        } else if (e.key === 'F4' && selection.length === 1) {
-          e.preventDefault();
-          open(selection[0]!);
-        } else if (e.key === 'Delete' && selection.length && !root?.readOnly) {
-          e.preventDefault();
-          onAction('trash');
         }
       }}
       sx={{
@@ -329,7 +440,7 @@ export function FilePane({
         }
         sx={{ px: 1, minHeight: 40, '& .MuiTab-root': { minHeight: 40, minWidth: 72, maxWidth: 180, fontSize: 12 } }}
       />
-      <Stack direction="row" spacing={1} sx={{ p: 1, minWidth: 0 }}>
+      <Stack data-file-tools direction="row" spacing={1} sx={{ p: 1, minWidth: 0 }}>
         <TextField
           select
           size="small"
@@ -486,6 +597,7 @@ export function FilePane({
       <TextField
         size="small"
         placeholder="Filter loaded entries…"
+        data-console-command="search"
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
@@ -509,8 +621,17 @@ export function FilePane({
           </Typography>
         </Box>
       )}
-      <TableViewport label={`${side} directory entries`} sx={{ flex: 1, minHeight: 100 }}>
+      <TableViewport
+        keyboardNavigation={false}
+        tabIndex={-1}
+        label={`${side} directory entries`}
+        sx={{ flex: 1, minHeight: 100 }}
+      >
         <Table
+          ref={listing}
+          tabIndex={active ? 0 : -1}
+          data-keyboard-focus
+          data-file-list
           size="small"
           stickyHeader
           aria-label={`${side} files`}
@@ -519,7 +640,8 @@ export function FilePane({
             '& td, & th': { px: 1, py: 0.6 },
             '& td:first-of-type, & th:first-of-type': { px: 0 },
             '& .MuiCheckbox-root': { p: 0.75 },
-            '& .MuiTableRow-root:focus-visible': {
+            '& .MuiTableRow-root[data-cursor="true"]': { bgcolor: 'action.hover' },
+            '& .MuiTableRow-root:focus-visible, &:focus-visible': {
               outline: '2px solid',
               outlineColor: 'primary.main',
               outlineOffset: -2,
@@ -532,8 +654,8 @@ export function FilePane({
                 <Checkbox
                   size="small"
                   slotProps={{ input: { 'aria-label': `Select loaded ${side} entries` } }}
-                  checked={rows.length > 0 && selection.length === rows.length}
-                  indeterminate={selection.length > 0 && selection.length < rows.length}
+                  checked={rows.length > 0 && marked.length === rows.length}
+                  indeterminate={marked.length > 0 && marked.length < rows.length}
                   onChange={(_, checked) => setSelected(checked ? rows.map((e) => e.path) : [])}
                 />
               </TableCell>
@@ -566,38 +688,24 @@ export function FilePane({
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((entry, i) => (
+            {rows.map((entry) => (
               <TableRow
                 key={entry.path}
                 hover
                 selected={selected.includes(entry.path)}
-                tabIndex={0}
+                tabIndex={-1}
+                data-cursor={entry.path === currentPath || undefined}
+                onFocus={() => setCursor(entry.path)}
+                aria-current={entry.path === currentPath ? 'true' : undefined}
                 aria-label={`${entry.kind} ${entry.name}`}
                 onClick={(e) => choose(entry, e.shiftKey)}
                 onDoubleClick={() => open(entry)}
-                onKeyDown={(e) => {
-                  if ((e.target as HTMLElement).closest('input,button')) return;
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    open(entry);
-                  }
-                  if (e.key === ' ') {
-                    e.preventDefault();
-                    choose(entry, e.shiftKey);
-                  }
-                  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    const offset = e.key === 'ArrowDown' ? 1 : -1;
-                    const target = e.currentTarget.parentElement?.children[i + offset] as HTMLElement | undefined;
-                    target?.focus();
-                  }
-                }}
               >
                 <TableCell>
                   <Checkbox
                     size="small"
                     checked={selected.includes(entry.path)}
-                    slotProps={{ input: { 'aria-label': `Select ${entry.name}` } }}
+                    slotProps={{ input: { 'aria-label': `Select ${entry.name}`, tabIndex: -1 } }}
                     onClick={(e) => e.stopPropagation()}
                     onChange={() => choose(entry, false)}
                   />
@@ -619,6 +727,7 @@ export function FilePane({
                       <Button
                         size="small"
                         color="inherit"
+                        tabIndex={-1}
                         onClick={(e) => {
                           e.stopPropagation();
                           open(entry);
@@ -676,8 +785,8 @@ export function FilePane({
         sx={{ px: 1.5, py: 0.75, alignItems: 'center', borderTop: 1, borderColor: 'divider', minWidth: 0 }}
       >
         <Typography variant="caption" color="text.secondary" aria-live="polite" sx={{ flex: 1 }}>
-          {selection.length
-            ? `${selection.length} selected · ${fileBytes(selection.reduce((n, e) => n + (e.kind === 'file' ? e.size : 0), 0))}`
+          {marked.length
+            ? `${marked.length} selected · ${fileBytes(marked.reduce((n, e) => n + (e.kind === 'file' ? e.size : 0), 0))}`
             : `${rows.length}${next ? '+' : ''} entries`}
         </Typography>
         {root?.readOnly && <Chip size="small" variant="outlined" label="Read only" />}

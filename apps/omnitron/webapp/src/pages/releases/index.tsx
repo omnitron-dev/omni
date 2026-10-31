@@ -298,7 +298,7 @@ export default function ReleasesPage() {
         links={[{ name: 'Releases' }]}
         action={
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-            <IconButton size="small" onClick={() => void refresh()} title="Refresh">
+            <IconButton data-console-command="refresh" size="small" onClick={() => void refresh()} title="Refresh">
               <RefreshIcon />
             </IconButton>
               <Can permission="OmnitronRelease.prune"><Button size="small" startIcon={<DeleteIcon />} onClick={() => setPruneOpen(true)}>

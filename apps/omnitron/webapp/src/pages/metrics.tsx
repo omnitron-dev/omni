@@ -172,7 +172,7 @@ function MetricsReader({
               control={<Switch size="small" checked={autoRefresh} onChange={(_, value) => setAutoRefresh(value)} />}
               label={<Typography variant="caption">Live</Typography>}
             />
-            <IconButton size="small" aria-label="Refresh metrics" disabled={refreshing} onClick={refresh}>
+            <IconButton data-console-command="refresh" size="small" aria-label="Refresh metrics" disabled={refreshing} onClick={refresh}>
               <RefreshIcon />
             </IconButton>
           </Stack>

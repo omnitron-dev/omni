@@ -63,15 +63,15 @@ describe('a panel that vanished instead of explaining', () => {
       />,
     );
 
-    expect(screen.getByText('not asked'), 'the state is named').toBeInTheDocument();
+    expect(screen.getByText('unavailable'), 'the state is named').toBeInTheDocument();
     expect(screen.getByText('Missing required role'), 'and so is the reason').toBeInTheDocument();
   });
 
   it('says so even when the node gave no reason', () => {
     draw(<NodeRelay data={{ nodeId: 'n1', reachable: false, error: null, relay: null } as never} />);
 
-    expect(screen.getByText('not asked')).toBeInTheDocument();
-    expect(screen.getByText('no reason given')).toBeInTheDocument();
+    expect(screen.getByText('unavailable')).toBeInTheDocument();
+    expect(screen.getByText(/No relay measurement was returned/)).toBeInTheDocument();
   });
 
   it('still shows the figures when the node answered', () => {

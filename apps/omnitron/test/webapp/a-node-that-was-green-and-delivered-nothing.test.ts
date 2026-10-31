@@ -22,7 +22,7 @@ const mesh = (over: Partial<Parameters<typeof meshStanding>[0]> = {}): Parameter
   status: 'connected',
   via: 'direct',
   authenticated: true,
-  lastHeartbeat: null,
+  lastHeartbeat: Date.now(),
   lastError: null,
   ...over,
 });
@@ -34,7 +34,7 @@ describe('what the card says about a node', () => {
     expect(standing.text).toBe('not joined');
     // The consequence, not the state. "disconnected" beside a healthy green
     // dot reads as a detail; this reads as the thing to act on.
-    expect(standing.tooltip).toMatch(/replicated/i);
+    expect(standing.tooltip).toMatch(/Replication: Unknown/i);
   });
 
   it('warns about a live connection that can pull nothing', () => {
@@ -46,7 +46,7 @@ describe('what the card says about a node', () => {
 
     expect(standing.text).toBe('unauthenticated');
     expect(standing.tone).toBe('warn');
-    expect(standing.tooltip).toMatch(/replicates nothing/i);
+    expect(standing.tooltip).toMatch(/without a verified service credential/i);
   });
 
   it('says when a node is only reachable through SSH', () => {
@@ -55,7 +55,13 @@ describe('what the card says about a node', () => {
     expect(standing.text).toBe('over SSH');
     // Working, and worth knowing before someone goes looking for the
     // latency: it means this node's daemon port is closed to this master.
-    expect(standing.tooltip).toMatch(/not open to this master/i);
+    expect(standing.tooltip).toMatch(/through SSH/i);
+  });
+
+  it('does not turn missing heartbeat evidence into a healthy connection', () => {
+    const reading = meshStanding(mesh({ lastHeartbeat: null }));
+    expect(reading.text).toBe('stale heartbeat');
+    expect(reading.tooltip).toMatch(/reachability is unknown/i);
   });
 
   it('is plain about a healthy direct link', () => {
@@ -68,7 +74,7 @@ describe('what the card says about a node', () => {
   it('carries the reason a connection is failing', () => {
     const standing = meshStanding(mesh({ status: 'error', lastError: 'connect ETIMEDOUT 10.0.0.7:9700' }));
 
-    expect(standing.text).toBe('failing');
+    expect(standing.text).toBe('disconnected');
     expect(standing.tooltip).toContain('ETIMEDOUT');
   });
 
@@ -78,6 +84,6 @@ describe('what the card says about a node', () => {
 
   it('prefers the failure over the transport when both are true', () => {
     // A node whose SSH tunnel is failing is failing, not "over SSH".
-    expect(meshStanding(mesh({ status: 'error', via: 'ssh-tunnel' })).text).toBe('failing');
+    expect(meshStanding(mesh({ status: 'error', via: 'ssh-tunnel' })).text).toBe('disconnected');
   });
 });

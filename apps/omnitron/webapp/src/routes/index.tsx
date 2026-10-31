@@ -91,7 +91,7 @@ export function Router() {
         <Route path="stacks" element={<ProjectRoute><StacksPage /></ProjectRoute>} />
         <Route path="stacks/:name" element={<ProjectRoute><StackDetailPage /></ProjectRoute>} />
         <Route path="metrics" element={<ProjectRoute><MetricsPage /></ProjectRoute>} />
-        <Route path="topology" element={<ProjectRoute><TopologyPage /></ProjectRoute>} />
+        <Route path="topology" element={<Page><TopologyPage /></Page>} />
         <Route path="containers" element={<ProjectRoute><ContainersPage /></ProjectRoute>} />
         <Route path="deployments" element={<ProjectRoute><DeploymentsPage /></ProjectRoute>} />
         <Route path="alerts" element={<ProjectRoute><AlertsPage /></ProjectRoute>} />

@@ -401,7 +401,7 @@ export default function ContainersPage() {
       <Breadcrumbs
         links={[{ name: 'Containers' }]}
         action={
-          <IconButton size="small" onClick={fetchContainers} title="Refresh">
+          <IconButton data-console-command="refresh" size="small" onClick={fetchContainers} title="Refresh">
             <RefreshIcon />
           </IconButton>
         }

@@ -31,7 +31,7 @@ const { client } = vi.hoisted(() => ({
 }));
 
 vi.mock('src/netron/client', () => ({
-  project: { listStacks: client.listStacks },
+  project: { listStacks: client.listStacks, getTopology: vi.fn(async () => ({ version: 1, dependencies: [], warnings: [] })) },
   daemon: { list: client.list, status: client.status },
   infra: { listContainers: client.listContainers },
 }));

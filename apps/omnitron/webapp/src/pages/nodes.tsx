@@ -2314,7 +2314,7 @@ export default function NodesPage() {
               onClick={() => setSettingsOpen(true)}>
               Check Settings
             </Button></Can>
-            <Tooltip title="Refresh"><IconButton size="small" aria-label="Refresh"
+            <Tooltip title="Refresh"><IconButton data-console-command="refresh" size="small" aria-label="Refresh"
               onClick={async () => { const n = await fetchNodes(); await fetchUptimeBars(n); }}><RefreshIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip>
             <Can permission="OmnitronNodes.addNode"><Button variant="contained" size="small" startIcon={<PlusIcon sx={{ fontSize: 18 }} />} onClick={handleOpenAdd}>
               Add Node

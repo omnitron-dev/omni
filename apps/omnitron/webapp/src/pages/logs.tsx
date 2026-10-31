@@ -1,5 +1,5 @@
 import { ArrowUpIcon } from '@omnitron-dev/prism/icons';
-import { readLogIngestion, readLogTime } from '../../../src/shared/log-ingestion-reading';
+import { readLogIngestion } from '../../../src/shared/log-ingestion-reading';
 import type { LogIngestionStats } from '@omnitron-dev/omnitron/dto/services';
 /**
  * Logs Page — Production-grade streaming log viewer.
@@ -24,11 +24,12 @@ import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import Collapse from '@mui/material/Collapse';
 import InputAdornment from '@mui/material/InputAdornment';
-import { alpha, keyframes, useTheme, type Theme } from '@mui/material/styles';
+import { alpha, keyframes, useTheme } from '@mui/material/styles';
 
 import { SearchIcon, RefreshIcon, PlayIcon, StopIcon, CloseIcon, TerminalIcon } from 'src/assets/icons';
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
+import { LogEntryRowView, logLevelColor } from 'src/components/log-entry-row';
 import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { useCopyToClipboard } from '@omnitron-dev/prism/core';
 import { logs, daemon, nodes as nodesRpc } from 'src/netron/client';
@@ -57,25 +58,6 @@ function inLevelOrder(counts: readonly LevelCount[]): LevelCount[] {
   return [...counts].sort((a, b) => rank(a.level) - rank(b.level));
 }
 
-const LEVEL_LABELS: Record<string, string> = {
-  trace: 'TRC',
-  debug: 'DBG',
-  info: 'INF',
-  warn: 'WRN',
-  error: 'ERR',
-  fatal: 'FTL',
-};
-
-/** Extended level backgrounds for the terminal view */
-const LEVEL_ROW_BG: Record<string, string> = {
-  fatal: 'rgba(220,38,38,0.08)',
-  error: 'rgba(239,68,68,0.05)',
-  warn: 'rgba(245,158,11,0.04)',
-  info: 'transparent',
-  debug: 'transparent',
-  trace: 'transparent',
-};
-
 const MONO = "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', monospace";
 
 const TIME_RANGES = [
@@ -96,11 +78,6 @@ const SEARCH_DEBOUNCE = 300;
 const SCROLL_THRESHOLD = 80; // px from bottom to consider "at bottom"
 
 // Animations
-const slideIn = keyframes`
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-`;
-
 const pulse = keyframes`
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.5; }
@@ -110,30 +87,6 @@ const pulse = keyframes`
 // Helpers
 // =============================================================================
 
-function formatTimePrecise(ts: Date | string): string {
-  const d = typeof ts === 'string' ? new Date(ts) : ts;
-  const h = String(d.getHours()).padStart(2, '0');
-  const m = String(d.getMinutes()).padStart(2, '0');
-  const s = String(d.getSeconds()).padStart(2, '0');
-  const ms = String(d.getMilliseconds()).padStart(3, '0');
-  return `${h}:${m}:${s}.${ms}`;
-}
-
-function formatDateFull(ts: Date | string): string {
-  const d = typeof ts === 'string' ? new Date(ts) : ts;
-  const base = d.toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
-  const ms = String(d.getMilliseconds()).padStart(3, '0');
-  return `${base}.${ms}`;
-}
-
 function parseLabelInput(input: string): Record<string, string> | undefined {
   if (!input.trim()) return undefined;
   const labels: Record<string, string> = {};
@@ -142,210 +95,6 @@ function parseLabelInput(input: string): Record<string, string> | undefined {
     if (k && v) labels[k] = v;
   }
   return Object.keys(labels).length > 0 ? labels : undefined;
-}
-
-// =============================================================================
-// LogRow — single expandable log entry
-// =============================================================================
-
-interface LogRowProps {
-  log: LogEntryRow;
-  isNew?: boolean;
-  /** Node uuid → the name an operator gave it. */
-  nodeNames?: Record<string, string>;
-}
-
-function logLevelColor(level: string, theme: Theme): string {
-  const tones = { info: 'info', warn: 'warning', error: 'error', fatal: 'error' } as const;
-  const tone = tones[level as keyof typeof tones];
-  return tone ? theme.palette[tone][theme.palette.mode === 'light' ? 'dark' : 'light'] : theme.palette.text.secondary;
-}
-
-function LogRow({ log, isNew, nodeNames }: LogRowProps) {
-  const theme = useTheme();
-  const [expanded, setExpanded] = useState(false);
-
-  const levelColor = logLevelColor(log.level, theme);
-  const rowBg = LEVEL_ROW_BG[log.level] ?? 'transparent';
-
-  // `nodeId` counts as detail. A line the master collected itself has none;
-  // one pulled from a node carries the node that produced it, and until this
-  // there was nowhere in the viewer that said so — every machine's lines
-  // interleaved under the same four columns.
-  const hasDetail = log.labels || log.traceId || log.spanId || log.metadata || log.nodeId;
-
-  return (
-    <>
-      <Box
-        role="button"
-        tabIndex={0}
-        aria-expanded={expanded}
-        aria-label={`${formatTimePrecise(log.timestamp)} ${log.app} ${log.level}: ${log.message}`}
-        onClick={() => setExpanded((v) => !v)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            setExpanded((value) => !value);
-          }
-        }}
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '90px minmax(0, 1fr) 36px', sm: '90px 120px 36px minmax(0, 1fr)' },
-          gap: 1,
-          alignItems: 'baseline',
-          px: 1.5,
-          py: '3px',
-          bgcolor: expanded ? 'action.hover' : rowBg,
-          borderLeft: `2px solid ${expanded ? levelColor : 'transparent'}`,
-          cursor: 'pointer',
-          '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 },
-          transition: 'background-color 0.15s ease',
-          animation: isNew ? `${slideIn} 0.3s ease-out` : undefined,
-          '&:hover': {
-            bgcolor: 'action.hover',
-          },
-        }}
-      >
-        {/* Timestamp */}
-        <Tooltip title={formatDateFull(log.timestamp)} placement="top-start" arrow enterDelay={400}>
-          <Typography
-            component="span"
-            sx={{
-              fontFamily: MONO,
-              fontSize: 11,
-              color: 'text.secondary',
-              lineHeight: '20px',
-              whiteSpace: 'nowrap',
-              letterSpacing: '-0.02em',
-            }}
-          >
-            {formatTimePrecise(log.timestamp)}
-          </Typography>
-        </Tooltip>
-
-        {/* App */}
-        <Typography
-          component="span"
-          sx={{
-            fontFamily: MONO,
-            fontSize: 11,
-            color: theme.palette.info[theme.palette.mode === 'light' ? 'dark' : 'light'],
-            lineHeight: '20px',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            fontWeight: 500,
-          }}
-        >
-          {log.app}
-        </Typography>
-
-        {/* Level */}
-        <Typography
-          component="span"
-          sx={{
-            fontFamily: MONO,
-            fontSize: 10,
-            fontWeight: 700,
-            color: levelColor,
-            lineHeight: '20px',
-            textTransform: 'uppercase',
-            letterSpacing: '0.04em',
-          }}
-        >
-          {LEVEL_LABELS[log.level] ?? log.level.slice(0, 3).toUpperCase()}
-        </Typography>
-
-        {/* Message */}
-        <Typography
-          component="span"
-          sx={{
-            fontFamily: MONO,
-            fontSize: 11.5,
-            color: log.level === 'error' || log.level === 'fatal' ? levelColor : 'text.primary',
-            gridColumn: { xs: '1 / -1', sm: 'auto' },
-            minWidth: 0,
-            lineHeight: '20px',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: expanded ? 'pre-wrap' : 'nowrap',
-            wordBreak: expanded ? 'break-all' : undefined,
-          }}
-        >
-          {log.message}
-        </Typography>
-      </Box>
-
-      {/* Expanded detail */}
-      {hasDetail && <Collapse in={expanded} unmountOnExit>
-        <Box
-          sx={{
-            ml: '14px',
-            mr: 1.5,
-            mb: 0.5,
-            p: 1.5,
-            bgcolor: 'action.hover',
-            borderRadius: 1,
-            borderLeft: `2px solid ${alpha(levelColor, 0.3)}`,
-          }}
-        >
-          <Box
-            component="pre"
-            sx={{
-              fontFamily: MONO,
-              fontSize: 11,
-              color: 'text.secondary',
-              m: 0,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all',
-              lineHeight: 1.7,
-            }}
-          >
-            {log.nodeId && (
-              <span>
-                <Box component="span" sx={{ color: 'text.secondary' }}>node:    </Box>
-                <Box component="span" sx={{ color: theme.palette.info[theme.palette.mode === 'light' ? 'dark' : 'light'] }}>{nodeNames?.[log.nodeId] ?? log.nodeId}</Box>
-                {'\n'}
-              </span>
-            )}
-            {readLogTime(log.metadata) && <span>{readLogTime(log.metadata)}{'\n'}</span>}
-            {log.traceId && (
-              <span>
-                <Box component="span" sx={{ color: 'text.secondary' }}>traceId: </Box>
-                <Box component="span" sx={{ color: theme.palette.secondary[theme.palette.mode === 'light' ? 'dark' : 'light'] }}>{log.traceId}</Box>
-                {'\n'}
-              </span>
-            )}
-            {log.spanId && (
-              <span>
-                <Box component="span" sx={{ color: 'text.secondary' }}>spanId:  </Box>
-                <Box component="span" sx={{ color: theme.palette.secondary[theme.palette.mode === 'light' ? 'dark' : 'light'] }}>{log.spanId}</Box>
-                {'\n'}
-              </span>
-            )}
-            {log.labels && (
-              <span>
-                <Box component="span" sx={{ color: 'text.secondary' }}>labels:  </Box>
-                <Box component="span" sx={{ color: theme.palette.success[theme.palette.mode === 'light' ? 'dark' : 'light'] }}>
-                  {JSON.stringify(log.labels, null, 2)}
-                </Box>
-                {'\n'}
-              </span>
-            )}
-            {log.metadata && (
-              <span>
-                <Box component="span" sx={{ color: 'text.secondary' }}>metadata:</Box>
-                {'\n'}
-                <Box component="span" sx={{ color: 'text.primary' }}>
-                  {JSON.stringify(log.metadata, null, 2)}
-                </Box>
-              </span>
-            )}
-          </Box>
-        </Box>
-      </Collapse>}
-    </>
-  );
 }
 
 // =============================================================================
@@ -1392,7 +1141,7 @@ export default function LogsPage() {
 
               {/* Log rows — newest at bottom for live, newest at top for paginated */}
               {logRows.map((log) => (
-                <LogRow key={log.id} log={log} isNew={newIdsRef.current.has(log.id)} nodeNames={nodeNameById} />
+                <LogEntryRowView key={log.id} log={log} isNew={newIdsRef.current.has(log.id)} nodeNames={nodeNameById} />
               ))}
             </>
           )}

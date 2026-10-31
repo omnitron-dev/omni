@@ -16,6 +16,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
+import userEvent from '@testing-library/user-event';
 
 import { useProjectStore } from '../../webapp/src/stores/project.store.js';
 
@@ -106,9 +107,11 @@ describe('a breakdown beside a total it did not add up to', () => {
     expect(screen.queryByText('error: 42,650')).not.toBeInTheDocument();
     // A message without structured metadata can still be expanded and read by keyboard.
     const row = screen.getByRole('button', { name: /sample\/dev\/main info: line 1/ });
-    fireEvent.keyDown(row, { key: 'Enter' });
+    row.focus();
+    const keyboard = userEvent.setup();
+    await keyboard.keyboard('{Enter}');
     expect(row).toHaveAttribute('aria-expanded', 'true');
-    fireEvent.keyDown(row, { key: ' ' });
+    await keyboard.keyboard(' ');
     expect(row).toHaveAttribute('aria-expanded', 'false');
   });
 

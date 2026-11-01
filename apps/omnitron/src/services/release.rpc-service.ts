@@ -296,14 +296,7 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
     return null;
   }
 
-  /**
-   * What each stack was last started with, from the audit trail.
-   *
-   * The running state lives in memory and a daemon restart empties it; the
-   * `stack.start` rows do not. So «which release is test running» is
-   * answered by the last recorded deployment of it, and the console says
-   * exactly that rather than implying it read the node.
-   */
+  /** Latest recorded start per stack. This history does not attest current process identity. */
   @Public({ auth: { roles: VIEWER_ROLES } })
   async deployments(_data?: { limit?: number }): Promise<ReleaseDeploymentDto[]> {
     if (!this.audit) return [];

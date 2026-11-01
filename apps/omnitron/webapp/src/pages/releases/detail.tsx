@@ -42,6 +42,8 @@ import { DeployIcon, RefreshIcon } from 'src/assets/icons';
 import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
 import { ReleaseAttestations } from 'src/components/release-attestations';
 import { ReleaseBuildPanel } from 'src/components/release-build-panel';
+import { ReleaseDeploymentState } from 'src/components/release-deployment-state';
+import { readSourcePublication } from '@omnitron-dev/omnitron/release-reading';
 import { GATE_TONE, GateStrip, bytes, elapsed, loadWords, ranLoaded, when } from 'src/components/release-bits';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { releases as releaseRpc } from 'src/netron/client';
@@ -121,6 +123,8 @@ export default function ReleaseDetailPage() {
 
       {build && <ReleaseBuildPanel record={build} compact={build.state !== 'running'} />}
 
+      <ReleaseDeploymentState key={release.project} project={release.project} />
+
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>
           <Card variant="outlined" sx={{ height: '100%' }}>
@@ -141,10 +145,10 @@ export default function ReleaseDetailPage() {
                           {commit?.slice(0, 12) ?? '—'}
                         </Typography>
                         {onRemote === false && (
-                          <Chip label="on no remote branch" size="small" color="warning" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
+                          <Tooltip title={readSourcePublication({ project: onRemote, omni: true }, what === 'project' ? release.project : 'omni').detail}><Chip label="Git: no remote branch" size="small" color="warning" variant="outlined" /></Tooltip>
                         )}
                         {onRemote === null && (
-                          <Chip label="no remote to ask" size="small" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
+                          <Chip label="Git: not checked" size="small" variant="outlined" />
                         )}
                       </Stack>
                       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
@@ -187,7 +191,7 @@ export default function ReleaseDetailPage() {
                     sx={{ color: ranLoaded(release.machine) ? 'warning.main' : 'text.secondary' }}
                   >
                     machine while the gates ran: {loadWords(release.machine)}
-                    {ranLoaded(release.machine) ? ' — more than its cores, so read a red gate here as the machine first' : ''}
+                    {ranLoaded(release.machine) ? ' — load exceeded core count; inspect the gate logs for failure causes' : ''}
                   </Typography>
                 )}
               </Stack>

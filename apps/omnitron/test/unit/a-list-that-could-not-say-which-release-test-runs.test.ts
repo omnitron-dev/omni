@@ -1,21 +1,4 @@
-/**
- * A list that could not say which release test runs.
- *
- * `omnitron release list` printed Release, Built, Gates, Apps, Statics, MB.
- * Measured 2026-09-23 on the master: 25 releases on disk; test running
- * sample-202609230810-66740d9c-5a3315fc since 08:38:44Z by its `stack.start`
- * row, which `OmnitronRelease.deployments()` returns; eleven of the 25
- * attested, 0810 on test 31 of 31, which the JSON carried as `verified`. The
- * table had neither fact, and no CLI command printed the first.
- *
- * The court holds:
- *   - each row names the stacks that run it and what each stack measured;
- *   - the JSON says the same (`deployedOn` beside `verified`);
- *   - a daemon that cannot be asked is SAID to be — «?» and a line, never
- *     «—», which means «on no stack» — and that includes the daemon that
- *     answers with no audit trail behind it: it serves `deployments()` as
- *     `[]`, the same shape as «nothing deployed».
- */
+/** Deployment history and attestations remain useful without claiming current execution. */
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -37,6 +20,9 @@ vi.mock('../../src/config/defaults.js', async (importOriginal) => {
 const daemon = {
   state: 'up' as 'up' | 'down' | 'no-trail' | 'trail-off',
   deployments: [] as unknown[],
+  stacks: [] as unknown[],
+  inventoryUnavailable: false,
+  disconnected: 0,
 };
 
 vi.mock('../../src/daemon/daemon-client.js', () => ({
@@ -49,13 +35,17 @@ vi.mock('../../src/daemon/daemon-client.js', () => ({
         if (daemon.state === 'no-trail') throw new Error("Service 'OmnitronAudit' is not exposed");
         return { available: async () => ({ available: daemon.state !== 'trail-off' }) };
       }
+      if (name === 'OmnitronProject') return { listStacks: async () => {
+        if (daemon.inventoryUnavailable) throw new Error('unavailable');
+        return daemon.stacks;
+      } };
       if (name === 'OmnitronRelease') {
         // …and answers `deployments()` with `[]`, as `release.rpc-service.ts` does.
         return { deployments: async () => (daemon.state === 'up' ? daemon.deployments : []) };
       }
       throw new Error(`Service '${name}' is not exposed`);
     },
-    disconnect: async () => {},
+    disconnect: async () => { daemon.disconnected++; },
   }),
 }));
 
@@ -69,7 +59,7 @@ vi.mock('@xec-sh/kit', () => ({
   prism: new Proxy({}, { get: () => (s: string) => s }),
 }));
 
-const { releaseListCommand } = await import('../../src/commands/release.js');
+const { releaseListCommand, releaseStatusCommand } = await import('../../src/commands/release.js');
 const { resetEnvCache, setEnvOverride } = await import('../../src/shared/env-config.js');
 
 const R0810 = 'sample-202609230810-66740d9c-5a3315fc';
@@ -118,6 +108,10 @@ beforeEach(() => {
   writeRelease(R0652, '2026-09-23T07:16:00.000Z', { passed: 31, total: 31 });
   daemon.state = 'up';
   daemon.deployments = LIVE;
+  daemon.stacks = [];
+  daemon.inventoryUnavailable = false;
+  daemon.disconnected = 0;
+  process.exitCode = 0;
   said.length = 0;
   tables.length = 0;
   stdout = [];
@@ -127,6 +121,7 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
+  process.exitCode = 0;
   vi.restoreAllMocks();
   resetEnvCache();
 });
@@ -138,17 +133,17 @@ function rowOf(id: string): Record<string, string> {
 }
 
 describe('the table', () => {
-  it('names the stack that runs a release, and what each stack measured about it', async () => {
+  it('names the last recorded deployment and what each stack measured', async () => {
     await releaseListCommand();
     const headers = tables.at(-1)!.columns.map((c) => c.header);
-    expect(headers).toContain('Deployed');
+    expect(headers).toContain('Last deployed');
     expect(headers).toContain('Attested');
-    const deployedKey = tables.at(-1)!.columns.find((c) => c.header === 'Deployed')!.key;
+    const deployedKey = tables.at(-1)!.columns.find((c) => c.header === 'Last deployed')!.key;
     const attestedKey = tables.at(-1)!.columns.find((c) => c.header === 'Attested')!.key;
 
     expect(rowOf(R0810)[deployedKey]).toBe('test');
     expect(rowOf(R0810)[attestedKey]).toBe('test: 31/31');
-    // Measured on test once, and no longer what test runs.
+    // Measured on test once, but not its latest recorded deployment.
     expect(rowOf(R0652)[deployedKey]).toBe('—');
     expect(rowOf(R0652)[attestedKey]).toBe('test: 31/31');
     expect(rowOf(R0741)[deployedKey]).toBe('—');
@@ -158,9 +153,9 @@ describe('the table', () => {
   it('says it could not ask when the daemon is down — «?», not «on no stack»', async () => {
     daemon.state = 'down';
     await releaseListCommand();
-    const deployedKey = tables.at(-1)!.columns.find((c) => c.header === 'Deployed')!.key;
+    const deployedKey = tables.at(-1)!.columns.find((c) => c.header === 'Last deployed')!.key;
     for (const id of [R0810, R0741, R0652]) expect(rowOf(id)[deployedKey]).toBe('?');
-    expect(said.find((s) => s.level === 'warn' && s.text.includes('Deployed: unknown'))?.text).toContain('Daemon is not running');
+    expect(said.find((s) => s.level === 'warn' && s.text.includes('Deployment history: unknown'))?.text).toContain('Daemon is not running');
   });
 
   it.each(['no-trail', 'trail-off'] as const)(
@@ -168,9 +163,9 @@ describe('the table', () => {
     async (state) => {
       daemon.state = state;
       await releaseListCommand();
-      const deployedKey = tables.at(-1)!.columns.find((c) => c.header === 'Deployed')!.key;
+      const deployedKey = tables.at(-1)!.columns.find((c) => c.header === 'Last deployed')!.key;
       expect(rowOf(R0810)[deployedKey]).toBe('?');
-      expect(said.find((s) => s.level === 'warn' && s.text.includes('Deployed: unknown'))?.text).toContain('no audit trail');
+      expect(said.find((s) => s.level === 'warn' && s.text.includes('Deployment history: unknown'))?.text).toContain('cannot read the deployment audit history');
     },
   );
 });
@@ -181,7 +176,7 @@ describe('the JSON', () => {
     return JSON.parse(line).data;
   }
 
-  it('carries where each release runs beside what was measured about it', async () => {
+  it('carries deployment history beside measurements', async () => {
     setEnvOverride({ OMNITRON_OUTPUT: 'json' });
     await releaseListCommand();
     const data = emitted();
@@ -200,5 +195,38 @@ describe('the JSON', () => {
     expect(data.releases.find((r) => r['id'] === R0810)!['deployedOn']).toBeNull();
     expect(data.deployments).toBeNull();
     expect(data.deploymentsUnknown).toContain('Daemon is not running');
+  });
+});
+
+
+describe('current status', () => {
+  it('keeps historical deployment separate from current processes in JSON and closes one shared client', async () => {
+    setEnvOverride({ OMNITRON_OUTPUT: 'json' });
+    daemon.stacks = [
+      { name: 'dev', type: 'local', status: 'stopped', apps: [{ status: 'stopped' }], nodes: [] },
+      { name: 'test', type: 'remote', status: 'running', apps: [{ status: 'online' }], nodes: [] },
+    ];
+    await releaseStatusCommand('sample');
+    const data = JSON.parse(stdout.join('').trim()).data;
+    expect(data.stacks[0]).toMatchObject({ runningRelease: 'not-running', apps: { online: 0, total: 1 } });
+    expect(data.stacks[1]).toMatchObject({ runningRelease: 'unreported', history: { last: { release: R0810 } } });
+    expect(process.exitCode).toBe(2);
+    expect(daemon.disconnected).toBe(1);
+  });
+
+  it('reports incomplete inventory even when readable history remains', async () => {
+    daemon.inventoryUnavailable = true;
+    await releaseStatusCommand('sample');
+    expect(said.some(row => row.level === 'warn' && row.text.includes('execution state is unknown'))).toBe(true);
+    expect(process.exitCode).toBe(2);
+    expect(daemon.disconnected).toBe(1);
+  });
+
+  it('reports a fully stopped observed stack without treating its history as current', async () => {
+    daemon.stacks = [{ name: 'test', type: 'remote', status: 'stopped', apps: [{ status: 'stopped' }], nodes: [] }];
+    await releaseStatusCommand('sample');
+    expect(said.some(row => row.text.includes('none — applications stopped'))).toBe(true);
+    expect(said.some(row => row.text.includes(`last recorded deployment: ${R0810}`))).toBe(true);
+    expect(process.exitCode).toBe(0);
   });
 });

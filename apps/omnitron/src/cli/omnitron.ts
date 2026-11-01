@@ -746,6 +746,14 @@ release
   });
 
 release
+  .command('status <project>')
+  .description('Observe stack placement and execution separately from deployment history')
+  .action(async (projectName: string) => {
+    const { releaseStatusCommand } = await import('../commands/release.js');
+    await releaseStatusCommand(projectName);
+  });
+
+release
   .command('show <id>')
   .description('One release in full: its commits, its gates, its artifacts')
   .action(async (id: string) => {

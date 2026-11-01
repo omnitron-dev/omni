@@ -30,6 +30,8 @@ import { deploymentsAnswer, type DeploymentsAnswer } from '@omnitron-dev/omnitro
 
 import { audit, releases } from './client';
 
+const deploymentReads = new Map<number, Promise<DeploymentsAnswer>>();
+
 /** A summary with every later field present — `null` / empty meaning «this daemon did not report it». */
 export type ReleaseSummaryView = ReleaseSummary;
 
@@ -71,7 +73,7 @@ function summary(r: Partial<ReleaseSummary> & { id: string }): ReleaseSummaryVie
     omniCommit: r.omniCommit ?? fromId.omni,
     projectRepo: r.projectRepo ?? null,
     omniRepo: r.omniRepo ?? null,
-    onRemote: r.onRemote ?? { project: null, omni: null },
+    onRemote: { project: r.onRemote?.project ?? null, omni: r.onRemote?.omni ?? null },
     gates: r.gates ?? { total: 0, passed: 0, failed: 0, notRun: 0 },
     gateList: r.gateList ?? [],
     artifacts: r.artifacts ?? { count: 0, bytes: 0, apps: [], failed: [] },
@@ -126,15 +128,15 @@ export const releaseApi = {
     };
   },
 
-  /**
-   * Which release each stack runs, or why this daemon cannot say. The
-   * answer is its `stack.start` audit rows, and a daemon without its audit
-   * trail serves them as `[]` — the shape of «no stack has taken a release».
-   * The CLI asks the trail first (70b988a6); so does this.
-   */
+  /** Shared in-flight read of audit history; this does not identify running artifacts. */
   async deployments(limit = 200): Promise<DeploymentsAnswer> {
-    const [trail, rows] = await Promise.all([audit.available().catch(() => null), releases.deployments({ limit })]);
-    const deployments: ReleaseDeploymentDto[] = (rows ?? []).map((d) => ({ ...d, releaseUnnamed: d.releaseUnnamed ?? false }));
-    return deploymentsAnswer(trail?.available === true, deployments);
+    const pending = deploymentReads.get(limit);
+    if (pending) return pending;
+    const read = Promise.all([audit.available().catch(() => null), releases.deployments({ limit })]).then(([trail, rows]) => {
+      const deployments: ReleaseDeploymentDto[] = (rows ?? []).map((d) => ({ ...d, releaseUnnamed: d.releaseUnnamed ?? false }));
+      return deploymentsAnswer(trail?.available === true, deployments);
+    }).finally(() => { if (deploymentReads.get(limit) === read) deploymentReads.delete(limit); });
+    deploymentReads.set(limit, read);
+    return read;
   },
 };

@@ -1,30 +1,8 @@
-/**
- * How a release reads — its gates, and which stacks run it: one reading for
- * the CLI and the console.
- *
- * They read releases apart, and came apart:
- *
- *   - A build with `--skip-gates` records one outcome, `gates: not-run`, and
- *     as `passed/total` that is «0/1» — what one failed gate reads as too.
- *     The CLI learnt to say «skipped» (70b988a6); the console still drew
- *     «0/1».
- *   - A gate that timed out or was killed counted in `notRun` until 70b988a6
- *     gave each its own count. The console coloured by `failed` and `notRun`
- *     alone, so sample-202609230557, whose one gate that did not pass timed
- *     out, would have read a green «20/21».
- *   - A daemon whose database did not come up runs with no audit trail and
- *     serves `deployments()` as `[]` — the shape of «no stack has taken a
- *     release». The CLI learnt that in 70b988a6 and will not prune on it; the
- *     console read `[]` as it came, protected nothing, and a stack's card
- *     said «No recorded deployment of this stack yet» about a stack it could
- *     not ask about.
- *
- * Imported by the console through `@omnitron-dev/omnitron/release-reading`,
- * so nothing here may need Node.
- */
+/** Shared, browser-safe readings of release gates, Git provenance and deployment evidence. */
 
 import type { GateOutcome } from '../release/manifest.js';
 import type { ReleaseDeploymentDto } from './dto/services.js';
+import type { IStackInfo } from './dto/project.js';
 
 /**
  * The part of a release summary its gates are read from. Not the per-outcome
@@ -67,20 +45,20 @@ export function readGates(release: ReleaseGates): GatesReading {
 }
 
 // ---------------------------------------------------------------------------
-// Which stacks run it
+// Recorded deployments
 // ---------------------------------------------------------------------------
 
 /**
- * Which release each stack runs, or why that cannot be said. `known: false`
- * is not «nothing is deployed», and nothing may read it as that.
+ * The latest recorded deployment per stack, not an observation of its processes.
+ * An unavailable audit trail is distinct from an empty history.
  */
 export type DeploymentsAnswer =
   | { readonly known: true; readonly deployments: readonly ReleaseDeploymentDto[] }
   | { readonly known: false; readonly why: string };
 
-/** Why a daemon without its audit trail cannot say which release a stack runs. */
+/** Missing deployment history does not imply an unused release. */
 export const NO_AUDIT_TRAIL =
-  'the daemon has no audit trail, and its `stack.start` rows are what say which release a stack runs';
+  'the daemon cannot read the deployment audit history; current execution is a separate observation';
 
 /**
  * The daemon's `deployments()` rows as an answer: known only when its audit
@@ -110,11 +88,90 @@ export function unnamedStacks(deployments: readonly ReleaseDeploymentDto[]): str
 }
 
 /**
- * Why a prune cannot tell which releases the stacks run, or `null` when it
- * can. A prune that goes ahead regardless may remove the one a stack runs.
+ * Why audit-based retention cannot identify its protected releases. A null
+ * result only establishes readable history, not current process provenance.
  */
 export function pruneBlindness(answer: DeploymentsAnswer): string | null {
   if (!answer.known) return answer.why;
   const unnamed = unnamedStacks(answer.deployments);
   return unnamed.length > 0 ? `${unnamed.join(', ')} last took a release whose name the trail did not record` : null;
+}
+
+/** Git provenance captured by the build, never an execution location. */
+export function readSourcePublication(onRemote: { project: boolean | null; omni: boolean | null }, project: string) {
+  const missing = [onRemote.project === false ? project : null, onRemote.omni === false ? 'omni' : null].filter(Boolean);
+  const unknown = [onRemote.project == null ? project : null, onRemote.omni == null ? 'omni' : null].filter(Boolean);
+  return {
+    state: missing.length ? 'missing' as const : unknown.length ? 'unknown' as const : 'recorded' as const,
+    label: missing.length ? 'Git: no remote branch' : unknown.length ? 'Git: not checked' : 'Git: remote branch recorded',
+    detail: missing.length
+      ? `At build time, no remote-tracking branch contained the ${missing.join(' and ')} commit. This is a Git snapshot, not a deployment location or a live remote check.`
+      : unknown.length ? `Git publication was not verified for ${unknown.join(' and ')} when this release was built.`
+        : 'Both commits were present in remote-tracking branches at build time. Current remote availability is not checked here.',
+  };
+}
+
+export type StackDeploymentHistory =
+  | { known: true; last: ReleaseDeploymentDto | null }
+  | { known: false; why: string };
+
+/** Resolve retained runtime namespaces without creating another project model. */
+export function stackDeploymentHistory(project: string, stack: Pick<IStackInfo, 'name' | 'runtimeScope'>, answer: DeploymentsAnswer): StackDeploymentHistory {
+  if (!answer.known) return answer;
+  const scope = stack.runtimeScope ?? { project, stack: stack.name };
+  const rows = answer.deployments.filter(row =>
+    (row.project === project && row.stack === stack.name) || (row.project === scope.project && row.stack === scope.stack));
+  if (rows.length === 0) return { known: true, last: null };
+  if (rows.some(row => !Number.isFinite(Date.parse(row.at)))) return { known: false, why: 'Deployment history contains an invalid timestamp' };
+  const latestAt = Math.max(...rows.map(row => Date.parse(row.at)));
+  const latest = rows.filter(row => Date.parse(row.at) === latestAt);
+  if (new Set(latest.map(row => JSON.stringify([row.release, row.releaseUnnamed, row.projectCommit, row.omniCommit]))).size > 1) {
+    return { known: false, why: 'Conflicting deployment records have the same timestamp' };
+  }
+  return { known: true, last: latest[0]! };
+}
+
+export interface ReleaseStackObservation {
+  project: string;
+  stack: string;
+  type: IStackInfo['type'];
+  status: IStackInfo['status'];
+  apps: { online: number; total: number; unknown: number };
+  nodes: Array<{ host: string; port: number; label: string | null; connected: boolean }>;
+  history: StackDeploymentHistory;
+  /** Current process DTOs do not attest release identity. Audit history cannot fill that gap. */
+  runningRelease: 'not-running' | 'unreported';
+}
+
+export interface ReleaseDeploymentState {
+  project: string;
+  observedAt: string;
+  inventory: { known: true } | { known: false; why: string };
+  history: DeploymentsAnswer;
+  stacks: ReleaseStackObservation[];
+}
+
+/** One read model used by CLI, Console and callers of the public package. No mutations. */
+export async function readReleaseDeploymentState(project: string, ports: {
+  stacks(): Promise<IStackInfo[]>;
+  deployments(): Promise<DeploymentsAnswer>;
+}): Promise<ReleaseDeploymentState> {
+  const [inventory, trail] = await Promise.allSettled([ports.stacks(), ports.deployments()]);
+  const rawHistory: DeploymentsAnswer = trail.status === 'fulfilled' ? trail.value
+    : { known: false, why: 'Deployment history could not be read' };
+  const scopes = inventory.status === 'fulfilled' ? inventory.value.flatMap(stack => stack.runtimeScope ? [stack.runtimeScope] : []) : [];
+  const history: DeploymentsAnswer = rawHistory.known ? { known: true, deployments: rawHistory.deployments.filter(row =>
+    row.project === project || scopes.some(scope => row.project === scope.project && row.stack === scope.stack)) } : rawHistory;
+  return {
+    project, observedAt: new Date().toISOString(), history,
+    inventory: inventory.status === 'fulfilled' ? { known: true } : { known: false, why: 'Stack inventory could not be read; execution state is unknown' },
+    stacks: inventory.status === 'fulfilled' ? inventory.value.map(stack => ({
+      project, stack: stack.name, type: stack.type, status: stack.status,
+      apps: { online: stack.apps.filter(app => app.status === 'online').length, total: stack.apps.length,
+        unknown: stack.apps.filter(app => app.status === 'unknown').length },
+      nodes: stack.nodes.map(({ host, port, label, connected }) => ({ host, port, label, connected })),
+      history: stackDeploymentHistory(project, stack, history),
+      runningRelease: stack.status === 'stopped' && stack.apps.every(app => app.status === 'stopped') ? 'not-running' : 'unreported',
+    })) : [],
+  };
 }

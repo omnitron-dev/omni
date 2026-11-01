@@ -1,17 +1,6 @@
 import { Can } from 'src/auth/access';
-/**
- * Releases — what this master has built, and what is building now.
- *
- * The page answers three questions in one screen, in the order an operator
- * asks them: is a build running and how far has it got; what can be deployed
- * right now and what is wrong with the rest; and which release each stack is
- * actually carrying.
- *
- * The last of those comes from the audit trail rather than from the stacks
- * themselves, and the page says so: the running state lives in the daemon's
- * memory and a restart empties it, while `stack.start` rows do not. «Last
- * deployed» is a fact about what was done; «running» would be a claim the
- * console cannot support.
+/** Release artifacts, build progress and current stack observations.
+ * Audit records describe deployment history; they never identify live code.
  */
 
 import { useCallback, useMemo, useState } from 'react';
@@ -32,6 +21,7 @@ import { stacksByRelease, type DeploymentsAnswer } from '@omnitron-dev/omnitron/
 import { DeleteIcon, DeployIcon, PlusIcon, RefreshIcon } from 'src/assets/icons';
 import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
 import { ReleaseBuildPanel } from 'src/components/release-build-panel';
+import { ReleaseDeploymentState } from 'src/components/release-deployment-state';
 import { CommitPair, GateCount, GateStrip, bytes, loadWords, ranLoaded, when } from 'src/components/release-bits';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { releases as releaseRpc } from 'src/netron/client';
@@ -46,7 +36,7 @@ interface PageData {
   root: string;
   builds: BuildRecord[];
   preflight: ReleasePreflightView | null;
-  /** Which release each stack runs — or why that cannot be said, which is not «none». */
+  /** Recorded deployment history, or why it is unavailable. */
   deployments: DeploymentsAnswer;
   /** What could not be read, when the rest could. */
   partial: string | null;
@@ -80,7 +70,7 @@ async function loadPage(): Promise<PageData> {
     deployments:
       deployments.status === 'fulfilled'
         ? deployments.value
-        : { known: false, why: `the daemon could not say which release a stack runs: ${(deployments.reason as Error)?.message ?? 'unavailable'}` },
+        : { known: false, why: 'Deployment history could not be read' },
     partial: failures.length > 0 ? failures.join(' · ') : null,
   };
 }
@@ -141,15 +131,7 @@ export default function ReleasesPage() {
     [live],
   );
 
-  /**
-   * Five columns, by what an operator decides with them.
-   *
-   * There were eight, and at a laptop's width — 1200 px, a 280 px sidebar —
-   * they overflowed into a horizontal scroll with «Deploy…» pressed against
-   * the table's edge. Where a release is deployed now sits beside its id,
-   * because that is the first thing looked for; what it carries — apps,
-   * statics, size — is one column.
-   */
+  // Keep deployment history beside each artifact without implying live execution.
   const columns: ColumnDef<ReleaseSummary>[] = [
     {
       key: 'id',
@@ -176,10 +158,10 @@ export default function ReleasesPage() {
               {targets.map((t) => (
                 <Tooltip
                   key={`${t.project}/${t.stack}`}
-                  title={`Last deployed to ${t.stack} ${when(t.at)} · ${t.source ?? 'unknown'}`}
+                  title={`Last recorded deployment to ${t.project}/${t.stack}: ${when(t.at)} · ${t.source ?? 'unknown'}. Current runtime identity is not verified by this record.`}
                   arrow
                 >
-                  <Chip label={`on ${t.stack}`} size="small" color="success" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
+                  <Chip label={`History: ${t.stack}`} size="small" variant="outlined" />
                 </Tooltip>
               ))}
             </Stack>
@@ -212,7 +194,7 @@ export default function ReleasesPage() {
             <GateCount release={r} />
             {r.machine && ranLoaded(r.machine) && (
               <Tooltip
-                title={`The machine was carrying more than its cores while the gates ran — ${loadWords(r.machine)}. A red gate here is evidence about the machine before it is evidence about the code.`}
+                title={`Build host load exceeded its core count during gates — ${loadWords(r.machine)}. Inspect the gate logs to determine why a check failed.`}
                 arrow
               >
                 <Chip label="loaded" size="small" color="warning" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
@@ -288,9 +270,10 @@ export default function ReleasesPage() {
     },
   ];
 
-  const pageRows = rows.slice(page * pageSize, page * pageSize + pageSize);
+  const visiblePage = Math.min(page, Math.max(0, Math.ceil(rows.length / pageSize) - 1));
+  const pageRows = rows.slice(visiblePage * pageSize, visiblePage * pageSize + pageSize);
   const canBuild = data?.preflight?.canBuild !== false;
-  const totalBytes = all.reduce((sum, r) => sum + r.bytes, 0);
+  const totalBytes = rows.reduce((sum, r) => sum + r.bytes, 0);
 
   return (
     <Stack spacing={3}>
@@ -338,8 +321,7 @@ export default function ReleasesPage() {
 
       {data && !data.deployments.known && (
         <Alert severity="warning" variant="outlined">
-          Which release each stack runs is unknown — {data.deployments.why}. No release below is marked as deployed
-          for that reason, not because none is, and pruning is refused until it can be told.
+          Deployment history is unavailable — {data.deployments.why}. Pruning is refused while deployment protection cannot be determined.
         </Alert>
       )}
 
@@ -360,12 +342,14 @@ export default function ReleasesPage() {
         </Stack>
       )}
 
+      {activeProject && <ReleaseDeploymentState key={activeProject} project={activeProject} />}
+
       <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
         <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
           {data?.root ?? ''}
         </Typography>
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          {all.length} release{all.length === 1 ? '' : 's'}, {bytes(totalBytes)} on disk
+          {rows.length} release{rows.length === 1 ? '' : 's'} · {bytes(totalBytes)} · controller storage
         </Typography>
         <Box sx={{ flex: 1 }} />
         {activeProject && (
@@ -389,7 +373,7 @@ export default function ReleasesPage() {
         loadError={error ?? null}
         emptyMessage="Nothing has been built on this master yet"
         rowKey={(r) => r.id}
-        page={page}
+        page={visiblePage}
         pageSize={pageSize}
         onPageChange={setPage}
         onPageSizeChange={(size) => {

@@ -23,7 +23,7 @@ import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 
 import type { GateOutcome, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
-import { readGates, type GatesReading } from '@omnitron-dev/omnitron/release-reading';
+import { readGates, readSourcePublication, type GatesReading } from '@omnitron-dev/omnitron/release-reading';
 
 // ---------------------------------------------------------------------------
 // Numbers, as measurements
@@ -189,13 +189,8 @@ export function GateCount({ release, variant = 'body2' }: { release: ReleaseSumm
 // Commits
 // ---------------------------------------------------------------------------
 
-/**
- * The two commits a release is, with the one warning that matters.
- *
- * `onRemote: false` means the commit exists on this laptop and nowhere else:
- * the release can be deployed, and nobody — including this master after a
- * disk failure — could ever rebuild it. Production policy refuses those
- * (`requireOnRemote`), and the console says so before anyone tries.
+/** Source commits and their build-time remote-tracking branch evidence.
+ * Git publication says nothing about where an application is executing.
  */
 export function CommitPair({
   projectCommit,
@@ -208,9 +203,9 @@ export function CommitPair({
   onRemote: { project: boolean | null; omni: boolean | null };
   project: string;
 }) {
-  const local = [onRemote.project === false ? project : null, onRemote.omni === false ? 'omni' : null].filter(Boolean);
+  const publication = readSourcePublication(onRemote, project);
   return (
-    <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+    <Stack direction="row" useFlexGap spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
       <Tooltip title={`${project} ${projectCommit ?? 'unknown'}`} arrow>
         <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
           {projectCommit?.slice(0, 8) ?? '—'}
@@ -224,9 +219,9 @@ export function CommitPair({
           {omniCommit?.slice(0, 8) ?? '—'}
         </Typography>
       </Tooltip>
-      {local.length > 0 && (
-        <Tooltip title={`No remote branch contains the ${local.join(' and ')} commit — nobody else could rebuild this release`} arrow>
-          <Chip label="local only" size="small" color="warning" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
+      {publication.state !== 'recorded' && (
+        <Tooltip title={publication.detail} arrow>
+          <Chip label={publication.label} size="small" color={publication.state === 'missing' ? 'warning' : 'default'} variant="outlined" />
         </Tooltip>
       )}
     </Stack>

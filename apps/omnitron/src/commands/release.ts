@@ -1,5 +1,5 @@
 /**
- * `omnitron release build|list|show|prune` — the terminal's view of releases.
+ * `omnitron release build|list|show|status|prune` — the terminal's view of releases.
  *
  * A deployment compiles whatever the deploying machine's disk holds. A
  * release is built from a named commit of BOTH repositories — the project,
@@ -38,12 +38,14 @@ import {
   releasesRoot,
   type ReleaseDetail,
 } from '../release/store.js';
-import type { IOmnitronAuditService, IOmnitronReleaseService, ReleaseDeploymentDto } from '../shared/dto/services.js';
+import type { IOmnitronAuditService, IOmnitronReleaseService, IProjectRpcService, ReleaseDeploymentDto } from '../shared/dto/services.js';
 import {
   deploymentsAnswer,
   noGateRan,
   pruneBlindness,
   readGates,
+  readSourcePublication,
+  readReleaseDeploymentState,
   stacksByRelease,
   unnamedStacks,
   type DeploymentsAnswer,
@@ -53,7 +55,7 @@ export type { ReleaseBuildOptions };
 
 const MINUTE = 60_000;
 
-/** The most `stack.start` rows `deployments()` reads — its own ceiling. */
+/** Compatibility hint for older services; current services return one latest record per stack. */
 const DEPLOYMENT_ROWS = 200;
 
 /**
@@ -69,7 +71,7 @@ function size(bytes: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Which release each stack runs — the daemon's answer, or why there is none
+// Deployment history — separate from observed execution
 // ---------------------------------------------------------------------------
 
 /**
@@ -80,8 +82,8 @@ function size(bytes: number): string {
  * release». A prune that took either for an empty answer would delete the
  * release a stack is running.
  */
-async function readDeployments(): Promise<DeploymentsAnswer> {
-  const client = createDaemonClient();
+async function readDeployments(existing?: ReturnType<typeof createDaemonClient>): Promise<DeploymentsAnswer> {
+  const client = existing ?? createDaemonClient();
   try {
     const absence = await client.whyUnreachable();
     if (absence) return { known: false, why: describeAbsence(absence) };
@@ -101,10 +103,36 @@ async function readDeployments(): Promise<DeploymentsAnswer> {
     const releases = await client.service<IOmnitronReleaseService>('OmnitronRelease');
     return deploymentsAnswer(true, (await releases.deployments({ limit: DEPLOYMENT_ROWS })) ?? []);
   } catch (err) {
-    return { known: false, why: `the daemon could not say which release a stack runs: ${(err as Error)?.message ?? String(err)}` };
+    return { known: false, why: `deployment history could not be read: ${(err as Error)?.message ?? String(err)}` };
   } finally {
-    await client.disconnect();
+    if (!existing) await client.disconnect();
   }
+}
+
+export async function releaseStatusCommand(project: string): Promise<void> {
+  const client = createDaemonClient();
+  try {
+    const state = await readReleaseDeploymentState(project, {
+      stacks: async () => (await client.service<IProjectRpcService>('OmnitronProject')).listStacks({ project }),
+      deployments: () => readDeployments(client),
+    });
+    if (!state.inventory.known || !state.history.known || state.stacks.some(stack => !stack.history.known || stack.runningRelease === 'unreported')) process.exitCode = 2;
+    if (emitJson(state)) return;
+    log.info(`${project} — stack observation ${state.observedAt}`);
+    if (!state.inventory.known) log.warn(state.inventory.why);
+    if (!state.history.known) log.warn(state.history.why);
+    for (const stack of state.stacks) {
+      const placement = stack.type === 'local' ? 'controller node'
+        : stack.nodes.map(node => `${node.label ?? `${node.host}:${node.port}`} (${node.connected ? 'reachable' : 'unreachable'})`).join(', ') || 'no nodes reported';
+      log.info(`${stack.stack}: ${stack.status}; apps ${stack.apps.online}/${stack.apps.total}${stack.apps.unknown ? ` (${stack.apps.unknown} unknown)` : ''}; ${placement}`);
+      log.info(`  current release: ${stack.runningRelease === 'not-running' ? 'none — applications stopped' : 'identity not reported by the runtime'}`);
+      const history = stack.history;
+      log.info(`  last recorded deployment: ${!history.known ? `unknown — ${history.why}` : !history.last ? 'none recorded'
+        : `${history.last.release ?? (history.last.releaseUnnamed ? 'release name not recorded' : 'working tree')} at ${history.last.at}`}`);
+    }
+    log.info('Deployment history does not verify the build currently running on a node.');
+  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+  finally { await client.disconnect(); }
 }
 
 // ---------------------------------------------------------------------------
@@ -149,10 +177,8 @@ export async function releaseBuildCommand(projectName: string, options: ReleaseB
       `  artifacts: ${m.artifacts.length} (${size(bytes)})` +
         ((m.artifactFailures ?? []).length ? ` — did not build: ${(m.artifactFailures ?? []).map((f) => f.app).join(', ')}` : ''),
     );
-    if (m.project.onRemote === false || m.omni.onRemote === false) {
-      const local = [m.project.onRemote === false ? projectName : null, m.omni.onRemote === false ? 'omni' : null].filter(Boolean);
-      log.warn(`  built from a commit no remote branch contains (${local.join(', ')}) — nobody else can rebuild it`);
-    }
+    const publication = readSourcePublication({ project: m.project.onRemote ?? null, omni: m.omni.onRemote ?? null }, projectName);
+    if (publication.state !== 'recorded') log.warn(`  ${publication.label}: ${publication.detail}`);
     log.info(`  manifest: ${outcome.manifestPath}`);
   } catch (err) {
     log.error(`Release build failed after ${Math.round((Date.now() - started) / MINUTE)} min: ${(err as Error).message}`);
@@ -170,17 +196,7 @@ export async function releaseBuildCommand(projectName: string, options: ReleaseB
 // list
 // ---------------------------------------------------------------------------
 
-/**
- * Everything built on this machine, newest first: what it is worth, where it
- * runs, and what a running stack measured about it.
- *
- * Where it runs was on no screen here. Measured 2026-09-23: test ran
- * sample-202609230810 (its `stack.start` row, 08:38:44Z), the list printed
- * that release as one of 25 rows alike, and the eleven attestations the
- * JSON carried as `verified` — 0810 on test, 31 of 31 — were not in the
- * table either. Those two facts decide what may be pruned and what
- * production may be promoted from.
- */
+/** Artifacts on the controller, with audit history and recorded attestations. */
 export async function releaseListCommand(): Promise<void> {
   const root = releasesRoot();
   const releases = listReleases(root);
@@ -197,6 +213,7 @@ export async function releaseListCommand(): Promise<void> {
           : null,
       })),
       root,
+      deploymentEvidence: 'audit-history',
       deployments: answer.known ? answer.deployments : null,
       ...(answer.known ? {} : { deploymentsUnknown: answer.why }),
     })
@@ -229,12 +246,13 @@ export async function releaseListCommand(): Promise<void> {
       { key: 'gates', header: 'Gates', width: 11 },
       { key: 'artifacts', header: 'Apps', width: 5 },
       { key: 'statics', header: 'Statics', width: 8 },
-      { key: 'deployed', header: 'Deployed', width: 10 },
+      { key: 'deployed', header: 'Last deployed', width: 14 },
       { key: 'attested', header: 'Attested', width: 13 },
       { key: 'size', header: 'Size', width: 9 },
     ],
   });
-  if (!answer.known) log.warn(`Deployed: unknown — ${answer.why}.`);
+  if (!answer.known) log.warn(`Deployment history: unknown — ${answer.why}.`);
+  log.info('Last deployed is audit history, not current execution. Use `omnitron release status <project>` for stack state and placement.');
   if (unnamed.length > 0) {
     log.warn(`${unnamed.join(', ')} last took a release whose name the trail did not record — it is on none of these rows.`);
   }
@@ -349,6 +367,7 @@ export async function releaseShowCommand(id: string): Promise<void> {
       ...m,
       verifiedFiles: release.files,
       attestations,
+      deploymentEvidence: 'audit-history',
       deployedOn: runsIt ? runsIt.map((d) => ({ stack: d.stack, at: d.at, source: d.source })) : null,
       inputsAgainst: against,
       ...(answer.known ? {} : { deploymentsUnknown: answer.why }),
@@ -358,8 +377,8 @@ export async function releaseShowCommand(id: string): Promise<void> {
   log.info(`Release ${m.id}`);
   log.info(`  built ${m.builtAt} by ${m.builtBy} with omnitron ${m.builtWith.omnitron}`);
   for (const [what, source] of [['project', m.project], ['omni', m.omni]] as const) {
-    const remote = source.onRemote === true ? '' : source.onRemote === false ? ' — on no remote branch' : ' — no remote to ask';
-    log.info(`  ${what}: ${source.commit.slice(0, 12)} ${source.repo}${remote}`);
+    const publication = readSourcePublication({ project: source.onRemote ?? null, omni: true }, what);
+    log.info(`  ${what}: ${source.commit.slice(0, 12)} ${source.repo} — ${publication.label} (build-time snapshot)`);
   }
   const none = noGateRan(m.gates);
   const failed = m.gates.filter((g) => g.status !== 'passed');
@@ -399,11 +418,12 @@ export async function releaseShowCommand(id: string): Promise<void> {
     }
   }
   if (!answer.known) {
-    log.warn(`  deployed on: unknown — ${answer.why}`);
+    log.warn(`  deployment history: unknown — ${answer.why}`);
     return;
   }
-  for (const d of runsIt ?? []) log.info(`  deployed on ${d.stack} since ${d.at}${d.source ? ` (${d.source})` : ''}`);
-  if ((runsIt ?? []).length === 0) log.info("  deployed on: no stack — no stack's last start took it");
+  for (const d of runsIt ?? []) log.info(`  last recorded deployment: ${d.project}/${d.stack} at ${d.at}${d.source ? ` (${d.source})` : ''}`);
+  if ((runsIt ?? []).length === 0) log.info("  no stack's latest deployment record names this release");
+  log.info('  Current execution is separate: `omnitron release status <project>`.');
   // Against what each other stack of the project last took, by the trail —
   // what the master's disk can say about a node without reading the node.
   for (const c of against ?? []) {
@@ -565,7 +585,7 @@ export async function releasePruneCommand(
     const result = pruneReleases({ keep, apply, protect: [...byRelease.keys()] });
     for (const id of result.spared) {
       const where = (byRelease.get(id) ?? []).map((d) => `${d.project}/${d.stack}`).join(', ');
-      log.info(`  keeping ${id} — ${where} runs it`);
+      log.info(`  keeping ${id} — protected by deployment history for ${where}`);
     }
     if (result.doomed.length === 0) {
       log.info(`${result.kept} release(s), keeping ${keep} — nothing to remove.`);

@@ -17,7 +17,7 @@
  * These tests exercise the real filesystem, because the whole subject is what
  * the filesystem ends up holding.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -93,6 +93,38 @@ describe.runIf(process.platform !== 'win32')('files only the daemon may read', (
     expect(modeOf(file)).toBe(PRIVATE_FILE_MODE);
   });
 
+  it('reports an inability to establish private permissions', () => {
+    const file = path.join(tmpdir(), 'backup.sql');
+    fs.writeFileSync(file, 'private'); fs.chmodSync(file, 0o644);
+    const failure = Object.assign(new Error('Permission denied'), { code: 'EPERM' });
+    const chmod = vi.spyOn(fs, 'fchmodSync').mockImplementation(() => { throw failure; });
+    try { expect(() => sealFile(file)).toThrow(failure); }
+    finally { chmod.mockRestore(); }
+    expect(modeOf(file)).toBe(0o644);
+  });
+
+  it('does not follow file or directory links while sealing storage', () => {
+    const dir = tmpdir(), target = path.join(dir, 'outside.sql'), link = path.join(dir, 'backup.sql');
+    fs.writeFileSync(target, 'private'); fs.chmodSync(target, 0o644); fs.symlinkSync(target, link);
+    expect(() => sealFile(link)).toThrow();
+    expect(modeOf(target)).toBe(0o644);
+    const realDir = path.join(dir, 'real'); fs.mkdirSync(realDir); fs.chmodSync(realDir, 0o755);
+    const linkedDir = path.join(dir, 'linked'); fs.symlinkSync(realDir, linkedDir);
+    expect(() => ensurePrivateDir(linkedDir)).toThrow();
+    expect(modeOf(realDir)).toBe(0o755);
+  });
+
+  it('refuses to change permissions through an additional hard link', () => {
+    const dir = tmpdir(), original = path.join(dir, 'outside.sql'), alias = path.join(dir, 'backup.sql');
+    fs.writeFileSync(original, 'private'); fs.chmodSync(original, 0o644); fs.linkSync(original, alias);
+    expect(() => sealFile(alias)).toThrow('hard links');
+    expect(modeOf(original)).toBe(0o644);
+  });
+
+  it('reports a missing main file instead of treating it as a missing sidecar', () => {
+    expect(() => sealFile(path.join(tmpdir(), 'missing.db'))).toThrow();
+  });
+
   it('reaches backwards over what is already on disk, and counts it', () => {
     // A fix that only protects future backups protects nothing that matters:
     // the files written before it landed have been exposed the longest.
@@ -148,27 +180,22 @@ describe('the paths that produce these files seal them', () => {
     expect(src).toContain('sealDirContents(this.backupDir)');
   });
 
-  it('application log files are created private', () => {
-    // Not speculative: `main`'s error.log on this host held a user's plaintext
-    // password, put there by netron's rejected-request path. That path is
-    // fixed, but a log holds whatever the application writes, so the mode has
-    // to stand on its own.
-    const src = read('../../src/monitoring/log-manager.ts');
-
-    expect(src).toContain("createWriteStream(filePath, { flags: 'a', encoding: 'utf-8', mode: PRIVATE_FILE_MODE })");
-    // The compressor's stream, asserted as text rather than on disk, because
-    // the property is about a WINDOW. `sealFile` chmods the finished file, so
-    // the end state is private however the stream was opened — which means a
-    // check on the resulting file cannot see this at all. What it would miss
-    // is a 50 MiB log sitting at the umask default for the seconds the
-    // pipeline runs. The test below covers the end state; this covers the
-    // interval, and neither covers the other.
-    expect(/createWriteStream\(\s*partialPath,\s*\{[^}]*mode:\s*PRIVATE_FILE_MODE/.test(src),
-      'the compressor opens its file at the umask default').toBe(true);
-    expect(src, 'a rotation must not recreate the file at the umask default')
-      .toContain("fs.writeFileSync(basePath, '', { encoding: 'utf-8', mode: PRIVATE_FILE_MODE })");
-    // Every directory this manager makes goes through the same helper.
-    expect(/fs\.mkdirSync\([^)]*logs/.test(src), 'a log directory bypassed ensurePrivateDir').toBe(false);
+  it('application logs are private at creation, before the later seal', async () => {
+    const { LogManager } = await import('../../src/monitoring/log-manager.js');
+    const dir = tmpdir(), observed: number[] = [];
+    const append = fs.promises.appendFile.bind(fs.promises);
+    const spy = vi.spyOn(fs.promises, 'appendFile').mockImplementation(async (...args) => {
+      await append(...args);
+      if (typeof args[0] === 'string' && args[0].startsWith(dir)) observed.push(modeOf(args[0]));
+    });
+    const manager = new LogManager({ baseDir: dir, defaults: { maxSize: '1mb', maxFiles: 2, compress: false } }, undefined as never);
+    try {
+      manager.appendToFile('demo', 'private fixture');
+      await manager.dispose();
+      expect(observed).toEqual([PRIVATE_FILE_MODE]);
+      expect(modeOf(path.join(dir, 'logs'))).toBe(PRIVATE_DIR_MODE);
+      expect(modeOf(path.join(dir, 'logs', 'demo'))).toBe(PRIVATE_DIR_MODE);
+    } finally { spy.mockRestore(); await manager.dispose(); }
   });
 
   it('a rotated, compressed log is private on disk', async () => {

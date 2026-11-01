@@ -1,106 +1,64 @@
-/**
- * Files only the daemon's own user may read.
- *
- * Measured on a working host, 2026-09-12: `~/.omnitron/backups` was 0755 and
- * every one of its 493 files was 0644 — world-readable. Among them 40
- * `tor-keys` archives (the hidden service's ed25519 secret key: whoever holds
- * one can BE the .onion), 48 `main` dumps (every user row, password hash,
- * TOTP secret and PGP key), 48 `payments` dumps, and the live
- * `~/.omnitron/data/daemon-state.db`. Anyone with a shell account on that
- * machine could read all of it.
- *
- * The rule was already in the codebase a directory away: `config.json` is
- * written 0600 and `daemon.sock` is bound 0600. What was missing was applying
- * it to the files that matter most, and the reason is ordinary — those two are
- * written by `fs.writeFileSync`, which takes a mode, while a backup is
- * produced by `pg_dump > file`, `tar czf` or `sqlite3 .backup`, where the mode
- * comes from the process umask and nobody chose it.
- *
- * So the mode is applied AFTER creation, at the one place each kind of file is
- * finished, rather than hoped for from a umask the daemon does not control.
- *
- * Not encryption. A backup on this disk is still plaintext, and that is a
- * separate decision with a key-management question attached. This only stops
- * the other accounts on the host from reading it.
- */
+/** POSIX owner-only storage for backups, state and logs. Permission failures are fatal to the operation. */
 import fs from 'node:fs';
 import path from 'node:path';
 
-/** `rwx------` — the owner, and nobody else. */
 export const PRIVATE_DIR_MODE = 0o700;
-
-/** `rw-------`. */
 export const PRIVATE_FILE_MODE = 0o600;
-
-/** SQLite leaves these beside the database it opens; they hold the same data. */
 const SIDECAR_SUFFIXES = ['-shm', '-wal', '-journal'];
-
-/** POSIX modes mean nothing on Windows, and `chmod` there is a partial lie. */
+// Windows deployments need equivalent OS ACLs; POSIX chmod cannot establish them.
 const CAN_CHMOD = process.platform !== 'win32';
 
-/**
- * Create `dir` if missing, and make sure it is 0700 either way.
- *
- * `mkdirSync(dir, { mode })` applies the mode only to directories it actually
- * creates, so on every host where the directory already exists — which is
- * every host that has run the daemon before — passing a mode alone changes
- * nothing. That is why the chmod is unconditional.
- */
+function missing(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException)?.code === 'ENOENT';
+}
+
+/** Validate and chmod the same opened inode, without following a substituted leaf link. */
+function sealPath(filename: string, directory: boolean, optional = false): boolean {
+  let fd: number;
+  try {
+    fd = fs.openSync(filename, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK |
+      (directory ? fs.constants.O_DIRECTORY : 0));
+  } catch (error) {
+    if (optional && missing(error)) return false;
+    throw error;
+  }
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!(directory ? stat.isDirectory() : stat.isFile()) || stat.uid !== process.getuid?.())
+      throw new Error(`Private storage must be ${directory ? 'a directory' : 'a regular file'} owned by the daemon user: ${filename}`);
+    // Tightening one hard link changes every alias. Such a file is not isolated storage.
+    if (!directory && stat.nlink !== 1) throw new Error(`Private storage cannot have additional hard links: ${filename}`);
+    const mode = directory ? PRIVATE_DIR_MODE : PRIVATE_FILE_MODE;
+    const changed = (stat.mode & 0o777) !== mode;
+    if (changed) fs.fchmodSync(fd, mode);
+    if ((fs.fstatSync(fd).mode & 0o777) !== mode) throw new Error(`Private permissions could not be established: ${filename}`);
+    return changed;
+  } finally { fs.closeSync(fd); }
+}
+
 export function ensurePrivateDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true, mode: PRIVATE_DIR_MODE });
-  if (!CAN_CHMOD) return;
-  try {
-    fs.chmodSync(dir, PRIVATE_DIR_MODE);
-  } catch {
-    /* not ours to chmod — the caller still gets a usable directory */
-  }
+  if (CAN_CHMOD) sealPath(dir, true);
 }
 
-/**
- * Make one file owner-only, along with any SQLite sidecar beside it.
- *
- * Best-effort: a backup that exists and is readable by its owner beats one
- * that threw on the way to being tightened.
- */
+/** A missing SQLite sidecar is normal; a failed seal or missing main file is not. */
 export function sealFile(filepath: string): void {
   if (!CAN_CHMOD) return;
-  for (const suffix of ['', ...SIDECAR_SUFFIXES]) {
-    try {
-      fs.chmodSync(filepath + suffix, PRIVATE_FILE_MODE);
-    } catch {
-      /* missing sidecar, or not ours */
-    }
-  }
+  sealPath(filepath, false);
+  for (const suffix of SIDECAR_SUFFIXES) sealPath(filepath + suffix, false, true);
 }
 
-/**
- * Tighten everything already in `dir`, and report how much was loose.
- *
- * The fix has to reach backwards: files written before it landed are the ones
- * that have been sitting there longest. Returns the number of entries whose
- * mode this actually changed, so a boot can say so once and then stay quiet.
- */
+/** Repair existing regular files. Report failures instead of declaring unsafe files sealed. */
 export function sealDirContents(dir: string): number {
   if (!CAN_CHMOD) return 0;
+  let entries: fs.Dirent[];
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+  catch (error) { if (missing(error)) return 0; throw error; }
   let tightened = 0;
-  let entries: string[];
-  try {
-    entries = fs.readdirSync(dir);
-  } catch {
-    return 0;
-  }
   for (const entry of entries) {
-    const full = path.join(dir, entry);
-    try {
-      const stat = fs.lstatSync(full);
-      if (!stat.isFile()) continue;
-      // Only the group/other bits matter here; leave the owner's alone.
-      if ((stat.mode & 0o077) === 0) continue;
-      fs.chmodSync(full, PRIVATE_FILE_MODE);
-      tightened++;
-    } catch {
-      /* raced with a delete, or not ours */
-    }
+    if (entry.isSymbolicLink()) throw new Error(`Private storage contains a symbolic link: ${path.join(dir, entry.name)}`);
+    if (!entry.isFile()) continue;
+    if (sealPath(path.join(dir, entry.name), false, true)) tightened++;
   }
   return tightened;
 }

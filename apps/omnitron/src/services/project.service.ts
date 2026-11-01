@@ -70,7 +70,7 @@ import type {
   AppStatus,
   OmnitronAppConfig,
 } from '../config/types.js';
-import type { InfrastructureConfig, PostgresDatabaseConfig } from '../infrastructure/types.js';
+import type { InfrastructureConfig, IServiceRequirement, PostgresDatabaseConfig } from '../infrastructure/types.js';
 import type {
   IProjectInfo,
   IStackInfo,
@@ -3157,15 +3157,12 @@ export class ProjectService extends EventEmitter {
       }
     }
 
-    // 2b. Run database migrations for apps that have migrate: true
-    if (effectiveInfra && project) {
-      await this.runStackMigrations(projectName, stackName, effectiveInfra as InfrastructureConfig, appEntries, project.path);
-    }
-
-    // 3. How each app is started: its entry, built from the stack's resolved
-    //    configuration (`stackEntryBuilder` — the same builder a re-read of
-    //    the project uses to redefine running apps).
+    // Resolve once for both migrations and application startup. Inferred service
+    // requirements are not permission to connect to a database or run migrations.
     const appConfigBuilder = this.stackEntryBuilder(projectName, stackName, stackConfig, ecosystemConfig, appDefinitions, stackEnv);
+    if (effectiveInfra && project) {
+      await this.runStackMigrations(projectName, stackName, this.infraManager.getNormalizedServices(projectName, stackName) ?? {}, appEntries, project.path, appConfigBuilder);
+    }
 
     // 4. Start apps in dependency-aware parallel batches.
     //
@@ -4304,53 +4301,59 @@ export class ProjectService extends EventEmitter {
    * created but before apps are started, so apps always see a current schema.
    *
    * Convention: each app's migration script is at `apps/{appName}/src/database/migrate.ts`.
-   * The script reads DATABASE_URL or app-specific env vars and defaults to
-   * localhost:{port}/{dbName} with postgres:postgres — matching the stack's provisioned postgres.
+   * The script receives the same resolved DATABASE_URL and environment as its app.
+   * Normalized presets are the authority for opt-in, including legacy sugar.
    */
   private async runStackMigrations(
     projectName: string,
     stackName: string,
-    infraConfig: InfrastructureConfig,
-    appEntries: { name: string }[],
+    services: Readonly<Record<string, IServiceRequirement>>,
+    appEntries: IEcosystemAppEntry[],
     projectPath: string,
+    resolveEntry: (entry: IEcosystemAppEntry) => IEcosystemAppEntry,
   ): Promise<void> {
-    const pgConfig = infraConfig.postgres;
-    if (!pgConfig?.databases) return;
-
-    const appNames = new Set(appEntries.map((a) => a.name));
-    const port = pgConfig.port ?? 5432;
-    const user = pgConfig.user ?? 'postgres';
-    const password = typeof pgConfig.password === 'string' ? pgConfig.password : 'postgres';
-
-    // Wait for postgres to actually accept connections before running ANY
-    // migrations. Containers can be reported "running" by Docker before
-    // pg_isready would pass, especially right after a fresh provision. Without
-    // this we hit ECONNREFUSED on the first migration and fail-fast bubbles
-    // into the user's face.
-    //
-    // Three minutes, not one. A minute fits a container that already has its
-    // data directory; it does not fit a cold one, which has to initdb and
-    // install extensions before it listens — and on a loaded machine that is
-    // several minutes. When the wait gives up the whole `stack start` aborts
-    // and no app is started at all, so a deadline set for the warm case turns
-    // a slow first boot into a stack that will not come up.
-    await waitForPostgres('localhost', port, user, password, 180_000);
-
-    for (const [dbName, dbConfig] of Object.entries(pgConfig.databases)) {
-      // Only run if migrate flag is set AND a matching app exists
-      if (!dbConfig || typeof dbConfig !== 'object' || !(dbConfig as any).migrate) continue;
-      if (!appNames.has(dbName)) continue;
-
-      const migrateScript = path.join(projectPath, 'apps', dbName, 'src', 'database', 'migrate.ts');
-      try {
-        await fs.promises.access(migrateScript);
-      } catch {
-        this.logger.debug(
-          { app: dbName, script: migrateScript },
-          'Migration script not found — skipping',
-        );
-        continue;
+    const requested = new Set<string>();
+    for (const service of Object.values(services)) {
+      if (service._preset !== 'postgres') continue;
+      const databases = service._presetConfig?.['databases'];
+      if (!databases || typeof databases !== 'object' || Array.isArray(databases)) continue;
+      for (const [name, config] of Object.entries(databases)) {
+        if (config && typeof config === 'object' && 'migrate' in config && config.migrate === true) requested.add(name);
       }
+    }
+    if (!requested.size) return;
+
+    // Resolve and validate every target before performing any database operation.
+    // Use the same environment as the application, including named services,
+    // allocated host ports, vault values and explicit per-app overrides.
+    const targets = [];
+    for (const dbName of requested) {
+      const entry = appEntries.find(app => app.name === dbName);
+      if (!entry) throw new Error(`Migration requested for ${dbName}, but this stack has no matching application`);
+      const migrateScript = path.join(projectPath, 'apps', dbName, 'src', 'database', 'migrate.ts');
+      try { await fs.promises.access(migrateScript); }
+      catch { throw new Error(`Migration requested for ${projectName}/${stackName}/${dbName}, but its migration script is unavailable`); }
+      const env = resolveEntry(entry).env;
+      const connectionString = env?.['DATABASE_URL'];
+      let url: URL, user: string, password: string;
+      try {
+        if (typeof connectionString !== 'string' || !connectionString) throw new Error();
+        url = new URL(connectionString);
+        if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname ||
+            decodeURIComponent(url.pathname.slice(1)) !== dbName) throw new Error();
+        user = decodeURIComponent(url.username);
+        password = decodeURIComponent(url.password);
+      } catch {
+        throw new Error(`Migration for ${projectName}/${stackName}/${dbName} requires its resolved PostgreSQL DATABASE_URL targeting ${dbName}`);
+      }
+      targets.push({ dbName, migrateScript, env, connectionString: connectionString as string, url, user, password });
+    }
+
+    for (const { dbName, migrateScript, env, connectionString, url, user, password } of targets) {
+      const host = url.hostname.replace(/^\[|\]$/g, '');
+      const port = Number(url.port || 5432);
+      this.logger.info({ project: projectName, stack: stackName, database: dbName, host, port }, 'Waiting for migration database');
+      await waitForPostgres(host, port, user, password, 180_000, connectionString);
 
       this.logger.info(
         { project: projectName, stack: stackName, database: dbName },
@@ -4382,9 +4385,10 @@ export class ProjectService extends EventEmitter {
               cwd: path.join(projectPath, 'apps', dbName),
               env: {
                 ...process.env,
-                DATABASE_URL: `postgresql://${user}:${password}@localhost:${port}/${dbName}`,
+                ...env,
+                DATABASE_URL: connectionString,
                 // App-specific env vars (various naming conventions)
-                [`${dbName.toUpperCase()}__DATABASE__HOST`]: 'localhost',
+                [`${dbName.toUpperCase()}__DATABASE__HOST`]: host,
                 [`${dbName.toUpperCase()}__DATABASE__PORT`]: String(port),
                 [`${dbName.toUpperCase()}__DATABASE__DATABASE`]: dbName,
                 [`${dbName.toUpperCase()}__DATABASE__USER`]: user,
@@ -4414,7 +4418,7 @@ export class ProjectService extends EventEmitter {
           if (!transient || attempt >= maxAttempts) {
             this.logger.error(
               { database: dbName, attempt, error: err.message, stderr },
-              'Migration failed — app may fail to start',
+              'Migration failed — stack startup refused',
             );
             break;
           }
@@ -4427,8 +4431,7 @@ export class ProjectService extends EventEmitter {
         }
       }
       if (lastErr) {
-        // Already logged above; intentionally do NOT throw here so other
-        // databases can still attempt their migrations.
+        throw new Error(`Migration failed for ${projectName}/${stackName}/${dbName}; stack startup refused`, { cause: lastErr });
       }
     }
   }

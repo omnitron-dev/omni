@@ -26,14 +26,22 @@ import { performance } from 'node:perf_hooks';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 // The database is not what is judged here.
-vi.mock('../../src/services/wait-for-postgres.js', () => ({ waitForPostgres: async () => {} }));
+const { probe } = vi.hoisted(() => ({ probe: vi.fn(async (..._args: unknown[]) => {}) }));
+vi.mock('../../src/services/wait-for-postgres.js', () => ({ waitForPostgres: probe }));
 
 import { ProjectService } from '../../src/services/project.service.js';
+import { normalizeInfraConfig } from '../../src/infrastructure/config-normalizer.js';
+import { createDefaultRegistry } from '../../src/infrastructure/presets/index.js';
+import { StackInfrastructureManager } from '../../src/infrastructure/stack-infra-manager.js';
+import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
+import type { InfrastructureConfig } from '../../src/infrastructure/types.js';
 
 const REPO = path.resolve(import.meta.dirname, '../../../..');
 
 const cleanup: string[] = [];
 afterEach(() => {
+  probe.mockClear();
+  vi.restoreAllMocks();
   for (const dir of cleanup.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -58,15 +66,16 @@ function service() {
   const logger: any = { info: at('info'), warn: at('warn'), error: at('error'), debug: at('debug'), trace() {}, fatal() {}, child: () => logger };
   const stateStore: any = { selectProjectsSync: () => [], kvGetSync: () => null, save() {}, load: () => null, get: () => null, set() {} };
   const svc: any = new ProjectService(logger, { list: () => [], listHandleNames: () => [] } as never, stateStore);
-  const migrate = (root: string) =>
+  const migrate = (root: string, infra: InfrastructureConfig = { postgres: { databases: { main: { migrate: true } } } }, env: Record<string, string> = { DATABASE_URL: "postgres://postgres:x@127.0.0.1:5544/main" }) =>
     svc.runStackMigrations(
       'sample',
       'dev',
-      { postgres: { port: 5432, user: 'postgres', password: 'x', databases: { main: { migrate: true } } } },
+      normalizeInfraConfig(infra, createDefaultRegistry()),
       [{ name: 'main' }],
       root,
+      (entry: { name: string }) => ({ ...entry, env }),
     ) as Promise<void>;
-  return { migrate, said };
+  return { migrate, said, svc };
 }
 
 describe('a master that stood still while it migrated', () => {
@@ -134,11 +143,108 @@ describe('a master that stood still while it migrated', () => {
     const root = project("process.stderr.write('ERROR: relation \"wallets\" does not exist\\n'); process.exit(1);\n");
     const { migrate, said } = service();
 
-    await migrate(root);
+    await expect(migrate(root)).rejects.toThrow('stack startup refused');
 
-    const failed = said.find((s) => s.msg === 'Migration failed — app may fail to start');
+    const failed = said.find((s) => s.msg === 'Migration failed — stack startup refused');
     expect(failed?.level).toBe('error');
     expect(failed?.fields['stderr']).toBe('ERROR: relation "wallets" does not exist');
     expect(said.some((s) => s.msg === 'Migrations applied')).toBe(false);
+  });
+  it('does not probe or execute when databases were only inferred', async () => {
+    const root = project("throw Error('must not execute');");
+    await service().migrate(root, { postgres: { databases: { main: {} } } });
+    expect(probe).not.toHaveBeenCalled();
+  });
+
+  it('honors an explicit named service and preserves the resolved application connection', async () => {
+    const url = 'postgresql://app%40user:p%2Fword@127.0.0.1:5544/main?sslmode=require';
+    const root = project(`
+      import assert from 'node:assert/strict';
+      assert.equal(process.env.DATABASE_URL, ${JSON.stringify(url)});
+      assert.equal(process.env.MAIN__DATABASE__PORT, '5544');
+      assert.equal(process.env.MAIN__DATABASE__PASSWORD, 'p/word');
+      assert.equal(process.env.APP_SETTING, 'kept');
+    `);
+    await service().migrate(root, { services: { database: { preset: 'postgres', config: { databases: { main: { migrate: true } } } } } }, { DATABASE_URL: url, APP_SETTING: 'kept' });
+    expect(probe).toHaveBeenCalledExactlyOnceWith('127.0.0.1', 5544, 'app@user', 'p/word', 180_000, url);
+  });
+
+  it('an explicit named service overrides legacy migration sugar, just as provisioning does', async () => {
+    const root = project("throw Error('must not execute');");
+    await service().migrate(root, { postgres: { databases: { main: { migrate: true } } }, services: { postgres: { preset: 'postgres', config: { databases: { main: {} } } } } });
+    expect(probe).not.toHaveBeenCalled();
+  });
+
+  it('refuses a missing requested script before probing any database', async () => {
+    const root = project('');
+    fs.unlinkSync(path.join(root, 'apps/main/src/database/migrate.ts'));
+    await expect(service().migrate(root)).rejects.toThrow('migration script is unavailable');
+    expect(probe).not.toHaveBeenCalled();
+  });
+
+  it('refuses absent or mismatched connections without echoing credentials', async () => {
+    const root = project('');
+    for (const env of [{}, { DATABASE_URL: 'postgres://user:secret@localhost:5432/other' }]) {
+      const error = await service().migrate(root, undefined, env).catch((error: Error) => error);
+      expect(error).toBeInstanceOf(Error);
+      expect(error.message).toContain('requires its resolved PostgreSQL DATABASE_URL');
+      expect(error.message).not.toContain('secret');
+    }
+    expect(probe).not.toHaveBeenCalled();
+  });
+
+});
+
+/** Exercise inference, normalization, port allocation and the real app builder together.
+ * Only Docker provisioning, bootstrap loading and process creation are substituted.
+ */
+describe('local stack migration admission', () => {
+  function stack(root: string, migrate: boolean) {
+    const { svc } = service();
+    const startApp = vi.fn(async (..._args: unknown[]) => {});
+    const manager = new StackInfrastructureManager(svc.logger);
+    svc.infraManager = manager;
+    svc.registry = { get: () => ({ name: 'sample', path: root }) };
+    svc.stackStates = new Map([['sample/dev', {}]]);
+    svc.orchestrator = { startApp };
+    svc.stackEnvFor = async () => ({});
+    svc.loadAppDefinitions = async () => new Map([['main', { omnitronConfig: { database: true } }]]);
+    vi.spyOn(InfrastructureService.prototype, 'provision').mockResolvedValue(undefined);
+    vi.spyOn(InfrastructureService.prototype, 'getState').mockImplementation(function (this: InfrastructureService) {
+      return { services: Object.fromEntries(this.getDesiredServices().map(service => [service.name, {
+        name: service.name, status: 'running', health: 'healthy',
+      }])) } as never;
+    });
+    const configuration = {
+      type: 'local', apps: 'all', settings: { portOffsets: { postgres: 112 } }, infrastructure: { services: {
+        postgres: { preset: 'postgres', docker: { portMappings: { main: 5544 } }, config: { databases: { main: migrate ? { migrate: true } : {} } } },
+      } },
+    };
+    return { startApp, manager, start: () => svc.startLocalStack('sample', 'dev', configuration, {
+      apps: [{ name: 'main', bootstrap: 'apps/main/bootstrap.ts' }],
+    }) };
+  }
+
+  it('starts an inferred database consumer without a migration connection, using the allocated service port', async () => {
+    const fixture = stack(project("throw Error('not requested');"), false);
+    try {
+      await fixture.start();
+      expect(probe).not.toHaveBeenCalled();
+      expect(fixture.startApp).toHaveBeenCalledTimes(1);
+      const entry = fixture.startApp.mock.calls[0]![0] as unknown as { env: Record<string, string> };
+      const connection = new URL(entry.env.DATABASE_URL!);
+      expect(connection.port).toBe('5544');
+      expect(connection.pathname).toBe('/main');
+    } finally { fixture.manager.dispose(); }
+  });
+
+  it('refuses application creation if an explicitly requested migration fails', async () => {
+    const fixture = stack(project("throw Error('fixture schema refusal');"), true);
+    try {
+      await expect(fixture.start()).rejects.toThrow('stack startup refused');
+      expect(probe).toHaveBeenCalledTimes(1);
+      expect(probe.mock.calls[0]?.[1]).toBe(5544);
+      expect(fixture.startApp).not.toHaveBeenCalled();
+    } finally { fixture.manager.dispose(); }
   });
 });

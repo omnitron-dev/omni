@@ -31,10 +31,11 @@ export async function waitForPostgres(
   user: string,
   password: string,
   timeoutMs: number,
+  connectionString?: string,
 ): Promise<void> {
   const startedAt = Date.now();
   const deadline = startedAt + timeoutMs;
-  const { Client } = await import('pg').catch(() => ({ Client: null as unknown as null }));
+  const { Client } = await import('pg');
 
   const failure = (kind: string, lastError: Error | null): Error => {
     const waited = Math.round((Date.now() - startedAt) / 1000);
@@ -47,32 +48,11 @@ export async function waitForPostgres(
 
   let lastError: Error | null = null;
 
-  if (!Client) {
-    // `pg` unavailable in this build — fall back to a TCP connect probe.
-    const net = await import('node:net');
-    while (Date.now() < deadline) {
-      const ok = await new Promise<boolean>((resolve) => {
-        const sock = net.createConnection({ host, port }, () => {
-          sock.end();
-          resolve(true);
-        });
-        sock.once('error', (err) => {
-          lastError = err as Error;
-          resolve(false);
-        });
-        sock.setTimeout(2_000, () => {
-          sock.destroy();
-          resolve(false);
-        });
-      });
-      if (ok) return;
-      await new Promise((r) => setTimeout(r, 500));
-    }
-    throw failure('was not reachable', lastError);
-  }
-
   while (Date.now() < deadline) {
-    const client = new Client({ host, port, user, password, database: 'postgres', connectionTimeoutMillis: 2_000 });
+    const attemptBudget = Math.max(1, Math.min(2_000, deadline - Date.now()));
+    const client = new Client({ host, port, user, password, database: 'postgres',
+      ...(connectionString ? { connectionString } : {}),
+      connectionTimeoutMillis: attemptBudget, query_timeout: attemptBudget });
     try {
       await client.connect();
       await client.query('SELECT 1');
@@ -81,7 +61,12 @@ export async function waitForPostgres(
     } catch (err) {
       lastError = err as Error;
       await client.end().catch(() => {});
-      await new Promise((r) => setTimeout(r, 500));
+      // Authentication, authorization and missing databases need an operator, not retries.
+      if (['28P01', '28000', '3D000', '42501'].includes((err as { code?: string }).code ?? '')) {
+        throw failure('rejected the migration connection', lastError);
+      }
+      const remaining = deadline - Date.now();
+      if (remaining > 0) await new Promise((r) => setTimeout(r, Math.min(500, remaining)));
     }
   }
   throw failure('did not become ready', lastError);

@@ -39,40 +39,23 @@ describe('waitForPostgres', () => {
     expect(elapsed).toBeLessThan(3500);
   }, 5000);
 
-  it('returns once a TCP listener accepts the connection', async () => {
-    // Spin up an in-process TCP server that accepts connections, then call
-    // waitForPostgres against its port. The pg.Client.connect() handshake will
-    // fail (no real Postgres), but the test's `pg` import is best-effort:
-    // when it fails, the helper falls back to a TCP probe which succeeds here.
-    //
-    // To force the TCP-only branch deterministically we delete the cached
-    // 'pg' module first (best effort) and rely on the catch in the dynamic
-    // import. If pg IS available, the test still passes because
-    // client.connect() will produce a fast error and the loop exits with
-    // a "did not become ready" eventually — we then verify the timeout
-    // message is structured.
-    const server = net.createServer();
-    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  it('does not treat an accepting TCP socket as a ready database', async () => {
+    const sockets = new Set<net.Socket>();
+    const server = net.createServer(socket => {
+      sockets.add(socket);
+      socket.on('close', () => sockets.delete(socket));
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
     const port = (server.address() as net.AddressInfo).port;
-
-    // Best-effort: this only matters when pg IS available. We give the
-    // connection helper enough headroom to either succeed (no-pg path) or
-    // bail quickly (pg path with bogus auth).
-    let result: { ok: boolean; err?: any } = { ok: false };
     try {
-      await waitForPostgres('127.0.0.1', port, 'postgres', 'x', 800);
-      result = { ok: true };
-    } catch (e) {
-      result = { ok: false, err: e };
-    }
-    server.close();
-
-    if (result.ok) {
-      // TCP-only fallback path: immediate success
-      expect(result.ok).toBe(true);
-    } else {
-      // pg path: should be the structured timeout, not a stray exception.
-      expect(result.err.message).toMatch(/Postgres at .* did not become ready/);
+      await expect(waitForPostgres('127.0.0.1', port, 'postgres', 'x', 800))
+        .rejects.toThrow(/Postgres at .* did not become ready/);
+    } finally {
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>(resolve => server.close(() => resolve()));
     }
   }, 5000);
 });

@@ -14,6 +14,7 @@ export class BackendRecoveryMonitor {
   private readonly detach: () => void;
   private readonly startedAt = new Date().toISOString();
   private timer: NodeJS.Timeout | null = null;
+  private busyRetry: NodeJS.Timeout | null = null;
   private capturing = false;
   private closed = false;
   private lastRecord: string | null = null;
@@ -42,7 +43,7 @@ export class BackendRecoveryMonitor {
     this.timer.unref();
   }
 
-  async capture(): Promise<void> {
+  async capture(retryBusy = true): Promise<void> {
     if (this.closed || this.capturing) return;
     const token = recoveryState.token();
     if (token === null) return;
@@ -72,7 +73,19 @@ export class BackendRecoveryMonitor {
     } catch (error) {
       if (!this.closed) {
         this.state = { ...this.state, status: error instanceof RecoveryBusyError ? 'pending' : 'unavailable', reason: error instanceof Error ? error.message : String(error) };
-        if (error instanceof RecoveryBusyError) return;
+        if (error instanceof RecoveryBusyError) {
+          // Sampling drains and this monitor can share a five-second period.
+          // One offset retry avoids repeatedly observing the same brief mutation,
+          // without polling a genuinely busy owner continuously or relaxing its fence.
+          if (retryBusy && !this.busyRetry) {
+            this.busyRetry = setTimeout(() => {
+              this.busyRetry = null;
+              void this.capture(false);
+            }, 250);
+            this.busyRetry.unref();
+          }
+          return;
+        }
         runtimeDiagnostics.record({ id: 'execution.recovery-checkpoint', severity: 'warning',
           title: 'A current automatic backend recovery checkpoint is unavailable', evidence: [this.state.reason!],
           remedy: 'Inspect ownership operations and the private recovery journal. Applications remain with their execution owner.' });
@@ -84,6 +97,8 @@ export class BackendRecoveryMonitor {
     this.closed = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    if (this.busyRetry) clearTimeout(this.busyRetry);
+    this.busyRetry = null;
     if (invalidate) this.journal.invalidate('Explicit application shutdown or backend replacement');
     this.detach();
     await this.journal.close();

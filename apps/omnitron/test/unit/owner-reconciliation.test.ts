@@ -47,4 +47,13 @@ describe('explicit execution-owner crash reconciliation', () => {
     evidence.groups[0].push(20);
     expect(() => assertOwnerReconciliationEvidence(plan, evidence, 30)).toThrow('cgroup');
   });
+  it('requires both predecessor and failed-start owner identities to be gone on recovery retry', () => {
+    const retry = { ...plan, ownerPid: 40, journalOwnerPid: 10, processes: [...plan.processes, { pid: 40, lifetime: 'boot-a:400' }] };
+    const evidence = stopped(); evidence.processes.push({ pid: 40, lifetime: 'boot-a:400' });
+    expect(() => assertOwnerReconciliationEvidence(retry, evidence)).toThrow('40');
+    evidence.processes[2]!.lifetime = null;
+    expect(() => assertOwnerReconciliationEvidence(retry, evidence)).not.toThrow();
+    evidence.processes[0]!.lifetime = 'boot-a:100';
+    expect(() => assertOwnerReconciliationEvidence(retry, evidence)).toThrow('10');
+  });
 });

@@ -13,10 +13,10 @@ interface CrashReceipt { bootId: string; clean: false; pid: number }
 export interface OwnerReconciliationPlan {
   protocol: 1; id: string; createdAt: string; bootId: string;
   instanceHome: string; directory: string; binding: string;
-  ownerId: string; ownerPid: number; crashReceipt: CrashReceipt; receiptDigest: string; journalDigest: string;
+  ownerId: string; ownerPid: number; journalOwnerPid: number; crashReceipt: CrashReceipt; receiptDigest: string; journalDigest: string;
   processes: ProcessIdentity[];
 }
-interface Acknowledgment { protocol: 1; plan: OwnerReconciliationPlan; acknowledgedAt: string; consumedBy?: ProcessIdentity; consumedAt?: string }
+interface Acknowledgment { protocol: 1; attemptId: string; plan: OwnerReconciliationPlan; acknowledgedAt: string; consumedBy?: ProcessIdentity; consumedAt?: string }
 interface NativeEvidence {
   bootId: string; units: Array<{ mainPid: number; state: string }>;
   groups: number[][]; processes: Array<{ pid: number; lifetime: string | null; unknown?: boolean }>;
@@ -100,8 +100,8 @@ async function records(config: ManagedRuntime): Promise<{ receipt: CrashReceipt;
   const receipt = await readPrivateRecord<CrashReceipt>(receiptFile(config));
   const journal = await new ExecutionJournal(path.join(config.directory, 'controller.json')).read();
   if (!receipt || receipt.clean !== false || !Number.isSafeInteger(receipt.pid) || receipt.pid < 1 ||
-    typeof receipt.bootId !== 'string' || !journal || journal.owner.pid !== receipt.pid)
-    throw new Error('A matching unclean owner receipt and controller journal are required');
+    typeof receipt.bootId !== 'string' || !journal)
+    throw new Error('An unclean owner receipt and controller journal are required');
   return { receipt, journal };
 }
 
@@ -111,23 +111,28 @@ export async function prepareOwnerReconciliation(config: ManagedRuntime, recorde
   if (!recordedWorkerPids.length || recordedWorkerPids.length > 4096 || recordedWorkerPids.some(pid => !Number.isSafeInteger(pid) || pid < 1))
     throw new Error('Provide the recorded pre-crash worker PIDs; an empty inventory cannot certify recovery');
   const { receipt, journal } = await records(config);
-  const first = await nativeEvidence(config, [receipt.pid]);
-  if (first.bootId !== receipt.bootId || first.processes[0]!.lifetime || first.processes[0]!.unknown || first.sockets.length)
-    throw new Error('The previous owner must be proven dead on this boot before planning recovery');
-  const pids = [...new Set([receipt.pid, ...recordedWorkerPids, ...first.groups.flat(), ...first.units.map(unit => unit.mainPid).filter(Boolean)])];
+  // A failed new startup can write its dirty receipt before the controller
+  // journal advances. Preserve and fence BOTH identities in that case.
+  const previousOwners = [...new Set([receipt.pid, journal.owner.pid])];
+  const first = await nativeEvidence(config, previousOwners);
+  if (first.bootId !== receipt.bootId || first.processes.some(item => item.lifetime || item.unknown) || first.sockets.length)
+    throw new Error('Every previous owner identity must be proven dead on this boot before planning recovery');
+  const pids = [...new Set([...previousOwners, ...recordedWorkerPids, ...first.groups.flat(), ...first.units.map(unit => unit.mainPid).filter(Boolean)])];
   const observed = await nativeEvidence(config, pids);
   if (observed.processes.some(item => item.unknown)) throw new Error('A recorded process identity could not be inspected');
   return { protocol: 1, id: randomUUID(), createdAt: new Date().toISOString(), bootId: observed.bootId,
     instanceHome: config.instanceHome, directory: config.directory, binding: binding(config),
-    ownerId: journal.owner.id, ownerPid: receipt.pid, crashReceipt: receipt, receiptDigest: digest(receipt), journalDigest: digest(journal),
+    ownerId: journal.owner.id, ownerPid: receipt.pid, journalOwnerPid: journal.owner.pid, crashReceipt: receipt, receiptDigest: digest(receipt), journalDigest: digest(journal),
     processes: observed.processes.map(({ pid, lifetime }) => ({ pid, lifetime })) };
 }
 
 function validatePlan(plan: OwnerReconciliationPlan, config: ManagedRuntime): void {
   if (plan?.protocol !== 1 || !/^[a-f0-9-]{36}$/.test(plan.id) || !Number.isFinite(Date.parse(plan.createdAt)) || plan.instanceHome !== config.instanceHome ||
     plan.directory !== config.directory || plan.binding !== binding(config) || !plan.ownerId ||
-    !Number.isSafeInteger(plan.ownerPid) || plan.ownerPid < 1 || !Array.isArray(plan.processes) || !plan.processes.length ||
-    plan.processes.length > 8192 || new Set(plan.processes.map(item => item.pid)).size !== plan.processes.length || !plan.processes.some(item => item.pid === plan.ownerPid) ||
+    !Number.isSafeInteger(plan.ownerPid) || plan.ownerPid < 1 || !Number.isSafeInteger(plan.journalOwnerPid) || plan.journalOwnerPid < 1 ||
+    !Array.isArray(plan.processes) || !plan.processes.length ||
+    plan.processes.length > 8192 || new Set(plan.processes.map(item => item.pid)).size !== plan.processes.length ||
+    ![plan.ownerPid, plan.journalOwnerPid].every(pid => plan.processes.some(item => item.pid === pid)) ||
     plan.processes.some(item => !Number.isSafeInteger(item.pid) || item.pid < 1 || (item.lifetime !== null && typeof item.lifetime !== 'string')) ||
     digest(plan.crashReceipt) !== plan.receiptDigest || !/^[a-f0-9]{64}$/.test(plan.journalDigest) ||
     plan.crashReceipt.bootId !== plan.bootId || plan.crashReceipt.clean !== false || plan.crashReceipt.pid !== plan.ownerPid)
@@ -149,8 +154,9 @@ export async function acknowledgeOwnerReconciliation(config: ManagedRuntime, pla
       await fs.unlink(socket);
     }
     assertOwnerReconciliationEvidence(plan, await nativeEvidence(config, plan.processes.map(item => item.pid)));
-    const archive = path.join(config.directory, 'owner-reconciliations', plan.id + '.json');
-    const acknowledgment: Acknowledgment = { protocol: 1, plan, acknowledgedAt: new Date().toISOString() };
+    const attemptId = randomUUID();
+    const archive = path.join(config.directory, 'owner-reconciliations', plan.id + '.' + attemptId + '.json');
+    const acknowledgment: Acknowledgment = { protocol: 1, attemptId, plan, acknowledgedAt: new Date().toISOString() };
     await writePrivateRecord(archive, acknowledgment);
     await writePrivateRecord(acknowledgmentFile(config), acknowledgment);
     return archive;
@@ -161,7 +167,8 @@ export async function acknowledgeOwnerReconciliation(config: ManagedRuntime, pla
 export async function consumeOwnerReconciliation(config: ManagedRuntime, previous: unknown, bootId: string): Promise<void> {
   requireSupported(config);
   const acknowledgment = await readPrivateRecord<Acknowledgment>(acknowledgmentFile(config));
-  if (!acknowledgment || acknowledgment.protocol !== 1 || acknowledgment.consumedBy) throw new Error('No unused explicit owner-crash reconciliation exists');
+  if (!acknowledgment || acknowledgment.protocol !== 1 || !/^[a-f0-9-]{36}$/.test(acknowledgment.attemptId) || acknowledgment.consumedBy)
+    throw new Error('No unused explicit owner-crash reconciliation exists');
   const { plan } = acknowledgment; validatePlan(plan, config);
   if (bootId !== plan.bootId || digest(previous) !== plan.receiptDigest ||
     digest(await new ExecutionJournal(path.join(config.directory, 'controller.json')).read()) !== plan.journalDigest)
@@ -184,7 +191,7 @@ export async function consumeOwnerReconciliation(config: ManagedRuntime, previou
   const life = readProcessLifetime(process.pid);
   if (life.state !== 'alive') throw new Error('The new owner process lifetime could not be verified');
   const consumed: Acknowledgment = { ...acknowledgment, consumedBy: { pid: process.pid, lifetime: life.identity }, consumedAt: new Date().toISOString() };
-  await writePrivateRecord(path.join(config.directory, 'owner-reconciliations', plan.id + '.consumed.json'), consumed);
+  await writePrivateRecord(path.join(config.directory, 'owner-reconciliations', plan.id + '.' + acknowledgment.attemptId + '.consumed.json'), consumed);
   await writePrivateRecord(acknowledgmentFile(config), consumed);
 }
 

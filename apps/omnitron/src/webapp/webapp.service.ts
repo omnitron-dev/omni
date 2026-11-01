@@ -81,13 +81,16 @@ http {
 
     # Only successful immutable responses may be retained. Caching a missing
     # lazy chunk pins a browser to its 404 even after a complete build is served.
+    # Re-evaluate after a filter changes 200 to an error (e.g. an invalid range).
     map $status $omnitron_hashed_asset_cache {
+        volatile;
         default "no-store";
         200 "public, max-age=31536000, immutable";
         206 "public, max-age=31536000, immutable";
         304 "public, max-age=31536000, immutable";
     }
     map $status $omnitron_asset_cache {
+        volatile;
         default "no-store";
         200 "public, max-age=3600, must-revalidate";
         206 "public, max-age=3600, must-revalidate";

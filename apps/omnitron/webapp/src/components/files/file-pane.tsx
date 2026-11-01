@@ -691,7 +691,12 @@ export function FilePane({
             '& td:first-of-type, & th:first-of-type': { px: 0 },
             '& .MuiCheckbox-root': { p: 0.75 },
             '& .MuiTableRow-root[data-cursor="true"]': { bgcolor: 'action.hover' },
-            '& .MuiTableRow-root:focus-visible, &:focus-visible': {
+            '&:focus-visible': {
+              outline: currentPath === null ? '2px solid' : 'none',
+              outlineColor: 'primary.main',
+              outlineOffset: -2,
+            },
+            '& .MuiTableRow-root:focus-visible, &:focus-visible .MuiTableRow-root[data-cursor="true"]': {
               outline: '2px solid',
               outlineColor: 'primary.main',
               outlineOffset: -2,

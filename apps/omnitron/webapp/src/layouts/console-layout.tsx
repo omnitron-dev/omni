@@ -34,7 +34,10 @@ import {
   TraceIcon,
   DashboardBuilderIcon,
   StacksIcon,
-  ServerIcon,
+  TerminalIcon,
+  TopologyIcon,
+  AccessIcon,
+  SystemInfoIcon,
   AuditIcon,
   LogoutIcon,
   ReleaseIcon,
@@ -91,8 +94,8 @@ function useNavData(): LayoutNavData {
           items: [
             { id: 'projects', title: 'Projects', path: '/projects', icon: <ProjectIcon /> },
             { id: 'nodes', title: 'Nodes', path: '/nodes', icon: <NodesIcon /> },
-            { id: 'topology', title: 'Topology', path: '/topology', icon: <NodesIcon /> },
-            { id: 'terminal', title: 'SSH workspace', path: '/terminal', icon: <ServerIcon /> },
+            { id: 'topology', title: 'Topology', path: '/topology', icon: <TopologyIcon /> },
+            { id: 'terminal', title: 'SSH workspace', path: '/terminal', icon: <TerminalIcon /> },
             { id: 'files', title: 'Files', path: '/files', icon: <FolderIcon /> },
             {
               id: 'pipelines',
@@ -116,8 +119,8 @@ function useNavData(): LayoutNavData {
           items: [
             { id: 'settings', title: 'Settings', path: '/settings', icon: <SettingsIcon /> },
             { id: 'audit', title: 'Audit', path: '/audit', icon: <AuditIcon /> },
-            { id: 'access', title: 'Access', path: '/access', icon: <SettingsIcon /> },
-            { id: 'system-info', title: 'System Info', path: '/system', icon: <ServerIcon /> },
+            { id: 'access', title: 'Access', path: '/access', icon: <AccessIcon /> },
+            { id: 'system-info', title: 'System Info', path: '/system', icon: <SystemInfoIcon /> },
           ],
         },
       ];
@@ -149,9 +152,9 @@ function useNavData(): LayoutNavData {
         items: [
           { id: 'stacks', title: 'Stacks', path: '/stacks', icon: <StacksIcon />, selectionPrefix: '/stacks' },
           { id: 'releases', title: 'Releases', path: '/releases', icon: <ReleaseIcon />, selectionPrefix: '/releases' },
-          { id: 'topology', title: 'Topology', path: '/topology', icon: <NodesIcon /> },
+          { id: 'topology', title: 'Topology', path: '/topology', icon: <TopologyIcon /> },
           { id: 'nodes', title: 'Nodes', path: '/nodes', icon: <NodesIcon /> },
-          { id: 'terminal', title: 'SSH workspace', path: '/terminal', icon: <ServerIcon /> },
+          { id: 'terminal', title: 'SSH workspace', path: '/terminal', icon: <TerminalIcon /> },
           { id: 'files', title: 'Files', path: '/files', icon: <FolderIcon /> },
           { id: 'containers', title: 'Containers', path: '/containers', icon: <ContainersIcon /> },
           { id: 'deployments', title: 'Deployments', path: '/deployments', icon: <DeployIcon /> },
@@ -176,8 +179,8 @@ function useNavData(): LayoutNavData {
           },
           { id: 'settings', title: 'Settings', path: '/settings', icon: <SettingsIcon /> },
           { id: 'audit', title: 'Audit', path: '/audit', icon: <AuditIcon /> },
-          { id: 'access', title: 'Access', path: '/access', icon: <SettingsIcon /> },
-          { id: 'system-info', title: 'System Info', path: '/system', icon: <ServerIcon /> },
+          { id: 'access', title: 'Access', path: '/access', icon: <AccessIcon /> },
+          { id: 'system-info', title: 'System Info', path: '/system', icon: <SystemInfoIcon /> },
         ],
       },
     ];

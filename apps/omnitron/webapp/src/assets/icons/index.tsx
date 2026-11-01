@@ -1,6 +1,8 @@
 import SvgIcon from '@mui/material/SvgIcon';
 import type { SvgIconProps } from '@mui/material/SvgIcon';
 
+export { AccessIcon, CopyFilesIcon, NewFolderIcon, ParentFolderIcon, SwitchPanelsIcon, SystemInfoIcon, TopologyIcon, UploadFileIcon } from './workspace-icons';
+
 /**
  * The console's icon set: hugeicons core-duotone-rounded, drawn as a filled
  * body behind stroke outlines — the same convention the portal uses, and the

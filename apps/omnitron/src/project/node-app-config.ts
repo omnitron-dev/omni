@@ -40,6 +40,8 @@ export interface NodeArtifact {
 
 export interface NodeConfigInput {
   project: string;
+  /** Source stack that owns this node allocation. */
+  sourceStack?: string;
   /** Artifact root on the node — `/opt/omnitron/artifacts`. */
   artifactRoot: string;
   apps: readonly IEcosystemAppEntry[];
@@ -192,7 +194,8 @@ export function renderNodeAppConfig(input: NodeConfigInput): string {
         // are: it supervises them itself. The stack that sent them is remote
         // from the master's side and this machine's own from here.
         stacks: {
-          [NODE_STACK]: { type: 'local', apps: apps.map((a) => a['name'] as string) },
+          [NODE_STACK]: { type: 'local', apps: apps.map((a) => a['name'] as string),
+            ...(input.sourceStack && { managedOrigin: { project: input.project, stack: input.sourceStack } }) },
         },
         ...(input.alertSink && { monitoring: { alertSink: input.alertSink } }),
       },

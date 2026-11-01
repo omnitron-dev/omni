@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { stackExecutionKey, type StackExecutionScope, type StackExecutionPlan, type StackExecutionStop, type StackExecutionReceipt } from '../shared/dto/stack-execution.js';
 import type { ProcessOutputContext } from '@omnitron-dev/titan-pm';
 /**
  * OrchestratorService — Core orchestration logic
@@ -835,6 +837,7 @@ export class OrchestratorService extends EventEmitter {
   }
 
   private async startAppInternal(entry: IEcosystemAppEntry, config?: IEcosystemConfig): Promise<AppHandle> {
+    this.assertAppStartAllowed(entry.name);
     // Persist ecosystem config for restartApp — stack mode passes config per-app,
     // but restartApp calls startApp without it.
     if (config && !this.config) {
@@ -910,8 +913,7 @@ export class OrchestratorService extends EventEmitter {
       // its services are still registered on the daemon's Netron. Dropping the
       // handle here is the last moment anything knows they exist — or that its
       // processes still run: an errored app's other children and its pools.
-      await this.releaseExposedServices(h);
-      await this.tearDownProcesses(h);
+      await this.tearDownApp(h);
       this.handles.delete(key);
       // Drop any metrics that were collected under the stale alias so it
       // doesn't haunt future snapshots as a ghost offline app.
@@ -931,8 +933,7 @@ export class OrchestratorService extends EventEmitter {
     // sample/test (2026-09-25) payments's crash restarts failed five times on
     // `EADDRINUSE :3004`, «held by … a child this daemon still accounts for».
     if (existing) {
-      await this.releaseExposedServices(existing);
-      await this.tearDownProcesses(existing);
+      await this.tearDownApp(existing);
     }
 
     const mode = entry.bootstrap ? 'bootstrap' : 'classic';
@@ -1053,15 +1054,108 @@ export class OrchestratorService extends EventEmitter {
    */
   private async releaseExposedServices(handle: AppHandle): Promise<void> {
     if (!handle.serviceRouter) return;
-    try {
-      await handle.serviceRouter.releaseAll();
-    } catch (err) {
-      this.logger.warn(
-        { app: handle.name, error: (err as Error).message },
-        'Releasing exposed services failed — the daemon may still advertise them',
-      );
-    }
+    await handle.serviceRouter.releaseAll();
     handle.serviceRouter = null;
+  }
+
+  private async tearDownApp(handle: AppHandle, force = false, timeout = 10_000): Promise<void> {
+    const failures: unknown[] = [];
+    try { await this.releaseExposedServices(handle); } catch (error) { failures.push(error); }
+    try { await this.tearDownProcesses(handle, force, timeout); } catch (error) { failures.push(error); }
+    if (failures.length) throw new AggregateError(failures,
+      `Application '${handle.name}' stop incomplete: ${failures.map(String).join('; ')}`);
+  }
+
+  private readonly stackStops = new Map<string, { id: string; fingerprint: string; promise: Promise<StackExecutionReceipt> }>();
+
+  /** The owner supplies generations; backend caches cannot establish stop authority. */
+  async inspectStackExecution(scope: StackExecutionScope): Promise<StackExecutionPlan> {
+    return this.stackExecutionPlan(scope);
+  }
+
+  private stackExecutionPlan(scope: StackExecutionScope): StackExecutionPlan {
+    const key = stackExecutionKey(scope);
+    const names = this.listHandleNames(`${key}/`).sort();
+    if (names.some(name => this.lifecycleQueue.isBusy(name)) ||
+        [...this.startingApps.keys()].some(name => name.startsWith(`${key}/`))) {
+      throw new Error(`Stack '${key}' has active application operations; retry after they finish`);
+    }
+    return { project: scope.project, stack: scope.stack, revision: this.stateStore.getStackIntent(scope).revision,
+      phase: this.stateStore.getStackIntent(scope).phase,
+      apps: names.map(name => ({ name, generation: this.handles.get(name)!.generation })) };
+  }
+
+  async enableStackExecution(scope: StackExecutionScope, options: { automatic?: boolean } = {}): Promise<void> {
+    const key = stackExecutionKey(scope);
+    if (this.stackStops.has(key)) throw new Error(`Stack '${key}' is still stopping`);
+    this.stateStore.updateStackIntent(scope, current => {
+      if (current.phase === 'stopping') throw new Error(`Stack '${key}' has an unconfirmed stop; complete it before starting`);
+      if (current.phase === 'running') return current;
+      if (options.automatic) throw new Error(`Stack '${key}' was deliberately stopped; an explicit stack start is required`);
+      if (current.revision === Number.MAX_SAFE_INTEGER) throw new Error('Stack execution revision exhausted');
+      return { revision: current.revision + 1, phase: 'running' };
+    });
+  }
+
+  stopStackExecution(request: StackExecutionStop): Promise<StackExecutionReceipt> {
+    const key = stackExecutionKey(request?.plan);
+    if (typeof request.operationId !== 'string' || !/^[a-f0-9-]{36}$/.test(request.operationId)) throw new Error('Invalid stop operation identity');
+    const fingerprint = createHash('sha256').update(JSON.stringify(request.plan)).digest('hex');
+    const running = this.stackStops.get(key);
+    if (running) {
+      if (running.id !== request.operationId || running.fingerprint !== fingerprint) throw new Error(`Stack '${key}' already has a stop in progress`);
+      return running.promise;
+    }
+    const promise = this.stopStackExecutionNow(request).finally(() => this.stackStops.delete(key));
+    this.stackStops.set(key, { id: request.operationId, fingerprint, promise });
+    return promise;
+  }
+
+  private async stopStackExecutionNow({ operationId, plan }: StackExecutionStop): Promise<StackExecutionReceipt> {
+    const key = stackExecutionKey(plan);
+    const fingerprint = createHash('sha256').update(JSON.stringify(plan)).digest('hex');
+    const prior = this.stateStore.getStackIntent(plan);
+    const retry = prior.operationId === operationId && prior.fingerprint === fingerprint;
+    if (prior.operationId === operationId && !retry) throw new Error('Stop operation identity was reused with different arguments');
+    if (!retry) {
+      const observed = this.stackExecutionPlan(plan);
+      if (JSON.stringify(observed) !== JSON.stringify(plan)) throw new Error(`Stack '${key}' changed; prepare a new stop`);
+    }
+    // A durable stop fence also covers crash recovery and file-watch restarts.
+    // No newly admitted start may pass it while this operation awaits exits.
+    const intent = this.stateStore.updateStackIntent(plan, current => {
+      if (current.operationId === operationId && current.fingerprint === fingerprint) return current;
+      if (current.revision !== plan.revision) throw new Error(`Stack '${key}' intent changed; prepare a new stop`);
+      if (current.revision === Number.MAX_SAFE_INTEGER) throw new Error('Stack execution revision exhausted');
+      return { revision: current.revision + 1, phase: 'stopping', operationId, fingerprint };
+    });
+    const failures: unknown[] = [];
+    for (const expected of [...plan.apps].reverse()) {
+      const handle = this.handles.get(expected.name);
+      if (!expected.name.startsWith(`${key}/`) || !handle || handle.generation !== expected.generation) {
+        failures.push(new Error(`Application '${expected.name}' changed generation; inspect before retrying`));
+        continue;
+      }
+      try { await this.stopApp(expected.name); } catch (error) { failures.push(error); }
+    }
+    const survivors = this.listHandleNames(`${key}/`).filter(name => this.handles.get(name)?.status !== 'stopped');
+    if (survivors.length) failures.push(new Error(`Exit unconfirmed for: ${survivors.join(', ')}`));
+    if (failures.length) throw new AggregateError(failures, `Stack '${key}' stop incomplete: ${failures.map(String).join('; ')}`);
+    this.stateStore.updateStackIntent(plan, current => {
+      if (current.revision !== intent.revision || current.operationId !== operationId) throw new Error('Stack stop authority changed');
+      return { ...current, phase: 'stopped' };
+    });
+    return { project: plan.project, stack: plan.stack, operationId, revision: intent.revision,
+      stopped: plan.apps.map(app => app.name), observedAt: new Date().toISOString() };
+  }
+
+  assertAppStartAllowed(name: string): void {
+    const parts = name.split('/');
+    if (parts.length !== 3) return;
+    const scope = { project: parts[0]!, stack: parts[1]! };
+    if (this.stateStore.getStackIntent(scope).phase !== 'running') {
+      throw new Error(`Stack '${stackExecutionKey(scope)}' is stopped or stopping; use stack start after confirming its stop`);
+    }
   }
 
   async stopApp(name: string, force = false, timeout = 10_000): Promise<void> {
@@ -1071,14 +1165,11 @@ export class OrchestratorService extends EventEmitter {
     this.clearCoolDown(canonical);
     return this.lifecycleQueue.enqueue(canonical, 'stop', async () => {
       const handle = this.handles.get(canonical);
-      if (!handle || handle.status === 'stopped') return;
+      if (!handle || (handle.status === 'stopped' && !handle.serviceRouter && !handle.supervisor && !handle.childProcess && handle.topologyPools.size === 0)) return;
 
       handle.markStopping();
 
-      // Unexpose topology services from daemon Netron before stopping processes
-      await this.releaseExposedServices(handle);
-
-      await this.tearDownProcesses(handle, force, timeout);
+      await this.tearDownApp(handle, force, timeout);
 
       handle.markStopped();
       this.persistState();
@@ -1485,6 +1576,9 @@ export class OrchestratorService extends EventEmitter {
       return this.restartApp(name);
     }
 
+    return this.lifecycleQueue.enqueue(name, 'restart', async () => {
+      this.assertAppStartAllowed(name);
+      if (this.handles.get(name) !== handle) throw new Error('Application changed while queued; retry the operation');
     this.logger.info({ app: name, children: childNames.length }, 'Zero-downtime reload starting');
 
     // For each child process, do a rolling restart via the supervisor.
@@ -1495,7 +1589,7 @@ export class OrchestratorService extends EventEmitter {
       this.logger.info({ app: name, child: childName }, 'Reloading child process');
 
       try {
-        await handle.supervisor.restartChild(childName);
+        await handle.supervisor!.restartChild(childName);
 
         // Wait for the new child to become healthy
         const health = await this.waitForChildHealth(handle, childName, 30_000);
@@ -1525,6 +1619,7 @@ export class OrchestratorService extends EventEmitter {
     this.logger.info({ app: name }, 'Zero-downtime reload complete');
     this.persistState();
     return handle;
+    });
   }
 
   /**
@@ -1573,11 +1668,25 @@ export class OrchestratorService extends EventEmitter {
 
     if (!handle.supervisor) throw new Error(`No supervisor for app: ${name}`);
 
+    return this.lifecycleQueue.enqueue(name, 'restart', async () => {
+      this.assertAppStartAllowed(name);
+      if (this.handles.get(name) !== handle) throw new Error('Application changed while queued; retry the operation');
     this.logger.info({ app: name, from: handle.instanceCount, to: instances }, 'Scaling app');
-    await handle.supervisor.scaleChild(name, instances);
+    await handle.supervisor!.scaleChild(name, instances);
     handle.instanceCount = instances;
     this.persistState();
     return handle;
+    });
+  }
+
+  async restartAppChild(name: string, child: string): Promise<void> {
+    const canonical = this.resolveAppName(name) ?? name;
+    await this.lifecycleQueue.enqueue(canonical, 'restart', async () => {
+      this.assertAppStartAllowed(canonical);
+      const supervisor = this.handles.get(canonical)?.supervisor;
+      if (!supervisor) throw new Error(`No supervisor for '${canonical}'`);
+      await supervisor.restartChild(child);
+    });
   }
 
   // ============================================================================

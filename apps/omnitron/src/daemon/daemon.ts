@@ -1050,6 +1050,8 @@ export class OmnitronDaemon {
     // Project + Stack management RPC service
     const projectService = await container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
     const projectRpcService = new ProjectRpcService(projectService, audit);
+    projectService.setHostedInfrastructure(() => this.infraService ?? undefined, scope => infraRpcService.drainStackProvisioning(scope));
+    infraRpcService.setStackOperationGate(scope => projectService.assertStackMutable(scope));
     await this.app.netron.peer.exposeService(projectRpcService);
 
     // Releases. Master-only, like the builds themselves: a release is built

@@ -101,5 +101,8 @@ describe('termination acknowledgements', () => {
     await stopping;
     expect(manager.kill).toHaveBeenCalledWith('late');
     expect(pool.getWorkerIds()).toEqual([]);
+    await expect((pool as any).spawnWorker()).rejects.toThrow('shutting down');
+    await expect(pool.scale(1)).rejects.toThrow('shutdown');
+    expect(manager.spawn).toHaveBeenCalledOnce();
   });
 });

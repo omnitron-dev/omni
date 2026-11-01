@@ -219,7 +219,8 @@ export class ProjectRegistry {
   }
 
   get(name: string): ISeedProject | null {
-    return this.projects.get(name) ?? null;
+    const project = this.projects.get(name);
+    return project ? this.refreshResumeIntent(project) : null;
   }
 
   list(): ISeedProject[] {
@@ -228,7 +229,17 @@ export class ProjectRegistry {
 
   /** Execution/recovery inventory, including imported configurations with their original identities. */
   listRegistrations(): ISeedProject[] {
-    return Array.from(this.projects.values());
+    return Array.from(this.projects.values(), project => this.refreshResumeIntent(project));
+  }
+
+  private refreshResumeIntent(project: ISeedProject): ISeedProject {
+    const value = this.store.kvGetSync<string[]>(ENABLED_STACKS_KV_KEY(project.name), { strict: true });
+    if (value !== null && (!Array.isArray(value) || value.some(stack => typeof stack !== 'string'))) {
+      throw new Error('Corrupt enabled-stack intent');
+    }
+    if (value === null) delete project.enabledStacks;
+    else project.enabledStacks = value;
+    return project;
   }
 
   registrations(project: string): ISeedProject[] {
@@ -344,26 +355,29 @@ export class ProjectRegistry {
     return path.join(PROJECTS_DIR, name);
   }
 
-  /**
-   * Persist the cache to SQLite. Pre-fix this serialised the entire
-   * registry to JSON and overwrote the file; now it's a no-op
-   * because each mutation already writes through. Kept on the API
-   * so external callers (ProjectService.updateProject) compile
-   * unchanged.
-   */
+  /** Persist one stack's resume intent before acknowledging or changing runtime. */
+  setStackEnabled(projectName: string, stackName: string, enabled: boolean): void {
+    const project = this.get(projectName);
+    if (!project) throw new Error(`Project '${projectName}' not found`);
+    const next = this.store.kvUpdateSync<string[]>(ENABLED_STACKS_KV_KEY(projectName), current => {
+      if (this.cachedRevision !== this.catalogRevision()) throw new Error('Project catalogue changed; reload before changing stack intent');
+      if (current !== null && (!Array.isArray(current) || current.some(value => typeof value !== 'string'))) {
+        throw new Error('Corrupt enabled-stack intent');
+      }
+      const stacks = new Set(current ?? []);
+      if (enabled) stacks.add(stackName); else stacks.delete(stackName);
+      return [...stacks].sort();
+    });
+    project.enabledStacks = next;
+  }
+
   persist(): void {
     if (this.cachedRevision !== this.catalogRevision()) throw new Error('Project catalogue changed; reload before persisting runtime state');
     // Mutations to name/path already wrote through; touch last_seen on
     // every project so an external "I'm still here" ping is cheap to
     // record without restructuring callers.
-    //
-    // `enabledStacks` however lives ONLY on the in-memory object between
-    // persist() calls (ProjectService.updateEnabledStacks mutates it and
-    // calls us) — so write it through here too. Before this, the field
-    // was silently dropped (the kv write existed only in the legacy-JSON
-    // migration), enabled-stacks never survived a daemon restart, and the
-    // boot-time stack auto-resume in daemon.startApps() always saw an
-    // empty list — apps stayed down after every daemon crash.
+    // Resume intent has its own atomic write-through API. An older cache
+    // must never resurrect a stack another controller has already stopped.
     for (const project of this.projects.values()) {
       if (!project.configuration) this.store.upsertProjectSync({
         name: project.name,
@@ -371,11 +385,6 @@ export class ProjectRegistry {
         added_at: project.registeredAt,
         last_seen: new Date().toISOString(),
       });
-      if (project.enabledStacks && project.enabledStacks.length > 0) {
-        this.store.kvSetSync(ENABLED_STACKS_KV_KEY(project.name), project.enabledStacks);
-      } else {
-        this.store.kvDeleteSync?.(ENABLED_STACKS_KV_KEY(project.name));
-      }
     }
   }
 

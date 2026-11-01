@@ -134,6 +134,13 @@ export async function stackStatusCommand(projectName: string, stackName: string)
       'Stack'
     );
 
+    if (stack.stopOperation) {
+      const stop = stack.stopOperation;
+      log.info(`Last stop: ${stop.phase}${stop.supersededAt ? ' (followed by a new start)' : ''} — ${stop.id}`);
+      if (stop.error) log.warn(stop.error);
+      for (const node of stop.nodes) log.info(`${node.node}: ${node.outcome}${node.reason ? ` — ${node.reason}` : ''}`);
+    }
+
     // Infrastructure
     const infraReady = stack.infrastructure.ready;
     log.info(`Infrastructure: ${infraReady ? prism.green('ready') : prism.yellow('not ready or incompletely observed')}`);
@@ -347,8 +354,10 @@ export async function stackStopCommand(projectName: string, stackName: string): 
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
     emitStep(`Stopping stack ${projectName}/${stackName}...`);
-    await svc.stopStack({ project: projectName, stack: stackName });
-    if (emitJson({ project: projectName, stack: stackName, action: 'stopped' })) return;
+    const result = await svc.stopStack({ project: projectName, stack: stackName });
+    if (result.status !== 'stopped' || result.stopOperation?.phase !== 'stopped') throw new Error('Daemon did not confirm the complete stack stop');
+    if (emitJson({ project: projectName, stack: stackName, action: 'stopped', operation: result.stopOperation })) return;
+    for (const node of result.stopOperation.nodes) emitInfo(`${node.node}: ${node.outcome}${node.observedAt ? ` at ${node.observedAt}` : ''}`);
     emitSuccess(`Stack ${projectName}/${stackName} stopped`);
   } catch (err) {
     reportLifecycleError(err, `stack ${projectName}/${stackName} to stop`, {

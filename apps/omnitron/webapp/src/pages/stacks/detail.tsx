@@ -1,3 +1,4 @@
+import { StackStopNotice } from 'src/components/stack-stop-notice';
 import { Can } from 'src/auth/access';
 /**
  * StackDetailPage — Detailed view of a single stack
@@ -215,7 +216,7 @@ export default function StackDetailPage() {
   ];
 
   const takesReleasesOnly = stack.config?.release?.mode === 'required';
-  const isRunning = stack.status === 'running';
+  const isRunning = ['running', 'degraded', 'error', 'unknown', 'stopping'].includes(stack.status);
   const isStopped = stack.status === 'stopped';
   const isTransitioning = stack.status === 'starting' || stack.status === 'stopping' || !!pendingOp;
   const busy = !!pendingOp;
@@ -278,12 +279,14 @@ export default function StackDetailPage() {
               )
             ) : isRunning ? (
               <Can permission="OmnitronProject.stopStack"><Button startIcon={<StopIcon />} color="error" variant="outlined" size="small" onClick={handleStop}>
-                Stop
+                {stack.stopOperation?.phase === 'failed' && !stack.stopOperation.supersededAt ? 'Retry stop' : 'Stop'}
               </Button></Can>
             ) : null}
           </Box>
         }
       />
+
+      <StackStopNotice operation={stack.stopOperation} />
 
       {/* Start, stop and delete put their reason in the store's `error` and
           never reject. This page did not read it, so a stack that refused to

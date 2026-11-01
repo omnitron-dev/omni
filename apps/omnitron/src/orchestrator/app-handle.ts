@@ -5,6 +5,7 @@
  * along with app-level metadata.
  */
 
+import { randomUUID } from 'node:crypto';
 import type { ChildProcess } from 'node:child_process';
 import type { IProcessMetrics, IHealthStatus, IProcessPool } from '@omnitron-dev/titan-pm';
 import type { ProcessSupervisor } from '@omnitron-dev/titan-pm';
@@ -43,6 +44,7 @@ export interface LastExitInfo {
 }
 
 export class AppHandle {
+  public readonly generation = randomUUID();
   public bootstrapMetadata: BootstrapMetadata | null = null;
   public pid: number | null = null;
   public status: AppStatus = 'stopped';

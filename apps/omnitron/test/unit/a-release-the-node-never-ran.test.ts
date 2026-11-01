@@ -108,6 +108,10 @@ describe('admission asks the node before anything moves', () => {
       registry: { get: () => ({ name: 'sample', path: dir }), list: () => [] },
       stackStates: new Map(),
       startsInFlight: new Map(),
+      stopsInFlight: new Map(),
+      assertStackMutable: vi.fn(),
+      markPriorStopSuperseded: vi.fn(),
+      rememberStackTargets: vi.fn(),
       loadProjectConfig: vi.fn(async () => ({ apps: [{ name: 'main', script: 'x' }] })),
       resolveStacks: () => ({
         test: {

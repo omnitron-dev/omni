@@ -832,7 +832,7 @@ export class RemoteDeployer {
           continue;
         }
         let registration: { changed: boolean };
-        try { registration = await this.registerNodeApps(target, project, options.apps, landed, options.appEnv, options.alertSink); }
+        try { registration = await this.registerNodeApps(target, project, options.apps, landed, options.appEnv, options.alertSink, options.stack); }
         catch (error) {
           for (const result of results.filter(r => r.node === nodeKey && r.status === 'success')) {
             result.status = 'failed'; result.error = `Node registration failed: ${(error as Error).message}`;
@@ -1195,6 +1195,7 @@ export class RemoteDeployer {
     landed: ReadonlyArray<{ app: string; version: string; directory?: string }>,
     appEnv?: Readonly<Record<string, Record<string, string>>> | undefined,
     alertSink?: import('../config/types.js').IAlertSink | undefined,
+    sourceStack?: string,
   ): Promise<{ changed: boolean }> {
     if (landed.length === 0) {
       this.logger.warn({ host: target.host, project }, 'No artifact reached this node — nothing to register');
@@ -1206,6 +1207,7 @@ export class RemoteDeployer {
     const body = renderNodeAppConfig({
       project,
       artifactRoot: '/opt/omnitron/artifacts',
+      ...(sourceStack && { sourceStack }),
       apps,
       artifacts: landed,
       appEnv,

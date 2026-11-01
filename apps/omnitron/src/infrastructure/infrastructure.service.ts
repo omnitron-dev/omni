@@ -120,6 +120,7 @@ export function decideControlPlaneDatabase(input: {
 }
 
 export interface InfrastructureHandoffState {
+  retiredStacks?: string[];
   config: InfrastructureConfig;
   containers: ResolvedContainer[];
   normalizedServices: Record<string, import('./types.js').IServiceRequirement>;
@@ -135,6 +136,7 @@ export interface InfrastructureHandoffState {
 }
 
 export class InfrastructureService {
+  private readonly retiredStacks = new Set<string>();
   private desiredContainers: ResolvedContainer[] = [];
   /** What the most recent reconcile did to each service. */
   private readonly lastActions = new Map<string, string>();
@@ -503,6 +505,7 @@ export class InfrastructureService {
 
   private ownershipSnapshot(monitoring: boolean): InfrastructureHandoffState {
     return structuredClone({
+      retiredStacks: [...this.retiredStacks],
       config: this.config, containers: this.desiredContainers, normalizedServices: this.normalizedServices,
       ...(this.serviceOverrides && { serviceOverrides: this.serviceOverrides }),
       state: this.state, usingGlobalOmnitronPg: this.usingGlobalOmnitronPg,
@@ -529,6 +532,7 @@ export class InfrastructureService {
     const service = new InfrastructureService(logger, snapshot.config, snapshot.normalizedServices,
       undefined, snapshot.serviceOverrides, snapshot.needsControlPlaneDatabase);
     service.desiredContainers = structuredClone(snapshot.containers);
+    for (const key of snapshot.retiredStacks ?? []) service.retiredStacks.add(key);
     service.omnitronPgContainer = structuredClone(snapshot.controlPlaneContainer);
     service.janitorNetworks = [...snapshot.janitorNetworks];
     service.unhealthyTicks = new Map(snapshot.unhealthyTicks);
@@ -577,17 +581,36 @@ export class InfrastructureService {
 
   }
 
+  /** Stop reconciliation for exactly one allocation, retaining every other scope. */
+  @RecoveryMutation()
+  async retireStack(scope: { project: string; stack: string }): Promise<void> {
+    const key = `${scope.project}/${scope.stack}`;
+    this.retiredStacks.add(key);
+    await Promise.allSettled([...this.activeSweeps, ...this.reconcileTasks.values()]);
+    this.desiredContainers = this.desiredContainers.filter(container => this.containerScope(container) !== key);
+  }
+
+  resumeStack(scope: { project: string; stack: string }): void {
+    this.retiredStacks.delete(`${scope.project}/${scope.stack}`);
+  }
+
+  private containerScope(container: ResolvedContainer): string {
+    return `${container.labels?.['omnitron.project']}/${container.labels?.['omnitron.stack']}`;
+  }
+
   /** Explicit infrastructure removal; process disposal alone preserves containers. */
   @RecoveryMutation()
   async teardown(): Promise<void> {
+    this.ownershipFrozen = true;
     this.dispose();
+    await Promise.allSettled([...this.activeSweeps, ...this.reconcileTasks.values()]);
     // Remove all containers in parallel for fast shutdown — the control-plane
     // database only where this service keeps one (`controlPlaneContainers`).
     const allContainers = [...[...this.desiredContainers].reverse(), ...this.controlPlaneContainers()];
 
     const results = await Promise.allSettled(
       allContainers.map(async (c) => {
-        await removeContainer(c.name);
+        await removeContainer(c.name, { graceful: true });
         this.logger.info({ service: c.name }, 'Container removed');
       }),
     );
@@ -778,7 +801,7 @@ export class InfrastructureService {
 
   private async reconcileService(desired: ResolvedContainer): Promise<void> {
     // T#58: per-name lock around the whole inspect→decide→act loop.
-    if (this.ownershipFrozen || this.reconciling.has(desired.name)) {
+    if (this.ownershipFrozen || this.retiredStacks.has(this.containerScope(desired)) || this.reconciling.has(desired.name)) {
       this.logger.debug({ service: desired.name }, 'Reconcile already in flight — skipping');
       return;
     }
@@ -796,7 +819,7 @@ export class InfrastructureService {
   @RecoveryMutation()
   private async reconcileServiceLocked(desired: ResolvedContainer): Promise<void> {
     const actual = await getContainerState(desired.name);
-    if (this.ownershipFrozen) return;
+    if (this.ownershipFrozen || this.retiredStacks.has(this.containerScope(desired))) return;
 
     const action = this.computeAction(desired, actual);
     // A container that was created, started or recreated is listening on a
@@ -1181,6 +1204,7 @@ export class InfrastructureService {
     for (const desired of allContainers) {
       const actual = await getContainerState(desired.name);
       if (this.ownershipFrozen) return;
+      if (this.retiredStacks.has(this.containerScope(desired))) continue;
 
       // T#58: Docker's own `--restart=always` / `--restart=on-failure`
       // policy puts the container into the 'restarting' state for the

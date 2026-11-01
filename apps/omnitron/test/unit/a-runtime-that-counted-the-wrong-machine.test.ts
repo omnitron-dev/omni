@@ -64,6 +64,7 @@ function service(opts: {
   };
   const svc: any = Object.create(ProjectService.prototype);
   Object.assign(svc, {
+    daemonStateStore: { kvGetSync: () => null },
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     stackStates: new Map([['sample/test', { status: 'running', config: stackConfig }]]),
     getLoadedConfig: () => ({ apps: SIX.map((name) => ({ name })) }),
@@ -80,6 +81,7 @@ function service(opts: {
       type: opts.type,
       status: 'stopped',
       config: stackConfig,
+      nodes: stackConfig.nodes.map(node => ({ ...node, connected: false })),
       infrastructure: null,
       apps: SIX.map((name) => ({ name, status: 'stopped', pid: null, cpu: 0, memory: 0 })),
     }),
@@ -117,7 +119,11 @@ describe('a remote stack is counted where it runs', () => {
 
     expect(runtime.connectedNodes).toBe(1);
     expect(runtime.totalNodes).toBe(2);
-    expect(runtime.onlineApps).toBe(6);
+    // Each logical app expects both replicas: one observed instance cannot
+    // certify the unavailable replica as online.
+    expect(runtime.onlineApps).toBe(0);
+    expect(runtime.totalApps).toBe(6);
+    expect(runtime.status).toBe('degraded');
   });
 
   it('says 0 of 6, not 0 of 0, when no node answers at all', async () => {
@@ -166,8 +172,8 @@ describe('a local stack still counts this machine', () => {
     const runtime = await service({
       type: 'local',
       masterApps: [
-        { name: 'main', status: 'online', cpu: 1, memory: 10 },
-        { name: 'geo', status: 'stopped', cpu: 0, memory: 0 },
+        { name: 'sample/test/main', status: 'online', cpu: 1, memory: 10 },
+        { name: 'sample/test/geo', status: 'stopped', cpu: 0, memory: 0 },
       ],
     }).getStackStatus('sample', 'test');
 
@@ -196,6 +202,7 @@ describe('«this stack is already running» is asked of the machine that runs it
     const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
     const svc: any = Object.create(ProjectService.prototype);
     Object.assign(svc, {
+    daemonStateStore: { kvGetSync: () => null },
       logger,
       // Unknown to the registry, so the working-tree check has no path to
       // ask about and the method goes straight to the short-circuit.
@@ -208,6 +215,7 @@ describe('«this stack is already running» is asked of the machine that runs it
         type: 'remote',
         status: 'running',
         config: stackConfig,
+      nodes: stackConfig.nodes.map(node => ({ ...node, connected: false })),
         infrastructure: null,
         // What THIS daemon's orchestrator knows about applications that run
         // somewhere else: nothing.

@@ -43,6 +43,7 @@ function orchestrator() {
   const log: string[] = [];
   const self = Object.create(OrchestratorService.prototype) as Record<string, any>;
   Object.assign(self, {
+    stateStore: { getStackIntent: () => ({ revision: 0, phase: 'running' }) },
     handles: new Map<string, AppHandle>(),
     coolDownTimers: new Map(),
     config,
@@ -75,6 +76,24 @@ function generation(name: string, log: string[], opts: { supervisorThrows?: bool
 }
 
 describe('stopping an app', () => {
+  it('retains failed RPC cleanup for retry while still terminating all owned workers', async () => {
+    const { self, log } = orchestrator();
+    const handle = generation('sample/prod/api', log);
+    handle.status = 'online';
+    const release = vi.fn().mockRejectedValueOnce(new Error('RPC registration still advertised')).mockResolvedValue(undefined);
+    handle.serviceRouter = { releaseAll: release } as never;
+    self.handles.set(handle.name, handle);
+    await expect(self.stopApp(handle.name)).rejects.toThrow('still advertised');
+    expect(handle.topologyPools.size).toBe(0);
+    expect(handle.supervisor!.stop).toHaveBeenCalledOnce();
+    expect(handle.serviceRouter).not.toBeNull();
+    expect(handle.status).toBe('stopping');
+    await self.stopApp(handle.name);
+    expect(release).toHaveBeenCalledTimes(2);
+    expect(handle.serviceRouter).toBeNull();
+    expect(handle.status).toBe('stopped');
+  });
+
   it('stops its supervisor AND destroys every pool — nothing of it is left to stop', async () => {
     const { self, log } = orchestrator();
     const handle = generation('sample/deployed/quotes', log);

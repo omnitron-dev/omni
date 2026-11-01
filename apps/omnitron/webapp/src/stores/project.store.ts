@@ -351,11 +351,12 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     }));
 
     try {
-      await projectRpc.stopStack({ project: projectName, stack: stackName });
+      const result = await projectRpc.stopStack({ project: projectName, stack: stackName });
+      if (result.status !== 'stopped' || result.stopOperation?.phase !== 'stopped') throw new Error('Daemon did not confirm the complete stack stop');
     } catch (err) {
-      if (!isRpcTimeout(err)) {
-        set({ error: (err as Error).message });
-      }
+      set({ error: isRpcTimeout(err)
+        ? 'Stop acknowledgement has not arrived. Check the stack operation before retrying; applications may still be running.'
+        : (err as Error).message });
     } finally {
       set((s) => {
         const next = { ...s.pendingOps };

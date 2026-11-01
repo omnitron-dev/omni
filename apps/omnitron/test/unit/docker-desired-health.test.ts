@@ -50,7 +50,7 @@ describe('stack intent is derived without changing infrastructure', () => {
   it('never calls an inactive stack enabled or assumes an unknown registration is disabled', async () => {
     const { ProjectService } = await import('../../src/services/project.service.js');
     const self = {
-      registry: { list: () => [{ name: 'sample', enabledStacks: ['live'] }, { name: 'unloaded', enabledStacks: [] }, { name: 'unspecified' }] },
+      registry: { listRegistrations: () => [{ name: 'sample', enabledStacks: ['live'] }, { name: 'unloaded', enabledStacks: [] }, { name: 'unspecified' }] },
       getLoadedConfig: (name: string) => name === 'unloaded' ? null : { stacks: { dev: { type: 'local' }, live: { type: 'local' }, remote: { type: 'remote' } } },
       resolveStacks: (config: { stacks: unknown }) => config.stacks,
       getRunningStacks: () => [],

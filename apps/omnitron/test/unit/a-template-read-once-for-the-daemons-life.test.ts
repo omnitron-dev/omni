@@ -48,6 +48,8 @@ function projectWith(unitType: string) {
   const svc: any = Object.create(ProjectService.prototype);
   Object.assign(svc, {
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+    bootstrapMetadata: { save: vi.fn(), fail: vi.fn() },
+    bootstrapTopology: new Map(),
     registry: { get: () => ({ name: 'sample', path: root }), list: () => [] },
     resolveStackApps: () => [{ name: 'payments', bootstrap: 'apps/payments/src/bootstrap.mjs' }],
   });

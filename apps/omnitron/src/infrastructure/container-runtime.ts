@@ -185,7 +185,7 @@ export async function listManagedContainers(options: { orThrow?: boolean } = {})
     // all 28 in a single call — so the loop cost roughly 1.2s of process
     // churn per poll when it was working, and under load it stopped returning
     // at all, leaving the containers page in its loading state indefinitely.
-    const inspected = await inspectContainers(names);
+    const inspected = await inspectContainers(names, options.orThrow);
     // Named and then not described: `inspectContainers` swallows its own
     // failure, and an empty answer here is Docker going away mid-question.
     if (options.orThrow && inspected.length === 0) {
@@ -200,7 +200,8 @@ export async function listManagedContainers(options: { orThrow?: boolean } = {})
         name: (info.Name ?? '').replace(/^\//, ''),
         image: info.Config?.Image ?? '',
         status: mapInspectStatus(info.State?.Status),
-        containerId: info.Id?.slice(0, 12),
+        containerId: info.Id,
+        labels: info.Config?.Labels,
         health: mapInspectHealth(info.State?.Health?.Status, info.State?.Status),
         startedAt: info.State?.StartedAt,
         ports: publishedPorts(info),
@@ -260,7 +261,7 @@ function publishedPorts(info: {
  * array — which is the behaviour wanted here, since a container can be
  * removed between listing and inspecting.
  */
-async function inspectContainers(names: string[]): Promise<any[]> {
+async function inspectContainers(names: string[], strict = false): Promise<any[]> {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const execFileAsync = promisify(execFile);
@@ -273,6 +274,7 @@ async function inspectContainers(names: string[]): Promise<any[]> {
     const parsed = JSON.parse(stdout || '[]');
     return Array.isArray(parsed) ? parsed : [];
   } catch (err) {
+    if (strict) throw err;
     // A non-zero exit means SOME name was unknown; docker still prints the
     // ones it found, so the output is worth parsing rather than discarding.
     const stdout = (err as { stdout?: string }).stdout;
@@ -705,9 +707,9 @@ export async function stopContainer(nameOrId: string, _timeout = 10): Promise<vo
 /**
  * Remove a container (force if running).
  */
-export async function removeContainer(nameOrId: string): Promise<void> {
+export async function removeContainer(nameOrId: string, options: { graceful?: boolean } = {}): Promise<void> {
   const adapter = await getAdapter();
-  await adapter.removeContainer(nameOrId, true);
+  await adapter.removeContainer(nameOrId, !options.graceful, options);
 }
 
 /**

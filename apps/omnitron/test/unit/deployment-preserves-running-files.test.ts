@@ -5,12 +5,38 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { RemoteDeployer } from '../../src/services/remote-deployer.service.js';
-import { selectNodeApps } from '../../src/project/node-app-config.js';
+import { renderNodeAppConfig, selectNodeApps } from '../../src/project/node-app-config.js';
 import { publishNodeConfigCommand, restoreNodeConfigCommand } from '../../src/services/node-registration.js';
 
 const cleanup: string[] = [];
 afterEach(async () => { for (const dir of cleanup.splice(0)) await rm(dir, { recursive: true, force: true }); });
 describe('failed preparation preserves the running release', () => {
+  it('retains the source-stack binding and refuses an allocation belonging to another stack', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'omnitron-allocation-')); cleanup.push(root);
+    const body = (sourceStack: string) => renderNodeAppConfig({ project: 'p', sourceStack, artifactRoot: '/artifacts',
+      apps: [{ name: 'api' } as never], artifacts: [{ app: 'api', version: '1' }] });
+    const publish = (sourceStack: string, operation: string) => execFileSync('/bin/sh', ['-c', publishNodeConfigCommand({
+      directory: root, project: 'p', operation, artifacts: [{ app: 'api', version: '1' }], body: body(sourceStack),
+    })], { encoding: 'utf8', stdio: 'pipe' });
+    publish('prod', 'first');
+    const config = await readFile(join(root, 'omnitron.config.mjs'), 'utf8');
+    expect(config).toContain('"managedOrigin"');
+    expect(config).toContain('"stack": "prod"');
+    publish('prod', 'same');
+    expect(() => publish('test', 'foreign')).toThrow('another source stack');
+    expect(await readFile(join(root, 'omnitron.config.mjs'), 'utf8')).toBe(config);
+  });
+
+  it('does not guess the source of an existing unbound allocation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'omnitron-unbound-')); cleanup.push(root);
+    const original = 'export default { apps: [{name:"api"}], stacks: {deployed: {type:"local",apps:["api"]}} };';
+    await writeFile(join(root, 'omnitron.config.mjs'), original);
+    const command = publishNodeConfigCommand({ directory: root, project: 'p', operation: 'candidate', artifacts: [],
+      body: renderNodeAppConfig({ project: 'p', sourceStack: 'prod', artifactRoot: '/artifacts', apps: [{ name: 'api' } as never], artifacts: [{ app: 'api', version: '1' }] }) });
+    expect(() => execFileSync('/bin/sh', ['-c', command], { stdio: 'pipe' })).toThrow('explicitly bound');
+    expect(await readFile(join(root, 'omnitron.config.mjs'), 'utf8')).toBe(original);
+  });
+
   it('installs a reused package version in a separate directory before registration', async () => {
     const root = await mkdtemp(join(tmpdir(), 'omnitron-artifact-')); cleanup.push(root);
     const previous = join(root, 'artifacts/project/api/1.0.0'); await mkdir(previous, { recursive: true });

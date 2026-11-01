@@ -29,6 +29,25 @@ import {
 
 @Service({ name: 'OmnitronInfra' })
 export class InfrastructureRpcService implements IOmnitronInfraService {
+  private readonly provisioning = new Map<string, Set<Promise<unknown>>>();
+  async drainStackProvisioning(scope: { project: string; stack: string }): Promise<void> {
+    await Promise.allSettled([...(this.provisioning.get(`${scope.project}/${scope.stack}`) ?? [])]);
+  }
+  private trackProvision<T>(scope: { project?: string | undefined; stack?: string | undefined }, work: () => Promise<T>): Promise<T> {
+    if (scope.project && scope.stack) this.stackOperationGate?.({ project: scope.project, stack: scope.stack });
+    const key = `${scope.project}/${scope.stack}`;
+    const active = this.provisioning.get(key) ?? new Set<Promise<unknown>>();
+    this.provisioning.set(key, active);
+    const promise = Promise.resolve().then(work).finally(() => {
+      active.delete(promise);
+      if (active.size === 0) this.provisioning.delete(key);
+    });
+    active.add(promise);
+    return promise;
+  }
+  private stackOperationGate?: (scope: { project: string; stack: string }) => void;
+  setStackOperationGate(gate: (scope: { project: string; stack: string }) => void): void { this.stackOperationGate = gate; }
+
   constructor(
     private readonly getInfra: () => InfrastructureService | null,
     /**
@@ -217,17 +236,18 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // Named while it runs, so a stall on this node says what it was doing.
     // Test node, 2026-09-22: it went quiet for ten seconds around the end of a
     // provision and nothing here could name it — `monitoring/event-loop-watch.ts`.
-    return withInfrastructureScope(data?.project, data?.stack, () =>
+    return this.trackProvision(data, () => withInfrastructureScope(data?.project, data?.stack, () =>
       duringPhase(`provisioning ${data?.project ?? 'omnitron'}/${data?.stack ?? 'default'} for the master`, () =>
         this.provisionStackNow(data),
       ),
-    );
+    ));
   }
 
   /** `provisionStack`'s work. Not an RPC method: it carries no `@Public`. */
   private async provisionStackNow(
     data: Parameters<InfrastructureRpcService['provisionStack']>[0],
   ): ReturnType<InfrastructureRpcService['provisionStack']> {
+    if (data?.project && data?.stack) this.stackOperationGate?.({ project: data.project, stack: data.stack });
     if (!this.hostInfra) {
       throw Errors.badRequest('This daemon does not host stack infrastructure.');
     }
@@ -312,6 +332,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     const declared = { ...fromStack, ...(data.services ?? {}) };
     const reused = this.getInfra();
     const service = reused ?? this.hostInfra(config, declared, registry, data.overrides ?? {});
+    if (data.project && data.stack) service.resumeStack({ project: data.project, stack: data.stack });
     // Reused, it is told the definition this call carries — the one the
     // master deploys now, not the one the daemon's first call carried.
     if (reused) reused.redefine(config, declared, data.overrides ?? {});

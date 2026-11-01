@@ -1,3 +1,4 @@
+import { stackExecutionKey, validateStackExecutionIntent } from '../shared/dto/stack-execution.js';
 /**
  * State Store — Persist/recover process state across daemon restarts.
  *
@@ -45,6 +46,16 @@ export interface PersistedState {
 const STATE_KV_KEY = 'orchestrator:persisted-state';
 
 export class StateStore {
+  getStackIntent(scope: import('../shared/dto/stack-execution.js').StackExecutionScope): import('../shared/dto/stack-execution.js').StackExecutionIntent {
+    return validateStackExecutionIntent(this.store.kvGetSync(`execution:stack:${stackExecutionKey(scope)}`, { strict: true }));
+  }
+
+  updateStackIntent(scope: import('../shared/dto/stack-execution.js').StackExecutionScope,
+    update: (current: import('../shared/dto/stack-execution.js').StackExecutionIntent) => import('../shared/dto/stack-execution.js').StackExecutionIntent,
+  ): import('../shared/dto/stack-execution.js').StackExecutionIntent {
+    return this.store.kvUpdateSync(`execution:stack:${stackExecutionKey(scope)}`,
+      current => validateStackExecutionIntent(update(validateStackExecutionIntent(current))));
+  }
   /** Cached snapshot for synchronous `load()` after `init()` ran. */
   private cached: PersistedState | null = null;
   /** True once `init()` has read from SQLite (or attempted the legacy JSON migration). */

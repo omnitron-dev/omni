@@ -15,9 +15,9 @@ import type { ExecutionMetricsSink } from '../observability/metrics-bridge.js';
 // backend authenticates end users with Omnitron RBAC before entering it.
 const OWNER_ROLES = ['execution-controller'];
 
-export const EXECUTION_READS = ['getDependencyGraph', 'getMetrics', 'getHealth', 'explainPortConflict'] as const;
+export const EXECUTION_READS = ['inspectStackExecution', 'getDependencyGraph', 'getMetrics', 'getHealth', 'explainPortConflict'] as const;
 export const EXECUTION_MUTATIONS = [
-  'startAll', 'startApp', 'stopApp', 'stopAll', 'redefineApp', 'restartApp', 'startKnownApp',
+  'stopStackExecution', 'enableStackExecution', 'startAll', 'startApp', 'stopApp', 'stopAll', 'redefineApp', 'restartApp', 'startKnownApp',
   'restartAfterChange', 'reloadApp', 'scaleApp', 'setWatchMode', 'setConfig',
   'configureReadiness', 'drainChildSamples', 'setMetricsEnabled',
 ] as const;
@@ -239,7 +239,9 @@ export class ExecutionHostService {
       if (typeof app !== 'string' || typeof childOrService !== 'string') throw new Error('An application and child/service name are required');
       const handle = this.orchestrator.getHandle(app);
       if (!handle?.supervisor) throw new Error(`No supervisor for ${app}`);
-      if (method === 'restartChild') return handle.supervisor.restartChild(childOrService);
+      if (method === 'restartChild') {
+        return this.orchestrator.restartAppChild(app, childOrService);
+      }
       if (typeof remoteMethod !== 'string' || !Array.isArray(input)) throw new Error('A service method and arguments are required');
       return callExposedService(handle.supervisor, app, childOrService, remoteMethod, input);
     }

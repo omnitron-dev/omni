@@ -39,9 +39,33 @@ afterEach(async () => { await store.dispose(); });
 afterAll(() => { fs.rmSync(sandbox, { recursive: true, force: true }); });
 
 describe('immutable releases preserve project identity', () => {
+  it('never overwrites a durable stop with a stale cache or unrelated metadata persistence', () => {
+    registry.add('research-lab', original);
+    registry.setStackEnabled('research-lab', 'production', true);
+    const stale = new ProjectRegistry(store);
+    expect(stale.get('research-lab')!.enabledStacks).toEqual(['production']);
+    registry.setStackEnabled('research-lab', 'production', false);
+    stale.persist();
+    expect(new ProjectRegistry(store).get('research-lab')!.enabledStacks).toEqual([]);
+    expect(stale.listRegistrations()[0]!.enabledStacks).toEqual([]);
+    stale.setStackEnabled('research-lab', 'preview', true);
+    expect(registry.get('research-lab')!.enabledStacks).toEqual(['preview']);
+  });
+
+  it('refuses corrupt resume intent and leaves the last committed value after a failed write', () => {
+    registry.add('research-lab', original);
+    registry.setStackEnabled('research-lab', 'production', true);
+    const failed = vi.spyOn(store, 'kvSetSync').mockImplementation(() => { throw new Error('disk full'); });
+    expect(() => registry.setStackEnabled('research-lab', 'production', false)).toThrow('disk full');
+    failed.mockRestore();
+    expect(registry.get('research-lab')!.enabledStacks).toEqual(['production']);
+    store.kvSetSync('project:research-lab:enabled-stacks', { production: true });
+    expect(() => registry.listRegistrations()).toThrow('Corrupt');
+  });
+
   it('keeps the name, workspace, registration time and enabled stacks after reopening SQLite', async () => {
     const project = registry.add('research-lab', original);
-    project.enabledStacks = ['production'];
+    registry.setStackEnabled(project.name, 'production', true);
     registry.persist();
     const workspace = registry.getWorkspaceDir(project.name);
     fs.writeFileSync(path.join(workspace, 'retained.log'), 'history');

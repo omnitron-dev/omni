@@ -182,6 +182,10 @@ describe('a stack that says so takes nothing else', () => {
       registry: { get: () => null, list: () => [] },
       stackStates: new Map(),
       startsInFlight: new Map(),
+      stopsInFlight: new Map(),
+      assertStackMutable: vi.fn(),
+      markPriorStopSuperseded: vi.fn(),
+      rememberStackTargets: vi.fn(),
       loadProjectConfig: vi.fn(async () => ({ apps: [{ name: 'main', script: 'x' }] })),
       resolveStacks: () => ({
         test: { type: 'remote', apps: 'all', nodes: [{ host: '203.0.113.7', port: 9700 }], ...(release ? { release } : {}) },
@@ -253,6 +257,10 @@ describe('a release is admitted only onto its own commit', () => {
       registry: { get: () => ({ name: 'sample', path: dir }), list: () => [] },
       stackStates: new Map(),
       startsInFlight: new Map(),
+      stopsInFlight: new Map(),
+      assertStackMutable: vi.fn(),
+      markPriorStopSuperseded: vi.fn(),
+      rememberStackTargets: vi.fn(),
       loadProjectConfig: vi.fn(async () => ({ apps: [{ name: 'main', script: 'x' }] })),
       resolveStacks: () => ({
         test: { type: 'remote', apps: 'all', nodes: [{ host: '203.0.113.7', port: 9700 }], release: { mode: 'required' } },

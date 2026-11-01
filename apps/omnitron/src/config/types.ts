@@ -234,6 +234,8 @@ export type StackName = 'dev' | 'test' | 'staging' | 'prod' | string;
  *   When connection to master is available, accumulated data syncs to master's PostgreSQL.
  */
 export interface IStackConfig {
+  /** Generated node allocation binding. Never inferred from a project basename. */
+  managedOrigin?: { project: string; stack: string };
   /** Stack deployment type */
   type: 'local' | 'remote' | 'cluster';
   /** Enable file watching (default: true for every managed app) */

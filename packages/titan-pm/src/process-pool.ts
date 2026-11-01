@@ -567,7 +567,8 @@ export class ProcessPool<T> {
 
     this.workers.clear();
     this.isInitialized = false;
-    this.isShuttingDown = false;
+    // Destruction is terminal. A late heartbeat/recycle callback must never
+    // admit another worker after the acknowledged shutdown inventory.
     this.isDraining = false;
 
     // Notify subscribers BEFORE we tear down the emitter — they

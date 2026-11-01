@@ -123,7 +123,8 @@ export function observeStack(info: IStackInfo, placements: IStackPlacement[], no
     ...info,
     apps,
     placements,
-    status,
+    status: !info.stopOperation?.supersededAt && info.stopOperation?.intentCommitted && info.stopOperation.phase !== 'stopped'
+      ? info.stopOperation.phase === 'failed' ? 'error' : 'stopping' : status,
     uptime,
     startedAt: uptime > 0 ? new Date(now - uptime).toISOString() : null,
     infrastructure: {

@@ -14,7 +14,7 @@ import { publicStackName, type ConfigurationImport } from '../project/configurat
  */
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
-import { VIEWER_ROLES, OPERATOR_ROLES, ADMIN_ROLES } from '../shared/roles.js';
+import { VIEWER_ROLES, OPERATOR_ROLES, ADMIN_ROLES, CONTROL_PLANE_ROLES } from '../shared/roles.js';
 import type { ProjectService } from './project.service.js';
 import type { DeployProgressRecord } from './remote-deployer.service.js';
 import type {
@@ -322,19 +322,35 @@ export class ProjectRpcService {
   async stopStack(data: { project: string; stack: string }): Promise<IStackInfo> {
     const logicalName = data.stack;
     data = await this.projectService.resolveProjectStack(data);
-    const info = await this.projectService.stopStack(data.project, data.stack);
-    await this.audit?.record({
-      action: 'stack.stop',
-      resourceType: 'stack',
-      resourceId: `${data.project}/${data.stack}`,
-      details: { type: info.type },
-    });
-    return { ...publicStack(info), name: logicalName, runtimeScope: { project: data.project, stack: data.stack } };
+    try {
+      const info = await this.projectService.stopStack(data.project, data.stack);
+      await this.audit?.record({
+        action: 'stack.stop', resourceType: 'stack', resourceId: `${data.project}/${data.stack}`, outcome: 'ok',
+        details: { type: info.type, operationId: info.stopOperation?.id, nodes: info.stopOperation?.nodes },
+      });
+      return { ...publicStack(info), name: logicalName, runtimeScope: { project: data.project, stack: data.stack } };
+    } catch (error) {
+      await this.audit?.record({
+        action: 'stack.stop.failed', resourceType: 'stack', resourceId: `${data.project}/${data.stack}`,
+        outcome: 'failed', error,
+      });
+      throw error;
+    }
   }
 
   // ===========================================================================
   // Stacks — Admin
   // ===========================================================================
+
+  @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
+  async prepareNodeStackStop(data: import('../project/node-stack-stop.js').NodeStackStopRequest) {
+    return this.projectService.prepareNodeStackStop(data);
+  }
+
+  @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
+  async executeNodeStackStop(data: import('../shared/dto/stack-execution.js').StackExecutionScope & { operationId: string }) {
+    return this.projectService.executeNodeStackStop(data);
+  }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async createStack(data: {

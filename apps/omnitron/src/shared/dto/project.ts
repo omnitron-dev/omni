@@ -126,7 +126,20 @@ export interface IStackAccountRemoved {
 
 export type StackStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'degraded' | 'error' | 'unknown';
 
+export interface StackStopProgress {
+  intentCommitted?: boolean;
+  supersededAt?: string;
+  id: string;
+  phase: 'preparing' | 'stopping' | 'stopped' | 'failed';
+  startedAt: string;
+  completedAt?: string;
+  error?: string;
+  nodes: Array<{ node: string; outcome: 'checking' | 'prepared' | 'stopping' | 'stopped' | 'unknown'; observedAt?: string; reason?: string }>;
+}
+
 export interface IStackInfo {
+  /** Last durable stop operation; failures and unreachable peers remain visible. */
+  stopOperation?: StackStopProgress | undefined;
   /** Execution/history identity, which can predate this stack's public project/name. */
   runtimeScope?: RuntimeStackScope;
   /** Stack name (e.g., 'dev', 'test', 'prod') */

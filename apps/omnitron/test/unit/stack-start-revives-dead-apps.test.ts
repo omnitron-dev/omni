@@ -41,6 +41,7 @@ function service(appStatus: 'online' | 'crashed') {
     list: () => [{ name: 'demo/dev/main', status: appStatus, pid: 1234 }],
     listHandleNames: () => ['demo/dev/main'],
     stopApp: async () => {},
+    enableStackExecution: async () => {},
   };
   const stateStore: any = { selectProjectsSync: () => [], kvGetSync: () => null, save() {}, load: () => null, get: () => null, set() {} };
   const svc: any = new ProjectService(logger, orchestrator, stateStore);
@@ -50,6 +51,7 @@ function service(appStatus: 'online' | 'crashed') {
   svc.resolveStacks = () => ({ dev: STACK });
   svc.resolveStackApps = () => [{ name: 'main', script: './main.js' }];
   svc.updateEnabledStacks = () => {};
+  svc.markPriorStopSuperseded = () => {};
   // The seam a real start goes through; record that it was reached.
   svc.startLocalStack = async () => { started.push('local'); };
 

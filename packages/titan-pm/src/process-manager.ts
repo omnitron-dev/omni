@@ -628,7 +628,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
   /**
    * Kill a process
    */
-  async kill(processId: string, signal: string = 'SIGTERM'): Promise<boolean> {
+  async kill(processId: string, signal: string = 'SIGTERM', options?: { shutdownTimeout?: number }): Promise<boolean> {
     const processInfo = this.processes.get(processId);
     if (!processInfo) {
       return false;
@@ -654,7 +654,11 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
       // Cleanup proxy
       const proxy = this.serviceProxies.get(processId);
       if (proxy && '__destroy' in proxy) {
-        await proxy.__destroy();
+        try {
+          await proxy.__destroy();
+        } catch (error) {
+          this.logger.warn({ error, processId }, 'Proxy disconnect failed; continuing process termination');
+        }
       }
 
       // Stop monitoring
@@ -664,7 +668,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
       // Terminate worker handle
       const handle = this.workers.get(processId);
       if (handle && 'terminate' in handle) {
-        await handle.terminate();
+        await handle.terminate(signal === 'SIGKILL' ? { shutdownTimeout: 0 } : options);
       }
 
       // Cleanup references
@@ -683,7 +687,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
       this.logger.error({ error, processId }, 'Failed to kill process');
       processInfo.status = ProcessStatus.FAILED;
       processInfo.errors = [...(processInfo.errors || []), error as Error];
-      return false;
+      throw error;
     }
   }
 

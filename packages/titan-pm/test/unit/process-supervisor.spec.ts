@@ -264,51 +264,15 @@ describe('ProcessSupervisor', () => {
       );
     });
 
-    it('threads per-child shutdownTimeout through to terminate() (T#61)', async () => {
-      // Wire a manager mock that exposes getWorkerHandle so the
-      // supervisor can grab the handle and call terminate({ ... }).
-      const terminateSpy = vi.fn().mockResolvedValue(undefined);
-      const destroySpy = vi.fn().mockResolvedValue(undefined);
-      const handle = { terminate: terminateSpy };
-      (mockManager as any).getWorkerHandle = vi.fn().mockReturnValue(handle);
-
-      // Spawn returns a proxy with __destroy and __processId; the
-      // supervisor's new code path disconnects via the proxy before
-      // calling terminate directly.
-      (mockManager as any).spawn = vi.fn().mockResolvedValueOnce({
-        __processId: 'p-1',
-        __destroy: destroySpy,
-      });
-
+    it('passes per-child shutdown deadlines through the manager cleanup path', async () => {
+      mockManager.spawn = vi.fn().mockResolvedValueOnce({ __processId: 'p-1' });
       const children = new Map<string, ISupervisorChild>([
-        ['worker', {
-          name: 'worker',
-          processClass: MockWorkerProcess,
-          propertyKey: 'worker',
-          shutdownTimeout: 750,
-        }],
+        ['worker', { name: 'worker', processClass: MockWorkerProcess, propertyKey: 'worker', shutdownTimeout: 750 }],
       ]);
-      const SupervisorClass = createSupervisorClass(children);
-      const supervisor = new ProcessSupervisor(
-        mockManager,
-        SupervisorClass,
-        { strategy: SupervisionStrategy.ONE_FOR_ONE },
-        mockLogger,
-      );
-
+      const supervisor = new ProcessSupervisor(mockManager, createSupervisorClass(children), {}, mockLogger);
       await supervisor.start();
       await supervisor.stop();
-
-      // The supervisor should have:
-      //   1. disconnected the proxy (best-effort),
-      //   2. fetched the WorkerHandle,
-      //   3. called terminate({ shutdownTimeout: 750 }).
-      // It must NOT have routed through manager.kill — that's the
-      // legacy path without timeout support.
-      expect(destroySpy).toHaveBeenCalled();
-      expect((mockManager as any).getWorkerHandle).toHaveBeenCalledWith('p-1');
-      expect(terminateSpy).toHaveBeenCalledWith({ shutdownTimeout: 750 });
-      expect(mockManager.kill).not.toHaveBeenCalled();
+      expect(mockManager.kill).toHaveBeenCalledWith('p-1', 'SIGTERM', { shutdownTimeout: 750 });
     });
 
     it('applies backoff between restart attempts (T#53)', async () => {
@@ -1408,7 +1372,7 @@ describe('ProcessSupervisor', () => {
       );
     });
 
-    it('should handle stop child failure gracefully', async () => {
+    it('reports stop failure and retains the child for retry', async () => {
       const children = new Map<string, ISupervisorChild>([
         ['worker', { name: 'worker', processClass: MockWorkerProcess, propertyKey: 'worker' }],
       ]);
@@ -1428,8 +1392,9 @@ describe('ProcessSupervisor', () => {
 
       await supervisor.start();
 
-      // Stop should not throw even if kill fails
-      await expect(supervisor.stop()).resolves.toBeUndefined();
+      // A successful stop is an acknowledgement, not a best-effort attempt.
+      await expect(supervisor.stop()).rejects.toThrow('Kill failed');
+      expect(supervisor.getChildNames()).toEqual(['worker']);
 
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.objectContaining({ child: 'worker' }),

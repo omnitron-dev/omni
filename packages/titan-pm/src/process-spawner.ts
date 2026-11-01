@@ -183,42 +183,44 @@ export async function killChildAndVerify(
   logger: ILogger,
   context: Record<string, unknown>,
   termGraceMs = 3000,
+  options: { force?: boolean; processGroup?: boolean; killGraceMs?: number } = {},
 ): Promise<boolean> {
-  if (hasExited(child)) return true;
-
-  const exited = new Promise<boolean>((resolve) => {
-    const done = () => resolve(true);
-    child.once('exit', done);
-    setTimeout(() => {
-      child.off('exit', done);
-      resolve(false);
-    }, termGraceMs).unref();
-  });
-
-  try {
-    child.kill('SIGTERM');
-  } catch {
-    // Already gone between the check and here.
+  const pid = child.pid;
+  const groupAlive = (): boolean => {
+    if (!options.processGroup || pid == null) return false;
+    try { process.kill(-pid, 0); return true; }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false;
+      // Permission errors are uncertainty, not proof that the group is gone.
+      throw error;
+    }
+  };
+  const gone = () => hasExited(child) && !groupAlive();
+  const signal = (value: NodeJS.Signals) => {
+    if (options.processGroup && pid != null && groupAlive()) process.kill(-pid, value);
+    else if (!hasExited(child)) child.kill(value);
+  };
+  const waitForExit = async (milliseconds: number): Promise<boolean> => {
+    const deadline = performance.now() + milliseconds;
+    while (!gone()) {
+      const remaining = deadline - performance.now();
+      if (remaining <= 0) return false;
+      await new Promise<void>(resolve => {
+        const finish = () => { clearTimeout(timer); child.off('exit', finish); resolve(); };
+        const timer = setTimeout(finish, Math.min(50, remaining));
+        child.once('exit', finish);
+      });
+    }
     return true;
+  };
+  if (gone()) return true;
+  if (!options.force) {
+    signal('SIGTERM');
+    if (await waitForExit(termGraceMs)) return true;
+    logger.warn({ ...context, pid }, 'Child ignored SIGTERM — escalating to SIGKILL');
   }
-
-  if (await exited) return true;
-  if (hasExited(child)) return true;
-
-  logger.warn({ ...context, pid: child.pid }, 'Child ignored SIGTERM during cleanup — escalating to SIGKILL');
-  try {
-    child.kill('SIGKILL');
-  } catch {
-    return true;
-  }
-
-  // SIGKILL is not deliverable-and-ignorable, but it IS deferrable: a process
-  // in an uninterruptible syscall stays until it leaves it. Give the kernel a
-  // moment, then answer honestly either way.
-  await new Promise((r) => {
-    setTimeout(r, 200).unref();
-  });
-  return hasExited(child);
+  signal('SIGKILL');
+  return waitForExit(options.killGraceMs ?? 1000);
 }
 
 export class WorkerHandle extends EventEmitter implements IWorkerHandle {
@@ -443,12 +445,12 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
 
       const errorHandler = (err: Error) => {
         if (!resolved) {
-          cleanup();
-          // Ignore "channel closed" errors during shutdown
+          // An IPC or signal error is not evidence of process exit. Keep the
+          // deadline and escalation alive until the exit can be confirmed.
           if ((err as any).code !== 'ERR_IPC_CHANNEL_CLOSED') {
             this.logger.warn({ error: err, workerId: this.id }, 'Error during child termination');
           }
-          resolve(); // Still resolve as the process may have exited
+          if (hasExited(child)) exitHandler();
         }
       };
 
@@ -528,20 +530,12 @@ export class WorkerHandle extends EventEmitter implements IWorkerHandle {
               resolve();
               return;
             }
-            // A real survivor: an uninterruptible syscall, a kernel hang, or
-            // a pid that now belongs to someone else. One more SIGKILL as a
-            // last attempt, and a record that says which case it was.
             this.logger.error(
               { workerId: this.id, pid: child.pid, state: verdict.state, waitedMs: verdict.waitedMs },
-              'Process survived SIGKILL — escalating one more SIGKILL and logging the leak',
+              'Process termination is unconfirmed; retaining ownership for recovery',
             );
-            try {
-              if (child.pid != null) process.kill(child.pid, 'SIGKILL');
-            } catch {
-              // Best-effort — the kernel will reap soon or never.
-            }
-            resolve();
-          });
+            reject(new Error(`Worker ${this.id} (pid ${child.pid}) did not confirm exit after termination: ${verdict.state}`));
+          }, reject);
         },
         GRACEFUL_TIMEOUT + SIGTERM_TIMEOUT + SIGKILL_TIMEOUT
       );

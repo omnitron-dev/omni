@@ -707,11 +707,7 @@ export async function stopContainer(nameOrId: string, _timeout = 10): Promise<vo
  */
 export async function removeContainer(nameOrId: string): Promise<void> {
   const adapter = await getAdapter();
-  try {
-    await adapter.removeContainer(nameOrId, true);
-  } catch {
-    // Already removed
-  }
+  await adapter.removeContainer(nameOrId, true);
 }
 
 /**

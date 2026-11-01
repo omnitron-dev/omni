@@ -218,8 +218,12 @@ export class ProcessSupervisor extends EventEmitter {
    * `performRestart`-ed by the crash handler, racing the very stop
    * loop that was tearing it down.
    */
-  async stop(): Promise<void> {
-    await this.stopInternal(true);
+  private stopPromise: Promise<void> | undefined;
+
+  stop(): Promise<void> {
+    if (this.stopPromise) return this.stopPromise;
+    this.stopPromise = this.stopInternal(true).finally(() => { this.stopPromise = undefined; });
+    return this.stopPromise;
   }
 
   private async stopInternal(joinRecovery: boolean): Promise<void> {
@@ -271,10 +275,14 @@ export class ProcessSupervisor extends EventEmitter {
     // before taking the shutdown inventory, so no late child escapes stop().
     if (joinRecovery) await this.recoveryPromise;
 
-    // Stop all children in reverse order
-    const names = Array.from(this.children.keys()).reverse();
-    for (const name of names) {
-      await this.stopChild(name);
+    // Attempt every child, retain failed ownership, and keep recovery disabled
+    // until a retry has confirmed the entire supervisor is down.
+    const failures: unknown[] = [];
+    for (const name of Array.from(this.children.keys()).reverse()) {
+      try { await this.stopChild(name); } catch (error) { failures.push(error); }
+    }
+    if (failures.length) {
+      throw new AggregateError(failures, `Supervisor stop incomplete: ${failures.map(String).join('; ')}`);
     }
 
     this.isStarted = false;
@@ -477,60 +485,27 @@ export class ProcessSupervisor extends EventEmitter {
 
     this.logger.debug({ child: name, shutdownTimeout: child.info.shutdownTimeout }, 'Stopping child process');
 
+    const processId = (child.proxy as any).__processId;
     try {
-      const processId = (child.proxy as any).__processId;
       if (processId) {
-        this.processIdToName.delete(processId);
-      }
-
-      // T#61: if the child declared a per-child shutdownTimeout, we
-      // need to thread it into the WorkerHandle.terminate() call.
-      // `manager.kill()` doesn't accept a timeout in its current
-      // signature, so for an override we fetch the WorkerHandle
-      // directly and call terminate({ shutdownTimeout }). Without
-      // an override we keep the historical `manager.kill(processId)`
-      // path so the proxy-disconnect / health-monitor cleanup still
-      // runs in the right order.
-      if (processId) {
+        // Always use the manager so termination, registry and monitors share
+        // one cleanup path, including per-child shutdown deadlines.
         if (typeof child.info.shutdownTimeout === 'number') {
-          // Mirror manager.kill's cleanup but with the timeout
-          // threaded through. Best-effort proxy disconnect first.
-          try {
-            if (child.proxy && typeof child.proxy.__destroy === 'function') {
-              await child.proxy.__destroy();
-            }
-          } catch {
-            /* proxy may already be dead */
-          }
-          const handle: any = (this.manager as any).getWorkerHandle?.(processId);
-          if (handle && typeof handle.terminate === 'function') {
-            await handle.terminate({ shutdownTimeout: child.info.shutdownTimeout });
-          } else {
-            // Manager doesn't expose getWorkerHandle in this test
-            // double; fall back to manager.kill (loses the override
-            // but keeps the legacy lifecycle).
-            await this.manager.kill(processId);
-          }
+          await this.manager.kill(processId, 'SIGTERM', { shutdownTimeout: child.info.shutdownTimeout });
         } else {
           await this.manager.kill(processId);
         }
+      } else if (typeof child.proxy?.destroy === 'function') {
+        await child.proxy.destroy();
       } else {
-        // Fallback: try pool destroy or direct proxy cleanup
-        try {
-          if (typeof child.proxy?.destroy === 'function') {
-            await child.proxy.destroy();
-          } else if ('__destroy' in child.proxy) {
-            await child.proxy.__destroy();
-          }
-        } catch {
-          // Best-effort cleanup — process may already be gone
-        }
+        throw new Error(`Child '${name}' has no process identity or owned pool to stop`);
       }
-
+      if (processId) this.processIdToName.delete(processId);
       this.children.delete(name);
       this.emit('child:stopped', name);
     } catch (error) {
       this.logger.error({ err: error, child: name }, 'Failed to stop child process');
+      throw error;
     }
   }
 

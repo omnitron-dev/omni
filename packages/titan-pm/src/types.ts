@@ -1073,7 +1073,8 @@ export interface IProcessManager extends EventEmitter {
   listProcesses(): IProcessInfo[];
 
   /** Kill a process */
-  kill(processId: string, signal?: string): Promise<boolean>;
+  /** False only when unregistered; termination failures reject without losing ownership. */
+  kill(processId: string, signal?: string, options?: { shutdownTimeout?: number }): Promise<boolean>;
 
   /** Get metrics for a process */
   getMetrics(processId: string): Promise<IProcessMetrics | null>;
@@ -1140,7 +1141,7 @@ export interface IWorkerHandle {
   serviceVersion: string;
   /** OS process ID of the child (undefined for worker threads) */
   pid?: number;
-  terminate(): Promise<void>;
+  terminate(options?: { shutdownTimeout?: number }): Promise<void>;
   isAlive(): boolean;
   send?(message: any): Promise<void>;
   onMessage?(handler: (data: any) => void): void;

@@ -32,7 +32,7 @@ export {
 
 export { ProcessManager } from './process-manager.js';
 export { ProcessRegistry } from './process-registry.js';
-export { ProcessSpawner, ProcessSpawnerFactory } from './process-spawner.js';
+export { ProcessSpawner, ProcessSpawnerFactory, killChildAndVerify } from './process-spawner.js';
 export { ProcessPool } from './process-pool.js';
 export { ProcessSupervisor } from './process-supervisor.js';
 export { WorkflowStageUncertainError } from './process-workflow.js';

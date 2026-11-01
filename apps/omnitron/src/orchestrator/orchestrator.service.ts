@@ -41,6 +41,7 @@ import {
   LifecyclePreempted,
   computeBackoff,
   isAlive,
+  killChildAndVerify,
   discoverManagedProcesses,
   type ProcessManager,
   type ISupervisorConfig,
@@ -1019,24 +1020,26 @@ export class OrchestratorService extends EventEmitter {
    * half-way must not also leave the half nobody asked about.
    */
   private async tearDownProcesses(handle: AppHandle, force = false, timeout = 10_000): Promise<void> {
+    const failures: unknown[] = [];
     try {
       if (handle.mode === 'bootstrap' && handle.supervisor) {
         await handle.supervisor.stop();
       } else if (handle.childProcess) {
         await this.stopChildProcess(handle, force, timeout);
       }
-    } finally {
-      for (const [name, pool] of handle.topologyPools) {
-        try {
-          await pool.destroy();
-        } catch (err) {
-          this.logger.warn(
-            { app: handle.name, pool: name, error: (err as Error).message },
-            'Destroying a topology pool failed — its workers may still run',
-          );
-        }
+    } catch (error) { failures.push(error); }
+    for (const [name, pool] of handle.topologyPools) {
+      try {
+        await pool.destroy();
+        handle.topologyPools.delete(name);
+      } catch (error) {
+        failures.push(error);
+        this.logger.error({ app: handle.name, pool: name, error: String(error) },
+          'Pool termination unconfirmed; retaining ownership for retry');
       }
-      handle.topologyPools.clear();
+    }
+    if (failures.length) {
+      throw new AggregateError(failures, `Application stop incomplete: ${failures.map(String).join('; ')}`);
     }
   }
 
@@ -2923,45 +2926,10 @@ export class OrchestratorService extends EventEmitter {
 
   private async stopChildProcess(handle: AppHandle, force: boolean, timeout: number): Promise<void> {
     const child = handle.childProcess;
-    if (!child || !child.pid) return;
-    const pid = child.pid;
-
-    // P0-D — Signal the whole process group, not just the direct
-    // child. classic-launcher spawns with `detached: true` so the
-    // child becomes group leader (pgid === pid). `process.kill(-pid)`
-    // delivers the signal to every process in the group, reaping
-    // grandchildren (ffmpeg, docker, worker pools …) that ignore the
-    // direct-child kill. Falls back to `child.kill` when the negative-
-    // pid call fails (test environments, restricted permissions, the
-    // child wasn't started detached — bootstrap-mode currently isn't).
-    const sendSignal = (sig: NodeJS.Signals): void => {
-      try {
-        process.kill(-pid, sig);
-        return;
-      } catch (err) {
-        const code = (err as NodeJS.ErrnoException).code;
-        if (code !== 'ESRCH' && code !== 'EPERM') {
-          // ESRCH/EPERM = group already gone or not a group leader.
-          // Anything else (EINVAL etc.) → log via best-effort.
-          this.logger.debug({ app: handle.name, pid, sig, code }, 'process.kill(-pid) fallback');
-        }
-      }
-      try { child.kill(sig); } catch { /* best-effort */ }
-    };
-
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(() => {
-        sendSignal('SIGKILL');
-        resolve();
-      }, timeout);
-
-      child.once('exit', () => {
-        clearTimeout(timer);
-        resolve();
-      });
-
-      sendSignal(force ? 'SIGKILL' : 'SIGTERM');
-    });
+    if (!child) return;
+    const stopped = await killChildAndVerify(child, this.logger, { app: handle.name }, timeout,
+      { force, processGroup: true });
+    if (!stopped) throw new Error(`Application '${handle.name}' (pid ${child.pid}) did not confirm process-group exit`);
   }
 
   /**

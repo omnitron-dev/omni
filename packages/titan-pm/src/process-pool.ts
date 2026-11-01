@@ -92,6 +92,8 @@ export class ProcessPool<T> {
   private queue = new Deque<QueuedRequest>();
   private isInitialized = false;
   private isShuttingDown = false;
+  private readonly pendingSpawns = new Set<Promise<void>>();
+  private destroyPromise: Promise<void> | undefined;
   private isDraining = false;
   private currentRoundRobinIndex = 0;
   private requestIdCounter = 0;
@@ -263,6 +265,7 @@ export class ProcessPool<T> {
     }
 
     await Promise.all(spawnPromises);
+    if (this.isShuttingDown) throw Errors.conflict('Pool is shutting down');
     this.isInitialized = true;
 
     // Setup monitoring and features
@@ -506,7 +509,13 @@ export class ProcessPool<T> {
   /**
    * Destroy the pool
    */
-  async destroy(): Promise<void> {
+  destroy(): Promise<void> {
+    if (this.destroyPromise) return this.destroyPromise;
+    this.destroyPromise = this.destroyNow().finally(() => { this.destroyPromise = undefined; });
+    return this.destroyPromise;
+  }
+
+  private async destroyNow(): Promise<void> {
     this.logger.info({ class: this.processName }, 'Destroying process pool');
     this.isShuttingDown = true;
 
@@ -542,13 +551,19 @@ export class ProcessPool<T> {
       this.circuitBreakerHalfOpenTimer = undefined;
     }
 
-    // Drain first
+    // No admitted spawn may arrive after the shutdown inventory is taken.
+    await Promise.allSettled([...this.pendingSpawns]);
     await this.drain();
 
     // Shutdown all workers
     const shutdownPromises = Array.from(this.workers.values()).map((worker) => this.shutdownWorker(worker.id));
 
-    await Promise.all(shutdownPromises);
+    const stopped = await Promise.allSettled(shutdownPromises);
+    const failures = stopped.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (failures.length) {
+      throw new AggregateError(failures.map(result => result.reason),
+        `Pool stop incomplete: ${failures.map(result => String(result.reason)).join('; ')}`);
+    }
 
     this.workers.clear();
     this.isInitialized = false;
@@ -655,7 +670,14 @@ export class ProcessPool<T> {
   /**
    * Private: Spawn a new worker
    */
-  private async spawnWorker(): Promise<void> {
+  private spawnWorker(): Promise<void> {
+    if (this.isShuttingDown) return Promise.reject(Errors.conflict('Pool is shutting down'));
+    const spawning = this.spawnWorkerNow().finally(() => this.pendingSpawns.delete(spawning));
+    this.pendingSpawns.add(spawning);
+    return spawning;
+  }
+
+  private async spawnWorkerNow(): Promise<void> {
     try {
       const workerIndex = this.workerIndexCounter++;
 
@@ -767,6 +789,7 @@ export class ProcessPool<T> {
       this.emit('worker:shutdown', { workerId, class: this.processName });
     } catch (error) {
       this.logger.error({ error, workerId }, 'Error shutting down worker');
+      throw error;
     }
   }
 

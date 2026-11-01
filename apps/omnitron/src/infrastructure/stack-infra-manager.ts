@@ -317,6 +317,7 @@ export class StackInfrastructureManager {
       await infraService.teardown();
     } catch (err) {
       this.logger.error({ project, stack, error: (err as Error).message }, 'Failed to teardown stack infrastructure');
+      throw err;
     }
 
     this.instances.delete(key);
@@ -336,15 +337,18 @@ export class StackInfrastructureManager {
   @RecoveryMutation()
   async teardownAll(): Promise<void> {
     const entries = [...this.instances.entries()];
+    const failures: unknown[] = [];
     for (const [key, infraService] of entries) {
       try {
         await infraService.teardown();
+        this.instances.delete(key);
+        this.portAllocations.delete(key);
       } catch (err) {
         this.logger.warn({ stack: key, error: (err as Error).message }, 'Failed to teardown');
+        failures.push(err);
       }
     }
-    this.instances.clear();
-    this.portAllocations.clear();
+    if (failures.length) throw new AggregateError(failures, `Infrastructure stop incomplete: ${failures.map(String).join('; ')}`);
   }
 
   /**

@@ -585,18 +585,19 @@ export class InfrastructureService {
     // database only where this service keeps one (`controlPlaneContainers`).
     const allContainers = [...[...this.desiredContainers].reverse(), ...this.controlPlaneContainers()];
 
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       allContainers.map(async (c) => {
-        try {
-          await removeContainer(c.name);
-          this.logger.info({ service: c.name }, 'Container removed');
-        } catch {
-          // Already removed
-        }
+        await removeContainer(c.name);
+        this.logger.info({ service: c.name }, 'Container removed');
       }),
     );
 
     this.state.ready = false;
+    const failures = results.flatMap((result, index) => result.status === 'rejected'
+      ? [new Error(`${allContainers[index]!.name}: ${String(result.reason)}`, { cause: result.reason })] : []);
+    if (failures.length) {
+      throw new AggregateError(failures, `Infrastructure stop incomplete: ${failures.map(error => error.message).join('; ')}`);
+    }
   }
 
   /**

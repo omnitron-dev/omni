@@ -92,6 +92,21 @@ describe('stopping an app', () => {
     expect(handle.status).toBe('stopped');
   });
 
+  it('retains a failed pool and rejects until every worker confirms exit', async () => {
+    const { self, log } = orchestrator();
+    const handle = generation('sample/deployed/storage', log);
+    handle.status = 'online';
+    const destroy = vi.fn().mockRejectedValueOnce(new Error('worker remains alive')).mockResolvedValue(undefined);
+    handle.topologyPools.set('transform', { destroy } as never);
+    self.handles.set(handle.name, handle);
+    await expect(self.stopApp(handle.name)).rejects.toThrow('worker remains alive');
+    expect(handle.status).toBe('stopping');
+    expect([...handle.topologyPools.keys()]).toEqual(['transform']);
+    await self.stopApp(handle.name);
+    expect(destroy).toHaveBeenCalledTimes(2);
+    expect(handle.status).toBe('stopped');
+  });
+
   it('destroys the pools even when the supervisor\'s stop throws', async () => {
     const { self, log } = orchestrator();
     const handle = generation('sample/deployed/storage', log, { supervisorThrows: true });

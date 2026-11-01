@@ -66,9 +66,21 @@ describe('request context', () => {
     expect(ip).toBeUndefined();
   });
 
-  it('leaves auth context untouched when the request is anonymous', async () => {
+  it('has no auth context when the request is anonymous', async () => {
     const auth = await withMetadata({ 'x-forwarded-for': '127.0.0.1' }, () => getCurrentAuth());
     expect(auth).toBeNull();
+  });
+
+  it('does not inherit authority from an enclosing invocation', async () => {
+    await withMetadata({ authContext: { userId: 'admin', roles: ['admin'] } }, async () => {
+      expect(getCurrentAuth()?.userId).toBe('admin');
+      await withMetadata({}, async () => {
+        await Promise.resolve();
+        expect(getCurrentAuth()).toBeNull();
+      });
+      expect(getCurrentAuth()?.userId).toBe('admin');
+    });
+    expect(getCurrentAuth()).toBeNull();
   });
 
   it('exposes both contexts together for an authenticated call', async () => {

@@ -5,6 +5,7 @@ import type { ILogger } from '../types/logger.js';
  */
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { TimedMap } from '@omnitron-dev/common';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 // Use type-only import for INetron to break circular dependency
 import type { INetron, INetronOptions, EventSubscriber, RemotePeerSocket } from './interfaces/core-types.js';
@@ -43,6 +44,9 @@ import type { ExtendedServiceMetadata } from '../decorators/core.js';
 import type { ITransport } from './transport/types.js';
 import type { AuthContext } from './auth/types.js';
 import { enforceMethodAuthorization, readMethodMetadata, isPublishedMember } from './auth/method-authorization.js';
+
+/** A request's authorized identity cannot be replaced by a concurrent login. */
+const invocationAuthority = new AsyncLocalStorage<{ peer: RemotePeer; context: AuthContext | undefined }>();
 
 /**
  * Security constants for input validation in packet handlers.
@@ -279,6 +283,7 @@ export class RemotePeer extends AbstractPeer {
     serviceName: () => string | undefined,
     methodName: string,
     fn: () => Promise<T>,
+    auth: AuthContext | undefined,
   ): Promise<T> {
     // NOT `async`, deliberately. An async function wraps its return in a
     // second promise, adding one microtask hop before `sendResponse` — and a
@@ -291,21 +296,21 @@ export class RemotePeer extends AbstractPeer {
     // service name arrives as a thunk for the same reason: reading it eagerly
     // made dispatch depend on `stub.definition`, which callers holding a
     // narrower stub do not have.
-    if (!this.invocationWrapper) return fn();
-    return this.wrapInvocation(serviceName, methodName, fn);
+    return invocationAuthority.run({ peer: this, context: auth }, () =>
+      this.invocationWrapper ? this.wrapInvocation(serviceName, methodName, fn, auth) : fn());
   }
 
   private async wrapInvocation<T>(
     serviceName: () => string | undefined,
     methodName: string,
     fn: () => Promise<T>,
+    auth: AuthContext | undefined,
   ): Promise<T> {
     const metadata = new Map<string, unknown>([
       ['serviceName', serviceName() ?? ''],
       ['methodName', methodName],
       ['peerId', this.id],
     ]);
-    const auth = this.getAuthContext();
     if (auth) {
       metadata.set('authContext', auth);
       metadata.set('authenticated', true);
@@ -1066,8 +1071,9 @@ export class RemotePeer extends AbstractPeer {
             // through `canAccessMethod`. Without this gate, a client that
             // knows or guesses a property name bypasses ACLs entirely on
             // every non-HTTP transport.
-            await this.enforceMethodAccess(stub, name, [value], 'set');
-            await stub.set(name, value);
+            const auth = await this.enforceMethodAccess(stub, name, [value], 'set');
+            await this.withInvocationFrame(() => stub.definition?.meta?.name, name,
+              async () => stub.set(name, value), auth);
             await this.sendResponse(packet, undefined);
           } catch (err: unknown) {
             this.logger.error({ err, defId: defIdOrServiceName, name }, 'Failed to set property on remote service');
@@ -1102,10 +1108,11 @@ export class RemotePeer extends AbstractPeer {
             const localPeer = this.netron.peer as ILocalPeerInternal;
             const stub = localPeer.getStubByDefinitionId(defId);
             // SECURITY (T#34): see SET branch.
-            await this.enforceMethodAccess(stub, name, [], 'get');
+            const auth = await this.enforceMethodAccess(stub, name, [], 'get');
             // SECURITY (T#49): pass `this` so a property getter returning
             // a nested service can be authz-filtered before the leak.
-            await this.sendResponse(packet, await stub.get(name, this));
+            await this.sendResponse(packet, await this.withInvocationFrame(() => stub.definition?.meta?.name,
+              name, () => stub.get(name, this), auth));
           } catch (err: unknown) {
             this.logger.error({ err, defId: defIdOrServiceName, name }, 'Failed to get property from remote service');
             try {
@@ -1141,7 +1148,7 @@ export class RemotePeer extends AbstractPeer {
             // SECURITY (T#34): see SET branch — this is the most-exercised
             // entry point on the wire, and the one that mattered most in
             // the audit (RPC method invocations).
-            await this.enforceMethodAccess(stub, method, args, 'call');
+            const auth = await this.enforceMethodAccess(stub, method, args, 'call');
             // A service's declared input contract is enforced on every transport
             // that takes a call off the wire, not just HTTP. This branch — the
             // one WebSocket, TCP and Unix sockets arrive through — checked who
@@ -1158,6 +1165,7 @@ export class RemotePeer extends AbstractPeer {
                 () => stub.definition?.meta?.name,
                 method,
                 () => stub.call(method, validatedArgs, this),
+                auth,
               ),
             );
           } catch (err: unknown) {
@@ -1204,7 +1212,9 @@ export class RemotePeer extends AbstractPeer {
             if (!this.netron.runTask) {
               throw Errors.notImplemented('runTask not available');
             }
-            await this.sendResponse(packet, await this.netron.runTask(this, name, ...args));
+            const auth = name === 'authenticate' ? this.getAuthContext() : await this.revalidateAuthority();
+            await this.sendResponse(packet, await invocationAuthority.run({ peer: this, context: auth },
+              () => this.netron.runTask!(this, name, ...args)));
           } catch (err: unknown) {
             if (isPeerGone(err)) {
               this.logger.debug({ err, task: name }, 'Peer disconnected while its task was running');
@@ -1605,7 +1615,7 @@ export class RemotePeer extends AbstractPeer {
     methodName: string,
     args: unknown[] = [],
     kind: 'call' | 'get' | 'set' = 'call',
-  ): Promise<void> {
+  ): Promise<AuthContext | undefined> {
     const netron = this.netron as INetronInternal;
     const authzManager = netron.authorizationManager;
     const authnManager = netron.authenticationManager;
@@ -1615,7 +1625,7 @@ export class RemotePeer extends AbstractPeer {
     // the call through and rely on downstream not-found errors. Keeps unit-test
     // mocks that bypass `getStubByDefinitionId` working.
     const meta = stub?.definition?.meta;
-    if (!meta) return;
+    if (!meta) return this.getAuthContext();
     const serviceName = getQualifiedName(meta.name, meta.version);
 
     // (0) NET-14: PUBLIC-SURFACE whitelist for method CALLS. `meta.methods` is
@@ -1671,9 +1681,9 @@ export class RemotePeer extends AbstractPeer {
 
     // Auth-less deployment (neither manager wired) → no further enforcement.
     // Preserves the historical "Netron without auth works unchanged" contract.
-    if (!authzManager && !authnManager) return;
+    if (!authzManager && !authnManager) return this.getAuthContext();
 
-    const auth = this.getAuthContext();
+    const auth = await this.revalidateAuthority();
 
     // (1) ACL check (T#34) — registered AuthorizationManager ACLs. Runs first so
     // ACL-protected methods keep their existing "Access denied to method …"
@@ -1734,6 +1744,15 @@ export class RemotePeer extends AbstractPeer {
         });
       }
     }
+    return auth;
+  }
+
+  private async revalidateAuthority(): Promise<AuthContext | undefined> {
+    const admitted = this.authContext;
+    const manager = (this.netron as INetronInternal).authenticationManager;
+    const auth = admitted && manager ? await manager.revalidateContext(admitted) : admitted;
+    if (this.authContext !== admitted) throw Errors.unauthorized('Authentication changed while admitting the request');
+    return auth;
   }
 
   /**
@@ -1741,6 +1760,8 @@ export class RemotePeer extends AbstractPeer {
    * @returns {AuthContext | undefined} The authentication context if authenticated
    */
   getAuthContext(): AuthContext | undefined {
+    const invocation = invocationAuthority.getStore();
+    if (invocation?.peer === this) return invocation.context;
     return this.authContext;
   }
 
@@ -1766,6 +1787,6 @@ export class RemotePeer extends AbstractPeer {
    * @returns {boolean} True if the peer has an authentication context
    */
   isAuthenticated(): boolean {
-    return this.authContext !== undefined;
+    return this.getAuthContext() !== undefined;
   }
 }

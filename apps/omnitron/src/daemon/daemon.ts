@@ -708,7 +708,6 @@ export class OmnitronDaemon {
     const authService = !isSlave
       ? await this.app.container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN)
       : null;
-    const validatePrincipal = createDaemonPrincipalValidator(authService);
 
     // Unix socket — local CLI <-> daemon (primary, high-performance)
     this.app.netron.registerTransport('unix', () => new UnixSocketTransport());
@@ -737,7 +736,7 @@ export class OmnitronDaemon {
         // operator's deployment read exactly like the daemon's own boot
         // autostart. No proxy stands in front of a unix socket, so the
         // wrapper trusts no forwarded address — its default.
-        invocationWrapper: createAuthContextWrapper({ assertReady: () => this.assertBackendReady(), validatePrincipal }),
+        invocationWrapper: createAuthContextWrapper({ assertReady: () => this.assertBackendReady() }),
       },
     });
 
@@ -802,7 +801,7 @@ export class OmnitronDaemon {
         port: dc.port,
         host: tcpHost,
         // Carry the authenticated mesh identity into service-level guards and audit.
-        invocationWrapper: createAuthContextWrapper({ assertReady: () => this.assertBackendReady(), validatePrincipal }),
+        invocationWrapper: createAuthContextWrapper({ assertReady: () => this.assertBackendReady() }),
       },
     });
 
@@ -816,7 +815,8 @@ export class OmnitronDaemon {
         throw new Error('Credential authentication not supported. Use JWT Bearer token.');
       },
       validateToken: createDaemonTokenValidator(token => jwtService.verify(token), authService),
-      tokenCache: { enabled: true, ttl: 10_000 },
+      // Signature verification may be cached; live account/session authority may not.
+      tokenCache: { enabled: false },
     });
     // Wire the AuthorizationManager so the `@Public({ auth: { roles } })`
     // decorators on DaemonRpcService are actually enforced on the wire.
@@ -836,7 +836,6 @@ export class OmnitronDaemon {
     const authContextWrapper = createAuthContextWrapper({
       trustProxy: dc.httpRateLimit?.trustProxy === true,
       assertReady: () => this.assertBackendReady(),
-      validatePrincipal,
     });
 
     // HTTP / WS bind also defaults to 127.0.0.1. The webapp talks to

@@ -506,7 +506,7 @@ describe('AuthenticationManager', () => {
         scopes: ['api:read', 'api:write'],
         token: {
           type: 'bearer' as const,
-          expiresAt: new Date('2025-12-31'),
+          expiresAt: new Date(Date.now() + 3_600_000),
           issuer: 'auth.example.com',
           audience: ['api.example.com'],
         },

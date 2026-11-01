@@ -40,7 +40,7 @@ export function getRequestContext(): RequestContext | null {
 // AsyncLocalStorage instance (singleton)
 // ---------------------------------------------------------------------------
 
-const authContextStorage = new AsyncLocalStorage<AuthContext>();
+const authContextStorage = new AsyncLocalStorage<AuthContext | undefined>();
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -102,7 +102,7 @@ export function createAuthContextWrapper(options: {
     const peerId = metadata.get('peerId');
     if (typeof peerId === 'string' && peerId.length > 0) requestCtx.peerId = peerId;
 
-    const run = () => (authCtx ? runWithAuth(authCtx, fn) : fn());
+    const run = () => authContextStorage.run(authCtx, fn);
     return requestContextStorage.run(requestCtx, run);
   };
 }

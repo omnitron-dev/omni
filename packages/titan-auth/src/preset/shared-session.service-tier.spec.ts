@@ -1,24 +1,4 @@
-/**
- * A session-bearing token is never a service principal.
- *
- * `metadata.isServiceRole` is the strongest flag this preset produces.
- * Downstream it means "skip the checks a human is subject to": the downstream project's
- * `requireAdmin()` returns success on it alone, tier-visibility stops
- * filtering rows above the viewer's tier, and messaging's whole admin
- * surface is `@Public()` plus `requireAdmin()` with nothing in between.
- *
- * It used to follow from the `service_role` claim by itself. The claim
- * follows from whatever the minting side puts in `roles[]`, and on the downstream project
- * that is `expandRoles(users."platformRole")` over a varchar column with
- * an explicit `case 'service_role'`. So the flag was reachable by writing
- * a string into a user's row — no S2S secret, no service subject.
- *
- * The two tiers are structurally exclusive and always were: an S2S token
- * is minted by `signServiceToken`, which sets a service subject and no
- * `sid`; a user token is refused outright unless it carries one. This
- * suite pins that, in both directions, so a future mint path cannot
- * promote a human session by naming a role.
- */
+/** Human session credentials and service credentials are structurally exclusive. */
 
 import { describe, it, expect } from 'vitest';
 import { createSharedSessionAuthManager } from './shared-session.js';
@@ -34,7 +14,7 @@ function mkLogger() {
 
 /** A jwtService whose `verify` hands back exactly the payload under test. */
 function mkJwt(payload: Record<string, unknown>) {
-  return { verify: async () => payload } as never;
+  return { verify: async () => ({ exp: Math.floor(Date.now() / 1000) + 300, ...payload }) } as never;
 }
 
 const redisWithLiveSession = {
@@ -58,13 +38,8 @@ describe('service tier is decided by the absence of a session, not by a claim', 
     // column reads `service_role`: a real session, claiming the S2S tier.
     const res = await mkManager({ ...serviceRoleClaims, sid: 'sess-1' }).validateToken('t');
 
-    expect(res.success).toBe(true);
-    expect(res.context?.metadata?.['isServiceRole']).toBe(false);
-    // The claim itself is preserved — the token is still authenticated and
-    // still carries the role it asked for. Only the privilege is withheld,
-    // so a legitimate `roles: ['service_role']` gate still refuses it for
-    // the ordinary reason (no matching role) rather than silently passing.
-    expect(res.context?.roles).toContain('service_role');
+    expect(res.success).toBe(false);
+    expect(res.context).toBeUndefined();
   });
 
   it('grants service tier to a real S2S token, which has no sid', async () => {
@@ -84,7 +59,8 @@ describe('service tier is decided by the absence of a session, not by a claim', 
     const withSid = await mkManager({
       sub: USER_ID, iss: 'omnitron', role: 'service_role', sid: 'sess-1',
     }).validateToken('t');
-    expect(withSid.context?.metadata?.['isServiceRole']).toBe(false);
+    expect(withSid.success).toBe(false);
+    expect(withSid.context).toBeUndefined();
   });
 
   it('still requires a sid from every token that does not claim the service tier', async () => {

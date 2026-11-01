@@ -62,6 +62,8 @@ export class AuthenticationManager {
   private tokenCacheConfig: TokenCacheConfig = { enabled: true };
   /** Prevent an in-flight validation from restoring authority after invalidation. */
   private authorityRevision = 0;
+  /** Credentials remain private to the validator, never in serializable RPC context. */
+  private readonly contextTokens = new WeakMap<AuthContext, string>();
   private cacheHits = 0;
   private cacheMisses = 0;
 
@@ -159,6 +161,27 @@ export class AuthenticationManager {
     this.cacheMisses = 0;
   }
 
+  private expired(context: AuthContext): boolean {
+    const expiry = context.token?.expiresAt;
+    return expiry !== undefined && (!(expiry instanceof Date) || !Number.isFinite(expiry.getTime()) || expiry.getTime() <= Date.now());
+  }
+
+  /**
+   * Persistent peers obey the same validation/cache policy as a new HTTP request.
+   * Session adapters disable authority caching; signature caching stays separate.
+   * Native transport identities have no bearer credential and remain transport-owned.
+   */
+  async revalidateContext(context: AuthContext): Promise<AuthContext> {
+    if (this.expired(context)) throw new TitanError({ code: ErrorCode.UNAUTHORIZED, message: 'Authentication expired' });
+    const token = this.contextTokens.get(context);
+    if (token === undefined) return context;
+    const result = await this.validateToken(token);
+    if (!result.success || !result.context || result.context.userId !== context.userId) {
+      throw new TitanError({ code: ErrorCode.UNAUTHORIZED, message: 'Authentication was revoked or changed' });
+    }
+    return result.context;
+  }
+
   /**
    * Invalidate a single token in the cache (T#37).
    *
@@ -226,6 +249,8 @@ export class AuthenticationManager {
 
     this.authenticateFn = config.authenticate;
     this.validateTokenFn = config.validateToken;
+    this.clearCache();
+    this.tokenCache = undefined;
 
     // Configure token cache
     if (config.tokenCache) {
@@ -356,6 +381,7 @@ export class AuthenticationManager {
       this.logger.debug({ username: credentials.username }, 'Authenticating user...');
 
       // Execute authentication with timeout
+      const revision = this.authorityRevision;
       const authPromise = Promise.resolve(this.authenticateFn(credentials));
       const context = await this.withTimeout(authPromise, this.authTimeout, 'Authentication');
 
@@ -398,6 +424,9 @@ export class AuthenticationManager {
         },
       });
 
+      if (revision !== this.authorityRevision) throw new AuthenticationUnavailableError();
+      if (this.expired(context)) throw new Error('Authentication expired');
+      if (typeof credentials.token === 'string') this.contextTokens.set(context, credentials.token);
       return {
         success: true,
         context,
@@ -473,6 +502,10 @@ export class AuthenticationManager {
       const cacheKey = this.hashToken(token);
       const cached = this.tokenCache.get(cacheKey);
       if (cached) {
+        if (cached.context && this.expired(cached.context)) {
+          this.tokenCache.delete(cacheKey);
+          return { success: false, error: 'Authentication expired' };
+        }
         this.cacheHits++;
         this.logger.debug('Token validated from cache');
         return cached;
@@ -555,6 +588,8 @@ export class AuthenticationManager {
         success: true,
         context,
       };
+      if (this.expired(context)) throw new Error('Authentication expired');
+      this.contextTokens.set(context, token);
 
       // Cache the successful result
       if (this.tokenCache) {

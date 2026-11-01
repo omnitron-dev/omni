@@ -16,6 +16,10 @@
       "types": "./dist/preset/shared-session.d.ts",
       "default": "./dist/preset/shared-session.js"
     },
+    "./preset/session-authority": {
+      "types": "./dist/preset/session-authority.d.ts",
+      "default": "./dist/preset/session-authority.js"
+    },
     "./access": {
       "types": "./dist/access/index.d.ts",
       "default": "./dist/access/index.js"

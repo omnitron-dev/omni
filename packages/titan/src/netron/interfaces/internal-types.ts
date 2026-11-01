@@ -8,7 +8,7 @@
 
 import type { INetron, ILocalPeer, IAuthorizationManager } from './core-types.js';
 import type { ServiceStub } from '../service-stub.js';
-import type { AuthCredentials, AuthResult, HttpAuthSecurity } from '../auth/types.js';
+import type { AuthCredentials, AuthContext, AuthResult, HttpAuthSecurity } from '../auth/types.js';
 import type { ITokenTransport } from '../auth/token-transport.js';
 import type { PolicyEngine } from '../auth/policy-engine.js';
 
@@ -31,6 +31,7 @@ export interface IAuthenticationManager {
    * @returns Authentication result with context if successful
    */
   validateToken(token: string): Promise<AuthResult>;
+  revalidateContext(context: AuthContext): Promise<AuthContext>;
 
   /**
    * Invalidate a single token in the cache (T#37).

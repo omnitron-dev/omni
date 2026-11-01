@@ -21,6 +21,7 @@ import {
 import { Interface } from './interface.js';
 import { Errors } from '../errors/index.js';
 import { getServiceMetadata } from './utils.js';
+import { readMethodMetadata } from './auth/method-authorization.js';
 
 /**
  * ServiceStub is a proxy object for a service instance in the Netron system.
@@ -121,7 +122,14 @@ export class ServiceStub {
    * @throws {Error} If property does not exist or is not writable
    */
   set(prop: string, value: any) {
-    Reflect.set(this.instance, prop, this.processValue(value));
+    if (Object.hasOwn(this.definition.meta.methods ?? {}, prop) ||
+        this.definition.meta.properties?.[prop]?.readonly ||
+        readMethodMetadata(this.instance, prop)?.readonly === true) {
+      throw Errors.forbidden('Published member is read-only');
+    }
+    if (!Reflect.set(this.instance, prop, this.processValue(value))) {
+      throw Errors.badRequest('Published property is not writable');
+    }
   }
 
   /**

@@ -47,6 +47,8 @@ export interface AuthContext {
 
   /** Custom metadata */
   metadata?: Record<string, any>;
+  /** Verified token claims, populated only by the configured authentication adapter. */
+  claims?: Record<string, unknown>;
 }
 
 /**

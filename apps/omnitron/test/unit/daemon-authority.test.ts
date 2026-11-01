@@ -9,6 +9,7 @@ describe('daemon authority admission and continuing permission', () => {
   it.each([
     { sid: undefined }, { sid: '' }, { role: 'owner' }, { sub: '' }, { iss: 'another-issuer' },
     { exp: undefined }, { exp: 1 }, { exp: Number.POSITIVE_INFINITY }, { exp: 3.5 },
+    { exp: Number.MAX_SAFE_INTEGER }, { sub: ' user' },
   ])('rejects incomplete or invalid human claims %j before reading a session', async change => {
     await expect(createDaemonTokenValidator(async () => ({ ...identity(), ...change }), sessions)('signed'))
       .rejects.toMatchObject({ code: 'SESSION_REVOKED', statusCode: 401 });
@@ -20,6 +21,7 @@ describe('daemon authority admission and continuing permission', () => {
     const validate = createDaemonTokenValidator(async () => identity(), sessions);
     const context = await validate('signed');
     expect(context).toMatchObject({ roles: ['viewer'], metadata: { principalType: 'human', sessionId: 'session' } });
+    expect(context.token?.expiresAt?.getTime()).toBe(context.metadata?.['expiresAt']);
     await expect(createDaemonPrincipalValidator(sessions)(context)).resolves.toBeUndefined();
     await expect(createDaemonTokenValidator(async () => identity(), null)('signed')).rejects.toThrow('active session');
   });

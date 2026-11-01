@@ -14,12 +14,13 @@ export function createDaemonTokenValidator(verify: (token: string) => Promise<Ve
   return async (token: string): Promise<AuthContext> => {
     const claims = await verify(token);
     if (claims.iss !== 'omnitron' || typeof claims.sub !== 'string' || !claims.sub || claims.sub.length > 150 ||
-        typeof claims.exp !== 'number' || !Number.isSafeInteger(claims.exp) || claims.exp * 1000 <= Date.now()) {
+        claims.sub.trim() !== claims.sub || typeof claims.exp !== 'number' || !Number.isSafeInteger(claims.exp) ||
+        claims.exp > 8_640_000_000_000 || claims.exp * 1000 <= Date.now()) {
       throw denied('A bounded, unexpired Omnitron identity is required');
     }
     if (claims.role === 'service_role') {
       if (claims.sid !== undefined) throw denied('A service identity cannot carry a human session');
-      return { userId: claims.sub, roles: ['service_role'], permissions: [], token: { type: 'bearer' },
+      return { userId: claims.sub, roles: ['service_role'], permissions: [], token: { type: 'bearer', expiresAt: new Date(claims.exp * 1000) },
         metadata: { principalType: 'service', isServiceRole: true, expiresAt: claims.exp * 1000 } };
     }
     if (!sessions || !isOmnitronRole(claims.role) || typeof claims.sid !== 'string' || !claims.sid || claims.sid.length > 150) {
@@ -27,7 +28,7 @@ export function createDaemonTokenValidator(verify: (token: string) => Promise<Ve
     }
     const current = await sessions.validateSessionAuthority(claims.sub, claims.sid);
     if (!current || !isOmnitronRole(current.role)) throw denied('Session has been revoked or expired');
-    return { userId: current.userId, roles: [current.role], permissions: [], token: { type: 'bearer' },
+    return { userId: current.userId, roles: [current.role], permissions: [], token: { type: 'bearer', expiresAt: new Date(claims.exp * 1000) },
       metadata: { principalType: 'human', sessionId: current.sessionId, isServiceRole: false, expiresAt: claims.exp * 1000 } };
   };
 }

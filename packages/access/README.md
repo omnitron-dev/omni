@@ -30,6 +30,7 @@ allows('documents.read.all'); // false
 | `@omnitron-dev/access/roles` | Application-defined, immutable role hierarchy |
 | `@omnitron-dev/access/permissions` | Matching, compiled checks, registry helpers and types |
 | `@omnitron-dev/access/platform` | Optional five-role platform preset |
+| `@omnitron-dev/access/session-policy` | Pure MFA, absolute session age and timezone-aware access windows |
 
 The platform preset provides `user`, `moderator`, `security`, `admin` and
 `superadmin`. Security and moderation have separate inheritance. Unknown roles
@@ -70,6 +71,15 @@ without JWT or Titan Auth. Storage, Redis and database adapters are independent.
 The package ships ESM and declarations, marks `sideEffects: false`, and exposes
 narrow entry points. Importing permission helpers does not instantiate a role
 preset. Application-owned adapters and catalogs remain outside the package.
+
+`evaluateSessionPolicy(policy, { hasMfa, createdAt, now? })` evaluates current
+session facts against optional `requireMfa`, `maxSessionDuration` (minutes), and
+`timeWindows` (`days`, `startHour`, `endHour`, IANA `timezone`). Time windows may
+cross midnight; their days name the starting day. End hours are exclusive, with
+24 representing midnight. Unknown or malformed controls fail closed.
+Persist proof that MFA was completed for the session; enrollment is not proof.
+Evaluate on each protected request and renewal, using the original session
+creation time. This pure helper owns neither clocks, session storage nor tokens.
 
 See the [access policy guide](https://omnitron.dev/docs/auth/access-policy) for
 configuration, migration and enforcement examples.

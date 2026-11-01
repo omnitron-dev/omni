@@ -27,6 +27,11 @@
       "types": "./dist/platform-roles.d.ts",
       "import": "./dist/platform-roles.js",
       "default": "./dist/platform-roles.js"
+    },
+    "./session-policy": {
+      "types": "./dist/session-policy.d.ts",
+      "import": "./dist/session-policy.js",
+      "default": "./dist/session-policy.js"
     }
   },
   "files": [

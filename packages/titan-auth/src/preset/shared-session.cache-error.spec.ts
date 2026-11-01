@@ -34,7 +34,7 @@ function mkLogger() {
   } as never;
 }
 
-const mkJwt = (payload: Record<string, unknown>) => ({ verify: async () => payload }) as never;
+const mkJwt = (payload: Record<string, unknown>) => ({ verify: async () => ({ exp: Math.floor(Date.now() / 1000) + 300, ...payload }) }) as never;
 
 const claims = { sub: USER_ID, iss: 'omnitron', roles: ['user'], sid: SESSION_ID };
 
@@ -76,22 +76,18 @@ describe('a session fast path that cannot answer', () => {
   it('still refuses when there is no canonical store to defer to', async () => {
     // Nothing to degrade to: the only source of truth is the one that failed,
     // so the request is refused exactly as it was before.
-    const res = await mk({ sessionRedis: brokenRedis }).validateToken('t');
-
-    expect(res.success).toBe(false);
+    await expect(mk({ sessionRedis: brokenRedis }).validateToken('t')).rejects.toMatchObject({
+      message: 'Authentication service is temporarily unavailable',
+    });
   });
 
   it('still refuses when the canonical store is down as well', async () => {
     // The fallback's own decision — fail closed, the client refreshes — and
     // this must not become fail-open by way of the fast path's catch.
-    const res = await mk({
+    await expect(mk({
       sessionRedis: brokenRedis,
-      sessionLookup: async () => {
-        throw new Error('canonical store unreachable');
-      },
-    }).validateToken('t');
-
-    expect(res.success).toBe(false);
+      sessionLookup: async () => { throw new Error('canonical store unreachable'); },
+    }).validateToken('t')).rejects.toMatchObject({ message: 'Authentication service is temporarily unavailable' });
   });
 
   it('still refuses a session the canonical store says is revoked', async () => {

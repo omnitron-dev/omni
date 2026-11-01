@@ -96,6 +96,16 @@ describe('RPC authorization metadata', () => {
         .toEqual({ roles: ['admin'] });
   });
 
+  it('keeps evidence writes and outbox acknowledgements outside the operator role', async () => {
+    const { SyncRpcService } = await import('../../src/services/sync.rpc-service.js');
+    const { validateAccessRequirements } = await import('@omnitron-dev/titan/netron/auth');
+    for (const method of ['receiveBatch', 'drainBuffer', 'ackDrained', 'acknowledgeReconciliation']) {
+      const requirement = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, SyncRpcService.prototype, method);
+      expect(validateAccessRequirements({ userId: 'operator', roles: ['operator', 'viewer'], permissions: [] }, requirement).allowed).toBe(false);
+      expect(validateAccessRequirements({ userId: 'node', roles: ['service_role'], permissions: [] }, requirement).allowed).toBe(true);
+    }
+  });
+
   it('declares an auth block on every exposed method', async () => {
     // A method reachable over RPC with no `auth` at all is open to anyone
     // the transport lets through. That may be intended — a health ping, a

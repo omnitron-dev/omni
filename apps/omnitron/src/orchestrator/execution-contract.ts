@@ -25,6 +25,8 @@ type Methods = Omit<OrchestratorService, HandleMethods | 'getHandle' | 'getWorke
 
 /** The backend has no direct access to ProcessManager, forks or threads. */
 export interface OrchestratorControl extends Methods {
+  /** Fresh owner inventory for explicit diagnostics; supported without an owner upgrade. */
+  refreshObservation?(): Promise<void>;
   startApp(...args: Parameters<OrchestratorService['startApp']>): Promise<AppExecutionView>;
   startKnownApp(name: string): Promise<AppExecutionView | undefined>;
   restartAfterChange(name: string): Promise<AppExecutionView | undefined>;

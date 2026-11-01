@@ -238,6 +238,13 @@ export class ProjectRpcService {
     return { ...info, name: logicalName, runtimeScope: { project: data.project, stack: data.stack } };
   }
 
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async inspectInstalledArtifacts(data: { project: string; stack: string }) {
+    const scope = await this.projectService.resolveProjectStack(data);
+    const report = await this.projectService.inspectInstalledArtifacts(scope.project, scope.stack, data.project);
+    return { ...report, stack: data.stack };
+  }
+
   /**
    * What each node of a stack would find and do on its host — read, never
    * changed. Admin: it answers about a machine's units, paths and addresses.

@@ -1823,6 +1823,45 @@ export class ProjectService extends EventEmitter {
     return releasesRoot();
   }
 
+  /** Explicit disk inspection: never performed by polling and never alters launch evidence. */
+  async inspectInstalledArtifacts(project: string, stack: string, catalogProject: string) {
+    const { inspectInstalledArtifacts } = await import('../release/installed-artifacts.js');
+    const { installedReleaseCatalog, installedReleaseReport, boundedInstalledNodeRead, installedNodeFailure, installedReadDeadline } = await import('../release/installed-release.js');
+    await this.ensureConfig(project);
+    const configured = this.getStack(project, stack);
+    const catalog = await installedReleaseCatalog(await this.releaseStore(), catalogProject);
+    let info = configured;
+    if (configured.type !== 'local') {
+      this.getSlaveConnector();
+      try { info = await installedReadDeadline(() => this.withRemoteAppStatuses(project, configured), 10_000); }
+      catch { return installedReleaseReport(catalogProject, stack, catalog, [{ node: stack, error: 'Stack node inventory is unavailable or timed out; installed files were not inspected' }]); }
+    }
+    const nodes: Array<{ node: string; observations?: import('../shared/dto/installed-release.js').InstalledArtifactObservation[]; error?: string }> = [];
+    if (info.type === 'local') {
+      const names = info.apps.map(app => app.handleKey);
+      try { nodes.push({ node: 'local', observations: names.length ? await inspectInstalledArtifacts(this.orchestrator, names) : [] }); }
+      catch { nodes.push({ node: 'local', error: 'Installed-file inspection failed or the process owner is unavailable' }); }
+    } else {
+      const placements = info.placements ?? [];
+      if (placements.length > 16) throw new Error('Installed-file inspection supports up to 16 nodes per stack');
+      const deadline = Date.now() + 60_000;
+      for (let offset = 0; offset < placements.length; offset += 4) {
+        await Promise.all(placements.slice(offset, offset + 4).map(async placement => {
+          const node = placement.label ?? placement.nodeKey;
+          if (deadline - Date.now() < 55_000) { nodes.push({ node, error: 'Stack inspection time budget exhausted before this node; inspect again' }); return; }
+          const names = placement.apps.flatMap(app => app.process ? [app.process.name] : []);
+          if (!placement.appsObserved) { nodes.push({ node, error: 'Node inventory is unavailable' }); return; }
+          if (!names.length) { nodes.push({ node, error: 'No installed application handles were reported by this node' }); return; }
+          try {
+            const observations = await boundedInstalledNodeRead(() => this.getSlaveConnector().invokeOnSlave(placement.host, placement.port, 'OmnitronDaemon', 'inspectInstalledArtifacts', [{ names }]));
+            nodes.push({ node, observations });
+          } catch (error) { nodes.push({ node, error: installedNodeFailure(error) }); }
+        }));
+      }
+    }
+    return installedReleaseReport(catalogProject, stack, catalog, nodes);
+  }
+
   /**
    * Take a release for a stack, or say why not.
    *
@@ -3335,6 +3374,14 @@ export class ProjectService extends EventEmitter {
               builtAt: release.manifest.builtAt,
               checksum: file.inputs,
               tarballSha256: file.sha256,
+              release: {
+                releaseId: release.id,
+                manifestSha256: release.manifestSha256,
+                artifactSha256: file.sha256,
+                artifactBytes: file.bytes,
+                app: file.app,
+                frameworkCommit: release.manifest.omni.commit,
+              },
             }]
           : [];
       });
@@ -4858,6 +4905,7 @@ export class ProjectService extends EventEmitter {
           cpu: running.cpu,
           memory: running.memory,
           port: running.port ?? null,
+          ...(running.release && { release: running.release }),
         };
       }
       // App is configured but not running
@@ -4888,6 +4936,7 @@ export class ProjectService extends EventEmitter {
         cpu: running.cpu,
         memory: running.memory,
         port: running.port ?? null,
+        ...(running.release && { release: running.release }),
       });
     }
 

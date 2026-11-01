@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { readReleaseDeploymentState, readSourcePublication, stackDeploymentHistory } from '../../src/shared/release-reading.js';
+import { readReleaseDeploymentState, readSourcePublication, stackDeploymentHistory, readStackRelease } from '../../src/shared/release-reading.js';
 import type { IStackInfo } from '../../src/shared/dto/project.js';
 import type { ReleaseDeploymentDto } from '../../src/shared/dto/services.js';
 
@@ -56,4 +56,59 @@ it('scopes history to logical and retained namespaces and preserves unknown proc
   });
   expect(report.history.known && report.history.deployments.map(row => row.project)).toEqual(['sample', 'sample-legacy']);
   expect(report.stacks[0]).toMatchObject({ runningRelease: 'unreported', apps: { unknown: 1 } });
+});
+
+const receipt = (releaseId = 'sample-current') => ({ state: 'confirmed' as const, releaseId,
+  manifestSha256: 'a'.repeat(64), artifactSha256: 'b'.repeat(64), observedAt: '2026-11-02T00:00:00Z',
+  launchId: 'launch-1', basis: 'verified-launch' as const });
+const placement = (nodeKey: string, evidence: unknown = receipt()) => ({
+  nodeKey, appsObserved: true,
+  apps: [{ name: 'main', expected: true, process: { name: 'sample/deployed/main', status: 'online', pid: 123, release: evidence } }],
+});
+
+it('reads verified current launch provenance independently from an older deployment audit', async () => {
+  const current = stack('test', 'running');
+  current.placements = [placement('node-a:9700')] as IStackInfo['placements'];
+  const report = await readReleaseDeploymentState('sample', { stacks: async () => [current], deployments: async () => ({ known: true, deployments: [deployment] }) });
+  expect(report.stacks[0]).toMatchObject({ runningRelease: 'confirmed', releaseEvidence: { verified: 1, total: 1,
+    releases: [{ releaseId: 'sample-current', manifestSha256: 'a'.repeat(64) }] }, history: { known: true, last: deployment } });
+});
+
+it('retains mixed release replicas instead of trusting one aggregate application row', () => {
+  const current = stack('test', 'running');
+  current.placements = [placement('node-a:9700'), placement('node-b:9700', receipt('sample-next'))] as IStackInfo['placements'];
+  expect(readStackRelease(current)).toMatchObject({ runningRelease: 'mixed', releaseEvidence: { verified: 2, total: 2 } });
+});
+
+it('does not let a known replica cover an unavailable node or missing launch receipt', () => {
+  const current = stack('test', 'running');
+  current.placements = [placement('node-a:9700'), { nodeKey: 'node-b:9700', appsObserved: false,
+    apps: [{ name: 'main', expected: true, process: null }] }] as IStackInfo['placements'];
+  expect(readStackRelease(current)).toMatchObject({ runningRelease: 'unreported', releaseEvidence: { verified: 1, total: 2,
+    observations: [{ state: 'confirmed' }, { state: 'unavailable', node: 'node-b:9700' }] } });
+  current.placements = [placement('node-a:9700'), placement('node-b:9700', undefined)] as IStackInfo['placements'];
+  current.placements![1]!.apps[0]!.process!.release = undefined;
+  expect(readStackRelease(current).runningRelease).toBe('unreported');
+});
+
+it('rejects conflicting manifests under one release name and preserves modified evidence', () => {
+  const current = stack('test', 'running');
+  current.placements = [placement('node-a:9700'), placement('node-b:9700', { ...receipt(), manifestSha256: 'c'.repeat(64) })] as IStackInfo['placements'];
+  expect(readStackRelease(current).runningRelease).toBe('modified');
+  current.placements = [placement('node-a:9700', { state: 'modified', releaseId: 'sample-current', reason: 'Artifact digest changed' })] as IStackInfo['placements'];
+  expect(readStackRelease(current)).toMatchObject({ runningRelease: 'modified', releaseEvidence: {
+    observations: [{ reason: 'Artifact digest changed', state: 'modified' }] } });
+});
+
+it('requires a live PID and complete launch proof, without calling a stopped receipt current', () => {
+  const current = stack('dev', 'running');
+  current.apps[0] = { ...current.apps[0]!, pid: 123, release: receipt() };
+  expect(readStackRelease(current).runningRelease).toBe('confirmed');
+  current.apps[0].pid = null;
+  expect(readStackRelease(current).runningRelease).toBe('unreported');
+  current.apps[0].pid = 123;
+  current.apps[0].release = { ...receipt(), observedAt: 'invalid' };
+  expect(readStackRelease(current).runningRelease).toBe('unreported');
+  current.status = 'stopped'; current.apps[0].status = 'stopped';
+  expect(readStackRelease(current)).toMatchObject({ runningRelease: 'not-running', releaseEvidence: { total: 0, releases: [] } });
 });

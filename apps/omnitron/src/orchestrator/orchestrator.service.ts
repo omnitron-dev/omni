@@ -67,6 +67,7 @@ import type {
   IAppDefinition,
 } from '../config/types.js';
 import { AppHandle } from './app-handle.js';
+import { verifyLaunchRelease } from '../release/runtime-provenance.js';
 import { parsePsLine, parsePsBatch } from './ps-metrics.js';
 import { launchClassic } from './classic-launcher.js';
 import { resolveStartupOrder, resolveShutdownOrder } from './dependency-resolver.js';
@@ -1580,6 +1581,7 @@ export class OrchestratorService extends EventEmitter {
       this.assertAppStartAllowed(name);
       if (this.handles.get(name) !== handle) throw new Error('Application changed while queued; retry the operation');
     this.logger.info({ app: name, children: childNames.length }, 'Zero-downtime reload starting');
+    handle.invalidateRelease();
 
     // For each child process, do a rolling restart via the supervisor.
     // The supervisor's restartChild stops the old child and starts a new one.
@@ -1672,6 +1674,7 @@ export class OrchestratorService extends EventEmitter {
       this.assertAppStartAllowed(name);
       if (this.handles.get(name) !== handle) throw new Error('Application changed while queued; retry the operation');
     this.logger.info({ app: name, from: handle.instanceCount, to: instances }, 'Scaling app');
+    handle.invalidateRelease();
     await handle.supervisor!.scaleChild(name, instances);
     handle.instanceCount = instances;
     this.persistState();
@@ -1685,6 +1688,7 @@ export class OrchestratorService extends EventEmitter {
       this.assertAppStartAllowed(canonical);
       const supervisor = this.handles.get(canonical)?.supervisor;
       if (!supervisor) throw new Error(`No supervisor for '${canonical}'`);
+      this.handles.get(canonical)?.invalidateRelease();
       await supervisor.restartChild(child);
     });
   }
@@ -1977,6 +1981,7 @@ export class OrchestratorService extends EventEmitter {
     handle: AppHandle,
     config: IEcosystemConfig
   ): Promise<void> {
+    handle.release = await verifyLaunchRelease(entry, handle.generation);
     const child = await launchClassic(entry, handle, this.cwd, this.logger, this.appLogHandlers);
 
     child.on('exit', (code, signal) => {
@@ -2112,6 +2117,10 @@ export class OrchestratorService extends EventEmitter {
     const buildResult = this.buildResults.get(entry.name);
     // Use bundled bootstrap path for topology import when available
     const effectiveBootstrapPath = buildResult?.bootstrapPath ?? bootstrapAbsPath;
+    handle.release = buildResult
+      ? { state: 'unreported', reason: 'This launch uses a generated build; an installed release receipt cannot identify that executable.' }
+      : await verifyLaunchRelease(entry, handle.generation,
+        (topology ?? []).map(process => path.resolve(path.dirname(bootstrapAbsPath), process.module)));
 
     if (topology && topology.length > 0) {
       await this.launchTopology(entry, handle, config, effectiveBootstrapPath, topology, buildResult);
@@ -2123,7 +2132,14 @@ export class OrchestratorService extends EventEmitter {
   private async prepareBootstrapBuild(entry: IEcosystemAppEntry, bootstrapAbsPath: string, definition: IAppDefinition): Promise<void> {
     const sourceTopology = /\.(?:[cm]?ts|tsx)$/.test(bootstrapAbsPath) ||
       definition.processes.some((process) => /\.(?:[cm]?ts|tsx)$/.test(process.module));
-    if (!this.devMode && !sourceTopology) return;
+    if (!this.devMode && !sourceTopology) {
+      // A prior source launch under this name must not redirect a prebuilt
+      // release to a stale generated executable or leave its watcher active.
+      await this.buildService?.unwatchApp(entry.name);
+      this.buildResults.delete(entry.name);
+      this.bootstrapSources.delete(entry.name);
+      return;
+    }
     try {
       this.buildService ??= new BuildService(this.devMode, {
         onEsbuildReset: (info) => this.metricsBridge?.recordResilientHandleReset(info),
@@ -2283,6 +2299,7 @@ export class OrchestratorService extends EventEmitter {
       // which returns null for pool workers (they aren't supervisor
       // children) and the entry is mis-reported as `status: 'stopped'`.
       handle.topologyPools.set(procEntry.name, pool as unknown as IProcessPool<unknown>);
+      this.observePoolReleaseMembership(handle, pool);
       this.attachPoolLogCapture(
         entry.name,
         procEntry.name,
@@ -2859,6 +2876,24 @@ export class OrchestratorService extends EventEmitter {
     if (!workerHandle?.onLog) return;
 
     workerHandle.onLog(this.childLogForwarder(appName, handle));
+  }
+
+  /** Pool initialization is complete; every later membership change supersedes this launch proof. */
+  private observePoolReleaseMembership(handle: AppHandle, pool: {
+    on(event: string, listener: () => void): void;
+    getWorkerIds(): string[];
+    getWorkerHandle(id: string): unknown;
+  }): void {
+    const invalidate = () => handle.invalidateRelease();
+    for (const event of ['worker:spawned', 'worker:shutdown', 'worker:replaced', 'pool:scaled', 'pool:destroyed'])
+      pool.on(event, invalidate);
+    // A crash precedes the pool's health check and replacement; stop confirming
+    // the old membership as soon as the initial worker reports its exit.
+    for (const id of pool.getWorkerIds()) {
+      const worker = pool.getWorkerHandle(id) as { onExit?: (listener: () => void) => unknown } | null;
+      if (worker?.onExit) worker.onExit(invalidate);
+      else invalidate();
+    }
   }
 
   /**
@@ -3501,6 +3536,7 @@ export class OrchestratorService extends EventEmitter {
       instances: handle.instanceCount,
       port: handle.port,
       mode: handle.mode,
+      release: handle.release,
       critical: handle.entry.critical ?? false,
     };
 

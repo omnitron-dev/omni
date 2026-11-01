@@ -749,9 +749,10 @@ release
 release
   .command('status <project>')
   .description('Observe stack placement and execution separately from deployment history')
-  .action(async (projectName: string) => {
+  .option('--inspect-installed', 'Explicitly compare installed entry points with retained release archives (read-only)')
+  .action(async (projectName: string, options: { inspectInstalled?: boolean }) => {
     const { releaseStatusCommand } = await import('../commands/release.js');
-    await releaseStatusCommand(projectName);
+    await releaseStatusCommand(projectName, options);
   });
 
 release

@@ -169,6 +169,11 @@ export class DaemonClient implements IDaemonService {
     return this.proxy!.list();
   }
 
+  async inspectInstalledArtifacts(data: { names: string[] }) {
+    await this.ensureConnected();
+    return this.proxy!.inspectInstalledArtifacts(data);
+  }
+
   async getApp(data: { name: string }): Promise<ProcessInfoDto> {
     await this.ensureConnected();
     return this.proxy!.getApp(data);

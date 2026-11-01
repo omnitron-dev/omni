@@ -107,7 +107,11 @@ function releaseOnDisk(id: string, contents: Record<string, string>): string {
 describe('the files on this disk are the release that was built', () => {
   it('loads a release whose artifacts match their manifest', async () => {
     const root = releaseOnDisk('r1', { main: 'main-bytes', geo: 'geo-bytes' });
+    const file = path.join(root, 'r1', 'manifest.json');
+    const bytes = JSON.stringify(JSON.parse(fs.readFileSync(file, 'utf8')), null, 2) + '\n';
+    fs.writeFileSync(file, bytes);
     const r = await loadRelease('r1', root);
+    expect(r.manifestSha256).toBe(crypto.createHash('sha256').update(bytes).digest('hex'));
     expect(r.files.map((f) => [f.app, f.bytes])).toEqual([
       ['main', 10],
       ['geo', 9],

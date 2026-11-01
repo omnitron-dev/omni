@@ -331,6 +331,7 @@ export class ExecutionClient {
 
   private facade(): OrchestratorControl {
     const local: Record<string, unknown> = {
+      refreshObservation: async () => { await withControlDeadline(this.recoverySnapshot(), 4000, 'Execution owner observation timed out'); },
       list: (filter?: { prefix?: string }) => this.view().apps.filter(app => !filter?.prefix || app.info.name.startsWith(filter.prefix)).map(app => app.info),
       getApp: (name: string) => this.view().apps.find(app => app.info.name === (this.resolve(name) ?? name))?.info ?? null,
       getHandle: (name: string) => this.handle(name),

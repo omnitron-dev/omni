@@ -25,6 +25,8 @@ export interface LoadedRelease {
   readonly id: string;
   readonly root: string;
   readonly manifest: ReleaseManifest;
+  /** Digest of the exact manifest bytes admitted with these artifacts. */
+  readonly manifestSha256: string;
   /** Each artifact's tarball on this machine, checked against the manifest. */
   readonly files: ReadonlyArray<{ app: string; version: string; path: string; sha256: string; bytes: number; inputs: string }>;
   /** The static bundle's directory, when the release carries one. */
@@ -55,7 +57,9 @@ export async function loadRelease(id: string, root: string = releasesRoot()): Pr
   if (!fs.existsSync(manifestPath)) {
     throw new Error(`No release '${id}' on this machine — ${manifestPath} does not exist. \`ls ${root}\` lists what was built.`);
   }
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as ReleaseManifest;
+  const manifestBytes = fs.readFileSync(manifestPath);
+  const manifest = JSON.parse(manifestBytes.toString('utf8')) as ReleaseManifest;
+  const manifestSha256 = crypto.createHash('sha256').update(manifestBytes).digest('hex');
   if (manifest.id !== id) throw new Error(`${manifestPath} names release '${manifest.id}', not '${id}'`);
 
   const files: Array<LoadedRelease['files'][number]> = [];
@@ -79,7 +83,7 @@ export async function loadRelease(id: string, root: string = releasesRoot()): Pr
   if (staticsDir && !fs.existsSync(staticsDir)) {
     throw new Error(`Release ${id} records a static bundle for ${manifest.statics!.stack}, and ${staticsDir} is not there`);
   }
-  return { id, root: dir, manifest, files, staticsDir };
+  return { id, root: dir, manifest, manifestSha256, files, staticsDir };
 }
 
 /**

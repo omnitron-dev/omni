@@ -1,13 +1,14 @@
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { Box, Chip, IconButton, Stack, Tooltip, Typography } from '@mui/material';
 import { Alert } from '@omnitron-dev/prism/components/alert';
-import { readReleaseDeploymentState } from '@omnitron-dev/omnitron/release-reading';
+import { readReleaseDeploymentState, runningReleaseLabel } from '@omnitron-dev/omnitron/release-reading';
 import { RefreshIcon } from 'src/assets/icons';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { releaseApi } from 'src/netron/release-wire';
 import { useProjectStore } from 'src/stores/project.store';
 import { OperationStatus } from './operation-status';
 import { when } from './release-bits';
+import { InstalledFilesInspection } from './installed-files-inspection';
 
 /** Remount on project changes so a late answer never labels another workspace. */
 export function ReleaseDeploymentState({ project, stack }: { project: string; stack?: string }) {
@@ -47,7 +48,21 @@ export function ReleaseDeploymentState({ project, stack }: { project: string; st
           <Chip size="small" variant="outlined" label={row.status} color={!error && row.status === 'running' ? 'success' : row.status === 'stopped' ? 'default' : 'warning'} />
           <Typography variant="body2">Apps {row.apps.online}/{row.apps.total}{row.apps.unknown ? ` · ${row.apps.unknown} unknown` : ''}</Typography>
         </Stack>
-        <Typography variant="caption" color="text.secondary">{row.runningRelease === 'not-running' ? 'No applications running' : 'Current release not reported'}</Typography>
+        <Typography variant="caption" color={row.runningRelease === 'confirmed' || row.runningRelease === 'not-running' ? 'text.secondary' : 'warning.main'}>{runningReleaseLabel(row)}</Typography>
+        {row.releaseEvidence.releases.map(release => <Tooltip describeChild key={`${release.releaseId}:${release.manifestSha256}`} title={`Manifest SHA-256: ${release.manifestSha256}`}>
+          <Typography component={RouterLink} to={`/releases/${encodeURIComponent(release.releaseId)}`} variant="body2" sx={{ color: 'primary.main', textDecoration: 'none', fontFamily: 'monospace' }}>{release.releaseId}</Typography>
+        </Tooltip>)}
+        {row.releaseEvidence.total > 0 && <Box component="details" sx={{ minWidth: 0, width: 1 }}>
+          <Typography component="summary" variant="caption" sx={{ cursor: 'pointer', color: 'text.secondary' }}>{row.releaseEvidence.verified}/{row.releaseEvidence.total} launch identities verified</Typography>
+          <Stack spacing={0.75} sx={{ pt: 0.75 }}>
+            {row.releaseEvidence.observations.map((observation, index) => <Box key={`${observation.node}:${observation.app}:${index}`}>
+              <Typography variant="caption" component="div">{observation.node ? `${observation.node} / ` : ''}{observation.app} · {observation.state}{observation.releaseId ? ` · ${observation.releaseId}` : ''}</Typography>
+              {observation.reason && <Typography variant="caption" color="warning.main" component="div">{observation.reason}</Typography>}
+              {observation.observedAt && <Typography variant="caption" color="text.secondary" component="div">Launch verified {when(observation.observedAt)}</Typography>}
+            </Box>)}
+          </Stack>
+        </Box>}
+        <InstalledFilesInspection key={`${project}:${row.stack}`} project={project} stack={row.stack} />
       </Stack>
       <Stack spacing={0.5} sx={{ minWidth: 0 }}>
         <Typography variant="caption" color="text.secondary">Last recorded deployment</Typography>
@@ -60,6 +75,6 @@ export function ReleaseDeploymentState({ project, stack }: { project: string; st
             </>}
       </Stack>
     </Box>)}
-    {rows.length > 0 && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', pt: 1 }}>Deployment history does not verify the build currently running on a node.</Typography>}
+    {rows.length > 0 && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', pt: 1 }}>Verified launch receipts identify the admitted release, not continuous in-memory code integrity. Deployment history is a separate record.</Typography>}
   </Box>;
 }

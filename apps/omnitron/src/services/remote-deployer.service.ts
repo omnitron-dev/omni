@@ -50,6 +50,7 @@
  */
 
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import { artifactPayloadDigestCommand, frameworkDigestCommand, sealReleaseArtifactCommand } from '../release/runtime-provenance.js';
 import type { StaticAssetPublication, StaticAssetReceipt } from './static-carry-forward.js';
 import type { MaintenanceLock as HeldLock } from './maintenance-lock.js';
 import type { IStackNode } from '../config/types.js';
@@ -559,6 +560,7 @@ export class RemoteDeployer {
       this.emitProgress(nodeKey, artifact.app, 'extracting', 50, 'Extracting candidate artifact...');
       const archiveName = `${artifact.app}-${artifact.version}.tar.gz`;
       await this.sshExec(target, `cd ${shellEscape(remotePath)} && tar -xzf ${shellEscape(archiveName)}`);
+      const beforePayload = artifact.release ? (await this.sshExec(target, artifactPayloadDigestCommand(remotePath, archiveName), 90_000)).trim() : null;
 
       // 5. Install the dependencies ON THE NODE.
       //
@@ -646,7 +648,9 @@ export class RemoteDeployer {
       // puts the link INSIDE it, leaving a directory with no package.json
       // that node reports as a missing `index.js` — a message about a file
       // that was never the problem.
-      const daemonRoot = (await this.inspectInstalledBundle(target)).root;
+      const daemonBundle = await this.inspectInstalledBundle(target);
+      const daemonRoot = daemonBundle.root;
+      const beforeFramework = artifact.release ? (await this.sshExec(target, frameworkDigestCommand(remotePath), 90_000)).trim() : null;
       await this.sshExec(
         target,
         `set -e; APP=${shellEscape(`${remotePath}/node_modules/@omnitron-dev`)}; ` +
@@ -693,6 +697,18 @@ export class RemoteDeployer {
       // the retry read «installed, running» and left all three on the code
       // they had started with an hour earlier. It is written once the app
       // has come up healthy on these files — `recordRunningArtifact`.
+
+      // A delivery receipt is not running-state evidence. The owner verifies
+      // this exact installed tree before capturing it for a fresh launch.
+      if (artifact.release) {
+        if (artifact.release.artifactSha256 !== artifact.tarballSha256 || artifact.release.artifactBytes !== artifact.size || artifact.release.app !== artifact.app)
+          throw new Error('Release origin does not match the delivered artifact');
+        const afterFramework = (await this.sshExec(target, frameworkDigestCommand(remotePath), 90_000)).trim();
+        const unchanged = Boolean(beforeFramework && /^[a-f0-9]{64}$/.test(beforeFramework) && afterFramework === beforeFramework);
+        const afterPayload = (await this.sshExec(target, artifactPayloadDigestCommand(remotePath, archiveName), 90_000)).trim();
+        const payloadUnchanged = Boolean(beforePayload && /^[a-f0-9]{64}$/.test(beforePayload) && beforePayload === afterPayload);
+        await this.sshExec(target, sealReleaseArtifactCommand(remotePath, artifact.release, daemonBundle.commit, unchanged, payloadUnchanged), 90_000);
+      }
 
       // 6. Installed. Starting is a SEPARATE phase, and the order matters:
       // a node cannot start an app it has no definition for, and the

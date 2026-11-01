@@ -628,6 +628,8 @@ export interface IWebSocketTransportConfig {
 
 export interface IEcosystemAppEntry {
   name: string;
+  /** Explicit installed artifact boundary; never inferred from the process cwd or a release-like directory name. */
+  releaseRoot?: string;
   /** External readiness, independent of process liveness. Re-read applies probes without restarting the app. */
   readiness?: import('../health/contracts.js').AppReadinessConfig;
   /** Bootstrap mode: app exports defineSystem() */
@@ -971,7 +973,20 @@ export interface IEcosystemConfig {
 
 export type AppStatus = 'stopped' | 'starting' | 'online' | 'stopping' | 'errored' | 'crashed';
 
+/** Evidence captured by the process owner, never inferred from deployment history. */
+export type RuntimeReleaseEvidence = {
+  state: 'confirmed';
+  releaseId: string;
+  manifestSha256: string;
+  artifactSha256: string;
+  observedAt: string;
+  launchId: string;
+  /** Verifies the installed tree at launch, not continuous in-memory integrity. */
+  basis: 'verified-launch';
+} | { state: 'unreported' | 'modified'; reason: string; releaseId?: string };
+
 export interface ProcessInfoDto {
+  release?: RuntimeReleaseEvidence;
   /** App name (e.g., 'main', 'storage') */
   name: string;
   /** Main PID (or null if stopped) */

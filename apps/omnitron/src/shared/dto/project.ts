@@ -309,6 +309,7 @@ export interface ISyncStatus {
 }
 
 export interface IStackAppStatus {
+  release?: import('../../config/types.js').RuntimeReleaseEvidence;
   /** App name */
   name: string;
   /** Namespaced handle key: project/stack/app */

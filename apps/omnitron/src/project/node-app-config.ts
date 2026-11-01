@@ -97,7 +97,7 @@ export interface NodeConfigInput {
  * follow a path that does not exist — or, worse, one that does and belongs to
  * something else.
  */
-const DROPPED = new Set(['watch', 'cwd', 'script']);
+const DROPPED = new Set(['watch', 'cwd', 'script', 'releaseRoot']);
 
 /**
  * The app definitions a node should be given.
@@ -128,6 +128,7 @@ export function selectNodeApps(input: NodeConfigInput): Array<Record<string, unk
     // both under the version directory the deployer created.
     entry['bootstrap'] = `${input.artifactRoot}/${input.project}/${app.name}/${version}/dist/bootstrap.js`;
     entry['cwd'] = `${input.artifactRoot}/${input.project}/${app.name}/${version}`;
+    entry['releaseRoot'] = entry['cwd'];
 
     // The addresses and credentials this app connects with, merged OVER its
     // declared env: the master resolved them against what it actually

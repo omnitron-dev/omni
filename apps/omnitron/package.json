@@ -84,6 +84,7 @@
     "test:coverage": "vitest run --coverage",
     "test:console-publication": "node --test scripts/console-publication.test.mjs",
     "test:private-storage": "node test/runtime/private-storage-locks.mjs dist",
+    "test:release-provenance": "node test/runtime/release-provenance.mjs dist",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix"
   },

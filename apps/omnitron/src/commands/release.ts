@@ -46,6 +46,7 @@ import {
   readGates,
   readSourcePublication,
   readReleaseDeploymentState,
+  runningReleaseLabel,
   stacksByRelease,
   unnamedStacks,
   type DeploymentsAnswer,
@@ -109,15 +110,24 @@ async function readDeployments(existing?: ReturnType<typeof createDaemonClient>)
   }
 }
 
-export async function releaseStatusCommand(project: string): Promise<void> {
-  const client = createDaemonClient();
+export async function releaseStatusCommand(project: string, options: { inspectInstalled?: boolean } = {}): Promise<void> {
+  const client = createDaemonClient(undefined, options.inspectInstalled ? 90_000 : undefined);
   try {
     const state = await readReleaseDeploymentState(project, {
       stacks: async () => (await client.service<IProjectRpcService>('OmnitronProject')).listStacks({ project }),
       deployments: () => readDeployments(client),
     });
-    if (!state.inventory.known || !state.history.known || state.stacks.some(stack => !stack.history.known || stack.runningRelease === 'unreported')) process.exitCode = 2;
-    if (emitJson(state)) return;
+    if (!state.inventory.known || !state.history.known || state.stacks.some(stack => !stack.history.known || !['not-running', 'confirmed'].includes(stack.runningRelease))) process.exitCode = 2;
+    const installed: Array<{ stack: string; report?: import('../shared/dto/installed-release.js').InstalledReleaseInspection; error?: string }> = [];
+    if (options.inspectInstalled) {
+      const service = await client.service<IProjectRpcService>('OmnitronProject');
+      for (const stack of state.stacks) {
+        try { installed.push({ stack: stack.stack, report: await service.inspectInstalledArtifacts({ project, stack: stack.stack }) }); }
+        catch { installed.push({ stack: stack.stack, error: 'Installed-file inspection unavailable; backend may need an update' }); process.exitCode = 2; }
+      }
+      if (installed.some(item => item.report && (!item.report.catalogComplete || item.report.nodes.length || item.report.apps.some(app => app.state !== 'observed' || app.candidates.length !== 1 || app.candidates[0]!.state !== 'entry-matches')))) process.exitCode = 2;
+    }
+    if (emitJson(options.inspectInstalled ? { ...state, installed } : state)) return;
     log.info(`${project} — stack observation ${state.observedAt}`);
     if (!state.inventory.known) log.warn(state.inventory.why);
     if (!state.history.known) log.warn(state.history.why);
@@ -125,12 +135,36 @@ export async function releaseStatusCommand(project: string): Promise<void> {
       const placement = stack.type === 'local' ? 'controller node'
         : stack.nodes.map(node => `${node.label ? `${node.label} · ` : ''}${node.endpoint} (${node.connected ? 'reachable' : 'unreachable'})`).join(', ') || 'no nodes reported';
       log.info(`${stack.stack}: ${stack.status}; apps ${stack.apps.online}/${stack.apps.total}${stack.apps.unknown ? ` (${stack.apps.unknown} unknown)` : ''}; ${placement}`);
-      log.info(`  current release: ${stack.runningRelease === 'not-running' ? 'none — applications stopped' : 'identity not reported by the runtime'}`);
+      log.info(`  current release: ${runningReleaseLabel(stack)}`);
+      for (const release of stack.releaseEvidence.releases) log.info(`    ${release.releaseId} · manifest ${release.manifestSha256}`);
+      if (stack.releaseEvidence.total > 0) log.info(`    ${stack.releaseEvidence.verified}/${stack.releaseEvidence.total} launch identities verified`);
+      for (const observation of stack.releaseEvidence.observations) {
+        log.info(`    ${observation.node ? `${observation.node} / ` : ''}${observation.app}: ${observation.state}${observation.releaseId ? ` · ${observation.releaseId}` : ''}${observation.reason ? ` — ${observation.reason}` : ''}`);
+      }
       const history = stack.history;
       log.info(`  last recorded deployment: ${!history.known ? `unknown — ${history.why}` : !history.last ? 'none recorded'
         : `${history.last.release ?? (history.last.releaseUnnamed ? 'release name not recorded' : 'working tree')} at ${history.last.at}`}`);
+      const inspection = installed.find(item => item.stack === stack.stack);
+      if (inspection?.error) log.warn(`  ${inspection.error}`);
+      if (inspection?.report) {
+        const report = inspection.report;
+        log.info(`  installed files observed ${report.observedAt} (not launch evidence)`);
+        for (const reason of report.catalogReasons) log.warn(`    ${reason}`);
+        for (const node of report.nodes) log.warn(`    ${node.node}: ${node.error}`);
+        for (const app of report.apps) {
+          log.info(`    ${app.node} / ${app.app}: ${app.state}; PID ${app.pid ?? 'none'}`);
+          for (const reason of app.reasons) log.warn(`      ${reason}`);
+          if (!app.candidates.length) log.warn('      No matching retained archive in the release catalog');
+          if (app.candidates.length > 1) log.warn(`      Ambiguous base: ${app.candidates.length} catalog releases match`);
+          for (const candidate of app.candidates) {
+            log.info(`      retained archive matches ${candidate.releaseId}: ${candidate.state}`);
+            for (const reason of candidate.reasons) log.warn(`        ${reason}`);
+          }
+        }
+        for (const limitation of report.limitations) log.info(`    ${limitation}`);
+      }
     }
-    log.info('Deployment history does not verify the build currently running on a node.');
+    log.info('Verified launch receipts identify the admitted release, not continuous in-memory code integrity. Deployment history is a separate record.');
   } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
   finally { await client.disconnect(); }
 }

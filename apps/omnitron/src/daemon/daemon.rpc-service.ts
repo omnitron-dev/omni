@@ -47,6 +47,12 @@ import { OPERATOR_ROLES, ADMIN_ROLES, CONTROL_PLANE_READ_ROLES, CONTROL_PLANE_RO
 export class DaemonRpcService implements IDaemonService {
   private readonly startedAt = Date.now();
 
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
+  async inspectInstalledArtifacts(data: { names: string[] }) {
+    const { inspectInstalledArtifacts } = await import('../release/installed-artifacts.js');
+    return inspectInstalledArtifacts(this.orchestrator, data?.names);
+  }
+
   constructor(
     private readonly orchestrator: OrchestratorService,
     private readonly titanHealth: IHealthService,

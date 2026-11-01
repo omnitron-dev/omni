@@ -3,6 +3,7 @@
 import type { GateOutcome } from '../release/manifest.js';
 import type { ReleaseDeploymentDto } from './dto/services.js';
 import type { IStackInfo } from './dto/project.js';
+import type { RuntimeReleaseEvidence } from '../config/types.js';
 
 /**
  * The part of a release summary its gates are read from. Not the per-outcome
@@ -139,8 +140,84 @@ export interface ReleaseStackObservation {
   apps: { online: number; total: number; unknown: number };
   nodes: Array<{ host: string; port: number; endpoint: string; label: string | null; connected: boolean }>;
   history: StackDeploymentHistory;
-  /** Current process DTOs do not attest release identity. Audit history cannot fill that gap. */
-  runningRelease: 'not-running' | 'unreported';
+  /** Launch provenance is distinct from deployment history and continuous code integrity. */
+  runningRelease: 'not-running' | 'confirmed' | 'mixed' | 'modified' | 'unreported';
+  releaseEvidence: StackReleaseEvidence;
+}
+
+export interface StackReleaseEvidence {
+  verified: number;
+  total: number;
+  releases: Array<{ releaseId: string; manifestSha256: string }>;
+  observations: Array<{
+    app: string;
+    node: string | null;
+    pid: number | null;
+    state: 'confirmed' | 'unreported' | 'modified' | 'unavailable';
+    releaseId?: string;
+    reason?: string;
+    observedAt?: string;
+    launchId?: string;
+  }>;
+}
+
+/** Read every physical replica; a healthy peer cannot attest for an unreachable one. */
+export function readStackRelease(stack: IStackInfo): Pick<ReleaseStackObservation, 'runningRelease' | 'releaseEvidence'> {
+  const observations: StackReleaseEvidence['observations'] = [];
+  const releases = new Map<string, StackReleaseEvidence['releases'][number]>();
+  const inspect = (app: { name: string; status: string; pid?: number | null; release?: RuntimeReleaseEvidence }, node: string | null, available = true) => {
+    if (available && app.status === 'stopped') return;
+    const base = { app: app.name, node, pid: app.pid ?? null };
+    if (!available || app.status === 'unknown') {
+      observations.push({ ...base, state: 'unavailable', reason: 'Application inventory unavailable; launch identity is unknown' });
+      return;
+    }
+    const evidence = app.release;
+    if (evidence?.state === 'confirmed' && app.status === 'online' && Number.isSafeInteger(app.pid) && app.pid! > 0 &&
+      evidence.basis === 'verified-launch' && typeof evidence.releaseId === 'string' && evidence.releaseId.length > 0 &&
+      /^[a-f0-9]{64}$/.test(evidence.manifestSha256) && /^[a-f0-9]{64}$/.test(evidence.artifactSha256) &&
+      typeof evidence.launchId === 'string' && evidence.launchId.length > 0 && Number.isFinite(Date.parse(evidence.observedAt))) {
+      observations.push({ ...base, state: 'confirmed', releaseId: evidence.releaseId, observedAt: evidence.observedAt, launchId: evidence.launchId });
+      releases.set(`${evidence.releaseId}:${evidence.manifestSha256}`, { releaseId: evidence.releaseId, manifestSha256: evidence.manifestSha256 });
+    } else if (evidence?.state === 'modified') {
+      observations.push({ ...base, state: 'modified', ...(evidence.releaseId && { releaseId: evidence.releaseId }), reason: evidence.reason });
+    } else {
+      observations.push({ ...base, state: 'unreported', reason: app.status !== 'online'
+        ? `Application is ${app.status}; no active launch is confirmed`
+        : evidence?.state === 'confirmed' && (!Number.isSafeInteger(app.pid) || app.pid! <= 0) ? 'Application is online but its process identity is unavailable; the launch receipt cannot be bound to this instance'
+        : evidence?.state === 'unreported' ? evidence.reason : evidence ? 'Runtime launch evidence is incomplete or invalid' : 'Runtime does not report a verified launch receipt' });
+    }
+  };
+  if (stack.type !== 'local' && stack.placements?.length) {
+    for (const node of stack.placements) {
+      for (const app of node.apps) inspect(app.process ?? { name: app.name, status: node.appsObserved ? 'stopped' : 'unknown' }, node.nodeKey, node.appsObserved);
+      if (!node.appsObserved && node.apps.length === 0) inspect({ name: 'inventory', status: 'unknown' }, node.nodeKey, false);
+    }
+  } else {
+    for (const app of stack.apps) inspect(app, null);
+    if (stack.type !== 'local') {
+      for (const node of stack.nodes.filter(peer => !peer.connected)) inspect({ name: 'inventory', status: 'unknown' }, `${node.host}:${node.port}`, false);
+    }
+  }
+  const releaseEvidence: StackReleaseEvidence = { verified: observations.filter(row => row.state === 'confirmed').length,
+    total: observations.length, releases: [...releases.values()], observations };
+  const conflictingManifests = new Set(releaseEvidence.releases.map(row => row.releaseId)).size !== releases.size;
+  const runningRelease = observations.length === 0 && stack.status === 'stopped' ? 'not-running'
+    : conflictingManifests || observations.some(row => row.state === 'modified') ? 'modified'
+      : observations.length === 0 || observations.some(row => row.state !== 'confirmed') ? 'unreported'
+        : releases.size > 1 ? 'mixed' : 'confirmed';
+  return { runningRelease, releaseEvidence };
+}
+
+/** Shared wording for human CLI output and Console. */
+export function runningReleaseLabel(row: Pick<ReleaseStackObservation, 'runningRelease' | 'releaseEvidence'>): string {
+  switch (row.runningRelease) {
+    case 'not-running': return 'No applications running';
+    case 'confirmed': return 'Launch release verified';
+    case 'mixed': return 'Different releases are running';
+    case 'modified': return 'Runtime differs from its release evidence';
+    default: return 'Current release not reported';
+  }
 }
 
 export interface ReleaseDeploymentState {
@@ -173,7 +250,7 @@ export async function readReleaseDeploymentState(project: string, ports: {
         endpoint: `${host.includes(':') && !host.startsWith('[') ? `[${host}]` : host}:${port}`,
       })),
       history: stackDeploymentHistory(project, stack, history),
-      runningRelease: stack.status === 'stopped' && stack.apps.every(app => app.status === 'stopped') ? 'not-running' : 'unreported',
+      ...readStackRelease(stack),
     })) : [],
   };
 }

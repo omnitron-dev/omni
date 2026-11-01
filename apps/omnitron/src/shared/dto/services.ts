@@ -1,4 +1,5 @@
 export type { StackDiagnosis, StackDiagnosisCheck } from './stack-diagnosis.js';
+export type { InstalledReleaseInspection, InstalledArtifactObservation, InstalledReleaseCandidate } from './installed-release.js';
 import type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace } from './topology.js';
 export type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace, TopologyChange, TopologyIssue } from './topology.js';
 import type { ProjectTopology } from './project.js';
@@ -37,6 +38,7 @@ export { consolePasswordError } from './auth.js';
 // ============================================================================
 
 export interface IDaemonService {
+  inspectInstalledArtifacts(data: { names: string[] }): Promise<import('./installed-release.js').InstalledArtifactObservation[]>;
   // --- Process Management ---
   startApp(data: { name: string }): Promise<ProcessInfoDto>;
   startAll(): Promise<ProcessInfoDto[]>;
@@ -335,6 +337,7 @@ export interface IProjectRpcService {
   refreshTopologyMetadata(data: { project: string; stack?: string }): Promise<import('./project.js').TopologyMetadataRefresh>;
   listStacks(data: { project: string }): Promise<IStackInfo[]>;
   getStack(data: { project: string; stack: string }): Promise<IStackInfo>;
+  inspectInstalledArtifacts(data: { project: string; stack: string }): Promise<import('./installed-release.js').InstalledReleaseInspection>;
   diagnoseStack(data: { project: string; stack: string }): Promise<import('./stack-diagnosis.js').StackDiagnosis>;
   getStackStatus(data: { project: string; stack: string }): Promise<StackRuntime>;
 

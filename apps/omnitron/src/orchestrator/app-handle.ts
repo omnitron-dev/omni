@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import type { ChildProcess } from 'node:child_process';
 import type { IProcessMetrics, IHealthStatus, IProcessPool } from '@omnitron-dev/titan-pm';
 import type { ProcessSupervisor } from '@omnitron-dev/titan-pm';
-import type { AppStatus, IEcosystemAppEntry, IProcessEntry } from '../config/types.js';
+import type { AppStatus, IEcosystemAppEntry, IProcessEntry, RuntimeReleaseEvidence } from '../config/types.js';
 import type { ServiceRouter } from './service-router.js';
 import type { BootstrapMetadata } from '../project/bootstrap-metadata.js';
 
@@ -45,6 +45,13 @@ export interface LastExitInfo {
 
 export class AppHandle {
   public readonly generation = randomUUID();
+  /** Captured for this launch; changing the next-start definition never rewrites it. */
+  public release: RuntimeReleaseEvidence = { state: 'unreported', reason: 'No verified release receipt was captured for this launch.' };
+
+  invalidateRelease(): void {
+    if (this.release.state === 'confirmed') this.release = { state: 'unreported', releaseId: this.release.releaseId,
+      reason: 'Application process membership changed after its verified launch; a fresh launch verification is required.' };
+  }
   public bootstrapMetadata: BootstrapMetadata | null = null;
   public pid: number | null = null;
   public status: AppStatus = 'stopped';
@@ -300,6 +307,7 @@ export class AppHandle {
    * still down), because a partial app is not an online one.
    */
   childStarted(child: string, pid: number | null): boolean {
+    if (this.startedChildren.has(child)) this.invalidateRelease();
     this.startedChildren.add(child);
     if (child === this.serverChild) this.pid = pid;
     if (!this.declaredChildren.every((name) => this.startedChildren.has(name))) return false;
@@ -313,6 +321,7 @@ export class AppHandle {
    * holding the dead one would let the liveness check vouch for nothing.
    */
   childGone(child: string): void {
+    this.invalidateRelease();
     this.startedChildren.delete(child);
     if (child === this.serverChild) this.pid = null;
   }

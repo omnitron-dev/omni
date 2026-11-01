@@ -55,6 +55,8 @@ import { execInGroup } from './exec-in-group.js';
 // =============================================================================
 
 export interface ArtifactInfo {
+  /** Present only for an artifact admitted through a checked release manifest. */
+  release?: import('../release/runtime-provenance.js').ReleaseArtifactOrigin;
   app: string;
   version: string;
   path: string; // Local tarball path

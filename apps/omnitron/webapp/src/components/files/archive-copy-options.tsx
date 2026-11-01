@@ -146,7 +146,9 @@ export function ArchiveCopyOptions({
           {capabilities && !formats.length && (
             <Alert severity="info">
               {mode === 'directory'
-                ? 'No archive format is supported by both the source encoder and destination decoder.'
+                ? capabilities.formats.length
+                  ? 'Folder restoration could not be verified for these nodes. Check destination connectivity, backend support and archive tools, or choose Archive to transfer without extraction.'
+                  : 'No supported archive encoders were found on the source node.'
                 : 'No supported archive encoders were found on the source node.'}
             </Alert>
           )}

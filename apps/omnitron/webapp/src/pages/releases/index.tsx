@@ -203,12 +203,12 @@ export default function ReleasesPage() {
           </Stack>
           <GateStrip gates={r.gateList} size={8} columns={7} />
           {r.verified.map((v) => (
-            <Tooltip key={v.stack} title={`Probes ${v.stack} ran against this release while carrying it — measured ${when(v.at)}`} arrow>
+            <Tooltip key={v.stack} title={`Recorded probe result on ${v.stack} at ${when(v.at)}. This is historical evidence, not current process identity.`} arrow>
               <Typography
                 variant="caption"
-                sx={{ color: v.passed === v.total ? 'success.main' : 'warning.main', fontFamily: 'monospace', whiteSpace: 'nowrap' }}
+                sx={{ color: v.passed === v.total ? 'text.secondary' : 'warning.main', fontFamily: 'monospace', whiteSpace: 'nowrap' }}
               >
-                verified on {v.stack}: {v.passed}/{v.total}
+                Probed {v.stack}: {v.passed}/{v.total}
               </Typography>
             </Tooltip>
           ))}

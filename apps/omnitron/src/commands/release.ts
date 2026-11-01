@@ -123,7 +123,7 @@ export async function releaseStatusCommand(project: string): Promise<void> {
     if (!state.history.known) log.warn(state.history.why);
     for (const stack of state.stacks) {
       const placement = stack.type === 'local' ? 'controller node'
-        : stack.nodes.map(node => `${node.label ?? `${node.host}:${node.port}`} (${node.connected ? 'reachable' : 'unreachable'})`).join(', ') || 'no nodes reported';
+        : stack.nodes.map(node => `${node.label ? `${node.label} · ` : ''}${node.endpoint} (${node.connected ? 'reachable' : 'unreachable'})`).join(', ') || 'no nodes reported';
       log.info(`${stack.stack}: ${stack.status}; apps ${stack.apps.online}/${stack.apps.total}${stack.apps.unknown ? ` (${stack.apps.unknown} unknown)` : ''}; ${placement}`);
       log.info(`  current release: ${stack.runningRelease === 'not-running' ? 'none — applications stopped' : 'identity not reported by the runtime'}`);
       const history = stack.history;

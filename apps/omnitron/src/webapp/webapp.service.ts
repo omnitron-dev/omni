@@ -320,8 +320,9 @@ export class WebappService {
           this.logger.info({ port: this.publicPort }, 'Omnitron Console is already running');
           return;
         }
-        // Running but not healthy — stop and recreate
-        this.logger.warn('Nginx container running but not healthy — recreating...');
+        if (state.health !== 'healthy') {
+          this.logger.warn('Nginx container running but not healthy — recreating...');
+        }
       }
     } else if (configChanged && appliedConfig !== null) {
       this.logger.info('Nginx config changed — recreating the console container');

@@ -137,7 +137,7 @@ export interface ReleaseStackObservation {
   type: IStackInfo['type'];
   status: IStackInfo['status'];
   apps: { online: number; total: number; unknown: number };
-  nodes: Array<{ host: string; port: number; label: string | null; connected: boolean }>;
+  nodes: Array<{ host: string; port: number; endpoint: string; label: string | null; connected: boolean }>;
   history: StackDeploymentHistory;
   /** Current process DTOs do not attest release identity. Audit history cannot fill that gap. */
   runningRelease: 'not-running' | 'unreported';
@@ -169,7 +169,9 @@ export async function readReleaseDeploymentState(project: string, ports: {
       project, stack: stack.name, type: stack.type, status: stack.status,
       apps: { online: stack.apps.filter(app => app.status === 'online').length, total: stack.apps.length,
         unknown: stack.apps.filter(app => app.status === 'unknown').length },
-      nodes: stack.nodes.map(({ host, port, label, connected }) => ({ host, port, label, connected })),
+      nodes: stack.nodes.map(({ host, port, label, connected }) => ({ host, port, label, connected,
+        endpoint: `${host.includes(':') && !host.startsWith('[') ? `[${host}]` : host}:${port}`,
+      })),
       history: stackDeploymentHistory(project, stack, history),
       runningRelease: stack.status === 'stopped' && stack.apps.every(app => app.status === 'stopped') ? 'not-running' : 'unreported',
     })) : [],

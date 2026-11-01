@@ -16,7 +16,7 @@ it('shows current placement and stopped apps without turning deployment history 
   ]);
   mocks.deployments.mockResolvedValue({ known: true, deployments: [{ project: 'sample', stack: 'test', release: 'sample-old', at: '2026-09-30T00:00:00Z', source: 'operator' }] });
   render(<MemoryRouter><ReleaseDeploymentState project="sample" /></MemoryRouter>);
-  await waitFor(() => expect(screen.getByText('Test node · reachable')).toBeTruthy());
+  await waitFor(() => expect(screen.getByText('Test node · test.example:9700 · reachable')).toBeTruthy());
   expect(screen.getByText('No applications running')).toBeTruthy();
   expect(screen.getByText('Current release not reported')).toBeTruthy();
   expect(screen.getByRole('link', { name: 'sample-old' }).getAttribute('href')).toBe('/releases/sample-old');

@@ -32,9 +32,12 @@ export async function clusterStatusCommand(): Promise<void> {
     log.info(`${prism.bold('Cluster State')}`);
     log.info(`  Node ID:    ${state.nodeId}`);
     log.info(`  State:      ${formatElectionState(state.state)}`);
-    log.info(`  Term:       ${state.term}`);
+    log.info(`  Epoch:      ${state.term ?? prism.dim('unconfirmed')}`);
     log.info(`  Leader:     ${state.leaderId ?? prism.dim('none')}`);
-    log.info(`  Voted For:  ${state.votedFor ?? prism.dim('none')}`);
+    log.info(`  Authority:  ${state.authority} (${state.coordination})`);
+    log.info(`  Lease:      ${state.leaseRemainingMs} ms remaining`);
+    if (state.reason) log.warn(`  Reason:     ${state.reason}`);
+    log.info('  Effects:    require recipient-side fencing');
     log.info(`  Uptime:     ${formatDuration(state.uptime)}`);
 
     // Also show fleet nodes for context

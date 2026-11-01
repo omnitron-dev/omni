@@ -71,8 +71,9 @@ export const DEFAULT_DAEMON_CONFIG: IDaemonConfig = {
   role: 'master',
   cluster: {
     enabled: false,
-    discovery: 'redis',
-    electionTimeout: { min: 5_000, max: 15_000 },
+    discovery: 'postgres',
+    clusterId: 'default',
+    leaseTtlMs: 15_000,
     heartbeatInterval: 2_000,
   },
   secrets: {

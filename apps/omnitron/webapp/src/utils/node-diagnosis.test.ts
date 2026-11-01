@@ -17,7 +17,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { verdictOf, omnitronVerdict, firstReason, isMeasured, clusterDisagreement } from './node-diagnosis';
+import { verdictOf, omnitronVerdict, firstReason, isMeasured, clusterDisagreement, clusterAuthorityProblems } from './node-diagnosis';
 
 describe('an absence is not a failure', () => {
   it('reads a null layer as not measured', () => {
@@ -145,7 +145,7 @@ describe('a split brain is only visible across nodes', () => {
     const d = clusterDisagreement([view('a', 'a', 4), view('b', 'a', 5)]);
     expect(d.kind).toBe('terms');
     if (d.kind !== 'terms') return;
-    expect(d.terms).toEqual([4, 5]);
+    expect(d.terms).toEqual(['4', '5']);
   });
 
   it('does not manufacture a disagreement out of an outage', () => {
@@ -208,5 +208,22 @@ describe('the omnitron layer, read the way the dot and the strip read it', () =>
   it('calls a running daemon reachable, and counts only answers as measurements', () => {
     expect(reached(true, null)).toBe('ok');
     expect(isMeasured({ pingReachable: null, sshConnected: null, omnitronConnected: null, omnitronError: 'no path answered' })).toBe(false);
+  });
+});
+
+
+describe('database lease observations', () => {
+  it('does not compare independent coordination namespaces', () => {
+    expect(clusterDisagreement(['test', 'prod'].map(id => ({nodeId: id, reachable: true, cluster: {clusterId: id, leaderId: id, term: '1'}})))).toEqual({kind: 'none'});
+  });
+  it('preserves epochs beyond JavaScript safe integers', () => {
+    const result = clusterDisagreement(['9007199254740993', '9007199254740992'].map((term, i) => ({nodeId: String(i), reachable: true, cluster: {leaderId: 'a', term}})));
+    expect(result).toMatchObject({kind: 'terms', terms: ['9007199254740992', '9007199254740993']});
+  });
+  it('shows an authority failure even with only one answering controller', () => {
+    expect(clusterAuthorityProblems([{nodeId: 'a', reachable: true, cluster: {coordination: 'postgres-lease', authority: 'unavailable', reason: 'Database confirmation unavailable'}}])).toEqual([{nodeId: 'a', reason: 'Database confirmation unavailable'}]);
+  });
+  it('does not infer lease failure for a legacy or disabled cluster', () => {
+    expect(clusterAuthorityProblems([{nodeId: 'a', reachable: true, cluster: null}])).toEqual([]);
   });
 });

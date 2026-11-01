@@ -16,6 +16,10 @@
       "types": "./dist/exports/plugins.d.ts",
       "default": "./dist/exports/plugins.js"
     },
+    "./coordination": {
+      "types": "./dist/exports/coordination.d.ts",
+      "default": "./dist/exports/coordination.js"
+    },
     "./transaction": {
       "types": "./dist/exports/transaction.d.ts",
       "default": "./dist/exports/transaction.js"

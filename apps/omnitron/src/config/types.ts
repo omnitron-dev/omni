@@ -755,27 +755,17 @@ export interface IDaemonConfig {
   sync?: ISyncConfig;
 
   /**
-   * Cluster configuration — enables multi-node operation with
-   * leader election, config replication, and coordinated failover.
+   * Optional PostgreSQL-authoritative coordination. Leadership observations do
+   * not authorize external effects: recipient-side fencing is required.
    */
   cluster?: {
     enabled: boolean;
-    /**
-     * NOT READ. Peers come from the fleet registry in Postgres —
-     * `FleetService.listNodes()` — regardless of what this says, and no
-     * code path consults either this field or `peers`.
-     *
-     * Kept because removing them from a published type breaks every config
-     * that sets them, and because they state a real intent: a static peer
-     * list would let a cluster form without Postgres, which is the one
-     * dependency the fleet registry cannot do without. Until that exists,
-     * an operator choosing between 'redis' and 'static' is making a
-     * decision with no effect — so say so here rather than let them find
-     * out from behaviour that does not change.
-     */
-    discovery?: 'redis' | 'static';
-    /** NOT READ — see `discovery`. */
+    discovery?: 'postgres' | 'redis' | 'static';
+    clusterId?: string;
+    leaseTtlMs?: number;
+    /** @deprecated Rejected when enabled; legacy peer voting was unsafe. */
     peers?: string[];
+    /** @deprecated Rejected when enabled; configure leaseTtlMs instead. */
     electionTimeout?: { min: number; max: number };
     heartbeatInterval?: number;
   };

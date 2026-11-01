@@ -51,7 +51,6 @@ const KEY_LENGTH = 64;
  * What migration 001 seeds. Named here so the check below cannot drift from
  * the migration silently — if the seed changes, this is the other half.
  */
-const SEEDED_ADMIN_USERNAME = 'admin';
 const SEEDED_ADMIN_PASSWORD = 'admin';
 const SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 const JWT_EXPIRY = '1h';
@@ -440,28 +439,23 @@ export class AuthService {
   }
 
   /**
-   * Is the seeded `admin` account still using the password it shipped with?
-   *
-   * Migration 001 seeds `admin` / `admin` and its comment says the password
-   * "MUST be changed on first login". Nothing enforced that — no flag, no
-   * gate, no check anywhere in this daemon. A comment is not a control.
-   *
-   * The daemon binds loopback by default and the console does too, so this
-   * only matters where an operator has deliberately published one of them.
-   * That is exactly the moment to ask, which is what the caller does.
-   *
-   * Answers false when the account is gone or renamed: the question is about
-   * a shipped credential, not about weak passwords in general.
+   * Is the shipped password still accepted by any Console account? Renaming
+   * or demoting the seeded account must not bypass publication admission.
+   * Keyset paging bounds memory; this check runs before external publication,
+   * not on every login or RPC. New credentials already require 15 characters.
    */
   async isUsingSeededAdminPassword(): Promise<boolean> {
-    const user = await this.db
-      .selectFrom('omnitron_users')
-      .select(['passwordHash'])
-      .where('username', '=', SEEDED_ADMIN_USERNAME)
-      .executeTakeFirst();
-
-    if (!user) return false;
-    return this.verifyPassword(SEEDED_ADMIN_PASSWORD, user.passwordHash);
+    let after: string | undefined;
+    for (;;) {
+      let query = this.db.selectFrom('omnitron_users').select(['id', 'passwordHash']).orderBy('id').limit(100);
+      if (after !== undefined) query = query.where('id', '>', after);
+      const users = await query.execute();
+      for (const user of users) {
+        if (await this.verifyPassword(SEEDED_ADMIN_PASSWORD, user.passwordHash)) return true;
+      }
+      if (users.length < 100) return false;
+      after = users.at(-1)!.id;
+    }
   }
 
   async verifyPassword(password: string, hash: string): Promise<boolean> {

@@ -123,21 +123,32 @@ export function isMeasured(check: CheckLayers): boolean {
 export interface ClusterView {
   nodeId: string;
   reachable: boolean;
-  cluster: { leaderId?: string | null; term?: number } | null;
+  cluster: Record<string, unknown> | null;
 }
 
 export type Disagreement =
   | { kind: 'none' }
-  | { kind: 'leaders'; answered: number; groups: Array<[string, string[]]> }
-  | { kind: 'terms'; answered: number; terms: number[] };
+  | { kind: 'leaders'; clusterId: string; answered: number; groups: Array<[string, string[]]> }
+  | { kind: 'terms'; clusterId: string; answered: number; terms: string[] };
+
+/** Authority failures remain visible even when only one controller answers. */
+export function clusterAuthorityProblems(views: readonly ClusterView[]): Array<{ nodeId: string; reason: string }> {
+  return views.flatMap(view => {
+    const state = view.cluster;
+    if (!view.reachable || !state || state.coordination !== 'postgres-lease') return [];
+    if (!['unavailable', 'expired', 'stopped'].includes(String(state.authority))) return [];
+    return [{ nodeId: view.nodeId, reason: typeof state.reason === 'string' && state.reason
+      ? state.reason : `Cluster authority is ${String(state.authority)}` }];
+  });
+}
 
 /**
  * Whether the fleet agrees on who leads it.
  *
  * The only reading in this console that is meaningless per node. One node
  * naming a leader is unremarkable; two naming DIFFERENT leaders, or sitting in
- * different election terms, is a split brain — every node individually healthy
- * and the fleet not.
+ * different epochs, is a disagreement between observations. Samples are not
+ * simultaneous and alone do not prove competing authorized writers.
  *
  * Two silences, both deliberate:
  *
@@ -152,19 +163,34 @@ export type Disagreement =
  * normal and brief, while two live leaders is the thing to act on.
  */
 export function clusterDisagreement(views: readonly ClusterView[]): Disagreement {
-  const answered = views.filter((v) => v.reachable && v.cluster);
+  const clusters = new Map<string, ClusterView[]>();
+  for (const view of views) {
+    if (!view.reachable || !view.cluster) continue;
+    const id = typeof view.cluster.clusterId === 'string' ? view.cluster.clusterId : 'legacy';
+    clusters.set(id, [...(clusters.get(id) ?? []), view]);
+  }
+  for (const [clusterId, group] of clusters) {
+    const result = compareCluster(group, clusterId);
+    if (result.kind !== 'none') return result;
+  }
+  return { kind: 'none' };
+}
+
+function compareCluster(answered: readonly ClusterView[], clusterId: string): Disagreement {
   if (answered.length < 2) return { kind: 'none' };
 
   const leaders = new Map<string, string[]>();
-  const terms = new Set<number>();
+  const terms = new Set<string>();
   for (const v of answered) {
-    const leader = v.cluster!.leaderId ?? '(none)';
+    const leader = typeof v.cluster!.leaderId === 'string' ? v.cluster!.leaderId : '(none)';
     if (!leaders.has(leader)) leaders.set(leader, []);
     leaders.get(leader)!.push(v.nodeId);
-    if (typeof v.cluster!.term === 'number') terms.add(v.cluster!.term);
+    const term = v.cluster!.term;
+    if (typeof term === 'string' && /^[1-9][0-9]{0,18}$/.test(term)) terms.add(term);
+    else if (typeof term === 'number' && Number.isSafeInteger(term) && term >= 0) terms.add(String(term));
   }
 
-  if (leaders.size > 1) return { kind: 'leaders', answered: answered.length, groups: [...leaders] };
-  if (terms.size > 1) return { kind: 'terms', answered: answered.length, terms: [...terms].sort((a, b) => a - b) };
+  if (leaders.size > 1) return { kind: 'leaders', clusterId, answered: answered.length, groups: [...leaders] };
+  if (terms.size > 1) return { kind: 'terms', clusterId, answered: answered.length, terms: [...terms].sort((a, b) => BigInt(a) < BigInt(b) ? -1 : 1) };
   return { kind: 'none' };
 }

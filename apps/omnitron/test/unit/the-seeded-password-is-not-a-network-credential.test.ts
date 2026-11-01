@@ -10,14 +10,9 @@
  * them — and the whole control plane is behind that password. Start, stop,
  * restart, logs, config, every managed app.
  *
- * Two different answers, and the difference is the point:
- *
- *   - the CONSOLE falls back to loopback. Its purpose is a password prompt,
- *     loopback still serves it, and the operator needs it to fix the very
- *     thing being complained about.
- *   - the FLEET transport is not rebound, only reported. Silently moving a
- *     cluster's transport to loopback takes the cluster down; a node nobody
- *     can reach is an outage, not a hardening.
+ * Console publication falls back to loopback. Public master ingress is refused
+ * until the credential check confirms the seed is no longer accepted. The
+ * startup-policy tests also cover an unavailable check and hostname spoofing.
  */
 import { describe, it, expect } from 'vitest';
 import { randomBytes, scryptSync } from 'node:crypto';
@@ -33,13 +28,11 @@ function hashOf(password: string): string {
 
 /** An AuthService over a stub that answers one `omnitron_users` row. */
 function authWith(row: { passwordHash: string } | undefined) {
-  const db = {
-    selectFrom: () => ({
-      select: () => ({
-        where: () => ({ executeTakeFirst: async () => row }),
-      }),
-    }),
+  const query = {
+    select: () => query, where: () => query, orderBy: () => query, limit: () => query,
+    execute: async () => row ? [{id: 'renamed-or-demoted-account', ...row}] : [],
   };
+  const db = { selectFrom: () => query };
   return new AuthService(db as never, 'test-secret');
 }
 
@@ -65,7 +58,7 @@ describe('isLoopbackHost', () => {
 });
 
 describe('AuthService.isUsingSeededAdminPassword', () => {
-  it('recognises the password the migration shipped', async () => {
+  it('recognises the shipped password independently of the account name or role', async () => {
     const auth = authWith({ passwordHash: hashOf('admin') });
 
     await expect(auth.isUsingSeededAdminPassword()).resolves.toBe(true);
@@ -78,8 +71,6 @@ describe('AuthService.isUsingSeededAdminPassword', () => {
   });
 
   it('answers false when there is no such account', async () => {
-    // The question is about a SHIPPED credential, not about weak passwords in
-    // general — a renamed or deleted admin is not one.
     const auth = authWith(undefined);
 
     await expect(auth.isUsingSeededAdminPassword()).resolves.toBe(false);

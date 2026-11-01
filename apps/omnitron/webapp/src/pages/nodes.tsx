@@ -49,7 +49,7 @@ import type {
   INodeStatus, INodeWithStatus, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState,
   INodeDaemonAnswer, DaemonStatusDto, AggregatedHealthDto, NodeUpgradeProgress as INodeUpgradeProgress,
 } from '@omnitron-dev/omnitron/dto/services';
-import { verdictOf, omnitronVerdict, firstReason, clusterDisagreement, type LayerVerdict } from 'src/utils/node-diagnosis';
+import { verdictOf, omnitronVerdict, firstReason, clusterDisagreement, clusterAuthorityProblems, type LayerVerdict } from 'src/utils/node-diagnosis';
 import { omnitronFinding } from '@omnitron-dev/omnitron/node-check';
 import { meshReading, syncFinding, syncSeverity, syncWords, syncProgressWords, historyWords } from '@omnitron-dev/omnitron/sync-reading';
 import { appsMemoryOf } from 'src/utils/daemon-memory';
@@ -1009,16 +1009,27 @@ export function NodeSyncStatus({ data }: { data: INodeSyncStatus | null }) {
  * from a sample of one is how a check gets believed for the wrong reason.
  */
 function ClusterAgreement({ states }: { states: Record<string, INodeClusterState> }) {
-  const d = clusterDisagreement(Object.values(states) as never);
-  if (d.kind === 'none') return null;
+  const readings = Object.values(states);
+  const d = clusterDisagreement(readings);
+  const problems = clusterAuthorityProblems(readings);
+  if (d.kind === 'none' && problems.length === 0) return null;
 
   return (
-    <FormAlert severity="warning">
-      {d.kind === 'leaders'
-        ? `${d.answered} nodes name ${d.groups.length} different leaders: ` +
-          d.groups.map(([l, ids]) => `${l} (${ids.length})`).join(', ')
-        : `${d.answered} nodes are in ${d.terms.length} different election terms: ${d.terms.join(', ')}`}
-    </FormAlert>
+    <Stack spacing={1}>
+      {problems.map(problem => (
+        <FormAlert key={problem.nodeId} severity="warning">
+          {problem.nodeId.slice(0, 8)} · {problem.reason}
+        </FormAlert>
+      ))}
+      {d.kind !== 'none' && (
+        <FormAlert severity="warning">
+          {d.kind === 'leaders'
+            ? `${d.clusterId}: ${d.answered} controller observations name different leaders: ` +
+              d.groups.map(([leader, ids]) => `${leader} (${ids.length})`).join(', ')
+            : `${d.clusterId}: ${d.answered} controller observations have different epochs: ${d.terms.join(', ')}`}
+        </FormAlert>
+      )}
+    </Stack>
   );
 }
 

@@ -34,6 +34,8 @@ import { HEALTH_SERVICE_TOKEN as TITAN_HEALTH_TOKEN, type IHealthService } from 
 import type { TelemetryRelayService } from '@omnitron-dev/titan-telemetry-relay';
 
 import os from 'node:os';
+import { isLoopbackHost, assertSafeNetworkPublication } from './network-publication.js';
+export { isLoopbackHost } from './network-publication.js';
 import type { IEcosystemConfig, IDaemonConfig } from '../config/types.js';
 import { CLI_VERSION, DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { createDaemonModule, getDaemonLogStream, getDaemonErrorStream, getDaemonLogCollectorStream } from './daemon.module.js';
@@ -210,20 +212,9 @@ export function consoleBindHostFor(dc: { role?: string; host?: string }): string
   return dc.role === 'slave' ? '127.0.0.1' : resolveBindHost(dc.host);
 }
 
-/** Addresses that reach this host and nowhere else. */
-export function isLoopbackHost(host: string | undefined): boolean {
-  if (!host) return true; // absent means the loopback default above
-  const h = host.trim().toLowerCase();
-  return h === '127.0.0.1' || h === 'localhost' || h === '::1' || h === '[::1]' || h.startsWith('127.');
-}
-
 /**
  * Is the daemon still accepting the password its own migration seeded?
- *
- * Resolves the auth service lazily and answers `false` on any failure — a
- * daemon that cannot reach its database has a louder problem than this, and
- * a warning that fails the boot would be a worse trade than the risk it
- * describes.
+ * A failed check cannot authorize external ingress.
  */
 async function isSeededAdminPasswordInUse(
   app: Application,
@@ -237,7 +228,7 @@ async function isSeededAdminPasswordInUse(
       { err: (err as Error).message },
       'Could not check whether the seeded admin password is still in use',
     );
-    return false;
+    throw err;
   }
 }
 
@@ -307,7 +298,7 @@ export class OmnitronDaemon {
   private fallbackNodeCheckTimer: NodeJS.Timeout | null = null;
   /** Set by the shutdown task so nothing schedules work on the way out. */
   private isShuttingDown = false;
-  private leaderElection: any = null;
+  private leaderElection: import('../cluster/leader-election.js').LeaderElection | null = null;
   private configSyncService: any = null;
   private metricsServer: import('../observability/index.js').MetricsServer | null = null;
   private metricsBridge: import('../observability/index.js').MetricsBridge | null = null;
@@ -708,6 +699,14 @@ export class OmnitronDaemon {
     const authService = !isSlave
       ? await this.app.container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN)
       : null;
+    // Slaves admit machine credentials only; they have no human login/session
+    // authority. Masters verify policy before registering any network ingress.
+    if (authService) {
+      await assertSafeNetworkPublication(
+        [fleetBindHostFor(dc), consoleBindHostFor(dc)],
+        () => authService.isUsingSeededAdminPassword(),
+      );
+    }
 
     // Unix socket — local CLI <-> daemon (primary, high-performance)
     this.app.netron.registerTransport('unix', () => new UnixSocketTransport());
@@ -776,24 +775,6 @@ export class OmnitronDaemon {
     // unauthenticated `stopAll({force:true})` — is answered by the default
     // being loopback and by that manager now being wired.)
     const tcpHost = fleetBindHostFor(dc);
-    if (!isLoopbackHost(tcpHost)) {
-      // Said, not enforced, and the difference is deliberate: silently
-      // rebinding a fleet transport to loopback would take a cluster down,
-      // and a node that cannot be reached is an outage rather than a
-      // hardening. The console above IS rebound, because its whole purpose
-      // is a password prompt and loopback still serves it.
-      void (async () => {
-        const loggerModule = await this.app!.container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN);
-        const log = loggerModule.logger;
-        if (await isSeededAdminPasswordInUse(this.app!, log)) {
-          log.error(
-            { host: tcpHost, port: dc.port },
-            'The daemon fleet transport is published and the seeded admin password is unchanged — ' +
-              'anyone who can reach this port can sign in and stop every app. Change it now.',
-          );
-        }
-      })().catch(() => undefined);
-    }
     this.app.netron.registerTransport('tcp', () => new TcpTransport());
     this.app.netron.registerTransportServer('tcp', {
       name: 'daemon-fleet',
@@ -1362,6 +1343,10 @@ export class OmnitronDaemon {
     if (dc.cluster?.enabled && !isSlave) {
       const { LeaderElection } = await import('../cluster/leader-election.js');
       const { ClusterRpcService: ClusterRpc } = await import('../cluster/cluster.rpc-service.js');
+      const { PostgresLeaseStore } = await import('@omnitron-dev/titan-database/coordination');
+      if ((dc.cluster.discovery && dc.cluster.discovery !== 'postgres') || dc.cluster.peers || dc.cluster.electionTimeout) {
+        throw new Error('Cluster coordination uses PostgreSQL leases; legacy discovery, peers and electionTimeout settings are unsupported');
+      }
 
       const nodeId = `${os.hostname()}-${dc.port}`;
       const clusterFleetService = await container.resolveAsync<FleetService>(FLEET_SERVICE_TOKEN);
@@ -1370,8 +1355,10 @@ export class OmnitronDaemon {
         nodeId,
         clusterFleetService,
         loggerModule.logger,
+        new PostgresLeaseStore(await container.resolveAsync<import('kysely').Kysely<import('../database/schema.js').OmnitronDatabase>>(OMNITRON_DB_TOKEN)),
         {
-          ...(dc.cluster!.electionTimeout && { electionTimeout: dc.cluster!.electionTimeout }),
+          ...(dc.cluster.clusterId && { clusterId: dc.cluster.clusterId }),
+          ...(dc.cluster.leaseTtlMs != null && { leaseTtlMs: dc.cluster.leaseTtlMs }),
           ...(dc.cluster!.heartbeatInterval != null && { heartbeatInterval: dc.cluster!.heartbeatInterval }),
         }
       );
@@ -2772,7 +2759,7 @@ export class OmnitronDaemon {
       }
 
       try {
-        if (this.leaderElection?.stop) this.leaderElection.stop();
+        if (this.leaderElection) await this.leaderElection.stop();
       } catch { /* non-critical */ }
 
       try {

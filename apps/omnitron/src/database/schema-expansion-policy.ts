@@ -1,4 +1,5 @@
 import { migration as metricsMigration } from './migrations/015_persistent_metrics.js';
+import { migration as clusterMigration } from './migrations/016_cluster_lease.js';
 import { migration } from './migrations/014_replication_receipts.js';
 
 /**
@@ -13,4 +14,8 @@ export const MASTER_SCHEMA_EXPANSIONS = [{
   name: metricsMigration.name,
   checksum: metricsMigration.checksum!,
   summary: 'Add Titan metric history and indexes; existing tables and receipts are unchanged.',
+}, {
+  name: clusterMigration.name,
+  checksum: clusterMigration.checksum!,
+  summary: 'Add PostgreSQL-authoritative coordination leases; existing application tables and owners are unchanged.',
 }];

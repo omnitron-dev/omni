@@ -5,6 +5,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   resolve: {
     alias: {
+      '@omnitron-dev/titan-database/coordination': path.resolve(import.meta.dirname, '../../packages/titan-database/src/exports/coordination.ts'),
       // Exercise current source contracts without rebuilding packages used by live applications.
       '@omnitron-dev/titan-pm': path.resolve(import.meta.dirname, '../../packages/titan-pm/src/index.ts'),
       '@omnitron-dev/titan/utils': path.resolve(import.meta.dirname, '../../packages/titan/src/utils/index.ts'),

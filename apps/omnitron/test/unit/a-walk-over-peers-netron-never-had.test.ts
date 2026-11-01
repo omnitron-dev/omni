@@ -346,7 +346,7 @@ describe('omnitron cluster', () => {
 
     await clusterStepDownCommand();
 
-    expect(said()).toContain('Leader stepped down');
+    expect(said()).toContain('Leadership lease released');
     expect(process.exitCode).toBeUndefined();
   });
 
@@ -355,7 +355,7 @@ describe('omnitron cluster', () => {
 
     await clusterStepDownCommand();
 
-    expect(said()).toContain('This node is not the leader');
+    expect(said()).toContain('This node has no confirmed leadership lease');
     expect(process.exitCode).toBe(1);
   });
 

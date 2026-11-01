@@ -23,6 +23,7 @@ import type { Kysely } from 'kysely';
 
 import { setEnvOverride, resetEnvCache } from '../../src/shared/env-config.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
+import { OMNITRON_MIGRATIONS } from '../../src/database/migrations/index.js';
 
 const TEST_PG_URL = process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test';
 
@@ -42,6 +43,7 @@ const EXPECTED_TABLES = [
   'pipelines',
   'traces',
   'metrics_samples',
+  'titan_database_leases',
 ];
 
 /** Tables a later migration removes: 002 made `metrics_raw`, 010 drops it (no reader, no pruning). */
@@ -120,7 +122,7 @@ describe.skipIf(!testPg.ok)('Omnitron migrations (integration)', () => {
     const history = createMigrationHistory();
     await createMigrationRunner(db, old, { history }).up();
     const before = await history.read(db);
-    expect((await migrateOmnitronDb(db)).applied).toEqual(['015_persistent_metrics']);
+    expect((await migrateOmnitronDb(db)).applied).toEqual([OMNITRON_MIGRATIONS.at(-1)!.name]);
     const after = await createOmnitronMigrationRunner(db).inspect();
     expect(after.executed.slice(0, -1)).toEqual(before);
     expect(after.executed.at(-1)?.checksum).toBe(OMNITRON_MIGRATIONS.at(-1)?.checksum);
@@ -148,10 +150,10 @@ describe.skipIf(!testPg.ok)('Omnitron migrations (integration)', () => {
     await migrateOmnitronDb(db);
     await expect(assertOmnitronMigrationsCurrent(db)).resolves.toBeUndefined();
     await createOmnitronMigrationRunner(db).down(1);
-    await expect(assertOmnitronMigrationsCurrent(db)).rejects.toThrow('pending: 015_persistent_metrics');
-    expect((await createOmnitronMigrationRunner(db).inspect()).pending).toEqual(['015_persistent_metrics']);
+    await expect(assertOmnitronMigrationsCurrent(db)).rejects.toThrow(`pending: ${OMNITRON_MIGRATIONS.at(-1)!.name}`);
+    expect((await createOmnitronMigrationRunner(db).inspect()).pending).toEqual([OMNITRON_MIGRATIONS.at(-1)!.name]);
     const { sql } = await import('kysely');
-    const table = await sql<{ table: string | null }>`select to_regclass('public.metrics_samples')::text as table`.execute(db);
+    const table = await sql<{ table: string | null }>`select to_regclass('public.titan_database_leases')::text as table`.execute(db);
     expect(table.rows[0]?.table).toBeNull();
   });
 

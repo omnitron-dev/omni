@@ -1,709 +1,263 @@
-/**
- * Leader Election — Simplified Raft for Omnitron Cluster
- *
- * Implements a simplified Raft-like leader election protocol:
- * - No log replication (PostgreSQL handles persistent state)
- * - Election uses fleet registry for peer discovery
- * - Heartbeat via existing fleet mechanism
- * - Leader writes its role to fleet registry
- *
- * Designed for small clusters (2-5 nodes typically).
- * Uses longer election timeouts (5-15s) suitable for
- * infrastructure management, not millisecond-sensitive consensus.
- *
- * State machine: follower → candidate → leader
- */
-
+/** PostgreSQL-authoritative leadership; no peer voting or anonymous authority. */
 import { EventEmitter } from 'node:events';
-import { randomInt } from 'node:crypto';
-import type { FleetService, FleetNode } from '../services/fleet.service.js';
-
-// =============================================================================
-// Types
-// =============================================================================
+import { randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
+import { FailureTracker } from '@omnitron-dev/titan/utils';
+import type { LeaseGrant, LeaseStore } from '@omnitron-dev/titan-database/coordination';
+import type { FleetService } from '../services/fleet.service.js';
 
 export type ElectionState = 'follower' | 'candidate' | 'leader';
-
 export interface ElectionConfig {
-  /** Election timeout range in ms (default: 5000-15000) */
-  electionTimeout: { min: number; max: number };
-  /** Leader heartbeat interval in ms (default: 2000) */
+  clusterId: string;
+  leaseTtlMs: number;
   heartbeatInterval: number;
 }
-
 export interface ClusterStateInfo {
   nodeId: string;
+  clusterId: string;
   state: ElectionState;
-  term: number;
+  /** Durable decimal epoch. Null until authority has been observed. */
+  term: string | null;
   leaderId: string | null;
-  votedFor: string | null;
   peers: number;
   uptime: number;
+  coordination: 'postgres-lease';
+  authority: 'confirmed' | 'unavailable' | 'expired' | 'stopped' | 'contended';
+  reason: string | null;
+  leaseExpiresAt: string | null;
+  leaseRemainingMs: number;
+  /** A leadership observation does not fence an external side effect. */
+  effectFencing: 'recipient-required';
 }
-
-export interface VoteRequest {
-  candidateId: string;
-  term: number;
-}
-
-export interface VoteResponse {
-  granted: boolean;
-  term: number;
-}
-
-export interface LeaderHeartbeatData {
-  leaderId: string;
-  term: number;
-  configHash?: string;
-}
-
-// =============================================================================
-// Events
-// =============================================================================
-
-export interface LeaderElectionEvents {
-  'state:changed': (state: ElectionState, previousState: ElectionState) => void;
-  'leader:elected': (leaderId: string, term: number) => void;
-  'leader:lost': (previousLeaderId: string) => void;
-  'term:changed': (term: number) => void;
-}
-
-// =============================================================================
-// Default Config
-// =============================================================================
-
 const DEFAULT_CONFIG: ElectionConfig = {
-  electionTimeout: { min: 5_000, max: 15_000 },
-  heartbeatInterval: 2_000,
+  clusterId: 'default', leaseTtlMs: 15_000, heartbeatInterval: 2_000,
 };
-
-// =============================================================================
-// Leader Election
-// =============================================================================
+type Logger = Pick<import('@omnitron-dev/titan/module/logger').ILogger, 'info' | 'warn' | 'error' | 'debug'>;
 
 export class LeaderElection extends EventEmitter {
   private state: ElectionState = 'follower';
-  private term = 0;
-  private votedFor: string | null = null;
-  private leaderId: string | null = null;
-  private electionTimer: NodeJS.Timeout | null = null;
-  private heartbeatTimer: NodeJS.Timeout | null = null;
-  private readonly config: ElectionConfig;
-  private readonly startedAt = Date.now();
+  private current: LeaseGrant | null = null;
+  private observed: LeaseGrant | null = null;
+  private deadline = 0;
+  private wallDeadline = 0;
+  private transferring = false;
+  private timer: NodeJS.Timeout | null = null;
+  private expiry: NodeJS.Timeout | null = null;
   private running = false;
+  private generation = 0;
+  private incarnation = '';
+  private inFlight: Promise<void> | null = null;
+  private startedAt = performance.now();
+  private authority: ClusterStateInfo['authority'] = 'stopped';
+  private reason: string | null = null;
+  private peers = 0;
+  private readonly config: ElectionConfig;
+  private readonly failures = new FailureTracker();
 
   constructor(
-    /**
-     * What this node is called until `start()` — when it becomes this
-     * daemon's row in the fleet table, which is the only name its peers can
-     * find it by. See `start()`.
-     */
     private nodeId: string,
-    private readonly fleetService: FleetService,
-    /**
-     * The daemon passes a full `ILogger`; this shape used to name only
-     * `info`, `warn` and `debug`. The omission was not a decision — it left
-     * the component that decides cluster leadership unable to report an
-     * error at the level an error deserves, so anything genuinely wrong here
-     * had to be filed as a warning or dropped. `error` is what the caller
-     * has always provided.
-     */
-    private readonly logger: {
-      info: (...args: any[]) => void;
-      warn: (...args: any[]) => void;
-      error: (...args: any[]) => void;
-      debug: (...args: any[]) => void;
-    },
-    config?: Partial<ElectionConfig>
+    private readonly fleet: Pick<FleetService, 'selfNodeId' | 'listNodes'>,
+    private readonly logger: Logger,
+    private readonly leases: LeaseStore,
+    config?: Partial<ElectionConfig>,
   ) {
     super();
     this.config = { ...DEFAULT_CONFIG, ...config };
-    if (config?.electionTimeout) {
-      this.config.electionTimeout = { ...DEFAULT_CONFIG.electionTimeout, ...config.electionTimeout };
+    const { clusterId, leaseTtlMs, heartbeatInterval } = this.config;
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(clusterId)) throw new TypeError('Invalid clusterId');
+    if (!Number.isSafeInteger(leaseTtlMs) || leaseTtlMs < 1000 || leaseTtlMs > 3_600_000 ||
+        !Number.isSafeInteger(heartbeatInterval) || heartbeatInterval < 100 || heartbeatInterval * 3 > leaseTtlMs) {
+      throw new TypeError('Lease TTL must be 1000–3600000ms and at least three heartbeat intervals (>=100ms)');
     }
   }
 
-  // ===========================================================================
-  // Lifecycle
-  // ===========================================================================
-
-  /**
-   * Start the election process. Node begins as a follower
-   * and starts the election timeout.
-   */
   async start(): Promise<void> {
     if (this.running) return;
-
-    // Peers know this node by its row in the fleet table: `isFleetMember`
-    // looks a candidate or a leader up there by id, and the rows' ids are
-    // uuids. The daemon constructed this election as `${hostname}-${port}`,
-    // which no row is called — so every vote this node asked for and every
-    // heartbeat it sent as leader would have been refused as coming from a
-    // stranger, its own `heartbeat`/`setRole` failed on the uuid column, and
-    // it counted itself among its peers. A cluster of more than one master
-    // could never have elected anyone. The row exists by now: the daemon
-    // registers itself (`registerSelf`) before it starts the election.
-    const row = this.fleetService.selfNodeId;
-    if (row) {
-      this.nodeId = row;
-    } else {
-      this.logger.error(
-        { nodeId: this.nodeId },
-        'Leader election is starting without a row in the fleet table — peers will refuse its votes and heartbeats',
-      );
-    }
-
+    if (this.inFlight) await this.inFlight;
+    if (!this.fleet.selfNodeId) throw new Error('Cluster authority requires this controller to be registered in the fleet');
+    this.nodeId = this.fleet.selfNodeId;
+    this.incarnation = randomUUID();
+    this.generation++;
+    this.startedAt = performance.now();
     this.running = true;
-    this.state = 'follower';
-    this.term = 0;
-    this.votedFor = null;
-    this.leaderId = null;
-    this.resetElectionTimer();
-    this.logger.info({ nodeId: this.nodeId }, 'Leader election started');
+    this.authority = 'unavailable';
+    await this.forceElection();
   }
 
-  /**
-   * Stop the election process. Clears all timers.
-   */
-  stop(): void {
+  async stop(): Promise<void> {
     this.running = false;
-    this.clearElectionTimer();
-    this.clearHeartbeatTimer();
-    this.logger.info({ nodeId: this.nodeId, state: this.state }, 'Leader election stopped');
+    this.generation++;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    const held = this.current;
+    this.demote('stopped', null);
+    // A late acquire/renew sees the changed generation and releases only its own
+    // epoch. Shutdown never lets a pending database answer revive leadership.
+    await this.inFlight;
+    if (held) await this.release(held);
   }
-
-  // ===========================================================================
-  // State Queries
-  // ===========================================================================
 
   get isLeader(): boolean {
-    return this.state === 'leader';
+    if (this.state === 'leader' && (performance.now() >= this.deadline || Date.now() >= this.wallDeadline)) {
+      this.demote('expired', 'Leadership confirmation expired');
+    }
+    return this.running && this.state === 'leader';
   }
-
-  get isFollower(): boolean {
-    return this.state === 'follower';
-  }
-
-  get isCandidate(): boolean {
-    return this.state === 'candidate';
-  }
-
-  get currentState(): ElectionState {
-    return this.state;
-  }
-
-  get currentTerm(): number {
-    return this.term;
-  }
-
-  get currentLeaderId(): string | null {
-    return this.leaderId;
-  }
+  get isFollower(): boolean { return !this.isLeader && this.state === 'follower'; }
+  get isCandidate(): boolean { return this.state === 'candidate'; }
+  get currentState(): ElectionState { void this.isLeader; return this.state; }
+  get currentTerm(): string | null { return this.observed?.epoch ?? null; }
+  get currentLeaderId(): string | null { return this.getClusterState().leaderId; }
 
   getClusterState(): ClusterStateInfo {
+    const leader = this.isLeader;
+    const fresh = performance.now() < this.deadline && Date.now() < this.wallDeadline;
     return {
-      nodeId: this.nodeId,
-      state: this.state,
-      term: this.term,
-      leaderId: this.leaderId,
-      votedFor: this.votedFor,
-      peers: 0, // Updated by caller from fleet registry
-      uptime: Date.now() - this.startedAt,
+      nodeId: this.nodeId, clusterId: this.config.clusterId, state: this.state, term: this.currentTerm,
+      leaderId: fresh ? this.observed?.owner ?? null : null,
+      peers: this.peers, uptime: Math.floor(performance.now() - this.startedAt),
+      coordination: 'postgres-lease', authority: this.authority, reason: this.reason,
+      leaseExpiresAt: fresh ? this.observed?.expiresAt ?? null : null,
+      leaseRemainingMs: fresh ? Math.max(0, Math.floor(this.deadline - performance.now())) : 0,
+      effectFencing: 'recipient-required',
+      ...(leader ? { state: 'leader' as const } : {}),
     };
   }
 
-  // ===========================================================================
-  // Election Protocol — Incoming Messages
-  // ===========================================================================
-
-  /**
-   * Handle heartbeat from current leader.
-   * If the leader's term >= our term, step down to follower.
-   */
-  async onHeartbeat(data: LeaderHeartbeatData): Promise<void> {
-    if (!this.running) return;
-
-    if (!(await this.isFleetMember(data.leaderId))) {
-      this.logger.warn(
-        { nodeId: this.nodeId, leaderId: data.leaderId },
-        'Ignored heartbeat from a node that is not in the fleet registry'
-      );
-      return;
-    }
-
-    if (data.term >= this.term) {
-      const previousState = this.state;
-      if (data.term > this.term) {
-        this.term = data.term;
-        this.votedFor = null;
-        this.emit('term:changed', this.term);
+  /** One serialized reconciliation, including requests made by tests/operators. */
+  forceElection(): Promise<void> {
+    if (!this.running || this.transferring) return Promise.resolve();
+    if (this.inFlight) return this.inFlight;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    this.inFlight = this.reconcile(this.generation).finally(() => {
+      this.inFlight = null;
+      if (this.running && !this.transferring) {
+        this.timer = setTimeout(() => { void this.forceElection(); }, this.config.heartbeatInterval);
+        this.timer.unref();
       }
-
-      if (this.state !== 'follower') {
-        this.setState('follower');
-      }
-
-      this.leaderId = data.leaderId;
-      this.resetElectionTimer();
-
-      if (previousState === 'leader') {
-        this.clearHeartbeatTimer();
-        this.emit('leader:lost', this.nodeId);
-      }
-    }
-  }
-
-  /**
-   * Handle vote request from a candidate.
-   * Grant vote if:
-   * 1. Candidate's term > our term, OR
-   * 2. Candidate's term == our term AND we haven't voted (or already voted for this candidate)
-   */
-  async onVoteRequest(request: VoteRequest): Promise<VoteResponse> {
-    if (!this.running) {
-      return { granted: false, term: this.term };
-    }
-
-    if (!(await this.isFleetMember(request.candidateId))) {
-      this.logger.warn(
-        { nodeId: this.nodeId, candidateId: request.candidateId },
-        'Rejected vote request from a node that is not in the fleet registry'
-      );
-      return { granted: false, term: this.term };
-    }
-
-    // If candidate has higher term, step down and update term
-    if (request.term > this.term) {
-      this.term = request.term;
-      this.votedFor = null;
-      if (this.state !== 'follower') {
-        this.setState('follower');
-        this.clearHeartbeatTimer();
-      }
-      this.emit('term:changed', this.term);
-    }
-
-    // Grant vote if we haven't voted in this term, or already voted for this candidate
-    if (request.term === this.term && (this.votedFor === null || this.votedFor === request.candidateId)) {
-      this.votedFor = request.candidateId;
-      this.resetElectionTimer(); // Reset timeout — we acknowledged a valid candidate
-      this.logger.debug(
-        { nodeId: this.nodeId, votedFor: request.candidateId, term: this.term },
-        'Granted vote'
-      );
-      return { granted: true, term: this.term };
-    }
-
-    return { granted: false, term: this.term };
-  }
-
-  // ===========================================================================
-  // Election Protocol — Outgoing (Election Cycle)
-  // ===========================================================================
-
-  /**
-   * The port a peer answers `/netron/invoke` on.
-   *
-   * `FleetNode.port` is the daemon's Netron TCP port (9700 by default) and
-   * this call is HTTP, so addressing it there reaches a socket that does not
-   * speak the protocol — `fetch` fails to connect and the `catch` below turns
-   * that into "peer unreachable". Every vote request and every heartbeat in a
-   * multi-node cluster failed that way, silently and identically to a genuinely
-   * dead peer: no node could reach a majority, and followers re-elected
-   * forever. Measured against a running daemon: POST to :9700 returns no HTTP
-   * response at all, the same request to the daemon's HTTP port answers.
-   *
-   * The daemon records its HTTP RPC port at registration; a peer without one
-   * predates that and cannot be called, which is a configuration fact worth
-   * saying rather than a delivery failure to swallow.
-   */
-  private rpcPortOf(peer: FleetNode): number | null {
-    const port = peer.metadata?.['rpcPort'];
-    return typeof port === 'number' && port > 0 ? port : null;
-  }
-
-  /**
-   * Call a remote peer's RPC method via HTTP Netron invoke.
-   * Used for vote requests and leader heartbeats.
-   */
-  private async callPeerRpc(host: string, port: number, method: string, data: unknown): Promise<any> {
-    try {
-      const response = await fetch(`http://${host}:${port}/netron/invoke`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          service: 'OmnitronCluster',
-          method,
-          input: [data],
-          id: crypto.randomUUID(),
-        }),
-        signal: AbortSignal.timeout(5000),
-      });
-      const result = await response.json() as Record<string, unknown>;
-      return result?.['data'];
-    } catch {
-      return null; // Peer unreachable
-    }
-  }
-
-  /**
-   * Run an election now instead of waiting for the timeout.
-   *
-   * Exists so tests can exercise the election itself rather than the
-   * scheduler around it: the interesting behaviour — what an unreadable
-   * registry means, what an empty one means — is decided inside
-   * `startElection`, while reaching it otherwise costs a 5-15s randomised
-   * wait. Not called in production; the timer is the only trigger there.
-   */
-  async forceElection(): Promise<void> {
-    await this.startElection();
-  }
-
-  /**
-   * Start an election. Transition to candidate, increment term,
-   * vote for self, and request votes from all peers.
-   */
-  private async startElection(): Promise<void> {
-    if (!this.running) return;
-
-    // Transition to candidate
-    this.setState('candidate');
-    this.term++;
-    this.votedFor = this.nodeId;
-    this.leaderId = null;
-
-    this.emit('term:changed', this.term);
-    this.logger.info(
-      { nodeId: this.nodeId, term: this.term },
-      'Starting election'
-    );
-
-    // Get all online peers from fleet registry
-    let peers: FleetNode[];
-    try {
-      peers = await this.fleetService.listNodes();
-      peers = peers.filter((n) => n.id !== this.nodeId && n.status === 'online');
-    } catch (err) {
-      // An unreadable registry is not a one-node cluster. This used to call
-      // `becomeLeader()` under the comment "become leader by default (single
-      // node)" — a conclusion, not an observation: the registry says nothing
-      // about how many nodes exist when it cannot be read at all. Three nodes
-      // losing Postgres together each concluded they were alone and each
-      // became leader, which is the exact split-brain the election exists to
-      // prevent, arrived at by the election itself.
-      //
-      // Not knowing the membership is a reason to stand down, not to take
-      // charge. The node returns to follower and tries again on the next
-      // election timeout; if the registry comes back and it really is alone,
-      // the empty-peers branch below elects it then. Leadership deferred
-      // costs an interval of master-only work; leadership duplicated costs
-      // two nodes writing as leader at once.
-      this.logger.warn(
-        { nodeId: this.nodeId, term: this.term, error: (err as Error).message },
-        'Fleet registry unreachable — standing down rather than assuming a single-node cluster'
-      );
-      this.setState('follower');
-      this.resetElectionTimer();
-      return;
-    }
-
-    // Genuinely alone: the registry answered, and it holds no other online
-    // node. Distinct from the catch above — an answer of "nobody" is a
-    // measurement, a failure to answer is not.
-    if (peers.length === 0) {
-      this.becomeLeader();
-      return;
-    }
-
-    // Count votes (start with 1 — self vote)
-    const majority = Math.floor((peers.length + 1) / 2) + 1;
-
-    // Request votes from all peers concurrently via HTTP Netron RPC
-    const votePromises = peers.map((peer) => {
-      const rpcPort = this.rpcPortOf(peer);
-      if (rpcPort === null) {
-        this.logger.warn(
-          { peer: peer.id, address: peer.address },
-          'Peer registered no HTTP RPC port — cannot request its vote'
-        );
-        return Promise.resolve(null);
-      }
-      return this.callPeerRpc(peer.address, rpcPort, 'requestVote', {
-        candidateId: this.nodeId,
-        term: this.term,
-      });
     });
-    const responses = await Promise.allSettled(votePromises);
+    return this.inFlight;
+  }
 
-    // Tally votes — abort if we're no longer a candidate (state changed during RPC)
-    if (!this.running || this.state !== 'candidate') return;
-
-    let votesReceived = 1; // self-vote
-    for (const r of responses) {
-      if (r.status === 'fulfilled' && r.value?.granted) {
-        votesReceived++;
+  async stepDown(): Promise<void> {
+    if (!this.isLeader) return;
+    // Invalidate in-flight renewal before releasing, then give another controller
+    // a full lease period to acquire. A delayed renewal cannot undo step-down.
+    this.generation++;
+    this.transferring = true;
+    const held = this.current;
+    this.demote('contended', 'Operator requested leadership transfer');
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    try {
+      await this.inFlight;
+      if (this.timer) clearTimeout(this.timer);
+      if (held) await this.release(held);
+    } finally {
+      this.transferring = false;
+      if (this.running) {
+        this.timer = setTimeout(() => { void this.forceElection(); }, this.config.leaseTtlMs);
+        this.timer.unref();
       }
-      // If any peer has a higher term, step down
-      if (r.status === 'fulfilled' && r.value?.term > this.term) {
-        this.term = r.value.term;
-        this.votedFor = null;
-        this.setState('follower');
-        this.emit('term:changed', this.term);
-        this.resetElectionTimer();
+    }
+  }
+
+  private async reconcile(generation: number): Promise<void> {
+    const requestStarted = performance.now();
+    const wallStarted = Date.now();
+    const identity = { key: `omnitron/cluster/${this.config.clusterId}`, owner: this.nodeId, incarnation: this.incarnation };
+    try {
+      const nodes = await this.fleet.listNodes();
+      if (!nodes.some(node => node.id === this.nodeId)) throw new Error('Controller registration is missing');
+      this.peers = nodes.filter(node => node.id !== this.nodeId).length;
+      if (!this.running || generation !== this.generation) return;
+      const hadLease = this.current;
+      if (!hadLease) this.setState('candidate');
+      const acquired = hadLease
+        ? await this.leases.renew(hadLease, this.config.leaseTtlMs)
+        : await this.leases.acquire(identity, this.config.leaseTtlMs);
+      if (acquired && (acquired.key !== identity.key || acquired.owner !== identity.owner ||
+          acquired.incarnation !== identity.incarnation || !/^[1-9][0-9]{0,18}$/.test(acquired.epoch) ||
+          !Number.isSafeInteger(acquired.remainingMs) || acquired.remainingMs < 0 ||
+          !Number.isFinite(Date.parse(acquired.expiresAt)))) {
+        throw new Error('Lease provider returned an invalid controller grant');
+      }
+      if (!this.running || generation !== this.generation) {
+        if (acquired) await this.release(acquired);
         return;
       }
-    }
-
-    // Check if we have majority
-    if (votesReceived >= majority) {
-      this.becomeLeader();
-    } else {
-      // Did not win — reset election timer for another attempt
-      this.resetElectionTimer();
-    }
-  }
-
-  /**
-   * Transition to leader state. Start heartbeating.
-   */
-  private becomeLeader(): void {
-    if (this.state === 'leader') return;
-
-    this.setState('leader');
-    this.leaderId = this.nodeId;
-    this.clearElectionTimer();
-
-    this.logger.info(
-      { nodeId: this.nodeId, term: this.term },
-      'Became leader'
-    );
-
-    this.emit('leader:elected', this.nodeId, this.term);
-
-    // Update fleet registry with leader role. Reported but not fatal: this
-    // node IS the leader whatever the registry says, and the heartbeats it
-    // is about to send are what the cluster actually follows. The registry
-    // is how an operator sees the topology, so a stale one is a reporting
-    // fault rather than a correctness one — the opposite of the step-down
-    // case, where the registry outlives the fact.
-    this.updateFleetRole('leader').catch((err) => {
-      this.logger.warn(
-        { nodeId: this.nodeId, term: this.term, err },
-        'Became leader but could not record it in the fleet registry'
-      );
-    });
-
-    // Start sending heartbeats
-    this.startHeartbeating();
-  }
-
-  /**
-   * Receive a vote grant from a peer (called by ClusterRpcService).
-   * If we have a majority, become leader.
-   */
-  async receiveVote(fromNodeId: string, response: VoteResponse): Promise<void> {
-    if (!this.running || this.state !== 'candidate') return;
-
-    if (response.term > this.term) {
-      // Peer has higher term — step down
-      this.term = response.term;
-      this.votedFor = null;
-      this.setState('follower');
-      this.emit('term:changed', this.term);
-      return;
-    }
-
-    if (response.granted && response.term === this.term) {
-      this.logger.debug(
-        { nodeId: this.nodeId, from: fromNodeId, term: this.term },
-        'Received vote'
-      );
-
-      // Check if we now have majority — counting is done externally
-      // since the RPC layer handles vote collection.
-      // This method is called for each vote received.
+      if (acquired) {
+        // Bound validity from BEFORE the request, including pool/lock/network
+        // delay. Never start a fresh TTL when an old database reply arrives.
+        const deadline = requestStarted + Math.min(acquired.remainingMs, this.config.leaseTtlMs) - 50;
+        if (deadline <= performance.now() || wallStarted + Math.min(acquired.remainingMs, this.config.leaseTtlMs) - 50 <= Date.now()) {
+          this.demote('expired', 'Database confirmation arrived after its usable lease interval');
+          await this.release(acquired);
+          return;
+        }
+        this.current = acquired;
+        this.observed = acquired;
+        this.deadline = deadline;
+        this.wallDeadline = wallStarted + Math.min(acquired.remainingMs, this.config.leaseTtlMs) - 50;
+        this.reason = null;
+        this.authority = 'confirmed';
+        const previous = this.state;
+        this.setState('leader');
+        if (previous !== 'leader') this.emit('leader:elected', this.nodeId, acquired.epoch);
+        if (this.expiry) clearTimeout(this.expiry);
+        this.expiry = setTimeout(() => { void this.isLeader; }, Math.ceil(deadline - performance.now()));
+        this.expiry.unref();
+      } else {
+        this.demote('contended', hadLease ? 'Lease was lost; external effects must stop' : null);
+        const readStarted = performance.now();
+        const readWallStarted = Date.now();
+        const observed = await this.leases.read(`omnitron/cluster/${this.config.clusterId}`);
+        if (!this.running || generation !== this.generation) return;
+        this.observed = observed;
+        this.deadline = observed ? readStarted + observed.remainingMs - 50 : 0;
+        this.wallDeadline = observed ? readWallStarted + observed.remainingMs - 50 : 0;
+      }
+      const recovery = this.failures.recordSuccess('authority');
+      if (recovery) this.logger.info(recovery, 'Cluster database authority is reachable again');
+    } catch (error) {
+      if (!this.running || generation !== this.generation) return;
+      this.demote('unavailable', 'Cluster authority could not be confirmed in PostgreSQL');
+      const failure = this.failures.recordFailure('authority');
+      if (failure.level === 'first' || failure.level === 'persistent') {
+        this.logger.error({ error, ...failure }, 'Cluster authority unavailable; controller is not leader');
+      } else if (failure.level === 'continuing') {
+        this.logger.debug(failure, 'Cluster authority is still unavailable');
+      }
     }
   }
 
-  /**
-   * Force step down from leader to follower.
-   * Used by `omnitron cluster step-down` CLI command.
-   */
-  async stepDown(): Promise<void> {
-    if (this.state !== 'leader') return;
-
-    this.logger.info({ nodeId: this.nodeId, term: this.term }, 'Stepping down from leader');
-    this.clearHeartbeatTimer();
+  private demote(authority: ClusterStateInfo['authority'], reason: string | null): void {
+    const wasLeader = this.state === 'leader';
+    this.current = null;
+    this.observed = null;
+    this.deadline = 0;
+    this.wallDeadline = 0;
+    this.authority = authority;
+    this.reason = reason;
+    if (this.expiry) clearTimeout(this.expiry);
+    this.expiry = null;
     this.setState('follower');
-    this.leaderId = null;
-
-    // Update fleet registry. A failure here leaves the registry saying this
-    // node is still the leader while it has stepped down — the disagreement
-    // that every other node reads as "there is a leader" and acts on. It
-    // cannot be retried here (the step-down has already happened and must
-    // not be undone), but it must not be silent.
-    await this.updateFleetRole('follower').catch((err) => {
-      this.logger.error(
-        { nodeId: this.nodeId, term: this.term, err },
-        'Stepped down but could not update the fleet registry — it still lists this node as leader'
-      );
-    });
-
-    // Start election timer so a new leader can be elected
-    this.resetElectionTimer();
+    if (wasLeader) this.emit('leader:lost', this.nodeId);
   }
 
-  // ===========================================================================
-  // Timers
-  // ===========================================================================
-
-  /**
-   * Reset the election timer with a random timeout.
-   * When it fires without receiving a heartbeat, start an election.
-   */
-  private resetElectionTimer(): void {
-    this.clearElectionTimer();
-    const timeout = randomInt(
-      this.config.electionTimeout.min,
-      this.config.electionTimeout.max + 1
-    );
-    this.electionTimer = setTimeout(() => {
-      if (this.running && this.state !== 'leader') {
-        this.startElection().catch((err) => {
-          this.logger.warn({ error: (err as Error).message }, 'Election failed');
-        });
-      }
-    }, timeout);
-    this.electionTimer.unref();
+  private setState(state: ElectionState): void {
+    if (state === this.state) return;
+    const previous = this.state;
+    this.state = state;
+    this.emit('state:changed', state, previous);
   }
 
-  private clearElectionTimer(): void {
-    if (this.electionTimer) {
-      clearTimeout(this.electionTimer);
-      this.electionTimer = null;
+  private async release(value: LeaseGrant): Promise<void> {
+    try { await this.leases.release(value); }
+    catch (error) {
+      this.logger.error({ error, epoch: value.epoch }, 'Lease release unconfirmed; ownership expires in PostgreSQL');
+      throw error;
     }
-  }
-
-  /**
-   * Start sending heartbeats to all peers at regular intervals.
-   */
-  private startHeartbeating(): void {
-    this.clearHeartbeatTimer();
-    this.heartbeatTimer = setInterval(() => {
-      if (this.running && this.state === 'leader') {
-        this.sendHeartbeats().catch(() => {
-          // Non-critical — peers may be temporarily unreachable
-        });
-      }
-    }, this.config.heartbeatInterval);
-    this.heartbeatTimer.unref();
-  }
-
-  private clearHeartbeatTimer(): void {
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
-    }
-  }
-
-  /**
-   * Send heartbeat to all online peers via HTTP Netron RPC
-   * and update own heartbeat in fleet registry.
-   */
-  private async sendHeartbeats(): Promise<void> {
-    // Update own heartbeat in fleet registry
-    try {
-      await this.fleetService.heartbeat(this.nodeId);
-    } catch {
-      // Non-critical
-    }
-
-    // Send leader heartbeat to all known peers
-    let peers: FleetNode[];
-    try {
-      peers = await this.fleetService.listNodes();
-    } catch {
-      return; // Fleet registry unavailable
-    }
-
-    const heartbeatData: LeaderHeartbeatData = {
-      leaderId: this.nodeId,
-      term: this.term,
-    };
-
-    for (const peer of peers.filter((p) => p.id !== this.nodeId)) {
-      const rpcPort = this.rpcPortOf(peer);
-      if (rpcPort === null) {
-        this.logger.warn(
-          { peer: peer.id, address: peer.address },
-          'Peer registered no HTTP RPC port — cannot send it a heartbeat'
-        );
-        continue;
-      }
-      // Fire-and-forget, and silent on purpose — unlike the swallows above
-      // it, this one is right. A peer that does not answer a heartbeat is
-      // the ordinary case (it is down, restarting, or partitioned), the
-      // consequence is already handled by that peer's own election timer,
-      // and logging at heartbeat frequency would bury everything else in
-      // the file. Absence of an answer is data the cluster acts on, not an
-      // error to report.
-      this.callPeerRpc(peer.address, rpcPort, 'leaderHeartbeat', heartbeatData).catch(() => {});
-    }
-  }
-
-  // ===========================================================================
-  // Internal Helpers
-  // ===========================================================================
-
-  /**
-   * Is this node id one the fleet registry knows about?
-   *
-   * `requestVote` and `leaderHeartbeat` are `allowAnonymous` because peers
-   * call them with no credentials, so before this check ANY caller who could
-   * reach the port could send `leaderHeartbeat({ leaderId: 'x', term: 1e9 })`
-   * and every node would step down, adopt that term and treat the caller as
-   * leader — each further heartbeat resetting the election timer, so the real
-   * cluster never recovers on its own. Master-only work (alert evaluation,
-   * fleet heartbeat, telemetry relay) stops with it.
-   *
-   * Membership is not authentication: the ids are readable from
-   * `getClusterState`, and nothing stops a caller from claiming one. It is
-   * the strongest check available without inventing a credential scheme, and
-   * it costs an attacker a step they did not previously need. The real fix is
-   * a fleet credential on these two calls; see the note in
-   * cluster.rpc-service.ts.
-   *
-   * A registry that cannot be read is treated as "unknown", not "trusted" —
-   * an election is worth losing over an unavailable registry, and the node
-   * that cannot read it cannot be a useful leader anyway.
-   */
-  private async isFleetMember(nodeId: string | undefined): Promise<boolean> {
-    if (!nodeId || nodeId === this.nodeId) return false;
-    try {
-      const nodes = await this.fleetService.listNodes();
-      return nodes.some((n) => n.id === nodeId);
-    } catch {
-      return false;
-    }
-  }
-
-  private setState(newState: ElectionState): void {
-    const previousState = this.state;
-    if (previousState === newState) return;
-    this.state = newState;
-    this.emit('state:changed', newState, previousState);
-  }
-
-  /**
-   * Write this node's role to the fleet registry.
-   *
-   * Throws. It used to swallow — which meant the `.catch()` at both call
-   * sites could never fire, including one added specifically to report the
-   * failure. Two layers each deciding the error is "best-effort" is one
-   * layer too many: the caller knows what the failure means and this does
-   * not.
-   */
-  private async updateFleetRole(role: 'leader' | 'follower'): Promise<void> {
-    await this.fleetService.setRole(this.nodeId, role);
   }
 }

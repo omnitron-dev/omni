@@ -120,6 +120,8 @@ export function decideControlPlaneDatabase(input: {
 }
 
 export interface InfrastructureHandoffState {
+  /** Native evidence is separate from desired services and their failure history. */
+  nativeState?: { protocol: 1; observations?: Array<{ name: string; containerId: string | null }> };
   retiredStacks?: string[];
   config: InfrastructureConfig;
   containers: ResolvedContainer[];
@@ -486,10 +488,13 @@ export class InfrastructureService {
       const settled = await Promise.allSettled([...this.activeSweeps, ...this.reconcileTasks.values()]);
       if (settled.some(result => result.status === 'rejected')) throw new Error('Infrastructure reconciliation failed while draining');
       await this.phantomJanitor?.drain();
-      await InfrastructureService.validateHandoffContainers(this.desiredContainers,
-        this.needsControlPlaneDatabase && !this.usingGlobalOmnitronPg ? this.omnitronPgContainer : undefined);
+      const observations = await InfrastructureService.validateHandoffContainers(this.desiredContainers,
+        this.needsControlPlaneDatabase && !this.usingGlobalOmnitronPg ? this.omnitronPgContainer : undefined,
+        this.state, { protocol: 1 });
       this.dispose();
-      return this.ownershipSnapshot(this.handoffMonitoring);
+      const snapshot = this.ownershipSnapshot(this.handoffMonitoring);
+      snapshot.nativeState = { protocol: 1, observations };
+      return snapshot;
     } catch (error) { this.resumeAfterHandoff(); throw error; }
   }
 
@@ -502,6 +507,7 @@ export class InfrastructureService {
 
   private ownershipSnapshot(monitoring: boolean): InfrastructureHandoffState {
     return structuredClone({
+      nativeState: { protocol: 1 as const },
       retiredStacks: [...this.retiredStacks],
       config: this.config, containers: this.desiredContainers, normalizedServices: this.normalizedServices,
       ...(this.serviceOverrides && { serviceOverrides: this.serviceOverrides }),
@@ -525,7 +531,8 @@ export class InfrastructureService {
   /** Read and validate existing containers. Never provision, start or recreate during adoption. */
   static async adoptHandoff(logger: ILogger, snapshot: InfrastructureHandoffState): Promise<InfrastructureService> {
     await InfrastructureService.validateHandoffContainers(snapshot.containers,
-      snapshot.needsControlPlaneDatabase && !snapshot.usingGlobalOmnitronPg ? snapshot.controlPlaneContainer : undefined);
+      snapshot.needsControlPlaneDatabase && !snapshot.usingGlobalOmnitronPg ? snapshot.controlPlaneContainer : undefined,
+      snapshot.state, snapshot.nativeState);
     const service = new InfrastructureService(logger, snapshot.config, snapshot.normalizedServices,
       undefined, snapshot.serviceOverrides, snapshot.needsControlPlaneDatabase);
     service.desiredContainers = structuredClone(snapshot.containers);
@@ -541,14 +548,38 @@ export class InfrastructureService {
     return service;
   }
 
-  private static async validateHandoffContainers(containers: ResolvedContainer[], controlPlane?: ResolvedContainer): Promise<void> {
-    for (const desired of [...containers, ...(controlPlane ? [controlPlane] : [])]) {
-      const actual = await getContainerState(desired.name);
-      if (!actual || actual.specHash !== containerSpecHash(desired) ||
+  private static async validateHandoffContainers(containers: ResolvedContainer[], controlPlane: ResolvedContainer | undefined,
+    state: InfrastructureState, nativeState?: InfrastructureHandoffState['nativeState']): Promise<Array<{ name: string; containerId: string | null }>> {
+    if (nativeState && nativeState.protocol !== 1) throw new Error('Unsupported infrastructure native observation protocol');
+    const desiredContainers = [...containers, ...(controlPlane ? [controlPlane] : [])];
+    const expected = nativeState?.observations && new Map(nativeState.observations.map(entry => [entry.name, entry.containerId]));
+    if (expected && (expected.size !== nativeState!.observations!.length || expected.size !== desiredContainers.length ||
+        desiredContainers.some(desired => !expected.has(desired.name)))) throw new Error('Incomplete infrastructure native observations');
+    const observations: Array<{ name: string; containerId: string | null }> = [];
+    for (const desired of desiredContainers) {
+      const actual = await getContainerState(desired.name, { orThrow: true });
+      const previous = state.services[desired.name];
+      // A failed creation owns no native container. Preserve that failure and
+      // its desired declaration; it must not make every backend upgrade fail.
+      // Missing previously observed or supposedly running resources still fail
+      // closed, as do legacy snapshots without the explicit protocol.
+      const failedCreation = nativeState?.protocol === 1 && previous?.status === 'exited' &&
+        !previous.containerId && typeof previous.error === 'string' && previous.error.length > 0;
+      if (!actual) {
+        if (!failedCreation || (expected && expected.get(desired.name) !== null))
+          throw new Error(`Infrastructure identity or specification changed during handoff: ${desired.name}`);
+        observations.push({ name: desired.name, containerId: null });
+        continue;
+      }
+      if (!actual.containerId || actual.specHash !== containerSpecHash(desired) ||
+          (expected && expected.get(desired.name) !== actual.containerId) ||
+          (!expected && previous?.containerId && previous.containerId !== actual.containerId) ||
           Object.entries(desired.labels).some(([key, value]) => actual.labels?.[key] !== value)) {
         throw new Error(`Infrastructure identity or specification changed during handoff: ${desired.name}`);
       }
+      observations.push({ name: desired.name, containerId: actual.containerId });
     }
+    return observations;
   }
 
   /**

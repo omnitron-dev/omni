@@ -291,10 +291,16 @@ async function inspectContainers(names: string[], strict = false): Promise<any[]
 /**
  * Get state of a specific container by name.
  */
-export async function getContainerState(name: string): Promise<ContainerState | null> {
+export async function getContainerState(name: string, options: { orThrow?: boolean } = {}): Promise<ContainerState | null> {
   try {
     return await withAdapter(async (adapter) => {
-      const exists = await adapter.containerExists(name);
+      // containerExists deliberately returns false for every inspect failure.
+      // Ownership transfer must distinguish confirmed absence from a daemon
+      // outage: a successful complete listing proves absence; a listed object
+      // that cannot then be inspected is an error, including deletion races.
+      const exists = options.orThrow
+        ? (await adapter.listContainers(true) as string[]).includes(name)
+        : await adapter.containerExists(name);
       if (!exists) return null;
 
       const info = await adapter.inspectContainer(name);
@@ -323,7 +329,8 @@ export async function getContainerState(name: string): Promise<ContainerState | 
         ...(failure && { error: failure }),
       };
     });
-  } catch {
+  } catch (error) {
+    if (options.orThrow) throw error;
     return null;
   }
 }
@@ -453,10 +460,6 @@ export async function describeBindFailure(
  * Create and start a container from a resolved config.
  */
 export async function createContainer(config: ResolvedContainer): Promise<string> {
-  const { execFile } = await import('node:child_process');
-  const { promisify } = await import('node:util');
-  const execFileAsync = promisify(execFile);
-
   // Ensure the managed network exists before we try to attach to it.
   // Idempotent — `docker network create` errors with "already exists"
   // when present, which we treat as success. Doing this here (rather
@@ -478,7 +481,9 @@ export async function createContainer(config: ResolvedContainer): Promise<string
   // Pull image if not present
   await ensureImage(config.image);
 
-  // Build docker run command directly — xec adapter can hang
+  // Use the local Xec executor with explicit argv. The command can contain
+  // credentials in environment, application flags and nested health checks;
+  // raw execFile errors would print those arguments before any logger sees them.
   const args: string[] = ['docker', 'run', '-d', '--name', config.name];
 
   // Network — explicit network avoids the default bridge, which
@@ -557,7 +562,7 @@ export async function createContainer(config: ResolvedContainer): Promise<string
     args.push(...config.command);
   }
 
-  // Execute docker run — use async execFile to avoid blocking event loop.
+  // Execute docker run asynchronously through Xec's shared error redaction.
   //
   // Self-heal the two stale-state failures that otherwise wedge a managed
   // container into an unstartable state (both seen in production on
@@ -582,7 +587,15 @@ export async function createContainer(config: ResolvedContainer): Promise<string
   // Deliberately narrow. A missing image, a bad flag, or a port genuinely
   // held by something else is permanent, and retrying it turns one clear
   // error into several identical ones separated by delays.
-  const runDocker = () => execFileAsync('docker', args.slice(1), { encoding: 'utf-8', timeout: 60_000 });
+  const runDocker = async () => {
+    const { ExecutionEngine } = await import('@xec-sh/core');
+    const engine = new ExecutionEngine({ defaultShell: false, enableEvents: false,
+      adapters: { local: { forceImplementation: 'node' } } });
+    try {
+      return await engine.execute({ command: 'docker', args: args.slice(1), shell: false,
+        adapter: 'local', timeout: 60_000, maxBuffer: 1024 * 1024, throwOnNonZeroExit: true });
+    } finally { await engine.dispose(); }
+  };
 
   let stdout: string | undefined;
   let lastError: unknown;

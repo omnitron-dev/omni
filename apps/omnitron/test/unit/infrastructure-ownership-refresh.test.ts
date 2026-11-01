@@ -21,12 +21,65 @@ function service(...containers: ResolvedContainer[]): any {
   return svc;
 }
 function actual(d: ResolvedContainer, extras: any = {}) {
-  return { name: d.name, image: d.image, status: 'running', labels: d.labels, specHash: containerSpecHash(d), ...extras };
+  return { name: d.name, image: d.image, status: 'running', containerId: '123456789abc', labels: d.labels, specHash: containerSpecHash(d), ...extras };
 }
 function deferred<T>() { let resolve!: (value: T) => void; let reject!: (reason: unknown) => void;
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 beforeEach(() => { vi.clearAllMocks(); runtime.get.mockResolvedValue(null); });
 describe('native monitoring ownership refresh', () => {
+  it('transfers a verified failed creation as absent, preserving its failure and desired service', async () => {
+    const redis = desired('redis'), original = service(redis);
+    original.state.services.redis = { name: 'redis', image: redis.image, status: 'exited', error: 'Image unavailable' };
+    const checkpoint = await original.prepareHandoff();
+    expect(checkpoint.nativeState).toEqual({ protocol: 1, observations: [{ name: 'redis', containerId: null }] });
+    const restored = await InfrastructureService.adoptHandoff(logger, checkpoint);
+    expect(restored.getState().services.redis?.error).toBe('Image unavailable');
+    expect(restored.getState().ready).toBe(false);
+    expect(restored.getDesiredServices()).toEqual([{ name: 'redis', image: redis.image }]);
+    expect(runtime.get).toHaveBeenCalledWith('redis', { orThrow: true });
+    expect(runtime.create).not.toHaveBeenCalled(); expect(runtime.start).not.toHaveBeenCalled(); expect(runtime.remove).not.toHaveBeenCalled();
+    original.dispose(); restored.dispose();
+  });
+  it('refuses an absent observation that becomes a container before adoption', async () => {
+    const redis = desired('redis'), original = service(redis);
+    original.state.services.redis = { name: 'redis', image: redis.image, status: 'exited', error: 'Image unavailable' };
+    const checkpoint = await original.prepareHandoff();
+    runtime.get.mockResolvedValue(actual(redis));
+    await expect(InfrastructureService.adoptHandoff(logger, checkpoint)).rejects.toThrow('identity or specification changed');
+    original.dispose();
+  });
+  it.each([
+    { status: 'running' }, { status: 'exited', containerId: '123456789abc', error: 'Stopped previously' },
+    { status: 'exited' },
+  ])('refuses missing running, previously identified or unproven service %j', async previous => {
+    const original = service(desired('redis')); original.state.services.redis = { name: 'redis', ...previous };
+    await expect(original.prepareHandoff()).rejects.toThrow('identity or specification changed');
+    expect(original.ownershipFrozen).toBe(false); original.dispose();
+  });
+  it('does not turn a Docker inspection failure into proof of absence', async () => {
+    const original = service(desired('redis'));
+    original.state.services.redis = { name: 'redis', status: 'exited', error: 'Image unavailable' };
+    runtime.get.mockRejectedValue(new Error('Docker connection unavailable'));
+    await expect(original.prepareHandoff()).rejects.toThrow('Docker connection unavailable');
+    expect(original.ownershipFrozen).toBe(false); original.dispose();
+  });
+  it('refuses a replacement container even when its desired labels and spec match', async () => {
+    const redis = desired('redis'), original = service(redis); runtime.get.mockResolvedValue(actual(redis));
+    const checkpoint = await original.prepareHandoff();
+    runtime.get.mockResolvedValue(actual(redis, { containerId: 'abcdef123456' }));
+    await expect(InfrastructureService.adoptHandoff(logger, checkpoint)).rejects.toThrow('identity or specification changed');
+    original.dispose();
+  });
+  it('keeps legacy snapshots strict and rejects incomplete native evidence', async () => {
+    const original = service(desired('redis'));
+    original.state.services.redis = { name: 'redis', status: 'exited', error: 'Image unavailable' };
+    const checkpoint = await original.prepareHandoff();
+    const legacy = structuredClone(checkpoint); delete legacy.nativeState;
+    await expect(InfrastructureService.adoptHandoff(logger, legacy)).rejects.toThrow('identity or specification changed');
+    checkpoint.nativeState!.observations = [];
+    await expect(InfrastructureService.adoptHandoff(logger, checkpoint)).rejects.toThrow('Incomplete');
+    original.dispose();
+  });
   it('transfers restart backoff and unhealthy observations without Docker mutations', async () => {
     const redis = desired('redis'), original = service(redis);
     runtime.get.mockResolvedValue(actual(redis));

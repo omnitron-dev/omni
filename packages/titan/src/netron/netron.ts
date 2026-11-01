@@ -192,6 +192,9 @@ export class Netron extends EventEmitter implements INetron {
    * one netron id.
    */
   private stopPromise: Promise<void> | null = null;
+  /** Shared teardown for an explicit stop and a failed startup. */
+  private cleanupPromise: Promise<void> | null = null;
+  private get isStopping(): boolean { return !!(this.stopPromise || this.cleanupPromise); }
   /** Handshakes and reconnect timers belong to this lifecycle, even before a peer is published. */
   private connectionEpoch = 0;
   private readonly pendingConnects = new Set<() => void>();
@@ -637,17 +640,22 @@ export class Netron extends EventEmitter implements INetron {
    * console.log('All transport servers started successfully');
    */
   async start() {
+    if (this.isStopping) throw Errors.conflict('Netron is stopping');
     // `isStarted` is only assigned once every transport server has bound, so on
     // its own it does not guard a start that is still in flight: two concurrent
     // calls both passed and both bound the configured servers. The in-flight
     // promise closes that window while keeping the documented contract — a
     // second start is a conflict, not a join.
-    if (this.isStarted || this.startPromise) {
+    if (this.isStarted || this.startPromise || this.transportServers.size > 0) {
       this.logger.warn('Netron instance already started');
       throw Errors.conflict('Netron already started');
     }
 
-    this.startPromise = this.doStart().finally(() => {
+    this.startPromise = this.doStart().catch(async error => {
+      try { await this.releaseResources(); }
+      catch (cleanupError) { throw new AggregateError([error, cleanupError], 'Netron startup failed and cleanup was incomplete', { cause: cleanupError }); }
+      throw error;
+    }).finally(() => {
       this.startPromise = null;
     });
     return this.startPromise;
@@ -690,27 +698,25 @@ export class Netron extends EventEmitter implements INetron {
       return;
     }
 
-    // Start all configured transport servers
-    const startPromises: Promise<void>[] = [];
-
-    for (const [transportName, config] of serverConfigs) {
+    // Validate every configured listener before creating any. A missing
+    // listener is a failed deployment, not a healthy client-only instance.
+    const listeners = [...serverConfigs].map(([transportName, config]) => {
       const transport = this.transportRegistry.get(transportName);
       if (!transport) {
-        this.logger.warn(`Transport ${transportName} not found in registry, skipping`);
-        continue;
+        throw Errors.badRequest(`Configured transport ${transportName} is unavailable`);
       }
-
-      if (!transport.capabilities.server) {
-        this.logger.warn(`Transport ${transportName} does not support server mode, skipping`);
-        continue;
+      if (!transport.capabilities.server || typeof transport.createServer !== 'function') {
+        throw Errors.badRequest(`Configured transport ${transportName} does not support server mode`);
       }
-
-      const startPromise = this.startTransportServer(transportName, transport, config);
-      startPromises.push(startPromise);
-    }
-
-    // Wait for all servers to start
-    await Promise.all(startPromises);
+      return { transportName, transport, config };
+    });
+    // A late factory must settle before rollback, otherwise it can install a
+    // listening server after cleanup has already reported completion.
+    const results = await Promise.allSettled(listeners.map(({ transportName, transport, config }) =>
+      this.startTransportServer(transportName, transport, config)));
+    const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (failures.length === 1) throw failures[0]!.reason;
+    if (failures.length > 1) throw new AggregateError(failures.map(result => result.reason), 'Netron transport startup failed');
 
     this.isStarted = true;
     this.logger.info(`Netron instance started with ${this.transportServers.size} transport server(s)`);
@@ -784,7 +790,7 @@ export class Netron extends EventEmitter implements INetron {
         // Count unfinished handshakes too. A query parameter is untrusted and
         // must not publish/overwrite a routing identity before the greeting.
         const peerId = uuid();
-        if (this.stopPromise || !this.connectionManager.acquireConnection(peerId, connection)) {
+        if (this.isStopping || !this.connectionManager.acquireConnection(peerId, connection)) {
           await connection.close(1008, 'connection_limit').catch(error => this.logger.debug({ error }, 'Rejected connection cleanup failed'));
           return;
         }
@@ -966,44 +972,54 @@ export class Netron extends EventEmitter implements INetron {
 
   private async doStop(): Promise<void> {
     this.logger.debug('Stopping Netron instance');
+    this.cancelPendingConnections();
+
+    // Startup owns every pending transport factory until it has settled.
+    // Its failure path uses releaseResources directly, so joining it here
+    // cannot deadlock with a concurrent stop.
+    if (this.startPromise) await this.startPromise.catch(() => undefined);
+    await this.releaseResources();
+    this.logger.debug('Netron instance stopped');
+  }
+
+  private cancelPendingConnections(): void {
     this.connectionEpoch++;
     for (const cancel of this.pendingConnects) cancel();
     this.pendingConnects.clear();
     for (const timer of this.reconnectTimers) clearTimeout(timer);
     this.reconnectTimers.clear();
+  }
 
-    // Let an in-flight start() finish first. Tearing down while it is still
-    // creating transport servers meant the teardown ran against a set that did
-    // not include them yet, and start() then installed the servers AFTER the
-    // shutdown had resolved — leaving sockets listening past a clean stop, and
-    // the next boot meeting EADDRINUSE.
-    if (this.startPromise) {
-      await this.startPromise.catch(() => undefined);
-    }
+  private releaseResources(): Promise<void> {
+    if (this.cleanupPromise) return this.cleanupPromise;
+    this.cleanupPromise = this.doReleaseResources().finally(() => { this.cleanupPromise = null; });
+    return this.cleanupPromise;
+  }
+
+  private async doReleaseResources(): Promise<void> {
+    this.cancelPendingConnections();
+    await this.inbound.drain(0);
+    const failures: unknown[] = [];
+    const attempt = async (close: () => Promise<void> | void) => {
+      try { await close(); } catch (error) { failures.push(error); }
+    };
 
     // Stop connection manager first (handles graceful connection cleanup)
-    await this.connectionManager.stop();
+    await attempt(() => this.connectionManager.stop());
 
     // Close all peer connections
-    for (const peer of this.peers.values()) {
+    await Promise.all([...this.peers].map(([id, peer]) => attempt(async () => {
       await peer.close();
-    }
-    this.peers.clear();
+      if (this.peers.get(id) === peer) this.peers.delete(id);
+    })));
 
-    // Stop all transport servers
-    const stopPromises: Promise<void>[] = [];
-    for (const [transportName, server] of this.transportServers) {
+    // Attempt every listener even when another close fails. Keep failures in
+    // the registry so a later stop can retry and start cannot hide them.
+    await Promise.all([...this.transportServers].map(([transportName, server]) => attempt(async () => {
       this.logger.info(`Closing ${transportName} transport server`);
-      stopPromises.push(
-        server.close().catch((error) => {
-          this.logger.error({ error, transport: transportName }, `Error closing ${transportName} server`);
-        })
-      );
-    }
-
-    // Wait for all servers to stop
-    await Promise.all(stopPromises);
-    this.transportServers.clear();
+      await server.close();
+      this.transportServers.delete(transportName);
+    })));
 
     // The server CONFIGS stay. They say what this Netron serves, not what is
     // running: clearing them here made the next `start()` bind nothing and
@@ -1015,12 +1031,12 @@ export class Netron extends EventEmitter implements INetron {
     // queue processor and cleanup intervals don't keep the event
     // loop alive past stop().
     if (this.inboundRateLimiter) {
-      this.inboundRateLimiter.destroy();
+      await attempt(() => this.inboundRateLimiter!.destroy());
       this.inboundRateLimiter = undefined;
     }
 
     this.isStarted = false;
-    this.logger.debug('Netron instance stopped');
+    if (failures.length) throw new AggregateError(failures, 'Failed to release Netron resources');
   }
 
   /**
@@ -1047,7 +1063,7 @@ export class Netron extends EventEmitter implements INetron {
    */
   async connect(address: string, reconnect = true): Promise<RemotePeer | HttpRemotePeer> {
     this.logger.debug({ address, reconnect }, 'Connecting to remote peer');
-    if (this.stopPromise) throw NetronErrors.connectionClosed('netron', 'Netron is stopping');
+    if (this.isStopping) throw NetronErrors.connectionClosed('netron', 'Netron is stopping');
     const epoch = this.connectionEpoch;
 
     // Check if this is an HTTP connection

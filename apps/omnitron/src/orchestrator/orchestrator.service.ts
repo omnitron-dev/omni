@@ -888,10 +888,11 @@ export class OrchestratorService extends EventEmitter {
           try {
             await this.stopApp(key);
           } catch (err) {
-            this.logger.warn(
+            this.logger.error(
               { stale: key, error: (err as Error).message },
-              'stopApp during dedup failed — clearing handle anyway',
+              'Cannot replace app registration while its previous processes remain unconfirmed',
             );
+            throw new Error(`Cannot replace '${key}' with '${entry.name}': the previous application did not stop`, { cause: err });
           }
           this.handles.delete(key);
           if (key !== entry.name) this.metricsBridge?.evictApp(key);

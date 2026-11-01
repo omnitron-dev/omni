@@ -39,7 +39,7 @@ import type { IEcosystemConfig } from '../config/types.js';
 import { CLI_VERSION, DAEMON_SERVICE_ID } from '../config/defaults.js';
 import { OWN_BUILD } from '../shared/build-stamp.js';
 import { runtimeDiagnostics } from '../monitoring/runtime-diagnostics.js';
-import { loadEcosystemConfig } from '../config/loader.js';
+import { loadStartupEcosystem } from './startup-config.js';
 import type { OmnitronDaemon } from './daemon.js';
 import { OPERATOR_ROLES, ADMIN_ROLES, CONTROL_PLANE_READ_ROLES, CONTROL_PLANE_ROLES } from '../shared/roles.js';
 
@@ -193,7 +193,10 @@ export class DaemonRpcService implements IDaemonService {
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async startAll(): Promise<ProcessInfoDto[]> {
-    await this.orchestrator.startAll(this.config);
+    // Bulk startup must carry the same project/stack identity as a single-app
+    // start. Preserve declared names/dependencies for startup ordering; the owner
+    // promotes each entry when it registers the actual process handle.
+    await this.orchestrator.startAll({ ...this.config, apps: this.config.apps.map(entry => this.namespaceEntry(entry)) });
     return this.orchestrator.list();
   }
 
@@ -478,14 +481,17 @@ export class DaemonRpcService implements IDaemonService {
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async reloadConfig(): Promise<{ success: boolean }> {
-    const newConfig = await loadEcosystemConfig();
-    this.config = newConfig;
+    // OS services often start in the user's home, rather than the registered
+    // project. Reload and cold start must resolve the same configuration and
+    // retain the same runtime project identity.
+    const newConfig = await loadStartupEcosystem(process.cwd());
     // P0-G — push the new config into the orchestrator too. Pre-fix
     // these two refs drifted: daemon.startApp read the new entries,
     // orchestrator.restartApp kept reading the old ones (mode, env,
     // dependsOn, restart policy all silently stale until next daemon
     // restart).
     await this.orchestrator.setConfig(newConfig);
+    this.config = newConfig;
     // Same omission as the config refs above, one layer out: the file
     // watcher keeps its own app list, so without this a reload changed
     // which apps get restarted but not which are watched.

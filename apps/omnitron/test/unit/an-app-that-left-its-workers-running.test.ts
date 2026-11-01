@@ -139,6 +139,31 @@ describe('stopping an app', () => {
 });
 
 describe('starting over a handle that is not online', () => {
+  it('retains a live bare-name generation and refuses its canonical replacement when stop fails', async () => {
+    const { self, log } = orchestrator();
+    const bare = generation('storage', log, { supervisorThrows: true });
+    bare.status = 'online'; self.handles.set('storage', bare);
+    await expect(self.startAppInternal({ name: 'sample/deployed/storage', bootstrap: './bootstrap.ts' }, config)).rejects.toThrow('did not stop');
+    expect(self.handles.get('storage')).toBe(bare);
+    expect(self.handles.has('sample/deployed/storage')).toBe(false);
+    expect(self.metricsBridge.evictApp).not.toHaveBeenCalled();
+    expect(log).not.toContain('launch');
+    expect(bare.status).toBe('stopping');
+    expect(bare.supervisor).not.toBeNull();
+  });
+
+  it('retries retained ownership before launching a canonical replacement', async () => {
+    const { self, log } = orchestrator();
+    const bare = generation('storage', log); bare.status = 'online';
+    bare.supervisor!.stop = vi.fn().mockRejectedValueOnce(new Error('unconfirmed worker')).mockResolvedValue(undefined);
+    self.handles.set('storage', bare);
+    await expect(self.startAppInternal({ name: 'sample/deployed/storage', bootstrap: './bootstrap.ts' }, config)).rejects.toThrow();
+    await self.startAppInternal({ name: 'sample/deployed/storage', bootstrap: './bootstrap.ts' }, config);
+    expect(self.handles.has('storage')).toBe(false);
+    expect(self.handles.get('sample/deployed/storage').status).toBe('online');
+    expect(log.filter(item => item === 'launch')).toHaveLength(1);
+  });
+
   it('a crash restart stops what the old handle still runs before the new one launches', async () => {
     const { self, log } = orchestrator();
     const old = generation('sample/deployed/payments', log);

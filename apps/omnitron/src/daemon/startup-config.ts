@@ -1,15 +1,27 @@
-import { loadDaemonBootConfig } from '../config/loader.js';
+import { loadDaemonBootConfig, loadEcosystemConfigFile } from '../config/loader.js';
 import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { ProjectRegistry } from '../project/registry.js';
 import { readSavedDaemonConfig, savedDaemonOverrides, ensurePersistedJwtSecret } from '../config/saved.js';
 
-/** Shared cold-start configuration for the control plane and resident owner. */
-export async function loadStartupConfig(cwd: string) {
+/** Resolve the registered ecosystem consistently for cold starts and explicit reloads. */
+export async function loadStartupEcosystem(cwd: string) {
   const registry = ProjectRegistry.open();
   const detected = registry.autoDetect(cwd);
   const projectName = detected?.name ?? registry.list()[0]?.name;
   const configPath = projectName ? registry.getConfigPath(projectName) : null;
-  const config = await loadDaemonBootConfig(configPath, cwd);
+  // A registration is the authority for its runtime namespace, including an
+  // imported configuration's retained alias. Generated remote configs need not
+  // repeat `project`; losing this association produced bare handles on recovery.
+  // An explicitly selected file must not fall back to another cwd's config if it
+  // disappears between lookup and loading.
+  return configPath && projectName
+    ? { ...await loadEcosystemConfigFile(configPath), project: projectName }
+    : await loadDaemonBootConfig(null, cwd);
+}
+
+/** Shared cold-start configuration for the control plane and resident owner. */
+export async function loadStartupConfig(cwd: string) {
+  const config = await loadStartupEcosystem(cwd);
   const jwtSecret = ensurePersistedJwtSecret();
   const daemonConfig = {
     ...DEFAULT_DAEMON_CONFIG,

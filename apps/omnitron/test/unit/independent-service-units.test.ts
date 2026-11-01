@@ -6,9 +6,11 @@ const inputs: UnitInputs = { scope: 'user', execPath: '/opt/omni/node', entryPat
   workdir: '/opt/omni', path: '/usr/bin:/bin', stderrLog: '/opt/omni/supervisor.log' };
 
 it('separates owner and backend restart behavior while retaining OS group cleanup', () => {
-  const owner = { ...inputs, label: 'dev.omnitron.owner', args: ['owner'], restart: false };
+  const owner = { ...inputs, label: 'dev.omnitron.owner', args: ['owner'], restart: false, forceKill: false };
   const backend = { ...inputs, label: 'dev.omnitron.daemon', args: ['backend'] };
   expect(renderSystemdUnit(owner)).toContain('Restart=no');
+  expect(renderSystemdUnit(owner)).toContain('SendSIGKILL=no');
+  expect(renderSystemdUnit(backend)).not.toContain('SendSIGKILL=no');
   expect(renderSystemdUnit(backend)).toContain('Restart=on-failure');
   expect(renderSystemdUnit(backend)).toContain('KillMode=control-group');
   expect(renderLaunchdPlist(owner)).toContain('<key>KeepAlive</key>\n  <false/>');

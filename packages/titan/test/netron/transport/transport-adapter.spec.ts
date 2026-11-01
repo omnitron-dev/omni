@@ -843,7 +843,7 @@ describe('BinaryTransportAdapter', () => {
       const errorHandler = vi.fn();
       adapter.on('error', errorHandler);
 
-      adapter.close();
+      await expect(adapter.close()).rejects.toBe(error);
 
       await delay(10);
       expect(errorHandler).toHaveBeenCalledWith(error);

@@ -34,6 +34,58 @@ async function raw(address: string) {
 }
 
 describe('Netron connection admission', () => {
+  it('shares one outbound connection across concurrent and repeated consumers', async () => {
+    const { netron, address } = await server();
+    const connection = client();
+    const peers = await Promise.all(Array.from({ length: 8 }, () => connection.connect(address, false)));
+    expect(new Set(peers).size).toBe(1);
+    expect(await connection.connect(address, false)).toBe(peers[0]);
+    expect(await peers[0]!.runTask('echo', 'all consumers remain connected')).toBe('all consumers remain connected');
+    expect(netron.connectionManager.getStats().totalConnections).toBe(1);
+    expect(connection.connectionManager.getStats().totalConnections).toBe(1);
+  });
+
+  it('shares the replacement after a lost connection and settles the old handle', async () => {
+    const { netron, address } = await server();
+    const connection = client(undefined, { reconnect: { baseDelay: 20, maxDelay: 20, jitterFactor: 0 } });
+    const first = await connection.connect(address);
+    await expect.poll(() => netron.peers.has(connection.id)).toBe(true);
+    await netron.peers.get(connection.id)!.disconnect();
+    await expect.poll(() => connection.peers.get(netron.id) !== first && connection.peers.has(netron.id)).toBe(true);
+    await expect(first.runTask('echo', 'old handle')).rejects.toThrow();
+    const replacements = await Promise.all(Array.from({ length: 8 }, () => connection.connect(address)));
+    expect(new Set(replacements).size).toBe(1);
+    expect(await replacements[0]!.runTask('echo', 'recovered')).toBe('recovered');
+    expect(netron.connectionManager.getStats().totalConnections).toBe(1);
+  });
+
+  it('waits for manual disconnection before an immediate reconnect', async () => {
+    const { netron, address } = await server();
+    const connection = client();
+    const first = await connection.connect(address, false);
+    await first.disconnect();
+    const second = await connection.connect(address, false);
+    expect(second).not.toBe(first);
+    expect(await second.runTask('echo', 'new connection')).toBe('new connection');
+    expect(netron.connectionManager.getStats().totalConnections).toBe(1);
+    await expect(first.runTask('echo', 'closed connection')).rejects.toThrow();
+  });
+
+  it('an explicit replacement cancels the old retry and respects manual disconnect', async () => {
+    const { netron, address } = await server();
+    const connection = client(undefined, { reconnect: { baseDelay: 200, maxDelay: 200, jitterFactor: 0 } });
+    await connection.connect(address);
+    await expect.poll(() => netron.peers.has(connection.id)).toBe(true);
+    await netron.peers.get(connection.id)!.disconnect();
+    await expect.poll(() => connection.peers.size).toBe(0);
+    const replacement = await connection.connect(address, false);
+    expect(await replacement.runTask('echo', 'replacement')).toBe('replacement');
+    await replacement.disconnect();
+    await new Promise(resolve => setTimeout(resolve, 300));
+    expect(connection.peers.size).toBe(0);
+    expect(netron.connectionManager.getStats().totalConnections).toBe(0);
+  });
+
   it('enforces real global limits and releases capacity on disconnect', async () => {
     const { netron, address } = await server({ maxTotalConnections: 2 });
     const first = client(), second = client(), third = client();

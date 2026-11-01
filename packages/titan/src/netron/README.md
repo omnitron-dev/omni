@@ -646,6 +646,13 @@ the same identity to that server. IDs are bounded to 256 characters without
 whitespace/control characters. Greetings are bounded to 4096 bytes and must complete
 within the transport's `connectTimeout`, on both client and server.
 
+Repeated or concurrent `connect(address)` calls on one `Netron` share the same
+pending handshake and live WebSocket/TCP/Unix peer. The call that opens the socket
+owns its reconnect policy. Disconnecting that shared peer affects all consumers;
+use separate instances with distinct IDs for independent lifetimes or principals.
+After transport loss, an explicit connection replaces any scheduled retry. A
+reconnect never replays an RPC whose outcome is unknown.
+
 Persistent RPC sockets are leased until disconnect. Their transport owns liveness;
 Netron owns handshake-aware reconnect. A second raw transport reconnect loop is
 disabled, so it cannot resurrect an obsolete socket. Shutdown also cancels pending

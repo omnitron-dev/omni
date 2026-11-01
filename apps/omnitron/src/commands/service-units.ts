@@ -65,6 +65,8 @@ export interface UnitInputs {
   readonly nodeArgs?: readonly string[];
   readonly environment?: Readonly<Record<string, string>>;
   readonly restart?: boolean;
+  /** systemd: retain unresolved processes for explicit reconciliation after a stop timeout. */
+  readonly forceKill?: boolean;
 }
 
 export const LAUNCHD_LABEL = 'dev.omnitron.daemon';
@@ -235,6 +237,7 @@ export function renderSystemdUnit(inputs: UnitInputs): string {
     ...Object.entries(inputs.environment ?? {}).map(([key, value]) => environmentLine(key, value)),
     inputs.restart === false ? 'Restart=no' : 'Restart=on-failure',
     'KillMode=control-group',
+    ...(inputs.forceKill === false ? ['SendSIGKILL=no'] : []),
     'StandardOutput=journal',
     'StandardError=journal',
     'RestartSec=10',

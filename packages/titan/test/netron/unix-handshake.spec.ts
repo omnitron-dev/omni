@@ -197,4 +197,23 @@ describe('Unix socket transport handshake', () => {
 
     client = null as any;
   }, 30000);
+
+  it('shares the owner socket between concurrent topology consumers', async () => {
+    socketPath = await createSocketPath();
+    const logger = createMockLogger();
+    server = new Netron(logger, { id: 'owner-peer' });
+    server.registerTransportServer('unix', { name: 'unix', options: { path: socketPath, force: true } });
+    await server.start();
+    await server.peer.exposeService(createServiceWrapper().instance);
+    client = new Netron(logger, { id: 'application-peer' });
+    const peers = await Promise.all(Array.from({ length: 8 }, () => client.connect(`unix://${socketPath}`)));
+    expect(new Set(peers).size).toBe(1);
+    for (const peer of peers) {
+      const service = await peer.queryInterface('BootstrapApp@1.0.0') as { __getProcessHealth(): Promise<{ status: string }> };
+      expect((await service.__getProcessHealth()).status).toBe('healthy');
+    }
+    expect(server.connectionManager.getStats().totalConnections).toBe(1);
+    await client.stop();
+    await expect.poll(() => server.connectionManager.getStats().totalConnections).toBe(0);
+  });
 });

@@ -215,11 +215,15 @@ export class BinaryTransportAdapter extends EventEmitter {
   }
 
   /**
-   * Standard socket close method
+   * Close the underlying transport. Awaiting this waits for disconnection,
+   * so a subsequent connect cannot reuse a socket that is still closing.
    */
-  close(code?: number, reason?: string): void {
+  close(code?: number, reason?: string): Promise<void> {
     this._readyState = BinaryTransportAdapter.CLOSING;
-    this.connection.close(code, reason).catch((error) => this.emit('error', error));
+    const closing = this.connection.close(code, reason);
+    // Preserve socket-style error notification for callers that do not await.
+    void closing.catch((error) => this.emit('error', error));
+    return closing;
   }
 
   /**

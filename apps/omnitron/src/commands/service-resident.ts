@@ -69,7 +69,7 @@ export async function prepareResidentService(inputs: UnitInputs) {
     const base: UnitInputs = { ...inputs, execPath: artifact.execPath, entryPath: entry,
       workdir: path.dirname(artifact.directory), environment: { OMNITRON_HOME }, nodeArgs: [],
     };
-    const owner: UnitInputs = { ...base, label: config.owner.label, args: ['owner'], restart: false,
+    const owner: UnitInputs = { ...base, label: config.owner.label, args: ['owner'], restart: false, forceKill: false,
       stderrLog: path.join(directory, 'owner-service.log') };
     const backend: UnitInputs = { ...base, label: config.backend.label, args: ['backend'],
       stderrLog: path.join(directory, 'supervisor.log') };

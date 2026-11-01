@@ -198,7 +198,9 @@ export class Netron extends EventEmitter implements INetron {
   /** Handshakes and reconnect timers belong to this lifecycle, even before a peer is published. */
   private connectionEpoch = 0;
   private readonly pendingConnects = new Set<() => void>();
-  private readonly reconnectTimers = new Set<ReturnType<typeof setTimeout>>();
+  private readonly reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** A peer identity owns one socket to an endpoint, shared by its consumers. */
+  private readonly outboundConnections = new Map<string, Promise<RemotePeer>>();
 
   /**
    * Map of exposed services.
@@ -986,8 +988,9 @@ export class Netron extends EventEmitter implements INetron {
     this.connectionEpoch++;
     for (const cancel of this.pendingConnects) cancel();
     this.pendingConnects.clear();
-    for (const timer of this.reconnectTimers) clearTimeout(timer);
+    for (const timer of this.reconnectTimers.values()) clearTimeout(timer);
     this.reconnectTimers.clear();
+    this.outboundConnections.clear();
   }
 
   private releaseResources(): Promise<void> {
@@ -1078,6 +1081,16 @@ export class Netron extends EventEmitter implements INetron {
       return this.connectHttp(address, useDirectHttp);
     }
 
+    const shared = this.outboundConnections.get(address);
+    if (shared) return shared;
+    // An explicit caller takes over a scheduled retry. Its connection policy
+    // must not compete with a timer belonging to the previous socket.
+    const scheduled = this.reconnectTimers.get(address);
+    if (scheduled) {
+      clearTimeout(scheduled);
+      this.reconnectTimers.delete(address);
+    }
+
     // Use existing WebSocket/TCP connection flow for other transports
     const reconnectOptions = this.transportRegistry.getOptions(this.getTransportForAddress(address).name)?.reconnect;
     const baseDelay = reconnectOptions?.delay ?? this.options.reconnect?.baseDelay ?? RECONNECT_BASE_DELAY;
@@ -1109,8 +1122,10 @@ export class Netron extends EventEmitter implements INetron {
         minMs: baseDelay,
       });
 
-    const connectPeer = (): Promise<RemotePeer> =>
-      new Promise<RemotePeer>((resolve, reject) => {
+    const connectPeer = (): Promise<RemotePeer> => {
+      const existingAttempt = this.outboundConnections.get(address);
+      if (existingAttempt) return existingAttempt;
+      const pending = new Promise<RemotePeer>((resolve, reject) => {
         // Parse address to determine transport type
         const transport = this.getTransportForAddress(address);
         if (!transport) {
@@ -1189,6 +1204,7 @@ export class Netron extends EventEmitter implements INetron {
             // completion, and published peers must settle all pending RPCs
             // before discovery or cleanup awaits anything else.
             connection.once('disconnect', async () => {
+              if (this.outboundConnections.get(address) === pending) this.outboundConnections.delete(address);
               if (!resolved) {
                 fail(NetronErrors.transportLost(transport.name, connectedPeer.id, undefined, 'Connection closed during handshake'));
                 return;
@@ -1200,7 +1216,7 @@ export class Netron extends EventEmitter implements INetron {
                 await this.cleanupPeerServices(connectedPeer);
                 this.emitSpecial(NETRON_EVENT_PEER_DISCONNECT, getPeerEventName(connectedPeer.id), { peerId: connectedPeer.id });
               }
-              if (reconnect && current) attemptReconnect();
+              if (reconnect && current && !this.outboundConnections.has(address)) attemptReconnect();
             });
             connectedPeer.once('manual-disconnect', () => { manuallyDisconnected = true; });
 
@@ -1254,6 +1270,12 @@ export class Netron extends EventEmitter implements INetron {
           }
         })(); // Execute the async IIFE
       });
+      this.outboundConnections.set(address, pending);
+      void pending.catch(() => {
+        if (this.outboundConnections.get(address) === pending) this.outboundConnections.delete(address);
+      });
+      return pending;
+    };
 
     /**
      * Implements the reconnection logic with exponential backoff and jitter.
@@ -1265,6 +1287,7 @@ export class Netron extends EventEmitter implements INetron {
      */
     const attemptReconnect = () => {
       if (manuallyDisconnected || epoch !== this.connectionEpoch ||
+          this.outboundConnections.has(address) || this.reconnectTimers.has(address) ||
           !(reconnectOptions?.enabled ?? this.options.reconnect?.enabled ?? true)) return;
       // Get reconnection options from transport
       const transport = this.getTransportForAddress(address);
@@ -1287,7 +1310,8 @@ export class Netron extends EventEmitter implements INetron {
       );
 
       const timer = setTimeout(async () => {
-        this.reconnectTimers.delete(timer);
+        if (this.reconnectTimers.get(address) !== timer) return;
+        this.reconnectTimers.delete(address);
         if (manuallyDisconnected || epoch !== this.connectionEpoch) return;
         reconnectAttempts++;
         try {
@@ -1301,7 +1325,7 @@ export class Netron extends EventEmitter implements INetron {
           attemptReconnect();
         }
       }, delay);
-      this.reconnectTimers.add(timer);
+      this.reconnectTimers.set(address, timer);
     };
 
     return connectPeer();

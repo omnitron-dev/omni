@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -18,6 +18,41 @@ function fixture() {
 }
 
 describe('crash-safe file projection', () => {
+  it('settles an in-flight append on shutdown and replays the durable remainder without duplicates', async () => {
+    const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'log-shutdown-'));
+    const config = { baseDir, journalPath: path.join(baseDir, 'journal.sqlite'), shutdownProjectionTimeoutMs: 0,
+      defaults: { maxSize: '1mb', maxFiles: 4, compress: false } };
+    const manager = new LogManager(config, {} as never);
+    let reopened: LogManager | undefined;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    try {
+      await manager.flush();
+      const records: LogRecord[] = [];
+      const assembler = new LineAssembler((_app, record) => records.push(record));
+      for (let i = 0; i < 3; i++) assembler.push('probe', JSON.stringify({ level: 30, time: '2026-10-31T01:02:03.004Z', msg: `record-${i}` }));
+      assembler.dispose();
+      for (const record of records) manager.journal!.put(record.id!, { app: 'probe', record });
+      const original = fs.promises.open.bind(fs.promises);
+      const open = vi.spyOn(fs.promises, 'open').mockImplementationOnce(async (...args) => { await gate; return original(...args); });
+      const projection = manager.flush();
+      await vi.waitFor(() => expect(open).toHaveBeenCalled());
+      const shutdown = manager.dispose();
+      expect(manager.dispose()).toBe(shutdown);
+      release();
+      await Promise.all([projection, shutdown]);
+      open.mockRestore();
+      reopened = new LogManager({ ...config, shutdownProjectionTimeoutMs: 5000 }, {} as never);
+      await reopened.flush();
+      const contents = fs.readFileSync(reopened.getLogFilePath('probe'), 'utf8');
+      expect(contents).toBe(records.map(r => fileLineOf(r) + '\n').join(''));
+      expect(reopened.journal!.peek(100, 1_000_000, 'file')).toEqual([]);
+      expect(reopened.journal!.peek()).toHaveLength(3);
+    } finally {
+      release();vi.restoreAllMocks();await manager.dispose();await reopened?.dispose();fs.rmSync(baseDir, { recursive: true, force: true });
+    }
+  });
+
   for (const complete of [false, true]) it(`replays an ${complete ? 'already written' : 'interrupted'} append without losing legacy bytes or duplicating the record`, async () => {
     const { manager, record, file } = fixture();
     await (manager as any).flushMirror();

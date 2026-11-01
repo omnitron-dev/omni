@@ -36,6 +36,8 @@ export interface LogRotationConfig {
 
 export interface LogManagerConfig {
   journalPath?: string;
+  /** Stop file projection at a record boundary; unfinished records remain durable. Default 5000 ms. */
+  shutdownProjectionTimeoutMs?: number;
   baseDir: string;                                       // ~/.omnitron
   defaults: LogRotationConfig;                           // Global defaults
   perApp?: Map<string, Partial<LogRotationConfig>>;      // Per-app overrides (keyed by short name)
@@ -80,7 +82,9 @@ export class LogManager {
   private mirrorRunning: Promise<void> | null = null;
   private mirrorTimer: NodeJS.Timeout | null = null;
   private mirrorError: string | null = null;
-  private disposed = false;
+  private disposePromise: Promise<void> | null = null;
+  private mirrorDeadline = Infinity;
+  private readonly shutdownProjectionTimeoutMs: number;
   readonly journal: LogJournal<{ app: string; record: LogRecord }> | null;
   private readonly recordHandlers: Array<(app: string, record: LogRecord) => void> = [];
   onRecord(handler: (app: string, record: LogRecord) => void): void { this.recordHandlers.push(handler); }
@@ -109,6 +113,10 @@ export class LogManager {
     config: LogManagerConfig | LegacyLogManagerConfig,
     private readonly orchestrator: OrchestratorService,
   ) {
+    this.shutdownProjectionTimeoutMs = 'shutdownProjectionTimeoutMs' in config ? config.shutdownProjectionTimeoutMs ?? 5000 : 5000;
+    if (!Number.isSafeInteger(this.shutdownProjectionTimeoutMs) || this.shutdownProjectionTimeoutMs < 0) {
+      throw new Error('shutdownProjectionTimeoutMs must be a non-negative safe integer');
+    }
     // Support both new and legacy config shapes
     if ('baseDir' in config) {
       this.baseDir = expandPath(config.baseDir);
@@ -139,9 +147,14 @@ export class LogManager {
     this.rotationCheckTimer.unref();
   }
 
-  async dispose(): Promise<void> {
-    if (this.disposed) return;
-    this.disposed = true;
+  dispose(): Promise<void> {
+    return this.disposePromise ??= this.finishDisposal();
+  }
+
+  private async finishDisposal(): Promise<void> {
+    // Capture is already in SQLite FULL/WAL. A large derived-file backlog
+    // must not prevent the process owner from writing its shutdown receipt.
+    this.mirrorDeadline = performance.now() + this.shutdownProjectionTimeoutMs;
     if (this.rotationCheckTimer) {
       clearInterval(this.rotationCheckTimer);
       this.rotationCheckTimer = null;
@@ -315,6 +328,7 @@ export class LogManager {
         const batch = this.journal!.peek(100, 2 * 1024 * 1024, 'file');
         if (!batch.length) break;
         for (const item of batch) {
+          if (performance.now() >= this.mirrorDeadline) return;
           const { app, record } = item.value;
           await this.appendMirror(app, 'app', record);
           if (record.level === 'error' || record.level === 'fatal') await this.appendMirror(app, 'error', record);

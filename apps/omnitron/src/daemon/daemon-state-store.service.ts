@@ -41,7 +41,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { Kysely, SqliteDialect, sql } from 'kysely';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
-import { ensurePrivateDir, sealFile } from '../shared/private-files.js';
+import { ensurePrivateDir, sealSqliteFiles } from '../shared/private-files.js';
 
 // `better-sqlite3` is loaded sync via createRequire because `initSync()`
 // can't `await import()`. The dynamic `await import()` in `getDb()`
@@ -160,7 +160,7 @@ export class DaemonStateStore {
     // index. Sealed after the WAL pragma, because that is what creates the
     // `-wal` and `-shm` sidecars — and they carry the same rows as the file
     // they sit beside.
-    sealFile(this.dbPath);
+    sealSqliteFiles(this.dbPath);
     this.rawSqlite = database;
     // Apply DDL synchronously via raw exec — Kysely's sql tagged
     // template requires the async wrapper. The schema is small
@@ -430,7 +430,7 @@ export class DaemonStateStore {
       database.pragma('journal_mode = WAL');
       database.pragma('busy_timeout = 5000');
       database.pragma('synchronous = NORMAL');
-      sealFile(this.dbPath); // after the WAL pragma — see `initSync`
+      sealSqliteFiles(this.dbPath); // after the WAL pragma — see `initSync`
       this.rawSqlite = database;
     }
     const dialect = new SqliteDialect({ database });

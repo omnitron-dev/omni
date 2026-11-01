@@ -1,6 +1,7 @@
 /** POSIX owner-only storage for backups, state and logs. Permission failures are fatal to the operation. */
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 export const PRIVATE_DIR_MODE = 0o700;
 export const PRIVATE_FILE_MODE = 0o600;
@@ -41,7 +42,7 @@ export function ensurePrivateDir(dir: string): void {
   if (CAN_CHMOD) sealPath(dir, true);
 }
 
-/** A missing SQLite sidecar is normal; a failed seal or missing main file is not. */
+/** Seal closed files and their sidecars. Open SQLite databases must use sealSqliteFiles. */
 export function sealFile(filepath: string): void {
   if (!CAN_CHMOD) return;
   sealPath(filepath, false);
@@ -61,4 +62,37 @@ export function sealDirContents(dir: string): number {
     if (sealPath(path.join(dir, entry.name), false, true)) tightened++;
   }
   return tightened;
+}
+
+/**
+ * SQLite owns its descriptors and POSIX locks. Closing ANY other descriptor for
+ * the same inode in this process drops those locks, even when opened for chmod.
+ * Inspect metadata without opening the files. If repair is needed, use a short
+ * isolated process for the existing no-follow seal; its close cannot cancel our
+ * SQLite locks. Already-private stores take no subprocess or extra descriptors.
+ * https://sqlite.org/howtocorrupt.html#_posix_advisory_locks_canceled_by_a_separate_thread_doing_close_
+ */
+export function sealSqliteFiles(filename: string): void {
+  if (!CAN_CHMOD || filename === ':memory:') return;
+  const inspect = (): boolean => {
+    let privateMode = true;
+    for (const suffix of ['', ...SIDECAR_SUFFIXES]) {
+      let stat: fs.Stats;
+      try { stat = fs.lstatSync(filename + suffix); }
+      catch (error) { if (suffix && missing(error)) continue; throw error; }
+      if (!stat.isFile() || stat.uid !== process.getuid?.() || stat.nlink !== 1) {
+        throw new Error(`SQLite storage must be a private regular file without aliases: ${filename + suffix}`);
+      }
+      privateMode &&= (stat.mode & 0o777) === PRIVATE_FILE_MODE;
+    }
+    return privateMode;
+  };
+  if (inspect()) return;
+  const environment = { ...process.env };
+  // A permission-only helper must not execute application preload hooks.
+  delete environment['NODE_OPTIONS'];
+  execFileSync(process.execPath, ['--input-type=module', '--eval',
+    'const { sealFile } = await import(process.argv[1]); sealFile(process.argv[2]);',
+    import.meta.url, filename], { env: environment, timeout: 10_000, maxBuffer: 64 * 1024, stdio: 'pipe' });
+  if (!inspect()) throw new Error(`Private SQLite permissions could not be established: ${filename}`);
 }

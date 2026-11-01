@@ -62,6 +62,7 @@ export function ProjectSwitcher() {
 
   const activeInfo = projects.find((p) => p.name === activeProject);
   const isOmnitron = !activeProject;
+  const stackReadError = useProjectStore(s => activeProject ? s.stackReadErrors?.[activeProject] : null);
 
   const buttonBg: SxProps<Theme> = {
     height: 1,
@@ -122,7 +123,7 @@ export function ProjectSwitcher() {
             color={activeInfo.runningStacks > 0 ? 'success' : 'default'}
             sx={{ height: 22, cursor: 'inherit', display: { xs: 'none', sm: 'inline-flex' } }}
           >
-            {activeInfo.runningStacks}/{activeInfo.totalStacks} stacks
+            {activeInfo.runningStacks}/{activeInfo.totalStacks} stacks{stackReadError ? " · stale" : ""}
           </Label>
         )}
 
@@ -181,8 +182,8 @@ export function ProjectSwitcher() {
                 </Box>
               </Tooltip>
 
-              <Label color={p.runningStacks > 0 ? 'success' : 'default'}>
-                {p.runningStacks > 0 ? `${p.runningStacks} live` : 'idle'}
+              <Label color={isActive && p.runningStacks > 0 ? 'success' : 'default'}>
+                {isActive ? `${p.runningStacks}/${p.totalStacks}` : p.totalStacks} stacks{isActive && stackReadError ? " · stale" : ""}
               </Label>
             </MenuItem>
           );

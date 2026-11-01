@@ -1,3 +1,4 @@
+import { stackApps as inventoryApps, stackCounts } from 'src/utils/stack-inventory';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 /** Selected deployments, current resource readings and links to operational detail. */
 
@@ -18,15 +19,15 @@ import { ResourceBreakdown } from 'src/components/resource-breakdown';
 
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { StatCard } from '@omnitron-dev/prism/components/card';
-import { daemon, metrics, project as projectRpc } from 'src/netron/client';
+import { daemon, metrics } from 'src/netron/client';
 import { formatUptime } from 'src/utils/formatters';
 import { useRealtimeStore } from 'src/stores/realtime.store';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
-import { useActiveProjectStacks } from 'src/stores/project.store';
+import { useActiveProjectStacks, useProjectStore } from 'src/stores/project.store';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { shownApps, type ShownApp } from 'src/utils/app-address';
 
-import type { IProjectAppStatus, ProcessInfoDto, MetricsSnapshot } from '@omnitron-dev/omnitron/dto/services';
+import type { ProcessInfoDto, MetricsSnapshot } from '@omnitron-dev/omnitron/dto/services';
 
 // ---------------------------------------------------------------------------
 // App Status Card
@@ -217,7 +218,6 @@ export default function DashboardPage() {
 function DashboardReader() {
   const [processes, setProcesses] = useState<ProcessInfoDto[]>([]);
   /** The selected project's deployments, with the project they answer for. */
-  const [deployments, setDeployments] = useState<{ project: string; apps: IProjectAppStatus[] } | null>(null);
   const [metricsSnapshot, setMetricsSnapshot] = useState<MetricsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -226,21 +226,20 @@ function DashboardReader() {
   const [receivedAt, setReceivedAt] = useState<number | null>(null);
 
   const { activeProject, activeStack } = useStackContext();
-  const stacks = useActiveProjectStacks().filter((stack) => !activeStack || stack.name === activeStack);
+  const allStacks = useActiveProjectStacks();
+  const stacks = allStacks.filter(stack => !activeStack || stack.name === activeStack);
+  const inventoryKnown = useProjectStore(s => !!activeProject && s.stacksByProject[activeProject] !== undefined);
 
   const fetchData = useCallback(async () => {
     if (busy.current) return;
     busy.current = true;
     try {
-      const [projectApps, appList, snapshot] = await Promise.allSettled([
-        activeProject ? projectRpc.getProjectApps({ project: activeProject }) : Promise.resolve(null),
+      const [projectInventory, appList, snapshot] = await Promise.allSettled([
+        activeProject ? useProjectStore.getState().fetchStacks(activeProject) : Promise.resolve(null),
         daemon.list(),
         metrics.getSnapshot(),
       ]);
 
-      if (activeProject && projectApps.status === 'fulfilled' && projectApps.value) {
-        setDeployments({ project: activeProject, apps: projectApps.value });
-      }
       if (appList.status === 'fulfilled') setProcesses(appList.value);
       if (snapshot.status === 'fulfilled') setMetricsSnapshot(snapshot.value);
 
@@ -251,14 +250,14 @@ function DashboardReader() {
       // panel is where an operator looks first, so "the numbers are old" has
       // to be visible on it rather than inferred from them not moving.
       const failed = [
-        projectApps.status === 'rejected' ? `${activeProject}'s apps` : null,
+        activeProject && (projectInventory.status === 'rejected' || projectInventory.value === null) ? `${activeProject}'s apps` : null,
         appList.status === 'rejected' ? 'the app list' : null,
         snapshot.status === 'rejected' ? 'metrics' : null,
       ].filter(Boolean);
 
       if (failed.length > 0) {
         const reason =
-          (projectApps.status === 'rejected' ? (projectApps.reason as Error)?.message : null) ??
+          (projectInventory.status === 'rejected' ? (projectInventory.reason as Error)?.message : activeProject ? useProjectStore.getState().stackReadErrors[activeProject] : null) ??
           (appList.status === 'rejected' ? (appList.reason as Error)?.message : null) ??
           (snapshot.status === 'rejected' ? (snapshot.reason as Error)?.message : null) ??
           'the daemon did not answer';
@@ -315,7 +314,7 @@ function DashboardReader() {
   const shown = shownApps(
     activeProject,
     activeStack,
-    deployments?.project === activeProject ? deployments.apps : null,
+    inventoryKnown ? inventoryApps(allStacks) : null,
     processes
   );
   const apps = shown ?? [];
@@ -333,11 +332,13 @@ function DashboardReader() {
   const sampled = (a: ShownApp) => (a.remote || a.status !== 'online' ? undefined : snapApps[a.key]);
   const totalApps = apps.length;
   const onlineCount = apps.filter((a) => a.status === 'online').length;
-  const offlineCount = totalApps - onlineCount;
+  const unknownCount = apps.filter(app => app.status === 'unknown').length;
+  const offlineCount = totalApps - onlineCount - unknownCount;
   const readings = apps.map((a) => ({ ...a, cpu: sampled(a)?.cpu ?? a.cpu, memory: sampled(a)?.memory ?? a.memory }));
   const totalCpu = resourceTotal(readings.map((a) => a.cpu));
   const totalMemory = resourceTotal(readings.map((a) => a.memory));
-  const runningStacks = stacks.filter((s) => s.status === 'running').length;
+  const { runningStacks, unknownStacks } = stackCounts(stacks);
+  const stacksKnown = useProjectStore(s => !!activeProject && s.stacksByProject[activeProject] !== undefined);
 
   return (
     <Stack spacing={2} sx={{ minWidth: 0 }}>
@@ -372,8 +373,8 @@ function DashboardReader() {
               <StatCard
                 label="Applications"
                 value={totalApps === 0 ? '0' : `${onlineCount}/${totalApps}`}
-                subtitle={totalApps === 0 ? 'No apps yet' : offlineCount > 0 ? `${offlineCount} offline` : 'All online'}
-                color={totalApps === 0 ? 'secondary' : offlineCount > 0 ? 'warning' : 'success'}
+                subtitle={totalApps === 0 ? 'No apps yet' : [offlineCount > 0 ? `${offlineCount} not online` : '', unknownCount > 0 ? `${unknownCount} unknown` : ''].filter(Boolean).join(' · ') || 'All online'}
+                color={totalApps === 0 ? 'secondary' : offlineCount + unknownCount > 0 ? 'warning' : 'success'}
                 sx={{
                   height: '100%',
                   '& h4': {
@@ -389,10 +390,10 @@ function DashboardReader() {
                 label="Stacks"
                 value={
                   activeProject
-                    ? `${runningStacks}/${stacks.length}`
+                    ? stacksKnown ? `${runningStacks}/${stacks.length}` : '—'
                     : new Set(apps.map((a) => a.key.split('/').slice(0, -1).join('/') || 'local')).size
                 }
-                subtitle={activeProject ? `${runningStacks} running` : 'On this daemon'}
+                subtitle={activeProject ? `${runningStacks} running${unknownStacks ? ` · ${unknownStacks} unknown` : ''}` : 'On this daemon'}
                 color={runningStacks > 0 ? 'primary' : 'secondary'}
                 sx={{
                   height: '100%',

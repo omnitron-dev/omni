@@ -1,3 +1,4 @@
+import { stackApps, stackCounts } from 'src/utils/stack-inventory';
 /**
  * Status Bar — Fixed bottom bar with real-time system health
  *
@@ -9,11 +10,11 @@ import { useState, useEffect, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
-import { daemon, alerts, nodes as nodesRpc, project as projectRpc } from 'src/netron/client';
+import { daemon, alerts, nodes as nodesRpc } from 'src/netron/client';
 import { useRealtimeStore } from 'src/stores/realtime.store';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { useProjectStore, useActiveProjectStacks } from 'src/stores/project.store';
-import { countedApps, tally } from 'src/utils/app-address';
+import { tally } from 'src/utils/app-address';
 
 // =============================================================================
 // Helpers
@@ -116,6 +117,13 @@ interface StatusData {
 // =============================================================================
 
 export function StatusBar({ docked = false }: { docked?: boolean }) {
+  const project = useProjectStore(s => s.activeProject);
+  const stack = useProjectStore(s => s.activeStack);
+  const lastKnown = useRef({ nodesOnline: 0, nodesTotal: 0, firingAlerts: 0, appsOnline: 0, appsTotal: 0, appsKnown: false });
+  return <StatusBarReader key={JSON.stringify([project, stack])} docked={docked} lastKnown={lastKnown} />;
+}
+
+function StatusBarReader({ docked, lastKnown }: { docked: boolean; lastKnown: React.RefObject<{ nodesOnline: number; nodesTotal: number; firingAlerts: number; appsOnline: number; appsTotal: number; appsKnown: boolean }> }) {
   const [data, setData] = useState<StatusData | null>(null);
   /**
    * The last values the nodes and alerts queries actually produced.
@@ -130,7 +138,6 @@ export function StatusBar({ docked = false }: { docked?: boolean }) {
    * cleared. That direction is the safe one: a stale count sends someone to
    * the alerts page, a false zero sends them nowhere.
    */
-  const lastKnown = useRef({ nodesOnline: 0, nodesTotal: 0, firingAlerts: 0, appsOnline: 0, appsTotal: 0, appsKnown: false });
   const wsConnected = useRealtimeStore((s) => s.connected);
   const lastEvent = useRealtimeStore((s) => s.lastEvent);
   const initializeRealtime = useRealtimeStore((s) => s.initialize);
@@ -139,10 +146,9 @@ export function StatusBar({ docked = false }: { docked?: boolean }) {
   useEffect(initializeRealtime, [initializeRealtime]);
   const activeProject = useProjectStore((s) => s.activeProject);
   const activeStack = useProjectStore((s) => s.activeStack);
-  // For the event handler below, which runs per event rather than per
-  // selection and must count the selection as it is when the event arrives.
-  const selection = useRef({ project: activeProject, stack: activeStack });
-  selection.current = { project: activeProject, stack: activeStack };
+  const fetchStacks = useProjectStore(s => s.fetchStacks);
+  const inventory = useProjectStore(s => activeProject ? s.stacksByProject?.[activeProject] : undefined);
+  const inventoryError = useProjectStore(s => activeProject ? s.stackReadErrors?.[activeProject] : null);
 
   // The status bar sits on every page, so its loop is the one that runs the
   // most — and it was the last hand-written one: three RPCs every ten seconds
@@ -154,9 +160,9 @@ export function StatusBar({ docked = false }: { docked?: boolean }) {
   // and mark retained application counts as stale.
   const { data: polled, refresh } = usePolledResource(
     async () => {
-      const [status, deployments, nodesList, alertsResult] = await Promise.allSettled([
+      const [status, , nodesList, alertsResult] = await Promise.allSettled([
         daemon.status(),
-        activeProject ? projectRpc.getProjectApps({ project: activeProject }) : Promise.resolve(null),
+        activeProject ? fetchStacks(activeProject) : Promise.resolve(null),
         nodesRpc.listNodes(),
         alerts.getSummary(),
       ]);
@@ -166,7 +172,7 @@ export function StatusBar({ docked = false }: { docked?: boolean }) {
       const nd = nodesList.status === 'fulfilled' ? (nodesList.value as any[]) : [];
       const al = alertsResult.status === 'fulfilled' ? (alertsResult.value as any) : null;
 
-      const apps = countedApps(activeProject, activeStack, st, deployments);
+      const apps = st?.apps ?? null;
       if (apps) Object.assign(lastKnown.current, tally(apps), { appsKnown: true });
 
       // A sub-query that failed contributes nothing rather than zero.
@@ -217,49 +223,16 @@ export function StatusBar({ docked = false }: { docked?: boolean }) {
     if (!(ch.startsWith('app.') || ch.startsWith('alert.') || ch.startsWith('daemon.') || ch.startsWith('stack.'))) {
       return;
     }
-    const { project, stack } = selection.current;
-    (async () => {
-      const [status, deployments, alertsResult] = await Promise.allSettled([
-        daemon.status(),
-        project ? projectRpc.getProjectApps({ project }) : Promise.resolve(null),
-        ch.startsWith('alert.') ? alerts.getSummary() : Promise.resolve(null),
-      ]);
-
-      if (alertsResult.status === 'fulfilled' && alertsResult.value) {
-        lastKnown.current.firingAlerts = (alertsResult.value as any)?.firing ?? 0;
-      }
-
-      if (status.status === 'rejected') {
-        // The poll will correct the app counts on its next tick; nothing here
-        // is worth reporting on its own.
-        return;
-      }
-
-      const st = status.value as any;
-      const apps = countedApps(project, stack, st, deployments);
-      if (apps) Object.assign(lastKnown.current, tally(apps), { appsKnown: true });
-      setData((prev) =>
-        prev
-          ? {
-              ...prev,
-              daemonOnline: true,
-              appsOnline: lastKnown.current.appsOnline,
-              appsTotal: lastKnown.current.appsTotal,
-              appsCurrent: !!apps,
-              appsKnown: lastKnown.current.appsKnown,
-              firingAlerts: lastKnown.current.firingAlerts,
-              uptimeMs: st?.uptime ?? prev.uptimeMs,
-              version: st?.version ?? prev.version,
-              pid: st?.pid ?? prev.pid,
-              lastFetch: Date.now(),
-            }
-          : prev
-      );
-    })();
-  }, [lastEvent]);
+    void refresh();
+  }, [lastEvent, refresh]);
 
   if (!data) return null;
-  const appCount = data.appsKnown ? `${data.appsOnline}/${data.appsTotal}${data.appsCurrent ? '' : ' stale'}` : 'unknown';
+  const selectedApps = inventory ? stackApps(inventory).filter(app => !activeStack || app.stack === activeStack) : null;
+  const unknownApps = selectedApps?.filter(app => app.status === 'unknown').length ?? 0;
+  const observedApps = selectedApps ? tally(selectedApps) : null;
+  const appCount = activeProject
+    ? observedApps ? `${observedApps.appsOnline}/${observedApps.appsTotal}${inventoryError ? ' stale' : unknownApps ? ` · ${unknownApps} unknown` : ''}` : 'unknown'
+    : data.appsKnown ? `${data.appsOnline}/${data.appsTotal}${data.appsCurrent ? '' : ' stale'}` : 'unknown';
 
   return (
     <Box
@@ -401,9 +374,10 @@ function ProjectStackIndicator() {
   const activeStack = useProjectStore((s) => s.activeStack);
   const stacks = useActiveProjectStacks();
 
+  const stale = useProjectStore(s => activeProject ? s.stackReadErrors?.[activeProject] : null);
+  const known = useProjectStore(s => !!activeProject && s.stacksByProject[activeProject] !== undefined);
+  const { runningStacks, totalStacks, unknownStacks } = stackCounts(stacks.filter(s => !activeStack || s.name === activeStack));
   if (!activeProject) return null;
-
-  const runningCount = stacks.filter((s) => s.status === 'running').length;
 
   return (
     <StatusItem priority="context">
@@ -417,10 +391,10 @@ function ProjectStackIndicator() {
             / {activeStack}
           </Box>
         )}
-        {runningCount > 0 && !activeStack && (
-          <span style={{ color: '#6b7280' }}>
+        {(
+          <span title={unknownStacks ? `${unknownStacks} stack states unknown` : 'Running / configured stacks'}>
             {' '}
-            ({runningCount} stack{runningCount > 1 ? 's' : ''})
+            ({known ? `${runningStacks}/${totalStacks}` : 'unknown'} stacks{stale ? ' · stale' : unknownStacks > 0 ? ' · unknown' : ''})
           </span>
         )}
       </StatusText>

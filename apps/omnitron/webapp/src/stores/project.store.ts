@@ -16,6 +16,7 @@ export { isRpcTimeout } from '../utils/rpc-error';
 import { useShallow } from 'zustand/shallow';
 import { project as projectRpc } from '../netron/client';
 import { readStored, writeStored, removeStored, readStoredJson, writeStoredJson } from '../utils/storage';
+import { stackCounts } from '../utils/stack-inventory';
 import { restoredProjectScope } from '../utils/project-scope';
 import type {
   IProjectInfo,
@@ -34,6 +35,7 @@ type PendingOp = 'starting' | 'stopping';
 interface ProjectState {
   projects: IProjectInfo[];
   stacksByProject: Record<string, IStackInfo[]>;
+  stackReadErrors: Record<string, string | null>;
   stackRuntimes: Record<string, StackRuntime>;
   /** In-flight operations keyed by "project/stack" */
   pendingOps: Record<string, PendingOp>;
@@ -45,7 +47,7 @@ interface ProjectState {
   error: string | null;
 
   fetchProjects: (currentPath?: string) => Promise<string | void>;
-  fetchStacks: (project: string) => Promise<void>;
+  fetchStacks: (project: string) => Promise<IStackInfo[] | null>;
   fetchStackStatus: (project: string, stack: string) => Promise<StackRuntime | null>;
   /** Select a project workspace. Saves current route for old workspace, returns saved route for new. */
   selectProject: (name: string, currentPath?: string) => string;
@@ -118,10 +120,12 @@ function persistRoutes(routes: Record<string, string>): void {
 
 export const useProjectStore = create<ProjectState>((set, get) => {
   const persisted = loadPersistedWorkspace();
+  const stackRequests = new Map<string, Promise<IStackInfo[] | null>>();
 
   return {
   projects: [],
   stacksByProject: {},
+  stackReadErrors: {},
   stackRuntimes: {},
   pendingOps: {},
   activeProject: persisted.project,
@@ -134,7 +138,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     try {
       set({ loading: true, error: null });
       const projects = await projectRpc.listProjects();
-      set({ projects, loading: false });
+      set(state => ({ projects: projects.map(project => state.stacksByProject[project.name]
+        ? { ...project, ...stackCounts(state.stacksByProject[project.name]!) } : project), loading: false }));
 
       // Restore persisted project — validate it still exists
       const current = get().activeProject;
@@ -172,10 +177,15 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   },
 
   fetchStacks: async (projectName: string) => {
+    const pending = stackRequests.get(projectName);
+    if (pending) return pending;
+    const request = (async () => {
     try {
       const stacks = await projectRpc.listStacks({ project: projectName });
       set((state) => ({
         stacksByProject: { ...state.stacksByProject, [projectName]: stacks },
+        stackReadErrors: { ...state.stackReadErrors, [projectName]: null },
+        projects: state.projects.map(project => project.name === projectName ? { ...project, ...stackCounts(stacks) } : project),
       }));
 
       // Auto-select stack if exactly one exists and none is selected.
@@ -190,9 +200,14 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         set({ activeStack: stackName });
         persistWorkspace(projectName, stackName);
       }
+      return stacks;
     } catch (err) {
-      set({ error: (err as Error).message });
+      set(state => ({ error: (err as Error).message, stackReadErrors: { ...state.stackReadErrors, [projectName]: (err as Error).message } }));
+      return null;
     }
+    })();
+    stackRequests.set(projectName, request);
+    try { return await request; } finally { stackRequests.delete(projectName); }
   },
 
   fetchStackStatus: async (projectName: string, stackName: string) => {

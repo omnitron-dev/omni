@@ -111,12 +111,12 @@ describe('stopStack', () => {
     expect(useProjectStore.getState().error).toBe('Step timed out after 60000ms');
   });
 
-  it("stays quiet for the transport's own timeout", async () => {
+  it("reports that a transport timeout leaves stop acknowledgement unknown", async () => {
     const useProjectStore = await freshStore();
     stopStack.mockRejectedValue(transportTimeout('code-only-string'));
 
     await useProjectStore.getState().stopStack('demo', 'web');
 
-    expect(useProjectStore.getState().error).toBeNull();
+    expect(useProjectStore.getState().error).toContain('Stop acknowledgement has not arrived');
   });
 });

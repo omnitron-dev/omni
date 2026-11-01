@@ -68,10 +68,10 @@ describe('workspace menu commands', () => {
     state.activeProject = 'beta';
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Switch workspace: beta' }));
-    const current = screen.getByRole('menuitem', { name: 'beta idle' });
+    const current = screen.getByRole('menuitem', { name: 'beta 0/1 stacks' });
     await waitFor(() => expect(document.activeElement).toBe(current));
     fireEvent.keyDown(current, { key: 'ArrowUp' });
-    expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'alpha idle' }));
+    expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'alpha 1 stacks' }));
   });
   it('opens the authorized Add Project form through keyboard menu navigation', async () => {
     mount();

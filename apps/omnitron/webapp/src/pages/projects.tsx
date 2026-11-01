@@ -63,7 +63,12 @@ function ProjectCard({
   onOpen: (name: string) => void;
   onImport: (p: IProjectInfo) => void;
 }) {
-  const hasRunning = project.runningStacks > 0;
+  const inventory = useProjectStore(s => s.stacksByProject[project.name]);
+  const error = useProjectStore(s => s.stackReadErrors[project.name]);
+  const fetchStacks = useProjectStore(s => s.fetchStacks);
+  usePollingEffect(() => { void fetchStacks(project.name); }, { intervalMs: 10_000 });
+  const hasRunning = inventory ? inventory.some(stack => stack.status === 'running') : false;
+  const counts = inventory ? `${inventory.filter(stack => stack.status === 'running').length}/${inventory.length}${error ? ' stale' : ''}` : `?/${project.totalStacks}`;
 
   return (
     <Card
@@ -122,7 +127,7 @@ function ProjectCard({
             </Box>
           </Stack>
           <Label color={hasRunning ? 'success' : 'default'} sx={{ flexShrink: 0 }}>
-            {hasRunning ? `${project.runningStacks} live` : 'idle'}
+            {counts} stacks
           </Label>
         </Stack>
 
@@ -138,7 +143,7 @@ function ProjectCard({
             mt: 1,
           }}
         >
-          <DetailRow label="Stacks" value={`${project.runningStacks} / ${project.totalStacks}`} />
+          <DetailRow label="Stacks" value={counts} />
           {project.enabledStacks.length > 0 && <DetailRow label="Enabled" value={project.enabledStacks.join(', ')} />}
           <DetailRow label="Registered" value={timeAgo(project.registeredAt)} />
         </Stack>

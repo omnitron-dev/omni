@@ -1,4 +1,5 @@
 import type { FileDocument, FileEntry, FileLocation, FileRoot } from '@omnitron-dev/omnitron/dto/services';
+import { fileNameError } from '@omnitron-dev/omnitron/dto/services';
 export type FileHost = { id: string; name: string; host: string; isLocal: boolean };
 export type PaneSelection = { location: FileLocation; root: FileRoot; entries: FileEntry[] };
 export const joinPath = (parent: string, name: string) => (parent ? `${parent}/${name}` : name);
@@ -28,16 +29,8 @@ export function relocateBuffer<T extends { id: string; location: FileLocation; d
   };
 }
 export function fileName(value: string): string {
-  if (
-    !value ||
-    value === '.' ||
-    value === '..' ||
-    value === '.omnitron-files' ||
-    /[/\\]/.test(value) ||
-    Array.from(value).some((c) => c.charCodeAt(0) < 32) ||
-    new TextEncoder().encode(value).length > 255
-  )
-    throw new Error('Enter a single file name, without slashes or control characters');
+  const error = fileNameError(value);
+  if (error) throw new Error(error);
   return value;
 }
 export function relativePath(value: string): string {

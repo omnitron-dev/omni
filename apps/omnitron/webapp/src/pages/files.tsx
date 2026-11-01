@@ -24,7 +24,9 @@ import {
 import { Tabs } from '@omnitron-dev/prism/components/tabs';
 import { ConfirmDialog } from '@omnitron-dev/prism/components/confirm-dialog';
 import { CloseIcon } from '@omnitron-dev/prism/icons';
+import { CopyFilesIcon, NewFolderIcon, UploadFileIcon, SwitchPanelsIcon } from 'src/assets/icons';
 import type { FileDocument, FileEntry, FileLocation, FileTrash } from '@omnitron-dev/omnitron/dto/services';
+import { fileNameError, fileStructureError } from '@omnitron-dev/omnitron/dto/services';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { FilePane, type FileAction } from 'src/components/files/file-pane';
 import {
@@ -76,6 +78,8 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
     [editorOpen, setEditorOpen] = useState(false),
     [discard, setDiscard] = useState<string | null>(null);
   const [reloadBuffer, setReloadBuffer] = useState<string | null>(null);
+  const [wrapEditor, setWrapEditor] = useState(false);
+  const [editorPosition, setEditorPosition] = useState({ line: 1, column: 1, selected: 0 });
   const [queueOpen, setQueueOpen] = useState(false),
     [trash, setTrash] = useState<{ pane: PaneSelection; items: FileTrash[] } | null>(null);
   const [browserTransfer, setBrowserTransfer] = useState<{
@@ -198,6 +202,10 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
   const action = (side: 'left' | 'right', key: FileAction) => {
     const pane = panes[side];
     if (!pane) return;
+    if ((key === 'rename' || key === 'trash') && pane.entries.some(entry => fileStructureError(entry.path, pane.root.protectedPaths))) {
+      setError('This structural path is protected from rename and removal');
+      return;
+    }
     const destination = panes[side === 'left' ? 'right' : 'left'];
     setActive(side);
     if (key === 'upload') {
@@ -349,6 +357,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
   if (pending) retainedPending.current = pending;
   const dialogPending = pending ?? retainedPending.current;
   const namedAction = pending && ['mkdir', 'rename', 'create', 'saveCopy'].includes(pending.action);
+  const nameError = namedAction ? fileNameError(name) : null;
   return (
     <Box
       sx={{
@@ -366,7 +375,28 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
         active={visible}
         links={[{ name: 'Files' }]}
         action={
-          <Stack direction="row" spacing={0.75}>
+          <Stack direction="row" spacing={0.5} useFlexGap role="toolbar" aria-label="File actions" sx={{ alignItems: 'center' }}>
+            {compact && <ToggleButtonGroup exclusive size="small" value={active} aria-label="Visible file panel"
+              onChange={(_, value) => { if (value) focusPane(value); }}>
+              <ToggleButton value="left">A</ToggleButton><ToggleButton value="right">B</ToggleButton>
+            </ToggleButtonGroup>}
+            <Tooltip title={`Copy ${active === 'left' ? 'A → B' : 'B → A'} · ${other ? label(other.location) : 'Choose a destination'} · F5`}>
+              <span><Button size="small" variant="outlined" startIcon={<CopyFilesIcon fontSize="small" />}
+                aria-label={active === 'left' ? 'Copy A to B' : 'Copy B to A'}
+                disabled={!selected?.entries.length || !other || other.root.readOnly || busy}
+                onClick={() => action(active, 'copy')} sx={{ minWidth: 72, fontFamily: 'monospace' }}>
+                {active === 'left' ? 'A → B' : 'B → A'}
+              </Button></span>
+            </Tooltip>
+            <Tooltip title={`New folder in panel ${active === 'left' ? 'A' : 'B'}`}><span>
+              <IconButton size="small" aria-label="New folder" disabled={!selected || selected.root.readOnly || busy} onClick={() => action(active, 'mkdir')}><NewFolderIcon fontSize="small" /></IconButton>
+            </span></Tooltip>
+            <Tooltip title={`Upload from this computer to panel ${active === 'left' ? 'A' : 'B'}`}><span>
+              <IconButton size="small" aria-label="Upload from this computer" disabled={!selected || selected.root.readOnly || Boolean(browserTransfer)} onClick={() => action(active, 'upload')}><UploadFileIcon fontSize="small" /></IconButton>
+            </span></Tooltip>
+            {!compact && <Tooltip title={`Focus panel ${active === 'left' ? 'B' : 'A'} · Tab inside a file list`}>
+              <IconButton size="small" aria-label={`Focus panel ${active === 'left' ? 'B' : 'A'}`} onClick={() => focusPane(active === 'left' ? 'right' : 'left')}><SwitchPanelsIcon fontSize="small" /></IconButton>
+            </Tooltip>}
             {buffers.length > 0 && (
               <Button size="small" onClick={() => setEditorOpen(true)}>
                 Editor · {buffers.length}
@@ -386,54 +416,6 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
       )}
       <OperationStatus active={busy && !pending && !editorOpen && !trash && !queueOpen} label={operation ?? ''} />
       {jobs.error && <Alert severity="warning">Transfer status unavailable: {jobs.error}</Alert>}
-      <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 0.5, minWidth: 0 }}>
-        {compact && (
-          <ToggleButtonGroup
-            exclusive
-            size="small"
-            value={active}
-            onChange={(_, v) => {
-              if (v) setActive(v);
-            }}
-            aria-label="Visible file panel"
-          >
-            <ToggleButton value="left">A</ToggleButton>
-            <ToggleButton value="right">B</ToggleButton>
-          </ToggleButtonGroup>
-        )}
-        <Button
-          size="small"
-          variant="outlined"
-          disabled={!selected?.entries.length || !other || other.root.readOnly || busy}
-          onClick={() => action(active, 'copy')}
-        >
-          {active === 'left' ? 'Copy A → B' : 'Copy B → A'}
-        </Button>
-        <Button
-          size="small"
-          disabled={!selected || selected.root.readOnly || busy}
-          onClick={() => action(active, 'mkdir')}
-        >
-          New folder
-        </Button>
-        <Button
-          size="small"
-          disabled={!selected || selected.root.readOnly || Boolean(browserTransfer)}
-          onClick={() => action(active, 'upload')}
-        >
-          Upload
-        </Button>
-        <Box sx={{ flex: 1 }} />
-        <Tooltip title="Tab switches A/B · F6 changes region · Arrows browse · Enter opens · Space selects · Shift+click selects a range · Alt+arrows navigate · F2 renames · F4 edits · F5 copies · Delete moves to trash">
-          <Typography
-            variant="caption"
-            color="text.disabled"
-            sx={{ display: { xs: 'none', lg: 'block' }, fontFamily: 'monospace' }}
-          >
-            A ↔ B · FILES
-          </Typography>
-        </Tooltip>
-      </Stack>
       {browserTransfer && (
         <Box role="status">
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
@@ -587,8 +569,11 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
             label="Name"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            error={Boolean(name && nameError)}
+            helperText={name && nameError ? nameError : 'One name in the current folder'}
+            onFocus={(e) => e.target.select()}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && name && !busy) void confirm();
+              if (e.key === 'Enter' && !nameError && !busy) void confirm();
             }}
           />
         </DialogContent>
@@ -596,7 +581,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
           <Button onClick={() => setPending(null)} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="contained" loading={busy} disabled={!name || busy} onClick={() => void confirm()}>
+          <Button variant="contained" loading={busy} disabled={Boolean(nameError) || busy} onClick={() => void confirm()}>
             Apply
           </Button>
         </DialogActions>
@@ -799,6 +784,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
       </Dialog>
       <Dialog
         open={editorOpen && visible && Boolean(buffer)}
+        aria-label="File editor"
         onClose={() => setEditorOpen(false)}
         fullScreen={compact}
         maxWidth="xl"
@@ -807,6 +793,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
         slotProps={{ paper: { sx: { height: compact ? '100%' : '86dvh', minHeight: 0, overflow: 'hidden' } } }}
       >
         <Stack
+          data-keyboard-region="Editor tabs"
           direction="row"
           spacing={1}
           sx={{ px: 1, alignItems: 'center', borderBottom: 1, borderColor: 'divider', minWidth: 0 }}
@@ -836,7 +823,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
         </Stack>
         {buffer && (
           <>
-            <Stack direction="row" spacing={1} sx={{ p: 1, alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
+            <Stack data-keyboard-region="Editor tools" direction="row" spacing={1} sx={{ p: 1, alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
               <Typography
                 variant="caption"
                 sx={{ flex: 1, minWidth: 160, overflowWrap: 'anywhere', fontFamily: 'monospace' }}
@@ -870,6 +857,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
               <Button size="small" disabled={busy} onClick={() => setReloadBuffer(buffer.id)}>
                 Reload
               </Button>
+              <ToggleButton size="small" value="wrap" selected={wrapEditor} onChange={() => setWrapEditor(value => !value)} aria-label="Wrap long lines">Wrap</ToggleButton>
               <Button
                 size="small"
                 variant="contained"
@@ -904,12 +892,15 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
                 initial={b.text}
                 name={b.location.path}
                 readOnly={b.readOnly}
+                active={editorOpen && visible && b.id === editorId}
+                wrap={wrapEditor}
+                onPosition={position => { if (b.id === editorId) setEditorPosition(position); }}
                 onChange={(text) =>
                   setBuffers((all) => all.map((item) => (item.id === b.id ? { ...item, text } : item)))
                 }
                 onSave={() => {
                   const current = buffersRef.current.find((item) => item.id === b.id);
-                  if (current && !busy) void save(current);
+                  if (current && !busy && current.text !== current.document.content) void save(current);
                 }}
               />
             </Box>
@@ -920,7 +911,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
           color="text.secondary"
           sx={{ px: 2, py: 0.5, borderTop: 1, borderColor: 'divider' }}
         >
-          UTF-8{buffer?.document.bom ? ' BOM' : ''} ·{' '}
+          Ln {editorPosition.line}, Col {editorPosition.column}{editorPosition.selected ? ` · ${editorPosition.selected} selected` : ''} · UTF-8{buffer?.document.bom ? ' BOM' : ''} ·{' '}
           {buffer ? fileBytes(new TextEncoder().encode(buffer.text).length) : ''} · Ctrl/⌘+S save · Ctrl/⌘+F find ·
           changes checked against the file version
         </Typography>

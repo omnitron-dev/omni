@@ -87,9 +87,10 @@ const HELP = [
   ['Current view', '/ · R', 'Focus search / refresh, when those controls are available'],
   ['Controls', 'Tab · Shift Tab', 'Next / previous control; arrows switch tabs and menu items'],
   ['Tables', '↑ ↓ · Home End · Page ↑ ↓', 'Browse rows; Enter opens, Space selects, Escape returns to the table'],
-  ['Files', 'Tab · Shift Tab', 'Switch A / B while the file list has focus'],
+  ['Files', 'Tab · Shift Tab · Escape', 'Enter a panel at its list; switch A / B; Escape toggles list / tools'],
   ['Files', '↑ ↓ · Shift ↑ ↓ · Space', 'Move cursor, extend selection, toggle a file'],
-  ['Files', 'Enter · Alt ↑ · Alt ← →', 'Open / parent folder / directory history'],
+  ['Files', 'Enter · ← → · Alt ← →', 'Open / parent or selected directory / directory history'],
+  ['Editor', 'Ctrl / ⌘ S · Ctrl / ⌘ F · F6', 'Save / find / cycle editor regions without leaving its dialog'],
   ['Files', 'F2 · F4 · F5 · Delete', 'Rename / edit / copy / trash; confirmations and permissions still apply'],
   ['Files', 'Ctrl / ⌘ L · Ctrl / ⌘ A', 'Edit path / select loaded files'],
   ['Logs', 'Home', 'Jump to the newest logs without changing filters'],
@@ -192,12 +193,15 @@ export function ConsoleKeyboard({ navigation, children }: { navigation: LayoutNa
         !event.ctrlKey &&
         !event.metaKey &&
         !event.altKey &&
-        !event.isComposing &&
-        !modalOpen()
+        !event.isComposing
       ) {
+        const menus = [...document.querySelectorAll<HTMLElement>('[role="menu"],[role="listbox"]')].filter(isVisible);
+        if (menus.length) return;
+        const dialogs = [...document.querySelectorAll<HTMLElement>('[role="dialog"],[role="alertdialog"]')].filter(isVisible);
+        const dialog = dialogs.at(-1);
         event.preventDefault();
         event.stopPropagation();
-        focusRegion(event.shiftKey ? -1 : 1);
+        focusRegion(event.shiftKey ? -1 : 1, dialog ?? document);
       }
     };
     const shortcuts = (event: KeyboardEvent) => {

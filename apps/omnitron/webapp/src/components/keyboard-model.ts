@@ -11,7 +11,7 @@ export type WorkspaceCommand = keyof typeof WORKSPACE_COMMANDS;
 export function isEditing(target: EventTarget | null): boolean {
   return (
     target instanceof Element &&
-    Boolean(target.closest('input,textarea,select,[contenteditable="true"],[role="textbox"]'))
+    Boolean(target.closest('input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="range"]):not([type="color"]),textarea,select,[contenteditable="true"],[role="textbox"]'))
   );
 }
 
@@ -59,17 +59,17 @@ export function invokeControl(command: WorkspaceCommand, element: HTMLElement): 
   } else element.click();
 }
 
-export function focusRegions(): HTMLElement[] {
-  const explicit = [...document.querySelectorAll<HTMLElement>('[data-keyboard-region],nav[aria-label]')].filter(
-    isVisible
+export function focusRegions(scope: ParentNode = document): HTMLElement[] {
+  const explicit = [...scope.querySelectorAll<HTMLElement>('[data-keyboard-region],nav[aria-label]')].filter(
+    element => isVisible(element) && (element.hasAttribute('data-keyboard-region') || !element.parentElement?.closest('[data-keyboard-region]'))
   );
-  const main = document.getElementById('main-content');
+  const main = scope === document ? document.getElementById('main-content') : scope instanceof HTMLElement ? scope : null;
   if (main && isVisible(main) && !explicit.some((element) => main.contains(element) && element.dataset.keyboardRegion !== 'Page tools')) explicit.push(main);
   return explicit;
 }
 
-export function focusRegion(direction = 1): void {
-  const regions = focusRegions();
+export function focusRegion(direction = 1, scope: ParentNode = document): void {
+  const regions = focusRegions(scope);
   if (!regions.length) return;
   const current = document.activeElement?.closest('[data-keyboard-region],nav[aria-label]');
   const index = current

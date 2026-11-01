@@ -4,11 +4,15 @@ export interface FileRootConfig {
   label: string;
   path: string;
   readOnly?: boolean;
+  /** Root-relative structural entries which cannot be renamed/trashed; children remain usable. */
+  protectedPaths?: string[];
 }
 export interface FileRoot {
   id: string;
   label: string;
   readOnly: boolean;
+  /** Advisory UI projection; the node always enforces the policy independently. */
+  protectedPaths?: string[];
 }
 export interface FileLocation {
   nodeId: string;

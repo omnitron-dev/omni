@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { useState } from 'react';
+import userEvent from '@testing-library/user-event';
+import { files } from '../../webapp/src/netron/client.js';
 import { ConsoleKeyboard } from '../../webapp/src/components/console-keyboard.js';
 import { FilePane } from '../../webapp/src/components/files/file-pane.js';
 vi.mock('src/netron/client', () => ({
@@ -35,7 +37,7 @@ function Workspace({ compact = false, visible = true }) {
     );
   };
   return (
-    <main id="main-content">
+    <><nav aria-label="Sidebar"><button>Sidebar link</button></nav><main id="main-content">
       {(['left', 'right'] as const).map((side) => (
         <FilePane
           key={side}
@@ -52,7 +54,7 @@ function Workspace({ compact = false, visible = true }) {
           onSwitchPanel={switchPanel}
         />
       ))}
-    </main>
+    </main></>
   );
 }
 function mount(compact = false, visible = true) {
@@ -65,6 +67,32 @@ function mount(compact = false, visible = true) {
   );
 }
 describe('File panel keyboard', () => {
+  it.each([false, true])('enters at the list from sidebar Tab, then cycles panels exactly as pointer entry (compact=%s)', async compact => {
+    mount(compact);
+    const left = await screen.findByRole('table', { name: 'left files' });
+    await waitFor(() => expect(left.querySelectorAll('tbody tr')).toHaveLength(3));
+    const user = userEvent.setup();
+    screen.getByRole('button', { name: 'Sidebar link' }).focus();
+    await user.tab();
+    expect(document.activeElement).toBe(left);
+    await user.tab();
+    await waitFor(() => expect(document.activeElement?.closest('[data-file-side]')?.getAttribute('data-file-side')).toBe('right'));
+    await user.tab({ shift: true });
+    await waitFor(() => expect(document.activeElement).toBe(left));
+    await user.click(within(left).getByRole('row', { name: 'file beta.txt' }));
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('file beta.txt');
+    await user.tab();
+    await waitFor(() => expect(document.activeElement?.closest('[data-file-side]')?.getAttribute('data-file-side')).toBe('right'));
+    expect(document.querySelectorAll('[data-cursor="true"]')).toHaveLength(1);
+    await user.keyboard('{Escape}');
+    expect(document.activeElement?.getAttribute('role')).toBe('combobox');
+    await user.tab();
+    expect(document.activeElement?.getAttribute('role')).toBe('combobox');
+    await user.keyboard('{Escape}');
+    expect(document.activeElement?.hasAttribute('data-file-list')).toBe(true);
+    await user.keyboard('{F6}');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Sidebar link' }));
+  });
   it.each([false, true])(
     'switches panels with Tab and Shift Tab (compact=%s), preserving control access',
     async (compact) => {
@@ -112,5 +140,23 @@ describe('File panel keyboard', () => {
     table.focus();
     fireEvent.keyDown(table, { key: 'Delete' });
     expect(action).not.toHaveBeenCalled();
+  });
+  it('keeps parent navigation out of selections and destructive actions, including empty directories', async () => {
+    const prior = vi.mocked(files.list).getMockImplementation();
+    vi.mocked(files.list).mockImplementation(async location => ({ entries: location.path ? [] : [{ name: 'folder', path: 'folder', kind: 'directory', size: 0, modifiedAt: '', mode: 0o755, version: 'folder' }], next: null, revision: 'one' }));
+    try {
+      action.mockClear(); mount();
+      const left = await screen.findByRole('table', { name: 'left files' });
+      await waitFor(() => expect(left.querySelectorAll('tbody tr')).toHaveLength(1));
+      left.focus(); fireEvent.keyDown(left, { key: 'ArrowRight' });
+      await waitFor(() => expect(screen.getByRole('row', { name: 'Parent directory' })).toBeTruthy());
+      fireEvent.keyDown(document.activeElement!, { key: ' ' });
+      fireEvent.keyDown(document.activeElement!, { key: 'a', ctrlKey: true });
+      fireEvent.keyDown(document.activeElement!, { key: 'Delete' });
+      expect(action).not.toHaveBeenCalled();
+      expect(left.querySelectorAll('tbody input:checked')).toHaveLength(0);
+      fireEvent.keyDown(document.activeElement!, { key: 'Enter' });
+      await waitFor(() => expect(screen.queryByRole('row', { name: 'Parent directory' })).toBeNull());
+    } finally { vi.mocked(files.list).mockImplementation(prior!); }
   });
 });

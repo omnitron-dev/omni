@@ -2,6 +2,8 @@ import * as fs from 'node:fs/promises';
 import { constants, type BigIntStats } from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
+import { fileNameError } from '../shared/file-policy.js';
+import { assertStructuralChange, structuralPaths } from './structural-policy.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import type {
   FileRootConfig,
@@ -44,7 +46,7 @@ export function filePath(value: unknown): string {
     /\\/.test(value) ||
     Array.from(value).some((c) => c.charCodeAt(0) < 32) ||
     value.startsWith('/') ||
-    (value !== '' && value.split('/').some((p) => !p || p === '.' || p === '..' || p === INTERNAL))
+    (value !== '' && value.split('/').some((p) => fileNameError(p)))
   )
     throw new Error('Use a relative path inside the selected file root');
   return value;
@@ -111,16 +113,20 @@ export class FileNode {
         typeof r.label !== 'string' ||
         !r.label ||
         r.label.length > 100 ||
-        (r.readOnly !== undefined && typeof r.readOnly !== 'boolean')
+        (r.readOnly !== undefined && typeof r.readOnly !== 'boolean') ||
+        (r.protectedPaths !== undefined && (!Array.isArray(r.protectedPaths) || r.protectedPaths.length > 128))
       )
         throw new Error('Invalid or duplicate file root');
-      this.rootsById.set(r.id, { ...r });
+      for (const protectedPath of r.protectedPaths ?? []) {
+        if (!filePath(protectedPath)) throw new Error('Protected structural paths must name entries inside the root');
+      }
+      this.rootsById.set(r.id, { ...r, ...(r.protectedPaths && { protectedPaths: [...r.protectedPaths] }) });
     }
   }
   roots(): { protocol: 1; roots: FileRoot[] } {
     return {
       protocol: 1,
-      roots: [...this.rootsById.values()].map((r) => ({ id: r.id, label: r.label, readOnly: Boolean(r.readOnly) })),
+      roots: [...this.rootsById.values()].map((r) => ({ id: r.id, label: r.label, readOnly: Boolean(r.readOnly), protectedPaths: structuralPaths(r.path, r.protectedPaths) })),
     };
   }
   private async root(id: string, write = false) {
@@ -434,10 +440,23 @@ export class FileNode {
       });
     }
   }
+  private async structuralChange(rootId: string, relative: string, resolved: string): Promise<void> {
+    const config = this.rootsById.get(rootId)!;
+    assertStructuralChange(config.path, relative, config.protectedPaths);
+    const root = await this.root(rootId, true);
+    const canonical = await fs.realpath(resolved).catch(async error => {
+      if (!missing(error)) throw error;
+      return path.join(await fs.realpath(path.dirname(resolved)), path.basename(resolved));
+    });
+    assertStructuralChange(root, path.relative(root, canonical).split(path.sep).join('/'), config.protectedPaths);
+  }
   private async rename(r: Extract<FileNodeRequest, { op: 'rename' }>) {
     if (!filePath(r.path) || !filePath(r.destination)) throw new Error('Cannot rename an exported root');
+    if (path.posix.dirname(r.path) !== path.posix.dirname(r.destination)) throw new Error('Rename must keep the same parent directory');
     const source = await this.resolve(r.rootId, r.path, true);
     const target = await this.resolve(r.rootId, r.destination, true, true);
+    await this.structuralChange(r.rootId, r.path, source);
+    await this.structuralChange(r.rootId, r.destination, target);
     if ((await this.stat(r.rootId, r.path)).version !== r.version) throw new Error('File changed before rename');
     if (await exists(target)) throw new Error('Destination already exists');
     await fs.rename(source, target);
@@ -448,6 +467,7 @@ export class FileNode {
   private async trash(actor: string, r: Extract<FileNodeRequest, { op: 'trash' }>): Promise<FileTrash> {
     if (!filePath(r.path)) throw new Error('Cannot remove an exported root');
     const source = await this.resolve(r.rootId, r.path, true);
+    await this.structuralChange(r.rootId, r.path, source);
     const sourceStat = await fs.lstat(source, { bigint: true });
     if (fingerprint(sourceStat) !== r.version) throw new Error('File changed before removal');
     const value: Trash = {

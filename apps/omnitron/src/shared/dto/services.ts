@@ -910,5 +910,6 @@ export interface IOmnitronTerminalService {
 
 
 export type * from './files.js';
+export { fileNameError, fileStructureError } from '../file-policy.js';
 
 export type { LogIngestionStats } from './logs.js';

@@ -25,11 +25,12 @@ import {
 } from '@mui/material';
 import { Tabs } from '@omnitron-dev/prism/components/tabs';
 import { TableViewport } from '@omnitron-dev/prism/components/table';
-import { AddIcon, MoreIcon, ArrowUpIcon, ArrowLeftIcon, ArrowRightIcon } from '@omnitron-dev/prism/icons';
-import { FolderIcon, EditIcon, RefreshIcon } from 'src/assets/icons';
+import { AddIcon, MoreIcon, ArrowLeftIcon, ArrowRightIcon } from '@omnitron-dev/prism/icons';
+import { FolderIcon, EditIcon, RefreshIcon, ParentFolderIcon } from 'src/assets/icons';
 import { files } from 'src/netron/client';
 import { useConsoleActions } from 'src/components/console-keyboard';
 import type { FileEntry, FileLocation, FileRoot } from '@omnitron-dev/omnitron/dto/services';
+import { fileStructureError } from '@omnitron-dev/omnitron/dto/services';
 import {
   describeFileError,
   fileBytes,
@@ -48,6 +49,7 @@ interface Tab {
   history: string[];
   cursor: number;
 }
+type ParentRow = { name: '..'; path: string; kind: 'parent' };
 export type FileAction = 'copy' | 'rename' | 'trash' | 'mkdir' | 'create' | 'upload' | 'download' | 'trashList';
 export function FilePane({
   side,
@@ -95,6 +97,8 @@ export function FilePane({
     [revision, setRevision] = useState(''),
     [reload, setReload] = useState(0);
   const [cursor, setCursor] = useState<string | null>(null);
+  const [toolsMode, setToolsMode] = useState(false);
+  const pointerEntry = useRef(false);
   const listing = useRef<HTMLTableElement>(null);
   const [selected, setSelected] = useState<string[]>([]),
     [query, setQuery] = useState(''),
@@ -118,23 +122,24 @@ export function FilePane({
     () => visibleEntries(entries, query, showHidden, sort, descending),
     [entries, query, showHidden, sort, descending]
   );
-  const currentPath = rows.some((row) => row.path === cursor) ? cursor : (rows[0]?.path ?? null);
+  const navigationRows: Array<FileEntry | ParentRow> = tab.path ? [{ name: '..', path: parentPath(tab.path), kind: 'parent' }, ...rows] : rows;
+  const currentPath = navigationRows.some((row) => row.path === cursor) ? cursor : (navigationRows[0]?.path ?? null);
   const marked = useMemo(() => rows.filter((e) => selected.includes(e.path)), [rows, selected]);
   const selection = useMemo(
     () => (marked.length ? marked : rows.filter((e) => e.path === currentPath)),
     [rows, marked, currentPath]
   );
   const focusRow = (index: number, range = false) => {
-    const row = rows[Math.max(0, Math.min(rows.length - 1, index))];
+    const row = navigationRows[Math.max(0, Math.min(navigationRows.length - 1, index))];
     if (!row) return;
     if (range) {
       anchor.current ??= currentPath;
-      const start = rows.findIndex((entry) => entry.path === anchor.current),
-        end = rows.indexOf(row);
-      setSelected(rows.slice(Math.min(Math.max(0, start), end), Math.max(start, end) + 1).map((entry) => entry.path));
+      const start = navigationRows.findIndex((entry) => entry.path === anchor.current),
+        end = navigationRows.indexOf(row);
+      setSelected(navigationRows.slice(Math.min(Math.max(0, start), end), Math.max(start, end) + 1).filter(entry => entry.kind !== 'parent').map((entry) => entry.path));
     } else anchor.current = row.path;
     setCursor(row.path);
-    const element = listing.current?.querySelectorAll<HTMLElement>('tbody > tr')[rows.indexOf(row)];
+    const element = listing.current?.querySelectorAll<HTMLElement>('tbody > tr')[navigationRows.indexOf(row)];
     element?.focus({ preventScroll: true });
     element?.scrollIntoView?.({ block: 'nearest' });
   };
@@ -156,9 +161,15 @@ export function FilePane({
     if (historyIndex >= 0 && historyIndex < tab.history.length) {
       patch({ cursor: historyIndex, path: tab.history[historyIndex]! });
       setSelected([]);
+      setCursor(null);
       setQuery('');
     }
   };
+  useEffect(() => {
+    const keyboard = () => { pointerEntry.current = false; };
+    window.addEventListener('keydown', keyboard, true);
+    return () => window.removeEventListener('keydown', keyboard, true);
+  }, []);
   useEffect(() => {
     let current = true;
     setRoots([]);
@@ -252,8 +263,8 @@ export function FilePane({
     anchor.current = entry.path;
     setSelected((all) => (all.includes(entry.path) ? all.filter((p) => p !== entry.path) : [...all, entry.path]));
   };
-  const open = (entry: FileEntry) => {
-    if (entry.kind === 'directory') navigate(entry.path);
+  const open = (entry: FileEntry | ParentRow) => {
+    if (entry.kind === 'directory' || entry.kind === 'parent') navigate(entry.path);
     else if (entry.kind === 'file') onOpen(entry, { ...location, path: entry.path }, Boolean(root?.readOnly));
     else
       setError(
@@ -262,14 +273,15 @@ export function FilePane({
           : 'Special files cannot be opened'
       );
   };
+  const protectedSelection = selection.some(entry => fileStructureError(entry.path, root?.protectedPaths));
   const actions: Array<[FileAction, string, boolean]> = [
     ['create', 'New file', !root || Boolean(root.readOnly)],
     ['mkdir', 'New folder', !root || Boolean(root.readOnly)],
     ['upload', 'Upload from this computer', !root || Boolean(root.readOnly)],
     ['copy', 'Copy to other panel · F5', !selection.length],
     ['download', 'Download to this computer', selection.length !== 1 || selection[0]?.kind !== 'file'],
-    ['rename', 'Rename · F2', selection.length !== 1 || Boolean(root?.readOnly)],
-    ['trash', 'Move to trash · Delete', !selection.length || Boolean(root?.readOnly)],
+    ['rename', 'Rename · F2', selection.length !== 1 || Boolean(root?.readOnly) || protectedSelection],
+    ['trash', 'Move to trash · Delete', !selection.length || Boolean(root?.readOnly) || protectedSelection],
     ['trashList', 'Restore from trash', !root],
   ];
   useConsoleActions(
@@ -280,7 +292,7 @@ export function FilePane({
         group: 'Files',
         key: 'F2',
         shortcut: ['F2'],
-        disabled: selection.length !== 1 || Boolean(root?.readOnly) || loading,
+        disabled: selection.length !== 1 || Boolean(root?.readOnly) || protectedSelection || loading,
         onSelect: () => onAction('rename'),
       },
       {
@@ -307,7 +319,7 @@ export function FilePane({
         group: 'Files',
         key: 'Delete',
         shortcut: ['Delete'],
-        disabled: !selection.length || Boolean(root?.readOnly) || loading,
+        disabled: !selection.length || Boolean(root?.readOnly) || protectedSelection || loading,
         onSelect: () => onAction('trash'),
       },
     ],
@@ -322,44 +334,72 @@ export function FilePane({
       ref={region}
       data-file-side={side}
       data-keyboard-region={`Files ${side === 'left' ? 'A' : 'B'}`}
-      onFocusCapture={onFocus}
-      onPointerDown={onFocus}
+      aria-description="Tab switches panels. Escape switches between the list and tools. F6 moves to another Console region."
+      onFocusCapture={(event) => {
+        if (!event.currentTarget.contains(event.target) || !visible || hidden) return;
+        onFocus();
+        // The same composite entry point for sidebar Tab, F6, restoration and programmatic focus.
+        // A pointer intentionally selecting a field keeps native field behavior.
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null) && !pointerEntry.current && !toolsMode &&
+          event.target !== listing.current && !(event.target as HTMLElement).closest('tbody')) {
+          listing.current?.focus({ preventScroll: true });
+        }
+        if (event.target === listing.current || (event.target as HTMLElement).closest('tbody')) setToolsMode(false);
+      }}
+      onBlurCapture={(event) => {
+        const nextFocus = event.relatedTarget as HTMLElement | null;
+        if (!event.currentTarget.contains(nextFocus) && !nextFocus?.closest('[role="dialog"],[role="menu"],[role="listbox"]')) setToolsMode(false);
+      }}
+      onPointerDownCapture={(event) => {
+        if (!event.currentTarget.contains(event.target as Node)) return;
+        pointerEntry.current = true;
+        const inList = Boolean((event.target as HTMLElement).closest('[data-file-list]'));
+        setToolsMode(!inList);
+        onFocus();
+        if (!(event.target as HTMLElement).closest('input,button,a,[role="combobox"],tbody tr')) listing.current?.focus({ preventScroll: true });
+      }}
       onKeyDown={(e) => {
-        if (e.defaultPrevented || e.nativeEvent.isComposing || e.repeat) return;
+        if (e.defaultPrevented || e.nativeEvent.isComposing || !visible || hidden) return;
         const target = e.target as HTMLElement;
         if (target.closest('[role="dialog"],[role="alertdialog"],[role="menu"]')) return;
         const inList = Boolean(target.closest('[data-file-list]'));
-        if (inList && e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (inList && !toolsMode && e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
           e.preventDefault();
           e.stopPropagation();
           onSwitchPanel();
           return;
         }
-        if (target.closest('input:not([type="checkbox"]),textarea,select,[contenteditable="true"]')) return;
-        if (inList && e.key === 'Escape') {
+        if (e.key === 'Escape' && !editingPath) {
           e.preventDefault();
           e.stopPropagation();
           setSelected([]);
-          region.current
+          if (inList && !toolsMode) {
+            setToolsMode(true);
+            region.current
             ?.querySelector<HTMLElement>(
               '[data-file-tools] [role="combobox"],[data-file-tools] input,[data-file-tools] button'
             )
             ?.focus();
+          } else {
+            setToolsMode(false);
+            listing.current?.focus({ preventScroll: true });
+          }
           return;
         }
+        if (target.closest('input:not([type="checkbox"]),textarea,select,[contenteditable="true"]')) return;
         if (inList && (e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'a') {
           e.preventDefault();
           setSelected(rows.map((entry) => entry.path));
           return;
         }
         if (inList && !target.closest('input,button,a') && !e.ctrlKey && !e.metaKey && !e.altKey) {
-          const index = rows.findIndex((row) => row.path === currentPath);
+          const index = navigationRows.findIndex((row) => row.path === currentPath);
           const page = Math.max(1, Math.floor((listing.current?.parentElement?.clientHeight || 400) / 40));
           const positions: Record<string, number> = {
             ArrowDown: index + 1,
             ArrowUp: index - 1,
             Home: 0,
-            End: rows.length - 1,
+            End: navigationRows.length - 1,
             PageDown: index + page,
             PageUp: index - page,
           };
@@ -368,11 +408,17 @@ export function FilePane({
             focusRow(positions[e.key]!, e.shiftKey);
             return;
           }
-          const entry = rows[index];
+          const entry = navigationRows[index];
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            e.preventDefault();
+            if (e.key === 'ArrowLeft' && tab.path) navigate(parentPath(tab.path));
+            if (e.key === 'ArrowRight' && entry?.kind === 'directory') open(entry);
+            return;
+          }
           if (entry && (e.key === 'Enter' || e.key === ' ')) {
             e.preventDefault();
             if (e.key === 'Enter') open(entry);
-            else choose(entry, e.shiftKey);
+            else if (entry.kind !== 'parent') choose(entry, e.shiftKey);
             return;
           }
         }
@@ -398,7 +444,8 @@ export function FilePane({
         minWidth: 0,
         minHeight: 0,
         overflow: 'hidden',
-        borderColor: active ? 'primary.main' : 'divider',
+        borderColor: 'divider',
+        '&:focus-within': { borderColor: 'primary.main' },
         transition: 'border-color 120ms',
         borderRadius: 1.5,
       }}
@@ -509,7 +556,7 @@ export function FilePane({
               disabled={!tab.path}
               onClick={() => navigate(parentPath(tab.path))}
             >
-              <ArrowUpIcon fontSize="small" />
+              <ParentFolderIcon fontSize="small" />
             </IconButton>
           </span>
         </Tooltip>
@@ -523,7 +570,10 @@ export function FilePane({
               value={pathInput}
               onChange={(e) => setPathInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Escape') setEditingPath(false);
+                if (e.key === 'Escape') {
+                  e.preventDefault(); e.stopPropagation(); setEditingPath(false);
+                  requestAnimationFrame(() => listing.current?.focus({ preventScroll: true }));
+                }
                 if (e.key === 'Enter') {
                   try {
                     navigate(relativePath(pathInput));
@@ -629,7 +679,7 @@ export function FilePane({
       >
         <Table
           ref={listing}
-          tabIndex={active ? 0 : -1}
+          tabIndex={active && !toolsMode ? 0 : -1}
           data-keyboard-focus
           data-file-list
           size="small"
@@ -688,17 +738,31 @@ export function FilePane({
             </TableRow>
           </TableHead>
           <TableBody>
+            {tab.path && <TableRow
+              tabIndex={-1}
+              data-cursor={active && currentPath === parentPath(tab.path) || undefined}
+              aria-label="Parent directory"
+              onFocus={() => setCursor(parentPath(tab.path))}
+              onClick={(event) => { setCursor(parentPath(tab.path)); event.currentTarget.focus(); }}
+              onDoubleClick={() => navigate(parentPath(tab.path))}
+            >
+              <TableCell />
+              <TableCell colSpan={3}>
+                <Button color="inherit" size="small" tabIndex={-1} aria-label="Open parent directory" onClick={(event) => { event.stopPropagation(); navigate(parentPath(tab.path)); }}
+                  startIcon={<ParentFolderIcon fontSize="small" />} sx={{ minWidth: 0, p: 0, fontFamily: 'monospace' }}>..</Button>
+              </TableCell>
+            </TableRow>}
             {rows.map((entry) => (
               <TableRow
                 key={entry.path}
                 hover
                 selected={selected.includes(entry.path)}
                 tabIndex={-1}
-                data-cursor={entry.path === currentPath || undefined}
+                data-cursor={active && entry.path === currentPath || undefined}
                 onFocus={() => setCursor(entry.path)}
-                aria-current={entry.path === currentPath ? 'true' : undefined}
+                aria-current={active && entry.path === currentPath ? 'true' : undefined}
                 aria-label={`${entry.kind} ${entry.name}`}
-                onClick={(e) => choose(entry, e.shiftKey)}
+                onClick={(e) => { choose(entry, e.shiftKey); e.currentTarget.focus({ preventScroll: true }); }}
                 onDoubleClick={() => open(entry)}
               >
                 <TableCell>
@@ -730,6 +794,7 @@ export function FilePane({
                         tabIndex={-1}
                         onClick={(e) => {
                           e.stopPropagation();
+                          e.currentTarget.closest<HTMLElement>('tr')?.focus({ preventScroll: true });
                           open(entry);
                         }}
                         sx={{
@@ -790,6 +855,7 @@ export function FilePane({
             : `${rows.length}${next ? '+' : ''} entries`}
         </Typography>
         {root?.readOnly && <Chip size="small" variant="outlined" label="Read only" />}
+        {protectedSelection && <Tooltip title="This structural entry cannot be renamed or moved to trash; its ordinary children remain usable"><Chip size="small" variant="outlined" label="Protected" /></Tooltip>}
         <Typography
           variant="caption"
           color={active ? 'primary.main' : 'text.disabled'}

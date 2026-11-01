@@ -98,4 +98,18 @@ describe('Console keyboard ownership', () => {
     fireEvent.keyDown(document.activeElement!, { key: 'F5' });
     expect(destructive).toHaveBeenCalledTimes(1);
   });
+  it('cycles editor regions inside the topmost dialog without focusing the background', () => {
+    render(<MemoryRouter><ConsoleKeyboard navigation={[]}>
+      <nav aria-label="Sidebar"><button>Background</button></nav>
+      <div role="dialog" aria-label="File editor">
+        <section data-keyboard-region="Editor tools"><button>Save file</button><nav aria-label="File path"><button>Root</button></nav></section>
+        <section data-keyboard-region="Editor"><textarea data-keyboard-native data-keyboard-focus aria-label="Document" /></section>
+      </div>
+    </ConsoleKeyboard></MemoryRouter>);
+    screen.getByLabelText('Document').focus();
+    fireEvent.keyDown(document.activeElement!, { key: 'F6' });
+    expect(document.activeElement).toBe(screen.getByText('Save file'));
+    fireEvent.keyDown(document.activeElement!, { key: 'F6', shiftKey: true });
+    expect(document.activeElement).toBe(screen.getByLabelText('Document'));
+  });
 });

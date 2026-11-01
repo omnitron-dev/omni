@@ -486,25 +486,23 @@ export interface INetronOptions {
   // --- Connection Management Options ---
 
   /**
-   * Maximum connections allowed per peer. Default: 10
-   *
-   * NOT ENFORCED. Reaches `ConnectionManager`, which nothing registers a
-   * connection with — `addConnection` has no caller outside its own spec — so
-   * the limit is compared against an empty map. Setting it logs a warning at
-   * construction. See `netron/connection-manager.ts`.
+   * Maximum connections per advertised peer identity. Default: 10.
+   * Enforced for persistent transports and outbound HTTP peer handles.
+   * An identity is a routing key, not proof of authentication. Incoming
+   * persistent peers additionally cannot replace an already-connected identity.
    */
   maxConnectionsPerPeer?: number;
 
-  /** Global maximum connections across all peers. Default: 100. NOT ENFORCED — see `maxConnectionsPerPeer`. */
+  /** Maximum managed connections, including unfinished incoming handshakes. Default: 100. HTTP server requests use transport middleware limits. */
   maxTotalConnections?: number;
 
-  /** Default connection pool size per peer for reuse. Default: 3. NOT ENFORCED — see `maxConnectionsPerPeer`. */
+  /** Idle spares retained per peer in connectionManager. Default: 3. Netron RPC connections are leased until disconnect and never treated as idle spares. */
   connectionPoolSize?: number;
 
-  /** Idle connection timeout in milliseconds. Default: 30000 */
+  /** Timeout for unleased idle spares in connectionManager. Default: 30000. Does not disconnect persistent RPC peers. */
   idleConnectionTimeout?: number;
 
-  /** Health check interval in milliseconds. Default: 15000 */
+  /** Health check interval for unleased pooled connections. Default: 15000. Persistent RPC liveness is managed by the transport. */
   healthCheckInterval?: number;
 
   /** Maximum missed heartbeats before marking connection unhealthy. Default: 3 */

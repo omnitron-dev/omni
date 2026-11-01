@@ -89,7 +89,7 @@ describe('HTTP Transport Authentication Integration', () => {
               token: {
                 type: 'bearer',
                 value: token,
-                expiresAt: Date.now() + 3600000,
+                expiresAt: new Date(Date.now() + 3600000),
               },
             };
           }

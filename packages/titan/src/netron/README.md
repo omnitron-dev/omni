@@ -618,35 +618,43 @@ netron.useForMethod('calculator@1.0.0', 'multiply', rateLimitMiddleware);
 
 ## Connection Management
 
-### Connection Pooling
+### Connection admission and ownership
 
-> **Not currently wired.** `ConnectionManager` is constructed, started and
-> stopped by `Netron`, and that is all: `addConnection` has no caller outside
-> its own spec, so no connection is ever registered with it. Every setting
-> below therefore does nothing today — the limits compare against an empty map
-> and the health loop sweeps an empty pool. Setting one of the limits logs a
-> warning at construction so it is not discovered the hard way. Wiring it up is
-> a behaviour change (the default is 100 total connections, which would start
-> refusing traffic on services that have been running without it) and is a
-> separate decision.
-
-The `ConnectionManager` provides connection pooling and health monitoring:
+Every persistent socket, including an unfinished incoming handshake, is registered
+with the same `ConnectionManager`. Outbound HTTP peer handles are counted too;
+inbound HTTP requests use transport middleware limits instead of persistent slots.
 
 ```typescript
 const netron = new Netron(logger, {
-  // Connection pool settings
-  maxConnectionsPerPeer: 10,      // Max connections per peer
-  maxTotalConnections: 100,       // Global max connections
-  connectionPoolSize: 3,          // Pool size per peer
-  idleConnectionTimeout: 30000,   // Idle timeout (30s)
-
-  // Health check settings
-  healthCheckInterval: 15000,     // Check every 15s
-  maxMissedHeartbeats: 3,         // Max missed before unhealthy
-  heartbeatTimeout: 5000,         // Heartbeat timeout
-  connectionCleanupInterval: 10000 // Cleanup every 10s
+  maxTotalConnections: 100,
+  maxConnectionsPerPeer: 10,
+});
+netron.registerTransportServer('tcp', {
+  name: 'tcp', options: { host: '127.0.0.1', port: 4001, connectTimeout: 10_000 },
 });
 ```
+
+These limits are enforced. Review expected connection counts before upgrading an
+older build where they only produced a warning. `connectionManager.getStats()`
+reports connected and pending sockets; the per-peer bound uses the advertised
+routing identity, not an authenticated principal or an IP address.
+
+Incoming identities must be unique among connected peers. A second connection
+cannot replace an existing identity. Use distinct `Netron` instances for separate
+concurrent authenticated principals, and disconnect an old peer before reconnecting
+the same identity to that server. IDs are bounded to 256 characters without
+whitespace/control characters. Greetings are bounded to 4096 bytes and must complete
+within the transport's `connectTimeout`, on both client and server.
+
+Persistent RPC sockets are leased until disconnect. Their transport owns liveness;
+Netron owns handshake-aware reconnect. A second raw transport reconnect loop is
+disabled, so it cannot resurrect an obsolete socket. Shutdown also cancels pending
+handshakes and late reconnect results.
+
+The manager's `connectionPoolSize`, `idleConnectionTimeout`, health-check and cleanup
+settings apply to **unleased spares** added through its pool API. They do not evict
+an idle SSH/RPC peer or create extra sockets automatically. Direct pool users retain
+checkout/checkin, bounded reconnect attempts and idle-spare retention.
 
 ### Reconnection Strategy
 

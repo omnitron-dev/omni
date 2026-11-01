@@ -112,6 +112,7 @@ describe('invocationWrapper across transports', () => {
     cleanup.push(() => peer.disconnect());
 
     // The peer the SERVER accepted, not the one the client created.
+    await expect.poll(() => server.peers.has('cli-timeout')).toBe(true);
     const accepted = [...server.peers.values()][0] as unknown as { requestTimeout?: number };
     expect(accepted).toBeDefined();
     expect(accepted.requestTimeout).toBe(4321);

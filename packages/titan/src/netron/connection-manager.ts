@@ -17,7 +17,7 @@ import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { computeBackoff } from '../utils/backoff.js';
 import { PeriodicProbe } from '../utils/periodic-probe.js';
 import type { ILogger } from '../types/logger.js';
-import type { ITransportConnection } from './transport/types.js';
+import type { ITransportConnection, ConnectionMetrics } from './transport/types.js';
 import { Errors } from '../errors/index.js';
 
 /**
@@ -285,6 +285,10 @@ export class ConnectionManager extends EventEmitter {
   private healthCheckProbe?: PeriodicProbe;
   private cleanupTimer?: NodeJS.Timeout;
   private reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
+  private reconnectAttempts = new Map<string, number>();
+  private reconnectGenerations = new Map<string, symbol>();
+  private detachHandlers = new Map<string, () => void>();
+  private stopPromise?: Promise<void>;
   private logger: ILogger;
 
   // Metrics tracking
@@ -297,15 +301,29 @@ export class ConnectionManager extends EventEmitter {
     super();
     this.logger = logger.child({ module: 'connection-manager' });
 
-    // Merge config with defaults
+    // An omitted optional field and an explicitly undefined one mean the same
+    // thing. Netron forwards its optional settings as object properties.
+    const defined = <T extends object>(value: T) => Object.fromEntries(
+      Object.entries(value).filter(([, entry]) => entry !== undefined),
+    );
     this.config = {
       ...DEFAULT_CONFIG,
-      ...config,
+      ...defined(config),
       reconnect: {
         ...DEFAULT_CONFIG.reconnect,
-        ...config.reconnect,
+        ...defined(config.reconnect ?? {}),
       },
     };
+    for (const key of ['maxConnectionsPerPeer', 'maxTotalConnections', 'poolSize', 'idleTimeout'] as const) {
+      if (!Number.isSafeInteger(this.config[key]) || this.config[key] < 0) {
+        throw Errors.validation([{ field: key, message: 'Must be a non-negative safe integer' }]);
+      }
+    }
+    for (const key of ['healthCheckInterval', 'maxMissedHeartbeats', 'heartbeatTimeout', 'cleanupInterval'] as const) {
+      if (!Number.isSafeInteger(this.config[key]) || this.config[key] <= 0) {
+        throw Errors.validation([{ field: key, message: 'Must be a positive safe integer' }]);
+      }
+    }
   }
 
   /**
@@ -352,10 +370,13 @@ export class ConnectionManager extends EventEmitter {
   /**
    * Stop the connection manager gracefully
    */
-  async stop(): Promise<void> {
-    if (this.state !== ConnectionManagerState.RUNNING) {
-      return;
-    }
+  stop(): Promise<void> {
+    if (this.stopPromise) return this.stopPromise;
+    this.stopPromise = this.doStop().finally(() => { this.stopPromise = undefined; });
+    return this.stopPromise;
+  }
+
+  private async doStop(): Promise<void> {
 
     const oldState = this.state;
     this.state = ConnectionManagerState.STOPPING;
@@ -377,6 +398,8 @@ export class ConnectionManager extends EventEmitter {
       clearTimeout(timer);
     }
     this.reconnectTimers.clear();
+    this.reconnectGenerations.clear();
+    this.reconnectAttempts.clear();
 
     // Close all connections gracefully
     const closePromises: Promise<void>[] = [];
@@ -411,6 +434,10 @@ export class ConnectionManager extends EventEmitter {
     connection: ITransportConnection,
     connectionFactory?: () => Promise<ITransportConnection>
   ): ManagedConnection | null {
+    if (this.state === ConnectionManagerState.STOPPING) return null;
+    // Duplicate transport IDs must never overwrite another live connection.
+    const existing = this.connections.get(connection.id);
+    if (existing) return existing.connection === connection && existing.peerId === peerId ? existing : null;
     // Check global limit
     if (this.connections.size >= this.config.maxTotalConnections) {
       this.logger.warn(
@@ -463,6 +490,40 @@ export class ConnectionManager extends EventEmitter {
     this.logger.debug({ connectionId: managed.id, peerId }, 'Connection added to pool');
 
     return managed;
+  }
+
+  /**
+   * Lease a persistent RPC connection for its entire lifetime. Netron and its
+   * transport own the handshake, liveness and reconnect; the manager owns
+   * admission, accounting and disposal. A leased connection is never an idle
+   * spare and cannot be reclaimed by pool cleanup or checked out twice.
+   */
+  acquireConnection(peerId: string, connection: ITransportConnection): ManagedConnection | null {
+    const managed = this.addConnection(peerId, connection);
+    if (managed) {
+      managed.state = ManagedConnectionState.IN_USE;
+      managed.checkedOutBy = 'netron';
+    }
+    return managed;
+  }
+
+  /** Bind an admitted socket to its handshake identity without releasing its slot. */
+  assignPeer(connectionId: string, peerId: string): boolean {
+    const managed = this.connections.get(connectionId);
+    if (!managed) return false;
+    if (managed.peerId === peerId) return true;
+    const target = this.peerConnections.get(peerId);
+    if ((target?.size ?? 0) >= this.config.maxConnectionsPerPeer) {
+      this.emit('pool:limit_reached', peerId, this.config.maxConnectionsPerPeer);
+      return false;
+    }
+    const previous = this.peerConnections.get(managed.peerId);
+    previous?.delete(connectionId);
+    if (previous?.size === 0) this.peerConnections.delete(managed.peerId);
+    if (!target) this.peerConnections.set(peerId, new Set([connectionId]));
+    else target.add(connectionId);
+    managed.peerId = peerId;
+    return true;
   }
 
   /**
@@ -596,6 +657,8 @@ export class ConnectionManager extends EventEmitter {
     let unhealthyCount = 0;
     let totalAge = 0;
     let totalReuse = 0;
+    let bytesSent = this.totalBytesSent;
+    let bytesReceived = this.totalBytesReceived;
     const now = Date.now();
 
     const connectionsPerPeer = new Map<string, number>();
@@ -621,6 +684,9 @@ export class ConnectionManager extends EventEmitter {
       // Aggregate metrics
       totalAge += now - managed.createdAt;
       totalReuse += managed.reuseCount;
+      const metrics = this.readMetrics(managed);
+      bytesSent += metrics?.bytesSent ?? 0;
+      bytesReceived += metrics?.bytesReceived ?? 0;
 
       // Per-peer count
       const peerCount = connectionsPerPeer.get(managed.peerId) ?? 0;
@@ -638,8 +704,8 @@ export class ConnectionManager extends EventEmitter {
       averageConnectionAge: totalConnections > 0 ? totalAge / totalConnections : 0,
       averageReuseCount: totalConnections > 0 ? totalReuse / totalConnections : 0,
       healthCheckSuccessRate: this.totalHealthChecks > 0 ? this.successfulHealthChecks / this.totalHealthChecks : 1,
-      totalBytesSent: this.totalBytesSent,
-      totalBytesReceived: this.totalBytesReceived,
+      totalBytesSent: bytesSent,
+      totalBytesReceived: bytesReceived,
     };
   }
 
@@ -686,7 +752,7 @@ export class ConnectionManager extends EventEmitter {
    * @param connectionFactory - Factory function to create new connection
    */
   scheduleReconnect(peerId: string, connectionFactory: () => Promise<ITransportConnection>): void {
-    if (!this.config.reconnect.enabled) {
+    if (!this.config.reconnect.enabled || this.state !== ConnectionManagerState.RUNNING) {
       return;
     }
 
@@ -697,7 +763,7 @@ export class ConnectionManager extends EventEmitter {
     }
 
     // Find the highest attempt count for this peer
-    let maxAttempts = 0;
+    let maxAttempts = this.reconnectAttempts.get(peerId) ?? 0;
     const peerConns = this.peerConnections.get(peerId);
     if (peerConns) {
       for (const connId of peerConns) {
@@ -711,6 +777,7 @@ export class ConnectionManager extends EventEmitter {
     // Check if we've exceeded max attempts
     const configMaxAttempts = this.config.reconnect.maxAttempts;
     if (configMaxAttempts > 0 && maxAttempts >= configMaxAttempts) {
+      this.reconnectGenerations.delete(peerId);
       this.logger.error(
         { peerId, attempts: maxAttempts, maxAttempts: configMaxAttempts },
         'Reconnection attempts exhausted'
@@ -724,22 +791,36 @@ export class ConnectionManager extends EventEmitter {
 
     this.emit('connection:reconnecting', peerId, maxAttempts + 1);
 
+    const generation = Symbol(peerId);
+    this.reconnectGenerations.set(peerId, generation);
+    const current = () => this.state === ConnectionManagerState.RUNNING && this.reconnectGenerations.get(peerId) === generation;
     const timer = setTimeout(async () => {
       this.reconnectTimers.delete(peerId);
+      if (!current()) return;
+      this.reconnectAttempts.set(peerId, maxAttempts + 1);
 
       try {
         const newConnection = await connectionFactory();
+        if (!current()) {
+          await newConnection.close(1000, 'reconnect_cancelled');
+          return;
+        }
         // Pass the factory through so the *new* connection also self-heals
         // on its next disconnect — without this, auto-recovery only worked
         // once and then degraded to manual reconnect.
         const managed = this.addConnection(peerId, newConnection, connectionFactory);
 
         if (managed) {
-          managed.reconnectAttempts = maxAttempts + 1;
+          this.reconnectAttempts.delete(peerId);
+          this.reconnectGenerations.delete(peerId);
           this.emit('connection:reconnected', managed);
           this.logger.info({ peerId, connectionId: managed.id }, 'Reconnection successful');
+        } else {
+          await newConnection.close(1000, 'connection_limit');
+          if (current()) this.scheduleReconnect(peerId, connectionFactory);
         }
       } catch (error) {
+        if (!current()) return;
         this.logger.warn({ peerId, error, attempt: maxAttempts + 1 }, 'Reconnection attempt failed');
 
         // Schedule next attempt
@@ -754,6 +835,8 @@ export class ConnectionManager extends EventEmitter {
    * Cancel pending reconnection for a peer
    */
   cancelReconnect(peerId: string): void {
+    this.reconnectGenerations.delete(peerId);
+    this.reconnectAttempts.delete(peerId);
     const timer = this.reconnectTimers.get(peerId);
     if (timer) {
       clearTimeout(timer);
@@ -771,24 +854,31 @@ export class ConnectionManager extends EventEmitter {
     const { connection } = managed;
 
     // Track disconnect
-    connection.on('disconnect', (reason?: string) => {
+    const onDisconnect = (reason?: string) => {
       this.handleConnectionDisconnect(managed, reason);
-    });
+    };
 
     // Track errors
-    connection.on('error', (error: Error) => {
+    const onError = (error: Error) => {
+      if (this.connections.get(managed.id) !== managed || managed.state === ManagedConnectionState.CLOSING) return;
       this.logger.error({ connectionId: managed.id, error }, 'Connection error');
-      managed.state = ManagedConnectionState.UNHEALTHY;
+      if (managed.state !== ManagedConnectionState.IN_USE) managed.state = ManagedConnectionState.UNHEALTHY;
       this.emit('connection:unhealthy', managed);
-    });
+    };
 
     // Track data for metrics
-    if (this.config.enableMetrics) {
-      connection.on('data', (data: Buffer | ArrayBuffer) => {
-        this.totalBytesReceived += data.byteLength;
-        managed.lastActivity = Date.now();
-      });
-    }
+    const onData = (data: Buffer | ArrayBuffer) => {
+      if (this.config.enableMetrics && !connection.getMetrics) this.totalBytesReceived += data.byteLength;
+      managed.lastActivity = Date.now();
+    };
+    connection.on('disconnect', onDisconnect);
+    connection.on('error', onError);
+    connection.on('data', onData);
+    this.detachHandlers.set(managed.id, () => {
+      connection.off('disconnect', onDisconnect);
+      connection.off('error', onError);
+      connection.off('data', onData);
+    });
   }
 
   /**
@@ -804,24 +894,14 @@ export class ConnectionManager extends EventEmitter {
    * pull-based behavior: removed and emitted, caller drives recovery.
    */
   private handleConnectionDisconnect(managed: ManagedConnection, reason?: string): void {
+    if (this.connections.get(managed.id) !== managed) return;
+    const intentional = managed.state === ManagedConnectionState.CLOSING;
     this.logger.info({ connectionId: managed.id, peerId: managed.peerId, reason }, 'Connection disconnected');
-
-    managed.state = ManagedConnectionState.CLOSED;
-    this.emit('connection:removed', managed, reason ?? 'disconnected');
-
-    // Remove from tracking
-    this.connections.delete(managed.id);
-    const peerConns = this.peerConnections.get(managed.peerId);
-    if (peerConns) {
-      peerConns.delete(managed.id);
-      if (peerConns.size === 0) {
-        this.peerConnections.delete(managed.peerId);
-      }
-    }
+    this.forgetConnection(managed, reason ?? 'disconnected');
 
     // Self-heal: if the connection was registered with a factory and
     // reconnection is enabled, kick off the recovery loop now.
-    if (managed.connectionFactory && this.config.reconnect.enabled) {
+    if (!intentional && managed.connectionFactory && this.config.reconnect.enabled) {
       this.scheduleReconnect(managed.peerId, managed.connectionFactory);
     }
   }
@@ -868,6 +948,7 @@ export class ConnectionManager extends EventEmitter {
         }),
       ]);
       if (heartbeatTimer) { clearTimeout(heartbeatTimer); heartbeatTimer = null; }
+      if (this.connections.get(managed.id) !== managed) return;
 
       // Successful heartbeat
       managed.lastHeartbeat = now;
@@ -881,6 +962,7 @@ export class ConnectionManager extends EventEmitter {
         this.logger.info({ connectionId: managed.id, rtt }, 'Connection recovered');
       }
     } catch (error) {
+      if (this.connections.get(managed.id) !== managed) return;
       // Failed heartbeat
       managed.missedHeartbeats++;
       this.logger.warn(
@@ -921,6 +1003,7 @@ export class ConnectionManager extends EventEmitter {
   private cleanupIdleConnections(): void {
     const now = Date.now();
     const toRemove: string[] = [];
+    const remaining = new Map(Array.from(this.peerConnections, ([peer, connections]) => [peer, connections.size]));
 
     for (const [id, managed] of this.connections) {
       // Only cleanup idle connections
@@ -932,9 +1015,10 @@ export class ConnectionManager extends EventEmitter {
       const idleTime = now - managed.lastActivity;
       if (idleTime > this.config.idleTimeout) {
         // Keep at least poolSize connections per peer
-        const peerConns = this.peerConnections.get(managed.peerId);
-        if (peerConns && peerConns.size > this.config.poolSize) {
+        const count = remaining.get(managed.peerId) ?? 0;
+        if (count > this.config.poolSize) {
           toRemove.push(id);
+          remaining.set(managed.peerId, count - 1);
           this.logger.debug(
             { connectionId: id, peerId: managed.peerId, idleTime },
             'Marking connection for idle cleanup'
@@ -970,30 +1054,36 @@ export class ConnectionManager extends EventEmitter {
     managed.state = ManagedConnectionState.CLOSING;
 
     try {
-      // Get metrics before closing
-      const metrics = managed.connection.getMetrics?.();
-      if (metrics) {
-        this.totalBytesSent += metrics.bytesSent;
-      }
-
       await managed.connection.close(1000, reason);
     } catch (error) {
       this.logger.warn({ connectionId: managed.id, error }, 'Error closing connection');
     } finally {
-      managed.state = ManagedConnectionState.CLOSED;
-
-      // Remove from tracking
-      this.connections.delete(managed.id);
-      const peerConns = this.peerConnections.get(managed.peerId);
-      if (peerConns) {
-        peerConns.delete(managed.id);
-        if (peerConns.size === 0) {
-          this.peerConnections.delete(managed.peerId);
-        }
-      }
-
-      this.emit('connection:removed', managed, reason);
+      this.forgetConnection(managed, reason);
       this.logger.debug({ connectionId: managed.id, reason }, 'Connection closed');
+    }
+  }
+
+  private forgetConnection(managed: ManagedConnection, reason: string): void {
+    if (this.connections.get(managed.id) !== managed) return;
+    this.detachHandlers.get(managed.id)?.();
+    this.detachHandlers.delete(managed.id);
+    const metrics = this.readMetrics(managed);
+    this.totalBytesSent += metrics?.bytesSent ?? 0;
+    this.totalBytesReceived += metrics?.bytesReceived ?? 0;
+    managed.state = ManagedConnectionState.CLOSED;
+    this.connections.delete(managed.id);
+    const peers = this.peerConnections.get(managed.peerId);
+    peers?.delete(managed.id);
+    if (peers?.size === 0) this.peerConnections.delete(managed.peerId);
+    this.emit('connection:removed', managed, reason);
+  }
+
+  private readMetrics(managed: ManagedConnection): ConnectionMetrics | undefined {
+    if (!this.config.enableMetrics) return undefined;
+    try { return managed.connection.getMetrics?.(); }
+    catch (error) {
+      this.logger.debug({ error, connectionId: managed.id }, 'Transport metrics unavailable');
+      return undefined;
     }
   }
 }

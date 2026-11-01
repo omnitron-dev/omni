@@ -103,9 +103,104 @@ describe('ConnectionManager', () => {
   });
 
   afterEach(async () => {
-    if (manager && manager.getState() === ConnectionManagerState.RUNNING) {
+    if (manager) await manager.stop();
+    vi.useRealTimers();
+  });
+
+  describe('Admission and lifecycle invariants', () => {
+    it('preserves defaults when optional fields are explicitly undefined', () => {
+      manager = new ConnectionManager(logger as any, { maxConnectionsPerPeer: undefined, maxTotalConnections: undefined });
+      for (let i = 0; i < 10; i++) expect(manager.addConnection('peer', new MockTransportConnection())).not.toBeNull();
+      expect(manager.addConnection('peer', new MockTransportConnection())).toBeNull();
+    });
+
+    it.each([NaN, -1, Infinity, 1.5])('rejects invalid limits %s', limit => {
+      expect(() => new ConnectionManager(logger as any, { maxTotalConnections: limit })).toThrow();
+    });
+
+    it('cannot overwrite a transport or exceed the limit during identity binding', async () => {
+      manager = new ConnectionManager(logger as any, { maxConnectionsPerPeer: 1 });
+      const first = new MockTransportConnection('first'), second = new MockTransportConnection('second');
+      manager.acquireConnection('peer', first);
+      manager.acquireConnection('temporary', second);
+      expect(manager.addConnection('other', new MockTransportConnection('first'))).toBeNull();
+      expect(manager.assignPeer('second', 'peer')).toBe(false);
+      expect(manager.getConnection('second')?.peerId).toBe('temporary');
+      await manager.removeConnection('first', 'test');
+      expect(manager.assignPeer('second', 'peer')).toBe(true);
+      expect(manager.getStats().connectionsPerPeer.has('temporary')).toBe(false);
+    });
+
+    it('disposes unstarted client connections exactly once and detaches its handlers', async () => {
+      manager = new ConnectionManager(logger as any);
+      const connection = new MockTransportConnection();
+      const removed = vi.fn(); manager.on('connection:removed', removed);
+      manager.acquireConnection('peer', connection);
+      await Promise.all([manager.stop(), manager.stop()]);
+      expect(removed).toHaveBeenCalledTimes(1);
+      expect(connection.listenerCount('disconnect')).toBe(0);
+      expect(manager.getStats().totalConnections).toBe(0);
+    });
+
+    it('accounts for live transport metrics once and still disposes a broken metrics provider', async () => {
+      manager = new ConnectionManager(logger as any);
+      const connection = new MockTransportConnection();
+      manager.acquireConnection('peer', connection);
+      connection.emit('data', Buffer.from('greeting'));
+      expect(manager.getStats()).toMatchObject({ totalBytesSent: 1000, totalBytesReceived: 2000 });
+      await manager.removeConnection(connection.id, 'test');
+      expect(manager.getStats()).toMatchObject({ totalBytesSent: 1000, totalBytesReceived: 2000 });
+      const broken = new MockTransportConnection();
+      vi.spyOn(broken, 'getMetrics').mockImplementation(() => { throw new Error('metrics offline'); });
+      manager.acquireConnection('broken', broken);
       await manager.stop();
-    }
+      expect(manager.getStats().totalConnections).toBe(0);
+    });
+
+    it('does not reconnect after intentional closure', async () => {
+      vi.useFakeTimers();
+      manager = new ConnectionManager(logger as any, { reconnect: { baseDelay: 1 } }); manager.start();
+      const factory = vi.fn(); const connection = new MockTransportConnection();
+      manager.addConnection('peer', connection, factory);
+      await manager.removeConnection(connection.id, 'operator_closed');
+      await vi.advanceTimersByTimeAsync(100);
+      expect(factory).not.toHaveBeenCalled();
+    });
+
+    it('bounds failed attempts even when no connection was ever established', async () => {
+      vi.useFakeTimers();
+      manager = new ConnectionManager(logger as any, { reconnect: { baseDelay: 1, jitterFactor: 0, maxAttempts: 3 } }); manager.start();
+      const factory = vi.fn().mockRejectedValue(new Error('offline'));
+      const failed = vi.fn(); manager.on('connection:reconnect_failed', failed);
+      manager.scheduleReconnect('peer', factory);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(factory).toHaveBeenCalledTimes(3);
+      expect(failed).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['stop', 'cancel'] as const)('closes a late factory result after %s', async operation => {
+      vi.useFakeTimers();
+      manager = new ConnectionManager(logger as any, { reconnect: { baseDelay: 1, jitterFactor: 0 } }); manager.start();
+      let resolve!: (connection: ITransportConnection) => void;
+      manager.scheduleReconnect('peer', () => new Promise(r => { resolve = r; }));
+      await vi.advanceTimersByTimeAsync(1);
+      if (operation === 'stop') await manager.stop(); else manager.cancelReconnect('peer');
+      const late = new MockTransportConnection(); const close = vi.spyOn(late, 'close');
+      resolve(late);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(manager.getStats().totalConnections).toBe(0);
+    });
+
+    it('retains the configured idle spares and never reclaims leased RPC connections', async () => {
+      vi.useFakeTimers();
+      manager = new ConnectionManager(logger as any, { poolSize: 2, idleTimeout: 5, cleanupInterval: 10 }); manager.start();
+      for (let i = 0; i < 4; i++) manager.addConnection('pooled', new MockTransportConnection());
+      manager.acquireConnection('rpc', new MockTransportConnection());
+      await vi.advanceTimersByTimeAsync(20);
+      expect(manager.getConnectionsForPeer('pooled')).toHaveLength(2);
+      expect(manager.getConnectionsForPeer('rpc')).toHaveLength(1);
+    });
   });
 
   describe('Initialization', () => {

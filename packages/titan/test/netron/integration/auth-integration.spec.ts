@@ -766,7 +766,9 @@ describe('Netron Auth Integration Tests', () => {
 
     it('should handle admin panel with fine-grained permissions', async () => {
       const adminPeer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
-      const userPeer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
+      // Different authenticated principals use distinct routing identities.
+      const userClient = new Netron(createMockLogger());
+      const userPeer = (await userClient.connect(`ws://localhost:${wsPort}`, false)) as RemotePeer;
 
       // Authenticate admin
       await adminPeer.runTask('authenticate', {
@@ -801,6 +803,7 @@ describe('Netron Auth Integration Tests', () => {
       await userPeer.releaseInterface(userService);
       await adminPeer.disconnect();
       await userPeer.disconnect();
+      await userClient.stop();
     });
 
     it('should implement rate limiting per role', async () => {
@@ -812,7 +815,8 @@ describe('Netron Auth Integration Tests', () => {
       });
 
       // Regular user (low limit)
-      const userPeer = (await clientNetron.connect(`ws://localhost:${wsPort}`)) as RemotePeer;
+      const userClient = new Netron(createMockLogger());
+      const userPeer = (await userClient.connect(`ws://localhost:${wsPort}`, false)) as RemotePeer;
       await userPeer.runTask('authenticate', {
         username: 'user@test.com',
         password: 'user123',
@@ -854,6 +858,7 @@ describe('Netron Auth Integration Tests', () => {
 
       await adminPeer.disconnect();
       await userPeer.disconnect();
+      await userClient.stop();
     });
 
     it('should support service-to-service authentication', async () => {

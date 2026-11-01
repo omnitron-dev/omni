@@ -20,6 +20,8 @@ import { RuntimeInstallation } from './runtime-installation.js';
 import { observeBackendChild, supervisesBackendChildren } from './backend-child.js';
 import { readManagedRuntime, managedSupervisorSocket } from './managed-runtime.js';
 import type { BackendSupervisorService } from './backend-supervisor.js';
+import type { ExecutionHostService } from './execution-host.js';
+import { assertExecutionCapabilities } from './execution-capabilities.js';
 
 export interface BackendReplacementResult {
   pid: number;
@@ -140,6 +142,24 @@ export async function replaceBackend(directory: string, options: {
     if (supervisesBackendChildren() && path.resolve(previous.instanceHome) !== path.resolve(OMNITRON_HOME)) {
       throw new Error('A guardian cannot replace another instance');
     }
+    // A resident owner may predate the candidate's semantic contracts even
+    // when both use private RPC protocol 1. Check BEFORE delegating to an older
+    // guardian or draining the current backend, and again immediately before
+    // preparing the handoff. Observation never claims controller authority.
+    const artifact = await checkBackendCandidate(directory);
+    const validateOwner = async () => {
+      if (!Object.keys(artifact.executionRequirements ?? {}).length) return;
+      const owner = await privateControlClient<ExecutionHostService>(path.join(path.dirname(address.socket), 'owner.sock'), 'OmnitronExecution');
+      try {
+        const snapshot = await owner.service.snapshot();
+        if (snapshot.protocol !== 1 || !previous.runtime?.owner ||
+            snapshot.status.owner.id !== previous.runtime.owner.id || snapshot.status.owner.pid !== previous.runtime.owner.pid) {
+          throw new Error('Execution owner identity changed; backend activation is refused');
+        }
+        assertExecutionCapabilities(snapshot.capabilities, artifact.executionRequirements!);
+      } finally { await owner.close(); }
+    };
+    await validateOwner();
     if (managed && !supervisesBackendChildren()) {
       const supervisor = await privateControlClient<BackendSupervisorService>(managedSupervisorSocket(managed), 'OmnitronSupervisor', 600_000);
       try { return await supervisor.service.upgrade({ directory, checkOnly: options.checkOnly === true,
@@ -147,7 +167,7 @@ export async function replaceBackend(directory: string, options: {
       finally { await supervisor.close(); }
     }
     progress('Validating candidate and rollback artifacts');
-    const artifact = await checkBackendCandidate(directory, options.schemaPlan ? undefined : previous.entry);
+    if (!options.schemaPlan) await checkBackendCandidate(directory, previous.entry);
     const rollback = await checkBackendCandidate(path.dirname(path.dirname(previous.entry)));
     const validateSchema = async () => {
       if (!options.schemaPlan) return;
@@ -170,6 +190,7 @@ export async function replaceBackend(directory: string, options: {
       const selected = selection ?? await installation.select(installedRollback.runtimeHash, 0);
       await validateSchema();
       await installation.writeLauncher(installedCandidate.runtimeHash);
+      await validateOwner();
       progress('Draining backend requests and execution mutations');
       const prepared = await control.service.prepare({ candidateId: randomUUID() });
       let record: BackendBootRecord;

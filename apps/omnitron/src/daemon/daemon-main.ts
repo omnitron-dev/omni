@@ -15,11 +15,13 @@ import { OWN_BUILD } from '../shared/build-stamp.js';
 import { readBackendBootRecord } from './backend-handoff-types.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { REQUIRED_OWNER_CAPABILITIES } from './execution-capabilities.js';
 
 async function main() {
   // Preflight must never open databases, listeners or start applications.
   if (process.argv[2] === '--check-backend') {
-    process.stdout.write(JSON.stringify({ protocol: 1, schemaExpansionProtocol: 1, build: OWN_BUILD }) + '\n');
+    process.stdout.write(JSON.stringify({ protocol: 1, schemaExpansionProtocol: 1,
+      executionRequirements: REQUIRED_OWNER_CAPABILITIES, build: OWN_BUILD }) + '\n');
     return;
   }
   if (process.argv[2] === '--backend-handoff') {

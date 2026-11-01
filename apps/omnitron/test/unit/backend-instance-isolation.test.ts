@@ -36,12 +36,16 @@ async function fixture(managed = false) {
   };
   if (managed) await writePrivateRecord(managedRuntimeFile(home), config);
   const socket = path.join(root, 'custom-public.sock'), control = path.join(execution, 'c-test.sock');
-  const status = { instanceHome: home, entry: '/prior/packages/0/dist/daemon/daemon-entry.js' };
+  const status = { instanceHome: home, entry: '/prior/packages/0/dist/daemon/daemon-entry.js', runtime: { owner: { id: 'fixture-owner', pid: 123 } } };
+  const snapshot = { protocol: 1, status: { owner: status.runtime.owner }, capabilities: {} as Record<string, number> };
+  const observe = vi.fn().mockImplementation(async () => snapshot);
+  const prepare = vi.fn();
   const upgrade = vi.fn().mockResolvedValue({ checked: true, build: { commit: 'target' } });
   const recover = vi.fn().mockResolvedValue({ pid: 456 });
   mocks.daemon.mockReturnValue({ service: async () => ({ status: async () => ({ handoffSupported: true }), controlAddress: async () => ({ socket: control }) }), disconnect: vi.fn() });
   mocks.control.mockImplementation(async (target, service) => {
-    if (target === control && service === 'OmnitronBackendControl') return { service: { status: async () => status }, close: vi.fn() };
+    if (target === control && service === 'OmnitronBackendControl') return { service: { status: async () => status, prepare }, close: vi.fn() };
+    if (target === path.join(execution, 'owner.sock') && service === 'OmnitronExecution') return { service: { snapshot: observe }, close: vi.fn() };
     if (target === path.join(execution, 'supervisor.sock') && service === 'OmnitronSupervisor') return { service: { upgrade, recover }, close: vi.fn() };
     throw new Error(`Unexpected private control target: ${target}`);
   });
@@ -52,7 +56,7 @@ async function fixture(managed = false) {
     previousEntry: status.entry, previousPid: 999999, createdAt: new Date().toISOString(), cwd: home,
     environment: { OMNITRON_HOME: home },
   } as BackendBootRecord;
-  return { root, home, execution, socket, control, config, record, upgrade, recover, status };
+  return { root, home, execution, socket, control, config, record, upgrade, recover, status, snapshot, observe, prepare };
 }
 
 it('uses the selected socket identity even when its location differs from instance home', async () => {
@@ -69,7 +73,28 @@ it('delegates to the selected managed instance and never the ambient instance', 
   await expect(replaceBackend('/candidate', { socket: target.socket, checkOnly: true })).resolves.toMatchObject({ build: { commit: 'target' } });
   expect(target.upgrade).toHaveBeenCalledWith({ directory: '/candidate', checkOnly: true });
   expect(mocks.control.mock.calls.map(call => call[0])).toEqual([target.control, path.join(target.execution, 'supervisor.sock')]);
-  expect(mocks.candidate).not.toHaveBeenCalled();
+  expect(mocks.candidate).toHaveBeenCalledWith('/candidate');
+});
+
+it.each([false, true])('refuses an incompatible owner before draining or delegating (managed=%s)', async managed => {
+  const target = await fixture(managed);
+  mocks.candidate.mockResolvedValue({ build: { commit: 'fixture' }, executionRequirements: { stackControl: 1 } });
+  for (const checkOnly of [true, false]) {
+    await expect(replaceBackend('/candidate', { socket: target.socket, checkOnly })).rejects.toThrow('stackControl@1');
+  }
+  expect(target.upgrade).not.toHaveBeenCalled(); expect(target.prepare).not.toHaveBeenCalled();
+  expect(mocks.installation).not.toHaveBeenCalled();
+});
+
+it('allows a compatible owner and refuses another owner at the advertised address', async () => {
+  const target = await fixture(true);
+  mocks.candidate.mockResolvedValue({ build: { commit: 'fixture' }, executionRequirements: { stackControl: 1 } });
+  target.snapshot.capabilities = { stackControl: 1 };
+  await expect(replaceBackend('/candidate', { socket: target.socket, checkOnly: true })).resolves.toMatchObject({ checked: true });
+  target.snapshot.status.owner = { id: 'replacement-owner', pid: 456 };
+  target.upgrade.mockClear();
+  await expect(replaceBackend('/candidate', { socket: target.socket })).rejects.toThrow('owner identity changed');
+  expect(target.upgrade).not.toHaveBeenCalled(); expect(target.prepare).not.toHaveBeenCalled();
 });
 
 it('refuses mismatched control directories and foreign targets inside a guardian', async () => {

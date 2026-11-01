@@ -10,6 +10,7 @@ import type { ExecutionAppSnapshot } from '../orchestrator/execution-contract.js
 import { callExposedService, type ExposingProcess } from '../orchestrator/call-exposed-service.js';
 import type { ExecutionJournal } from './execution-journal.js';
 import type { ExecutionMetricsSink } from '../observability/metrics-bridge.js';
+import { OWNER_CAPABILITIES, type ExecutionCapabilities } from './execution-capabilities.js';
 
 // Only a private, owner-only Unix listener may expose this service. The
 // backend authenticates end users with Omnitron RBAC before entering it.
@@ -36,6 +37,7 @@ export interface ExecutionEvent {
 
 export interface ExecutionSnapshot {
   protocol: 1;
+  capabilities?: ExecutionCapabilities;
   logs?: { protocol: 1; journal: LogJournalStats };
   revision: number;
   status: ControllerHandoffStatus;
@@ -132,7 +134,7 @@ export class ExecutionHostService {
       startedAt: worker.info.startTime, restarts: worker.info.restartCount }));
     return {
       ...(this.hooks.logs?.journal ? { logs: { protocol: 1 as const, journal: this.hooks.logs.journalStats()! } } : {}),
-      protocol: 1, revision: ++this.revision, status: this.fence.status(), apps, workers,
+      protocol: 1, capabilities: OWNER_CAPABILITIES, revision: ++this.revision, status: this.fence.status(), apps, workers,
       devMode: this.orchestrator.devMode, watchEnabled: this.orchestrator.devMode,
       watchedApps: [...this.orchestrator.getBuildWatchedApps(), ...(this.hooks.watchedApps?.() ?? [])],
       events: this.events.filter(event => event.sequence > afterEvent), lastEvent: this.lastEvent,

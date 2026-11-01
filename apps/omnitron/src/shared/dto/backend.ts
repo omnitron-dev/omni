@@ -3,6 +3,8 @@ export interface BackendRuntimeStatus {
   handoffSupported: boolean;
   reason?: string;
   owner?: { id: string; pid: number; startedAt: string };
+  /** Absent on older backends; an empty map means the owner advertised none. */
+  ownerCapabilities?: Readonly<Record<string, number>>;
   epoch?: number;
   phase?: string;
   observedAgeMs?: number;

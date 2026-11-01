@@ -13,6 +13,7 @@ import { ExecutionJournal } from './execution-journal.js';
 import { residentOwnerRefusal } from './execution-platform.js';
 import { readManagedRuntime, managedJobPid, verifyManagedIsolation } from './managed-runtime.js';
 import type { BackendRuntimeStatus } from '../shared/dto/backend.js';
+import { assertExecutionCapabilities, REQUIRED_OWNER_CAPABILITIES } from './execution-capabilities.js';
 
 export function executionDirectory(dc: IDaemonConfig): string {
   return expandPath(dc.executionHost?.directory ?? path.join(path.dirname(expandPath(dc.pidFile)), 'execution'));
@@ -74,6 +75,7 @@ export async function connectExecutionOwner(
   const client = new ExecutionClient(path.join(directory, 'owner.sock'), logger, ticket?.to.controllerId);
   try {
     const snapshot = await client.connect();
+    assertExecutionCapabilities(snapshot.capabilities, REQUIRED_OWNER_CAPABILITIES);
     const durable = await new ExecutionJournal(path.join(directory, 'controller.json')).read();
     if (!durable || durable.owner.id !== snapshot.status.owner.id || durable.owner.pid !== marker.getPid()) {
       throw new Error('Execution socket, process marker and journal disagree; adoption is refused');

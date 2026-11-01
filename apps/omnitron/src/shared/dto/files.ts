@@ -49,7 +49,11 @@ export interface FileUpload {
   id: string;
   offset: number;
   size: number;
-  state: 'receiving' | 'committing' | 'complete' | 'aborted';
+  state: 'receiving' | 'committing' | 'complete' | 'aborted' | 'failed';
+  phase?: 'restoring' | 'publishing';
+  restoredBytes?: number;
+  publication?: 'partial' | 'complete';
+  error?: string;
   sha256?: string;
 }
 export interface FileTrash {
@@ -62,6 +66,29 @@ export interface FileTrash {
 export interface FileCopyRequest {
   sources: Array<FileLocation & { version: string }>;
   destination: FileLocation;
+  /** One selected directory; output is explicit and never inferred from a filename. */
+  archive?: FileArchiveOptions;
+}
+export const FILE_ARCHIVE_FORMATS = ['tar', 'tar.gz', 'tar.bz2', 'tar.xz', 'tar.zst', 'zip', '7z'] as const;
+export type FileArchiveFormat = (typeof FILE_ARCHIVE_FORMATS)[number];
+export interface FileArchiveOptions { format: FileArchiveFormat; name: string; output: 'archive' | 'directory' }
+export interface ArchiveFormatCapability {
+  format: FileArchiveFormat; label: string; extension: string;
+  /** Destination decoding is independently probed when a destination node is supplied. */
+  outputs: Array<'archive' | 'directory'>;
+}
+export interface FileArchiveCapabilities { formats: ArchiveFormatCapability[]; observedAt: string; limitations: string[] }
+export interface FileArchiveManifest {
+  protocol: 1;
+  rootName: string;
+  /** Ordered payload layout; decoder bytes never control filesystem paths. */
+  entries: Array<{ path: string; kind: 'directory' | 'file'; size: number; mode: number; sha256?: string }>;
+}
+export interface FileArchiveStatus {
+  id: string; state: 'preparing' | 'ready' | 'failed' | 'cancelled' | 'interrupted';
+  phase: 'planning' | 'snapshotting' | 'archiving';
+  preparedBytes: number; sourceBytes: number;
+  file?: FileEntry; manifest?: FileArchiveManifest; error?: string;
 }
 export interface FileTransfer {
   id: string;
@@ -74,12 +101,26 @@ export interface FileTransfer {
   completedFiles: number;
   totalFiles: number;
   currentPath?: string;
+  archive?: FileArchiveOptions;
+  phase?: 'planning' | 'snapshotting' | 'archiving' | 'transferring' | 'restoring' | 'publishing';
+  preparedBytes?: number;
+  sourceBytes?: number;
+  restoredBytes?: number;
+  publication?: 'partial' | 'complete';
   error?: string;
+  /** Publication/cancellation succeeded; temporary source data or destination receipt cleanup remains pending. */
+  cleanupPending?: boolean;
   createdAt: string;
   updatedAt: string;
 }
 export type FileNodeRequest =
   | { op: 'roots' }
+  | { op: 'archiveFormats' }
+  | { op: 'prepareArchive'; id: string; rootId: string; path: string; version: string; format: FileArchiveFormat }
+  | { op: 'archiveStatus'; id: string }
+  | { op: 'readArchive'; id: string; version: string; offset: number }
+  | { op: 'abortArchive'; id: string }
+  | { op: 'releaseArchive'; id: string }
   | { op: 'list'; rootId: string; path: string; after?: string; revision?: string }
   | { op: 'stat'; rootId: string; path: string }
   | { op: 'readText'; rootId: string; path: string }
@@ -90,7 +131,8 @@ export type FileNodeRequest =
   | { op: 'trash'; rootId: string; path: string; version: string }
   | { op: 'trashList'; rootId: string }
   | { op: 'restore'; id: string }
-  | { op: 'beginWrite'; rootId: string; path: string; size: number; id?: string }
+  | { op: 'beginWrite'; rootId: string; path: string; size: number; id?: string; sha256?: string }
+  | { op: 'beginArchiveWrite'; rootId: string; path: string; size: number; id: string; format: FileArchiveFormat; manifest: FileArchiveManifest; sha256: string }
   | { op: 'writeChunk'; id: string; offset: number; data: string; sha256: string }
   | { op: 'writeStatus'; id: string }
   | { op: 'commitWrite'; id: string }
@@ -100,6 +142,7 @@ export interface IOmnitronFileNodeService {
   invoke(data: { actor: string; request: FileNodeRequest }): Promise<unknown>;
 }
 export interface IOmnitronFilesService {
+  archiveFormats(data: { nodeId: string; destinationNodeId?: string }): Promise<FileArchiveCapabilities>;
   roots(data: { nodeId: string }): Promise<{ protocol: 1; roots: FileRoot[] }>;
   list(data: FileLocation & { after?: string; revision?: string }): Promise<FileListing>;
   stat(data: FileLocation): Promise<FileEntry>;

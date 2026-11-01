@@ -5,7 +5,14 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { resetEnvCache, setEnvOverride } from '../../src/shared/env-config.js';
 const { service } = vi.hoisted(() => ({
-  service: { roots: vi.fn(), stat: vi.fn(), readChunk: vi.fn(), saveText: vi.fn() },
+  service: {
+    roots: vi.fn(),
+    stat: vi.fn(),
+    readChunk: vi.fn(),
+    saveText: vi.fn(),
+    archiveFormats: vi.fn(),
+    copy: vi.fn(),
+  },
 }));
 vi.mock('../../src/daemon/daemon-client.js', () => ({
   createDaemonClient: () => ({ service: async () => service, disconnect: async () => {} }),
@@ -47,6 +54,35 @@ describe('files CLI output and local publication', () => {
     expect(JSON.parse(refused.err)).toMatchObject({ ok: false, error: expect.stringContaining('--version') });
     expect(refused.code).toBe(1);
     expect(service.saveText).not.toHaveBeenCalled();
+  });
+  it('uses explicit archive modes and node capability inspection through the same service', async () => {
+    service.archiveFormats.mockResolvedValue({ formats: [], limitations: [], observedAt: '2026-11-02T00:00:00Z' });
+    await capture(() => filesCommand('archive-formats', undefined, { node: 'source', toNode: 'target' }));
+    expect(service.archiveFormats).toHaveBeenCalledWith({ nodeId: 'source', destinationNodeId: 'target' });
+    service.stat.mockResolvedValue({ version: 'version' });
+    service.copy.mockResolvedValue({ id: 'transfer' });
+    await capture(() =>
+      filesCommand('copy', 'tree', {
+        node: 'source',
+        root: 'work',
+        toNode: 'target',
+        toRoot: 'work',
+        archiveFormat: 'tar.gz',
+        archiveOutput: 'directory',
+        archiveName: 'restored',
+      })
+    );
+    expect(service.copy).toHaveBeenCalledWith({
+      sources: [{ nodeId: 'source', rootId: 'work', path: 'tree', version: 'version' }],
+      destination: { nodeId: 'target', rootId: 'work', path: '' },
+      archive: { format: 'tar.gz', output: 'directory', name: 'restored' },
+    });
+    service.copy.mockClear();
+    const rejected = await capture(() =>
+      filesCommand('copy', 'tree', { root: 'work', toNode: 'target', toRoot: 'work', archiveFormat: 'tar.gz' })
+    );
+    expect(rejected.code).toBe(1);
+    expect(service.copy).not.toHaveBeenCalled();
   });
   it('never overwrites an existing local download or publishes corrupt bytes', async () => {
     const data = Buffer.from('received'),

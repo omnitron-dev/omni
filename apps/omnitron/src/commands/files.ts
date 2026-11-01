@@ -2,7 +2,8 @@ import * as fs from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { createDaemonClient } from '../daemon/daemon-client.js';
-import type { IOmnitronFilesService, FileLocation } from '../shared/dto/files.js';
+import type { IOmnitronFilesService, FileLocation, FileArchiveOptions } from '../shared/dto/files.js';
+import { FILE_ARCHIVE_FORMATS } from '../shared/dto/files.js';
 import { emitError, emitJson } from './output.js';
 
 export interface FilesOptions {
@@ -17,6 +18,9 @@ export interface FilesOptions {
   name?: string;
   after?: string;
   revision?: string;
+  archiveFormat?: string;
+  archiveOutput?: string;
+  archiveName?: string;
 }
 const hash = (data: Buffer) => createHash('sha256').update(data).digest('hex');
 const stamp = (s: { dev: number; ino: number; size: number; mtimeMs: number; ctimeMs: number }) =>
@@ -33,6 +37,9 @@ export async function filesCommand(action: string, subject: string | undefined, 
     };
     let result: unknown;
     switch (action) {
+      case 'archive-formats':
+        result = await service.archiveFormats({ nodeId, ...(options.toNode && { destinationNodeId: options.toNode }) });
+        break;
       case 'roots':
         result = await service.roots({ nodeId });
         break;
@@ -101,8 +108,29 @@ export async function filesCommand(action: string, subject: string | undefined, 
         break;
       case 'copy': {
         if (!options.toNode || !options.toRoot) throw new Error('--to-node and --to-root are required');
+        let archive: FileArchiveOptions | undefined;
+        if (options.archiveFormat || options.archiveOutput || options.archiveName) {
+          if (
+            !options.archiveFormat ||
+            !options.archiveName ||
+            !['archive', 'directory'].includes(options.archiveOutput ?? '')
+          )
+            throw new Error(
+              '--archive-format, --archive-name and --archive-output archive|directory must be supplied together'
+            );
+          if (!FILE_ARCHIVE_FORMATS.some((format) => format === options.archiveFormat))
+            throw new Error(
+              'Unknown archive format; inspect files archive-formats on the source and destination nodes'
+            );
+          archive = {
+            format: options.archiveFormat as FileArchiveOptions['format'],
+            name: options.archiveName,
+            output: options.archiveOutput as FileArchiveOptions['output'],
+          };
+        }
         const source = await service.stat(ref());
         result = await service.copy({
+          ...(archive && { archive }),
           sources: [{ ...ref(), version: options.version ?? source.version }],
           destination: { nodeId: options.toNode, rootId: options.toRoot, path: options.toPath ?? '' },
         });

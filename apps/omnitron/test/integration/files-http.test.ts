@@ -22,8 +22,11 @@ async function fleetOptions() {
   const dependencies = { logger: createNullLogger(), verify: async () => ({}), validateToken: async () => null };
   const daemon = Object.create(OmnitronDaemon.prototype) as {
     app: unknown;
+    backendAdmitted: boolean;
     registerTransports(config: unknown): Promise<void>;
   };
+  // These isolated services represent a ready backend; retain the real transport admission guard.
+  daemon.backendAdmitted = true;
   daemon.app = {
     netron: {
       registerTransport() {},
@@ -155,7 +158,8 @@ afterAll(async () => {
 describe('files through real Netron HTTP admission and TCP mesh', () => {
   it('rejects lower roles and human calls to the internal mesh service', async () => {
     for (const token of ['viewer', 'operator', 'mesh'])
-      expect((await invoke('roots', { nodeId: 'local' }, token)).success).toBe(false);
+      for (const method of ['roots', 'archiveFormats'])
+        expect((await invoke(method, { nodeId: 'local' }, token)).success).toBe(false);
     for (const token of ['alice', 'viewer', 'operator'])
       expect(
         (await rpc(remote, token, 'OmnitronFileNode', 'invoke', [{ actor: 'alice', request: { op: 'roots' } }])).success
@@ -172,7 +176,7 @@ describe('files through real Netron HTTP admission and TCP mesh', () => {
     });
     expect(copy.success).toBe(true);
     const done = await waitJob(copy.data.id, (j) => !['running', 'planning'].includes(j.state));
-    expect(done.state).toBe('completed');
+    expect(done.state, done.error).toBe('completed');
     expect(done.completedFiles).toBe(1);
     expect(await fs.readFile(path.join(directory, 'remote/project/config.json'), 'utf8')).toBe('{"version":1}\n');
     expect((await invoke('transfers', undefined, 'bob')).data).toEqual([]);

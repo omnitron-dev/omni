@@ -1,5 +1,8 @@
 import { RecoveryMutation } from '../daemon/recovery-state.js';
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
+import { FILE_ARCHIVE_FORMATS } from '../shared/dto/files.js';
+import { fileNameError } from '../shared/file-policy.js';
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import type { AuthContext } from '@omnitron-dev/titan/netron/auth';
 import { ADMIN_ROLES } from '../shared/roles.js';
@@ -21,18 +24,41 @@ import type {
   FileCopyRequest,
   FileTransfer,
   IOmnitronFilesService,
+  FileArchiveCapabilities,
+  FileArchiveManifest,
+  FileArchiveOptions,
+  FileArchiveStatus,
 } from '../shared/dto/files.js';
 import { filePath, FILE_LIMITS, type FileNode } from './file-node.js';
 
 export type FileNodeCall = (nodeId: string, actor: string, request: FileNodeRequest) => Promise<unknown>;
 type Store = Pick<DaemonStateStore, 'kvGetSync' | 'kvSetSync' | 'kvDeleteSync'>;
-type Plan = Array<{ source: FileLocation; destination: FileLocation; entry: FileEntry }>;
+type Plan = Array<{
+  source: FileLocation;
+  destination: FileLocation;
+  entry: FileEntry;
+  archiveSource?: {
+    id: string;
+    manifest: FileArchiveManifest;
+    format: FileArchiveOptions['format'];
+    output: FileArchiveOptions['output'];
+  };
+}>;
 interface Job {
   view: FileTransfer;
   cursor: number;
   upload?: string;
   committedBytes: number;
+  request?: FileCopyRequest;
+  archiveReleased?: boolean;
+  pendingReceipts?: Array<{ nodeId: string; id: string }>;
 }
+const stepFileCount = (step: Plan[number]) =>
+  step.archiveSource?.output === 'directory'
+    ? step.archiveSource.manifest.entries.filter((entry) => entry.kind === 'file').length
+    : step.entry.kind === 'file'
+      ? 1
+      : 0;
 const activeStates = new Set(['planning', 'running']);
 const join = (a: string, b: string) => (a ? `${a}/${b}` : b);
 const same = (a: FileLocation, b: FileLocation) => a.nodeId === b.nodeId && a.rootId === b.rootId;
@@ -51,7 +77,9 @@ function location(data: FileLocation): FileLocation {
 /** Shared Console/CLI file API. File contents are administrative data, not a viewer capability. */
 @Service({ name: 'OmnitronFiles' })
 export class FilesRpcService implements IOmnitronFilesService {
-  activeTransferCount(): number { return [...this.jobs.values()].filter(job => activeStates.has(job.view.state)).length; }
+  activeTransferCount(): number {
+    return [...this.jobs.values()].filter((job) => activeStates.has(job.view.state)).length;
+  }
   private jobs = new Map<string, Job>();
   private active = new Map<string, { stop?: 'paused' | 'cancelled'; done: Promise<void> }>();
   private stopped = false;
@@ -68,6 +96,15 @@ export class FilesRpcService implements IOmnitronFilesService {
       if (activeStates.has(job.view.state)) {
         job.view.state = 'interrupted';
         job.view.error = 'Daemon stopped before completion. Resume explicitly to reconcile the destination receipt.';
+        this.persist(job);
+      }
+      if (
+        ['completed', 'cancelled'].includes(job.view.state) &&
+        (job.pendingReceipts?.length || (job.view.archive && !job.archiveReleased))
+      ) {
+        job.view.cleanupPending = true;
+        job.view.error ??=
+          'Temporary transfer cleanup requires confirmation. Resume to retry cleanup without copying again.';
         this.persist(job);
       }
       this.jobs.set(id, job);
@@ -178,6 +215,144 @@ export class FilesRpcService implements IOmnitronFilesService {
   private view(job: Job): FileTransfer {
     return structuredClone(job.view);
   }
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async archiveFormats(data: { nodeId: string; destinationNodeId?: string }): Promise<FileArchiveCapabilities> {
+    location({ nodeId: data.nodeId, rootId: 'probe', path: '' });
+    if (data.destinationNodeId) location({ nodeId: data.destinationNodeId, rootId: 'probe', path: '' });
+    const owner = await this.owner();
+    const source = await this.call<FileArchiveCapabilities>(data.nodeId, owner, { op: 'archiveFormats' });
+    let destination: FileArchiveCapabilities | undefined;
+    const limitations = [...source.limitations];
+    if (data.destinationNodeId) {
+      try {
+        destination =
+          data.destinationNodeId === data.nodeId
+            ? source
+            : await this.call(data.destinationNodeId, owner, { op: 'archiveFormats' });
+      } catch {
+        limitations.push('Destination decoding could not be verified; archive-file output remains available.');
+      }
+    }
+    const observedAt = Math.min(
+      Date.parse(source.observedAt),
+      Date.parse(destination?.observedAt ?? source.observedAt)
+    );
+    if (!Number.isFinite(observedAt)) throw new Error('Node returned incompatible archive capabilities');
+    return {
+      observedAt: new Date(observedAt).toISOString(),
+      limitations,
+      formats: source.formats.map((item) => ({
+        ...item,
+        outputs: [
+          'archive',
+          ...(destination?.formats.some(
+            (other) => other.format === item.format && other.outputs.includes('directory')
+          ) && item.outputs.includes('directory')
+            ? ['directory' as const]
+            : []),
+        ],
+      })),
+    };
+  }
+  private async archivePlan(
+    job: Job,
+    owner: AuthContext,
+    request: FileCopyRequest,
+    checkpoint: () => Promise<void>
+  ): Promise<Plan> {
+    const source = request.sources[0]!,
+      archive = request.archive!;
+    const destination = { ...request.destination, path: join(request.destination.path, archive.name) };
+    if (
+      !source.path ||
+      (same(source, destination) &&
+        (destination.path === source.path || destination.path.startsWith(source.path + '/')))
+    )
+      throw new Error('Cannot archive an exported root or write an archive inside its source directory');
+    await checkpoint();
+    const capabilities = await runWithAuth(owner, () =>
+      this.archiveFormats({ nodeId: source.nodeId, destinationNodeId: destination.nodeId })
+    );
+    const format = capabilities.formats.find(
+      (item) => item.format === archive.format && item.outputs.includes(archive.output)
+    );
+    if (!format) throw new Error('Selected archive format/output is unavailable on this pair of nodes');
+    if (archive.output === 'archive' && !archive.name.toLowerCase().endsWith(format.extension.toLowerCase()))
+      throw new Error(`Archive filename must end with ${format.extension}`);
+    await checkpoint();
+    let snapshot = await this.call<FileArchiveStatus>(source.nodeId, owner, {
+      op: 'prepareArchive',
+      id: job.view.id,
+      rootId: source.rootId,
+      path: source.path,
+      version: source.version,
+      format: archive.format,
+    });
+    while (true) {
+      job.view.phase = snapshot.phase;
+      job.view.preparedBytes = snapshot.preparedBytes;
+      job.view.sourceBytes = snapshot.sourceBytes;
+      this.persist(job);
+      if (snapshot.state === 'ready') break;
+      if (snapshot.state !== 'preparing') throw new Error(snapshot.error ?? `Source archive is ${snapshot.state}`);
+      await checkpoint();
+      await delay(250);
+      await checkpoint();
+      snapshot = await this.call(source.nodeId, owner, { op: 'archiveStatus', id: job.view.id });
+    }
+    if (
+      !snapshot.file ||
+      !snapshot.manifest ||
+      snapshot.file.kind !== 'file' ||
+      !/^[a-f0-9]{64}$/.test(snapshot.file.version)
+    )
+      throw new Error('Source did not return a verified archive snapshot');
+    return [
+      {
+        source,
+        destination,
+        entry: snapshot.file,
+        archiveSource: { id: job.view.id, manifest: snapshot.manifest, format: archive.format, output: archive.output },
+      },
+    ];
+  }
+  private async cleanupTransfer(job: Job, owner: AuthContext): Promise<void> {
+    let pending = false;
+    for (const receipt of [...(job.pendingReceipts ?? [])]) {
+      try {
+        await this.call(receipt.nodeId, owner, { op: 'acknowledgeWrite', id: receipt.id });
+        job.pendingReceipts = job.pendingReceipts!.filter((item) => item.id !== receipt.id);
+      } catch {
+        pending = true;
+      }
+    }
+    if (job.view.archive && !job.archiveReleased) {
+      try {
+        await this.call(job.view.source[0]!.nodeId, owner, { op: 'releaseArchive', id: job.view.id });
+        job.archiveReleased = true;
+      } catch {
+        pending = true;
+      }
+    }
+    if (pending) {
+      job.view.cleanupPending = true;
+      job.view.error = `${job.view.state === 'completed' ? 'Destination publication completed' : 'Transfer cancelled'}; temporary transfer cleanup is pending. Resume to retry cleanup without copying again.`;
+    } else {
+      delete job.view.cleanupPending;
+      if (job.view.state === 'completed' || job.view.state === 'cancelled') delete job.view.error;
+    }
+  }
+  private async abortDestination(job: Job, owner: AuthContext): Promise<void> {
+    if (!job.upload) return;
+    const step = this.store.kvGetSync<Plan>(`files:plan:${job.view.id}`)?.[job.cursor];
+    if (!step) throw new Error('Destination receipt has no transfer plan; inspect before recovery');
+    const receipt = await this.call<FileUpload>(step.destination.nodeId, owner, { op: 'abortWrite', id: job.upload });
+    if (receipt.state !== 'aborted')
+      throw new Error(`Destination is ${receipt.state}; resume to reconcile publication before cancellation`);
+    (job.pendingReceipts ??= []).push({ nodeId: step.destination.nodeId, id: job.upload });
+    delete job.upload;
+    this.persist(job);
+  }
   private async plan(owner: AuthContext, request: FileCopyRequest, checkpoint: () => Promise<void>): Promise<Plan> {
     const plan: Plan = [],
       visited = new Set<string>();
@@ -240,7 +415,20 @@ export class FilesRpcService implements IOmnitronFilesService {
   async copy(data: FileCopyRequest): Promise<FileTransfer> {
     if (!data || !Array.isArray(data.sources) || !data.sources.length || data.sources.length > 200)
       throw new Error('Select between 1 and 200 sources');
-    const request = {
+    let archive: FileArchiveOptions | undefined;
+    if (data.archive) {
+      if (
+        data.sources.length !== 1 ||
+        !FILE_ARCHIVE_FORMATS.includes(data.archive.format) ||
+        !['archive', 'directory'].includes(data.archive.output)
+      )
+        throw new Error('Archive copy requires one directory, an explicit supported format and output mode');
+      const error = fileNameError(data.archive.name);
+      if (error) throw new Error(error);
+      archive = { format: data.archive.format, name: data.archive.name, output: data.archive.output };
+    }
+    const request: FileCopyRequest = {
+      ...(archive && { archive }),
       sources: data.sources.map((s) => ({ ...location(s), version: s.version })),
       destination: location(data.destination),
     };
@@ -249,7 +437,7 @@ export class FilesRpcService implements IOmnitronFilesService {
     if (this.active.size >= 4) throw new Error('At most four file transfers can run concurrently');
     for (const [id, old] of this.jobs) {
       if (this.jobs.size < 100) break;
-      if (old.view.state === 'completed' || old.view.state === 'cancelled') {
+      if (!old.view.cleanupPending && (old.view.state === 'completed' || old.view.state === 'cancelled')) {
         this.jobs.delete(id);
         this.store.kvDeleteSync(`files:job:${id}`);
         this.store.kvDeleteSync(`files:plan:${id}`);
@@ -262,6 +450,8 @@ export class FilesRpcService implements IOmnitronFilesService {
         id: randomUUID(),
         ownerId: owner.userId!,
         state: 'planning',
+        phase: 'planning',
+        ...(archive && { archive }),
         source: request.sources,
         destination: request.destination,
         bytes: 0,
@@ -273,6 +463,7 @@ export class FilesRpcService implements IOmnitronFilesService {
       },
       cursor: 0,
       committedBytes: 0,
+      request,
     };
     this.persist(job);
     this.jobs.set(job.view.id, job);
@@ -292,13 +483,17 @@ export class FilesRpcService implements IOmnitronFilesService {
           };
           let plan = this.store.kvGetSync<Plan>(`files:plan:${job.view.id}`);
           if (!plan) {
-            if (!request) throw new Error('Transfer planning was interrupted; create a new transfer');
-            plan = await this.plan(owner, request, checkpoint);
+            const original = request ?? job.request;
+            if (!original) throw new Error('Transfer planning was interrupted; create a new transfer');
+            plan = original.archive
+              ? await this.archivePlan(job, owner, original, checkpoint)
+              : await this.plan(owner, original, checkpoint);
             this.store.kvSetSync(`files:plan:${job.view.id}`, plan);
             job.view.totalBytes = plan.filter((p) => p.entry.kind === 'file').reduce((n, p) => n + p.entry.size, 0);
-            job.view.totalFiles = plan.filter((p) => p.entry.kind === 'file').length;
+            job.view.totalFiles = plan.reduce((total, step) => total + stepFileCount(step), 0);
           }
           job.view.state = 'running';
+          job.view.phase = 'transferring';
           delete job.view.error;
           this.persist(job);
           let persisted = Date.now();
@@ -307,6 +502,7 @@ export class FilesRpcService implements IOmnitronFilesService {
             let receipt: string | undefined;
             await checkpoint();
             job.view.currentPath = step.source.path;
+            job.view.phase = 'transferring';
             if (step.entry.kind === 'directory') {
               // mkdir never overwrites. A pre-existing directory can hold additional copied entries.
               try {
@@ -326,7 +522,14 @@ export class FilesRpcService implements IOmnitronFilesService {
               }
               let upload = await this.call<FileUpload>(step.destination.nodeId, owner, {
                 ...step.destination,
-                op: 'beginWrite',
+                ...(step.archiveSource?.output === 'directory'
+                  ? {
+                      op: 'beginArchiveWrite' as const,
+                      format: step.archiveSource.format,
+                      manifest: step.archiveSource.manifest,
+                      sha256: step.entry.version,
+                    }
+                  : { op: 'beginWrite' as const, ...(step.archiveSource && { sha256: step.entry.version }) }),
                 id: job.upload,
                 size: step.entry.size,
               });
@@ -334,8 +537,9 @@ export class FilesRpcService implements IOmnitronFilesService {
               while (upload.offset < upload.size) {
                 await checkpoint();
                 const chunk = await this.call<FileChunk>(step.source.nodeId, owner, {
-                  ...step.source,
-                  op: 'readChunk',
+                  ...(step.archiveSource
+                    ? { op: 'readArchive' as const, id: step.archiveSource.id }
+                    : { ...step.source, op: 'readChunk' as const }),
                   version: step.entry.version,
                   offset: upload.offset,
                 });
@@ -356,45 +560,81 @@ export class FilesRpcService implements IOmnitronFilesService {
               }
               await checkpoint();
               if (upload.state !== 'complete') {
-                const source = await this.call<FileEntry>(step.source.nodeId, owner, { ...step.source, op: 'stat' });
-                if (source.version !== step.entry.version) throw new Error('Source changed before transfer commit');
+                if (upload.state === 'receiving') {
+                  const source = step.archiveSource
+                    ? (
+                        await this.call<FileArchiveStatus>(step.source.nodeId, owner, {
+                          op: 'archiveStatus',
+                          id: step.archiveSource.id,
+                        })
+                      ).file
+                    : await this.call<FileEntry>(step.source.nodeId, owner, { ...step.source, op: 'stat' });
+                  if (source?.version !== step.entry.version) throw new Error('Source changed before transfer commit');
+                }
+                job.view.phase = step.archiveSource?.output === 'directory' ? 'restoring' : 'publishing';
+                this.persist(job);
                 upload = await this.call(step.destination.nodeId, owner, { op: 'commitWrite', id: upload.id });
+                while (upload.state === 'committing') {
+                  job.view.phase = upload.phase ?? job.view.phase;
+                  if (upload.restoredBytes !== undefined) job.view.restoredBytes = upload.restoredBytes;
+                  if (upload.publication !== undefined) job.view.publication = upload.publication;
+                  this.persist(job);
+                  await checkpoint();
+                  await delay(250);
+                  await checkpoint();
+                  upload = await this.call(step.destination.nodeId, owner, { op: 'writeStatus', id: upload.id });
+                }
               }
-              if (upload.state !== 'complete') throw new Error('Destination did not confirm publication');
+              if (upload.publication !== undefined) job.view.publication = upload.publication;
+              if (upload.restoredBytes !== undefined) job.view.restoredBytes = upload.restoredBytes;
+              if (upload.state !== 'complete')
+                throw new Error(upload.error ?? 'Destination did not confirm publication');
+              if (step.archiveSource && upload.sha256 !== step.entry.version)
+                throw new Error('Destination archive digest does not match the admitted source snapshot');
               job.committedBytes += step.entry.size;
               job.view.bytes = job.committedBytes;
-              job.view.completedFiles++;
+              job.view.completedFiles += stepFileCount(step);
               receipt = job.upload;
               delete job.upload;
             }
             // Persist the next cursor together with completion, not a counter that may be applied twice after a crash.
             job.cursor++;
+            if (receipt) (job.pendingReceipts ??= []).push({ nodeId: step.destination.nodeId, id: receipt });
             this.persist(job);
             job.cursor--;
-            if (receipt)
-              await this.call(step.destination.nodeId, owner, { op: 'acknowledgeWrite', id: receipt }).catch(
-                () => undefined
-              );
+            if (receipt) {
+              try {
+                await this.call(step.destination.nodeId, owner, { op: 'acknowledgeWrite', id: receipt });
+                job.pendingReceipts = job.pendingReceipts!.filter((item) => item.id !== receipt);
+              } catch {
+                /* The durable pending receipt is retried at completion or explicit cleanup. */
+              }
+            }
           }
           job.view.state = 'completed';
           delete job.view.currentPath;
         } catch (e) {
           job.view.state = control.stop ?? (this.stopped ? 'interrupted' : 'failed');
           job.view.error = e instanceof Error ? e.message.slice(0, 500) : 'File transfer failed';
-          if (control.stop === 'cancelled' && job.upload) {
-            const plan = this.store.kvGetSync<Plan>(`files:plan:${job.view.id}`),
-              step = plan?.[job.cursor];
-            if (step)
-              try {
-                await this.call(step.destination.nodeId, owner, { op: 'abortWrite', id: job.upload });
-              } catch {
-                job.view.state = 'interrupted';
-                job.view.error =
-                  'Cancellation could not confirm the destination outcome. Resume to reconcile the receipt.';
-              }
+          if (control.stop === 'cancelled') {
+            try {
+              await this.abortDestination(job, owner);
+            } catch (error) {
+              job.view.state = 'interrupted';
+              job.view.error =
+                error instanceof Error
+                  ? error.message
+                  : 'Cancellation could not confirm destination outcome. Resume to reconcile the receipt.';
+            }
           }
         } finally {
           try {
+            if (job.view.state === 'completed' || job.view.state === 'cancelled') {
+              if (job.pendingReceipts?.length || (job.view.archive && !job.archiveReleased))
+                job.view.cleanupPending = true;
+              this.persist(job);
+              await this.cleanupTransfer(job, owner);
+            }
             this.persist(job);
             await runWithAuth(owner, () =>
               this.audit.record({
@@ -433,6 +673,11 @@ export class FilesRpcService implements IOmnitronFilesService {
       throw new Error('Unknown transfer or action');
     const control = this.active.get(data.id);
     if (data.action === 'resume') {
+      if (!control && job.view.cleanupPending) {
+        await this.cleanupTransfer(job, owner);
+        this.persist(job);
+        return this.view(job);
+      }
       if (!control && ['paused', 'failed', 'interrupted'].includes(job.view.state)) {
         if (this.active.size >= 4) throw new Error('Transfer capacity reached');
         job.view.state = 'running';
@@ -443,11 +688,11 @@ export class FilesRpcService implements IOmnitronFilesService {
       control.stop = data.action === 'pause' ? 'paused' : 'cancelled';
       await control.done;
     } else if (data.action === 'cancel' && !['completed', 'cancelled'].includes(job.view.state)) {
-      if (job.upload) {
-        const step = this.store.kvGetSync<Plan>(`files:plan:${data.id}`)?.[job.cursor];
-        if (step) await this.call(step.destination.nodeId, owner, { op: 'abortWrite', id: job.upload });
-      }
+      await this.abortDestination(job, owner);
       job.view.state = 'cancelled';
+      if (job.pendingReceipts?.length || (job.view.archive && !job.archiveReleased)) job.view.cleanupPending = true;
+      this.persist(job);
+      await this.cleanupTransfer(job, owner);
       this.persist(job);
     }
     return this.view(job);

@@ -276,6 +276,7 @@ export class OmnitronDaemon {
   private meshHandle: import('../cluster/mesh.js').MeshHandle | null = null;
   private nodeManagerRpcService: import('../services/node-manager.rpc-service.js').NodeManagerRpcService | null = null;
   private terminalRpcService: import('../services/terminal.rpc-service.js').TerminalRpcService | null = null;
+  private fileNode: import('../files/file-node.js').FileNode | null = null;
   private filesRpcService: import('../files/files.rpc-service.js').FilesRpcService | null = null;
   private pipelineService: import('../services/pipeline.service.js').PipelineService | null = null;
 
@@ -334,7 +335,7 @@ export class OmnitronDaemon {
       ...(this.supervision ? { supervision: this.supervision } : {}),
       blockers: {
         terminalSessions: this.terminalRpcService?.activeSessionCount() ?? 0,
-        fileTransfers: this.filesRpcService?.activeTransferCount() ?? 0,
+        fileTransfers: (this.filesRpcService?.activeTransferCount() ?? 0) + (this.fileNode?.activeOperationCount() ?? 0),
         pipelineRuns: this.pipelineService?.activeRunCount() ?? 0,
         releaseBuilds: this.releaseService?.builds().filter(build => build.state === 'running').length ?? 0,
       },
@@ -1263,7 +1264,7 @@ export class OmnitronDaemon {
     const { configuredFileRoots } = await import('../files/file-config.js');
     const { FileNodeRpcService } = await import('../files/file-node.rpc-service.js');
     const fileState = await container.resolveAsync<import('./daemon-state-store.service.js').DaemonStateStore>(DAEMON_STATE_STORE_TOKEN);
-    const fileNode = new FileNode(configuredFileRoots(dc.files), fileState);
+    const fileNode = this.fileNode = new FileNode(configuredFileRoots(dc.files), fileState);
     await this.app.netron.peer.exposeService(new FileNodeRpcService(fileNode));
 
     // =====================================================================
@@ -2659,6 +2660,8 @@ export class OmnitronDaemon {
     app.registerShutdownTask('stop-file-watcher-and-webapp', async () => {
       await this.filesRpcService?.dispose();
       this.filesRpcService = null;
+      await this.fileNode?.dispose();
+      this.fileNode = null;
       await this.pipelineService?.dispose();
       this.pipelineService = null;
       this.terminalRpcService?.dispose();

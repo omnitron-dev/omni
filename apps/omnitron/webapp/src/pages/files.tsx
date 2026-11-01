@@ -25,10 +25,18 @@ import { Tabs } from '@omnitron-dev/prism/components/tabs';
 import { ConfirmDialog } from '@omnitron-dev/prism/components/confirm-dialog';
 import { CloseIcon } from '@omnitron-dev/prism/icons';
 import { CopyFilesIcon, NewFolderIcon, UploadFileIcon, SwitchPanelsIcon } from 'src/assets/icons';
-import type { FileDocument, FileEntry, FileLocation, FileTrash } from '@omnitron-dev/omnitron/dto/services';
+import type {
+  FileDocument,
+  FileEntry,
+  FileLocation,
+  FileTrash,
+  FileArchiveOptions,
+} from '@omnitron-dev/omnitron/dto/services';
 import { fileNameError, fileStructureError } from '@omnitron-dev/omnitron/dto/services';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { FilePane, type FileAction } from 'src/components/files/file-pane';
+import { ArchiveCopyOptions } from 'src/components/files/archive-copy-options';
+import { FileTransferProgress } from 'src/components/files/transfer-progress';
 import {
   describeFileError,
   encodeChunk,
@@ -73,6 +81,8 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
   const [panes, setPanes] = useState<Record<'left' | 'right', PaneSelection | null>>({ left: null, right: null });
   const [pending, setPending] = useState<Pending | null>(null),
     [name, setName] = useState('');
+  const [copyArchive, setCopyArchive] = useState<FileArchiveOptions | undefined>();
+  const [copyReady, setCopyReady] = useState(true);
   const [buffers, setBuffers] = useState<BufferState[]>([]),
     [editorId, setEditorId] = useState(''),
     [editorOpen, setEditorOpen] = useState(false),
@@ -96,7 +106,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
   buffersRef.current = buffers;
   const jobs = usePolledResource(() => files.transfers(), { intervalMs: 2000, enabled: visible });
   const running = (jobs.data ?? []).filter((j) => ['running', 'planning'].includes(j.state));
-  const unfinished = (jobs.data ?? []).filter((j) => !['completed', 'cancelled'].includes(j.state));
+  const unfinished = (jobs.data ?? []).filter((j) => j.cleanupPending || !['completed', 'cancelled'].includes(j.state));
   const selected = panes[active],
     other = panes[active === 'left' ? 'right' : 'left'];
   const buffer = buffers.find((b) => b.id === editorId);
@@ -107,20 +117,28 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
   const mounted = useRef(true),
     acting = useRef(false);
   const loadHosts = useCallback(async () => {
-    setPreparing(true); setError('');
+    setPreparing(true);
+    setError('');
     try {
       const list = await nodes.listNodes();
-      if (mounted.current) setHosts([
-        { id: 'local', name: 'Local', host: 'daemon', isLocal: true },
-        ...list.filter(n => !n.isLocal).map(n => ({ id: n.id, name: n.name, host: n.host, isLocal: false })),
-      ]);
-    } catch (e) { if (mounted.current) setError(describeFileError(e)); }
-    finally { if (mounted.current) setPreparing(false); }
+      if (mounted.current)
+        setHosts([
+          { id: 'local', name: 'Local', host: 'daemon', isLocal: true },
+          ...list.filter((n) => !n.isLocal).map((n) => ({ id: n.id, name: n.name, host: n.host, isLocal: false })),
+        ]);
+    } catch (e) {
+      if (mounted.current) setError(describeFileError(e));
+    } finally {
+      if (mounted.current) setPreparing(false);
+    }
   }, []);
   useEffect(() => {
     mounted.current = true;
     void loadHosts();
-    return () => { mounted.current = false; cancelled.current = true; };
+    return () => {
+      mounted.current = false;
+      cancelled.current = true;
+    };
   }, [loadHosts]);
   useEffect(() => {
     setRefreshKey((k) => k + 1);
@@ -202,7 +220,10 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
   const action = (side: 'left' | 'right', key: FileAction) => {
     const pane = panes[side];
     if (!pane) return;
-    if ((key === 'rename' || key === 'trash') && pane.entries.some(entry => fileStructureError(entry.path, pane.root.protectedPaths))) {
+    if (
+      (key === 'rename' || key === 'trash') &&
+      pane.entries.some((entry) => fileStructureError(entry.path, pane.root.protectedPaths))
+    ) {
       setError('This structural path is protected from rename and removal');
       return;
     }
@@ -222,50 +243,64 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
       return;
     }
     setName(key === 'rename' ? (pane.entries[0]?.name ?? '') : '');
+    setCopyArchive(undefined);
+    setCopyReady(true);
     setPending({ action: key, pane, ...(destination ? { destination } : {}) });
   };
   const confirm = () =>
-    act(pending?.action === 'copy' ? 'Preparing file transfer' : pending?.action === 'trash' ? 'Moving files to trash' : 'Saving file changes', async () => {
-      if (!pending) return;
-      const { pane } = pending;
-      if (pending.action === 'copy') {
-        if (!pending.destination || pending.destination.root.readOnly)
-          throw new Error('Select a writable destination in the other panel');
-        await files.copy({
-          sources: pane.entries.map((e) => ({ ...pane.location, path: e.path, version: e.version })),
-          destination: pending.destination.location,
-        });
-        setQueueOpen(true);
-        await jobs.refresh();
-      } else if (pending.action === 'trash') {
-        for (const entry of pane.entries)
-          await files.trash({ ...pane.location, path: entry.path, version: entry.version });
-      } else {
-        const path = joinPath(pane.location.path, fileName(name));
-        if (pending.action === 'mkdir') await files.mkdir({ ...pane.location, path });
-        if (pending.action === 'rename') {
-          const entry = pane.entries[0]!;
-          const source = { ...pane.location, path: entry.path, version: entry.version };
-          const projected = buffersRef.current.map((b) => relocateBuffer(b, source, { path, version: entry.version }));
-          if (new Set(projected.map((b) => b.id)).size !== projected.length)
-            throw new Error('Close the open destination document before renaming');
-          const renamed = await files.rename({ ...source, destination: path });
-          const current = buffersRef.current.find((b) => b.id === editorId);
-          if (current) setEditorId(relocateBuffer(current, source, renamed).id);
-          setBuffers((all) => all.map((b) => relocateBuffer(b, source, renamed)));
-        }
-        if (pending.action === 'create' || pending.action === 'saveCopy')
-          await files.saveText({
-            ...pane.location,
-            path,
-            content: pending.buffer?.text ?? '',
-            version: null,
-            bom: pending.buffer?.document.bom ?? false,
+    act(
+      pending?.action === 'copy'
+        ? 'Preparing file transfer'
+        : pending?.action === 'trash'
+          ? 'Moving files to trash'
+          : 'Saving file changes',
+      async () => {
+        if (!pending) return;
+        const { pane } = pending;
+        if (pending.action === 'copy') {
+          if (!copyReady)
+            throw new Error('Wait for compatible archive capabilities and enter a valid destination name');
+          if (!pending.destination || pending.destination.root.readOnly)
+            throw new Error('Select a writable destination in the other panel');
+          await files.copy({
+            sources: pane.entries.map((e) => ({ ...pane.location, path: e.path, version: e.version })),
+            destination: pending.destination.location,
+            ...(copyArchive && { archive: copyArchive }),
           });
+          setQueueOpen(true);
+          await jobs.refresh();
+        } else if (pending.action === 'trash') {
+          for (const entry of pane.entries)
+            await files.trash({ ...pane.location, path: entry.path, version: entry.version });
+        } else {
+          const path = joinPath(pane.location.path, fileName(name));
+          if (pending.action === 'mkdir') await files.mkdir({ ...pane.location, path });
+          if (pending.action === 'rename') {
+            const entry = pane.entries[0]!;
+            const source = { ...pane.location, path: entry.path, version: entry.version };
+            const projected = buffersRef.current.map((b) =>
+              relocateBuffer(b, source, { path, version: entry.version })
+            );
+            if (new Set(projected.map((b) => b.id)).size !== projected.length)
+              throw new Error('Close the open destination document before renaming');
+            const renamed = await files.rename({ ...source, destination: path });
+            const current = buffersRef.current.find((b) => b.id === editorId);
+            if (current) setEditorId(relocateBuffer(current, source, renamed).id);
+            setBuffers((all) => all.map((b) => relocateBuffer(b, source, renamed)));
+          }
+          if (pending.action === 'create' || pending.action === 'saveCopy')
+            await files.saveText({
+              ...pane.location,
+              path,
+              content: pending.buffer?.text ?? '',
+              version: null,
+              bom: pending.buffer?.document.bom ?? false,
+            });
+        }
+        setPending(null);
+        refresh();
       }
-      setPending(null);
-      refresh();
-    });
+    );
   const upload = async (file: File) => {
     const pane = uploadTarget.current;
     if (!pane || browserTransfer) return;
@@ -375,28 +410,80 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
         active={visible}
         links={[{ name: 'Files' }]}
         action={
-          <Stack direction="row" spacing={0.5} useFlexGap role="toolbar" aria-label="File actions" sx={{ alignItems: 'center' }}>
-            {compact && <ToggleButtonGroup exclusive size="small" value={active} aria-label="Visible file panel"
-              onChange={(_, value) => { if (value) focusPane(value); }}>
-              <ToggleButton value="left">A</ToggleButton><ToggleButton value="right">B</ToggleButton>
-            </ToggleButtonGroup>}
-            <Tooltip title={`Copy ${active === 'left' ? 'A → B' : 'B → A'} · ${other ? label(other.location) : 'Choose a destination'} · F5`}>
-              <span><Button size="small" variant="outlined" startIcon={<CopyFilesIcon fontSize="small" />}
-                aria-label={active === 'left' ? 'Copy A to B' : 'Copy B to A'}
-                disabled={!selected?.entries.length || !other || other.root.readOnly || busy}
-                onClick={() => action(active, 'copy')} sx={{ minWidth: 72, fontFamily: 'monospace' }}>
-                {active === 'left' ? 'A → B' : 'B → A'}
-              </Button></span>
+          <Stack
+            direction="row"
+            spacing={0.5}
+            useFlexGap
+            role="toolbar"
+            aria-label="File actions"
+            sx={{ alignItems: 'center' }}
+          >
+            {compact && (
+              <ToggleButtonGroup
+                exclusive
+                size="small"
+                value={active}
+                aria-label="Visible file panel"
+                onChange={(_, value) => {
+                  if (value) focusPane(value);
+                }}
+              >
+                <ToggleButton value="left">A</ToggleButton>
+                <ToggleButton value="right">B</ToggleButton>
+              </ToggleButtonGroup>
+            )}
+            <Tooltip
+              title={`Copy ${active === 'left' ? 'A → B' : 'B → A'} · ${other ? label(other.location) : 'Choose a destination'} · F5`}
+            >
+              <span>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<CopyFilesIcon fontSize="small" />}
+                  aria-label={active === 'left' ? 'Copy A to B' : 'Copy B to A'}
+                  disabled={!selected?.entries.length || !other || other.root.readOnly || busy}
+                  onClick={() => action(active, 'copy')}
+                  sx={{ minWidth: 72, fontFamily: 'monospace' }}
+                >
+                  {active === 'left' ? 'A → B' : 'B → A'}
+                </Button>
+              </span>
             </Tooltip>
-            <Tooltip title={`New folder in panel ${active === 'left' ? 'A' : 'B'}`}><span>
-              <IconButton size="small" aria-label="New folder" disabled={!selected || selected.root.readOnly || busy} onClick={() => action(active, 'mkdir')}><NewFolderIcon fontSize="small" /></IconButton>
-            </span></Tooltip>
-            <Tooltip title={`Upload from this computer to panel ${active === 'left' ? 'A' : 'B'}`}><span>
-              <IconButton size="small" aria-label="Upload from this computer" disabled={!selected || selected.root.readOnly || Boolean(browserTransfer)} onClick={() => action(active, 'upload')}><UploadFileIcon fontSize="small" /></IconButton>
-            </span></Tooltip>
-            {!compact && <Tooltip title={`Focus panel ${active === 'left' ? 'B' : 'A'} · Tab inside a file list`}>
-              <IconButton size="small" aria-label={`Focus panel ${active === 'left' ? 'B' : 'A'}`} onClick={() => focusPane(active === 'left' ? 'right' : 'left')}><SwitchPanelsIcon fontSize="small" /></IconButton>
-            </Tooltip>}
+            <Tooltip title={`New folder in panel ${active === 'left' ? 'A' : 'B'}`}>
+              <span>
+                <IconButton
+                  size="small"
+                  aria-label="New folder"
+                  disabled={!selected || selected.root.readOnly || busy}
+                  onClick={() => action(active, 'mkdir')}
+                >
+                  <NewFolderIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title={`Upload from this computer to panel ${active === 'left' ? 'A' : 'B'}`}>
+              <span>
+                <IconButton
+                  size="small"
+                  aria-label="Upload from this computer"
+                  disabled={!selected || selected.root.readOnly || Boolean(browserTransfer)}
+                  onClick={() => action(active, 'upload')}
+                >
+                  <UploadFileIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+            {!compact && (
+              <Tooltip title={`Focus panel ${active === 'left' ? 'B' : 'A'} · Tab inside a file list`}>
+                <IconButton
+                  size="small"
+                  aria-label={`Focus panel ${active === 'left' ? 'B' : 'A'}`}
+                  onClick={() => focusPane(active === 'left' ? 'right' : 'left')}
+                >
+                  <SwitchPanelsIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
             {buffers.length > 0 && (
               <Button size="small" onClick={() => setEditorOpen(true)}>
                 Editor · {buffers.length}
@@ -420,7 +507,8 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
         <Box role="status">
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <Typography variant="caption" sx={{ flex: 1 }}>
-              {browserTransfer.label} · {fileBytes(browserTransfer.bytes)} / {fileBytes(browserTransfer.total)}{browserTransfer.committing ? ' · confirming publication' : ''}
+              {browserTransfer.label} · {fileBytes(browserTransfer.bytes)} / {fileBytes(browserTransfer.total)}
+              {browserTransfer.committing ? ' · confirming publication' : ''}
             </Typography>
             <Button
               size="small"
@@ -581,7 +669,12 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
           <Button onClick={() => setPending(null)} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="contained" loading={busy} disabled={Boolean(nameError) || busy} onClick={() => void confirm()}>
+          <Button
+            variant="contained"
+            loading={busy}
+            disabled={Boolean(nameError) || busy}
+            onClick={() => void confirm()}
+          >
             Apply
           </Button>
         </DialogActions>
@@ -595,7 +688,9 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
         title={dialogPending?.action === 'copy' ? 'Copy to destination' : 'Move to trash'}
         confirmLabel={dialogPending?.action === 'copy' ? 'Start copy' : 'Move to trash'}
         confirmColor={pending?.action === 'copy' ? 'primary' : 'warning'}
-        disabled={pending?.action === 'copy' && (!pending.destination || pending.destination.root.readOnly)}
+        disabled={
+          pending?.action === 'copy' && (!pending.destination || pending.destination.root.readOnly || !copyReady)
+        }
         onConfirm={confirm}
         content={
           <Stack spacing={1}>
@@ -615,9 +710,25 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
                 <Typography variant="body2" sx={{ overflowWrap: 'anywhere', fontWeight: 600 }}>
                   → {pending.destination ? label(pending.destination.location) : 'Select the other panel destination'}
                 </Typography>
+                {pending.destination &&
+                  pending.pane.entries.length === 1 &&
+                  pending.pane.entries[0]?.kind === 'directory' && (
+                    <ArchiveCopyOptions
+                      key={`${JSON.stringify(pending.pane.location)}:${pending.pane.entries[0].path}:${JSON.stringify(pending.destination.location)}`}
+                      sourceNodeId={pending.pane.location.nodeId}
+                      destinationNodeId={pending.destination.location.nodeId}
+                      directoryName={pending.pane.entries[0].name}
+                      disabled={busy}
+                      onChange={(choice) => {
+                        setCopyArchive(choice.archive);
+                        setCopyReady(choice.ready);
+                      }}
+                    />
+                  )}
                 <Typography variant="caption" color="text.secondary">
-                  Existing files are never overwritten. Completed files remain if a later file fails or the transfer is
-                  cancelled.
+                  {copyArchive
+                    ? 'Verifies the snapshot before publication and reserves a new destination entry without replacing existing files or folders.'
+                    : 'Existing files are never overwritten. Completed files remain if a later file fails or the transfer is cancelled.'}
                 </Typography>
               </>
             ) : (
@@ -644,10 +755,16 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
         <Typography variant="caption" color="text.secondary" sx={{ px: 2, pb: 2 }}>
           Node transfers run in daemon. Interrupted jobs resume only on your command.
         </Typography>
-        <Box sx={{ px: 2 }}><OperationStatus active={busy} label={operation ?? ''} /></Box>
+        <Box sx={{ px: 2 }}>
+          <OperationStatus active={busy} label={operation ?? ''} />
+        </Box>
         {jobs.error && <Alert severity="error">{jobs.error}</Alert>}
         {error && <Alert severity="error">{error}</Alert>}
-        {jobs.loading && !jobs.data && <Box sx={{ px: 2 }}><OperationStatus active label="Loading transfers" /></Box>}
+        {jobs.loading && !jobs.data && (
+          <Box sx={{ px: 2 }}>
+            <OperationStatus active label="Loading transfers" />
+          </Box>
+        )}
         {jobs.data?.length === 0 && (
           <Typography color="text.secondary" sx={{ p: 2 }}>
             No transfers yet
@@ -663,7 +780,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
                 size="small"
                 variant="outlined"
                 color={
-                  job.state === 'failed' || job.state === 'interrupted'
+                  job.cleanupPending || job.state === 'failed' || job.state === 'interrupted'
                     ? 'warning'
                     : job.state === 'completed'
                       ? 'success'
@@ -679,16 +796,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
                 .join(', ')}{' '}
               → {label(job.destination)}
             </Typography>
-            <LinearProgress
-              sx={{ my: 1 }}
-              variant={job.state === 'planning' ? 'indeterminate' : 'determinate'}
-              value={
-                job.totalBytes ? Math.min(100, (job.bytes / job.totalBytes) * 100) : job.state === 'completed' ? 100 : 0
-              }
-            />
-            <Typography variant="caption">
-              {fileBytes(job.bytes)} / {fileBytes(job.totalBytes)} · {job.completedFiles} / {job.totalFiles} files
-            </Typography>
+            <FileTransferProgress job={job} />
             {job.currentPath && (
               <Typography variant="caption" sx={{ display: 'block' }} color="text.secondary">
                 {job.currentPath}
@@ -714,18 +822,18 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
                   Pause
                 </Button>
               )}
-              {['paused', 'failed', 'interrupted'].includes(job.state) && (
+              {(job.cleanupPending || ['paused', 'failed', 'interrupted'].includes(job.state)) && (
                 <Button
                   size="small"
                   disabled={busy}
                   onClick={() =>
-                    void act('Resuming transfer', async () => {
+                    void act(job.cleanupPending ? 'Cleaning up transfer data' : 'Resuming transfer', async () => {
                       await files.controlTransfer({ id: job.id, action: 'resume' });
                       await jobs.refresh();
                     })
                   }
                 >
-                  Resume
+                  {job.cleanupPending ? 'Retry cleanup' : 'Resume'}
                 </Button>
               )}
               {!['completed', 'cancelled'].includes(job.state) && (
@@ -823,7 +931,12 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
         </Stack>
         {buffer && (
           <>
-            <Stack data-keyboard-region="Editor tools" direction="row" spacing={1} sx={{ p: 1, alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
+            <Stack
+              data-keyboard-region="Editor tools"
+              direction="row"
+              spacing={1}
+              sx={{ p: 1, alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}
+            >
               <Typography
                 variant="caption"
                 sx={{ flex: 1, minWidth: 160, overflowWrap: 'anywhere', fontFamily: 'monospace' }}
@@ -857,7 +970,15 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
               <Button size="small" disabled={busy} onClick={() => setReloadBuffer(buffer.id)}>
                 Reload
               </Button>
-              <ToggleButton size="small" value="wrap" selected={wrapEditor} onChange={() => setWrapEditor(value => !value)} aria-label="Wrap long lines">Wrap</ToggleButton>
+              <ToggleButton
+                size="small"
+                value="wrap"
+                selected={wrapEditor}
+                onChange={() => setWrapEditor((value) => !value)}
+                aria-label="Wrap long lines"
+              >
+                Wrap
+              </ToggleButton>
               <Button
                 size="small"
                 variant="contained"
@@ -873,7 +994,9 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
                 Save
               </Button>
             </Stack>
-            <Box sx={{ px: 1 }}><OperationStatus active={busy} label={operation ?? ''} /></Box>
+            <Box sx={{ px: 1 }}>
+              <OperationStatus active={busy} label={operation ?? ''} />
+            </Box>
             {error && (
               <Alert severity="error" onClose={() => setError('')}>
                 {error}
@@ -894,7 +1017,9 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
                 readOnly={b.readOnly}
                 active={editorOpen && visible && b.id === editorId}
                 wrap={wrapEditor}
-                onPosition={position => { if (b.id === editorId) setEditorPosition(position); }}
+                onPosition={(position) => {
+                  if (b.id === editorId) setEditorPosition(position);
+                }}
                 onChange={(text) =>
                   setBuffers((all) => all.map((item) => (item.id === b.id ? { ...item, text } : item)))
                 }
@@ -911,9 +1036,10 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
           color="text.secondary"
           sx={{ px: 2, py: 0.5, borderTop: 1, borderColor: 'divider' }}
         >
-          Ln {editorPosition.line}, Col {editorPosition.column}{editorPosition.selected ? ` · ${editorPosition.selected} selected` : ''} · UTF-8{buffer?.document.bom ? ' BOM' : ''} ·{' '}
-          {buffer ? fileBytes(new TextEncoder().encode(buffer.text).length) : ''} · Ctrl/⌘+S save · Ctrl/⌘+F find ·
-          changes checked against the file version
+          Ln {editorPosition.line}, Col {editorPosition.column}
+          {editorPosition.selected ? ` · ${editorPosition.selected} selected` : ''} · UTF-8
+          {buffer?.document.bom ? ' BOM' : ''} · {buffer ? fileBytes(new TextEncoder().encode(buffer.text).length) : ''}{' '}
+          · Ctrl/⌘+S save · Ctrl/⌘+F find · changes checked against the file version
         </Typography>
       </Dialog>
       <ConfirmDialog

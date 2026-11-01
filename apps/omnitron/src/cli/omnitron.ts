@@ -1373,6 +1373,7 @@ node.command('ssh-key <node>').description('Inspect SSH host fingerprint; trust 
   .action(async (name: string, options: { trust?: string }) => { const { nodeHostKeyCommand } = await import('../commands/terminal.js'); await nodeHostKeyCommand(name, options); });
 const fileWorkspace = program.command('files').description('Audited multi-node file workspace');
 for (const [name, signature, description] of [
+  ['archive-formats', '', 'Probe archive formats on source and optional destination'],
   ['roots', '', 'List explicitly exported roots'], ['list', '[path]', 'List a directory page'],
   ['stat', '<path>', 'Inspect metadata and current version'], ['read', '<path>', 'Read a bounded UTF-8 document'],
   ['save', '<path>', 'Save UTF-8 input with an expected version'], ['mkdir', '<path>', 'Create a folder'],
@@ -1388,6 +1389,8 @@ for (const [name, signature, description] of [
     .option('--version <version>', 'Expected version; save accepts new for creation')
     .option('--from <file>', 'Local input file').option('--to <path>', 'Rename destination or local download path')
     .option('--to-node <id>', 'Copy destination node').option('--to-root <id>', 'Copy destination root').option('--to-path <path>', 'Copy destination folder', '')
+    .option('--archive-format <format>', 'Source-side archive format; inspect archive-formats')
+    .option('--archive-output <mode>', 'Explicit result: archive or directory').option('--archive-name <name>', 'New archive filename or restored directory name')
     .option('--after <name>', 'Directory page cursor').option('--revision <version>', 'Directory revision from first page')
     .action(async (...args) => {
       const { filesCommand } = await import('../commands/files.js');

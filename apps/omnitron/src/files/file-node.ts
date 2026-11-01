@@ -2,6 +2,9 @@ import * as fs from 'node:fs/promises';
 import { constants, type BigIntStats } from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
+import { OMNITRON_HOME } from '../config/defaults.js';
+import type { ArchiveNode } from './archive-node.js';
+import type { ArchiveWriteState } from './archive-publication.js';
 import { fileNameError } from '../shared/file-policy.js';
 import { assertStructuralChange, structuralPaths } from './structural-policy.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
@@ -32,6 +35,8 @@ interface Upload extends FileUpload {
   rootId: string;
   path: string;
   updatedAt: number;
+  archive?: ArchiveWriteState;
+  expectedSha256?: string;
 }
 interface Trash extends FileTrash {
   actor: string;
@@ -98,9 +103,14 @@ export class FileNode {
   private pins = new Map<string, { real: string; ino: bigint; dev: bigint }>();
   private locks = new Map<string, Promise<unknown>>();
   private requests = 0;
+  private archiveProvider?: Promise<ArchiveNode>;
+  private archiveInstance?: ArchiveNode;
+  private stopped = false;
+  private archiveCommits = new Map<string, { controller: AbortController; done: Promise<void> }>();
   constructor(
     roots: FileRootConfig[],
-    private readonly store: Store
+    private readonly store: Store,
+    private readonly archiveDirectory = path.join(OMNITRON_HOME, INTERNAL, 'archives')
   ) {
     if (!Array.isArray(roots) || roots.length > 32) throw new Error('Configure at most 32 file roots');
     for (const r of roots) {
@@ -123,10 +133,43 @@ export class FileNode {
       this.rootsById.set(r.id, { ...r, ...(r.protectedPaths && { protectedPaths: [...r.protectedPaths] }) });
     }
   }
+  private archives(): Promise<ArchiveNode> {
+    return (this.archiveProvider ??= import('./archive-node.js').then(
+      ({ ArchiveNode }) =>
+        (this.archiveInstance = new ArchiveNode(
+          async <T>(actor: string, request: FileNodeRequest) => (await this.invoke(actor, request)) as T,
+          async (rootId, relative) => {
+            const root = await this.root(rootId);
+            assertStructuralChange(root, filePath(relative), this.rootsById.get(rootId)?.protectedPaths);
+            await this.resolve(rootId, relative);
+          },
+          this.store,
+          this.archiveDirectory
+        ))
+    ));
+  }
+  activeOperationCount(): number {
+    return (this.archiveInstance?.activeOperationCount() ?? 0) + this.archiveCommits.size;
+  }
+  async dispose(): Promise<void> {
+    this.stopped = true;
+    const commits = [...this.archiveCommits.values()];
+    for (const operation of commits) operation.controller.abort();
+    await Promise.all([
+      this.archiveProvider?.then((provider) => provider.dispose()),
+      ...commits.map((operation) => operation.done),
+    ]);
+    await Promise.allSettled([...this.locks.values()]);
+  }
   roots(): { protocol: 1; roots: FileRoot[] } {
     return {
       protocol: 1,
-      roots: [...this.rootsById.values()].map((r) => ({ id: r.id, label: r.label, readOnly: Boolean(r.readOnly), protectedPaths: structuralPaths(r.path, r.protectedPaths) })),
+      roots: [...this.rootsById.values()].map((r) => ({
+        id: r.id,
+        label: r.label,
+        readOnly: Boolean(r.readOnly),
+        protectedPaths: structuralPaths(r.path, r.protectedPaths),
+      })),
     };
   }
   private async root(id: string, write = false) {
@@ -176,7 +219,12 @@ export class FileNode {
   }
   private async locked<T>(key: string, run: () => Promise<T>): Promise<T> {
     const before = this.locks.get(key) ?? Promise.resolve();
-    const current = before.catch(() => {}).then(run);
+    const current = before
+      .catch(() => {})
+      .then(() => {
+        if (this.stopped) throw new Error('File provider is stopping');
+        return run();
+      });
     this.locks.set(key, current);
     try {
       return await current;
@@ -226,12 +274,17 @@ export class FileNode {
       size: value.size,
       state: value.state,
       ...(value.sha256 ? { sha256: value.sha256 } : {}),
+      ...(value.phase ? { phase: value.phase } : {}),
+      ...(value.restoredBytes !== undefined ? { restoredBytes: value.restoredBytes } : {}),
+      ...(value.publication ? { publication: value.publication } : {}),
+      ...(value.error ? { error: value.error } : {}),
     };
   }
   private viewTrash({ actor: _actor, identity: _identity, ...value }: Trash): FileTrash {
     return value;
   }
   async invoke(actor: string, request: FileNodeRequest): Promise<unknown> {
+    if (this.stopped) throw new Error('File provider is stopping');
     if (!actor || actor.length > 300 || !request || typeof request !== 'object')
       throw new Error('Invalid file request');
     if (this.requests >= 32) throw new Error('File request capacity reached');
@@ -244,6 +297,15 @@ export class FileNode {
   }
   private async dispatch(actor: string, request: FileNodeRequest): Promise<unknown> {
     switch (request.op) {
+      case 'archiveFormats':
+      case 'prepareArchive':
+      case 'archiveStatus':
+      case 'readArchive':
+      case 'abortArchive':
+      case 'releaseArchive':
+        return this.locked('archive:' + ('id' in request ? request.id : 'formats'), async () =>
+          (await this.archives()).invoke(actor, request)
+        );
       case 'roots':
         return this.roots();
       case 'list':
@@ -276,22 +338,37 @@ export class FileNode {
           .map((r) => this.viewTrash(r));
       case 'restore':
         return this.restore(actor, request.id);
+      case 'beginArchiveWrite':
+        return this.locked(request.rootId, () => this.beginArchiveWrite(actor, request));
       case 'beginWrite':
         return this.locked(request.rootId, () => this.beginWrite(actor, request));
       case 'acknowledgeWrite':
+        await this.archiveCommits.get(request.id)?.done;
         return this.locked('receipts', () => this.acknowledgeWrite(actor, request.id));
-      case 'writeStatus':
-        return this.viewUpload(this.upload(actor, request.id));
+      case 'writeStatus': {
+        const upload = this.upload(actor, request.id);
+        if (upload.archive && upload.state === 'committing' && !this.archiveCommits.has(request.id))
+          return {
+            ...this.viewUpload(upload),
+            state: 'failed',
+            error: 'Archive restoration was interrupted before its receipt completed; resume to reconcile publication',
+          };
+        return this.viewUpload(upload);
+      }
       case 'writeChunk': {
         const u = this.upload(actor, request.id);
         return this.locked(u.rootId, () => this.writeChunk(actor, request));
       }
       case 'commitWrite': {
         const u = this.upload(actor, request.id);
+        if (u.archive) return this.startArchiveCommit(actor, request.id);
         return this.locked(u.rootId, () => this.commitWrite(actor, request.id));
       }
       case 'abortWrite': {
         const u = this.upload(actor, request.id);
+        const active = this.archiveCommits.get(request.id);
+        active?.controller.abort();
+        await active?.done;
         return this.locked(u.rootId, () => this.abortWrite(actor, request.id));
       }
       default:
@@ -444,7 +521,7 @@ export class FileNode {
     const config = this.rootsById.get(rootId)!;
     assertStructuralChange(config.path, relative, config.protectedPaths);
     const root = await this.root(rootId, true);
-    const canonical = await fs.realpath(resolved).catch(async error => {
+    const canonical = await fs.realpath(resolved).catch(async (error) => {
       if (!missing(error)) throw error;
       return path.join(await fs.realpath(path.dirname(resolved)), path.basename(resolved));
     });
@@ -452,7 +529,8 @@ export class FileNode {
   }
   private async rename(r: Extract<FileNodeRequest, { op: 'rename' }>) {
     if (!filePath(r.path) || !filePath(r.destination)) throw new Error('Cannot rename an exported root');
-    if (path.posix.dirname(r.path) !== path.posix.dirname(r.destination)) throw new Error('Rename must keep the same parent directory');
+    if (path.posix.dirname(r.path) !== path.posix.dirname(r.destination))
+      throw new Error('Rename must keep the same parent directory');
     const source = await this.resolve(r.rootId, r.path, true);
     const target = await this.resolve(r.rootId, r.destination, true, true);
     await this.structuralChange(r.rootId, r.path, source);
@@ -525,9 +603,15 @@ export class FileNode {
       return this.viewTrash(value);
     });
   }
-  private async beginWrite(actor: string, r: Extract<FileNodeRequest, { op: 'beginWrite' }>) {
+  private async beginWrite(
+    actor: string,
+    r: Extract<FileNodeRequest, { op: 'beginWrite' | 'beginArchiveWrite' }>,
+    archive?: ArchiveWriteState
+  ) {
     if (!filePath(r.path)) throw new Error('Choose a destination file');
     integer(r.size, FILE_LIMITS.fileBytes);
+    if (r.sha256 !== undefined && (typeof r.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(r.sha256)))
+      throw new Error('Invalid expected file SHA-256');
     const id = r.id === undefined ? randomUUID() : identifier(r.id);
     const previous = this.store.kvGetSync<Upload>(`files:upload:${id}`);
     if (previous) {
@@ -535,7 +619,9 @@ export class FileNode {
         previous.actor !== actor ||
         previous.rootId !== r.rootId ||
         previous.path !== r.path ||
-        previous.size !== r.size
+        previous.size !== r.size ||
+        previous.expectedSha256 !== r.sha256 ||
+        (previous.archive !== undefined && archive === undefined)
       )
         throw new Error('Upload key is already bound to another request');
       if (previous.state === 'receiving' && previous.offset === 0) {
@@ -564,7 +650,7 @@ export class FileNode {
     if (await exists(await this.resolve(r.rootId, r.path, true, true)))
       throw new Error('Destination exists; copy to a new name');
     const uploads = this.index('uploads').map((key) => this.store.kvGetSync<Upload>(`files:upload:${key}`));
-    if (uploads.filter((u) => u && ['receiving', 'committing'].includes(u.state)).length >= FILE_LIMITS.uploads)
+    if (uploads.filter((u) => u && !['complete', 'aborted'].includes(u.state)).length >= FILE_LIMITS.uploads)
       throw new Error('File write capacity reached');
     const u: Upload = {
       id,
@@ -575,6 +661,8 @@ export class FileNode {
       offset: 0,
       state: 'receiving',
       updatedAt: Date.now(),
+      ...(archive ? { archive } : {}),
+      ...(r.sha256 ? { expectedSha256: r.sha256 } : {}),
     };
     const p = path.join(
       await this.internal(r.rootId, 'uploads', path.posix.dirname(r.path) === '.' ? '' : path.posix.dirname(r.path)),
@@ -589,6 +677,93 @@ export class FileNode {
       await fd.close();
     }
     await syncDirectory(path.dirname(p));
+    return this.viewUpload(u);
+  }
+  private async beginArchiveWrite(actor: string, r: Extract<FileNodeRequest, { op: 'beginArchiveWrite' }>) {
+    if (!filePath(r.path) || !/^[a-f0-9]{64}$/.test(r.sha256))
+      throw new Error('A destination and archive SHA-256 are required');
+    const { validateArchiveManifest, probeArchiveFormats } = await import('./archive-codec.js');
+    validateArchiveManifest(r.manifest);
+    const previous = this.store.kvGetSync<Upload>(`files:upload:${identifier(r.id)}`);
+    if (
+      previous &&
+      (!previous.archive ||
+        previous.archive.format !== r.format ||
+        previous.archive.expectedSha256 !== r.sha256 ||
+        JSON.stringify(previous.archive.manifest) !== JSON.stringify(r.manifest))
+    )
+      throw new Error('Upload key is bound to another archive request');
+    if (
+      !previous &&
+      !(await probeArchiveFormats()).formats.some(
+        (item) => item.format === r.format && item.outputs.includes('directory')
+      )
+    )
+      throw new Error('Archive restoration is unavailable for this format on the destination node');
+    // Reuse the durable chunk journal. Admission persists the decoding contract before any chunk can arrive.
+    await this.beginWrite(actor, r, {
+      format: r.format,
+      manifest: structuredClone(r.manifest),
+      expectedSha256: r.sha256,
+    });
+    const value = this.upload(actor, r.id);
+    return this.viewUpload(value);
+  }
+  private async startArchiveCommit(actor: string, id: string): Promise<FileUpload> {
+    const u = this.upload(actor, id);
+    if (u.state === 'complete' || this.archiveCommits.has(id)) return this.viewUpload(u);
+    if (u.state === 'aborted' || u.offset !== u.size || !u.archive)
+      throw new Error('Cannot restore an incomplete archive');
+    if (this.archiveCommits.size >= 2)
+      throw new Error('Archive restoration capacity reached; retry after another operation completes');
+    u.state = 'committing';
+    delete u.error;
+    this.persistUpload(u);
+    const controller = new AbortController();
+    const done = Promise.resolve()
+      .then(() =>
+        this.locked(u.rootId, async () => {
+          const staged = path.join(
+            await this.internal(
+              u.rootId,
+              'uploads',
+              path.posix.dirname(u.path) === '.' ? '' : path.posix.dirname(u.path)
+            ),
+            id
+          );
+          const { publishArchiveDirectory } = await import('./archive-publication.js');
+          await publishArchiveDirectory({
+            upload: u,
+            archive: u.archive!,
+            staged,
+            tree: staged + '.tree',
+            target: () => this.resolve(u.rootId, u.path, true, true),
+            persist: () => this.persistUpload(u),
+            signal: AbortSignal.any([controller.signal, AbortSignal.timeout(60 * 60_000)]),
+          });
+          // The completed receipt survives cleanup errors; a lost acknowledgement can retry cleanup.
+          try {
+            await fs.unlink(staged);
+            await fs.rm(staged + '.tree', { recursive: true, force: true });
+            await syncDirectory(path.dirname(staged));
+          } catch {
+            u.error = 'Directory published; private staging cleanup awaits receipt acknowledgement';
+            this.persistUpload(u);
+          }
+        })
+      )
+      .catch((error) => {
+        if (u.state === 'complete') return;
+        u.state = 'failed';
+        u.error = (error instanceof Error ? error.message : String(error)).slice(0, 1000);
+        if (u.publication === 'partial')
+          u.error = `Directory publication is partial. Resume this transfer to reconcile it; ${u.error}`;
+        this.persistUpload(u);
+      })
+      .finally(() => this.archiveCommits.delete(id));
+    this.archiveCommits.set(id, { controller, done });
+    // Journaling failures remain visible through the last durable committing receipt and explicit resume.
+    void done.catch(() => {});
     return this.viewUpload(u);
   }
   private async writeChunk(actor: string, r: Extract<FileNodeRequest, { op: 'writeChunk' }>) {
@@ -663,6 +838,8 @@ export class FileNode {
       await fd.close();
     }
     u.sha256 = hash.digest('hex');
+    if (u.expectedSha256 && u.sha256 !== u.expectedSha256)
+      throw new Error('Transferred file SHA-256 does not match the admitted source');
     u.state = 'committing';
     this.persistUpload(u);
     try {
@@ -694,6 +871,8 @@ export class FileNode {
     await fs.unlink(staged).catch((e) => {
       if (!missing(e)) throw e;
     });
+    if (u.archive) await fs.rm(staged + '.tree', { recursive: true, force: true });
+    await syncDirectory(path.dirname(staged));
     this.store.kvSetSync(
       'files:uploads:index',
       this.index('uploads').filter((key) => key !== id)
@@ -702,8 +881,10 @@ export class FileNode {
   }
   private async abortWrite(actor: string, id: string) {
     const u = this.upload(actor, id);
-    if (u.state === 'committing') throw new Error('Commit outcome must be reconciled before cancelling');
-    if (u.state === 'receiving') {
+    if (u.archive?.reservationAttempted && u.state !== 'complete')
+      throw new Error('Directory publication is partial or uncertain; resume to reconcile before cancelling');
+    if (u.state === 'committing' && !u.archive) throw new Error('Commit outcome must be reconciled before cancelling');
+    if (u.state === 'receiving' || (u.archive && ['failed', 'committing'].includes(u.state))) {
       const p = path.join(
         await this.internal(u.rootId, 'uploads', path.posix.dirname(u.path) === '.' ? '' : path.posix.dirname(u.path)),
         u.id
@@ -713,6 +894,8 @@ export class FileNode {
       await fs.unlink(p).catch((e) => {
         if (!missing(e)) throw e;
       });
+      if (u.archive) await fs.rm(p + '.tree', { recursive: true, force: true });
+      await syncDirectory(path.dirname(p));
     }
     return this.viewUpload(u);
   }

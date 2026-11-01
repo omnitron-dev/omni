@@ -15,20 +15,24 @@ type Handler = (event: unknown) => void;
 /** A stand-in for the socket, recording what the store does to it. */
 const socket = {
   handlers: new Map<string, Handler>(),
+  connectionHandlers: new Set<(connected: boolean) => void>(),
   connects: 0,
   disconnects: 0,
   on(channel: string, handler: Handler) {
     socket.handlers.set(channel, handler);
     return () => socket.handlers.delete(channel);
   },
-  onConnection(_handler: (c: boolean) => void) {
-    return () => {};
+  onConnection(handler: (c: boolean) => void) {
+    socket.connectionHandlers.add(handler);
+    return () => socket.connectionHandlers.delete(handler);
   },
   connect() {
     socket.connects += 1;
+    for (const handler of socket.connectionHandlers) handler(true);
   },
   disconnect() {
     socket.disconnects += 1;
+    for (const handler of socket.connectionHandlers) handler(false);
   },
 };
 
@@ -40,6 +44,7 @@ vi.mock('../../webapp/src/netron/ws-client.js', () => ({
 async function freshStore() {
   vi.resetModules();
   socket.handlers.clear();
+  socket.connectionHandlers.clear();
   socket.connects = 0;
   socket.disconnects = 0;
   const mod = await import('../../webapp/src/stores/realtime.store.js');
@@ -47,6 +52,16 @@ async function freshStore() {
 }
 
 describe('realtime store — shared socket', () => {
+  it('stops reporting live after the last consumer releases its subscription', async () => {
+    const store = await freshStore();
+    const releaseA = store.getState().initialize();
+    const releaseB = store.getState().initialize();
+    expect(store.getState().connected).toBe(true);
+    releaseA();
+    expect(store.getState().connected).toBe(true);
+    releaseB();
+    expect(store.getState().connected).toBe(false);
+  });
   it('connects once however many consumers initialise', async () => {
     const store = await freshStore();
 

@@ -23,6 +23,8 @@ const status = vi.fn();
 const ping = vi.fn();
 const listNodes = vi.fn();
 const getSummary = vi.fn();
+const releaseRealtime = vi.fn();
+const initializeRealtime = vi.fn(() => releaseRealtime);
 
 vi.mock('src/netron/client', () => ({
   daemon: { status: () => status(), ping: () => ping() },
@@ -50,7 +52,7 @@ let realtime: { connected: boolean; lastEvent: { channel: string } | null } = {
   lastEvent: null,
 };
 vi.mock('src/stores/realtime.store', () => ({
-  useRealtimeStore: (selector: (s: unknown) => unknown) => selector(realtime),
+  useRealtimeStore: (selector: (s: unknown) => unknown) => selector({ ...realtime, initialize: initializeRealtime }),
 }));
 
 const { StatusBar } = await import('../../webapp/src/components/status-bar.js');
@@ -64,6 +66,8 @@ const alertChip = () =>
   screen.queryAllByText((_content, el) => /^\d+ alerts?$/.test(el?.textContent?.trim() ?? ''));
 
 beforeEach(() => {
+  initializeRealtime.mockClear();
+  releaseRealtime.mockClear();
   status.mockReset();
   ping.mockReset();
   ping.mockResolvedValue({ pid: 1, uptime: 1000, version: '1.0.0' });
@@ -75,6 +79,15 @@ beforeEach(() => {
 });
 
 describe('StatusBar', () => {
+  it('keeps a realtime subscription on routes that do not own one themselves', async () => {
+    getSummary.mockResolvedValue({ firing: 0 });
+    const { rerender, unmount } = render(<StatusBar />);
+    await waitFor(() => expect(initializeRealtime).toHaveBeenCalledTimes(1));
+    rerender(<StatusBar />);
+    expect(initializeRealtime).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(releaseRealtime).toHaveBeenCalledTimes(1);
+  });
   it('keeps a reachable backend online when owner inventory is unavailable without inventing zero apps', async () => {
     status.mockRejectedValue(new Error('Execution owner inventory is stale'));
     getSummary.mockResolvedValue({ firing: 0 });

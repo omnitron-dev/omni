@@ -133,6 +133,10 @@ export function StatusBar({ docked = false }: { docked?: boolean }) {
   const lastKnown = useRef({ nodesOnline: 0, nodesTotal: 0, firingAlerts: 0, appsOnline: 0, appsTotal: 0, appsKnown: false });
   const wsConnected = useRealtimeStore((s) => s.connected);
   const lastEvent = useRealtimeStore((s) => s.lastEvent);
+  const initializeRealtime = useRealtimeStore((s) => s.initialize);
+  // Fleet status is visible on every authenticated route, including direct
+  // entry into Access or Terminal where no page owns an event subscription.
+  useEffect(initializeRealtime, [initializeRealtime]);
   const activeProject = useProjectStore((s) => s.activeProject);
   const activeStack = useProjectStore((s) => s.activeStack);
   // For the event handler below, which runs per event rather than per

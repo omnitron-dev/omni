@@ -300,6 +300,7 @@ export const useRealtimeStore = create<RealtimeState>((set, get) => ({
     teardown = () => {
       for (const unsub of unsubscribers) unsub();
       ws.disconnect();
+      set({ connected: false });
     };
 
     return releaseOnce();

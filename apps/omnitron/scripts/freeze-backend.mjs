@@ -11,6 +11,9 @@ if (fs.existsSync(output)) throw Error('Runtime destination already exists; neve
 if (fs.existsSync(path.join(source, 'webapp/index.html'))) {
   throw Error('Console output is misplaced at webapp/index.html. Publish the prebuilt Console to webapp/dist before freezing; nginx serves only that directory.');
 }
+if (fs.existsSync(path.join(source, 'webapp')) && !fs.existsSync(path.join(source, 'webapp/dist/index.html'))) {
+  throw Error('Console package is incomplete: webapp/dist/index.html is missing. Include the prebuilt Console, or prepare a headless package without the webapp directory.');
+}
 const { runtimeArtifactDigest, verifyRuntimeArtifact } = await import(pathToFileURL(path.join(source, 'dist/shared/runtime-artifact.js')));
 const overlays = new Map();
 for (const input of overlayInputs) {

@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -93,4 +94,12 @@ test('refuses incomplete output and source symlinks while the live build remains
   fs.symlinkSync('/etc/passwd', path.join(linked, 'assets/extra.js'));
   assert.throws(() => publishConsole(linked, dest), /Not a regular file/);
   assert.match(fs.readFileSync(path.join(dest, 'index.html'), 'utf8'), /working-12345678/);
+});
+
+test('freezing rejects a Console directory whose build was omitted from the package', t => {
+  const { root } = fixture(t), source = path.join(root, 'package'), output = path.join(root, 'sealed');
+  fs.mkdirSync(path.join(source, 'webapp'), { recursive: true });
+  assert.throws(() => execFileSync(process.execPath, [new URL('./freeze-backend.mjs', import.meta.url).pathname, source, output], { encoding: 'utf8', stdio: 'pipe' }),
+    error => /Console package is incomplete/.test(error.stderr));
+  assert.equal(fs.existsSync(output), false, 'An incomplete candidate must not be frozen');
 });

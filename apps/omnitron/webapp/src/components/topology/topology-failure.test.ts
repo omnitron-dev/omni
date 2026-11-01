@@ -58,6 +58,19 @@ beforeEach(() => {
 });
 
 describe('an empty topology', () => {
+  it('keeps a legacy stack node unknown when its workload inventory cannot be observed', async () => {
+    project.getTopologyInventory.mockResolvedValue({ errors: [], deployments: [{ project: 'sample', stack: {
+      name: 'prod', type: 'remote', config: { type: 'remote' }, apps: [],
+      nodes: [{ host: 'worker.example', port: 9700, connected: false, daemonRole: 'slave' }],
+      infrastructure: { ready: false, services: {} },
+    } }] });
+    const useStore = await store();
+    await useStore.getState().fetchAll();
+    const servers = useStore.getState().nodes.filter(node => node.type === 'serverNode');
+    expect(servers).toHaveLength(1);
+    expect(servers[0]?.data.status).toBe('unknown');
+  });
+
   it('coalesces overlapping refreshes without accumulating fleet reads', async () => {
     let finish!: (value: unknown) => void;
     project.getTopologyInventory.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));

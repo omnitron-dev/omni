@@ -157,7 +157,7 @@ export async function stackStatusCommand(projectName: string, stackName: string)
       table({
         width: 'auto',
         data: stack.nodes.map((n) => ({
-          status: n.connected ? prism.green('●') : prism.dim('○'),
+          status: n.connected ? prism.green('observed') : prism.yellow('unobserved'),
           host: `${n.host}:${n.port}`,
           role: n.daemonRole === 'slave' ? 'slave' : 'master',
           label: n.label ?? '',

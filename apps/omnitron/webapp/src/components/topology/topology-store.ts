@@ -399,7 +399,7 @@ export function stackBands(
         hostname: n.label ?? n.host,
         address: `${n.host}:${n.port}`,
         role: n.daemonRole,
-        status: n.connected ? 'online' : 'offline',
+        status: n.connected ? 'online' : 'unknown',
         stacks: [s.name],
         apps: s.apps.map((a) => `${s.name}/${a.name}`),
       }));

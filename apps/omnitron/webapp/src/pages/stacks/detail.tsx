@@ -198,11 +198,11 @@ export default function StackDetailPage() {
               width: 8,
               height: 8,
               borderRadius: '50%',
-              bgcolor: node.connected ? '#22c55e' : '#ef4444',
+              bgcolor: node.connected ? 'success.main' : 'warning.main',
               mr: 0.5,
             }}
           />
-          {node.connected ? 'Connected' : 'Disconnected'}
+          {node.connected ? 'Inventory observed' : 'Inventory unavailable'}
         </>
       ),
     },
@@ -325,7 +325,7 @@ export default function StackDetailPage() {
               <Typography variant="body2" sx={{
                 fontWeight: 600
               }}>
-                {stack.nodes.filter((n) => n.connected).length}/{stack.nodes.length} nodes connected
+                {stack.nodes.filter((n) => n.connected).length}/{stack.nodes.length} node inventories observed
               </Typography>
               <Typography variant="caption" sx={{
                 color: "text.secondary"
@@ -335,7 +335,7 @@ export default function StackDetailPage() {
             </Box>
             {stack.nodes.some((n) => !n.connected) && (
               <Chip
-                label={`${stack.nodes.filter((n) => !n.connected).length} offline`}
+                label={`${stack.nodes.filter((n) => !n.connected).length} unobserved`}
                 size="small"
                 color="warning"
                 sx={{ height: 22, fontSize: '0.65rem' }}
@@ -519,8 +519,7 @@ function NodeSyncRow({ node }: { node: IStackNodeStatus }) {
               width: 8,
               height: 8,
               borderRadius: '50%',
-              bgcolor: node.connected ? '#22c55e' : '#ef4444',
-              ...(node.connected && { boxShadow: '0 0 6px rgba(34,197,94,0.5)' }),
+              bgcolor: node.connected ? 'success.main' : 'warning.main',
             }}
           />
           <Box>
@@ -550,9 +549,9 @@ function NodeSyncRow({ node }: { node: IStackNodeStatus }) {
           </Box>
         ) : (
           <Chip
-            label={node.connected ? 'Connected' : 'Offline'}
+            label={node.connected ? 'Inventory observed' : 'Inventory unavailable'}
             size="small"
-            color={node.connected ? 'success' : 'default'}
+            color={node.connected ? 'success' : 'warning'}
             variant="outlined"
             sx={{ height: 20, fontSize: '0.6rem' }}
           />

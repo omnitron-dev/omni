@@ -40,7 +40,7 @@ export function ReleaseDeploymentState({ project, stack }: { project: string; st
           sx={{ color: 'primary.main', textDecoration: 'none', fontWeight: 600 }}>{row.stack}</Typography>
         <Typography variant="caption" color="text.secondary">{row.type === 'local' ? 'Controller node' : row.type === 'cluster' ? 'Distributed stack' : 'Remote stack'}</Typography>
         {row.type !== 'local' && row.nodes.map(node => <Typography key={`${node.host}:${node.port}`} variant="caption" color={node.connected && !error ? 'text.secondary' : 'warning.main'}>
-          {node.label ? `${node.label} · ` : ''}{node.endpoint} · {error ? 'last observed' : node.connected ? 'reachable' : 'unreachable'}
+          {node.label ? `${node.label} · ` : ''}{node.endpoint} · {error ? 'last observed' : node.connected ? 'inventory observed' : 'inventory unavailable'}
         </Typography>)}
       </Stack>
       <Stack spacing={0.5} sx={{ minWidth: 0, alignItems: 'flex-start' }}>

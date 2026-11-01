@@ -17,7 +17,7 @@ it('shows current placement and stopped apps without turning deployment history 
   ]);
   mocks.deployments.mockResolvedValue({ known: true, deployments: [{ project: 'sample', stack: 'test', release: 'sample-old', at: '2026-09-30T00:00:00Z', source: 'operator' }] });
   render(<MemoryRouter><ReleaseDeploymentState project="sample" /></MemoryRouter>);
-  await waitFor(() => expect(screen.getByText('Test node · test.example:9700 · reachable')).toBeTruthy());
+  await waitFor(() => expect(screen.getByText('Test node · test.example:9700 · inventory observed')).toBeTruthy());
   expect(screen.getByText('No applications running')).toBeTruthy();
   expect(screen.getByText('Current release not reported')).toBeTruthy();
   expect(screen.getByRole('link', { name: 'sample-old' }).getAttribute('href')).toBe('/releases/sample-old');
@@ -66,4 +66,16 @@ it('keeps the concrete node reason visible without confirming missing launch evi
   await waitFor(() => expect(screen.getByText('Current release not reported')).toBeTruthy());
   expect(screen.getByText('Owner predates launch verification')).toBeTruthy();
   expect(screen.getByText('0/1 launch identities verified')).toBeTruthy();
+});
+
+it('does not call a node unreachable when only its application inventory is unavailable', async () => {
+  mocks.stacks.mockResolvedValue([{ name: 'test', type: 'remote', status: 'unknown',
+    apps: [{ name: 'api', status: 'unknown' }],
+    nodes: [{ host: 'test.example', port: 9700, connected: false, syncStatus: { pendingItems: 0, lastSyncAgeMs: 0 } }],
+  }]);
+  mocks.deployments.mockResolvedValue({ known: true, deployments: [] });
+  render(<MemoryRouter><ReleaseDeploymentState project="sample" /></MemoryRouter>);
+  await waitFor(() => expect(screen.getByText('test.example:9700 · inventory unavailable')).toBeTruthy());
+  expect(screen.queryByText(/unreachable|offline|No applications running/)).toBeNull();
+  expect(screen.getByText(/1 unknown/)).toBeTruthy();
 });

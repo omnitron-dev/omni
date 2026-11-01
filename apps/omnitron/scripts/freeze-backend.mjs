@@ -57,6 +57,22 @@ function visit(root) {
 }
 overlays.set(JSON.parse(fs.readFileSync(path.join(source, 'package.json'), 'utf8')).name, source);
 visit(source);
+// Reusing an immutable installed graph is also an offline build. Registry
+// packages inside it no longer have a node_modules path, but their files have
+// already been selected by packing. Validate the entire containing release
+// before treating those directories as unpacked packages; never trust a path
+// or an unverified RUNTIME.json alone.
+const sealedPackages = new Set(), verifiedReleases = new Set();
+for (const item of packages) {
+  const parent = path.dirname(item.root), release = path.dirname(parent);
+  if (path.basename(parent) !== 'packages' || !/^(0|[1-9][0-9]*)$/.test(path.basename(item.root)) ||
+      !fs.existsSync(path.join(release, 'RUNTIME.json'))) continue;
+  if (!verifiedReleases.has(release)) {
+    await verifyRuntimeArtifact(release);
+    verifiedReleases.add(release);
+  }
+  sealedPackages.add(item.root);
+}
 fs.mkdirSync(output, { mode: 0o700, recursive: true });
 const skip = name => ['node_modules', '.git', '.DS_Store', '.codex', '.agents', '.turbo', '.cache', 'coverage'].includes(name) || name === '.env' || name.startsWith('.env.');
 for (const [id, item] of packages.entries()) {
@@ -67,7 +83,7 @@ for (const [id, item] of packages.entries()) {
   fs.mkdirSync(destination, { recursive: true });
   // Local workspaces may contain private developer files. Copy their declared
   // publication surface; registry packages already contain their packed files.
-  if (!item.root.includes(`${path.sep}node_modules${path.sep}`) && Array.isArray(item.metadata.files)) {
+  if (!sealedPackages.has(item.root) && !item.root.includes(`${path.sep}node_modules${path.sep}`) && Array.isArray(item.metadata.files)) {
     const entries = new Set(['package.json', 'LICENSE', 'README.md', ...item.metadata.files]);
     for (const relative of entries) {
       if (typeof relative !== 'string' || /[*?{}!]/.test(relative) || path.isAbsolute(relative) || relative.split('/').includes('..')) {

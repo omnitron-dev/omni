@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import { ensurePrivateDir, sealFile } from '../shared/private-files.js';
+import { ensurePrivateDir, sealSqliteFiles } from '../shared/private-files.js';
 import { readProcessLifetime } from './process-lifetime.js';
 
 export interface JournalItem<T> { id: string; digest: string; value: T }
@@ -47,7 +47,7 @@ export class LogJournal<T> {
         UPDATE totals SET assembling=assembling+old.ready-new.ready, bytes=bytes-LENGTH(CAST(old.payload AS BLOB))+LENGTH(CAST(new.payload AS BLOB)); END;
       CREATE TRIGGER IF NOT EXISTS log_removed AFTER DELETE ON records BEGIN
         UPDATE totals SET pending=pending-1, assembling=assembling-1+old.ready, bytes=bytes-LENGTH(CAST(old.payload AS BLOB)); END;`);
-    if (filename !== ':memory:') sealFile(filename);
+    if (filename !== ':memory:') sealSqliteFiles(filename);
   }
 
   put(id: string, value: T, ready = true): void {

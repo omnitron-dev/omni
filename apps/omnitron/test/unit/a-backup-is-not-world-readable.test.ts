@@ -245,7 +245,7 @@ describe('the paths that produce these files seal them', () => {
     expect(opens.length, 'expected both the sync and async opens').toBe(2);
     for (const open of opens) {
       const after = src.slice(open.index ?? 0, (open.index ?? 0) + 600);
-      expect(after).toContain('sealFile(this.dbPath)');
+      expect(after).toContain('sealSqliteFiles(this.dbPath)');
     }
     expect(src).not.toContain("fs.mkdirSync(path.dirname(this.dbPath), { recursive: true })");
   });

@@ -687,7 +687,7 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
         loading={busy}
         title={dialogPending?.action === 'copy' ? 'Copy to destination' : 'Move to trash'}
         confirmLabel={dialogPending?.action === 'copy' ? 'Start copy' : 'Move to trash'}
-        confirmColor={pending?.action === 'copy' ? 'primary' : 'warning'}
+        confirmColor={dialogPending?.action === 'copy' ? 'primary' : 'warning'}
         disabled={
           pending?.action === 'copy' && (!pending.destination || pending.destination.root.readOnly || !copyReady)
         }
@@ -696,28 +696,28 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
           <Stack spacing={1}>
             <OperationStatus active={busy} label={operation ?? ''} />
             <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>
-              {pending && label(pending.pane.location)}
+              {dialogPending && label(dialogPending.pane.location)}
             </Typography>
             <Box sx={{ maxHeight: 160, overflow: 'auto' }}>
-              {pending?.pane.entries.map((e) => (
+              {dialogPending?.pane.entries.map((e) => (
                 <Typography key={e.path} variant="body2" sx={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
                   {e.name}
                 </Typography>
               ))}
             </Box>
-            {pending?.action === 'copy' ? (
+            {dialogPending?.action === 'copy' ? (
               <>
                 <Typography variant="body2" sx={{ overflowWrap: 'anywhere', fontWeight: 600 }}>
-                  → {pending.destination ? label(pending.destination.location) : 'Select the other panel destination'}
+                  → {dialogPending.destination ? label(dialogPending.destination.location) : 'Select the other panel destination'}
                 </Typography>
-                {pending.destination &&
-                  pending.pane.entries.length === 1 &&
-                  pending.pane.entries[0]?.kind === 'directory' && (
+                {dialogPending.destination &&
+                  dialogPending.pane.entries.length === 1 &&
+                  dialogPending.pane.entries[0]?.kind === 'directory' && (
                     <ArchiveCopyOptions
-                      key={`${JSON.stringify(pending.pane.location)}:${pending.pane.entries[0].path}:${JSON.stringify(pending.destination.location)}`}
-                      sourceNodeId={pending.pane.location.nodeId}
-                      destinationNodeId={pending.destination.location.nodeId}
-                      directoryName={pending.pane.entries[0].name}
+                      key={`${JSON.stringify(dialogPending.pane.location)}:${dialogPending.pane.entries[0].path}:${JSON.stringify(dialogPending.destination.location)}`}
+                      sourceNodeId={dialogPending.pane.location.nodeId}
+                      destinationNodeId={dialogPending.destination.location.nodeId}
+                      directoryName={dialogPending.pane.entries[0].name}
                       disabled={busy}
                       onChange={(choice) => {
                         setCopyArchive(choice.archive);

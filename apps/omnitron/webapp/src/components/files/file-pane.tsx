@@ -747,10 +747,12 @@ export function FilePane({
               onDoubleClick={() => navigate(parentPath(tab.path))}
             >
               <TableCell />
-              <TableCell colSpan={3}>
+              <TableCell>
                 <Button color="inherit" size="small" tabIndex={-1} aria-label="Open parent directory" onClick={(event) => { event.stopPropagation(); navigate(parentPath(tab.path)); }}
                   startIcon={<ParentFolderIcon fontSize="small" />} sx={{ minWidth: 0, p: 0, fontFamily: 'monospace' }}>..</Button>
               </TableCell>
+              <TableCell />
+              <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }} />
             </TableRow>}
             {rows.map((entry) => (
               <TableRow
@@ -851,8 +853,8 @@ export function FilePane({
       >
         <Typography variant="caption" color="text.secondary" aria-live="polite" sx={{ flex: 1 }}>
           {marked.length
-            ? `${marked.length} selected · ${fileBytes(marked.reduce((n, e) => n + (e.kind === 'file' ? e.size : 0), 0))}`
-            : `${rows.length}${next ? '+' : ''} entries`}
+            ? `${marked.length} selected${marked.every((entry) => entry.kind === 'file') ? ` · ${fileBytes(marked.reduce((n, e) => n + e.size, 0))}` : ''}`
+            : `${rows.length}${next ? '+' : ''} ${rows.length === 1 && !next ? 'entry' : 'entries'}`}
         </Typography>
         {root?.readOnly && <Chip size="small" variant="outlined" label="Read only" />}
         {protectedSelection && <Tooltip title="This structural entry cannot be renamed or moved to trash; its ordinary children remain usable"><Chip size="small" variant="outlined" label="Protected" /></Tooltip>}

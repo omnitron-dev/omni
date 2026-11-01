@@ -341,6 +341,14 @@ stack
   });
 
 stack
+  .command('diagnose <project> <stack>')
+  .description('Inspect stack prerequisites without starting, provisioning or migrating')
+  .action(async (projectName, stackName) => {
+    const { stackDiagnoseCommand } = await import('../commands/stack.js');
+    await stackDiagnoseCommand(projectName, stackName);
+  });
+
+stack
   .command('start <project> <stack>')
   .description('Start a stack — provision infra + deploy + start apps')
   // A remote deployment ships the working tree, so it refuses one that is

@@ -1,3 +1,7 @@
+import { isDeepStrictEqual } from 'node:util';
+import { diagnoseContainers } from '../project/stack-diagnosis.js';
+import { diagnosisStatus, type StackDiagnosis, type StackDiagnosisCheck } from '../shared/dto/stack-diagnosis.js';
+import { buildInfraFromRequirements, requirementsFromDefinitions } from '../project/requirements-scanner.js';
 import { randomUUID } from 'node:crypto';
 import { NodeStackStop, stackDefinitionFingerprint, type NodeStackStopRequest, type NodeStackStopPlan, type NodeStackStopReceipt } from '../project/node-stack-stop.js';
 import { listManagedContainers, removeContainer } from '../infrastructure/container-runtime.js';
@@ -5,7 +9,7 @@ import { stackExecutionKey, type StackExecutionScope } from '../shared/dto/stack
 import { publicStack } from '../project/public-stack.js';
 import { TopologyStateStore } from '../project/topology-state.js';
 import { TopologyControl } from '../project/topology-control.js';
-import { mergeInfrastructure } from '../infrastructure/merge-config.js';
+import { mergeInfrastructure, mergeInferredInfrastructure } from '../infrastructure/merge-config.js';
 export { mergeInfrastructure } from '../infrastructure/merge-config.js';
 import type { TopologyScope, TopologySpec, TopologyPlan, TopologyWorkspace } from '../shared/dto/topology.js';
 import { currentActor, describeFailure } from './audit.service.js';
@@ -547,10 +551,11 @@ export class ProjectService extends EventEmitter {
     return this.registry.registrations(project);
   }
 
-  async resolveProjectStack<T extends RuntimeStackScope>(scope: T): Promise<T> {
+  async resolveProjectStack<T extends RuntimeStackScope>(scope: T, options: { readOnly?: boolean } = {}): Promise<T> {
     const resolved = this.registry.resolveStack(scope);
     if (resolved.project !== scope.project) {
-      const config = await this.ensureConfig(scope.project);
+      const config = options.readOnly ? this.getLoadedConfig(scope.project) : await this.ensureConfig(scope.project);
+      if (!config) throw new Error('Project configuration is not loaded; reload it before resolving imported stack diagnostics');
       if (Object.hasOwn(this.resolveStacks(config, scope.project), scope.stack))
         throw new Error(`Ambiguous stack '${scope.stack}': both default and imported configurations declare it`);
     }
@@ -686,10 +691,8 @@ export class ProjectService extends EventEmitter {
     const definitions = await this.loadAppDefinitions(projectName, stack, config);
     // The same requirements merge used at stack start. A failed fresh scan must
     // refuse a handoff rather than silently releasing auto-detected services.
-    const { scanRequirements, buildInfraFromRequirements } = await import('../project/requirements-scanner.js');
-    const auto = buildInfraFromRequirements(await scanRequirements(this.resolveStackApps(stack, config), project.path));
-    const explicit = mergeInfrastructure(config, stack);
-    const effective = { ...auto, ...explicit, services: { ...explicit?.services } };
+    const auto = buildInfraFromRequirements(requirementsFromDefinitions(definitions));
+    const effective = mergeInferredInfrastructure(auto, mergeInfrastructure(config, stack));
     return this.infraManager.refreshOwnership(projectName, stackName, stack, effective as InfrastructureConfig, definitions, project.path);
   }
 
@@ -1022,6 +1025,97 @@ export class ProjectService extends EventEmitter {
     return result.plan;
   }
 
+  /** Reads persisted launch evidence and static JSON only; never imports application code. */
+  private readAppDeclaration(project: string, stack: string, app: string, bootstrap: string) {
+    const state = this.bootstrapMetadata?.readState(bootstrap);
+    const saved = state?.metadata;
+    const launched = this.orchestrator?.getHandle(ProjectService.handleKey(project, stack, app))?.bootstrapMetadata;
+    const observed = launched?.bootstrap === bootstrap ? launched : null;
+    const record = observed && (!saved || observed.capturedAt > saved.capturedAt) ? observed : saved;
+    const metadata = record?.definition ?? getCachedBootstrapDefinition(bootstrap) ?? this.bootstrapTopology.get(bootstrap);
+    const declared = readDeclaredConfig(bootstrap);
+    return { state, record, metadata, declared, observed };
+  }
+
+  /** Inspect prerequisites without provisioning, migration, application start or bootstrap imports. */
+  private readonly diagnosesInFlight = new Map<string, Promise<StackDiagnosis>>();
+
+  async diagnoseStack(projectName: string, stackName: string): Promise<StackDiagnosis> {
+    const key = JSON.stringify([projectName, stackName]);
+    const pending = this.diagnosesInFlight.get(key);
+    if (pending) return pending;
+    const request = this.inspectStackReadiness(projectName, stackName);
+    this.diagnosesInFlight.set(key, request);
+    try { return await request; } finally { this.diagnosesInFlight.delete(key); }
+  }
+
+  private async inspectStackReadiness(projectName: string, stackName: string): Promise<StackDiagnosis> {
+    const started = Date.now();
+    const checks: StackDiagnosisCheck[] = [];
+    const deferred = ['Application startup and application health', 'Database authentication, schema and migrations', 'Registry downloads and available storage capacity', 'Configuration changes made after this observation'];
+    const done = (): StackDiagnosis => ({ project: projectName, stack: stackName, checkedAt: new Date().toISOString(), durationMs: Date.now() - started, status: diagnosisStatus(checks), checks, deferred });
+    const add = (code: string, resource: string, state: StackDiagnosisCheck['state'], message: string, action?: string) => checks.push({ code, resource, state, message, ...(action && { action }) });
+    const project = this.registry.get(projectName);
+    if (!project) throw new Error('Project is not registered');
+    const loaded = this.configRegistry.get(projectName);
+    if (!loaded) {
+      add('configuration.unloaded', 'Project configuration', 'unknown', 'Project configuration has not been loaded.', 'Reload the trusted project configuration, then retry.');
+      return done();
+    }
+    const config = loaded.config;
+    const stack = this.resolveStacks(config, projectName)[stackName];
+    if (!stack) throw new Error('Stack is not declared');
+    add('configuration.loaded', 'Project configuration', 'pass', `Using daemon configuration loaded at ${new Date(loaded.loadedAt).toISOString()}.`, 'Reload project configuration after editing it.');
+    const entries = this.resolveStackApps(stack, config);
+    if (Array.isArray(stack.apps)) {
+      const available = new Set(entries.map(entry => entry.name));
+      for (const name of stack.apps) if (!available.has(name)) add('application.undeclared', name, 'blocked', 'The selected application is absent or disabled in project configuration.');
+    }
+    if (!entries.length) add('applications.empty', 'Applications', 'blocked', 'No enabled applications are selected.');
+    try { resolveStartupOrder(entries); add('dependencies.valid', 'Application dependencies', 'pass', 'Startup dependency order resolved.'); }
+    catch { add('dependencies.invalid', 'Application dependencies', 'blocked', 'Application dependencies cannot be ordered.', 'Check missing dependencies and dependency cycles in the project configuration.'); }
+    try { await this.stackEnvFor(projectName, stackName, stack, entries.map(entry => entry.name)); add('environment.valid', 'Environment', 'pass', 'Environment declarations and vault references resolved; values are withheld.'); }
+    catch { add('environment.invalid', 'Environment', 'blocked', 'Environment declarations or vault references could not be resolved.', 'Check stack environment variable names and required vault entries.'); }
+    if (stack.release?.mode === 'required') add('release.required', 'Release', 'unknown', 'This stack requires an immutable release; no release was selected for this check.', 'Use Deploy release and review its admission checks.');
+    const definitions = new Map<string, IAppDefinition>();
+    for (const entry of entries) {
+      if (!entry.bootstrap) {
+        add('application.classic', entry.name, 'unknown', 'Executable prerequisites for this command-based application have not been probed.', 'Check the configured command and working directory before starting.');
+        continue;
+      }
+      const bootstrap = path.resolve(project.path, entry.bootstrap);
+      if (!fs.existsSync(bootstrap)) add('bootstrap.missing', entry.name, 'blocked', 'The configured bootstrap file is missing.', 'Restore the application sources or correct its bootstrap path.');
+      const { metadata, declared, state, record } = this.readAppDeclaration(projectName, stackName, entry.name, bootstrap);
+      if (declared.malformed) add('declaration.invalid', entry.name, 'blocked', 'Application configuration is invalid or unreadable.', 'Check config/default.json syntax and permissions.');
+      if (!metadata || !record || metadataSourceChanged(record) || state?.failure) add('declaration.unknown', entry.name, 'unknown', 'Current bootstrap declarations have not been verified.', 'Refresh declarations as an administrator, then run diagnosis again.');
+      else add('declaration.current', entry.name, 'pass', `Bootstrap declaration captured at ${record.capturedAt}; source file is unchanged.`);
+      if (metadata || declared.omnitron) definitions.set(entry.name, withDeclaredConfig({ name: entry.name, version: '', processes: [], ...metadata }, declared));
+    }
+    if (stack.type !== 'local') {
+      try { resolveNodePlacements(stack, entries); add('placement.valid', 'Placement', 'pass', 'Configured node placement resolved.'); }
+      catch { add('placement.invalid', 'Placement', 'blocked', 'Node placement is incomplete or inconsistent.', 'Check selected applications, node identities and placement assignments.'); }
+      add('remote.prerequisites', 'Remote infrastructure', 'unknown', 'Host prerequisites must be inspected on each target node; local Docker is not evidence for a remote stack.', `Use omnitron infra inspect ${projectName}/${stackName} for host-service evidence and Nodes for RPC diagnostics.`);
+      return done();
+    }
+    try {
+      const effective = mergeInferredInfrastructure(buildInfraFromRequirements(requirementsFromDefinitions(definitions)), mergeInfrastructure(config, stack));
+      const declaredServices = { ...effective.services };
+      for (const definition of definitions.values()) Object.assign(declaredServices, definition.omnitronConfig?.infrastructure);
+      for (const [service, requirement] of Object.entries(declaredServices)) {
+        // Presets acquire their provisioning definition in the shared resolver below.
+        if ('preset' in requirement) continue;
+        const binding = bindService(requirement, stack.serviceOverrides?.[service]);
+        if (binding.provisioning === 'none') add('service.unconfigured', service, 'blocked', 'This service has no provisioning definition or external endpoint.');
+        if (binding.provisioning === 'bareMetal' || binding.provisioning === 'external') add('service.host', service, 'unknown', 'This service uses a host or external endpoint; Docker readiness does not verify it.', 'Check the service endpoint, authentication and host configuration separately.');
+      }
+      const containers = await this.infraManager.planStack(projectName, stackName, stack, effective, definitions, project.path);
+      checks.push(...await diagnoseContainers(containers));
+    } catch {
+      add('infrastructure.invalid', 'Infrastructure plan', 'blocked', 'The infrastructure declaration could not be resolved.', 'Review service presets, port mappings and service overrides. No infrastructure was changed.');
+    }
+    return done();
+  }
+
   /** Configuration evidence from the launch builder; it never starts, probes or modifies applications. */
   async getTopology(scope: { project?: string; stack?: string }): Promise<import('../shared/dto/project.js').ProjectTopology> {
     const result: import('../shared/dto/project.js').ProjectTopology = { version: 1, generatedAt: new Date().toISOString(), dependencies: [], warnings: [], coverage: [] };
@@ -1043,13 +1137,7 @@ export class ProjectService extends EventEmitter {
             }
             if (!directory) continue;
             const bootstrap = path.resolve(directory, entry.bootstrap);
-            const state = this.bootstrapMetadata?.readState(bootstrap);
-            const saved = state?.metadata;
-            const launched = this.orchestrator?.getHandle(ProjectService.handleKey(project, stack, entry.name))?.bootstrapMetadata;
-            const observed = launched?.bootstrap === bootstrap ? launched : null;
-            const record = observed && (!saved || observed.capturedAt > saved.capturedAt) ? observed : saved;
-            const metadata = record?.definition ?? getCachedBootstrapDefinition(bootstrap) ?? this.bootstrapTopology.get(bootstrap);
-            const declared = readDeclaredConfig(bootstrap);
+            const { state, record, metadata, declared, observed } = this.readAppDeclaration(project, stack, entry.name, bootstrap);
             result.coverage!.push({ project, stack, app: entry.name,
               source: record ? record === observed ? 'launch' : 'snapshot' : metadata ? 'memory' : 'missing',
               ...(record && { capturedAt: record.capturedAt }) });
@@ -2974,64 +3062,8 @@ export class ProjectService extends EventEmitter {
     projectName: string,
     stackName: string,
   ): Promise<{ valid: boolean; issues: string[] }> {
-    const config = await this.loadProjectConfig(projectName);
-    const stacks = this.resolveStacks(config, projectName);
-    const stackConfig = stacks[stackName];
-
-    if (!stackConfig) {
-      return { valid: false, issues: [`Stack '${stackName}' not found`] };
-    }
-
-    const project = this.registry.get(projectName);
-    if (!project) {
-      return { valid: false, issues: [`Project '${projectName}' not found`] };
-    }
-
-    // Determine effective infrastructure: stack-level overrides ecosystem-level
-    const effectiveInfra = stackConfig.infrastructure ?? config.infrastructure;
-    const issues: string[] = [];
-
-    // Scan app requirements
-    const { scanRequirements } = await import('../project/requirements-scanner.js');
-    const appEntries = this.resolveStackApps(stackConfig, config);
-    const reqs = await scanRequirements(appEntries, project.path);
-
-    // Check PostgreSQL
-    if (reqs.databases.length > 0 && !effectiveInfra?.postgres) {
-      issues.push(
-        `PostgreSQL required by ${reqs.databases.map((d) => d.app).join(', ')} but not configured in infrastructure`
-      );
-    } else if (reqs.databases.length > 0 && effectiveInfra?.postgres) {
-      // Check individual databases exist in config
-      const configuredDbs = new Set(Object.keys(effectiveInfra.postgres.databases ?? {}));
-      for (const db of reqs.databases) {
-        if (!configuredDbs.has(db.database)) {
-          issues.push(`Database '${db.database}' needed by '${db.app}' not found in postgres.databases`);
-        }
-      }
-    }
-
-    // Check Redis
-    if (reqs.redis.appCount > 0 && !effectiveInfra?.redis) {
-      issues.push(
-        `Redis required by ${reqs.redis.allocations.map((a) => a.app).join(', ')} but not configured in infrastructure`
-      );
-    }
-
-    // Check S3/MinIO
-    if (reqs.buckets.length > 0 && !effectiveInfra?.minio) {
-      issues.push(
-        `S3/MinIO required by ${reqs.buckets.map((b) => b.app).join(', ')} but not configured in infrastructure`
-      );
-    } else if (reqs.buckets.length > 0 && effectiveInfra?.minio) {
-      const configuredBuckets = new Set(effectiveInfra.minio.buckets ?? []);
-      for (const b of reqs.buckets) {
-        if (configuredBuckets.size > 0 && !configuredBuckets.has(b.bucket)) {
-          issues.push(`Bucket '${b.bucket}' needed by '${b.app}' not found in minio.buckets`);
-        }
-      }
-    }
-
+    const report = await this.diagnoseStack(projectName, stackName);
+    const issues = report.checks.filter(check => check.state === 'blocked' || check.state === 'unknown').map(check => `${check.resource}: ${check.message}`);
     return { valid: issues.length === 0, issues };
   }
 
@@ -3048,18 +3080,6 @@ export class ProjectService extends EventEmitter {
     const stateKey = `${projectName}/${stackName}`;
     const state = this.stackStates.get(stateKey)!;
 
-    // 0. Validate infrastructure covers app requirements (warn only, don't block)
-    try {
-      const validation = await this.validateStackInfrastructure(projectName, stackName);
-      if (!validation.valid) {
-        for (const issue of validation.issues) {
-          this.logger.warn({ project: projectName, stack: stackName, issue }, 'Infrastructure validation issue');
-        }
-      }
-    } catch {
-      // Validation is best-effort — don't block stack start
-    }
-
     // 1. Load bootstrap definitions (needed for both infra provisioning and config resolution)
     const appEntries = this.resolveStackApps(stackConfig, ecosystemConfig);
     // What the stack gives its apps, vault references resolved — now, before
@@ -3073,38 +3093,12 @@ export class ProjectService extends EventEmitter {
     //    Auto-detect core services (postgres, redis, minio) from app requirements,
     //    then merge with explicit infrastructure config (gateway, custom services).
     // Merge stack-level + ecosystem-level infrastructure (stack overrides ecosystem, but both contribute)
-    let effectiveInfra = mergeInfrastructure(ecosystemConfig, stackConfig);
-
-    if (project) {
-      try {
-        const { scanRequirements, buildInfraFromRequirements } = await import('../project/requirements-scanner.js');
-        const reqs = await scanRequirements(appEntries, project.path);
-        const autoInfra = buildInfraFromRequirements(reqs);
-
-        if (Object.keys(autoInfra).length > 0) {
-          const explicitServices = effectiveInfra?.services ?? {};
-          this.logger.info(
-            { explicitServiceKeys: Object.keys(explicitServices), hasEffective: !!effectiveInfra },
-            'Pre-merge: explicit services from config'
-          );
-          // Merge: auto-detected core services + explicit config (gateway, custom services)
-          effectiveInfra = {
-            ...autoInfra,
-            ...effectiveInfra,
-            services: { ...explicitServices },
-          };
-          this.logger.info(
-            { project: projectName, stack: stackName, auto: Object.keys(autoInfra), explicit: Object.keys(effectiveInfra.services ?? {}) },
-            'Merged auto-detected + explicit infrastructure'
-          );
-        }
-      } catch (err) {
-        this.logger.warn(
-          { error: (err as Error).message },
-          'Failed to auto-detect infrastructure requirements'
-        );
-      }
+    for (const entry of appEntries) {
+      if (entry.bootstrap && !appDefinitions.has(entry.name)) throw new Error(`Bootstrap declarations unavailable for ${entry.name}`);
     }
+    const effectiveInfra = mergeInferredInfrastructure(
+      buildInfraFromRequirements(requirementsFromDefinitions(appDefinitions)), mergeInfrastructure(ecosystemConfig, stackConfig),
+    );
     if (effectiveInfra) {
       try {
         const infraService = await this.infraManager.provisionStack(
@@ -4584,31 +4578,14 @@ export class ProjectService extends EventEmitter {
           // writing to it made the first read the only one until the daemon
           // restarted (`project/declared-config.ts`).
           const declared = readDeclaredConfig(bootstrapAbsPath);
-          if (declared.malformed) {
-            this.logger.error(
-              { app: entry.name, configPath: declared.configPath, error: declared.malformed },
-              'config/default.json does not parse — its `omnitron` section is being ignored'
-            );
-          }
+          if (declared.malformed) throw new Error(`Application configuration is invalid or unreadable: ${entry.name}`);
           const definition = withDeclaredConfig(loaded, declared);
 
           appDefinitions.set(entry.name, definition);
         } catch (err) {
           this.bootstrapMetadata.fail(path.resolve(project.path, entry.bootstrap));
-          // An app can start without its definition; a STACK cannot be
-          // provisioned without it. The definition is where an application
-          // declares what it needs — its database, its cache, its chain
-          // daemon — so a swallowed failure here does not degrade the
-          // deployment, it silently removes a whole category from it.
-          //
-          // Measured: a remote stack reported `declared by apps: (none)` and
-          // provisioned no infrastructure, because every bootstrap import
-          // had failed in a process that could not load TypeScript. Nothing
-          // said so at any level.
-          this.logger.warn(
-            { app: entry.name, bootstrap: entry.bootstrap, error: (err as Error).message },
-            'Could not load this app\'s definition — anything it declares it needs will not be provisioned',
-          );
+          this.logger.error({ app: entry.name, bootstrap: entry.bootstrap }, 'Stack prerequisites unavailable; refusing incomplete provisioning');
+          throw new Error(`Could not read declarations for ${entry.name}; refresh declarations and check application configuration before starting`, { cause: err });
         }
       }
     }
@@ -4622,10 +4599,8 @@ export class ProjectService extends EventEmitter {
    * One entry per service name: two applications that both declare
    * `postgres` mean one Postgres, which is what `serviceOverrides` keys on
    * and what the container resolver has always assumed. A later declaration
-   * that disagrees with an earlier one is not merged silently — the first
-   * wins and the disagreement is said, because two applications wanting
-   * different versions of one service is a fact about the stack, not a
-   * detail to resolve by ordering.
+   * that disagrees with an earlier one refuses the plan; application ordering
+   * must not silently choose the configuration of a shared service.
    */
   private async collectDeclaredServices(
     projectName: string,
@@ -4650,10 +4625,7 @@ export class ProjectService extends EventEmitter {
         if (provisioning === 'disabled' || (provisioning === 'external' && !options.external)) continue;
 
         if (merged[name]) {
-          this.logger.debug(
-            { service: name, app: appName },
-            'Service already declared by another app in this stack — the first declaration stands',
-          );
+          if (!isDeepStrictEqual(merged[name], requirement)) throw new Error(`Conflicting infrastructure declarations for ${name}; use one shared specification or distinct service names`);
           continue;
         }
         merged[name] = requirement as import('../infrastructure/types.js').IServiceRequirement;

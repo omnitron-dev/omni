@@ -1,3 +1,4 @@
+import { StackDiagnosisDialog } from 'src/components/stack-diagnosis-dialog';
 import { StackStopNotice } from 'src/components/stack-stop-notice';
 import { Can } from 'src/auth/access';
 /**
@@ -64,6 +65,7 @@ export default function StackDetailPage() {
   const clearError = useProjectStore((s) => s.clearError);
   const pendingOps = useProjectStore((s) => s.pendingOps);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [diagnoseOpen, setDiagnoseOpen] = useState(false);
   const [deployOpen, setDeployOpen] = useState(false);
 
   const stack = stacks.find((s) => s.name === name);
@@ -240,6 +242,7 @@ export default function StackDetailPage() {
                 fontWeight: 600,
               }}
             />
+            <Can permission="OmnitronProject.diagnoseStack"><Button size="small" onClick={() => setDiagnoseOpen(true)}>Diagnose</Button></Can>
             {isStopped && !busy && (
               <Can permission="OmnitronProject.deleteStack"><IconButton size="small" color="error" onClick={() => setDeleteOpen(true)} title="Delete stack">
                 <DeleteIcon />
@@ -286,6 +289,7 @@ export default function StackDetailPage() {
         }
       />
 
+      {diagnoseOpen && activeProject && name && <StackDiagnosisDialog key={`${activeProject}/${name}`} project={activeProject} stack={name} onClose={() => setDiagnoseOpen(false)} />}
       <StackStopNotice operation={stack.stopOperation} />
 
       {/* Start, stop and delete put their reason in the store's `error` and

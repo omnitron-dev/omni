@@ -12,9 +12,9 @@
  * Falls back to bootstrap `requires` for backward compatibility during migration.
  */
 
-import fs from 'node:fs';
 import path from 'node:path';
 import type { IAppDefinition, IEcosystemAppEntry, OmnitronAppConfig } from '../config/types.js';
+import { readDeclaredConfig, withDeclaredConfig } from './declared-config.js';
 import { loadBootstrapConfig } from '../orchestrator/bootstrap-loader.js';
 
 // =============================================================================
@@ -57,174 +57,50 @@ export interface ProjectRequirements {
   byApp: Map<string, OmnitronAppConfig>;
 }
 
-// =============================================================================
-// Helpers
-// =============================================================================
-
-/**
- * Resolve config/default.json path from a bootstrap file path.
- * e.g., apps/main/src/bootstrap.ts → apps/main/config/default.json
- */
-function resolveAppConfigPath(bootstrapPath: string): string {
-  const srcDir = path.dirname(bootstrapPath);
-  const appRoot = path.resolve(srcDir, '..');
-  return path.join(appRoot, 'config', 'default.json');
-}
-
-/**
- * Read the `omnitron` section from an app's config/default.json.
- * Returns null if the file doesn't exist or has no `omnitron` key.
- */
-async function readOmnitronConfig(configPath: string): Promise<OmnitronAppConfig | null> {
-  try {
-    const content = await fs.promises.readFile(configPath, 'utf-8');
-    const json = JSON.parse(content);
-    return json.omnitron ?? null;
-  } catch {
-    return null;
-  }
-}
-
-// =============================================================================
-// Scanner
-// =============================================================================
-
-/**
- * Scan all app configs and extract infrastructure requirements.
- * This is a static analysis — no apps are started.
- *
- * Primary: reads `omnitron` section from each app's config/default.json.
- * Fallback: imports bootstrap file and reads `definition.requires` (deprecated).
- */
-export async function scanRequirements(
-  apps: IEcosystemAppEntry[],
-  cwd: string
-): Promise<ProjectRequirements> {
-  const result: ProjectRequirements = {
-    databases: [],
-    redis: { appCount: 0, allocations: [] },
-    buckets: [],
-    needsAuth: false,
-    titanModules: new Set(),
-    byApp: new Map(),
-  };
-
-  // Every definition this scan reads — each once, and all of them at once. A
-  // read is a process of its own (bootstrap-loader's `freshModuleGraph`:
-  // imported in the daemon, a definition's packages would stay as they were
-  // at the daemon's start), and one read after another would put a process
-  // start and a full import of a definition's packages between each app and
-  // the next.
-  const read = (bootstrapPath: string) => loadBootstrapConfig(bootstrapPath, { devMode: true, freshModuleGraph: true });
-  const definitions = new Map<string, Promise<IAppDefinition>>();
+/** Explicit discovery imports trusted bootstraps. Read-only diagnosis uses saved definitions instead. */
+export async function scanRequirements(apps: IEcosystemAppEntry[], cwd: string): Promise<ProjectRequirements> {
+  const definitions = new Map<string, IAppDefinition>();
   for (const entry of apps) {
     if (entry.enabled === false || !entry.bootstrap) continue;
-    const bootstrapPath = `${cwd}/${entry.bootstrap}`;
-    if (definitions.has(bootstrapPath)) continue;
-    const reading = read(bootstrapPath);
-    // Awaited below, inside the try that handles it; this only keeps a
-    // failure from counting as unhandled before the loop gets there.
-    reading.catch(() => undefined);
-    definitions.set(bootstrapPath, reading);
+    const bootstrap = path.resolve(cwd, entry.bootstrap);
+    const declared = readDeclaredConfig(bootstrap);
+    if (declared.malformed) throw new Error(`Application configuration is unreadable: ${entry.name}`);
+    const definition = await loadBootstrapConfig(bootstrap, { devMode: true, freshModuleGraph: true });
+    definitions.set(entry.name, withDeclaredConfig(definition, declared));
   }
-  const definitionOf = (bootstrapPath: string) => definitions.get(bootstrapPath) ?? read(bootstrapPath);
+  return requirementsFromDefinitions(definitions);
+}
 
-  for (const entry of apps) {
-    if (entry.enabled === false) continue;
-    if (!entry.bootstrap) continue;
-
-    const bootstrapPath = `${cwd}/${entry.bootstrap}`;
-    const configPath = resolveAppConfigPath(bootstrapPath);
-    let omnitronConfig = await readOmnitronConfig(configPath);
-
-    // Fallback: read from bootstrap requires (deprecated)
-    if (!omnitronConfig) {
-      try {
-        const definition = await definitionOf(bootstrapPath);
-        const requires = definition.requires;
-        if (requires) {
-          console.warn(
-            `[omnitron] DEPRECATED: App "${entry.name}" uses bootstrap requires instead of config/default.json omnitron section. ` +
-            `Add an "omnitron" section to ${configPath} and remove requires from defineSystem().`
-          );
-
-          // Convert legacy IAppRequirements → OmnitronAppConfig
-          omnitronConfig = {};
-          if (requires.postgres) {
-            omnitronConfig.database = requires.postgres.pool
-              ? { pool: requires.postgres.pool }
-              : true;
-          }
-          if (requires.redis) {
-            omnitronConfig.redis = requires.redis.prefix
-              ? { prefix: requires.redis.prefix }
-              : true;
-          }
-          if (requires.s3) {
-            omnitronConfig.s3 = true;
-          }
-          if (requires.discovery || requires.notifications) {
-            omnitronConfig.services = {};
-            if (requires.discovery) omnitronConfig.services.discovery = true;
-            if (requires.notifications) omnitronConfig.services.notifications = true;
-          }
-        }
-      } catch {
-        // Bootstrap failed to load — skip this app
-        continue;
-      }
+/** One interpretation of requirements for diagnosis, provisioning and explicit discovery. */
+export function requirementsFromDefinitions(definitions: ReadonlyMap<string, IAppDefinition>): ProjectRequirements {
+  const result: ProjectRequirements = {
+    databases: [], redis: { appCount: 0, allocations: [] }, buckets: [], needsAuth: false,
+    titanModules: new Set(), byApp: new Map(),
+  };
+  for (const [app, definition] of definitions) {
+    const legacy = definition.requires;
+    const config: OmnitronAppConfig | undefined = definition.omnitronConfig ?? (legacy ? {
+      ...(legacy.postgres && { database: legacy.postgres.pool ? { pool: legacy.postgres.pool } : true }),
+      ...(legacy.redis && { redis: legacy.redis.prefix ? { prefix: legacy.redis.prefix } : true }),
+      ...(legacy.s3 && { s3: true }),
+      services: { ...(legacy.discovery && { discovery: true }), ...(legacy.notifications && { notifications: true }) },
+    } : undefined);
+    if (definition.auth?.jwt?.enabled) result.needsAuth = true;
+    if (!config) continue;
+    result.byApp.set(app, config);
+    if (config.database) {
+      const db = typeof config.database === 'object' ? config.database : {};
+      result.databases.push({ app, database: app, pool: db.pool, extensions: db.extensions });
     }
-
-    if (!omnitronConfig) continue;
-
-    result.byApp.set(entry.name, omnitronConfig);
-
-    // PostgreSQL
-    if (omnitronConfig.database) {
-      const dbConfig = typeof omnitronConfig.database === 'object' ? omnitronConfig.database : {};
-      result.databases.push({
-        app: entry.name,
-        database: entry.name, // database name = app name
-        pool: dbConfig.pool,
-        extensions: dbConfig.extensions,
-      });
+    if (config.redis) {
+      const redis = typeof config.redis === 'object' ? config.redis : {};
+      result.redis.allocations.push({ app, prefix: redis.prefix });
     }
-
-    // Redis (no manual DB allocation — ConfigResolver handles that)
-    if (omnitronConfig.redis) {
-      const redisConfig = typeof omnitronConfig.redis === 'object' ? omnitronConfig.redis : {};
-      result.redis.allocations.push({
-        app: entry.name,
-        prefix: redisConfig.prefix,
-      });
-    }
-
-    // S3
-    if (omnitronConfig.s3) {
-      const s3Config = typeof omnitronConfig.s3 === 'object' ? omnitronConfig.s3 : {};
-      result.buckets.push({
-        app: entry.name,
-        bucket: s3Config.bucket ?? entry.name, // bucket name = explicit or app name
-      });
-    }
-
-    // Auth — check bootstrap definition for JWT config
-    try {
-      const definition = await definitionOf(bootstrapPath);
-      if (definition.auth?.jwt?.enabled) {
-        result.needsAuth = true;
-      }
-    } catch {
-      // Ignore — auth detection is best-effort
-    }
-
-    // Titan service modules
-    if (omnitronConfig.services?.discovery) result.titanModules.add('discovery');
-    if (omnitronConfig.services?.notifications) result.titanModules.add('notifications');
+    if (config.s3) result.buckets.push({ app, bucket: typeof config.s3 === 'object' ? config.s3.bucket ?? app : app });
+    if (config.services?.discovery) result.titanModules.add('discovery');
+    if (config.services?.notifications) result.titanModules.add('notifications');
   }
-
   result.redis.appCount = result.redis.allocations.length;
-
   return result;
 }
 

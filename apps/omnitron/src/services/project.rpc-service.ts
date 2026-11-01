@@ -281,6 +281,13 @@ export class ProjectRpcService {
   // Stacks — Operator
   // ===========================================================================
 
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async diagnoseStack(data: { project: string; stack: string }): Promise<import('../shared/dto/stack-diagnosis.js').StackDiagnosis> {
+    const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
+    const report = await this.projectService.diagnoseStack(scope.project, scope.stack);
+    return { ...report, project: data.project, stack: data.stack };
+  }
+
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async startStack(data: { project: string; stack: string; allowDirty?: boolean; release?: string; reinstall?: boolean }): Promise<IStackInfo> {
     const logicalName = data.stack;

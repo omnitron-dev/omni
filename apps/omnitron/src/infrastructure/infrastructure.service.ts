@@ -216,10 +216,9 @@ export class InfrastructureService {
    * benign collision — the shared service was actually fine).
    *
    * The intended semantics for shared infrastructure is "all apps that
-   * declare `postgres` use the same container", so the first
-   * declaration wins. When subsequent declarations differ in shape
-   * (image / env / ports), log a structured warning so the operator
-   * can reconcile intent vs. config.
+   * declare `postgres` use the same container", so
+   * identical declarations are shared. Conflicting specifications refuse
+   * the plan before anything is provisioned.
    */
   @RecoveryMutation()
   addAppContainers(containers: ResolvedContainer[]): void {
@@ -229,15 +228,8 @@ export class InfrastructureService {
         this.desiredContainers.push(c);
         continue;
       }
-      if (!shallowContainerEqual(existing, c)) {
-        this.logger.warn(
-          {
-            container: c.name,
-            existingImage: existing.image,
-            duplicateImage: c.image,
-          },
-          'Duplicate container declaration with differing shape — keeping first; check for conflicting app infrastructure requirements (T#76)',
-        );
+      if (containerSpecHash(existing) !== containerSpecHash(c)) {
+        throw new Error(`Conflicting infrastructure declarations for ${c.name}; use one shared specification or distinct service names`);
       }
       // else: identical declaration, silent dedupe — this is the common case
     }
@@ -425,6 +417,11 @@ export class InfrastructureService {
    * attempted" by reading `state.services` alone: the second leaves no entry,
    * and an absent entry is indistinguishable from an absent problem.
    */
+  /** Internal immutable plan. Never expose environment or command values through RPC. */
+  getDesiredContainers(): import('./types.js').ResolvedContainer[] {
+    return structuredClone(this.desiredContainers);
+  }
+
   getDesiredServices(): ReadonlyArray<{ name: string; image?: string | undefined }> {
     return this.desiredContainers.map((c) => ({ name: c.name, image: c.image }));
   }
@@ -1294,27 +1291,6 @@ export class InfrastructureService {
 
     this.state.lastReconciled = new Date().toISOString();
   }
-}
-
-/**
- * T#76: shallow equality on the fields that drive container
- * identity. Two declarations that differ only in incidental fields
- * (label maps, restart policy adornments) should still be treated
- * as the same shared container; differences in image / env / port
- * mapping legitimately deserve an operator-facing warning.
- */
-function shallowContainerEqual(a: ResolvedContainer, b: ResolvedContainer): boolean {
-  if (a.image !== b.image) return false;
-  if (!sameRecord(a.environment, b.environment)) return false;
-  if (a.ports.length !== b.ports.length) return false;
-  for (let i = 0; i < a.ports.length; i++) {
-    if (a.ports[i]!.host !== b.ports[i]!.host || a.ports[i]!.container !== b.ports[i]!.container) return false;
-  }
-  if (a.volumes.length !== b.volumes.length) return false;
-  for (let i = 0; i < a.volumes.length; i++) {
-    if (a.volumes[i]!.source !== b.volumes[i]!.source || a.volumes[i]!.target !== b.volumes[i]!.target) return false;
-  }
-  return true;
 }
 
 function sameRecord(a: Record<string, string> | undefined, b: Record<string, string> | undefined): boolean {

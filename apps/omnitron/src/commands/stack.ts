@@ -687,3 +687,23 @@ export async function stackRuntimeCommand(projectName: string, stackName: string
     await client.disconnect();
   }
 }
+
+/** Exit 1 for blockers, 2 for incomplete evidence; a planned create/pull is not a failure. */
+export async function stackDiagnoseCommand(project: string, stack: string): Promise<void> {
+  const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
+  try {
+    const service = await client.service<IProjectRpcService>('OmnitronProject');
+    const report = await service.diagnoseStack({ project, stack });
+    if (isJsonMode()) emitJson(report);
+    else {
+      log.info(`${project}/${stack}: ${report.status} — checked ${report.checkedAt}`);
+      for (const check of report.checks) {
+        log.info(`[${check.state}] ${check.resource}: ${check.message}`);
+        if (check.action) log.info(`  ${check.action}`);
+      }
+      log.info(`Not verified: ${report.deferred.join('; ')}.`);
+    }
+    process.exitCode = report.status === 'blocked' ? 1 : report.status === 'unknown' ? 2 : 0;
+  } catch (error) { emitError((error as Error).message); process.exitCode = 2; }
+  finally { await client.disconnect(); }
+}

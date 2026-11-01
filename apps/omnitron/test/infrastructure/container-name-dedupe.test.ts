@@ -7,15 +7,15 @@
  * actually fine.
  *
  * The intended semantics for shared infrastructure is "all apps
- * that declare `postgres` use the same container", so the FIRST
- * declaration wins and identical follow-ups are silently
- * deduped. Declarations that differ in shape (image / env /
- * ports) log a warning so the operator can reconcile config.
+ * that declare `postgres` use the same container", so
+ * identical declarations are deduplicated. Conflicting specifications
+ * refuse the plan before provisioning; order cannot choose the configuration.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../../src/infrastructure/container-runtime.js', () => ({
+vi.mock('../../src/infrastructure/container-runtime.js', async (original) => ({
+  ...await original<typeof import('../../src/infrastructure/container-runtime.js')>(),
   getContainerState: vi.fn().mockResolvedValue(null),
   removeContainer: vi.fn().mockResolvedValue(undefined),
   startContainer: vi.fn().mockResolvedValue(undefined),
@@ -28,7 +28,7 @@ vi.mock('../../src/infrastructure/container-runtime.js', () => ({
 }));
 
 vi.mock('../../src/infrastructure/service-resolver.js', () => ({
-  resolveInfrastructure: vi.fn().mockReturnValue([]),
+  resolveInfrastructure: vi.fn().mockImplementation(() => []),
   resolveOmnitronPg: vi.fn().mockReturnValue({
     name: 'omnitron-pg',
     image: 'postgres:16',
@@ -82,34 +82,34 @@ describe('InfrastructureService.addAppContainers — T#76 dedupe', () => {
     expect(warnings).toHaveLength(0);
   });
 
-  it('warns when a follow-up declaration differs in image', () => {
+  it('refuses when a follow-up declaration differs in image', () => {
     const svc: any = new InfrastructureService(logger, { services: {} } as any);
     svc.addAppContainers([spec({ image: 'postgres:16' })]);
-    svc.addAppContainers([spec({ image: 'postgres:15' })]);
+    expect(() => svc.addAppContainers([spec({ image: 'postgres:15' })])).toThrow('Conflicting infrastructure declarations');
 
     expect(svc.desiredContainers).toHaveLength(1);
     // First declaration wins.
     expect(svc.desiredContainers[0].image).toBe('postgres:16');
-    // Operator gets a structured warning about the conflict.
-    expect(warnings.some((w) => /T#76/.test(w.msg))).toBe(true);
+    // Refusal happens before provisioning; the existing declaration is retained.
+    expect(warnings).toHaveLength(0);
   });
 
-  it('warns when a follow-up declaration differs in port mapping', () => {
+  it('refuses when a follow-up declaration differs in port mapping', () => {
     const svc: any = new InfrastructureService(logger, { services: {} } as any);
     svc.addAppContainers([spec({ ports: [{ host: 5432, container: 5432 }] })]);
-    svc.addAppContainers([spec({ ports: [{ host: 5433, container: 5432 }] })]);
+    expect(() => svc.addAppContainers([spec({ ports: [{ host: 5433, container: 5432 }] })])).toThrow('Conflicting infrastructure declarations');
 
     expect(svc.desiredContainers).toHaveLength(1);
-    expect(warnings.length).toBeGreaterThan(0);
+    expect(warnings).toHaveLength(0);
   });
 
-  it('warns when a follow-up declaration differs in env', () => {
+  it('refuses when a follow-up declaration differs in env', () => {
     const svc: any = new InfrastructureService(logger, { services: {} } as any);
     svc.addAppContainers([spec({ environment: { POSTGRES_PASSWORD: 'a' } })]);
-    svc.addAppContainers([spec({ environment: { POSTGRES_PASSWORD: 'b' } })]);
+    expect(() => svc.addAppContainers([spec({ environment: { POSTGRES_PASSWORD: 'b' } })])).toThrow('Conflicting infrastructure declarations');
 
     expect(svc.desiredContainers).toHaveLength(1);
-    expect(warnings.length).toBeGreaterThan(0);
+    expect(warnings).toHaveLength(0);
   });
 
   it('keeps containers with different NAMES (distinct services)', () => {

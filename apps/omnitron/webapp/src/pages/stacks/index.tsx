@@ -1,3 +1,4 @@
+import { StackDiagnosisDialog } from 'src/components/stack-diagnosis-dialog';
 import { Can } from 'src/auth/access';
 /**
  * StacksPage — Grid of stack cards per project
@@ -78,6 +79,7 @@ export default function StacksPage() {
   const deleteStack = useProjectStore((s) => s.deleteStack);
   const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
+  const [diagnoseTarget, setDiagnoseTarget] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deployTarget, setDeployTarget] = useState<string | null>(null);
 
@@ -195,6 +197,7 @@ export default function StacksPage() {
               <StackCard
                 stack={stack}
                 pendingOp={activeProject ? (pendingOps[`${activeProject}/${stack.name}`] ?? null) : null}
+                onDiagnose={() => setDiagnoseTarget(stack.name)}
                 onStart={() => handleStart(stack.name)}
                 onDeploy={() => setDeployTarget(stack.name)}
                 onStop={() => handleStop(stack.name)}
@@ -213,6 +216,8 @@ export default function StacksPage() {
         release={null}
         {...(deployTarget ? { stack: deployTarget } : {})}
       /></Can>
+
+      {diagnoseTarget && activeProject && <StackDiagnosisDialog key={`${activeProject}/${diagnoseTarget}`} project={activeProject} stack={diagnoseTarget} onClose={() => setDiagnoseTarget(null)} />}
 
       <Dialog open={deleteTarget !== null} onClose={() => setDeleteTarget(null)}>
         <DialogTitle>Delete Stack</DialogTitle>
@@ -238,6 +243,7 @@ function StackCard({
   stack,
   pendingOp,
   onStart,
+  onDiagnose,
   onStop,
   onDeploy,
   onDelete,
@@ -246,12 +252,13 @@ function StackCard({
   stack: IStackInfo;
   pendingOp: 'starting' | 'stopping' | null;
   onStart: () => void;
+  onDiagnose: () => void;
   onStop: () => void;
   onDeploy: () => void;
   onDelete: () => void;
   onDetail: () => void;
 }) {
-  const status = STATUS_CHIP[stack.status] ?? STATUS_CHIP.stopped!;
+  const status = STATUS_CHIP[stack.status] ?? { color: 'warning' as const, label: 'Unknown' };
   // A stack whose config says so takes releases only: its Start is refused by
   // the daemon on purpose, so the card offers the button that works.
   const takesReleasesOnly = stack.config?.release?.mode === 'required';
@@ -329,8 +336,9 @@ function StackCard({
         )}
       </CardContent>
 
-      <CardActions sx={{ px: 2, pb: 1.5, justifyContent: 'space-between' }} onClick={(e) => e.stopPropagation()}>
+      <CardActions sx={{ px: 2, pb: 1.5, justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }} onClick={(e) => e.stopPropagation()}>
         <Box>
+          <Can permission="OmnitronProject.diagnoseStack"><Button size="small" onClick={onDiagnose}>Diagnose</Button></Can>
           {isStopped && !busy && (
             <Can permission="OmnitronProject.deleteStack"><IconButton size="small" color="error" onClick={onDelete} title="Delete stack">
               <DeleteIcon />

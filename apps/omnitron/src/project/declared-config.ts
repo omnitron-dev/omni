@@ -45,9 +45,8 @@ export function readDeclaredConfig(bootstrapAbsPath: string): DeclaredConfig {
   let content: string;
   try {
     content = fs.readFileSync(configPath, 'utf-8');
-  } catch {
-    // Absent or unreadable — ordinary: the app has defaults.
-    return { configPath };
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? { configPath } : { configPath, malformed: 'Configuration file could not be read' };
   }
   try {
     const json = JSON.parse(content) as { omnitron?: OmnitronAppConfig; logger?: { level?: unknown } };
@@ -56,8 +55,8 @@ export function readDeclaredConfig(bootstrapAbsPath: string): DeclaredConfig {
       ...(json.omnitron ? { omnitron: json.omnitron } : {}),
       ...(json.logger?.level !== undefined ? { loggerLevel: json.logger.level } : {}),
     };
-  } catch (err) {
-    return { configPath, malformed: (err as Error).message };
+  } catch {
+    return { configPath, malformed: 'Configuration file contains invalid JSON' };
   }
 }
 

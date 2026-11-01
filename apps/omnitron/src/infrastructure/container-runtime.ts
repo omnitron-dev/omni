@@ -927,3 +927,43 @@ function mapInspectHealth(health?: string, status?: string): 'healthy' | 'unheal
  * demand — a refused port bind, an OOM kill.
  */
 export const __test__ = { describeContainerFailure, portArg };
+
+export interface DockerInventory {
+  containers: Array<{ name: string; running: boolean; health?: string; labels: Record<string, string>; ports: Array<{ host: number; bindHost?: string }> }>;
+  images: string[];
+  volumes: string[];
+}
+
+/** Bounded, read-only host inventory, including unmanaged containers that can conflict with a plan. */
+let pendingDockerInventory: Promise<DockerInventory> | undefined;
+export async function readDockerInventory(): Promise<DockerInventory> {
+  if (pendingDockerInventory) return pendingDockerInventory;
+  pendingDockerInventory = inspectDockerInventory();
+  try { return await pendingDockerInventory; } finally { pendingDockerInventory = undefined; }
+}
+async function inspectDockerInventory(): Promise<DockerInventory> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const run = promisify(execFile);
+  const read = async (args: string[]) => (await run('docker', args, { encoding: 'utf8', timeout: 15_000, maxBuffer: 16 * 1024 * 1024 })).stdout;
+  const [ids, images, volumes] = await Promise.all([
+    read(['ps', '-aq']), read(['image', 'ls', '--no-trunc', '--digests', '--format', '{{json .}}']),
+    read(['volume', 'ls', '--format', '{{.Name}}']),
+  ]);
+  const names = ids.trim().split('\n').filter(Boolean);
+  const inspected = names.length ? await inspectContainers(names, true) : [];
+  if (inspected.length !== names.length) throw new Error('Incomplete Docker snapshot');
+  return {
+    containers: inspected.map(info => ({
+      name: String(info.Name).replace(/^\//, ''), running: info.State?.Running === true,
+      health: info.State?.Health?.Status, labels: info.Config?.Labels ?? {},
+      ports: Object.values(info.NetworkSettings?.Ports ?? {}).flatMap(bindings =>
+        (Array.isArray(bindings) ? bindings : []).map(binding => ({ host: Number(binding.HostPort), bindHost: String(binding.HostIp) }))),
+    })),
+    images: images.trim().split('\n').filter(Boolean).flatMap(line => {
+      const image = JSON.parse(line);
+      return [String(image.ID), `${image.Repository}:${image.Tag}`, `${image.Repository}@${image.Digest}`];
+    }),
+    volumes: volumes.trim().split('\n').filter(Boolean),
+  };
+}

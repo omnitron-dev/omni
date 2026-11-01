@@ -111,6 +111,18 @@ export class StackInfrastructureManager {
     );
   }
 
+  /** Same resolver as provisioning, without reserving ports, registering owners or touching Docker. */
+  async planStack(
+    project: string, stack: string, config: IStackConfig, infrastructure: InfrastructureConfig,
+    definitions?: Map<string, import('../config/types.js').IAppDefinition>, directory?: string,
+  ): Promise<import('./types.js').ResolvedContainer[]> {
+    return withInfrastructureScope(project, stack, async () => {
+      const allocation = this.computePortAllocation(project, stack, config.settings, infrastructure);
+      const service = await this.resolveStackDefinition(project, stack, config, infrastructure, allocation, definitions, directory, true);
+      return service.getDesiredContainers();
+    });
+  }
+
   private async provisionStackScoped(
     project: string,
     stack: string,
@@ -167,7 +179,7 @@ export class StackInfrastructureManager {
     project: string, stack: string, stackConfig: IStackConfig, baseInfraConfig: InfrastructureConfig,
     portAlloc: StackPortAllocation,
     appDefinitions?: Map<string, import('../config/types.js').IAppDefinition>, projectRoot?: string,
-    strict = false,
+    strict = true,
   ): Promise<InfrastructureService> {
     const key = `${project}/${stack}`;
     // 2. Build stack-specific infrastructure config with port overrides
@@ -190,7 +202,7 @@ export class StackInfrastructureManager {
         },
         redisDbRange: `${portAlloc.redisDbStart}-${portAlloc.redisDbEnd}`,
       },
-      'Provisioning stack infrastructure'
+      'Resolved stack infrastructure'
     );
 
     // 4. Normalize infrastructure config through preset system

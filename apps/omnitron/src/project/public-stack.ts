@@ -7,6 +7,7 @@ export function publicStack(info: IStackInfo): IStackInfo {
     ...info,
     config: {
       type: config.type,
+      ...(config.release ? { release: { mode: config.release.mode } } : {}),
       ...(config.watch !== undefined ? { watch: config.watch } : {}),
       ...(config.apps ? { apps: config.apps } : {}),
       ...(config.portRange ? { portRange: config.portRange } : {}),

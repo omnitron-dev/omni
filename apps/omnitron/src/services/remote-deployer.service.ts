@@ -1,3 +1,4 @@
+import { stackExecutionKey } from '../shared/dto/stack-execution.js';
 /**
  * RemoteDeployer — SSH-based artifact deployment to remote/cluster nodes
  *
@@ -780,6 +781,10 @@ export class RemoteDeployer {
       alertSink?: import('../config/types.js').IAlertSink | undefined;
     },
   ): Promise<DeployResult[]> {
+    if (options?.apps?.length) {
+      if (!options.stack) throw new Error('Application deployment requires an explicit source stack before transferring artifacts');
+      stackExecutionKey({ project, stack: options.stack });
+    }
     const concurrency = options?.concurrency ?? 3;
     const results: DeployResult[] = [];
 
@@ -1218,12 +1223,13 @@ export class RemoteDeployer {
       return { changed: false };
     }
 
+    if (!sourceStack) throw new Error('Node registration requires an explicit source stack');
     const { renderNodeAppConfig } = await import('../project/node-app-config.js');
     const dir = `/opt/omnitron/projects/${assertRemotePathSegment('project name', project)}`;
     const body = renderNodeAppConfig({
       project,
       artifactRoot: '/opt/omnitron/artifacts',
-      ...(sourceStack && { sourceStack }),
+      sourceStack,
       apps,
       artifacts: landed,
       appEnv,

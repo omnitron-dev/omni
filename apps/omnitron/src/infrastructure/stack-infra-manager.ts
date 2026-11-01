@@ -1,3 +1,4 @@
+import { ownsStackInfrastructure } from '../project/infrastructure-ownership.js';
 import { RecoveryMutation } from '../daemon/recovery-state.js';
 import { usesGatewayTemplate, withInfrastructureScope } from './service-resolver.js';
 /**
@@ -106,6 +107,7 @@ export class StackInfrastructureManager {
     appDefinitions?: Map<string, import('../config/types.js').IAppDefinition>,
     projectRoot?: string
   ): Promise<InfrastructureService> {
+    if (!ownsStackInfrastructure(stackConfig)) throw new Error('This stack does not own infrastructure provisioning');
     return withInfrastructureScope(project, stack, () =>
       this.provisionStackScoped(project, stack, stackConfig, baseInfraConfig, appDefinitions, projectRoot)
     );
@@ -116,6 +118,7 @@ export class StackInfrastructureManager {
     project: string, stack: string, config: IStackConfig, infrastructure: InfrastructureConfig,
     definitions?: Map<string, import('../config/types.js').IAppDefinition>, directory?: string,
   ): Promise<import('./types.js').ResolvedContainer[]> {
+    if (!ownsStackInfrastructure(config)) return [];
     return withInfrastructureScope(project, stack, async () => {
       const allocation = this.computePortAllocation(project, stack, config.settings, infrastructure);
       const service = await this.resolveStackDefinition(project, stack, config, infrastructure, allocation, definitions, directory, true);
@@ -168,6 +171,12 @@ export class StackInfrastructureManager {
     const key = `${project}/${stack}`;
     const existing = this.instances.get(key);
     const allocation = this.portAllocations.get(key);
+    if (!ownsStackInfrastructure(stackConfig)) {
+      const released = existing ? await existing.relinquishMonitoring() : [];
+      this.instances.delete(key);
+      this.portAllocations.delete(key);
+      return { released, adopted: [] };
+    }
     if (!existing || !allocation) throw new Error(`No active infrastructure ownership for ${key}`);
     return withInfrastructureScope(project, stack, async () => {
       const candidate = await this.resolveStackDefinition(project, stack, stackConfig, baseInfraConfig, allocation, appDefinitions, projectRoot, true);

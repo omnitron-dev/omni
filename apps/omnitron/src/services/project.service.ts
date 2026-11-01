@@ -1,3 +1,4 @@
+import { infrastructureOwnership, ownsStackInfrastructure } from '../project/infrastructure-ownership.js';
 import { isDeepStrictEqual } from 'node:util';
 import { diagnoseContainers } from '../project/stack-diagnosis.js';
 import { diagnosisStatus, type StackDiagnosis, type StackDiagnosisCheck } from '../shared/dto/stack-diagnosis.js';
@@ -281,7 +282,7 @@ export class ProjectService extends EventEmitter {
     resumeBackoff: Array<[string, { nextAt: number; delayMs: number }]>;
     reconciling: boolean;
   }> {
-    if (this.startsInFlight.size || this.stopsInFlight.size || this.reconcilingStacks || [...this.stackStates.values()].some(state => state.status === 'starting' || state.status === 'stopping')) {
+    if (this.ownershipFrozen || this.startsInFlight.size || this.stopsInFlight.size || this.reconcilingStacks || [...this.stackStates.values()].some(state => state.status === 'starting' || state.status === 'stopping')) {
       throw new Error('A stack lifecycle operation is active; finish it before transferring the backend');
     }
     this.handoffReconciling = this.resumeTimer !== null;
@@ -682,12 +683,26 @@ export class ProjectService extends EventEmitter {
   /** Refresh only local container monitoring from the current validated project config. */
   @RecoveryMutation()
   async refreshInfrastructureOwnership(projectName: string, stackName: string): Promise<{ released: string[]; adopted: string[] }> {
+    if (this.ownershipFrozen || this.startsInFlight.size || this.stopsInFlight.size || this.reconcilingStacks)
+      throw new Error('Project lifecycle ownership is changing; retry the infrastructure refresh after it settles');
+    this.ownershipFrozen = true;
+    try { return await this.refreshInfrastructureOwnershipOnce(projectName, stackName); }
+    finally { this.ownershipFrozen = false; }
+  }
+
+  private async refreshInfrastructureOwnershipOnce(projectName: string, stackName: string): Promise<{ released: string[]; adopted: string[] }> {
     const project = this.registry.get(projectName);
     if (!project) throw new Error(`Project '${projectName}' not found`);
     this.configRegistry.delete(projectName);
     const config = await this.loadProjectConfig(projectName);
     const stack = this.resolveStacks(config, projectName)[stackName];
     if (!stack || stack.type !== 'local') throw new Error('Ownership refresh requires a declared local stack');
+    if (!ownsStackInfrastructure(stack)) {
+      const released = await this.infraManager.refreshOwnership(projectName, stackName, stack, {}, undefined, project.path);
+      const state = this.stackStates.get(`${projectName}/${stackName}`);
+      if (state) { state.config = stack; state.infraService = null; }
+      return released;
+    }
     const definitions = await this.loadAppDefinitions(projectName, stack, config);
     // The same requirements merge used at stack start. A failed fresh scan must
     // refuse a handoff rather than silently releasing auto-detected services.
@@ -1091,6 +1106,18 @@ export class ProjectService extends EventEmitter {
       else add('declaration.current', entry.name, 'pass', `Bootstrap declaration captured at ${record.capturedAt}; source file is unchanged.`);
       if (metadata || declared.omnitron) definitions.set(entry.name, withDeclaredConfig({ name: entry.name, version: '', processes: [], ...metadata }, declared));
     }
+    try {
+      if (!ownsStackInfrastructure(stack)) {
+        const mode = infrastructureOwnership(stack);
+        const owner = mode === 'controller' ? `${stack.managedOrigin!.project}/${stack.managedOrigin!.stack}` : 'an external operator';
+        add('infrastructure.delegated', 'Infrastructure ownership', 'pass', `Infrastructure provisioning and migrations belong to ${owner}; this stack starts applications only.`);
+        add('infrastructure.external-readiness', 'Application connections', 'unknown', 'Explicit application connection settings are retained. Endpoint reachability, credentials and schema have not been verified.', 'Inspect the owning infrastructure and application health; this node will not create substitute services.');
+        return done();
+      }
+    } catch (error) {
+      add('infrastructure.ownership-invalid', 'Infrastructure ownership', 'blocked', (error as Error).message, 'Correct the explicit ownership binding; diagnosis changes no infrastructure.');
+      return done();
+    }
     if (stack.type !== 'local') {
       try { resolveNodePlacements(stack, entries); add('placement.valid', 'Placement', 'pass', 'Configured node placement resolved.'); }
       catch { add('placement.invalid', 'Placement', 'blocked', 'Node placement is incomplete or inconsistent.', 'Check selected applications, node identities and placement assignments.'); }
@@ -1345,6 +1372,7 @@ export class ProjectService extends EventEmitter {
     const stackConfig = stacks[stackName];
     if (!stackConfig) throw new Error(`Stack '${stackName}' not found in project '${projectName}'`);
     known.type = stackConfig.type;
+    ownsStackInfrastructure(stackConfig); // Reject ambiguous ownership before attachment, build, migration or provisioning.
 
     // A restart of this daemon re-attaches a remote stack; it never deploys
     // one. See `attachRemoteStack`.
@@ -3116,6 +3144,7 @@ export class ProjectService extends EventEmitter {
     stackConfig: IStackConfig,
     ecosystemConfig: IEcosystemConfig,
   ): Promise<void> {
+    const ownsInfrastructure = ownsStackInfrastructure(stackConfig);
     const stateKey = `${projectName}/${stackName}`;
     const state = this.stackStates.get(stateKey)!;
 
@@ -3135,9 +3164,9 @@ export class ProjectService extends EventEmitter {
     for (const entry of appEntries) {
       if (entry.bootstrap && !appDefinitions.has(entry.name)) throw new Error(`Bootstrap declarations unavailable for ${entry.name}`);
     }
-    const effectiveInfra = mergeInferredInfrastructure(
+    const effectiveInfra = ownsInfrastructure ? mergeInferredInfrastructure(
       buildInfraFromRequirements(requirementsFromDefinitions(appDefinitions)), mergeInfrastructure(ecosystemConfig, stackConfig),
-    );
+    ) : undefined;
     if (effectiveInfra) {
       try {
         const infraService = await this.infraManager.provisionStack(
@@ -3167,10 +3196,10 @@ export class ProjectService extends EventEmitter {
         // Bail out with a clear, structured error so the operator sees the
         // real cause first.
         //
-        // Edge case: stacks that intentionally talk to *external* infra and
-        // declare nothing in their `infrastructure` section never reach this
-        // branch (`effectiveInfra` is falsy). For deliberate degraded-mode
-        // operation the stack settings can opt in via
+        // Explicit controller/external ownership never enters this provisioning
+        // branch. Declarations alone do not imply permission to manage an
+        // application's existing services. For deliberate degraded-mode
+        // operation of stack-owned infrastructure, settings can opt in via
         // `settings.allowDegradedInfra: true` (the field is namespaced under
         // settings to remain forward-compatible with stack schema).
         const allowDegraded =
@@ -4544,7 +4573,7 @@ export class ProjectService extends EventEmitter {
     const project = this.registry.get(projectName);
     const portAllocation = this.infraManager.getPortAllocation(projectName, stackName);
     const normalizedSvcs = this.infraManager.getNormalizedServices(projectName, stackName);
-    const resolvedStack = resolveStack(
+    const resolvedStack = ownsStackInfrastructure(stackConfig) ? resolveStack(
       ecosystemConfig,
       projectName,
       stackName,
@@ -4552,10 +4581,10 @@ export class ProjectService extends EventEmitter {
       appDefinitions,
       portAllocation ?? undefined,
       normalizedSvcs ?? undefined,
-    );
+    ) : undefined;
 
     return (entry: IEcosystemAppEntry): IEcosystemAppEntry => {
-      const appConfig = resolvedStack.appConfigs.get(entry.name);
+      const appConfig = resolvedStack?.appConfigs.get(entry.name);
       const infraEnv = appConfig ? resolvedConfigToEnv(appConfig, entry.name, stackName) : {};
       return {
         ...entry,

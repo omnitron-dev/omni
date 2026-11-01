@@ -224,6 +224,8 @@ export class InfrastructureService {
    */
   @RecoveryMutation()
   addAppContainers(containers: ResolvedContainer[]): void {
+    if (this.monitoringRelinquished) throw new Error('Infrastructure monitoring ownership has been relinquished');
+    if (this.ownershipFrozen) throw new Error('Infrastructure ownership is frozen');
     for (const c of containers) {
       const existing = this.desiredContainers.find((d) => d.name === c.name);
       if (!existing) {
@@ -244,6 +246,16 @@ export class InfrastructureService {
    */
   @RecoveryMutation()
   async provision(): Promise<InfrastructureState> {
+    if (this.monitoringRelinquished) throw new Error('Infrastructure monitoring ownership has been relinquished');
+    if (this.ownershipFrozen) throw new Error('Infrastructure ownership is frozen');
+    if (this.provisioning) return this.provisioning;
+    const task = this.provisionOwned();
+    this.provisioning = task;
+    try { return await task; }
+    finally { if (this.provisioning === task) this.provisioning = undefined; }
+  }
+
+  private async provisionOwned(): Promise<InfrastructureState> {
     // 1. Verify Docker is available
     if (!(await isDockerAvailable())) {
       throw new Error(
@@ -485,7 +497,7 @@ export class InfrastructureService {
     this.ownershipFrozen = true;
     this.handoffMonitoring = this.healthTimer !== null;
     try {
-      const settled = await Promise.allSettled([...this.activeSweeps, ...this.reconcileTasks.values()]);
+      const settled = await Promise.allSettled([...this.activeSweeps, ...this.reconcileTasks.values(), ...(this.provisioning ? [this.provisioning] : [])]);
       if (settled.some(result => result.status === 'rejected')) throw new Error('Infrastructure reconciliation failed while draining');
       await this.phantomJanitor?.drain();
       const observations = await InfrastructureService.validateHandoffContainers(this.desiredContainers,
@@ -499,7 +511,7 @@ export class InfrastructureService {
   }
 
   captureRecoveryState(): InfrastructureHandoffState {
-    if (this.ownershipFrozen || this.activeSweeps.size || this.reconcileTasks.size) {
+    if (this.ownershipFrozen || this.provisioning || this.activeSweeps.size || this.reconcileTasks.size) {
       throw new RecoveryBusyError('Infrastructure ownership is changing; a recovery snapshot is not ready');
     }
     return this.ownershipSnapshot(this.healthTimer !== null);
@@ -519,6 +531,7 @@ export class InfrastructureService {
   }
 
   resumeAfterHandoff(): void {
+    if (this.monitoringRelinquished) return;
     this.ownershipFrozen = false;
     if (this.handoffMonitoring) this.startHealthMonitor();
     if (!this.phantomJanitor && this.janitorNetworks.length) {
@@ -609,9 +622,36 @@ export class InfrastructureService {
 
   }
 
+  /** Permanently release this entire observer, preserving every native resource. */
+  @RecoveryMutation()
+  async relinquishMonitoring(): Promise<string[]> {
+    if (this.monitoringRelinquished) return [...this.relinquishedNames];
+    if (this.ownershipFrozen) throw new Error('Infrastructure ownership is already frozen');
+    this.ownershipFrozen = true;
+    this.handoffMonitoring = false;
+    this.stopHealthMonitor();
+    const settled = await Promise.allSettled([
+      ...this.activeSweeps, ...this.reconcileTasks.values(), ...(this.provisioning ? [this.provisioning] : []),
+    ]);
+    // An already admitted provision may have created its janitor while being
+    // drained. Take the current reference only after that actor has completed.
+    await this.phantomJanitor?.drain();
+    // Rejected tasks are also finished. Their diagnostic remains in the state;
+    // relinquishing authority neither retries nor reverses their native work.
+    const failed = settled.filter(result => result.status === 'rejected').length;
+    if (failed) this.logger.warn({ failed }, 'Infrastructure monitoring released after earlier reconciliation failures');
+    this.relinquishedNames = [...new Set([...this.desiredContainers, ...this.controlPlaneContainers()].map(item => item.name))];
+    this.monitoringRelinquished = true;
+    this.dispose();
+    this.janitorNetworks = [];
+    return [...this.relinquishedNames];
+  }
+
   /** Stop reconciliation for exactly one allocation, retaining every other scope. */
   @RecoveryMutation()
   async retireStack(scope: { project: string; stack: string }): Promise<void> {
+    if (this.monitoringRelinquished) throw new Error('Infrastructure monitoring ownership has been relinquished');
+    if (this.ownershipFrozen) throw new Error('Infrastructure ownership is frozen');
     const key = `${scope.project}/${scope.stack}`;
     this.retiredStacks.add(key);
     await Promise.allSettled([...this.activeSweeps, ...this.reconcileTasks.values()]);
@@ -619,6 +659,8 @@ export class InfrastructureService {
   }
 
   resumeStack(scope: { project: string; stack: string }): void {
+    if (this.monitoringRelinquished) throw new Error('Infrastructure monitoring ownership has been relinquished');
+    if (this.ownershipFrozen) throw new Error('Infrastructure ownership is frozen');
     this.retiredStacks.delete(`${scope.project}/${scope.stack}`);
   }
 
@@ -629,9 +671,13 @@ export class InfrastructureService {
   /** Explicit infrastructure removal; process disposal alone preserves containers. */
   @RecoveryMutation()
   async teardown(): Promise<void> {
+    if (this.monitoringRelinquished) throw new Error('Infrastructure monitoring ownership has been relinquished');
+    if (this.ownershipFrozen) throw new Error('Infrastructure ownership is frozen');
     this.ownershipFrozen = true;
+    this.stopHealthMonitor();
+    await Promise.allSettled([...this.activeSweeps, ...this.reconcileTasks.values(), ...(this.provisioning ? [this.provisioning] : [])]);
+    await this.phantomJanitor?.drain();
     this.dispose();
-    await Promise.allSettled([...this.activeSweeps, ...this.reconcileTasks.values()]);
     // Remove all containers in parallel for fast shutdown — the control-plane
     // database only where this service keeps one (`controlPlaneContainers`).
     const allContainers = [...[...this.desiredContainers].reverse(), ...this.controlPlaneContainers()];
@@ -782,6 +828,9 @@ export class InfrastructureService {
   private readonly reconcileTasks = new Map<string, Promise<void>>();
   private readonly activeSweeps = new Set<Promise<void>>();
   private ownershipFrozen = false;
+  private monitoringRelinquished = false;
+  private provisioning: Promise<InfrastructureState> | undefined;
+  private relinquishedNames: string[] = [];
 
 
   /**
@@ -1187,7 +1236,7 @@ export class InfrastructureService {
   // ===========================================================================
 
   private startHealthMonitor(): void {
-    if (this.healthTimer) return;
+    if (this.monitoringRelinquished || this.ownershipFrozen || this.healthTimer) return;
     this.healthTimer = setInterval(() => {
       this.healthSweep().catch((err) => {
         this.logger.error({ error: (err as Error).message }, 'Health sweep failed');

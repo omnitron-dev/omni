@@ -117,6 +117,7 @@ describe('the node knows the secrets and the master knows the shape', () => {
 describe('the config written onto the node carries what the apps connect to', () => {
   const base = {
     project: 'sample',
+    sourceStack: 'test',
     artifactRoot: '/opt/omnitron/artifacts',
     apps: [{ name: 'geo', script: 'src/main.ts', env: { LOG_LEVEL: 'info' } }] as never,
     artifacts: [{ app: 'geo', version: '0.0.1' }],

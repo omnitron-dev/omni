@@ -43,6 +43,7 @@ describe('the node’s config carries the sink', () => {
   const render = (alertSink?: typeof SINK) =>
     renderNodeAppConfig({
       project: 'sample',
+    sourceStack: 'test',
       artifactRoot: '/opt/omnitron/artifacts',
       apps: [{ name: 'main', bootstrap: './apps/main/src/bootstrap.ts' } as never],
       artifacts: [{ app: 'main', version: '1.0.0' }],

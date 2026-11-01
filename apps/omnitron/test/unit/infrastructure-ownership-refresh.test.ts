@@ -27,6 +27,67 @@ function deferred<T>() { let resolve!: (value: T) => void; let reject!: (reason:
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 beforeEach(() => { vi.clearAllMocks(); runtime.get.mockResolvedValue(null); });
 describe('native monitoring ownership refresh', () => {
+  it('permanently relinquishes legacy control-plane and janitor ownership after every actor drains', async () => {
+    const redis = desired('redis');
+    const original: any = new InfrastructureService(logger, {} as any, {}, undefined, undefined, true);
+    original.addAppContainers([redis]);
+    const sweep = deferred<void>(), reconcile = deferred<void>(), janitor = deferred<void>();
+    original.activeSweeps.add(sweep.promise); original.reconcileTasks.set('redis', reconcile.promise);
+    const stop = vi.fn(), drain = vi.fn(() => janitor.promise);
+    original.phantomJanitor = { stop, drain }; original.janitorNetworks = ['legacy-network'];
+    original.handoffMonitoring = true;
+    original.startHealthMonitor();
+    const released = original.relinquishMonitoring(); let finished = false;
+    void released.then(() => { finished = true; });
+    expect(original.healthTimer).toBeNull();
+    await expect(original.teardown()).rejects.toThrow('frozen');
+    await expect(original.retireStack({ project: 'tenant', stack: 'prod' })).rejects.toThrow('frozen');
+    expect(() => original.addAppContainers([redis])).toThrow('frozen');
+    expect(() => original.resumeStack({ project: 'tenant', stack: 'prod' })).toThrow('frozen');
+    sweep.resolve(); reconcile.resolve(); await Promise.resolve(); expect(finished).toBe(false);
+    janitor.resolve();
+    expect(await released).toEqual(expect.arrayContaining(['redis', original.omnitronPgContainer.name]));
+    expect(drain).toHaveBeenCalledOnce();
+    expect(stop).toHaveBeenCalledOnce(); expect(original.janitorNetworks).toEqual([]);
+    original.resumeAfterHandoff(); original.startHealthMonitor(); await original.healthSweep();
+    expect(original.ownershipFrozen).toBe(true); expect(original.healthTimer).toBeNull();
+    await expect(original.provision()).rejects.toThrow('relinquished');
+    await expect(original.teardown()).rejects.toThrow('relinquished');
+    expect(() => original.addAppContainers([redis])).toThrow('relinquished');
+    expect(runtime.get).not.toHaveBeenCalled(); expect(runtime.create).not.toHaveBeenCalled();
+    expect(runtime.start).not.toHaveBeenCalled(); expect(runtime.remove).not.toHaveBeenCalled();
+  });
+  it('drains an admitted provision and its late janitor before permanently releasing authority', async () => {
+    const original = service(desired('redis')), provision = deferred<any>(), janitor = deferred<void>();
+    const drain = vi.fn(() => janitor.promise);
+    original.provisionOwned = vi.fn(async () => {
+      await provision.promise;
+      original.phantomJanitor = { drain, stop: vi.fn() };
+      return original.state;
+    });
+    const running = original.provision();
+    const released = original.relinquishMonitoring(); let finished = false;
+    void released.then(() => { finished = true; });
+    await expect(original.provision()).rejects.toThrow('frozen');
+    provision.resolve({}); await running; await Promise.resolve();
+    expect(finished).toBe(false); janitor.resolve(); await released;
+    expect(drain).toHaveBeenCalledOnce(); expect(original.phantomJanitor).toBeNull();
+    expect(runtime.get).not.toHaveBeenCalled(); expect(runtime.create).not.toHaveBeenCalled();
+  });
+  it('drains admitted provisioning and its late janitor before explicit teardown removes resources', async () => {
+    const original = service(desired('redis')), provision = deferred<any>(), janitor = deferred<void>();
+    original.provisionOwned = vi.fn(async () => {
+      await provision.promise;
+      original.phantomJanitor = { drain: () => janitor.promise, stop: vi.fn() };
+      return original.state;
+    });
+    const running = original.provision(), stopped = original.teardown();
+    expect(runtime.remove).not.toHaveBeenCalled();
+    provision.resolve({}); await running; await Promise.resolve();
+    expect(runtime.remove).not.toHaveBeenCalled(); janitor.resolve(); await stopped;
+    expect(runtime.remove).toHaveBeenCalledOnce();
+    expect(runtime.remove).toHaveBeenCalledWith('redis', { graceful: true });
+  });
   it('transfers a verified failed creation as absent, preserving its failure and desired service', async () => {
     const redis = desired('redis'), original = service(redis);
     original.state.services.redis = { name: 'redis', image: redis.image, status: 'exited', error: 'Image unavailable' };

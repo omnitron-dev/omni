@@ -236,6 +236,8 @@ export type StackName = 'dev' | 'test' | 'staging' | 'prod' | string;
 export interface IStackConfig {
   /** Generated node allocation binding. Never inferred from a project basename. */
   managedOrigin?: { project: string; stack: string };
+  /** Who provisions infrastructure and owns its migrations. Non-owning stacks use explicit app connection settings. */
+  infrastructureOwnership?: 'stack' | 'controller' | 'external';
   /** Stack deployment type */
   type: 'local' | 'remote' | 'cluster';
   /** Enable file watching (default: true for every managed app) */

@@ -73,7 +73,7 @@ describe('failed preparation preserves the running release', () => {
       deployToNode: async (_: unknown, artifact: { app: string }) => ({ node: 'example.invalid:9700', app: artifact.app, version: '1', status: artifact.app === 'bad' ? 'failed' : 'success' }),
       registerNodeApps: vi.fn(), migrateNodeApps: vi.fn(),
     });
-    const results = await svc.deployToStack([target], [{ app: 'good', version: '1' }, { app: 'bad', version: '1' }], 'project', { apps: [{ name: 'good' }, { name: 'bad' }] });
+    const results = await svc.deployToStack([target], [{ app: 'good', version: '1' }, { app: 'bad', version: '1' }], 'project', { stack: 'test', apps: [{ name: 'good' }, { name: 'bad' }] });
     expect(results.every((r: { status: string }) => r.status === 'failed')).toBe(true);
     expect(svc.registerNodeApps).not.toHaveBeenCalled(); expect(svc.migrateNodeApps).not.toHaveBeenCalled();
   });
@@ -96,13 +96,19 @@ describe('failed preparation preserves the running release', () => {
     expect(await readFile(join(root, 'omnitron.config.mjs'), 'utf8')).toBe(original);
     expect(JSON.parse(await readFile(join(root, 'omnitron.host-upgrade.json'), 'utf8'))).toEqual(contract);
   });
+  it('refuses deployment without source ownership before installing any artifact', async () => {
+    const svc: any = Object.create(RemoteDeployer.prototype);
+    svc.deployToNode = vi.fn();
+    await expect(svc.deployToStack([{ host: 'example.invalid' }], [{ app: 'api', version: '1' }], 'project', { apps: [{ name: 'api' }] })).rejects.toThrow(/explicit source stack/);
+    expect(svc.deployToNode).not.toHaveBeenCalled();
+  });
   it('reports registration failure and does not proceed to restart or health success', async () => {
     const svc: any = Object.create(RemoteDeployer.prototype);
     Object.assign(svc, { logger: { info() {}, warn() {}, error() {} }, emitProgress() {},
       deployToNode: async () => ({ node: 'example.invalid:9700', app: 'api', version: '1', status: 'success' }),
       migrateNodeApps: async () => new Map(), registerNodeApps: async () => { throw Error('read refused'); }, signalRemoteDaemon: vi.fn(),
     });
-    const result = await svc.deployToStack([{ host: 'example.invalid' }], [{ app: 'api', version: '1' }], 'project', { apps: [{ name: 'api' }] });
+    const result = await svc.deployToStack([{ host: 'example.invalid' }], [{ app: 'api', version: '1' }], 'project', { stack: 'test', apps: [{ name: 'api' }] });
     expect(result[0]).toMatchObject({ status: 'failed', error: 'Node registration failed: read refused' });
     expect(svc.signalRemoteDaemon).not.toHaveBeenCalled();
   });

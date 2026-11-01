@@ -21,6 +21,7 @@ import { selectNodeApps, renderNodeAppConfig } from '../../src/project/node-app-
 
 const base = {
   project: 'sample',
+    sourceStack: 'test',
   artifactRoot: '/opt/omnitron/artifacts',
   apps: [
     { name: 'main', bootstrap: './apps/main/src/bootstrap.ts', critical: true, startupTimeout: 180_000, watch: { directory: './apps/main' }, env: { PORT: '3001' } },

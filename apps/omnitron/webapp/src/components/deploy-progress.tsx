@@ -56,7 +56,9 @@ export function isInFlight(status: Status): boolean {
  * measurement of something.
  */
 export function ago(iso: string, now: number = Date.now()): string {
-  const seconds = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
+  const at = Date.parse(iso);
+  if (!Number.isFinite(at)) return 'time not reported';
+  const seconds = Math.max(0, Math.round((now - at) / 1000));
   if (seconds < 10) return 'just now';
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.round(seconds / 60);
@@ -64,17 +66,22 @@ export function ago(iso: string, now: number = Date.now()): string {
   return `${Math.round(minutes / 60)}h ago`;
 }
 
-function Row({ record, now }: { record: DeployProgressRecord; now: number }) {
+function awaitingUpdate(record: DeployProgressRecord, now: number, unavailable: boolean): boolean {
+  return isInFlight(record.status) && (unavailable || !Number.isFinite(Date.parse(record.at)) || now - Date.parse(record.at) > 90_000);
+}
+
+function Row({ record, now, unavailable }: { record: DeployProgressRecord; now: number; unavailable: boolean }) {
   const phase = PHASES[record.status] ?? { label: record.status, tone: 'default' as const };
-  const live = isInFlight(record.status);
+  const uncertain = awaitingUpdate(record, now, unavailable);
+  const live = isInFlight(record.status) && !uncertain;
 
   return (
     <Box sx={{ py: 1 }}>
       <Stack direction="row" spacing={1} sx={{ mb: 0.5, alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
-        <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 0 }}>
+        <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 0, overflowWrap: 'anywhere' }}>
           {record.app}
         </Typography>
-        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
+        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
           {record.node}
         </Typography>
         <Box sx={{ flex: 1 }} />
@@ -94,9 +101,13 @@ function Row({ record, now }: { record: DeployProgressRecord; now: number }) {
       <LinearProgress
         variant={live ? 'indeterminate' : 'determinate'}
         value={record.status === 'success' ? 100 : record.progress}
-        color={phase.tone === 'default' ? 'inherit' : phase.tone}
+        color={uncertain ? 'warning' : phase.tone === 'default' ? 'inherit' : phase.tone}
         sx={{ height: 4, borderRadius: 2 }}
       />
+
+      {uncertain && <Typography role="status" variant="caption" color="warning.main">
+        Awaiting an updated report; completion is unknown. A long phase may still be running.
+      </Typography>}
 
       {/*
         The message, always — not only on failure. It is the only place that
@@ -122,6 +133,8 @@ function Row({ record, now }: { record: DeployProgressRecord; now: number }) {
 
 export interface DeployProgressListProps {
   records: readonly DeployProgressRecord[];
+  /** Retained records cannot establish live progress after the source fails. */
+  unavailable?: boolean;
   /** Injected so a test can pin the relative times. */
   now?: number;
 }
@@ -133,10 +146,10 @@ export interface DeployProgressListProps {
  * "Live deployments" on a console where nobody is deploying is a widget that
  * has to be scrolled past forever.
  */
-export function DeployProgressList({ records, now = Date.now() }: DeployProgressListProps) {
+export function DeployProgressList({ records, now = Date.now(), unavailable = false }: DeployProgressListProps) {
   if (records.length === 0) return null;
 
-  const inFlight = records.filter((r) => isInFlight(r.status)).length;
+  const inFlight = records.filter((r) => isInFlight(r.status) && !awaitingUpdate(r, now, unavailable)).length;
 
   return (
     <Box sx={{ mb: 3 }}>
@@ -150,7 +163,7 @@ export function DeployProgressList({ records, now = Date.now() }: DeployProgress
       </Stack>
       <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, px: 2, py: 0.5 }}>
         {records.map((record) => (
-          <Row key={`${record.node}|${record.app}`} record={record} now={now} />
+          <Row key={`${record.node}|${record.app}`} record={record} now={now} unavailable={unavailable} />
         ))}
       </Box>
     </Box>

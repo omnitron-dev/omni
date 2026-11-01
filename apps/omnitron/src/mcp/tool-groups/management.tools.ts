@@ -29,6 +29,8 @@ import type {
  * `omnitron webapp`, a CLI command that runs Docker locally, and there is no
  * service an agent could call. Leaving them as stubs would tell the agent a
  * capability exists.
+ * Per-app deploy/rollback are also omitted: they had no artifact executor.
+ * Agents select real artifacts through stack.start's release parameter.
  */
 export function createManagementTools(client: DaemonClient): IMcpToolDef[] {
   const project = () => client.service<IProjectRpcService>('OmnitronProject');
@@ -93,16 +95,17 @@ export function createManagementTools(client: DaemonClient): IMcpToolDef[] {
     },
     {
       name: 'stack.start',
-      description: 'Start every app in a stack, provisioning its infrastructure first.',
+      description: 'Start a stack or deploy a verified release to it. Supplying a previous release selects the rollback artifact; application restarts may be required.',
       inputSchema: {
         type: 'object',
         properties: {
           project: { type: 'string', description: 'Project name' },
           stack: { type: 'string', description: 'Stack name' },
+          release: { type: 'string', description: 'Verified release ID to deploy; required for a release-only stack' },
         },
         required: ['project', 'stack'],
       },
-      handler: async (params: any) => (await project()).startStack({ project: params.project, stack: params.stack }),
+      handler: async (params: any) => (await project()).startStack({ project: params.project, stack: params.stack, ...(params.release ? { release: params.release } : {}) }),
     },
     {
       name: 'stack.stop',
@@ -192,41 +195,8 @@ export function createManagementTools(client: DaemonClient): IMcpToolDef[] {
 
     // ---- Deploys ------------------------------------------------------------
     {
-      name: 'deploy.app',
-      description: 'Deploy an app version with the chosen strategy.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          app: { type: 'string', description: 'App name' },
-          version: { type: 'string', description: 'Version to deploy' },
-          strategy: {
-            type: 'string',
-            description: 'rolling | all-at-once | blue-green | canary',
-          },
-        },
-        required: ['app', 'version'],
-      },
-      handler: async (params: any) =>
-        (await deploy()).deployApp({
-          app: params.app,
-          version: params.version,
-          strategy: params.strategy,
-          deployedBy: 'mcp',
-        }),
-    },
-    {
-      name: 'deploy.rollback',
-      description: 'Roll an app back to its previous version.',
-      inputSchema: {
-        type: 'object',
-        properties: { app: { type: 'string', description: 'App name' } },
-        required: ['app'],
-      },
-      handler: async (params: any) => (await deploy()).rollback({ app: params.app, deployedBy: 'mcp' }),
-    },
-    {
       name: 'deploy.history',
-      description: 'Deployment history, newest first.',
+      description: 'Legacy per-app operation records, newest first. Labels do not attest installed artifacts; stack starts are recorded separately in Audit.',
       inputSchema: {
         type: 'object',
         properties: {

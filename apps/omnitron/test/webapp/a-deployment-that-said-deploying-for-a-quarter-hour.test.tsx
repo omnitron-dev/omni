@@ -151,3 +151,13 @@ describe('how long ago, at the scale the answer is good to', () => {
     expect(ago('2026-09-20T07:46:00.000Z', NOW)).toBe('just now');
   });
 });
+
+it('marks an old nonterminal report as uncertain instead of animating permanent live progress', () => {
+  const { container } = draw([record({ at: '2026-09-20T07:40:00.000Z' })]);
+  expect(screen.getByText(/Awaiting an updated report; completion is unknown/)).toBeInTheDocument();
+  expect(container.querySelector('.MuiLinearProgress-indeterminate')).toBeNull();
+});
+
+it('does not infer completion or freshness from an invalid timestamp', () => {
+  expect(ago('invalid', NOW)).toBe('time not reported');
+});

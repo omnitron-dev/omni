@@ -10,6 +10,7 @@ import type { ContainerState } from '../../src/infrastructure/types.js';
 const runtime = vi.hoisted(() => ({ state: null as ContainerState | null,
   remove: vi.fn(), stop: vi.fn(), create: vi.fn() }));
 vi.mock('../../src/infrastructure/container-runtime.js', () => ({
+  readDockerInventory: vi.fn(() => { throw new Error('Unexpected Docker inventory read in ownership test'); }),
   getContainerState: async () => runtime.state, removeContainer: runtime.remove,
   stopContainer: runtime.stop, createContainer: runtime.create,
   containerSpecHash: () => 'fixture', ensureImage: vi.fn(), waitForHealthy: vi.fn(),

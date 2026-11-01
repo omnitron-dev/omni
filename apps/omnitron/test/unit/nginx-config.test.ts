@@ -70,6 +70,16 @@ describe('generateNginxConfig — caching', () => {
     expect(config).toContain('max-age=31536000, immutable');
   });
 
+  it('never stores a failed asset response, including an immutable URL returning 404', () => {
+    for (const variable of ['omnitron_hashed_asset_cache', 'omnitron_asset_cache']) {
+      const block = config.match(new RegExp(`map \\$status \\$${variable} \\{([^}]+)\\}`))?.[1];
+      expect(block).toBeDefined();
+      expect(block).toContain('default "no-store";');
+      expect([...block!.matchAll(/(\d{3}) "/g)].map(match => match[1])).toEqual(['200', '206', '304']);
+      expect(config).toContain(`add_header Cache-Control $${variable} always;`);
+    }
+  });
+
   it('matches the filenames Vite actually emits', () => {
     // Real output: "alerts-CEojylud.js" — a DASH then a base64url hash. The
     // first version of this rule expected ".<lowercase hex>." and matched

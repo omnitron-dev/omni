@@ -79,6 +79,21 @@ http {
     keepalive_timeout 65;
     client_max_body_size 100m;
 
+    # Only successful immutable responses may be retained. Caching a missing
+    # lazy chunk pins a browser to its 404 even after a complete build is served.
+    map $status $omnitron_hashed_asset_cache {
+        default "no-store";
+        200 "public, max-age=31536000, immutable";
+        206 "public, max-age=31536000, immutable";
+        304 "public, max-age=31536000, immutable";
+    }
+    map $status $omnitron_asset_cache {
+        default "no-store";
+        200 "public, max-age=3600, must-revalidate";
+        206 "public, max-age=3600, must-revalidate";
+        304 "public, max-age=3600, must-revalidate";
+    }
+
     # Gzip compression for static assets
     gzip on;
     gzip_vary on;
@@ -151,14 +166,14 @@ ${securityHeaders('        ')}
         # asset to the 1-hour bucket below.) A changed file gets a new name,
         # so these are immutable. Must precede the SPA fallback location.
         location ~* "-[A-Za-z0-9_-]{8,}\\.(js|css|woff2?|ttf|otf|png|jpe?g|gif|svg|webp|avif|ico|map)$" {
-            add_header Cache-Control "public, max-age=31536000, immutable" always;
+            add_header Cache-Control $omnitron_hashed_asset_cache always;
 ${securityHeaders('            ')}
             try_files $uri =404;
         }
 
         # Unhashed assets still get a short cache with revalidation.
         location ~* "\\.(js|css|woff2?|ttf|otf|png|jpe?g|gif|svg|webp|avif|ico)$" {
-            add_header Cache-Control "public, max-age=3600, must-revalidate" always;
+            add_header Cache-Control $omnitron_asset_cache always;
 ${securityHeaders('            ')}
             try_files $uri =404;
         }

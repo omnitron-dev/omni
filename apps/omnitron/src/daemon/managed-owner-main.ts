@@ -4,6 +4,7 @@ import { readManagedRuntime, managedJobPid, hostBootIdentity, assertCleanOwnerBo
 import { readPrivateRecord, writePrivateRecord } from './execution-journal.js';
 import { loadStartupConfig } from './startup-config.js';
 import { startExecutionOwner } from './execution-owner.js';
+import { withOwnerBootFence, consumeOwnerReconciliation } from './owner-reconciliation.js';
 
 const config = await readManagedRuntime();
 if (!config || await managedJobPid(config, 'owner') !== process.pid) throw new Error('The resident owner must be launched by its configured OS service');
@@ -11,11 +12,18 @@ Object.assign(process.env, config.environment);
 process.chdir(config.cwd);
 const bootId = await hostBootIdentity();
 const receipt = path.join(config.directory, 'managed-owner.json');
-const previous = await readPrivateRecord<{ bootId: string; clean: boolean; pid: number }>(receipt);
-assertCleanOwnerBoot(previous, bootId);
-const startup = await loadStartupConfig(config.cwd);
-if (!startup.daemonConfig.executionHost?.enabled) throw new Error('Independent supervision requires executionHost.enabled');
-await writePrivateRecord(receipt, { bootId, clean: false, pid: process.pid });
+let startup!: Awaited<ReturnType<typeof loadStartupConfig>>;
+await withOwnerBootFence(config, async () => {
+  const previous = await readPrivateRecord<{ bootId: string; clean: boolean; pid: number }>(receipt);
+  try { assertCleanOwnerBoot(previous, bootId); }
+  catch (error) {
+    if (!previous || previous.clean !== false || previous.bootId !== bootId) throw error;
+    await consumeOwnerReconciliation(config, previous, bootId);
+  }
+  startup = await loadStartupConfig(config.cwd);
+  if (!startup.daemonConfig.executionHost?.enabled) throw new Error('Independent supervision requires executionHost.enabled');
+  await writePrivateRecord(receipt, { bootId, clean: false, pid: process.pid });
+});
 const logger = new LoggerService({ level: 'info' }).child({ component: 'execution-owner' });
 let stopping = false;
 const owner = await startExecutionOwner({ directory: config.directory, ...startup, logger,

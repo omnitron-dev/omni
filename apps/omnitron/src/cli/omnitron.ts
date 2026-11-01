@@ -61,6 +61,11 @@ program.hook('preAction', async (cmd, actionCommand) => {
 // ============================================================================
 
 const backend = program.command('backend').description('Inspect and replace the control plane without restarting resident applications');
+const ownerRecovery = backend.command('owner-reconcile').description('Explicit offline recovery after an execution-owner crash; never stops applications');
+ownerRecovery.command('prepare <worker-pids>').description('Record native ownership evidence; pass comma-separated pre-crash worker PIDs')
+  .action(async (pids: string) => { const { ownerReconciliationCommand } = await import('../daemon/owner-reconciliation.js'); await ownerReconciliationCommand('prepare', pids); });
+ownerRecovery.command('acknowledge <plan>').description('Certify empty ownership cgroups after a separately approved drain, preserving the crash receipt')
+  .action(async (file: string) => { const { ownerReconciliationCommand } = await import('../daemon/owner-reconciliation.js'); await ownerReconciliationCommand('acknowledge', file); });
 const schema = backend.command('schema').description('Prepare and apply reviewed compatible schema expansions');
 schema.command('prepare <runtime>').description('Inspect the current schema and save an exact expansion plan without database writes')
   .option('--from-plan <plan>', 'Bind an already applied expansion to a corrected candidate after rollback')

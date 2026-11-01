@@ -7,6 +7,7 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
+import { parseHttpError } from '../../errors/serialization.js';
 import { AbstractPeer } from '../../core/abstract-peer.js';
 import type { EventSubscriber } from '../../core/types.js';
 import { Definition } from '../../core/definition.js';
@@ -494,49 +495,23 @@ export class HttpRemotePeer extends AbstractPeer {
         signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
 
       this.logger.debug('[HTTP Peer] Got HTTP response', { status: response.status, ok: response.ok });
 
       if (!response.ok) {
-        // CRITICAL FIX: Extract headers BEFORE consuming response body
-        // Race condition: response.json() can make headers undefined
-        const requestId = response.headers.get('X-Request-ID') || undefined;
-        const correlationId = response.headers.get('X-Correlation-ID') || undefined;
-        const traceId = response.headers.get('X-Trace-ID') || undefined;
-        const spanId = response.headers.get('X-Span-ID') || undefined;
-
-        // Try to parse error response
-        try {
-          const errorData = await response.json();
-          if (errorData.error) {
-            throw new TitanError({
-              code: resolveErrorCode(errorData.error.code, response.status),
-              message: errorData.error.message,
-              details: withBusinessCode(errorData.error.details, errorData.error.code),
-              requestId,
-              correlationId,
-              traceId,
-              spanId,
-            });
-          }
-        } catch (parseError) {
-          // If it's already a TitanError, rethrow it
-          if (parseError instanceof TitanError) {
-            throw parseError;
-          }
-          // Fallback to HTTP status error
+        const responseHeaders: Record<string, string> = {};
+        response.headers.forEach((value, key) => { responseHeaders[key] = value; });
+        let errorBody: unknown;
+        try { errorBody = await response.json(); }
+        catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') throw error;
+          errorBody = { message: `HTTP ${response.status}: ${response.statusText}` };
         }
-
-        throw new TitanError({
-          code: ErrorCode.INTERNAL_ERROR,
-          message: `HTTP ${response.status}: ${response.statusText}`,
-        });
+        throw parseHttpError(response.status, errorBody, responseHeaders);
       }
 
       return await response.json();
     } catch (error: any) {
-      clearTimeout(timeoutId);
 
       if (error.name === 'AbortError') {
         throw new TitanError({
@@ -546,6 +521,8 @@ export class HttpRemotePeer extends AbstractPeer {
       }
 
       throw error;
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
@@ -657,18 +634,7 @@ export class HttpRemotePeer extends AbstractPeer {
    * Create error from response
    */
   private createErrorFromResponse(response: HttpResponseMessage): Error {
-    if (response.error) {
-      // No HTTP status to fall back on here: this path handles an envelope
-      // that came back 200 with `success: false` (the batch responses do), so
-      // the status says nothing about the failure.
-      return new TitanError({
-        code: resolveErrorCode(response.error.code),
-        message: response.error.message,
-        details: withBusinessCode(response.error.details, response.error.code),
-      });
-    }
-
-    return Errors.internal('Unknown error');
+    return parseHttpError(500, response);
   }
 
   /**
@@ -1095,65 +1061,4 @@ export class HttpRemotePeer extends AbstractPeer {
         'Service methods are invoked directly via HTTP requests without definition metadata.'
     );
   }
-}
-
-// ---------------------------------------------------------------------------
-// Error-envelope decoding
-// ---------------------------------------------------------------------------
-
-/**
- * The numeric code for a TitanError, given what the server put in the
- * envelope's `code` field and the HTTP status it answered with.
- *
- * The server sends the BUSINESS code there whenever the error carries one —
- * `CART_EXPIRED`, `SESSION_EXPIRED`, `DISPUTE_EXISTS` — and the stringified
- * HTTP status otherwise. `parseInt` on a business code is NaN, and the two
- * places that decoded it took `NaN || INTERNAL_ERROR` and `NaN as ErrorCode`
- * respectively. The first turned every business-coded error into a 500; the
- * second produced a TitanError whose code was NaN and therefore compared
- * equal to nothing, including itself.
- *
- * A 500 here is not a cosmetic mislabel. `isRetryableError` and every retry
- * policy keyed on 5xx re-send a request that can never succeed, monitoring
- * counts a buyer's expired cart as a server incident, and the caller cannot
- * tell "I sent the wrong thing" from "the server broke" — precisely the
- * failure the server's own `toTitanError` was fixed to stop producing, undone
- * one hop later.
- *
- * The HTTP status is the answer whenever the code is not numeric: the server
- * derived that status from the same error, through `mapToHttp`.
- *
- * A string is accepted as numeric only when it round-trips (`'429'`), so a
- * hypothetical `'500_INTERNAL'` is treated as the business code it looks like
- * rather than silently becoming 500.
- */
-function resolveErrorCode(raw: unknown, httpStatus?: number): ErrorCode {
-  if (typeof raw === 'number' && Number.isFinite(raw)) return raw as ErrorCode;
-  if (typeof raw === 'string') {
-    const parsed = Number.parseInt(raw, 10);
-    if (Number.isFinite(parsed) && String(parsed) === raw.trim()) return parsed as ErrorCode;
-  }
-  if (typeof httpStatus === 'number' && httpStatus >= 400) return httpStatus as ErrorCode;
-  return ErrorCode.INTERNAL_ERROR;
-}
-
-/**
- * Keep the business code reachable on the error.
- *
- * `TitanError.code` is numeric by contract, so the string the server sent has
- * nowhere to live on the error itself — and it is the only thing separating
- * `CART_EXPIRED` from `CART_VERSION_CONFLICT`, which are both 409, or
- * `SESSION_EXPIRED` from `TOKEN_EXPIRED`, which are both 401. Discriminating
- * on the message instead means branching on English prose, which changes the
- * first time someone rewords a string.
- *
- * The server already mirrors it into `details.errorCode`; this restores it for
- * the envelopes that did not, and never overwrites one that is already there.
- */
-function withBusinessCode(details: unknown, raw: unknown): any {
-  if (typeof raw !== 'string') return details;
-  const parsed = Number.parseInt(raw, 10);
-  if (Number.isFinite(parsed) && String(parsed) === raw.trim()) return details;
-  if (details && typeof details === 'object' && 'errorCode' in (details as object)) return details;
-  return { ...((details as object) ?? {}), errorCode: raw };
 }

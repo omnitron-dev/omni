@@ -6,6 +6,7 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
+import { parseHttpError } from '../../../errors/transport.js';
 import { type ITransportConnection, ConnectionState, type TransportOptions } from '../types.js';
 import type { Definition } from '../../definition.js';
 import { TitanError, ErrorCode, NetronErrors } from '../../../errors/index.js';
@@ -26,7 +27,7 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
   private _state: ConnectionState = ConnectionState.CONNECTING;
   private baseUrl: string;
   private options: TransportOptions;
-  private abortController?: AbortController;
+  private readonly inFlight = new Set<AbortController>();
 
   // Path prefix for all endpoints (for reverse proxy support)
   private pathPrefix: string;
@@ -127,23 +128,14 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
       });
     }
 
-    try {
-      const str = buffer.toString();
-      const msg = JSON.parse(str);
-
-      // Handle different message types
-      if (msg.type === 'request' || msg.service) {
-        // Convert to new message format
-        const request = createRequestMessage(msg.service || '__system', msg.method || msg.type, msg.input || msg.data);
-
-        const response = await this.sendRequestMessage(request);
-
-        // Emit response for compatibility
-        this.emit('message', Buffer.from(JSON.stringify(response)), true);
-      }
-    } catch (_error) {
-      // Not JSON or unknown format, silently ignore
-      // This is normal for HTTP connections receiving non-JSON data
+    let msg: any;
+    try { msg = JSON.parse(buffer.toString()); }
+    catch { return; } // Raw non-JSON transport messages are not HTTP requests.
+    if (msg && typeof msg === 'object' && (msg.type === 'request' || msg.service)) {
+      const request = createRequestMessage(msg.service || '__system', msg.method || msg.type, msg.input || msg.data);
+      // A valid request must report a remote refusal or transport failure.
+      const response = await this.sendRequestMessage(request);
+      this.emit('message', Buffer.from(JSON.stringify(response)), true);
     }
   }
 
@@ -213,10 +205,11 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
     };
 
     const timeout = this.options?.timeout || 30000;
-    this.abortController = new AbortController();
+    const controller = new AbortController();
+    this.inFlight.add(controller);
 
     const timeoutId = setTimeout(() => {
-      this.abortController?.abort();
+      controller.abort();
     }, timeout);
 
     try {
@@ -224,37 +217,24 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,
-        signal: this.abortController.signal,
+        signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
-        // Try to parse error response
-        try {
-          const errorData = await response.json();
-          if (errorData.error) {
-            throw new TitanError({
-              code: (typeof errorData.error.code === 'number'
-                ? errorData.error.code
-                : ErrorCode.INTERNAL_ERROR) as ErrorCode,
-              message: errorData.error.message,
-              details: errorData.error.details,
-            });
-          }
-        } catch {
-          // Fallback to HTTP status error
+        const responseHeaders: Record<string, string> = {};
+        response.headers.forEach((value, key) => { responseHeaders[key] = value; });
+        let errorBody: unknown;
+        try { errorBody = await response.json(); }
+        catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') throw error;
+          errorBody = { message: `HTTP ${response.status}: ${response.statusText}` };
         }
-
-        throw new TitanError({
-          code: ErrorCode.INTERNAL_ERROR,
-          message: `HTTP ${response.status}: ${response.statusText}`,
-        });
+        throw parseHttpError(response.status, errorBody, responseHeaders);
       }
 
       return await response.json();
     } catch (error: any) {
-      clearTimeout(timeoutId);
 
       if (error.name === 'AbortError') {
         throw new TitanError({
@@ -264,6 +244,9 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
       }
 
       throw error;
+    } finally {
+      clearTimeout(timeoutId);
+      this.inFlight.delete(controller);
     }
   }
 
@@ -277,13 +260,16 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
     }
 
     const startTime = Date.now();
+    const controller = new AbortController();
+    this.inFlight.add(controller);
+    const timer = setTimeout(() => controller.abort(), this.options.timeout || 30000);
 
     try {
       // Use discovery endpoint as a lightweight ping (with path prefix support)
       const discoverPath = this.buildPath('/discover');
       const response = await fetch(`${this.baseUrl}${discoverPath}`, {
         method: 'GET',
-        signal: this.abortController?.signal,
+        signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -305,6 +291,9 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
         this.baseUrl,
         error instanceof Error ? error : new Error(String(error))
       );
+    } finally {
+      clearTimeout(timer);
+      this.inFlight.delete(controller);
     }
   }
 
@@ -319,9 +308,8 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
     this._state = ConnectionState.DISCONNECTED;
 
     // Abort any pending requests
-    if (this.abortController) {
-      this.abortController.abort();
-    }
+    for (const controller of this.inFlight) controller.abort();
+    this.inFlight.clear();
 
     // Reject all pending requests
     for (const [_id, pending] of this.pendingRequests) {
@@ -425,15 +413,7 @@ export class HttpConnection extends EventEmitter implements ITransportConnection
 
             const response = await this.sendRequestMessage(request);
 
-            if (!response.success) {
-              throw new TitanError({
-                code: (typeof response.error?.code === 'number'
-                  ? response.error.code
-                  : ErrorCode.INTERNAL_ERROR) as ErrorCode,
-                message: response.error?.message || 'Method call failed',
-                details: response.error?.details,
-              });
-            }
+            if (!response.success) throw parseHttpError(500, response);
 
             return response.data;
           };

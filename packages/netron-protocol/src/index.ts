@@ -42,6 +42,7 @@ export {
   getDefaultMessage,
 } from './error-codes.js';
 export type { ErrorMetadata } from './error-codes.js';
+export { decodeHttpError } from './http-error.js';
 
 // The TitanError class hierarchy + helpers (shared so an error constructed or
 // serialized on one end is the same class on the other).

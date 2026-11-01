@@ -45,6 +45,7 @@ export default defineConfig({
     globalSetup: ['./globalSetup.ts'],
     setupFiles: ['./vitest.setup.ts'],
     alias: [
+      { find: /^@omnitron-dev\/netron-protocol$/, replacement: resolve(import.meta.dirname, '../netron-protocol/src/index.ts') },
       // Order matters — more specific paths first
       { find: /^@omnitron-dev\/testing\/titan$/, replacement: resolve(import.meta.dirname, '../testing/src/titan/index.ts') },
       { find: /^@omnitron-dev\/testing\/docker$/, replacement: resolve(import.meta.dirname, '../testing/src/docker/index.ts') },

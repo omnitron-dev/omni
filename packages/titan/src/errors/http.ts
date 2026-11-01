@@ -2,15 +2,18 @@
  * HTTP-specific error classes
  */
 
-import { TitanError } from './core.js';
+import { TitanError, type ErrorOptions } from './core.js';
 import { ErrorCode } from './codes.js';
+
+type HttpErrorDiagnostics = Pick<ErrorOptions, 'requestId' | 'correlationId' | 'traceId' | 'spanId'>;
 
 /**
  * HTTP error class for custom HTTP status codes
  */
 export class HttpError extends TitanError {
-  constructor(statusCode: number, message: string, details?: any) {
+  constructor(statusCode: number, message: string, details?: any, diagnostics?: HttpErrorDiagnostics) {
     super({
+      ...diagnostics,
       code: statusCode as ErrorCode,
       message,
       details,
@@ -108,12 +111,12 @@ export class AuthError extends HttpError {
   constructor(
     message = 'Authentication required',
     details?: any,
-    options?: {
+    options?: HttpErrorDiagnostics & {
       authType?: string;
       realm?: string;
     }
   ) {
-    super(401, message, details);
+    super(401, message, details, options);
 
     this.name = 'AuthError';
     this.authType = options?.authType;
@@ -215,23 +218,24 @@ export class RateLimitError extends HttpError {
   constructor(
     message = 'Rate limit exceeded',
     details?: any,
-    options?: {
+    options?: HttpErrorDiagnostics & {
       limit?: number;
       remaining?: number;
       resetTime?: Date;
       retryAfter?: number;
     }
   ) {
+    const retryAfter = options?.retryAfter ?? details?.retryAfter;
     super(429, message, {
       ...details,
-      retryAfter: options?.retryAfter,
-    });
+      retryAfter,
+    }, options);
 
     this.name = 'RateLimitError';
     this.limit = options?.limit;
     this.remaining = options?.remaining;
     this.resetTime = options?.resetTime;
-    this.retryAfter = options?.retryAfter;
+    this.retryAfter = retryAfter;
   }
 
   /**

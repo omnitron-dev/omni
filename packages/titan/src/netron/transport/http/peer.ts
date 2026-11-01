@@ -7,6 +7,7 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
+import { parseHttpError } from '../../../errors/transport.js';
 import { AbstractPeer } from '../../abstract-peer.js';
 import type { INetron } from '../../types.js';
 import type { ITransportConnection, TransportOptions } from '../types.js';
@@ -352,51 +353,23 @@ export class HttpRemotePeer extends AbstractPeer {
         signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
 
       this.logger.debug({ status: response.status, ok: response.ok }, '[HTTP Peer] Got HTTP response');
 
       if (!response.ok) {
-        // CRITICAL FIX: Extract headers BEFORE consuming response body
-        // Race condition: response.json() can make headers undefined
-        const requestId = response.headers.get('X-Request-ID') || undefined;
-        const correlationId = response.headers.get('X-Correlation-ID') || undefined;
-        const traceId = response.headers.get('X-Trace-ID') || undefined;
-        const spanId = response.headers.get('X-Span-ID') || undefined;
-
-        // Try to parse error response
-        try {
-          const errorData = await response.json();
-          if (errorData.error) {
-            throw new TitanError({
-              code: (typeof errorData.error.code === 'number'
-                ? errorData.error.code
-                : ErrorCode.INTERNAL_ERROR) as ErrorCode,
-              message: errorData.error.message,
-              details: errorData.error.details,
-              requestId,
-              correlationId,
-              traceId,
-              spanId,
-            });
-          }
-        } catch (parseError) {
-          // If it's already a TitanError, rethrow it
-          if (parseError instanceof TitanError) {
-            throw parseError;
-          }
-          // Fallback to HTTP status error
+        const responseHeaders: Record<string, string> = {};
+        response.headers.forEach((value, key) => { responseHeaders[key] = value; });
+        let errorBody: unknown;
+        try { errorBody = await response.json(); }
+        catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') throw error;
+          errorBody = { message: `HTTP ${response.status}: ${response.statusText}` };
         }
-
-        throw new TitanError({
-          code: ErrorCode.INTERNAL_ERROR,
-          message: `HTTP ${response.status}: ${response.statusText}`,
-        });
+        throw parseHttpError(response.status, errorBody, responseHeaders);
       }
 
       return await response.json();
     } catch (error: any) {
-      clearTimeout(timeoutId);
 
       if (error.name === 'AbortError') {
         throw new TitanError({
@@ -406,6 +379,8 @@ export class HttpRemotePeer extends AbstractPeer {
       }
 
       throw error;
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
@@ -574,17 +549,7 @@ export class HttpRemotePeer extends AbstractPeer {
    * Create error from response
    */
   private createErrorFromResponse(response: HttpResponseMessage): Error {
-    if (response.error) {
-      return new TitanError({
-        code: (typeof response.error.code === 'string'
-          ? parseInt(response.error.code, 10)
-          : response.error.code || ErrorCode.INTERNAL_ERROR) as ErrorCode,
-        message: response.error.message,
-        details: response.error.details,
-      });
-    }
-
-    return Errors.internal('Unknown error');
+    return parseHttpError(500, response);
   }
 
   /**

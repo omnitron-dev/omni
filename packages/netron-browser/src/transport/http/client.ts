@@ -14,7 +14,8 @@ import {
   type HttpRequestContext,
   type HttpRequestHints,
 } from './types.js';
-import { NetronErrors, ErrorCode, getErrorName } from '../../errors/index.js';
+import { TitanError, ErrorCode, getErrorName } from '../../errors/index.js';
+import { parseHttpError } from '../../errors/serialization.js';
 
 /**
  * Normalize a path prefix by removing trailing slashes.
@@ -107,11 +108,11 @@ export class HttpTransportClient {
       hints?: HttpRequestHints;
     }
   ): Promise<any> {
-    // Ensure initialized
-    await this.initialize();
+    const direct = Boolean(options?.context || (options?.hints && Object.keys(options.hints).length));
+    if (!direct) await this.initialize();
 
     // Use peer if available for full Netron compatibility
-    if (this.peer) {
+    if (this.peer && !direct) {
       // Get service interface
       const serviceInterface = await this.peer.queryInterface(service);
       if (serviceInterface && typeof (serviceInterface as any)[method] === 'function') {
@@ -127,10 +128,7 @@ export class HttpTransportClient {
 
     const response = await this.sendRequest(message);
 
-    if (!response.success) {
-      const errorMsg = response.error?.message || 'Method invocation failed';
-      throw NetronErrors.invalidResponse(service, method, { error: response.error, message: errorMsg });
-    }
+    if (!response.success) throw parseHttpError(500, response);
 
     return response.data;
   }
@@ -157,43 +155,22 @@ export class HttpTransportClient {
         signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
-        // Parse HTTP error response
         const headers: Record<string, string> = {};
-        response.headers.forEach((value, key) => {
-          headers[key] = value;
-        });
-
-        try {
-          const errorBody = await response.json();
-
-          return {
-            id: message.id,
-            success: false,
-            error: {
-              code: errorBody.error?.code || getErrorName(ErrorCode.INTERNAL_ERROR),
-              message: errorBody.error?.message || response.statusText,
-              details: errorBody.error?.details,
-            },
-          };
-        } catch {
-          // Fallback if body parsing fails
-          return {
-            id: message.id,
-            success: false,
-            error: {
-              code: getErrorName(ErrorCode.INTERNAL_ERROR),
-              message: response.statusText,
-            },
-          };
+        response.headers.forEach((value, key) => { headers[key] = value; });
+        let body: unknown;
+        try { body = await response.json(); }
+        catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') throw error;
+          body = { message: `HTTP ${response.status}: ${response.statusText}` };
         }
+        throw parseHttpError(response.status, body, headers);
       }
 
       return await response.json();
     } catch (error: any) {
-      clearTimeout(timeoutId);
+      if (error instanceof TitanError) throw error;
 
       if (error.name === 'AbortError') {
         return {
@@ -214,6 +191,8 @@ export class HttpTransportClient {
           message: error.message,
         },
       };
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 

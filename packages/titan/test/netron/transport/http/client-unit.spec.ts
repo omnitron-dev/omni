@@ -277,12 +277,7 @@ describe('HttpTransportClient - Unit Tests', () => {
         }),
       });
 
-      const result = await (client as any).sendRequest(message);
-
-      expect(result.success).toBe(false);
-      // parseHttpError converts VALIDATION_ERROR string to ErrorCode 422, then back to UNPROCESSABLE_ENTITY
-      expect(result.error?.code).toBe('UNPROCESSABLE_ENTITY');
-      expect(result.error?.message).toBe('Invalid input parameters');
+      await expect((client as any).sendRequest(message)).rejects.toMatchObject({ code: 422, message: 'Invalid input parameters' });
     });
 
     it('should handle HTTP error without JSON body', async () => {
@@ -297,13 +292,7 @@ describe('HttpTransportClient - Unit Tests', () => {
         json: vi.fn().mockRejectedValue(new Error('Not JSON')),
       });
 
-      const result = await (client as any).sendRequest(message);
-
-      expect(result.success).toBe(false);
-      // parseHttpError converts 500 to INTERNAL_SERVER_ERROR
-      expect(result.error?.code).toBe('INTERNAL_SERVER_ERROR');
-      expect(result.error?.message).toBe('Internal Server Error');
-      expect(result.id).toBe(message.id);
+      await expect((client as any).sendRequest(message)).rejects.toMatchObject({ code: 500, message: 'HTTP 500: Internal Server Error' });
     });
 
     it('should handle HTTP 404 error', async () => {
@@ -318,12 +307,7 @@ describe('HttpTransportClient - Unit Tests', () => {
         json: vi.fn().mockRejectedValue(new Error('Not JSON')),
       });
 
-      const result = await (client as any).sendRequest(message);
-
-      expect(result.success).toBe(false);
-      // parseHttpError converts 404 to NOT_FOUND
-      expect(result.error?.code).toBe('NOT_FOUND');
-      expect(result.error?.message).toBe('Not Found');
+      await expect((client as any).sendRequest(message)).rejects.toMatchObject({ code: 404, message: 'HTTP 404: Not Found' });
     });
 
     it('should handle timeout (AbortError)', async () => {
@@ -462,13 +446,7 @@ describe('HttpTransportClient - Unit Tests', () => {
         }),
       });
 
-      const result = await (client as any).sendRequest(message);
-
-      expect(result.success).toBe(false);
-      // parseHttpError converts 403 to FORBIDDEN
-      expect(result.error?.code).toBe('FORBIDDEN');
-      expect(result.error?.message).toBe('User lacks required permissions');
-      expect(result.error?.details).toEqual({ requiredRole: 'admin' });
+      await expect((client as any).sendRequest(message)).rejects.toMatchObject({ code: 403, message: 'User lacks required permissions' });
     });
 
     it('should include AbortSignal in fetch request', async () => {

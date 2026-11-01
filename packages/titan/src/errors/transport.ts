@@ -4,6 +4,7 @@
  */
 
 import { TitanError } from './core.js';
+import { decodeHttpError } from '@omnitron-dev/netron-protocol';
 import { ErrorCode, getErrorName } from './codes.js';
 import { RateLimitError, AuthError } from './http.js';
 import { Errors } from './factories.js';
@@ -208,61 +209,12 @@ export function mapToTransport(error: TitanError, transport: TransportType, opti
 export { mapToHttp };
 
 /**
- * Map error name to ErrorCode
- */
-const errorNameToCodeMap: Record<string, ErrorCode> = {
-  OK: ErrorCode.OK,
-  CREATED: ErrorCode.CREATED,
-  NO_CONTENT: ErrorCode.NO_CONTENT,
-  BAD_REQUEST: ErrorCode.BAD_REQUEST,
-  UNAUTHORIZED: ErrorCode.UNAUTHORIZED,
-  FORBIDDEN: ErrorCode.FORBIDDEN,
-  NOT_FOUND: ErrorCode.NOT_FOUND,
-  METHOD_NOT_ALLOWED: ErrorCode.METHOD_NOT_ALLOWED,
-  REQUEST_TIMEOUT: ErrorCode.REQUEST_TIMEOUT,
-  CONFLICT: ErrorCode.CONFLICT,
-  GONE: ErrorCode.GONE,
-  PAYLOAD_TOO_LARGE: ErrorCode.PAYLOAD_TOO_LARGE,
-  URI_TOO_LONG: ErrorCode.URI_TOO_LONG,
-  UNSUPPORTED_MEDIA_TYPE: ErrorCode.UNSUPPORTED_MEDIA_TYPE,
-  IM_A_TEAPOT: ErrorCode.IM_A_TEAPOT,
-  UNPROCESSABLE_ENTITY: ErrorCode.UNPROCESSABLE_ENTITY,
-  VALIDATION_ERROR: ErrorCode.VALIDATION_ERROR,
-  TOO_MANY_REQUESTS: ErrorCode.TOO_MANY_REQUESTS,
-  INTERNAL_SERVER_ERROR: ErrorCode.INTERNAL_SERVER_ERROR,
-  NOT_IMPLEMENTED: ErrorCode.NOT_IMPLEMENTED,
-  BAD_GATEWAY: ErrorCode.BAD_GATEWAY,
-  SERVICE_UNAVAILABLE: ErrorCode.SERVICE_UNAVAILABLE,
-  GATEWAY_TIMEOUT: ErrorCode.GATEWAY_TIMEOUT,
-  INSUFFICIENT_STORAGE: ErrorCode.INSUFFICIENT_STORAGE,
-  MULTIPLE_ERRORS: ErrorCode.MULTIPLE_ERRORS,
-  UNKNOWN_ERROR: ErrorCode.UNKNOWN_ERROR,
-};
-
-/**
  * Parse HTTP error response back to TitanError
  * Enables clients to reconstruct typed errors from HTTP responses
  */
 export function parseHttpError(status: number, body: any, headers?: Record<string, string>): TitanError {
-  // Extract error information from body
-  const errorData = body?.error || body;
-  const errorCode = errorData.code;
-  const message = errorData.message || `HTTP ${status}`;
-  const details = errorData.details || {};
-
-  // Map error name to code if it's a string
-  let code: ErrorCode | number = status;
-  if (typeof errorCode === 'string') {
-    code = errorNameToCodeMap[errorCode] || status;
-  } else if (typeof errorCode === 'number') {
-    code = errorCode;
-  }
-
-  // Extract tracing headers
-  const requestId = headers?.['x-request-id'] || headers?.['X-Request-ID'];
-  const correlationId = headers?.['x-correlation-id'] || headers?.['X-Correlation-ID'];
-  const traceId = headers?.['x-trace-id'] || headers?.['X-Trace-ID'];
-  const spanId = headers?.['x-span-id'] || headers?.['X-Span-ID'];
+  const decoded = decodeHttpError(status, body, headers);
+  const { code, message, details, ...diagnostics } = decoded;
 
   // Special handling for rate limit errors
   if (status === 429 || code === ErrorCode.TOO_MANY_REQUESTS) {
@@ -272,6 +224,7 @@ export function parseHttpError(status: number, body: any, headers?: Record<strin
     const reset = headers?.['x-ratelimit-reset'] || headers?.['X-RateLimit-Reset'];
 
     return new RateLimitError(message, details, {
+      ...diagnostics,
       retryAfter: retryAfter ? parseInt(retryAfter) : undefined,
       limit: limit ? parseInt(limit) : undefined,
       remaining: remaining ? parseInt(remaining) : undefined,
@@ -293,19 +246,10 @@ export function parseHttpError(status: number, body: any, headers?: Record<strin
       }
     }
 
-    return new AuthError(message, details, { authType, realm });
+    return new AuthError(message, details, { ...diagnostics, authType, realm });
   }
 
-  // Create standard TitanError with all context
-  return new TitanError({
-    code,
-    message,
-    details,
-    requestId,
-    correlationId,
-    traceId,
-    spanId,
-  });
+  return new TitanError(decoded);
 }
 
 /**

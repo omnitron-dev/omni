@@ -4,6 +4,7 @@
  */
 
 import { TitanError, SerializedError } from './core.js';
+import { decodeHttpError } from '@omnitron-dev/netron-protocol';
 import { ErrorCode, getErrorName } from './codes.js';
 import {
   NetronError,
@@ -124,40 +125,7 @@ export function deserializeError(data: any): TitanError {
  * Parse HTTP error response to TitanError
  */
 export function parseHttpError(status: number, body: any, headers?: Record<string, string>): TitanError {
-  // Extract error information from body
-  const errorData = body?.error || body;
-  const errorCode = errorData.code;
-  const message = errorData.message || `HTTP ${status}`;
-  const details = errorData.details || {};
-
-  // Map error name to code if it's a string
-  let code: ErrorCode | number = status;
-  if (typeof errorCode === 'string') {
-    // Try to find matching error code by name
-    const codeValue = ErrorCode[errorCode as keyof typeof ErrorCode];
-    if (codeValue !== undefined) {
-      code = codeValue;
-    }
-  } else if (typeof errorCode === 'number') {
-    code = errorCode;
-  }
-
-  // Extract tracing headers
-  const requestId = headers?.['x-request-id'] || headers?.['X-Request-ID'];
-  const correlationId = headers?.['x-correlation-id'] || headers?.['X-Correlation-ID'];
-  const traceId = headers?.['x-trace-id'] || headers?.['X-Trace-ID'];
-  const spanId = headers?.['x-span-id'] || headers?.['X-Span-ID'];
-
-  // Create TitanError with all context
-  return new TitanError({
-    code,
-    message,
-    details,
-    requestId,
-    correlationId,
-    traceId,
-    spanId,
-  });
+  return new TitanError(decodeHttpError(status, body, headers));
 }
 
 /**

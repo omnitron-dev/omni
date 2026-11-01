@@ -16,7 +16,7 @@ import {
   type HttpRequestContext,
   type HttpRequestHints,
 } from './types.js';
-import { NetronErrors } from '../../../errors/index.js';
+import { TitanError } from '../../../errors/index.js';
 import { parseHttpError } from '../../../errors/transport.js';
 import { ErrorCode, getErrorName } from '../../../errors/codes.js';
 
@@ -89,15 +89,11 @@ export class HttpTransportClient {
       hints?: HttpRequestHints;
     }
   ): Promise<any> {
-    // Ensure initialized
-    await this.initialize();
+    const direct = Boolean(options?.context || (options?.hints && Object.keys(options.hints).length));
+    if (!direct) await this.initialize();
 
-    // If hints are provided (timeout, cache, retry, etc), use direct HTTP path
-    // because the proxy-based paths don't support per-request hints
-    const hasHints = options?.hints && Object.keys(options.hints).length > 0;
-
-    // Use peer if available for full Netron compatibility (unless hints require direct path)
-    if (this.peer && !hasHints) {
+    // Use peer if available for full Netron compatibility (unless request options require the direct path)
+    if (this.peer && !direct) {
       // Get service definition
       const serviceDef = await this.peer.queryInterface(service);
       if (serviceDef && typeof (serviceDef as any)[method] === 'function') {
@@ -105,8 +101,8 @@ export class HttpTransportClient {
       }
     }
 
-    // Fallback to direct connection (unless hints require direct path)
-    if (this.connection && !hasHints) {
+    // Fallback to direct connection (unless request options require the direct path)
+    if (this.connection && !direct) {
       const serviceProxy = await this.connection.queryInterface(service);
       if (serviceProxy && typeof serviceProxy[method] === 'function') {
         return serviceProxy[method](args[0]);
@@ -121,10 +117,7 @@ export class HttpTransportClient {
 
     const response = await this.sendRequest(message);
 
-    if (!response.success) {
-      const errorMsg = response.error?.message || 'Method invocation failed';
-      throw NetronErrors.invalidResponse(service, method, { error: response.error, message: errorMsg });
-    }
+    if (!response.success) throw parseHttpError(500, response);
 
     return response.data;
   }
@@ -152,52 +145,22 @@ export class HttpTransportClient {
         signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
-        // Parse HTTP error to TitanError
         const headers: Record<string, string> = {};
-        response.headers.forEach((value, key) => {
-          headers[key] = value;
-        });
-
-        try {
-          const errorBody = await response.json();
-          const titanError = parseHttpError(response.status, errorBody, headers);
-
-          return {
-            id: message.id,
-            success: false,
-            error: {
-              code: getErrorName(titanError.code),
-              message: titanError.message,
-              details: titanError.details,
-            },
-          };
-        } catch {
-          // Fallback if body parsing fails
-          const titanError = parseHttpError(
-            response.status,
-            {
-              error: { message: response.statusText },
-            },
-            headers
-          );
-
-          return {
-            id: message.id,
-            success: false,
-            error: {
-              code: getErrorName(titanError.code),
-              message: titanError.message,
-            },
-          };
+        response.headers.forEach((value, key) => { headers[key] = value; });
+        let body: unknown;
+        try { body = await response.json(); }
+        catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') throw error;
+          body = { message: `HTTP ${response.status}: ${response.statusText}` };
         }
+        throw parseHttpError(response.status, body, headers);
       }
 
       return await response.json();
     } catch (error: unknown) {
-      clearTimeout(timeoutId);
+      if (error instanceof TitanError) throw error;
 
       if (error instanceof Error && error.name === 'AbortError') {
         return {
@@ -218,6 +181,8 @@ export class HttpTransportClient {
           message: error instanceof Error ? error.message : 'Unknown error',
         },
       };
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 

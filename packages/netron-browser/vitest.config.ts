@@ -20,6 +20,7 @@ export default defineConfig({
    */
   resolve: {
     alias: {
+      '@omnitron-dev/netron-protocol': resolve(here, '../netron-protocol/src/index.ts'),
       '@omnitron-dev/titan/netron': resolve(here, '../titan/src/netron/index.ts'),
     },
   },

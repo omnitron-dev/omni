@@ -31,6 +31,14 @@ Extracted incrementally (the audit's **SHARED-PROTO** track):
 
 ## Design rules
 
+HTTP consumers share `decodeHttpError(status, body, headers)`. It returns
+`TitanError` constructor options and accepts numeric, decimal-string and named
+codes from the shared taxonomy. Application-specific strings remain available
+as `details.errorCode`, with the numeric category taken from the HTTP status.
+Request, correlation, trace and span identifiers survive decoding. An unknown
+code inside a successful batch uses 500 as its error fallback, never `NaN` or 200.
+Consumers should branch on `code` / `details.errorCode`, not message text.
+
 - **No runtime dependencies** that pull in a server- or browser-only surface.
   This package must import cleanly into both a Node build (titan, `tsc`) and a
   bundled browser build (netron-browser, `tsup`).

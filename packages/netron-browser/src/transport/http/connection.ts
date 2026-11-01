@@ -8,6 +8,7 @@
  */
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
+import { parseHttpError } from '../../errors/serialization.js';
 import { TitanError, ErrorCode, NetronErrors } from '../../errors/index.js';
 import type { HttpRequestMessage, HttpResponseMessage } from './types.js';
 import { createRequestMessage, isHttpResponseMessage } from './types.js';
@@ -141,25 +142,14 @@ export class HttpConnection extends EventEmitter {
     // For compatibility with existing code, try to parse as JSON
     const buffer = data instanceof Uint8Array ? data : new Uint8Array(data);
 
-    try {
-      const str = new TextDecoder().decode(buffer);
-      const msg = JSON.parse(str);
-
-      // Handle different message types
-      if (msg.type === 'request' || msg.service) {
-        // Convert to new message format
-        const request = createRequestMessage(msg.service || '__system', msg.method || msg.type, msg.input || msg.data);
-
-        const response = await this.sendRequestMessage(request);
-
-        // Emit response for compatibility
-        const responseStr = JSON.stringify(response);
-        const responseBuffer = new TextEncoder().encode(responseStr);
-        this.emit('message', responseBuffer, true);
-      }
-    } catch (_error) {
-      // Not JSON or unknown format, silently ignore
-      // This is normal for HTTP connections receiving non-JSON data
+    let msg: any;
+    try { msg = JSON.parse(new TextDecoder().decode(buffer)); }
+    catch { return; } // Raw non-JSON transport messages are not HTTP requests.
+    if (msg && typeof msg === 'object' && (msg.type === 'request' || msg.service)) {
+      const request = createRequestMessage(msg.service || '__system', msg.method || msg.type, msg.input || msg.data);
+      // A valid request must report a remote refusal or transport failure.
+      const response = await this.sendRequestMessage(request);
+      this.emit('message', new TextEncoder().encode(JSON.stringify(response)), true);
     }
   }
 
@@ -211,31 +201,15 @@ export class HttpConnection extends EventEmitter {
       });
 
       if (!response.ok) {
-        // Try to parse error response
-        try {
-          const errorData = await response.json();
-          if (errorData.error) {
-            throw new TitanError({
-              code: (typeof errorData.error.code === 'number'
-                ? errorData.error.code
-                : ErrorCode.INTERNAL_ERROR) as ErrorCode,
-              message: errorData.error.message,
-              details: errorData.error.details,
-            });
-          }
-        } catch {
-          // Fallback to HTTP status error
+        const responseHeaders: Record<string, string> = {};
+        response.headers.forEach((value, key) => { responseHeaders[key] = value; });
+        let errorBody: unknown;
+        try { errorBody = await response.json(); }
+        catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') throw error;
+          errorBody = { message: `HTTP ${response.status}: ${response.statusText}` };
         }
-
-        // Preserve the upstream HTTP status as the error code so the
-        // consuming app's locale dictionary can translate it. The
-        // previous default (`INTERNAL_ERROR=500`) collapsed every
-        // 5xx into "internal error", which left auth screens
-        // mistranslating gateway 502s as "wrong credentials".
-        throw new TitanError({
-          code: response.status as ErrorCode,
-          message: `HTTP ${response.status}: ${response.statusText}`,
-        });
+        throw parseHttpError(response.status, errorBody, responseHeaders);
       }
 
       return await response.json();
@@ -267,6 +241,7 @@ export class HttpConnection extends EventEmitter {
     // NB-11: own controller, tracked so close() can abort an in-flight ping.
     const controller = new AbortController();
     this.inFlight.add(controller);
+    const timer = setTimeout(() => controller.abort(), this.options.timeout || 30000);
 
     try {
       // Use discovery endpoint as a lightweight ping
@@ -296,6 +271,7 @@ export class HttpConnection extends EventEmitter {
         error instanceof Error ? error : new Error(String(error))
       );
     } finally {
+      clearTimeout(timer);
       this.inFlight.delete(controller);
     }
   }

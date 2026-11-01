@@ -63,9 +63,10 @@ program.hook('preAction', async (cmd, actionCommand) => {
 const backend = program.command('backend').description('Inspect and replace the control plane without restarting resident applications');
 const schema = backend.command('schema').description('Prepare and apply reviewed compatible schema expansions');
 schema.command('prepare <runtime>').description('Inspect the current schema and save an exact expansion plan without database writes')
-  .action(async (runtime: string) => {
+  .option('--from-plan <plan>', 'Bind an already applied expansion to a corrected candidate after rollback')
+  .action(async (runtime: string, options: { fromPlan?: string }) => {
     const { backendSchemaPrepareCommand } = await import('../commands/backend.js');
-    await backendSchemaPrepareCommand(runtime);
+    await backendSchemaPrepareCommand(runtime, options);
   });
 schema.command('apply <plan>').description('Apply or resume a reviewed expansion under the shared migration lock')
   .action(async (plan: string) => {

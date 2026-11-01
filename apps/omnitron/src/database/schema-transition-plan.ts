@@ -82,3 +82,35 @@ export function planSchemaAdditions(before: SchemaSnapshot, after: SchemaSnapsho
     return { name: m.name, checksum: m.checksum, fileHash: nextFiles[m.name]!, summary: policy.summary };
   });
 }
+
+/** A replacement candidate may reuse an applied expansion, never invent its approval.
+ * The original baseline and complete, checksummed future history must still match.
+ */
+export function planSchemaContinuation(
+  prior: SchemaTransitionPlan, before: SchemaSnapshot, after: SchemaSnapshot,
+  oldFiles: Record<string, string>, nextFiles: Record<string, string>,
+) {
+  validateSchemaExpansionReceipt(prior.receipt);
+  const additions = prior.receipt.additions;
+  const baseNames = Object.keys(oldFiles).sort();
+  const expectedNames = [...baseNames, ...additions.map(m => m.name)];
+  if (prior.phase !== 'applied' || prior.receipt.phase !== 'applied' ||
+      before.database !== prior.receipt.database || after.database !== prior.receipt.database ||
+      before.inspection.pending.length || before.inspection.drift.length || after.inspection.pending.length ||
+      historyIdentity(before.inspection.executed) !== historyIdentity(after.inspection.executed)) {
+    throw new Error('Continuation requires the same database and a fully applied expansion');
+  }
+  if (JSON.stringify(baseNames) !== JSON.stringify(Object.keys(prior.receipt.baseFiles).sort()) ||
+      baseNames.some(name => oldFiles[name] !== prior.receipt.baseFiles[name] || nextFiles[name] !== oldFiles[name]) ||
+      JSON.stringify(Object.keys(nextFiles).sort()) !== JSON.stringify(expectedNames) ||
+      additions.some(m => nextFiles[m.name] !== m.fileHash || !after.expansions.some(policy => policy.name === m.name && policy.checksum === m.checksum)) ||
+      JSON.stringify(before.registry.map(m => m.name)) !== JSON.stringify(baseNames) ||
+      JSON.stringify(after.registry.map(m => m.name)) !== JSON.stringify(expectedNames) ||
+      before.registry.some((m, i) => m.checksum !== after.registry[i]?.checksum) ||
+      additions.some((m, i) => after.registry[baseNames.length + i]?.checksum !== m.checksum) ||
+      JSON.stringify(before.inspection.missingFiles) !== JSON.stringify(additions.map(m => m.name))) {
+    throw new Error('Continuation must preserve the exact reviewed migration files, registry and checksums');
+  }
+  assertSchemaHistory(prior, after);
+  return additions.map((m, i) => ({ ...m, summary: prior.descriptions[i]! }));
+}

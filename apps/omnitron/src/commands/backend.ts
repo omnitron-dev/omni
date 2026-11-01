@@ -13,10 +13,10 @@ import { readSavedDaemonConfig, savedDaemonOverrides } from '../config/saved.js'
 import { checkBackendCandidate } from '../daemon/backend-candidate.js';
 import { recoverBackendAfterCrash } from '../daemon/backend-crash-recovery.js';
 
-export async function backendSchemaPrepareCommand(directory: string): Promise<void> {
+export async function backendSchemaPrepareCommand(directory: string, options: { fromPlan?: string } = {}): Promise<void> {
   try {
     const { prepareSchemaTransition } = await import('../daemon/schema-transition.js');
-    const result = await prepareSchemaTransition(path.resolve(directory));
+    const result = await prepareSchemaTransition(path.resolve(directory), undefined, options.fromPlan);
     if (!emitJson(result)) {
       emitInfo(`Schema plan: ${result.file}`);
       for (const migration of result.plan.additions) emitInfo(`${migration.name}: ${migration.description}`);

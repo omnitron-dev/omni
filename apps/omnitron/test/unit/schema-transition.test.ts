@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertSchemaHistory, planSchemaAdditions, type SchemaSnapshot, type SchemaTransitionPlan } from '../../src/database/schema-transition-plan.js';
+import { assertSchemaHistory, planSchemaAdditions, planSchemaContinuation, type SchemaSnapshot, type SchemaTransitionPlan } from '../../src/database/schema-transition-plan.js';
 
 const base = { name: '001_initial', checksum: null, executedAt: '2026-01-01T00:00:00.000Z' };
 const checksum = 'c'.repeat(64);
@@ -68,5 +68,43 @@ describe('exact online schema transition', () => {
     expect(() => assertSchemaHistory(prepared, removed)).toThrow('history changed');
     const foreign = snapshot(true); foreign.database = '0'.repeat(64);
     expect(() => assertSchemaHistory(prepared, foreign)).toThrow('another database');
+  });
+});
+
+describe('continuing an applied expansion after rollback', () => {
+  function applied() {
+    const prior = structuredClone(plan()); prior.phase = 'applied'; prior.receipt.phase = 'applied'; prior.receipt.appliedAt = '2026-01-02T00:00:00Z';
+    const before = structuredClone(snapshot()), after = structuredClone(snapshot(true));
+    for (const observed of [before, after]) {
+      observed.inspection.pending = [];
+      observed.inspection.executed.push({ ...next, executedAt: '2026-01-02T00:00:00Z' });
+    }
+    before.inspection.missingFiles = [next.name];
+    return { prior, before, after };
+  }
+  it('carries the original baseline without replaying or changing historical integrity', () => {
+    const { prior, before, after } = applied();
+    expect(planSchemaContinuation(prior, before, after, oldFiles, newFiles)).toEqual([{ ...next, fileHash: newFiles[next.name], summary: 'Reviewed additive definition' }]);
+    expect(prior.baseline).toEqual([base]); expect(before.inspection.unknownChecksums).toEqual([base.name]);
+  });
+  it.each(['unfinished', 'foreign', 'pending', 'drift', 'checksum', 'timestamp', 'unknown', 'order', 'policy-checksum', 'unreviewed-policy'])('refuses %s evidence', kind => {
+    const { prior, before, after } = applied();
+    if (kind === 'unfinished') { prior.phase = 'approved'; prior.receipt.phase = 'approved'; }
+    if (kind === 'foreign') before.database = '0'.repeat(64);
+    if (kind === 'pending') after.inspection.pending.push(next.name);
+    if (kind === 'drift') after.inspection.drift.push({ name: base.name, recorded: checksum, current: '0'.repeat(64) });
+    if (kind === 'checksum') { before.inspection.executed[1]!.checksum = null; after.inspection.executed[1]!.checksum = null; }
+    if (kind === 'timestamp') after.inspection.executed[0]!.executedAt = '2026-02-02T00:00:00Z';
+    if (kind === 'unknown') before.inspection.missingFiles.push('999_unknown');
+    if (kind === 'order') after.registry.reverse();
+    if (kind === 'unreviewed-policy') after.expansions = [];
+    if (kind === 'policy-checksum') after.registry[1]!.checksum = '0'.repeat(64);
+    expect(() => planSchemaContinuation(prior, before, after, oldFiles, newFiles)).toThrow();
+  });
+  it('refuses altered source files, changed expansion bodies or an additional migration', () => {
+    const { prior, before, after } = applied();
+    for (const files of [{ ...newFiles, [base.name]: '0'.repeat(64) }, { ...newFiles, [next.name]: '0'.repeat(64) }, { ...newFiles, '003_extra': '0'.repeat(64) }]) {
+      expect(() => planSchemaContinuation(prior, before, after, oldFiles, files)).toThrow('exact reviewed');
+    }
   });
 });

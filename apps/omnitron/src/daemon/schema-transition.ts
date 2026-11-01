@@ -12,7 +12,7 @@ import type { BackendArtifact } from './backend-candidate.js';
 import { RuntimeInstallation } from './runtime-installation.js';
 import { readPrivateRecord, writePrivateRecord } from './execution-journal.js';
 import { masterMigrationFiles, schemaReceiptFile, schemaReceiptIndex } from '../database/schema-compatibility.js';
-import { assertSchemaHistory, planSchemaAdditions, readSchemaPlan, schemaPlanFile,
+import { assertSchemaHistory, planSchemaAdditions, planSchemaContinuation, readSchemaPlan, schemaPlanFile,
   type SchemaSnapshot, type SchemaTransitionPlan } from '../database/schema-transition-plan.js';
 import { expandPath } from '../shared/paths.js';
 
@@ -88,7 +88,7 @@ function summary(plan: SchemaTransitionPlan) {
 }
 
 /** Read the target database; install artifacts and save the private plan without changing schema. */
-export async function prepareSchemaTransition(directory: string, socket?: string) {
+export async function prepareSchemaTransition(directory: string, socket?: string, priorPlanFile?: string) {
   const live = await observe(socket);
   const installation = await RuntimeInstallation.open(live.instanceHome, { existing: true });
   if (!installation) throw new Error('No permanent runtime installation exists');
@@ -102,9 +102,20 @@ export async function prepareSchemaTransition(directory: string, socket?: string
     const before = await worker<SchemaSnapshot>(target, live.record.environment, 'inspect', source.directory);
     const after = await worker<SchemaSnapshot>(target, live.record.environment, 'inspect', target.directory);
     const baseFiles = await masterMigrationFiles(source.directory);
-    const additions = planSchemaAdditions(before, after, baseFiles, await masterMigrationFiles(target.directory));
+    const targetFiles = await masterMigrationFiles(target.directory);
+    const prior = priorPlanFile ? await readSchemaPlan(path.resolve(priorPlanFile)) : undefined;
+    if (prior) {
+      if (prior.receipt.instanceHome !== live.instanceHome || prior.receipt.fromRuntime !== source.runtimeHash ||
+          prior.receipt.toRuntime === target.runtimeHash) throw new Error('Continue an applied plan from this rollback runtime to a different candidate');
+      // Re-verify the original sealed artifacts; the operator's prior plan is not
+      // a way to admit changed migration bodies or a foreign runtime.
+      await assertArtifacts(prior, source, await installation.artifact(prior.receipt.toRuntime));
+    }
+    const additions = prior
+      ? planSchemaContinuation(prior, before, after, baseFiles, targetFiles)
+      : planSchemaAdditions(before, after, baseFiles, targetFiles);
     const plan: SchemaTransitionPlan = {
-      protocol: 1, phase: 'prepared', baseline: before.inspection.executed,
+      protocol: 1, phase: 'prepared', baseline: prior?.baseline ?? before.inspection.executed,
       receipt: { protocol: 1, id: randomUUID(), kind: 'master-expand', phase: 'approved', instanceHome: live.instanceHome,
         fromRuntime: source.runtimeHash, toRuntime: target.runtimeHash, database: before.database, baseFiles,
         additions: additions.map(({ name, checksum, fileHash }) => ({ name, checksum, fileHash })), approvedAt: new Date().toISOString() },

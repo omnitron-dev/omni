@@ -67,6 +67,24 @@ try {
     { cwd: root, env: process.env, timeout: 60000, maxBuffer: 1024 * 1024 });
   assert.equal(cold.stderr, '');
   assert.deepEqual(JSON.parse(cold.stdout).data.result.executed, [], 'A fresh rollback process reapplied migrations');
+  // A corrected binary after rollback reuses exact applied evidence, not new DDL.
+  const execute = promisify(execFile);
+  const inspect = async directory => JSON.parse((await execute(path.resolve(candidate, '../../../node'),
+    [path.join(candidate, 'database/schema-worker.js'), 'inspect', directory],
+    { cwd: root, env: process.env, timeout: 60000, maxBuffer: 2 * 1024 * 1024 })).stdout);
+  const { planSchemaContinuation, assertSchemaHistory, historyIdentity } = await load(candidate, 'database/schema-transition-plan.js');
+  const previousView = await inspect(bridge), currentView = await inspect(candidate);
+  const appliedPlan = { protocol: 1, phase: 'applied', baseline: before.executed,
+    receipt: { ...receipt, phase: 'applied', appliedAt: new Date().toISOString() },
+    backend: { pid: 123, control: root+'/control.sock', socket: root+'/daemon.sock' },
+    owner: { id: 'fixture', pid: 124, inventory: 'a'.repeat(64) }, descriptions: [currentView.expansions.find(m=>m.name===addition.name).summary] };
+  const continued = planSchemaContinuation(appliedPlan, previousView, currentView,
+    receipt.baseFiles, await policy.masterMigrationFiles(candidate));
+  assert.equal(continued.length, 1); assert.equal(continued[0].name, addition.name);
+  assertSchemaHistory(appliedPlan, currentView);
+  assert.deepEqual((await next.migrateOmnitronDb(db)).applied, []);
+  assert.equal(historyIdentity((await next.createOmnitronMigrationRunner(db).inspect()).executed), historyIdentity(currentView.inspection.executed),
+    'Continuation must not change original history or replay migrations');
   await writePrivateRecord(file, { ...receipt, database: '0'.repeat(64) });
   await assert.rejects(old.migrateOmnitronDb(db), /No matching schema expansion receipt/);
   await writePrivateRecord(file, receipt);
@@ -75,7 +93,7 @@ try {
   const after = await next.createOmnitronMigrationRunner(db).inspect();
   assert.deepEqual(after.executed.filter(row => before.executed.some(oldRow => oldRow.name === row.name)), before.executed, 'Existing history or checksums changed');
   console.log(JSON.stringify({ test: 'schema-expansion-cold-rollback', root, database: name, migration: addition.name,
-    previousMigrations: before.executed.length, previousHistoryPreserved: true, coldRollback: true,
+    previousMigrations: before.executed.length, previousHistoryPreserved: true, coldRollback: true, appliedExpansionContinuation: true,
     unreviewedRefused: true, downRefusedWithoutSchemaChange: true, source: bridgeRuntime.sha256, target: nextRuntime.sha256 }));
 } finally {
   await db?.destroy();

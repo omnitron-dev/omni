@@ -67,7 +67,7 @@ function mockFn(implementation?: (...args: any[]) => any) {
   // `map.forEach(mock, context)` — or any callback whose contract includes a
   // receiver — silently ran with the wrong one, and the assertion inside the
   // callback failed in a way that pointed at the code under test.
-  const fn = function (this: any, ...args: any[]) {
+  const fn = function spy(this: any, ...args: any[]) {
     calls.push(args);
     const result = implementation ? implementation.apply(this, args) : undefined;
     results.push(result);

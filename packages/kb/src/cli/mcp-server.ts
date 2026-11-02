@@ -17,8 +17,6 @@ const argv = process.argv.slice(2);
 const rootIdx = argv.indexOf('--root');
 const root = rootIdx >= 0 ? resolve(argv[rootIdx + 1]!) : process.cwd();
 
-const dbPath = resolve(process.env['HOME'] ?? '.', '.omnitron', 'kb.db');
-
 let kb: KnowledgeBase = null!;
 let ready = false;
 
@@ -29,7 +27,7 @@ async function initializeAndIndex(): Promise<void> {
   await kb.initialize();
 
   process.stderr.write('[kb-mcp] Indexing knowledge base (specs only)...\n');
-  const result = await kb.reindex({ full: true });
+  await kb.reindex({ full: true });
   const stats = await kb.status();
   ready = true;
   process.stderr.write(

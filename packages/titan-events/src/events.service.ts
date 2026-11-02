@@ -337,7 +337,7 @@ export class EventsService implements ILifecycle {
 
     // Handle wildcard subscriptions for async
     if (this.wildcardSubscriptions) {
-      for (const [pattern, subscription] of this.wildcardSubscriptions) {
+      for (const subscription of this.wildcardSubscriptions.values()) {
         if (subscription.pattern.test(event)) {
           // Schedule through a promise so synchronous throws and rejections
           // have the same semantics. One failure must not skip other handlers.

@@ -276,7 +276,7 @@ export class HttpClient {
         try {
           // The same deadline and caller signal remain active through body consumption.
           value = await abortable(() => response.json(), signal);
-        } catch (error) {
+        } catch {
           signal.throwIfAborted();
           if (response.ok) throw invalidResponse('Response body is not valid JSON');
           value = undefined;

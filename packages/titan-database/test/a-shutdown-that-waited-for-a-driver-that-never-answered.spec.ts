@@ -67,12 +67,9 @@ const said = (needle: string): boolean =>
   logs.some((l) => l.args.some((a) => typeof a === 'string' && a.includes(needle)));
 
 describe('closeAll, against a teardown that never settles', () => {
-  let manager: DatabaseManager | undefined;
-
   afterEach(() => {
     // No `closeAll()` here: these cases decide for themselves whether to wait, and a
     // hook that waited would be the defect under test, holding the suite.
-    manager = undefined;
     logs.length = 0;
   });
 
@@ -85,7 +82,6 @@ describe('closeAll, against a teardown that never settles', () => {
       recordingLogger() as never
     );
     await created.init();
-    manager = created;
     return created;
   }
 

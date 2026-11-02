@@ -22,7 +22,7 @@
  * past anything still pending, and never deregister a consumer that holds
  * pending messages.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 import { NotificationWorkerService } from '../src/worker/notification-worker.js';
 

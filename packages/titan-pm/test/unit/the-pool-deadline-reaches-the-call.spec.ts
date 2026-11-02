@@ -15,7 +15,7 @@
  * leg was never the caller's to set.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 import { NetronClient } from '../../src/netron-client.js';

@@ -19,7 +19,6 @@
 import 'reflect-metadata';
 
 import type { IAuthContext, IRequireAuthOptions, IAuthMiddleware } from './auth.types.js';
-import { AUTH_MIDDLEWARE_TOKEN } from './auth.tokens.js';
 import { hasRole, isAnonymous } from './auth.utils.js';
 
 /**
@@ -77,10 +76,10 @@ export interface IAuthDecoratorContext {
  * ```
  */
 export function RequireAuth(options: IRequireAuthOptions = {}): MethodDecorator {
-  return function (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor): PropertyDescriptor {
+  return function decorateAuthorizedMethod(target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor): PropertyDescriptor {
     const originalMethod = descriptor.value as (...args: unknown[]) => unknown;
 
-    descriptor.value = async function (this: IAuthDecoratorContext, ...args: unknown[]): Promise<unknown> {
+    descriptor.value = async function invokeAuthorizedMethod(this: IAuthDecoratorContext, ...args: unknown[]): Promise<unknown> {
       const middleware = this.__authMiddleware__;
 
       if (!middleware) {
@@ -217,7 +216,7 @@ export function getAuthRequirements(target: object, propertyKey: string | symbol
  * ```
  */
 export function Public(): ClassDecorator & MethodDecorator {
-  return function (
+  return function markPublic(
     target: object,
     propertyKey?: string | symbol,
     descriptor?: PropertyDescriptor

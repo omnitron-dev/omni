@@ -31,7 +31,7 @@ async function main(): Promise<void> {
   try {
     const imported = await import(configPath);
     config = imported.default ?? imported;
-  } catch (err) {
+  } catch {
     console.error(`[kb-extract] No kb/kb.config.ts found at ${packageRoot}`);
     process.exit(1);
   }

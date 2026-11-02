@@ -1,12 +1,6 @@
 import type { SourceFile } from 'ts-morph';
 import type { IDecoratorUsageMap } from '../../core/types.js';
 
-interface DecoratorUsage {
-  symbol: string;
-  filePath: string;
-  args: Record<string, unknown>;
-}
-
 /**
  * Extracts decorator usage information from TypeScript source files.
  * Maps which decorators are used where and with what arguments.

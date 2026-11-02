@@ -146,19 +146,6 @@ class OrganizationService {
   }
 }
 
-/**
- * RPC Service — resolved by Netron auto-exposure (simulated via direct resolveAsync)
- */
-class OrganizationsRpcService {
-  constructor(private orgService: OrganizationService) {
-    instantiationLog.push('OrganizationsRpcService');
-  }
-
-  createOrg(name: string) {
-    return this.orgService.createOrg(name);
-  }
-}
-
 // =============================================================================
 // TESTS
 // =============================================================================

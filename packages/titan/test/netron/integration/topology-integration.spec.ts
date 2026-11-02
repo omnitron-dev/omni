@@ -334,7 +334,7 @@ describe('Netron Topology Integration', () => {
 
   describe('getServiceMetadata', () => {
     it('Returns correct metadata for locally exposed services', async () => {
-      const { netron: server, port } = await createServer('server');
+      const { netron: server } = await createServer('server');
       instances.push(server);
 
       // Expose Service1 on the server's local peer
@@ -379,7 +379,7 @@ describe('Netron Topology Integration', () => {
     }, 30_000);
 
     it('Returns metadata for multiple services', async () => {
-      const { netron: server, port } = await createServer('server');
+      const { netron: server } = await createServer('server');
       instances.push(server);
 
       await server.peer.exposeService(new Service1());
@@ -528,7 +528,7 @@ describe('Netron Topology Integration', () => {
     }, 30_000);
 
     it('getServiceNames returns all currently registered service names', async () => {
-      const { netron: server, port } = await createServer('server');
+      const { netron: server } = await createServer('server');
       instances.push(server);
 
       await server.peer.exposeService(new Service1());

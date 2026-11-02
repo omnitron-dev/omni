@@ -16,7 +16,7 @@
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Container, createToken } from '@nexus';
-import { Injectable, Inject, Optional, Module } from '../../../src/decorators/index.js';
+import { Injectable, Inject, Optional } from '../../../src/decorators/index.js';
 
 // ─── Tokens ───────────────────────────────────────────────────────────────────
 
@@ -42,18 +42,6 @@ class TestService {
 class TestRpcService {
   constructor(@Inject(SERVICE_TOKEN) public readonly service: TestService) {}
 }
-
-// ─── Module ───────────────────────────────────────────────────────────────────
-
-@Module({
-  providers: [
-    { provide: CONFIG_TOKEN, useValue: { value: 'test-config' } },
-    { provide: SERVICE_TOKEN, useClass: TestService },
-    TestRpcService,
-  ],
-  exports: [SERVICE_TOKEN, TestRpcService],
-})
-class TestModule {}
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 

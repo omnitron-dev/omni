@@ -611,14 +611,6 @@ describe('NetronWritableStream', () => {
     it('should log backpressure during pipe', async () => {
       const stream = new NetronWritableStream({ peer, streamId: 261, highWaterMark: 1 });
 
-      let writeReturnedFalse = false;
-      const originalWrite = stream.write.bind(stream);
-      stream.write = function mockWrite(...args: any[]) {
-        const result = originalWrite(...args);
-        if (result === false) writeReturnedFalse = true;
-        return result;
-      } as any;
-
       async function* generator() {
         for (let i = 0; i < 3; i++) {
           yield `chunk${i}`;
@@ -627,8 +619,7 @@ describe('NetronWritableStream', () => {
 
       await stream.pipeFrom(generator());
 
-      // After pipeFrom completes, stream goes through end() → _final() → closeStream()
-      // The stream is expected to be finished/destroyed after pipe completion
+      expect(peer.logger.debug).toHaveBeenCalledWith({ streamId: 261 }, 'Stream backpressure detected');
       expect(peer.sendStreamChunk).toHaveBeenCalled();
     });
   });

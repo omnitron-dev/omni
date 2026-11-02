@@ -29,10 +29,6 @@ import type { ILoggerModuleOptions } from '../../../src/modules/logger/logger.ty
 // termination. The hook's existence is the strong signal that we
 // went down the async path.
 
-function fakeConfigService(): any {
-  return undefined; // exercise the default-config branch
-}
-
 describe('LoggerService — async stdout destination + flush hook (T#66)', () => {
   beforeEach(() => {
     // Reset the static flushHookInstalled flag so each test gets
@@ -54,7 +50,7 @@ describe('LoggerService — async stdout destination + flush hook (T#66)', () =>
       sigint: process.listenerCount('SIGINT'),
     };
 
-    const svc = new LoggerService({} as ILoggerModuleOptions);
+    new LoggerService({} as ILoggerModuleOptions);
 
     expect(process.listenerCount('beforeExit')).toBe(before.beforeExit + 1);
     expect(process.listenerCount('SIGTERM')).toBe(before.sigterm + 1);
@@ -84,7 +80,7 @@ describe('LoggerService — async stdout destination + flush hook (T#66)', () =>
     const fakeStream: any = {
       write: vi.fn((_d: any, cb: any) => cb?.()),
     };
-    const svc = new LoggerService(
+    new LoggerService(
       { destinations: [{ stream: fakeStream }] } as unknown as ILoggerModuleOptions,
     );
     expect(process.listenerCount('beforeExit')).toBe(before + 1);

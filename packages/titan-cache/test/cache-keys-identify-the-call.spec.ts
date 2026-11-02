@@ -7,7 +7,7 @@
  */
 
 import 'reflect-metadata';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 
 import { Cacheable } from '../src/cache.decorators.js';
 

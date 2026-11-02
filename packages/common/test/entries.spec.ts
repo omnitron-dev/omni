@@ -21,7 +21,7 @@ describe('entries', () => {
     // An ES5-style constructor on purpose — that is what "classic classes"
     // means here. TypeScript has no construct signature for a plain function,
     // so the intent is stated rather than left as an implicit `any`.
-    const Test = function (this: any) {
+    const Test = function Test(this: any) {
       this.a = 2;
     } as unknown as { new (): any; prototype: any };
     Test.prototype.b = noop;
@@ -37,7 +37,7 @@ describe('entries', () => {
     A.prototype.aMethod = noop;
 
     // Same as above: classic prototype inheritance is the subject here.
-    const B = function (this: any) {
+    const B = function B(this: any) {
       A.call(this);
       this.bProp = 2;
     } as unknown as { new (): any; prototype: any };

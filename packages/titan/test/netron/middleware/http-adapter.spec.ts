@@ -15,7 +15,6 @@ describe('HttpMiddlewareAdapter', () => {
   let adapter: HttpMiddlewareAdapter;
   let mockRequest: Partial<IncomingMessage>;
   let mockResponse: Partial<ServerResponse>;
-  let mockNext: vi.Mock;
 
   beforeEach(() => {
     adapter = new HttpMiddlewareAdapter();
@@ -40,7 +39,6 @@ describe('HttpMiddlewareAdapter', () => {
       end: vi.fn(),
     };
 
-    mockNext = vi.fn().mockResolvedValue(undefined);
   });
 
   describe('Context Transformation', () => {

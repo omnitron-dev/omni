@@ -31,7 +31,6 @@ function makeService(options: Partial<IRateLimitModuleOptions> = {}) {
 }
 
 describe('RateLimitService orchestration (RL-1)', () => {
-  let storage: MemoryRateLimitStorage;
   let service: RateLimitService;
 
   beforeEach(() => {
@@ -45,7 +44,7 @@ describe('RateLimitService orchestration (RL-1)', () => {
   });
 
   it('consume() counts down remaining and denies past the default limit', async () => {
-    ({ storage, service } = makeService({ defaultLimit: 3 }));
+    ({ service } = makeService({ defaultLimit: 3 }));
 
     const r1 = await service.consume('user:1');
     const r2 = await service.consume('user:1');
@@ -62,7 +61,7 @@ describe('RateLimitService orchestration (RL-1)', () => {
   });
 
   it('enabled:false short-circuits to always-allowed at the default limit', async () => {
-    ({ storage, service } = makeService({ enabled: false, defaultLimit: 7 }));
+    ({ service } = makeService({ enabled: false, defaultLimit: 7 }));
 
     for (let i = 0; i < 20; i++) {
       const r = await service.consume('spam');
@@ -73,7 +72,7 @@ describe('RateLimitService orchestration (RL-1)', () => {
   });
 
   it('getStatus() reports state without consuming a token', async () => {
-    ({ storage, service } = makeService({ defaultLimit: 3 }));
+    ({ service } = makeService({ defaultLimit: 3 }));
 
     const s1 = await service.getStatus('user:2');
     const s2 = await service.getStatus('user:2');
@@ -87,7 +86,7 @@ describe('RateLimitService orchestration (RL-1)', () => {
   });
 
   it('enforce() throws RateLimitExceededError (carrying the result) once exhausted', async () => {
-    ({ storage, service } = makeService({ defaultLimit: 1 }));
+    ({ service } = makeService({ defaultLimit: 1 }));
 
     await service.enforce('user:3'); // 1st allowed
     await expect(service.enforce('user:3')).rejects.toBeInstanceOf(RateLimitExceededError);
@@ -105,7 +104,7 @@ describe('RateLimitService orchestration (RL-1)', () => {
     // RPC seam reported every exhausted limit as an INTERNAL server
     // error — including sign-in's anti-brute-force limit. A client
     // cannot back off from a 500; it retries.
-    ({ storage, service } = makeService({ defaultLimit: 1 }));
+    ({ service } = makeService({ defaultLimit: 1 }));
     await service.enforce('user:429');
 
     const err = await service.enforce('user:429').then(
@@ -120,7 +119,7 @@ describe('RateLimitService orchestration (RL-1)', () => {
   it('carries retryAfter where a caller can read it', async () => {
     // In `details`, not only in prose — a client honouring a backoff
     // should not have to parse the sentence.
-    ({ storage, service } = makeService({ defaultLimit: 1, defaultWindowMs: 60_000 }));
+    ({ service } = makeService({ defaultLimit: 1, defaultWindowMs: 60_000 }));
     await service.enforce('user:retry');
 
     const err = await service.enforce('user:retry').then(
@@ -137,7 +136,7 @@ describe('RateLimitService orchestration (RL-1)', () => {
     // AuthRpcService:signin:pgpuser`, which hands an unauthenticated
     // caller the internal key format and echoes back the identifier
     // they probed with. The key stays available to the server.
-    ({ storage, service } = makeService({ defaultLimit: 1 }));
+    ({ service } = makeService({ defaultLimit: 1 }));
     await service.enforce('AuthRpcService:signin:someone');
 
     const err = await service.enforce('AuthRpcService:signin:someone').then(
@@ -151,7 +150,7 @@ describe('RateLimitService orchestration (RL-1)', () => {
   });
 
   it('applies a named tier: limit + burst is the effective ceiling', async () => {
-    ({ storage, service } = makeService({
+    ({ service } = makeService({
       defaultLimit: 3,
       tiers: { premium: { limit: 5, windowMs: 60_000, burst: 2 } },
     }));
@@ -176,7 +175,7 @@ describe('RateLimitService orchestration (RL-1)', () => {
     // was there at boot, and an operator who tightens a limit sees nothing
     // happen. A function is consulted per check.
     let limit = 5;
-    ({ storage, service } = makeService({
+    ({ service } = makeService({
       defaultLimit: 100,
       tiers: () => ({ message: { name: 'message', limit, windowMs: 60_000 } }),
     }));
@@ -190,7 +189,7 @@ describe('RateLimitService orchestration (RL-1)', () => {
   it('falls back to the default limit when the resolver throws', async () => {
     // A resolver reaching for config that is not ready must degrade to the
     // default, not fail the request it was asked to rate-limit.
-    ({ storage, service } = makeService({
+    ({ service } = makeService({
       defaultLimit: 42,
       tiers: () => {
         throw new Error('config not loaded');
@@ -203,7 +202,7 @@ describe('RateLimitService orchestration (RL-1)', () => {
   });
 
   it('falls back to the default limit when the resolver knows no such tier', async () => {
-    ({ storage, service } = makeService({
+    ({ service } = makeService({
       defaultLimit: 7,
       tiers: () => ({ other: { name: 'other', limit: 1, windowMs: 60_000 } }),
     }));
@@ -212,7 +211,7 @@ describe('RateLimitService orchestration (RL-1)', () => {
   });
 
   it('limit precedence: explicit options.limit overrides tier and default', async () => {
-    ({ storage, service } = makeService({
+    ({ service } = makeService({
       defaultLimit: 100,
       tiers: { basic: { limit: 50, windowMs: 60_000 } },
     }));
@@ -226,7 +225,7 @@ describe('RateLimitService orchestration (RL-1)', () => {
   });
 
   it('namespaces buckets by tier so different tiers/keys do not share a budget', async () => {
-    ({ storage, service } = makeService({
+    ({ service } = makeService({
       defaultLimit: 1,
       tiers: { t1: { limit: 1, windowMs: 60_000 }, t2: { limit: 1, windowMs: 60_000 } },
     }));
@@ -239,7 +238,7 @@ describe('RateLimitService orchestration (RL-1)', () => {
   });
 
   it('reset() clears a key so its budget is restored', async () => {
-    ({ storage, service } = makeService({ defaultLimit: 1 }));
+    ({ service } = makeService({ defaultLimit: 1 }));
 
     expect((await service.consume('user:4')).allowed).toBe(true);
     expect((await service.consume('user:4')).allowed).toBe(false);
@@ -250,7 +249,7 @@ describe('RateLimitService orchestration (RL-1)', () => {
   });
 
   it('getStats() tracks totals and per-tier breakdown', async () => {
-    ({ storage, service } = makeService({
+    ({ service } = makeService({
       defaultLimit: 1,
       tiers: { vip: { limit: 1, windowMs: 60_000 } },
     }));

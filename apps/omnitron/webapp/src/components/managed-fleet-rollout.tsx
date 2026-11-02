@@ -31,7 +31,7 @@ function RolloutReceipt({ receipt }: { receipt: KernelRollout }) {
       {(checking || receipt.state === 'running') && <LinearProgress aria-label={checking ? 'Node preflight checks completed' : 'Nodes confirmed on the target build'}
         variant="determinate" value={completed / Math.max(1, receipt.targets.length) * 100} />}
       {receipt.reason && <Alert severity={receipt.state === 'failed' ? 'error' : 'warning'}>{receipt.reason}</Alert>}
-      {receipt.state === 'uncertain' && <Typography variant="body2">Inspect the affected node and its rollback target before planning another update.</Typography>}
+      {receipt.state === 'uncertain' && <Typography variant="body2">Reconciliation reads the recorded node outcome without replaying activation. Inspect its owner and rollback target before planning another update.</Typography>}
       <Stack component="ol" spacing={1} sx={{ m: 0, pl: 0, listStyle: 'none' }}>
         {receipt.targets.map((target, index) => (
           <Box component="li" key={target.nodeId} sx={{ minWidth: 0, borderTop: 1, borderColor: 'divider', pt: 1 }}>
@@ -61,6 +61,7 @@ function PlanDialog({ nodes, close, review }: {
   const [commit, setCommit] = useState('');
   const [targets, setTargets] = useState<INodeWithStatus[]>([]);
   const [stage, setStage] = useState(false);
+  const [allTargets, setAllTargets] = useState(false);
   const { can } = useAccess();
   const canReadBuild = can('OmnitronDaemon.status');
   const canListBuilds = can('OmnitronNodes.listKernelBuilds');
@@ -86,7 +87,7 @@ function PlanDialog({ nodes, close, review }: {
   const lastRequest = useRef<{ inputs: string; id: string } | null>(null);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const normalized = commit.trim().toLowerCase();
-  const valid = /^[a-f0-9]{40}$/.test(normalized);
+  const valid = /^[a-f0-9]{40}$/.test(normalized) && (allTargets || targets.length > 0);
   const plan = async () => {
     if (!valid || pending) return;
     setPending(true); setError(null);
@@ -117,10 +118,13 @@ function PlanDialog({ nodes, close, review }: {
                   : 'Choose a catalog build or enter the full 40-character Git commit.'} />} />
             {canReadBuild && controller.data && <Button size="small" sx={{ alignSelf: 'flex-start' }} disabled={pending}
               onClick={() => setCommit(controller.data!)}>Use controller commit {controller.data.slice(0, 12)}</Button>}
-            <Autocomplete multiple disabled={pending} options={nodes.filter(node => !node.isLocal)} value={targets}
+            <Autocomplete multiple disabled={pending || allTargets} options={nodes.filter(node => !node.isLocal)} value={targets}
               getOptionLabel={node => node.name + ' · ' + node.host} getOptionKey={node => node.id} isOptionEqualToValue={(a, b) => a.id === b.id}
               onChange={(_, next) => setTargets(next)} renderInput={params => <TextField {...params}
-                label="Target nodes" helperText="Leave empty for all registered remote nodes. Select nodes in the order to update them." />} />
+                label="Target nodes" helperText="Select nodes in update order, or explicitly choose all registered remote nodes." />} />
+            <FormControlLabel control={<Checkbox checked={allTargets} disabled={pending} onChange={e => {
+              setAllTargets(e.target.checked); if (e.target.checked) setTargets([]);
+            }} />} label="All registered remote nodes" />
             <FormControlLabel control={<Checkbox checked={stage} disabled={pending} onChange={e => setStage(e.target.checked)} />}
               label="Stage from controller catalog" />
             {stage && <Typography variant="caption" color="text.secondary">
@@ -147,17 +151,25 @@ export function ManagedFleetRollout({ nodes, canPlan, canApply, canReconcile }: 
   const [planning, setPlanning] = useState(false);
   const [applying, setApplying] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [acknowledged, setAcknowledged] = useState<KernelRollout | null>(null);
   const [revision, reload] = useReducer(n => n + 1, 0);
   const [running, setRunning] = useState(false);
-  const { data: receipt, error, loading } = usePolledResource(async () => {
+  const { data: observed, error, loading } = usePolledResource(async () => {
     const result = await nodesRpc.getKernelRollout(selectedId ? { id: selectedId } : {});
     if (selectedId && result && result.id !== selectedId) throw Error('Controller returned another rollout receipt.');
-    setRunning(result?.state === 'running' || result?.state === 'planning');
     return result;
   }, { intervalMs: running ? 3_000 : 20_000, resourceKey: JSON.stringify([selectedId, revision]) });
 
+  // Terminal receipts are immutable. Keep the acknowledged result when a
+  // follow-up read is delayed, fails, or still returns the pre-action state.
+  const receipt = acknowledged?.id === selectedId && (
+    ['succeeded', 'failed', 'blocked'].includes(acknowledged.state) || !observed ||
+    observed.id === acknowledged.id && observed.state === 'planned' && acknowledged.state === 'running'
+  ) ? acknowledged : observed;
+  useEffect(() => { setRunning(receipt?.state === 'running' || receipt?.state === 'planning'); }, [receipt?.state]);
+
   const select = (id: string | null) => {
-    setActionError(null);
+    setActionError(null); setAcknowledged(null);
     setParams(current => {
       const next = new URLSearchParams(current);
       if (id) next.set('rollout', id); else next.delete('rollout');
@@ -169,8 +181,10 @@ export function ManagedFleetRollout({ nodes, canPlan, canApply, canReconcile }: 
     if (operation === 'apply' ? !canApply || receipt.state !== 'planned' : !canReconcile || receipt.state !== 'uncertain') return;
     setApplying(true); setActionError(null);
     try {
-      if (operation === 'apply') await nodesRpc.startKernelRollout({ id: receipt.id });
-      else await nodesRpc.reconcileKernelRollout({ id: receipt.id });
+      const result = operation === 'apply' ? await nodesRpc.startKernelRollout({ id: receipt.id })
+        : await nodesRpc.reconcileKernelRollout({ id: receipt.id });
+      if (result.id !== receipt.id) throw Error('Controller returned another rollout receipt.');
+      setAcknowledged(result);
     }
     catch (cause) {
       setActionError('Request was not confirmed. Check the controller receipt. ' + (cause instanceof Error ? cause.message : String(cause)));

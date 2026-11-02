@@ -1404,7 +1404,7 @@ function NodeDiagnosisSession({
           <>
             <Divider sx={{ my: 2 }} />
             <Typography variant="overline" sx={{ color: 'text.secondary' }}>
-              Omnitron upgrade
+              Workspace source bundle upgrade
             </Typography>
             <NodeUpgrade data={upgrade} />
           </>
@@ -1417,7 +1417,7 @@ function NodeDiagnosisSession({
         </Button></Can>
         {!isLocal && (
           <Can permission="OmnitronNodes.upgradeNode"><Box component="details">
-            <Typography component="summary" variant="caption" sx={{ cursor: 'pointer' }}>Advanced</Typography>
+            <Typography component="summary" variant="caption" sx={{ cursor: 'pointer' }}>Advanced · workspace source bundle</Typography>
             <Button
             onClick={startUpgrade}
             disabled={upgrading || upgradeRunning}

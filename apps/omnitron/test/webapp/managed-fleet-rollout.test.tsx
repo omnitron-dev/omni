@@ -61,6 +61,8 @@ it('prepares without dispatch and applies exactly the reviewed ID after the cont
   fireEvent.click(await screen.findByRole('button', { name: /Plan update/ }));
   expect(screen.getByRole('button', { name: 'Prepare plan' }).hasAttribute('disabled')).toBe(true);
   fireEvent.change(screen.getByRole('combobox', { name: /Target commit/ }), { target: { value: commit } });
+  expect(screen.getByRole('button', { name: 'Prepare plan' }).hasAttribute('disabled')).toBe(true);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'All registered remote nodes' }));
   fireEvent.click(screen.getByRole('button', { name: 'Prepare plan' }));
   const apply = await screen.findByRole('button', { name: 'Apply reviewed plan' });
   const id = rpc.planKernelRollout.mock.calls[0]![0].requestId as string;
@@ -75,12 +77,17 @@ it('prepares without dispatch and applies exactly the reviewed ID after the cont
 
 it('holds an uncertain operation for reconciliation without re-dispatch', async () => {
   grant('getKernelRollout', 'startKernelRollout', 'reconcileKernelRollout');
-  rpc.getKernelRollout.mockResolvedValue({ ...report, state: 'uncertain', reason: 'Acknowledgement lost' });
-  rpc.reconcileKernelRollout.mockResolvedValue(report);
+  const targets = [report.targets[0]!, { ...report.targets[0]!, nodeId: 'id-2', name: 'east' }];
+  rpc.getKernelRollout.mockResolvedValue({ ...report, targets, state: 'uncertain', reason: 'Acknowledgement lost' });
+  rpc.reconcileKernelRollout.mockResolvedValue({ ...report, state: 'failed', reason: 'Candidate confirmed. Create a new plan for remaining targets.', targets: [{ ...targets[0]!, state: 'succeeded' }, targets[1]!] });
   mount('/nodes?rollout=plan-1');
   fireEvent.click(await screen.findByRole('button', { name: 'Reconcile node status' }));
   await waitFor(() => expect(rpc.reconcileKernelRollout).toHaveBeenCalledWith({ id: report.id }));
   expect(rpc.startKernelRollout).not.toHaveBeenCalled();
+  await screen.findByText('Candidate confirmed. Create a new plan for remaining targets.');
+  expect(screen.getByText('failed')).toBeTruthy();
+  expect(screen.getByText('1/2 on target')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Reconcile node status' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Apply reviewed plan' })).toBeNull();
 });
 
@@ -92,6 +99,8 @@ it('does not navigate to a previous reader’s late plan after access is revoked
   const view = mount();
   fireEvent.click(await screen.findByRole('button', { name: /Plan update/ }));
   fireEvent.change(screen.getByRole('combobox', { name: /Target commit/ }), { target: { value: commit } });
+  expect(screen.getByRole('button', { name: 'Prepare plan' }).hasAttribute('disabled')).toBe(true);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'All registered remote nodes' }));
   fireEvent.click(screen.getByRole('button', { name: 'Prepare plan' }));
   access.granted.clear();
   view.rerender(<MemoryRouter initialEntries={['/nodes']}><FleetRollout nodes={[]} /><Location /></MemoryRouter>);
@@ -156,6 +165,7 @@ it('uses the attested controller commit on demand and reuses the request ID only
   mount();
   fireEvent.click(await screen.findByRole('button', { name: /Plan update/ }));
   fireEvent.click(await screen.findByRole('button', { name: /Use controller commit/ }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'All registered remote nodes' }));
   const submit = screen.getByRole('button', { name: 'Prepare plan' });
   fireEvent.click(submit);
   await screen.findByText('Lost acknowledgement');
@@ -205,4 +215,28 @@ it('reads the catalog only for an authorized open dialog and offers one option p
   expect((input as HTMLInputElement).value).toBe(commit);
   expect(rpc.planKernelRollout).not.toHaveBeenCalled();
   expect(daemonStatus).not.toHaveBeenCalled();
+});
+
+
+it('does not accept another operation returned by reconciliation', async () => {
+  grant('getKernelRollout', 'reconcileKernelRollout');
+  rpc.getKernelRollout.mockResolvedValue({ ...report, state: 'uncertain' });
+  rpc.reconcileKernelRollout.mockResolvedValue({ ...report, id: 'another-plan', state: 'succeeded' });
+  mount('/nodes?rollout=plan-1');
+  fireEvent.click(await screen.findByRole('button', { name: 'Reconcile node status' }));
+  await screen.findByText(/Controller returned another rollout receipt/);
+  expect(screen.queryByText('succeeded')).toBeNull();
+  expect(rpc.startKernelRollout).not.toHaveBeenCalled();
+});
+
+it('retains a confirmed reconciliation outcome when the follow-up read fails', async () => {
+  grant('getKernelRollout', 'reconcileKernelRollout');
+  rpc.getKernelRollout.mockResolvedValueOnce({ ...report, state: 'uncertain' }).mockRejectedValue(Error('Read unavailable'));
+  rpc.reconcileKernelRollout.mockResolvedValue({ ...report, state: 'failed', reason: 'Previous runtime confirmed', targets: [{ ...report.targets[0], state: 'rolled-back' }] });
+  mount('/nodes?rollout=plan-1');
+  fireEvent.click(await screen.findByRole('button', { name: 'Reconcile node status' }));
+  await screen.findByText('Previous runtime confirmed');
+  await screen.findByText(/Read unavailable/);
+  expect(screen.getByText('rolled-back')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Reconcile node status' })).toBeNull();
 });

@@ -81,3 +81,36 @@ it('returns the request ID after a lost plan response and does not apply', async
   expect(output.emitError).toHaveBeenCalledWith(expect.stringContaining(requestId), { rolloutId: requestId });
   expect(rpc.startKernelRollout).not.toHaveBeenCalled();
 });
+
+
+it.each(['status', 'apply', 'reconcile'] as const)('fences another receipt returned by an explicit %s request', async kind => {
+  const other = { ...plan, id: 'different-operation', state: 'succeeded' };
+  rpc.getKernelRollout.mockResolvedValue(other);
+  rpc.startKernelRollout.mockResolvedValue(other);
+  rpc.reconcileKernelRollout.mockResolvedValue(other);
+  await fleetRolloutCommand(kind === 'status' ? { kind, id, wait: true } : { kind, id });
+  expect(process.exitCode).toBe(1);
+  expect(output.emitJson).not.toHaveBeenCalled();
+  expect(output.emitError).toHaveBeenCalledWith(expect.stringContaining('another rollout receipt'), { rolloutId: id });
+  if (kind !== 'apply') expect(rpc.startKernelRollout).not.toHaveBeenCalled();
+});
+
+it('resolves printed short IDs and case-insensitive node names in the requested order', async () => {
+  rpc.listNodes.mockResolvedValue([{ id: 'abc12345-east', name: 'East' }, { id: 'def12345-west', name: 'West' }]);
+  rpc.planKernelRollout.mockResolvedValue(plan);
+  await fleetRolloutCommand({ kind: 'plan', commit, nodes: ['def12345', 'EAST'], apply: false, requestId: id });
+  expect(rpc.planKernelRollout).toHaveBeenCalledWith({ requestId: id, commit, nodeIds: ['def12345-west', 'abc12345-east'] });
+});
+
+it.each([
+  { names: ['east', 'abc12345'], entries: [{ id: 'abc12345-east', name: 'east' }], error: 'same target more than once' },
+  { names: ['abc'], entries: [{ id: 'abc-east', name: 'east' }, { id: 'abc-west', name: 'west' }], error: 'ambiguous' },
+  { names: ['local'], entries: [{ id: 'local', name: 'local', isLocal: true }], error: 'local controller' },
+])('refuses unsafe target selection before planning: $error', async ({ names, entries, error }) => {
+  rpc.listNodes.mockResolvedValue(entries);
+  await fleetRolloutCommand({ kind: 'plan', commit, nodes: names, apply: true, requestId: id });
+  expect(rpc.planKernelRollout).not.toHaveBeenCalled();
+  expect(rpc.startKernelRollout).not.toHaveBeenCalled();
+  expect(output.emitError).toHaveBeenCalledWith(expect.stringContaining(error));
+  expect(process.exitCode).toBe(1);
+});

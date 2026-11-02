@@ -107,7 +107,7 @@ export function FleetRollout({ nodes }: { nodes: INodeWithStatus[] }) {
         canPlan={canPlan} canApply={canApply} canReconcile={canReconcile} />}
       {can('OmnitronNodes.getUpgradeProgress') && <Box component="details" onToggle={e => setAdvanced(e.currentTarget.open)}>
         <Typography component="summary" variant="caption" color="text.secondary" sx={{ cursor: 'pointer', py: 1 }}>
-          Advanced · source bundle upgrades
+          Advanced · workspace source bundle upgrades
         </Typography>
         {advanced && <SourceBundleRollout key={snapshot?.userId} nodes={nodes} />}
       </Box>}
@@ -156,7 +156,7 @@ function SourceBundleRollout({ nodes }: { nodes: INodeWithStatus[] }) {
       <CardContent>
         <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: live.length > 0 || rows.length > 0 ? 1.5 : 0 }}>
           <Typography variant="overline" sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
-            Source bundle upgrade
+            Workspace source bundle upgrade
           </Typography>
           {live.length > 0 && (
             <Chip

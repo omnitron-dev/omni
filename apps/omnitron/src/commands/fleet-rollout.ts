@@ -5,6 +5,7 @@ import { createDaemonClient, LONG_REQUEST_TIMEOUT } from '../daemon/daemon-clien
 import type { IOmnitronNodesService, KernelCatalogEntry, KernelRollout } from '../shared/dto/services.js';
 import { requireDaemon } from './daemon-required.js';
 import { emitError, emitInfo, emitJson } from './output.js';
+import { resolveNodeArgument } from './node.js';
 
 type Request =
   | { kind: 'plan'; commit: string; nodes: string[]; apply: boolean; wait?: boolean; stage?: boolean; requestId?: string }
@@ -73,9 +74,11 @@ export async function fleetRolloutCommand(request: Request): Promise<void> {
       if (request.nodes.length) {
         const inventory = await nodes.listNodes();
         for (const name of request.nodes) {
-          const matches = inventory.filter(node => node.id === name || node.name === name);
-          if (matches.length !== 1) throw new Error(`Expected exactly one registered node for ${name}`);
-          nodeIds.push(matches[0]!.id);
+          const match = resolveNodeArgument(name, inventory);
+          if (match.kind !== 'found') throw new Error(`Node '${name}' is ${match.kind === 'ambiguous' ? 'ambiguous' : 'not registered'}`);
+          if (match.node.isLocal) throw new Error('Use backend upgrade for the local controller; fleet rollout selects remote nodes');
+          if (nodeIds.includes(match.node.id)) throw new Error(`Node '${name}' selects the same target more than once`);
+          nodeIds.push(match.node.id);
         }
       }
       operationId = request.requestId ?? randomUUID();
@@ -91,6 +94,7 @@ export async function fleetRolloutCommand(request: Request): Promise<void> {
     } else {
       plan = await nodes.getKernelRollout(request.id ? { id: request.id } : {});
     }
+    if (plan && operationId && plan.id !== operationId) throw new Error(`Controller returned another rollout receipt for ${operationId}`);
     operationId = plan?.id ?? operationId;
     if (request.kind !== 'reconcile' && request.wait && plan) {
       plan = await follow(nodes, plan, 'planning');
@@ -103,9 +107,9 @@ export async function fleetRolloutCommand(request: Request): Promise<void> {
     }
     if (!emitJson(plan)) {
       show(plan);
-      if (plan.state === 'planned') emitInfo(`Start with omnitron fleet rollout apply ${plan.id}`);
+      if (plan.state === 'planned') emitInfo(`Review full runtime hashes with --json. Start with omnitron fleet rollout apply ${plan.id}`);
       if (plan.state === 'running' || plan.state === 'planning') emitInfo(`Follow with omnitron fleet rollout status ${plan.id} --wait`);
-      if (plan.state === 'uncertain') emitInfo(`Check the nodes again with omnitron fleet rollout reconcile ${plan.id}`);
+      if (plan.state === 'uncertain') emitInfo(`Observe the recorded outcome without replaying activation with omnitron fleet rollout reconcile ${plan.id}`);
     }
     if (['blocked', 'failed', 'uncertain'].includes(plan.state)) process.exitCode = 1;
   } catch (error) {

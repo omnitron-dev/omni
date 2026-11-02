@@ -58,6 +58,7 @@ test('an administrator can prepare a catalog build on a narrow screen before exp
   const stage = dialog.getByRole('checkbox', { name: 'Stage from controller catalog' });
   await expect(stage).not.toBeChecked();
   await stage.check();
+  await dialog.getByRole('checkbox', { name: 'All registered remote nodes' }).check();
   expect(await dialog.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
   await dialog.getByRole('button', { name: 'Prepare plan' }).click();
   const apply = page.getByRole('button', { name: 'Apply reviewed plan' });

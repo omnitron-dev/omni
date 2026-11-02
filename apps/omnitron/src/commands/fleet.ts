@@ -236,6 +236,7 @@ export async function fleetUpgradeCommand(
   }
 
   try {
+    log.info('Source bundle upgrade from this workspace. For sealed managed backends, use omnitron fleet rollout plan <commit> [nodes...] followed by fleet rollout apply <id>.');
     const nodes = await client.service<import('../shared/dto/services.js').IOmnitronNodesService>('OmnitronNodes');
 
     // Before anything is built — see `printUnbuiltPlan`.

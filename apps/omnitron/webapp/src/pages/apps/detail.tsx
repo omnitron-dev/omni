@@ -18,7 +18,7 @@ import InputAdornment from '@mui/material/InputAdornment';
 import Tooltip from '@mui/material/Tooltip';
 import Collapse from '@mui/material/Collapse';
 import { alpha, useTheme, keyframes } from '@mui/material/styles';
-import Chart from 'react-apexcharts';
+import { Chart, type ChartOptions } from '@omnitron-dev/prism/components/chart';
 import { RestartIcon, StopIcon, PlayIcon, RefreshIcon, CircleIcon, SearchIcon } from 'src/assets/icons';
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
@@ -724,7 +724,7 @@ function LogsTab({ appName }: { appName: string }) {
 // Metrics Tab — real-time CPU/Memory charts
 // ---------------------------------------------------------------------------
 
-const baseChartOptions: ApexCharts.ApexOptions = {
+const baseChartOptions: ChartOptions = {
   chart: { background: 'transparent', toolbar: { show: false }, animations: { enabled: true, dynamicAnimation: { speed: 800 } } },
   theme: { mode: 'dark' },
   grid: { borderColor: 'rgba(255,255,255,0.08)', padding: { left: 8, right: 8 } },
@@ -867,14 +867,14 @@ function MetricsTab({ appName }: { appName: string }) {
 
   const counted = countedTraffic(traffic);
 
-  const cpuChartOptions = useMemo<ApexCharts.ApexOptions>(() => ({
+  const cpuChartOptions = useMemo<ChartOptions>(() => ({
     ...baseChartOptions,
     colors: ['#6366f1'],
-    yaxis: { ...baseChartOptions.yaxis, title: { text: 'CPU %', style: { color: '#999', fontSize: '11px' } }, max: 100, min: 0 },
+    yaxis: { ...baseChartOptions.yaxis, title: { text: 'CPU %', style: { color: '#999', fontSize: '11px' } }, min: 0 },
     fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05, stops: [0, 100] } },
   }), []);
 
-  const memChartOptions = useMemo<ApexCharts.ApexOptions>(() => ({
+  const memChartOptions = useMemo<ChartOptions>(() => ({
     ...baseChartOptions,
     colors: ['#a78bfa'],
     yaxis: { ...baseChartOptions.yaxis, title: { text: 'Memory (MB)', style: { color: '#999', fontSize: '11px' } }, min: 0 },

@@ -15,7 +15,7 @@ import {
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { metricsStorageReading } from '@omnitron-dev/omnitron/metrics-storage-reading';
 import { StatCard } from '@omnitron-dev/prism/components/card';
-import { Chart, useChart } from '@omnitron-dev/prism/components/chart';
+import { ComparisonBars } from 'src/components/comparison-bars';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
 import { MetricChart } from 'src/components/metric-chart';
 import { RefreshIcon } from 'src/assets/icons';
@@ -283,15 +283,6 @@ function LogStoreSummary() {
   const [open, setOpen] = useState(false);
   const stats = usePolledResource(() => logs.getLogStats(), { intervalMs: 60_000, enabled: open });
   const levels = stats.data?.byLevel ?? [];
-  const options = useChart({
-    chart: { animations: { enabled: false } },
-    xaxis: { type: 'category', categories: levels.map((item) => item.level) },
-    yaxis: {
-      min: 0,
-      labels: { formatter: (value: number) => value.toLocaleString(undefined, { notation: 'compact' }) },
-    },
-    tooltip: { y: { formatter: (value) => value.toLocaleString() } },
-  });
   return (
     <Accordion
       expanded={open}
@@ -310,23 +301,9 @@ function LogStoreSummary() {
         </Typography>
         {stats.error && <Alert severity="warning">{stats.error}</Alert>}
         {levels.length ? (
-          <>
-            <Chart
-              type="bar"
-              height={220}
-              options={options}
-              series={[{ name: 'Lines', data: levels.map((item) => item.count) }]}
-              role="img"
-              aria-label="Cumulative log lines by level"
-            />
-            <Stack direction="row" useFlexGap spacing={2} sx={{ flexWrap: 'wrap' }}>
-              {levels.map((item) => (
-                <Typography key={item.level} variant="caption">
-                  {item.level}: {item.count.toLocaleString()}
-                </Typography>
-              ))}
-            </Stack>
-          </>
+          <ComparisonBars label="Cumulative log lines by level" items={levels.map(({ level, count }) => ({
+            id: level, name: level, value: count,
+          }))} format={value => value.toLocaleString()} />
         ) : (
           <Typography sx={{ py: 2 }} variant="body2">
             {stats.loading ? 'Reading log store…' : 'No log totals available'}

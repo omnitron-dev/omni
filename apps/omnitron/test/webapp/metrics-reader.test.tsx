@@ -81,10 +81,14 @@ describe('metrics for the selected deployment', () => {
       expect(screen.getByRole('region', { name: 'Resident memory chart' })).toHaveTextContent('worker')
     );
     expect(screen.getByRole('region', { name: 'CPU chart' })).not.toHaveTextContent('worker');
+    api.stats.mockResolvedValue({ byLevel: [{ level: 'warn', count: 27 }, { level: 'error', count: 0 }] });
     expect(api.stats).not.toHaveBeenCalled();
     expect(api.series).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: /Log store/ }));
-    await waitFor(() => expect(api.stats).toHaveBeenCalledTimes(1));
+    const totals = await screen.findByRole('list', { name: 'Cumulative log lines by level' });
+    expect(totals).toHaveTextContent('warn27');
+    expect(totals).toHaveTextContent('error0');
+    expect(api.stats).toHaveBeenCalledTimes(1);
   });
   it('keeps the last history and reports a failed refresh', async () => {
     render(

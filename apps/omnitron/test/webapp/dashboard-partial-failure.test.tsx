@@ -16,7 +16,7 @@
 import type { ReactNode } from 'react';
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor, within } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { MemoryRouter } from 'react-router-dom';
 import { SnackbarProvider } from '@omnitron-dev/prism';
@@ -101,7 +101,9 @@ describe('dashboard with a half-failed refresh', () => {
     render(<Dashboard />);
     await screen.findByRole('link', { name: 'main', exact: true });
     expect(screen.getAllByText('4.0%')).toHaveLength(2);
-    expect(screen.getAllByText('1 KiB')).toHaveLength(2);
+    expect(screen.getAllByText('1 KiB')).toHaveLength(3);
+    const ranking = screen.getByRole('list', { name: 'Resident memory by application' });
+    expect(within(ranking).getByRole('listitem')).toHaveTextContent('main1 KiB');
   });
 
 });

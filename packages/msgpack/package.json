@@ -65,10 +65,10 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/omnitron-dev/omni.git",
-    "directory": "packages/messagepack"
+    "directory": "packages/msgpack"
   },
   "bugs": {
     "url": "https://github.com/omnitron-dev/omni/issues"
   },
-  "homepage": "https://github.com/omnitron-dev/omni/tree/main/packages/messagepack#readme"
+  "homepage": "https://github.com/omnitron-dev/omni/tree/main/packages/msgpack#readme"
 }

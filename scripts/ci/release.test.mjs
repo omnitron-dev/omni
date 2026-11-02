@@ -9,12 +9,25 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { discoverReleasePackages } from '@xec-sh/ops/release';
 
 const run = promisify(execFile);
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const first = '@fixture/base';
 const second = '@fixture/client';
 const version = '0.2.0-rc.1';
+
+test('public npm packages link to their own workspace in the canonical repository', async () => {
+  for (const pkg of await discoverReleasePackages(repo)) {
+    const manifest = JSON.parse(await fs.readFile(path.join(repo, pkg.path, 'package.json'), 'utf8'));
+    assert.deepEqual(manifest.repository, {
+      type: 'git', url: 'git+https://github.com/omnitron-dev/omni.git', directory: pkg.path,
+    }, pkg.name);
+    if (manifest.homepage?.startsWith('https://github.com/omnitron-dev/omni/tree/')) {
+      assert.equal(manifest.homepage, `https://github.com/omnitron-dev/omni/tree/main/${pkg.path}#readme`, pkg.name);
+    }
+  }
+});
 
 test('release plans, seals, pushes one tag and resumes a partial registry publication', { timeout: 240_000 }, async t => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'omnitron-release-test-'));
@@ -23,6 +36,7 @@ test('release plans, seals, pushes one tag and resumes a partial registry public
   const store = new Map();
   const writes = new Map();
   let interrupt = true;
+  let staged;
   const server = http.createServer(async (req, res) => {
     res.setHeader('content-type', 'application/json');
     const name = decodeURIComponent(req.url.slice(1));
@@ -37,6 +51,11 @@ test('release plans, seals, pushes one tag and resumes a partial registry public
       const doc = JSON.parse(body);
       const attachment = Buffer.from(Object.values(doc._attachments)[0].data, 'base64');
       assert.equal(doc.versions[version].dist.integrity, 'sha512-' + createHash('sha512').update(attachment).digest('base64'));
+      if (name === second) {
+        staged = doc;
+        res.writeHead(409).end(JSON.stringify({ error: `Cannot publish over previously staged version "${version}".` }));
+        return;
+      }
       store.set(name, doc);
       res.writeHead(201).end('{"ok":true}');
     } else if (req.method === 'GET' && store.has(name)) {
@@ -96,9 +115,22 @@ test('release plans, seals, pushes one tag and resumes a partial registry public
   await release('--push');
   assert.equal(await git('ls-remote', '--tags', 'origin', 'refs/tags/unrelated'), '');
   assert.equal((await git('ls-remote', 'origin', 'refs/heads/main')).split(/\s/)[0], commit);
-  await assert.rejects(release('--publish', '--registry', registry), /Publication interrupted/);
+  await assert.rejects(release('--publish', '--registry', registry), /Publication interrupted for @fixture\/client[^\n]*\nnpm E403/);
   assert.equal(store.size, 1);
   interrupt = false;
+  await assert.rejects(release('--resume', '--registry', registry), error => {
+    assert.match(error.stderr, /Publication interrupted for @fixture\/client/);
+    assert.match(error.stderr, /npm E409/);
+    assert.match(error.stderr, /already staged/);
+    assert.ok(error.stderr.includes(`node scripts/release.mjs ${version} --resume with the original --registry option`));
+    return true;
+  });
+  assert.equal(store.size, 1);
+  const receipts = (await fs.readFile(path.join(workspace, '.release-artifacts', version, commit, 'publication.jsonl'), 'utf8'))
+    .trim().split('\n').map(line => JSON.parse(line));
+  assert.ok(receipts.some(entry => entry.name === second && entry.state === 'unconfirmed'));
+  assert.ok(!receipts.some(entry => entry.name === second && entry.state === 'registry-confirmed'));
+  store.set(second, staged);
   await release('--resume', '--registry', registry);
   assert.deepEqual([...writes], [[first, 1], [second, 2]]);
   for (const doc of store.values()) assert.deepEqual(doc['dist-tags'], { rc: version });

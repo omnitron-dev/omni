@@ -144,10 +144,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/omnitron-dev/omni",
+    "url": "git+https://github.com/omnitron-dev/omni.git",
     "directory": "apps/omnitron"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.12.0"
   }
 }

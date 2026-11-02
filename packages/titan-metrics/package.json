@@ -43,5 +43,10 @@
     "kysely": {
       "optional": true
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omnitron-dev/omni.git",
+    "directory": "packages/titan-metrics"
   }
 }

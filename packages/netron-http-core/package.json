@@ -1,7 +1,7 @@
 {
   "name": "@omnitron-dev/netron-http-core",
   "version": "0.1.0",
-  "description": "Shared, environment-neutral HTTP fluent-interface primitives (cache manager, retry manager, query builder, request batcher) consumed by both @omnitron-dev/titan and @omnitron-dev/netron-browser. Single source of truth — eliminates the drifting per-package copies.",
+  "description": "HTTP query builder, cache, retries and configurable service proxy shared by Titan and the Netron browser client.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -44,5 +44,10 @@
   },
   "engines": {
     "node": ">=22.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omnitron-dev/omni.git",
+    "directory": "packages/netron-http-core"
   }
 }

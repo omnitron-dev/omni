@@ -36,5 +36,10 @@
     "vitest": "^5.0.5",
     "@typescript/native": "npm:typescript@^7.0.2"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omnitron-dev/omni.git",
+    "directory": "packages/titan-storage"
+  }
 }

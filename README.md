@@ -45,8 +45,8 @@ omni/
 
 | Layer | Technology |
 |-------|-----------|
-| Language | TypeScript 5.9, ESM-first |
-| Runtime | Node.js >= 22 |
+| Language | TypeScript, ESM-first |
+| Omnitron CLI runtime | Node.js >= 22.12.0 |
 | Monorepo | pnpm workspaces + Turborepo |
 | Backend | Titan framework, Netron RPC, Kysely, Redis |
 | Frontend | React 19, Vite, MUI v9, Zustand v5 |
@@ -57,7 +57,7 @@ omni/
 
 ### Prerequisites
 
-- Node.js >= 22
+- Node.js 22.22.2+ (22.x), 24.15+ (24.x), or 26+ for the full development toolchain
 - pnpm 12.16.1 (pinned in `packageManager`)
 - Redis (for cache, locks, discovery, rate-limiting)
 - PostgreSQL (for persistence)
@@ -119,5 +119,7 @@ Review the package inventory, SHA-512 digests and release notes in
 the selected branch and tag atomically. Publication verifies the remote
 tag and checks the sealed SHA-512 digests against npm metadata. For an interrupted
 publication, keep the archives, return to the same clean commit and run
-`node scripts/release.mjs <version> --resume`. The GitHub release can be completed
-separately after all npm packages are confirmed.
+`node scripts/release.mjs <version> --resume`. If npm reports that a version
+is already staged, wait for that package version to become visible in the
+original registry before resuming. Use the same registry and prepared archives.
+The GitHub release can be completed separately after all npm packages are confirmed.

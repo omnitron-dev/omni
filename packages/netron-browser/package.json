@@ -113,5 +113,10 @@
     "@omnitron-dev/netron-protocol": "workspace:*",
     "buffer": "^6.0.3"
   },
-  "sideEffects": false
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omnitron-dev/omni.git",
+    "directory": "packages/netron-browser"
+  }
 }

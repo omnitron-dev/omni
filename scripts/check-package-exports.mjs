@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import semver from 'semver';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'omni-pack-check-'));
@@ -30,6 +31,16 @@ try {
         encoding: 'utf8', maxBuffer: 1024 * 1024,
       }));
       const files = new Set(packed.files.map(file => file.path));
+      if (manifest.engines?.node) {
+        const minimum = semver.minVersion(manifest.engines.node);
+        for (const dependency of Object.keys(manifest.dependencies ?? {})) {
+          const installed = path.join(directory, 'node_modules', dependency, 'package.json');
+          const required = JSON.parse(fs.readFileSync(installed, 'utf8')).engines?.node;
+          if (required && !semver.satisfies(minimum, required)) {
+            failures.push(`${manifest.name}: Node ${minimum} is below the requirement of ${dependency} (${required})`);
+          }
+        }
+      }
       const publicTargets = [...new Set([
         ...strings(manifest.exports), ...strings(manifest.bin),
         manifest.main, manifest.module, manifest.types, manifest.typings,

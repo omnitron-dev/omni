@@ -55,12 +55,12 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/omnitron-dev/omni.git",
-    "directory": "packages/common"
+    "directory": "packages/cuid"
   },
   "bugs": {
     "url": "https://github.com/omnitron-dev/omni/issues"
   },
-  "homepage": "https://github.com/omnitron-dev/omni/tree/main/packages/common#readme",
+  "homepage": "https://github.com/omnitron-dev/omni/tree/main/packages/cuid#readme",
   "dependencies": {
     "@noble/hashes": "2.4.0"
   }

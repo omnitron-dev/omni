@@ -13,7 +13,7 @@ import { prepareOwnerReconciliation, acknowledgeOwnerReconciliation, consumeOwne
 
 // All processes, records and sockets in this test are newly created fixtures.
 // The launchd labels deliberately do not exist; no OS job is loaded or stopped.
-it.skipIf(process.platform !== 'darwin')('requires a complete native drain, unchanged sealed plan and an unused acknowledgment on macOS', async () => {
+it.skipIf(process.platform !== 'darwin').each(['stable', 'legacy'])('requires a complete native drain, unchanged sealed %s plan and an unused acknowledgment on macOS', async mode => {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'or-')));
   await fs.chmod(root, 0o700);
   const id = randomUUID(), bootId = await hostBootIdentity();
@@ -21,7 +21,7 @@ it.skipIf(process.platform !== 'darwin')('requires a complete native drain, unch
     owner: { label: `dev.omnitron.fixture-${id}.owner`, unit: 'omnitron-fixture-owner.service', artifact: 'a'.repeat(64) },
     backend: { label: `dev.omnitron.fixture-${id}.backend`, unit: 'omnitron-fixture-backend.service', artifact: 'b'.repeat(64) } };
   const old = spawn(process.execPath, ['-e', ''], { stdio: 'ignore' }); const oldPid = old.pid!; await once(old, 'close');
-  const receipt = { bootId, clean: false, pid: oldPid };
+  const receipt = { bootId: mode === 'legacy' ? '{ sec = 1791430683, usec = 746863 } Thu Oct  8 06:38:03 2026' : bootId, clean: false, pid: oldPid };
   await writePrivateRecord(path.join(root, 'managed-owner.json'), receipt);
   await writePrivateRecord(path.join(root, 'controller.json'), { protocol: 1,
     owner: { id, pid: oldPid, startedAt: new Date().toISOString() }, grant: { ownerId: id, controllerId: 'fixture', epoch: 1 } });
@@ -36,7 +36,13 @@ it.skipIf(process.platform !== 'darwin')('requires a complete native drain, unch
   };
   try {
     childPid = Number(String((await once(worker.stdout!, 'data'))[0]).trim()); expect(childPid).toBeGreaterThan(0);
+    await writePrivateRecord(path.join(root, 'managed-owner.json'), { ...receipt, pid: worker.pid });
+    await expect(prepareOwnerReconciliation(config, [worker.pid!])).rejects.toThrow('previous owner identity');
+    await writePrivateRecord(path.join(root, 'managed-owner.json'), { ...receipt, bootId: 'unknown' });
+    await expect(prepareOwnerReconciliation(config, [worker.pid!])).rejects.toThrow('unsupported boot evidence');
+    await writePrivateRecord(path.join(root, 'managed-owner.json'), receipt);
     const plan = await prepareOwnerReconciliation(config, [worker.pid!]);
+    expect(plan.bootId).toBe(bootId); expect(plan.crashReceipt).toEqual(receipt);
     expect(plan.processes.map(p => p.pid)).toEqual(expect.arrayContaining([oldPid, worker.pid, childPid]));
     expect(plan.native?.processGroups).toContain(worker.pid);
     expect(plan.processes.find(p => p.pid === worker.pid)?.lifetime).toBe((readProcessLifetime(worker.pid!) as { identity: string }).identity);

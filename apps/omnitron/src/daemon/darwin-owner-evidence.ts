@@ -71,8 +71,9 @@ export async function readDarwinOwnerEvidence(config: ManagedRuntime, expected: 
   if (process.platform !== 'darwin') throw new Error('macOS native evidence is unavailable on this platform');
   const domain = config.scope === 'system' ? 'system' : `gui/${process.getuid!()}`;
   const session = await command('/usr/sbin/sysctl', ['-n', 'kern.bootsessionuuid']);
-  const bootSession = session.stdout.trim();
+  const bootSession = session.stdout.trim().toLowerCase();
   if (session.code || session.stderr || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(bootSession)) throw new Error('Cannot verify the macOS boot session');
+  if (bootId !== 'darwin:' + bootSession) throw new Error('The native process inventory does not match the current stable boot session');
   if (scope && (scope.domain !== domain || scope.bootSession !== bootSession)) throw new Error('launchd domain or boot session changed since recovery was planned');
   const units = await Promise.all([config.owner, config.backend].map(async job => {
     const target = `${domain}/${job.label}`, answer = await command('/bin/launchctl', ['print', target]);

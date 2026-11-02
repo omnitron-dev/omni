@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { readHostBootIdentity } from '../shared/host-boot-identity.js';
 
 export type ProcessLifetime = { state: 'alive'; identity: string } | { state: 'dead' } | { state: 'unknown' };
 let bootIdentity: string | undefined;
@@ -9,7 +10,7 @@ export function readProcessLifetime(pid: number): ProcessLifetime {
   if (!Number.isSafeInteger(pid) || pid < 1) return { state: 'unknown' };
   try {
     if (process.platform === 'linux') {
-      bootIdentity ??= fs.readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim();
+      bootIdentity ??= readHostBootIdentity();
       const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
       if (!stat.includes(')')) return { state: 'unknown' };
       // comm is parenthesized and may itself contain spaces or parentheses.
@@ -20,7 +21,7 @@ export function readProcessLifetime(pid: number): ProcessLifetime {
     }
     if (process.platform === 'darwin') {
       const options = { encoding: 'utf8' as const, timeout: 1000, stdio: ['ignore', 'pipe', 'pipe'] as ['ignore', 'pipe', 'pipe'], env: { ...process.env, LC_ALL: 'C' } };
-      bootIdentity ??= execFileSync('/usr/sbin/sysctl', ['-n', 'kern.boottime'], options).trim();
+      bootIdentity ??= readHostBootIdentity();
       const start = execFileSync('/bin/ps', ['-p', String(pid), '-o', 'lstart='], options).trim();
       if (!bootIdentity || !start) return { state: 'unknown' };
       return { state: 'alive', identity: `${bootIdentity}:${start}` };

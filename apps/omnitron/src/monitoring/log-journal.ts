@@ -3,6 +3,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { ensurePrivateDir, sealSqliteFiles } from '../shared/private-files.js';
 import { readProcessLifetime } from './process-lifetime.js';
+import { compareProcessLifetimes } from '../shared/host-boot-identity.js';
 
 export interface JournalItem<T> { id: string; digest: string; value: T }
 export interface LogFileIntent { offset: number; inode: number; prefix: string }
@@ -144,9 +145,10 @@ export class LogJournal<T> {
       if (row.writer === process.pid && row.writer_identity === this.writerIdentity) continue;
       const current = readProcessLifetime(row.writer);
       const verifiedIdentity = row.writer_identity && !row.writer_identity.startsWith('unverified:');
-      if (current.state === 'dead' || (current.state === 'alive' && verifiedIdentity && current.identity !== row.writer_identity)) {
+      const comparison = current.state === 'alive' && verifiedIdentity ? compareProcessLifetimes(row.writer_identity!, current.identity) : 'unknown';
+      if (current.state === 'dead' || (current.state === 'alive' && comparison === 'different')) {
         this.db.prepare('UPDATE records SET ready = 1 WHERE ready = 0 AND writer = ? AND writer_identity IS ?').run(row.writer, row.writer_identity);
-      } else if (current.state === 'unknown' || !verifiedIdentity) {
+      } else if (current.state === 'unknown' || !verifiedIdentity || comparison === 'unknown') {
         this.recoveryError = `Unfinished logs retained: cannot verify the original writer lifetime for PID ${row.writer}`;
       }
     }

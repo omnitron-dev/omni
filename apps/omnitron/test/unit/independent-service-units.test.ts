@@ -45,10 +45,11 @@ it('retains structured stdout and runtime stderr for both supervised jobs', () =
 });
 
 it('refuses uncertain owner restart on the same boot and any malformed shutdown receipt', () => {
-  expect(() => assertCleanOwnerBoot({ pid: 123, bootId: 'boot-a', clean: false }, 'boot-a')).toThrow('did not shut down cleanly');
+  const bootA = '11111111-1111-4111-8111-111111111111', bootB = '22222222-2222-4222-8222-222222222222';
+  expect(() => assertCleanOwnerBoot({ pid: 123, bootId: bootA, clean: false }, bootA)).toThrow('did not shut down cleanly');
   for (const invalid of [{}, { pid: 123, bootId: 'boot-a', clean: 'true' }, false, 'corrupt', { pid: 0, bootId: 'boot-a', clean: true }]) {
-    expect(() => assertCleanOwnerBoot(invalid, 'boot-a')).toThrow('Invalid owner shutdown receipt');
+    expect(() => assertCleanOwnerBoot(invalid, bootA)).toThrow('Invalid owner shutdown receipt');
   }
-  expect(() => assertCleanOwnerBoot({ pid: 123, bootId: 'boot-a', clean: true }, 'boot-a')).not.toThrow();
-  expect(() => assertCleanOwnerBoot({ pid: 123, bootId: 'boot-a', clean: false }, 'boot-b')).not.toThrow();
+  expect(() => assertCleanOwnerBoot({ pid: 123, bootId: bootA, clean: true }, bootA)).not.toThrow();
+  expect(() => assertCleanOwnerBoot({ pid: 123, bootId: bootA, clean: false }, bootB)).not.toThrow();
 });

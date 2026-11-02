@@ -8,6 +8,7 @@ import { ExecutionJournal, readPrivateRecord, writePrivateRecord } from './execu
 import { readProcessLifetime } from '../monitoring/process-lifetime.js';
 import { withKernelFileLock } from '../shared/kernel-file-lock.js';
 import { readDarwinOwnerEvidence, type DarwinReconciliationScope } from './darwin-owner-evidence.js';
+import { isLegacyDarwinBootIdentity, isStableDarwinBootIdentity, isStableHostBootIdentity } from '../shared/host-boot-identity.js';
 
 interface ProcessIdentity { pid: number; lifetime: string | null }
 interface CrashReceipt { bootId: string; clean: false; pid: number }
@@ -30,6 +31,8 @@ const unitGroup = (unit: string) => `/system.slice/${unit}`;
 const receiptFile = (config: ManagedRuntime) => path.join(config.directory, 'managed-owner.json');
 const acknowledgmentFile = (config: ManagedRuntime) => path.join(config.directory, 'owner-reconciliation.json');
 const binding = (config: ManagedRuntime) => digest({ ...config, owner: { ...config.owner, artifact: undefined }, backend: { ...config.backend, artifact: undefined } });
+const receiptBootMatches = (recorded: string, current: string) => recorded === current ||
+  (process.platform === 'darwin' && isStableDarwinBootIdentity(current) && isLegacyDarwinBootIdentity(recorded));
 
 function requireSupported(config: ManagedRuntime): void {
   if (process.platform !== 'darwin' && !(process.platform === 'linux' && config.scope === 'system'))
@@ -121,7 +124,9 @@ export async function prepareOwnerReconciliation(config: ManagedRuntime, recorde
     // journal advances. Preserve and fence BOTH identities in that case.
     const previousOwners = [...new Set([receipt.pid, journal.owner.pid])];
     const first = await nativeEvidence(config, previousOwners.map(pid => ({ pid, lifetime: null })));
-    if (first.bootId !== receipt.bootId || first.processes.some(item => item.lifetime || item.unknown) || first.sockets.length)
+    if (!receiptBootMatches(receipt.bootId, first.bootId))
+      throw new Error('Owner crash receipt has unsupported boot evidence; recovery requires the current stable boot or a recognized legacy Darwin receipt');
+    if (first.processes.some(item => item.lifetime || item.unknown) || first.sockets.length)
       throw new Error('Every previous owner identity must be proven dead on this boot before planning recovery');
     const pids = [...new Set([...previousOwners, ...recordedWorkerPids, ...first.groups.flat(), ...first.units.map(unit => unit.mainPid).filter(Boolean)])];
     const observed = await nativeEvidence(config, pids.map(pid => ({ pid, lifetime: null })));
@@ -138,16 +143,17 @@ export async function prepareOwnerReconciliation(config: ManagedRuntime, recorde
 
 function validatePlan(plan: OwnerReconciliationPlan, config: ManagedRuntime): void {
   if (plan?.protocol !== 1 || !/^[a-f0-9-]{36}$/.test(plan.id) || !Number.isFinite(Date.parse(plan.createdAt)) || plan.instanceHome !== config.instanceHome ||
-    plan.directory !== config.directory || plan.binding !== binding(config) || !plan.ownerId ||
+    plan.directory !== config.directory || plan.binding !== binding(config) || !plan.ownerId || !isStableHostBootIdentity(plan.bootId) ||
     !Number.isSafeInteger(plan.ownerPid) || plan.ownerPid < 1 || !Number.isSafeInteger(plan.journalOwnerPid) || plan.journalOwnerPid < 1 ||
     !Array.isArray(plan.processes) || !plan.processes.length ||
     plan.processes.length > 8192 || new Set(plan.processes.map(item => item.pid)).size !== plan.processes.length ||
     ![plan.ownerPid, plan.journalOwnerPid].every(pid => plan.processes.some(item => item.pid === pid)) ||
     plan.processes.some(item => !Number.isSafeInteger(item.pid) || item.pid < 1 || (item.lifetime !== null && typeof item.lifetime !== 'string')) ||
     digest(plan.crashReceipt) !== plan.receiptDigest || !/^[a-f0-9]{64}$/.test(plan.journalDigest) ||
-    plan.crashReceipt.bootId !== plan.bootId || plan.crashReceipt.clean !== false || plan.crashReceipt.pid !== plan.ownerPid ||
+    !receiptBootMatches(plan.crashReceipt.bootId, plan.bootId) || plan.crashReceipt.clean !== false || plan.crashReceipt.pid !== plan.ownerPid ||
     (process.platform === 'darwin' && (!plan.native || plan.native.platform !== 'darwin' ||
       !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(plan.native.bootSession) || plan.native.domain !== (config.scope === 'system' ? 'system' : `gui/${process.getuid!()}`) ||
+      !isStableDarwinBootIdentity(plan.bootId) || plan.bootId !== 'darwin:' + plan.native.bootSession.toLowerCase() ||
       !Array.isArray(plan.native.processGroups) || plan.native.processGroups.length > 8192 ||
       new Set(plan.native.processGroups).size !== plan.native.processGroups.length ||
       plan.native.processGroups.some(group => !Number.isSafeInteger(group) || group < 1))) ||

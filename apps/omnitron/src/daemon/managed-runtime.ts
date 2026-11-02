@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import { readPrivateRecord } from './execution-journal.js';
 import type { ServiceScope } from '../commands/service-units.js';
+import { readHostBootIdentity, isStableHostBootIdentity, provesDifferentHostBoot } from '../shared/host-boot-identity.js';
 
 export interface ManagedRuntime {
   protocol: 1;
@@ -73,19 +74,20 @@ export async function verifyManagedIsolation(config: ManagedRuntime, ownerPid: n
 }
 
 export async function hostBootIdentity(): Promise<string> {
-  if (process.platform === 'linux') return (await fs.readFile('/proc/sys/kernel/random/boot_id', 'utf8')).trim();
-  if (process.platform === 'darwin') return (await native('/usr/sbin/sysctl', ['-n', 'kern.boottime'])).trim();
-  throw new Error('Cannot verify this host boot identity');
+  return readHostBootIdentity();
 }
 
+export class OwnerReconciliationRequiredError extends Error {}
+
 export function assertCleanOwnerBoot(previous: unknown, bootId: string): void {
+  if (!isStableHostBootIdentity(bootId)) throw new Error('Cannot verify the current host boot identity');
   if (previous === null) return;
   const receipt = previous as { bootId?: unknown; clean?: unknown; pid?: unknown };
   if (typeof receipt !== 'object' || !receipt || typeof receipt.bootId !== 'string' || !receipt.bootId ||
       typeof receipt.clean !== 'boolean' || !Number.isSafeInteger(receipt.pid) || Number(receipt.pid) < 1) {
     throw new Error('Invalid owner shutdown receipt; reconcile ownership before starting another owner');
   }
-  if (!receipt.clean && receipt.bootId === bootId) {
-    throw new Error('The previous owner did not shut down cleanly on this host boot. Reconcile its application processes before starting another owner; no processes were adopted or killed.');
+  if (!receipt.clean && !provesDifferentHostBoot(receipt.bootId, bootId)) {
+    throw new OwnerReconciliationRequiredError('The previous owner did not shut down cleanly and a different host boot is not proven. Reconcile its application processes before starting another owner; no processes were adopted or killed.');
   }
 }

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { LoggerService } from '@omnitron-dev/titan/module/logger';
-import { readManagedRuntime, managedJobPid, hostBootIdentity, assertCleanOwnerBoot } from './managed-runtime.js';
+import { readManagedRuntime, managedJobPid, hostBootIdentity, assertCleanOwnerBoot, OwnerReconciliationRequiredError } from './managed-runtime.js';
 import { readPrivateRecord, writePrivateRecord } from './execution-journal.js';
 import { loadStartupConfig } from './startup-config.js';
 import { startExecutionOwner } from './execution-owner.js';
@@ -17,7 +17,7 @@ await withOwnerBootFence(config, async () => {
   const previous = await readPrivateRecord<{ bootId: string; clean: boolean; pid: number }>(receipt);
   try { assertCleanOwnerBoot(previous, bootId); }
   catch (error) {
-    if (!previous || previous.clean !== false || previous.bootId !== bootId) throw error;
+    if (!(error instanceof OwnerReconciliationRequiredError)) throw error;
     await consumeOwnerReconciliation(config, previous, bootId);
   }
   startup = await loadStartupConfig(config.cwd);

@@ -86,4 +86,15 @@ describe('log destination failure isolation', () => {
     await expect(guard.confirm()).rejects.toThrow('unconfirmed bytes');
   });
 
+
+  it('flushes a transport only after its last queued write, even if another destination fails', async () => {
+    const order: string[] = [];
+    const bad = Object.assign(new EventEmitter(), { write: () => { throw full; } });
+    const service = new LoggerService({ destinations: [{ stream: bad as unknown as NodeJS.WritableStream, delivery: 'sync' }],
+      transports: [{ name: 'buffered', async write() { await turn(); order.push('write'); }, async flush() { order.push('flush'); } }] });
+    service.logger.info('last record');
+    await expect(service.flush()).rejects.toThrow('Logger delivery could not be confirmed');
+    expect(order).toEqual(['write', 'flush']);
+  });
+
 });

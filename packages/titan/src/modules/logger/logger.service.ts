@@ -651,10 +651,12 @@ export class LoggerService implements ILoggerModule {
   getSinkHealth(): LogSinkHealth[] { return [...this.destinationStreams.map(stream => stream.health()), ...[...this.transportHealth.values()].map(health => ({ ...health }))]; }
 
   async flush(): Promise<void> {
-    const results = await Promise.allSettled([
-      ...this.destinationStreams.map(stream => stream.confirm()),
-      ...this.transports.filter(transport => transport.flush).map(transport => Promise.resolve().then(() => transport.flush!())),
-    ]);
+    const deliveries = await Promise.allSettled(this.destinationStreams.map(stream => stream.confirm()));
+    // A transport can buffer inside write(). Its flush must run only after the
+    // fan-out barrier has delivered all queued records, including slow writes.
+    const flushed = await Promise.allSettled(this.transports.filter(transport => transport.flush)
+      .map(transport => Promise.resolve().then(() => transport.flush!())));
+    const results = [...deliveries, ...flushed];
     const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
     for (const health of this.transportHealth.values()) if (health.error || health.droppedBytes || health.unconfirmedBytes) failures.push({ status: 'rejected', reason: new Error(`Log sink ${health.name} has unconfirmed delivery (${health.unconfirmedBytes} bytes; ${health.droppedBytes} dropped bytes)`) });
     if (failures.length) throw new AggregateError(failures.map(result => result.reason), 'Logger delivery could not be confirmed');

@@ -1729,6 +1729,8 @@ export class OmnitronDaemon {
 
       // Docker containers health indicator
       titanHealth.registerIndicator(runtimeDiagnostics);
+      const { LogSinkHealthIndicator } = await import('../monitoring/log-sink-health.indicator.js');
+      titanHealth.registerIndicator(new LogSinkHealthIndicator(await this.app.container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN)));
       await orchestrator.configureReadiness(this.dc.applicationReadiness ?? {});
       const projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
       titanHealth.registerIndicator(new DockerHealthIndicator(() => this.infraService, undefined,

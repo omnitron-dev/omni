@@ -14,8 +14,8 @@ import { RuntimeInstallation } from './runtime-installation.js';
 import { ownBackendChildren } from './backend-child.js';
 import { replaceBackend, recoverBackend, type BackendReplacementResult } from './backend-upgrade.js';
 import { recoverBackendAfterCrash } from './backend-crash-recovery.js';
-import { writePrivateRecord } from './execution-journal.js';
-import { managedJobPid, verifyManagedIsolation, type ManagedRuntime } from './managed-runtime.js';
+import { readPrivateRecord, writePrivateRecord } from './execution-journal.js';
+import { managedJobPid, verifyManagedIsolation, hostBootIdentity, type ManagedRuntime } from './managed-runtime.js';
 import type { BackendArtifact } from './backend-candidate.js';
 import { checkBackendCandidate, verifyBackendEntry } from './backend-candidate.js';
 
@@ -25,6 +25,7 @@ export interface SupervisorStatus {
   ownerPid: number | null;
   state: 'starting' | 'ready' | 'recovering' | 'blocked' | 'stopping';
   reason: string | null;
+  persistenceError?: string;
   at: string;
 }
 
@@ -92,7 +93,14 @@ export class BackendSupervisorService {
 
   private async publish(state: SupervisorStatus['state'], reason: string | null): Promise<void> {
     this.state = { ...this.state, state, reason, at: new Date().toISOString() };
-    await writePrivateRecord(path.join(this.config.directory, 'supervisor-state.json'), this.state);
+    const { persistenceError: _previousFailure, ...next } = this.state;
+    await writePrivateRecord(path.join(this.config.directory, 'supervisor-state.json'), next);
+    this.state = next;
+  }
+
+  private reportFailure(message: string): void {
+    try { process.stderr.write(message + '\n'); }
+    catch { /* The private status still exposes the failure when the output disk is also full. */ }
   }
 
   private async isolation(): Promise<void> {
@@ -164,7 +172,12 @@ export class BackendSupervisorService {
       }
       if (live || this.children.size) throw new Error('A backend process still exists without verified readiness; no concurrent backend will be started');
       if (this.lastExit?.code === 0 && !new PidManager(path.join(this.config.directory, 'owner.pid')).isRunning()) {
-        await this.publish('stopping', 'Backend and owner stopped'); this.stopping = true; this.finish(0); return;
+        const receipt = await readPrivateRecord<{ clean?: boolean; pid?: number; bootId?: string }>(path.join(this.config.directory, 'managed-owner.json'));
+        if (!receipt || receipt.clean !== true || !this.state.ownerPid || receipt.pid !== this.state.ownerPid
+          || receipt.bootId !== await hostBootIdentity()) {
+          throw new Error('Execution owner stopped without a verified clean shutdown receipt; recovery requires reconciliation of surviving applications. No owner or backend will be started automatically.');
+        }
+        await this.publish('stopping', 'Backend and owner stopped with a verified clean shutdown receipt'); this.stopping = true; this.finish(0); return;
       }
       await this.isolation();
       const installation = await RuntimeInstallation.open(this.config.instanceHome, { existing: true });
@@ -191,8 +204,11 @@ export class BackendSupervisorService {
       this.failures++;
       this.nextAttempt = Date.now() + Math.min(30_000, 1000 * 2 ** Math.min(5, this.failures));
       const reason = error instanceof Error ? error.message : String(error);
-      if (reason !== this.state.reason) process.stderr.write(`Backend supervisor: ${reason}\n`);
-      await this.publish('blocked', reason).catch(failure => { process.stderr.write(`Cannot persist supervisor state: ${String(failure)}\n`); });
+      if (reason !== this.state.reason) this.reportFailure(`Backend supervisor: ${reason}`);
+      await this.publish('blocked', reason).catch(failure => {
+        this.state.persistenceError = String(failure).slice(0, 512);
+        this.reportFailure(`Cannot persist supervisor state: ${this.state.persistenceError}`);
+      });
     } finally { this.busy = false; }
   }
 

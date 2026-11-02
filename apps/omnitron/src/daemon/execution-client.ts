@@ -198,6 +198,18 @@ export class ExecutionClient {
       this.apply(await remote.snapshot({ afterEvent: this.eventCursor }));
       observed = true;
       runtimeDiagnostics.resolve('execution.observation-unavailable');
+      const persistence = this.inventory?.statePersistence;
+      if (persistence?.error) runtimeDiagnostics.record({ id: 'execution.state-persistence', severity: 'error',
+        title: 'Execution state is not durably saved', evidence: [persistence.error, `Failed writes: ${persistence.failedWrites}; pending: ${persistence.pending}`],
+        remedy: 'Repair storage capacity or permissions. A subsequent successful full snapshot must be confirmed before clean shutdown or recovery.' });
+      else if (persistence) runtimeDiagnostics.resolve('execution.state-persistence');
+      const logSinks = this.inventory?.logSinks;
+      const failedSinks = logSinks?.filter(sink => sink.error || sink.unconfirmedBytes || sink.droppedBytes) ?? [];
+      if (failedSinks.length) runtimeDiagnostics.record({ id: 'execution.log-sinks', severity: 'error',
+        title: 'Execution owner log output has unconfirmed delivery',
+        evidence: failedSinks.map(sink => `${sink.name}: ${sink.unconfirmedBytes} unconfirmed bytes; ${sink.droppedBytes} dropped bytes`),
+        remedy: 'Repair the owner output destination and inspect capture gaps. Successful later writes do not prove missing historical records were delivered.' });
+      else if (logSinks) runtimeDiagnostics.resolve('execution.log-sinks');
       if (this.deliverEvents && this.grant) {
         if (this.inventory?.logs?.protocol === 1) {
           if (!this.logs) throw new Error('Durable log consumer is unavailable; owner journal retained');

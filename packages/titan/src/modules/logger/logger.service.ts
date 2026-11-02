@@ -8,18 +8,7 @@ import pino, { Logger as PinoLogger, multistream } from 'pino';
 import prettyStream from 'pino-pretty';
 import { Injectable, Inject, Optional } from '../../decorators/index.js';
 
-/**
- * T#67: Wrap a user-provided stream so its `_write` cannot block
- * pino's multistream hot path. Deferring the inner write to a
- * `setImmediate` tick yields back to the event loop after each
- * dispatch and ensures one slow downstream consumer (or a fully
- * synchronous one) can't stall pino, the daemon, or its siblings.
- *
- * Already-wrapped streams are returned as-is via a marker symbol
- * so repeated initialisations (tests, hot-reload) don't pile up
- * forwarders.
- */
-const ASYNC_WRAPPED = Symbol.for('@omnitron-dev/titan/logger/async-wrapped');
+import { LogSinkGuard, type LogSinkHealth } from './sink-guard.js';
 
 /**
  * How the pino-pretty destination is configured.
@@ -64,27 +53,6 @@ export function prettyDecision(
   const asked = config.prettyPrint === true || config.pretty === true;
   const byDefault = config.environment === 'development' && config.prettyPrint !== false && config.pretty !== false;
   return { pretty: isTTY && (asked || byDefault), refused: asked && !isTTY };
-}
-
-function wrapAsyncStream(dest: NodeJS.WritableStream): NodeJS.WritableStream {
-  if (!dest || (dest as any)[ASYNC_WRAPPED]) return dest;
-  const wrapper = new Writable({
-    write(chunk: Buffer, _enc: BufferEncoding, callback: (err?: Error | null) => void) {
-      // Defer to the next macrotask so a sync `_write` on the inner
-      // stream can't run in the same tick as pino's logging call.
-      setImmediate(() => {
-        try {
-          if (dest instanceof Writable) dest.write(chunk, callback);
-          else if (dest.write(chunk) === false) dest.once('drain', callback);
-          else callback();
-        } catch (err) {
-          callback(err as Error);
-        }
-      });
-    },
-  });
-  (wrapper as any)[ASYNC_WRAPPED] = true;
-  return wrapper as unknown as NodeJS.WritableStream;
 }
 
 import { LOGGER_OPTIONS_TOKEN, LOGGER_TRANSPORTS_TOKEN, LOGGER_PROCESSORS_TOKEN } from './logger.tokens.js';
@@ -201,9 +169,11 @@ export class LoggerService implements ILoggerModule {
   private rootLogger!: PinoLogger;
   private globalLogger!: ILogger;
   private transports: ITransport[] = [];
-  private destinationStreams: NodeJS.WritableStream[] = [];
+  private destinationStreams: LogSinkGuard[] = [];
   private processors: ILogProcessor[] = [];
   private transportFanout?: NodeJS.WritableStream;
+  private transportHealth = new Map<ITransport, LogSinkHealth>();
+  private transportInFlight = new Set<ITransport>();
   private context: object = {};
   private loggers = new Map<string, ILogger>();
   private initialized = false;
@@ -304,10 +274,14 @@ export class LoggerService implements ILoggerModule {
     // Pretty (human-readable) output for a terminal — pino-pretty as a
     // destination stream. Everything else is one JSON record per line.
     const { pretty: prettyPrint, refused: prettyRefused } = prettyDecision(config);
-    const makeStdoutStream = (): NodeJS.WritableStream =>
-      prettyPrint
-        ? (prettyStream(prettyStreamOptions()) as unknown as NodeJS.WritableStream)
-        : (process.stdout as unknown as NodeJS.WritableStream);
+    const makeStdoutStream = (): NodeJS.WritableStream => prettyPrint
+      ? (prettyStream(prettyStreamOptions()) as unknown as NodeJS.WritableStream)
+      : pino.destination({ dest: 1, sync: false, maxLength: 1024 * 1024 }) as unknown as NodeJS.WritableStream;
+    const guard = (name: string, destination: NodeJS.WritableStream, deferred = false) => {
+      const sink = new LogSinkGuard(name, destination, deferred);
+      this.destinationStreams.push(sink);
+      return sink;
+    };
 
     // Build destination. ITransport sinks and extra `destinations` both require
     // a multistream; a bare stdout uses the async-destination fast path (T#66).
@@ -324,21 +298,21 @@ export class LoggerService implements ILoggerModule {
       // event loop stalls for the duration of that syscall. Wrap
       // every USER-supplied stream in an async forwarder so a slow
       // sub-stream can't block pino itself or its siblings. The
-      // stdout stream (raw `process.stdout`, or the pino-pretty
-      // stream) is left as-is: a TTY/host-managed sink.
-      const streams: Array<{ stream: NodeJS.WritableStream; level?: string }> = [
-        { stream: makeStdoutStream() },
-      ];
+      // stdout is bounded asynchronous output too: an ENOSPC from a managed
+      // file descriptor must not escape Pino or skip the durable journal.
+      const stdout = guard('stdout', makeStdoutStream());
+      if (!prettyPrint) this.installFlushOnExit(stdout);
+      const streams: Array<{ stream: NodeJS.WritableStream; level?: string }> = [{ stream: stdout }];
       if (hasDestinations) {
-        for (const dest of destinations!) {
+        for (const [index, dest] of destinations!.entries()) {
           if ('stream' in dest && dest.stream) {
             streams.push({
-              stream: dest.delivery === 'sync' ? dest.stream : wrapAsyncStream(dest.stream),
+              stream: guard(`destination:${index}`, dest.stream, dest.delivery !== 'sync'),
               level: (dest as any).level,
             });
           } else {
             streams.push({
-              stream: wrapAsyncStream(dest as unknown as NodeJS.WritableStream),
+              stream: guard(`destination:${index}`, dest as unknown as NodeJS.WritableStream, true),
             });
           }
         }
@@ -346,14 +320,13 @@ export class LoggerService implements ILoggerModule {
       if (hasTransports) {
         // ITransport sinks receive the fully-serialised record off pino's hot
         // path via this fan-out stream (reads `this.transports` by reference).
-        streams.push({ stream: this.createTransportFanout() });
+        streams.push({ stream: guard('transports', this.createTransportFanout()) });
       }
-      this.destinationStreams = streams.slice(1).map(item => item.stream);
       this.rootLogger = pino(pinoOptions, multistream(streams as any));
     } else if (prettyPrint) {
       // Dev pretty output straight to stdout. pino-pretty manages its own
       // stdout writes, so the async-destination flush hook does not apply here.
-      this.rootLogger = pino(pinoOptions, makeStdoutStream() as any);
+      this.rootLogger = pino(pinoOptions, guard('stdout', makeStdoutStream()));
     } else {
       // T#66: pino without a second-arg defaults to a SYNC stdout
       // destination — every `logger.info(...)` blocks the event
@@ -365,7 +338,7 @@ export class LoggerService implements ILoggerModule {
       // is that unflushed buffered lines can be lost if the
       // process is SIGKILL'd, but the shutdown hook below
       // (see `flushOnExit`) recovers what it can on clean exit.
-      const asyncStdout = pino.destination({ dest: 1, sync: false });
+      const asyncStdout = guard('stdout', makeStdoutStream());
       this.rootLogger = pino(pinoOptions, asyncStdout);
       this.installFlushOnExit(asyncStdout);
     }
@@ -622,19 +595,37 @@ export class LoggerService implements ILoggerModule {
           } catch {
             record = line;
           }
-          for (const transport of transports) {
-            try {
-              await transport.write(record);
-            } catch {
-              /* a transport must never break logging */
-            }
-          }
+          await Promise.all(transports.map(transport => this.deliverTransport(transport, record, chunk.length)));
           callback();
         });
       },
     });
     this.transportFanout = fanout as unknown as NodeJS.WritableStream;
     return this.transportFanout;
+  }
+
+  private async deliverTransport(transport: ITransport, record: unknown, bytes: number): Promise<void> {
+    const health = this.transportHealth.get(transport) ?? { name: `transport:${transport.name}`, pendingBytes: 0,
+      failedWrites: 0, unconfirmedBytes: 0, droppedBytes: 0, error: null, nextAttemptAt: null };
+    this.transportHealth.set(transport, health);
+    if (this.transportInFlight.has(transport) || (health.nextAttemptAt && Date.now() < health.nextAttemptAt)) {
+      health.droppedBytes += bytes; return;
+    }
+    this.transportInFlight.add(transport); health.pendingBytes = bytes;
+    let timer: NodeJS.Timeout | undefined;
+    const work = Promise.resolve().then(() => transport.write(record)).finally(() => {
+      this.transportInFlight.delete(transport); health.pendingBytes = 0;
+    });
+    try {
+      await Promise.race([work, new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Log transport did not acknowledge within 5000ms')), 5000); timer.unref();
+      })]);
+      health.error = null; health.nextAttemptAt = null;
+    } catch (error) {
+      health.failedWrites++; health.unconfirmedBytes += bytes;
+      health.error = String(error instanceof Error ? error.message : error).slice(0, 512);
+      health.nextAttemptAt = Date.now() + Math.min(30_000, 1000 * 2 ** Math.min(health.failedWrites - 1, 5));
+    } finally { if (timer) clearTimeout(timer); }
   }
 
   /**
@@ -657,13 +648,15 @@ export class LoggerService implements ILoggerModule {
   /**
    * Flush all transports
    */
+  getSinkHealth(): LogSinkHealth[] { return [...this.destinationStreams.map(stream => stream.health()), ...[...this.transportHealth.values()].map(health => ({ ...health }))]; }
+
   async flush(): Promise<void> {
-    await new Promise<void>((resolve, reject) => this.rootLogger.flush(error => error ? reject(error) : resolve()));
-    // A zero-byte barrier waits for queued writes without ending shared sinks.
-    // Fan-out transports also complete their callbacks only after delivery.
-    await Promise.all(this.destinationStreams.map(stream => stream instanceof Writable
-      ? new Promise<void>((resolve, reject) => stream.write(Buffer.alloc(0), error => error ? reject(error) : resolve()))
-      : Promise.resolve()));
-    await Promise.all(this.transports.filter((t) => t.flush).map((t) => t.flush!()));
+    const results = await Promise.allSettled([
+      ...this.destinationStreams.map(stream => stream.confirm()),
+      ...this.transports.filter(transport => transport.flush).map(transport => Promise.resolve().then(() => transport.flush!())),
+    ]);
+    const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+    for (const health of this.transportHealth.values()) if (health.error || health.droppedBytes || health.unconfirmedBytes) failures.push({ status: 'rejected', reason: new Error(`Log sink ${health.name} has unconfirmed delivery (${health.unconfirmedBytes} bytes; ${health.droppedBytes} dropped bytes)`) });
+    if (failures.length) throw new AggregateError(failures.map(result => result.reason), 'Logger delivery could not be confirmed');
   }
 }

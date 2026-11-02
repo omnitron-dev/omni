@@ -5,7 +5,7 @@ import { Netron } from '@omnitron-dev/titan/netron';
 import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';
 import { AuthenticationManager, AuthorizationManager } from '@omnitron-dev/titan/netron/auth';
 import { ProcessManager, ControllerHandoff } from '@omnitron-dev/titan-pm';
-import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import type { ILogger, LogSinkHealth } from '@omnitron-dev/titan/module/logger';
 import type { IEcosystemConfig, IDaemonConfig } from '../config/types.js';
 import { OrchestratorService } from '../orchestrator/orchestrator.service.js';
 import { FileWatcher } from '../orchestrator/file-watcher.js';
@@ -23,6 +23,7 @@ export async function startExecutionOwner(options: {
   config: IEcosystemConfig;
   daemonConfig: IDaemonConfig;
   logger: ILogger;
+  loggerHealth?: () => LogSinkHealth[];
   onShutdownRequested?: () => void;
 }): Promise<{ stop(): Promise<void>; service: ExecutionHostService }> {
   const { directory, logger, daemonConfig } = options;
@@ -67,6 +68,8 @@ export async function startExecutionOwner(options: {
   netron.setTransportAuthContext('unix', { userId: 'execution-local', roles: ['execution-controller'], permissions: [] });
   const service = new ExecutionHostService(orchestrator, fence, journal, {
     logs,
+    statePersistence: () => state.persistenceStatus(),
+    ...(options.loggerHealth && { loggerHealth: options.loggerHealth }),
     watch(enabled, apps) {
       watcher?.stop();
       watcher = null;

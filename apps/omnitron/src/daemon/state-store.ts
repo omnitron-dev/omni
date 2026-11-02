@@ -15,7 +15,7 @@ import { stackExecutionKey, validateStackExecutionIntent } from '../shared/dto/s
  *   - Same sync API the orchestrator has always used. The legacy
  *     `save/load/clear` signatures are preserved by buffering the
  *     SQLite calls onto a queued promise: writes are fire-and-forget
- *     from the caller's perspective, errors land in the logger.
+ *     from the caller's perspective; failure remains observable in status and flush().
  *
  * Back-compat path: when the legacy JSON file (`stateFile`) exists
  * on first `load()`, we one-shot migrate its contents into the SQLite
@@ -43,6 +43,12 @@ export interface PersistedState {
   apps: PersistedAppState[];
 }
 
+export interface StatePersistenceStatus {
+  pending: number;
+  failedWrites: number;
+  error: string | null;
+}
+
 const STATE_KV_KEY = 'orchestrator:persisted-state';
 
 export class StateStore {
@@ -64,9 +70,28 @@ export class StateStore {
    * In-flight write so a back-to-back save+save serialises through
    * one SQLite transaction at a time. Callers don't see the queueing
    * — they call `save()` synchronously and the promise resolves in
-   * the background. Errors are logged via the store's own logger.
+   * the background. Failures remain visible until a later full snapshot or clear succeeds.
    */
   private writeChain: Promise<void> = Promise.resolve();
+  private pending = 0;
+  private failedWrites = 0;
+  private failure: unknown = null;
+
+  persistenceStatus(): StatePersistenceStatus {
+    return { pending: this.pending, failedWrites: this.failedWrites,
+      error: this.failure === null ? null : String(this.failure instanceof Error ? this.failure.message : this.failure).slice(0, 512) };
+  }
+
+  private enqueue(write: () => Promise<void>): void {
+    this.pending++;
+    // Observe each failure inside the queue, before Node can classify it as an
+    // unhandled rejection. Keep the error separately: observing is not an ACK.
+    this.writeChain = this.writeChain.then(async () => {
+      try { await write(); this.failure = null; }
+      catch (error) { this.failure = error ?? new Error('State persistence failed'); this.failedWrites++; }
+      finally { this.pending--; }
+    });
+  }
 
   constructor(
     private readonly store: DaemonStateStore,
@@ -121,9 +146,7 @@ export class StateStore {
    */
   save(state: PersistedState): void {
     this.cached = state;
-    this.writeChain = this.writeChain
-      .catch(() => undefined)
-      .then(() => this.store.kvSet(STATE_KV_KEY, state));
+    this.enqueue(() => this.store.kvSet(STATE_KV_KEY, state));
   }
 
   /** Synchronous read of the snapshot loaded by the most recent `init()` / `save()`. */
@@ -134,13 +157,13 @@ export class StateStore {
   /** Drop the persisted snapshot. Used by crash-recovery acknowledgement. */
   clear(): void {
     this.cached = null;
-    this.writeChain = this.writeChain
-      .catch(() => undefined)
-      .then(() => this.store.kvDelete(STATE_KV_KEY));
+    this.enqueue(() => this.store.kvDelete(STATE_KV_KEY));
   }
 
   /** Block until every queued write has reached disk. Called on shutdown. */
   async flush(): Promise<void> {
-    await this.writeChain.catch(() => undefined);
+    let observed: Promise<void>;
+    do { observed = this.writeChain; await observed; } while (observed !== this.writeChain);
+    if (this.failure !== null) throw this.failure;
   }
 }

@@ -77,10 +77,9 @@ describe('LoggerService — async stdout destination + flush hook (T#66)', () =>
     expect(process.listenerCount('SIGINT')).toBe(after1.sigint);
   });
 
-  it('does NOT install the flush hook when explicit destinations are provided', async () => {
-    // The multistream branch is responsible for its own write
-    // semantics — the LoggerService should not add the
-    // single-destination flush hook on top.
+  it('flushes asynchronous stdout on exit alongside explicit destinations', async () => {
+    // Multistream stdout is now asynchronous too: healthy custom sinks must
+    // not suppress the exit flush for the host-managed stdout buffer.
     const before = process.listenerCount('beforeExit');
     const fakeStream: any = {
       write: vi.fn((_d: any, cb: any) => cb?.()),
@@ -88,6 +87,6 @@ describe('LoggerService — async stdout destination + flush hook (T#66)', () =>
     const svc = new LoggerService(
       { destinations: [{ stream: fakeStream }] } as unknown as ILoggerModuleOptions,
     );
-    expect(process.listenerCount('beforeExit')).toBe(before);
+    expect(process.listenerCount('beforeExit')).toBe(before + 1);
   });
 });

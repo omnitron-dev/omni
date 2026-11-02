@@ -102,3 +102,5 @@ export type {
 // ============================================================================
 
 export { createNullLogger, isLogger } from './logger.types.js';
+
+export type { LogSinkHealth } from './sink-guard.js';

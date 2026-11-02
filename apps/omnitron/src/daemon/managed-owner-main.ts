@@ -24,9 +24,10 @@ await withOwnerBootFence(config, async () => {
   if (!startup.daemonConfig.executionHost?.enabled) throw new Error('Independent supervision requires executionHost.enabled');
   await writePrivateRecord(receipt, { bootId, clean: false, pid: process.pid });
 });
-const logger = new LoggerService({ level: 'info' }).child({ component: 'execution-owner' });
+const logging = new LoggerService({ level: 'info' });
+const logger = logging.child({ component: 'execution-owner' });
 let stopping = false;
-const owner = await startExecutionOwner({ directory: config.directory, ...startup, logger,
+const owner = await startExecutionOwner({ directory: config.directory, ...startup, logger, loggerHealth: () => logging.getSinkHealth(),
   onShutdownRequested: () => { setTimeout(() => { void stop(); }, 100); },
 });
 async function stop(): Promise<void> {

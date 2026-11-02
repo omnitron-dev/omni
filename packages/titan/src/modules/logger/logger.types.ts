@@ -93,6 +93,9 @@ export interface ILoggerModule {
   setContext(context: object): void;
   withContext(context: object): ILogger;
 
+  /** Per-destination delivery evidence; failures never silently become durable. */
+  getSinkHealth(): import('./sink-guard.js').LogSinkHealth[];
+
   // Flush logs
   flush(): Promise<void>;
 }

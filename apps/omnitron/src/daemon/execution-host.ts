@@ -1,3 +1,5 @@
+import type { LogSinkHealth } from '@omnitron-dev/titan/module/logger';
+import type { StatePersistenceStatus } from './state-store.js';
 import type { LogManager } from '../monitoring/log-manager.js';
 import type { LogRecord } from '../monitoring/log-line.js';
 import type { JournalItem, LogJournalStats } from '../monitoring/log-journal.js';
@@ -38,6 +40,8 @@ export interface ExecutionEvent {
 export interface ExecutionSnapshot {
   protocol: 1;
   capabilities?: ExecutionCapabilities;
+  statePersistence?: StatePersistenceStatus;
+  logSinks?: LogSinkHealth[];
   logs?: { protocol: 1; journal: LogJournalStats };
   revision: number;
   status: ControllerHandoffStatus;
@@ -67,6 +71,8 @@ export class ExecutionHostService {
     private readonly journal: ExecutionJournal,
     private readonly hooks: {
       logs?: LogManager;
+      statePersistence?: () => StatePersistenceStatus;
+      loggerHealth?: () => LogSinkHealth[];
       watch?: (enabled: boolean, apps?: string[]) => void;
       watchConfig?: (config: Parameters<OrchestratorService['setConfig']>[0]) => void;
       watchedApps?: () => Array<{ name: string; directory: string }>;
@@ -134,6 +140,8 @@ export class ExecutionHostService {
       startedAt: worker.info.startTime, restarts: worker.info.restartCount }));
     return {
       ...(this.hooks.logs?.journal ? { logs: { protocol: 1 as const, journal: this.hooks.logs.journalStats()! } } : {}),
+      ...(this.hooks.statePersistence ? { statePersistence: this.hooks.statePersistence() } : {}),
+      ...(this.hooks.loggerHealth ? { logSinks: this.hooks.loggerHealth() } : {}),
       protocol: 1, capabilities: OWNER_CAPABILITIES, revision: ++this.revision, status: this.fence.status(), apps, workers,
       devMode: this.orchestrator.devMode, watchEnabled: this.orchestrator.devMode,
       watchedApps: [...this.orchestrator.getBuildWatchedApps(), ...(this.hooks.watchedApps?.() ?? [])],

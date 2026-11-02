@@ -71,8 +71,10 @@ export default function StacksPage() {
   const activeProject = useActiveProject();
   const stacks = useActiveProjectStacks();
   const loading = useProjectStore((s) => s.loading);
-  const error = useProjectStore((s) => s.error);
-  const clearError = useProjectStore((s) => s.clearError);
+  const notices = useProjectStore(s => s.stackNotices);
+  const clearNotice = useProjectStore(s => s.clearStackNotice);
+  const readError = useProjectStore(s => activeProject && s.stackReadErrors[activeProject]);
+  const known = useProjectStore(s => Boolean(activeProject && s.stacksByProject[activeProject]));
   const pendingOps = useProjectStore((s) => s.pendingOps);
   const fetchStacks = useProjectStore((s) => s.fetchStacks);
   const startStack = useProjectStore((s) => s.startStack);
@@ -163,13 +165,11 @@ export default function StacksPage() {
         }}
       /></Can>
 
-      {error && (
-        <Alert closable severity="error" onClose={clearError}>
-          {error}
-        </Alert>
-      )}
+      {readError && <Alert severity="warning">{known ? 'Showing the last stack inventory' : 'Stack inventory unavailable'} · {readError}</Alert>}
+      {Object.entries(notices).filter(([key]) => key.startsWith(`${activeProject}/`)).map(([key,reason]) =>
+        <Alert key={key} closable severity="warning" onClose={() => clearNotice(key)}>{key} · {reason}</Alert>)}
 
-      {loading && stacks.length === 0 ? (
+      {!known && readError ? null : (!known || loading) && stacks.length === 0 ? (
         <Grid container spacing={2}>
           {[1, 2, 3].map((i) => (
             <Grid key={i} size={{ xs: 12, sm: 6, md: 4 }}>

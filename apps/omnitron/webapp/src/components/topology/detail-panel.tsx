@@ -533,7 +533,7 @@ function MetricsTab({ appName }: { appName: string }) {
       });
       return { series: series.filter((item) => item.app === appName && !item.labels?.node), from, to };
     },
-    { intervalMs: 10_000 }
+    { intervalMs: 10_000, resourceKey: appName }
   );
   return (
     <Stack spacing={2}>

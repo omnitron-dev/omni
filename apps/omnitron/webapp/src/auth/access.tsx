@@ -33,6 +33,7 @@ export function ConsoleAccessProvider({ children }: { children: ReactNode }) {
   const { data, error, refresh } = usePolledResource(() => access.describe(), {
     intervalMs: 15_000,
     enabled: Boolean(user),
+    resourceKey: user?.id ?? null,
   });
   const snapshot = !error && data?.userId === user?.id ? (data ?? null) : null;
   useEffect(() => {
@@ -102,6 +103,7 @@ export function AccessBoundary({ permission, children }: { permission: PagePermi
 /** Entry-point permissions come from the actual RPC each page reads. */
 export const PAGE_PERMISSIONS: Record<string, PagePermission> = {
   dashboard: 'OmnitronDaemon.status',
+  'dashboard-builder': ['OmnitronDaemon.status', 'OmnitronProject.getProjectApps', 'OmnitronMetrics.querySeries', 'OmnitronAlerts.getSummary'],
   apps: 'OmnitronDaemon.list',
   nodes: 'OmnitronNodes.listNodes',
   terminal: 'OmnitronTerminal.open',

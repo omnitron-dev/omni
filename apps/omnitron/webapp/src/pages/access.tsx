@@ -1,5 +1,5 @@
 import { OperationStatus } from 'src/components/operation-status';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Alert,
   Accordion,
@@ -39,21 +39,15 @@ export default function AccessPage() {
   const { snapshot, can } = useAccess();
   const [after, setAfter] = useState<string | undefined>();
   const {
-    data: page,
+    data,
     error: listError,
     refresh,
     loading,
-  } = usePolledResource(async () => ({ cursor: after, result: await access.listUsers(after ? { after } : {}) }), {
+  } = usePolledResource(() => access.listUsers(after ? { after } : {}), {
     intervalMs: 15_000,
     enabled: can('OmnitronAccess.listUsers'),
+    resourceKey: JSON.stringify([can('OmnitronAccess.listUsers'), after]),
   });
-  const data = page?.cursor === after ? page?.result : null;
-  const mayListUsers = can('OmnitronAccess.listUsers');
-  useEffect(() => {
-    // If navigation raced a poll, its old response must trigger the current
-    // page fetch once the runner is free, without displaying the old page.
-    if (mayListUsers && page?.cursor !== after) void refresh();
-  }, [after, refresh, mayListUsers, page]);
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
   const [operation, setOperation] = useState<string | null>(null);

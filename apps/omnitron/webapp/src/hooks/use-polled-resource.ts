@@ -12,7 +12,7 @@
  * background tab is load nobody asked for and nobody sees.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 
 import { PollRunner, type PollState } from 'src/utils/poll-runner';
 
@@ -24,6 +24,8 @@ export interface UsePolledResourceOptions {
    * whose query has no subject yet, such as one waiting on a selected project.
    */
   enabled?: boolean;
+  /** Identity of the requested resource. A new identity starts with no previous readings. */
+  resourceKey?: string | number | null;
   /** Turns an unknown throw into something worth showing. */
   describeError?: (err: unknown) => string;
   /**
@@ -63,7 +65,8 @@ export function usePollingEffect(
     intervalMs,
     enabled = true,
     pauseWhileHidden = true,
-  }: { intervalMs: number; enabled?: boolean; pauseWhileHidden?: boolean }
+    resourceKey,
+  }: Pick<UsePolledResourceOptions, 'intervalMs' | 'enabled' | 'pauseWhileHidden' | 'resourceKey'>
 ): void {
   const tickRef = useRef(tick);
   tickRef.current = tick;
@@ -108,15 +111,13 @@ export function usePollingEffect(
       }
       stop();
     };
-  }, [intervalMs, enabled, pauseWhileHidden]);
+  }, [intervalMs, enabled, pauseWhileHidden, resourceKey]);
 }
 
 export function usePolledResource<T>(
   fetcher: () => Promise<T>,
-  { intervalMs, enabled = true, describeError, pauseWhileHidden = true }: UsePolledResourceOptions
+  { intervalMs, enabled = true, describeError, pauseWhileHidden = true, resourceKey = null }: UsePolledResourceOptions
 ): PolledResource<T> {
-  const [state, setState] = useState<PollState<T>>({ data: null, error: null, loading: true });
-
   // The fetcher is read through a ref so a caller need not memoise it: an
   // inline arrow would otherwise re-arm the timer on every render, which is
   // the other way this pattern goes wrong.
@@ -126,16 +127,25 @@ export function usePolledResource<T>(
   const describeRef = useRef(describeError);
   describeRef.current = describeError;
 
-  const runner = useMemo(
-    () =>
-      new PollRunner<T>({
-        fetcher: () => fetcherRef.current(),
-        onState: setState,
-        ...(describeRef.current && { describeError: (err) => describeRef.current!(err) }),
-      }),
-    // A new runner per mount; `enabled` and `intervalMs` drive the timer below.
-    []
-  );
+  const resource = useMemo(() => {
+    let notify: (() => void) | undefined;
+    const runner = new PollRunner<T>({
+      fetcher: () => fetcherRef.current(),
+      onState: () => notify?.(),
+      ...(describeRef.current && { describeError: (err) => describeRef.current!(err) }),
+    });
+    return {
+      key: resourceKey,
+      runner,
+      snapshot: () => runner.current,
+      subscribe(listener: () => void) {
+        notify = listener;
+        return () => { notify = undefined; };
+      },
+    };
+  }, [resourceKey]);
+  const { runner } = resource;
+  const state = useSyncExternalStore(resource.subscribe, resource.snapshot, resource.snapshot);
 
   // Paired, not one-way: see `PollRunner.resume`. A cleanup runs on every
   // `StrictMode` remount, not only at unmount, so a runner stopped here has
@@ -145,7 +155,7 @@ export function usePolledResource<T>(
     return () => runner.stop();
   }, [runner]);
 
-  usePollingEffect(() => void runner.tick(), { intervalMs, enabled, pauseWhileHidden });
+  usePollingEffect(() => void runner.tick(), { intervalMs, enabled, pauseWhileHidden, resourceKey: resource.key });
 
   const refresh = useCallback(async () => {
     await runner.tick();

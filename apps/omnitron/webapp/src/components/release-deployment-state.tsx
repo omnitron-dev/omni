@@ -20,7 +20,7 @@ export function ReleaseDeploymentState({ project, stack }: { project: string; st
       return value;
     },
     deployments: () => releaseApi.deployments(),
-  }), { intervalMs: 20_000 });
+  }), { intervalMs: 20_000, resourceKey: project });
   const rows = data?.stacks.filter(row => !stack || row.stack === stack) ?? [];
   return <Box component="section" aria-label="Deployment state" sx={{ minWidth: 0 }}>
     <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>

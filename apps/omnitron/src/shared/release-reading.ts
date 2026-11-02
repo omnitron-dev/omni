@@ -5,6 +5,16 @@ import type { DeployProgressRecord, ReleaseDeploymentDto } from './dto/services.
 import type { IProjectInfo, IStackInfo } from './dto/project.js';
 import type { RuntimeReleaseEvidence } from '../config/types.js';
 
+/** Interpret the daemon's start reply consistently for interactive and scripted callers. */
+export function readStackStart(stack: Pick<IStackInfo, 'status' | 'apps' | 'notUp'>) {
+  const down = stack.apps.filter(app => app.status !== 'online').map(app => `${app.name} (${app.status})`);
+  const total = stack.apps.length;
+  const online = total - down.length;
+  const issues = [...new Set([...(stack.notUp ?? []), ...down])];
+  if (stack.status !== 'running') issues.push(`stack state: ${stack.status}`);
+  return { confirmed: issues.length === 0, online, total, issues };
+}
+
 export function deploymentProgressKey(record: Pick<DeployProgressRecord, 'project' | 'stack' | 'node' | 'app'>): string {
   return JSON.stringify([record.project, record.stack, record.node, record.app]);
 }

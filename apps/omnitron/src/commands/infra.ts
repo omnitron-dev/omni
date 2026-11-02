@@ -276,9 +276,9 @@ export async function infraInspectCommand(
       ...(opts.snap?.length ? { snaps: opts.snap } : {}),
       ...(configKeys.length ? { configKeys } : {}),
     });
+    if (readings.some((r) => r.error)) process.exitCode = 1;
     if (emitJson({ stack: target, nodes: readings })) return;
     for (const reading of readings) printInspection(target, reading);
-    if (readings.some((r) => r.error)) process.exitCode = 1;
   } catch (err) {
     emitError(`Could not inspect ${target}: ${(err as Error).message}`);
     process.exitCode = 1;

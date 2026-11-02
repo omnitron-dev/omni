@@ -54,7 +54,7 @@ function DeploymentWorkspace() {
   const legacy = usePolledResource(() => deploy.getHistory({ limit: HISTORY_LIMIT }), { intervalMs: 15_000, enabled: section === 'legacy' });
   const progress = usePolledResource(() => project.getDeployProgress(activeProject ? {
     project: activeProject, ...(activeStack && { stack: activeStack }),
-  } : undefined), { intervalMs: 3_000, enabled: canProgress });
+  } : undefined), { intervalMs: 3_000, enabled: canProgress, resourceKey: JSON.stringify([activeProject, activeStack, canProgress]) });
 
   const starts = (history.data?.known ? history.data.deployments : [])
     .filter(row => matchesNamespace(`${row.project}/${row.stack}/_`))

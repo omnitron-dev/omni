@@ -198,6 +198,7 @@ export default function AuditPage() {
 
   const { data, error, loading } = usePolledResource(fetcher, {
     intervalMs: 15_000,
+    resourceKey: JSON.stringify([limit, resourceType]),
     describeError: (err: unknown) =>
       `Could not read the audit trail: ${err instanceof Error ? err.message : String(err)}`,
   });

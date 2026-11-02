@@ -14,8 +14,8 @@
  * running and the place to watch it is the stack's own page.
  */
 
-import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -33,7 +33,7 @@ import Typography from '@mui/material/Typography';
 import type { IStackInfo, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
 import { project as projectRpc } from 'src/netron/client';
 import { releaseApi } from 'src/netron/release-wire';
-import { isRpcTimeout, useProjectStore } from 'src/stores/project.store';
+import { useProjectStore } from 'src/stores/project.store';
 import { DeployIcon } from 'src/assets/icons';
 
 import { CommitPair, GateCount, GateStrip, gateSentence } from './release-bits';
@@ -54,17 +54,27 @@ export interface DeployReleaseDialogProps {
 
 export function DeployReleaseDialog({ open, onClose, project, release: given, stack }: DeployReleaseDialogProps) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const inspect = (target: string) => {
+    const store = useProjectStore.getState();
+    if (store.activeProject !== project) store.selectProject(project,location.pathname);
+    onClose();
+    navigate(`/stacks/${encodeURIComponent(target)}`);
+  };
   const stacksByProject = useProjectStore((s) => s.stacksByProject);
   const fetchStacks = useProjectStore((s) => s.fetchStacks);
   const startStack = useProjectStore((s) => s.startStack);
 
   const stacks: IStackInfo[] = stacksByProject[project] ?? [];
+  const stackError = useProjectStore(s => s.stackReadErrors[project]);
+  const [loadingReleases, setLoadingReleases] = useState(false);
   const [available, setAvailable] = useState<ReleaseSummary[]>([]);
   const [picked, setPicked] = useState('');
   const [target, setTarget] = useState(stack ?? '');
-  const [verdict, setVerdict] = useState<{ ok: boolean; because: string } | null>(null);
+  const [answer, setVerdict] = useState<{ key: string; ok: boolean; because: string } | null>(null);
   const [checking, setChecking] = useState(false);
   const [deploying, setDeploying] = useState(false);
+  const [inspectTarget, setInspectTarget] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
   useEffect(() => {
@@ -77,17 +87,19 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
   useEffect(() => {
     if (!open || given) return undefined;
     let current = true;
+    setLoadingReleases(true);
+    setAvailable([]); setPicked('');
     releaseApi
       .list()
       .then(({ releases }) => {
         if (!current) return;
         const mine = releases.filter((r) => r.project === project && r.complete);
         setAvailable(mine);
-        setPicked((was) => was || mine[0]?.id || '');
+        setPicked(mine[0]?.id ?? '');
       })
       .catch((err: Error) => {
         if (current) setFailure(`The release store could not be read: ${err.message}`);
-      });
+      }).finally(() => { if (current) setLoadingReleases(false); });
     return () => {
       current = false;
     };
@@ -98,6 +110,8 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
   // new array from every poll would otherwise re-ask the daemon for a
   // verdict it has already given.
   const releaseId = release?.id ?? '';
+  const key = JSON.stringify([project,target,releaseId]);
+  const verdict = answer?.key === key ? answer : null;
 
   useEffect(() => {
     if (open) {
@@ -111,16 +125,19 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
   // it rather than leaving the previous answer under the new question.
   useEffect(() => {
     setVerdict(null);
+    setInspectTarget(false);
+    setFailure(null);
+    setChecking(false);
     if (!open || !releaseId || !target) return undefined;
     let current = true;
     setChecking(true);
     projectRpc
       .checkRelease({ project, stack: target, release: releaseId })
-      .then((answer) => {
-        if (current) setVerdict(answer);
+      .then((response) => {
+        if (current) setVerdict({ ...response, key });
       })
       .catch((err: Error) => {
-        if (current) setVerdict({ ok: false, because: `The daemon could not answer: ${err.message}` });
+        if (current) setVerdict({ key, ok: false, because: `The daemon could not answer: ${err.message}` });
       })
       .finally(() => {
         if (current) setChecking(false);
@@ -128,35 +145,26 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
     return () => {
       current = false;
     };
-  }, [open, project, target, releaseId]);
+  }, [open, project, target, releaseId, key]);
 
-  const handleDeploy = useCallback(async () => {
-    if (!release || !target) return;
+  const handleDeploy = async () => {
+    if (!release || !target || !verdict?.ok) return;
     setDeploying(true);
     setFailure(null);
     try {
-      await startStack(project, target, { release: release.id });
-      const error = useProjectStore.getState().error;
-      if (error) {
-        setFailure(error);
-        setDeploying(false);
+      const outcome = await startStack(project, target, { release: release.id });
+      if (outcome.state !== 'confirmed') {
+        setFailure(outcome.message);
+        setInspectTarget(outcome.state !== 'failed');
         return;
       }
-      onClose();
-      navigate(`/stacks/${target}`);
+      inspect(target);
     } catch (err) {
-      // A deployment outlives the request that asked for it: six apps to a
-      // node take minutes. The timeout says it is running, not that it failed.
-      if (isRpcTimeout(err)) {
-        onClose();
-        navigate(`/stacks/${target}`);
-        return;
-      }
       setFailure((err as Error).message);
     } finally {
       setDeploying(false);
     }
-  }, [release, target, project, startStack, navigate, onClose]);
+  };
 
   const chosen = stacks.find((s) => s.name === target);
   const requiresRelease = chosen?.config?.release?.mode === 'required';
@@ -178,7 +186,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
             >
               {available.length === 0 && (
                 <MenuItem disabled value="">
-                  Nothing has been built for {project} yet
+                  {loadingReleases ? 'Reading releases…' : 'No completed releases available'}
                 </MenuItem>
               )}
               {available.map((r) => (
@@ -237,7 +245,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
           >
             {stacks.length === 0 && (
               <MenuItem disabled value="">
-                This project has no stacks
+                {stackError ? 'Stack inventory unavailable' : !stacksByProject[project] ? 'Reading stack inventory…' : 'This project has no stacks'}
               </MenuItem>
             )}
             {stacks.map((s) => (
@@ -285,6 +293,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
             </Alert>
           )}
 
+          {stackError && <Alert severity="warning">Stack inventory unavailable · {stackError}</Alert>}
           {requiresRelease && (
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               {target} takes releases only — its plain Start is refused by the daemon on purpose.
@@ -292,7 +301,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
           )}
 
           {failure && (
-            <Alert severity="error">
+            <Alert severity={inspectTarget ? 'warning' : 'error'}>
               <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
                 {failure}
               </Typography>
@@ -308,10 +317,10 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
           variant="contained"
           size="small"
           startIcon={deploying ? <CircularProgress size={14} color="inherit" /> : <DeployIcon />}
-          disabled={!release || !target || deploying || checking || verdict?.ok !== true}
-          onClick={handleDeploy}
+          disabled={!release || !target || deploying || checking || (!inspectTarget && verdict?.ok !== true)}
+          onClick={inspectTarget ? () => inspect(target) : handleDeploy}
         >
-          {deploying ? 'Deploying…' : 'Deploy'}
+          {deploying ? 'Deploying…' : inspectTarget ? 'Inspect stack' : 'Deploy'}
         </Button>
       </DialogActions>
     </Dialog>

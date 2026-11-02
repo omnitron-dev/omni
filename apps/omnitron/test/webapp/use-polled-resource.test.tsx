@@ -22,9 +22,9 @@ import '@testing-library/jest-dom/vitest';
 
 import { usePolledResource, usePollingEffect } from '../../webapp/src/hooks/use-polled-resource.js';
 
-function Resource({ fetcher, enabled }: { fetcher: () => Promise<string>; enabled?: boolean }) {
+function Resource({ fetcher, enabled, scope = null }: { scope?: string | null; fetcher: () => Promise<string>; enabled?: boolean }) {
   const { data, error, loading, refresh } = usePolledResource(fetcher, {
-    intervalMs: 50,
+    intervalMs: 50, resourceKey: scope,
     ...(enabled !== undefined && { enabled }),
   });
 
@@ -78,6 +78,18 @@ describe('usePolledResource under StrictMode', () => {
 });
 
 describe('usePolledResource', () => {
+  it('separates a new target immediately and ignores the previous target when it answers late', async () => {
+    let finish!: (value: string) => void;
+    const old = vi.fn(() => new Promise<string>(resolve => { finish = resolve; }));
+    const next = vi.fn(async () => 'second host');
+    const view = render(strict(<Resource scope="a" fetcher={old} />));
+    await waitFor(() => expect(old).toHaveBeenCalledTimes(1));
+    view.rerender(strict(<Resource scope="b" fetcher={next} />));
+    await waitFor(() => expect(screen.getByTestId('data')).toHaveTextContent('second host'));
+    await act(async () => finish('wrong host'));
+    expect(screen.getByTestId('data')).toHaveTextContent('second host');
+  });
+
   it('keeps the last good data when a poll fails', async () => {
     // A failed poll must not blank a table someone is reading.
     let attempt = 0;

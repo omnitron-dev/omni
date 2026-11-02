@@ -10,6 +10,7 @@
  * the webapp's filter context. The daemon keeps running everything.
  */
 
+import { readStackStart } from '@omnitron-dev/omnitron/release-reading';
 import { create } from 'zustand';
 import { isRpcTimeout } from '../utils/rpc-error';
 export { isRpcTimeout } from '../utils/rpc-error';
@@ -32,10 +33,14 @@ import type {
 /** Tracks in-flight start/stop operations per stack */
 type PendingOp = 'starting' | 'stopping';
 
+export type StackActionResult = { state: 'confirmed' } | { state: 'partial' | 'unconfirmed' | 'failed' | 'busy'; message: string };
+
 interface ProjectState {
   projects: IProjectInfo[];
   stacksByProject: Record<string, IStackInfo[]>;
   stackReadErrors: Record<string, string | null>;
+  stackNotices: Record<string, string>;
+  clearStackNotice(key: string): void;
   stackRuntimes: Record<string, StackRuntime>;
   /** In-flight operations keyed by "project/stack" */
   pendingOps: Record<string, PendingOp>;
@@ -67,7 +72,7 @@ interface ProjectState {
    * `release: { mode: 'required' }` refuses that outright and names the two
    * commands instead — see `admitRelease`.
    */
-  startStack: (project: string, stack: string, opts?: { release?: string; allowDirty?: boolean }) => Promise<void>;
+  startStack: (project: string, stack: string, opts?: { release?: string; allowDirty?: boolean }) => Promise<StackActionResult>;
   stopStack: (project: string, stack: string, review: string) => Promise<void>;
   createStack: (project: string, data: { name: string; type: 'local' | 'remote' | 'cluster'; apps: string[] | 'all'; nodeIds?: string[] }) => Promise<IStackInfo>;
   deleteStack: (project: string, stack: string) => Promise<void>;
@@ -123,10 +128,19 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   const persisted = loadPersistedWorkspace();
   const stackRequests = new Map<string, Promise<IStackInfo[] | null>>();
 
+  const notice = (key: string, message?: string) => set(state => {
+    const next = { ...state.stackNotices };
+    if (message) next[key] = message;
+    else delete next[key];
+    return { stackNotices: next };
+  });
+
   return {
   projects: [],
   stacksByProject: {},
   stackReadErrors: {},
+  stackNotices: {},
+  clearStackNotice: key => notice(key),
   stackRuntimes: {},
   pendingOps: {},
   activeProject: persisted.project,
@@ -199,7 +213,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       }
       return stacks;
     } catch (err) {
-      set(state => ({ error: (err as Error).message, stackReadErrors: { ...state.stackReadErrors, [projectName]: (err as Error).message } }));
+      set(state => ({ stackReadErrors: { ...state.stackReadErrors, [projectName]: (err as Error).message } }));
       return null;
     }
     })();
@@ -321,30 +335,34 @@ export const useProjectStore = create<ProjectState>((set, get) => {
 
   startStack: async (projectName: string, stackName: string, opts?: { release?: string; allowDirty?: boolean }) => {
     const opKey = `${projectName}/${stackName}`;
-    // Guard against double-click
-    if (get().pendingOps[opKey]) return;
+    if (get().pendingOps[opKey]) return { state: 'busy', message: `An operation is already pending for ${opKey}.` };
 
     // Optimistic: mark as starting immediately
+    notice(opKey);
     set((s) => ({
-      error: null,
       pendingOps: { ...s.pendingOps, [opKey]: 'starting' as PendingOp },
       stacksByProject: patchStackStatus(s.stacksByProject, projectName, stackName, 'starting'),
     }));
 
     try {
-      await projectRpc.startStack({
+      const stack = await projectRpc.startStack({
         project: projectName,
         stack: stackName,
         ...(opts?.release ? { release: opts.release } : {}),
         ...(opts?.allowDirty ? { allowDirty: true } : {}),
       });
+      const { confirmed, issues, online, total } = readStackStart(stack);
+      if (confirmed) return { state: 'confirmed' };
+      const message = `${opKey}: ${online}/${total} apps online. ${issues.join('; ')}.`;
+      notice(opKey, message);
+      return { state: 'partial', message };
     } catch (err) {
-      // An RPC timeout is expected for a long-running start: both pages that
-      // call this poll `fetchStacks`, so the real status arrives on its own.
-      // Anything else is the daemon telling us why the stack did not start.
-      if (!isRpcTimeout(err)) {
-        set({ error: (err as Error).message });
-      }
+      const timeout = isRpcTimeout(err);
+      const message = timeout
+        ? `No start acknowledgement for ${opKey}. Inspect the stack and deployment history before retrying.`
+        : err instanceof Error ? err.message : String(err);
+      notice(opKey, message);
+      return { state: timeout ? 'unconfirmed' : 'failed', message };
     } finally {
       set((s) => {
         const next = { ...s.pendingOps };
@@ -360,8 +378,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     const opKey = `${projectName}/${stackName}`;
     if (get().pendingOps[opKey]) return;
 
+    notice(opKey);
     set((s) => ({
-      error: null,
       pendingOps: { ...s.pendingOps, [opKey]: 'stopping' as PendingOp },
       stacksByProject: patchStackStatus(s.stacksByProject, projectName, stackName, 'stopping'),
     }));
@@ -370,9 +388,9 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const result = await projectRpc.stopStack({ project: projectName, stack: stackName, review });
       if (result.status !== 'stopped' || result.stopOperation?.phase !== 'stopped') throw new Error('Daemon did not confirm the complete stack stop');
     } catch (err) {
-      set({ error: isRpcTimeout(err)
+      notice(opKey, isRpcTimeout(err)
         ? 'Stop acknowledgement has not arrived. Check the stack operation before retrying; applications may still be running.'
-        : (err as Error).message });
+        : (err as Error).message);
     } finally {
       set((s) => {
         const next = { ...s.pendingOps };
@@ -396,11 +414,11 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   },
   deleteStack: async (projectName: string, stackName: string) => {
     try {
-      set({ error: null });
+      notice(`${projectName}/${stackName}`);
       await projectRpc.deleteStack({ project: projectName, stack: stackName });
       await get().fetchStacks(projectName);
     } catch (err) {
-      set({ error: (err as Error).message });
+      notice(`${projectName}/${stackName}`, (err as Error).message);
       throw err;
     }
   },

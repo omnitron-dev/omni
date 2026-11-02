@@ -9,7 +9,7 @@ import { createDaemonClient, LONG_REQUEST_TIMEOUT, isRequestTimeout } from '../d
 import type { IProjectRpcService } from '../shared/dto/services.js';
 import { emitJson, emitError, emitStep, emitSuccess, emitInfo, isJsonMode } from './output.js';
 import { syncFinding, syncWords, syncSeverity } from '../shared/sync-reading.js';
-import { readDeploymentProgress } from '../shared/release-reading.js';
+import { readDeploymentProgress, readStackStart } from '../shared/release-reading.js';
 
 // =============================================================================
 // Helpers
@@ -305,50 +305,30 @@ export async function stackStartCommand(
       ...(opts?.release ? { release: opts.release } : {}),
       ...(opts?.reinstall === true ? { reinstall: true } : {}),
     });
-    const online = stack.apps.filter((a) => a.status === 'online').length;
-
+    const { confirmed, online, total, issues } = readStackStart(stack);
+    if (!confirmed) process.exitCode = 1;
     if (emitJson({
       project: projectName,
       stack: stackName,
       action: 'started',
+      outcome: confirmed ? 'confirmed' : 'partial',
+      status: stack.status,
       apps: stack.apps,
       online,
-      total: stack.apps.length,
+      total,
       infrastructure: stack.infrastructure,
       ...(stack.notUp?.length ? { notUp: stack.notUp } : {}),
-    })) {
-      if (stack.notUp?.length || online < stack.apps.length) process.exitCode = 1;
-      return;
-    }
+      ...(issues.length ? { issues } : {}),
+    })) return;
 
-    // Beyond the apps: a node skipped, infrastructure not up. bitcoind failed
-    // to start on the test node and this printed «6/6 apps online», exit 0.
-    const notUp = stack.notUp ?? [];
-    if (notUp.length > 0) {
-      emitError(
-        `Stack ${projectName}/${stackName}: started with parts not up — ${notUp.join('; ')}. ` +
-          `Check \`omnitron infra inspect ${projectName}/${stackName}\`.`,
-        { project: projectName, stack: stackName, notUp },
-      );
-      process.exitCode = 1;
-    }
-
-    if (online < stack.apps.length) {
-      // Reporting a partial start as success is how a dead stack passes for a
-      // live one in a script. The count was always printed; it was printed
-      // under a success glyph and a zero exit code, so nothing downstream
-      // could tell 6/6 from 0/6.
-      const down = stack.apps
-        .filter((a) => a.status !== 'online')
-        .map((a) => `${a.name} (${a.status})`);
-      emitError(
-        `Stack ${projectName}/${stackName}: only ${online}/${stack.apps.length} apps came online. ` +
-          `Not online: ${down.join(', ')}. Check \`omnitron logs <app>\` or \`omnitron doctor\`.`,
-        { project: projectName, stack: stackName, online, total: stack.apps.length }
-      );
-      process.exitCode = 1;
+    if (confirmed) {
+      emitSuccess(`Stack ${projectName}/${stackName} started — ${online}/${total} apps online`);
     } else {
-      emitSuccess(`Stack ${projectName}/${stackName} started — ${online}/${stack.apps.length} apps online`);
+      emitError(
+        `Stack ${projectName}/${stackName}: ${online}/${total} apps online. ${issues.join('; ')}. ` +
+          `Check \`omnitron stack diagnose ${projectName} ${stackName}\` for details.`,
+        { project: projectName, stack: stackName, online, total, issues },
+      );
     }
 
     if (stack.infrastructure.ready) {

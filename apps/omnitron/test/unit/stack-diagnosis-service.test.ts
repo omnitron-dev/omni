@@ -20,6 +20,7 @@ function fixture() {
   const config = { apps: entries, stacks: { dev: { type: 'local', apps: 'all' } } };
   const plan = vi.fn(async () => []);
   const service = Object.assign(Object.create(ProjectService.prototype), {
+    nodeStackStop: { assertMutable: vi.fn() },
     registry: { get: () => ({ path: directory }) }, configRegistry: new Map([['sample', { config, loadedAt: Date.now() }]]),
     bootstrapTopology: new Map(), diagnosesInFlight: new Map(), bootstrapMetadata: metadata, orchestrator: { getHandle: () => undefined },
     resolveStacks: () => config.stacks, resolveStackApps: () => entries, stackEnvFor: async () => ({}),
@@ -33,6 +34,15 @@ describe('read-only readiness contract', () => {
     expect(report.status).toBe('ready');
     expect(f.plan.mock.calls[0]).toEqual(expect.arrayContaining([expect.objectContaining({ postgres: { databases: { api: {} } } })]));
     expect(report.deferred).toContain('Database authentication, schema and migrations');
+  });
+  it('reports the same authority refusal for start readiness and release preflight', async () => {
+    const f = fixture();
+    Object.assign(f.config.stacks.dev, { type: 'remote', nodes: [{ host: 'test.example', role: 'app' }] });
+    Object.assign(f.service, { clusterStop: {}, loadProjectConfig: async () => f.config });
+    const diagnosis = await f.service.diagnoseStack('sample', 'dev');
+    const check = diagnosis.checks.find(check => check.code === 'start.authority');
+    expect(check?.state).toBe('blocked');
+    expect(await f.service.checkRelease('sample', 'dev', 'sample-release')).toEqual({ ok: false, because: check?.message });
   });
   it('retains incomplete declaration coverage after source edits', async () => {
     const f = fixture(); fs.appendFileSync(f.bootstrap, '\n// changed');

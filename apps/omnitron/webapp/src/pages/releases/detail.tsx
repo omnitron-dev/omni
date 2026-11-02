@@ -14,7 +14,7 @@
  * the commit was identical in all three cases and what was packed was not.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -46,31 +46,51 @@ import { ReleaseDeploymentState } from 'src/components/release-deployment-state'
 import { readSourcePublication, releaseTargetLabel } from '@omnitron-dev/omnitron/release-reading';
 import { GATE_TONE, GateStrip, bytes, elapsed, loadWords, ranLoaded, when } from 'src/components/release-bits';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
+import { Can, useAccess } from 'src/auth/access';
+import { OperationStatus } from 'src/components/operation-status';
 import { releases as releaseRpc } from 'src/netron/client';
 import { releaseApi } from 'src/netron/release-wire';
 
 export default function ReleaseDetailPage() {
   const { id = '' } = useParams<{ id: string }>();
+  return <ReleaseDetails key={id} id={id} />;
+}
+
+function ReleaseDetails({ id }: { id: string }) {
+  const { can } = useAccess();
+  const mayReadBuilds = can('OmnitronRelease.builds');
+  const mayReadLogs = can('OmnitronRelease.getLog');
+  const logRequest = useRef(0);
+  const [readingLog, setReadingLog] = useState<string | null>(null);
   const [deployOpen, setDeployOpen] = useState(false);
   const [log, setLog] = useState<{ name: string; tail: string } | null>(null);
   const [logError, setLogError] = useState<string | null>(null);
 
   const { data, loading, error, refresh } = usePolledResource(
     async () => {
-      const [detail, builds] = await Promise.all([releaseApi.get(id), releaseApi.builds().catch(() => [])]);
+      const [detail, builds] = await Promise.all([
+        releaseApi.get(id),
+        mayReadBuilds ? releaseApi.builds().then(records => ({ records, error: null }))
+          .catch((err: Error) => ({ records: [], error: err.message })) : { records: [], error: null },
+      ]);
       return { detail, builds };
     },
-    { intervalMs: 15_000, enabled: Boolean(id) },
+    { intervalMs: 15_000, enabled: Boolean(id), resourceKey: JSON.stringify([id, mayReadBuilds]) },
   );
 
   const openLog = useCallback(
     async (name: string) => {
+      const request = ++logRequest.current;
+      setReadingLog(name);
+      setLog(null);
       setLogError(null);
       try {
         const answer = await releaseRpc.getLog({ id, name, lines: 400 });
-        setLog({ name: answer.name, tail: answer.tail });
+        if (request === logRequest.current) setLog({ name: answer.name, tail: answer.tail });
       } catch (err) {
-        setLogError((err as Error).message);
+        if (request === logRequest.current) setLogError((err as Error).message);
+      } finally {
+        if (request === logRequest.current) setReadingLog(null);
       }
     },
     [id],
@@ -90,7 +110,7 @@ export default function ReleaseDetailPage() {
 
   const release = data!.detail;
   const manifest = release.manifest;
-  const build = (data!.builds ?? []).find((b) => b.releaseId === id) ?? null;
+  const build = data!.builds.records.find((b) => b.releaseId === id) ?? null;
 
   return (
     <Stack spacing={3}>
@@ -101,7 +121,7 @@ export default function ReleaseDetailPage() {
             <IconButton data-console-command="refresh" size="small" onClick={() => void refresh()} title="Refresh">
               <RefreshIcon />
             </IconButton>
-            <Button
+            <Can permission="OmnitronProject.startStack"><Button
               variant="contained"
               size="small"
               startIcon={<DeployIcon />}
@@ -109,11 +129,13 @@ export default function ReleaseDetailPage() {
               onClick={() => setDeployOpen(true)}
             >
               Deploy…
-            </Button>
+            </Button></Can>
           </Stack>
         }
       />
 
+      {error && <Alert severity="warning">Last confirmed manifest · {error}</Alert>}
+      {data?.builds.error && <Alert severity="warning">Build activity unavailable · {data.builds.error}</Alert>}
       {!release.complete && (
         <Alert severity="warning" variant="outlined">
           This directory holds no manifest: the build did not finish, and what is here is its logs. Nothing can be
@@ -334,18 +356,20 @@ export default function ReleaseDetailPage() {
                   label={`${l.name} · ${bytes(l.bytes)}`}
                   size="small"
                   variant={log?.name === l.name ? 'filled' : 'outlined'}
+                  disabled={!mayReadLogs}
                   onClick={() => void openLog(l.name)}
                   sx={{ fontFamily: 'monospace', fontSize: 11 }}
                 />
               ))}
             </Stack>
           )}
-          {logError && (
+          <OperationStatus active={mayReadLogs && Boolean(readingLog)} label={`Reading ${readingLog ?? ''}`} />
+          {mayReadLogs && logError && (
             <Alert severity="warning" variant="outlined" sx={{ mt: 1.5 }}>
               {logError}
             </Alert>
           )}
-          {log && (
+          {mayReadLogs && log && (
             <>
               <Divider sx={{ my: 1.5 }} />
               <Box
@@ -366,12 +390,12 @@ export default function ReleaseDetailPage() {
         </CardContent>
       </Card>
 
-      <DeployReleaseDialog
+      <Can permission="OmnitronProject.startStack"><DeployReleaseDialog
         open={deployOpen}
         onClose={() => setDeployOpen(false)}
         project={release.project}
         release={release as ReleaseSummary}
-      />
+      /></Can>
     </Stack>
   );
 }

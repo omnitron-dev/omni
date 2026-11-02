@@ -1,3 +1,4 @@
+import { useAccess } from 'src/auth/access';
 /**
  * What the stacks measured about a release after carrying it.
  *
@@ -167,6 +168,9 @@ export function ReleaseAttestations({
   attestations: readonly StoredAttestation[];
   onChanged: () => void;
 }) {
+  const { can } = useAccess();
+  const canRun = can('OmnitronRelease.attestOnNode');
+  const canReadStacks = can('OmnitronProject.listStacks');
   const stacksByProject = useProjectStore((s) => s.stacksByProject);
   const fetchStacks = useProjectStore((s) => s.fetchStacks);
   const remote = useMemo(
@@ -180,8 +184,8 @@ export function ReleaseAttestations({
   const [waitingSince, setWaitingSince] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!stacksByProject[project]) void fetchStacks(project);
-  }, [project, stacksByProject, fetchStacks]);
+    if (canRun && canReadStacks && !stacksByProject[project]) void fetchStacks(project);
+  }, [canRun, canReadStacks, project, stacksByProject, fetchStacks]);
 
   useEffect(() => {
     if (!stack && remote.length > 0) setStack(remote[0]!.name);
@@ -228,7 +232,7 @@ export function ReleaseAttestations({
             probes a running stack measured against this release
           </Typography>
           <Box sx={{ flex: 1 }} />
-          {remote.length > 0 && (
+          {canRun && canReadStacks && remote.length > 0 && (
             <>
               <TextField
                 select

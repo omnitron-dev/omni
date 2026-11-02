@@ -415,6 +415,14 @@ export class ProjectService extends EventEmitter {
     this.drainHostedProvisioning = drain;
   }
 
+  /** Authority needed by an explicit start, including infrastructure provisioning. */
+  private assertStartAuthority(scope: StackExecutionScope, stack: IStackConfig): void {
+    if (this.clusterStop && (stack.type !== 'local' || stack.managedOrigin)) {
+      throw new Error('Starting this allocation requires a recipient-fenced deployment adapter; observed workloads remain under their existing owner');
+    }
+    this.assertStackMutable(stack.managedOrigin ?? scope);
+  }
+
   assertStackMutable(scope: StackExecutionScope): void {
     if (this.clusterStop) throw new Error('Cluster infrastructure changes require a recipient-fenced provisioning adapter');
     this.nodeStackStop.assertMutable(scope);
@@ -1107,6 +1115,11 @@ export class ProjectService extends EventEmitter {
     const config = loaded.config;
     const stack = this.resolveStacks(config, projectName)[stackName];
     if (!stack) throw new Error('Stack is not declared');
+    try {
+      this.assertStartAuthority({ project: projectName, stack: stackName }, stack);
+    } catch (err) {
+      add('start.authority', 'Start authority', 'blocked', (err as Error).message, 'Inspect the allocation owner and its stop operation before planning a start.');
+    }
     add('configuration.loaded', 'Project configuration', 'pass', `Using daemon configuration loaded at ${new Date(loaded.loadedAt).toISOString()}.`, 'Reload project configuration after editing it.');
     const entries = this.resolveStackApps(stack, config);
     if (Array.isArray(stack.apps)) {
@@ -1407,9 +1420,7 @@ export class ProjectService extends EventEmitter {
       known.attach = true;
       return this.attachRemoteStack(projectName, stackName, stackConfig, source);
     }
-    if (this.clusterStop && (stackConfig.type !== 'local' || stackConfig.managedOrigin)) {
-      throw new Error('Starting this allocation requires a recipient-fenced deployment adapter; observed workloads remain under their existing owner');
-    }
+    this.assertStartAuthority({ project: projectName, stack: stackName }, stackConfig);
 
     // A release, when one is named — and a stack that takes nothing else.
     let release: LoadedRelease | null = null;
@@ -2044,6 +2055,7 @@ export class ProjectService extends EventEmitter {
       const stacks = this.resolveStacks(config, projectName);
       const stackConfig = stacks[stackName];
       if (!stackConfig) throw new Error(`Stack '${stackName}' not found in project '${projectName}'`);
+      this.assertStartAuthority({ project: projectName, stack: stackName }, stackConfig);
       const release = await this.admitRelease(projectName, stackName, stackConfig, config, releaseId, 'check');
       const gates = release.manifest.gates;
       const passed = gates.filter((g) => g.status === 'passed').length;

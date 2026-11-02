@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
@@ -159,11 +159,8 @@ export default function PipelinesPage() {
   const detail = usePolledResource(() => pipelines.getRunStatus({ runId: selectedRun! }), {
     intervalMs: 3000,
     enabled: Boolean(selectedRun),
+    resourceKey: selectedRun,
   });
-  const refreshDetail = detail.refresh;
-  useEffect(() => {
-    if (selectedRun) void refreshDetail();
-  }, [selectedRun, refreshDetail]);
   const run = detail.data?.id === selectedRun ? detail.data : null;
   const act = async (operation: () => Promise<unknown>) => {
     setPending(true);

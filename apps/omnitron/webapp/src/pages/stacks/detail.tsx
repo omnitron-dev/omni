@@ -12,7 +12,7 @@ import { Can } from 'src/auth/access';
  * - Apps: app status within this stack
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -39,6 +39,7 @@ import {
 } from '../../stores/project.store';
 import { formatUptime } from '../../utils/formatters';
 import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
+import { OperationStatus } from 'src/components/operation-status';
 import { StackReleaseCard } from 'src/components/stack-release-card';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
 import type { IStackAppStatus, IStackInfo, IStackNodeStatus } from '@omnitron-dev/omnitron/dto/services';
@@ -58,12 +59,15 @@ export default function StackDetailPage() {
   const navigate = useNavigate();
   const activeProject = useActiveProject();
   const stacks = useActiveProjectStacks();
+  const known = useProjectStore(s => Boolean(activeProject && s.stacksByProject[activeProject]));
+  const readError = useProjectStore(s => activeProject ? s.stackReadErrors[activeProject] : null);
   const fetchStacks = useProjectStore((s) => s.fetchStacks);
   const startStack = useProjectStore((s) => s.startStack);
   const stopStack = useProjectStore((s) => s.stopStack);
   const deleteStack = useProjectStore((s) => s.deleteStack);
-  const error = useProjectStore((s) => s.error);
-  const clearError = useProjectStore((s) => s.clearError);
+  const opKey = `${activeProject}/${name}`;
+  const error = useProjectStore(s => s.stackNotices[opKey]);
+  const clearError = useProjectStore(s => s.clearStackNotice);
   const pendingOps = useProjectStore((s) => s.pendingOps);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [stopOpen, setStopOpen] = useState(false);
@@ -73,14 +77,10 @@ export default function StackDetailPage() {
   const stack = stacks.find((s) => s.name === name);
   const pendingOp = activeProject && name ? (pendingOps[`${activeProject}/${name}`] ?? null) : null;
 
-  useEffect(() => {
-    if (activeProject) fetchStacks(activeProject);
-  }, [activeProject, fetchStacks]);
-
   const hasPendingOps = Object.keys(pendingOps).length > 0;
   usePollingEffect(() => void (activeProject && fetchStacks(activeProject)), {
     intervalMs: hasPendingOps ? 3_000 : 10_000,
-    enabled: Boolean(activeProject),
+    enabled: Boolean(activeProject), resourceKey: activeProject,
   });
 
   // See `stacks/index.tsx`: these two never reject, so a catch here is a
@@ -99,8 +99,10 @@ export default function StackDetailPage() {
     setDeleteOpen(false);
   }, [activeProject, name, deleteStack, navigate]);
 
+  if (!stack && activeProject && readError) return <Alert severity="error">Stack inventory unavailable · {readError} <Button onClick={() => void fetchStacks(activeProject)}>Retry</Button></Alert>;
+  if (!stack && activeProject && !known) return <OperationStatus active label="Reading stack inventory" />;
   if (!stack) {
-  return (
+    return (
       <PageContent>
         <Alert severity="warning">
           Stack "{name}" not found.{' '}
@@ -298,8 +300,9 @@ export default function StackDetailPage() {
           start produced nothing at all here — the reason was recorded, and
           only the stacks index would have shown it. "Handled elsewhere" is
           only true when the elsewhere is on screen. */}
-      {error && (
-        <FormAlert sx={{ mb: 2 }} onClose={clearError}>
+      {readError && <Alert severity="warning">Showing the last stack inventory · {readError}</Alert>}
+      {error && error !== readError && (
+        <FormAlert sx={{ mb: 2 }} onClose={() => clearError(opKey)}>
           {error}
         </FormAlert>
       )}

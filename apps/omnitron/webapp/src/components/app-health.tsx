@@ -21,7 +21,7 @@ export function AppHealth({ appName, refreshToken, onLogs }: {
     const app = report.apps[appName];
     if (!app) throw new Error('The daemon returned no health answer for this application.');
     return { ...app, timestamp: report.timestamp };
-  }, { intervalMs: 5_000 });
+  }, { intervalMs: 5_000, resourceKey: appName });
   useEffect(() => { if (refreshToken > 0) void refresh(); }, [refreshToken, refresh]);
 
   const stale = data !== null && (!Number.isFinite(data.timestamp) ||

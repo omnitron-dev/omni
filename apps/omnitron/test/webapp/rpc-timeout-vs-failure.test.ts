@@ -79,24 +79,39 @@ beforeEach(() => {
 });
 
 describe('startStack', () => {
+  it('preserves missing node evidence even when every app is online', async () => {
+    const store = await freshStore();
+    startStack.mockResolvedValue({ status: 'running', apps: [{ name: 'worker', status: 'online' }], notUp: ['node west unreachable'] });
+    expect(await store.getState().startStack('demo', 'web')).toMatchObject({ state: 'partial', message: expect.stringContaining('node west unreachable') });
+    startStack.mockResolvedValue({ status: 'running', apps: [], notUp: [] });
+    expect(await store.getState().startStack('demo', 'infra')).toEqual({ state: 'confirmed' });
+  });
+
+  it('does not confirm a duplicate request while another operation owns the stack', async () => {
+    const store = await freshStore();
+    store.setState({ pendingOps: { 'demo/web': 'stopping' } });
+    expect((await store.getState().startStack('demo', 'web')).state).toBe('busy');
+    expect(startStack).not.toHaveBeenCalled();
+  });
+
   it.each(DAEMON_FAILURES)('reports %j to the operator', async (message) => {
     const useProjectStore = await freshStore();
     startStack.mockRejectedValue(new Error(message));
 
     await useProjectStore.getState().startStack('demo', 'web');
 
-    expect(useProjectStore.getState().error).toBe(message);
+    expect(useProjectStore.getState().stackNotices['demo/web']).toBe(message);
   });
 
   it.each(['code-only-string', 'code-only-numeric', 'message-only'] as const)(
-    "stays quiet for the transport's own timeout (%s)",
+    "reports an unconfirmed start for a transport timeout (%s)",
     async (kind) => {
       const useProjectStore = await freshStore();
       startStack.mockRejectedValue(transportTimeout(kind));
 
-      await useProjectStore.getState().startStack('demo', 'web');
-
-      expect(useProjectStore.getState().error).toBeNull();
+      const result = await useProjectStore.getState().startStack('demo', 'web');
+      expect(result).toMatchObject({ state: 'unconfirmed', message: expect.stringContaining('before retrying') });
+      expect(useProjectStore.getState().stackNotices['demo/web']).toContain('No start acknowledgement');
     }
   );
 });
@@ -108,7 +123,7 @@ describe('stopStack', () => {
 
     await useProjectStore.getState().stopStack('demo', 'web');
 
-    expect(useProjectStore.getState().error).toBe('Step timed out after 60000ms');
+    expect(useProjectStore.getState().stackNotices['demo/web']).toBe('Step timed out after 60000ms');
   });
 
   it("reports that a transport timeout leaves stop acknowledgement unknown", async () => {
@@ -117,6 +132,6 @@ describe('stopStack', () => {
 
     await useProjectStore.getState().stopStack('demo', 'web');
 
-    expect(useProjectStore.getState().error).toContain('Stop acknowledgement has not arrived');
+    expect(useProjectStore.getState().stackNotices['demo/web']).toContain('Stop acknowledgement has not arrived');
   });
 });

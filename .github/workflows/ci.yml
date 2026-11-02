@@ -29,12 +29,7 @@ jobs:
   # Fast-fail layer. Every package declares `typecheck`, so `-r` covers
   # the whole workspace without a list here that would drift from it.
   #
-  # `lint` is deliberately not in this job: the repository's own script
-  # carries `NODE_OPTIONS=--max-old-space-size=8192` because eslint over
-  # this tree has run out of memory at the default, and a 4 GB OOM on a
-  # hosted runner is a red pipeline that says nothing about the code.
-  # It belongs here once the lint run is bounded; adding it untested
-  # would be the thing this file exists to stop.
+  # Lint runs independently, one workspace at a time to bound runner memory.
   # -------------------------------------------------------------------
   typecheck:
     name: Typecheck
@@ -85,8 +80,8 @@ jobs:
       - name: Typecheck (all packages + apps)
         run: pnpm -r run typecheck
 
-  reproducibility:
-    name: Reproducible backend and Console
+  lint:
+    name: Workspace lint
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -97,7 +92,23 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check:reproducibility
+      - name: Lint every workspace
+        run: |
+          for dir in apps/* packages/*; do
+            pnpm exec eslint --max-warnings=0 --no-error-on-unmatched-pattern "$dir/**/*.{js,jsx,ts,tsx}"
+          done
+
+  reproducible-backend:
+    name: Reproduce the full backend and Console
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: node scripts/check-reproducible-backend.mjs
 
   # -------------------------------------------------------------------
   # Standing checks — the scanners in `scripts/`.
@@ -112,18 +123,6 @@ jobs:
   # No scanner imports a workspace package, so this installs without
   # building them.
   # -------------------------------------------------------------------
-  reproducible-backend:
-    name: Reproduce the full backend and Console
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - run: node scripts/check-reproducible-backend.mjs
-
   scans:
     name: Standing checks
     runs-on: ubuntu-latest

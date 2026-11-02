@@ -20,7 +20,7 @@
     "cleanup": "find . -name \"node_modules\" -type d -prune -exec rm -rf '{}' +",
     "changeset": "changeset",
     "ai-prompt": "ts-node scripts/gen-aiprompt.ts",
-    "publish": "ts-node scripts/publish.ts",
+    "publish": "node scripts/release.mjs",
     "transform-hugeicons": "tsx scripts/transform-hugeicons.ts",
     "link:global": "cd apps/omnitron && pnpm link --global",
     "unlink:global": "pnpm uninstall --global @omnitron-dev/omnitron",

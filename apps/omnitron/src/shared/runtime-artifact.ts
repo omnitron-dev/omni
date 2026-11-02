@@ -18,13 +18,14 @@ export function runtimeDigestRecord(relative: string, entry: { mode: number } | 
 }
 
 /** Hash bytes and relative links; no dependency may escape the immutable release. */
-export async function runtimeArtifactDigest(root: string): Promise<string> {
+export async function runtimeArtifactDigest(root: string, unchangedSince?: number): Promise<string> {
   root = await fs.realpath(root);
   const digest = createHash('sha256');
   let files = 0;
   const walk = async (relative: string): Promise<void> => {
     const absolute = path.join(root, relative);
     const stat = await fs.lstat(absolute);
+    if (unchangedSince !== undefined && stat.ctimeMs > unchangedSince) throw new Error(`Runtime entry changed after process startup: ${relative || '.'}`);
     if (process.getuid && stat.uid !== process.getuid()) throw new Error(`Runtime entry belongs to another user: ${relative || '.'}`);
     if (stat.isSymbolicLink()) {
       const target = await fs.readlink(absolute);
@@ -45,6 +46,12 @@ export async function runtimeArtifactDigest(root: string): Promise<string> {
       else for await (const chunk of createReadStream(absolute)) digest.update(chunk);
       digest.update('\0');
     } else throw new Error(`Unsupported runtime file: ${relative}`);
+    if (unchangedSince !== undefined) {
+      const after = await fs.lstat(absolute);
+      if (after.ctimeMs > unchangedSince || after.ino !== stat.ino || after.dev !== stat.dev || after.ctimeMs !== stat.ctimeMs) {
+        throw new Error(`Runtime entry changed during verification: ${relative || '.'}`);
+      }
+    }
   };
   await walk('');
   return digest.digest('hex');
@@ -61,10 +68,10 @@ export async function readRuntimeManifest(root: string): Promise<RuntimeArtifact
   return manifest;
 }
 
-export async function verifyRuntimeArtifact(root: string, expectedHash?: string): Promise<RuntimeArtifact> {
+export async function verifyRuntimeArtifact(root: string, expectedHash?: string, unchangedSince?: number): Promise<RuntimeArtifact> {
   const manifest = await readRuntimeManifest(root);
   if (manifest.platform !== process.platform || manifest.arch !== process.arch ||
       (expectedHash && expectedHash !== manifest.sha256)) throw new Error('Runtime manifest does not match this release or host');
-  if (await runtimeArtifactDigest(root) !== manifest.sha256) throw new Error('Runtime files or dependencies changed after sealing; activation is refused');
+  if (await runtimeArtifactDigest(root, unchangedSince) !== manifest.sha256) throw new Error('Runtime files or dependencies changed after sealing; activation is refused');
   return manifest;
 }

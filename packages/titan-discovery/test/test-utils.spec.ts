@@ -39,7 +39,7 @@ describe('getTestRedisConfig', () => {
     // compose default anyway, and failed on a correctly configured run.
     const overridden =
       (globalThis as { globalRedis?: unknown }).globalRedis !== undefined ||
-      existsSync(join(process.cwd(), '.redis-test-info.json'));
+      existsSync((process.env['TITAN_TEST_REDIS_INFO'] ?? join(process.cwd(), '.redis-test-info.json')));
     if (!overridden) {
       expect(config.port).toBe(expectedPort);
       expect(config.host).toBe(process.env['TEST_REDIS_HOST'] ?? 'localhost');

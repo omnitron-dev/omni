@@ -14,7 +14,7 @@ export function isInMockMode(): boolean {
 
   // Check .redis-test-info.json
   try {
-    const infoFile = join(process.cwd(), '.redis-test-info.json');
+    const infoFile = (process.env['TITAN_TEST_REDIS_INFO'] ?? join(process.cwd(), '.redis-test-info.json'));
     if (existsSync(infoFile)) {
       const info = JSON.parse(readFileSync(infoFile, 'utf-8'));
       if (info.isMock === true) {
@@ -38,7 +38,7 @@ export function getTestRedisUrl(db?: number): string {
   // Endpoint published by a globalSetup, if one ran.
   let globalRedis: { url?: string } | undefined;
   try {
-    const infoFile = join(process.cwd(), '.redis-test-info.json');
+    const infoFile = (process.env['TITAN_TEST_REDIS_INFO'] ?? join(process.cwd(), '.redis-test-info.json'));
     globalRedis = JSON.parse(readFileSync(infoFile, 'utf-8'));
   } catch {
     // No info file — fall through to the environment defaults below.

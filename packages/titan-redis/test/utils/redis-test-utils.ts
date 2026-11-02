@@ -42,7 +42,7 @@ interface RedisTestConfig {
  */
 function getRedisInfo(): { port?: number; isMock?: boolean; url?: string } | null {
   try {
-    const infoPath = join(process.cwd(), '.redis-test-info.json');
+    const infoPath = (process.env['TITAN_TEST_REDIS_INFO'] ?? join(process.cwd(), '.redis-test-info.json'));
     if (existsSync(infoPath)) {
       const content = readFileSync(infoPath, 'utf-8');
       return JSON.parse(content);

@@ -49,7 +49,7 @@ export interface TestRedisEndpoint {
  */
 export function resolveTestRedisEndpoint(): TestRedisEndpoint {
   try {
-    const infoPath = join(process.cwd(), REDIS_INFO_FILE);
+    const infoPath = process.env['TITAN_TEST_REDIS_INFO'] ?? join(process.cwd(), REDIS_INFO_FILE);
     if (existsSync(infoPath)) {
       const info = JSON.parse(readFileSync(infoPath, 'utf-8')) as {
         port?: number;

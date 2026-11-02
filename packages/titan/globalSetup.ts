@@ -4,19 +4,22 @@
  *
  * Redis connection strategies (in order of priority):
  * 1. USE_MOCK_REDIS=true - Use in-memory MockRedis (CI environments)
- * 2. Native redis-server - If available locally
- * 3. Docker Redis - Start container with random port
- * 4. Fallback to localhost:6379 - Assume Redis is running externally
+ * 2. Explicitly selected external Redis
+ * 3. Native redis-server, when installed
+ * 4. Isolated Docker Redis on a loopback port
  * 5. Mock mode - If all else fails
  */
 
 import { execFileSync, execSync, spawn, type ChildProcess } from 'node:child_process';
-import { writeFileSync, rmSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, rmSync, mkdtempSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import net from 'node:net';
 
 let nativeRedisProcess: ChildProcess | null = null;
+let runDir: string | undefined;
+let ownedContainerId: string | undefined;
+
 
 interface RedisInfo {
   url: string;
@@ -139,8 +142,7 @@ async function waitForRedis(port: number, maxAttempts = 30): Promise<boolean> {
 }
 
 async function startNativeRedis(redisPath: string, port: number): Promise<void> {
-  const dataDir = join(tmpdir(), `redis-test-global-${process.pid}`);
-  if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
+  const dataDir = mkdtempSync(join(runDir!, 'native-'));
 
   nativeRedisProcess = spawn(
     redisPath,
@@ -161,8 +163,6 @@ async function startNativeRedis(redisPath: string, port: number): Promise<void> 
     { stdio: 'pipe', detached: false }
   );
 
-  (nativeRedisProcess as any).dataDir = dataDir;
-
   return new Promise((resolve, reject) => {
     nativeRedisProcess!.on('error', reject);
     nativeRedisProcess!.on('exit', (code) => {
@@ -179,76 +179,67 @@ async function startNativeRedis(redisPath: string, port: number): Promise<void> 
   });
 }
 
-/**
- * Container name, per package rather than per monorepo.
- *
- * It was the constant `test-redis-global`, and the first thing `startDockerRedis`
- * does is `docker rm -f` it — so two package suites running at once removed
- * each other's Redis mid-test. Now that borrowing 6379 is no longer automatic,
- * far more runs reach this path at the same time.
- */
-function dockerRedisName(): string {
-  const pkg = process.cwd().split('/').filter(Boolean).pop() ?? 'unknown';
-  return `test-redis-${pkg.replace(/[^a-zA-Z0-9_.-]/g, '-')}`;
-}
-
 async function startDockerRedis(dockerPath: string, port: number): Promise<string> {
-  const name = dockerRedisName();
+  const cidfile = join(runDir!, 'redis.cid');
   try {
-    execFileSync(dockerPath, ['rm', '-f', name], { stdio: 'pipe', timeout: 5000 });
-  } catch {}
+    const containerId = execFileSync(
+      dockerPath,
+      [
+        'run',
+        '-d',
+        '--cidfile',
+        cidfile,
+        '--rm',
+        '-p',
+        `127.0.0.1:${port}:6379`,
+        '--health-cmd',
+        'redis-cli ping',
+        '--health-interval',
+        '1s',
+        '--health-timeout',
+        '3s',
+        '--health-retries',
+        '5',
+        '--health-start-period',
+        '2s',
+        'redis:7-alpine',
+      ],
+      { encoding: 'utf-8', timeout: 120_000 }
+    ).trim();
+    if (!/^[a-f0-9]{64}$/.test(containerId)) throw new Error('Invalid Redis container ID');
+    ownedContainerId = containerId;
 
-  const containerId = execFileSync(
-    dockerPath,
-    [
-      'run',
-      '-d',
-      '--name',
-      name,
-      '-p',
-      `${port}:6379`,
-      '--health-cmd',
-      'redis-cli ping',
-      '--health-interval',
-      '1s',
-      '--health-timeout',
-      '3s',
-      '--health-retries',
-      '5',
-      '--health-start-period',
-      '2s',
-      'redis:7-alpine',
-    ],
-    { encoding: 'utf-8' }
-  ).trim();
+    for (let i = 0; i < 30; i++) {
+      try {
+        const health = execFileSync(dockerPath, ['inspect', '--format={{.State.Health.Status}}', containerId], {
+          encoding: 'utf-8',
+        }).trim();
+        if (health === 'healthy') return containerId;
+      } catch {}
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
 
-  for (let i = 0; i < 30; i++) {
-    try {
-      const health = execFileSync(dockerPath, ['inspect', '--format={{.State.Health.Status}}', name], {
-        encoding: 'utf-8',
-      }).trim();
-      if (health === 'healthy') return containerId;
-    } catch {}
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    throw new Error('Redis container failed to become healthy within 30 seconds');
+  } catch (error) {
+    if (!ownedContainerId && existsSync(cidfile)) ownedContainerId = readFileSync(cidfile, 'utf8').trim();
+    removeOwnedContainer(dockerPath);
+    throw error;
   }
-
-  throw new Error('Redis container failed to become healthy within 30 seconds');
 }
 
-/**
- * Where the handoff file lives.
- *
- * The WRITER used `__dirname` and every READER uses `process.cwd()` —
- * `getTestRedisConfig` in each package looks for
- * `join(process.cwd(), '.redis-test-info.json')`. Those coincide only while
- * this file is used by the package it sits in; the moment another package
- * points its `globalSetup` here, the setup writes beside THIS file and the
- * workers look beside THEIRS, so every strategy but the last fallback goes
- * silently unread. Vitest runs with cwd at the package root, which is what
- * the readers have always assumed.
- */
-function redisInfoPath(): string {
-  return join(process.cwd(), '.redis-test-info.json');
+function removeOwnedContainer(dockerPath: string) {
+  if (ownedContainerId && /^[a-f0-9]{64}$/.test(ownedContainerId)) {
+    try {
+      execFileSync(dockerPath, ['rm', '-f', '-v', ownedContainerId], { stdio: 'pipe', timeout: 30_000 });
+    } catch (error) {
+      if (!String((error as { stderr?: Buffer }).stderr).includes('No such container')) throw error;
+    }
+    ownedContainerId = undefined;
+  }
+}
+
+function redisInfoPath() {
+  return join(runDir!, 'redis-info.json');
 }
 
 function writeRedisInfo(info: RedisInfo): void {
@@ -257,6 +248,8 @@ function writeRedisInfo(info: RedisInfo): void {
 }
 
 export async function setup(): Promise<void> {
+  runDir = mkdtempSync(join(tmpdir(), 'titan-test-redis-'));
+  process.env['TITAN_TEST_REDIS_INFO'] = redisInfoPath();
   console.log('[Global Setup] Initializing Redis for tests...');
 
   // Strategy 1: Mock Redis
@@ -346,73 +339,20 @@ export async function setup(): Promise<void> {
 export async function teardown(): Promise<void> {
   console.log('[Global Teardown] Cleaning up Redis resources...');
 
-  try {
-    let redisInfo: RedisInfo | undefined;
-    try {
-      const { readFileSync } = await import('node:fs');
-      redisInfo = JSON.parse(readFileSync(redisInfoPath(), 'utf-8'));
-    } catch {
-      redisInfo = (globalThis as any).__REDIS_INFO__;
-    }
-
-    if (redisInfo?.isMock) {
-      console.log('[Global Teardown] MockRedis mode - no cleanup needed');
-    } else if (redisInfo?.isNative && redisInfo.pid) {
-      console.log(`[Global Teardown] Stopping native redis-server (PID ${redisInfo.pid})...`);
-      try {
-        process.kill(redisInfo.pid, 'SIGTERM');
-        setTimeout(() => {
-          try {
-            process.kill(redisInfo!.pid!, 0);
-            process.kill(redisInfo!.pid!, 'SIGKILL');
-          } catch {}
-        }, 2000);
-      } catch {}
-
-      // Clean temp dirs
-      try {
-        const baseDir = tmpdir();
-        for (const entry of readdirSync(baseDir)) {
-          if (entry.startsWith('redis-test-global-')) {
-            rmSync(join(baseDir, entry), { recursive: true, force: true });
-          }
-        }
-      } catch {}
-      console.log('[Global Teardown] Native Redis stopped');
-    } else if (redisInfo?.isDocker) {
-      const dockerPath = findDockerPath();
-      try {
-        execFileSync(dockerPath, ['stop', dockerRedisName()], { stdio: 'pipe', timeout: 30000 });
-        execFileSync(dockerPath, ['rm', '-f', dockerRedisName()], { stdio: 'pipe', timeout: 10000 });
-        console.log('[Global Teardown] Redis container stopped');
-      } catch {
-        try {
-          execFileSync(dockerPath, ['rm', '-f', dockerRedisName()], { stdio: 'pipe', timeout: 10000 });
-        } catch {}
-      }
-    } else if (redisInfo?.isExternal) {
-      console.log('[Global Teardown] External Redis - no cleanup needed');
-    }
-
-    // Clean up info file
-    try {
-      const { unlinkSync } = await import('node:fs');
-      unlinkSync(redisInfoPath());
-    } catch {}
-
-    // Clean up SQLite temp files
-    try {
-      const cwd = process.cwd();
-      for (const entry of readdirSync(cwd)) {
-        if (/^file:/.test(entry)) {
-          rmSync(join(cwd, entry), { recursive: true, force: true });
-          console.log(`[Global Teardown] Removed SQLite temp: ${entry}`);
-        }
-      }
-    } catch {}
-
-    console.log('[Global Teardown] Cleanup complete');
-  } catch (error) {
-    console.error('[Global Teardown] Error during cleanup:', error);
+  if (ownedContainerId) removeOwnedContainer(findDockerPath());
+  const child = nativeRedisProcess;
+  if (child?.pid && child.exitCode === null && child.signalCode === null) {
+    await new Promise<void>(resolve => {
+      const deadline = setTimeout(() => child.kill('SIGKILL'), 2_000);
+      child.once('exit', () => { clearTimeout(deadline); resolve(); });
+      child.kill('SIGTERM');
+    });
   }
+  nativeRedisProcess = null;
+  if (runDir) {
+    if (process.env['TITAN_TEST_REDIS_INFO'] === redisInfoPath()) delete process.env['TITAN_TEST_REDIS_INFO'];
+    rmSync(runDir, { recursive: true, force: true });
+    runDir = undefined;
+  }
+  console.log('[Global Teardown] Cleanup complete');
 }

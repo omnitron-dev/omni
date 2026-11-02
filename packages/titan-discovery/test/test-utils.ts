@@ -27,7 +27,7 @@ const DEFAULT_REDIS_PORT = Number(process.env['TEST_REDIS_PORT'] ?? 16379);
 /** Read the Redis endpoint published by a globalSetup, if any. */
 function readRedisInfoFile(): { port?: number; isMock?: boolean } | null {
   try {
-    const infoPath = join(process.cwd(), '.redis-test-info.json');
+    const infoPath = (process.env['TITAN_TEST_REDIS_INFO'] ?? join(process.cwd(), '.redis-test-info.json'));
     if (!existsSync(infoPath)) return null;
     return JSON.parse(readFileSync(infoPath, 'utf-8'));
   } catch {

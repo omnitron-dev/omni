@@ -63,6 +63,7 @@ const CONTROL_PLANE_CALLS: ReadonlyArray<{ service: string; method: string; why:
   { service: 'OmnitronDaemon', method: 'getHealth', why: 'node health for the console' },
   { service: 'OmnitronDaemon', method: 'getMetrics', why: 'node metrics for the console' },
   { service: 'OmnitronDaemon', method: 'inspectInstalledArtifacts', why: 'compare the installed release with its recorded provenance' },
+  { service: 'OmnitronDaemon', method: 'attestApplicationOwner', why: 'verify the supervised owner when checking an application release' },
   { service: 'OmnitronSystemInfo', method: 'getSnapshot', why: 'read the selected host through the authenticated mesh' },
   { service: 'OmnitronSync', method: 'drainBuffer', why: 'pull replicated entries' },
   { service: 'OmnitronSync', method: 'ackDrained', why: 'release what the master stored' },

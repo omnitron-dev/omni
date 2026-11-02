@@ -54,7 +54,8 @@ jobs:
             git worktree add --detach "$tree" "$rev"
             (
               cd "$tree"
-              export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+              SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+              export SOURCE_DATE_EPOCH
               pnpm install --frozen-lockfile
               pnpm exec turbo run build --force --concurrency=2
               node apps/omnitron/scripts/freeze-backend.mjs apps/omnitron "$runtime"
@@ -70,6 +71,10 @@ jobs:
           done
       - name: Recover, update and roll back while a supervised application serves requests
         run: |
+          stage=/opt/omnitron-handoff-qualification
+          sudo install -d -m 0700 "$stage"
+          for rev in "$PREVIOUS" "$CANDIDATE"; do
+            sudo cp -a --no-preserve=ownership "$RUNNER_TEMP/omnitron-handoff-$rev" "$stage/$rev"
+          done
           sudo -- "$(command -v node)" apps/omnitron/test/runtime/managed-backend.mjs \
-            "$RUNNER_TEMP/omnitron-handoff-$PREVIOUS/packages/0/dist" \
-            "$RUNNER_TEMP/omnitron-handoff-$CANDIDATE/packages/0/dist"
+            "$stage/$PREVIOUS/packages/0/dist" "$stage/$CANDIDATE/packages/0/dist"

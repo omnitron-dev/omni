@@ -1,5 +1,33 @@
 # Controlled host upgrades
 
+## Managed backend rollout
+
+A standalone controller can update the backend on registered Linux servers while their independent execution owners keep applications running. Each server needs a verified SSH host key and a healthy resident owner. Inspect the key with `omnitron node ssh-key <node>` and enroll its independently verified fingerprint with `--trust <fingerprint>`.
+
+For a preinstalled candidate, give the controller its full Git commit and the desired order. Omitting the nodes selects all registered remote nodes in name order. Review the eligible targets, both artifact digests and the execution owner before applying the returned plan ID.
+
+```sh
+omnitron fleet rollout plan "$COMMIT" test-node prod-node --wait
+omnitron fleet rollout apply "$PLAN_ID" --wait
+omnitron fleet rollout status "$PLAN_ID"
+```
+
+To distribute a candidate from one controller, first import a qualified sealed runtime for each target architecture and exact Node version. Add `--stage` to the plan to transfer a matching build. Staging writes content-addressed files and verifies their integrity before qualification. Backend selection changes only when the plan starts.
+
+```sh
+omnitron fleet rollout import /path/to/qualified-linux/runtime
+omnitron fleet rollout builds
+omnitron fleet rollout plan "$COMMIT" test-node prod-node --stage --wait
+```
+
+The Console's fleet rollout in Nodes and the CLI use the same durable receipt. Planning returns an ID immediately and records progress for each server. An automation can supply a UUID with `--request-id`. After a lost response, repeat the same commit, target order and staging choice with that ID. A controller restart during preflight permits the same qualification to run again. A rollout requires an administrator with a current session or the authenticated local Unix identity. Viewers and operators can follow status.
+
+Activation is sequential. The controller pins each SSH endpoint, immutable artifacts, runtime selection revision, owner and application inventory. An uncertain dispatch holds the fleet operation open. Inspect it with `omnitron fleet rollout status "$PLAN_ID"` and use `omnitron fleet rollout reconcile "$PLAN_ID"` to obtain fresh evidence under the original node lease. Reconciliation records the proven selection. A separate plan is required to activate remaining targets after an interruption. Earlier successful targets retain their selections.
+
+The local controller uses its independent supervisor and the local backend upgrade procedure. Elected controller clusters currently require a shared cross-node dispatch fence before this fleet operation can run there.
+
+## Application releases and coupled hosts
+
 An app release holds `RemoteDeployer.underLease` across `inspectInstalledBundle`, dependency installation, and app activation. Inspection returns `{root, version, commit}` for the immutable installed host and verifies its clean build, live process entry, and supervisor binding. App releases must not install/activate a host bundle or rewrite its service. They refuse an unfinished host upgrade.
 
 `activateBundle` and `activateBundleHeld` are separate, disruptive host operations under the same machine lease. They capture all projects and app states, validate an installed candidate, check declared bindings and operational readiness, and durably write a private receipt before stopping the daemon. They rebind the same app releases, restore the previous boot selection, check exact online identities, supervisor ownership, dependency identity, and declared health. The held variant also checks its gateways before retention. Retention protects both previous and candidate bundles even with `keepVersions=1`.

@@ -656,7 +656,14 @@ export interface IOmnitronSecretsService {
  * `setHealthRepository`) are wiring, not contract — they take server-side
  * objects and are deliberately absent here.
  */
+export type { KernelRollout, KernelRolloutTarget } from './nodes.js';
+
 export interface IOmnitronNodesService {
+  listKernelBuilds(): Promise<import('./kernel-catalog.js').KernelCatalogEntry[]>;
+  planKernelRollout(data: { commit: string; nodeIds?: string[]; requestId?: string; stage?: boolean }): Promise<import('./nodes.js').KernelRollout>;
+  startKernelRollout(data: { id: string }): Promise<import('./nodes.js').KernelRollout>;
+  getKernelRollout(data?: { id?: string }): Promise<import('./nodes.js').KernelRollout | null>;
+  reconcileKernelRollout(data: { id: string }): Promise<import('./nodes.js').KernelRollout>;
   listNodes(): INodeWithStatus[];
   getNode(data: { id: string }): INodeWithStatus | null;
   addNode(data: AddNodeInput): Promise<INode>;
@@ -933,3 +940,4 @@ export { FILE_ARCHIVE_FORMATS } from './files.js';
 export { fileNameError, fileStructureError } from '../file-policy.js';
 
 export type { LogIngestionStats } from './logs.js';
+export type { KernelCatalogEntry } from './kernel-catalog.js';

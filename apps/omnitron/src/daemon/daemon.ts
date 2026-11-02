@@ -275,6 +275,7 @@ export class OmnitronDaemon {
   private nodeManagerService: import('../services/node-manager.service.js').NodeManagerService | null = null;
   private slaveConnector: import('../cluster/slave-connector.js').SlaveConnector | null = null;
   private meshHandle: import('../cluster/mesh.js').MeshHandle | null = null;
+  private kernelRollouts?: import('../services/kernel-rollout.service.js').KernelRolloutService;
   private nodeManagerRpcService: import('../services/node-manager.rpc-service.js').NodeManagerRpcService | null = null;
   private terminalRpcService: import('../services/terminal.rpc-service.js').TerminalRpcService | null = null;
   private fileNode: import('../files/file-node.js').FileNode | null = null;
@@ -337,6 +338,7 @@ export class OmnitronDaemon {
       ...(this.recoveryMonitor ? { recovery: this.recoveryMonitor.status() } : {}),
       ...(this.supervision ? { supervision: this.supervision } : {}),
       blockers: {
+        ...(this.kernelRollouts?.activeCount() ? { kernelRollouts: this.kernelRollouts.activeCount() } : {}),
         terminalSessions: this.terminalRpcService?.activeSessionCount() ?? 0,
         fileTransfers: (this.filesRpcService?.activeTransferCount() ?? 0) + (this.fileNode?.activeOperationCount() ?? 0),
         pipelineRuns: this.pipelineService?.activeRunCount() ?? 0,
@@ -1155,13 +1157,13 @@ export class OmnitronDaemon {
         secretsService as any,
       );
       this.nodeManagerService = nodeManager;
+      const nodeAuth = await container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN);
       if (audit) {
         const { TerminalRpcService } = await import('../services/terminal.rpc-service.js');
-        const terminalAuth = await container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN);
-        this.terminalRpcService = new TerminalRpcService(nodeManager, terminalAuth, daemonStateStore, audit, dc.terminal);
+        this.terminalRpcService = new TerminalRpcService(nodeManager, nodeAuth, daemonStateStore, audit, dc.terminal);
         await this.app.netron.peer.exposeService(this.terminalRpcService);
       }
-      const nodeManagerRpcService = new NodeManagerRpcService(nodeManager, audit, () => systemInfoService.getSnapshot({ fresh: true }));
+      const nodeManagerRpcService = new NodeManagerRpcService(nodeManager, audit, () => systemInfoService.getSnapshot({ fresh: true }), nodeAuth);
       nodeManagerRpcService.setLocalDaemon(rpcService);
       // The deployer reaches nodes through the same SSH implementation as the
       // health checks — the only one that can present a stored password or a
@@ -1172,6 +1174,14 @@ export class OmnitronDaemon {
         const deployLogger = loggerModule.logger.child({ component: 'deploy' });
         const remoteDeployer = new RemoteDeployer(deployLogger, new ExecutionService(deployLogger));
         nodeManagerRpcService.setRemoteDeployer(remoteDeployer);
+        const { KernelRolloutService } = await import('../services/kernel-rollout.service.js');
+        this.kernelRollouts = new KernelRolloutService(daemonStateStore, nodeManager, remoteDeployer,
+          error => deployLogger.error({ error }, 'Kernel rollout journal needs reconciliation'),
+          () => {
+            if (this.dc.cluster?.enabled) throw new Error('Managed kernel rollout requires a standalone controller. Elected controllers lack a shared cross-node dispatch fence.');
+            if (this.isShuttingDown || this.preparingBackend || this.handingOffBackend) throw new Error('Controller handoff or shutdown is in progress');
+          });
+        nodeManagerRpcService.setKernelRolloutService(this.kernelRollouts);
 
         // Upgrading a node from the console: the same build the CLI makes,
         // made here, then the same two calls. Without this the console could

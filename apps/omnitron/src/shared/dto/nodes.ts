@@ -420,3 +420,27 @@ export interface INodeReconciliationResult {
   unresolvedSourceRows: number;
   restored: boolean;
 }
+
+/** A transition of a sealed backend under its existing execution owner. */
+export interface KernelRolloutTarget {
+  nodeId: string;
+  name: string;
+  state: 'pending' | 'ready' | 'blocked' | 'current' | 'running' | 'succeeded' | 'failed' | 'rolled-back' | 'uncertain';
+  previous: string | null;
+  candidate: string | null;
+  ownerId: string | null;
+  ownerPid: number | null;
+  reason: string | null;
+}
+
+export interface KernelRollout {
+  id: string;
+  commit: string;
+  /** May copy a sealed artifact during preflight. Selection still requires an explicit start. */
+  stage?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  state: 'planning' | 'planned' | 'blocked' | 'running' | 'succeeded' | 'failed' | 'uncertain';
+  reason: string | null;
+  targets: KernelRolloutTarget[];
+}

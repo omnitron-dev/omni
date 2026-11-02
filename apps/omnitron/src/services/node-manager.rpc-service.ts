@@ -19,8 +19,9 @@
  * costs is that call, and no more — see `callWorker`.
  */
 
+import { randomUUID } from 'node:crypto';
 import { Service, Public } from '@omnitron-dev/titan/decorators';
-import { VIEWER_ROLES, OPERATOR_ROLES, CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
+import { ADMIN_ROLES, VIEWER_ROLES, OPERATOR_ROLES, CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
 import { Errors } from '@omnitron-dev/titan/errors';
 import type {
   NodeManagerService,
@@ -30,6 +31,10 @@ import type {
   INodeStatus,
   SshKeyInfo,
 } from './node-manager.service.js';
+import { daemonPrincipal } from './daemon-principal.js';
+import type { KernelRolloutService } from './kernel-rollout.service.js';
+import type { KernelRollout } from '../shared/dto/nodes.js';
+import type { AuthService } from './auth.service.js';
 import type { NodeCheckConfig } from './remote-ops.service.js';
 import type { FleetHistoryConfig, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState, INodeDaemonAnswer,
   INodeUpgradePlan, INodeRolloutStart } from '../shared/dto/nodes.js';
@@ -75,6 +80,8 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
 
   private remoteDeployer: import('./remote-deployer.service.js').RemoteDeployer | null = null;
 
+  private kernelRollouts?: KernelRolloutService;
+
   private upgrades: import('./node-upgrade.service.js').NodeUpgradeService | null = null;
 
   private slaveConnector: import('../cluster/slave-connector.js').SlaveConnector | null = null;
@@ -94,6 +101,7 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
     /** The audit trail, when this daemon has one — see `ProjectRpcService`. */
     private readonly audit?: import('./audit.service.js').AuditService | undefined,
     private readonly hostSnapshot?: () => Promise<SystemSnapshot>,
+    private readonly auth?: Pick<AuthService, 'validateSession'>,
   ) {}
 
   /** Set the health worker proxy after the worker is spawned */
@@ -485,6 +493,58 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   }
 
   /** Wired by the daemon at startup, on a master. */
+  setKernelRolloutService(service: KernelRolloutService): void {
+    this.kernelRollouts = service;
+  }
+
+  private kernel(): KernelRolloutService {
+    if (!this.kernelRollouts) throw new Error('Managed kernel rollout service is unavailable');
+    return this.kernelRollouts;
+  }
+
+  private async revalidateKernelPrincipal() {
+    if (!this.auth) throw new Error('Kernel rollout requires session verification');
+    await daemonPrincipal(this.auth, 'admin');
+  }
+
+  private async authorizeKernel(action: string, id: string) {
+    await this.revalidateKernelPrincipal();
+    if (!this.audit) throw new Error('Kernel rollout requires a durable audit trail');
+    if (typeof id !== 'string' || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(id)) throw new Error('Invalid kernel rollout ID');
+    await this.audit.record({ action: 'node.kernel.' + action, resourceType: 'kernel-rollout', resourceId: id }, true);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async listKernelBuilds(): Promise<import('../shared/dto/kernel-catalog.js').KernelCatalogEntry[]> {
+    await this.revalidateKernelPrincipal();
+    const { listKernelBuilds } = await import('./kernel-catalog.js');
+    return listKernelBuilds();
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async planKernelRollout(data: { commit: string; nodeIds?: string[]; requestId?: string; stage?: boolean }): Promise<KernelRollout> {
+    const id = data.requestId ?? randomUUID();
+    await this.authorizeKernel(data.stage === true ? 'plan.stage' : 'plan', id);
+    return this.kernel().plan(data.commit, data.nodeIds, id, data.stage, () => this.revalidateKernelPrincipal());
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async startKernelRollout(data: { id: string }): Promise<KernelRollout> {
+    await this.authorizeKernel('start', data.id);
+    return this.kernel().start(data.id, () => this.revalidateKernelPrincipal());
+  }
+
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
+  async getKernelRollout(data?: { id?: string }): Promise<KernelRollout | null> {
+    return this.kernel().get(data?.id);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async reconcileKernelRollout(data: { id: string }): Promise<KernelRollout> {
+    await this.authorizeKernel('reconcile', data.id);
+    return this.kernel().reconcile(data.id);
+  }
+
   setUpgradeService(service: import('./node-upgrade.service.js').NodeUpgradeService | null): void {
     this.upgrades = service;
   }

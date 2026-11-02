@@ -52,6 +52,9 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build packages and applications
         run: pnpm build
+      - name: Rebuild and compare two independent release archives
+        working-directory: apps/omnitron
+        run: node test/runtime/reproducible-bundle.mjs dist
       - name: Verify package archive exports
         run: pnpm check:packages
       - name: Console publication and recovery
@@ -97,6 +100,8 @@ jobs:
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Audit locked dependencies (including build tools and Console)
+        run: pnpm audit --audit-level low
       - name: Standing checks (gates must pass; worklists are printed)
         run: pnpm check:scans
 

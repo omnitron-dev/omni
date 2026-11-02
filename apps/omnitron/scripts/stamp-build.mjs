@@ -32,10 +32,12 @@ if (!existsSync(dir)) {
 
 let commit;
 let dirty;
+let sourceEpoch;
 if (flag === '--commit') {
-  // An export of one commit: clean by construction.
+  if (!/^[0-9a-f]{40}$/.test(value)) throw new Error('Expected a full commit hash for an exported source tree');
   commit = value;
   dirty = false;
+  sourceEpoch = process.env.SOURCE_DATE_EPOCH;
 } else {
   const cwd = path.resolve(dir);
   const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
@@ -44,12 +46,20 @@ if (flag === '--commit') {
     // The whole repository, as the bundle builder reads it: a change in a
     // package this app compiles against is as much a change as one in `src`.
     dirty = git('status', '--porcelain').length > 0;
+    if (!dirty) sourceEpoch = git('show', '-s', '--format=%ct', commit);
   } catch {
     process.stderr.write(`stamp-build: ${dir} is not inside a git repository — the build is left unstamped\n`);
     process.exit(1);
   }
 }
 
-const stamp = { commit, dirty, builtAt: new Date().toISOString() };
+// A clock read inside a clean package changes the package digest. The
+// release manifest records when the build ran; a reproducible stamp records
+// the source time. Old readers can still consume the ISO builtAt field.
+if (sourceEpoch !== undefined && (!/^\d{1,12}$/.test(sourceEpoch) || !Number.isFinite(new Date(Number(sourceEpoch) * 1000).getTime())))
+  throw new Error('SOURCE_DATE_EPOCH must be Unix time in whole seconds');
+const sourceTime = sourceEpoch !== undefined;
+const stamp = { commit, dirty, builtAt: (sourceTime ? new Date(Number(sourceEpoch) * 1000) : new Date()).toISOString(),
+  timeBasis: sourceTime ? 'source' : 'build' };
 writeFileSync(path.join(dir, 'BUILD.json'), `${JSON.stringify(stamp, null, 2)}\n`);
 process.stdout.write(`stamp-build: ${dir} — ${commit.slice(0, 12)}${dirty ? ' (dirty tree)' : ''}\n`);

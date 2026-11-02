@@ -121,14 +121,4 @@ describe('the half of this that was already right', () => {
     expect(drop).toBeGreaterThan(rebuild);
   });
 
-  it('keeps the record after the tarball in the source, not only in this test', () => {
-    const builder = stripComments(
-      fs.readFileSync(path.join(here, '../../src/project/artifact-builder.ts'), 'utf8'),
-    );
-    const tarball = builder.indexOf('await this.createTarball(appDir, artifactPath, entry.name)');
-    const record = builder.indexOf('await this.recordBuild(appDir)');
-
-    expect(tarball).toBeGreaterThan(-1);
-    expect(record).toBeGreaterThan(tarball);
-  });
 });

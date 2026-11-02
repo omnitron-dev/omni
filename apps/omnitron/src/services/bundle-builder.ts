@@ -28,6 +28,7 @@ import { promisify } from 'node:util';
 import { resolvePnpm } from '../shared/pnpm.js';
 import { readBuildStamp } from '../shared/build-stamp.js';
 import { copyBundleOverride, readBundleOverrides } from './bundle-overrides.js';
+import { normalizePackedWorkspace, writePortableArchive } from '../release/portable-archive.js';
 
 import {
   planBundle,
@@ -51,6 +52,7 @@ export interface BundleMetadata {
   /** Whether that tree had uncommitted changes. */
   readonly dirty: boolean;
   readonly builtAt: string;
+  readonly timeBasis?: 'source' | 'build';
   /** Packages that travelled, for a reader deciding whether to trust it. */
   readonly vendored: readonly string[];
   /** Exact local dependency archives retained from the source workspace. */
@@ -77,6 +79,8 @@ export interface BuildBundleOptions {
    * contribute the identical file to the next bundle.
    */
   readonly packCache?: Map<string, string>;
+  /** Private, owned by this buildAll call. Never reuse another build's package bytes. */
+  readonly packDirectory?: string;
   /**
    * Further workspace roots whose packages may be vendored.
    *
@@ -251,20 +255,6 @@ export function readWorkspace(workspaceRootInput: string): Workspace {
     }
   }
   return found;
-}
-
-/**
- * Where packed tarballs are kept for the rest of a run.
- *
- * One directory per process, under the system temp dir. It is not cleaned up
- * here: the cache is handed in by the caller and lives exactly as long as the
- * caller keeps the map, and a directory of tarballs in `TMPDIR` is what the
- * operating system already knows how to reclaim.
- */
-function cacheDir(): string {
-  const dir = path.join(os.tmpdir(), 'omnitron-pack-cache');
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
 }
 
 /**
@@ -550,12 +540,17 @@ function directoryOf(manifest: PackageManifest): string {
 }
 
 /** `git rev-parse HEAD` and whether the tree is clean. */
-export async function describeTree(cwd: string): Promise<{ commit: string; dirty: boolean }> {
+export async function describeTree(cwd: string): Promise<{ commit: string; dirty: boolean; sourceTime?: string }> {
   let commit = '';
-  let dirty = false;
+  let dirty = true;
+  let sourceTime: string | undefined;
   try {
-    const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd });
-    commit = stdout.trim();
+    const { stdout } = await exec('git', ['show', '-s', '--format=%H %cI', 'HEAD'], { cwd });
+    const [sha, time] = stdout.trim().split(' ');
+    if (sha && /^[a-f0-9]{40}$/.test(sha) && time) {
+      sourceTime = new Date(time).toISOString();
+      commit = sha;
+    }
   } catch {
     // Not a repository, or no commits. `localVersion` says `nocommit`.
   }
@@ -565,7 +560,7 @@ export async function describeTree(cwd: string): Promise<{ commit: string; dirty
   } catch {
     // Same.
   }
-  return { commit, dirty };
+  return { commit, dirty, ...(sourceTime ? { sourceTime } : {}) };
 }
 
 /**
@@ -592,7 +587,8 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
     const refusal = ownBuildRefusal({ packageDir: directoryOf(workspace.get(options.rootPackage)!), tree });
     if (refusal) throw new Error(refusal);
   }
-  const version = localVersion(plan.root.version, tree.commit, new Date());
+  const stamp = tree.sourceTime && !tree.dirty ? new Date(tree.sourceTime) : new Date();
+  const version = localVersion(plan.root.version, tree.commit, stamp);
 
   const outDir = path.resolve(options.outDir);
   const staging = `${outDir}.building`;
@@ -686,8 +682,8 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
         contentHash = await bundleChecksum(dir, { skip: withoutNodeModules });
         options.packCache?.set(dir, contentHash);
       }
-      const kept = packedCachePath(cacheDir(), vendored.name, vendored.version, contentHash);
-      if (fs.existsSync(kept)) {
+      const kept = options.packDirectory && packedCachePath(options.packDirectory, vendored.name, vendored.version, contentHash);
+      if (kept && fs.existsSync(kept)) {
         fs.copyFileSync(kept, produced);
         continue;
       }
@@ -711,15 +707,8 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
         );
       }
 
-      // Kept where the next bundle can copy it from — this build's, and any
-      // later one that finds the package in the same state. The staging
-      // directory this file is in is removed at the end, so the cache holds a
-      // copy of its own rather than a path that is about to stop existing.
-      // Written aside and renamed, because another build may be reading this
-      // name while this one writes it and half a tarball is not a tarball.
-      const staged = `${kept}.${process.pid}.part`;
-      fs.copyFileSync(produced, staged);
-      fs.renameSync(staged, kept);
+      await normalizePackedWorkspace(produced);
+      if (kept) fs.copyFileSync(produced, kept, fs.constants.COPYFILE_EXCL);
     }
 
     fs.writeFileSync(
@@ -731,7 +720,8 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
       version,
       commit: tree.commit,
       dirty: tree.dirty,
-      builtAt: new Date().toISOString(),
+      builtAt: stamp.toISOString(),
+      timeBasis: tree.sourceTime && !tree.dirty ? 'source' : 'build',
       vendored: plan.vendored.map((v) => `${v.name}@${v.version}`),
       dependencyArchives: inherited.archives.map(({ name, version: dependencyVersion, sha256 }) => ({
         name,
@@ -910,17 +900,7 @@ export async function bundleChecksum(
 export async function archiveBundle(bundleDir: string, archivePath: string): Promise<string> {
   const resolved = path.resolve(archivePath);
   fs.mkdirSync(path.dirname(resolved), { recursive: true });
-  await exec('tar', ['-czf', resolved, '-C', path.resolve(bundleDir), '.'], {
-    maxBuffer: 16 * 1024 * 1024,
-    // `COPYFILE_DISABLE=1`, because macOS `tar` writes an AppleDouble
-    // sidecar — `._index.html`, `._dist`, 163 bytes each — for every file
-    // carrying an extended attribute. Measured on the test node: they are in
-    // every artifact and in the gateway's web root, where `/._index.html` is
-    // a 163-byte binary the server will happily hand to anyone who asks.
-    // They are this machine's metadata about its own filesystem and they
-    // mean nothing on the far side.
-    env: { ...process.env, COPYFILE_DISABLE: '1' },
-  });
+  await writePortableArchive(bundleDir, resolved);
   return resolved;
 }
 

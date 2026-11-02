@@ -21,8 +21,6 @@
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import type { IEcosystemAppEntry } from '../config/types.js';
 import { isVendorableRange, type PackageManifest } from '../services/local-bundle.js';
 import { resolvePnpm, resolvePnpmForTests } from '../shared/pnpm.js';
@@ -30,8 +28,6 @@ import { clearBuildInfo } from '../services/bundle-builder.js';
 import { decideBuild, buildRecordPath, type BuildDecision, type BuildRecord } from './build-decision.js';
 
 export { resolvePnpmForTests };
-
-const exec = promisify(execFile);
 
 /**
  * sha256 of a file, read in a stream rather than into memory: an artifact is
@@ -197,16 +193,14 @@ export function assertNothingEscapes(bundleDir: string): void {
   }
 }
 
+/** Isolated for one multi-app build; concurrent builds cannot invalidate it. */
+interface PackSession {
+  packCache: Map<string, string>;
+  packDirectory: string;
+}
+
 export class ArtifactBuilder {
   private readonly outputDir: string;
-
-  /**
-   * Tarballs packed during the current `buildAll`.
-   *
-   * Set for the duration of that call and cleared after it, so two
-   * deployments never share one — see `packCache` in `BuildBundleOptions`.
-   */
-  private packCache: Map<string, string> | null = null;
 
   constructor(
     private readonly projectRoot: string,
@@ -230,6 +224,10 @@ export class ArtifactBuilder {
    * Build an app artifact (tarball) ready for remote deployment.
    */
   async buildApp(entry: IEcosystemAppEntry, options?: BuildOptions): Promise<ArtifactInfo> {
+    return this.buildWithSession(entry, options);
+  }
+
+  private async buildWithSession(entry: IEcosystemAppEntry, options?: BuildOptions, session?: PackSession): Promise<ArtifactInfo> {
     const appDir = this.resolveAppDir(entry);
     if (!appDir) throw new Error(`Cannot resolve app directory for ${entry.name}`);
 
@@ -240,7 +238,7 @@ export class ArtifactBuilder {
     // 1. Build TypeScript — unless this dist is already what these inputs
     //    produce. See `decideBuild`; every unknown compiles.
     if (!options?.skipBuild) {
-      const decision = await this.decideRebuild(appDir);
+      const decision = await this.decideRebuild(appDir, session);
       if (decision.action === 'reuse') {
         this.logger?.info(`${entry.name}: ${decision.because}`);
       } else {
@@ -265,7 +263,7 @@ export class ArtifactBuilder {
     // 3. Create tarball: dist + package.json + config, and take the
     //    artifact's identity from the bundle rather than from the archive —
     //    see `bundleChecksum`.
-    const checksum = await this.createTarball(appDir, artifactPath, entry.name);
+    const checksum = await this.createTarball(appDir, artifactPath, entry.name, session);
 
     // What this artifact was built from, recorded AFTER it was packed.
     //
@@ -290,7 +288,7 @@ export class ArtifactBuilder {
     // Recorded on the reuse path too: a run that compiles nothing can still
     // rebuild a vendored package while packing, and that leaves the record
     // of an app that was never touched describing inputs it no longer has.
-    if (!options?.skipBuild) await this.recordBuild(appDir);
+    if (!options?.skipBuild) await this.recordBuild(appDir, session);
 
     const stat = fs.statSync(artifactPath);
     const tarballSha256 = await sha256OfFile(artifactPath);
@@ -329,18 +327,21 @@ export class ArtifactBuilder {
     const built: ArtifactInfo[] = [];
     const failed: Array<{ app: string; error: string }> = [];
 
-    this.packCache = new Map();
+    const session: PackSession = {
+      packDirectory: fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-pack-')),
+      packCache: new Map(),
+    };
     try {
       for (const entry of entries) {
         if (entry.enabled === false) continue;
         try {
-          built.push(await this.buildApp(entry, options));
+          built.push(await this.buildWithSession(entry, options, session));
         } catch (err) {
           failed.push({ app: entry.name, error: (err as Error).message });
         }
       }
     } finally {
-      this.packCache = null;
+      fs.rmSync(session.packDirectory, { recursive: true, force: true });
     }
 
     return { built, failed };
@@ -552,7 +553,7 @@ export class ArtifactBuilder {
    * `@esbuild/linux-x64`, and the only computer that knows which is which is
    * the one being installed on.
    */
-  private async createTarball(appDir: string, outputPath: string, appName: string): Promise<string> {
+  private async createTarball(appDir: string, outputPath: string, appName: string, session?: PackSession): Promise<string> {
     const fsp = await import('node:fs/promises');
     const {
       buildBundle,
@@ -585,7 +586,7 @@ export class ArtifactBuilder {
         // meaning here; `config/` does, because an app reads it at startup.
         include: ['dist', 'config', 'README.md'],
         ...(manifest ? { additionalWorkspaceRoots: linkedWorkspaceRoots(manifest, appDir) } : {}),
-        ...(this.packCache ? { packCache: this.packCache } : {}),
+        ...session,
         ...(this.logger ? { logger: { info: (m: string) => this.logger!.info(`${appName}: ${m}`) } } : {}),
       });
 
@@ -597,12 +598,7 @@ export class ArtifactBuilder {
       await archiveBundle(bundleDir, outputPath);
       return checksum;
     } catch (err) {
-      const includes = ['dist', 'package.json'];
-      if (fs.existsSync(path.join(appDir, 'config'))) includes.push('config');
-      await exec('tar', ['-czf', outputPath, '-C', appDir, ...includes], {
-        timeout: 60_000,
-        env: { ...process.env, COPYFILE_DISABLE: '1' },
-      });
+      // A failed pack must not replace a previously usable artifact.
       throw new ArtifactWithoutDependencies(appName, (err as Error).message, outputPath);
     } finally {
       await fsp.rm(staging, { recursive: true, force: true }).catch(() => undefined);
@@ -622,7 +618,7 @@ export class ArtifactBuilder {
     return dir;
   }
 
-  private async decideRebuild(appDir: string): Promise<BuildDecision> {
+  private async decideRebuild(appDir: string, session?: PackSession): Promise<BuildDecision> {
     const { buildInputsChecksum, bundleChecksum, linkedWorkspaceRoots } = await import(
       '../services/bundle-builder.js'
     );
@@ -630,7 +626,7 @@ export class ArtifactBuilder {
 
     const inputs = await buildInputsChecksum(appDir, {
       ...(manifest ? { additionalWorkspaceRoots: linkedWorkspaceRoots(manifest, appDir) } : {}),
-      ...(this.packCache ? { memo: this.packCache } : {}),
+      ...(session ? { memo: session.packCache } : {}),
     }).catch(() => null);
 
     const distDir = path.join(appDir, 'dist');
@@ -652,7 +648,7 @@ export class ArtifactBuilder {
     }
   }
 
-  private async recordBuild(appDir: string): Promise<void> {
+  private async recordBuild(appDir: string, session?: PackSession): Promise<void> {
     const { buildInputsChecksum, bundleChecksum, linkedWorkspaceRoots } = await import(
       '../services/bundle-builder.js'
     );
@@ -662,7 +658,7 @@ export class ArtifactBuilder {
     try {
       const inputs = await buildInputsChecksum(appDir, {
         ...(manifest ? { additionalWorkspaceRoots: linkedWorkspaceRoots(manifest, appDir) } : {}),
-        ...(this.packCache ? { memo: this.packCache } : {}),
+        ...(session ? { memo: session.packCache } : {}),
       });
       if (!inputs) return;
       const record: BuildRecord = { inputs, dist: await bundleChecksum(distDir) };

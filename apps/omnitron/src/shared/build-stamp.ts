@@ -16,8 +16,9 @@ export interface BuildStamp {
   commit: string;
   /** Whether the tree held uncommitted changes when it was. */
   dirty: boolean;
-  /** When, ISO 8601. */
+  /** ISO 8601 source time for reproducible builds; wall clock for legacy/development builds. */
   builtAt: string;
+  timeBasis?: 'source' | 'build';
 }
 
 export const BUILD_STAMP_FILE = 'BUILD.json';
@@ -28,7 +29,8 @@ export function readBuildStamp(dir: string): BuildStamp | null {
     const raw = JSON.parse(readFileSync(path.join(dir, BUILD_STAMP_FILE), 'utf8')) as Partial<BuildStamp>;
     if (typeof raw.commit !== 'string' || !/^[0-9a-f]{7,40}$/.test(raw.commit)) return null;
     if (typeof raw.dirty !== 'boolean' || typeof raw.builtAt !== 'string') return null;
-    return { commit: raw.commit, dirty: raw.dirty, builtAt: raw.builtAt };
+    if (raw.timeBasis !== undefined && raw.timeBasis !== 'source' && raw.timeBasis !== 'build') return null;
+    return { commit: raw.commit, dirty: raw.dirty, builtAt: raw.builtAt, ...(raw.timeBasis ? { timeBasis: raw.timeBasis } : {}) };
   } catch {
     return null;
   }

@@ -1049,7 +1049,7 @@ export interface DaemonStatusDto {
    * when it runs from source or from a build nobody stamped. Absent from
    * daemons on older builds. `version` is the package's and names no commit.
    */
-  build?: { commit: string; dirty: boolean; builtAt: string } | null;
+  build?: import('../shared/build-stamp.js').BuildStamp | null;
   pid: number;
   uptime: number;
   apps: ProcessInfoDto[];

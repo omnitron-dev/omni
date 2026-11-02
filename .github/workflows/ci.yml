@@ -56,6 +56,8 @@ jobs:
         run: >-
           pnpm exec vitest run --maxWorkers 2
           test/unit/registry-framework-release.test.ts
+          test/unit/managed-owner-admission.test.ts
+          test/unit/runtime-owner-birth.test.ts
           test/unit/a-release-built-against-the-developers-omni.test.ts
           test/unit/a-release-the-node-never-ran.test.ts
           test/unit/installed-release.test.ts
@@ -80,6 +82,7 @@ jobs:
         run: >-
           pnpm exec vitest run --maxWorkers 2
           test/unit/rpc-authorization.test.ts
+          test/unit/a-secret-printed-by-the-command-that-masked.test.ts
           test/unit/a-master-could-tell-a-node-and-not-ask-it.test.ts
           test/unit/local-node-daemon-readers.test.ts
       - name: SQLite permissions preserve concurrent storage

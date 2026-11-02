@@ -19,6 +19,7 @@ import 'reflect-metadata';
 
 import { redactEnv, redactValue, REDACTED } from '../../src/shared/redact-env.js';
 import { DaemonRpcService } from '../../src/daemon/daemon.rpc-service.js';
+import type { AuditService } from '../../src/services/audit.service.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -51,7 +52,7 @@ describe('what may be shown of an environment', () => {
 });
 
 describe('the daemon', () => {
-  const rpcWith = (records: unknown[]) => {
+  const rpcWith = (record?: AuditService['record']) => {
     const rpc = new DaemonRpcService(
       { getHandle: (name: string) => (name === 'sample/dev/main' ? { name, entry: { env: ENV } } : undefined) } as never,
       {} as never,
@@ -59,20 +60,32 @@ describe('the daemon', () => {
       {} as never,
       {} as never,
     );
-    rpc.setAudit({ record: async (e: unknown) => void records.push(e) } as never);
+    if (record) rpc.setAudit({ record } as AuditService);
     return rpc;
   };
 
   it('answers getEnv with the secrets already replaced', async () => {
-    const out = await rpcWith([]).getEnv({ name: 'sample/dev/main' });
+    const out = await rpcWith().getEnv({ name: 'sample/dev/main' });
     expect(JSON.stringify(out)).not.toMatch(/hunter2|aaaaaaaa/);
   });
 
   it('reveals the clear values only through a separate call, and records who asked', async () => {
-    const records: Array<{ action: string; resourceId: string }> = [];
-    const out = await rpcWith(records).revealEnv({ name: 'sample/dev/main' });
+    const records: unknown[] = [];
+    const rpc = rpcWith(async (entry, required) => {
+      expect(required).toBe(true);
+      records.push(entry);
+    });
+    const out = await rpc.revealEnv({ name: 'sample/dev/main' });
     expect(out['DATABASE_URL']).toBe(ENV.DATABASE_URL);
     expect(records).toMatchObject([{ action: 'app.env.reveal', resourceId: 'sample/dev/main' }]);
+    expect(JSON.stringify(records)).not.toMatch(/hunter2|aaaaaaaa/);
+  });
+
+  it('refuses clear values when the audit trail is absent or rejects the write', async () => {
+    const request = { name: 'sample/dev/main' };
+    await expect(rpcWith().revealEnv(request)).rejects.toThrow(/audit/i);
+    const unavailable = rpcWith(async () => { throw new Error('Audit write failed'); });
+    await expect(unavailable.revealEnv(request)).rejects.toThrow('Audit write failed');
   });
 
   it('keeps the reveal to admins', () => {

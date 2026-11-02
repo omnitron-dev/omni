@@ -740,12 +740,13 @@ export class DaemonRpcService implements IDaemonService {
     const handle = this.orchestrator.getHandle(data.name);
     if (!handle) throw Errors.notFound('App', data.name);
     const env = handle.entry.env ?? {};
-    await this.audit?.record({
+    if (!this.audit) throw new Error('Audit storage is required to reveal environment values');
+    await this.audit.record({
       action: 'app.env.reveal',
       resourceType: 'app',
       resourceId: handle.name,
       details: { keys: Object.keys(env).length },
-    });
+    }, true);
     return { ...env };
   }
 

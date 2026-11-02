@@ -36,7 +36,7 @@ export async function releaseFileHashes(directory: string): Promise<Record<strin
 }
 
 /** Canonical archive of a staged tree, with executable bits and relative links preserved. */
-export async function writePortableArchive(directory: string, destination: string, options: { exclusive?: boolean } = {}): Promise<void> {
+export async function writePortableArchive(directory: string, destination: string, options: { exclusive?: boolean; preserveExecutableBits?: boolean } = {}): Promise<void> {
   const cwd = await fs.realpath(directory);
   const entries: string[] = [];
   for await (const { relative } of archiveEntries(cwd)) {
@@ -51,7 +51,8 @@ export async function writePortableArchive(directory: string, destination: strin
       // Readonly vs writable owner is a property of the staging directory.
       // Preserve executable semantics, never group/other write permission.
       if ('isFile' in stat) {
-        stat.mode = (stat.mode & ~0o7777) | (stat.isDirectory() || (stat.mode & 0o111) ? 0o755 : 0o644);
+        const executable = options.preserveExecutableBits ? stat.mode & 0o111 : (stat.mode & 0o111) ? 0o111 : 0;
+        stat.mode = (stat.mode & ~0o7777) | (stat.isDirectory() ? 0o755 : 0o644 | executable);
         // Byte-identical files must not change representation because a package
         // store happened to hard-link them on one builder.
         stat.nlink = 1;

@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 
@@ -9,6 +10,11 @@ export interface RuntimeArtifact {
   arch: string;
   nodeVersion: string;
   packages: number;
+}
+
+/** Protocol 1 uses this prefix for regular-file bytes and this complete record for a link. */
+export function runtimeDigestRecord(relative: string, entry: { mode: number } | { link: string }): string {
+  return 'link' in entry ? `link\0${relative}\0${entry.link}\0` : `file\0${relative}\0${entry.mode & 0o111}\0`;
 }
 
 /** Hash bytes and relative links; no dependency may escape the immutable release. */
@@ -24,7 +30,7 @@ export async function runtimeArtifactDigest(root: string): Promise<string> {
       const target = await fs.readlink(absolute);
       const real = await fs.realpath(absolute);
       if (!real.startsWith(root + path.sep)) throw new Error(`Runtime dependency escapes its release: ${relative}`);
-      digest.update(`link\0${relative}\0${target}\0`);
+      digest.update(runtimeDigestRecord(relative, { link: target }));
     } else if (stat.isDirectory()) {
       if ((stat.mode & 0o022) !== 0) throw new Error(`Runtime directory is writable by other users: ${relative || '.'}`);
       for (const name of (await fs.readdir(absolute)).sort()) {
@@ -34,22 +40,30 @@ export async function runtimeArtifactDigest(root: string): Promise<string> {
     } else if (stat.isFile()) {
       if (++files > 200_000) throw new Error('Runtime exceeds file audit capacity');
       if ((stat.mode & 0o022) !== 0) throw new Error(`Runtime file is writable by other users: ${relative}`);
-      digest.update(`file\0${relative}\0${stat.mode & 0o111}\0`);
-      digest.update(await fs.readFile(absolute)); digest.update('\0');
+      digest.update(runtimeDigestRecord(relative, stat));
+      if (stat.size <= 256 * 1024) digest.update(await fs.readFile(absolute));
+      else for await (const chunk of createReadStream(absolute)) digest.update(chunk);
+      digest.update('\0');
     } else throw new Error(`Unsupported runtime file: ${relative}`);
   };
   await walk('');
   return digest.digest('hex');
 }
 
-export async function verifyRuntimeArtifact(root: string, expectedHash?: string): Promise<RuntimeArtifact> {
+/** Inspect a sealed build for distribution without executing its Node binary. */
+export async function readRuntimeManifest(root: string): Promise<RuntimeArtifact> {
   const manifestFile = path.join(root, 'RUNTIME.json');
   const stat = await fs.lstat(manifestFile);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 16_384 || (stat.mode & 0o022) !== 0 ||
       (process.getuid && stat.uid !== process.getuid())) throw new Error('Runtime manifest must be a bounded regular file owned by this user');
   const manifest = JSON.parse(await fs.readFile(manifestFile, 'utf8')) as RuntimeArtifact;
-  if (manifest.protocol !== 1 || !/^[a-f0-9]{64}$/.test(manifest.sha256) ||
-      manifest.platform !== process.platform || manifest.arch !== process.arch ||
+  if (manifest.protocol !== 1 || !/^[a-f0-9]{64}$/.test(manifest.sha256)) throw new Error('Invalid runtime manifest');
+  return manifest;
+}
+
+export async function verifyRuntimeArtifact(root: string, expectedHash?: string): Promise<RuntimeArtifact> {
+  const manifest = await readRuntimeManifest(root);
+  if (manifest.platform !== process.platform || manifest.arch !== process.arch ||
       (expectedHash && expectedHash !== manifest.sha256)) throw new Error('Runtime manifest does not match this release or host');
   if (await runtimeArtifactDigest(root) !== manifest.sha256) throw new Error('Runtime files or dependencies changed after sealing; activation is refused');
   return manifest;

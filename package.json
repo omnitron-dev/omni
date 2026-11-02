@@ -9,7 +9,7 @@
     "test": "turbo test",
     "test:up": "docker compose -f docker-compose.test.yml up -d --wait",
     "test:down": "docker compose -f docker-compose.test.yml down -v",
-    "test:ci": "node scripts/test-ci.mjs",
+    "test:ci": "node scripts/ci/workspace-test.mjs",
     "lint": "NODE_OPTIONS='--max-old-space-size=8192' eslint \"{apps,packages}/**/*.{js,jsx,ts,tsx}\"",
     "lint:fix": "NODE_OPTIONS='--max-old-space-size=8192' eslint --fix \"{apps,packages}/**/*.{js,jsx,ts,tsx}\"",
     "lint:print": "eslint --print-config apps/omnitron/src/index.ts > eslint-show-config.json",

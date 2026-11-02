@@ -55,8 +55,12 @@ const WORKLISTS = new Map([
   ],
 ]);
 
-/** Cannot run unattended. */
-const EXCLUDED = new Map([['run-checks', 'this runner']]);
+/** Entrypoints executed separately by CI, and the scanner dispatcher itself. */
+const EXCLUDED = new Map([
+  ['run-checks', 'this runner'],
+  ['check-package-exports', 'CI checks packed exports after building all packages'],
+  ['check-reproducible-backend', 'a dedicated CI job builds and compares independent backend and Console artifacts'],
+]);
 
 /**
  * Scanners that need longer than the default, each with the reason.

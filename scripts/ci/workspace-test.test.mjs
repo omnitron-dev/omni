@@ -9,7 +9,7 @@ for (const [up, suite, down] of [[0, 0, 0], [2, 0, 0], [0, 7, 0], [0, 0, 9], [0,
   test(`compose up=${up}, tests=${suite}, compose down=${down}`, { skip: process.platform === 'win32' }, async t => {
     const directory = await mkdtemp(join(tmpdir(), 'omni-test-ci-'));
     t.after(() => rm(directory, { recursive: true, force: true }));
-    await copyFile(new URL('./test-ci.mjs', import.meta.url), join(directory, 'test-ci.mjs'));
+    await copyFile(new URL('./workspace-test.mjs', import.meta.url), join(directory, 'test-ci.mjs'));
     const trace = join(directory, 'trace');
     const source = "const fs = require('node:fs'); fs.appendFileSync(process.env.TRACE, JSON.stringify(process.argv.slice(2)) + '\\n');";
     await writeFile(join(directory, 'docker'), '#!/usr/bin/env node\n' + source +

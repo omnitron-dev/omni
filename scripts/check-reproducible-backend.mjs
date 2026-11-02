@@ -17,7 +17,8 @@ async function build(round) {
   const cwd = path.join(root, round);
   const output = path.join(root, round + '-runtime');
   execFileSync('git', ['clone', '--quiet', '--no-checkout', '--local', source, cwd]);
-  const run = (command, args) => execFileSync(command, args, { cwd, env, stdio: 'inherit' });
+  const buildEnv = { ...env, OMNITRON_HOME: path.join(root, round + '-home') };
+  const run = (command, args) => execFileSync(command, args, { cwd, env: buildEnv, stdio: 'inherit' });
   run('git', ['checkout', '--quiet', '--detach', revision]);
   run('pnpm', ['install', '--frozen-lockfile']);
   run('pnpm', ['exec', 'turbo', 'run', 'build', '--force', '--concurrency=3']);

@@ -5,7 +5,7 @@ import { constants } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const turbo = createRequire(import.meta.url).resolve('turbo/bin/turbo');
-const composeFile = fileURLToPath(new URL('../docker-compose.test.yml', import.meta.url));
+const composeFile = fileURLToPath(new URL('../../docker-compose.test.yml', import.meta.url));
 const compose = ['compose', '--project-name', 'omni-ci-' + randomUUID(), '-f', composeFile];
 let child;
 let interrupted = 0;

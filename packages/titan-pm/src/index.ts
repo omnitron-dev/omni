@@ -160,3 +160,5 @@ export type { ExecutionOwnerIdentity, ControllerGrant, HandoffTicket, Controller
 
 export { OutputCapture } from './output-capture.js';
 export type { ProcessOutputContext, ProcessOutputHandler } from './output-capture.js';
+
+export { RestartWindow } from './restart-window.js';

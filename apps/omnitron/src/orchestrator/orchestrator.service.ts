@@ -44,6 +44,7 @@ import {
   ProcessLifecycleQueue,
   LifecyclePreempted,
   computeBackoff,
+  RestartWindow,
   isAlive,
   killChildAndVerify,
   discoverManagedProcesses,
@@ -966,7 +967,7 @@ export class OrchestratorService extends EventEmitter {
     // can never reach `maxRestarts` — which made the budget, the escalation
     // and the cool-down unreachable even once the restart itself worked. The
     // window is enforced by the policy, not by forgetting.
-    if (existing) handle.restarts = existing.restarts;
+    if (existing) { handle.restarts = existing.restarts; handle.restartWindow = existing.restartWindow; }
     this.handles.set(entry.name, handle);
 
     // Arm metrics sampling here — the one place an app enters the registry.
@@ -2617,7 +2618,7 @@ export class OrchestratorService extends EventEmitter {
     // Step 3: Create supervisor for single-instance children
     const supervisorConfig: ISupervisorConfig = {
       strategy: mapStrategy(config.supervision.strategy),
-      maxRestarts: policy.maxRestarts ?? config.supervision.maxRestarts,
+      maxRestarts: policy.enabled === false ? 0 : policy.maxRestarts ?? config.supervision.maxRestarts,
       window: policy.window ?? config.supervision.window,
       backoff: policy.backoff ?? config.supervision.backoff,
       children,
@@ -2841,7 +2842,7 @@ export class OrchestratorService extends EventEmitter {
 
     const supervisorConfig: ISupervisorConfig = {
       strategy: mapStrategy(config.supervision.strategy),
-      maxRestarts: policy.maxRestarts ?? config.supervision.maxRestarts,
+      maxRestarts: policy.enabled === false ? 0 : policy.maxRestarts ?? config.supervision.maxRestarts,
       window: policy.window ?? config.supervision.window,
       backoff: policy.backoff ?? config.supervision.backoff,
       children: [childConfig],
@@ -3290,17 +3291,25 @@ export class OrchestratorService extends EventEmitter {
       (handle.status === 'crashed' || handle.status === 'errored');
     if (!eligible()) return;
     const policy = buildRestartPolicy(entry, config);
+    const maxRestarts = policy.maxRestarts ?? 5;
     if (!policy.enabled) return;
-    const exhausted = handle.restarts >= (policy.maxRestarts ?? 5);
+    if (maxRestarts <= 0) {
+      handle.status = 'crashed';
+      this.emit('app:escalated', entry.name);
+      return;
+    }
+    const window = handle.restartWindow ??= new RestartWindow();
+    const recent = window.recent(policy.window);
+    const exhausted = recent >= maxRestarts;
     if (exhausted) {
       handle.status = 'crashed';
       this.logger.error({ app: entry.name }, 'Max restarts exceeded');
       this.emit('app:escalated', entry.name);
     }
     const delay = exhausted ? 10 * 60_000 : this.calculateBackoff(
-      handle.restarts, policy.backoff ?? config.supervision.backoff,
+      recent, policy.backoff ?? config.supervision.backoff,
     );
-    this.logger.info({ app: entry.name, delay, attempt: handle.restarts + 1 }, 'Scheduling restart');
+    this.logger.info({ app: entry.name, delay, attempt: exhausted ? 1 : recent + 1 }, 'Scheduling restart');
     this.clearCoolDown(entry.name);
     // Waiting must not occupy the lifecycle queue: a running queue head
     // cannot be preempted. Only the actual launch takes the queue slot.
@@ -3310,7 +3319,8 @@ export class OrchestratorService extends EventEmitter {
       void this.lifecycleQueue.enqueue(entry.name, 'crash-restart', async () => {
         // A stop can arrive after the timer fires but before this job runs.
         if (!eligible()) return;
-        if (exhausted) handle.restarts = 0;
+        if (exhausted) window.clear();
+        window.record(policy.window);
         handle.status = 'stopped';
         await this.startAppInternal(entry, config);
       }).catch((err) => {

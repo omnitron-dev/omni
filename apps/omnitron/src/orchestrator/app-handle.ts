@@ -6,6 +6,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { RestartWindow } from '@omnitron-dev/titan-pm';
 import type { ChildProcess } from 'node:child_process';
 import type { IProcessMetrics, IHealthStatus, IProcessPool } from '@omnitron-dev/titan-pm';
 import type { ProcessSupervisor } from '@omnitron-dev/titan-pm';
@@ -148,6 +149,9 @@ export class AppHandle {
    * a successful start and the next exit. Set by `recordExit()`.
    */
   public lastExit: LastExitInfo | null = null;
+
+  /** Sliding recovery budget; lifetime restarts remain a separate diagnostic. */
+  public restartWindow = new RestartWindow();
 
   private definition: IEcosystemAppEntry;
 

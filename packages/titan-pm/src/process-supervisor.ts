@@ -26,6 +26,7 @@ import type {
 } from './types.js';
 import { SupervisionStrategy, RestartDecision } from './types.js';
 import { computeBackoff } from './backoff.js';
+import { RestartWindow } from './restart-window.js';
 
 import { SUPERVISOR_METADATA_KEY } from './decorators.js';
 
@@ -54,7 +55,7 @@ export class ProcessSupervisor extends EventEmitter {
   /** Reverse lookup map for O(1) processId -> name resolution */
   private readonly processIdToName = new Map<string, string>();
   private restartCounts = new Map<string, number>();
-  private restartTimestamps = new Map<string, number[]>();
+  private restartWindows = new Map<string, RestartWindow>();
   private isStarted = false;
   /**
    * In-flight start promise so concurrent `start()` calls join the
@@ -598,16 +599,16 @@ export class ProcessSupervisor extends EventEmitter {
     }
   }
 
+  private restartWindow(name: string): RestartWindow {
+    let window = this.restartWindows.get(name);
+    if (!window) { window = new RestartWindow(); this.restartWindows.set(name, window); }
+    return window;
+  }
+
   private async getRestartDecision(name: string, childDef: ISupervisorChild, error: Error): Promise<RestartDecision> {
     const window = this.options.window || 60_000;
 
-    // True sliding window: prune anything older than the window AND persist
-    // the pruned list so timestamps don't grow unbounded. (The previous
-    // logic gated on a lifetime counter that startChild reset to 0 on
-    // every restart — defeating the purpose of the window budget entirely.)
-    const cutoff = Date.now() - window;
-    const recent = (this.restartTimestamps.get(name) ?? []).filter((t) => t > cutoff);
-    this.restartTimestamps.set(name, recent);
+    const recent = this.restartWindow(name).recent(window);
 
     // User-supplied policies take precedence over the framework default.
     // The window budget below is only the *fallback* for callers that don't
@@ -632,9 +633,9 @@ export class ProcessSupervisor extends EventEmitter {
     // below already handles zero correctly — `recent.length >= 0` is always
     // true, so every crash escalates or is ignored rather than restarted.
     const maxRestarts = this.options.maxRestarts ?? 3;
-    if (recent.length >= maxRestarts) {
+    if (recent >= maxRestarts) {
       this.logger.warn(
-        { child: name, recent: recent.length, maxRestarts, windowMs: window },
+        { child: name, recent, maxRestarts, windowMs: window },
         'Child crash rate exceeded restart budget'
       );
       return childDef.critical ? RestartDecision.ESCALATE : RestartDecision.IGNORE;
@@ -647,25 +648,8 @@ export class ProcessSupervisor extends EventEmitter {
     const strategy = this.options.strategy || SupervisionStrategy.ONE_FOR_ONE;
 
     const count = (this.restartCounts.get(name) || 0) + 1;
-    this.restartCounts.set(name, count);
-
-    const timestamps = this.restartTimestamps.get(name) || [];
-    timestamps.push(Date.now());
-    this.restartTimestamps.set(name, timestamps);
-
-    this.emit('child:restart', name, count);
-
-    // T#60: drive the backoff curve off the *windowed* restart count,
-    // not the lifetime counter. Pre-T#60 a child that had crashed 200
-    // times last week (long since recovered, all timestamps pruned)
-    // would still hit the 30s ceiling on its first crash today because
-    // `count` is monotonic for the supervisor's lifetime. Using
-    // `recent.length` aligns backoff with the same sliding-window the
-    // budget check uses — the child crashes pay backoff matching their
-    // current crash rate, not their historical rap sheet.
     const window = this.options.window || 60_000;
-    const cutoff = Date.now() - window;
-    const recentCount = (this.restartTimestamps.get(name) ?? []).filter((t) => t > cutoff).length;
+    const recentCount = this.restartWindow(name).recent(window) + 1;
 
     // T#53: honour `options.backoff` between the crash and the
     // respawn. The historical path was `restartChild(name)` with no
@@ -699,6 +683,11 @@ export class ProcessSupervisor extends EventEmitter {
       );
       return;
     }
+
+    // Charge the attempt only once the cancellable wait admitted a real restart.
+    this.restartWindow(name).record(window);
+    this.restartCounts.set(name, count);
+    this.emit('child:restart', name, count);
 
     switch (strategy) {
       case SupervisionStrategy.ONE_FOR_ONE:

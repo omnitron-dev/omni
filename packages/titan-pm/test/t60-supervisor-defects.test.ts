@@ -330,7 +330,6 @@ describe('T#60 — supervisor T3 polish regressions', () => {
 
       // Inflate the lifetime counter without populating recent timestamps.
       (supervisor as any).restartCounts.set('a', 50);
-      (supervisor as any).restartTimestamps.set('a', []); // window empty
 
       const spy = vi.spyOn(supervisor as any, 'computeBackoffDelay');
 

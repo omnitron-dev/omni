@@ -130,7 +130,7 @@
     "dev": "tsc -p ./tsconfig.json --watch"
   },
   "dependencies": {
-    "@kysera/rls": "^0.10.0",
+    "@kysera/rls": "^0.10.1",
     "@omnitron-dev/access": "workspace:*",
     "@omnitron-dev/common": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",

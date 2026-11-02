@@ -77,7 +77,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@kysera/testing": "^0.10.0",
+    "@kysera/testing": "^0.10.1",
     "@types/node": "^26.6.6",
     "kysely": "^0.29.7",
     "zod": "^4.6.7"

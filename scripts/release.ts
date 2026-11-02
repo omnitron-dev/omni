@@ -1,552 +1,115 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env -S node --import tsx
+import { readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
+import { isCancel, password, text } from '@xec-sh/kit';
+import {
+  acquireReleaseLock, assertCleanReleaseTree, assertReleaseHead, commitReleaseVersion,
+  createGithubRelease, discoverReleasePackages, ensureReleaseTag, loadPreparedRelease,
+  planRelease, prepareReleaseArtifacts, preflightPreparedRelease, publishPreparedRelease,
+  pushReleaseRefs, registryArtifactMatches, releaseCommand, releaseNotes, verifyRemoteReleaseTag,
+} from '@xec-sh/ops/release';
+import semver from 'semver';
+
+const root = fileURLToPath(new URL('../', import.meta.url));
+const repository = 'omnitron-dev/omni';
+const usage = `pnpm release [VERSION] [OPERATION]
+
+  --list      Show all public workspaces in dependency order
+  --dry-run   Print the release plan (default)
+  --prepare   Commit public versions, build and verify archives, create local tag
+  --push      Push the prepared commit and its single annotated tag atomically
+  --publish   Publish sealed archives from the exact remotely tagged commit
+  --resume    Resume --publish using the same archives
+  --github    Create the GitHub release after confirming every package in npm
+
+Every operation is separate. Archives and receipts live under .release-artifacts/.`;
 
-/**
- * Unified release script for Omnitron monorepo
- *
- * This script handles:
- * - Version synchronization across all packages
- * - Changelog generation
- * - Building packages
- * - Publishing to npm
- * - Git tagging and GitHub releases
- *
- * Options:
- * --list-packages, --list  List all packages with relative paths and exit
- * --skip-build             Skip building packages
- * --skip-publish           Skip publishing to npm
- * --dry-run                Simulate release without making changes
- * --force                  Force release even with uncommitted changes
- */
-
-import { execSync } from 'node:child_process'
-import * as fs from 'node:fs/promises'
-import * as path from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { prism, select, text, confirm } from '@xec-sh/kit'
-import semver from 'semver'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const ROOT_DIR = path.resolve(__dirname, '..')
-const PACKAGES_DIR = path.join(ROOT_DIR, 'packages')
-const APPS_DIR = path.join(ROOT_DIR, 'apps')
-
-interface Package {
-  name: string
-  version: string
-  path: string
-  private: boolean
-}
-
-interface ReleaseOptions {
-  version?: string
-  versionType?: 'major' | 'minor' | 'patch' | 'prerelease' | 'custom'
-  prerelease?: string
-  skipBuild?: boolean
-  skipPublish?: boolean
-  dryRun?: boolean
-  force?: boolean
-  listPackages?: boolean
-}
-
-/**
- * Execute command with proper error handling
- */
-function exec(cmd: string, options: { cwd?: string; silent?: boolean } = {}): string {
-  const { cwd = ROOT_DIR, silent = false } = options
-
-  try {
-    const result = execSync(cmd, {
-      cwd,
-      encoding: 'utf-8',
-      stdio: silent ? 'pipe' : 'inherit'
-    })
-    return result?.trim() || ''
-  } catch (error: any) {
-    if (!silent) {
-      console.error(prism.red(`❌ Command failed: ${cmd}`))
-      console.error(error.message)
-    }
-    throw error
-  }
-}
-
-/**
- * Publishable packages in dependency order.
- * Packages earlier in the list must be published before those that depend on them.
- */
-const PUBLISHABLE_PACKAGES: readonly string[] = [
-  // Foundation (no internal deps)
-  'packages/common',
-  'packages/cuid',
-  'packages/eventemitter',
-  'packages/msgpack',
-
-  // Knowledge base
-  'packages/kb',
-  
-  // Titan core (depends on common, eventemitter, msgpack)
-  'packages/titan',
-
-  // Titan modules — Phase 1: no inter-module deps
-  'packages/titan-telemetry-relay',
-  'packages/titan-scheduler',
-
-  // Titan modules — Phase 2: depend only on titan core (logger/config)
-  'packages/titan-redis',
-  'packages/titan-auth',
-  'packages/titan-cache',
-  'packages/titan-database',
-  'packages/titan-events',
-  'packages/titan-health',
-  'packages/titan-metrics',
-  'packages/titan-pm',
-
-  // Titan modules — Phase 3: depend on titan-redis
-  'packages/titan-discovery',
-  'packages/titan-lock',
-  'packages/titan-ratelimit',
-
-  // Titan modules — Phase 4: depend on titan-events + titan-redis
-  'packages/titan-notifications',
-
-  // Testing utilities (depends on titan + titan-*)
-  'packages/testing',
-
-  // Netron client packages
-  'packages/netron-browser',
-  'packages/netron-react',
-
-  // UI design system
-  'packages/prism',
-
-  // CLI / daemon
-  'apps/omnitron',
-]
-
-/**
- * Get all packages in the monorepo
- */
-async function getAllPackages(): Promise<Package[]> {
-  const packages: Package[] = []
-
-  for (const relativePath of PUBLISHABLE_PACKAGES) {
-    const packageDir = path.join(ROOT_DIR, relativePath)
-    const pkgJsonPath = path.join(packageDir, 'package.json')
-
-    try {
-      const content = await fs.readFile(pkgJsonPath, 'utf-8')
-      const pkg = JSON.parse(content)
-
-      packages.push({
-        name: pkg.name,
-        version: pkg.version,
-        path: packageDir,
-        private: pkg.private || false
-      })
-    } catch {
-      console.warn(prism.yellow(`⚠️  Skipping ${relativePath}: package.json not found`))
-    }
-  }
-
-  return packages
-}
-
-/**
- * List all packages with their relative paths
- */
-async function listPackages(): Promise<void> {
-  const packages = await getAllPackages()
-
-  console.log(prism.bold(prism.cyan('\n📦 Omnitron Monorepo Packages\n')))
-
-  const publishable = packages.filter(pkg => !pkg.private)
-  const private_pkgs = packages.filter(pkg => pkg.private)
-
-  if (publishable.length > 0) {
-    console.log(prism.bold(prism.green(`Publishable packages (${publishable.length}):\n`)))
-    for (const pkg of publishable) {
-      const relativePath = path.relative(ROOT_DIR, pkg.path)
-      console.log(`  ${prism.cyan(pkg.name.padEnd(30))} ${prism.gray(relativePath)}`)
-    }
-  }
-
-  if (private_pkgs.length > 0) {
-    console.log(prism.bold(prism.yellow(`\nPrivate packages (${private_pkgs.length}):\n`)))
-    for (const pkg of private_pkgs) {
-      const relativePath = path.relative(ROOT_DIR, pkg.path)
-      console.log(`  ${prism.yellow(pkg.name.padEnd(30))} ${prism.gray(relativePath)}`)
-    }
-  }
-
-  console.log(prism.gray(`\nTotal: ${packages.length} packages\n`))
-}
-
-/**
- * Get current version from root package.json
- */
-async function getCurrentVersion(): Promise<string> {
-  const rootPkg = JSON.parse(await fs.readFile(path.join(ROOT_DIR, 'package.json'), 'utf-8'))
-  return rootPkg.version
-}
-
-/**
- * Update version in package.json
- */
-async function updatePackageVersion(packagePath: string, version: string): Promise<void> {
-  const pkgJsonPath = path.join(packagePath, 'package.json')
-  const content = await fs.readFile(pkgJsonPath, 'utf-8')
-  const pkg = JSON.parse(content)
-
-  pkg.version = version
-
-  // Update workspace dependencies to use the new version
-  const isOwnPackage = (name: string) =>
-    name.startsWith('@omnitron-dev/')
-
-  const depFields = ['dependencies', 'devDependencies', 'peerDependencies']
-  for (const field of depFields) {
-    if (pkg[field]) {
-      for (const [depName, depVersion] of Object.entries(pkg[field])) {
-        if (isOwnPackage(depName) && depVersion === 'workspace:*') {
-          // Keep workspace protocol during development
-          continue
-        } else if (isOwnPackage(depName)) {
-          pkg[field][depName] = `^${version}`
-        }
-      }
-    }
-  }
-
-  await fs.writeFile(pkgJsonPath, JSON.stringify(pkg, null, 2) + '\n')
-}
-
-/**
- * Check git status
- */
-function checkGitStatus(options: ReleaseOptions): void {
-  const status = exec('git status --porcelain', { silent: true })
-
-  if (status && !options.force) {
-    console.error(prism.red('❌ Working directory is not clean:'))
-    console.error(status)
-    throw new Error('Please commit or stash your changes')
-  }
-
-  const branch = exec('git branch --show-current', { silent: true })
-  if (branch !== 'main' && branch !== 'master' && !options.force) {
-    throw new Error(`Must be on main branch (currently on ${branch})`)
-  }
-}
-
-/**
- * Generate changelog
- */
-async function generateChangelog(version: string): Promise<string> {
-  const date = new Date().toISOString().split('T')[0]
-
-  // Get commit messages since last tag
-  let commits = ''
-  try {
-    const lastTag = exec('git describe --tags --abbrev=0', { silent: true })
-    commits = exec(`git log ${lastTag}..HEAD --oneline`, { silent: true })
-  } catch {
-    // No previous tags
-    commits = exec('git log --oneline', { silent: true })
-  }
-
-  // Parse commits by type
-  const features: string[] = []
-  const fixes: string[] = []
-  const breaking: string[] = []
-  const other: string[] = []
-
-  for (const line of commits.split('\n')) {
-    if (!line) continue
-
-    const match = line.match(/^[a-f0-9]+ (.+)$/)
-    if (!match) continue
-
-    const message = match[1]!;
-
-    if (message.startsWith('feat:') || message.startsWith('feat(')) {
-      features.push(message)
-    } else if (message.startsWith('fix:') || message.startsWith('fix(')) {
-      fixes.push(message)
-    } else if (message.includes('BREAKING')) {
-      breaking.push(message)
-    } else {
-      other.push(message)
-    }
-  }
-
-  let changelog = `## [${version}] - ${date}\n\n`
-
-  if (breaking.length > 0) {
-    changelog += '### ⚠️ BREAKING CHANGES\n\n'
-    breaking.forEach(msg => (changelog += `- ${msg}\n`))
-    changelog += '\n'
-  }
-
-  if (features.length > 0) {
-    changelog += '### ✨ Features\n\n'
-    features.forEach(msg => (changelog += `- ${msg}\n`))
-    changelog += '\n'
-  }
-
-  if (fixes.length > 0) {
-    changelog += '### 🐛 Bug Fixes\n\n'
-    fixes.forEach(msg => (changelog += `- ${msg}\n`))
-    changelog += '\n'
-  }
-
-  if (other.length > 0) {
-    changelog += '### 📝 Other Changes\n\n'
-    other.forEach(msg => (changelog += `- ${msg}\n`))
-    changelog += '\n'
-  }
-
-  return changelog
-}
-
-/**
- * Update changelog file
- */
-async function updateChangelog(version: string): Promise<void> {
-  const changelogPath = path.join(ROOT_DIR, 'CHANGELOG.md')
-  const newEntry = await generateChangelog(version)
-
-  let existingContent = ''
-  try {
-    existingContent = await fs.readFile(changelogPath, 'utf-8')
-  } catch {
-    // Create new changelog
-    existingContent = `# Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-`
-  }
-
-  // Insert new entry after header
-  const lines = existingContent.split('\n')
-  const insertIndex = lines.findIndex(line => line.startsWith('## ['))
-
-  if (insertIndex > 0) {
-    lines.splice(insertIndex, 0, newEntry)
-  } else {
-    lines.push(newEntry)
-  }
-
-  await fs.writeFile(changelogPath, lines.join('\n'))
-}
-
-/**
- * Prompt for version
- */
-async function promptVersion(currentVersion: string): Promise<string> {
-  const versionType = await select({
-    message: `Current version is ${currentVersion}. Select version type:`,
-    options: [
-      { label: `Patch (${semver.inc(currentVersion, 'patch')})`, value: 'patch' },
-      { label: `Minor (${semver.inc(currentVersion, 'minor')})`, value: 'minor' },
-      { label: `Major (${semver.inc(currentVersion, 'major')})`, value: 'major' },
-      { label: 'Prerelease', value: 'prerelease' },
-      { label: 'Custom', value: 'custom' }
-    ]
-  })
-
-  let newVersion: string
-
-  if (versionType === 'custom') {
-    const customVersion = await text({
-      message: 'Enter custom version:',
-      validate: value => {
-        if (!semver.valid(value)) {
-          return 'Invalid version format'
-        }
-        return undefined
-      }
-    })
-    newVersion = customVersion as string
-  } else if (versionType === 'prerelease') {
-    const prereleaseId = await select({
-      message: 'Select prerelease type:',
-      options: [
-        { label: 'Alpha', value: 'alpha' as semver.ReleaseType },
-        { label: 'Beta', value: 'beta' as semver.ReleaseType },
-        { label: 'RC', value: 'rc' as semver.ReleaseType }
-      ]
-    }) as semver.ReleaseType;
-    newVersion = semver.inc(currentVersion, 'prerelease', prereleaseId) || currentVersion
-  } else {
-    newVersion = semver.inc(currentVersion, versionType as semver.ReleaseType) || currentVersion
-  }
-
-  return newVersion
-}
-
-/**
- * Build all packages
- */
-async function buildPackages(): Promise<void> {
-  console.log(prism.cyan('🔨 Building packages...'))
-  exec('pnpm build')
-  console.log(prism.green('✅ Build completed'))
-}
-
-/**
- * Publish packages to npm
- */
-async function publishPackages(packages: Package[], options: ReleaseOptions): Promise<void> {
-  const publishable = packages.filter(pkg => !pkg.private)
-
-  console.log(prism.cyan(`\n📦 Publishing ${publishable.length} packages...`))
-
-  for (const pkg of publishable) {
-    console.log(prism.gray(`  Publishing ${pkg.name}@${pkg.version}...`))
-
-    if (!options.dryRun) {
-      try {
-        // Use --tag latest to force the tag even when the new version is
-        // lower than a previously published one (e.g. resetting from 0.4.5
-        // back to 0.1.x). Without this flag npm refuses to implicitly move
-        // the "latest" dist-tag to a lower semver.
-        exec('pnpm publish --access public --no-git-checks --tag latest', {
-          cwd: pkg.path
-        })
-        console.log(prism.green(`  ✅ ${pkg.name}@${pkg.version} published`))
-      } catch (error) {
-        console.error(prism.red(`  ❌ Failed to publish ${pkg.name}`))
-        throw error
-      }
-    } else {
-      console.log(prism.yellow(`  [DRY RUN] Would publish ${pkg.name}@${pkg.version}`))
-    }
-  }
-}
-
-/**
- * Create git tag and push
- */
-async function createGitRelease(version: string, options: ReleaseOptions): Promise<void> {
-  if (options.dryRun) {
-    console.log(prism.yellow(`\n[DRY RUN] Would create tag v${version}`))
-    return
-  }
-
-  console.log(prism.cyan(`\n🏷️  Creating git tag v${version}...`))
-
-  // Commit changes
-  exec('git add -A')
-  exec(`git commit -m "chore(release): v${version}"`)
-
-  // Create tag
-  exec(`git tag -a v${version} -m "Release v${version}"`)
-
-  // Push
-  const shouldPush = await confirm({
-    message: 'Push to remote?',
-    initialValue: true
-  })
-
-  if (shouldPush) {
-    exec('git push')
-    exec('git push --tags')
-    console.log(prism.green('✅ Pushed to remote'))
-  }
-}
-
-/**
- * Main release flow
- */
 async function main() {
-  console.log(prism.bold(prism.cyan('\n🚀 Omnitron Monorepo Release\n')))
-
-  // Parse CLI arguments
-  const args = process.argv.slice(2)
-  const options: ReleaseOptions = {
-    skipBuild: args.includes('--skip-build'),
-    skipPublish: args.includes('--skip-publish'),
-    dryRun: args.includes('--dry-run'),
-    force: args.includes('--force'),
-    listPackages: args.includes('--list-packages') || args.includes('--list')
+  const { values, positionals } = parseArgs({
+    options: Object.fromEntries(['help', 'list', 'list-packages', 'dry-run', 'prepare', 'skip-publish',
+      'push', 'publish', 'resume', 'github'].map(key => [key, { type: 'boolean' as const }])),
+    allowPositionals: true,
+  });
+  if (values.help) { console.log(usage); return; }
+  const selected = [
+    [values.list || values['list-packages'], 'list'], [values['dry-run'], 'plan'],
+    [values.prepare || values['skip-publish'], 'prepare'], [values.push, 'push'],
+    [values.publish || values.resume, 'publish'], [values.github, 'github'],
+  ].filter(([enabled]) => enabled).map(([, command]) => command);
+  if (selected.length > 1 || positionals.length > 1) throw new Error(usage);
+  const operation = selected[0] ?? 'plan';
+  if (operation === 'list') {
+    const packages = await discoverReleasePackages(root);
+    for (const pkg of packages) console.log(`${pkg.name}@${pkg.version}  ${pkg.path}`);
+    console.log(`${packages.length} public packages`);
+    return;
   }
 
-  // Handle --list-packages flag
-  if (options.listPackages) {
-    await listPackages()
-    return
+  let version = positionals[0];
+  if (!version) {
+    const cli = JSON.parse(await readFile(path.join(root, 'apps/omnitron/package.json'), 'utf8'));
+    if (operation === 'plan') version = semver.inc(cli.version, 'patch')!;
+    else if (process.stdin.isTTY) {
+      const answer = await text({ message: 'Release version', placeholder: semver.inc(cli.version, 'patch')! });
+      if (isCancel(answer)) return;
+      version = answer;
+    }
   }
+  if (!version || semver.valid(version) !== version) throw new Error('Supply an exact semantic version.\n' + usage);
+  const plan = await planRelease(root, version);
+  console.log(`${plan.tag} · ${plan.npmTag} · ${plan.packages.length} packages · ${plan.commit}`);
+  if (plan.blockers.length) throw new Error(plan.blockers.join('\n'));
+  if (operation === 'plan') return;
 
+  const unlock = await acquireReleaseLock(root);
   try {
-    // 1. Check git status
-    console.log(prism.cyan('📋 Checking environment...'))
-    checkGitStatus(options)
-    console.log(prism.green('✅ Git status clean'))
-
-    // 2. Get current version and packages
-    const currentVersion = await getCurrentVersion()
-    const packages = await getAllPackages()
-
-    console.log(prism.gray(`Current version: ${currentVersion}`))
-    console.log(prism.gray(`Found ${packages.length} packages`))
-
-    // 3. Prompt for new version
-    const newVersion = await promptVersion(currentVersion)
-
-    console.log(prism.bold(prism.green(`\n📦 Releasing version ${newVersion}\n`)))
-
-    // 4. Update all package versions
-    console.log(prism.cyan('📝 Updating package versions...'))
-
-    // Update root package.json
-    await updatePackageVersion(ROOT_DIR, newVersion)
-
-    // Update all packages
-    for (const pkg of packages) {
-      await updatePackageVersion(pkg.path, newVersion)
-      console.log(prism.gray(`  Updated ${pkg.name} to ${newVersion}`))
+    await assertCleanReleaseTree(root);
+    if (operation === 'prepare') {
+      if (await releaseCommand(root, 'git', ['branch', '--show-current']) !== 'main') {
+        throw new Error('Prepare from a clean main branch');
+      }
+      await commitReleaseVersion(root, version);
+      const commit = await releaseCommand(root, 'git', ['rev-parse', 'HEAD']);
+      const prepared = await prepareReleaseArtifacts(root, version, {
+        build: { executable: process.execPath, args: ['scripts/build-release.mjs', root, commit] },
+        progress: console.log,
+      });
+      const notes = await releaseNotes(root, version, repository);
+      await writeFile(path.join(root, '.release-artifacts', version, prepared.commit, 'NOTES.md'), notes);
+      await ensureReleaseTag(root, version);
+      console.log(`Prepared ${prepared.artifacts.length} archives. Review the notes and hashes before --push.`);
+      return;
     }
 
-    console.log(prism.green('✅ Versions updated'))
+    const prepared = await loadPreparedRelease(root, version);
+    if (!await assertReleaseHead(root, version)) throw new Error('Missing local release tag; finish --prepare first');
+    if (operation === 'push') { await pushReleaseRefs(root, version); return; }
 
-    // 5. Generate and update changelog
-    console.log(prism.cyan('\n📄 Updating changelog...'))
-    await updateChangelog(newVersion)
-    console.log(prism.green('✅ Changelog updated'))
-
-    // 6. Build packages
-    if (!options.skipBuild) {
-      await buildPackages()
+    await verifyRemoteReleaseTag(root, version, true);
+    if (operation === 'github') {
+      for (const artifact of prepared.artifacts) {
+        if (!await registryArtifactMatches(root, artifact)) throw new Error(`npm has not confirmed ${artifact.name}`);
+      }
+      console.log(await createGithubRelease(root, version, repository, await releaseNotes(root, version, repository)));
+      return;
     }
-
-    // 7. Publish to npm
-    if (!options.skipPublish) {
-      await publishPackages(packages, options)
-    }
-
-    // 8. Create git tag and push
-    await createGitRelease(newVersion, options)
-
-    // 9. Success!
-    console.log(prism.bold(prism.green('\n✨ Release completed successfully!\n')))
-    console.log(prism.cyan('Next steps:'))
-    console.log('  1. Create GitHub release: https://github.com/omnitron-dev/omni/releases/new')
-    console.log(`  2. Use tag: v${newVersion}`)
-    console.log('  3. Copy changelog entry for release notes')
-    console.log('  4. Announce in Discord/Twitter')
-  } catch (error: any) {
-    console.error(prism.red('\n❌ Release failed:'))
-    console.error(error.message)
-    process.exit(1)
-  }
+    await preflightPreparedRelease(root, version);
+    await publishPreparedRelease(root, version, {
+      progress: console.log,
+      otp: async () => {
+        if (!process.stdin.isTTY) throw new Error('An npm one-time password requires an interactive terminal');
+        const answer = await password({ message: 'npm one-time password' });
+        if (isCancel(answer)) throw new Error('Publication interrupted. Preserve the archives and use --resume');
+        return answer;
+      },
+    });
+    console.log(`Verified ${prepared.artifacts.length} npm packages. Use --github to publish the release notes.`);
+  } finally { await unlock(); }
 }
 
-// Run the script
-main().catch(error => {
-  console.error(prism.red('Fatal error:'), error)
-  process.exit(1)
-})
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});

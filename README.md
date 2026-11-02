@@ -31,7 +31,7 @@ omni/
 │   │
 │   ├── netron-browser      # Browser RPC client (HTTP + WebSocket)
 │   ├── netron-react        # React hooks & providers for Netron RPC
-│   ├── prism               # Design system constructor (MUI v7)
+│   ├── prism               # Design system constructor (MUI v9)
 │   │
 │   ├── common              # Shared utilities, type predicates, promises
 │   ├── cuid                # Collision-resistant unique IDs
@@ -49,7 +49,7 @@ omni/
 | Runtime | Node.js >= 22 |
 | Monorepo | pnpm workspaces + Turborepo |
 | Backend | Titan framework, Netron RPC, Kysely, Redis |
-| Frontend | React 19, Vite, MUI v7, Zustand v5 |
+| Frontend | React 19, Vite, MUI v9, Zustand v5 |
 | Serialization | MessagePack (binary), JSON (HTTP fallback) |
 | Testing | Vitest, Jest |
 
@@ -58,7 +58,7 @@ omni/
 ### Prerequisites
 
 - Node.js >= 22
-- pnpm >= 10
+- pnpm 12.16.1 (pinned in `packageManager`)
 - Redis (for cache, locks, discovery, rate-limiting)
 - PostgreSQL (for persistence)
 
@@ -96,3 +96,28 @@ pnpm fm:fix
 ## License
 
 MIT
+
+## Publishing Omnitron
+
+Run `pnpm release --list` to see the public packages in dependency order.
+`pnpm release <version> --dry-run` checks the version, current commit and
+worktree. Choose the version before preparing a release.
+
+From a clean `main`, run the following operations in order. Replace
+`<version>` with the same exact version throughout.
+
+```sh
+pnpm release <version> --prepare
+pnpm release <version> --push
+pnpm release <version> --publish
+pnpm release <version> --github
+```
+
+Preparation builds a separate checkout and creates a local annotated tag.
+Review the package inventory, SHA-512 digests and release notes in
+`.release-artifacts/<version>/<commit>/` before pushing. The push updates
+the selected branch and tag atomically. Publication verifies the remote
+tag and checks the archived package bytes against npm. For an interrupted
+publication, keep the archives, return to the same clean commit and run
+`pnpm release <version> --resume`. The GitHub release can be completed
+separately after all npm packages are confirmed.

@@ -237,6 +237,9 @@ importers:
       '@xec-sh/kit':
         specifier: 0.11.2
         version: 0.11.2
+      '@xec-sh/ops':
+        specifier: 0.11.2
+        version: 0.11.2
       add:
         specifier: ^2.0.9
         version: 2.0.9

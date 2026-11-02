@@ -74,3 +74,6 @@ playwright-report/
 # Console publication state belongs to this installation, not the source tree.
 apps/omnitron/webapp/dist.publications.json
 apps/omnitron/webapp/dist.publish-lock/
+
+# Immutable local release archives and publication receipts
+/.release-artifacts/

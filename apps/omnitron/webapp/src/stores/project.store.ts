@@ -103,9 +103,10 @@ function persistWorkspace(project: string | null, stack: string | null): void {
  * boundary, so the console renders nothing at all.
  */
 function loadPersistedWorkspace(): { project: string | null; stack: string | null; routes: Record<string, string> } {
+  const project = readStored(STORAGE_KEY_PROJECT);
   return {
-    project: readStored(STORAGE_KEY_PROJECT),
-    stack: readStored(STORAGE_KEY_STACK),
+    project,
+    stack: project ? readStored(STORAGE_KEY_STACK) : null,
     routes: readStoredJson<Record<string, string>>(STORAGE_KEY_ROUTES, {}),
   };
 }
@@ -188,17 +189,13 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         projects: state.projects.map(project => project.name === projectName ? { ...project, ...stackCounts(stacks) } : project),
       }));
 
-      // Auto-select stack if exactly one exists and none is selected.
-      //
-      // Only for the project the operator is actually in. This call is not
-      // awaited by its callers and can land after they have moved on: switch
-      // from A to B while A's listing is in flight, and the late response
-      // used to set A's stack as active under project B — and persist the
-      // pair `A/<stack-of-A>`, so the mismatch survived a reload.
-      if (get().activeProject === projectName && stacks.length === 1 && !get().activeStack) {
-        const stackName = stacks[0]!.name;
-        set({ activeStack: stackName });
-        persistWorkspace(projectName, stackName);
+      // A successful inventory may invalidate a removed/renamed filter. It
+      // never narrows an explicit All stacks choice, even for one stack, and
+      // an answer for a previous workspace cannot change the current scope.
+      if (get().activeProject === projectName && get().activeStack
+        && !stacks.some(stack => stack.name === get().activeStack)) {
+        set({ activeStack: null });
+        persistWorkspace(projectName, null);
       }
       return stacks;
     } catch (err) {
@@ -272,8 +269,12 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   },
 
   selectStack: (name: string | null) => {
+    const { activeProject, stacksByProject } = get();
+    // Only inventory-backed choices can narrow the workspace. A failed read
+    // does not clear an existing choice; clearing to All is always available.
+    if (name && (!activeProject || !stacksByProject[activeProject]?.some(stack => stack.name === name))) return;
     set({ activeStack: name });
-    persistWorkspace(get().activeProject, name);
+    persistWorkspace(activeProject, name);
   },
 
   addProject: async (name: string, path: string) => {

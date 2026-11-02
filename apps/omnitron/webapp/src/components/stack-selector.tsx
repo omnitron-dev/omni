@@ -1,167 +1,52 @@
-/**
- * StackSelector — Stack chips in header leftArea
- *
- * Shows ALL stacks for the current project as compact chips:
- *   dev [green dot] | prod [green dot] | test [gray dot]
- *
- * Click chip → filters views to that stack.
- * "All stacks" chip shows combined view.
- * Status dot: green=running, yellow=starting/stopping, red=error, gray=stopped.
- */
-
-import { useMemo, useCallback } from 'react';
+/** Explicit, persistent workspace filter. Opening a detail page never changes it. */
+import { useMemo } from 'react';
 import Box from '@mui/material/Box';
-import Chip from '@mui/material/Chip';
+import MenuItem from '@mui/material/MenuItem';
+import Select from '@mui/material/Select';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import { alpha } from '@mui/material/styles';
-import {
-  useProjectStore,
-  useActiveProject,
-  useActiveStack,
-  useActiveProjectStacks,
-} from '../stores/project.store';
-import type { IStackInfo } from '@omnitron-dev/omnitron/dto/services';
-import { getStatusColor } from 'src/components/topology/shared-styles';
-
-// =============================================================================
-// Status dot colors
-// =============================================================================
-
-function statusDot(status: string) {
-  // Was a third hex map, in which `starting` was #eab308 and `degraded`
-  // #f97316 — neither matching the topology view's #f59e0b for the same two
-  // states.
-  const color = getStatusColor(status);
-  return (
-    <Box
-      component="span"
-      sx={{
-        display: 'inline-block',
-        width: 6,
-        height: 6,
-        borderRadius: '50%',
-        bgcolor: color,
-        mr: 0.5,
-        flexShrink: 0,
-        ...(status === 'running' && {
-          boxShadow: `0 0 4px ${color}`,
-        }),
-      }}
-    />
-  );
-}
-
-// =============================================================================
-// Component
-// =============================================================================
+import { useProjectStore, useActiveProjectStacks } from '../stores/project.store';
+import { getStatusColor } from './topology/shared-styles';
 
 export function StackSelector() {
-  const activeProject = useActiveProject();
-  const activeStack = useActiveStack();
+  const activeProject = useProjectStore(s => s.activeProject);
+  const activeStack = useProjectStore(s => s.activeStack);
+  const readError = useProjectStore(s => activeProject ? s.stackReadErrors[activeProject] : null);
+  const selectStack = useProjectStore(s => s.selectStack);
   const stacks = useActiveProjectStacks();
-  const selectStack = useProjectStore((s) => s.selectStack);
-
-  const handleSelect = useCallback(
-    (name: string | null) => {
-      selectStack(name);
-    },
-    [selectStack]
-  );
-
-  const sortedStacks = useMemo(() => 
-    // Sort: running first, then by name
-     [...stacks].sort((a, b) => {
-      const aRunning = a.status === 'running' ? 0 : 1;
-      const bRunning = b.status === 'running' ? 0 : 1;
-      if (aRunning !== bRunning) return aRunning - bRunning;
-      return a.name.localeCompare(b.name);
-    })
-  , [stacks]);
-
+  const sortedStacks = useMemo(() => [...stacks].sort((a, b) => a.name.localeCompare(b.name)), [stacks]);
   if (!activeProject) return null;
+  const unverified = Boolean(activeStack && !stacks.some(stack => stack.name === activeStack));
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 1 }}>
-      {/* "All" chip */}
-      <Chip
-        label="All"
+    <Tooltip title={readError
+      ? 'Stack inventory unavailable. The current filter is retained; cached options may be stale.'
+      : 'Filter workspace views. Opening a stack detail does not change this filter.'}>
+      <Select
         size="small"
-        variant={activeStack === null ? 'filled' : 'outlined'}
-        color={activeStack === null ? 'primary' : 'default'}
-        onClick={() => handleSelect(null)}
+        value={activeStack ?? ''}
+        displayEmpty
+        onChange={event => selectStack(event.target.value || null)}
+        inputProps={{ 'aria-label': 'Stack filter' }}
+        renderValue={value => value ? `Stack: ${value}` : 'All stacks'}
+        MenuProps={{ slotProps: { paper: { sx: { maxHeight: 360, maxWidth: 'calc(100vw - 24px)' } } } }}
         sx={{
-          height: 24,
-          fontSize: '0.7rem',
-          fontWeight: activeStack === null ? 700 : 400,
-          '& .MuiChip-label': { px: 1 },
+          minWidth: 104, maxWidth: { xs: 112, sm: 210 }, height: 30,
+          fontSize: '0.75rem', flexShrink: 1,
+          '& .MuiSelect-select': { minWidth: 0, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', py: 0.5 },
+          ...(readError || unverified ? { color: 'warning.main' } : {}),
         }}
-      />
-
-      {sortedStacks.map((stack) => (
-        <StackChip
-          key={stack.name}
-          stack={stack}
-          active={activeStack === stack.name}
-          onClick={() => handleSelect(stack.name)}
-        />
-      ))}
-
-      {stacks.length === 0 && (
-        <Typography variant="caption" sx={{ color: 'text.disabled', ml: 0.5 }}>
-          No stacks configured
-        </Typography>
-      )}
-    </Box>
-  );
-}
-
-// =============================================================================
-// StackChip
-// =============================================================================
-
-function StackChip({
-  stack,
-  active,
-  onClick,
-}: {
-  stack: IStackInfo;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <Chip
-      size="small"
-      variant={active ? 'filled' : 'outlined'}
-      color={active ? 'primary' : 'default'}
-      onClick={onClick}
-      label={
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-          {statusDot(stack.status)}
-          <span>{stack.name}</span>
-          {stack.type !== 'local' && (
-            <Typography
-              component="span"
-              sx={{
-                fontSize: '0.55rem',
-                ml: 0.25,
-                opacity: 0.6,
-                textTransform: 'uppercase',
-              }}
-            >
-              {stack.type === 'remote' ? 'ssh' : 'cluster'}
-            </Typography>
-          )}
-        </Box>
-      }
-      sx={{
-        height: 24,
-        fontSize: '0.7rem',
-        fontWeight: active ? 700 : 400,
-        '& .MuiChip-label': { px: 0.75 },
-        ...(stack.status === 'running' && !active && {
-          borderColor: (t) => alpha('#22c55e', 0.3),
-        }),
-      }}
-    />
+      >
+        <MenuItem value="" sx={{ fontSize: '0.8rem' }}>All stacks</MenuItem>
+        {unverified && <MenuItem value={activeStack!} disabled>{activeStack} · awaiting inventory</MenuItem>}
+        {sortedStacks.map(stack => (
+          <MenuItem key={stack.name} value={stack.name} sx={{ gap: 1, minWidth: 0, fontSize: '0.8rem' }}>
+            <Box component="span" aria-hidden sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: getStatusColor(stack.status), flexShrink: 0 }} />
+            <Typography variant="inherit" noWrap sx={{ flex: 1, minWidth: 0 }}>{stack.name}</Typography>
+            <Typography variant="caption" color="text.secondary">{readError ? 'last observed' : stack.status}</Typography>
+          </MenuItem>
+        ))}
+      </Select>
+    </Tooltip>
   );
 }

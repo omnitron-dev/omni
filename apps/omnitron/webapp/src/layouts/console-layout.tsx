@@ -48,6 +48,7 @@ import {
 import { useAuthStore } from 'src/auth/store';
 import { useAccess, PAGE_PERMISSIONS, PageAccess, AccessBoundary } from 'src/auth/access';
 import { ProjectSwitcher } from 'src/components/project-switcher';
+import { StackSelector } from 'src/components/stack-selector';
 import { useActiveProject } from 'src/stores/project.store';
 import { reportCrash } from 'src/utils/report-crash';
 import { useAlertNotifications } from 'src/hooks/use-alert-notifications';
@@ -388,8 +389,9 @@ export function ConsoleLayout() {
         }}
         headerSlots={{
           leftArea: (
-            <Box data-keyboard-region="Workspace" tabIndex={-1}>
+            <Box data-keyboard-region="Workspace" tabIndex={-1} sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 1 }, minWidth: 0, '@media (max-width: 359px)': { flexDirection: 'column', alignItems: 'flex-start', gap: 0 } }}>
               <ProjectSwitcher />
+              <StackSelector />
             </Box>
           ),
           rightArea: <HeaderRight />,
@@ -403,6 +405,10 @@ export function ConsoleLayout() {
           ),
         }}
         slotProps={{
+          header: {
+            sx: { '& .MuiToolbar-root': { px: { xs: 1, sm: 2 } } },
+            slotProps: { leftArea: { minWidth: 0 }, centerArea: { mx: { xs: 0, sm: 2 } } },
+          },
           main: {
             sx:
               terminalVisible || filesVisible || location.pathname === '/topology'

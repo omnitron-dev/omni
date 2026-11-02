@@ -119,12 +119,11 @@ export function ProjectSwitcher() {
         </Box>
 
         {activeInfo && (
-          <Label
-            color={activeInfo.runningStacks > 0 ? 'success' : 'default'}
-            sx={{ height: 22, cursor: 'inherit', display: { xs: 'none', sm: 'inline-flex' } }}
-          >
-            {activeInfo.runningStacks}/{activeInfo.totalStacks} stacks{stackReadError ? " · stale" : ""}
-          </Label>
+          <Box component="span" title="Running / configured stacks in the whole workspace" sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
+            <Label color={activeInfo.runningStacks > 0 ? 'success' : 'default'} sx={{ height: 22, cursor: 'inherit' }}>
+              {activeInfo.runningStacks}/{activeInfo.totalStacks} stacks{stackReadError ? " · stale" : ""}
+            </Label>
+          </Box>
         )}
 
         <Box component="svg" viewBox="0 0 16 16" sx={{ width: 16, height: 16, color: 'text.disabled', flexShrink: 0 }}>

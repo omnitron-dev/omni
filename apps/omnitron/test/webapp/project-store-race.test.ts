@@ -68,7 +68,7 @@ describe('fetchStacks arriving late', () => {
   });
 
   it('still records the listing itself, whichever project it was for', async () => {
-    // Only the auto-select is conditional. The stacks map is keyed by
+    // Only filter validation is conditional. The stacks map is keyed by
     // project, so a late listing is still correct data about ITS project and
     // is worth keeping.
     const store = await freshStore();
@@ -83,7 +83,7 @@ describe('fetchStacks arriving late', () => {
     expect(store.getState().stacksByProject['alpha']).toHaveLength(1);
   });
 
-  it('auto-selects when the listing belongs to the current project', async () => {
+  it('preserves All stacks even when the project currently has only one stack', async () => {
     const store = await freshStore();
 
     store.getState().selectProject('alpha');
@@ -91,8 +91,8 @@ describe('fetchStacks arriving late', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(store.getState().activeStack).toBe('only-in-alpha');
-    expect(localStorage.getItem('omnitron_active_stack')).toBe('only-in-alpha');
+    expect(store.getState().activeStack).toBeNull();
+    expect(localStorage.getItem('omnitron_active_stack')).toBeNull();
   });
 
   it('leaves the choice alone when a project has several stacks', async () => {
@@ -104,5 +104,65 @@ describe('fetchStacks arriving late', () => {
     await Promise.resolve();
 
     expect(store.getState().activeStack).toBeNull();
+  });
+});
+
+
+describe('explicit stack filters', () => {
+  it('clears a removed selection after a successful inventory and persists All stacks', async () => {
+    const store = await freshStore();
+    store.getState().selectProject('alpha');
+    pending.get('alpha')!([stack('one'), stack('two')]);
+    await Promise.resolve(); await Promise.resolve();
+    store.getState().selectStack('one');
+    expect(localStorage.getItem('omnitron_active_stack')).toBe('one');
+    const refresh = store.getState().fetchStacks('alpha');
+    pending.get('alpha')!([stack('two')]);
+    await refresh;
+    expect(store.getState().activeStack).toBeNull();
+    expect(localStorage.getItem('omnitron_active_stack')).toBeNull();
+  });
+
+  it('does not narrow a scope to an unknown stack or another workspace', async () => {
+    const store = await freshStore();
+    store.getState().selectStack('one');
+    expect(store.getState().activeStack).toBeNull();
+    store.getState().selectProject('alpha');
+    pending.get('alpha')!([stack('one')]);
+    await Promise.resolve(); await Promise.resolve();
+    store.getState().selectStack('missing');
+    expect(store.getState().activeStack).toBeNull();
+    store.getState().selectStack('one');
+    expect(store.getState().activeStack).toBe('one');
+    store.getState().selectProject('beta');
+    store.getState().selectStack('one');
+    expect(store.getState().activeStack).toBeNull();
+  });
+
+  it('retains a valid selection when another workspace inventory arrives', async () => {
+    const store = await freshStore();
+    store.getState().selectProject('alpha');
+    store.getState().selectProject('beta');
+    pending.get('beta')!([stack('chosen')]);
+    await Promise.resolve(); await Promise.resolve();
+    store.getState().selectStack('chosen');
+    pending.get('alpha')!([stack('other')]);
+    await Promise.resolve(); await Promise.resolve();
+    expect(store.getState().activeStack).toBe('chosen');
+    expect(localStorage.getItem('omnitron_active_project')).toBe('beta');
+    expect(localStorage.getItem('omnitron_active_stack')).toBe('chosen');
+  });
+
+  it('keeps the last chosen scope when inventory cannot be refreshed', async () => {
+    const store = await freshStore();
+    store.getState().selectProject('alpha');
+    pending.get('alpha')!([stack('chosen')]);
+    await Promise.resolve(); await Promise.resolve();
+    store.getState().selectStack('chosen');
+    const { project } = await import('../../webapp/src/netron/client');
+    vi.mocked(project.listStacks).mockRejectedValueOnce(new Error('Inventory unavailable'));
+    expect(await store.getState().fetchStacks('alpha')).toBeNull();
+    expect(store.getState().activeStack).toBe('chosen');
+    expect(store.getState().stackReadErrors.alpha).toBe('Inventory unavailable');
   });
 });

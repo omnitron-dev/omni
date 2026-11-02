@@ -36,7 +36,11 @@ export function ReleaseDeploymentState({ project, stack }: { project: string; st
       gap: { xs: 1, md: 2 }, py: 1.5, borderBottom: 1, borderColor: 'divider', overflowWrap: 'anywhere' }}>
       <Stack spacing={0.5} sx={{ minWidth: 0 }}>
         <Typography component={RouterLink} to={`/stacks/${encodeURIComponent(row.stack)}`} variant="body2"
-          onClick={() => { const store = useProjectStore.getState(); store.selectProject(project, location.pathname); store.selectStack(row.stack); }}
+          onClick={(event) => {
+            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            const store = useProjectStore.getState();
+            if (store.activeProject !== project) store.selectProject(project, location.pathname);
+          }}
           sx={{ color: 'primary.main', textDecoration: 'none', fontWeight: 600 }}>{row.stack}</Typography>
         <Typography variant="caption" color="text.secondary">{row.type === 'local' ? 'Controller node' : row.type === 'cluster' ? 'Distributed stack' : 'Remote stack'}</Typography>
         {row.type !== 'local' && row.nodes.map(node => <Typography key={`${node.host}:${node.port}`} variant="caption" color={node.connected && !error ? 'text.secondary' : 'warning.main'}>

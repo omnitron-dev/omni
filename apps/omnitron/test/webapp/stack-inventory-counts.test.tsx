@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IStackInfo } from '../../src/shared/dto/project.js';
 const rpc = vi.hoisted(() => ({ stacks: vi.fn() }));
@@ -9,6 +9,7 @@ vi.mock('src/netron/client', () => ({
 }));
 const initialize = () => () => undefined;
 vi.mock('src/stores/realtime.store', () => ({ useRealtimeStore: (select: (state: unknown) => unknown) => select({ connected: true, lastEvent: null, initialize }) }));
+import { StackSelector } from '../../webapp/src/components/stack-selector.js';
 import { StatusBar } from '../../webapp/src/components/status-bar.js';
 import { useProjectStore } from '../../webapp/src/stores/project.store.js';
 const stack = (name: string, running: boolean): IStackInfo => ({ name, type: name === 'dev' ? 'local' : 'remote', status: running ? 'running' : 'stopped',
@@ -52,4 +53,24 @@ describe('one observed inventory across the console', () => {
     finish([stack('dev', false), stack('test', true)]);
     expect(await first).toEqual(await second);
   });
+});
+
+
+it('exposes a keyboard-operable bounded filter and returns from one stack to all stacks', async () => {
+  rpc.stacks.mockResolvedValue([stack('dev', false), stack('test', true)]);
+  render(<><StackSelector /><StatusBar /></>);
+  await waitFor(() => expect(screen.getByLabelText(/applications 6\/12,/)).toBeTruthy());
+  const filter = screen.getByRole('combobox', { name: 'Stack filter' });
+  expect(filter.textContent).toBe('All stacks');
+  fireEvent.keyDown(filter, { key: 'ArrowDown' });
+  fireEvent.click(await screen.findByRole('option', { name: /test.*running/ }));
+  await waitFor(() => expect(screen.getByLabelText(/applications 6\/6,/)).toBeTruthy());
+  expect(filter.textContent).toBe('Stack: test');
+  expect(screen.getByText('(1/1 stacks)')).toBeTruthy();
+  expect(localStorage.getItem('omnitron_active_stack')).toBe('test');
+  fireEvent.keyDown(filter, { key: 'ArrowDown' });
+  fireEvent.click(await screen.findByRole('option', { name: 'All stacks' }));
+  await waitFor(() => expect(screen.getByLabelText(/applications 6\/12,/)).toBeTruthy());
+  expect(screen.getByText('(1/2 stacks)')).toBeTruthy();
+  expect(localStorage.getItem('omnitron_active_stack')).toBeNull();
 });

@@ -1,13 +1,14 @@
 // @vitest-environment happy-dom
-import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-const mocks = vi.hoisted(() => ({ stacks: vi.fn(), deployments: vi.fn() }));
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
+const mocks = vi.hoisted(() => ({ stacks: vi.fn(), deployments: vi.fn(), selectProject: vi.fn(), selectStack: vi.fn(), activeProject: 'sample' }));
 vi.mock('src/netron/release-wire', () => ({ releaseApi: { deployments: mocks.deployments } }));
 vi.mock('src/netron/client', () => ({ daemonClient: { invoke: vi.fn() } }));
-vi.mock('src/stores/project.store', () => ({ useProjectStore: { getState: () => ({ fetchStacks: mocks.stacks }) } }));
+vi.mock('src/stores/project.store', () => ({ useProjectStore: { getState: () => ({ fetchStacks: mocks.stacks, activeProject: mocks.activeProject, selectProject: mocks.selectProject, selectStack: mocks.selectStack }) } }));
 const { ReleaseDeploymentState } = await import('../../webapp/src/components/release-deployment-state');
 const { CommitPair } = await import('../../webapp/src/components/release-bits');
+beforeEach(() => { mocks.activeProject = 'sample'; });
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 
 it('shows current placement and stopped apps without turning deployment history into a running release', async () => {
@@ -78,4 +79,33 @@ it('does not call a node unreachable when only its application inventory is unav
   await waitFor(() => expect(screen.getByText('test.example:9700 · inventory unavailable')).toBeTruthy());
   expect(screen.queryByText(/unreachable|offline|No applications running/)).toBeNull();
   expect(screen.getByText(/1 unknown/)).toBeTruthy();
+});
+
+
+function RouteMarker() {
+  return <output aria-label="Current route">{useLocation().pathname}</output>;
+}
+
+it.each(['/stacks/test', '/stacks', '/releases'])('keeps the workspace filter independent of entry through %s', async (entry) => {
+  mocks.stacks.mockResolvedValue([{ name: 'test', type: 'remote', status: 'running', apps: [], nodes: [] }]);
+  mocks.deployments.mockResolvedValue({ known: true, deployments: [] });
+  render(<MemoryRouter initialEntries={[entry]}><Routes>
+    <Route path="/releases" element={<ReleaseDeploymentState project="sample" />} />
+    <Route path="/stacks" element={<Link to="/stacks/test">test</Link>} />
+    <Route path="/stacks/:name" element={<RouteMarker />} />
+  </Routes></MemoryRouter>);
+  if (entry !== '/stacks/test') fireEvent.click(await screen.findByRole('link', { name: 'test' }));
+  expect(screen.getByLabelText('Current route').textContent).toBe('/stacks/test');
+  expect(mocks.selectProject).not.toHaveBeenCalled();
+  expect(mocks.selectStack).not.toHaveBeenCalled();
+});
+
+it('changes a different workspace for a release link without installing a hidden stack filter', async () => {
+  mocks.activeProject = 'another';
+  mocks.stacks.mockResolvedValue([{ name: 'test', type: 'remote', status: 'running', apps: [], nodes: [] }]);
+  mocks.deployments.mockResolvedValue({ known: true, deployments: [] });
+  render(<MemoryRouter initialEntries={['/releases']}><ReleaseDeploymentState project="sample" /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('link', { name: 'test' }));
+  expect(mocks.selectProject).toHaveBeenCalledWith('sample', '/releases');
+  expect(mocks.selectStack).not.toHaveBeenCalled();
 });

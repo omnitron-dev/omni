@@ -55,7 +55,7 @@ schema.command('apply <plan>').description('Apply or resume a reviewed expansion
     const { backendSchemaApplyCommand } = await import('../commands/backend.js');
     await backendSchemaApplyCommand(plan);
   });
-const guardian = backend.command('guardian').description('Update independent user-service supervision without restarting applications');
+const guardian = backend.command('guardian').description('Update independent service supervision while preserving the execution owner');
 guardian.command('prepare <runtime>').description('Install a sealed management runtime and save a private guardian transition plan')
   .structuredAction(async (runtime: string) => {
     const { backendSupervisorPrepareCommand } = await import('../commands/backend.js');
@@ -678,6 +678,51 @@ remote
 // ============================================================================
 
 const fleet = program.command('fleet').description('Fleet-wide operations across remote servers');
+
+const rollout = fleet.command('rollout').description('Distribute and activate managed backends across registered servers');
+rollout.command('import <runtimes...>')
+  .description('Admit qualified sealed builds into the local controller catalog for distribution')
+  .structuredAction(async (runtimes: string[]) => {
+    const { importFleetBuilds } = await import('../commands/fleet-rollout.js');
+    await importFleetBuilds(runtimes);
+  });
+rollout.command('builds')
+  .description('List the builds available for distribution by the controller')
+  .structuredAction(async () => {
+    const { listFleetBuilds } = await import('../commands/fleet-rollout.js');
+    await listFleetBuilds();
+  });
+rollout.command('plan <commit> [nodes...]')
+  .description('Review a batch for the exact Git commit, in the order requested')
+  .option('--apply', 'Start the plan if all selected servers are eligible')
+  .option('--stage', 'Distribute matching builds from the controller catalog before qualification')
+  .option('--wait', 'Wait for qualification, and for activation if requested')
+  .option('--request-id <uuid>', 'Reuse a plan ID when retrying the same request')
+  .structuredAction(async (commit: string, nodes: string[], options: { apply?: boolean; wait?: boolean; stage?: boolean; requestId?: string }) => {
+    const { fleetRolloutCommand } = await import('../commands/fleet-rollout.js');
+    await fleetRolloutCommand({ kind: 'plan', commit, nodes, apply: options.apply === true, wait: options.wait === true,
+      stage: options.stage === true, ...(options.requestId && { requestId: options.requestId }) });
+  });
+rollout.command('apply <id>')
+  .description('Start the reviewed rollout and return its durable operation ID')
+  .option('--wait', 'Follow the operation through completion')
+  .structuredAction(async (id: string, options: { wait?: boolean }) => {
+    const { fleetRolloutCommand } = await import('../commands/fleet-rollout.js');
+    await fleetRolloutCommand({ kind: 'apply', id, wait: options.wait === true });
+  });
+rollout.command('reconcile <id>')
+  .description('Resolve an interrupted rollout from fresh node observations')
+  .structuredAction(async (id: string) => {
+    const { fleetRolloutCommand } = await import('../commands/fleet-rollout.js');
+    await fleetRolloutCommand({ kind: 'reconcile', id });
+  });
+rollout.command('status [id]')
+  .description('Show a rollout or the most recent plan')
+  .option('--wait', 'Follow the same operation until it finishes')
+  .structuredAction(async (id: string | undefined, options: { wait?: boolean }) => {
+    const { fleetRolloutCommand } = await import('../commands/fleet-rollout.js');
+    await fleetRolloutCommand({ kind: 'status', id, wait: options.wait === true });
+  });
 
 fleet
   .command('status')

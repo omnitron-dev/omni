@@ -47,6 +47,7 @@ describe('buildRestartPolicy', () => {
   it('respects per-app delay override', () => {
     const policy = buildRestartPolicy(makeEntry({ restartPolicy: { delay: 5_000 } }), makeConfig());
     expect(policy.delay).toBe(5_000);
+    expect(policy.backoff!.initial).toBe(5_000);
   });
 
   it('merges per-app backoff with ecosystem backoff', () => {
@@ -61,4 +62,23 @@ describe('buildRestartPolicy', () => {
     expect(policy.maxRestarts).toBe(3);
     expect(policy.window).toBe(30_000);
   });
+  it('prefers explicit backoff.initial over the delay alias', () => {
+    const policy = buildRestartPolicy(makeEntry({ restartPolicy: {
+      delay: 5_000, backoff: { initial: 2_000 },
+    } }), makeConfig());
+    expect(policy.delay).toBe(2_000);
+    expect(policy.backoff!.initial).toBe(2_000);
+  });
+
+  it('keeps zero delay and does not mutate the inherited backoff', () => {
+    const config = makeConfig();
+    const original = { ...config.supervision.backoff };
+    const policy = buildRestartPolicy(makeEntry({ restartPolicy: {
+      delay: 0, backoff: { max: 60_000 },
+    } }), config);
+    expect(policy.delay).toBe(0);
+    expect(policy.backoff).toEqual({ ...original, initial: 0, max: 60_000 });
+    expect(config.supervision.backoff).toEqual(original);
+  });
+
 });

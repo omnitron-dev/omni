@@ -69,11 +69,26 @@ export function routeTopology({ cards, links }: GraphGeometry): GraphRoutes {
       }
       const start = centre(a),
         end = centre(b);
-      if (singleColumn) {
-        const side = index % 2 ? 'left' : 'right';
+      const gapX = Math.max(b.x - a.x - a.width, a.x - b.x - b.width);
+      if (gapX < 0) {
+        // Same-lane dependencies (including host ownership) leave both cards on
+        // the side with the most clearance, even in a multi-deployment diagram.
+        let left = Infinity,
+          right = Infinity;
+        const minX = Math.min(a.x, b.x),
+          maxX = Math.max(a.x + a.width, b.x + b.width);
+        if (!singleColumn)
+          for (const obstacle of cards) {
+            if (obstacle.y > Math.max(start.y, end.y) || obstacle.y + obstacle.height < Math.min(start.y, end.y))
+              continue;
+            const before = minX - obstacle.x - obstacle.width,
+              after = obstacle.x - maxX;
+            if (before >= 0) left = Math.min(left, before);
+            if (after >= 0) right = Math.min(right, after);
+          }
+        const side = left === right ? (index % 2 ? 'left' : 'right') : left > right ? 'left' : 'right';
         return [{ link, start: port(a, side, end, link.id), end: port(b, side, start, link.id) }];
       }
-      const gapX = Math.max(b.x - a.x - a.width, a.x - b.x - b.width);
       const gapY = Math.max(b.y - a.y - a.height, a.y - b.y - b.height);
       // Between separate columns use their shared corridor, even across distant rows.
       const side = gapX >= 32 || gapX > gapY ? (end.x >= start.x ? 'right' : 'left') : end.y >= start.y ? 'down' : 'up';
@@ -90,62 +105,56 @@ export function routeTopology({ cards, links }: GraphGeometry): GraphRoutes {
           : { x: card.x + offset, y: card.y + (side === 'down' ? card.height : 0) };
       });
     }
-  // In a single column, keep long vertical runs outside the cards. Spans that
-  // overlap need exclusive tracks. Disjoint spans may reuse the same track.
-  const tracks = { left: [] as Array<Array<[number, number]>>, right: [] as Array<Array<[number, number]>> };
-  const left = Math.min(...cards.map((card) => card.x)),
-    right = Math.max(...cards.map((card) => card.x + card.width));
   const usedChannels: Array<{ x: number; from: number; to: number }> = [];
   function throughGutter(a: Port, b: Port): Point[] | undefined {
-    if ((a.side !== 'right' && a.side !== 'left') || b.side !== opposite[a.side]) return undefined;
-    const leftStub = Math.min(a.point.x, b.point.x) + 16;
-    const rightStub = Math.max(a.point.x, b.point.x) - 16;
-    if (leftStub > rightStub) return undefined;
+    if (a.side !== 'right' && a.side !== 'left') return undefined;
     const from = Math.min(a.point.y, b.point.y),
       to = Math.max(a.point.y, b.point.y);
-    const candidates: number[] = [];
-    for (let x = leftStub; x <= rightStub; x += 10) candidates.push(x);
-    const middle = (leftStub + rightStub) / 2;
-    candidates.sort((x, y) => Math.abs(x - middle) - Math.abs(y - middle));
-    for (const x of candidates) {
-      if (usedChannels.some((lane) => Math.abs(lane.x - x) < 8 && from <= lane.to + 4 && to >= lane.from - 4)) continue;
+    function reserve(x: number): Point[] | undefined {
+      if (usedChannels.some((lane) => Math.abs(lane.x - x) < 8 && from <= lane.to + 4 && to >= lane.from - 4))
+        return undefined;
       const path = [a.point, { x, y: a.point.y }, { x, y: b.point.y }, b.point];
-      if (path.slice(1).some((point, i) => cards.some((card) => crossesCard(path[i]!, point, card)))) continue;
+      if (path.slice(1).some((point, i) => cards.some((card) => crossesCard(path[i]!, point, card)))) return undefined;
       usedChannels.push({ x, from, to });
       return path;
+    }
+    // Search lazily. Dragging a card far away must not allocate an array proportional to that distance.
+    if (a.side === b.side) {
+      const sign = a.side === 'left' ? -1 : 1;
+      const anchor = sign < 0 ? Math.min(a.point.x, b.point.x) : Math.max(a.point.x, b.point.x);
+      for (let lane = 0; lane <= connections.length; lane++) {
+        const route = reserve(anchor + sign * (16 + lane * 10));
+        if (route) return route;
+      }
+    } else if (b.side === opposite[a.side]) {
+      const first = Math.min(a.point.x, b.point.x) + 16,
+        last = Math.max(a.point.x, b.point.x) - 16;
+      const count = Math.floor((last - first) / 10) + 1;
+      const middle = Math.floor((count - 1) / 2);
+      const limit = Math.min(count, 2 * (connections.length + cards.length) + 1);
+      for (let step = 0; step < limit; step++) {
+        const index = middle + (step % 2 ? 1 : -1) * Math.ceil(step / 2);
+        const route = reserve(first + index * 10);
+        if (route) return route;
+      }
     }
     return undefined;
   }
   const direct = new Map<string, Point[]>();
   const fallback: EdgeRequest[] = [];
   for (const { link, start, end } of connections) {
-    if (singleColumn) {
-      const side = start.side === 'left' ? 'left' : 'right';
-      const lo = Math.min(start.point.y, end.point.y),
-        hi = Math.max(start.point.y, end.point.y);
-      const occupied = tracks[side];
-      let lane = occupied.findIndex((spans) => spans.every(([from, to]) => hi < from - 8 || lo > to + 8));
-      if (lane < 0) {
-        lane = occupied.length;
-        occupied.push([]);
-      }
-      occupied[lane]!.push([lo, hi]);
-      const x = side === 'left' ? left - 16 - lane * 10 : right + 16 + lane * 10;
-      direct.set(link.id, [start.point, { x, y: start.point.y }, { x, y: end.point.y }, end.point]);
-    } else {
-      const channel = throughGutter(start, end);
-      if (channel) direct.set(link.id, channel);
-      else
-        fallback.push({
-          id: link.id,
-          sourceId: link.source,
-          targetId: link.target,
-          sourcePoint: departure(start),
-          targetPoint: departure(end),
-          sourceDirection: start.side,
-          targetDirection: end.side,
-        });
-    }
+    const channel = throughGutter(start, end);
+    if (channel) direct.set(link.id, channel);
+    else
+      fallback.push({
+        id: link.id,
+        sourceId: link.source,
+        targetId: link.target,
+        sourcePoint: departure(start),
+        targetPoint: departure(end),
+        sourceDirection: start.side,
+        targetDirection: end.side,
+      });
   }
   const detours = new Map(
     (fallback.length

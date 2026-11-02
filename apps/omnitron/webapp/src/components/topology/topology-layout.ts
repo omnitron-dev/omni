@@ -163,9 +163,15 @@ export function arrangeDependencyTopology<T extends Node<TopologyNodeData>>(
       neighbors.set(from, adjacent);
     }
   }
-  let top = 0;
+  // A wide workspace can show adjacent deployments instead of one tall strip.
+  const groupsPerRow = Math.max(1, Math.floor((columns + 1) / 2));
+  let rowTop = 0,
+    rowBottom = 0,
+    groupX = 0,
+    slot = 0;
   const placed: T[] = [];
   for (const group of groups.values()) {
+    let top = rowTop;
     const apps = group.filter((node) => node.data.nodeType === 'app');
     const services = group.filter((node) => node.data.nodeType === 'infra' || node.data.nodeType === 'gateway');
     const servers = group.filter((node) => node.data.nodeType === 'server');
@@ -193,7 +199,7 @@ export function arrangeDependencyTopology<T extends Node<TopologyNodeData>>(
     const put = (node: T, x: number, y: number, provider = false) =>
       placed.push({
         ...node,
-        position: { x, y },
+        position: { x: groupX + x, y },
         sourcePosition: provider && columns > 1 ? Position.Left : Position.Right,
         targetPosition: provider && columns > 1 ? Position.Left : Position.Right,
       });
@@ -210,7 +216,17 @@ export function arrangeDependencyTopology<T extends Node<TopologyNodeData>>(
         true
       )
     );
-    top += (columns > 1 ? Math.max(apps.length, services.length) : apps.length + services.length) * step + TOPOLOGY_GAP;
+    const rows = columns > 1 ? Math.max(apps.length, services.length) : apps.length + services.length;
+    rowBottom = Math.max(rowBottom, top + rows * step + TOPOLOGY_GAP);
+    slot++;
+    if (slot === groupsPerRow) {
+      rowTop = rowBottom;
+      groupX = 0;
+      slot = 0;
+    } else {
+      const width = columns > 1 && services.length ? 2 * TOPOLOGY_CARD_WIDTH + gutter : TOPOLOGY_CARD_WIDTH;
+      groupX += width + Math.max(128, 48 + degree * 12);
+    }
   }
   return placed;
 }

@@ -76,6 +76,7 @@ function useNavData(): LayoutNavData {
   const activeProject = useActiveProject();
 
   return useMemo(() => {
+    const builder = { id: 'dashboard-builder', title: 'Dashboard Builder', path: '/dashboard-builder', icon: <DashboardBuilderIcon /> };
     if (!activeProject) {
       // Omnitron system workspace
       return [
@@ -118,6 +119,7 @@ function useNavData(): LayoutNavData {
           id: 'system',
           subheader: 'System',
           items: [
+            builder,
             { id: 'settings', title: 'Settings', path: '/settings', icon: <SettingsIcon /> },
             { id: 'audit', title: 'Audit', path: '/audit', icon: <AuditIcon /> },
             { id: 'access', title: 'Access', path: '/access', icon: <AccessIcon /> },
@@ -172,12 +174,7 @@ function useNavData(): LayoutNavData {
         id: 'system',
         subheader: 'System',
         items: [
-          {
-            id: 'dashboard-builder',
-            title: 'Dashboard Builder',
-            path: '/dashboard-builder',
-            icon: <DashboardBuilderIcon />,
-          },
+          builder,
           { id: 'settings', title: 'Settings', path: '/settings', icon: <SettingsIcon /> },
           { id: 'audit', title: 'Audit', path: '/audit', icon: <AuditIcon /> },
           { id: 'access', title: 'Access', path: '/access', icon: <AccessIcon /> },

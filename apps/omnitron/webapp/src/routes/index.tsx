@@ -67,6 +67,7 @@ export function Router() {
         <Route path="terminal" element={null} />
         <Route path="files" element={null} />
         <Route path="projects" element={<Page><ProjectsPage /></Page>} />
+        <Route path="dashboard-builder" element={<Page><DashboardBuilderPage /></Page>} />
         <Route path="system" element={<Page><SystemInfoPage /></Page>} />
         <Route path="settings" element={<Page><SettingsPage /></Page>} />
         <Route path="logs" element={<Page><LogsPage /></Page>} />
@@ -96,7 +97,6 @@ export function Router() {
         <Route path="deployments" element={<ProjectRoute><DeploymentsPage /></ProjectRoute>} />
         <Route path="alerts" element={<ProjectRoute><AlertsPage /></ProjectRoute>} />
         <Route path="traces" element={<ProjectRoute><TracesPage /></ProjectRoute>} />
-        <Route path="dashboard-builder" element={<ProjectRoute><DashboardBuilderPage /></ProjectRoute>} />
 
         {/* Legacy redirects */}
       </Route>

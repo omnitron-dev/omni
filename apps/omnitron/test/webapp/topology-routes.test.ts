@@ -77,4 +77,27 @@ describe('infrastructure map routing', () => {
     const graph = { cards: [card('a', 0, 0), card('b', 4, 4)], links: [link('a', 'b')] };
     expect(routeTopology(graph).blocked).toContain('a->b');
   });
+  it('separates host ownership and app-to-app links from shared provider routes across deployments', () => {
+    for (const columns of [1, 2]) {
+      const cards: GraphGeometry['cards'] = [],
+        links: GraphGeometry['links'] = [];
+      for (let group = 0; group < 2; group++) {
+        const x = columns === 2 ? group * 960 : 0,
+          y = columns === 1 ? group * 1700 : 0;
+        const host = card('host' + group, x, y);
+        const apps = Array.from({ length: 6 }, (_, i) => card(group + '/app' + i, x, y + (i + 1) * 210));
+        const stores = Array.from({ length: 4 }, (_, i) => card(group + '/store' + i, x + 530, y + (i + 1) * 210));
+        cards.push(host, ...apps, ...stores);
+        for (const app of apps) {
+          links.push(link(host.id, app.id), ...stores.slice(0, 2).map((store) => link(app.id, store.id)));
+          if (app !== apps[0]) links.push(link(app.id, apps[0]!.id));
+        }
+        for (const store of stores) links.push(link(host.id, store.id));
+      }
+      cards[0]!.x += 64;
+      const routed = routeTopology({ cards, links });
+      expect(routed.blocked).toEqual([]);
+      expect(Object.keys(routed.paths)).toHaveLength(links.length);
+    }
+  });
 });

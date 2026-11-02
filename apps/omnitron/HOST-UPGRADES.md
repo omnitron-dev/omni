@@ -22,6 +22,8 @@ omnitron fleet rollout plan "$COMMIT" test-node prod-node --stage --wait
 
 The Console's fleet rollout in Nodes and the CLI use the same durable receipt. Planning returns an ID immediately and records progress for each server. An automation can supply a UUID with `--request-id`. After a lost response, repeat the same commit, target order and staging choice with that ID. A controller restart during preflight permits the same qualification to run again. A rollout requires an administrator with a current session or the authenticated local Unix identity. Viewers and operators can follow status.
 
+The controller revalidates the administrator before staging or handing off each server. Revoking that session prevents further dispatch. A second SSH registration for the controller is rejected using its execution owner identity, including when the registration uses a different address or host key.
+
 Activation is sequential. The controller pins each SSH endpoint, immutable artifacts, runtime selection revision, owner and application inventory. An uncertain dispatch holds the fleet operation open. Inspect it with `omnitron fleet rollout status "$PLAN_ID"` and use `omnitron fleet rollout reconcile "$PLAN_ID"` to obtain fresh evidence under the original node lease. Reconciliation records the proven selection. A separate plan is required to activate remaining targets after an interruption. Earlier successful targets retain their selections.
 
 The local controller uses its independent supervisor and the local backend upgrade procedure. Elected controller clusters currently require a shared cross-node dispatch fence before this fleet operation can run there.

@@ -43,9 +43,10 @@ function fixture() {
     reconcileManagedRollout: vi.fn(async (): Promise<'candidate' | 'previous'> => 'candidate'),
   };
   const authority = vi.fn<() => void>(() => {});
-  const service = new KernelRolloutService(store, nodes, driver, logger.error, authority);
-  const observer = new KernelRolloutService(reader, nodes, driver, logger.error, authority);
-  return { service, observer, driver, nodes, store, logger, proof, authority };
+  const controllerOwner = vi.fn<() => string | null>(() => null);
+  const service = new KernelRolloutService(store, nodes, driver, logger.error, authority, controllerOwner);
+  const observer = new KernelRolloutService(reader, nodes, driver, logger.error, authority, controllerOwner);
+  return { service, observer, driver, nodes, store, logger, proof, authority, controllerOwner };
 }
 
 describe('durable managed fleet kernel controller', () => {
@@ -125,6 +126,25 @@ describe('durable managed fleet kernel controller', () => {
     expect((await ready(service, commit)).targets[1]?.reason).toMatch(/same SSH host key/);
     nodes.nodeToDeployTarget.mockImplementation(async id => ({ host: id }));
     expect((await ready(service, commit)).targets[0]?.reason).toMatch(/verified SSH/);
+    expect(driver.activateManagedRollout).not.toHaveBeenCalled();
+  });
+
+  it('excludes the initiating owner for a second SSH enrollment even with its own node ID, address and host key', async () => {
+    const { service, driver, controllerOwner } = fixture();
+    controllerOwner.mockReturnValue('owner-b');
+    const plan = await ready(service, commit, ['b']);
+    expect(plan.state).toBe('blocked');
+    expect(plan.targets[0]?.reason).toMatch(/initiating controller/);
+    const staged = await service.plan(commit, ['b'], undefined, true);
+    await vi.waitFor(() => expect(service.get(staged.id)?.state).toBe('blocked'));
+    expect(driver.inspectManagedRollout).toHaveBeenLastCalledWith(expect.objectContaining({ host: 'b' }), commit, {
+      stage: true, excludeOwnerId: 'owner-b',
+    });
+    controllerOwner.mockReturnValue(null);
+    const before = await ready(service, commit, ['b']);
+    controllerOwner.mockReturnValue('owner-b');
+    service.start(before.id);
+    await vi.waitFor(() => expect(service.get()?.state).toBe('failed'));
     expect(driver.activateManagedRollout).not.toHaveBeenCalled();
   });
 

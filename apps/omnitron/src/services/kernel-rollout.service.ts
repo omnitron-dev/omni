@@ -10,7 +10,7 @@ import { ManagedRolloutFailure, type ManagedRolloutObservation } from './managed
 type Store = Pick<DaemonStateStore, 'kvGetSync' | 'kvSetSync' | 'kvUpdateSync'>;
 type Revalidate = () => Promise<void>;
 type Driver = {
-  inspectManagedRollout(target: DeployTarget, commit: string, options?: { stage?: boolean }): Promise<ManagedRolloutObservation>;
+  inspectManagedRollout(target: DeployTarget, commit: string, options?: { stage?: boolean; excludeOwnerId?: string }): Promise<ManagedRolloutObservation>;
   activateManagedRollout(target: DeployTarget, preflight: ManagedRolloutObservation): Promise<void>;
   reconcileManagedRollout(target: DeployTarget, preflight: ManagedRolloutObservation): Promise<'previous' | 'candidate'>;
 };
@@ -72,7 +72,8 @@ export class KernelRolloutService {
   private readonly writer: Writer = { token: randomUUID(), pid: process.pid, started: performance.timeOrigin, birth: processBirth(process.pid) };
   private readonly jobs = new Map<string, symbol>();
   constructor(private readonly store: Store, private readonly nodes: NodeSource, private readonly driver: Driver,
-    private readonly onError: (error: unknown) => void, private readonly assertController: () => void) {}
+    private readonly onError: (error: unknown) => void, private readonly assertController: () => void,
+    private readonly controllerOwner: () => string | null) {}
 
   activeCount(): number { return this.jobs.size; }
 
@@ -202,6 +203,10 @@ export class KernelRolloutService {
     });
   }
 
+  private assertRemoteOwner(owner: string) {
+    if (this.controllerOwner() === owner) throw Error('This SSH target is the initiating controller. Use the supervised local backend upgrade.');
+  }
+
   private async qualify(rollout: KernelRollout, revalidate?: Revalidate) {
     const fingerprints = new Set<string>(), owners = new Set<string>();
     const { id, commit } = rollout;
@@ -218,9 +223,12 @@ export class KernelRolloutService {
         fingerprints.add(connection.expectedHostFingerprint!);
         if (rollout.stage) await revalidate?.();
         this.assertController();
-        const observed = rollout.stage ? await this.driver.inspectManagedRollout(connection, commit, { stage: true }) :
-          await this.driver.inspectManagedRollout(connection, commit);
+        const localOwner = this.controllerOwner();
+        const observed = rollout.stage ? await this.driver.inspectManagedRollout(connection, commit, {
+          stage: true, ...(localOwner && { excludeOwnerId: localOwner }),
+        }) : await this.driver.inspectManagedRollout(connection, commit);
         if (!validObservation(observed, commit)) throw Error('Invalid runtime or owner evidence');
+        this.assertRemoteOwner(observed.ownerId);
         if (owners.has(observed.ownerId)) throw Error('Another target resolves to this execution owner');
         owners.add(observed.ownerId);
         pin = { endpoint, preflight: observed };
@@ -284,6 +292,7 @@ export class KernelRolloutService {
         const target = await this.connection(node.nodeId, pin.endpoint);
         await revalidate?.();
         this.assertController();
+        this.assertRemoteOwner(pin.preflight.ownerId);
         if (node.state === 'current') {
           const current = await this.driver.inspectManagedRollout(target, commit);
           if (current.previous !== pin.preflight.previous || current.candidate !== pin.preflight.candidate ||
@@ -318,6 +327,7 @@ export class KernelRolloutService {
     if (i !== -1) {
       const pin = record.observations[i]!;
       try {
+        this.assertRemoteOwner(pin.preflight.ownerId);
         result = await this.driver.reconcileManagedRollout(await this.connection(record.rollout.targets[i]!.nodeId, pin.endpoint), pin.preflight);
         if (result !== 'previous' && result !== 'candidate') throw Error('The node could not prove a terminal selection');
       } catch (error) {

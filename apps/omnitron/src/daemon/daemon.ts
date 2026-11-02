@@ -1180,6 +1180,12 @@ export class OmnitronDaemon {
           () => {
             if (this.dc.cluster?.enabled) throw new Error('Managed kernel rollout requires a standalone controller. Elected controllers lack a shared cross-node dispatch fence.');
             if (this.isShuttingDown || this.preparingBackend || this.handingOffBackend) throw new Error('Controller handoff or shutdown is in progress');
+          }, () => {
+            const local = this.execution?.state();
+            if (!local) return null; // A coupled controller cannot be an independently owned target.
+            if (!local.owner?.id || local.connection.status !== 'connected' || local.phase !== 'active')
+              throw new Error('Cannot exclude the initiating controller: its resident owner is unconfirmed');
+            return local.owner.id;
           });
         nodeManagerRpcService.setKernelRolloutService(this.kernelRollouts);
 

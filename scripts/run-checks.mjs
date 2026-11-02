@@ -1,35 +1,8 @@
 #!/usr/bin/env node
 /**
- * Run the standing checks in this directory.
- *
- * Twelve scanners live here, each written to answer one question about the
- * whole monorepo — a question no single file can be asked, because the defect
- * is the relation between places. Nothing ran any of them. No `package.json`
- * script, no turbo task, no workflow. Measured 2026-09-16: eleven of the
- * twelve exit zero today and would catch a regression the moment one appeared;
- * they simply were never asked.
- *
- * A check nobody runs is a check that does not exist. It is the same shape as
- * the retention sweeps in this codebase that had no caller, and the same shape
- * as what `tests-nothing-runs` was written to find: work that is complete,
- * correct, and unreachable.
- *
- * sample has run its sixty-odd this way since 2026-09-15 and the design is
- * copied from there deliberately rather than improved on, so that a person who
- * knows one run knows the other.
- *
- * So: everything in `scripts/*.mjs` is a GATE and must exit zero, unless it is
- * named below with a reason. A new scanner is a gate by default, which is the
- * safe direction — an author who wants a worklist has to say so here, and
- * cannot forget their way out of the run.
- *
- * **What this deliberately does NOT do.** It does not decide whether a hit is a
- * bug. The worklists below exit non-zero by design, carry their own triage
- * blocks, and reading them is a person's job; wiring them in would turn every
- * run red and teach everyone to ignore it. What it does is notice CHANGE: a
- * scanner that exits zero today and non-zero tomorrow has found something new.
- *
- * Usage: pnpm check:scans
+ * Run the reviewed source gates. Every top-level script needs a classification
+ * before the runner may execute anything. Release and build entry points have
+ * dedicated invocations and inputs.
  */
 
 import { readdirSync, existsSync } from 'node:fs';
@@ -58,6 +31,8 @@ const WORKLISTS = new Map([
 /** Entrypoints executed separately by CI, and the scanner dispatcher itself. */
 const EXCLUDED = new Map([
   ['run-checks', 'this runner'],
+  ['build-release', 'builds from a sealed source export and commit'],
+  ['release', 'maintainer release entry point with its own qualification suite'],
   ['check-package-exports', 'CI checks packed exports after building all packages'],
   ['check-reproducible-backend', 'a dedicated CI job builds and compares independent backend and Console artifacts'],
 ]);
@@ -78,6 +53,13 @@ const SLOW = new Map([
 
 const DEFAULT_TIMEOUT_MS = 180_000;
 
+const gates = [
+  'a-package-that-needs-itself-built', 'a-port-the-network-could-reach', 'a-private-project-in-public-source',
+  'a-temp-dir-the-test-runner-never-removed', 'doc-imports-resolve', 'duplicate-implementations', 'fail-open',
+  'logged-secrets', 'metadata-nobody-reads', 'module-root-drift', 'prism-public-types-reachable',
+  'stub-that-reports-success', 'tests-nothing-runs', 'uncalled-janitors', 'undeclared-dependencies',
+];
+
 const all = readdirSync(DIR)
   .filter((f) => f.endsWith('.mjs'))
   .map((f) => f.replace(/\.mjs$/, ''))
@@ -85,7 +67,7 @@ const all = readdirSync(DIR)
 
 // A manifest that names a file which no longer exists is a scanner silently
 // dropped from the run — the rename would take it out without a word.
-const known = [...WORKLISTS.keys(), ...EXCLUDED.keys(), ...SLOW.keys()];
+const known = [...gates, ...WORKLISTS.keys(), ...EXCLUDED.keys()];
 const missing = known.filter((n) => !existsSync(join(DIR, `${n}.mjs`)));
 if (missing.length > 0) {
   console.error(`manifest names scanners that do not exist: ${missing.join(', ')}`);
@@ -93,7 +75,11 @@ if (missing.length > 0) {
   process.exit(2);
 }
 
-const gates = all.filter((n) => !WORKLISTS.has(n) && !EXCLUDED.has(n));
+const unknown = all.filter(name => !known.includes(name));
+if (unknown.length || [...SLOW.keys()].some(name => !gates.includes(name))) {
+  console.error(`Classify new scripts and check slow-gate names before running source checks: ${unknown.join(', ')}`);
+  process.exit(2);
+}
 console.log(`${gates.length} gates, ${WORKLISTS.size} worklists, ${EXCLUDED.size} excluded\n`);
 
 const failed = [];

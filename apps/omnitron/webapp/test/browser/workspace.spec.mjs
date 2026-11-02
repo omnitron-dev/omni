@@ -1,25 +1,88 @@
 import { test, expect } from './fixtures.mjs';
 
-async function stubInventory(page) {
+async function stubInventory(page, extraReadings = {}) {
   const readings = {
     'OmnitronProject.listProjects': ['Example', 'Other'].map(displayName => ({
       name: displayName.toLowerCase(), displayName, path: '/' + displayName, totalStacks: 1, runningStacks: 0,
     })),
     'OmnitronProject.listStacks': [{ name: 'dev', status: 'stopped', apps: [] }],
     'OmnitronDaemon.status': { apps: [], uptime: 1000 }, 'OmnitronDaemon.ping': { uptime: 1000 },
+    ...extraReadings,
   };
   const capabilities = Object.keys(readings).map(key => {
     const [service, method] = key.split('.');
     return { service, method, allowed: true, roles: ['viewer'], conditional: false };
   });
   await page.route('**/netron/invoke', route => {
-    const { id, service, method } = route.request().postDataJSON();
+    const { id, service, method, input } = route.request().postDataJSON();
     const key = service + '.' + method;
-    const data = key === 'OmnitronAccess.describe' ? { userId: 'reader', role: 'viewer', capabilities, roles: [] } : readings[key];
+    const reading = readings[key];
+    const data = key === 'OmnitronAccess.describe' ? { userId: 'reader', role: 'viewer', capabilities, roles: [] }
+      : typeof reading === 'function' ? reading(...input) : reading;
     return route.fulfill({ json: { id, success: data !== undefined, data } });
   });
   await page.route('**/api/health', route => route.fulfill({ json: { status: 'ok' } }));
 }
+
+test('an administrator can prepare a catalog build on a narrow screen before explicitly applying it', async ({ page, url }) => {
+  const commit = '4'.repeat(40);
+  let receipt = null;
+  let applyCount = 0;
+  let prepared;
+  await stubInventory(page, {
+    'OmnitronNodes.listKernelBuilds': [{ commit, platform: 'linux', arch: 'x64', nodeVersion: '24.13.0' }],
+    'OmnitronNodes.getKernelRollout': () => receipt,
+    'OmnitronNodes.planKernelRollout': request => {
+      prepared = request;
+      receipt = { id: request.requestId, commit, state: 'planned', reason: null, updatedAt: '2026-01-01T00:00:05Z',
+        targets: [{ nodeId: 'east', name: 'East region', state: 'ready', previous: '2'.repeat(64), candidate: '3'.repeat(64),
+          ownerId: 'owner-east', ownerPid: 123, reason: null }] };
+      return receipt;
+    },
+    'OmnitronNodes.startKernelRollout': ({ id }) => {
+      expect(id).toBe(receipt.id);
+      applyCount++;
+      return receipt = { ...receipt, state: 'running' };
+    },
+  });
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto(url + '/workspace.html?view=rollout');
+  await page.getByRole('button', { name: 'Plan update…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Plan backend update' });
+  const commitField = dialog.getByRole('combobox', { name: 'Target commit' });
+  await commitField.press('ArrowDown');
+  await page.getByRole('option', { name: /linux\/x64/ }).click();
+  await expect(commitField).toHaveValue(commit);
+  const stage = dialog.getByRole('checkbox', { name: 'Stage from controller catalog' });
+  await expect(stage).not.toBeChecked();
+  await stage.check();
+  expect(await dialog.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  await dialog.getByRole('button', { name: 'Prepare plan' }).click();
+  const apply = page.getByRole('button', { name: 'Apply reviewed plan' });
+  await expect(apply).toBeVisible();
+  expect(prepared).toEqual({ commit, requestId: expect.stringMatching(/^[0-9a-f-]{36}$/), stage: true });
+  expect(applyCount).toBe(0);
+  await apply.click();
+  await expect(page.getByRole('progressbar', { name: 'Nodes confirmed on the target build' })).toBeVisible();
+  expect(applyCount).toBe(1);
+});
+
+test('managed rollout evidence fits a narrow window for a read-only operator', async ({ page, url }) => {
+  const commit = '1'.repeat(40);
+  await stubInventory(page, { 'OmnitronNodes.getKernelRollout': {
+    id: 'run-' + commit, commit, state: 'failed', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:07Z',
+    reason: 'The previous backend resumed.', targets: [{ nodeId: 'east', name: 'East region', state: 'rolled-back',
+      previous: '2'.repeat(64), candidate: '3'.repeat(64), ownerId: 'owner-' + commit, ownerPid: 123, reason: 'Readiness deadline expired.' }],
+  } });
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto(url + '/workspace.html?view=rollout');
+  const panel = page.getByRole('region', { name: 'Managed backend updates' });
+  await expect(panel.getByText('Readiness deadline expired.')).toBeVisible();
+  await expect(panel.getByText('rolled-back')).toBeVisible();
+  await expect(panel.getByRole('button')).toHaveCount(0);
+  expect(await panel.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+});
 
 for (const direction of ['ltr', 'rtl']) {
   test('workspace gutters and stack selector follow the reading direction in ' + direction, async ({ page, url }) => {

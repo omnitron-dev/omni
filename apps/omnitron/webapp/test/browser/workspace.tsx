@@ -5,6 +5,7 @@ import { ConsoleAccessProvider } from '../../src/auth/access';
 import { useAuthStore } from '../../src/auth/store';
 import { ConsoleLayout } from '../../src/layouts/console-layout';
 import { consoleTheme } from '../../src/theme';
+import { FleetRollout } from '../../src/components/fleet-rollout';
 
 const direction = new URLSearchParams(location.search).get('dir') === 'rtl' ? 'rtl' : 'ltr';
 useAuthStore.setState({ user: { id: 'reader', username: 'reader', displayName: 'Reader', role: 'viewer' } });
@@ -14,7 +15,8 @@ createRoot(document.getElementById('root')!).render(
       <ConsoleAccessProvider>
         <Routes>
           <Route element={<ConsoleLayout />}>
-            <Route index element={<div data-testid="content">Project content</div>} />
+            <Route index element={new URLSearchParams(location.search).get('view') === 'rollout'
+              ? <FleetRollout nodes={[]} /> : <div data-testid="content">Project content</div>} />
           </Route>
         </Routes>
       </ConsoleAccessProvider>

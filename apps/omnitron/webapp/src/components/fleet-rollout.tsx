@@ -1,4 +1,5 @@
-import { Can } from 'src/auth/access';
+import { Can, useAccess } from 'src/auth/access';
+import { ManagedFleetRollout } from './managed-fleet-rollout';
 /**
  * Upgrading the fleet — many machines, one decision.
  *
@@ -94,6 +95,29 @@ export function inFlight(phase: NodeUpgradeProgress['phase']): boolean {
 }
 
 export function FleetRollout({ nodes }: { nodes: INodeWithStatus[] }) {
+  const { can, snapshot } = useAccess();
+  const [advanced, setAdvanced] = useState(false);
+  const canPlan = can('OmnitronNodes.planKernelRollout');
+  const canApply = can('OmnitronNodes.startKernelRollout');
+  const canReconcile = can('OmnitronNodes.reconcileKernelRollout');
+  return (
+    <Stack spacing={1}>
+      {can('OmnitronNodes.getKernelRollout') && <ManagedFleetRollout
+        key={JSON.stringify([snapshot?.userId, canPlan, canApply, canReconcile])} nodes={nodes}
+        canPlan={canPlan} canApply={canApply} canReconcile={canReconcile} />}
+      {can('OmnitronNodes.getUpgradeProgress') && <Box component="details" onToggle={e => setAdvanced(e.currentTarget.open)}>
+        <Typography component="summary" variant="caption" color="text.secondary" sx={{ cursor: 'pointer', py: 1 }}>
+          Advanced · source bundle upgrades
+        </Typography>
+        {advanced && <SourceBundleRollout key={snapshot?.userId} nodes={nodes} />}
+      </Box>}
+    </Stack>
+  );
+}
+
+function SourceBundleRollout({ nodes }: { nodes: INodeWithStatus[] }) {
+  const { can } = useAccess();
+  const canUpgrade = can('OmnitronNodes.planUpgrade') && can('OmnitronNodes.upgradeNodes');
   const [open, setOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -101,7 +125,7 @@ export function FleetRollout({ nodes }: { nodes: INodeWithStatus[] }) {
   // moving — an upgrade is minutes long and its phases are seconds apart —
   // and a slow beat when nothing is, so a fleet page left open costs nothing.
   const [fast, setFast] = useState(false);
-  const { data: progress, refresh } = usePolledResource<NodeUpgradeProgress[]>(
+  const { data: progress, refresh, error: progressError, loading } = usePolledResource<NodeUpgradeProgress[]>(
     async () => {
       const rows = await nodesRpc.getUpgradeProgress();
       setFast(rows.some((r) => inFlight(r.phase)));
@@ -132,7 +156,7 @@ export function FleetRollout({ nodes }: { nodes: INodeWithStatus[] }) {
       <CardContent>
         <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: live.length > 0 || rows.length > 0 ? 1.5 : 0 }}>
           <Typography variant="overline" sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
-            Fleet upgrade
+            Source bundle upgrade
           </Typography>
           {live.length > 0 && (
             <Chip
@@ -143,9 +167,9 @@ export function FleetRollout({ nodes }: { nodes: INodeWithStatus[] }) {
             />
           )}
           <Box sx={{ flex: 1 }} />
-          <Can permission="OmnitronNodes.upgradeNodes"><Button size="small" variant="contained" startIcon={<DeployIcon />} onClick={() => setOpen(true)}>
+          {canUpgrade && <Button size="small" variant="contained" startIcon={<DeployIcon />} onClick={() => setOpen(true)}>
             Upgrade nodes…
-          </Button></Can>
+          </Button>}
         </Stack>
 
         {actionError && (
@@ -154,7 +178,9 @@ export function FleetRollout({ nodes }: { nodes: INodeWithStatus[] }) {
           </Alert>
         )}
 
-        {rows.length === 0 ? (
+        {loading && <LinearProgress aria-label="Reading source bundle upgrade progress" />}
+        {progressError && <Alert severity="warning">Could not refresh source bundle upgrades. {progressError}</Alert>}
+        {rows.length === 0 && !loading && !progressError ? (
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             No upgrade has been run from this master since it started.
           </Typography>
@@ -213,7 +239,7 @@ export function FleetRollout({ nodes }: { nodes: INodeWithStatus[] }) {
         )}
       </CardContent>
 
-      <Can permission="OmnitronNodes.upgradeNodes"><RolloutDialog
+      {canUpgrade && <RolloutDialog
         open={open}
         onClose={() => setOpen(false)}
         nodes={nodes}
@@ -221,7 +247,7 @@ export function FleetRollout({ nodes }: { nodes: INodeWithStatus[] }) {
           setFast(true);
           void refresh();
         }}
-      /></Can>
+      />}
     </Card>
   );
 }

@@ -1416,13 +1416,15 @@ function NodeDiagnosisSession({
           {checking ? 'Checking…' : 'Check now'}
         </Button></Can>
         {!isLocal && (
-          <Can permission="OmnitronNodes.upgradeNode"><Button
+          <Can permission="OmnitronNodes.upgradeNode"><Box component="details">
+            <Typography component="summary" variant="caption" sx={{ cursor: 'pointer' }}>Advanced</Typography>
+            <Button
             onClick={startUpgrade}
             disabled={upgrading || upgradeRunning}
             startIcon={<DeployIcon sx={{ fontSize: 16 }} />}
           >
-            {upgradeRunning ? 'Upgrading…' : 'Upgrade omnitron'}
-          </Button></Can>
+            {upgradeRunning ? 'Upgrading…' : 'Install source bundle'}
+          </Button></Box></Can>
         )}
         <Box sx={{ flexGrow: 1 }} />
         <Button onClick={onClose}>Close</Button>

@@ -17,11 +17,30 @@ interface ApplicationClosure {
   payloadSha256: string;
 }
 
-export async function stageApplicationClosure(source: string, directory: string, entry: IEcosystemAppEntry, checkouts: readonly string[]): Promise<void> {
+export async function stageApplicationClosure(source: string, directory: string, entry: IEcosystemAppEntry, checkouts: readonly string[],
+  verifyPackage?: import('./registry-framework.js').RegistryFramework['verifyPackage']): Promise<void> {
   const nodeOptions = releaseOptionsForEnv(entry.env);
   const packages = await installedGraph(source, new Map(), await Promise.all(checkouts.map(root => fs.realpath(root))));
   const destinations = packages.map((_, index) => index === 0 ? directory : path.join(directory, 'node_modules/.omnitron', String(index)));
   await materializeGraph(packages, destinations, { application: true });
+  if (verifyPackage) {
+    // An app build controls its installed tree. A renamed manifest must not
+    // erase the identity promised by the dependency edge pointing at it.
+    const checks = new Map<string, Set<number>>();
+    const requireArchive = (name: string, index: number) => {
+      if (!name.startsWith('@omnitron-dev/')) return;
+      const locations = checks.get(name) ?? new Set<number>();
+      locations.add(index);
+      checks.set(name, locations);
+    };
+    for (const [index, pkg] of packages.entries()) {
+      requireArchive(pkg.metadata.name, index);
+      for (const [name, child] of pkg.dependencies) requireArchive(name, child);
+    }
+    for (const [name, locations] of checks) {
+      for (const index of locations) await verifyPackage(name, destinations[index]!);
+    }
+  }
   const bindings: Record<string, string[]> = {}, roots: Record<string, string> = {};
   for (const [index, pkg] of packages.entries()) for (const [name, child] of pkg.dependencies) {
     if (!name.startsWith('@omnitron-dev/') || name === '@omnitron-dev/omnitron') continue;

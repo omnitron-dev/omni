@@ -22,7 +22,10 @@ import { promisify } from 'node:util';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import { ProjectRegistry } from '../project/registry.js';
 import { assembleManifest, gateOutcomesFromGates, releaseId } from './builder.js';
-import { planBuildRoot, readLinkLayout, resolveCheckouts } from './layout.js';
+import { planBuildRoot, readFrameworkLayout, resolveCheckouts } from './layout.js';
+import { assertReleaseId } from './load.js';
+import { resolveRegistryFramework } from './registry-framework.js';
+import { OWN_BUILD } from '../shared/build-stamp.js';
 import type { GateOutcome, ReleaseManifest, ReleaseSource } from './manifest.js';
 
 const exec = promisify(execFile);
@@ -31,7 +34,7 @@ const MINUTE = 60_000;
 export interface ReleaseBuildOptions {
   /** The project commit to build; default: the project checkout's HEAD. */
   projectCommit?: string;
-  /** The omni commit to build; default: the omni checkout's HEAD. */
+  /** Linked checkout revision or exact full commit required of the pinned registry packages. */
   omniCommit?: string;
   /** Keep the clones after a successful build. */
   keepSource?: boolean;
@@ -243,6 +246,10 @@ function distBuiltAt(dir: string): string {
 
 /** The omnitron doing the packing, by version and the checkout it runs from. */
 export async function ownIdentity(): Promise<string> {
+  if (OWN_BUILD) {
+    const { CLI_VERSION } = await import('../config/defaults.js');
+    return `${CLI_VERSION} from omni@${OWN_BUILD.commit}${OWN_BUILD.dirty ? '+dirty' : ''}`;
+  }
   const { findWorkspaceRoot, describeTree } = await import('../services/bundle-builder.js');
   const root = findWorkspaceRoot(path.dirname(fileURLToPath(import.meta.url)));
   if (!root) return 'unknown';
@@ -506,25 +513,39 @@ async function buildRelease(
   const say = (phase: string, percent: number, more: { gates?: readonly GateOutcome[] } = {}) =>
     onPhase({ phase, percent, at: new Date().toISOString(), ...(id ? { releaseId: id } : {}), ...more });
 
-  say('reading both commits', 2);
+  say('reading project and framework sources', 2);
   const projectSha = await git(['rev-parse', '--verify', `${options.projectCommit ?? 'HEAD'}^{commit}`], project.path);
   env['SOURCE_DATE_EPOCH'] = await git(['show', '-s', '--format=%ct', projectSha], project.path);
-  // The lockfile AT THE COMMIT: the working tree's may differ, and it is the
-  // commit's that the clone will install from.
-  const layout = readLinkLayout(await git(['show', `${projectSha}:pnpm-lock.yaml`], project.path));
-  if ('refusal' in layout) throw new Error(`Cannot lay out ${projectName} at ${projectSha.slice(0, 8)}: ${layout.refusal}`);
-  const { projectReal: projectPath, omniPath } = resolveCheckouts(project.path, layout);
-  if (!fs.existsSync(path.join(omniPath, '.git'))) {
-    throw new Error(`The lockfile's links point at ${omniPath}, and there is no omni checkout there.`);
+  const layout = readFrameworkLayout(await git(['show', `${projectSha}:pnpm-lock.yaml`], project.path));
+  const projectPath = fs.realpathSync(project.path);
+  let checkout: { path: string; sha: string; layout: import('./layout.js').LinkLayout } | undefined;
+  let registry: Awaited<ReturnType<typeof resolveRegistryFramework>> | undefined;
+  let omniSource: ReleaseSource;
+  if (layout.kind === 'linked') {
+    const { omniPath } = resolveCheckouts(projectPath, layout.layout);
+    if (!fs.existsSync(path.join(omniPath, '.git'))) throw Error('No linked omni checkout at ' + omniPath);
+    const sha = await git(['rev-parse', '--verify', `${options.omniCommit ?? 'HEAD'}^{commit}`], omniPath);
+    checkout = { path: omniPath, sha, layout: layout.layout };
+    omniSource = await sourceOf(omniPath, sha);
+  } else {
+    say(`verifying ${layout.packages.length} framework archives against the project lockfile`, 2);
+    registry = await resolveRegistryFramework(layout.packages, options.omniCommit, signal);
+    omniSource = registry.source;
   }
-  const omniSha = await git(['rev-parse', '--verify', `${options.omniCommit ?? 'HEAD'}^{commit}`], omniPath);
-
-  id = releaseId(projectName, new Date(), projectSha, omniSha);
-  // Said BEFORE the directory exists, so that from the moment there is
-  // anything on disk under this name, the service watching these phases can
-  // name it — and `prune` can refuse to delete a build in progress.
+  id = releaseId(projectName, new Date(), projectSha, omniSource.commit);
+  assertReleaseId(id);
+  const releasesDirectory = path.join(OMNITRON_HOME, 'releases');
+  fs.mkdirSync(releasesDirectory, { recursive: true });
+  let releaseRoot = path.join(releasesDirectory, id);
+  // A second build in the same minute must never overwrite another run's
+  // logs/manifest, or remove its source directory when cleanup runs.
+  try { fs.mkdirSync(releaseRoot, { mode: 0o700 }); }
+  catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+    releaseRoot = fs.mkdtempSync(releaseRoot + '-');
+    id = path.basename(releaseRoot);
+  }
   say('preparing the build root', 3);
-  const releaseRoot = path.join(OMNITRON_HOME, 'releases', id);
   where.root = releaseRoot;
   // Every step from here on — clones, installs, builds, the gates — keeps its
   // temporary files where the build removes them (`makeBuildTempDir`). `env`
@@ -533,7 +554,8 @@ async function buildRelease(
   env['TMPDIR'] = where.tmp;
   const logs = path.join(releaseRoot, 'logs');
   fs.mkdirSync(logs, { recursive: true });
-  const plan = planBuildRoot(path.join(releaseRoot, 'src'), projectPath, layout);
+  const srcRoot = path.join(releaseRoot, 'src');
+  const plan = checkout ? planBuildRoot(srcRoot, projectPath, checkout.layout) : { projectDir: path.join(srcRoot, 'project'), omniDir: null };
   if ('refusal' in plan) throw new Error(plan.refusal);
 
   // Read at the START: the identity of the omnitron that packs this, not of
@@ -542,48 +564,74 @@ async function buildRelease(
   const omnitron = await ownIdentity();
 
   // 1. Clean clones of the two commits.
-  say('cloning both commits', 5);
+  say(checkout ? 'cloning project and framework commits' : 'cloning project commit', 5);
   const cloneLog = path.join(logs, 'clone.log');
-  for (const [from, sha, to] of [
-    [projectPath, projectSha, plan.projectDir],
-    [omniPath, omniSha, plan.omniDir],
-  ] as const) {
+  const clones: Array<[string, string, string]> = [[projectPath, projectSha, plan.projectDir]];
+  if (checkout && plan.omniDir) clones.push([checkout.path, checkout.sha, plan.omniDir]);
+  for (const [from, sha, to] of clones) {
     fs.mkdirSync(path.dirname(to), { recursive: true });
     await must('clone', step('git', ['clone', '--quiet', '--shared', '--no-checkout', from, to], { cwd: releaseRoot, logFile: cloneLog, timeoutMs: 10 * MINUTE }), cloneLog);
     await must('checkout', step('git', ['checkout', '--quiet', '--detach', sha], { cwd: to, logFile: cloneLog, timeoutMs: 10 * MINUTE }), cloneLog);
   }
 
   // 2. omni: install, and build what the project links (with what those depend on).
-  stillWanted();
-  say('installing omni', 12);
-  const omniInstallLog = path.join(logs, 'install-omni.log');
-  await must('omni install', step('pnpm', ['install', '--frozen-lockfile'], { cwd: plan.omniDir, logFile: omniInstallLog, timeoutMs: 30 * MINUTE }), omniInstallLog);
-  const linked = layout.linkedDirs.map((dir) => {
-    const manifest = JSON.parse(fs.readFileSync(path.join(plan.omniDir, dir, 'package.json'), 'utf8')) as { name: string };
-    return { dir, name: manifest.name };
-  });
-  say(`building the ${linked.length} omni packages the project links`, 20);
-  const omniBuildLog = path.join(logs, 'build-omni.log');
-  await must(
-    'omni build',
-    step('pnpm', ['-r', ...linked.flatMap((l) => ['--filter', `${l.name}...`]), 'run', 'build'], { cwd: plan.omniDir, logFile: omniBuildLog, timeoutMs: 60 * MINUTE }),
-    omniBuildLog,
-  );
+  const builtPackages: Array<{ name: string; distBuiltAt: string }> = [];
+  const omniDir = plan.omniDir;
+  if (checkout && omniDir) {
+    stillWanted();
+    say('installing omni', 12);
+    const omniInstallLog = path.join(logs, 'install-omni.log');
+    await must('omni install', step('pnpm', ['install', '--frozen-lockfile'], { cwd: omniDir, logFile: omniInstallLog, timeoutMs: 30 * MINUTE }), omniInstallLog);
+    const linked = checkout.layout.linkedDirs.map((dir) => {
+      const manifest = JSON.parse(fs.readFileSync(path.join(omniDir, dir, 'package.json'), 'utf8')) as { name: string };
+      return { dir, name: manifest.name };
+    });
+    say(`building the ${linked.length} omni packages the project links`, 20);
+    const omniBuildLog = path.join(logs, 'build-omni.log');
+    await must(
+      'omni build',
+      step('pnpm', ['-r', ...linked.flatMap((l) => ['--filter', `${l.name}...`]), 'run', 'build'], { cwd: omniDir, logFile: omniBuildLog, timeoutMs: 60 * MINUTE }),
+      omniBuildLog,
+    );
+    builtPackages.push(...linked.map(pkg => ({ name: pkg.name, distBuiltAt: distBuiltAt(path.join(omniDir, pkg.dir)) })));
+  }
 
   // 3. The project: install, then prove the links landed on the clone.
   stillWanted();
   say(`installing ${projectName}`, 35);
   const projectInstallLog = path.join(logs, 'install-project.log');
   await must('project install', step('pnpm', ['install', '--frozen-lockfile'], { cwd: plan.projectDir, logFile: projectInstallLog, timeoutMs: 30 * MINUTE }), projectInstallLog);
-  const links = linkedOutside(plan.projectDir, plan.omniDir);
-  if (links.checked === 0) throw new Error(`The install linked no @omnitron-dev package at all — nothing was built against omni. ${projectInstallLog}`);
-  if (links.outside.length > 0) {
-    throw new Error(
-      `${links.outside.length} of ${links.checked} @omnitron-dev links resolve outside the omni clone, so this build would not be the commit it names:\n  ` +
-        links.outside.slice(0, 5).join('\n  '),
-    );
+  if (omniDir) {
+    const links = linkedOutside(plan.projectDir, omniDir);
+    if (links.checked === 0) throw new Error(`The install linked no @omnitron-dev package at all — nothing was built against omni. ${projectInstallLog}`);
+    if (links.outside.length > 0) {
+      throw new Error(
+        `${links.outside.length} of ${links.checked} @omnitron-dev links resolve outside the omni clone, so this build would not be the commit it names:\n  ` +
+          links.outside.slice(0, 5).join('\n  '),
+      );
+    }
+    say(`${links.checked} @omnitron-dev links resolve inside the omni clone`, 42);
+  } else if (registry && layout.kind === 'registry') {
+    const verified = new Set<string>();
+    let coreInstalled = false;
+    const root = await fs.promises.realpath(plan.projectDir);
+    for (const importer of layout.importers) {
+      const scope = path.join(root, importer, 'node_modules', '@omnitron-dev');
+      if (!fs.existsSync(scope)) continue;
+      for (const name of fs.readdirSync(scope)) {
+        const directory = fs.realpathSync(path.join(scope, name));
+        if (!directory.startsWith(root + path.sep) || !path.relative(root, directory).split(path.sep).includes('node_modules'))
+          throw Error('Framework package resolves outside the frozen installation: ' + directory);
+        const identity = name + '\0' + directory;
+        if (verified.has(identity)) continue;
+        await registry.verifyPackage('@omnitron-dev/' + name, directory);
+        verified.add(identity);
+        if (name === 'omnitron') coreInstalled = true;
+      }
+    }
+    if (!coreInstalled) throw Error('Declare @omnitron-dev/omnitron in a workspace importer so the frozen installation can be verified');
+    say(`${verified.size} installed framework packages match their public npm archives`, 42);
   }
-  say(`${links.checked} @omnitron-dev links resolve inside the omni clone`, 42);
 
   // The project's own workspace packages, before anything compiles against
   // them. Five of sample's declare `dist/index.js` as their entry, and a clean
@@ -661,7 +709,14 @@ async function buildRelease(
   const builder = new ArtifactBuilder(plan.projectDir, path.join(releaseRoot, 'artifacts'), {
     info: (msg) => fs.appendFileSync(artifactsLog, `${msg}\n`),
   });
-  const packed = await builder.buildAll(apps, { releaseCheckouts: [plan.projectDir, plan.omniDir], env });
+  let integrityFailure: unknown;
+  const packed = await builder.buildAll(apps, { releaseCheckouts: clones.map(([, , directory]) => directory), env,
+    ...(registry && { verifyFrameworkPackage: async (name, directory) => {
+      try { await registry.verifyPackage(name, directory); }
+      catch (error) { integrityFailure = error; throw error; }
+    } }),
+  });
+  if (integrityFailure) throw integrityFailure;
 
   // 6. The static bundle, for the stack named — built in the clone.
   let statics: StaticsRecord | null = null;
@@ -696,13 +751,13 @@ async function buildRelease(
   const manifest = assembleManifest({
     id,
     project: await sourceOf(projectPath, projectSha),
-    omni: await sourceOf(omniPath, omniSha),
+    omni: omniSource,
     artifacts: packed.built,
     target: await (await import('./target-runtime.js')).targetRuntime(),
     artifactFailures: packed.failed,
     gates,
     omnitron,
-    packages: linked.map((l) => ({ name: l.name, distBuiltAt: distBuiltAt(path.join(plan.omniDir, l.dir)) })),
+    packages: builtPackages,
     machine,
     builtAt: new Date(),
     builtBy: `${os.userInfo().username}@${os.hostname()}`,

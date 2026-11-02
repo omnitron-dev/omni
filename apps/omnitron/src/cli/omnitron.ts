@@ -728,13 +728,13 @@ fleet
 
 const release = program
   .command('release')
-  .description('Build a release: a named commit of the project AND omni, in clean clones, gated and packed');
+  .description('Build and inspect project releases with verified framework inputs');
 
 release
   .command('build <project>')
-  .description('Clone both commits, install, run every gate, pack the artifacts, write the manifest')
+  .description('Build a clean project revision with its locked framework, run gates and package the artifacts')
   .option('--project-commit <sha>', "The project commit to build (default: the project checkout's HEAD)")
-  .option('--omni-commit <sha>', "The omni commit to build (default: the omni checkout's HEAD)")
+  .option('--omni-commit <sha>', "Linked checkout revision, or the exact full commit to require from registry packages")
   .option('--keep-source', 'Keep the clones after a successful build')
   .option('--skip-gates', 'Record every gate as not-run instead of running them — a look, never a release for a stack')
   .option('--for <stack>', "Also build the static bundle this stack's gateway serves, with its environment")

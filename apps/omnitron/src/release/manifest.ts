@@ -129,6 +129,10 @@ export interface BuiltWith {
 export interface ReleaseSource {
   readonly repo: string;
   readonly commit: string;
+  /** Public npm archives whose verified manifests named this exact source commit. */
+  readonly registry?: {
+    readonly packages: ReadonlyArray<{ readonly name: string; readonly version: string; readonly integrity: string }>;
+  };
   /**
    * Whether a remote-tracking branch contains the commit — null when the
    * checkout has no remote refs to ask. A release built from a commit that

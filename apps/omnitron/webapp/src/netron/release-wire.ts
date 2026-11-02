@@ -26,7 +26,7 @@ import type {
   StoredAttestation,
 } from '@omnitron-dev/omnitron/dto/services';
 
-import { deploymentsAnswer, type DeploymentsAnswer } from '@omnitron-dev/omnitron/release-reading';
+import { deploymentsAnswer, readReleaseId, type DeploymentsAnswer } from '@omnitron-dev/omnitron/release-reading';
 
 import { audit, releases } from './client';
 
@@ -48,29 +48,17 @@ export interface ReleasePreflightView extends Omit<ReleasePreflightDto, 'load' |
   readonly cpus: number | null;
 }
 
-/**
- * The two commits a release id names: `<project>-<stamp>-<project8>-<omni8>`.
- *
- * An unfinished build has no manifest to read them from, but its id was made
- * from them — so a row can still say which commits it was building instead
- * of «— + —».
- */
-function commitsFromId(id: string): { project: string | null; omni: string | null } {
-  const m = /-\d{12}-([0-9a-f]{8})-([0-9a-f]{8})$/.exec(id);
-  return { project: m?.[1] ?? null, omni: m?.[2] ?? null };
-}
-
 function summary(r: Partial<ReleaseSummary> & { id: string }): ReleaseSummaryView {
-  const fromId = commitsFromId(r.id);
+  const fromId = readReleaseId(r.id);
   return {
     id: r.id,
-    project: r.project ?? r.id.replace(/-\d{12}-[0-9a-f]{8}-[0-9a-f]{8}$/, ''),
+    project: r.project ?? fromId.project,
     complete: r.complete ?? false,
     builtAt: r.builtAt ?? null,
     builtBy: r.builtBy ?? null,
     builtWith: r.builtWith ?? null,
-    projectCommit: r.projectCommit ?? fromId.project,
-    omniCommit: r.omniCommit ?? fromId.omni,
+    projectCommit: r.projectCommit ?? fromId.projectCommit,
+    omniCommit: r.omniCommit ?? fromId.omniCommit,
     projectRepo: r.projectRepo ?? null,
     omniRepo: r.omniRepo ?? null,
     onRemote: { project: r.onRemote?.project ?? null, omni: r.onRemote?.omni ?? null },

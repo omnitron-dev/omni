@@ -31,6 +31,39 @@ omnitron logs --level warn --grep "error"
 omnitron logs --status
 ```
 
+## Building an application release
+
+`omnitron release build <project> --for <stack>` uses the selected project
+commit, its `pnpm-lock.yaml` and the stack's build environment. The Console
+Build action runs the same builder. Declare `@omnitron-dev/omnitron` in a
+workspace importer and commit the lockfile. Install all `@omnitron-dev/*`
+dependencies from the same framework release.
+
+For registry dependencies the builder downloads the exact public npm archives
+and compares each SHA-512 digest with the lockfile. Each package must carry the
+same full `gitHead`. Omnitron's own `dist/BUILD.json` must confirm that clean
+commit. The manifest records the package names, versions and archive digests in
+`omni.registry.packages`. Frozen installs can use a local store or registry
+mirror. Independent archive verification requires access to
+`registry.npmjs.org` on every build. Older packages without packed source
+metadata, including Omnitron 0.3.1, require a linked source checkout.
+
+The builder compares the installed framework with those archives and checks
+the framework files again inside each application's staged dependency graph.
+Admission checks the target execution owner's source commit. Installation
+also checks the target Node executable, OS, architecture and dependency
+graph against the application archive. The release details show Git branch
+visibility separately. If GitHub cannot confirm the framework commit on
+`main`, its visibility is unknown and a stack requiring `requireOnRemote`
+will refuse admission.
+
+Projects developing against a linked Omni checkout can keep their existing
+relative layout. The builder clones that repository at its selected commit
+and builds the linked packages. `--omni-commit` selects the checkout revision
+in this mode. With registry dependencies it is an assertion and must be the
+full commit recorded by the pinned archives. Mixing both framework sources
+in a single release is rejected.
+
 ## Host-owned public ingress
 
 See [host ingress setup, application publication and recovery](HOST-INGRESS.md) for independent multi-application HTTPS hosting through the native CLI and RPC API.

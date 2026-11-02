@@ -90,6 +90,12 @@ async function main() {
       const commit = await releaseCommand(root, 'git', ['rev-parse', 'HEAD']);
       const prepared = await prepareReleaseArtifacts(root, version, {
         build: { executable: process.execPath, args: ['scripts/build-release.mjs', root, commit] },
+        // Xec calls this after the clean build and immediately before sealing each archive.
+        async preparePackage({ workspace, pkg }) {
+          const file = path.join(workspace, pkg.path, 'package.json');
+          const metadata = JSON.parse(await readFile(file, 'utf8'));
+          await writeFile(file, JSON.stringify({ ...metadata, gitHead: commit }, null, 2) + '\n');
+        },
         progress: console.log,
       });
       const notes = await releaseNotes(root, version, repository);

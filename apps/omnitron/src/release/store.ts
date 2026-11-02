@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { loadAttestations, type StoredAttestation } from './attest.js';
+import { readReleaseId } from '../shared/release-reading.js';
 import { releasesRoot } from './load.js';
 import type { GateOutcome, ReleaseManifest } from './manifest.js';
 
@@ -88,7 +89,7 @@ export interface ReleaseDetail extends ReleaseSummary {
 
 /** `sample-202609221432-81c8a074-c64963f6` → `sample`; a name may hold dashes too. */
 export function projectOfId(id: string): string {
-  return id.replace(/-\d{12}-[0-9a-f]{8}-[0-9a-f]{8}$/, '');
+  return readReleaseId(id).project;
 }
 
 /**

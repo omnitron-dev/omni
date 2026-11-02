@@ -1,23 +1,11 @@
 /**
- * Where a release is built, so the lockfile's links land on the omni clone.
- *
- * Until the registry migration the project declares every omni package as a
- * `link:` to a checkout on the developer's disk, and the lockfile records it
- * RELATIVE to each importer — `link:../../luxquant/omnitron-dev/omni/apps/omnitron`
- * from the project root. `pnpm install --frozen-lockfile` follows that
- * relative path. So a clean clone of the project placed anywhere else either
- * links nothing (measured 2026-09-22: 97 of 97 links dangling, install exit 0)
- * or, placed at the same depth as the working checkout, links the DEVELOPER'S
- * omni — dirty tree and all — into a build that claims to be a commit.
- *
- * A release is therefore built inside a root that reproduces the relative
- * layout, with a clean clone of omni exactly where the links point. The
- * layout is read from the lockfile rather than written down here, because the
- * lockfile is what pnpm will follow.
+ * Resolve framework inputs from the project commit's pnpm lock. External
+ * workspace links have to land on an isolated checkout at the same relative
+ * path. Registry packages are pinned by the SHA-512 of their public archive.
  */
-
 import fs from 'node:fs';
 import path from 'node:path';
+import { parseAllDocuments } from 'yaml';
 
 export interface LinkLayout {
   /** omni's checkout relative to the project root, as the lockfile implies it. */
@@ -28,32 +16,61 @@ export interface LinkLayout {
   readonly linkedDirs: readonly string[];
 }
 
-/** `importer → link targets`, from the lockfile's `importers:` section. */
-function importerLinks(lockfile: string): Array<{ importer: string; rel: string }> {
-  const out: Array<{ importer: string; rel: string }> = [];
-  let inImporters = false;
-  let importer: string | null = null;
-  for (const line of lockfile.split('\n')) {
-    if (/^importers:\s*$/.test(line)) {
-      inImporters = true;
-      continue;
+type Dependency = { version: string };
+type LockDocument = {
+  importers?: Record<string, Record<string, Record<string, Dependency>>>;
+  packages?: Record<string, { resolution?: { integrity?: string; tarball?: string; type?: string } }>;
+  patchedDependencies?: Record<string, unknown>;
+};
+const sections = ['dependencies', 'devDependencies', 'optionalDependencies'] as const;
+export type RegistryPackage = { name: string; version: string; integrity: string };
+type Link = { importer: string; name: string; rel: string };
+
+function externalFile(importer: string, dependency: string) {
+  const file = dependency.slice('file:'.length);
+  const target = path.posix.normalize(path.posix.join(importer, file));
+  return path.posix.isAbsolute(file) || file.includes('\\') || target === '..' || target.startsWith('../');
+}
+
+function readGraph(lockfile: string) {
+  const links: Link[] = [], packages: RegistryPackage[] = [], importers: string[] = [];
+  const localFramework: string[] = [];
+  for (const document of parseAllDocuments(lockfile)) {
+    if (document.errors.length) throw Error('Invalid pnpm-lock.yaml: ' + document.errors[0]!.message);
+    const graph = document.toJS() as LockDocument | null;
+    if (!graph?.importers) continue;
+    for (const [importer, dependencies] of Object.entries(graph.importers)) {
+      if (importer !== '.' && (path.posix.normalize(importer) !== importer || importer.startsWith('/') ||
+          importer.split('/').includes('..') || importer.includes('\\'))) throw Error('Unsafe lockfile importer: ' + importer);
+      importers.push(importer);
+      for (const section of sections) for (const [name, entry] of Object.entries(dependencies[section] ?? {})) {
+        if (typeof entry?.version !== 'string') throw Error('Unsupported pnpm lockfile dependency: ' + name);
+        if (entry.version.startsWith('file:') && externalFile(importer, entry.version))
+          throw Error('File dependency resolves outside the committed project: ' + name);
+        if (entry.version.startsWith('link:')) links.push({ importer, name, rel: entry.version.slice(5) });
+        if (name.startsWith('@omnitron-dev/') && /^(?:link:|file:|workspace:)/.test(entry.version)) localFramework.push(name);
+      }
     }
-    if (!inImporters) continue;
-    if (/^\S/.test(line)) {
-      // pnpm 12 stores tool and application graphs as separate YAML documents.
-      inImporters = false;
-      importer = null;
-      continue;
+    for (const [key, pkg] of Object.entries(graph.packages ?? {})) {
+      const file = key.indexOf('@file:');
+      if (file !== -1 && externalFile('.', key.slice(file + 1))) throw Error('File dependency resolves outside the committed project: ' + key);
+      if (!key.startsWith('@omnitron-dev/')) continue;
+      const match = /^(@omnitron-dev\/([a-z0-9][a-z0-9.-]*))@(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?)$/.exec(key);
+      const resolution = pkg.resolution;
+      if (!match || !resolution || typeof resolution.integrity !== 'string' || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(resolution.integrity) ||
+          resolution.type || (resolution.tarball && resolution.tarball !== npmTarball(match[1]!, match[3]!))) {
+        throw Error('Framework dependency must resolve to an exact public npm archive with SHA-512: ' + key);
+      }
+      packages.push({ name: match[1]!, version: match[3]!, integrity: resolution.integrity });
     }
-    const key = /^ {2}([^\s].*?):\s*$/.exec(line);
-    if (key) {
-      importer = key[1]!.replace(/^['"]|['"]$/g, '');
-      continue;
-    }
-    const link = /^\s+version: link:(\S+)\s*$/.exec(line);
-    if (link && importer !== null) out.push({ importer, rel: link[1]! });
+    if (Object.keys(graph.patchedDependencies ?? {}).some(key => key.startsWith('@omnitron-dev/')))
+      throw Error('Local patches of registry framework packages cannot be attested');
   }
-  return out;
+  return { links, packages, importers: [...new Set(importers)], localFramework };
+}
+
+export function npmTarball(name: string, version: string): string {
+  return 'https://registry.npmjs.org/' + name + '/-/' + name.split('/')[1] + '-' + version + '.tgz';
 }
 
 /**
@@ -65,16 +82,17 @@ function importerLinks(lockfile: string): Array<{ importer: string; rel: string 
  * out by one clone, and guessing which one is "omni" would build from the
  * wrong one.
  */
-export function readLinkLayout(lockfile: string): LinkLayout | { refusal: string } {
+function layoutOf(links: Link[]): LinkLayout | { refusal: string } | null {
   const roots = new Set<string>();
   const dirs = new Set<string>();
   const strays: string[] = [];
-  for (const { importer, rel } of importerLinks(lockfile)) {
+  for (const { importer, name, rel } of links) {
+    if (path.posix.isAbsolute(rel) || rel.includes('\\')) return { refusal: 'nonportable lockfile link: ' + rel };
     const target = path.posix.normalize(path.posix.join(importer === '.' ? '' : importer, rel));
-    if (!target.startsWith('../')) continue; // inside the project: its own workspace
+    if (target !== '..' && !target.startsWith('../')) continue; // inside the project: its own workspace
     const parts = target.split('/');
     const kind = parts[parts.length - 2];
-    if (parts.length < 3 || (kind !== 'packages' && kind !== 'apps')) {
+    if (!name.startsWith('@omnitron-dev/') || parts.length < 3 || (kind !== 'packages' && kind !== 'apps')) {
       strays.push(target);
       continue;
     }
@@ -84,15 +102,37 @@ export function readLinkLayout(lockfile: string): LinkLayout | { refusal: string
   if (strays.length > 0) {
     return { refusal: `the lockfile links outside the project to something that is not a workspace package: ${strays.slice(0, 3).join(', ')}` };
   }
-  if (roots.size === 0) {
-    return { refusal: 'the lockfile links nothing outside the project — there is no omni checkout to lay out' };
-  }
+  if (roots.size === 0) return null;
   if (roots.size > 1) {
     return { refusal: `the lockfile links into ${roots.size} outside checkouts (${[...roots].join(', ')}) — one clone cannot stand in for them` };
   }
   const omniRel = [...roots][0]!;
   const climbs = omniRel.split('/').filter((p) => p === '..').length;
   return { omniRel, climbs, linkedDirs: [...dirs].sort() };
+}
+
+/** Compatibility API for projects which explicitly reproduce a linked checkout. */
+export function readLinkLayout(lockfile: string): LinkLayout | { refusal: string } {
+  try {
+    return layoutOf(readGraph(lockfile).links) ?? { refusal: 'the lockfile links nothing outside the project — there is no omni checkout to lay out' };
+  } catch (error) { return { refusal: (error as Error).message }; }
+}
+
+export type FrameworkLayout =
+  | { kind: 'linked'; layout: LinkLayout }
+  | { kind: 'registry'; packages: RegistryPackage[]; importers: string[] };
+
+export function readFrameworkLayout(lockfile: string): FrameworkLayout {
+  const graph = readGraph(lockfile);
+  const linked = layoutOf(graph.links);
+  if (linked && 'refusal' in linked) throw Error(linked.refusal);
+  if (linked && !graph.packages.length) return { kind: 'linked', layout: linked };
+  if (linked || graph.localFramework.length) throw Error('Cannot combine local framework packages and npm release inputs');
+  if (!graph.packages.some(pkg => pkg.name === '@omnitron-dev/omnitron'))
+    throw Error('The lockfile must include @omnitron-dev/omnitron with a verifiable npm archive or checkout');
+  const names = new Set(graph.packages.map(pkg => pkg.name));
+  if (names.size !== graph.packages.length) throw Error('Multiple versions of the same framework package cannot identify one release');
+  return { kind: 'registry', packages: graph.packages.sort((a, b) => a.name.localeCompare(b.name)), importers: graph.importers };
 }
 
 /**

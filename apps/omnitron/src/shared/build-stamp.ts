@@ -23,14 +23,20 @@ export interface BuildStamp {
 
 export const BUILD_STAMP_FILE = 'BUILD.json';
 
+/** Decode the same build identity from disk, or from a pinned release archive. */
+export function parseBuildStamp(input: unknown): BuildStamp | null {
+  if (!input || typeof input !== 'object') return null;
+  const raw = input as Partial<BuildStamp>;
+  if (typeof raw.commit !== 'string' || !/^[0-9a-f]{7,40}$/.test(raw.commit)) return null;
+  if (typeof raw.dirty !== 'boolean' || typeof raw.builtAt !== 'string') return null;
+  if (raw.timeBasis !== undefined && raw.timeBasis !== 'source' && raw.timeBasis !== 'build') return null;
+  return { commit: raw.commit, dirty: raw.dirty, builtAt: raw.builtAt, ...(raw.timeBasis ? { timeBasis: raw.timeBasis } : {}) };
+}
+
 /** The stamp in `dir`, or `null` when there is none or it cannot be read as one. */
 export function readBuildStamp(dir: string): BuildStamp | null {
   try {
-    const raw = JSON.parse(readFileSync(path.join(dir, BUILD_STAMP_FILE), 'utf8')) as Partial<BuildStamp>;
-    if (typeof raw.commit !== 'string' || !/^[0-9a-f]{7,40}$/.test(raw.commit)) return null;
-    if (typeof raw.dirty !== 'boolean' || typeof raw.builtAt !== 'string') return null;
-    if (raw.timeBasis !== undefined && raw.timeBasis !== 'source' && raw.timeBasis !== 'build') return null;
-    return { commit: raw.commit, dirty: raw.dirty, builtAt: raw.builtAt, ...(raw.timeBasis ? { timeBasis: raw.timeBasis } : {}) };
+    return parseBuildStamp(JSON.parse(readFileSync(path.join(dir, BUILD_STAMP_FILE), 'utf8')));
   } catch {
     return null;
   }

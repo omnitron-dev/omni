@@ -1,0 +1,134 @@
+import { createHash } from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { createGunzip } from 'node:zlib';
+import { Readable, Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { sha256File } from './portable-archive.js';
+import { list } from 'tar';
+import { parseBuildStamp } from '../shared/build-stamp.js';
+import { npmTarball, type RegistryPackage } from './layout.js';
+import type { ReleaseSource } from './manifest.js';
+
+const REPOSITORY = 'https://github.com/omnitron-dev/omni';
+const CORE = '@omnitron-dev/omnitron';
+const SHA = /^[a-f0-9]{40}$/;
+type FileEvidence = { digest: string; size: number; executable: boolean };
+type PackageEvidence = { commit: string; files: Map<string, FileEvidence> };
+export interface RegistryFramework {
+  source: ReleaseSource;
+  verifyPackage(name: string, directory: string): Promise<void>;
+}
+
+function limitedBytes(maximum: number, digest?: ReturnType<typeof createHash>) {
+  let total = 0;
+  return new Transform({ transform(chunk: Buffer, _encoding, next) {
+    total += chunk.length;
+    if (total > maximum) next(Error('Framework archive exceeds the byte limit'));
+    else { digest?.update(chunk); next(null, chunk); }
+  } });
+}
+
+/** Hash the compressed archive as received. Stream its contents without
+ * extracting paths to disk or executing package lifecycle scripts. */
+async function registryArchive(pkg: RegistryPackage, signal?: AbortSignal): Promise<PackageEvidence> {
+  const label = pkg.name + '@' + pkg.version;
+  const timeout = AbortSignal.timeout(60_000);
+  const deadline = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  const response = await fetch(npmTarball(pkg.name, pkg.version), { redirect: 'error', signal: deadline });
+  if (!response.ok || !response.body) { await response.body?.cancel(); throw Error('Cannot read public npm archive for ' + label + ' (HTTP ' + response.status + ')'); }
+  const archiveHash = createHash('sha512');
+  const files = new Map<string, FileEvidence>();
+  const records = new Map<string, Buffer>();
+  const tar = list({ strict: true, onReadEntry(entry) {
+    if (entry.type === 'Directory') return;
+    const relative = entry.path.slice('package/'.length);
+    if (entry.type !== 'File' || !entry.path.startsWith('package/') || relative.includes('\\') ||
+        relative.split('/').some(part => !part || part === '.' || part === '..' || part === 'node_modules') ||
+        files.has(relative) || files.size >= 50_000) {
+      tar.abort(Error('Unexpected or duplicate npm archive entry in ' + label + ': ' + entry.path)); return;
+    }
+    const hash = createHash('sha256');
+    const metadataEntry = relative === 'package.json' || relative === 'dist/BUILD.json';
+    if (metadataEntry && entry.size > 1024 * 1024) { tar.abort(Error('Oversized package metadata: ' + label)); return; }
+    const chunks: Buffer[] = [];
+    entry.on('data', (chunk: Buffer) => { hash.update(chunk); if (metadataEntry) chunks.push(chunk); });
+    entry.on('end', () => {
+      files.set(relative, { digest: hash.digest('hex'), size: entry.size, executable: Boolean((entry.mode ?? 0) & 0o111) });
+      if (metadataEntry) records.set(relative, Buffer.concat(chunks));
+    });
+  } });
+  await pipeline(Readable.from(response.body), limitedBytes(64 * 1024 * 1024, archiveHash), createGunzip(),
+    limitedBytes(256 * 1024 * 1024), tar, { signal: deadline });
+  if ('sha512-' + archiveHash.digest('base64') !== pkg.integrity) throw Error('Public npm archive differs from the committed SHA-512: ' + label);
+  const metadata = JSON.parse(records.get('package.json')?.toString('utf8') ?? '{}') as { name?: string; version?: string; gitHead?: string; bin?: string | Record<string, string> };
+  if (metadata?.name !== pkg.name || metadata.version !== pkg.version || typeof metadata.gitHead !== 'string' || !SHA.test(metadata.gitHead))
+    throw Error('No exact source commit in the npm archive for ' + label + '; use a release with a packed gitHead or a linked checkout');
+  if (pkg.name === CORE) {
+    const stamp = parseBuildStamp(JSON.parse(records.get('dist/BUILD.json')?.toString('utf8') ?? 'null'));
+    if (stamp?.commit !== metadata.gitHead || stamp.dirty !== false || stamp.timeBasis !== 'source')
+      throw Error('The Omnitron build stamp does not confirm its clean release commit: ' + label);
+  }
+  // pnpm marks declared binaries executable when linking them into .bin.
+  for (const bin of typeof metadata.bin === 'string' ? [metadata.bin] : Object.values(metadata.bin ?? {})) {
+    const file = files.get(bin.replace(/^\.\//, ''));
+    if (file) file.executable = true;
+  }
+  return { commit: metadata.gitHead, files };
+}
+
+/** Compare real files in the installation or staged artifact with the archive.
+ * Its node_modules edges are checked separately by the closure graph. */
+async function verifyTree(root: string, files: Map<string, FileEvidence>): Promise<void> {
+  let count = 0;
+  async function visit(subdir: string) {
+    for (const item of await fs.readdir(path.join(root, subdir), { withFileTypes: true })) {
+      if (!subdir && item.name === 'node_modules') continue;
+      const name = path.posix.join(subdir, item.name);
+      if (item.isDirectory()) { await visit(name); continue; }
+      const expected = files.get(name), location = path.join(root, name);
+      const stat = await fs.lstat(location);
+      if (!stat.isFile() || !expected || stat.size !== expected.size ||
+          (process.platform !== 'win32' && Boolean(stat.mode & 0o111) !== expected.executable) ||
+          await sha256File(location) !== expected.digest)
+        throw Error('Installed framework file differs from its public npm archive: ' + location);
+      count++;
+    }
+  }
+  await visit('');
+  if (count !== files.size) throw Error('Installed framework is missing files from its public npm archive: ' + root);
+}
+
+/** Git branch visibility and npm publication are two independent observations. */
+async function sourceOnMain(commit: string, signal?: AbortSignal): Promise<true | null> {
+  const timeout = AbortSignal.timeout(8000);
+  try {
+    const response = await fetch('https://api.github.com/repos/omnitron-dev/omni/compare/' + commit + '...main?per_page=1', {
+      redirect: 'error', signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    });
+    if (!response.ok) { await response.body?.cancel(); return null; }
+    const comparison = await response.json() as { base_commit?: { sha: string }; status?: string };
+    return comparison.base_commit?.sha === commit && ['ahead', 'identical'].includes(comparison.status ?? '') ? true : null;
+  } catch { signal?.throwIfAborted(); return null; }
+}
+
+export async function resolveRegistryFramework(packages: RegistryPackage[], requested?: string, signal?: AbortSignal): Promise<RegistryFramework> {
+  const verified = new Map<string, PackageEvidence>();
+  let commit: string | undefined;
+  for (const pkg of packages) {
+    const archive = await registryArchive(pkg, signal);
+    if (commit && archive.commit !== commit) throw Error('Registry framework packages were built from different commits: ' + pkg.name);
+    commit = archive.commit;
+    verified.set(pkg.name, archive);
+  }
+  if (!commit || !verified.has(CORE)) throw Error('The lockfile lacks an attested Omnitron package');
+  if (requested !== undefined && requested !== commit) throw Error('--omni-commit must match the full registry source commit ' + commit);
+  return {
+    source: { repo: REPOSITORY, commit, onRemote: await sourceOnMain(commit, signal), registry: { packages } },
+    async verifyPackage(name, directory) {
+      const evidence = verified.get(name);
+      if (!evidence) throw Error('Framework package is absent from the verified npm lock: ' + name);
+      await verifyTree(directory, evidence.files);
+    },
+  };
+}

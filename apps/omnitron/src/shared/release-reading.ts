@@ -1,9 +1,15 @@
 /** Shared, browser-safe readings of release gates, Git provenance and deployment evidence. */
 
-import type { GateOutcome } from '../release/manifest.js';
+import type { GateOutcome, ReleaseManifest } from '../release/manifest.js';
 import type { DeployProgressRecord, ReleaseDeploymentDto } from './dto/services.js';
 import type { IProjectInfo, IStackInfo } from './dto/project.js';
 import type { RuntimeReleaseEvidence } from '../config/types.js';
+
+/** Retried and concurrent builds can carry a private-directory suffix. */
+export function readReleaseId(id: string) {
+  const parts = /^(.*)-\d{12}-([0-9a-f]{8})-([0-9a-f]{8})(?:-[A-Za-z0-9]{6})?$/.exec(id);
+  return { project: parts?.[1] ?? id, projectCommit: parts?.[2] ?? null, omniCommit: parts?.[3] ?? null };
+}
 
 /** Interpret the daemon's start reply consistently for interactive and scripted callers. */
 export function readStackStart(stack: Pick<IStackInfo, 'status' | 'apps' | 'notUp'>) {
@@ -39,6 +45,13 @@ export function readDeploymentProgress(records: readonly DeployProgressRecord[],
 
 export function releaseTargetLabel(target?: import('../release/target-runtime.js').TargetRuntime): string {
   return target ? `${target.platform}/${target.arch} · Node ${target.node} · ABI ${target.abi}` : 'Target not recorded';
+}
+
+export function frameworkSourceLabel(manifest: ReleaseManifest): string {
+  const packages = manifest.omni.registry?.packages;
+  const count = packages?.length ?? manifest.builtWith?.packages?.length;
+  if (count === undefined) return 'Framework source not recorded';
+  return `${packages ? 'npm registry' : 'Linked checkout'} · ${count} framework package${count === 1 ? '' : 's'}`;
 }
 
 /**

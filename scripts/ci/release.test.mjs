@@ -112,6 +112,11 @@ test('release plans, seals, pushes one tag and resumes a partial registry public
   assert.notEqual(commit, before);
   const manifest = JSON.parse(await fs.readFile(path.join(workspace, '.release-artifacts', version, commit, 'release.json')));
   assert.deepEqual(manifest.artifacts.map(p => p.name), [first, second]);
+  for (const artifact of manifest.artifacts) {
+    const tarball = path.join(workspace, '.release-artifacts', version, commit, artifact.file);
+    const packed = JSON.parse((await exec('tar', ['-xOf', tarball, 'package/package.json'])).stdout);
+    assert.equal(packed.gitHead, commit);
+  }
   await release('--push');
   assert.equal(await git('ls-remote', '--tags', 'origin', 'refs/tags/unrelated'), '');
   assert.equal((await git('ls-remote', 'origin', 'refs/heads/main')).split(/\s/)[0], commit);

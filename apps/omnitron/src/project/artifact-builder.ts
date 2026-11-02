@@ -71,6 +71,7 @@ export interface BuildOptions {
   skipBuild?: boolean;
   /** For a checked release, ship the installed production closure of these isolated checkouts. */
   readonly releaseCheckouts?: readonly string[];
+  readonly verifyFrameworkPackage?: import('../release/registry-framework.js').RegistryFramework['verifyPackage'];
   /** Environment shared with the release dependency installation and gates. */
   readonly env?: NodeJS.ProcessEnv;
   /** Output directory for artifacts */
@@ -255,7 +256,7 @@ export class ArtifactBuilder {
     // The checked release is identified by delivered bytes. Development builds
     // keep their input checksum for the existing redeployment decision.
     const checksum = options?.releaseCheckouts
-      ? await this.createFrozenTarball(appDir, artifactPath, entry, options.releaseCheckouts)
+      ? await this.createFrozenTarball(appDir, artifactPath, entry, options.releaseCheckouts, options.verifyFrameworkPackage)
       : await this.createTarball(appDir, artifactPath, entry.name, session);
 
     // What this artifact was built from, recorded AFTER it was packed.
@@ -536,13 +537,14 @@ export class ArtifactBuilder {
   }
 
   /** A checked release ships all production packages from its clean, target-specific install. */
-  private async createFrozenTarball(appDir: string, artifactPath: string, entry: IEcosystemAppEntry, roots: readonly string[]): Promise<string> {
+  private async createFrozenTarball(appDir: string, artifactPath: string, entry: IEcosystemAppEntry, roots: readonly string[],
+    verifyPackage?: import('../release/registry-framework.js').RegistryFramework['verifyPackage']): Promise<string> {
     const io = await import('node:fs/promises');
     const { stageApplicationClosure } = await import('../release/application-closure.js');
     const { archiveBundle } = await import('../services/bundle-builder.js');
     const staging = await io.mkdtemp(path.join(os.tmpdir(), 'omnitron-closure-'));
     try {
-      await stageApplicationClosure(appDir, staging, entry, roots);
+      await stageApplicationClosure(appDir, staging, entry, roots, verifyPackage);
       await archiveBundle(staging, artifactPath);
       return await sha256File(artifactPath);
     } finally { await io.rm(staging, { recursive: true, force: true }); }

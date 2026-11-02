@@ -50,8 +50,12 @@ function sha256Of(file: string): Promise<string> {
 /** A release id names a directory; it may not name one anywhere else. */
 const RELEASE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-export async function loadRelease(id: string, root: string = releasesRoot()): Promise<LoadedRelease> {
+export function assertReleaseId(id: string): void {
   if (!RELEASE_ID.test(id) || id.includes('..')) throw new Error(`'${id}' is not a release id`);
+}
+
+export async function loadRelease(id: string, root: string = releasesRoot()): Promise<LoadedRelease> {
+  assertReleaseId(id);
   const dir = path.join(root, id);
   const manifestPath = path.join(dir, 'manifest.json');
   if (!fs.existsSync(manifestPath)) {

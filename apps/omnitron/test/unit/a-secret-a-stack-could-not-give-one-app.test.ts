@@ -119,8 +119,9 @@ describe('a remote stack', () => {
   } as never;
   const RELEASE = {
     id: 'sample-202609232000-00000000',
-    files: ['main', 'payments'].map((app) => ({ app, version: '0.0.1', path: `/nowhere/${app}.tgz`, bytes: 1, inputs: 'i', sha256: 's' })),
-    manifest: { builtAt: '2026-09-23T20:00:00Z' },
+    manifestSha256: 'b'.repeat(64),
+    files: ['main', 'payments'].map((app) => ({ app, version: '0.0.1', path: `/nowhere/${app}.tgz`, bytes: 1, inputs: 'i', sha256: 'a'.repeat(64) })),
+    manifest: { builtAt: '2026-09-23T20:00:00Z', omni: { commit: 'c'.repeat(40) } },
     staticsDir: null,
   } as never;
 

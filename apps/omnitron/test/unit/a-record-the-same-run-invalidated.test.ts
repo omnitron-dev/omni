@@ -82,6 +82,22 @@ describe('when a build writes down what it was built from', () => {
     expect(order).toEqual(['decide', 'build', 'tarball', 'record']);
   });
 
+  it('records only successful builds in a batch, after compilation and packing', async () => {
+    const { builder, order, entry } = builderOver();
+    const compile = builder.runBuild;
+    builder.runBuild = async (dir: string, name: string) => {
+      if (name === 'broken') {
+        order.push('build failed');
+        throw new Error('compiler rejected the source');
+      }
+      await compile(dir, name);
+    };
+    const result = await builder.buildAll([{ ...entry, name: 'broken' }, entry]);
+    expect(result.failed).toEqual([{ app: 'broken', error: 'compiler rejected the source' }]);
+    expect(result.built.map((artifact: { app: string }) => artifact.app)).toEqual(['main']);
+    expect(order).toEqual(['decide', 'build failed', 'decide', 'build', 'tarball', 'record']);
+  });
+
   it('records on the reuse path too — that run can rebuild a vendored package as well', async () => {
     const { builder, order, entry } = builderOver({ decision: 'reuse' });
 

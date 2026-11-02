@@ -13,6 +13,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   deploymentsAnswer,
+  NO_AUDIT_TRAIL,
   pruneBlindness,
   readGates,
   stacksByRelease,
@@ -89,8 +90,9 @@ describe('a prune that protected what it could not see', () => {
 
   it('does not read an empty answer from a daemon without its audit trail as «none deployed»', () => {
     const answer = deploymentsAnswer(false, []);
-    expect(answer.known).toBe(false);
-    expect(pruneBlindness(answer)).toMatch(/no audit trail/);
+    expect(answer).toMatchObject({ known: false, why: expect.stringMatching(/audit/i) });
+    expect(pruneBlindness(answer)).toBe(NO_AUDIT_TRAIL);
+    expect(pruneBlindness(deploymentsAnswer(true, []))).toBeNull();
   });
 
   it('names the stack whose last release the trail could not name', () => {

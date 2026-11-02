@@ -115,17 +115,20 @@ describe('the master carries «not ready» to the start\'s answer and its row', 
 });
 
 describe('`stack start` says it and exits non-zero', () => {
-  it('prints what is not up beside six apps online, and exits 1', async () => {
+  it('reports the failed node service alongside the online applications and exits 1', async () => {
     const errors: string[] = [];
+    const success = vi.fn();
+    const reason = 'infrastructure on 37.27.130.185:9700: host services NOT up — bitcoin failed: could not start bitcoind';
     vi.doMock('../../src/daemon/daemon-client.js', async (importOriginal) => ({
       ...(await importOriginal<typeof import('../../src/daemon/daemon-client.js')>()),
       createDaemonClient: () => ({
         service: async () => ({
           startStack: async () => ({
             name: 'test',
+            status: 'running',
             apps: ['main', 'payments'].map((name) => ({ name, status: 'online' })),
             infrastructure: { ready: true, services: {} },
-            notUp: ['infrastructure on 37.27.130.185:9700: host services NOT up — bitcoin failed: could not start bitcoind'],
+            notUp: [reason],
           }),
         }),
         disconnect: async () => undefined,
@@ -141,7 +144,7 @@ describe('`stack start` says it and exits non-zero', () => {
           return true;
         },
         emitStep: () => undefined,
-        emitSuccess: () => undefined,
+        emitSuccess: success,
         emitInfo: () => undefined,
       };
     });
@@ -151,7 +154,9 @@ describe('`stack start` says it and exits non-zero', () => {
       process.exitCode = 0;
       await stackStartCommand('sample', 'test');
       expect(process.exitCode).toBe(1);
-      expect(errors.join('\n')).toMatch(/started with parts not up — infrastructure on 37\.27\.130\.185:9700: .*bitcoin/);
+      expect(errors.join('\n')).toContain('2/2');
+      expect(errors.join('\n')).toContain(reason);
+      expect(success).not.toHaveBeenCalled();
     } finally {
       process.exitCode = 0;
       vi.doUnmock('../../src/daemon/daemon-client.js');

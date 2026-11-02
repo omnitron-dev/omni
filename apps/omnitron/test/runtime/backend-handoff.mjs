@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import net from 'node:net';
+import { reserveDaemonPorts } from './fixture-ports.mjs';
 import { fork, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
@@ -56,12 +56,7 @@ const { PidManager } = await import(url('daemon/pid-manager.js'));
 const stamp = JSON.parse(await fs.readFile(path.join(dist, 'BUILD.json'), 'utf8'));
 const sourceHash = JSON.parse(await fs.readFile(path.join(runtimeRoot, 'RUNTIME.json'), 'utf8')).sha256;
 const { runtimeArtifactDigest } = await import(url('shared/runtime-artifact.js')); 
-const reserve = () => new Promise((resolve, reject) => {
-  const server = net.createServer();
-  server.once('error', reject);
-  server.listen(0, '127.0.0.1', () => { const port = server.address().port; server.close(() => resolve(port)); });
-});
-const httpBase = await reserve();
+const { httpPort: httpBase, release } = await reserveDaemonPorts();
 const boot = path.join(directory, 'boot.mjs');
 const script = path.join(directory, 'counter.mjs');
 const applicationPackage = path.resolve(dist, '..');
@@ -104,6 +99,7 @@ await daemon.start(config,{noInfra:true,noWatch:true},{...DEFAULT_DAEMON_CONFIG,
 process.send({type:'ready',execution:daemon.backendRuntimeStatus()}); process.disconnect();
 `);
 const output = await fs.open(path.join(directory, 'initial.log'), 'a', 0o600);
+await release();
 const initial = fork(boot, [], { cwd: directory, env: { ...process.env, OMNITRON_HOME: instance, ...(databaseUrl ? { OMNITRON_DATABASE_URL: databaseUrl } : {}) },
   execArgv: [], stdio: ['ignore', output.fd, output.fd, 'ipc'] });
 await output.close();

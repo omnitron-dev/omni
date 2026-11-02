@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import { constants } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import net from 'node:net';
+import { reserveDaemonPorts } from './fixture-ports.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
@@ -20,15 +20,12 @@ const { RuntimeInstallation, selectedBackend } = await load('daemon/runtime-inst
 const { createDaemonClient } = await load('daemon/daemon-client.js');
 const { PidManager } = await load('daemon/pid-manager.js');
 const { verifyRuntimeArtifact } = await load('shared/runtime-artifact.js');
-const reserve = () => new Promise((resolve, reject) => {
-  const server = net.createServer(); server.once('error', reject);
-  server.listen(0, '127.0.0.1', () => { const port = server.address().port; server.close(() => resolve(port)); });
-});
+const { httpPort, ports: [tcpPort], release } = await reserveDaemonPorts(1);
 const socket = path.join(home, 'daemon.sock');
 const ownerDirectory = path.join(directory, 'e');
 await fs.writeFile(path.join(home, 'config.json'), JSON.stringify({
   role: 'slave', initialized: true, initializedAt: new Date().toISOString(), webapp: false,
-  port: await reserve(), httpPort: await reserve(), host: '127.0.0.1',
+  port: tcpPort, httpPort, host: '127.0.0.1',
   auth: { jwtSecret: 'isolated-runtime-startup-test-secret' },
   executionHost: { enabled: true, directory: ownerDirectory },
 }), { mode: 0o600 });
@@ -52,6 +49,7 @@ const waitDead = async pid => {
 let client;
 const states = [];
 try {
+  await release();
   for (let cycle = 0; cycle < 2; cycle++) {
     const output = await execute(installed.launcher, ['up', '--no-infra', '--no-watch'], {
       cwd: directory, env: { ...process.env, OMNITRON_HOME: home }, timeout: 90_000, maxBuffer: 1024 * 1024,

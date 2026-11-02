@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import net from 'node:net';
+import { reserveDaemonPorts } from './fixture-ports.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
@@ -40,11 +40,7 @@ try {
     return installed;
   });
 } finally { await installation.close(); }
-const reserve = () => new Promise((resolve, reject) => {
-  const server = net.createServer(); server.once('error', reject);
-  server.listen(0, '127.0.0.1', () => { const value = server.address().port; server.close(() => resolve(value)); });
-});
-const port = await reserve(), tcpPort = await reserve(), counterPort = await reserve();
+const { httpPort: port, ports: [tcpPort, counterPort], release } = await reserveDaemonPorts(2);
 const readiness = { intervalMs: 1000, timeoutMs: 1000, probes: [
   { name: 'counter HTTP', type: 'http', url: `http://127.0.0.1:${counterPort}/health`, expect: { fixture: id, ready: true } },
 ] };
@@ -99,6 +95,7 @@ try {
   // Linux btime is rounded to seconds. Keep sealed file timestamps strictly before
   // the conservative process birth used by legacy-owner attestation.
   if (linux && managementDist) await new Promise(resolve => setTimeout(resolve, 1100));
+  await release();
   for (const unit of units) await native(linux ? ['start', unit.job] : ['bootstrap', domain, unit.file]);
   let first = await until(status, 'Initial managed backend did not start');
   console.log(JSON.stringify({ stage: 'cold-start', root, backend: first.pid, owner: first.execution.owner.pid }));

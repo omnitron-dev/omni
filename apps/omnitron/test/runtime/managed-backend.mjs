@@ -44,7 +44,10 @@ const reserve = () => new Promise((resolve, reject) => {
   const server = net.createServer(); server.once('error', reject);
   server.listen(0, '127.0.0.1', () => { const value = server.address().port; server.close(() => resolve(value)); });
 });
-const port = await reserve(), tcpPort = await reserve();
+const port = await reserve(), tcpPort = await reserve(), counterPort = await reserve();
+const readiness = { intervalMs: 1000, timeoutMs: 1000, probes: [
+  { name: 'counter HTTP', type: 'http', url: `http://127.0.0.1:${counterPort}/health`, expect: { fixture: id, ready: true } },
+] };
 const config = { protocol: 1, instanceHome: instance, directory: execution, scope: linux ? 'system' : 'user', cwd: root,
   environment: { OMNITRON_HOME: instance, OMNITRON_NO_INFRA: '1', OMNITRON_NO_WATCH: '1', PATH: process.env.PATH },
   owner: { label: `dev.omnitron.fixture.${id}.owner`, unit: `omnitron-fixture-${id}-owner.service`, artifact: artifact.runtimeHash },
@@ -57,10 +60,10 @@ await fs.writeFile(path.join(root, 'counter.mjs'), `import http from 'node:http'
  let value=0,sequence=0,paused=false;setInterval(()=>value++,5);
  setInterval(()=>{if(paused)return;const record={level:30,time:new Date().toISOString(),msg:'fixture:${id}:'+sequence+++'\\n  first continuation\\n  second continuation'};
  fs.appendFileSync(${JSON.stringify(path.join(root, 'expected.jsonl'))},JSON.stringify(record)+'\\n');process.stdout.write(JSON.stringify(record)+'\\n');},50);
- const server=http.createServer((q,r)=>{if(q.url==='/pause')paused=true;r.end(JSON.stringify({pid:process.pid,parent:process.ppid,value}));});
- server.listen(0,'127.0.0.1',()=>{fs.writeFileSync(${JSON.stringify(path.join(root, 'address.json'))},JSON.stringify(server.address()));process.send?.({type:'ready'});});
+ const server=http.createServer((q,r)=>{if(q.url==='/pause')paused=true;r.end(JSON.stringify({pid:process.pid,parent:process.ppid,value,fixture:${JSON.stringify(id)},ready:true,timestamp:new Date().toISOString()}));});
+ server.listen(${counterPort},'127.0.0.1',()=>{fs.writeFileSync(${JSON.stringify(path.join(root, 'address.json'))},JSON.stringify(server.address()));process.send?.({type:'ready'});});
  process.on('SIGTERM',()=>server.close(()=>process.exit(0)));`);
-await fs.writeFile(path.join(root, 'omnitron.config.mjs'), `export default {apps:[{name:'counter',script:'./counter.mjs',cwd:${JSON.stringify(root)},enabled:true}]};`);
+await fs.writeFile(path.join(root, 'omnitron.config.mjs'), `export default {apps:[{name:'counter',script:'./counter.mjs',cwd:${JSON.stringify(root)},enabled:true,readiness:${JSON.stringify(readiness)}}]};`);
 const units = [];
 for (const mode of ['owner', 'backend']) {
   const systemUnitDir = managementDist ? '/etc/systemd/system' : '/run/systemd/system';
@@ -93,6 +96,9 @@ const waitCertificate = () => until(async () => (await status()).execution?.reco
 let sampler, inFlight = false, samples = 0, failures = 0, ownerPid, applicationPid, ownerClient;
 try {
   if (linux) await native(['daemon-reload']);
+  // Linux btime is rounded to seconds. Keep sealed file timestamps strictly before
+  // the conservative process birth used by legacy-owner attestation.
+  if (linux && managementDist) await new Promise(resolve => setTimeout(resolve, 1100));
   for (const unit of units) await native(linux ? ['start', unit.job] : ['bootstrap', domain, unit.file]);
   let first = await until(status, 'Initial managed backend did not start');
   console.log(JSON.stringify({ stage: 'cold-start', root, backend: first.pid, owner: first.execution.owner.pid }));
@@ -102,7 +108,22 @@ try {
   const address = await until(async () => JSON.parse(await fs.readFile(path.join(root, 'address.json'), 'utf8')), 'Counter did not start');
   const probe = async () => (await fetch(`http://127.0.0.1:${address.port}`, { signal: AbortSignal.timeout(1000) })).json();
   const before = await probe(); applicationPid = before.pid;
-  console.log(JSON.stringify({ stage: 'application-ready', applicationPid }));
+  // 9ec's classic applications use declared readiness, rather than a Titan IPC health channel.
+  const { checkReadiness } = await load('health/readiness.js');
+  const unknown = await checkReadiness(undefined, root);
+  assert.equal(unknown.status, 'degraded');
+  assert.match(unknown.checks[0].message, /readiness_not_configured/);
+  const healthClient = createDaemonClient(socket, 30_000);
+  try {
+    await until(async () => {
+      const report = await healthClient.getHealth({});
+      const health = report.apps?.counter;
+      assert.equal(health?.status, 'healthy');
+      assert(health.checks.some(check => check.name === 'counter HTTP' && check.status === 'pass'));
+      return true;
+    }, 'Counter HTTP readiness did not pass');
+  } finally { await healthClient.disconnect(); }
+  console.log(JSON.stringify({ stage: 'application-ready', applicationPid, unknownReadiness: unknown.status }));
   assert.equal(before.parent, ownerPid);
   ownerClient = await privateControlClient(path.join(execution, 'owner.sock'), 'OmnitronExecution', 3000);
   sampler = setInterval(async () => {

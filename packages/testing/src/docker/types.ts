@@ -100,7 +100,7 @@ export interface ContainerOptions {
   /** Health check configuration */
   healthcheck?: {
     /** Health check command (array format: ['CMD', 'arg1', ...] or ['CMD-SHELL', 'command']) */
-    test: string[];
+    test: string | string[];
     /** Interval between checks (e.g., "1s") */
     interval?: string;
     /** Timeout for each check (e.g., "3s") */

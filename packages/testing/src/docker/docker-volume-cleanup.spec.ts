@@ -22,7 +22,12 @@ const execFileSyncMock = vi.fn(() => '');
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
-  return { ...actual, execFileSync: (...args: unknown[]) => execFileSyncMock(...args) };
+  return { ...actual, execFileSync: (...args: unknown[]) => execFileSyncMock(...args),
+    spawnSync: (...args: unknown[]) => {
+      try { return { status: 0, stdout: execFileSyncMock(...args), stderr: '' }; }
+      catch (error) { return error; }
+    },
+  };
 });
 
 const { DockerTestManager } = await import('./docker-test-manager.js');
@@ -33,23 +38,45 @@ describe('DockerTestManager container removal', () => {
     execFileSyncMock.mockReturnValue('');
   });
 
-  it('passes -v everywhere it removes a container', async () => {
-    const manager = new DockerTestManager();
+  it('removes anonymous volumes using the immutable ID returned by Docker', async () => {
+    const dockerId = 'a'.repeat(64);
+    execFileSyncMock.mockImplementation((_exe, args) => args[0] === 'run' ? dockerId : '');
+    const manager = DockerTestManager.getInstance({ dockerPath: 'docker', cleanup: false });
+    const container = await manager.createContainer({ name: 'volume-flag-probe', image: 'redis:7-alpine' });
+    await container.cleanup();
+    const removals = execFileSyncMock.mock.calls.map(call => call[1]).filter(args => args[0] === 'rm');
+    expect(removals).toEqual([['rm', '-f', '-v', dockerId]]);
+  });
 
-    // Any path that removes a container will do; createContainer clears a stale
-    // one by name before starting, which is the first of the six call sites.
-    await manager
-      .createContainer({ name: 'volume-flag-probe', image: 'redis:7-alpine' })
-      .catch(() => undefined);
+  it('leaves existing containers and networks owned by another caller alone', async () => {
+    const collision = Object.assign(new Error('fixture'), { status: 125, stderr: 'The container name "/foreign" is already in use' });
+    execFileSyncMock.mockImplementation((_exe, args) => {
+      if (args[0] === 'network' && args[1] === 'create') throw Object.assign(new Error('fixture'), { stderr: 'network already exists' });
+      if (args[0] === 'run') throw collision;
+      return '';
+    });
+    const manager = DockerTestManager.getInstance({ dockerPath: 'docker', cleanup: false });
+    await expect(manager.createContainer({ name: 'foreign', image: 'redis:7-alpine', networks: ['shared'] })).rejects.toThrow('name conflict');
+    await manager.cleanupAll();
+    expect(execFileSyncMock.mock.calls.map(call => call[1]).filter(args => args.includes('rm') || args.includes('stop'))).toEqual([]);
+  });
 
-    const removals = execFileSyncMock.mock.calls
-      .map((c) => c[1] as string[])
-      .filter((args) => Array.isArray(args) && args[0] === 'rm');
-
-    expect(removals.length, 'no container removal was issued').toBeGreaterThan(0);
-    for (const args of removals) {
-      expect(args, `container removal without -v: ${args.join(' ')}`).toContain('-v');
-    }
+  it.skipIf(process.platform === 'win32')('keeps CMD input literal and reserves owner labels', async () => {
+    const id = 'b'.repeat(64);
+    let run: string[] = [];
+    execFileSyncMock.mockImplementation((_exe, args) => {
+      if (args[0] === 'run') { run = args; return id; }
+      return '';
+    });
+    const manager = DockerTestManager.getInstance({ dockerPath: 'docker', cleanup: false });
+    const literal = "a' b; $(echo INJECTED)";
+    const container = await manager.createContainer({ image: 'fixture', labels: { 'test.id': 'foreign' },
+      healthcheck: { test: ['CMD', 'printf', '%s', literal] } });
+    expect(container.labels['test.id']).toBe(container.id);
+    const command = run[run.indexOf('--health-cmd') + 1];
+    const { execFileSync } = await vi.importActual<typeof import('node:child_process')>('node:child_process');
+    expect(execFileSync('/bin/sh', ['-c', command], { encoding: 'utf8' })).toBe(literal);
+    await container.cleanup();
   });
 
   it('never passes -v to a network removal', () => {

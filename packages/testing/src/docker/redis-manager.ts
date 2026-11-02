@@ -140,7 +140,7 @@ export class RedisTestManager {
     const networkName = options?.network || `redis-cluster-${randomBytes(8).toString('hex')}`;
 
     // Create network
-    await RedisTestManager.getDockerManager()['ensureNetwork'](networkName);
+    await RedisTestManager.getDockerManager().ensureNetwork(networkName);
 
     const masters: DockerContainer[] = [];
     const replicas: DockerContainer[] = [];
@@ -290,7 +290,7 @@ export class RedisTestManager {
           await Promise.allSettled([...masters.map((c) => c.cleanup()), ...replicas.map((c) => c.cleanup())]);
           // Then remove the network
           try {
-            await RedisTestManager.getDockerManager()['removeNetwork'](networkName);
+            await RedisTestManager.getDockerManager().removeNetwork(networkName);
           } catch (error) {
             // Log but don't throw - network cleanup is best effort
             console.warn(`Failed to remove network ${networkName}:`, error);
@@ -318,7 +318,7 @@ export class RedisTestManager {
       ]);
       // Try to remove network on failure too
       try {
-        await RedisTestManager.getDockerManager()['removeNetwork'](networkName);
+        await RedisTestManager.getDockerManager().removeNetwork(networkName);
       } catch (networkError) {
         // Log network cleanup errors but don't fail - network might be in use or already removed
         console.error(`Failed to remove network ${networkName} during failure cleanup:`, networkError);
@@ -358,7 +358,7 @@ export class RedisTestManager {
     const networkName = options?.network || `redis-sentinel-${randomBytes(8).toString('hex')}`;
 
     // Create network
-    await RedisTestManager.getDockerManager()['ensureNetwork'](networkName);
+    await RedisTestManager.getDockerManager().ensureNetwork(networkName);
 
     let master: DockerContainer | undefined;
     const replicas: DockerContainer[] = [];

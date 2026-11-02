@@ -86,10 +86,9 @@ export class DatabaseTestManager {
         POSTGRES_DB: database,
         POSTGRES_USER: user,
         POSTGRES_PASSWORD: password,
-        POSTGRES_HOST_AUTH_METHOD: 'trust',
       },
       healthcheck: {
-        test: ['CMD-SHELL', `pg_isready -U ${user}`],
+        test: ['CMD', 'pg_isready', '-h', '127.0.0.1', '-U', user, '-d', database],
         interval: '1s',
         timeout: '5s',
         retries: 30,
@@ -149,10 +148,9 @@ export class DatabaseTestManager {
         MYSQL_USER: user,
         MYSQL_PASSWORD: password,
         MYSQL_ROOT_PASSWORD: rootPassword,
-        MYSQL_ALLOW_EMPTY_PASSWORD: 'yes',
       },
       healthcheck: {
-        test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost'],
+        test: ['CMD', 'mysqladmin', 'ping', '--protocol=tcp', '-h', '127.0.0.1'],
         interval: '2s',
         timeout: '10s',
         retries: 25,
@@ -194,7 +192,7 @@ export class DatabaseTestManager {
     const database = options?.database || 'testdb';
     const user = options?.user || 'testuser';
     const password = options?.password || 'testpass';
-    const connectionString = `postgresql://${user}:${password}@localhost:${port}/${database}`;
+    const connectionString = `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@localhost:${port}/${encodeURIComponent(database)}`;
 
     try {
       return await testFn(container, connectionString);
@@ -231,7 +229,7 @@ export class DatabaseTestManager {
     const database = options?.database || 'testdb';
     const user = options?.user || 'testuser';
     const password = options?.password || 'testpass';
-    const connectionString = `mysql://${user}:${password}@localhost:${port}/${database}`;
+    const connectionString = `mysql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@localhost:${port}/${encodeURIComponent(database)}`;
 
     try {
       return await testFn(container, connectionString);

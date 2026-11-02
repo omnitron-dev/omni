@@ -13,7 +13,7 @@
  * - Network management
  */
 
-import { execSync, execFileSync } from 'child_process';
+import { execSync, execFileSync, spawnSync } from 'child_process';
 import { randomBytes } from 'crypto';
 import { hostname } from 'os';
 import * as net from 'net';
@@ -31,6 +31,15 @@ function parseDockerLabels(labels: string): Record<string, string> {
     if (eq > 0) out[pair.slice(0, eq)] = pair.slice(eq + 1);
   }
   return out;
+}
+
+/** Docker's CLI evaluates --health-cmd in a shell. Preserve literal CMD arguments. */
+function dockerHealthCommand(test: string | string[]): string {
+  if (typeof test === 'string') return test;
+  const [mode, ...args] = test;
+  if (mode === 'CMD-SHELL') return args.join(' ');
+  const argv = mode === 'CMD' ? args : test;
+  return argv.map(arg => "'" + arg.replaceAll("'", "'\\''") + "'").join(' ');
 }
 
 /** The pid the manager id starts with, or null when it is not one. */
@@ -95,8 +104,8 @@ export class DockerTestManager extends EventEmitter {
   private static instance: DockerTestManager;
   private containers: Map<string, DockerContainer> = new Map();
   private usedPorts: Set<number> = new Set();
-  private networks: Set<string> = new Set();
-  private cleanupInProgress = false;
+  private networks = new Map<string, string>();
+  private activeCleanup?: Promise<void>;
 
   private dockerPath: string;
 
@@ -194,7 +203,7 @@ export class DockerTestManager extends EventEmitter {
         this.cleanupAllAsync()
           .then(() => {
             this.log('Cleanup completed, exiting');
-            process.exit(0);
+            process.exit(130);
           })
           .catch((error) => {
             this.logError('Cleanup failed during SIGINT', error);
@@ -206,7 +215,7 @@ export class DockerTestManager extends EventEmitter {
         this.cleanupAllAsync()
           .then(() => {
             this.log('Cleanup completed, exiting');
-            process.exit(0);
+            process.exit(143);
           })
           .catch((error) => {
             this.logError('Cleanup failed during SIGTERM', error);
@@ -655,14 +664,6 @@ export class DockerTestManager extends EventEmitter {
     const name = options.name || `container-${id}`;
     const host = '127.0.0.1';
 
-    // Remove any existing container with the same name to avoid conflicts
-    try {
-      execFileSync(this.dockerPath, ['rm', '-f', '-v', name], { stdio: 'ignore' });
-      this.log(`Removed existing container: ${name}`);
-    } catch {
-      // Container doesn't exist, which is fine
-    }
-
     // Process port mappings.
     //
     // `auto` ports are re-drawn if docker refuses the run: findAvailablePort()
@@ -714,13 +715,13 @@ export class DockerTestManager extends EventEmitter {
 
     // Add labels
     const labels = {
+      ...options.labels,
       'test.id': id,
       'test.cleanup': 'true',
       // Ownership, so cleanup can select this manager's containers instead of
       // every test container on the machine.
       'test.manager': this.managerId,
       'test.host': DockerTestManager.hostId,
-      ...options.labels,
     };
     for (const [key, value] of Object.entries(labels)) {
       dockerArgs.push('--label', `${key}=${value}`);
@@ -743,29 +744,7 @@ export class DockerTestManager extends EventEmitter {
 
     // Add healthcheck if provided
     if (options.healthcheck) {
-      // Docker CLI --health-cmd expects a string that is executed by the shell
-      // The healthcheck.test array format from Docker Compose needs to be converted:
-      // - ['CMD', 'arg1', 'arg2'] -> execute command directly (no shell)
-      // - ['CMD-SHELL', 'command'] -> execute via shell
-      let healthCmd: string;
-      if (Array.isArray(options.healthcheck.test)) {
-        if (options.healthcheck.test[0] === 'CMD-SHELL') {
-          // CMD-SHELL format: join everything after the first element
-          healthCmd = options.healthcheck.test.slice(1).join(' ');
-        } else if (options.healthcheck.test[0] === 'CMD') {
-          // CMD format: join command parts without shell
-          // Docker CLI expects this as a single string that will be word-split
-          // For example: ['CMD', 'redis-cli', 'ping'] -> 'redis-cli ping'
-          healthCmd = options.healthcheck.test.slice(1).join(' ');
-        } else {
-          // No format specifier, join all parts
-          healthCmd = options.healthcheck.test.join(' ');
-        }
-      } else {
-        // String format
-        healthCmd = options.healthcheck.test;
-      }
-      dockerArgs.push('--health-cmd', healthCmd);
+      dockerArgs.push('--health-cmd', dockerHealthCommand(options.healthcheck.test));
       if (options.healthcheck.interval) {
         dockerArgs.push('--health-interval', options.healthcheck.interval);
       }
@@ -786,101 +765,51 @@ export class DockerTestManager extends EventEmitter {
       dockerArgs.push('sh', '-c', options.command);
     }
 
-    if (this.verbose) {
-      console.log(`Starting container ${name}: docker ${dockerArgs.join(' ')}`);
-    }
-
-    // Start container using execFileSync to properly handle arguments with spaces
-    // The loop only ever repeats for a host-port collision on an `auto` port;
-    // every other failure throws on the first pass, unchanged.
-    for (let portAttempt = 0; ; portAttempt++) {
-    try {
+    let containerId: string;
+    for (let attempt = 0; ; attempt++) {
       this.log(`Starting container: ${name}`, { image: options.image });
-      const result = execFileSync(this.dockerPath, dockerArgs, {
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe'], // Always capture output for better error messages
+      const result = spawnSync(this.dockerPath, dockerArgs, {
+        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
       });
-      if (this.verbose && result) {
-        console.log(result);
+      containerId = (result.stdout ?? '').trim();
+      if (result.status === 0 && /^[a-f0-9]{64}$/.test(containerId)) break;
+      portMappings.forEach(port => this.usedPorts.delete(port));
+      if (result.error) throw new Error(`Could not execute Docker for ${name}: ${(result.error as NodeJS.ErrnoException).code ?? 'unknown'}`);
+      let diagnostic = (result.stderr ?? '').trim();
+      for (const value of Object.values(environment)) {
+        if (value) diagnostic = diagnostic.replaceAll(value, '[redacted]');
       }
-      break;
-    } catch (error) {
-      // Clean up allocated ports before throwing
-      portMappings.forEach((port) => {
-        this.usedPorts.delete(port);
-      });
-      const execError = error as {
-        stderr?: Buffer | string;
-        stdout?: Buffer | string;
-        message?: string;
-        status?: number;
-      };
-      const stderr = execError.stderr ? String(execError.stderr).trim() : '';
-      const stdout = execError.stdout ? String(execError.stdout).trim() : '';
-      const message = execError.message || String(error);
-
-      // Check if container already exists
-      if (stderr.includes('already in use') || stderr.includes('name is already') || stderr.includes('Conflict')) {
-        throw new Error(
-          `Container name conflict: ${name} already exists.\n` +
-            `Please ensure previous test containers are cleaned up.\n` +
-            `Stderr: ${stderr}`,
-          { cause: error }
-        );
+      if (/container name .*already in use|name is already in use/i.test(diagnostic)) {
+        throw new Error(`Container name conflict: ${name} already exists`);
       }
-
-      // Somebody took the host port between findAvailablePort() and here.
-      // Re-draw the `auto` ones and try again; explicit host ports are the
-      // caller's contract and are never silently changed.
-      const portTaken =
-        stderr.includes('port is already allocated') ||
-        stderr.includes('address already in use') ||
-        stderr.includes('Bind for ');
-      if (portTaken && autoPorts.size > 0 && portAttempt < DockerTestManager.PORT_COLLISION_RETRIES) {
-        // A run that fails on the port bind still LEAVES the container behind
-        // in `created` state, so re-running the same `--name` collides with
-        // itself. Remove it before drawing new ports — otherwise the retry
-        // reports a name conflict and the port collision it was fixing never
-        // appears in the error at all.
-        try {
-          execFileSync(this.dockerPath, ['rm', '-f', '-v', name], { stdio: 'ignore' });
-        } catch {
-          // Nothing to remove.
-        }
-        for (const cPort of autoPorts) {
-          const hPort = await this.findAvailablePort();
-          portMappings.set(cPort, hPort);
-        }
-        rebuildPortArgs();
-        this.log(`Host port collision for ${name}, retrying with fresh ports`, {
-          attempt: portAttempt + 1,
-        });
-        continue;
+      // A failed bind can leave a container in "created". Resolve this
+      // attempt's labels and remove only the Docker ID they identify.
+      const residue = execFileSync(this.dockerPath, ['ps', '-aq', '--no-trunc',
+        '--filter', `label=test.id=${id}`, '--filter', `label=test.manager=${this.managerId}`],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      if (/^[a-f0-9]{64}$/.test(residue)) {
+        execFileSync(this.dockerPath, ['rm', '-f', '-v', residue], { stdio: 'ignore' });
       }
-
-      throw new Error(
-        `Failed to start container ${name}:\n` +
-          `Command: docker ${dockerArgs.join(' ')}\n` +
-          `Exit code: ${execError.status || 'unknown'}\n` +
-          (stderr ? `Stderr: ${stderr}\n` : '') +
-          (stdout ? `Stdout: ${stdout}\n` : '') +
-          (message && !stderr && !stdout ? `Error: ${message}` : ''),
-        { cause: error }
-      );
-    }
+      if (!/port is already allocated|address already in use|Bind for /.test(diagnostic)
+        || !autoPorts.size || attempt >= DockerTestManager.PORT_COLLISION_RETRIES) {
+        throw new Error(`Failed to start container ${name} (${options.image}), exit ${result.status ?? 'unknown'}: ${diagnostic.slice(0, 2000) || 'Docker did not confirm creation'}`);
+      }
+      for (const port of autoPorts) portMappings.set(port, await this.findAvailablePort());
+      rebuildPortArgs();
+      this.log(`Host port collision for ${name}, retrying with fresh ports`, { attempt: attempt + 1 });
     }
 
     // Wait for container to be ready
     if (options.waitFor) {
       try {
-        await this.waitForContainer(name, options.waitFor);
+        await this.waitForContainer(containerId, options.waitFor, portMappings);
         this.log(`Container ready: ${name}`);
       } catch (error) {
         // Container failed to start, attempt cleanup
         this.logError(`Container ${name} failed to become ready, cleaning up`, error);
         try {
-          execFileSync(this.dockerPath, ['stop', '-t', '5', name], { stdio: 'ignore' });
-          execFileSync(this.dockerPath, ['rm', '-f', '-v', name], { stdio: 'ignore' });
+          execFileSync(this.dockerPath, ['stop', '-t', '5', containerId], { stdio: 'ignore' });
+          execFileSync(this.dockerPath, ['rm', '-f', '-v', containerId], { stdio: 'ignore' });
         } catch {
           // Ignore cleanup errors during rollback
         }
@@ -926,10 +855,10 @@ export class DockerTestManager extends EventEmitter {
       networks,
       createdAt: new Date(),
       internalIp,
-      getStatus: async () => this.getContainerStatus(name),
-      isHealthy: async () => this.isContainerHealthy(name),
+      getStatus: async () => this.getContainerStatus(containerId),
+      isHealthy: async () => this.isContainerHealthy(containerId),
       cleanup: async () => {
-        await this.cleanupContainerWithRetry(name, id, portMappings);
+        await this.cleanupContainerWithRetry(containerId, id, portMappings);
       },
     };
 
@@ -941,160 +870,67 @@ export class DockerTestManager extends EventEmitter {
    * Clean up a container with retry logic
    * @private
    */
-  private async cleanupContainerWithRetry(name: string, id: string, portMappings: Map<number, number>): Promise<void> {
-    this.log(`Starting cleanup for container: ${name}`);
-
-    let lastError!: Error | null;
-
-    for (let attempt = 1; attempt <= this.maxCleanupRetries; attempt++) {
-      try {
-        // Check if container exists
-        try {
-          const status = await this.getContainerStatus(name);
-          if (!status.isRunning) {
-            this.log(`Container ${name} is not running, force removing`, { attempt });
-          }
-        } catch {
-          // Container doesn't exist, nothing to clean up
-          this.log(`Container ${name} doesn't exist, skipping stop`, { attempt });
-          break;
-        }
-
-        // Gracefully stop the container first
-        try {
-          const stopTimeoutSecs = Math.ceil(this.gracefulShutdownTimeout / 1000).toString();
-          this.log(`Stopping container ${name}`, { attempt, timeout: this.gracefulShutdownTimeout });
-          execFileSync(this.dockerPath, ['stop', '-t', stopTimeoutSecs, name], {
-            stdio: 'ignore',
-            timeout: this.gracefulShutdownTimeout + 5000, // Add buffer to docker timeout
-          });
-          this.log(`Container stopped: ${name}`, { attempt });
-        } catch (error) {
-          this.logError(`Failed to gracefully stop container ${name}`, error);
-          // Continue to force remove
-        }
-
-        // Remove container
-        try {
-          this.log(`Removing container ${name}`, { attempt });
-          execFileSync(this.dockerPath, ['rm', '-f', '-v', name], { stdio: 'ignore' });
-          this.log(`Container removed: ${name}`, { attempt });
-          lastError = null; // Clear error on success
-          break;
-        } catch (error) {
-          lastError = error instanceof Error ? error : new Error(String(error));
-          if (attempt === this.maxCleanupRetries) {
-            throw lastError;
-          }
-          // Wait before retrying
-          await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
-        }
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        if (attempt === this.maxCleanupRetries) {
-          this.logError(`Final cleanup attempt failed for container ${name}`, lastError);
-          // Don't throw, continue with port cleanup
-        } else {
-          this.logError(`Cleanup attempt ${attempt} failed for container ${name}, retrying`, lastError);
-          await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
-        }
-      }
-    }
-
-    // Always release ports, even if cleanup failed
+  private async cleanupContainerWithRetry(containerId: string, id: string, portMappings: Map<number, number>): Promise<void> {
+    if (!this.containers.has(id)) return;
+    const seconds = Math.ceil(this.gracefulShutdownTimeout / 1000).toString();
     try {
-      portMappings.forEach((port) => {
-        this.usedPorts.delete(port);
-        this.log(`Released port: ${port}`);
+      execFileSync(this.dockerPath, ['stop', '-t', seconds, containerId], {
+        stdio: 'ignore', timeout: this.gracefulShutdownTimeout + 5000,
       });
     } catch (error) {
-      this.logError('Failed to release ports', error);
+      this.logError(`Could not stop test container ${containerId} gracefully`, error);
     }
-
-    // Remove from tracking
+    for (let attempt = 1; ; attempt++) {
+      try {
+        execFileSync(this.dockerPath, ['rm', '-f', '-v', containerId], { stdio: ['ignore', 'ignore', 'pipe'] });
+        break;
+      } catch (error) {
+        if (/no such (container|object)/i.test(String((error as { stderr?: Buffer }).stderr))) break;
+        if (attempt >= this.maxCleanupRetries) throw error;
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      }
+    }
+    portMappings.forEach(port => this.usedPorts.delete(port));
     this.containers.delete(id);
-    this.log(`Container cleanup completed: ${name}`, { attempts: this.maxCleanupRetries });
   }
 
   /**
-   * Ensure a Docker network exists
-   * @private
+   * Create a labelled network or join an existing network under its current owner.
    */
-  private async ensureNetwork(network: string): Promise<void> {
-    if (!this.networks.has(network)) {
-      try {
-        execFileSync(this.dockerPath, ['network', 'create', network, '--label', 'test.cleanup=true', '--label', `test.manager=${this.managerId}`, '--label', `test.host=${DockerTestManager.hostId}`], {
-          stdio: 'pipe',
-          encoding: 'utf8',
-        });
-        this.networks.add(network);
-        this.log(`Created network: ${network}`);
-      } catch (error) {
-        const execError = error as { stderr?: string; stdout?: string; message?: string };
-        const stderr = execError.stderr || execError.message || String(error);
-        // Network might already exist - check if that's the case
-        if (stderr.includes('already exists') || stderr.includes('network with name')) {
-          this.log(`Network already exists: ${network}`);
-          this.networks.add(network);
-        } else if (stderr.includes('all predefined address pools have been fully subnetted')) {
-          // Docker network pool exhausted - try to clean up unused networks
-          this.log('Docker network pool exhausted, attempting cleanup...');
-          try {
-            // Prune unused networks THAT WE CREATED. A bare `network prune -f`
-            // is host-wide: it removes every unused network on the machine,
-            // including ones belonging to compose stacks and other projects
-            // that happen to have no running container at that instant. Every
-            // other operation in this manager is scoped by the
-            // `test.cleanup=true` label; this one was not.
-            execFileSync(this.dockerPath, ['network', 'prune', '-f', '--filter', `label=test.manager=${this.managerId}`], {
-              stdio: 'ignore',
-            });
-            this.log('Cleaned up unused networks, retrying network creation...');
-            // Retry network creation after cleanup
-            execFileSync(this.dockerPath, ['network', 'create', network, '--label', 'test.cleanup=true', '--label', `test.manager=${this.managerId}`, '--label', `test.host=${DockerTestManager.hostId}`], {
-              stdio: 'pipe',
-              encoding: 'utf8',
-            });
-            this.networks.add(network);
-            this.log(`Created network after cleanup: ${network}`);
-          } catch (_retryError) {
-            throw new Error(`Failed to create network ${network} even after cleanup: ${stderr}`, { cause: _retryError });
-          }
-        } else {
-          // Real error - throw it
-          throw new Error(`Failed to create network ${network}: ${stderr}`, { cause: error });
-        }
-      }
+  async ensureNetwork(network: string): Promise<void> {
+    const create = () => {
+      const networkId = execFileSync(this.dockerPath, ['network', 'create', network,
+        '--label', 'test.cleanup=true', '--label', `test.manager=${this.managerId}`,
+        '--label', `test.host=${DockerTestManager.hostId}`], { stdio: 'pipe', encoding: 'utf8' }).trim();
+      this.networks.set(network, networkId);
+    };
+    try { create(); }
+    catch (error) {
+      const reason = String((error as { stderr?: string }).stderr ?? error);
+      if (reason.includes('already exists')) return;
+      if (!reason.includes('all predefined address pools have been fully subnetted')) throw error;
+      execFileSync(this.dockerPath, ['network', 'prune', '-f', '--filter', `label=test.manager=${this.managerId}`], { stdio: 'ignore' });
+      create();
     }
   }
 
-  /**
-   * Remove a Docker network
-   * @private
-   */
-  private async removeNetwork(network: string): Promise<void> {
-    if (!this.networks.has(network)) {
-      return; // Network not tracked by this manager
-    }
-
+  /** Remove a network created by this manager, even if its name has since been reused. */
+  async removeNetwork(network: string): Promise<void> {
+    const id = this.networks.get(network);
+    if (!id) return;
     try {
-      execFileSync(this.dockerPath, ['network', 'rm', network], {
-        stdio: 'ignore',
-      });
-      this.networks.delete(network);
-      this.log(`Removed network: ${network}`);
+      execFileSync(this.dockerPath, ['network', 'rm', id], { stdio: ['ignore', 'ignore', 'pipe'] });
     } catch (error) {
-      // Network might still be in use or already removed
-      this.networks.delete(network); // Remove from tracking anyway
-      this.logError(`Failed to remove network ${network}`, error);
+      if (!/not found|no such network/i.test(String((error as { stderr?: Buffer }).stderr))) throw error;
     }
+    this.networks.delete(network);
   }
 
   /**
    * Wait for a container to be ready
    * @private
    */
-  private async waitForContainer(name: string, options: ContainerOptions['waitFor']): Promise<void> {
+  private async waitForContainer(name: string, options: ContainerOptions['waitFor'], ports: Map<number, number>): Promise<void> {
     const startTime = Date.now();
     const timeout = options?.timeout || this.startupTimeout;
 
@@ -1104,60 +940,22 @@ export class DockerTestManager extends EventEmitter {
       try {
         // First check if container is still running
         const status = await this.getContainerStatus(name);
+        if (!status.state) throw new Error('Container status is unavailable');
         if (!status.isRunning) {
           throw new Error(
-            `Container exited with status '${status.state}' and exit code ${status.exitCode}. ` +
-              `Check container logs with 'docker logs ${name}'`
+            `Container ${name} exited with status '${status.state}' and exit code ${status.exitCode}`
           );
         }
 
-        // Check if container is healthy (if healthcheck is configured)
-        if (options?.healthcheck) {
-          if (status.health === 'healthy') {
-            this.log(`Container ${name} is healthy`);
-            return;
-          }
-
-          if (status.health === 'unhealthy') {
-            const elapsed = Date.now() - startTime;
-            this.logError(
-              `Container ${name} health check failed after ${elapsed}ms`,
-              new Error(`Health status: ${status.health}, State: ${status.state}`)
-            );
-            throw new Error(
-              `Container ${name} health check failed. ` + `Check container logs with 'docker logs ${name}'`
-            );
-          }
-
-          // Health check is still starting
-          if (status.health === 'starting') {
-            const elapsed = Date.now() - startTime;
-            this.log(`Waiting for health check on ${name}...`, {
-              elapsed,
-              remaining: timeout - elapsed,
-              state: status.state,
-            });
-          }
+        if (options?.healthcheck && status.health === 'unhealthy') {
+          const probes = execFileSync(this.dockerPath, ['inspect', '--format',
+            '{{with .State.Health}}{{.FailingStreak}} failed probes{{range .Log}}; exit={{.ExitCode}} at {{.End}}{{end}}{{end}}', name],
+          { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+          throw new Error(`Container ${name} health check failed after ${Date.now() - startTime} ms (${probes})`);
         }
-
-        // Check if port is accessible
-        if (options?.port) {
-          const container = this.containers.get(name);
-          if (container) {
-            const hostPort = container.ports.get(options.port);
-            if (hostPort && (await this.isPortListening('127.0.0.1', hostPort))) {
-              this.log(`Port ${hostPort} is listening on ${name}`);
-              return;
-            }
-          }
-        }
-
-        // If no specific wait condition, just check container is running
-        if (!options?.healthcheck && !options?.port) {
-          this.log(`Container ${name} is running`);
-          return;
-        }
-
+        const hostPort = options?.port && ports.get(options.port);
+        if ((!options?.healthcheck || status.health === 'healthy') &&
+            (!options?.port || (hostPort && await this.isPortListening('127.0.0.1', hostPort)))) return;
         lastError = undefined;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
@@ -1231,61 +1029,18 @@ export class DockerTestManager extends EventEmitter {
   /**
    * Clean up all containers managed by this instance
    */
-  async cleanupAll(): Promise<void> {
-    if (this.cleanupInProgress) {
-      this.log('Cleanup already in progress, skipping');
-      return;
+  cleanupAll(): Promise<void> {
+    return this.activeCleanup ??= this.cleanupOwnedResources().finally(() => { this.activeCleanup = undefined; });
+  }
+
+  private async cleanupOwnedResources(): Promise<void> {
+    const results = await Promise.allSettled(Array.from(this.containers.values(), container => container.cleanup()));
+    const errors = results.flatMap(result => result.status === 'rejected' ? [result.reason] : []);
+    for (const network of this.networks.keys()) {
+      try { await this.removeNetwork(network); }
+      catch (error) { errors.push(error); }
     }
-
-    this.cleanupInProgress = true;
-
-    try {
-      this.log(`Starting cleanup of ${this.containers.size} containers`);
-
-      // Cleanup containers in parallel with Promise.allSettled to handle failures
-      const cleanupPromises = Array.from(this.containers.values()).map((container) =>
-        container
-          .cleanup()
-          .then(() => {
-            this.log(`Cleanup succeeded: ${container.name}`);
-          })
-          .catch((error) => {
-            this.logError(`Cleanup failed for ${container.name}`, error);
-            // Still continue cleaning up other containers
-          })
-      );
-
-      const results = await Promise.allSettled(cleanupPromises);
-
-      const failed = results.filter((r) => r.status === 'rejected').length;
-      if (failed > 0) {
-        this.log(`Cleanup completed with ${failed} failures`);
-      } else {
-        this.log('All containers cleaned up successfully');
-      }
-
-      // Cleanup networks
-      this.log(`Cleaning up ${this.networks.size} networks`);
-      const networkArray = Array.from(this.networks);
-      for (const network of networkArray) {
-        try {
-          this.log(`Removing network: ${network}`);
-          execFileSync(this.dockerPath, ['network', 'rm', network], { stdio: 'ignore' });
-          this.log(`Network removed: ${network}`);
-        } catch (error) {
-          this.logError(`Failed to remove network ${network}`, error);
-          // Continue with other networks
-        }
-      }
-
-      this.containers.clear();
-      this.usedPorts.clear();
-      this.networks.clear();
-
-      this.log('Final cleanup completed');
-    } finally {
-      this.cleanupInProgress = false;
-    }
+    if (errors.length) throw new AggregateError(errors, 'Some Docker test resources could not be removed');
   }
 
   /**

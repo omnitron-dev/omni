@@ -360,3 +360,5 @@ try {
     finally { await databaseAdmin.end(); }
   }
 }
+// Retain failed fixtures for diagnosis. Successful runs release their private runtime copies.
+if (process.env.OMNITRON_KEEP_TEST_ARTIFACTS !== '1') await fs.rm(directory, { recursive: true, force: true });

@@ -232,3 +232,5 @@ try {
     await native(['reset-failed', ...units.map(unit => unit.job)]).catch(() => {});
   }
 }
+// Retain failed fixtures for diagnosis. Successful runs release their private runtime copies.
+if (process.env.OMNITRON_KEEP_TEST_ARTIFACTS !== '1') await fs.rm(root, { recursive: true, force: true });

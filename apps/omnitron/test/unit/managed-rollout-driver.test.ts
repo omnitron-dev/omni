@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { stageCatalogRuntime } from '../../src/services/kernel-distribution.js';
 import { assertKernelHandoffFence } from '../../src/daemon/backend-upgrade.js';
 import { activateManagedTarget, planManagedRollout, reconcileManagedTarget,
   type ManagedHostEvidence, type ManagedHostRequest, type ManagedRolloutObservation } from '../../src/services/managed-rollout.js';
@@ -89,4 +90,15 @@ describe('fenced resident kernel transitions', () => {
     set({ priorSelection: 'e'.repeat(64) });
     await expect(reconcileManagedTarget(dispatch, plan)).rejects.toThrow(/cannot be attributed/);
   });
+});
+
+it('rejects an SSH alias of the coordinating owner before staging or uploading any bytes', async () => {
+  const sender = {
+    inspectInstalledBundle: vi.fn().mockResolvedValue({ managed: { ownerId: 'coordinator-owner' } }),
+    readFromNode: vi.fn(), uploadToNode: vi.fn(),
+  };
+  await expect(stageCatalogRuntime(sender, { host: 'alias', expectedHostFingerprint: 'pinned' }, commit, 'coordinator-owner'))
+    .rejects.toThrow('coordinating execution owner');
+  expect(sender.readFromNode).not.toHaveBeenCalled();
+  expect(sender.uploadToNode).not.toHaveBeenCalled();
 });

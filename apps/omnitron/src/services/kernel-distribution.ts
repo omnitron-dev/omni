@@ -9,10 +9,12 @@ export async function stageCatalogRuntime(
   deployer: Pick<RemoteDeployer, 'inspectInstalledBundle' | 'readFromNode' | 'uploadToNode'>,
   target: DeployTarget,
   commit: string,
+  excludeOwnerId?: string,
 ) {
   if (!target.expectedHostFingerprint) throw Error('A pinned SSH host key is required for kernel distribution');
   const bundle = await deployer.inspectInstalledBundle(target);
   if (!bundle.managed) throw Error('Kernel distribution requires independently supervised services');
+  if (bundle.managed.ownerId === excludeOwnerId) throw Error('The target resolves to the coordinating execution owner');
   const { entry, archive } = await resolveKernelBuild(commit, bundle.managed);
   const release = path.posix.resolve(bundle.root, '../..');
   const registry = path.posix.resolve(release, '../..');

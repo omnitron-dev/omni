@@ -1695,7 +1695,7 @@ export class RemoteDeployer {
     if (pending.length) throw Error('An unfinished host upgrade must be reconciled before kernel rollout');
   }
 
-  async inspectManagedRollout(target: DeployTarget, commit: string, options: { stage?: boolean } = {}): Promise<ManagedRolloutObservation> {
+  async inspectManagedRollout(target: DeployTarget, commit: string, options: { stage?: boolean; excludeOwnerId?: string } = {}): Promise<ManagedRolloutObservation> {
     this.assertManagedTarget(target);
     if (!/^[0-9a-f]{40}$/.test(commit)) throw Error('A full lowercase Git commit is required');
     const inspect = () => planManagedRollout(request => this.readManagedHost(target, request), commit);
@@ -1706,7 +1706,7 @@ export class RemoteDeployer {
     return this.underLease(target, 'stage managed kernel', async () => {
       await this.checkManagedTarget(target);
       const { stageCatalogRuntime } = await import('./kernel-distribution.js');
-      const expected = await stageCatalogRuntime(this, target, commit);
+      const expected = await stageCatalogRuntime(this, target, commit, options.excludeOwnerId);
       const plan = await inspect();
       if (plan.candidate !== expected) throw Error('Installed runtime differs from the qualified catalog artifact');
       return plan;

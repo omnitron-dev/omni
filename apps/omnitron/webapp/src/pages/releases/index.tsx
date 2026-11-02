@@ -194,10 +194,10 @@ export default function ReleasesPage() {
             <GateCount release={r} />
             {r.machine && ranLoaded(r.machine) && (
               <Tooltip
-                title={`Build host load exceeded its core count during gates — ${loadWords(r.machine)}. Inspect the gate logs to determine why a check failed.`}
+                title={`Recorded during this build: the host's five-minute load average exceeded its core count when gates finished — ${loadWords(r.machine)}. Gate outcomes are shown separately.`}
                 arrow
               >
-                <Chip label="loaded" size="small" color="warning" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
+                <Chip label="High host load" size="small" color="warning" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
               </Tooltip>
             )}
           </Stack>

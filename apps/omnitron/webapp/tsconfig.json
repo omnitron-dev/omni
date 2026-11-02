@@ -30,5 +30,5 @@
       "@omnitron-dev/omnitron/sync-reading": ["../src/shared/sync-reading.ts"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "test/browser/**/*.tsx"]
 }

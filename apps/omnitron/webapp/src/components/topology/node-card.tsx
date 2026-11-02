@@ -35,7 +35,7 @@ export function NodeCard({
   const palette = theme.vars?.palette ?? theme.palette;
   const kind = statusColor(status);
   const color = kind === 'default' ? palette.text.secondary : palette[kind].main;
-  const handleStyle = { background: palette.text.secondary, width: 6, height: 6 };
+  const handleStyle = { background: palette.text.secondary, width: 6, height: 6, opacity: 0 };
   return (
     <>
       {target && <Handle type="target" position={targetPosition} style={handleStyle} />}

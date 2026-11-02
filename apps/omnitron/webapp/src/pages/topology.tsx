@@ -1,3 +1,5 @@
+import { useTopologyRoutes, TopologyEdge } from 'src/components/topology/routed-edges';
+import { readStoredJson, writeStoredJson, removeStored } from 'src/utils/storage';
 import { TopologyWorkspaceLauncher } from 'src/components/topology/topology-editor';
 import { TopologyMetadataDialog } from 'src/components/topology/topology-metadata-dialog';
 /** Deployment topology: machines, declared dependencies, applications and ingress. */
@@ -9,12 +11,10 @@ import {
   Background,
   MiniMap,
   useNodesState,
-  useEdgesState,
   useReactFlow,
   useViewport,
   useNodesInitialized,
   type Node,
-  type Edge,
   type NodeTypes,
   BackgroundVariant,
 } from '@xyflow/react';
@@ -66,8 +66,6 @@ import {
   readableTopologyViewport,
   arrangeDependencyTopology,
   topologyColumns,
-  TOPOLOGY_CARD_HEIGHT,
-  TOPOLOGY_GAP,
 } from 'src/components/topology/topology-layout';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { usePollingEffect } from 'src/hooks/use-polled-resource';
@@ -83,6 +81,9 @@ const nodeTypes: NodeTypes = {
   serverNode: ServerNode,
 };
 
+const edgeTypes = { routed: TopologyEdge };
+type Positions = Record<string, { x: number; y: number }>;
+
 export default function TopologyPage() {
   const { activeProject, activeStack } = useStackContext();
   return (
@@ -94,7 +95,6 @@ export default function TopologyPage() {
 
 function TopologyWorkspace() {
   const theme = useTheme();
-  const wide = useMediaQuery(theme.breakpoints.up('md'));
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const { can } = useAccess();
   const navigate = useNavigate();
@@ -114,16 +114,27 @@ function TopologyWorkspace() {
     declarationCoverage,
   } = useTopologyStore();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<TopologyNodeData>>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [editingTopology, setEditingTopology] = useState(false);
   const [updatingMetadata, setUpdatingMetadata] = useState(false);
-  const [locked, setLocked] = useState(true);
+  const [locked, setLocked] = useState(false);
   const [listView, setListView] = useState(false);
+  const [focusLinks, setFocusLinks] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [viewError, setViewError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
-  const [manualLayout, setManualLayout] = useState(false);
+  const localLayoutKey = 'omnitron_topology_positions:' + JSON.stringify([activeProject, activeStack]);
+  const [positions, setPositions] = useState<Positions>(() => {
+    const raw = readStoredJson<unknown>(localLayoutKey, {});
+    if (!raw || typeof raw !== 'object') return {};
+    return Object.fromEntries(Object.entries(raw).filter(([,p]) => p && Number.isFinite(p.x) && Number.isFinite(p.y)));
+  });
+  const dragging = useRef(false);
+  const manualLayout = Object.keys(positions).length > 0;
+  const remember = (changes: Positions) => {
+    const next = { ...positions, ...changes };
+    setPositions(next); writeStoredJson(localLayoutKey, next);
+  };
   const [layoutReset, setLayoutReset] = useState(0);
   const container = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLDivElement>(null);
@@ -136,7 +147,7 @@ function TopologyWorkspace() {
   const previousSize = useRef<typeof canvasSize | null>(null);
   const previousGeometry = useRef<Pick<Node, 'id' | 'position'>[]>([]);
   const columns = topologyColumns(canvasSize.width);
-  const arrangedNodes = useMemo(() => storeEdges.some(edge => edge.data?.evidence === 'configuration' || edge.data?.evidence === 'declaration') ? arrangeDependencyTopology(storeNodes, columns) : arrangeTopologyNodes(storeNodes, columns), [storeNodes, storeEdges, columns]);
+  const arrangedNodes = useMemo(() => storeEdges.some(edge => edge.data?.evidence === 'configuration' || edge.data?.evidence === 'declaration') ? arrangeDependencyTopology(storeNodes, columns, storeEdges) : arrangeTopologyNodes(storeNodes, columns), [storeNodes, storeEdges, columns]);
   const layoutKey = arrangedNodes.map((node) => `${node.id}:${node.position.x}:${node.position.y}`).join('|');
   const duration = reducedMotion ? 0 : 200;
 
@@ -145,36 +156,30 @@ function TopologyWorkspace() {
   }, [activeProject, activeStack, setScope]);
   useEffect(() => {
     setNodes((previous) => {
-      let nextY = Math.max(0, ...previous.map((node) => node.position.y + TOPOLOGY_CARD_HEIGHT + TOPOLOGY_GAP));
+      const byId = new Map(previous.map(node => [node.id,node]));
       return arrangedNodes.map((node) => {
-        const existing = previous.find((old) => old.id === node.id);
-        let position = node.position;
-        if (manualLayout) {
-          position = existing?.position ?? { x: 0, y: nextY };
-          if (!existing) nextY += TOPOLOGY_CARD_HEIGHT + TOPOLOGY_GAP;
-        }
+        const existing = byId.get(node.id);
+        const position = dragging.current && existing ? existing.position : positions[node.id] ?? node.position;
         return {
-          ...existing,
-          ...node,
-          position,
-          sourcePosition: manualLayout && existing ? existing.sourcePosition : node.sourcePosition,
-          targetPosition: manualLayout && existing ? existing.targetPosition : node.targetPosition,
+          ...existing, ...node, position,
           selected: existing?.selected ?? false,
           ariaRole: 'button',
           ariaLabel: `${node.data.label}, ${node.data.nodeType}, ${node.data.nodeType === 'infra' || node.data.nodeType === 'gateway' ? serviceState(node.data) : node.data.status}. Inspect details`,
         };
       });
     });
-  }, [arrangedNodes, manualLayout, setNodes]);
-  useEffect(() => {
-    setEdges(storeEdges.map(edge => {
-      const related = !detailPanel.nodeId || edge.source === detailPanel.nodeId || edge.target === detailPanel.nodeId;
-      return { ...edge, label: detailPanel.nodeId && related ? edge.label : undefined,
-        style: { ...edge.style, stroke: theme.palette.text.secondary, opacity: related ? 0.85 : 0.15 },
-        labelStyle: { fill: theme.palette.text.primary, fontSize: 12 }, labelBgStyle: { fill: theme.palette.background.paper },
-      };
-    }));
-  }, [storeEdges, setEdges, detailPanel.nodeId, theme]);
+  }, [arrangedNodes, positions, setNodes]);
+  const routing = useTopologyRoutes(nodes, storeEdges, !listView);
+  const edges = useMemo(() => storeEdges.map(edge => {
+    const related = edge.source === detailPanel.nodeId || edge.target === detailPanel.nodeId;
+    const stroke = related ? theme.palette.primary.main : theme.palette.text.secondary;
+    return { ...edge, hidden: Boolean(focusLinks && detailPanel.nodeId && !related), type: 'routed', data: { ...edge.data, route: routing.routes?.paths[edge.id] },
+      label: detailPanel.nodeId && related ? edge.label : undefined,
+      style: { ...edge.style, stroke, opacity: !detailPanel.nodeId || related ? 0.9 : 0.12 },
+      ...(typeof edge.markerEnd === 'object' && { markerEnd: { ...edge.markerEnd, color: stroke } }),
+      labelStyle: { fill: theme.palette.text.primary, fontSize: 12 }, labelBgStyle: { fill: theme.palette.background.paper },
+    };
+  }), [storeEdges, routing.routes, detailPanel.nodeId, theme, focusLinks]);
   usePollingEffect(
     () => {
       void fetchAll();
@@ -401,6 +406,8 @@ function TopologyWorkspace() {
                 </span>
               </Tooltip>
             ))}
+            {!listView && detailPanel.nodeId && <Button size="small" aria-pressed={focusLinks}
+              variant={focusLinks ? 'outlined' : 'text'} onClick={() => setFocusLinks(!focusLinks)}>Focus links</Button>}
             {manualLayout && (
               <Tooltip title="Arrange nodes" describeChild>
                 <IconButton
@@ -410,7 +417,7 @@ function TopologyWorkspace() {
                   onClick={() => {
                     viewMode.current = 'readable';
                     viewFocus.current = null;
-                    setManualLayout(false);
+                    setPositions({}); removeStored(localLayoutKey);
                     setLayoutReset((value) => value + 1);
                   }}
                 >
@@ -442,6 +449,9 @@ function TopologyWorkspace() {
             )}
           </Stack>
         </Stack>
+        {(routing.error || Boolean(routing.routes?.blocked.length)) && <Alert severity="warning" variant="outlined">
+          {routing.error ?? `${routing.routes?.blocked.length} links have no clear path. Move overlapping cards or use Arrange nodes.`} Every declared link is listed in the node’s Connections tab.
+        </Alert>}
         {(error || viewError) && (
           <Alert severity={error && !nodes.length ? 'error' : 'warning'} variant="outlined" sx={{ mt: 1 }}>
             {error || viewError}
@@ -458,14 +468,14 @@ function TopologyWorkspace() {
         <Stack direction="row" useFlexGap spacing={1} sx={{ flexWrap: 'wrap', px: 1, py: 0.75 }}>
           <Typography variant="caption" color="text.secondary">
             {apps.filter((app) => app.status === 'online').length}/{apps.length} apps online · {nodes.length} nodes ·{' '}
-            {edges.length} links · configured dependencies, not live traffic
+            {edges.length} links · declared relationships{routing.pending && ' · Routing links…'}
           </Typography>
           <Typography
             variant="caption"
             color="text.secondary"
             sx={{ display: { xs: 'none', sm: 'block' }, ml: 'auto' }}
           >
-            Scroll to pan · + / − zoom · 0 fit · 1 readable
+            Drag a card to move · arrows move a focused card · 0 fit · 1 readable
           </Typography>
         </Stack>
         {declarationCoverage.length > 0 && <Box component="details" sx={{ px: 1, pb: 1, fontSize: '0.75rem', color: 'text.secondary' }}>
@@ -486,22 +496,32 @@ function TopologyWorkspace() {
             role="region"
             aria-label="Deployment topology"
             onKeyDownCapture={(event) => {
-              if (event.key !== 'Enter' && event.key !== ' ') return;
+              if (event.altKey || event.ctrlKey || event.metaKey || listView) return;
               const target = event.target as HTMLElement;
               const element = target.closest('.react-flow__node');
               if (target !== element) return;
-              const node = nodes.find((item) => item.id === element?.getAttribute('data-id'));
-              if (node) {
-                event.preventDefault();
-                event.stopPropagation();
-                inspect(node);
+              const node = nodes.find(item => item.id === element?.getAttribute('data-id'));
+              if (!node) return;
+              const step = event.shiftKey ? 64 : 16;
+              const directions: Record<string, [number,number]> = { ArrowLeft: [-step,0], ArrowRight: [step,0], ArrowUp: [0,-step], ArrowDown: [0,step] };
+              const delta = directions[event.key];
+              if (delta && !locked) {
+                event.preventDefault(); event.stopPropagation();
+                viewMode.current = 'manual'; viewFocus.current = null;
+                remember({ [node.id]: { x:node.position.x + delta[0], y:node.position.y + delta[1] } });
+                return;
               }
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              event.preventDefault();
+              event.stopPropagation();
+              inspect(node);
             }}
             sx={{
               flex: 1,
               minWidth: 0,
               minHeight: 0,
               position: 'relative',
+              '& .react-flow__minimap-svg': { display: 'block', borderRadius: '3px' },
               '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 },
             }}
             onKeyDown={(event) => {
@@ -560,20 +580,24 @@ function TopologyWorkspace() {
                     nodes={nodes}
                     edges={edges}
                     onNodesChange={(changes) => {
-                      if (changes.some((change) => change.type === 'position' && change.position)) {
-                        viewMode.current = 'manual';
-                        viewFocus.current = null;
-                        setManualLayout(true);
+                      if (!dragging.current && !locked) {
+                        const moved: Positions = {};
+                        for (const change of changes) if (change.type === 'position' && change.position) moved[change.id] = change.position;
+                        if (Object.keys(moved).length) remember(moved);
                       }
                       onNodesChange(changes);
                     }}
-                    onEdgesChange={onEdgesChange}
+                    edgeTypes={edgeTypes}
                     nodeTypes={nodeTypes}
                     onNodeClick={(_, node) => inspect(node)}
                     onNodeDragStart={() => {
                       viewMode.current = 'manual';
                       viewFocus.current = null;
-                      setManualLayout(true);
+                      dragging.current = true;
+                    }}
+                    onNodeDragStop={(_, node, moved) => {
+                      dragging.current = false;
+                      remember(Object.fromEntries((moved.length ? moved : [node]).map(item => [item.id,item.position])));
                     }}
                     onMoveStart={(event) => {
                       if (event) {
@@ -611,15 +635,22 @@ function TopologyWorkspace() {
                       size={1}
                       color={theme.palette.divider}
                     />
-                    {wide && (
+                    {canvasSize.width >= 460 && canvasSize.height >= 260 && (
                       <MiniMap
                         ariaLabel="Topology overview"
                         position="bottom-right"
                         pannable
                         zoomable
+                        offsetScale={12}
+                        maskStrokeColor={theme.palette.primary.main}
+                        maskStrokeWidth={1.25}
                         style={{
-                          width: 140,
-                          height: 90,
+                          width: canvasSize.width < 720 ? 116 : 152,
+                          height: canvasSize.width < 720 ? 78 : 100,
+                          boxSizing: 'content-box',
+                          padding: 4,
+                          margin: 12,
+                          overflow: 'hidden',
                           background: theme.palette.background.paper,
                           border: `1px solid ${theme.palette.divider}`,
                           borderRadius: 8,

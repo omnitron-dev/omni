@@ -1,4 +1,4 @@
-import { Position, type Node, type Viewport } from '@xyflow/react';
+import { Position, type Node, type Edge, type Viewport } from '@xyflow/react';
 import type { TopologyNodeData } from './topology-store';
 
 export const TOPOLOGY_CARD_WIDTH = 280;
@@ -134,7 +134,7 @@ export function nearestTopologyNode(
 
 
 /** Consumer and provider lanes leave a clear gutter for shared dependencies. */
-export function arrangeDependencyTopology<T extends Node<TopologyNodeData>>(nodes: T[], columns: number): T[] {
+export function arrangeDependencyTopology<T extends Node<TopologyNodeData>>(nodes: T[], columns: number, edges: Pick<Edge,'source' | 'target'>[] = []): T[] {
   const groups = new Map<string, T[]>();
   for (const node of nodes) {
     const key = String(node.data.deploymentKey ?? (node.data.nodeType === 'server' ? node.data.stacks[0] : node.data.stack) ?? '');
@@ -146,13 +146,32 @@ export function arrangeDependencyTopology<T extends Node<TopologyNodeData>>(node
     const apps = group.filter(node => node.data.nodeType === 'app');
     const services = group.filter(node => node.data.nodeType === 'infra' || node.data.nodeType === 'gateway');
     const servers = group.filter(node => node.data.nodeType === 'server');
-    const step = TOPOLOGY_CARD_HEIGHT + TOPOLOGY_GAP;
+    const neighbors = new Map<string,string[]>();
+    for (const {source,target} of edges) {
+      for (const [from,to] of [[source,target],[target,source]] as const) {
+        const adjacent = neighbors.get(from) ?? []; adjacent.push(to); neighbors.set(from,adjacent);
+      }
+    }
+    const align = (lane: T[], opposite: T[]) => {
+      const ranks = new Map(opposite.map((node,index) => [node.id,index]));
+      const centre = (node: T) => {
+        const indices = (neighbors.get(node.id) ?? []).flatMap(id => ranks.has(id) ? [ranks.get(id)!] : []);
+        return indices.length ? indices.reduce((sum,index) => sum + index,0) / indices.length : Number.MAX_SAFE_INTEGER;
+      };
+      const centres = new Map(lane.map(node => [node.id,centre(node)]));
+      lane.sort((a,b) => centres.get(a.id)! - centres.get(b.id)! || a.id.localeCompare(b.id));
+    };
+    apps.sort((a,b) => a.id.localeCompare(b.id));
+    align(services, apps); align(apps, services);
+    const degree = Math.max(0,...group.map(node => neighbors.get(node.id)?.length ?? 0));
+    const gutter = Math.max(96,Math.min(360,48 + degree * 14));
+    const step = TOPOLOGY_CARD_HEIGHT + Math.max(48,Math.min(112,24 + degree * 6));
     const put = (node: T, x: number, y: number, provider = false) => placed.push({ ...node,
       position: { x, y }, sourcePosition: provider && columns > 1 ? Position.Left : Position.Right,
       targetPosition: provider && columns > 1 ? Position.Left : Position.Right });
     for (const server of servers) { put(server, 0, top); top += step; }
     apps.forEach((node, row) => put(node, 0, top + row * step));
-    services.forEach((node, row) => put(node, columns > 1 ? TOPOLOGY_CARD_WIDTH + TOPOLOGY_GAP : 0,
+    services.forEach((node, row) => put(node, columns > 1 ? TOPOLOGY_CARD_WIDTH + gutter : 0,
       top + (columns > 1 ? row : row + apps.length) * step, true));
     top += (columns > 1 ? Math.max(apps.length, services.length) : apps.length + services.length) * step + TOPOLOGY_GAP;
   }

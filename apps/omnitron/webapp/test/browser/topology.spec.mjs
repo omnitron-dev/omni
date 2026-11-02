@@ -1,28 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-import { test, expect } from '@playwright/test';
-import { build, preview } from 'vite';
-
-const root = import.meta.dirname;
-const configFile = path.resolve(root, '../../vite.config.ts');
-let output;
-let server;
-let url;
-
-test.use({ channel: process.env.PLAYWRIGHT_CHANNEL, reducedMotion: 'reduce' });
-test.beforeAll(async () => {
-  test.setTimeout(90_000);
-  output = await mkdtemp(path.join(os.tmpdir(), 'omnitron-console-browser-'));
-  const config = { root, configFile, logLevel: 'error', build: { outDir: output } };
-  await build(config);
-  server = await preview({ ...config, preview: { host: '127.0.0.1', port: 0 } });
-  url = `http://127.0.0.1:${server.httpServer.address().port}`;
-});
-test.afterAll(async () => {
-  await server?.close();
-  if (output) await rm(output, { recursive: true, force: true });
-});
+import { test, expect } from './fixtures.mjs';
 
 async function smallestInset(minimap) {
   return minimap.evaluate((element) => {
@@ -33,7 +9,7 @@ async function smallestInset(minimap) {
 }
 
 for (const width of [320, 768, 1440]) {
-  test(`topology routes, positioning and overview at ${width}px`, async ({ page }) => {
+  test(`topology routes, positioning and overview at ${width}px`, async ({ page, url }) => {
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.setViewportSize({ width, height: 840 });

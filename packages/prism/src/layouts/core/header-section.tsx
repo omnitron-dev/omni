@@ -164,6 +164,7 @@ export interface HeaderSectionProps {
   slots?: HeaderSlots;
   /** Props for each slot */
   slotProps?: {
+    toolbar?: SxProps<Theme>;
     topArea?: SxProps<Theme>;
     leftArea?: SxProps<Theme>;
     centerArea?: SxProps<Theme>;
@@ -267,7 +268,7 @@ export function HeaderSection({
       {slots?.topArea && <Box sx={slotProps?.topArea}>{slots.topArea}</Box>}
 
       {/* Main toolbar */}
-      <StyledToolbar>
+      <StyledToolbar sx={slotProps?.toolbar}>
         {containerized ? (
           <Container
             maxWidth={maxWidth}

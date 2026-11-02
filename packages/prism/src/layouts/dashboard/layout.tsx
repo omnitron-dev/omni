@@ -46,12 +46,12 @@ const MainWrapper = styled(Box, {
   // Adjust margin for sidebar on desktop
   ...(hasSidebar && {
     [theme.breakpoints.up(layoutQuery)]: {
-      marginLeft: sidebarWidth,
+      marginInlineStart: sidebarWidth,
       minWidth: 0,
     },
   }),
   // Smooth transition
-  transition: theme.transitions.create('margin-left', {
+  transition: theme.transitions.create('margin-inline-start', {
     duration: theme.transitions.duration.shorter,
   }),
 }));

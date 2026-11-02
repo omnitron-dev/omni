@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:browser": "playwright test test/browser/topology.spec.mjs --workers=1"
+    "test:browser": "playwright test test/browser --workers=1"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",

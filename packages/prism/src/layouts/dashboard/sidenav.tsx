@@ -28,47 +28,30 @@ import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { useLayoutContext, useNavActive } from '../core/context.js';
 import { dashboardLabels, type DashboardLabels } from './labels.js';
 import { ARIA_LABELS } from '../../core/accessibility/index.js';
-import { DRAWER_WIDTHS, HEADER_HEIGHTS, LAYOUT_CSS_VARS, type LayoutNavData, type SidenavVariant } from '../types.js';
+import { DRAWER_WIDTHS, HEADER_HEIGHTS, LAYOUT_CSS_VARS, type LayoutNavData } from '../types.js';
 
 // =============================================================================
 // STYLED COMPONENTS
 // =============================================================================
 
-interface NavRootProps {
-  variant: SidenavVariant;
-  collapsed: boolean;
-}
-
 const NavRoot = styled(Box, {
-  shouldForwardProp: (prop) => !['variant', 'collapsed'].includes(prop as string),
-})<NavRootProps>(({ theme, variant, collapsed }) => {
-  // Calculate width based on variant and collapse state
-  let width: number = DRAWER_WIDTHS.full;
-  if (collapsed) {
-    width = variant === 'stacked' ? DRAWER_WIDTHS.stackedCollapsed : DRAWER_WIDTHS.mini;
-  } else if (variant === 'mini') {
-    width = DRAWER_WIDTHS.mini;
-  } else if (variant === 'stacked') {
-    width = DRAWER_WIDTHS.stackedExpanded;
-  }
-
-  return {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    height: '100%',
-    width,
-    flexShrink: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    zIndex: theme.zIndex.drawer,
-    backgroundColor: `var(${LAYOUT_CSS_VARS.navBg}, ${theme.palette.background.paper})`,
-    borderRight: `1px solid ${theme.palette.divider}`,
-    transition: theme.transitions.create('width', {
-      duration: theme.transitions.duration.shorter,
-    }),
-  };
-});
+  shouldForwardProp: (prop) => prop !== 'railWidth',
+})<{ railWidth: number }>(({ theme, railWidth }) => ({
+  position: 'fixed',
+  top: 0,
+  insetInlineStart: 0,
+  height: '100%',
+  width: railWidth,
+  flexShrink: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  zIndex: theme.zIndex.drawer,
+  backgroundColor: `var(${LAYOUT_CSS_VARS.navBg}, ${theme.palette.background.paper})`,
+  borderInlineEnd: `1px solid ${theme.palette.divider}`,
+  transition: theme.transitions.create('width', {
+    duration: theme.transitions.duration.shorter,
+  }),
+}));
 
 const NavContent = styled(Box)({
   display: 'flex',
@@ -145,8 +128,7 @@ export function Sidenav({
       as="nav"
       role="navigation"
       aria-label={ariaLabel}
-      variant={sidenavVariant}
-      collapsed={sidenavCollapsed}
+      railWidth={config.drawerWidth}
       sx={[
         (theme) => ({
           display: { xs: 'none', [layoutQuery]: 'flex' },

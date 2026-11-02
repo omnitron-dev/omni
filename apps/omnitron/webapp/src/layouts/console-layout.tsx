@@ -338,6 +338,9 @@ function HeaderRight() {
 // Layout
 // =============================================================================
 
+// The expanded desktop rail insets its logo by three spacing units.
+const workspaceGutter = { xs: 1, sm: 2, lg: 3 };
+
 export function ConsoleLayout() {
   const allNavData = useNavData();
   const { can, snapshot } = useAccess();
@@ -404,14 +407,13 @@ export function ConsoleLayout() {
         }}
         slotProps={{
           header: {
-            sx: { '& .MuiToolbar-root': { px: { xs: 1, sm: 2 } } },
-            slotProps: { leftArea: { minWidth: 0 }, centerArea: { mx: { xs: 0, sm: 2 } } },
+            slotProps: { toolbar: { px: workspaceGutter }, leftArea: { minWidth: 0 }, centerArea: { mx: { xs: 0, sm: 2 } } },
           },
           main: {
             sx:
               terminalVisible || filesVisible || location.pathname === '/topology'
-                ? { p: { xs: 1, sm: 1.5, md: 2 }, minHeight: 0 }
-                : { minWidth: 0, minHeight: 0, overflowY: 'auto', p: { xs: 1.5, sm: 2, md: 2.5 } },
+                ? { px: workspaceGutter, py: { xs: 1, sm: 1.5, md: 2 }, minHeight: 0 }
+                : { minWidth: 0, minHeight: 0, overflowY: 'auto', px: workspaceGutter, py: { xs: 1.5, sm: 2, md: 2.5 } },
           },
         }}
       >

@@ -18,9 +18,12 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { readMethodMetadata } from '@omnitron-dev/titan/netron/transport/http/middleware';
 import { Application } from '@omnitron-dev/titan';
 
 import { TitanHealthModule } from '../src/health.module.js';
+import { HEALTH_RPC_SERVICE_TOKEN } from '../src/health.tokens.js';
+import { HealthService } from '../src/health.service.js';
 import { HealthRpcService } from '../src/health.rpc-service.js';
 
 let app: Application | undefined;
@@ -91,4 +94,18 @@ describe('forRootAsync and enableRpcService', () => {
     );
     expect(health(exposedNames(started))).toEqual([]);
   });
+});
+
+it('keeps the async deployment policy isolated from the default service and its public probes', async () => {
+  const started = await start(TitanHealthModule.forRootAsync({ useFactory: () => ({ detailRpcRoles: ['observer'] }) }));
+  const scoped = await started.resolveAsync(HealthRpcService);
+  expect(health(exposedNames(started))).toEqual(['Health']);
+  expect(await started.resolveAsync(HEALTH_RPC_SERVICE_TOKEN)).toBe(scoped);
+  expect(readMethodMetadata(scoped, 'check')?.auth).toEqual({ roles: ['observer'] });
+  expect(readMethodMetadata(scoped, 'ready')?.auth).toEqual({ allowAnonymous: true });
+  expect(readMethodMetadata(new HealthRpcService(), 'check')?.auth).toEqual({ allowAnonymous: true });
+});
+
+it('refuses to expose an empty detailed role policy', () => {
+  expect(() => HealthRpcService.create(new HealthService({}), { detailRpcRoles: [] })).toThrow('detailRpcRoles');
 });

@@ -20,6 +20,7 @@ import { LoggerModule, LOGGER_SERVICE_TOKEN, type ILoggerModule } from '@omnitro
 import { ProcessManagerModule, PM_MANAGER_TOKEN, type ProcessManager } from '@omnitron-dev/titan-pm';
 import { TitanAuthModule } from '@omnitron-dev/titan-auth';
 import { SchedulerModule } from '@omnitron-dev/titan-scheduler';
+import { CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
 import { TitanHealthModule } from '@omnitron-dev/titan-health';
 import { TitanMetricsModule, METRICS_STORAGE_TOKEN, PostgresMetricsStorage, SQLiteMetricsStorage, type MetricsDatabase } from '@omnitron-dev/titan-metrics';
 
@@ -305,6 +306,7 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
 
       // Health — built-in memory indicator + custom indicators
       TitanHealthModule.forRoot({
+        detailRpcRoles: CONTROL_PLANE_READ_ROLES,
         enableMemoryIndicator: true,
         // Not titan-health's `event-loop`: the daemon has `event-loop-stalls`
         // (monitoring/event-loop-watch.ts), which reads the same histogram and

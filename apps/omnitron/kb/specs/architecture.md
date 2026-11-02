@@ -71,7 +71,9 @@ private async ensureConnected(): Promise<void> {
 | `TitanAuthModule.forRoot()` | JWT verification + caching (HS256) |
 | `SchedulerModule.forRoot()` | Cron/interval task scheduling |
 | `TitanMetricsModule.forRoot()` | Process, system, and RPC metrics collection |
-| `TitanHealthModule.forRoot()` | Memory and event loop health indicators |
+| `TitanHealthModule.forRoot()` | Memory and daemon-specific indicators, including event-loop stalls |
+
+On each daemon, `Health@1.0.0.live` and `ready` answer external probes with a status and timestamp. Full reports and individual indicators require viewer, operator, administrator or an authenticated mesh service role. Console node diagnostics use the same report that a credentialed controller retrieves over RPC. `omnitron doctor` probes the installed daemon for legacy anonymous access to diagnostic inventory.
 
 ### DI Providers (Token-Based)
 

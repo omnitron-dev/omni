@@ -240,6 +240,9 @@ export interface HealthModuleOptions {
    */
   enableRpcService?: boolean;
 
+  /** Allowed roles for detailed health RPCs. Omit for legacy anonymous access. Probes remain public. */
+  detailRpcRoles?: readonly string[];
+
   /**
    * Application version to include in health responses
    */

@@ -1420,22 +1420,9 @@ async function checkConsoleProxy(findings: Findings, port: number): Promise<void
  * What the daemon answers to a caller holding no credentials, and who can
  * reach it.
  *
- * Measured rather than read off the config: the question is not "which
- * decorators say allowAnonymous" but "what does this daemon, as configured
- * and running right now, hand a stranger". Two services turned out to be
- * fully anonymous by way of the packages that declare them —
- * `Health@1.0.0` from titan-health, `OmnitronMetrics` from titan-metrics —
- * and neither appears in apps/omnitron at all, so no amount of reading this
- * repository would have found them.
- *
- * `live` / `ready` / `getPrometheusText` are anonymous on purpose: a kubelet
- * probe and a Prometheus scrape carry no token. `getSnapshot` is a different
- * matter — it returns every managed app by name with its CPU, memory and
- * status, which is the platform's inventory.
- *
- * Severity follows reachability, because that is what decides the cost. On
- * loopback this is a note; bound to an interface, the inventory of
- * everything running on the host is readable by anyone who can route to it.
+ * Ask the installed RPC service for protected diagnostic data without a credential.
+ * External liveness and readiness probes return only status and time.
+ * Legacy runtimes may still expose detailed health and inventory.
  */
 export async function checkAnonymousSurface(findings: Findings, dc: IDaemonConfig): Promise<void> {
   const httpPort = (dc.httpPort ?? 9800) + 1;
@@ -1489,9 +1476,8 @@ export async function checkAnonymousSurface(findings: Findings, dc: IDaemonConfi
     ...(reachableFromNetwork
       ? {
           remedy:
-            'Set `daemon.host` back to 127.0.0.1 and reach the daemon through a proxy that authenticates, ' +
-            'or accept the exposure deliberately. These methods are declared allowAnonymous in titan-metrics ' +
-            'and titan-health, so the daemon cannot gate them on its own.',
+            'Verify the installed daemon version and its RPC access policy. Detailed health must require a control-plane read role. ' +
+            'Restrict network access to exposed diagnostic methods until an unauthenticated request is refused.',
         }
       : {}),
   });

@@ -1,17 +1,8 @@
 /**
  * `omnitron doctor` — what the daemon answers to a caller with no credentials.
  *
- * The check measures rather than reads. Two of the daemon's services are
- * fully anonymous by way of the packages that declare them — `Health@1.0.0`
- * from titan-health, `OmnitronMetrics` from titan-metrics — and neither
- * appears anywhere in apps/omnitron, so reading this repository's decorators
- * would never have found them. They were found by asking a running daemon,
- * which is also how this check works.
- *
- * `getSnapshot` is the one that matters: it returns every managed app by
- * name with its CPU, memory and status — the platform's inventory. Probes
- * and scrapes (`live`, `ready`, `getPrometheusText`) are anonymous on
- * purpose and are not probed here.
+ * Current daemons restrict detailed health. Doctor asks the installed service
+ * so older daemons with anonymously accessible inventory are still identified.
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -78,7 +69,7 @@ describe('anonymous surface', () => {
 
     const [finding] = findings.all();
     expect(finding?.severity).toBe('warning');
-    expect(finding?.remedy).toBeTruthy();
+    expect(finding?.remedy).toContain('Detailed health must require a control-plane read role');
     expect(finding?.evidence.join(' ')).toContain('daemon.host: 0.0.0.0');
   });
 

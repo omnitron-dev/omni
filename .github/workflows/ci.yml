@@ -99,7 +99,7 @@ jobs:
       - name: Stack startup and schema continuity
         run: pnpm --filter @omnitron-dev/omnitron exec vitest run test/unit/a-master-that-stood-still-while-it-migrated.test.ts test/unit/project-service-internals.spec.ts test/unit/wait-for-postgres-errors.test.ts test/unit/schema-transition.test.ts test/unit/schema-compatibility.test.ts
       - name: RPC role boundaries
-        run: pnpm --filter @omnitron-dev/omnitron exec vitest run test/integration/trace-authorization.test.ts test/unit/rpc-authorization.test.ts test/unit/daemon-role-policy.test.ts
+        run: pnpm --filter @omnitron-dev/omnitron exec vitest run test/integration/trace-authorization.test.ts test/integration/daemon-health-authorization.test.ts test/unit/rpc-authorization.test.ts test/unit/daemon-role-policy.test.ts
       - name: Deployment progress across RPC, CLI and Console
         run: |
           pnpm --filter @omnitron-dev/omnitron exec vitest run --maxWorkers 2 test/unit/remote-deployer-probe.test.ts test/unit/stack-progress-cli.test.ts test/webapp

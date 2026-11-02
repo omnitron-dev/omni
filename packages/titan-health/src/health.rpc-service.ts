@@ -7,10 +7,10 @@
  * @module titan/modules/health
  */
 
-import { Service, Public, Injectable } from '@omnitron-dev/titan/decorators';
+import { Service, Public, Injectable, METADATA_KEYS, type MethodOptions } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 import type { HealthService } from './health.service.js';
-import type { HealthIndicatorResult, HealthStatus } from './health.types.js';
+import type { HealthIndicatorResult, HealthModuleOptions, HealthStatus } from './health.types.js';
 
 /**
  * Liveness probe response
@@ -90,51 +90,38 @@ export interface UptimeResponse {
  * const isReady = await health.ready();
  * ```
  */
-/**
- * ANONYMOUS SURFACE — what this service answers without credentials.
- *
- * Seven methods carry `@Public({ auth: { allowAnonymous: true } })`, and they
- * are not equally obliged to. The distinction is worth having in front of you
- * before changing either half:
- *
- *   Anonymous BY NECESSITY — `live()` and `ready()`. An orchestrator probe
- *   carries no credentials; requiring auth here means the pod is restarted or
- *   pulled from rotation for failing to authenticate, which is an outage
- *   caused by the auth setting rather than by health. Both answer a status and
- *   a timestamp and nothing else. `ready()` used to add the name and message
- *   of every indicator that was NOT healthy — a door that stays quiet while a
- *   caller measures the background and starts naming the subsystem the moment
- *   pressure lands on it. Which one, and why, is `check()`'s to say.
- *
- *   Anonymous BY INHERITANCE — `check()`, `checkIndicator()`,
- *   `listIndicators()`, `uptime()`, `isHealthy()`. These answer questions a
- *   probe does not ask. `check()` returns every indicator's `message` and
- *   `error`, the memory indicator's heap used, heap limit and the thresholds a
- *   pressure has to reach, and uptime to the millisecond; `checkIndicator()`
- *   answers one subsystem, with its thresholds, on request.
- *
- * Left as it is deliberately. Which of these may be public is a property of
- * the DEPLOYMENT — an internal port scraped by Prometheus and a public edge
- * are different answers — and a package cannot know which it is in. Its
- * answer is `enableRpcService: false`, which takes the whole service off the
- * wire. That answer was lost for `forRootAsync` until 2026-09-25: the flag was
- * read from the factory's result, after the providers existed, so sample storage
- * and payments — which return `enableRpcService: false` («We use our own RPC
- * service») — served `check()` anonymously through their public gateway with
- * main and messaging. It is now read at registration (see
- * `HealthModuleAsyncOptions.enableRpcService`), and a factory that still
- * returns `false` gets a service that answers every call as a missing one.
- *
- * What an operator needs is that the surface be visible: `omnitron doctor`
- * reports it, and this comment is the answer they should find when they come
- * looking for why.
- */
 @Service({ name: 'Health@1.0.0' })
 @Injectable()
 export class HealthRpcService {
   private healthService!: HealthService;
   private version?: string;
   private disabled = false;
+
+  /** Apply this deployment's Netron policy without changing another application's service prototype. */
+  static create(health: HealthService, options: HealthModuleOptions): HealthRpcService {
+    const roles = options.detailRpcRoles;
+    let Rpc = HealthRpcService;
+    if (roles !== undefined) {
+      if (!Array.isArray(roles) || !roles.length || roles.some(role => typeof role !== 'string' || !role.trim() || role !== role.trim())) {
+        throw new TypeError('detailRpcRoles requires at least one nonempty role name');
+      }
+      class RestrictedHealth extends HealthRpcService {}
+      const auth = { roles: [...new Set(roles)] };
+      const base = HealthRpcService.prototype;
+      const { methods } = Reflect.getMetadata(METADATA_KEYS.SERVICE_ANNOTATION, HealthRpcService);
+      for (const method of Object.keys(methods)) {
+        if (method === 'live' || method === 'ready') continue;
+        const methodOptions = Reflect.getMetadata(METADATA_KEYS.METHOD_OPTIONS, base, method) as MethodOptions;
+        Public({ ...methodOptions, auth })(RestrictedHealth.prototype, method, Object.getOwnPropertyDescriptor(base, method));
+      }
+      Rpc = RestrictedHealth;
+    }
+    const rpc = new Rpc();
+    rpc.setHealthService(health);
+    if (options.version) rpc.setVersion(options.version);
+    if (options.enableRpcService === false) rpc.disable();
+    return rpc;
+  }
 
   /**
    * Answer every call as a missing service would. For a deployment that said

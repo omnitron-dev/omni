@@ -9,6 +9,7 @@
  */
 
 import type { DynamicModule, InjectionToken, ProviderDefinition, Provider } from '@omnitron-dev/titan/nexus';
+import { Scope } from '@omnitron-dev/titan/nexus';
 import { Module } from '@omnitron-dev/titan/decorators';
 import { HealthService } from './health.service.js';
 import { HealthRpcService } from './health.rpc-service.js';
@@ -28,6 +29,18 @@ import {
   REDIS_HEALTH_INDICATOR_TOKEN,
 } from './health.tokens.js';
 import type { HealthModuleOptions, HealthModuleAsyncOptions, IHealthIndicator } from './health.types.js';
+
+function healthRpcProviders(): Array<[InjectionToken<any>, ProviderDefinition<any>]> {
+  // Service discovery resolves the class token. Both names refer to the same policy-bound instance.
+  return [
+    [HealthRpcService, {
+      useFactory: HealthRpcService.create,
+      inject: [HEALTH_SERVICE_TOKEN, HEALTH_MODULE_OPTIONS_TOKEN],
+      scope: Scope.Singleton,
+    }],
+    [HEALTH_RPC_SERVICE_TOKEN, { useToken: HealthRpcService }],
+  ];
+}
 
 /**
  * Health Module
@@ -204,27 +217,7 @@ export class TitanHealthModule {
     }
 
     // Health RPC service (Netron-native, enabled by default)
-    if (options.enableRpcService !== false) {
-      const healthRpcService = new HealthRpcService();
-      healthRpcService.setHealthService(healthService);
-      if (options.version) {
-        healthRpcService.setVersion(options.version);
-      }
-
-      providers.push([
-        HEALTH_RPC_SERVICE_TOKEN,
-        {
-          useValue: healthRpcService,
-        },
-      ]);
-
-      providers.push([
-        HealthRpcService,
-        {
-          useValue: healthRpcService,
-        },
-      ]);
-    }
+    if (options.enableRpcService !== false) providers.push(...healthRpcProviders());
 
     // Build exports
     const exports: InjectionToken<any>[] = [HEALTH_SERVICE_TOKEN, HEALTH_MODULE_OPTIONS_TOKEN, HealthService];
@@ -340,39 +333,7 @@ export class TitanHealthModule {
       },
     ]);
 
-    // Health RPC service provider
-    if (rpcEnabled) {
-      providers.push([
-        HEALTH_RPC_SERVICE_TOKEN,
-        {
-          useFactory: (healthService: HealthService, moduleOptions: HealthModuleOptions) => {
-            const rpcService = new HealthRpcService();
-            rpcService.setHealthService(healthService);
-            // Registered because the flag at registration did not say otherwise,
-            // and switched off because the factory does: provider lists are fixed
-            // before the factory runs, so this is the only place its `false` can
-            // still be honoured — without failing a boot on a node whose daemon
-            // and application arrive in either order.
-            if (moduleOptions.enableRpcService === false) {
-              rpcService.disable();
-            }
-            if (moduleOptions.version) {
-              rpcService.setVersion(moduleOptions.version);
-            }
-            return rpcService;
-          },
-          inject: [HEALTH_SERVICE_TOKEN, HEALTH_MODULE_OPTIONS_TOKEN],
-        },
-      ]);
-
-      providers.push([
-        HealthRpcService,
-        {
-          useFactory: (rpcService: HealthRpcService) => rpcService,
-          inject: [HEALTH_RPC_SERVICE_TOKEN],
-        },
-      ]);
-    }
+    if (rpcEnabled) providers.push(...healthRpcProviders());
 
     // Built-in indicator tokens (resolved from health service)
     providers.push([

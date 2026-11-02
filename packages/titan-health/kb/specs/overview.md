@@ -28,4 +28,4 @@ export class ApiHealthIndicator extends HealthIndicator {
 ```
 
 ## RPC Integration
-`HealthRpcService` exposes health checks as Netron RPC endpoints for monitoring.
+Use `detailRpcRoles` to allow selected authenticated roles to call `check`, `checkIndicator`, `listIndicators`, `uptime` and `isHealthy` on `Health@1.0.0`. Without the option these methods retain anonymous access. `live` and `ready` expose only status and timestamp and stay available to anonymous probes.

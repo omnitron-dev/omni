@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { resolveInstalledDependency } from './package-resolution.js';
 import { fileURLToPath } from 'node:url';
 import { targetRuntime, releaseNodeOptions, type TargetRuntime } from './target-runtime.js';
 import { shellEscape } from '../shared/shell-escape.js';
@@ -80,10 +81,9 @@ export async function releaseTreeDigest(directory: string, portable = false, ski
 }
 
 /** Compare package bytes and resolution edges, independent of installation paths. */
-export async function frameworkDependencyDigest(application: string, selected?: Readonly<Record<string, string>>): Promise<string> {
+export async function frameworkDependencyGraph(application: string, selected?: Readonly<Record<string, string>>) {
   const io = await import('node:fs/promises');
   const paths = await import('node:path');
-  const { createRequire } = await import('node:module');
   const { createHash } = await import('node:crypto');
   const graph: Array<{ name: string; version: string; content: string; dependencies: Record<string, number | null> }> = [];
   const known = new Map<string, number>();
@@ -95,18 +95,13 @@ export async function frameworkDependencyDigest(application: string, selected?: 
     const meta = JSON.parse(await io.readFile(paths.join(root, 'package.json'), 'utf8'));
     if (typeof meta.name !== 'string' || typeof meta.version !== 'string') throw new Error('Invalid framework dependency package');
     const id = graph.length; known.set(root, id);
-    const item = { name: meta.name as string, version: meta.version as string, content: await releaseTreeDigest(root, true, true), dependencies: {} as Record<string, number | null> };
+    const item = { name: meta.name as string, version: meta.version as string, content: await releaseTreeDigest(root, true, true), dependencies: Object.create(null) as Record<string, number | null> };
     graph.push(item);
-    const resolver = createRequire(paths.join(root, 'package.json'));
     for (const name of Object.keys({ ...meta.dependencies, ...meta.optionalDependencies, ...meta.peerDependencies }).sort()) {
-      let target: string | undefined;
-      for (const parent of resolver.resolve.paths(`${name}/package.json`) ?? []) {
-        const candidate = paths.join(parent, name);
-        if (await io.access(paths.join(candidate, 'package.json')).then(() => true, () => false)) { target = candidate; break; }
-      }
+      const target = await resolveInstalledDependency(root, name, selected !== undefined);
       if (target) item.dependencies[name] = await visit(target);
       else if (name in (meta.optionalDependencies ?? {}) || meta.peerDependenciesMeta?.[name]?.optional) item.dependencies[name] = null;
-      else throw new Error('A framework dependency cannot be resolved');
+      else throw new Error('Missing framework dependency: ' + meta.name + ' → ' + name);
     }
     return id;
   };
@@ -114,11 +109,22 @@ export async function frameworkDependencyDigest(application: string, selected?: 
   const roots: Record<string, number> = {};
   const pathsByName = selected ?? Object.fromEntries((await io.readdir(scope)).filter(name => !name.startsWith('.')).map(name => [name, paths.join(scope, name)]));
   for (const name of Object.keys(pathsByName).sort()) roots[name] = await visit(pathsByName[name]!);
-  return createHash('sha256').update(JSON.stringify({ roots, graph })).digest('hex');
+  const sha256 = createHash('sha256').update(JSON.stringify({ roots, graph })).digest('hex');
+  return { roots, graph, directories: [...known.keys()], sha256 };
+}
+
+export async function frameworkDependencyDigest(application: string, selected?: Readonly<Record<string, string>>): Promise<string> {
+  return (await frameworkDependencyGraph(application, selected)).sha256;
+}
+
+// Both commands execute the same verifier on the target using only its Node executable.
+export function frameworkGraphCommandSource(): string {
+  return 'const resolveInstalledDependency=' + resolveInstalledDependency.toString() +
+    ';const releaseTreeDigest=' + releaseTreeDigest.toString() + ';const frameworkDependencyGraph=' + frameworkDependencyGraph.toString() + ';';
 }
 
 export function frameworkDigestCommand(application: string): string {
-  return `node --input-type=module -e ${shellEscape(`const releaseTreeDigest=${releaseTreeDigest.toString()};const inspect=${frameworkDependencyDigest.toString()};console.log(await inspect(${JSON.stringify(application)}));`)}`;
+  return `node --input-type=module -e ${shellEscape(`${frameworkGraphCommandSource()}const inspect=${frameworkDependencyDigest.toString()};console.log(await inspect(${JSON.stringify(application)}));`)}`;
 }
 
 /** Dependency installers may add locks, but must not silently rewrite the shipped payload. */

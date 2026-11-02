@@ -28,16 +28,18 @@ const pkg = async (name, deps = {}, code = 'export default 42;') => {
 };
 try {
   const leaf=await pkg('mock-native'), titan=await pkg('@omnitron-dev/titan',{'mock-native':leaf},"export { default } from 'mock-native';");
-  const app=await pkg('sample-api',{'@omnitron-dev/titan':titan,'mock-native':leaf},"import n from '@omnitron-dev/titan';console.log(n);");
+  const extension = await pkg('@omnitron-dev/extension', {'@omnitron-dev/titan':titan, 'mock-native':leaf});
+  const events = await pkg('@omnitron-dev/events', {'mock-native':leaf});
+  const app=await pkg('sample-api',{'@omnitron-dev/titan':titan,'@omnitron-dev/extension':extension,'@omnitron-dev/events':events,'mock-native':leaf},"import n from '@omnitron-dev/titan';console.log(n);");
   const unused=await pkg('@omnitron-dev/unused');
-  const daemon=await pkg('@omnitron-dev/omnitron',{'@omnitron-dev/titan':titan,'@omnitron-dev/unused':unused});
+  const daemon=await pkg('@omnitron-dev/omnitron',{'@omnitron-dev/titan':titan,'@omnitron-dev/events':events,'@omnitron-dev/unused':unused});
   await fs.writeFile(path.join(leaf,'dist/native.bin'),Buffer.from([0,16,255]));
   await fs.writeFile(path.join(app,'.env'),'NOT_FOR_RELEASE=1');
   const graph=await installedGraph(daemon),locations=graph.map((_,i)=>path.join(owner,'packages',String(i)));
   await materializeGraph(graph,locations);
   const ownerPkg=locations[0],options='--max-old-space-size=8192', cfg={name:'api',env:{NODE_OPTIONS:options}};
   // Execute the launch check from the package that the fixture owner actually serves.
-  for (const file of ['release/runtime-provenance.js', 'release/target-runtime.js', 'shared/shell-escape.js']) {
+  for (const file of ['release/runtime-provenance.js', 'release/package-resolution.js', 'release/target-runtime.js', 'shared/shell-escape.js']) {
     const out = path.join(ownerPkg, 'dist', file);
     await fs.mkdir(path.dirname(out), {recursive:true});
     await fs.copyFile(path.join(dist, file), out);
@@ -47,6 +49,12 @@ try {
   assert.equal(await fs.access(path.join(staged,'.env')).then(()=>true,()=>false),false);
   await assert.rejects(stageApplicationClosure(app,path.join(tmp,'inject'),{name:'api',env:{NODE_OPTIONS:'--require=/tmp/evil.cjs'}},[src]),/permits only/);
   await assert.rejects(stageApplicationClosure(app,path.join(tmp,'outside'),cfg,[app]),/escapes the frozen/);
+  const globalModules = path.join(tmp,'ambient-modules');
+  await fs.mkdir(globalModules); await fs.symlink(leaf, path.join(globalModules,'mock-native'), 'dir');
+  const resolution = pathToFileURL(path.join(dist,'release/package-resolution.js')).href;
+  const probe = 'const {resolveInstalledDependency}=await import(process.argv[1]);' +
+    'if(await resolveInstalledDependency(process.argv[2],"mock-native"))process.exitCode=1;';
+  await execFile(process.execPath, ['--input-type=module','-e',probe,resolution,tmp], {env:{...process.env,NODE_PATH:globalModules}});
   const archive=path.join(tmp,'sample.tar.gz');await writePortableArchive(staged,archive);
   await fs.mkdir(root);await execFile('tar',['-xzf',archive,'-C',root]);
   const content=await fs.readFile(archive),bootstrap=path.join(root,'dist/index.js'),closure=path.join(root,'.omnitron-closure.json');
@@ -59,7 +67,19 @@ try {
   const payload=await fs.readFile(bootstrap);await fs.appendFile(bootstrap,'changed');await assert.rejects(run(binding),/unpacked release payload/);await fs.writeFile(bootstrap,payload);
   const remoteLeaf=path.join(locations[graph.findIndex(p=>p.metadata.name==='mock-native')],'dist/native.bin');
   const native=await fs.readFile(remoteLeaf);await fs.writeFile(remoteLeaf,Buffer.from([42]));await assert.rejects(run(binding),/owner dependencies differ/);await fs.writeFile(remoteLeaf,native);
+  const eventLeaf = path.join(await fs.realpath(path.join(ownerPkg, 'node_modules/@omnitron-dev/events')), 'node_modules/mock-native');
+  const originalLink = await fs.readlink(eventLeaf), duplicate = path.join(owner, 'duplicate');
+  await fs.cp(await fs.realpath(eventLeaf), duplicate, {recursive:true});
+  await fs.unlink(eventLeaf); await fs.symlink(duplicate, eventLeaf, 'dir');
+  await assert.rejects(run(binding), /shared package identity differs/);
+  await fs.unlink(eventLeaf); await fs.symlink(originalLink, eventLeaf, 'dir');
   assert.equal(JSON.parse(await run(binding)),options);assert.equal(await fs.realpath(path.join(root,'node_modules/@omnitron-dev/titan')),await fs.realpath(path.join(ownerPkg,'node_modules/@omnitron-dev/titan')));
+  const expectedLeaf = await fs.realpath(path.dirname(path.dirname(remoteLeaf)));
+  for (const installed of ['node_modules/mock-native', 'node_modules/@omnitron-dev/extension/node_modules/mock-native',
+    'node_modules/@omnitron-dev/titan/node_modules/mock-native']) {
+    assert.equal(await fs.realpath(path.join(root, installed)), expectedLeaf, installed);
+  }
+  assert.ok((await fs.realpath(path.join(root, 'node_modules/@omnitron-dev/extension'))).startsWith(root + path.sep));
   assert.equal(await fs.access(path.join(root,'node_modules/@omnitron-dev/unused')).then(()=>true,()=>false),false);
   assert.equal((await execFile(process.execPath,[bootstrap],{env:{NODE_OPTIONS:options}})).stdout.trim(),'42');
   assert.equal(await fs.access(path.join(root,transferred)).then(()=>true,()=>false),false);

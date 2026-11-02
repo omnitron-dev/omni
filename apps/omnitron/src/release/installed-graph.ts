@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { createRequire } from 'node:module';
+import { resolveInstalledDependency } from './package-resolution.js';
 import path from 'node:path';
 
 interface PackageInfo {
@@ -48,16 +48,9 @@ export async function installedGraph(source: string, overlays: ReadonlyMap<strin
     if (packages.length >= 4096) throw Error('Installed graph exceeds 4096 packages');
     id = packages.length; known.set(root, id);
     const item: InstalledPackage = { root, metadata, dependencies: new Map() }; packages.push(item);
-    const resolver = createRequire(path.join(root, 'package.json'));
     const names = Object.keys({ ...metadata.dependencies, ...metadata.optionalDependencies, ...metadata.peerDependencies }).sort();
     for (const name of names) {
-      if (!validName(name)) throw Error('Unsafe installed dependency name: ' + name);
-      let target: string | undefined;
-      for (const parent of resolver.resolve.paths(name + '/package.json') ?? []) {
-        const candidate = path.join(parent, name);
-        try { await fs.access(path.join(candidate, 'package.json')); target = candidate; break; }
-        catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
-      }
+      const target = await resolveInstalledDependency(root, name);
       if (target) item.dependencies.set(name, await visit(target));
       else if (!Object.hasOwn(metadata.optionalDependencies ?? {}, name) && !metadata.peerDependenciesMeta?.[name]?.optional)
         throw Error('Missing installed dependency: ' + metadata.name + ' → ' + name);

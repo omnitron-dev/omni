@@ -10,6 +10,10 @@ Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framewo
 pnpm add @omnitron-dev/titan-database
 ```
 
+Install the driver for each database your application uses. For SQLite, install
+`better-sqlite3@^13.0.3` and use Node.js 22.14+ on 22.x or 23.6+.
+The native driver requires Node-API 10. PostgreSQL and MySQL can run without it.
+
 ## Overview
 
 Provides database connectivity for Titan applications using Kysely as the query builder. Supports PostgreSQL and SQLite dialects, declarative migrations, and row-level security (RLS) via `AsyncLocalStorage` context propagation.

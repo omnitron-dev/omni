@@ -8,6 +8,7 @@
 
 import { Kysely, PostgresDialect, MysqlDialect, SqliteDialect, CamelCasePlugin, sql } from 'kysely';
 import { describeError } from './utils/describe-error.js';
+import { openSqliteDatabase } from './exports/sqlite.js';
 
 /**
  * The three drivers, loaded when a connection actually asks for one.
@@ -42,7 +43,6 @@ type Database = BetterSqlite3Types.Database;
 
 type PgModule = typeof import('pg');
 type MysqlModule = typeof import('mysql2');
-type SqliteModule = { default: typeof BetterSqlite3Types };
 
 async function loadDriver<T>(name: string, dialect: string, load: () => Promise<T>): Promise<T> {
   try {
@@ -75,12 +75,6 @@ let mysqlModule: Promise<MysqlModule> | null = null;
 function loadMysql(): Promise<MysqlModule> {
   mysqlModule ??= loadDriver('mysql2', 'mysql', () => import('mysql2'));
   return mysqlModule;
-}
-
-let sqliteModule: Promise<SqliteModule> | null = null;
-function loadSqlite(): Promise<SqliteModule> {
-  sqliteModule ??= loadDriver('better-sqlite3', 'sqlite', () => import('better-sqlite3') as Promise<SqliteModule>);
-  return sqliteModule;
 }
 
 /**
@@ -1200,8 +1194,7 @@ export class DatabaseManager implements IDatabaseManager {
       }
 
       case 'sqlite': {
-        const { default: BetterSqlite3 } = await loadSqlite();
-        const database = new BetterSqlite3(connectionConfig.database || ':memory:', {
+        const database = openSqliteDatabase(connectionConfig.database || ':memory:', {
           // Enable verbose mode for debugging if requested
           verbose: config.debug ? (msg: unknown) => this.logger.debug({ msg }, 'SQLite verbose') : undefined,
           // Set busy timeout to handle concurrent access (especially for shared in-memory databases)

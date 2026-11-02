@@ -4,17 +4,42 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
 import { execFileSync } from 'node:child_process';
 import semver from 'semver';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'omni-pack-check-'));
+const { values } = parseArgs({ options: { 'install-consumer': { type: 'string' } } });
+const archives = new Map();
 const failures = [];
 let packages = 0;
 let targets = 0;
 const strings = value => typeof value === 'string' ? [value]
   : value && typeof value === 'object' ? Object.values(value).flatMap(strings) : [];
 const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+function installConsumer(destination) {
+  const consumer = path.resolve(destination);
+  fs.mkdirSync(consumer);
+  fs.mkdirSync(path.join(consumer, 'archives'));
+  const dependencies = {};
+  function include(name) {
+    if (dependencies[name] || !archives.has(name)) return;
+    const { manifest, filename } = archives.get(name);
+    const relative = 'archives/' + path.basename(filename);
+    dependencies[name] = 'file:./' + relative;
+    fs.copyFileSync(filename, path.join(consumer, relative));
+    for (const dependency of Object.keys({
+      ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.peerDependencies,
+    })) include(dependency);
+  }
+  include('@omnitron-dev/omnitron');
+  fs.writeFileSync(path.join(consumer, 'package.json'), JSON.stringify({ private: true, dependencies }));
+  execFileSync('npm', ['install', '--omit=dev', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org/'], {
+    cwd: consumer, stdio: 'inherit',
+  });
+}
 
 try {
   for (const group of ['packages', 'apps']) {
@@ -55,9 +80,11 @@ try {
         }
       }
       packages++;
-      fs.rmSync(packed.filename);
+      if (values['install-consumer']) archives.set(manifest.name, { manifest, filename: packed.filename });
+      else fs.rmSync(packed.filename);
     }
   }
+  if (!failures.length && values['install-consumer']) installConsumer(values['install-consumer']);
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });
 }

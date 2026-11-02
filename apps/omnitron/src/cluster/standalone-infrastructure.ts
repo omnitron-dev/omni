@@ -1,6 +1,6 @@
 import { lstatSync } from 'node:fs';
 import path from 'node:path';
-import Database from 'better-sqlite3';
+import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { readSavedDaemonConfig } from '../config/saved.js';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import { CLUSTER_ENROLLMENT_KEY } from './enrollment.js';
@@ -13,7 +13,7 @@ export function assertStandaloneInfrastructure(home = OMNITRON_HOME): void {
 
   const file = path.join(home, 'data/daemon-state.db');
   if (!lstatSync(file, { throwIfNoEntry: false })) return;
-  const db = new Database(file, { readonly: true, fileMustExist: true });
+  const db = openSqliteDatabase(file, { readonly: true, fileMustExist: true });
   try {
     if (db.prepare('SELECT 1 FROM state_kv WHERE key = ?').get(CLUSTER_ENROLLMENT_KEY)) throw new Error(refused);
   } finally {

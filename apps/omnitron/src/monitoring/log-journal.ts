@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
-import Database from 'better-sqlite3';
+import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { ensurePrivateDir, sealSqliteFiles } from '../shared/private-files.js';
 import { readProcessLifetime } from './process-lifetime.js';
 import { compareProcessLifetimes } from '../shared/host-boot-identity.js';
@@ -11,7 +11,7 @@ export interface LogJournalStats { pending: number; assembling: number; bytes: n
 
 /** Private, restart-safe delivery journal. Unacknowledged records are never evicted. */
 export class LogJournal<T> {
-  private readonly db: InstanceType<typeof Database>;
+  private readonly db: ReturnType<typeof openSqliteDatabase>;
   private error: string | null = null;
   private recoveryError: string | null = null;
   private lastRecovery = -Infinity;
@@ -21,7 +21,7 @@ export class LogJournal<T> {
     const lifetime = readProcessLifetime(process.pid);
     this.writerIdentity = lifetime.state === 'alive' ? lifetime.identity : `unverified:${randomUUID()}`;
     if (filename !== ':memory:') ensurePrivateDir(path.dirname(filename));
-    this.db = new Database(filename);
+    this.db = openSqliteDatabase(filename);
     this.db.pragma('busy_timeout = 5000');
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('synchronous = FULL');

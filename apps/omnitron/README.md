@@ -18,6 +18,9 @@ Key responsibilities:
 
 ## Usage
 
+The CLI and daemon require Node.js 22.14 or newer on 22.x, or Node.js 23.6
+or newer. Their embedded SQLite storage uses Node-API 10.
+
 ```bash
 # Link globally
 pnpm link:global

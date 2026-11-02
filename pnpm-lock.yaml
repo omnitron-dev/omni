@@ -1346,6 +1346,9 @@ importers:
       '@omnitron-dev/eventemitter':
         specifier: workspace:*
         version: link:../eventemitter
+      '@types/better-sqlite3':
+        specifier: ^9.6.0
+        version: 9.6.0
       better-sqlite3:
         specifier: ^13.0.3
         version: 13.0.3

@@ -38,16 +38,10 @@ import { OMNITRON_HOME } from '../config/defaults.js';
  */
 
 import path from 'node:path';
-import { createRequire } from 'node:module';
+import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { Kysely, SqliteDialect, sql } from 'kysely';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { ensurePrivateDir, sealSqliteFiles } from '../shared/private-files.js';
-
-// `better-sqlite3` is loaded sync via createRequire because `initSync()`
-// can't `await import()`. The dynamic `await import()` in `getDb()`
-// still works because Node resolves both paths to the same module
-// graph entry.
-const requireCjs = createRequire(import.meta.url);
 
 // =============================================================================
 // Schema
@@ -144,14 +138,12 @@ export class DaemonStateStore {
    * Force-open the database synchronously and return the raw
    * better-sqlite3 handle. Callable from constructor-style code
    * paths that can't await (legacy ProjectRegistry, pid-manager).
-   * Uses `require` instead of dynamic `import` to stay sync.
    * Idempotent — subsequent calls return the cached handle.
    */
   initSync(): import('better-sqlite3').Database {
     if (this.rawSqlite) return this.rawSqlite;
     ensurePrivateDir(path.dirname(this.dbPath));
-    const BetterSqlite3 = requireCjs('better-sqlite3') as typeof import('better-sqlite3');
-    const database: import('better-sqlite3').Database = new BetterSqlite3(this.dbPath);
+    const database = openSqliteDatabase(this.dbPath);
     database.pragma('journal_mode = WAL');
     database.pragma('busy_timeout = 5000');
     database.pragma('synchronous = NORMAL');
@@ -422,8 +414,7 @@ export class DaemonStateStore {
     let database = this.rawSqlite;
     if (!database) {
       ensurePrivateDir(path.dirname(this.dbPath));
-      const BetterSqlite3 = (await import('better-sqlite3')).default;
-      database = new BetterSqlite3(this.dbPath);
+      database = openSqliteDatabase(this.dbPath);
       // WAL mode + busy_timeout + synchronous=NORMAL is the same
       // recipe SlaveStorageService uses; battle-tested under the
       // metrics drain workload.

@@ -22,6 +22,7 @@ import { OMNITRON_HOME } from '../config/defaults.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Kysely, SqliteDialect, sql } from 'kysely';
+import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { withDateBinding } from '../database/sqlite-date-binding.js';
 import { DEFAULT_ALERT_RULES } from '../database/migrations/011_alerts_nobody_had_to_write.js';
 import { DISK_ALERT_RULE } from '../database/migrations/012_a_disk_nobody_watched.js';
@@ -139,9 +140,7 @@ export class SlaveStorageService {
     // Ensure directory exists
     fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
 
-    // Dynamic import better-sqlite3 (peer dependency)
-    const BetterSqlite3 = (await import('better-sqlite3')).default;
-    const database = new BetterSqlite3(this.dbPath);
+    const database = openSqliteDatabase(this.dbPath);
 
     // Enable WAL mode for concurrent access
     database.pragma('journal_mode = WAL');

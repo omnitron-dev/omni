@@ -43,6 +43,10 @@
     "./dialects": {
       "types": "./dist/exports/dialects.d.ts",
       "default": "./dist/exports/dialects.js"
+    },
+    "./sqlite": {
+      "types": "./dist/exports/sqlite.d.ts",
+      "default": "./dist/exports/sqlite.js"
     }
   },
   "files": [
@@ -66,6 +70,7 @@
     "@kysera/soft-delete": "^0.10.2",
     "@kysera/timestamps": "^0.10.2",
     "@omnitron-dev/eventemitter": "workspace:*",
+    "@types/better-sqlite3": "^9.6.0",
     "kysely": "^0.29.8",
     "zod": "^4.6.7",
     "@kysera/dal": "^0.10.2"

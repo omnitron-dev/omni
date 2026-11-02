@@ -46,7 +46,7 @@ omni/
 | Layer | Technology |
 |-------|-----------|
 | Language | TypeScript, ESM-first |
-| Omnitron CLI runtime | Node.js >= 22.12.0 |
+| Omnitron CLI and daemon | Node.js 22.14+ on 22.x, or 23.6+ (Node-API 10 for SQLite) |
 | Monorepo | pnpm workspaces + Turborepo |
 | Backend | Titan framework, Netron RPC, Kysely, Redis |
 | Frontend | React 19, Vite, MUI v9, Zustand v5 |

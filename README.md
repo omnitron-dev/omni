@@ -117,7 +117,7 @@ Preparation builds a separate checkout and creates a local annotated tag.
 Review the package inventory, SHA-512 digests and release notes in
 `.release-artifacts/<version>/<commit>/` before pushing. The push updates
 the selected branch and tag atomically. Publication verifies the remote
-tag and checks the archived package bytes against npm. For an interrupted
+tag and checks the sealed SHA-512 digests against npm metadata. For an interrupted
 publication, keep the archives, return to the same clean commit and run
 `pnpm release <version> --resume`. The GitHub release can be completed
 separately after all npm packages are confirmed.

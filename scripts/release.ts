@@ -7,9 +7,10 @@ import { isCancel, password, text } from '@xec-sh/kit';
 import {
   acquireReleaseLock, assertCleanReleaseTree, assertReleaseHead, commitReleaseVersion,
   createGithubRelease, discoverReleasePackages, ensureReleaseTag, loadPreparedRelease,
-  planRelease, prepareReleaseArtifacts, preflightPreparedRelease, publishPreparedRelease,
+  planRelease, prepareReleaseArtifacts, publishPreparedRelease, registryAddress,
   pushReleaseRefs, registryArtifactMatches, releaseCommand, releaseNotes, verifyRemoteReleaseTag,
 } from '@xec-sh/ops/release';
+import type { ReleaseCommand } from '@xec-sh/ops/release';
 import semver from 'semver';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -24,12 +25,14 @@ const usage = `pnpm release [VERSION] [OPERATION]
   --resume    Resume --publish using the same archives
   --github    Create the GitHub release after confirming every package in npm
 
+  --registry URL  Select an HTTPS registry or a loopback test registry
+
 Every operation is separate. Archives and receipts live under .release-artifacts/.`;
 
 async function main() {
   const { values, positionals } = parseArgs({
-    options: Object.fromEntries(['help', 'list', 'list-packages', 'dry-run', 'prepare', 'skip-publish',
-      'push', 'publish', 'resume', 'github'].map(key => [key, { type: 'boolean' as const }])),
+    options: { registry: { type: 'string' }, ...Object.fromEntries(['help', 'list', 'list-packages', 'dry-run', 'prepare', 'skip-publish',
+      'push', 'publish', 'resume', 'github'].map(key => [key, { type: 'boolean' as const }])) },
     allowPositionals: true,
   });
   if (values.help) { console.log(usage); return; }
@@ -88,16 +91,22 @@ async function main() {
     if (operation === 'push') { await pushReleaseRefs(root, version); return; }
 
     await verifyRemoteReleaseTag(root, version, true);
+    const registry = registryAddress(typeof values.registry === 'string' ? values.registry : undefined);
+    const scopes = [...new Set(prepared.artifacts.map(pkg => pkg.name.split('/')[0]).filter(name => name?.startsWith('@')))];
+    const run: ReleaseCommand = (cwd, executable, args, options) => {
+      if (executable !== 'npm') return releaseCommand(cwd, executable, args, options);
+      const destination = scopes.map(scope => `--${scope}:registry=${registry}`);
+      return releaseCommand(cwd, executable, [...args, ...destination, ...(args[0] === 'view' ? ['--prefer-online'] : [])], options);
+    };
     if (operation === 'github') {
       for (const artifact of prepared.artifacts) {
-        if (!await registryArtifactMatches(root, artifact)) throw new Error(`npm has not confirmed ${artifact.name}`);
+        if (!await registryArtifactMatches(root, artifact, { registry, run })) throw new Error(`npm has not confirmed ${artifact.name}`);
       }
       console.log(await createGithubRelease(root, version, repository, await releaseNotes(root, version, repository)));
       return;
     }
-    await preflightPreparedRelease(root, version);
     await publishPreparedRelease(root, version, {
-      progress: console.log,
+      registry, run, progress: console.log,
       otp: async () => {
         if (!process.stdin.isTTY) throw new Error('An npm one-time password requires an interactive terminal');
         const answer = await password({ message: 'npm one-time password' });

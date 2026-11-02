@@ -74,3 +74,21 @@ it('exposes a keyboard-operable bounded filter and returns from one stack to all
   expect(screen.getByText('(1/2 stacks)')).toBeTruthy();
   expect(localStorage.getItem('omnitron_active_stack')).toBeNull();
 });
+
+
+it('removes the filter tooltip before a pointer can select All stacks', async () => {
+  rpc.stacks.mockResolvedValue([stack('dev', false), stack('test', true)]);
+  render(<><StackSelector /><StatusBar /></>);
+  await waitFor(() => expect(screen.getByLabelText(/applications 6\/12,/)).toBeTruthy());
+  act(() => useProjectStore.getState().selectStack('test'));
+  const filter = screen.getByRole('combobox', { name: 'Stack filter' });
+  fireEvent.mouseOver(filter);
+  await screen.findByRole('tooltip');
+  fireEvent.mouseDown(filter, { button: 0 });
+  await screen.findByRole('listbox');
+  await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull());
+  fireEvent.click(screen.getByRole('option', { name: 'All stacks' }));
+  await waitFor(() => expect(screen.getByLabelText(/applications 6\/12,/)).toBeTruthy());
+  expect(filter.textContent).toBe('All stacks');
+  expect(useProjectStore.getState().activeStack).toBeNull();
+});

@@ -1,5 +1,5 @@
 /** Explicit, persistent workspace filter. Opening a detail page never changes it. */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Box from '@mui/material/Box';
 import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
@@ -9,6 +9,7 @@ import { useProjectStore, useActiveProjectStacks } from '../stores/project.store
 import { getStatusColor } from './topology/shared-styles';
 
 export function StackSelector() {
+  const [menuOpen, setMenuOpen] = useState(false);
   const activeProject = useProjectStore(s => s.activeProject);
   const activeStack = useProjectStore(s => s.activeStack);
   const readError = useProjectStore(s => activeProject ? s.stackReadErrors[activeProject] : null);
@@ -19,13 +20,19 @@ export function StackSelector() {
   const unverified = Boolean(activeStack && !stacks.some(stack => stack.name === activeStack));
 
   return (
-    <Tooltip title={readError
-      ? 'Stack inventory unavailable. The current filter is retained; cached options may be stale.'
-      : 'Filter workspace views. Opening a stack detail does not change this filter.'}>
+    <Tooltip
+      title={menuOpen ? '' : readError
+        ? 'Stack inventory unavailable. The current filter is retained; cached options may be stale.'
+        : 'Filter workspace views. Opening a stack detail does not change this filter.'}
+      slotProps={{ transition: { timeout: 0 } }}
+    >
       <Select
         size="small"
         value={activeStack ?? ''}
         displayEmpty
+        open={menuOpen}
+        onOpen={() => setMenuOpen(true)}
+        onClose={() => setMenuOpen(false)}
         onChange={event => selectStack(event.target.value || null)}
         inputProps={{ 'aria-label': 'Stack filter' }}
         renderValue={value => value ? `Stack: ${value}` : 'All stacks'}

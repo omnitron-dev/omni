@@ -129,6 +129,7 @@ export interface HostServiceReading {
   /** A `bareMetal` service: what is there, and what a deployment would do. */
   onHost?: {
     installed: boolean;
+    packages?: import('./apt-packages.js').AptPackageReading[];
     userExists: boolean;
     dataDir: { path: string; exists: boolean; owner: string | null; disk: DiskReading | null } | null;
     /** `active` is the plan's bit — up, or on its way; `state` is systemd's words for it. */
@@ -291,6 +292,7 @@ async function readOnHost(spec: BareMetalSpec, host: HostRunner): Promise<NonNul
 
   return {
     installed: observed.installed,
+    ...(observed.packages && { packages: observed.packages }),
     userExists: observed.userExists,
     dataDir: spec.dataDir
       ? {

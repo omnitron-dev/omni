@@ -24,12 +24,14 @@
  */
 
 import { bindService, secretValues } from './service-binding.js';
-import type { IServiceHealthCheck, IServiceOverride, SecretRef } from './types.js';
+import type { AptPackagePolicy, IServiceHealthCheck, IServiceOverride, SecretRef } from './types.js';
+import { aptChanges, type AptChange, type AptDependency, type AptPackageReading, type AptTransaction } from './apt-packages.js';
 
 /** A declared bare-metal service, with its `networkMode` variant applied. */
 export interface BareMetalSpec {
   /** Service name, for messages. */
   name: string;
+  apt?: AptPackagePolicy;
   installCommand?: string | undefined;
   systemdUnit?: string | undefined;
   configFile?: string | undefined;
@@ -62,6 +64,8 @@ export interface BareMetalSpec {
 export interface BareMetalObservation {
   /** `validateCommand` succeeded, or there was none to run. */
   installed: boolean;
+  packages?: AptPackageReading[];
+  aptTransaction?: AptTransaction;
   userExists: boolean;
   dataDirExists: boolean;
   unitKnown: boolean;
@@ -89,6 +93,7 @@ export interface AdoptionObservation {
 }
 
 export type BareMetalAction =
+  | { type: 'install-packages'; policy: AptPackagePolicy; changes: AptChange[]; dependencies: AptDependency[] }
   | { type: 'install'; command: string }
   | { type: 'create-user'; user: string }
   | { type: 'disable-unit'; unit: string; because: string }
@@ -135,6 +140,20 @@ export const CONFIG_MODE = '0640';
 export function planBareMetal(spec: BareMetalSpec, observed: BareMetalObservation): BareMetalPlan {
   const actions: BareMetalAction[] = [];
   const refusals: string[] = [];
+
+  if (spec.apt !== undefined) {
+    const packages = observed.packages ?? [];
+    if (!packages.length) refusals.push('Declared APT packages were not inspected.');
+    for (const pkg of packages) {
+      if (pkg.state === 'blocked') refusals.push(pkg.name + ': ' + pkg.detail);
+    }
+    const changes = aptChanges(packages);
+    if (changes.length && !refusals.length) {
+      if (!observed.aptTransaction) refusals.push('The APT package transaction has not been simulated.');
+      else if (observed.aptTransaction.error) refusals.push(observed.aptTransaction.error);
+      else actions.push({ type: 'install-packages', changes, policy: spec.apt, dependencies: observed.aptTransaction.dependencies });
+    }
+  }
 
   // 1. The software itself.
   if (!observed.installed) {
@@ -441,6 +460,7 @@ export function selectBareMetal(
   };
 
   const spec: BareMetalSpec = { name };
+  if (merged.apt !== undefined) spec.apt = merged.apt;
   if (merged.installCommand) spec.installCommand = merged.installCommand;
   if (merged.systemdUnit) spec.systemdUnit = merged.systemdUnit;
   if (merged.configFile) spec.configFile = merged.configFile;

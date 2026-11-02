@@ -527,6 +527,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
 
     const host = localHost();
     const logger = createNullLogger();
+    let aptRefresh: Promise<void> | undefined;
 
     for (const [name, requirement] of Object.entries(declared)) {
       // The stack's override, which `selectBareMetal` has always taken and
@@ -545,6 +546,17 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
       const spec = selectBareMetal(name, requirement as never, overrides[name] as never);
       if (!spec) continue;
 
+      if (spec.apt !== undefined) {
+        try {
+          aptRefresh ??= import('../infrastructure/apt-packages.js').then(({ refreshAptIndices }) => refreshAptIndices(host));
+          await aptRefresh;
+        } catch (error) {
+          const reason = (error as Error).message;
+          refusals.push(reason);
+          failed.push({ name, status: 'refused', error: reason });
+          continue;
+        }
+      }
       const observed = await observeBareMetal(spec, host);
       const plan = planBareMetal(spec, observed);
 

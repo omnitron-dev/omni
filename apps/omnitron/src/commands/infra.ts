@@ -338,6 +338,9 @@ function printInspection(
           (h.unit ? `${h.unit.name} ${h.unit.known ? h.unit.state : 'unknown'}` : '-') +
           ` · config ${h.config} · unit file ${h.unitFile}`,
       );
+      for (const p of h.packages ?? []) {
+        log[p.state === 'blocked' ? 'warn' : 'info'](`  APT ${p.name} · installed ${p.installed ?? '—'} · candidate ${p.candidate ?? '—'} · ${p.state} · ${p.detail}`);
+      }
       if (h.dataDir) {
         log.info(
           `  data ${h.dataDir.path} · ${h.dataDir.exists ? `owner ${h.dataDir.owner}` : 'absent'} · ` +

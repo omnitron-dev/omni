@@ -15,6 +15,7 @@
 
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { AdoptionObservation, BareMetalAction, BareMetalObservation, BareMetalSpec } from './bare-metal-plan.js';
+import { aptChanges, inspectAptPackages, installAptPackages, previewAptTransaction } from './apt-packages.js';
 
 export interface CommandResult {
   ok: boolean;
@@ -39,7 +40,7 @@ export interface HostRunner {
 }
 
 export async function observeBareMetal(spec: BareMetalSpec, host: HostRunner): Promise<BareMetalObservation> {
-  const [installed, userExists, dataDirExists, unit, configContent] = await Promise.all([
+  const [installed, userExists, dataDirExists, unit, configContent, packages] = await Promise.all([
     // No `validateCommand` means "assume present": the declaration did not
     // give a way to check, and guessing "absent" would run an install every
     // pass.
@@ -48,15 +49,20 @@ export async function observeBareMetal(spec: BareMetalSpec, host: HostRunner): P
     spec.dataDir ? host.exists(spec.dataDir) : Promise.resolve(true),
     observeUnit(spec.systemdUnit, host),
     spec.configFile ? host.readFile(spec.configFile) : Promise.resolve(null),
+    spec.apt !== undefined ? inspectAptPackages(spec.apt, host) : undefined,
   ]);
 
   const unitPath = spec.systemdUnit ? (spec.unitFile ?? `/etc/systemd/system/${spec.systemdUnit}.service`) : null;
   const unitContent = spec.unitContent !== undefined && unitPath ? await host.readFile(unitPath) : null;
   const adoption =
     spec.adopt && spec.dataDir ? await observeAdoption(spec.adopt, spec.dataDir, spec.configFile, host) : undefined;
+  const changes = aptChanges(packages ?? []);
+  const aptTransaction = changes.length && !packages?.some(p => p.state === 'blocked') ? await previewAptTransaction(changes, host) : undefined;
 
   return {
     installed,
+    ...(packages && { packages }),
+    ...(aptTransaction && { aptTransaction }),
     userExists,
     dataDirExists,
     unitKnown: unit.known,
@@ -151,6 +157,9 @@ export async function applyBareMetal(
 
 async function applyOne(action: BareMetalAction, host: HostRunner): Promise<void> {
   switch (action.type) {
+    case 'install-packages':
+      await installAptPackages(action.changes, action.policy, host, action.dependencies);
+      return;
     case 'install': {
       // The one place a declared string is run as a command line: package
       // installation is written by an operator as a shell line and has no
@@ -262,6 +271,8 @@ async function closeToOthers(path: string, host: HostRunner): Promise<void> {
 
 export function describe(action: BareMetalAction): string {
   switch (action.type) {
+    case 'install-packages': return 'install host packages ' + action.changes.map(p => p.name + ' ' + (p.installed ?? 'absent') + ' → ' + p.candidate).join(', ') +
+      (action.dependencies.length ? ' with new dependencies ' + action.dependencies.map(p => p.name + '=' + p.version).join(', ') : '');
     case 'install': return `install (${firstLine(action.command)})`;
     case 'write-unit': return `write unit ${action.path}`;
     case 'daemon-reload': return 'reload systemd';

@@ -3,6 +3,7 @@ import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, F
 import { Alert } from '@omnitron-dev/prism/components/alert';
 import { OperationStatus } from './operation-status';
 import { TopologyMetadataDialog } from './topology/topology-metadata-dialog';
+import { StackHostReadiness } from './stack-host-readiness';
 import { Can } from 'src/auth/access';
 import { daemonClient } from 'src/netron/client';
 import type { StackDiagnosis } from '@omnitron-dev/omnitron/dto/services';
@@ -51,6 +52,9 @@ export function StackDiagnosisDialog({ project, stack, onClose }: { project: str
               </Box>)}
             </Box>
             {attentionOnly && report.checks.every(check => check.state === 'pass') && <Typography variant="body2">No prerequisite warnings.</Typography>}
+            {report.checks.some(check => check.code === 'remote.prerequisites') && <Can permission="OmnitronProject.inspectStackHost">
+              <StackHostReadiness key={JSON.stringify([project, stack])} project={project} stack={stack} />
+            </Can>}
             <Alert severity="info">Not verified: {report.deferred.join('; ')}. This report is an observation, not a guarantee that startup will succeed.</Alert>
           </>}
         </Stack>

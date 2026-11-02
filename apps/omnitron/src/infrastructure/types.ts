@@ -485,6 +485,9 @@ export interface IDockerNetworkConfig {
  * Bare-metal provisioning hints for production deployments.
  */
 export interface IBareMetalServiceConfig {
+  /** Host packages that must track the latest candidate from APT. */
+  apt?: AptPackagePolicy;
+
   /** Package install command. */
   installCommand?: string;
 
@@ -542,6 +545,12 @@ export interface IBareMetalServiceConfig {
    * (`bindService`).
    */
   variants?: Record<string, Partial<Omit<IBareMetalServiceConfig, 'variants'>> & { ports?: Record<string, number> }>;
+}
+
+export interface AptPackagePolicy {
+  latest: string[];
+  /** Optional stable binary repository, using the host OS codename and the main component. */
+  repository?: string;
 }
 
 /**

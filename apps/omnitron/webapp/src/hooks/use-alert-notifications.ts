@@ -36,16 +36,21 @@ function tone(): void {
   }
 }
 
-export function useAlertNotifications(enabled: boolean): void {
+export function useAlertNotifications(readerId: string | null): void {
   const seen = useRef<Set<string> | null>(null);
   const { data } = usePolledResource(() => alerts.getActiveAlerts(), {
     intervalMs: 15_000,
-    enabled,
+    enabled: readerId !== null,
+    resourceKey: readerId,
     pauseWhileHidden: false,
   });
 
   useEffect(() => {
-    if (!data) return;
+    seen.current = null;
+  }, [readerId]);
+
+  useEffect(() => {
+    if (readerId === null || !data) return;
     // The first reading is what was already firing: known, not news.
     if (seen.current === null) {
       seen.current = new Set(data.map((a) => a.id));
@@ -64,5 +69,5 @@ export function useAlertNotifications(enabled: boolean): void {
       }
     }
     if (settings.sound) tone();
-  }, [data]);
+  }, [readerId, data]);
 }

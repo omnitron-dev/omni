@@ -340,7 +340,7 @@ function HeaderRight() {
 
 export function ConsoleLayout() {
   const allNavData = useNavData();
-  const { can } = useAccess();
+  const { can, snapshot } = useAccess();
   const navData = allNavData
     .map((section) => ({
       ...section,
@@ -370,7 +370,7 @@ export function ConsoleLayout() {
   }, [terminalVisible]);
   // Every page of the console, so an alert that fires is heard wherever the
   // operator is — and only while someone is signed in to hear it.
-  useAlertNotifications(can('OmnitronAlerts.getActiveAlerts'));
+  useAlertNotifications(can('OmnitronAlerts.getActiveAlerts') ? snapshot?.userId ?? null : null);
 
   return (
     <ConsoleKeyboard navigation={navData}>

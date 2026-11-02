@@ -13,19 +13,22 @@
  * a background tab, which is the tab a desktop notification is for.
  */
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, act } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
 import type { ActiveAlert } from '../../src/shared/dto/alerts.js';
 
 const getActiveAlerts = vi.fn<() => Promise<ActiveAlert[]>>();
+const describeAccess = vi.fn();
 
 vi.mock('src/netron/client', () => ({
   alerts: { getActiveAlerts: () => getActiveAlerts() },
+  access: { describe: () => describeAccess() },
+  getSessionId: () => null,
 }));
+// Exercise the layout's own subscription without mounting its independent footer poller.
+vi.mock('src/components/console-keyboard', () => ({ ConsoleKeyboard: () => null }));
 
 import {
   alertsToAnnounce,
@@ -35,6 +38,9 @@ import {
   LS_SOUND_ALERTS,
 } from '../../webapp/src/utils/alert-notify-settings.js';
 import { useAlertNotifications } from '../../webapp/src/hooks/use-alert-notifications.js';
+import { ConsoleLayout } from '../../webapp/src/layouts/console-layout.js';
+import { ConsoleAccessProvider } from '../../webapp/src/auth/access.js';
+import { useAuthStore } from '../../webapp/src/auth/store.js';
 
 const alert = (id: string, severity: ActiveAlert['severity']): ActiveAlert => ({
   id,
@@ -97,7 +103,7 @@ describe('an alert that fires while the console is open', () => {
   }
 
   function Console({ signedIn }: { signedIn: boolean }) {
-    useAlertNotifications(signedIn);
+    useAlertNotifications(signedIn ? 'reader' : null);
     return null;
   }
   const poll = () => act(async () => void (await vi.advanceTimersByTimeAsync(15_000)));
@@ -170,13 +176,48 @@ describe('an alert that fires while the console is open', () => {
     await poll();
     expect(getActiveAlerts).not.toHaveBeenCalled();
   });
-});
 
-describe('the console', () => {
-  it('listens on every page, while someone is signed in', () => {
-    // A path, not `new URL(…, import.meta.url)`: under happy-dom `URL` is the
-    // DOM's, and `fs` refuses it.
-    const layout = readFileSync(join(import.meta.dirname, '../../webapp/src/layouts/console-layout.tsx'), 'utf8');
-    expect(layout).toMatch(/useAlertNotifications\(useAuthStore\(\(s\) => Boolean\(s\.user\)\)\);/);
+  it('discards an in-flight notification when the reader loses access', async () => {
+    const view = render(<Console signedIn />);
+    await act(async () => void (await vi.advanceTimersByTimeAsync(0)));
+    let complete!: (items: ActiveAlert[]) => void;
+    getActiveAlerts.mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
+    await poll();
+    view.rerender(<Console signedIn={false} />);
+    firing = [...firing, alert('a2', 'critical')];
+    await act(async () => complete(firing));
+    view.rerender(<Console signedIn />);
+    await poll();
+    expect(notified).toEqual([]);
+    expect(tones).toBe(0);
+  });
+
+  it.each(['/logs', '/nodes'])('polls from the shared layout on %s only with the alert read grant', async (route) => {
+    const account = { id: 'reader', username: 'reader', displayName: 'Reader', role: 'viewer' };
+    let allowed = false;
+    describeAccess.mockReset().mockImplementation(async () => ({
+      userId: account.id, role: account.role, roles: [],
+      capabilities: [{ service: 'OmnitronAlerts', method: 'getActiveAlerts', allowed }],
+    }));
+    useAuthStore.setState({ user: account });
+    try {
+      render(
+        <MemoryRouter initialEntries={[route]}>
+          <ConsoleAccessProvider><ConsoleLayout /></ConsoleAccessProvider>
+        </MemoryRouter>
+      );
+      await poll();
+      expect(describeAccess).toHaveBeenCalled();
+      expect(getActiveAlerts).not.toHaveBeenCalled();
+      allowed = true;
+      await poll();
+      expect(getActiveAlerts).toHaveBeenCalled();
+      act(() => useAuthStore.setState({ user: null }));
+      getActiveAlerts.mockClear();
+      await poll();
+      expect(getActiveAlerts).not.toHaveBeenCalled();
+    } finally {
+      act(() => useAuthStore.setState({ user: null }));
+    }
   });
 });

@@ -1,20 +1,5 @@
 name: CI
 
-# This repository had no workflows directory at all: no typecheck, no lint,
-# no tests, and none of the standing checks ran anywhere but on a developer's
-# machine, on purpose, when they remembered. `scripts/run-checks.mjs` was
-# written to be a gate and had no gate to stand in.
-#
-# Both jobs here were measured green before being committed, on the tree at
-# `44e1bb47`, rather than written and hoped for:
-#
-#   pnpm -r run typecheck   27 packages, exit 0
-#   pnpm check:scans        11 gates, 1 worklist, 1 excluded, exit 0, ~15s
-#
-# The sibling repository runs the same two jobs plus unit, integration and
-# security suites. See the note on `test` at the bottom for why that layer is
-# not here yet and what it needs.
-
 on:
   push:
     branches: [main]
@@ -65,8 +50,27 @@ jobs:
         run: |
           node test/runtime/application-closure.mjs dist
           node test/runtime/release-provenance.mjs dist
-      - name: Verify package archive exports
-        run: pnpm check:packages
+          node test/runtime/execution-host.mjs dist
+      - name: Linked and npm framework builds and recipient admission
+        working-directory: apps/omnitron
+        run: >-
+          pnpm exec vitest run --maxWorkers 2
+          test/unit/registry-framework-release.test.ts
+          test/unit/a-release-built-against-the-developers-omni.test.ts
+          test/unit/a-release-the-node-never-ran.test.ts
+          test/unit/installed-release.test.ts
+      - name: Managed fleet distribution, handoff and reconciliation
+        working-directory: apps/omnitron
+        run: |
+          node test/runtime/kernel-distribution.mjs dist
+          pnpm exec vitest run --maxWorkers 2 test/unit/kernel-catalog.test.ts test/unit/kernel-rollout.test.ts test/unit/managed-rollout-driver.test.ts test/unit/managed-fleet-rollout-cli.test.ts test/unit/supervisor-transition.test.ts
+      - name: Verify package archive exports and install the packed CLI
+        run: node scripts/check-package-exports.mjs --install-consumer "$RUNNER_TEMP/omnitron-npm-consumer"
+      - name: Exercise the packaged CLI and SQLite at the Node runtime boundaries
+        run: |
+          npx --yes --package=node@22.14.0 -- node scripts/ci/check-runtime-consumer.mjs "$RUNNER_TEMP/omnitron-npm-consumer"
+          npx --yes --package=node@23.6.0 -- node scripts/ci/check-runtime-consumer.mjs "$RUNNER_TEMP/omnitron-npm-consumer"
+          npx --yes --package=node@22.12.0 -- node scripts/ci/check-runtime-consumer.mjs "$RUNNER_TEMP/omnitron-npm-consumer" --expect-unsupported
       - name: Rehearse package publication against a loopback registry
         run: node --test scripts/ci/release.test.mjs
       - name: Console publication and recovery
@@ -114,7 +118,7 @@ jobs:
       - name: Deployment progress across RPC, CLI and Console
         run: |
           pnpm --filter @omnitron-dev/omnitron exec vitest run --maxWorkers 2 test/unit/remote-deployer-probe.test.ts test/unit/stack-progress-cli.test.ts test/webapp
-          pnpm --filter @omnitron-dev/prism exec vitest run src/blocks/auth-block/role-guard-revocation.test.tsx
+          pnpm --filter @omnitron-dev/prism exec vitest run src/blocks/auth-block/role-guard-revocation.test.tsx src/theme/__tests__/component-style-composition.test.tsx src/components/admin-filters/filter-toolbar.test.tsx
       - name: Console chart loading and topology in Chromium
         working-directory: apps/omnitron/webapp
         run: |
@@ -192,21 +196,3 @@ jobs:
         run: pnpm audit --audit-level low
       - name: Standing checks (gates must pass; worklists are printed)
         run: pnpm check:scans
-
-  # -------------------------------------------------------------------
-  # Full workspace tests are not here yet. Pure access tests run above.
-  #
-  # `pnpm test` is `turbo test`, and `pnpm test:ci` wraps it in
-  # `docker compose -f docker-compose.test.yml up -d --wait`. Several
-  # suites need that stand — Postgres, Redis and the rest — and several
-  # more are slow enough to need their own job rather than a tail on
-  # this one: `apps/omnitron` alone is 1 720 tests and about seven
-  # minutes locally.
-  #
-  # It is left out rather than guessed at because a test job that has
-  # never been observed passing on a hosted runner is a red pipeline on
-  # its first push, and a red pipeline nobody can fix is how a team
-  # learns to merge past CI. The next step is to split it: the packages
-  # whose suites need nothing external in one job, the stand-dependent
-  # ones behind the compose file in another.
-  # -------------------------------------------------------------------

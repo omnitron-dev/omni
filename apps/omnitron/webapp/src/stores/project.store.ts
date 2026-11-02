@@ -171,12 +171,12 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   error: null,
 
   fetchProjects: async (currentPath?: string) => {
-    if (!projectReader) return;
+    if (!projectReader) return undefined;
     const generation = projectGeneration;
     try {
       set({ loading: true, error: null });
       const projects = await projectRpc.listProjects();
-      if (generation !== projectGeneration) return;
+      if (generation !== projectGeneration) return undefined;
       set(state => ({ projects: projects.map(project => state.stacksByProject[project.name]
         ? { ...project, ...stackCounts(state.stacksByProject[project.name]!) } : project), loading: false }));
 

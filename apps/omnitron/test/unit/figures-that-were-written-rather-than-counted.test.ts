@@ -92,35 +92,8 @@ describe('figures that were written rather than counted', () => {
   });
 });
 
-/**
- * And then I built the figure on the one field that cannot be true.
- *
- * `summariseSync` counted a slave as synced when `connected && pendingItems
- * === 0`, which reads correctly and is unreachable. `ISyncStatus.connected`
- * is `this.masterInvoke !== null` — whether the slave holds a PUSH channel to
- * the master — and that channel has no production caller. The file says so
- * itself, in `sync.rpc-service.ts`:
- *
- *     «the other end, `SyncService.setMasterConnection()`, has no production
- *      caller either»
- *
- * Replication does work: the MASTER pulls, through `drainBuffer` /
- * `ackDrained`, and `ackDrained` is what advances `lastSyncAt`. So a node
- * that is perfectly up to date reports `connected: false`, and the column
- * could never print «synced» no matter how empty the buffer got — a second
- * unreachable state, one level down from the literal it replaced.
- *
- * Three of the six fields are fed only by that dead path:
- *
- *     connected       masterInvoke !== null     always false
- *     lastError       noteSyncFailure()         always null
- *     failedAttempts  backoff.attempt           always 0
- *
- * The two that are alive — `pendingItems` and `lastSyncAt` — are the two the
- * pull path writes, and they are the ones to count on. A slave with nothing
- * left to deliver IS synced; whether it also holds a push socket it never
- * uses is not the question anyone is asking of that column.
- */
+// Pull-based workers report their queue and last acknowledgement. The legacy
+// push connection fields remain at their defaults for wire compatibility.
 describe('a figure built on a field that cannot be true', () => {
   it('counts a slave with an empty buffer as synced', () => {
     // `connected: false` is what EVERY node reports, so it must not be what

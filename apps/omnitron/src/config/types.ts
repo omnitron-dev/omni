@@ -376,21 +376,21 @@ export type DaemonRole = 'master' | 'slave';
  * Sync configuration for slave→master data replication.
  *
  * Designed for ultra-reliable eventual consistency:
- * - Slaves buffer ALL data locally (SQLite WAL or local PG)
- * - Periodic sync attempts with exponential backoff on failure
+ * - Workers retain configured data categories in the SQLite outbox
+ * - The controller pulls over its authenticated mesh connection
  * - Idempotent sync batches (safe to retry)
  * - Conflict resolution: master timestamp wins for config, slave data is append-only
  */
 export interface ISyncConfig {
-  /** How often slave attempts to sync to master (ms). Default: 30_000 */
+  /** Interval for worker outbox maintenance (ms). Default: 30_000 */
   interval?: number;
   /** Maximum batch size per sync operation. Default: 1000 */
   batchSize?: number;
-  /** Backoff config for failed sync attempts */
+  /** @deprecated Legacy reverse-push option. The controller manages retries on its mesh connection. */
   backoff?: { initial?: number; max?: number; factor?: number };
   /** Data categories to sync (default: all) */
   categories?: Array<'metrics' | 'logs' | 'events' | 'alerts' | 'traces' | 'state'>;
-  /** Local buffer storage path (default: ~/.omnitron/sync-buffer/) */
+  /** @deprecated The worker uses the SQLite outbox in its daemon data directory. */
   bufferPath?: string;
   /** Maximum local buffer size before oldest entries are evicted (bytes). Default: 500MB */
   maxBufferSize?: number;

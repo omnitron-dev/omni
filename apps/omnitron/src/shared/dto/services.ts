@@ -535,7 +535,6 @@ export interface IOmnitronFleetService {
   getNode(data: { nodeId: string }): Promise<FleetNode | null>;
   setRole(data: { nodeId: string; role: NodeRole }): Promise<FleetNode>;
   drainNode(data: { nodeId: string }): Promise<{ success: boolean }>;
-  heartbeat(data: { nodeId: string }): Promise<{ ok: boolean }>;
 }
 
 // ============================================================================

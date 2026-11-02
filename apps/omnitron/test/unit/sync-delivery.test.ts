@@ -1,17 +1,4 @@
-/**
- * The push path, end to end over a real legacy SQLite buffer.
- *
- * `sync-policy.test.ts` pins the decisions; this pins that the service acts
- * on them. The defect was precisely a correct-looking decision never
- * consulted: `pushBatch` discarded the master's response and `markSynced`
- * marked the whole batch, so a partially-ingested batch left the rejected
- * entries flagged delivered on the slave and absent on the master.
- *
- * A SQLite trigger records which rows actually change. That is the only
- * observation that distinguishes the fix from the bug — both log a
- * successful sync cycle.
- */
-
+import { SlaveConnector } from '../../src/cluster/slave-connector.js';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { Kysely, SqliteDialect } from 'kysely';
@@ -47,89 +34,42 @@ function stubDb(pending: Array<{ id: string }>) {
   return { db, markedSynced };
 }
 
-/** Run one sync cycle against a master that answers with `response`. */
-async function runCycle(pending: string[], response: unknown) {
-  const { db, markedSynced } = stubDb(pending.map((id) => ({ id })));
-  const service = new SyncService(db, silentLogger, 'node-1', 'slave', { interval: 60_000 });
-  const invoke = vi.fn(async () => response);
-  service.setMasterConnection(invoke as never);
-
-  // `syncCycle` is the private the timer calls; exercising it directly is
-  // the point — the timer adds nothing but delay.
-  await (service as unknown as { syncCycle(): Promise<void> }).syncCycle();
-
-  return { markedSynced, invoke };
-}
-
-describe('sync cycle — what gets marked delivered', () => {
-  it('releases only the entries the master kept', async () => {
-    const { markedSynced } = await runCycle(['a', 'b', 'c', 'd'], {
-      accepted: 2,
-      duplicates: 0,
-      acceptedIds: ['a', 'b'],
-      duplicateIds: [],
-      failedIds: ['c', 'd'],
-    });
-
-    expect(markedSynced).toEqual(['a', 'b']);
+describe('controller pull from a real worker outbox', () => {
+  async function pull(response: unknown) {
+    const { db, markedSynced } = stubDb([{ id: 'a' }, { id: 'b' }]);
+    const worker = new SyncService(db, silentLogger, 'claimed-by-worker', 'slave');
+    const ingest = vi.fn(async () => { if (response instanceof Error) throw response; return response; });
+    const controller = new SlaveConnector(silentLogger, { receiveBatch: ingest } as never);
+    const conn = { config: { nodeId: 'registered-node', host: 'worker.test', port: 9700 }, status: 'connected', lastPullError: null,
+      authenticated: true,
+    link: { via: 'ssh-tunnel', url: 'tcp://127.0.0.1:1', token: 'worker-service', expiresAt: Date.now() + 300_000 },
+      peer: { queryInterface: async () => ({
+        drainBuffer: ({ limit }: { limit: number }) => worker.drainBuffer(limit),
+        ackDrained: ({ ids }: { ids: string[] }) => worker.ackDrained(ids),
+      }) },
+    };
+    await (controller as any).pullSyncData('worker.test:9700', conn);
+    expect(ingest).toHaveBeenCalledWith(expect.objectContaining({ nodeId: 'registered-node' }));
+    return { markedSynced, error: conn.lastPullError, ingest };
+  }
+  it('releases confirmed entries while retaining a refused row in SQLite', async () => {
+    const result = await pull({ acceptedIds: ['a'], duplicateIds: [], discardedIds: [], failedIds: ['b'] });
+    expect(result.markedSynced).toEqual(['a']);
+    expect(result.error).toMatch(/stalled/);
   });
-
-  it('counts a duplicate as delivered', async () => {
-    const { markedSynced } = await runCycle(['a', 'b'], {
-      accepted: 1,
-      duplicates: 1,
-      acceptedIds: ['a'],
-      duplicateIds: ['b'],
-      failedIds: [],
-    });
-
-    expect(markedSynced.sort()).toEqual(['a', 'b']);
+  it('releases duplicates along with newly accepted entries', async () => {
+    const result = await pull({ acceptedIds: ['a'], duplicateIds: ['b'], discardedIds: [] });
+    expect(result.markedSynced.sort()).toEqual(['a', 'b']);
+    expect(result.error).toBeNull();
   });
-
-  it('releases nothing when the master rejected everything', async () => {
-    const { markedSynced } = await runCycle(['a', 'b'], {
-      accepted: 0,
-      duplicates: 0,
-      acceptedIds: [],
-      duplicateIds: [],
-      failedIds: ['a', 'b'],
-    });
-
-    expect(markedSynced).toEqual([]);
-  });
-
-  it('treats a master that cannot report ids as having taken the batch', async () => {
-    // An older master answers `{accepted: n}` and nothing else. Reading that
-    // as "all failed" would retry every batch forever against a peer that
-    // has the data and cannot say so.
-    const { markedSynced } = await runCycle(['a', 'b'], { accepted: 2 });
-    expect(markedSynced.sort()).toEqual(['a', 'b']);
-  });
-
-  it.each([{ accepted: 1 }, undefined])('keeps an ambiguous legacy response pending: %j', async response => {
-    expect((await runCycle(['a', 'b'], response)).markedSynced).toEqual([]);
-  });
-
-  it('releases nothing when the push itself throws', async () => {
-    const { db, markedSynced } = stubDb([{ id: 'a' }]);
-    const service = new SyncService(db, silentLogger, 'node-1', 'slave', { interval: 60_000 });
-    service.setMasterConnection((async () => {
-      throw new Error('connection reset');
-    }) as never);
-
-    await (service as unknown as { syncCycle(): Promise<void> }).syncCycle();
-
-    expect(markedSynced).toEqual([]);
-  });
-
-  it('does not push at all without a master connection', async () => {
-    const { db, markedSynced } = stubDb([{ id: 'a' }]);
-    const service = new SyncService(db, silentLogger, 'node-1', 'slave', { interval: 60_000 });
-
-    await (service as unknown as { syncCycle(): Promise<void> }).syncCycle();
-
-    expect(markedSynced).toEqual([]);
-  });
+  it.each([{ accepted: 2 }, { acceptedIds: [], failedIds: ['a','b'] }, new Error('master database unavailable')])(
+    'keeps every row pending when ingestion fails or no IDs are acknowledged', async response => {
+      const result = await pull(response);
+      expect(result.markedSynced).toEqual([]);
+      expect(result.error).toBeTruthy();
+      expect(result.ingest).toHaveBeenCalledOnce();
+    },
+  );
 });
 
 describe('drainBuffer — the pull path', () => {

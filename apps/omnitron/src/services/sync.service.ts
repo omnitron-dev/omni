@@ -3,8 +3,8 @@ import { assertLogDurability } from '../database/log-durability.js';
  * Buffered node→master replication over Netron.
  *
  * Nodes persist configured telemetry in SQLite with FULL WAL durability.
- * Pull (and legacy push) releases only identified acknowledgements; failures
- * remain pending with bounded backoff. The PostgreSQL ledger deduplicates
+ * The controller pulls entries and acknowledges identified outcomes. Failed entries
+ * remain pending in the worker outbox. The PostgreSQL ledger deduplicates
  * entries within its retention window, using node identity and wire entry ID.
  *
  * Queue release, committed payloads, permanent rejections and eviction losses
@@ -28,7 +28,6 @@ import { acknowledgeReconciliation, readUnverifiedMetrics, reconcileMetricPage, 
 import {
   classifyIngestFailure,
   deliveredIds,
-  sweepMadeProgress,
   planEviction,
   SYNCED_RETENTION_MS,
   LEDGER_WINDOW_DAYS,
@@ -108,11 +107,6 @@ export interface IngestBatchResult {
    * it waiting.
    */
   discardedIds: string[];
-}
-
-interface SyncBackoffState {
-  attempt: number;
-  nextRetryAt: number;
 }
 
 /** Rate limiter state per nodeId */
@@ -227,13 +221,11 @@ function traceRow(nodeId: string, entry: IngestEntry): Insertable<OmnitronDataba
 // SyncService
 // =============================================================================
 
-/** ISyncConfig with all fields (including nested backoff) required and non-optional. */
+/** Effective settings for local outbox maintenance. */
 interface ResolvedSyncConfig {
   interval: number;
   batchSize: number;
-  backoff: { initial: number; max: number; factor: number };
   categories: Array<'metrics' | 'logs' | 'events' | 'alerts' | 'traces' | 'state'>;
-  bufferPath: string;
   maxBufferSize: number;
 }
 
@@ -245,21 +237,16 @@ export class SyncService {
 
   private readonly config: ResolvedSyncConfig;
   private syncTimer: NodeJS.Timeout | null = null;
+  private outboxMaintenance: Promise<void> | null = null;
   /** The master's ledger pruning, re-armed after each pass. See `pruneLedger`. */
   private ledgerTimer: NodeJS.Timeout | null = null;
   /** Whether this database keeps the buffer's figures; null until asked. See `keptBufferStats`. */
   private bufferStatsKept: boolean | null = null;
   private evidenceKept: boolean | null = null;
-  private isSyncing = false;
-  private backoff: SyncBackoffState = { attempt: 0, nextRetryAt: 0 };
   private lastSyncAt: number | null = null;
   /** At most 60 one-second buckets, independent of batch size and polling rate. */
   private readonly deliveries = new Map<number, number>();
-  private lastError: string | null = null;
   private disposed = false;
-
-  /** Master RPC invoke function — injected at connect time */
-  private masterInvoke: ((service: string, method: string, args: unknown[]) => Promise<unknown>) | null = null;
 
   /** Rate limiter state per nodeId (master-side) */
   private readonly rateLimits = new Map<string, RateLimitEntry>();
@@ -274,13 +261,7 @@ export class SyncService {
     this.config = {
       interval: syncConfig?.interval ?? 30_000,
       batchSize: syncConfig?.batchSize ?? 1000,
-      backoff: {
-        initial: syncConfig?.backoff?.initial ?? 5_000,
-        max: syncConfig?.backoff?.max ?? 300_000, // 5 min max
-        factor: syncConfig?.backoff?.factor ?? 2,
-      },
       categories: syncConfig?.categories ?? ['metrics', 'logs', 'events', 'alerts', 'traces', 'state'],
-      bufferPath: syncConfig?.bufferPath ?? '~/.omnitron/sync-buffer/',
       maxBufferSize: syncConfig?.maxBufferSize ?? 500 * 1024 * 1024, // 500MB
     };
   }
@@ -289,15 +270,9 @@ export class SyncService {
   // Lifecycle
   // ===========================================================================
 
-  /**
-   * Start the sync loop.
-   *
-   * On a slave, the buffer's pass: bound it, then try to drain it. On a
-   * master, the ledger's: `sync_ingested` pruned to its dedup window. The
-   * master used to return here, and its half of the pipeline was never
-   * maintained at all.
-   */
+  /** Bound the worker outbox even while offline. The master periodically prunes its deduplication ledger. */
   start(): void {
+    if (this.disposed || this.syncTimer || this.ledgerTimer) return;
     if (this.role === 'master') {
       this.scheduleLedgerPrune(LEDGER_FIRST_PASS_DELAY_MS);
       return;
@@ -310,23 +285,16 @@ export class SyncService {
 
     this.syncTimer = setInterval(() => {
       this.syncTick().catch((err) => {
-        this.logger.error({ error: (err as Error).message }, 'Sync cycle failed');
+        this.logger.error({ error: (err as Error).message }, 'Outbox maintenance failed');
       });
     }, this.config.interval);
     this.syncTimer.unref();
 
-    // Initial sync attempt — reported like every other one. The recurring
-    // call four lines above logs its failure; this one swallowed it, and it
-    // is the more informative of the two: it is the first evidence that a
-    // slave can reach its master at all.
     this.syncTick().catch((err) => {
-      this.logger.error({ error: (err as Error).message }, 'Initial sync cycle failed');
+      this.logger.error({ error: (err as Error).message }, 'Initial outbox maintenance failed');
     });
   }
 
-  /**
-   * Stop the sync loop and flush remaining buffer.
-   */
   async stop(): Promise<void> {
     this.disposed = true;
 
@@ -338,33 +306,7 @@ export class SyncService {
       clearTimeout(this.ledgerTimer);
       this.ledgerTimer = null;
     }
-
-    // Final sync attempt before shutdown
-    if (this.role === 'slave' && this.masterInvoke) {
-      try {
-        await this.syncCycle();
-      } catch {
-        this.logger.warn('Final sync attempt failed — data preserved in local WAL');
-      }
-    }
-  }
-
-  /**
-   * Set the master RPC connection.
-   * Called when slave establishes Netron TCP connection to master.
-   */
-  setMasterConnection(invoke: (service: string, method: string, args: unknown[]) => Promise<unknown>): void {
-    this.masterInvoke = invoke;
-    this.backoff = { attempt: 0, nextRetryAt: 0 };
-    this.logger.info('Master connection established — sync enabled');
-  }
-
-  /**
-   * Clear master connection (disconnect/failure).
-   */
-  clearMasterConnection(): void {
-    this.masterInvoke = null;
-    this.logger.warn('Master connection lost — buffering locally');
+    await this.outboxMaintenance;
   }
 
   // ===========================================================================
@@ -485,132 +427,13 @@ export class SyncService {
   }
 
   // ===========================================================================
-  // Sync Cycle (push to master — legacy, kept for backward compatibility)
+  // Worker outbox maintenance and delivery
   // ===========================================================================
 
-  /**
-   * One scheduled pass: bound the buffer, then try to drain it.
-   *
-   * The order is the whole point. `enforceBufferBounds` used to be the last
-   * statement of `syncCycle`'s `try`, which meant it ran on a SUCCESSFUL
-   * cycle and on nothing else — and a successful cycle is the one case where
-   * the buffer is being drained and needs no bound. Every path that leaves it
-   * growing skipped it:
-   *
-   *   - no master configured at all → `syncCycle` returns at its second line;
-   *   - master unreachable → the push throws and control leaves via `catch`;
-   *   - and then the backoff, which saturates at five minutes, returns at the
-   *     third line for most ticks after that.
-   *
-   * So the guarantee in this file's header — "bounded buffer, oldest entries
-   * evicted when maxBufferSize is reached" — held only while it was not
-   * needed. A slave that lost its master still buffered until the disk filled,
-   * which is the exact failure the bound was written to prevent and the
-   * reason it is not read as a replication bug when it happens: what fills is
-   * the disk, and what breaks is everything else sharing it.
-   *
-   * The bound is a local database operation. It needs no master, so it does
-   * not belong behind a check for one.
-   */
-  private async syncTick(): Promise<void> {
-    if (this.disposed) return;
-    await this.enforceBufferBounds();
-    await this.syncCycle();
-  }
-
-  private async syncCycle(): Promise<void> {
-    if (this.disposed || this.isSyncing) return;
-    if (!this.masterInvoke) return; // No master connection — skip
-
-    // Respect backoff
-    if (Date.now() < this.backoff.nextRetryAt) return;
-
-    this.isSyncing = true;
-
-    try {
-      let totalSynced = 0;
-      let totalRefused = 0;
-      const seenThisCycle = new Set<string>();
-
-      // Sync in batches until no more pending entries
-      while (true) {
-        const batch = await this.fetchPendingBatch();
-        if (batch.entries.length === 0) break;
-
-        const outcome = await this.pushBatch(batch);
-        const delivered = deliveredIds(outcome);
-        totalSynced += await this.markSynced(delivered, outcome.receipt);
-        totalRefused += outcome.failed.length;
-
-        // Entries the master rejected stay pending, so the next fetch
-        // returns them again. Stop the sweep when a page yields nothing new
-        // — otherwise a permanently unacceptable entry loops here forever.
-        if (!sweepMadeProgress(seenThisCycle, batch.entries.map((e) => e.id))) {
-          this.logger.warn(
-            { nodeId: this.nodeId, pending: batch.entries.length },
-            'Sync sweep stalled — the master is rejecting the oldest pending entries'
-          );
-          break;
-        }
-        for (const e of batch.entries) seenThisCycle.add(e.id);
-
-        // Don't monopolize — yield after each batch
-        if (totalSynced >= this.config.batchSize * 5) break;
-      }
-
-      if (totalSynced > 0) {
-        this.logger.info({ synced: totalSynced }, 'Sync cycle completed');
-      }
-
-      // A cycle that delivered NOTHING and was refused everything is not a
-      // success, even though nothing threw.
-      //
-      // Only one of the two ways to fail used to reach the backoff. An
-      // unreachable master makes the push throw, and the `catch` below grows
-      // the delay to five minutes. But a master that ANSWERS and says no to
-      // every entry returns normally — and control arrived here, at a reset
-      // of a backoff that had never been set. That is how 1000 entries were
-      // offered 94 times in 37 minutes while the master's own Postgres was
-      // down behind a stopped Docker: the RPC succeeded on every attempt,
-      // and only the ingest failed. The configured delay (5 s, doubling, to
-      // 300 s) would have made that about a dozen attempts; it was never
-      // consulted.
-      if (totalSynced === 0 && totalRefused > 0) {
-        this.noteSyncFailure(`master refused every entry (${totalRefused})`);
-        return;
-      }
-
-      // Reset backoff on success
-      this.backoff = { attempt: 0, nextRetryAt: 0 };
-      this.lastError = null;
-    } catch (err) {
-      this.noteSyncFailure(describeError(err));
-    } finally {
-      this.isSyncing = false;
-    }
-  }
-
-  /**
-   * Grow the retry delay and record why.
-   *
-   * Shared by both ways a cycle can fail — a master that cannot be reached,
-   * and a master that answers no — because the buffer does not care which
-   * one it was, and neither does the disk it is filling.
-   */
-  private noteSyncFailure(message: string): void {
-    this.lastError = message;
-    this.backoff.attempt++;
-
-    const delay = Math.min(
-      this.config.backoff.initial * Math.pow(this.config.backoff.factor, this.backoff.attempt),
-      this.config.backoff.max,
-    );
-    this.backoff.nextRetryAt = Date.now() + delay;
-
-    this.logger.warn(
-      { error: message, attempt: this.backoff.attempt, nextRetryMs: delay },
-      'Sync failed — will retry'
-    );
+  private syncTick(): Promise<void> {
+    if (this.disposed) return Promise.resolve();
+    this.outboxMaintenance ??= this.enforceBufferBounds().finally(() => { this.outboxMaintenance = null; });
+    return this.outboxMaintenance;
   }
 
   private async fetchPendingBatch(limit?: number): Promise<SyncBatch> {
@@ -649,44 +472,6 @@ export class SyncService {
     const hash = crypto.createHash('sha256');
     hash.update(JSON.stringify(entries));
     return hash.digest('hex');
-  }
-
-  /**
-   * Push a batch and report what the master kept.
-   *
-   * The return value used to be discarded, and `receiveBatch` swallows
-   * per-entry ingestion failures into a warning — so the caller marked every
-   * entry delivered whether or not any of them arrived. A master response
-   * without ID lists can release a batch only when its counts cover every
-   * offered entry. Such a receipt still cannot certify durable payloads.
-   */
-  private async pushBatch(batch: SyncBatch): Promise<IngestOutcome & { receipt?: ReplicationReceipt }> {
-    if (!this.masterInvoke) throw new Error('No master connection');
-
-    const response = (await this.masterInvoke('OmnitronSync', 'receiveBatch', [batch])) as
-      | Partial<IngestBatchResult>
-      | undefined;
-
-    const allIds = batch.entries.map((e) => e.id);
-    if (!response || !Array.isArray(response.acceptedIds)) {
-      if (!response || !Number.isSafeInteger(response.accepted) || Number(response.accepted) < 0 ||
-          !Number.isSafeInteger(response.duplicates ?? 0) || Number(response.duplicates ?? 0) < 0 ||
-          Number(response.accepted) + Number(response.duplicates ?? 0) !== allIds.length) {
-        throw new Error('The master did not identify all delivered entries; the batch remains pending');
-      }
-      return { accepted: allIds, duplicates: [], failed: [], discarded: [] };
-    }
-    return {
-      accepted: response.acceptedIds,
-      duplicates: Array.isArray(response.duplicateIds) ? response.duplicateIds : [],
-      failed: Array.isArray(response.failedIds) ? response.failedIds : [],
-      // An older master answers without this field. Treating a missing list
-      // as an empty one is right: it discarded nothing.
-      discarded: Array.isArray(response.discardedIds) ? response.discardedIds : [],
-      ...(response.receiptVersion === 1 && Array.isArray(response.committedIds) && { receipt: {
-        version: 1 as const, committedIds: response.committedIds, discardedIds: response.discardedIds ?? [],
-      } }),
-    };
   }
 
   private async replicationEvidence() {
@@ -1501,15 +1286,15 @@ export class SyncService {
     }
 
     return {
-      connected: this.masterInvoke !== null,
+      connected: false, // Legacy reverse-channel field. Connectivity is observed by the controller.
       lastSyncAt, pendingItems, oldestPendingAgeMs,
       lastSyncAgeMs: lastSyncAt === null ? null : Math.max(0, Date.now() - lastSyncAt),
       deliveryRatePerSecond: this.deliveryRate(Date.now()),
       bufferSize, bufferSizeAccuracy: 'measured',
       ...(tracked && { evidence: tracked.evidence, retainedBufferSize: tracked.retainedBufferSize }),
       ...(reconciliationError && { reconciliationError }),
-      lastError: this.lastError,
-      failedAttempts: this.backoff.attempt,
+      lastError: null,
+      failedAttempts: 0,
     };
   }
 }

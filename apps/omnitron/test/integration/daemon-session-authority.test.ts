@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SignJWT, jwtVerify } from 'jose';
 import { Netron } from '@omnitron-dev/titan/netron';
 import { Service, Public } from '@omnitron-dev/titan/decorators';
@@ -10,6 +10,9 @@ import { AuthenticationManager, AuthorizationManager } from '@omnitron-dev/titan
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { createAuthContextWrapper } from '../../src/services/auth-context.js';
 import { createDaemonTokenValidator, createDaemonPrincipalValidator } from '../../src/services/daemon-authority.js';
+import { SyncRpcService } from '../../src/services/sync.rpc-service.js';
+import { FleetRpcService } from '../../src/services/fleet.rpc-service.js';
+import { TelemetryRpcService } from '../../src/services/telemetry.rpc-service.js';
 import { ClusterRpcService } from '../../src/cluster/cluster.rpc-service.js';
 import { ProjectRpcService } from '../../src/services/project.rpc-service.js';
 
@@ -25,6 +28,7 @@ class SessionFixture {
 describe('live session authority across HTTP cache and persistent WebSocket', () => {
   const secret = new TextEncoder().encode('isolated-session-authority-fixture-secret');
   const fixture = new SessionFixture();
+  const heartbeat = vi.fn(), receive = vi.fn();
   let role: string | null = 'admin', unavailable = false;
   const store = { validateSessionAuthority: async (userId: string, sessionId: string) => {
     if (unavailable) throw Object.assign(new Error('Session store is unavailable'), { code: 'SESSION_STORE_UNAVAILABLE', statusCode: 503 });
@@ -44,6 +48,10 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
     netron.registerTransport('ws', () => new WebSocketTransport());
     netron.registerTransportServer('ws', { name: 'ws', options: { host: '127.0.0.1', port: 0, invocationWrapper: wrapper } });
     await netron.start(); await netron.peer.exposeService(fixture);
+    await netron.peer.exposeService(new SyncRpcService({ receiveBatch: receive, ackDrained: () => ({ released: 0 }),
+      acknowledgeReconciliation: () => ({}), readUnverifiedMetrics: () => [] } as never));
+    await netron.peer.exposeService(new FleetRpcService({ heartbeat, getSummary: () => ({ total: 0 }) } as never));
+    await netron.peer.exposeService(new TelemetryRpcService({ receive, stats: () => ({ totalReceived: 0 }) } as never));
     await netron.peer.exposeService(new ClusterRpcService({ isLeader: false, getClusterState: () => ({ state: 'follower' }) } as never));
     await netron.peer.exposeService(new ProjectRpcService({
       resolveProjectStack: (scope: unknown) => scope, reviewStackStop: () => ({ digest: null, targets: [] }),
@@ -79,6 +87,33 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
   it('rejects a signed admin credential without a human session', async () => {
     expect((await request(await mint({ role: 'admin' }))).status).toBe(401);
     expect(fixture.effects).toBe(0);
+  });
+  it('keeps node liveness and replicated writes off the public RPC surface for every principal', async () => {
+    const claims = { userId: 'victim', roles: ['service_role'], metadata: { principalType: 'service' } };
+    for (const principal of [null, 'viewer', 'operator', 'admin', 'service_role']) {
+      role = principal;
+      const credential = principal && await mint({ role: principal, ...(principal !== 'service_role' && { sid: 'active' }) });
+      for (const [service, method] of [['OmnitronFleet', 'heartbeat'], ['OmnitronTelemetry', 'pushBatch'], ['OmnitronSync', 'receiveBatch']]) {
+        const response = await fetch(endpoint, {
+          method: 'POST', headers: { 'content-type': 'application/json', ...(credential && { authorization: 'Bearer ' + credential }) },
+          body: JSON.stringify({ id: randomUUID(), service, method, metadata: { authContext: claims },
+            input: [{ nodeId: 'victim', entries: [{ nodeId: 'another-victim', type: 'log', data: {} }] }] }),
+        });
+        expect(response.status).toBe(404);
+        expect(await response.text()).toContain('not found');
+      }
+      if (credential) {
+        for (const method of ['ackDrained', 'acknowledgeReconciliation']) {
+          expect((await request(credential, method, { service: 'OmnitronSync', input: [{}] })).status).toBe(principal === 'service_role' ? 200 : 403);
+        }
+        expect((await request(credential, 'readUnverifiedMetrics', { service: 'OmnitronSync' })).status)
+          .toBe(['admin', 'service_role'].includes(principal!) ? 200 : 403);
+        expect((await request(credential, 'getRelayStats', { service: 'OmnitronTelemetry' })).status).toBe(200);
+        expect((await request(credential, 'getSummary', { service: 'OmnitronFleet' })).status).toBe(principal === 'service_role' ? 403 : 200);
+      }
+    }
+    expect(heartbeat).not.toHaveBeenCalled();
+    expect(receive).not.toHaveBeenCalled();
   });
   it('separates human stop authority, controller protocol and administrative leadership transfer at HTTP ingress', async () => {
     for (const principal of ['viewer', 'operator', 'admin', 'service_role']) {

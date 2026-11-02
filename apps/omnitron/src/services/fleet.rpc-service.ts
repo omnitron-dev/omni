@@ -4,7 +4,6 @@
  * Netron RPC endpoints for multi-node fleet management from webapp and CLI.
  */
 
-import { requirePayload, requireString } from './anonymous-input.js';
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { VIEWER_ROLES, OPERATOR_ROLES } from '../shared/roles.js';
 import type { FleetService, FleetNode, FleetSummary, NodeRegistration, NodeRole } from './fleet.service.js';
@@ -49,13 +48,5 @@ export class FleetRpcService implements IOmnitronFleetService {
   async drainNode(data: { nodeId: string }): Promise<{ success: boolean }> {
     await this.fleet.drainNode(data.nodeId);
     return { success: true };
-  }
-
-  /** Called by follower daemons to report heartbeat */
-  @Public({ auth: { allowAnonymous: true } })
-  async heartbeat(data: { nodeId: string }): Promise<{ ok: boolean }> {
-    const nodeId = requireString(requirePayload(data, 'heartbeat'), 'nodeId', 'heartbeat');
-    await this.fleet.heartbeat(nodeId);
-    return { ok: true };
   }
 }

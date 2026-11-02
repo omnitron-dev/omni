@@ -99,7 +99,7 @@ describe('RPC authorization metadata', () => {
   it('keeps evidence writes and outbox acknowledgements outside the operator role', async () => {
     const { SyncRpcService } = await import('../../src/services/sync.rpc-service.js');
     const { validateAccessRequirements } = await import('@omnitron-dev/titan/netron/auth');
-    for (const method of ['receiveBatch', 'drainBuffer', 'ackDrained', 'acknowledgeReconciliation']) {
+    for (const method of ['drainBuffer', 'ackDrained', 'acknowledgeReconciliation']) {
       const requirement = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, SyncRpcService.prototype, method);
       expect(validateAccessRequirements({ userId: 'operator', roles: ['operator', 'viewer'], permissions: [] }, requirement).allowed).toBe(false);
       expect(validateAccessRequirements({ userId: 'node', roles: ['service_role'], permissions: [] }, requirement).allowed).toBe(true);

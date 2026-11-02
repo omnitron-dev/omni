@@ -292,20 +292,7 @@ export interface HistoryCoverage {
 }
 
 export interface ISyncStatus {
-  /**
-   * Whether the slave holds a PUSH channel to the master.
-   *
-   * FALSE ON EVERY NODE TODAY, and not a health signal. It is
-   * `SyncService.masterInvoke !== null`, and `setMasterConnection()` has no
-   * production caller — `sync.rpc-service.ts` says so beside `receiveBatch`,
-   * the other end of the same unfinished path. Replication runs the other
-   * way: the master PULLS, with `drainBuffer`/`ackDrained`.
-   *
-   * Do not build «is this node up to date?» on this field. It was done once,
-   * in `summariseSync` and in the `stack status` column, and made «synced» a
-   * state neither could ever print. `pendingItems === 0` is the question
-   * being asked.
-   */
+  /** Legacy reverse-channel indicator. Pull connectivity is observed by the controller. */
   connected: boolean;
   /** Last successful sync timestamp. Advanced by `ackDrained` — the pull path. */
   lastSyncAt: number | null;
@@ -328,15 +315,9 @@ export interface ISyncStatus {
   reconciliationError?: string;
   /** Earlier source coverage is independent of the current receipt frontier. */
   history?: HistoryCoverage[];
-  /**
-   * Last sync error. ALWAYS NULL today: written only by `noteSyncFailure()`,
-   * which belongs to the push cycle that has no caller.
-   */
+  /** Legacy reverse-channel error. The master exposes pull failures through mesh diagnostics. */
   lastError: string | null;
-  /**
-   * Consecutive failed sync attempts. ALWAYS 0 today, for the same reason as
-   * `lastError` — `backoff.attempt` is advanced only on the push path.
-   */
+  /** Legacy reverse-channel retry count. */
   failedAttempts: number;
 }
 

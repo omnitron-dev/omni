@@ -1,18 +1,7 @@
-/**
- * SyncRpcService — Netron RPC endpoints for slave→master data sync
- *
- * Master exposes:
- *   - receiveBatch: accepts sync batches from slaves (idempotent)
- *   - getSyncStatus: returns sync status for monitoring
- *
- * Slaves call receiveBatch via Netron TCP transport.
- * Every transport enforces the same authenticated control-plane boundary.
- * Operators may inspect replication, but cannot forge its durable evidence.
- */
-
+/** Worker outbox operations invoked by the mesh controller. */
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
-import type { SyncService, SyncBatch, IngestBatchResult } from './sync.service.js';
+import type { SyncService, SyncBatch } from './sync.service.js';
 export type { SyncBatch };
 import type { ISyncStatus } from '../shared/dto/project.js';
 import type { ReplicationReceipt } from './replication-evidence.js';
@@ -21,19 +10,6 @@ import type { ReconciliationProof } from './replication-reconciliation.js';
 @Service({ name: 'OmnitronSync' })
 export class SyncRpcService {
   constructor(private readonly syncService: SyncService) {}
-
-  /**
-   * Receive a sync batch from a slave daemon.
-   * Called over Netron TCP transport.
-   *
-   * Idempotent — and now actually so. The claim is enforced by a ledger
-   * keyed on the slave's entry id, so a batch replayed after a lost
-   * acknowledgement is recognised rather than ingested twice.
-   */
-  @Public({ auth: { roles: ['admin', 'service_role'] } })
-  async receiveBatch(data: SyncBatch): Promise<IngestBatchResult> {
-    return this.syncService.receiveBatch(data);
-  }
 
   /**
    * Hand pending entries to the master — called by the master over TCP.
@@ -50,7 +26,7 @@ export class SyncRpcService {
   /**
    * Release entries the master has confirmed it holds.
    */
-  @Public({ auth: { roles: ['admin', 'service_role'] } })
+  @Public({ auth: { roles: ['service_role'] } })
   async ackDrained(data: { ids: string[]; receipt?: ReplicationReceipt }): Promise<{ released: number }> {
     return this.syncService.ackDrained(data?.ids ?? [], data?.receipt);
   }
@@ -62,7 +38,7 @@ export class SyncRpcService {
   }
 
   /** A separate, payload-bound proof settles history without rewriting the original receipt. */
-  @Public({ auth: { roles: ['admin', 'service_role'] } })
+  @Public({ auth: { roles: ['service_role'] } })
   acknowledgeReconciliation(data: { proofs: ReconciliationProof[] }) {
     return this.syncService.acknowledgeReconciliation(data.proofs);
   }

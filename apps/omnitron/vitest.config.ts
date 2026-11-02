@@ -37,6 +37,7 @@ export default defineConfig({
       kysely: path.resolve(import.meta.dirname, 'node_modules/kysely/dist/index.js'),
       '@omnitron-dev/omnitron/sync-reading': path.resolve(import.meta.dirname, 'src/shared/sync-reading.ts'),
       '@omnitron-dev/prism/auth': path.resolve(import.meta.dirname, '../../packages/prism/src/auth/index.ts'),
+      '@omnitron-dev/prism/blocks': path.resolve(import.meta.dirname, '../../packages/prism/src/blocks/index.ts'),
       '@omnitron-dev/prism/hooks': path.resolve(import.meta.dirname, '../../packages/prism/src/hooks/index.ts'),
       '@omnitron-dev/prism/netron': path.resolve(import.meta.dirname, '../../packages/prism/src/netron/index.ts'),
       '@omnitron-dev/prism/components/admin-filters': path.resolve(

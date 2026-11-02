@@ -28,12 +28,12 @@ export function readStored(key: string): string | null {
 }
 
 /** Store a value; silently does nothing when storage is unavailable or full. */
-export function writeStored(key: string, value: string): void {
+export function writeStored(key: string, value: string): boolean {
   try {
     localStorage.setItem(key, value);
+    return true;
   } catch {
-    // Blocked or over quota. The session still works; it just will not be
-    // remembered, and there is nothing the operator could do about it here.
+    return false;
   }
 }
 

@@ -57,6 +57,7 @@ const { status, apps } = vi.hoisted(() => {
   };
 });
 
+vi.mock('src/auth/access', () => ({ useAccess: () => ({ can: (grant: string) => grant === 'OmnitronDaemon.status' }) }));
 vi.mock('react-apexcharts', () => ({ default: () => null }));
 vi.mock('src/netron/client', () => ({
   daemon: { status: vi.fn(async () => status), list: vi.fn(async () => apps) },

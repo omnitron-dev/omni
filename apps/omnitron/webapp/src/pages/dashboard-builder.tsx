@@ -1,890 +1,604 @@
-/**
- * Dashboard Builder — Customizable monitoring dashboard for Omnitron
- *
- * Architecture-aware dashboard with panels tied to real daemon data:
- * - Stat panels: single metric from daemon status/list
- * - Chart panels: time-series CPU/memory from daemon polling
- * - App status panels: per-app health overview
- * - Alert panels: active alert summary
- * - Log panels: recent error/warning count
- *
- * Features:
- * - Multiple dashboards (localStorage persistence)
- * - Drag-to-reorder panels (via react-dnd or manual)
- * - Auto-refresh with configurable interval
- * - Add/remove panels with type-specific config
- * - Real data from daemon RPC (status, list, metrics)
- */
-
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Typography from '@mui/material/Typography';
-import Stack from '@mui/material/Stack';
-import Button from '@mui/material/Button';
-import IconButton from '@mui/material/IconButton';
-import Grid from '@mui/material/Grid';
-import Dialog from '@mui/material/Dialog';
-import DialogTitle from '@mui/material/DialogTitle';
-import DialogContent from '@mui/material/DialogContent';
-import DialogActions from '@mui/material/DialogActions';
-import TextField from '@mui/material/TextField';
-import MenuItem from '@mui/material/MenuItem';
-import Switch from '@mui/material/Switch';
-import Chip from '@mui/material/Chip';
-import Tooltip from '@mui/material/Tooltip';
-import LinearProgress from '@mui/material/LinearProgress';
-import { alpha, useTheme } from '@mui/material/styles';
-import { Chart, useChart } from '@omnitron-dev/prism/components/chart';
-
+import { useEffect, useRef, useState } from 'react';
 import {
-  PlusIcon,
-  CloseIcon,
-  RefreshIcon,
-} from 'src/assets/icons';
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
+  Grid,
+  IconButton,
+  Menu,
+  MenuItem,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
+} from '@mui/material';
+import { Alert } from '@omnitron-dev/prism/components/alert';
 import { Breadcrumbs } from 'src/components/page-breadcrumbs';
-import { FormAlert } from '@omnitron-dev/prism/components/alert';
-import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
-import { daemon, alerts } from 'src/netron/client';
-import { formatUptime, formatMemory } from 'src/utils/formatters';
-import { appsMemoryOf, daemonMemoryOf } from 'src/utils/daemon-memory';
+import { DashboardWidget } from 'src/components/dashboard-panels';
+import { OperationStatus } from 'src/components/operation-status';
+import { useDashboardSources } from 'src/hooks/use-dashboard-sources';
+import { EditIcon, MoreVertIcon, PlusIcon, RefreshIcon } from 'src/assets/icons';
+import { readStored, writeStored } from 'src/utils/storage';
+import { METRIC_WINDOWS, type MetricWindow } from 'src/utils/metric-series';
+import {
+  LAYOUT_KEY,
+  PANEL_TYPES,
+  PANEL_SIZES,
+  STAT_METRICS,
+  REFRESH_INTERVALS,
+  blankBoard,
+  dashboardId,
+  defaultBoard,
+  exportBoard,
+  importBoard,
+  parseBoards,
+  type DashboardConfig,
+  type DashboardPanel,
+  type StatMetric,
+  type PanelType,
+  type Size,
+} from 'src/utils/dashboard-layout';
 
-import type { ProcessInfoDto, DaemonStatusDto } from '@omnitron-dev/omnitron/dto/services';
-import { readStoredJson, writeStoredJson } from '../utils/storage';
-
-// =============================================================================
-// Types
-// =============================================================================
-
-type PanelType = 'daemon-info' | 'app-grid' | 'cpu-chart' | 'memory-chart' | 'stat' | 'alert-summary' | 'recent-errors' | 'uptime-chart';
-
-interface DashboardPanel {
-  id: string;
-  type: PanelType;
-  title: string;
-  size: 'small' | 'medium' | 'large' | 'full';
-  config: Record<string, unknown>;
-}
-
-interface DashboardConfig {
-  id: string;
-  name: string;
-  panels: DashboardPanel[];
-  refreshInterval: number;
-}
-
-// =============================================================================
-// Storage
-// =============================================================================
-
-const STORAGE_KEY = 'omnitron_dashboards_v2';
-
-function loadDashboards(): DashboardConfig[] {
-  return readStoredJson<DashboardConfig[]>(STORAGE_KEY, []);
-}
-
-function saveDashboards(configs: DashboardConfig[]): void {
-  // Best-effort. The read was already guarded; this write was not, and it
-  // runs from a click handler — a full quota threw out of the save button.
-  writeStoredJson(STORAGE_KEY, configs);
-}
-
-const SIZE_MAP: Record<string, Record<string, number>> = {
-  small: { xs: 6, sm: 4, md: 3 },
-  medium: { xs: 12, sm: 6, md: 4 },
+const ACTIVE_KEY = 'omnitron_dashboard_active';
+const GRID = {
+  small: { xs: 12, sm: 6, lg: 3 },
+  medium: { xs: 12, sm: 6, lg: 4 },
   large: { xs: 12, md: 6 },
   full: { xs: 12 },
 };
+const newPanel = (): DashboardPanel => ({
+  id: dashboardId(),
+  type: 'stat',
+  size: 'small',
+  title: '',
+  config: { metric: 'online_apps' },
+});
+type BoardDialog = 'create' | 'settings' | 'duplicate' | 'delete' | 'import' | 'export';
+const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-// =============================================================================
-// Shared Data Context — single fetch, shared across all panels
-// =============================================================================
-
-interface DaemonData {
-  status: DaemonStatusDto | null;
-  apps: ProcessInfoDto[];
-  loading: boolean;
-  error: string | null;
+function initialLayouts() {
+  const raw = readStored(LAYOUT_KEY);
+  try {
+    return { raw, boards: raw ? parseBoards(raw) : [defaultBoard()], error: null };
+  } catch (err) {
+    return {
+      raw,
+      boards: [defaultBoard()],
+      error: `Saved layouts could not be read. The original is preserved. ${message(err)}`,
+    };
+  }
 }
 
-function useDaemonData(refreshKey: number): DaemonData {
-  const [data, setData] = useState<DaemonData>({ status: null, apps: [], loading: true, error: null });
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const [status, apps] = await Promise.all([
-          daemon.status(),
-          daemon.list(),
-        ]);
-        if (active) setData({ status, apps, loading: false, error: null });
-      } catch (err: any) {
-        if (active) setData((prev) => ({ ...prev, loading: false, error: err?.message ?? 'Failed to fetch' }));
-      }
-    })();
-    return () => { active = false; };
-  }, [refreshKey]);
-
-  return data;
-}
-
-// =============================================================================
-// Time-Series History — accumulates CPU/Memory snapshots over time
-// =============================================================================
-
-interface TimePoint {
-  time: number;
-  values: Record<string, number>;
-}
-
-function useTimeSeriesHistory(apps: ProcessInfoDto[], refreshKey: number, metric: 'cpu' | 'memory', maxPoints = 60) {
-  const historyRef = useRef<TimePoint[]>([]);
-
-  useEffect(() => {
-    if (apps.length === 0) return;
-    const now = Date.now();
-    const values: Record<string, number> = {};
-    for (const app of apps) {
-      values[app.name] = metric === 'cpu' ? app.cpu : app.memory / (1024 * 1024);
-    }
-    historyRef.current.push({ time: now, values });
-    if (historyRef.current.length > maxPoints) {
-      historyRef.current = historyRef.current.slice(-maxPoints);
-    }
-  }, [apps, refreshKey, metric, maxPoints]);
-
-  return historyRef.current;
-}
-
-// =============================================================================
-// Panel Renderers
-// =============================================================================
-
-function DaemonInfoPanel({ data }: { data: DaemonData }) {
-  const theme = useTheme();
-  if (data.loading) return <Skeleton variant="rectangular" height={120} />;
-  if (!data.status) return (
-    <Typography variant="body2" sx={{
-      color: "text.secondary"
-    }}>Daemon offline</Typography>
-  );
-
-  const { status } = data;
-  const onlineApps = data.apps.filter((a) => a.status === 'online').length;
-
-  const rows = [
-    { label: 'PID', value: String(status.pid) },
-    { label: 'Version', value: status.version },
-    { label: 'Uptime', value: formatUptime(status.uptime) },
-    { label: 'Memory', value: formatMemory(daemonMemoryOf(status)) },
-    { label: 'Apps', value: `${onlineApps} / ${data.apps.length}` },
-  ];
-
-  return (
-    <Stack spacing={0.75}>
-      <Stack
-        direction="row"
-        spacing={1}
-        sx={{
-          alignItems: "center",
-          mb: 0.5
-        }}>
-        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: theme.palette.success.main }} />
-        <Typography
-          variant="caption"
-          sx={{
-            fontWeight: 600,
-            color: "success.main"
-          }}>RUNNING</Typography>
-      </Stack>
-      {rows.map((r) => (
-        <Stack key={r.label} direction="row" sx={{
-          justifyContent: "space-between"
-        }}>
-          <Typography variant="caption" sx={{
-            color: "text.secondary"
-          }}>{r.label}</Typography>
-          <Typography variant="caption" sx={{
-            fontWeight: 600
-          }}>{r.value}</Typography>
-        </Stack>
-      ))}
-    </Stack>
-  );
-}
-
-function AppGridPanel({ data }: { data: DaemonData }) {
-  const theme = useTheme();
-  if (data.loading) return <Skeleton variant="rectangular" height={100} />;
-
-  return (
-    <Stack spacing={0.5}>
-      {data.apps.map((app) => {
-        const color =
-          app.status === 'online' ? theme.palette.success.main
-          : app.status === 'errored' || app.status === 'crashed' ? theme.palette.error.main
-          : theme.palette.text.disabled;
-
-        return (
-          <Stack
-            key={app.name}
-            direction="row"
-            sx={{
-              alignItems: "center",
-              justifyContent: "space-between",
-              py: 0.5
-            }}>
-            <Stack direction="row" spacing={1} sx={{
-              alignItems: "center"
-            }}>
-              <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: color }} />
-              <Typography variant="body2" sx={{
-                fontWeight: 500
-              }}>{app.name}</Typography>
-            </Stack>
-            <Stack direction="row" spacing={1.5} sx={{
-              alignItems: "center"
-            }}>
-              {app.cpu > 0 && (
-                <Typography variant="caption" sx={{
-                  color: "text.secondary"
-                }}>{app.cpu.toFixed(1)}%</Typography>
-              )}
-              {app.memory > 0 && (
-                <Typography variant="caption" sx={{
-                  color: "text.secondary"
-                }}>{formatMemory(app.memory)}</Typography>
-              )}
-              <Chip
-                label={app.status}
-                size="small"
-                sx={{
-                  height: 18,
-                  fontSize: '0.6rem',
-                  fontWeight: 600,
-                  bgcolor: alpha(color, 0.12),
-                  color,
-                }}
-              />
-            </Stack>
-          </Stack>
-        );
-      })}
-      {/* `error` is what separates the two reasons `apps` is empty. Without
-          it a failed `daemon.list()` rendered "No applications configured" —
-          a statement about the daemon's configuration, made when the daemon
-          did not answer. */}
-      {data.apps.length === 0 && (
-        <Typography variant="caption" sx={{
-          color: "text.secondary"
-        }}>{data.error ? 'Could not read the app list' : 'No applications configured'}</Typography>
-      )}
-    </Stack>
-  );
-}
-
-function TimeSeriesChartPanel({
-  data,
-  refreshKey,
-  metric,
+function PanelEditor({
+  panel,
+  edit,
+  apps,
+  onSave,
+  onClose,
 }: {
-  data: DaemonData;
-  refreshKey: number;
-  metric: 'cpu' | 'memory';
+  panel: DashboardPanel;
+  edit: boolean;
+  apps: string[];
+  onSave(p: DashboardPanel): void;
+  onClose(): void;
 }) {
-  const history = useTimeSeriesHistory(data.apps, refreshKey, metric);
-
-  const appNames = useMemo(() => data.apps.map((a) => a.name), [data.apps]);
-
-  const series = useMemo(() => appNames.map((name) => ({
-      name,
-      data: history.map((pt) => ({
-        x: pt.time,
-        y: pt.values[name] === undefined || pt.values[name]! < 0 ? null : Math.round(pt.values[name]! * 10) / 10,
-      })),
-    })), [appNames, history]);
-
-  const options = useChart({
-    chart: { animations: { enabled: false }, redrawOnParentResize: true },
-    xaxis: { type: 'datetime', labels: { datetimeUTC: false, hideOverlappingLabels: true } },
-    yaxis: { min: 0, labels: { formatter: (value: number) => metric === 'memory' ? `${Math.round(value)} MiB` : `${value.toFixed(1)}%` } },
-    stroke: { curve: 'straight', width: 2 },
-    tooltip: { x: { format: 'HH:mm:ss' }, y: { formatter: (value) => metric === 'memory' ? `${value.toFixed(1)} MiB` : `${value.toFixed(1)}%` } },
-    legend: { show: true, position: 'bottom', horizontalAlign: 'left', fontSize: '11px' },
-  });
-
-  if (data.loading) return <Skeleton variant="rectangular" height={200} />;
-  if (history.length < 2) {
-    return (
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200 }}>
-        <Stack spacing={1} sx={{
-          alignItems: "center"
-        }}>
-          <Typography variant="caption" sx={{
-            color: "text.secondary"
-          }}>Collecting data...</Typography>
-          <LinearProgress sx={{ width: 120 }} />
-        </Stack>
-      </Box>
-    );
-  }
-
-  return <Chart type="line" height={200} options={options} series={series} role="img" aria-label={`${metric} readings collected while this dashboard is open`} />;
-}
-
-function StatPanel({ data, config }: { data: DaemonData; config: Record<string, unknown> }) {
-  const theme = useTheme();
-  const metric = (config.metric as string) ?? 'total_apps';
-
-  if (data.loading) return <Skeleton width={80} height={50} />;
-
-  let value: string | number = '--';
-  let label: string;
-  let color = theme.palette.primary.main;
-
-  const onlineApps = data.apps.filter((a) => a.status === 'online').length;
-  // The apps', both of them. `totalMemory` is the apps' memory plus the
-  // daemon's own RSS, while `totalCpu` is the apps' alone: on the master
-  // (2026-09-23) the default dashboard read «CPU 41.9%» — six apps — beside
-  // «Memory 2074.8 MB», six apps' 1781.8 and the daemon's 293.0, which its
-  // own Daemon card shows again.
-  const totalCpu = data.status?.totalCpu ?? data.apps.reduce((s, a) => s + a.cpu, 0);
-  const totalMem = data.status ? appsMemoryOf(data.status) : data.apps.reduce((s, a) => s + a.memory, 0);
-
-  switch (metric) {
-    case 'total_apps':
-      value = data.apps.length;
-      label = 'Total Apps';
-      break;
-    case 'online_apps':
-      value = onlineApps;
-      label = 'Online';
-      color = onlineApps > 0 ? theme.palette.success.main : theme.palette.error.main;
-      break;
-    case 'errored_apps':
-      value = data.apps.filter((a) => a.status === 'errored' || a.status === 'crashed').length;
-      label = 'Errored';
-      color = theme.palette.error.main;
-      break;
-    case 'total_cpu':
-      value = `${totalCpu.toFixed(1)}%`;
-      label = 'CPU';
-      color = totalCpu > 80 ? theme.palette.error.main : totalCpu > 60 ? theme.palette.warning.main : theme.palette.success.main;
-      break;
-    case 'total_memory':
-      value = formatMemory(totalMem);
-      label = 'Memory';
-      color = theme.palette.info.main;
-      break;
-    case 'uptime':
-      value = data.status ? formatUptime(data.status.uptime) : '--';
-      label = 'Uptime';
-      color = theme.palette.success.main;
-      break;
-    case 'restarts':
-      value = data.apps.reduce((s, a) => s + a.restarts, 0);
-      label = 'Restarts';
-      color = Number(value) > 0 ? theme.palette.warning.main : theme.palette.text.disabled;
-      break;
-    default:
-      // `metric` comes from a saved dashboard, so it can name something this
-      // build no longer knows — a widget saved before a rename, or one from a
-      // newer console. Falling through left `--` under a blank label, which
-      // reads as "no data" rather than "this card is asking for something
-      // that does not exist".
-      label = `Unknown metric: ${metric}`;
-      color = theme.palette.text.disabled;
-      break;
-  }
-
+  const [type, setType] = useState<PanelType>(panel.type);
+  const [title, setTitle] = useState(panel.title);
+  const [size, setSize] = useState<Size>(panel.size);
+  const [metric, setMetric] = useState<StatMetric>(panel.config.metric ?? 'online_apps');
+  const [app, setApp] = useState(panel.config.app ?? '');
+  const scoped = type !== 'daemon-info' && type !== 'alert-summary' && !(type === 'stat' && metric === 'uptime');
   return (
-    <Box sx={{ textAlign: 'center', py: 1.5 }}>
-      <Typography
-        variant="h3"
-        sx={{
-          fontWeight: 800,
-          color,
-          lineHeight: 1.2
-        }}>
-        {value}
-      </Typography>
-      <Typography
-        variant="caption"
-        sx={{
-          color: "text.secondary",
-          fontWeight: 600,
-          textTransform: "uppercase",
-          letterSpacing: 0.5
-        }}>
-        {label}
-      </Typography>
-    </Box>
-  );
-}
-
-function AlertSummaryPanel() {
-  const theme = useTheme();
-  const [summary, setSummary] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await alerts.getSummary();
-        setSummary(data);
-      } catch {
-        setSummary(null);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  if (loading) return <Skeleton variant="rectangular" height={80} />;
-
-  const items = [
-    { label: 'Critical', count: summary?.bySeverity?.critical ?? 0, color: theme.palette.error.main },
-    { label: 'Warning', count: summary?.bySeverity?.warning ?? 0, color: theme.palette.warning.main },
-    { label: 'Info', count: summary?.bySeverity?.info ?? 0, color: theme.palette.info.main },
-  ];
-
-  return (
-    <Stack spacing={1}>
-      {items.map((item) => (
-        <Stack
-          key={item.label}
-          direction="row"
-          sx={{
-            alignItems: "center",
-            justifyContent: "space-between",
-            py: 0.5,
-            px: 1,
-            borderRadius: 1,
-            bgcolor: alpha(item.color, 0.06)
-          }}>
-          <Stack direction="row" spacing={1} sx={{
-            alignItems: "center"
-          }}>
-            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: item.color }} />
-            <Typography variant="body2" sx={{
-              fontWeight: 500
-            }}>{item.label}</Typography>
-          </Stack>
-          <Typography
-            variant="subtitle2"
-            sx={{
-              fontWeight: 700,
-              color: item.color
-            }}>{item.count}</Typography>
-        </Stack>
-      ))}
-    </Stack>
-  );
-}
-
-function RecentErrorsPanel({ data }: { data: DaemonData }) {
-  const theme = useTheme();
-  const erroredApps = data.apps.filter((a) => a.status === 'errored' || a.status === 'crashed');
-  const restartCount = data.apps.reduce((s, a) => s + a.restarts, 0);
-
-  if (data.loading) return <Skeleton variant="rectangular" height={80} />;
-
-  if (erroredApps.length === 0 && restartCount === 0) {
-    return (
-      <Box sx={{ py: 3, textAlign: 'center' }}>
-        <Typography variant="body2" sx={{
-          color: "text.secondary"
-        }}>No errors or restarts</Typography>
-      </Box>
-    );
-  }
-
-  return (
-    <Stack spacing={0.5}>
-      {erroredApps.map((app) => (
-        <Stack
-          key={app.name}
-          direction="row"
-          spacing={1}
-          sx={{
-            alignItems: "center",
-            py: 0.5,
-            px: 1,
-            borderRadius: 1,
-            bgcolor: alpha(theme.palette.error.main, 0.06)
-          }}>
-          <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: theme.palette.error.main }} />
-          <Typography variant="caption" sx={{
-            fontWeight: 600
-          }}>{app.name}</Typography>
-          <Typography variant="caption" sx={{
-            color: "text.secondary"
-          }}>{app.status}</Typography>
-        </Stack>
-      ))}
-      {restartCount > 0 && (
-        <Typography
-          variant="caption"
-          sx={{
-            color: "warning.main",
-            pt: 0.5
-          }}>
-          {restartCount} total restart{restartCount !== 1 ? 's' : ''} across all apps
-        </Typography>
-      )}
-    </Stack>
-  );
-}
-
-// =============================================================================
-// Panel Renderer (dispatch)
-// =============================================================================
-
-function PanelRenderer({ panel, data, refreshKey }: { panel: DashboardPanel; data: DaemonData; refreshKey: number }) {
-  switch (panel.type) {
-    case 'daemon-info': return <DaemonInfoPanel data={data} />;
-    case 'app-grid': return <AppGridPanel data={data} />;
-    case 'cpu-chart': return <TimeSeriesChartPanel data={data} refreshKey={refreshKey} metric="cpu" />;
-    case 'memory-chart': return <TimeSeriesChartPanel data={data} refreshKey={refreshKey} metric="memory" />;
-    case 'stat': return <StatPanel data={data} config={panel.config} />;
-    case 'alert-summary': return <AlertSummaryPanel />;
-    case 'recent-errors': return <RecentErrorsPanel data={data} />;
-    default: return (
-      <Typography variant="body2" sx={{
-        color: "text.secondary"
-      }}>Unknown panel type</Typography>
-    );
-  }
-}
-
-// =============================================================================
-// Panel Types Registry
-// =============================================================================
-
-const PANEL_TYPES: Array<{ value: PanelType; label: string; description: string; defaultSize: DashboardPanel['size'] }> = [
-  { value: 'stat', label: 'Stat', description: 'Single metric value', defaultSize: 'small' },
-  { value: 'daemon-info', label: 'Daemon Info', description: 'Daemon process information', defaultSize: 'medium' },
-  { value: 'app-grid', label: 'App Status', description: 'Application status list', defaultSize: 'large' },
-  { value: 'cpu-chart', label: 'CPU Chart', description: 'Per-app CPU usage over time', defaultSize: 'large' },
-  { value: 'memory-chart', label: 'Memory Chart', description: 'Per-app memory usage over time', defaultSize: 'large' },
-  { value: 'alert-summary', label: 'Alerts', description: 'Active alerts by severity', defaultSize: 'medium' },
-  { value: 'recent-errors', label: 'Errors', description: 'Recent errors and restarts', defaultSize: 'medium' },
-];
-
-const STAT_METRICS = [
-  { value: 'total_apps', label: 'Total Apps' },
-  { value: 'online_apps', label: 'Online Apps' },
-  { value: 'errored_apps', label: 'Errored Apps' },
-  { value: 'total_cpu', label: "Apps' CPU" },
-  { value: 'total_memory', label: "Apps' memory" },
-  { value: 'uptime', label: 'Daemon Uptime' },
-  { value: 'restarts', label: 'Total Restarts' },
-];
-
-// =============================================================================
-// Default Dashboard
-// =============================================================================
-
-function createDefaultDashboard(): DashboardConfig {
-  return {
-    id: crypto.randomUUID(),
-    name: 'Overview',
-    panels: [
-      { id: crypto.randomUUID(), type: 'stat', title: 'Online', size: 'small', config: { metric: 'online_apps' } },
-      { id: crypto.randomUUID(), type: 'stat', title: 'Errored', size: 'small', config: { metric: 'errored_apps' } },
-      { id: crypto.randomUUID(), type: 'stat', title: 'CPU', size: 'small', config: { metric: 'total_cpu' } },
-      { id: crypto.randomUUID(), type: 'stat', title: 'Memory', size: 'small', config: { metric: 'total_memory' } },
-      { id: crypto.randomUUID(), type: 'cpu-chart', title: 'CPU Usage', size: 'large', config: {} },
-      { id: crypto.randomUUID(), type: 'memory-chart', title: 'Memory Usage', size: 'large', config: {} },
-      { id: crypto.randomUUID(), type: 'app-grid', title: 'Applications', size: 'large', config: {} },
-      { id: crypto.randomUUID(), type: 'daemon-info', title: 'Daemon', size: 'medium', config: {} },
-      { id: crypto.randomUUID(), type: 'recent-errors', title: 'Errors & Restarts', size: 'medium', config: {} },
-    ],
-    refreshInterval: 5_000,
-  };
-}
-
-// =============================================================================
-// Add Panel Dialog
-// =============================================================================
-
-function AddPanelDialog({ open, onClose, onAdd }: { open: boolean; onClose: () => void; onAdd: (panel: DashboardPanel) => void }) {
-  const [type, setType] = useState<PanelType>('stat');
-  const [title, setTitle] = useState('');
-  const [metric, setMetric] = useState('online_apps');
-  const [size, setSize] = useState<DashboardPanel['size']>('small');
-
-  useEffect(() => {
-    const pt = PANEL_TYPES.find((p) => p.value === type);
-    if (pt) setSize(pt.defaultSize);
-  }, [type]);
-
-  const handleAdd = () => {
-    const config: Record<string, unknown> = {};
-    if (type === 'stat') config.metric = metric;
-
-    onAdd({
-      id: crypto.randomUUID(),
-      type,
-      title: title || PANEL_TYPES.find((p) => p.value === type)?.label || 'Panel',
-      size,
-      config,
-    });
-    setTitle('');
-    setType('stat');
-    onClose();
-  };
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle sx={{ fontWeight: 700 }}>Add Panel</DialogTitle>
-      <DialogContent>
-        <Stack spacing={2.5} sx={{ mt: 1 }}>
-          <TextField select label="Panel Type" value={type} onChange={(e) => setType(e.target.value as PanelType)} size="small" fullWidth>
-            {PANEL_TYPES.map((pt) => (
-              <MenuItem key={pt.value} value={pt.value}>
-                <Stack>
-                  <Typography variant="body2" sx={{
-                    fontWeight: 600
-                  }}>{pt.label}</Typography>
-                  <Typography variant="caption" sx={{
-                    color: "text.secondary"
-                  }}>{pt.description}</Typography>
-                </Stack>
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField label="Title" value={title} onChange={(e) => setTitle(e.target.value)} size="small" fullWidth placeholder="Optional custom title" />
-          {type === 'stat' && (
-            <TextField select label="Metric" value={metric} onChange={(e) => setMetric(e.target.value)} size="small" fullWidth>
-              {STAT_METRICS.map((m) => (
-                <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>
+    <Dialog open onClose={onClose} maxWidth="xs" fullWidth>
+      <Box
+        component="form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSave({
+            id: panel.id,
+            type,
+            size,
+            title: title.trim() || (type === 'stat' ? STAT_METRICS[metric] : PANEL_TYPES[type]),
+            config: { ...(type === 'stat' && { metric }), ...(scoped && app.trim() && { app: app.trim() }) },
+          });
+        }}
+      >
+        <DialogTitle>{edit ? 'Edit panel' : 'Add panel'}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField
+              select
+              size="small"
+              label="Source"
+              value={type}
+              onChange={(e) => {
+                const t = e.target.value as PanelType;
+                setType(t);
+                if (!edit) setSize(t === 'stat' ? 'small' : 'large');
+              }}
+            >
+              {Object.entries(PANEL_TYPES).map(([key, value]) => (
+                <MenuItem key={key} value={key}>
+                  {value}
+                </MenuItem>
               ))}
             </TextField>
-          )}
-          <TextField select label="Size" value={size} onChange={(e) => setSize(e.target.value as any)} size="small" fullWidth>
-            <MenuItem value="small">Small (1/4 width)</MenuItem>
-            <MenuItem value="medium">Medium (1/3 width)</MenuItem>
-            <MenuItem value="large">Large (1/2 width)</MenuItem>
-            <MenuItem value="full">Full width</MenuItem>
-          </TextField>
-        </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} size="small">Cancel</Button>
-        <Button variant="contained" onClick={handleAdd} size="small">Add</Button>
-      </DialogActions>
+            {type === 'stat' && (
+              <TextField
+                select
+                size="small"
+                label="Metric"
+                value={metric}
+                onChange={(e) => setMetric(e.target.value as StatMetric)}
+              >
+                {Object.entries(STAT_METRICS).map(([key, value]) => (
+                  <MenuItem key={key} value={key}>
+                    {value}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
+            {scoped && (
+              <>
+                <TextField
+                  size="small"
+                  label="Application"
+                  placeholder="All applications in this scope"
+                  value={app}
+                  onChange={(e) => setApp(e.target.value)}
+                  slotProps={{ htmlInput: { list: 'dashboard-app-names', maxLength: 256 } }}
+                  helperText="An exact application name follows the selected workspace and stack."
+                />
+                <datalist id="dashboard-app-names">
+                  {apps.map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              </>
+            )}
+            <TextField
+              size="small"
+              label="Panel title"
+              placeholder={PANEL_TYPES[type]}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              slotProps={{ htmlInput: { maxLength: 100 } }}
+            />
+            <TextField select size="small" label="Width" value={size} onChange={(e) => setSize(e.target.value as Size)}>
+              {Object.entries(PANEL_SIZES).map(([key, value]) => (
+                <MenuItem key={key} value={key}>
+                  {value}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="contained">
+            Save panel
+          </Button>
+        </DialogActions>
+      </Box>
     </Dialog>
   );
 }
 
-// =============================================================================
-// Dashboard Builder Page
-// =============================================================================
+function BoardEditor({
+  mode,
+  board,
+  onSave,
+  onClose,
+}: {
+  mode: BoardDialog;
+  board: DashboardConfig;
+  onSave(board: DashboardConfig | null): void;
+  onClose(): void;
+}) {
+  const [name, setName] = useState(mode === 'create' ? '' : mode === 'duplicate' ? `${board.name} copy` : board.name);
+  const [interval, setInterval] = useState(board.refreshInterval);
+  const [window, setWindow] = useState<MetricWindow>(board.window);
+  const [raw, setRaw] = useState(mode === 'export' ? exportBoard(board) : '');
+  const [error, setError] = useState('');
+  const portable = mode === 'export' || mode === 'import';
+  const titles: Record<BoardDialog, string> = {
+    create: 'New dashboard',
+    settings: 'Dashboard settings',
+    duplicate: 'Duplicate dashboard',
+    delete: 'Delete dashboard',
+    import: 'Import layout',
+    export: 'Export layout',
+  };
+  return (
+    <Dialog open onClose={onClose} fullWidth maxWidth={portable ? 'sm' : 'xs'}>
+      <Box
+        component="form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError('');
+          try {
+            if (mode === 'export') {
+              onClose();
+              return;
+            }
+            if (mode === 'delete') {
+              onSave(null);
+              return;
+            }
+            if (mode === 'import') {
+              onSave(importBoard(raw));
+              return;
+            }
+            if (!name.trim()) throw new Error('Enter a dashboard name.');
+            const next =
+              mode === 'create'
+                ? blankBoard(name.trim())
+                : { ...board, id: mode === 'duplicate' ? dashboardId() : board.id };
+            onSave({ ...next, name: name.trim(), refreshInterval: interval, window });
+          } catch (err) {
+            setError(message(err));
+          }
+        }}
+      >
+        <DialogTitle>{titles[mode]}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            {error && <Alert severity="error">{error}</Alert>}
+            {portable ? (
+              <TextField
+                multiline
+                minRows={7}
+                maxRows={16}
+                size="small"
+                label="Layout JSON"
+                value={raw}
+                onChange={(e) => setRaw(e.target.value)}
+                slotProps={{
+                  input: { readOnly: mode === 'export' },
+                  htmlInput: { maxLength: 131072, spellCheck: false },
+                }}
+                helperText={
+                  mode === 'export'
+                    ? 'Copy this versioned layout to another browser or workspace. Measurements are read at the destination.'
+                    : 'A valid layout opens as a separate dashboard.'
+                }
+              />
+            ) : mode === 'delete' ? (
+              <Typography>
+                Delete “{board.name}” and its {board.panels.length} panels from this browser?
+              </Typography>
+            ) : (
+              <>
+                <TextField
+                  label="Dashboard name"
+                  size="small"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  slotProps={{ htmlInput: { maxLength: 100 } }}
+                />
+                <TextField
+                  select
+                  size="small"
+                  label="Refresh interval"
+                  value={interval}
+                  onChange={(e) => setInterval(Number(e.target.value))}
+                >
+                  {REFRESH_INTERVALS.map((ms) => (
+                    <MenuItem key={ms} value={ms}>
+                      {ms / 1000} seconds
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  select
+                  size="small"
+                  label="History window"
+                  value={window}
+                  onChange={(e) => setWindow(e.target.value as MetricWindow)}
+                >
+                  {Object.entries(METRIC_WINDOWS).map(([key, period]) => (
+                    <MenuItem key={key} value={key}>
+                      {period.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          {mode !== 'export' && <Button onClick={onClose}>Cancel</Button>}
+          <Button type="submit" variant="contained" color={mode === 'delete' ? 'error' : 'primary'}>
+            {mode === 'delete' ? 'Delete' : mode === 'export' ? 'Done' : mode === 'import' ? 'Import' : 'Save'}
+          </Button>
+        </DialogActions>
+      </Box>
+    </Dialog>
+  );
+}
 
 export default function DashboardBuilderPage() {
-  const theme = useTheme();
-  const [dashboards, setDashboards] = useState<DashboardConfig[]>(() => loadDashboards());
-  const [activeDashboard, setActiveDashboard] = useState<string | null>(null);
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  // Initialize with default dashboard if none exist
-  useEffect(() => {
-    if (dashboards.length === 0) {
-      const defaultDash = createDefaultDashboard();
-      setDashboards([defaultDash]);
-      setActiveDashboard(defaultDash.id);
-      saveDashboards([defaultDash]);
-    } else if (!activeDashboard) {
-      setActiveDashboard(dashboards[0]!.id);
-    }
-  }, [dashboards, activeDashboard]);
-
-  const currentDashboard = dashboards.find((d) => d.id === activeDashboard);
-
-  // Auto-refresh
-  useEffect(() => {
-    if (!autoRefresh || !currentDashboard) return undefined;
-    const interval = setInterval(() => setRefreshKey((k) => k + 1), currentDashboard.refreshInterval);
-    return () => clearInterval(interval);
-  }, [autoRefresh, currentDashboard]);
-
-  // Shared data — single fetch for all panels
-  const data = useDaemonData(refreshKey);
-
-  const updateDashboard = useCallback((updater: (d: DashboardConfig) => DashboardConfig) => {
-    setDashboards((prev) => {
-      const updated = prev.map((d) => d.id === activeDashboard ? updater(d) : d);
-      saveDashboards(updated);
-      return updated;
-    });
-  }, [activeDashboard]);
-
-  const handleAddPanel = (panel: DashboardPanel) => {
-    updateDashboard((d) => ({ ...d, panels: [...d.panels, panel] }));
+  const [initial] = useState(initialLayouts);
+  const [boards, setBoards] = useState(initial.boards);
+  const [selected, setSelected] = useState(() => readStored(ACTIVE_KEY) ?? '');
+  const board = boards.find((item) => item.id === selected) ?? boards[0]!;
+  const [saveError, setSaveError] = useState(initial.error);
+  const stored = useRef(initial.raw);
+  const [editing, setEditing] = useState(false);
+  const [live, setLive] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [menu, setMenu] = useState<{ anchor: HTMLElement; panel?: DashboardPanel } | null>(null);
+  const [dialog, setDialog] = useState<BoardDialog | null>(null);
+  const [panel, setPanel] = useState<DashboardPanel | null>(null);
+  const { sources, refresh } = useDashboardSources(board, live);
+  const select = (id: string) => {
+    setSelected(id);
+    writeStored(ACTIVE_KEY, id);
   };
-
-  const handleRemovePanel = (panelId: string) => {
-    updateDashboard((d) => ({ ...d, panels: d.panels.filter((p) => p.id !== panelId) }));
-  };
-
-  const handleCreateDashboard = () => {
-    const newDash: DashboardConfig = {
-      id: crypto.randomUUID(),
-      name: `Dashboard ${dashboards.length + 1}`,
-      panels: [],
-      refreshInterval: 5_000,
+  useEffect(() => {
+    const sync = (event: StorageEvent) => {
+      if (event.key !== LAYOUT_KEY || event.newValue === stored.current) return;
+      if (dialog || panel) {
+        setSaveError('Layouts changed in another tab. Close the editor and reload before saving.');
+        return;
+      }
+      try {
+        const next = event.newValue ? parseBoards(event.newValue) : [defaultBoard()];
+        stored.current = event.newValue;
+        setBoards(next);
+        setSaveError(null);
+      } catch (err) {
+        setSaveError(message(err));
+      }
     };
-    const updated = [...dashboards, newDash];
-    setDashboards(updated);
-    setActiveDashboard(newDash.id);
-    saveDashboards(updated);
+    window.addEventListener('storage', sync);
+    return () => window.removeEventListener('storage', sync);
+  }, [dialog, panel]);
+  function commit(next: DashboardConfig[], id: string) {
+    if (initial.error) {
+      setSaveError(initial.error);
+      return false;
+    }
+    if (readStored(LAYOUT_KEY) !== stored.current) {
+      setSaveError('Saved layouts changed. Reload before editing to preserve both versions.');
+      return false;
+    }
+    const raw = JSON.stringify(next);
+    const persisted = writeStored(LAYOUT_KEY, raw);
+    if (persisted) stored.current = raw;
+    setSaveError(
+      persisted ? null : 'Browser storage unavailable. Changes apply to this session. Export the layout to keep it.'
+    );
+    setBoards(next);
+    select(id);
+    return true;
+  }
+  function setPanels(panels: DashboardPanel[]) {
+    return commit(
+      boards.map((b) => (b.id === board.id ? { ...b, panels } : b)),
+      board.id
+    );
+  }
+  const openBoard = (mode: BoardDialog) => {
+    setMenu(null);
+    setDialog(mode);
   };
-
-  const handleDeleteDashboard = () => {
-    if (!activeDashboard || dashboards.length <= 1) return;
-    const updated = dashboards.filter((d) => d.id !== activeDashboard);
-    setDashboards(updated);
-    setActiveDashboard(updated[0]?.id ?? null);
-    saveDashboards(updated);
+  const selectedPanel = menu?.panel;
+  const index = board.panels.findIndex((p) => p.id === selectedPanel?.id);
+  const move = (direction: number) => {
+    const panels = [...board.panels],
+      target = index + direction;
+    if (index >= 0 && target >= 0 && target < panels.length) {
+      const [item] = panels.splice(index, 1);
+      panels.splice(target, 0, item!);
+      setPanels(panels);
+    }
+    setMenu(null);
   };
-
+  const manual = async () => {
+    setRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  };
   return (
-    <Stack spacing={2.5}>
-      {/* One banner for the page: every panel below draws from the same
-          fetch, so a failure is a property of the page rather than of any
-          one of them. `useDaemonData` recorded this and nothing read it. */}
-      {data.error && <FormAlert>{data.error}</FormAlert>}
-      {/* Header */}
+    <Stack spacing={2} sx={{ minWidth: 0 }}>
       <Breadcrumbs
         links={[{ name: 'Dashboard Builder' }]}
         action={
-          <Stack direction="row" spacing={1} sx={{
-            alignItems: "center"
-          }}>
-            <Typography variant="caption" sx={{
-              color: "text.secondary"
-            }}>Auto-refresh</Typography>
-            <Switch size="small" checked={autoRefresh} onChange={(_, checked) => setAutoRefresh(checked)} />
-            <Tooltip title="Refresh now">
-              <IconButton size="small" onClick={() => setRefreshKey((k) => k + 1)}>
-                <RefreshIcon />
-              </IconButton>
-            </Tooltip>
+          <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+            <FormControlLabel
+              sx={{ m: 0 }}
+              control={<Switch size="small" checked={live} onChange={(e) => setLive(e.target.checked)} />}
+              label="Live"
+            />
+            <IconButton
+              size="small"
+              aria-label="Refresh dashboard"
+              disabled={refreshing}
+              data-console-command="refresh"
+              onClick={() => void manual()}
+            >
+              <RefreshIcon />
+            </IconButton>
+            <Button
+              size="small"
+              variant={editing ? 'contained' : 'text'}
+              aria-pressed={editing}
+              startIcon={<EditIcon />}
+              onClick={() => setEditing(!editing)}
+            >
+              {editing ? 'Done' : 'Edit layout'}
+            </Button>
           </Stack>
         }
       />
-      {/* Dashboard Tabs */}
-      <Stack
-        direction="row"
-        spacing={1}
-        sx={{
-          alignItems: "center",
-          flexWrap: "wrap"
-        }}>
-        {dashboards.map((d) => (
-          <Chip
-            key={d.id}
-            label={d.name}
-            onClick={() => setActiveDashboard(d.id)}
-            color={d.id === activeDashboard ? 'primary' : 'default'}
-            variant={d.id === activeDashboard ? 'filled' : 'outlined'}
+      <Stack direction="row" useFlexGap spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+        <TextField
+          select
+          size="small"
+          label="Dashboard"
+          value={board.id}
+          onChange={(e) => select(e.target.value)}
+          sx={{ minWidth: '10rem', maxWidth: '100%' }}
+        >
+          {boards.map((b) => (
+            <MenuItem key={b.id} value={b.id}>
+              {b.name}
+            </MenuItem>
+          ))}
+        </TextField>
+        <Typography variant="caption" color="text.secondary">
+          {sources.subject} · {METRIC_WINDOWS[board.window].label} ·{' '}
+          {live ? `${board.refreshInterval / 1000} s refresh` : 'Paused'}
+        </Typography>
+        <Box sx={{ flex: 1 }} />
+        {editing && (
+          <Button
             size="small"
-          />
-        ))}
-        {dashboards.length > 1 && (
-          <Button size="small" color="error" onClick={handleDeleteDashboard} sx={{ textTransform: 'none', fontSize: '0.75rem' }}>
-            Delete
+            disabled={board.panels.length >= 64}
+            startIcon={<PlusIcon />}
+            onClick={() => setPanel(newPanel())}
+          >
+            Add panel
           </Button>
         )}
-        <Button size="small" startIcon={<PlusIcon />} onClick={handleCreateDashboard} sx={{ textTransform: 'none', fontSize: '0.75rem' }}>
-          New
-        </Button>
+        <IconButton
+          size="small"
+          aria-label="Dashboard options"
+          aria-haspopup="menu"
+          onClick={(e) => setMenu({ anchor: e.currentTarget })}
+        >
+          <MoreVertIcon />
+        </IconButton>
       </Stack>
-      {/* Panels Grid */}
-      {currentDashboard && (
-        <Grid container spacing={2.5}>
-          {currentDashboard.panels.map((panel) => (
-            <Grid key={panel.id} size={SIZE_MAP[panel.size] ?? SIZE_MAP.medium}>
-              <Card
-                variant="outlined"
-                sx={{
-                  height: '100%',
-                  borderRadius: 2,
-                  transition: 'box-shadow 0.2s',
-                  '&:hover': { boxShadow: `0 0 0 1px ${alpha(theme.palette.primary.main, 0.2)}` },
+      {saveError && <Alert severity="warning">{saveError}</Alert>}
+      <OperationStatus active={refreshing} label="Refreshing dashboard sources" />
+      {!board.panels.length && (
+        <Alert severity="info">
+          This dashboard has no panels.{' '}
+          <Button
+            size="small"
+            onClick={() => {
+              setEditing(true);
+              setPanel(newPanel());
+            }}
+          >
+            Add panel
+          </Button>
+        </Alert>
+      )}
+      <Grid container spacing={1.5}>
+        {board.panels.map((p) => (
+          <Grid key={p.id} size={GRID[p.size]} sx={{ minWidth: 0 }}>
+            <DashboardWidget
+              panel={p}
+              board={board}
+              sources={sources}
+              actions={
+                editing && (
+                  <IconButton
+                    size="small"
+                    aria-label={`Options for ${p.title}`}
+                    aria-haspopup="menu"
+                    onClick={(e) => setMenu({ anchor: e.currentTarget, panel: p })}
+                  >
+                    <MoreVertIcon />
+                  </IconButton>
+                )
+              }
+            />
+          </Grid>
+        ))}
+      </Grid>
+      <Menu open={Boolean(menu)} anchorEl={menu?.anchor ?? null} onClose={() => setMenu(null)}>
+        {selectedPanel
+          ? [
+              <MenuItem
+                key="edit"
+                onClick={() => {
+                  setPanel(selectedPanel);
+                  setMenu(null);
                 }}
               >
-                <Stack
-                  direction="row"
-                  sx={{
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    px: 2,
-                    pt: 1.5,
-                    pb: 0
-                  }}>
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      fontWeight: 700,
-                      color: "text.secondary",
-                      textTransform: "uppercase",
-                      letterSpacing: 0.5
-                    }}>
-                    {panel.title}
-                  </Typography>
-                  <IconButton size="small" onClick={() => handleRemovePanel(panel.id)} sx={{ opacity: 0.4, '&:hover': { opacity: 1 } }}>
-                    <CloseIcon sx={{ fontSize: 14 }} />
-                  </IconButton>
-                </Stack>
-                <CardContent sx={{ pt: 1, pb: 2, '&:last-child': { pb: 2 } }}>
-                  <PanelRenderer panel={panel} data={data} refreshKey={refreshKey} />
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-
-          {/* Add Panel */}
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <Card
-              variant="outlined"
-              sx={{
-                height: '100%',
-                minHeight: 120,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                borderStyle: 'dashed',
-                borderRadius: 2,
-                transition: 'all 0.2s',
-                '&:hover': { bgcolor: 'action.hover', borderColor: 'primary.main' },
-              }}
-              onClick={() => setAddDialogOpen(true)}
-            >
-              <Stack spacing={0.5} sx={{
-                alignItems: "center"
-              }}>
-                <PlusIcon sx={{ fontSize: 20, color: 'text.disabled' }} />
-                <Typography
-                  variant="caption"
-                  sx={{
-                    color: "text.secondary",
-                    fontWeight: 600
-                  }}>
-                  Add Panel
-                </Typography>
-              </Stack>
-            </Card>
-          </Grid>
-        </Grid>
+                Edit panel
+              </MenuItem>,
+              <MenuItem key="up" disabled={index <= 0} onClick={() => move(-1)}>
+                Move earlier
+              </MenuItem>,
+              <MenuItem key="down" disabled={index === board.panels.length - 1} onClick={() => move(1)}>
+                Move later
+              </MenuItem>,
+              <MenuItem
+                key="remove"
+                onClick={() => {
+                  setPanels(board.panels.filter((p) => p.id !== selectedPanel.id));
+                  setMenu(null);
+                }}
+              >
+                Remove from layout
+              </MenuItem>,
+            ]
+          : (['settings', 'create', 'duplicate', 'import', 'export', 'delete'] as const).map((mode) => (
+              <MenuItem
+                key={mode}
+                disabled={
+                  (mode === 'delete' && boards.length === 1) ||
+                  (['create', 'duplicate', 'import'].includes(mode) && boards.length >= 64)
+                }
+                onClick={() => openBoard(mode)}
+              >
+                {
+                  {
+                    settings: 'Settings',
+                    create: 'New dashboard',
+                    duplicate: 'Duplicate',
+                    import: 'Import layout',
+                    export: 'Export layout',
+                    delete: 'Delete dashboard',
+                  }[mode]
+                }
+              </MenuItem>
+            ))}
+      </Menu>
+      {panel && (
+        <PanelEditor
+          panel={panel}
+          edit={board.panels.some((p) => p.id === panel.id)}
+          apps={[...new Set(sources.apps.data?.map((app) => app.name) ?? [])].sort()}
+          onClose={() => setPanel(null)}
+          onSave={(next) => {
+            const exists = board.panels.some((p) => p.id === next.id);
+            if (setPanels(exists ? board.panels.map((p) => (p.id === next.id ? next : p)) : [...board.panels, next]))
+              setPanel(null);
+          }}
+        />
       )}
-      <AddPanelDialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} onAdd={handleAddPanel} />
+      {dialog && (
+        <BoardEditor
+          mode={dialog}
+          board={board}
+          onClose={() => setDialog(null)}
+          onSave={(next) => {
+            const updated = next
+              ? dialog === 'settings'
+                ? boards.map((b) => (b.id === next.id ? next : b))
+                : [...boards, next]
+              : boards.filter((b) => b.id !== board.id);
+            if (commit(updated, next?.id ?? updated[0]!.id)) {
+              setDialog(null);
+              if (dialog === 'create') setEditing(true);
+            }
+          }}
+        />
+      )}
     </Stack>
   );
 }

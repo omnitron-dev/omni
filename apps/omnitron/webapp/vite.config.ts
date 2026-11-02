@@ -62,6 +62,7 @@ export default defineConfig({
       'apexcharts/client': path.resolve(here, 'src/charts.ts'),
       // Prism subpath aliases BEFORE the root alias (Vite uses prefix matching)
       '@omnitron-dev/prism/auth': path.resolve(here, '../../../packages/prism/src/auth/index.ts'),
+      '@omnitron-dev/prism/blocks': path.resolve(here, '../../../packages/prism/src/blocks/index.ts'),
       '@omnitron-dev/prism/hooks': path.resolve(here, '../../../packages/prism/src/hooks/index.ts'),
       '@omnitron-dev/prism/netron': path.resolve(here, '../../../packages/prism/src/netron/index.ts'),
       '@omnitron-dev/prism/components/admin-filters': path.resolve(here, '../../../packages/prism/src/components/admin-filters/index.ts'),

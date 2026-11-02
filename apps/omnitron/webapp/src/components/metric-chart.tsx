@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import {
   Box,
   Button,
@@ -32,10 +32,11 @@ interface Props {
   loading?: boolean;
   error?: string | null;
   height?: number;
+  actions?: ReactNode;
 }
 
 /** A quiet plot, keyboard-operable series selection, and an exact tabular alternative. */
-export function MetricChart({ title, description, lines, format, from, to, loading, error, height = 260 }: Props) {
+export function MetricChart({ title, description, lines, format, from, to, loading, error, actions, height = 260 }: Props) {
   const theme = useTheme();
   const id = useId();
   const [hidden, setHidden] = useState<Set<string>>(new Set());
@@ -79,7 +80,8 @@ export function MetricChart({ title, description, lines, format, from, to, loadi
         title={title}
         subheader={description}
         slotProps={{ title: { id: `${id}-title`, variant: 'subtitle2' }, subheader: { variant: 'caption' } }}
-        action={
+        action={<Stack direction="row" sx={{ alignItems: 'center' }}>
+          {actions}
           <Button
             size="small"
             disabled={!lines.length}
@@ -89,7 +91,7 @@ export function MetricChart({ title, description, lines, format, from, to, loadi
           >
             Data
           </Button>
-        }
+        </Stack>}
       />
       <CardContent sx={{ pt: 0, px: { xs: 1.5, sm: 2 } }}>
         {error && (

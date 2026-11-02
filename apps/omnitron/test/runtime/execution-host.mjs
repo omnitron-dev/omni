@@ -17,6 +17,7 @@ const { LogCollectorService } = await import(pathToFileURL(path.join(dist, 'serv
 const { logEntryOf } = await import(pathToFileURL(path.join(dist, 'monitoring/log-entry.js')));
 const { withDateBinding } = await import(pathToFileURL(path.join(dist, 'database/sqlite-date-binding.js')));
 const { ExecutionClient } = await import(pathToFileURL(path.join(dist, 'daemon/execution-client.js')));
+const { OWN_BUILD } = await import(pathToFileURL(path.join(dist, 'shared/build-stamp.js')));
 const { DEFAULT_ECOSYSTEM, DEFAULT_DAEMON_CONFIG } = await import(pathToFileURL(path.join(dist, 'config/defaults.js')));
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-owner-'));
 await fs.chmod(directory, 0o700);
@@ -70,7 +71,9 @@ try {
   assert.equal((await fs.stat(path.join(directory, 'owner.sock'))).mode & 0o777, 0o600);
   const first = new ExecutionClient(path.join(directory, 'owner.sock'), logger);
   clients.push(first);
-  await first.connect();
+  const snapshot = await first.connect();
+  assert.deepEqual(snapshot.ownerBuild, OWN_BUILD);
+  assert.deepEqual(first.state().ownerBuild, snapshot.ownerBuild);
   await first.acquire();
   const launched = await first.orchestrator.startApp({ name: 'fixture/local/counter', script, cwd: directory, enabled: true }, config);
   const { port } = JSON.parse(await fs.readFile(path.join(directory, 'address.json'), 'utf8'));

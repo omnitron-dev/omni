@@ -62,6 +62,19 @@ it('reports modified bootstrap and framework separately from the retained base a
   expect(installedReleaseCandidates(observed!, catalog)).toHaveLength(1);
 });
 
+it('requires a full commit to identify a registry build on disk and preserves legacy linked matches', async () => {
+  const f = await fixture();
+  const [full] = await inspectInstalledArtifacts(f.orchestrator, [f.handle.name]);
+  const linked = manifest('linked', full!);
+  const verified = { ...linked, id: 'registry', omni: { ...linked.omni, registry: { packages: [] } } };
+  const catalog = { complete: true, reasons: [], releases: [linked, verified].map(manifest => ({ manifest, sha256: 'b'.repeat(64) })) };
+  const states = (frameworkCommit: string) =>
+    installedReleaseCandidates({ ...full!, frameworkCommit }, catalog).map(candidate => candidate.state);
+  expect(states('a'.repeat(12))).toEqual(['entry-matches', 'incomplete']);
+  expect(states('b'.repeat(12))).toEqual(['modified', 'modified']);
+  expect(states('a'.repeat(40))).toEqual(['entry-matches', 'entry-matches']);
+});
+
 it('discards disk evidence when owner PID or entry changes during the scan', async () => {
   const f = await fixture();
   f.refreshObservation.mockImplementation(async () => { if (f.refreshObservation.mock.calls.length === 2) f.handle.pid++; });

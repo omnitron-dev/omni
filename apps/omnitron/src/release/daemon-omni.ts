@@ -1,28 +1,14 @@
-/**
- * The omni a deployed application runs.
- *
- * A release carries its omni packages — `vendor/*.tgz`, built from the omni
- * commit its gates ran against — and the node sets them aside: after
- * `npm install`, the remote deployer links every `@omnitron-dev/*` of the
- * application to the node DAEMON's own (step 5a in `remote-deployer.service`),
- * because the application is loaded into the daemon's process and titan has
- * to be one physical copy there. So the omni an application runs is the
- * daemon's, whatever the release says.
- *
- * On sample/test (2026-09-25) a release gated on omni de454a80 ran under a
- * daemon built from 311bddb1: the two titan fixes it was built to ship were
- * not there, the scheduler went on skipping the fires the release had fixed,
- * and its attestation vouched for code the node was not running.
- *
- * Admission therefore asks each node's daemon which omni it was built from,
- * and a release goes only where that is the release's own.
- */
+/** Applications bind their framework packages to the runtime that owns their processes.
+ * A backend handoff can replace the controller while that runtime keeps running. */
 
-/** What one node's daemon said about itself. */
+import type { DaemonStatusDto } from '../config/types.js';
+
+/** Provenance reported by authenticated node status. */
 export interface DaemonAnswer {
   readonly host: string;
-  /** `OmnitronDaemon.ping().version`, or null when the node did not answer. */
   readonly version: string | null;
+  readonly build?: DaemonStatusDto['build'];
+  readonly execution?: DaemonStatusDto['execution'];
   readonly error?: string;
 }
 
@@ -43,14 +29,39 @@ export function commitOfDaemonVersion(version: string | null | undefined): strin
  * A node that did not answer is a refusal, not a pass: what it runs is exactly
  * what cannot be vouched for.
  */
-export function refuseForeignOmni(releaseOmni: string, daemons: readonly DaemonAnswer[]): string | null {
+export function refuseForeignOmni(releaseOmni: string, daemons: readonly DaemonAnswer[], requireExactBuild = false): string | null {
   const wanted = releaseOmni.toLowerCase();
+  if (!daemons.length) return 'No target nodes are configured to verify the application runtime';
   const reasons: string[] = [];
   for (const d of daemons) {
-    if (d.error !== undefined || d.version === null) {
+    if (d.error !== undefined || typeof d.version !== 'string') {
       reasons.push(`${d.host} did not say which omni its daemon runs${d.error ? ` (${d.error})` : ''}`);
       continue;
     }
+    const mode = d.execution?.mode;
+    if (mode !== 'coupled' && mode !== 'resident' && (requireExactBuild || d.execution !== undefined)) {
+      reasons.push(`${d.host} did not identify the process that owns its applications`);
+      continue;
+    }
+    if (mode === 'resident' && d.execution?.connection?.status !== 'connected') {
+      reasons.push(`${d.host} has no current observation of its execution owner`);
+      continue;
+    }
+    const build = mode === 'resident' ? d.execution?.ownerBuild : d.build;
+    if (requireExactBuild || mode === 'resident' || build !== undefined) {
+      const owner = mode === 'resident' ? 'execution owner' : 'daemon';
+      if (!build || typeof build.commit !== 'string' || !/^[0-9a-f]{7,40}$/.test(build.commit) ||
+          (requireExactBuild && build.commit.length !== 40)) {
+        reasons.push(`${d.host}'s ${owner} did not report a ${requireExactBuild ? 'full ' : ''}framework build commit`);
+      } else if (build.dirty !== false) {
+        reasons.push(`${d.host}'s ${owner} did not report a clean build at ${build.commit.slice(0, 8)}`);
+      } else if (requireExactBuild ? build.commit !== wanted : !wanted.startsWith(build.commit)) {
+        reasons.push(`${d.host}'s ${owner} runs omni ${build.commit} (${d.version})`);
+      }
+      continue;
+    }
+    // Linked releases can still reach legacy coupled daemons whose only stamp
+    // is the local version suffix. A controller version cannot identify a resident owner.
     const sha = commitOfDaemonVersion(d.version);
     if (!sha) {
       reasons.push(`${d.host}'s daemon ${d.version} names no omni commit`);
@@ -59,10 +70,8 @@ export function refuseForeignOmni(releaseOmni: string, daemons: readonly DaemonA
     }
   }
   if (reasons.length === 0) return null;
-  const short = wanted.slice(0, 8);
   return (
-    `${reasons.join('; ')} — an application on a node loads the daemon's @omnitron-dev packages, not the ` +
-    `release's, and this release was gated on omni ${short}. Upgrade the node from omni ${short} ` +
-    `(\`omnitron fleet upgrade <node>\`), or build the release with \`--omni-commit\` set to the daemon's`
+    `${reasons.join('; ')}. This release was gated on omni ${requireExactBuild ? wanted : wanted.slice(0, 8)}. ` +
+    'Review `omnitron fleet upgrade <node> --dry-run` and plan the transition of the application owner to the required build'
   );
 }

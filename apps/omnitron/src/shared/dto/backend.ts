@@ -1,8 +1,12 @@
+import type { BuildStamp } from '../build-stamp.js';
+
 export interface BackendRuntimeStatus {
   mode: 'coupled' | 'resident';
   handoffSupported: boolean;
   reason?: string;
   owner?: { id: string; pid: number; startedAt: string };
+  /** The build loaded by the process running applications. Older owners omit it. */
+  ownerBuild?: BuildStamp | null;
   /** Absent on older backends; an empty map means the owner advertised none. */
   ownerCapabilities?: Readonly<Record<string, number>>;
   epoch?: number;

@@ -24,12 +24,21 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import { commitOfDaemonVersion, refuseForeignOmni } from '../../src/release/daemon-omni.js';
 import type { ReleaseManifest } from '../../src/release/manifest.js';
 import { ProjectService } from '../../src/services/project.service.js';
+import type { BackendRuntimeStatus } from '../../src/shared/dto/backend.js';
 
 const scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'node-never-ran-')));
 afterAll(() => fs.rmSync(scratch, { recursive: true, force: true }));
 
 const RELEASE_OMNI = 'de454a80a3bda744387f2439101b30fc735c0ae6';
 const daemon = (sha: string) => `0.2.0+local.${sha.slice(0, 12)}.202609251029`;
+const build = { commit: RELEASE_OMNI, dirty: false, builtAt: '2026-09-25T10:29:00.000Z' };
+const coupled: BackendRuntimeStatus = {
+  mode: 'coupled', handoffSupported: false, blockers: { terminalSessions: 0, fileTransfers: 0, pipelineRuns: 0, releaseBuilds: 0 },
+};
+const resident: BackendRuntimeStatus = {
+  ...coupled, mode: 'resident', handoffSupported: true, ownerBuild: build,
+  connection: { status: 'connected', observedAt: build.builtAt, error: null },
+};
 
 describe('the omni a daemon version names', () => {
   it('reads the commit from a local build, and nothing from a version without one', () => {
@@ -60,10 +69,36 @@ describe('a release and the daemons it would run under', () => {
       /c's daemon 0\.2\.0 names no omni commit/
     );
   });
+
+  it('admits npm versions by the exact clean build of the process running applications', () => {
+    const node = { host: 'a', version: '0.3.2', build };
+    expect(refuseForeignOmni(RELEASE_OMNI, [
+      { ...node, execution: coupled },
+      { ...node, build: { ...build, commit: '1'.repeat(40) }, execution: resident },
+    ], true)).toBeNull();
+    for (const stamp of [null, { ...build, commit: RELEASE_OMNI.slice(0, 12) }, { ...build, dirty: true }, { ...build, commit: '1'.repeat(40) }]) {
+      expect(refuseForeignOmni(RELEASE_OMNI, [{ ...node, build: stamp, execution: coupled }], true)).toContain("a's daemon");
+      expect(refuseForeignOmni(RELEASE_OMNI, [{ ...node, execution: { ...resident, ownerBuild: stamp } }], true)).toContain("a's execution owner");
+    }
+    expect(refuseForeignOmni(RELEASE_OMNI, [{ ...node, version: daemon(RELEASE_OMNI) }], true)).toMatch(/did not identify the process/);
+    expect(refuseForeignOmni(RELEASE_OMNI, [], true)).toMatch(/No target nodes/);
+  });
+
+  it('never substitutes the controller build or version for a stale or unstamped resident owner', () => {
+    const node = { host: 'b', version: daemon(RELEASE_OMNI), build };
+    const { ownerBuild: _, ...legacyOwner } = resident;
+    for (const requireExact of [true, false]) {
+      expect(refuseForeignOmni(RELEASE_OMNI, [{ ...node, execution: legacyOwner }], requireExact)).toMatch(/execution owner did not report/);
+      for (const status of ['unavailable', 'owner-changed'] as const) {
+        const execution = { ...resident, connection: { status, observedAt: build.builtAt, error: 'unavailable' } };
+        expect(refuseForeignOmni(RELEASE_OMNI, [{ ...node, execution }], requireExact)).toMatch(/no current observation/);
+      }
+    }
+  });
 });
 
 describe('admission asks the node before anything moves', () => {
-  function setup(answer: () => Promise<unknown>) {
+  function setup(answer: () => Promise<unknown>, registry = false) {
     const dir = fs.mkdtempSync(path.join(scratch, 'project-'));
     const git = (...args: string[]) =>
       execFileSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', ...args], {
@@ -84,7 +119,8 @@ describe('admission asks the node before anything moves', () => {
     const manifest: ReleaseManifest = {
       id,
       project: { repo: 'gitlab', commit, onRemote: true },
-      omni: { repo: 'github', commit: RELEASE_OMNI, onRemote: true },
+      omni: { repo: 'github', commit: RELEASE_OMNI, onRemote: true,
+        ...(registry ? { registry: { packages: [{ name: '@omnitron-dev/titan', version: '0.3.2', integrity: 'sha512-test' }] } } : {}) },
       artifacts: [
         {
           app: 'main',
@@ -136,7 +172,7 @@ describe('admission asks the node before anything moves', () => {
     await expect(svc.startStack('sample', 'test', { source: 'operator', release: id })).rejects.toThrow(
       /37\.27\.130\.185's daemon runs omni 311bddb1 .* gated on omni de454a80/
     );
-    expect(invokeOnSlave).toHaveBeenCalledWith('37.27.130.185', 9700, 'OmnitronDaemon', 'ping', [], { requireCredential: true });
+    expect(invokeOnSlave).toHaveBeenCalledWith('37.27.130.185', 9700, 'OmnitronDaemon', 'status', [], { requireCredential: true });
     expect(svc.startRemoteStack).not.toHaveBeenCalled();
   });
 
@@ -154,5 +190,12 @@ describe('admission asks the node before anything moves', () => {
     const { id, svc } = setup(async () => ({ version: daemon(RELEASE_OMNI), pid: 1, uptime: 1 }));
     await svc.startStack('sample', 'test', { source: 'operator', release: id });
     expect(svc.startRemoteStack).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a registry release on a legacy daemon even when the local version prefix matches', async () => {
+    const { id, svc, invokeOnSlave } = setup(async () => ({ version: daemon(RELEASE_OMNI) }), true);
+    await expect(svc.startStack('sample', 'test', { source: 'operator', release: id })).rejects.toThrow(/did not identify the process/);
+    expect(invokeOnSlave).toHaveBeenCalledWith('37.27.130.185', 9700, 'OmnitronDaemon', 'status', [], { requireCredential: true });
+    expect(svc.startRemoteStack).not.toHaveBeenCalled();
   });
 });

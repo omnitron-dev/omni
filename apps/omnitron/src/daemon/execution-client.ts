@@ -17,6 +17,7 @@ import { RpcConnection } from './rpc-connection.js';
 import { recoveryState } from './recovery-state.js';
 import { LONG_REQUEST_TIMEOUT } from '../shared/dto/services.js';
 import { readExecutionCapabilities, type ExecutionCapabilities } from './execution-capabilities.js';
+import type { BuildStamp } from '../shared/build-stamp.js';
 
 /** One controller's connection to a resident process owner. Disconnect never stops applications. */
 export class ExecutionClient {
@@ -159,13 +160,14 @@ export class ExecutionClient {
     this.remote = null;
   }
 
-  state(): { owner: ExecutionSnapshot['status']['owner']; ownerCapabilities: ExecutionCapabilities; phase: string; epoch: number; observedAgeMs: number;
+  state(): { owner: ExecutionSnapshot['status']['owner']; ownerBuild?: BuildStamp | null; ownerCapabilities: ExecutionCapabilities; phase: string; epoch: number; observedAgeMs: number;
     connection: { status: 'connected' | 'unavailable' | 'owner-changed'; observedAt: string | null; error: string | null } } | null {
     if (!this.inventory) return null;
     const age = performance.now() - this.observedAt;
     const error = this.observationError ?? (this.closed ? 'Execution client is closed'
       : age > 5000 ? 'No execution owner observation within 5 seconds' : null);
     return { owner: this.inventory.status.owner, ownerCapabilities: readExecutionCapabilities(this.inventory.capabilities), phase: this.inventory.status.phase,
+      ...(this.inventory.ownerBuild !== undefined && { ownerBuild: this.inventory.ownerBuild }),
       epoch: this.inventory.status.controller.epoch, observedAgeMs: age,
       connection: { status: this.ownerChanged ? 'owner-changed' : error ? 'unavailable' : 'connected',
         observedAt: this.lastObservedAt, error } };

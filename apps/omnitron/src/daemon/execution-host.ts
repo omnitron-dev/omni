@@ -13,6 +13,7 @@ import { callExposedService, type ExposingProcess } from '../orchestrator/call-e
 import type { ExecutionJournal } from './execution-journal.js';
 import type { ExecutionMetricsSink } from '../observability/metrics-bridge.js';
 import { OWNER_CAPABILITIES, type ExecutionCapabilities } from './execution-capabilities.js';
+import { OWN_BUILD, type BuildStamp } from '../shared/build-stamp.js';
 
 // Only a private, owner-only Unix listener may expose this service. The
 // backend authenticates end users with Omnitron RBAC before entering it.
@@ -39,6 +40,7 @@ export interface ExecutionEvent {
 
 export interface ExecutionSnapshot {
   protocol: 1;
+  ownerBuild?: BuildStamp | null;
   capabilities?: ExecutionCapabilities;
   statePersistence?: StatePersistenceStatus;
   logSinks?: LogSinkHealth[];
@@ -142,7 +144,7 @@ export class ExecutionHostService {
       ...(this.hooks.logs?.journal ? { logs: { protocol: 1 as const, journal: this.hooks.logs.journalStats()! } } : {}),
       ...(this.hooks.statePersistence ? { statePersistence: this.hooks.statePersistence() } : {}),
       ...(this.hooks.loggerHealth ? { logSinks: this.hooks.loggerHealth() } : {}),
-      protocol: 1, capabilities: OWNER_CAPABILITIES, revision: ++this.revision, status: this.fence.status(), apps, workers,
+      protocol: 1, ownerBuild: OWN_BUILD, capabilities: OWNER_CAPABILITIES, revision: ++this.revision, status: this.fence.status(), apps, workers,
       devMode: this.orchestrator.devMode, watchEnabled: this.orchestrator.devMode,
       watchedApps: [...this.orchestrator.getBuildWatchedApps(), ...(this.hooks.watchedApps?.() ?? [])],
       events: this.events.filter(event => event.sequence > afterEvent), lastEvent: this.lastEvent,

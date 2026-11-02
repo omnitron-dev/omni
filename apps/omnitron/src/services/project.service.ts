@@ -74,6 +74,7 @@ import type {
   IStackConfig,
   ISeedProject,
   DaemonRole,
+  DaemonStatusDto,
   IAppDefinition,
   AppStatus,
   OmnitronAppConfig,
@@ -2854,10 +2855,9 @@ export class ProjectService extends EventEmitter {
       );
     }
 
-    // The omni an application runs on a node is that node daemon's, not the
-    // release's — see `release/daemon-omni.ts`.
+    // Admission and installation must agree on the framework the application owner actually loads.
     const { refuseForeignOmni } = await import('../release/daemon-omni.js');
-    const foreign = refuseForeignOmni(release.manifest.omni.commit, await this.askDaemonVersions(stackConfig));
+    const foreign = refuseForeignOmni(release.manifest.omni.commit, await this.askDaemonBuilds(stackConfig), Boolean(release.manifest.omni.registry));
     if (foreign) {
       throw new Error(`Refusing release ${release.id} for ${projectName}/${stackName}: ${foreign}.`);
     }
@@ -2888,18 +2888,16 @@ export class ProjectService extends EventEmitter {
     return release;
   }
 
-  /** What each of a stack's nodes says its daemon is — the omni its applications load. */
-  private async askDaemonVersions(
+  /** Ask each authenticated node for the build loaded by its application owner. */
+  private async askDaemonBuilds(
     stackConfig: IStackConfig,
   ): Promise<Array<import('../release/daemon-omni.js').DaemonAnswer>> {
     const connector = this.getSlaveConnector();
     return Promise.all(
       (stackConfig.nodes ?? []).map(async (node) => {
         try {
-          const pong = (await connector.invokeOnSlave(node.host, node.port ?? 9700, 'OmnitronDaemon', 'ping', [], { requireCredential: true })) as
-            | { version?: string }
-            | undefined;
-          return { host: node.host, version: pong?.version ?? null };
+          const status = await connector.invokeOnSlave(node.host, node.port ?? 9700, 'OmnitronDaemon', 'status', [], { requireCredential: true }) as DaemonStatusDto | undefined;
+          return { host: node.host, version: status?.version ?? null, build: status?.build, execution: status?.execution };
         } catch (err) {
           return { host: node.host, version: null, error: (err as Error).message };
         }

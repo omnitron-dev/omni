@@ -311,5 +311,10 @@ describe('physical placements in the infrastructure map', () => {
     expect(edges.find((e) => e.target === main[0]!.id)?.data?.evidence).toBe('placement');
     expect(edges.find((e) => e.target === main[1]!.id)?.data?.evidence).toBe('declaration');
     expect(nodes.filter((n) => n.type === 'serverNode').map((n) => n.data.status)).toEqual(['online', 'unknown']);
+    for (const host of nodes.filter((n) => n.type === 'serverNode')) {
+      const replica = main.find((n) => n.data.nodeKey === host.data.address);
+      expect(host.data.deploymentKey).toBeTruthy();
+      expect(host.data.deploymentKey).toBe(replica?.data.deploymentKey);
+    }
   });
 });

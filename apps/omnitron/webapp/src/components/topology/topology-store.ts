@@ -474,7 +474,7 @@ export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeDa
         id: `server-${server.address}`,
         type: 'serverNode',
         position: { x: 0, y: 0 },
-        data: server,
+        data: { ...server, deploymentKey },
       };
       serversPlaced.set(server.address, node);
       nodes.push(node);

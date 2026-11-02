@@ -35,9 +35,10 @@ export function registerDaemonJobs(
     infraService: InfrastructureService | null;
     metricsInterval: number;
     healthCheckInterval: number;
+    metricsInitiallyPaused?: boolean;
     diagnostics?: Pick<RuntimeDiagnostics, 'failure' | 'resolve'>;
   }
-): void {
+) {
   const { logger, orchestrator, authService, metricsService, alertService, fleetService, logManager } = deps;
   const failed = (job: string, title: string, error: unknown) => {
     if (deps.diagnostics) deps.diagnostics.failure(`runtime.job.${job}`, title, error);
@@ -70,7 +71,9 @@ export function registerDaemonJobs(
   }
 
   // Metrics collection — poll app state and record via titan-metrics
-  scheduler.addInterval('metrics-collection', deps.metricsInterval, async () => {
+  let metricsPaused = deps.metricsInitiallyPaused ?? false;
+  let sampling: Promise<void> | undefined;
+  const collectMetrics = async () => {
     try {
       const appList = orchestrator.list();
       const now = Date.now();
@@ -115,6 +118,10 @@ export function registerDaemonJobs(
     } catch (error) {
       failed('metrics-collection', 'Daemon metrics could not be collected', error);
     }
+  };
+  scheduler.addInterval('metrics-collection', deps.metricsInterval, () => {
+    if (!metricsPaused) sampling ??= collectMetrics().finally(() => { sampling = undefined; });
+    return sampling;
   });
   jobs.push('metrics-collection');
 
@@ -202,4 +209,12 @@ export function registerDaemonJobs(
   if (skipped.length > 0) {
     logger.info({ skipped }, `${skipped.length} daemon job(s) not registered — their service is absent`);
   }
+  return {
+    async pauseAndFlush(): Promise<void> {
+      metricsPaused = true;
+      await sampling;
+      await metricsService.flush();
+    },
+    resume(): void { metricsPaused = false; },
+  };
 }

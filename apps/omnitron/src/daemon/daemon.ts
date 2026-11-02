@@ -129,6 +129,7 @@ import type { BackendHandoffState } from './backend-handoff-types.js';
 import type { BackendRuntimeStatus } from '../shared/dto/backend.js';
 import { BackendRpcService } from './backend.rpc-service.js';
 import { startBackendControl } from './backend-control.js';
+import { withControlDeadline } from './private-control-client.js';
 import { Errors } from '@omnitron-dev/titan/errors';
 
 /**
@@ -304,6 +305,7 @@ export class OmnitronDaemon {
   private configSyncService: any = null;
   private metricsServer: import('../observability/index.js').MetricsServer | null = null;
   private metricsBridge: import('../observability/index.js').MetricsBridge | null = null;
+  private metricSampling?: ReturnType<typeof registerDaemonJobs>;
   private dc: IDaemonConfig = DEFAULT_DAEMON_CONFIG;
   private execution: ExecutionClient | null = null;
   private handingOffBackend = false;
@@ -365,15 +367,15 @@ export class OmnitronDaemon {
       assertIdle();
       const projectState = await projects.prepareHandoff();
       const infrastructure = await this.infraService?.prepareHandoff() ?? null;
-      let timer: NodeJS.Timeout | undefined;
-      const prepared = await Promise.race([
-        this.execution.prepare(candidateId),
-        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('Execution mutations have not drained; the current backend will remain active')), 30_000); }),
-      ]).finally(() => { if (timer) clearTimeout(timer); });
+      if (this.metricSampling) await withControlDeadline(this.metricSampling.pauseAndFlush(), 30_000,
+        'Metric collection has not drained to storage; the current backend will remain active');
+      const prepared = await withControlDeadline(this.execution.prepare(candidateId), 30_000,
+        'Execution mutations have not drained; the current backend will remain active');
       return { protocol: 1, ticket: prepared.ticket, projects: projectState, infrastructure,
         executionInventory: prepared.snapshot.inventoryDigest, watchConfig: this.watchConfig };
     } catch (error) {
       await this.execution.abortCandidate(candidateId);
+      this.metricSampling?.resume();
       projects?.resumeAfterHandoff();
       this.infraService?.resumeAfterHandoff();
       gate.reopen();
@@ -386,6 +388,7 @@ export class OmnitronDaemon {
   async abortBackendHandoff(state: BackendHandoffState): Promise<void> {
     if (!this.execution || !this.app || this.handingOffBackend) throw new Error('The old backend can no longer resume; restore a controller through the resident owner');
     await this.execution.abort(state.ticket);
+    this.metricSampling?.resume();
     const projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
     projects.resumeAfterHandoff();
     this.infraService?.resumeAfterHandoff();
@@ -656,6 +659,7 @@ export class OmnitronDaemon {
       this.infraService?.resumeAfterHandoff();
     }
     this.backendAdmitted = true;
+    this.metricSampling?.resume();
     await this.recoveryMonitor?.start();
 
     // 15. Broadcast daemon.started event
@@ -1936,19 +1940,17 @@ export class OmnitronDaemon {
       const alertService = await container.resolveAsync<AlertService>(ALERT_SERVICE_TOKEN);
       const fleetService = !isSlave ? await container.resolveAsync<FleetService>(FLEET_SERVICE_TOKEN) : null;
 
-      registerDaemonJobs(scheduler, {
+      this.metricSampling = registerDaemonJobs(scheduler, {
         logger,
         diagnostics: runtimeDiagnostics,
         orchestrator,
         authService,
         metricsService: titanMetrics,
+        metricsInitiallyPaused: !this.backendAdmitted,
         alertService,
         fleetService,
         logManager,
         infraService: this.infraService,
-        // Only a slave replicates. `bufferBatch` is itself a no-op for any
-        // other role, but passing null keeps the job from registering at all
-        // and makes the scheduler's own "skipped, because" line say so.
         metricsInterval: config.monitoring.metrics.interval,
         healthCheckInterval: config.monitoring.healthCheck.interval,
       });
@@ -2658,6 +2660,14 @@ export class OmnitronDaemon {
     });
 
     // --- Priority: First (0) — Immediate cleanup ---
+    app.registerShutdownTask('quiesce-metric-sampling', async () => {
+      try {
+        await this.metricSampling?.pauseAndFlush();
+      } catch (error) {
+        runtimeDiagnostics.failure('metrics.shutdown', 'Metric flush before shutdown failed; buffered samples require a final flush', error);
+      }
+    }, ShutdownPriority.First);
+
     app.registerShutdownTask('stop-file-watcher-and-webapp', async () => {
       await this.filesRpcService?.dispose();
       this.filesRpcService = null;
@@ -2720,10 +2730,22 @@ export class OmnitronDaemon {
 
     // --- Priority: High (20) — Stop background services ---
     app.registerShutdownTask('stop-background-services', async () => {
-      try {
-        const relay = await container.resolveAsync<TelemetryRelayService>(TELEMETRY_RELAY_TOKEN);
-        await relay.stop();
-      } catch { /* non-critical */ }
+      if (this.dc.role !== 'slave') {
+        try {
+          const relay = await container.resolveAsync<TelemetryRelayService>(TELEMETRY_RELAY_TOKEN);
+          await relay.stop();
+        } catch { /* non-critical */ }
+
+        try {
+          const fleet = await container.resolveAsync<FleetService>(FLEET_SERVICE_TOKEN);
+          fleet.stopHeartbeatSweep();
+        } catch { /* non-critical */ }
+
+        try {
+          const tc = await container.resolveAsync<TraceCollectorService>(TRACE_COLLECTOR_TOKEN);
+          await tc.stop();
+        } catch { /* non-critical */ }
+      }
 
       try {
         const mc = await container.resolveAsync<IMetricsService>(TITAN_METRICS_TOKEN);
@@ -2732,15 +2754,6 @@ export class OmnitronDaemon {
         runtimeDiagnostics.failure('metrics.shutdown', 'Final metric flush failed; buffered samples were not confirmed', error);
       }
 
-      try {
-        const fleet = await container.resolveAsync<FleetService>(FLEET_SERVICE_TOKEN);
-        fleet.stopHeartbeatSweep();
-      } catch { /* non-critical */ }
-
-      try {
-        const tc = await container.resolveAsync<TraceCollectorService>(TRACE_COLLECTOR_TOKEN);
-        await tc.stop();
-      } catch { /* non-critical */ }
     }, ShutdownPriority.High);
 
     // --- Priority: Normal (50) — System workers, node manager, sync, cluster ---

@@ -29,21 +29,24 @@ import { useAccess } from '../auth/access';
 export function ProjectSwitcher() {
   const { open, anchorEl, onClose, onOpen } = usePopover();
   const menuId = useId();
-  const { can } = useAccess();
+  const { can, snapshot } = useAccess();
+  const canList = can('OmnitronProject.listProjects');
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const route = useRef(pathname);
   route.current = pathname;
 
-  const projects = useProjectStore((s) => s.projects);
+  const inventory = useProjectStore((s) => s.projects);
+  const projects = canList ? inventory : [];
   const activeProject = useActiveProject();
   const selectProject = useProjectStore((s) => s.selectProject);
   const deselectProject = useProjectStore((s) => s.deselectProject);
   const fetchProjects = useProjectStore((s) => s.fetchProjects);
 
   useEffect(() => {
+    if (!canList) return;
     void fetchProjects(route.current).then(next => { if (next) navigate(next, { replace: true }); });
-  }, [fetchProjects, navigate]);
+  }, [fetchProjects, navigate, canList, snapshot?.userId]);
 
   const handleSelectOmnitron = useCallback(() => {
     const targetRoute = deselectProject(pathname);
@@ -61,7 +64,7 @@ export function ProjectSwitcher() {
   );
 
   const activeInfo = projects.find((p) => p.name === activeProject);
-  const isOmnitron = !activeProject;
+  const isOmnitron = !activeProject || !canList;
   const stackReadError = useProjectStore(s => activeProject ? s.stackReadErrors?.[activeProject] : null);
 
   const buttonBg: SxProps<Theme> = {

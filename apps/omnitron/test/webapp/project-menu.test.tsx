@@ -91,4 +91,13 @@ describe('workspace menu commands', () => {
     expect(screen.queryByRole('menuitem', { name: 'Add project' })).toBeNull();
     expect(screen.queryByRole('dialog', { name: 'Add Project' })).toBeNull();
   });
+  it('does not query or reveal a retained project name without inventory access', () => {
+    access.allowed = false;
+    state.activeProject = 'private-workspace';
+    state.projects = [{ name: state.activeProject, displayName: 'Private workspace' } as IProjectInfo];
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Switch workspace: Omnitron' }));
+    expect(screen.queryByText('Private workspace')).toBeNull();
+    expect(state.fetchProjects).not.toHaveBeenCalled();
+  });
 });

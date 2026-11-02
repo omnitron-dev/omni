@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IStackInfo } from '../../src/shared/dto/project.js';
 const rpc = vi.hoisted(() => ({ stacks: vi.fn() }));
+vi.mock('src/auth/access', () => ({ useAccess: () => ({ can: () => true, snapshot: { userId: 'reader' } }) }));
 vi.mock('src/netron/client', () => ({
   daemon: { status: async () => ({ apps: [], uptime: 1 }) }, project: { listStacks: (data: unknown) => rpc.stacks(data) },
   nodes: { listNodes: async () => [] }, alerts: { getSummary: async () => ({ firing: 0 }) },
@@ -15,7 +16,11 @@ import { useProjectStore } from '../../webapp/src/stores/project.store.js';
 const stack = (name: string, running: boolean): IStackInfo => ({ name, type: name === 'dev' ? 'local' : 'remote', status: running ? 'running' : 'stopped',
   apps: Array.from({ length: 6 }, (_, n) => ({ name: `app${n}`, status: running ? 'online' : 'stopped' })), config: {}, nodes: [], infrastructure: { ready: false, services: {} },
 } as IStackInfo);
-beforeEach(() => { rpc.stacks.mockReset(); useProjectStore.setState({ activeProject: 'sample', activeStack: null, stacksByProject: {}, projects: [] }); });
+beforeEach(() => {
+  rpc.stacks.mockReset();
+  useProjectStore.getState().setInventoryReaders('reader', 'reader');
+  useProjectStore.setState({ activeProject: 'sample', activeStack: null, stacksByProject: {}, projects: [] });
+});
 afterEach(cleanup);
 describe('one observed inventory across the console', () => {
   it('includes stopped stacks and their applications in the same snapshot', async () => {

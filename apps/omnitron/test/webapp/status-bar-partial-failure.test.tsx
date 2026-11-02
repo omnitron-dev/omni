@@ -22,13 +22,16 @@ import userEvent from '@testing-library/user-event';
 import { render as renderView, screen, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 
-const can = vi.fn(() => true);
-vi.mock('src/auth/access', () => ({ useAccess: () => ({ can }) }));
+const can = vi.fn((_permission: string) => true);
+let principal = 'reader-1';
+vi.mock('src/auth/access', () => ({ useAccess: () => ({ can, snapshot: { userId: principal } }) }));
 const render = (ui: ReactElement) => renderView(ui, { wrapper: MemoryRouter });
 const status = vi.fn();
 const ping = vi.fn();
 const listNodes = vi.fn();
 const getSummary = vi.fn();
+const fetchStacks = vi.fn();
+let activeProject: string | null = null;
 const releaseRealtime = vi.fn();
 const initializeRealtime = vi.fn(() => releaseRealtime);
 
@@ -40,7 +43,7 @@ vi.mock('src/netron/client', () => ({
 
 vi.mock('src/stores/project.store', () => ({
   useProjectStore: (selector: (s: unknown) => unknown) =>
-    selector({ activeProject: null, activeStack: null, projects: [] }),
+    selector({ activeProject, activeStack: null, projects: [], fetchStacks, stacksByProject: {} }),
   useActiveProjectStacks: () => [],
 }));
 
@@ -73,6 +76,9 @@ const alertChip = () =>
 
 beforeEach(() => {
   can.mockReturnValue(true);
+  principal = 'reader-1';
+  activeProject = null;
+  fetchStacks.mockClear();
   initializeRealtime.mockClear();
   releaseRealtime.mockClear();
   status.mockReset();
@@ -101,12 +107,42 @@ describe('StatusBar', () => {
 
   it('omits the global count and its query when alerts are unavailable to the caller', async () => {
     can.mockReturnValue(false);
+    activeProject = 'project';
     getSummary.mockResolvedValue({ firing: 2 });
     render(<StatusBar />);
     await screen.findByLabelText(/Infrastructure status/);
     expect(getSummary).not.toHaveBeenCalled();
+    expect(status).not.toHaveBeenCalled();
+    expect(listNodes).not.toHaveBeenCalled();
+    expect(fetchStacks).not.toHaveBeenCalled();
+    expect(ping).toHaveBeenCalledOnce();
     expect(screen.queryByRole('link')).toBeNull();
-    expect(screen.getByLabelText(/Infrastructure status/)).not.toHaveAttribute('aria-label', expect.stringContaining('alerts'));
+    expect(screen.getByLabelText(/Infrastructure status/)).toHaveAttribute('aria-label', 'Infrastructure status: online');
+  });
+
+  it('drops old readings synchronously on revocation and rejects the previous identity’s late result', async () => {
+    status.mockResolvedValueOnce({ apps: [{ status: 'online' }] });
+    getSummary.mockResolvedValueOnce({ firing: 3 });
+    const { rerender } = render(<StatusBar />);
+    await screen.findByRole('link', { name: /View 3 firing/ });
+    let finish!: (result: { firing: number }) => void;
+    getSummary.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    realtime = { connected: true, lastEvent: { channel: 'alert.fired' } };
+    rerender(<StatusBar />);
+    await waitFor(() => expect(getSummary).toHaveBeenCalledTimes(2));
+    can.mockReturnValue(false);
+    rerender(<StatusBar />);
+    expect(screen.queryByRole('link')).toBeNull();
+    await screen.findByLabelText('Infrastructure status: online');
+    principal = 'reader-2';
+    can.mockReturnValue(true);
+    getSummary.mockRejectedValue(new Error('Timeout'));
+    status.mockRejectedValue(new Error('Timeout'));
+    rerender(<StatusBar />);
+    await screen.findByLabelText(/applications unknown/);
+    await act(async () => { finish({ firing: 4 }); });
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.queryByLabelText(/applications 1\/1/)).toBeNull();
   });
 
   it('keeps a realtime subscription on routes that do not own one themselves', async () => {
@@ -117,6 +153,17 @@ describe('StatusBar', () => {
     expect(initializeRealtime).toHaveBeenCalledTimes(1);
     unmount();
     expect(releaseRealtime).toHaveBeenCalledTimes(1);
+  });
+  it('does not retain a previous account’s readings when both accounts have identical grants', async () => {
+    getSummary.mockResolvedValueOnce({ firing: 2 }).mockRejectedValue(new Error('Timeout'));
+    listNodes.mockResolvedValueOnce([{ status: { omnitronConnected: true } }]).mockRejectedValue(new Error('Timeout'));
+    const { rerender } = render(<StatusBar />);
+    await screen.findByRole('link', { name: /View 2 firing/ });
+    principal = 'another-reader';
+    rerender(<StatusBar />);
+    expect(screen.queryByRole('link')).toBeNull();
+    await waitFor(() => expect(listNodes).toHaveBeenCalledTimes(2));
+    expect(nodesChip()).toEqual([]);
   });
   it('keeps a reachable backend online when owner inventory is unavailable without inventing zero apps', async () => {
     status.mockRejectedValue(new Error('Execution owner inventory is stale'));

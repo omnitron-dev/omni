@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, type ReactNode } from 'react';
 import { Alert, Button } from '@mui/material';
 import { LoadingScreen } from '@omnitron-dev/prism/components/loading-screen';
 import { RoleBasedGuard, hasPermission, type AuthState } from '@omnitron-dev/prism/auth';
@@ -7,6 +7,7 @@ import { useLocation } from 'react-router-dom';
 import { access, type OmnitronConsoleSchema } from 'src/netron/client';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { useAuthStore } from './store';
+import { useProjectStore } from 'src/stores/project.store';
 
 type Services = OmnitronConsoleSchema['daemon'];
 export type RpcPermission = {
@@ -56,6 +57,12 @@ export function ConsoleAccessProvider({ children }: { children: ReactNode }) {
       error: error ?? null,
     };
   }, [snapshot, user, error, refresh]);
+  const stackReader = value.can('OmnitronProject.listStacks') ? snapshot?.userId ?? null : null;
+  const projectReader = value.can('OmnitronProject.listProjects') ? snapshot?.userId ?? null : null;
+  useLayoutEffect(() => {
+    useProjectStore.getState().setInventoryReaders(projectReader, stackReader);
+  }, [projectReader, stackReader]);
+  useLayoutEffect(() => () => useProjectStore.getState().setInventoryReaders(null, null), []);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 export const useAccess = () => useContext(Context);

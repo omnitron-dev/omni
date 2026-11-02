@@ -53,6 +53,7 @@ interface ProjectState {
   error: string | null;
 
   fetchProjects: (currentPath?: string) => Promise<string | void>;
+  setInventoryReaders: (projects: string | null, stacks: string | null) => void;
   fetchStacks: (project: string) => Promise<IStackInfo[] | null>;
   fetchStackStatus: (project: string, stack: string) => Promise<StackRuntime | null>;
   /** Select a project workspace. Saves current route for old workspace, returns saved route for new. */
@@ -129,6 +130,10 @@ function persistRoutes(routes: Record<string, string>): void {
 export const useProjectStore = create<ProjectState>((set, get) => {
   const persisted = loadPersistedWorkspace();
   const stackRequests = new Map<string, Promise<IStackInfo[] | null>>();
+  let stackReader: string | null = null;
+  let projectReader: string | null = null;
+  let projectGeneration = 0;
+  let inventoryGeneration = 0;
 
   const notice = (key: string, message?: string) => set(state => {
     const next = { ...state.stackNotices };
@@ -166,9 +171,12 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   error: null,
 
   fetchProjects: async (currentPath?: string) => {
+    if (!projectReader) return;
+    const generation = projectGeneration;
     try {
       set({ loading: true, error: null });
       const projects = await projectRpc.listProjects();
+      if (generation !== projectGeneration) return;
       set(state => ({ projects: projects.map(project => state.stacksByProject[project.name]
         ? { ...project, ...stackCounts(state.stacksByProject[project.name]!) } : project), loading: false }));
 
@@ -202,17 +210,33 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         get().fetchStacks(only);
       }
     } catch (err) {
-      set({ error: (err as Error).message, loading: false });
+      if (generation === projectGeneration) set({ error: (err as Error).message, loading: false });
     }
     return undefined;
   },
 
+  setInventoryReaders: (projects, stacks) => {
+    if (projectReader !== projects) {
+      projectReader = projects;
+      projectGeneration++;
+      set({ projects: [], loading: false, error: null });
+    }
+    if (stackReader === stacks) return;
+    stackReader = stacks;
+    inventoryGeneration++;
+    stackRequests.clear();
+    set({ stacksByProject: {}, stackReadErrors: {} });
+  },
+
   fetchStacks: async (projectName: string) => {
+    if (!stackReader) return null;
+    const generation = inventoryGeneration;
     const pending = stackRequests.get(projectName);
     if (pending) return pending;
     const request = (async () => {
     try {
       const stacks = await projectRpc.listStacks({ project: projectName });
+      if (generation !== inventoryGeneration) return null;
       set((state) => ({
         stacksByProject: { ...state.stacksByProject, [projectName]: stacks },
         stackReadErrors: { ...state.stackReadErrors, [projectName]: null },
@@ -229,12 +253,16 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       }
       return stacks;
     } catch (err) {
-      set(state => ({ stackReadErrors: { ...state.stackReadErrors, [projectName]: (err as Error).message } }));
+      if (generation === inventoryGeneration) {
+        set(state => ({ stackReadErrors: { ...state.stackReadErrors, [projectName]: (err as Error).message } }));
+      }
       return null;
     }
     })();
     stackRequests.set(projectName, request);
-    try { return await request; } finally { stackRequests.delete(projectName); }
+    try { return await request; } finally {
+      if (stackRequests.get(projectName) === request) stackRequests.delete(projectName);
+    }
   },
 
   fetchStackStatus: async (projectName: string, stackName: string) => {

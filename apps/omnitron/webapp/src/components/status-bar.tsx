@@ -121,27 +121,21 @@ interface StatusData {
 export function StatusBar({ docked = false }: { docked?: boolean }) {
   const project = useProjectStore(s => s.activeProject);
   const stack = useProjectStore(s => s.activeStack);
-  const lastKnown = useRef({ nodesOnline: 0, nodesTotal: 0, firingAlerts: 0, appsOnline: 0, appsTotal: 0, appsKnown: false });
-  return <StatusBarReader key={JSON.stringify([project, stack])} docked={docked} lastKnown={lastKnown} />;
+  const { can, snapshot } = useAccess();
+  const showStatus = can('OmnitronDaemon.status');
+  const showNodes = can('OmnitronNodes.listNodes');
+  const showStacks = can('OmnitronProject.listStacks');
+  const showAlerts = can('OmnitronAlerts.getSummary') && can('OmnitronAlerts.getActiveAlerts') && can('OmnitronAlerts.getRules');
+  const key = JSON.stringify([snapshot?.userId, project, stack, showStatus, showNodes, showStacks, showAlerts]);
+  return <StatusBarReader key={key} docked={docked} showStatus={showStatus} showNodes={showNodes}
+    showStacks={showStacks} showAlerts={showAlerts} />;
 }
 
-function StatusBarReader({ docked, lastKnown }: { docked: boolean; lastKnown: React.RefObject<{ nodesOnline: number; nodesTotal: number; firingAlerts: number; appsOnline: number; appsTotal: number; appsKnown: boolean }> }) {
-  const { can } = useAccess();
-  const showAlerts = can('OmnitronAlerts.getSummary') && can('OmnitronAlerts.getActiveAlerts') && can('OmnitronAlerts.getRules');
-  const [data, setData] = useState<StatusData | null>(null);
-  /**
-   * The last values the nodes and alerts queries actually produced.
-   *
-   * Each poll rebuilds the whole object, so a sub-query that failed used to
-   * contribute `0`. The bar renders its nodes and alerts chips only when the
-   * count is above zero, so a failing `alerts.getSummary()` made the alert
-   * chip disappear — and a chip that is not there reads as "nothing is
-   * firing", which is a claim, not a silence.
-   *
-   * Carrying the last known count forward can show an alert that has since
-   * cleared. That direction is the safe one: a stale count sends someone to
-   * the alerts page, a false zero sends them nowhere.
-   */
+type StatusBarGrants = { docked: boolean; showStatus: boolean; showNodes: boolean; showStacks: boolean; showAlerts: boolean };
+
+function StatusBarReader({ docked, showStatus, showNodes, showStacks, showAlerts }: StatusBarGrants) {
+  // Retain observations across a failed poll only within this reader's grants and workspace.
+  const lastKnown = useRef({ nodesOnline: 0, nodesTotal: 0, firingAlerts: 0, appsOnline: 0, appsTotal: 0, appsKnown: false });
   const wsConnected = useRealtimeStore((s) => s.connected);
   const lastEvent = useRealtimeStore((s) => s.lastEvent);
   const initializeRealtime = useRealtimeStore((s) => s.initialize);
@@ -162,26 +156,27 @@ function StatusBarReader({ docked, lastKnown }: { docked: boolean; lastKnown: Re
   // Application inventory depends on the resident owner. Its failure does
   // not establish that the backend is offline: use the independent ping,
   // and mark retained application counts as stale.
-  const { data: polled, refresh } = usePolledResource(
+  const { data, refresh } = usePolledResource<StatusData>(
     async () => {
       const [status, , nodesList, alertsResult] = await Promise.allSettled([
-        daemon.status(),
-        activeProject ? fetchStacks(activeProject) : Promise.resolve(null),
-        nodesRpc.listNodes(),
+        showStatus ? daemon.status() : null,
+        activeProject && showStacks ? fetchStacks(activeProject) : null,
+        showNodes ? nodesRpc.listNodes() : null,
         showAlerts ? alerts.getSummary() : null,
       ]);
 
-      const st = status.status === 'fulfilled' ? (status.value as any) : null;
+      const st = status.status === 'fulfilled' ? status.value : null;
+      // Liveness is public even when the caller cannot read daemon inventory.
       const reachable = st ? true : await daemon.ping().then(() => true, () => false);
-      const nd = nodesList.status === 'fulfilled' ? (nodesList.value as any[]) : [];
-      const al = alertsResult.status === 'fulfilled' ? (alertsResult.value as any) : null;
+      const nd = nodesList.status === 'fulfilled' ? nodesList.value : null;
+      const al = alertsResult.status === 'fulfilled' ? alertsResult.value : null;
 
       const apps = st?.apps ?? null;
       if (apps) Object.assign(lastKnown.current, tally(apps), { appsKnown: true });
 
       // A sub-query that failed contributes nothing rather than zero.
       if (nodesList.status === 'fulfilled' && Array.isArray(nd)) {
-        lastKnown.current.nodesOnline = nd.filter((n: any) => n.status?.omnitronConnected).length;
+        lastKnown.current.nodesOnline = nd.filter(node => node.status?.omnitronConnected).length;
         lastKnown.current.nodesTotal = nd.length;
       }
       if (alertsResult.status === 'fulfilled') {
@@ -206,15 +201,6 @@ function StatusBarReader({ docked, lastKnown }: { docked: boolean; lastKnown: Re
     { intervalMs: wsConnected ? 30_000 : 10_000 }
   );
 
-  useEffect(() => {
-    if (polled) setData(polled);
-  }, [polled]);
-
-  // Another selection is another question: its answer should not wait a poll.
-  useEffect(() => {
-    void refresh();
-  }, [activeProject, activeStack, showAlerts, refresh]);
-
   // Instant re-fetch on relevant WS events.
   //
   // `alert.` is in the list of channels that trigger this, and the body used
@@ -231,6 +217,7 @@ function StatusBarReader({ docked, lastKnown }: { docked: boolean; lastKnown: Re
   }, [lastEvent, refresh]);
 
   if (!data) return null;
+  const showApps = activeProject ? showStacks : showStatus;
   const selectedApps = inventory ? stackApps(inventory).filter(app => !activeStack || app.stack === activeStack) : null;
   const unknownApps = selectedApps?.filter(app => app.status === 'unknown').length ?? 0;
   const observedApps = selectedApps ? tally(selectedApps) : null;
@@ -240,7 +227,7 @@ function StatusBarReader({ docked, lastKnown }: { docked: boolean; lastKnown: Re
 
   return (
     <Box
-      aria-label={`Infrastructure status: ${data.daemonOnline ? 'online' : 'offline'}, applications ${appCount}, nodes ${data.nodesOnline}/${data.nodesTotal}${showAlerts ? `, ${data.firingAlerts} alerts` : ''}`}
+      aria-label={`Infrastructure status: ${data.daemonOnline ? 'online' : 'offline'}${showApps ? `, applications ${appCount}` : ''}${showNodes ? `, nodes ${data.nodesOnline}/${data.nodesTotal}` : ''}${showAlerts ? `, ${data.firingAlerts} alerts` : ''}`}
       sx={{
         position: docked ? 'relative' : 'fixed',
         bottom: 0,
@@ -278,15 +265,15 @@ function StatusBarReader({ docked, lastKnown }: { docked: boolean; lastKnown: Re
       <Box sx={{ width: '1px', height: 12, bgcolor: 'divider' }} />
 
       {/* Project context */}
-      <ProjectStackIndicator />
+      {showStacks && <ProjectStackIndicator />}
 
       {/* Apps */}
-      <StatusItem>
+      {showApps && <StatusItem>
         <StatusLabel label="Apps" value={appCount} />
-      </StatusItem>
+      </StatusItem>}
 
       {/* Nodes */}
-      {data.nodesTotal > 0 && (
+      {showNodes && data.nodesTotal > 0 && (
         <StatusItem priority="extra">
           <StatusLabel label="Nodes" value={`${data.nodesOnline}/${data.nodesTotal}`} />
         </StatusItem>

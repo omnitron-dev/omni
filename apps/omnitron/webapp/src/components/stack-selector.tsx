@@ -6,9 +6,11 @@ import Select from '@mui/material/Select';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { useProjectStore, useActiveProjectStacks } from '../stores/project.store';
+import { useAccess } from '../auth/access';
 import { getStatusColor } from './topology/shared-styles';
 
 export function StackSelector() {
+  const { can } = useAccess();
   const [menuOpen, setMenuOpen] = useState(false);
   const activeProject = useProjectStore(s => s.activeProject);
   const activeStack = useProjectStore(s => s.activeStack);
@@ -16,7 +18,7 @@ export function StackSelector() {
   const selectStack = useProjectStore(s => s.selectStack);
   const stacks = useActiveProjectStacks();
   const sortedStacks = useMemo(() => [...stacks].sort((a, b) => a.name.localeCompare(b.name)), [stacks]);
-  if (!activeProject) return null;
+  if (!activeProject || !can('OmnitronProject.listStacks')) return null;
   const unverified = Boolean(activeStack && !stacks.some(stack => stack.name === activeStack));
 
   return (

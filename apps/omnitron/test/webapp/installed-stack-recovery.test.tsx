@@ -51,6 +51,7 @@ it('holds the scoped pending action until a fresh inventory follows any pre-disp
   rpc.listStacks.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; })).mockResolvedValueOnce([{ ...stack, resumeOperation: result }]);
   rpc.resumeInstalledStack.mockResolvedValue(result);
   const store = useProjectStore;
+  store.getState().setInventoryReaders('reader', 'reader');
   const stale = store.getState().fetchStacks('sample');
   const command = store.getState().resumeInstalledStack('sample', 'stage');
   await store.getState().resumeInstalledStack('sample', 'stage');

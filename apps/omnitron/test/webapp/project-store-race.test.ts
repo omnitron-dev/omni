@@ -28,6 +28,7 @@ async function freshStore() {
   vi.resetModules();
   pending.clear();
   const mod = await import('../../webapp/src/stores/project.store.js');
+  mod.useProjectStore.getState().setInventoryReaders('reader', 'reader');
   return mod.useProjectStore;
 }
 
@@ -47,6 +48,38 @@ beforeEach(() => {
 });
 
 describe('fetchStacks arriving late', () => {
+  it('discards in-flight data and cached inventories when the reader changes', async () => {
+    const store = await freshStore();
+    const read = store.getState().fetchStacks('alpha');
+    const deliverOld = pending.get('alpha')!;
+    store.getState().setInventoryReaders('second-reader', 'second-reader');
+    const next = store.getState().fetchStacks('alpha');
+    const deliverNew = pending.get('alpha')!;
+    deliverOld([stack('private')]);
+    expect(await read).toBeNull();
+    expect(store.getState().stacksByProject).toEqual({});
+    deliverNew([stack('new')]);
+    await next;
+    expect(store.getState().stacksByProject.alpha?.[0]?.name).toBe('new');
+    store.getState().setInventoryReaders(null, null);
+    expect(store.getState().stacksByProject).toEqual({});
+    expect(await store.getState().fetchStacks('alpha')).toBeNull();
+    expect(pending.get('alpha')).toBe(deliverNew);
+  });
+  it('does not restore a previous account’s project or saved route from a late directory listing', async () => {
+    const store = await freshStore();
+    const { project } = await import('../../webapp/src/netron/client.js');
+    let finish!: (value: Awaited<ReturnType<typeof project.listProjects>>) => void;
+    vi.mocked(project.listProjects).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    const first = store.getState().fetchProjects('/stacks');
+    store.getState().setInventoryReaders(null, null);
+    finish([{ name: 'private-project', displayName: 'Private', path: '/projects/private', registeredAt: '',
+      enabledStacks: [], runningStacks: 0, totalStacks: 0 }]);
+    await first;
+    expect(store.getState().projects).toEqual([]);
+    expect(store.getState().activeProject).toBeNull();
+    expect(store.getState().loading).toBe(false);
+  });
   it('does not auto-select a stack for a project the operator has left', async () => {
     // The defect: A's single stack became the ACTIVE stack under project B,
     // and `persistWorkspace('A', stackOfA)` wrote the mismatched pair, so it

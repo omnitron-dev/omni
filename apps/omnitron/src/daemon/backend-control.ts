@@ -13,6 +13,7 @@ import { ExecutionJournal, writePrivateRecord } from './execution-journal.js';
 import { PidManager } from './pid-manager.js';
 import { OWN_BUILD } from '../shared/build-stamp.js';
 import { OMNITRON_HOME } from '../config/defaults.js';
+import { backendSchemaScope } from './backend-candidate.js';
 
 /** Kept separate from public ingress: it must answer while that ingress is drained. */
 @Service({ name: 'OmnitronBackendControl' })
@@ -27,7 +28,7 @@ export class BackendControlService {
   @Public({ auth: { roles: ADMIN_ROLES } })
   async status() {
     return { pid: process.pid, runtime: this.daemon.backendRuntimeStatus(), retired: this.retired,
-      instanceHome: OMNITRON_HOME,
+      instanceHome: OMNITRON_HOME, schemaScope: backendSchemaScope(this.daemon.daemonConfig),
       ticketId: this.prepared?.state.ticket.id ?? null, build: OWN_BUILD,
       entry: fileURLToPath(new URL('./daemon-entry.js', import.meta.url)) };
   }

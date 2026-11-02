@@ -8,7 +8,7 @@ import { createDaemonClient } from './daemon-client.js';
 import type { BackendRpcService } from './backend.rpc-service.js';
 import type { BackendControlService } from './backend-control.js';
 import { privateControlClient, withControlDeadline } from './private-control-client.js';
-import { checkBackendCandidate, verifyBackendEntry, type BackendArtifact } from './backend-candidate.js';
+import { assertBackendMigrationsCompatible, checkBackendCandidate, verifyBackendEntry, type BackendArtifact } from './backend-candidate.js';
 import { readBackendBootRecord, checkpointInstanceHome, type BackendBootRecord } from './backend-handoff-types.js';
 import { writePrivateRecord } from './execution-journal.js';
 import { ExecutionClient } from './execution-client.js';
@@ -167,10 +167,13 @@ export async function replaceBackend(directory: string, options: {
       finally { await supervisor.close(); }
     }
     progress('Validating candidate and rollback artifacts');
-    if (!options.schemaPlan) await checkBackendCandidate(directory, previous.entry);
     const rollback = await checkBackendCandidate(path.dirname(path.dirname(previous.entry)));
     const validateSchema = async () => {
-      if (!options.schemaPlan) return;
+      if (!options.schemaPlan) {
+        // Older private peers did not attest their database scope.
+        await assertBackendMigrationsCompatible(rollback.directory, artifact.directory, previous.schemaScope === 'node' ? 'node' : 'all');
+        return;
+      }
       const { validateSchemaTransitionForUpgrade } = await import('./schema-transition.js');
       await validateSchemaTransitionForUpgrade(options.schemaPlan, rollback, artifact, previous.instanceHome);
     };

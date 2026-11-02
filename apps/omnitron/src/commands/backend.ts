@@ -10,7 +10,8 @@ import { DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { expandPath } from '../shared/paths.js';
 import { executionDirectory } from '../daemon/execution-launcher.js';
 import { readSavedDaemonConfig, savedDaemonOverrides } from '../config/saved.js';
-import { checkBackendCandidate } from '../daemon/backend-candidate.js';
+import { assertBackendMigrationsCompatible, backendSchemaScope } from '../daemon/backend-candidate.js';
+import { readManagedRuntime } from '../daemon/managed-runtime.js';
 import { recoverBackendAfterCrash } from '../daemon/backend-crash-recovery.js';
 
 export async function backendSchemaPrepareCommand(directory: string, options: { fromPlan?: string } = {}): Promise<void> {
@@ -81,30 +82,45 @@ export async function backendInstallationCommand(): Promise<void> {
   finally { await installation?.close(); }
 }
 
-export async function backendSelectCommand(id: string): Promise<void> {
+export async function backendSelectCommand(id: string, checkOnly = false): Promise<void> {
   let installation: RuntimeInstallation | null = null;
   try {
-    installation = await RuntimeInstallation.open();
+    installation = await RuntimeInstallation.open(undefined, { existing: true });
     if (!installation) throw new Error('Cannot open runtime installation');
-    const result = await installation.exclusive(async () => {
+    const registry = installation;
+    const check = async () => {
       const config = { ...DEFAULT_DAEMON_CONFIG, ...savedDaemonOverrides(readSavedDaemonConfig()) };
-      if (new PidManager(expandPath(config.pidFile)).isRunning() ||
-          new PidManager(path.join(executionDirectory(config), 'owner.pid')).isRunning()) {
-        throw new Error('A backend or execution owner is running; use backend upgrade to retain application ownership');
-      }
-      if (installation!.activation()) throw new Error('An activation is unfinished; recover or abort its checkpoint before selecting another release');
-      const selected = installation!.selection();
-      const artifact = await installation!.artifact(id);
+      if (registry.activation()) throw new Error('An activation is unfinished; recover or abort its checkpoint before selecting another release');
+      const selected = registry.selection();
+      const artifact = await registry.artifact(id);
       if (!selected?.bootstrap) {
         try { await fs.access(path.join(artifact.directory, 'cli/installed.js')); }
         catch { throw new Error('This release predates managed installation. Select a management-capable release first so rollback and recovery remain available.'); }
       }
+      // Managed cold startup reads this instance's persisted role. Other launch
+      // modes may override it and must retain the conservative comparison.
+      const scope = backendSchemaScope(config) === 'node' && await readManagedRuntime(registry.home) ? 'node' : 'all';
       if (selected) {
-        const previous = await installation!.artifact(selected.current);
-        await checkBackendCandidate(artifact.directory, previous.entry);
+        const previous = await registry.artifact(selected.current);
+        await assertBackendMigrationsCompatible(previous.directory, artifact.directory, scope);
       }
-      const selection = await installation!.select(id, selected?.revision ?? 0);
-      const launcher = await installation!.writeLauncher();
+      return { selected, scope, config };
+    };
+    if (checkOnly) {
+      const { selected, scope } = await check();
+      if (!emitJson({ checked: true, current: selected?.current ?? null, candidate: id, schemaScope: scope })) {
+        emitInfo(`Cold selection verified for ${id} (${scope} migrations).`);
+      }
+      return;
+    }
+    const result = await registry.exclusive(async () => {
+      const { selected, config } = await check();
+      if (new PidManager(expandPath(config.pidFile)).isRunning() ||
+          new PidManager(path.join(executionDirectory(config), 'owner.pid')).isRunning()) {
+        throw new Error('A backend or execution owner is running; use backend upgrade to retain application ownership');
+      }
+      const selection = await registry.select(id, selected?.revision ?? 0);
+      const launcher = await registry.writeLauncher();
       return { selection, launcher };
     });
     if (!emitJson(result)) emitInfo(`Selected ${id}. Launch with ${result.launcher} up`);

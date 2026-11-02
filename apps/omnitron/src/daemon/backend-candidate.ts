@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { readBuildStamp, type BuildStamp } from '../shared/build-stamp.js';
 import { verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
 import { readExecutionCapabilities, type ExecutionCapabilities } from './execution-capabilities.js';
+import type { IDaemonConfig } from '../config/types.js';
 
 const execute = promisify(execFile);
 export interface BackendArtifact {
@@ -15,25 +16,42 @@ export interface BackendArtifact {
   executionRequirements?: ExecutionCapabilities;
 }
 
-export async function backendMigrationDigest(directory: string): Promise<string> {
+export type BackendSchemaScope = 'all' | 'node';
+
+/** An enrolled worker also reads the controller's PostgreSQL authority ledger. */
+export function backendSchemaScope(config: Pick<IDaemonConfig, 'role' | 'cluster'>): BackendSchemaScope {
+  return config.role === 'slave' && (config.cluster === undefined || config.cluster?.enabled === false) ? 'node' : 'all';
+}
+
+export async function backendMigrationDigest(directory: string, scope: BackendSchemaScope = 'all'): Promise<string> {
   const hash = createHash('sha256');
-  const walk = async (root: string, prefix = ''): Promise<void> => {
+  const walk = async (root: string, prefix: string): Promise<void> => {
+    if (!(await fs.lstat(root)).isDirectory()) throw new Error('Database migration directories must not be symlinks');
+    hash.update(JSON.stringify(['directory', prefix]));
     for (const item of (await fs.readdir(root, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
       const relative = path.join(prefix, item.name);
       if (item.isDirectory()) await walk(path.join(root, item.name), relative);
       else if (item.isFile() && item.name.endsWith('.js')) {
-        hash.update(relative); hash.update(await fs.readFile(path.join(root, item.name)));
+        const content = createHash('sha256').update(await fs.readFile(path.join(root, item.name))).digest('hex');
+        hash.update(JSON.stringify([relative, content]));
       } else if (item.isSymbolicLink()) throw new Error('Database migration files must not be symlinks');
     }
   };
-  await walk(path.join(directory, 'database', 'migrations'), 'master');
+  if (scope === 'all') await walk(path.join(directory, 'database', 'migrations'), 'master');
   const local = path.join(directory, 'database', 'slave-migrations');
-  // Earlier releases have no local migration registry. Its first appearance
-  // is a schema transition too, not a way around the master-only check.
-  try { await fs.access(local); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return hash.digest('hex'); throw error; }
+  if (scope === 'node') {
+    if (!(await fs.lstat(path.join(local, 'index.js'))).isFile()) throw new Error('A regular worker migration registry is required');
+  } else {
+    try { await fs.lstat(local); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return hash.digest('hex'); throw error; }
+  }
   await walk(local, 'node');
   return hash.digest('hex');
+}
+
+export async function assertBackendMigrationsCompatible(current: string, next: string, scope: BackendSchemaScope): Promise<void> {
+  const [before, after] = await Promise.all([backendMigrationDigest(current, scope), backendMigrationDigest(next, scope)]);
+  if (before !== after) throw new Error(`This update changes database migrations (${scope}). Prepare a separate compatible database transition before replacing the backend.`);
 }
 
 /** Validate an already-built local artifact; never build, install dependencies or migrate here. */
@@ -58,8 +76,7 @@ export async function checkBackendCandidate(directory: string, currentEntry?: st
   if (answer.protocol !== 1 || answer.build?.commit !== build.commit || answer.build.dirty) throw new Error('Candidate execution protocol or build identity does not match');
   if (currentEntry) {
     const currentDist = path.dirname(path.dirname(await fs.realpath(currentEntry)));
-    const [current, next] = await Promise.all([backendMigrationDigest(currentDist), backendMigrationDigest(directory)]);
-    if (current !== next) throw new Error('This update changes database migrations. Prepare a separate compatible database transition before a hot backend replacement.');
+    await assertBackendMigrationsCompatible(currentDist, directory, 'all');
   }
   return { directory, entry, entryHash, build, runtimeRoot, runtimeHash: runtime.sha256, execPath, executionRequirements,
     ...(answer.schemaExpansionProtocol === 1 ? { schemaExpansionProtocol: 1 } : {}) };

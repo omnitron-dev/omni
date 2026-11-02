@@ -4,11 +4,11 @@ import os from 'node:os';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  daemon: vi.fn(), control: vi.fn(), candidate: vi.fn(), installation: vi.fn(), supervised: vi.fn(),
+  daemon: vi.fn(), control: vi.fn(), candidate: vi.fn(), migrations: vi.fn(), installation: vi.fn(), supervised: vi.fn(),
 }));
 vi.mock('../../src/daemon/daemon-client.js', () => ({ createDaemonClient: mocks.daemon }));
 vi.mock('../../src/daemon/private-control-client.js', () => ({ privateControlClient: mocks.control }));
-vi.mock('../../src/daemon/backend-candidate.js', () => ({ checkBackendCandidate: mocks.candidate }));
+vi.mock('../../src/daemon/backend-candidate.js', () => ({ checkBackendCandidate: mocks.candidate, assertBackendMigrationsCompatible: mocks.migrations }));
 vi.mock('../../src/daemon/runtime-installation.js', () => ({ RuntimeInstallation: { open: mocks.installation } }));
 vi.mock('../../src/daemon/backend-child.js', () => ({ supervisesBackendChildren: mocks.supervised }));
 vi.mock('../../src/config/defaults.js', async importOriginal => ({
@@ -65,6 +65,17 @@ it('uses the selected socket identity even when its location differs from instan
   expect(mocks.daemon).toHaveBeenCalledWith(target.socket, 15000);
   expect(mocks.control.mock.calls.map(call => call[0])).toEqual([target.control]);
   expect(mocks.installation).not.toHaveBeenCalled();
+  expect(mocks.migrations.mock.calls[0]?.[2]).toBe('all');
+});
+
+it('uses only the migration scope attested by the selected private control peer', async () => {
+  const target = await fixture();
+  Object.assign(target.status, { schemaScope: 'node' });
+  await replaceBackend('/candidate', { socket: target.socket, checkOnly: true });
+  expect(mocks.migrations.mock.calls[0]?.[2]).toBe('node');
+  Object.assign(target.status, { schemaScope: 'unknown' });
+  await replaceBackend('/candidate', { socket: target.socket, checkOnly: true });
+  expect(mocks.migrations.mock.calls[1]?.[2]).toBe('all');
 });
 
 it('delegates to the selected managed instance and never the ambient instance', async () => {

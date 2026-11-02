@@ -4,7 +4,7 @@ import os from 'node:os';
 import { afterEach, expect, it } from 'vitest';
 import { ExecutionJournal, readPrivateRecord, writePrivateRecord } from '../../src/daemon/execution-journal.js';
 import { runtimeArtifactDigest, verifyRuntimeArtifact } from '../../src/shared/runtime-artifact.js';
-import { backendMigrationDigest } from '../../src/daemon/backend-candidate.js';
+import { assertBackendMigrationsCompatible, backendMigrationDigest, backendSchemaScope } from '../../src/daemon/backend-candidate.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => fs.rm(root, { recursive: true, force: true }))); });
@@ -55,4 +55,28 @@ it('includes both master and local node migrations in backend compatibility', as
   expect(await backendMigrationDigest(directory)).not.toBe(withNode);
   await fs.symlink(path.join(directory, 'database/migrations/001.js'), path.join(directory, 'database/slave-migrations/002.js'));
   await expect(backendMigrationDigest(directory)).rejects.toThrow('must not be symlinks');
+});
+
+it('limits database compatibility to SQLite only for a standalone worker with a complete registry', async () => {
+  const before = await root(), after = await root();
+  for (const directory of [before, after]) {
+    await fs.mkdir(path.join(directory, 'database/migrations'), { recursive: true });
+    await fs.mkdir(path.join(directory, 'database/slave-migrations'));
+    await fs.writeFile(path.join(directory, 'database/slave-migrations/index.js'), 'export const migrations = [];');
+  }
+  await fs.writeFile(path.join(after, 'database/migrations/016.js'), 'export const up = () => {};');
+  const worker = backendSchemaScope({ role: 'slave' });
+  expect(worker).toBe('node');
+  await assertBackendMigrationsCompatible(before, after, worker);
+  await assertBackendMigrationsCompatible(after, before, worker);
+  for (const scope of [backendSchemaScope({ role: 'master' }), backendSchemaScope({ role: 'slave', cluster: { enabled: true } })]) {
+    await expect(assertBackendMigrationsCompatible(before, after, scope)).rejects.toThrow('changes database migrations');
+  }
+  const registry = path.join(after, 'database/slave-migrations/index.js');
+  await fs.writeFile(registry, 'export const migrations = [1];');
+  await expect(assertBackendMigrationsCompatible(before, after, worker)).rejects.toThrow('changes database migrations');
+  await fs.unlink(registry);
+  await expect(backendMigrationDigest(after, worker)).rejects.toThrow();
+  await fs.symlink(path.join(before, 'database/slave-migrations/index.js'), registry);
+  await expect(backendMigrationDigest(after, worker)).rejects.toThrow('regular worker migration registry');
 });

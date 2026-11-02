@@ -160,6 +160,11 @@ export class DaemonClient implements IDaemonService {
     return this.proxy!.list();
   }
 
+  async attestApplicationOwner(data: import('../shared/dto/backend.js').ApplicationOwnerObservation) {
+    await this.ensureConnected();
+    return this.proxy!.attestApplicationOwner(data);
+  }
+
   async inspectInstalledArtifacts(data: { names: string[] }) {
     await this.ensureConnected();
     return this.proxy!.inspectInstalledArtifacts(data);

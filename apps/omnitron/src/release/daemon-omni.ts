@@ -47,6 +47,10 @@ export function refuseForeignOmni(releaseOmni: string, daemons: readonly DaemonA
       reasons.push(`${d.host} has no current observation of its execution owner`);
       continue;
     }
+    if (mode === 'resident' && d.execution?.phase !== undefined && d.execution.phase !== 'active') {
+      reasons.push(`${d.host}'s execution owner is ${d.execution.phase}. Wait for a stable controller before admission`);
+      continue;
+    }
     const build = mode === 'resident' ? d.execution?.ownerBuild : d.build;
     if (requireExactBuild || mode === 'resident' || build !== undefined) {
       const owner = mode === 'resident' ? 'execution owner' : 'daemon';

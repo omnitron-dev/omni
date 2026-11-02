@@ -22,6 +22,12 @@ export interface BackendRuntimeStatus {
   blockers: { terminalSessions: number; fileTransfers: number; pipelineRuns: number; releaseBuilds: number; kernelRollouts?: number };
 }
 
+/** Binds admission to the resident observed by authenticated daemon status. */
+export interface ApplicationOwnerObservation {
+  owner: NonNullable<BackendRuntimeStatus['owner']>;
+  epoch: number;
+}
+
 /** Readable even when application inventory cannot be observed. */
 export interface IOmnitronBackendService {
   status(): Promise<BackendRuntimeStatus>;

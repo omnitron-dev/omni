@@ -291,6 +291,11 @@ export class DaemonRpcService implements IDaemonService {
     return info;
   }
 
+  @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
+  attestApplicationOwner(data: import('../shared/dto/backend.js').ApplicationOwnerObservation) {
+    return this.daemon.attestApplicationOwner(data);
+  }
+
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async status(): Promise<DaemonStatusDto> {
     const apps = this.orchestrator.list();

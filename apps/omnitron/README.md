@@ -53,8 +53,12 @@ metadata, including Omnitron 0.3.1, require a linked source checkout.
 
 The builder compares the installed framework with those archives and checks
 the framework files again inside each application's staged dependency graph.
-Admission checks the target execution owner's source commit. Installation
-also checks the target Node executable, OS, architecture and dependency
+Admission checks the target execution owner's source commit. On a supervised
+node with an older owner that cannot report its build, an updated target
+backend verifies the live OS service, process, owner identity and sealed
+runtime when the operator checks or deploys the release. A connected owner
+with a different build, an unverified runtime or an interrupted handoff
+refuses admission. Installation also checks the target Node executable, OS, architecture and dependency
 graph against the application archive. The release details show Git branch
 visibility separately. If GitHub cannot confirm the framework commit on
 `main`, its visibility is unknown and a stack requiring `requireOnRemote`

@@ -2897,7 +2897,20 @@ export class ProjectService extends EventEmitter {
       (stackConfig.nodes ?? []).map(async (node) => {
         try {
           const status = await connector.invokeOnSlave(node.host, node.port ?? 9700, 'OmnitronDaemon', 'status', [], { requireCredential: true }) as DaemonStatusDto | undefined;
-          return { host: node.host, version: status?.version ?? null, build: status?.build, execution: status?.execution };
+          let execution = status?.execution;
+          // An omitted field identifies owners predating self-reporting. A null or
+          // dirty self-report is authoritative and must never be replaced.
+          if (execution?.mode === 'resident' && execution.ownerBuild === undefined && execution.connection?.status === 'connected') {
+            if (!execution.owner || !execution.epoch) throw new Error('Resident owner identity or lease epoch is missing');
+            try {
+              const ownerBuild = await connector.invokeOnSlave(node.host, node.port ?? 9700, 'OmnitronDaemon', 'attestApplicationOwner',
+                [{ owner: execution.owner, epoch: execution.epoch }], { requireCredential: true }) as import('../shared/build-stamp.js').BuildStamp;
+              execution = { ...execution, ownerBuild };
+            } catch (err) {
+              throw new Error('The resident owner needs authenticated native build verification on the target backend: ' + describeFailure(err), { cause: err });
+            }
+          }
+          return { host: node.host, version: status?.version ?? null, build: status?.build, execution };
         } catch (err) {
           return { host: node.host, version: null, error: (err as Error).message };
         }

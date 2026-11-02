@@ -50,6 +50,7 @@ export function isLostRpcAcknowledgement(error: unknown): boolean {
 // ============================================================================
 
 export interface IDaemonService {
+  attestApplicationOwner(data: import('./backend.js').ApplicationOwnerObservation): Promise<import('../build-stamp.js').BuildStamp>;
   inspectInstalledArtifacts(data: { names: string[] }): Promise<import('./installed-release.js').InstalledArtifactObservation[]>;
   // --- Process Management ---
   startApp(data: { name: string }): Promise<ProcessInfoDto>;

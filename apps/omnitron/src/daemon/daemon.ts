@@ -37,7 +37,7 @@ import os from 'node:os';
 import { isLoopbackHost, assertSafeNetworkPublication } from './network-publication.js';
 export { isLoopbackHost } from './network-publication.js';
 import type { IEcosystemConfig, IDaemonConfig } from '../config/types.js';
-import { CLI_VERSION, DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
+import { CLI_VERSION, DEFAULT_DAEMON_CONFIG, OMNITRON_HOME } from '../config/defaults.js';
 import { createDaemonModule, getDaemonLogStream, getDaemonErrorStream, getDaemonLogCollectorStream } from './daemon.module.js';
 import { DaemonRpcService } from './daemon.rpc-service.js';
 import { AuthRpcService } from '../services/auth.rpc-service.js';
@@ -275,6 +275,7 @@ export class OmnitronDaemon {
   private nodeManagerService: import('../services/node-manager.service.js').NodeManagerService | null = null;
   private slaveConnector: import('../cluster/slave-connector.js').SlaveConnector | null = null;
   private meshHandle: import('../cluster/mesh.js').MeshHandle | null = null;
+  private ownerAdmissionProof?: { key: string; build: Promise<import('../shared/build-stamp.js').BuildStamp> } | undefined;
   private kernelRollouts?: import('../services/kernel-rollout.service.js').KernelRolloutService;
   private nodeManagerRpcService: import('../services/node-manager.rpc-service.js').NodeManagerRpcService | null = null;
   private terminalRpcService: import('../services/terminal.rpc-service.js').TerminalRpcService | null = null;
@@ -345,6 +346,51 @@ export class OmnitronDaemon {
         releaseBuilds: this.releaseService?.builds().filter(build => build.state === 'running').length ?? 0,
       },
     };
+  }
+
+  /** Expensive only for legacy independently supervised owners. Reuse a running
+   * verification for concurrent admissions, never a previous admission result. */
+  async attestApplicationOwner(expected: import('../shared/dto/backend.js').ApplicationOwnerObservation) {
+    const client = this.execution;
+    const { owner, epoch } = expected ?? {};
+    if (!client || !owner || typeof owner.id !== 'string' || !owner.id || owner.id.length > 128 ||
+        !Number.isSafeInteger(owner.pid) || owner.pid < 1 || typeof owner.startedAt !== 'string' ||
+        owner.startedAt.length > 64 || !Number.isSafeInteger(epoch) || epoch < 1)
+      throw new Error('Invalid resident owner observation for admission');
+    const key = JSON.stringify([owner.id, owner.pid, owner.startedAt, epoch]);
+    if (this.ownerAdmissionProof) {
+      if (this.ownerAdmissionProof.key !== key) throw new Error('Another owner is being checked. Refresh the target before admission.');
+      return this.ownerAdmissionProof.build;
+    }
+    const observe = async () => {
+      const snapshot = await client.recoverySnapshot();
+      const status = snapshot.status, live = client.state();
+      if (live?.phase !== 'active' || live.connection.status !== 'connected' || live.epoch !== epoch ||
+          live.owner.id !== owner.id || live.owner.pid !== owner.pid || live.owner.startedAt !== owner.startedAt ||
+          this.execution !== client || this.isShuttingDown || this.handingOffBackend || this.preparingBackend ||
+          status.phase !== 'active' || status.controller.controllerId !== client.controllerId || status.controller.epoch !== epoch ||
+          status.owner.id !== owner.id || status.owner.pid !== owner.pid || status.owner.startedAt !== owner.startedAt)
+        throw new Error('Application owner or controller changed during admission');
+      return snapshot;
+    };
+    const verify = async () => {
+      const before = await observe();
+      if (before.ownerBuild !== undefined) {
+        if (!before.ownerBuild || before.ownerBuild.dirty !== false) throw new Error('Execution owner did not report a clean build');
+        return before.ownerBuild;
+      }
+      if (!this.supervision) throw new Error('This legacy owner requires independent OS supervision to attest its framework build');
+      const { attestManagedOwnerBuild } = await import('./managed-owner-build.js');
+      const build = await attestManagedOwnerBuild(OMNITRON_HOME, owner);
+      const after = await observe();
+      if (after.ownerBuild !== undefined && (after.ownerBuild?.commit !== build.commit || after.ownerBuild?.dirty !== false))
+        throw new Error('Execution owner reported a different build during native verification');
+      return build;
+    };
+    const build = verify();
+    this.ownerAdmissionProof = { key, build };
+    try { return await build; }
+    finally { this.ownerAdmissionProof = undefined; }
   }
 
   /** Called after the initiating RPC has returned, so it is not waiting for itself. */
@@ -1181,9 +1227,9 @@ export class OmnitronDaemon {
             if (this.dc.cluster?.enabled) throw new Error('Managed kernel rollout requires a standalone controller. Elected controllers lack a shared cross-node dispatch fence.');
             if (this.isShuttingDown || this.preparingBackend || this.handingOffBackend) throw new Error('Controller handoff or shutdown is in progress');
           }, () => {
-            const local = this.execution?.state();
-            if (!local) return null; // A coupled controller cannot be an independently owned target.
-            if (!local.owner?.id || local.connection.status !== 'connected' || local.phase !== 'active')
+            if (!this.execution) return null; // A coupled controller cannot be an independently owned target.
+            const local = this.execution.state();
+            if (!local?.owner?.id || local.connection.status !== 'connected' || local.phase !== 'active')
               throw new Error('Cannot exclude the initiating controller: its resident owner is unconfirmed');
             return local.owner.id;
           });

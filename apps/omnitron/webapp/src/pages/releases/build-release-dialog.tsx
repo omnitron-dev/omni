@@ -141,8 +141,8 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
       <DialogContent>
         <Stack spacing={2.5} sx={{ mt: 1 }}>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Two commits are cloned fresh, installed, built and gated on this master. Nothing of the working tree takes
-            part — not uncommitted edits, not an old <code>dist</code>, not another checkout of omni.
+            The controller builds the selected project commit with its locked framework packages or linked
+            Omnitron revision. Gate results and artifact checksums are saved with the release.
           </Typography>
 
           {/*
@@ -221,8 +221,8 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
               disabled={starting}
             />
             <TextField
-              label="omni commit"
-              placeholder="HEAD"
+              label="Framework commit"
+              placeholder="From project lockfile or linked checkout"
               value={omniCommit}
               onChange={(e) => setOmniCommit(e.target.value)}
               size="small"

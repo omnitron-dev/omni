@@ -43,7 +43,7 @@ import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
 import { ReleaseAttestations } from 'src/components/release-attestations';
 import { ReleaseBuildPanel } from 'src/components/release-build-panel';
 import { ReleaseDeploymentState } from 'src/components/release-deployment-state';
-import { readSourcePublication, releaseTargetLabel } from '@omnitron-dev/omnitron/release-reading';
+import { frameworkSourceLabel, readSourcePublication, releaseTargetLabel } from '@omnitron-dev/omnitron/release-reading';
 import { GATE_TONE, GateStrip, bytes, elapsed, loadWords, ranLoaded, when } from 'src/components/release-bits';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 import { Can, useAccess } from 'src/auth/access';
@@ -201,8 +201,7 @@ function ReleaseDetails({ id }: { id: string }) {
                   {releaseTargetLabel(manifest?.builtWith?.target)}
                 </Typography>
                 <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  {manifest?.builtWith?.packages?.length ?? 0} linked omni package(s); {bytes(release.bytes)} on disk at{' '}
-                  {release.root}
+                  {manifest && <>{frameworkSourceLabel(manifest)} · </>}{bytes(release.bytes)} on disk at {release.root}
                 </Typography>
                 {release.statics && (
                   <Typography variant="caption" sx={{ color: 'text.secondary' }}>

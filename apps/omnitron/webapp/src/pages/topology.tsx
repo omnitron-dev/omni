@@ -450,7 +450,7 @@ function TopologyWorkspace() {
           </Stack>
         </Stack>
         {(routing.error || Boolean(routing.routes?.blocked.length)) && <Alert severity="warning" variant="outlined">
-          {routing.error ?? `${routing.routes?.blocked.length} links have no clear path. Move overlapping cards or use Arrange nodes.`} Every declared link is listed in the node’s Connections tab.
+          {routing.error ?? `${routing.routes?.blocked.length} links could not be routed around the cards. Move a card or use Arrange nodes.`} Every declared link is listed in the node’s Connections tab.
         </Alert>}
         {(error || viewError) && (
           <Alert severity={error && !nodes.length ? 'error' : 'warning'} variant="outlined" sx={{ mt: 1 }}>

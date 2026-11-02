@@ -62,6 +62,8 @@ jobs:
           node test/runtime/release-provenance.mjs dist
       - name: Verify package archive exports
         run: pnpm check:packages
+      - name: Rehearse package publication against a loopback registry
+        run: node --test scripts/ci/release.test.mjs
       - name: Console publication and recovery
         run: node --test apps/omnitron/scripts/console-publication.test.mjs
       - name: SQLite permissions preserve concurrent storage

@@ -106,6 +106,22 @@ describe('RPC authorization metadata', () => {
     }
   });
 
+  it('allows an authenticated mesh credential to read its host but not to relay that read to another node', async () => {
+    const { SystemInfoRpcService } = await import('../../src/services/system-info.rpc-service.js');
+    const { NodeManagerRpcService } = await import('../../src/services/node-manager.rpc-service.js');
+    const { validateAccessRequirements } = await import('@omnitron-dev/titan/netron/auth');
+    const local = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, SystemInfoRpcService.prototype, 'getSnapshot');
+    const relay = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, NodeManagerRpcService.prototype, 'getNodeSystemSnapshot');
+    expect(local).toBeDefined();
+    expect(relay).toBeDefined();
+    const peer = { userId: 'node', roles: ['service_role'], permissions: [] };
+    const viewer = { userId: 'viewer', roles: ['viewer'], permissions: [] };
+    expect(validateAccessRequirements(peer, local).allowed).toBe(true);
+    expect(validateAccessRequirements(peer, relay).allowed).toBe(false);
+    expect(validateAccessRequirements(viewer, relay).allowed).toBe(true);
+    expect(validateAccessRequirements({ userId: 'unknown', roles: [], permissions: [] }, local).allowed).toBe(false);
+  });
+
   it('declares an auth block on every exposed method', async () => {
     // A method reachable over RPC with no `auth` at all is open to anyone
     // the transport lets through. That may be intended — a health ping, a

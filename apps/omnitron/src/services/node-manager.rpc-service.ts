@@ -633,7 +633,12 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getNodeSystemSnapshot(data: { nodeId: string }): Promise<SystemSnapshot> {
     const result = await this.askNode<SystemSnapshot>(data.nodeId, 'OmnitronSystemInfo', 'getSnapshot', [{ fresh: true }], this.hostSnapshot ?? null);
-    if (!result.ok) throw new Error(`System snapshot for ${data.nodeId}: ${result.error}`);
+    if (!result.ok) {
+      const hint = /missing required role/i.test(result.error)
+        ? ' The selected node refused the mesh credential. Verify that its backend permits control-plane reads of OmnitronSystemInfo.getSnapshot.'
+        : '';
+      throw new Error(`System snapshot for ${data.nodeId}: ${result.error}.${hint}`);
+    }
     if (!result.value?.daemon || !Number.isFinite(result.value.timestamp)) throw new Error(`Invalid system snapshot from ${data.nodeId}`);
     return result.value;
   }

@@ -5,7 +5,7 @@
  */
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
-import { VIEWER_ROLES } from '../shared/roles.js';
+import { CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
 import type { SystemInfoService, SystemSnapshot } from './system-info.service.js';
 
 import type { IOmnitronSystemInfoService } from '../shared/dto/services.js';
@@ -14,7 +14,7 @@ import type { IOmnitronSystemInfoService } from '../shared/dto/services.js';
 export class SystemInfoRpcService implements IOmnitronSystemInfoService {
   constructor(private readonly systemInfo: SystemInfoService) {}
 
-  @Public({ auth: { roles: VIEWER_ROLES } })
+  @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async getSnapshot(options?: { fresh?: boolean }): Promise<SystemSnapshot> {
     return this.systemInfo.getSnapshot(options);
   }

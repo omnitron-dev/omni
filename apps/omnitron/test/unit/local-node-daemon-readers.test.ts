@@ -40,6 +40,8 @@ describe('local node daemon readers', () => {
     expect(await service.getNodeSystemSnapshot({ nodeId: 'remote' })).toEqual(snapshot);
     expect(invokeOnSlave).toHaveBeenCalledWith('remote', 9700, 'OmnitronSystemInfo', 'getSnapshot', [{ fresh: true }]);
     await expect(service.getNodeSystemSnapshot({ nodeId: 'remote' })).rejects.toThrow(/remote.*peer disconnected/);
+    invokeOnSlave.mockRejectedValueOnce(new Error('Missing required role'));
+    await expect(service.getNodeSystemSnapshot({ nodeId: 'remote' })).rejects.toThrow(/selected node refused the mesh credential/);
     await expect(service.getNodeSystemSnapshot({ nodeId: 'missing' })).rejects.toThrow(/No such node/);
   });
   it('reports a failed or missing local reader without claiming the daemon is healthy', async () => {

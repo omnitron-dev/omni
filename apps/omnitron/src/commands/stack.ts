@@ -308,13 +308,13 @@ export async function stackStartCommand(
       ...(opts?.release ? { release: opts.release } : {}),
       ...(opts?.reinstall === true ? { reinstall: true } : {}),
     });
-    const { confirmed, online, total, issues } = readStackStart(stack);
+    const { confirmed, outcome, online, total, issues } = readStackStart(stack);
     if (!confirmed) process.exitCode = 1;
     if (emitJson({
       project: projectName,
       stack: stackName,
       action: 'started',
-      outcome: confirmed ? 'confirmed' : 'partial',
+      outcome,
       status: stack.status,
       apps: stack.apps,
       online,

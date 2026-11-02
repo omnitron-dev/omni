@@ -2,6 +2,7 @@
  * Config Loader — Load and validate omnitron.config.ts
  */
 
+import { resolveAppPath } from './app-path.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -28,7 +29,7 @@ export const CONFIG_FILE_NAMES = ['omnitron.config.ts', 'omnitron.config.js', 'o
  */
 function stampProjectRoot(config: IEcosystemConfig, projectRoot: string): IEcosystemConfig {
   if (!config.apps?.length) return config;
-  config.apps = config.apps.map((app) => (app.cwd ? app : { ...app, cwd: projectRoot }));
+  config.apps = config.apps.map((app) => ({ ...app, cwd: resolveAppPath(projectRoot, app) }));
   return config;
 }
 

@@ -262,7 +262,7 @@ export function inventoryCommand(bundle: InstalledBundle, full: boolean): string
             const name=project.name+'/'+stackName+'/'+app.name; boot.push(name);
             const binding=contract?.apps?.find(a=>a.name===name);
             if(!binding || path.resolve(project.path,app.cwd||'.')!==binding.cwd) throw Error('Boot release differs from upgrade contract: '+name);
-            launches.push({name,bootstrap:app.bootstrap?path.resolve(project.path,app.bootstrap):null});
+            launches.push({name,bootstrap:app.bootstrap?path.resolve(project.path,app.cwd ?? '.',app.bootstrap):null});
           }
         }
         const expected=live.filter(s=>s.type==='local').flatMap(s=>s.apps.map(a=>a.handleKey)).sort();

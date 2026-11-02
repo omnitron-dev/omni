@@ -34,6 +34,18 @@ describe('ConfigLoader', () => {
       expect(config.apps[0]!.name).toBe('main');
     });
 
+    it('anchors each explicit working directory to the declaring config', async () => {
+      const apps = [
+        { name: 'api', script: 'index.cjs', cwd: 'apps/api' },
+        { name: 'installed', bootstrap: 'dist/bootstrap.js', cwd: '/artifacts/release' },
+        { name: 'worker', script: 'worker.cjs' },
+      ];
+      fs.writeFileSync(path.join(tmpDir, 'omnitron.config.mjs'), 'export default ' + JSON.stringify({ apps }));
+      expect((await loadEcosystemConfig(tmpDir)).apps.map(app => app.cwd)).toEqual([
+        path.join(tmpDir, 'apps/api'), '/artifacts/release', tmpDir,
+      ]);
+    });
+
     it('loads omnitron.config.js', async () => {
       const configContent = `
         module.exports = {

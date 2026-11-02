@@ -75,6 +75,7 @@ function service(opts: {
       invokeOnSlave: opts.invokeOnSlave ?? vi.fn(async () => ({ apps: SIX.map((n) => nodeApp(n)) })),
       getConnections: () => opts.connections ?? [],
     },
+    infraManager: { getInstance: () => undefined },
     remoteInfraStatus: vi.fn(async () => null),
     getStack: () => ({
       name: 'test',
@@ -177,7 +178,8 @@ describe('a local stack still counts this machine', () => {
       ],
     }).getStackStatus('sample', 'test');
 
-    expect(runtime.totalApps).toBe(2);
+    expect(runtime.totalApps).toBe(6);
+    expect(runtime.status).toBe('degraded');
     expect(runtime.onlineApps).toBe(1);
     expect(runtime.connectedNodes).toBe(1);
     expect(runtime.totalCpu).toBe(1);
@@ -203,6 +205,7 @@ describe('«this stack is already running» is asked of the machine that runs it
     const svc: any = Object.create(ProjectService.prototype);
     Object.assign(svc, {
     daemonStateStore: { kvGetSync: () => null },
+      nodeStackStop: { assertMutable() {} },
       logger,
       // Unknown to the registry, so the working-tree check has no path to
       // ask about and the method goes straight to the short-circuit.

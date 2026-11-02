@@ -18,6 +18,7 @@
  *   └── config/         (omnitron-generated, no secrets in files)
  */
 
+import { resolveAppPath } from '../config/app-path.js';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
@@ -219,7 +220,7 @@ export class ArtifactBuilder {
   }
 
   private async buildWithSession(entry: IEcosystemAppEntry, options?: BuildOptions, session?: PackSession): Promise<ArtifactInfo> {
-    const appDir = this.resolveAppDir(entry);
+    const appDir = this.resolveAppDir(entry, Boolean(options?.releaseCheckouts));
     if (!appDir) throw new Error(`Cannot resolve app directory for ${entry.name}`);
 
     const version = await this.getVersion(appDir);
@@ -394,16 +395,42 @@ export class ArtifactBuilder {
   // Private
   // ===========================================================================
 
-  private resolveAppDir(entry: IEcosystemAppEntry): string | null {
+  private resolveAppDir(entry: IEcosystemAppEntry, immutable: boolean): string | null {
     // Derive app directory from bootstrap/script path
     const entryFile = entry.bootstrap ?? entry.script;
     if (!entryFile) return null;
 
-    const absPath = path.resolve(this.projectRoot, entryFile);
-    // Walk up to find package.json
+    const absPath = resolveAppPath(this.projectRoot, entry, entryFile);
+    const root = path.resolve(this.projectRoot);
+    const canonicalRoot = immutable ? fs.realpathSync(root) : undefined;
+    const assertInCheckout = (file: string): void => {
+      if (!canonicalRoot) return;
+      // The compiled entry can be absent before the build. Its nearest existing
+      // ancestor must be in the checkout even when reached through a symlink.
+      let ancestor = file;
+      while (!fs.lstatSync(ancestor, { throwIfNoEntry: false }) && path.dirname(ancestor) !== ancestor) ancestor = path.dirname(ancestor);
+      const real = fs.realpathSync(ancestor);
+      if (!(file === root || file.startsWith(root + path.sep)) || !(real === canonicalRoot || real.startsWith(canonicalRoot + path.sep))) {
+        throw new Error(`Release path for ${entry.name} is outside the project checkout`);
+      }
+    };
+    assertInCheckout(resolveAppPath(root, entry));
+    assertInCheckout(absPath);
+    // Walk up to find the package whose build script would actually run.
     let dir = path.dirname(absPath);
     while (dir !== path.parse(dir).root) {
-      if (fs.existsSync(path.join(dir, 'package.json'))) return dir;
+      const manifest = path.join(dir, 'package.json');
+      if (fs.existsSync(manifest)) {
+        assertInCheckout(dir);
+        assertInCheckout(manifest);
+        if (immutable) {
+          // runBuild cleans prior TypeScript output and build records here.
+          assertInCheckout(path.join(dir, 'dist'));
+          assertInCheckout(path.join(dir, 'node_modules', '.tmp'));
+        }
+        return dir;
+      }
+      if (immutable && dir === root) throw new Error(`No package for ${entry.name} in the project checkout`);
       dir = path.dirname(dir);
     }
     return path.dirname(absPath);

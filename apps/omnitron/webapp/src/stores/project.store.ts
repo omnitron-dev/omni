@@ -367,11 +367,11 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         ...(opts?.release ? { release: opts.release } : {}),
         ...(opts?.allowDirty ? { allowDirty: true } : {}),
       });
-      const { confirmed, issues, online, total } = readStackStart(stack);
-      if (confirmed) return { state: 'confirmed' };
+      const { outcome, issues, online, total } = readStackStart(stack);
+      if (outcome === 'confirmed') return { state: outcome };
       const message = `${opKey}: ${online}/${total} apps online. ${issues.join('; ')}.`;
       notice(opKey, message);
-      return { state: 'partial', message };
+      return { state: outcome, message };
     } catch (err) {
       const unconfirmed = isRpcTimeout(err) || isLostRpcAcknowledgement(err);
       const message = unconfirmed

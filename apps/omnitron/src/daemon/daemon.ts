@@ -1897,9 +1897,12 @@ export class OmnitronDaemon {
       // Start each enabled stack
       for (const stackName of enabledStacks) {
         try {
-          await projectService.startStack(project.name, stackName, { source: 'boot' });
-          totalStacks++;
-          logger.info({ project: project.name, stack: stackName }, 'Stack started');
+          const result = await projectService.startStack(project.name, stackName, { source: 'boot' });
+          if (result.type === 'local' && result.status !== 'running') {
+            logger.warn({ project: project.name, stack: stackName, status: result.status, notUp: result.notUp }, 'Stack start incomplete during boot');
+          } else {
+            totalStacks++;
+          }
         } catch (err) {
           logger.error(
             { project: project.name, stack: stackName, error: (err as Error).message },
@@ -2413,13 +2416,13 @@ export class OmnitronDaemon {
       broadcaster.broadcast(PROJECT_EVENTS.CONFIG_RELOADED, { name });
     });
 
-    projectService.on('stack:started', (project: string, stack: string, type: string) => {
+    projectService.on('stack:started', (project: string, stack: string, type: string, appCount: number, nodeCount: number) => {
       broadcaster.broadcast(STACK_EVENTS.STARTED, {
         project,
         stack,
         type: type as 'local' | 'remote' | 'cluster',
-        appCount: 0,
-        nodeCount: 0,
+        appCount,
+        nodeCount,
       } satisfies StackStartedEvent);
     });
 

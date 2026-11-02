@@ -10,9 +10,11 @@ export function readStackStart(stack: Pick<IStackInfo, 'status' | 'apps' | 'notU
   const down = stack.apps.filter(app => app.status !== 'online').map(app => `${app.name} (${app.status})`);
   const total = stack.apps.length;
   const online = total - down.length;
-  const issues = [...new Set([...(stack.notUp ?? []), ...down])];
+  const reported = stack.notUp ?? [];
+  const issues = [...new Set([...reported, ...down.filter(app => !reported.some(issue => issue.startsWith(app + ': ')))])];
   if (stack.status !== 'running') issues.push(`stack state: ${stack.status}`);
-  return { confirmed: issues.length === 0, online, total, issues };
+  const outcome = issues.length === 0 ? 'confirmed' : stack.status === 'error' ? 'failed' : 'partial';
+  return { confirmed: outcome === 'confirmed', outcome, online, total, issues } as const;
 }
 
 export function deploymentProgressKey(record: Pick<DeployProgressRecord, 'project' | 'stack' | 'node' | 'app'>): string {

@@ -1,3 +1,4 @@
+import { resolveAppPath } from '../config/app-path.js';
 import { infrastructureOwnership, ownsStackInfrastructure } from '../project/infrastructure-ownership.js';
 import { InstalledStackResume, resumeDestinations, type InstalledResumeExecution, type InstalledResumeRequest, type InstalledResumeReceipt, type ResumeDestination } from '../project/installed-stack-resume.js';
 import type { InstalledStackResumeResult, StackStopProgress } from '../shared/dto/project.js';
@@ -169,6 +170,8 @@ interface StackRuntimeState {
   startedAt: number | null;
   /** InfrastructureService instance for this stack (local stacks only) */
   infraService: InfrastructureService | null;
+  appStartErrors?: Record<string, string>;
+  infrastructureStartFailed?: boolean;
 }
 
 /**
@@ -746,7 +749,7 @@ export class ProjectService extends EventEmitter {
     if (input.registration) {
       for (const name of this.registry.get(input.registration)?.enabledStacks ?? [])
         if (!input.stacks[name]) throw new Error(`Auto-start source stack '${name}' is missing from the mapping`);
-      for (const name of this.getRunningStacks(input.registration))
+      for (const name of this.getRunningStacks(input.registration, true))
         if (!input.stacks[name]) throw new Error(`Running source stack '${name}' is missing from the mapping`);
       for (const name of Object.keys(this.loadUserStacks(input.registration)))
         if (!input.stacks[name]) throw new Error(`User-defined source stack '${name}' is missing from the mapping`);
@@ -814,7 +817,7 @@ export class ProjectService extends EventEmitter {
 
     let redefined = 0;
     for (const [key, state] of this.stackStates) {
-      if (!key.startsWith(`${name}/`) || state.status === 'stopped' || state.status === 'error') continue;
+      if (!key.startsWith(`${name}/`) || state.status === 'stopped' || (state.status === 'error' && state.startedAt === null)) continue;
       const stackConfig = stacks[state.stack];
       // A remote stack's apps run on its nodes; they are redefined there.
       if (!stackConfig || stackConfig.type !== 'local') continue;
@@ -875,7 +878,7 @@ export class ProjectService extends EventEmitter {
     if (data.path) {
       const nextPath = path.resolve(data.path);
       if (nextPath !== path.resolve(project.path)) {
-        const running = this.getRunningStacks(name);
+        const running = this.getRunningStacks(name, true);
         if (running.length > 0) {
           throw new Error(`Project '${name}' has running stacks: ${running.join(', ')}. Stop them before changing its path.`);
         }
@@ -894,7 +897,7 @@ export class ProjectService extends EventEmitter {
   @RecoveryMutation()
   removeProject(name: string): void {
     // Stop all running stacks for this project first
-    const runningStacks = this.getRunningStacks(name);
+    const runningStacks = this.getRunningStacks(name, true);
     if (runningStacks.length > 0) {
       throw new Error(
         `Project '${name}' has running stacks: ${runningStacks.join(', ')}. Stop them first.`
@@ -1258,7 +1261,7 @@ export class ProjectService extends EventEmitter {
         add('application.classic', entry.name, 'unknown', 'Executable prerequisites for this command-based application have not been probed.', 'Check the configured command and working directory before starting.');
         continue;
       }
-      const bootstrap = path.resolve(project.path, entry.bootstrap);
+      const bootstrap = resolveAppPath(project.path, entry, entry.bootstrap);
       if (!fs.existsSync(bootstrap)) add('bootstrap.missing', entry.name, 'blocked', 'The configured bootstrap file is missing.', 'Restore the application sources or correct its bootstrap path.');
       const { metadata, declared, state, record } = this.readAppDeclaration(projectName, stackName, entry.name, bootstrap);
       if (declared.malformed) add('declaration.invalid', entry.name, 'blocked', 'Application configuration is invalid or unreadable.', 'Check config/default.json syntax and permissions.');
@@ -1323,7 +1326,7 @@ export class ProjectService extends EventEmitter {
               continue;
             }
             if (!directory) continue;
-            const bootstrap = path.resolve(directory, entry.bootstrap);
+            const bootstrap = resolveAppPath(directory, entry, entry.bootstrap);
             const { state, record, metadata, declared, observed } = this.readAppDeclaration(project, stack, entry.name, bootstrap);
             result.coverage!.push({ project, stack, app: entry.name,
               source: record ? record === observed ? 'launch' : 'snapshot' : metadata ? 'memory' : 'missing',
@@ -1359,7 +1362,7 @@ export class ProjectService extends EventEmitter {
     for (const [name, stack] of Object.entries(stacks)) {
       if (scope.stack && scope.stack !== name) continue;
       for (const app of this.resolveStackApps(stack, config))
-        if (app.bootstrap) bootstraps.set(path.resolve(directory, app.bootstrap), app.name);
+        if (app.bootstrap) bootstraps.set(resolveAppPath(directory, app, app.bootstrap), app.name);
     }
     const result: import('../shared/dto/project.js').TopologyMetadataRefresh = { refreshed: 0, failures: [] };
     for (const [bootstrap, app] of bootstraps) {
@@ -1630,7 +1633,9 @@ export class ProjectService extends EventEmitter {
     const stateKey = `${projectName}/${stackName}`;
     const existing = this.stackStates.get(stateKey);
     // Not for a release: putting a release onto a running stack is the point.
-    if (existing?.status === 'running' && !release) {
+    const completedLocalStart = stackConfig.type === 'local' && existing?.startedAt != null &&
+      (existing.status === 'degraded' || existing.status === 'error');
+    if ((existing?.status === 'running' || completedLocalStart) && !release) {
       // `running` is a claim about the past, and nothing revises it when the
       // apps underneath fall over — so this short-circuit used to hand the
       // operator a stack it had not touched. `toStackInfo` reads live
@@ -1659,7 +1664,8 @@ export class ProjectService extends EventEmitter {
         this.toStackInfo(projectName, stackName, stackConfig),
       );
       const down = current.apps.filter((a) => a.status !== 'online');
-      if (down.length === 0) {
+      if (down.length === 0 && !current.notUp?.length) {
+        if (existing) existing.status = 'running';
         this.logger.warn({ project: projectName, stack: stackName }, 'Stack already running');
         return current;
       }
@@ -1711,9 +1717,6 @@ export class ProjectService extends EventEmitter {
       this.updateEnabledStacks(projectName, stackName, true);
       this.markPriorStopSuperseded(projectName, stackName);
 
-      this.emit('stack:started', projectName, stackName, stackConfig.type);
-      this.logger.info({ project: projectName, stack: stackName, source }, 'Stack started');
-
       const info = this.toStackInfo(projectName, stackName, stackConfig);
       // What did not come up, said in the row. A boot at 12:14 UTC on
       // 2026-09-23 started sample/dev with payments and messaging errored and
@@ -1722,11 +1725,20 @@ export class ProjectService extends EventEmitter {
       // remote one, what did not happen is a node that was skipped.
       const notUp =
         stackConfig.type === 'local'
-          ? info.apps.filter((a) => a.status !== 'online').map((a) => `${a.name} (${a.status})`)
+          ? info.notUp ?? info.apps.filter((a) => a.status !== 'online').map((a) => `${a.name} (${a.status})`)
           : [
               ...(reach?.skipped ?? []).map((n) => `node ${typeof n === 'string' ? n : JSON.stringify(n)}`),
               ...(reach?.notReady ?? []).map((n) => `infrastructure on ${n}`),
             ];
+      if (stackConfig.type === 'local') state.status = info.status;
+      const outcome = notUp.length === 0 ? 'ok' : state.status === 'error' ? 'failed' : 'partial';
+      if (outcome === 'ok') {
+        this.emit('stack:started', projectName, stackName, stackConfig.type, info.apps.length, info.nodes?.length ?? 0);
+        this.logger.info({ project: projectName, stack: stackName, source }, 'Stack started');
+      } else {
+        this.emit('stack:error', projectName, stackName, notUp.join(', '));
+        this.logger.warn({ project: projectName, stack: stackName, source, outcome, notUp }, 'Stack start incomplete');
+      }
       // Recorded for every caller, and saying WHICH one. `source: 'unknown'`
       // is deliberate rather than a default of `'operator'`: a caller that
       // has not been taught to identify itself should be visible in the
@@ -1740,7 +1752,7 @@ export class ProjectService extends EventEmitter {
         resourceType: 'stack',
         resourceId: `${projectName}/${stackName}`,
         // Said, now that the other ending is recorded too (`startStackOnce`).
-        outcome: notUp.length > 0 ? 'partial' : 'ok',
+        outcome,
         // The commit, so the trail answers what went out and not only when.
         // A node's artifacts carry no revision (every app is version `0.0.1`
         // forever, and `BUNDLE.json` is excluded from the checksum and read
@@ -2032,53 +2044,21 @@ export class ProjectService extends EventEmitter {
     const stackConfig = stacks[stackName] ?? state?.config;
     if (!stackConfig) throw new Error(`Stack '${stackName}' not found`);
 
-    const prefix = `${projectName}/${stackName}/`;
-    // A bare process name proves neither project nor stack ownership.
-    const apps = this.orchestrator.list().filter((a) => a.name.startsWith(prefix));
-    const onlineApps = apps.filter((a) => a.status === 'online');
-
-    // Derive status from app health if running
-    let status: StackStatus = state?.status ?? 'stopped';
-    if (status === 'running' && apps.length > 0 && onlineApps.length < apps.length) {
-      status = 'degraded';
-    }
-
-    const base: StackRuntime = {
+    const observed = stackConfig.type === 'local'
+      ? { info: this.toStackInfo(projectName, stackName, stackConfig), answered: 1 }
+      : await this.askNodes(projectName, this.getStack(projectName, stackName));
+    const { info, answered } = observed;
+    return {
       name: stackName,
       type: stackConfig.type,
-      status,
-      totalApps: apps.length,
-      onlineApps: onlineApps.length,
-      totalNodes: stackConfig.nodes?.length ?? 1,
-      connectedNodes: stackConfig.type === 'local' ? 1 : 0,
-      totalCpu: apps.reduce((sum, a) => sum + a.cpu, 0),
-      totalMemory: apps.reduce((sum, a) => sum + a.memory, 0),
-      syncSummary: (stackConfig.type === 'remote' || stackConfig.type === 'cluster')
-        ? summariseSync(this.nodesWithSync(stackConfig))
-        : null,
-    };
-
-    if (stackConfig.type === 'local') return base;
-
-    // The node is asked, and what it answers replaces every count that was
-    // taken from this machine. `connectedNodes` is the number of nodes that
-    // ANSWERED rather than the number of entries in the connector's
-    // registry: that registry reported 0 connections for a node that was
-    // answering RPCs in the same second.
-    const { info, answered } = await this.askNodes(
-      projectName,
-      this.getStack(projectName, stackName),
-    );
-    const remote = info.apps;
-    const up = remote.filter((a) => a.status === 'online');
-    return {
-      ...base,
       status: info.status,
-      totalApps: remote.length,
-      onlineApps: up.length,
+      totalApps: info.apps.length,
+      onlineApps: info.apps.filter(app => app.status === 'online').length,
+      totalNodes: stackConfig.type === 'local' ? 1 : stackConfig.nodes?.length ?? 0,
       connectedNodes: answered,
-      totalCpu: remote.reduce((sum, a) => sum + (a.cpu ?? 0), 0),
-      totalMemory: remote.reduce((sum, a) => sum + (a.memory ?? 0), 0),
+      totalCpu: info.apps.reduce((sum, app) => sum + (app.cpu ?? 0), 0),
+      totalMemory: info.apps.reduce((sum, app) => sum + (app.memory ?? 0), 0),
+      syncSummary: stackConfig.type === 'local' ? null : summariseSync(this.nodesWithSync(stackConfig)),
     };
   }
 
@@ -2775,7 +2755,7 @@ export class ProjectService extends EventEmitter {
     );
     return definitionInputs(
       root,
-      this.resolveStackApps(stackConfig, config).flatMap((a) => (a.bootstrap ? [a.bootstrap] : [])),
+      this.resolveStackApps(stackConfig, config).flatMap((a) => (a.bootstrap ? [resolveAppPath(root, a, a.bootstrap)] : [])),
       shipped.map(([, dir]) => dir),
     );
   }
@@ -3062,7 +3042,10 @@ export class ProjectService extends EventEmitter {
     for (const project of this.registry.listRegistrations()) {
       for (const stackName of project.enabledStacks ?? []) {
         const state = this.stackStates.get(`${project.name}/${stackName}`);
-        const status = state?.status;
+        // Only retry a failed lifecycle attempt. App supervision owns later
+        // changes to a running stack, including individual operator stops.
+        const status = state?.status === 'error' && state.config.type === 'local' && state.startedAt != null
+          ? this.toStackInfo(project.name, stackName, state.config).status : state?.status;
         // Converge only from fully-down states (absent/stopped/error).
         // 'degraded' means mostly-up — restarting the whole stack over it
         // would churn healthy apps; per-app recovery owns that case.
@@ -3102,7 +3085,14 @@ export class ProjectService extends EventEmitter {
         if (!this.getLoadedConfig(project)) {
           await this.loadProjectConfig(project);
         }
-        await this.startStack(project, stack, { source: 'auto-resume' });
+        const result = await this.startStack(project, stack, { source: 'auto-resume' });
+        if (result.type === 'local' && result.status !== 'running') {
+          if (result.status === 'degraded') {
+            this.logger.warn({ project, stack, notUp: result.notUp }, 'Reconciler: partial start under application supervision');
+            continue;
+          }
+          throw new Error(result.notUp?.join(', ') || `Stack state: ${result.status}`);
+        }
         this.resumeBackoff.delete(key);
         this.logger.info({ project, stack }, 'Reconciler: stack resumed');
       } catch (err) {
@@ -3191,12 +3181,14 @@ export class ProjectService extends EventEmitter {
   // Helpers
   // ===========================================================================
 
-  getRunningStacks(projectName: string): string[] {
+  getRunningStacks(projectName: string, includeIncomplete = false): string[] {
     const result: string[] = [];
     for (const [, state] of this.stackStates) {
-      if (state.project === projectName && (state.status === 'running' || state.status === 'starting')) {
-        result.push(state.stack);
-      }
+      if (state.project !== projectName) continue;
+      if (includeIncomplete && state.status !== 'stopped') { result.push(state.stack); continue; }
+      const status = state.config.type === 'local' && state.startedAt != null
+        ? this.toStackInfo(projectName, state.stack, state.config).status : state.status;
+      if (status === 'running' || status === 'starting') result.push(state.stack);
     }
     return result;
   }
@@ -3476,6 +3468,7 @@ export class ProjectService extends EventEmitter {
           throw throwable;
         }
 
+        state.infrastructureStartFailed = true;
         this.logger.warn(
           { project: projectName, stack: stackName },
           'allowDegradedInfra=true — proceeding with app start despite infra failure'
@@ -3507,15 +3500,14 @@ export class ProjectService extends EventEmitter {
     // parallel, and a wave can't start until every member of the
     // previous wave is online. Same skip-on-failed-dep semantics
     // as startAll.
-    const failed = new Set<string>();
-    const blocked = new Set<string>();
+    const problems = new Map<string, string>();
 
     for (const wave of resolveStartupOrder(appEntries)) {
       await Promise.all(
         wave.map(async (entry) => {
-          const blockingDep = (entry.dependsOn ?? []).find((d) => failed.has(d) || blocked.has(d));
+          const blockingDep = (entry.dependsOn ?? []).find((d) => problems.has(d));
           if (blockingDep) {
-            blocked.add(entry.name);
+            problems.set(entry.name, `dependency ${blockingDep} did not start`);
             this.logger.warn(
               { app: entry.name, project: projectName, stack: stackName, blockedBy: blockingDep },
               'Skipping app — dependency failed or was blocked',
@@ -3537,7 +3529,11 @@ export class ProjectService extends EventEmitter {
           try {
             await this.orchestrator.startApp(namespacedEntry, ecosystemConfig);
           } catch (err) {
-            failed.add(entry.name);
+            // The raw exception can contain credentials, app output or host paths.
+            // Keep bounded process evidence in stack views available to readers.
+            const failure = describeFailure(err);
+            const evidence = failure.match(/exited during startup (?:with code -?\d+|: killed by SIG[A-Z0-9]+)|did not confirm readiness within \d+ms/);
+            problems.set(entry.name, evidence?.[0] ?? 'launch failed (see daemon log)');
             this.logger.error(
               { app: entry.name, project: projectName, stack: stackName, error: (err as Error).message },
               'Failed to start app in stack',
@@ -3546,13 +3542,7 @@ export class ProjectService extends EventEmitter {
         }),
       );
     }
-
-    if (failed.size > 0 || blocked.size > 0) {
-      this.logger.warn(
-        { project: projectName, stack: stackName, failed: [...failed], blocked: [...blocked] },
-        'Stack startup finished with failures — some apps did not launch',
-      );
-    }
+    if (problems.size) state.appStartErrors = Object.fromEntries(problems);
   }
 
   /**
@@ -4844,9 +4834,9 @@ export class ProjectService extends EventEmitter {
         ...entry,
         name: ProjectService.handleKey(projectName, stackName, entry.name),
         ...(entry.bootstrap && project
-          ? { bootstrap: path.resolve(project.path, entry.bootstrap) }
+          ? { bootstrap: resolveAppPath(project.path, entry, entry.bootstrap) }
           : {}),
-        ...(project ? { cwd: project.path } : {}),
+        ...(project ? { cwd: resolveAppPath(project.path, entry) } : {}),
         env: {
           // Derived first, stated second. `infraEnv` is COMPUTED from the
           // stack's configuration; `entry.env` is WRITTEN — by a developer
@@ -4900,7 +4890,7 @@ export class ProjectService extends EventEmitter {
     for (const entry of appEntries) {
       if (entry.bootstrap && project) {
         try {
-          const bootstrapAbsPath = path.resolve(project.path, entry.bootstrap);
+          const bootstrapAbsPath = resolveAppPath(project.path, entry, entry.bootstrap);
           const { definition: loaded, metadata } = await readBootstrapMetadata(bootstrapAbsPath);
           this.bootstrapMetadata.save(metadata);
           // Preserve only declarative data across backend handoffs, never executable hooks.
@@ -4916,7 +4906,7 @@ export class ProjectService extends EventEmitter {
 
           appDefinitions.set(entry.name, definition);
         } catch (err) {
-          this.bootstrapMetadata.fail(path.resolve(project.path, entry.bootstrap));
+          this.bootstrapMetadata.fail(resolveAppPath(project.path, entry, entry.bootstrap));
           this.logger.error({ app: entry.name, bootstrap: entry.bootstrap }, 'Stack prerequisites unavailable; refusing incomplete provisioning');
           throw new Error(`Could not read declarations for ${entry.name}; refresh declarations and check application configuration before starting`, { cause: err });
         }
@@ -5293,11 +5283,29 @@ export class ProjectService extends EventEmitter {
     // restart). It is reported as what it is.
     const onNodes = config.type === 'remote' || config.type === 'cluster';
     const since = state?.startedAt ?? null;
+    let status = state?.status ?? 'stopped';
+    const notUp: string[] = [];
+    if (!onNodes && (status === 'running' || (since !== null && (status === 'degraded' || status === 'error')))) {
+      const down = apps.filter(app => app.status !== 'online');
+      for (const app of down) {
+        const errors = state?.appStartErrors;
+        const reason = errors && Object.hasOwn(errors, app.name) ? errors[app.name] : undefined;
+        notUp.push(`${app.name} (${app.status})${reason ? ': ' + reason : ''}`);
+      }
+      if (!infrastructure.ready && (state?.infrastructureStartFailed || state?.infraService?.getDesiredServices().length)) {
+        notUp.push('infrastructure: required services are not ready (see daemon log)');
+      }
+      if (notUp.length === 0) status = 'running';
+      else if (down.length < apps.length || down.some(app => app.status === 'starting') ||
+        (apps.length === 0 && Object.values(infrastructure.services).some(service => service.status === 'running'))) status = 'degraded';
+      else status = 'error';
+    }
 
     return {
       name: stackName,
       type: config.type,
-      status: state?.status ?? 'stopped',
+      status,
+      ...(notUp.length > 0 && { notUp }),
       resumeOperation: this.daemonStateStore.kvGetSync<InstalledStackResumeResult>(`stack:${stateKey}:last-resume`, { strict: true }) ?? undefined,
       stopOperation: this.daemonStateStore.kvGetSync<import('../shared/dto/project.js').StackStopProgress>(`stack:${projectName}/${stackName}:last-stop`, { strict: true }) ?? undefined,
       config,

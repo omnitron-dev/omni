@@ -656,9 +656,8 @@ export interface IEcosystemAppEntry {
    *
    * Stamped automatically by the config loader to the directory of the
    * `omnitron.config.ts` that declared this app, so relative paths resolve
-   * against the project root instead of the daemon's cwd. Stack
-   * namespacing (project.service.ts) re-stamps it to the project's
-   * registered path. Operators can override per-app, but normally don't.
+   * against the project root instead of the daemon's cwd. A relative override
+   * is resolved from the config directory. An absolute override is preserved.
    *
    * Without this, file watching breaks whenever the daemon is launched
    * from a directory other than the project root.

@@ -12,7 +12,7 @@
  * Falls back to bootstrap `requires` for backward compatibility during migration.
  */
 
-import path from 'node:path';
+import { resolveAppPath } from '../config/app-path.js';
 import type { IAppDefinition, IEcosystemAppEntry, OmnitronAppConfig } from '../config/types.js';
 import { readDeclaredConfig, withDeclaredConfig } from './declared-config.js';
 import { loadBootstrapConfig } from '../orchestrator/bootstrap-loader.js';
@@ -62,7 +62,7 @@ export async function scanRequirements(apps: IEcosystemAppEntry[], cwd: string):
   const definitions = new Map<string, IAppDefinition>();
   for (const entry of apps) {
     if (entry.enabled === false || !entry.bootstrap) continue;
-    const bootstrap = path.resolve(cwd, entry.bootstrap);
+    const bootstrap = resolveAppPath(cwd, entry, entry.bootstrap);
     const declared = readDeclaredConfig(bootstrap);
     if (declared.malformed) throw new Error(`Application configuration is unreadable: ${entry.name}`);
     const definition = await loadBootstrapConfig(bootstrap, { devMode: true, freshModuleGraph: true });

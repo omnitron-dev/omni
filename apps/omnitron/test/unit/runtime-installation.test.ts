@@ -7,6 +7,7 @@ import { afterEach, expect, it } from 'vitest';
 import { RuntimeInstallation, selectedBackend } from '../../src/daemon/runtime-installation.js';
 import { runtimeArtifactDigest } from '../../src/shared/runtime-artifact.js';
 import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
+import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 
 const roots: string[] = [];
@@ -195,4 +196,66 @@ it('does not create state for an uninstalled instance and refuses public or syml
   await expect(RuntimeInstallation.open(home)).rejects.toThrow('private regular file');
   await fs.chmod(db, 0o600); await fs.rename(db, db + '.original'); await fs.symlink(db + '.original', db);
   await expect(RuntimeInstallation.open(home)).rejects.toThrow('private regular file');
+});
+
+
+it('inspects an existing registry without creating its directories, migrating its schema or acquiring a lease', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'guardian-registry-')); roots.push(root);
+  const home = path.join(root, 'instance');
+  expect(await RuntimeInstallation.openReadOnly(home)).toBeNull();
+  expect(await fs.readdir(root)).toEqual([]);
+  const directory = path.join(home, 'runtime');
+  await fs.mkdir(path.join(directory, 'releases'), { recursive: true, mode: 0o700 });
+  const file = path.join(directory, 'state.db'), db = openSqliteDatabase(file);
+  db.exec('CREATE TABLE state_kv (key TEXT PRIMARY KEY, value TEXT)'); db.close(); await fs.chmod(file, 0o600);
+  const bytes = await fs.readFile(file);
+  const installation = await RuntimeInstallation.openReadOnly(home);
+  expect(installation).not.toBeNull();
+  try {
+    expect(installation!.selection()).toBeNull(); expect(installation!.activation()).toBeNull(); expect(() => installation!.settledSelection()).toThrow(/No runtime/);
+    expect(installation!.settledSelection({ allowEmpty: true })).toBeNull();
+    await expect(installation!.exclusive(async () => undefined)).rejects.toThrow(/read-only/);
+  } finally { await installation!.close(); }
+  expect(await fs.readFile(file)).toEqual(bytes);
+  expect((await fs.readdir(directory)).sort()).toEqual(['releases', 'state.db']);
+});
+
+it('refuses an abandoned or malformed lease and an unfinished activation during passive inspection', async () => {
+  const { home } = await fixture(), file = path.join(home, 'runtime', 'state.db');
+  const db = openSqliteDatabase(file), reader = await RuntimeInstallation.openReadOnly(home);
+  const insert = db.prepare('INSERT INTO state_kv (key,value,updated_at) VALUES (?,?,?)');
+  const selection = { protocol: 1, revision: 1, current: 'a'.repeat(64), previous: null, bootstrap: null, selectedAt: new Date().toISOString() };
+  try {
+    insert.run('runtime.selection', JSON.stringify(selection), selection.selectedAt);
+    expect(reader!.settledSelection()).toEqual(selection);
+    for (const key of ['runtime.lease', 'runtime.activation']) {
+      insert.run(key, 'null', selection.selectedAt);
+      expect(() => reader!.settledSelection()).toThrow(/unsettled/);
+      expect(() => reader!.settledSelection({ allowEmpty: true })).toThrow(/unsettled/);
+      db.prepare('DELETE FROM state_kv WHERE key=?').run(key);
+    }
+    db.prepare("UPDATE state_kv SET value='null' WHERE key='runtime.selection'").run();
+    expect(() => reader!.settledSelection({ allowEmpty: true })).toThrow(/Invalid runtime registry record/);
+  } finally { db.close(); await reader?.close(); }
+});
+
+it('reads committed WAL state without schema changes, journal entries or a reader-selected runtime', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'guardian-wal-')); roots.push(root);
+  const directory = path.join(root, 'runtime'); await fs.mkdir(path.join(directory, 'releases'), { recursive: true, mode: 0o700 });
+  const file = path.join(directory, 'state.db'), writer = openSqliteDatabase(file); await fs.chmod(file, 0o600);
+  writer.pragma('journal_mode = WAL'); writer.exec('CREATE TABLE state_kv (key TEXT PRIMARY KEY, value TEXT)');
+  const selection = { protocol: 1, revision: 2, current: 'b'.repeat(64), previous: null, bootstrap: null, selectedAt: new Date().toISOString() };
+  writer.prepare('INSERT INTO state_kv VALUES (?,?)').run('runtime.selection', JSON.stringify(selection));
+  const bytes = await fs.readFile(file), wal = await fs.readFile(file + '-wal');
+  let reader = await RuntimeInstallation.openReadOnly(root);
+  try { expect(reader!.settledSelection()).toEqual(selection); } finally { await reader?.close(); writer.close(); }
+  // Closing the last writer may checkpoint. A subsequent reader may create
+  // coordination sidecars, but must never write database pages or any WAL frame.
+  expect(wal.length).toBeGreaterThan(0);
+  const checkpointed = await fs.readFile(file); expect(checkpointed.equals(bytes)).toBe(false);
+  reader = await RuntimeInstallation.openReadOnly(root);
+  try { expect(reader!.settledSelection()).toEqual(selection); } finally { await reader?.close(); }
+  expect(await fs.readFile(file)).toEqual(checkpointed);
+  const sidecar = await fs.stat(file + '-wal').catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; return null; });
+  expect(sidecar?.size ?? 0).toBe(0);
 });

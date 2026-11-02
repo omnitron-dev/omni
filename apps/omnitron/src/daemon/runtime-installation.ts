@@ -3,6 +3,7 @@ import { constants } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
+import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import { verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
 import { DaemonStateStore } from './daemon-state-store.service.js';
@@ -24,8 +25,8 @@ interface InstallationLease { token: string; pid: number; acquiredAt: string }
 export interface RuntimeActivation { candidate: string; previous: string; checkpoint: string; startedAt: string }
 const HASH = /^[a-f0-9]{64}$/;
 
-async function privateDirectory(directory: string): Promise<void> {
-  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+async function privateDirectory(directory: string, create: boolean): Promise<void> {
+  if (create) await fs.mkdir(directory, { recursive: true, mode: 0o700 });
   const stat = await fs.lstat(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 ||
       (process.getuid && stat.uid !== process.getuid())) {
@@ -39,6 +40,7 @@ export class RuntimeInstallation {
   readonly releases: string;
   private readonly store: DaemonStateStore;
   private lease: InstallationLease | null = null;
+  private inspection?: ReturnType<typeof openSqliteDatabase>;
 
   private constructor(readonly home: string) {
     this.directory = path.join(home, 'runtime');
@@ -46,15 +48,15 @@ export class RuntimeInstallation {
     this.store = new DaemonStateStore(createNullLogger(), path.join(this.directory, 'state.db'));
   }
 
-  static async open(home = OMNITRON_HOME, options: { existing?: boolean } = {}): Promise<RuntimeInstallation | null> {
+  static async open(home = OMNITRON_HOME, options: { existing?: boolean; readOnly?: boolean } = {}): Promise<RuntimeInstallation | null> {
     if (!path.isAbsolute(home)) throw new Error('Runtime installation requires an absolute instance directory');
     const installation = new RuntimeInstallation(path.resolve(home));
-    if (options.existing) {
+    if (options.existing || options.readOnly) {
       try { await fs.lstat(installation.store.dbPath); }
       catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }
     }
-    await privateDirectory(installation.directory);
-    await privateDirectory(installation.releases);
+    await privateDirectory(installation.directory, !options.readOnly);
+    await privateDirectory(installation.releases, !options.readOnly);
     // Do not follow an operator-supplied database link, including SQLite sidecars.
     for (const suffix of ['', '-wal', '-shm', '-journal']) {
       try {
@@ -63,14 +65,23 @@ export class RuntimeInstallation {
             (process.getuid && stat.uid !== process.getuid())) throw new Error('Runtime registry must be a private regular file');
       } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     }
-    installation.store.initSync().pragma('synchronous = FULL');
+    if (options.readOnly) installation.inspection = openSqliteDatabase(installation.store.dbPath, { readonly: true, fileMustExist: true });
+    else installation.store.initSync().pragma('synchronous = FULL');
     return installation;
   }
 
-  private read<T>(key: string): T | null {
-    const row = this.store.initSync().prepare('SELECT value FROM state_kv WHERE key = ?').get(key) as { value: string } | undefined;
+  /** No schema initialization or writer lease. SQLite may coordinate readers through WAL/SHM sidecars. */
+  static openReadOnly(home = OMNITRON_HOME): Promise<RuntimeInstallation | null> {
+    return RuntimeInstallation.open(home, { readOnly: true });
+  }
+
+  private read<T extends object>(key: string): T | null {
+    const row = (this.inspection ?? this.store.initSync()).prepare('SELECT value FROM state_kv WHERE key = ?').get(key) as { value: string } | undefined;
     // Invalid state is never interpreted as an empty installation.
-    return row ? JSON.parse(row.value) as T : null;
+    if (!row) return null;
+    const value: unknown = JSON.parse(row.value);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid runtime registry record: ' + key);
+    return value as T;
   }
 
   selection(): RuntimeSelection | null {
@@ -120,15 +131,36 @@ export class RuntimeInstallation {
     return artifact;
   }
 
+  /** A passive observer cannot recover an abandoned lease or imply that a pending activation is settled. */
+  settledSelection(): RuntimeSelection;
+  settledSelection(options: { allowEmpty: true }): RuntimeSelection | null;
+  settledSelection(options?: { allowEmpty: true }): RuntimeSelection | null {
+    const db = this.inspection ?? this.store.initSync();
+    const read = () => {
+      if (db.prepare("SELECT 1 FROM state_kv WHERE key IN ('runtime.lease','runtime.activation') LIMIT 1").get()) {
+        throw Error('The runtime registry has an unsettled lease or activation');
+      }
+      const selection = this.selection();
+      if (!selection && !options?.allowEmpty) throw Error('No runtime has been selected');
+      return selection;
+    };
+    return db.transaction(read).deferred();
+  }
+
+  private assertAvailable(): void {
+    const previous = this.read<InstallationLease>('runtime.lease');
+    if (previous && (!Number.isSafeInteger(previous.pid) || previous.pid < 1 || !previous.token || PidManager.isProcessAlive(previous.pid))) {
+      throw new Error(`Another runtime operation holds the installation lease (PID ${previous.pid}); no activation performed`);
+    }
+  }
+
   /** Exclusive across CLI processes; SQLite releases its own write lock even after SIGKILL. */
   async exclusive<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.inspection) throw new Error('A read-only runtime inspection cannot claim the installation lease');
     if (this.lease) throw new Error('Runtime operation is already in progress');
     const lease = { token: randomUUID(), pid: process.pid, acquiredAt: new Date().toISOString() };
     this.store.initSync().transaction(() => {
-      const previous = this.read<InstallationLease>('runtime.lease');
-      if (previous && (!Number.isSafeInteger(previous.pid) || previous.pid < 1 || !previous.token || PidManager.isProcessAlive(previous.pid))) {
-        throw new Error(`Another runtime operation holds the installation lease (PID ${previous.pid}); no activation performed`);
-      }
+      this.assertAvailable();
       this.store.kvSetSync('runtime.lease', lease);
     }).immediate();
     this.lease = lease;
@@ -220,7 +252,10 @@ export class RuntimeInstallation {
     return launcher;
   }
 
-  async close(): Promise<void> { await this.store.dispose(); }
+  async close(): Promise<void> {
+    if (this.inspection) this.inspection.close();
+    else await this.store.dispose();
+  }
 }
 
 /** Resolving a startup always revalidates Node, backend and the entire dependency closure. */

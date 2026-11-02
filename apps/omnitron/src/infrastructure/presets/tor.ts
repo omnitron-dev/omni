@@ -108,8 +108,7 @@ export interface ITorPresetConfig {
  * which would stop, without a sentence, an onion restricted to nobody.
  *
  * Exported so the court can run exactly this text. It needs `set -eu -o
- * pipefail` in effect, which ENTRYPOINT_SHELL sets; busybox `sh` in
- * alpine:3.21 honours `pipefail` (measured: `false | cat` → 1).
+ * pipefail` in effect, which ENTRYPOINT_SHELL sets in Alpine's BusyBox shell.
  */
 export const CLIENT_AUTH_SHELL = `# Client-authorization keys, when the service uses them.
 if [ -n "\${OMNITRON_TOR_CLIENT_AUTH_JSON:-}" ]; then
@@ -143,13 +142,9 @@ const ENTRYPOINT_SHELL = `set -eu
 # failed in front of a pipe was invisible to \`set -e\` — see CLIENT_AUTH_SHELL.
 set -o pipefail
 
-# Tor, from the distribution. The version this pins to is measured, not
-# assumed: \`docker run --rm alpine:3.21 sh -c 'apk add tor && tor --version'\`
-# answers 0.4.9.12, against 0.4.9.11 on 3.20. Onion-service anonymity
-# improves with the release — 0.4.7 added the layer-2/3 guards that blunt
-# guard discovery, 0.4.8 the PoW defences this config turns on — so the base
-# image is part of the security posture and not a detail.
-apk add --no-cache tor >/dev/null 2>&1 || apk add tor >/dev/null 2>&1
+# Resolve Tor against this stable Alpine branch on each start. Keep apk's
+# diagnostics visible if the signed package index or installation fails.
+apk add --no-cache --upgrade tor
 
 mkdir -p /etc/tor /var/lib/tor
 
@@ -172,16 +167,15 @@ exec tor -f /etc/tor/torrc
 export const torPreset: IServicePreset = {
   name: 'tor',
   type: 'gateway',
-  defaultImage: 'alpine:3.21',
+  defaultImage: 'alpine:3.24',
   // No host-side ports: hidden services are reachable only via the Tor
   // network. Exposing 9050 etc. would defeat the entire point.
   defaultPorts: {},
   defaultSecrets: {},
 
   defaultHealthCheck: {
-    // Tor takes 30-90s to bootstrap an HS on first start. We watch for the
-    // hostname file to be written — that's the unambiguous signal that the
-    // hidden service has been published.
+    // Container liveness and initialized storage. Descriptor publication
+    // and reachability require a probe through the Tor network.
     type: 'command',
     target:
       'pgrep tor >/dev/null && [ "$(ls /var/lib/tor 2>/dev/null | wc -l)" -gt 0 ] || exit 1',

@@ -63,7 +63,8 @@ await fs.writeFile(path.join(root, 'counter.mjs'), `import http from 'node:http'
 await fs.writeFile(path.join(root, 'omnitron.config.mjs'), `export default {apps:[{name:'counter',script:'./counter.mjs',cwd:${JSON.stringify(root)},enabled:true}]};`);
 const units = [];
 for (const mode of ['owner', 'backend']) {
-  const file = linux ? `/run/systemd/system/${config[mode].unit}` : path.join(root, `${mode}.plist`);
+  const systemUnitDir = managementDist ? '/etc/systemd/system' : '/run/systemd/system';
+  const file = linux ? path.join(systemUnitDir, config[mode].unit) : path.join(root, `${mode}.plist`);
   const render = linux ? renderSystemdUnit : renderLaunchdPlist;
   await fs.writeFile(file, render({ scope: config.scope, execPath: artifact.execPath,
     entryPath: path.join(artifact.directory, 'daemon/managed-entry.js'), args: [mode], label: config[mode].label,
@@ -157,9 +158,10 @@ try {
     const prepared = JSON.parse(await fs.readFile(plan.file, 'utf8'));
     // Refuse edited native units BEFORE draining a backend.
     await fs.appendFile(prepared.unit.file, '\n<!-- changed after preparation -->\n');
-    await assert.rejects(applySupervisorTransition(plan.file), /unit changed since preparation/);
+    await assert.rejects(applySupervisorTransition(plan.file), /unit changed since preparation|changed system guardian unit/);
     assert.equal((await status()).pid, afterGuardian.pid);
     await fs.writeFile(prepared.unit.file, prepared.unit.before);
+    if (linux) await native(['daemon-reload']);
     const transitioned = await applySupervisorTransition(plan.file);
     assert.equal(transitioned.phase, 'complete');
     assert.equal(transitioned.result.ownerPid, ownerPid);
@@ -195,7 +197,7 @@ try {
     const { runtimeProbeCommand } = await import(pathToFileURL(process.env.OMNITRON_RUNTIME_PROBE).href);
     const bundle = { root: path.dirname(dist), version: first.version, commit: first.build.commit };
     const options = { env: { ...process.env, OMNITRON_HOME: instance }, timeout: 60_000, maxBuffer: 1024 * 1024 };
-    const detected = JSON.parse((await run('/bin/sh', ['-c', runtimeProbeCommand(bundle, afterGuardian.pid)], options)).stdout);
+    const detected = JSON.parse((await run('/bin/sh', ['-c', runtimeProbeCommand(bundle, (await status()).pid)], options)).stdout);
     assert.equal(detected.kind, 'managed'); assert.equal(detected.ownerPid, ownerPid);
     await assert.rejects(run('/bin/sh', ['-c', runtimeProbeCommand(bundle, applicationPid)], options), /no recognized entry/);
     console.log(JSON.stringify({ stage: 'remote-inspection-verified', ownerPid, backendPid: afterGuardian.pid }));

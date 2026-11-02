@@ -17,6 +17,8 @@ vi.mock('../../src/daemon/execution-client.js', () => ({ ExecutionClient: class 
 vi.mock('../../src/daemon/private-control-client.js', async original => ({
   ...await original<typeof import('../../src/daemon/private-control-client.js')>(), privateControlClient: fake.control,
 }));
+import { checkSystemGuardian, guardianUnitProperties, replaceGuardianExec } from '../../src/daemon/system-guardian-unit.js';
+import type { ManagedRuntime } from '../../src/daemon/managed-runtime.js';
 import { applySupervisorTransition } from '../../src/daemon/supervisor-transition.js';
 import { writePrivateRecord } from '../../src/daemon/execution-journal.js';
 
@@ -76,4 +78,33 @@ it('rejects a startup selection changed after preparation', async () => {
   const { file } = await fixture(); fake.selection = { current: 'f'.repeat(64) };
   await expect(applySupervisorTransition(file)).rejects.toThrow('selection changed');
   expect(fake.control).not.toHaveBeenCalled(); expect(fake.job).not.toHaveBeenCalled();
+});
+
+it('preserves site-specific working directory, restart and account directives when preparing a reversible system guardian', async () => {
+  const { plan } = await fixture();
+  const before = { ...plan.before, scope: 'system' } as ManagedRuntime;
+  const after = { ...before, backend: plan.after.backend };
+  const root = path.join(before.instanceHome, 'runtime/releases', before.backend.artifact);
+  const exec = 'ExecStart=' + root + '/node ' + root + '/packages/0/dist/daemon/managed-entry.js backend';
+  const unit = '[Service]\nUser=root\n' + exec + '\nRestart=on-failure\nWorkingDirectory=/opt/immutable/old-version\n';
+  const changed = replaceGuardianExec(unit, before, after);
+  expect(changed).toBe(unit.replaceAll(before.backend.artifact, after.backend.artifact));
+  expect(replaceGuardianExec(changed, after, before)).toBe(unit);
+  for (const invalid of [unit.replace(' backend\n', ' owner\n'), unit.replace(exec, ''), unit + exec + '\n']) {
+    expect(() => replaceGuardianExec(invalid, before, after)).toThrow('ExecStart');
+  }
+});
+it('blocks stoppage when a system guardian cascades, has external hooks, uses drop-ins or has drifted', () => {
+  const unit = 'omnitron-fixture.service';
+  const facts = { ...Object.fromEntries(guardianUnitProperties.map(key => [key, ''])),
+    FragmentPath: '/etc/systemd/system/' + unit, LoadState: 'loaded', NeedDaemonReload: 'no', User: 'root', Group: 'root', KillMode: 'control-group' };
+  expect(() => checkSystemGuardian(unit, facts, true)).not.toThrow();
+  for (const [key, value] of Object.entries({ RequiredBy: 'owner.service', PropagatesStopTo: 'owner.service', ConsistsOf: 'db.service',
+    ExecStop: 'custom hook', DropInPaths: '/etc/systemd/system/override.conf', OnFailure: 'reboot.service',
+    NeedDaemonReload: 'yes', FragmentPath: '/other/unit', User: 'someone' })) {
+    expect(() => checkSystemGuardian(unit, { ...facts, [key]: value }, true)).toThrow();
+  }
+  expect(() => replaceGuardianExec('[Service]\nExecStop=/bin/kill\n', {} as ManagedRuntime, {} as ManagedRuntime)).toThrow('hooks');
+  const { ConsistsOf: _unknown, ...incomplete } = facts as Record<string, string>;
+  expect(() => checkSystemGuardian(unit, incomplete, true)).toThrow('ConsistsOf');
 });

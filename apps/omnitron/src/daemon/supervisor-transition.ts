@@ -17,6 +17,7 @@ import { readBackendBootRecord } from './backend-handoff-types.js';
 import { readPrivateRecord, writePrivateRecord } from './execution-journal.js';
 import { ExecutionClient } from './execution-client.js';
 import { PidManager } from './pid-manager.js';
+import { checkSystemGuardian, guardianUnitProperties, replaceGuardianExec } from './system-guardian-unit.js';
 import { expandPath } from '../shared/paths.js';
 
 interface SupervisorTransition {
@@ -41,12 +42,34 @@ async function native(command: string, args: string[]): Promise<string> {
 }
 const domain = () => `gui/${process.getuid!()}`;
 
+const systemctlScope = (config: ManagedRuntime) => config.scope === 'user' ? ['--user'] : [];
+async function systemGuardianFile(config: ManagedRuntime, requireLoaded: boolean): Promise<string> {
+  if (process.platform !== 'linux' || process.getuid?.() !== 0) throw Error('System guardian replacement requires the root-owned Linux instance');
+  const out = await native('systemctl', ['show', '--all', config.backend.unit, '--property=' + guardianUnitProperties.join(',')]);
+  const facts = Object.fromEntries(out.trim().split('\n').map(line => {
+    const index = line.indexOf('='); return [line.slice(0, index), line.slice(index + 1)];
+  }));
+  checkSystemGuardian(config.backend.unit, facts, requireLoaded);
+  const file = facts['FragmentPath']!;
+  if (await fs.realpath(file) !== file) throw Error('A system guardian requires a canonical unit file');
+  return file;
+}
+
+async function assertSystemGuardianProcess(config: ManagedRuntime, pid: number): Promise<void> {
+  const root = path.join(config.instanceHome, 'runtime/releases', config.backend.artifact);
+  const args = (await fs.readFile(`/proc/${pid}/cmdline`, 'utf8')).split('\0').filter(Boolean);
+  if (await fs.realpath(`/proc/${pid}/exe`) !== path.join(root, 'node') ||
+      args.length !== 3 || args[1] !== path.join(root, 'packages/0/dist/daemon/managed-entry.js') || args[2] !== 'backend')
+    throw Error('Actual guardian process differs from the sealed system unit');
+}
+
 async function unitFile(config: ManagedRuntime): Promise<string> {
   let file: string | undefined;
   if (process.platform === 'darwin') {
     file = (await native('/bin/launchctl', ['print', `${domain()}/${config.backend.label}`])).match(/^\s*path = (.+)$/m)?.[1];
   } else if (process.platform === 'linux') {
-    file = (await native('systemctl', ['--user', 'show', config.backend.unit, '--property=FragmentPath', '--value'])).trim();
+    file = config.scope === 'system' ? await systemGuardianFile(config, true) :
+      (await native('systemctl', ['--user', 'show', config.backend.unit, '--property=FragmentPath', '--value'])).trim();
   }
   if (!file || !path.isAbsolute(file)) throw new Error('The loaded guardian has no verifiable unit file');
   await assertUnitFile(file);
@@ -94,7 +117,7 @@ async function readPlan(file: string): Promise<SupervisorTransition> {
   if (!plan || plan.protocol !== 1 || !/^[0-9a-f-]{36}$/.test(plan.id) || !Number.isFinite(Date.parse(plan.createdAt)) ||
       !['prepared', 'preparing', 'retired', 'stopped', 'configured', 'started', 'complete'].includes(plan.phase) ||
       !path.isAbsolute(plan.before?.instanceHome ?? '') || plan.after?.instanceHome !== plan.before.instanceHome ||
-      plan.before.scope !== 'user' || plan.after.scope !== 'user' ||
+      !['user', 'system'].includes(plan.before.scope) || plan.after.scope !== plan.before.scope ||
       !path.isAbsolute(plan.unit?.file ?? '') || typeof plan.unit.before !== 'string' || typeof plan.unit.after !== 'string' ||
       !/^[a-f0-9]{64}$/.test(plan.backend?.runtime ?? '') || !Number.isSafeInteger(plan.backend.pid) || plan.backend.pid < 1 ||
       !path.isAbsolute(plan.backend.control ?? '') || !path.isAbsolute(plan.backend.socket ?? '') ||
@@ -105,6 +128,8 @@ async function readPlan(file: string): Promise<SupervisorTransition> {
       plan.before.backend.label !== plan.after.backend.label || plan.before.backend.unit !== plan.after.backend.unit) {
     throw new Error('Invalid supervisor transition record');
   }
+  if (plan.before.scope === 'system' && (plan.unit.file !== '/etc/systemd/system/' + plan.before.backend.unit ||
+      replaceGuardianExec(plan.unit.before, plan.before, plan.after) !== plan.unit.after)) throw Error('Invalid system guardian unit transition');
   if (path.resolve(file) !== path.join(plan.before.instanceHome, 'runtime', `supervisor-transition-${plan.id}.json`)) {
     throw new Error('Supervisor transition record is outside its instance');
   }
@@ -126,13 +151,14 @@ export async function prepareSupervisorTransition(directory: string, socket?: st
   try {
     const current = await control.service.status();
     const config = await readManagedRuntime(current.instanceHome);
-    if (!config || config.scope !== 'user') throw new Error('Automatic guardian replacement requires independent user services; system units require a separately reviewed administrator transition');
+    if (!config || config.scope === 'system' && (process.platform !== 'linux' || process.getuid?.() !== 0)) throw new Error('Automatic guardian replacement requires independent user services or a root-owned Linux system instance');
     if (path.dirname(controlAddress.socket) !== config.directory || !current.runtime.owner || current.retired || current.ticketId) {
       throw new Error('The backend is not ready for a guardian transition in this instance');
     }
     const guardianPid = await managedJobPid(config, 'backend');
     await verifyManagedIsolation(config, current.runtime.owner.pid, guardianPid);
     const file = await unitFile(config);
+    if (config.scope === 'system') await assertSystemGuardianProcess(config, guardianPid);
     installation = await RuntimeInstallation.open(config.instanceHome, { existing: true });
     if (!installation) throw new Error('No permanent installation exists');
     return await installation.exclusive(async () => {
@@ -150,8 +176,11 @@ export async function prepareSupervisorTransition(directory: string, socket?: st
         workdir: path.dirname(candidate.directory), path: config.environment['PATH'] ?? process.env['PATH'] ?? '/usr/bin:/bin',
         environment: { OMNITRON_HOME: config.instanceHome }, label: config.backend.label,
         stderrLog: path.join(config.directory, 'supervisor.log') };
+      const beforeUnit = await fs.readFile(file, 'utf8');
+      const afterUnit = config.scope === 'system' ? replaceGuardianExec(beforeUnit, config, after) :
+        process.platform === 'darwin' ? renderLaunchdPlist(inputs) : renderSystemdUnit(inputs);
       const plan: SupervisorTransition = { protocol: 1, id: randomUUID(), phase: 'prepared', createdAt: new Date().toISOString(),
-        before: config, after, unit: { file, before: await fs.readFile(file, 'utf8'), after: process.platform === 'darwin' ? renderLaunchdPlist(inputs) : renderSystemdUnit(inputs) },
+        before: config, after, unit: { file, before: beforeUnit, after: afterUnit },
         backend: { runtime: running.runtimeHash, pid: backendPid, control: controlAddress.socket, socket: (await readCertificateSocket(config, backendPid)) },
         owner: { id: view.status.owner.id, pid: view.status.owner.pid, inventory: view.inventoryDigest }, guardianPid };
       const record = path.join(installation!.directory, `supervisor-transition-${plan.id}.json`);
@@ -195,6 +224,13 @@ export async function applySupervisorTransition(file: string) {
       await installation.artifact(plan.after.backend.artifact);
       if (installation.selection()?.current !== plan.backend.runtime) throw new Error('Backend selection changed since preparation');
       assertSameOwner(plan, await inventory(plan.before));
+      if (plan.before.scope === 'system') {
+        await systemGuardianFile(plan.before, ['prepared', 'preparing', 'retired'].includes(plan.phase));
+        if (['prepared', 'preparing', 'retired'].includes(plan.phase) && PidManager.isProcessAlive(plan.guardianPid)) {
+          await assertSystemGuardianProcess(plan.before, plan.guardianPid);
+          await verifyManagedIsolation(plan.before, plan.owner.pid, plan.guardianPid, PidManager.isProcessAlive(plan.backend.pid) ? plan.backend.pid : undefined);
+        }
+      }
       if (plan.phase === 'started') {
         await assertUnitFile(plan.unit.file);
         if (hash(active) !== hash(plan.after) || await fs.readFile(plan.unit.file, 'utf8') !== plan.unit.after) {
@@ -232,7 +268,10 @@ export async function applySupervisorTransition(file: string) {
         if (PidManager.isProcessAlive(plan.guardianPid)) {
           if (await managedJobPid(plan.before, 'backend') !== plan.guardianPid) throw new Error('A different guardian now owns the OS job');
           if (process.platform === 'darwin') await native('/bin/launchctl', ['bootout', `${domain()}/${plan.before.backend.label}`]);
-          else await native('systemctl', ['--user', 'stop', plan.before.backend.unit]);
+          else {
+            if (plan.before.scope === 'system') await systemGuardianFile(plan.before, true);
+            await native('systemctl', [...systemctlScope(plan.before), 'stop', plan.before.backend.unit]);
+          }
         }
         const stoppedBy = Date.now() + 35_000;
         while ((PidManager.isProcessAlive(plan.guardianPid) || PidManager.isProcessAlive(plan.backend.pid)) && Date.now() < stoppedBy) {
@@ -261,7 +300,12 @@ export async function applySupervisorTransition(file: string) {
   if (!guardianPid) {
     if (PidManager.isProcessAlive(plan.guardianPid) || PidManager.isProcessAlive(plan.backend.pid)) throw new Error('Recorded old processes still exist; refusing bootstrap');
     if (process.platform === 'darwin') await native('/bin/launchctl', ['bootstrap', domain(), plan.unit.file]);
-    else { await native('systemctl', ['--user', 'daemon-reload']); await native('systemctl', ['--user', 'start', plan.after.backend.unit]); }
+    else {
+      const scope = systemctlScope(plan.after);
+      await native('systemctl', [...scope, 'daemon-reload']);
+      if (plan.after.scope === 'system') await systemGuardianFile(plan.after, true);
+      await native('systemctl', [...scope, 'start', plan.after.backend.unit]);
+    }
   }
   const client = createDaemonClient(plan.backend.socket, 4000);
   try {
@@ -280,6 +324,7 @@ export async function applySupervisorTransition(file: string) {
       if (state) {
         if (state.pid !== guardianPid || guardianPid === plan.guardianPid) throw new Error('Guardian identity disagrees with the replacement OS job');
         if (state.state === 'ready' && state.backendPid && state.backendPid !== plan.backend.pid && guardianPid) {
+          if (plan.after.scope === 'system') await assertSystemGuardianProcess(plan.after, guardianPid);
           const status = await client.status();
           if (status.pid !== state.backendPid) throw new Error('Public backend identity disagrees with the guardian');
           assertSameOwner(plan, await inventory(plan.after));

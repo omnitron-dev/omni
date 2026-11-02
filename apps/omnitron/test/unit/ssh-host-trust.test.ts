@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { ExecutionService, sshConfig } from '../../src/execution/execution.service.js';
 
+import { ProjectService } from '../../src/services/project.service.js';
+
 const pin = `SHA256:${'a'.repeat(43)}`;
 
 describe('SSH server verification across managed operations', () => {
@@ -20,6 +22,17 @@ describe('SSH server verification across managed operations', () => {
       expect(options.hostKeyChecking).toBe('strict');
       expect(options.expectedHostFingerprint).toBe(expectedHostFingerprint);
     }
+  });
+
+  it('resolves a stack node by its daemon port and ID and propagates registry errors', async () => {
+    const project = Object.create(ProjectService.prototype);
+    const resolve = vi.fn().mockRejectedValue(new Error('Invalid stored SSH host key approval'));
+    project.setNodeCredentialResolver(resolve);
+    const target = { host: 'test.invalid', port: 9701, nodeId: 'node-b', ssh: { privateKey: '/explicit/key' } };
+    await expect(project.targetForStackNode(target)).rejects.toThrow('Invalid stored SSH host key approval');
+    expect(resolve).toHaveBeenCalledWith('test.invalid', 9701, 'node-b');
+    resolve.mockResolvedValue(null);
+    await expect(project.targetForStackNode({ host: 'unregistered.invalid' })).resolves.toEqual({ host: 'unregistered.invalid' });
   });
 
   it('fails closed for remote commands and tunnels when Xec is unavailable', async () => {

@@ -1248,15 +1248,16 @@ export class OmnitronDaemon {
 
         const meshLogger = loggerModule.logger.child({ component: 'mesh' });
 
+        const registeredSshTarget = async (host: string, port: number, nodeId?: string) => {
+          const node = meshRegistration(nodeManager.listNodes(), { host, port, ...(nodeId !== undefined && { nodeId }) });
+          return node ? nodeManager.nodeToSshTarget(node) : null;
+        };
         const connector = new SlaveConnector(meshLogger, this.syncService ?? null, {
           dial: createMeshDialer({
             logger: meshLogger,
             execution: new Exec(meshLogger),
             subject: `mesh:${os.hostname()}`,
-            sshTargetFor: async target => {
-              const node = meshRegistration(nodeManager.listNodes(), target);
-              return node ? nodeManager.nodeToSshTarget(node) : null;
-            },
+            sshTargetFor: ({ host, port, nodeId }) => registeredSshTarget(host, port, nodeId),
           }),
         });
 
@@ -1270,10 +1271,7 @@ export class OmnitronDaemon {
         // Wired here because this is the side that has both — ProjectService
         // reads config files, the node registry keeps its secrets in the
         // daemon's vault.
-        projectService.setNodeCredentialResolver(async (host) => {
-          const node = nodeManager.listNodes().find((n) => n.host === host && !n.isLocal);
-          return node ? nodeManager.nodeToSshTarget(node) : null;
-        });
+        projectService.setNodeCredentialResolver(registeredSshTarget);
         this.meshHandle = startMesh({ registry: nodeManager, connector, logger: meshLogger });
       } catch (err) {
         // A master with no mesh still supervises its own apps, so this does

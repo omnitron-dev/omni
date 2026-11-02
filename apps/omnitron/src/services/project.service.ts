@@ -624,17 +624,17 @@ export class ProjectService extends EventEmitter {
    * config file in a repository is not where those go. Wired by the daemon,
    * which is the side that has both.
    */
-  setNodeCredentialResolver(resolve: (host: string) => Promise<SSHTarget | null>): void {
+  setNodeCredentialResolver(resolve: (host: string, port: number, nodeId?: string) => Promise<SSHTarget | null>): void {
     this.resolveNodeCredentials = resolve;
   }
 
-  private resolveNodeCredentials: ((host: string) => Promise<SSHTarget | null>) | null = null;
+  private resolveNodeCredentials: ((host: string, port: number, nodeId?: string) => Promise<SSHTarget | null>) | null = null;
 
   /** A deploy target for a stack node, with the registry filling the gaps. */
   private async targetForStackNode(node: import('../config/types.js').IStackNode): Promise<DeployTarget> {
     const declared = stackNodeToDeployTarget(node);
     if (!this.resolveNodeCredentials) return declared;
-    const registered = await this.resolveNodeCredentials(node.host).catch(() => null);
+    const registered = await this.resolveNodeCredentials(node.host, node.port ?? 9700, node.nodeId);
     return withNodeCredentials(declared, registered);
   }
 

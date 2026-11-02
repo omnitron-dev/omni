@@ -183,6 +183,17 @@ try {
       assert.equal(next.ownerPid, ownerPid);
       await activateManagedTarget(invoke, next);
       assert.equal(await reconcileManagedTarget(invoke, next), 'candidate');
+      const { createDaemonClient: connectCandidate } = await import(pathToFileURL(path.join(managementDist, 'daemon/daemon-client.js')).href);
+      const candidate = connectCandidate(socket, 90_000);
+      try {
+        const { execution } = await candidate.status();
+        assert.equal(execution.owner.pid, ownerPid);
+        const observation = { owner: execution.owner, epoch: execution.epoch };
+        const build = await candidate.attestApplicationOwner(observation);
+        assert.equal(build.commit, await readStamp(dist));
+        assert.equal(build.dirty, false);
+        await assert.rejects(candidate.attestApplicationOwner({ ...observation, epoch: observation.epoch + 1 }));
+      } finally { await candidate.disconnect(); }
       const stale = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor', 150_000);
       try {
         await assert.rejects(stale.service.upgradeIfCurrent({ current: next.previous, candidate: next.candidate,

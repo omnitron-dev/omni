@@ -1,0 +1,75 @@
+name: Qualify a managed backend handoff
+run-name: Handoff ${{ inputs.previous }} → ${{ inputs.candidate }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      previous:
+        description: Full commit of the independently supervised backend currently serving
+        required: true
+      candidate:
+        description: Full commit proposed for the fleet
+        required: true
+      node:
+        description: Exact Node version on the target
+        required: true
+        default: '22.23.4'
+
+permissions:
+  contents: read
+
+jobs:
+  systemd:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      PREVIOUS: ${{ inputs.previous }}
+      CANDIDATE: ${{ inputs.candidate }}
+      TARGET_NODE: ${{ inputs.node }}
+      TZ: UTC
+      TURBO_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify both revisions belong to the reviewed main history
+        run: |
+          [[ "$PREVIOUS" =~ ^[a-f0-9]{40}$ && "$CANDIDATE" =~ ^[a-f0-9]{40}$ && "$PREVIOUS" != "$CANDIDATE" ]]
+          [[ "$TARGET_NODE" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          git merge-base --is-ancestor "$PREVIOUS" HEAD
+          git merge-base --is-ancestor "$CANDIDATE" HEAD
+          test "$(ps -o comm= -p 1)" = systemd
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node }}
+      - name: Build both sealed runtimes from their own frozen workspaces
+        run: |
+          test "$(node -p 'process.versions.node')" = "$TARGET_NODE"
+          for rev in "$PREVIOUS" "$CANDIDATE"; do
+            tree="$RUNNER_TEMP/source-$rev"
+            runtime="$RUNNER_TEMP/omnitron-handoff-$rev"
+            git worktree add --detach "$tree" "$rev"
+            (
+              cd "$tree"
+              export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+              pnpm install --frozen-lockfile
+              pnpm exec turbo run build --force --concurrency=2
+              node apps/omnitron/scripts/freeze-backend.mjs apps/omnitron "$runtime"
+              node --input-type=module - "$runtime" "$rev" <<'JS'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const [, , root, commit] = process.argv;
+          const stamp = JSON.parse(readFileSync(root + '/packages/0/dist/BUILD.json'));
+          assert.equal(stamp.commit, commit);
+          assert.equal(stamp.dirty, false);
+          JS
+            )
+          done
+      - name: Recover, update and roll back while a supervised application serves requests
+        run: |
+          sudo -- "$(command -v node)" apps/omnitron/test/runtime/managed-backend.mjs \
+            "$RUNNER_TEMP/omnitron-handoff-$PREVIOUS/packages/0/dist" \
+            "$RUNNER_TEMP/omnitron-handoff-$CANDIDATE/packages/0/dist"

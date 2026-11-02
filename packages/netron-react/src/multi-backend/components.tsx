@@ -7,7 +7,7 @@
  * @module multi-backend/components
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useMultiBackendConnectionState, useMultiBackendContext } from './context.js';
 import type {
   BackendConnectionAwareProps,
@@ -153,22 +153,28 @@ export function MultiBackendConnectionAware({
   const backendsToCheck = backends || backendNames;
 
   // Collect errors
-  const errors = new Map<string, Error>();
-  let isAnyConnecting = false;
-  let connectedCount = 0;
+  const summary = useMemo(() => {
+    const errors = new Map<string, Error>();
+    let isAnyConnecting = false;
+    let connectedCount = 0;
 
-  for (const backendName of backendsToCheck) {
-    const state = connectionState.backends.get(backendName);
-    if (state?.error) {
-      errors.set(backendName, state.error);
+    for (const backendName of backendsToCheck) {
+      const state = connectionState.backends.get(backendName);
+      if (state?.error) {
+        errors.set(backendName, state.error);
+      }
+      if (state?.isConnecting) {
+        isAnyConnecting = true;
+      }
+      if (state?.isConnected) {
+        connectedCount++;
+      }
     }
-    if (state?.isConnecting) {
-      isAnyConnecting = true;
-    }
-    if (state?.isConnected) {
-      connectedCount++;
-    }
-  }
+
+    return { errors, isAnyConnecting, connectedCount };
+  }, [connectionState.backends, backendsToCheck]);
+
+  const { errors, isAnyConnecting, connectedCount } = summary;
 
   // Retry function
   const retry = useCallback(() => {

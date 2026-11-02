@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { NetronError } from '@omnitron-dev/netron-browser';
+import { useCommittedCallback } from './useCommittedCallback.js';
 import { useNetronClient, useDefaults, useHydration } from '../core/context.js';
 import type { QueryOptions, QueryResult, QueryFunctionContext, RetryConfig } from '../core/types.js';
 import { hashQueryKey, calculateRetryDelay, timeUtils } from '../cache/utils.js';
@@ -140,35 +141,39 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
   // keepPreviousData (per query): which queryKeyHash each index's `data` belongs
   // to. When it lags the current hash (that query's key changed) the carried-over
   // data is "previous" and we flag isPreviousData.
-  const dataKeyRefs = useRef<string[]>([]);
+  const dataKeyRefs = useRef(queries.map(query => hashQueryKey(query.queryKey)));
   // suspense (per query): the in-flight cold-load prime promise per index.
   const suspendPromiseRefs = useRef<(Promise<void> | null)[]>([]);
 
-  // Ensure fetchCounts has the right length
-  if (fetchCounts.current.length !== queries.length) {
-    fetchCounts.current = queries.map(() => 0);
+  const queryKeyHashes = useMemo(() => queries.map(query => hashQueryKey(query.queryKey)), [queries]);
+  const readInitialState = (index: number) => {
+    const query = queries[index]!;
+    const cached = client.getQueryCache().getQuery<unknown, NonNullable<TResults[number]['error']>>(query.queryKey)?.state;
+    return createInitialState(query, cached?.data, cached?.error ?? null, cached?.errorUpdatedAt);
+  };
+  const [observed, setObserved] = useState({ client, hashes: queryKeyHashes });
+  const [states, setStates] = useState<QueryState<unknown, unknown>[]>(() => queries.map((_, i) => readInitialState(i)));
+  if (observed.client !== client || observed.hashes.length !== queryKeyHashes.length ||
+      observed.hashes.some((hash, i) => hash !== queryKeyHashes[i])) {
+    setObserved({ client, hashes: queryKeyHashes });
+    setStates(queries.map((query, i) => {
+      if (client === observed.client && observed.hashes[i] === queryKeyHashes[i]) return states[i]!;
+      const next = readInitialState(i);
+      if (client === observed.client && query.keepPreviousData && next.data === undefined && states[i]?.data !== undefined) {
+        return { ...next, data: states[i]?.data };
+      }
+      return next;
+    }));
   }
+  const activeKeys = useRef<{ client: typeof client; keys: (string | null)[] } | null>(null);
+  const activation = JSON.stringify(queries.map((query, index) => [queryKeyHashes[index], query.enabled ?? true]));
+  const isCurrentKey = useCommittedCallback((source: typeof client, index: number, hash: string) =>
+    source === client && queryKeyHashes[index] === hash);
 
-  // Initialize states for all queries
-  const [states, setStates] = useState<QueryState<unknown, unknown>[]>(() =>
-    queries.map((query) => {
-      const cq = client.getQueryCache().getQuery(query.queryKey);
-      // NR-3: cache holds RAW data; its state.error is loosely typed (unknown).
-      return createInitialState(query, cq?.state.data, (cq?.state.error ?? null) as never, cq?.state.errorUpdatedAt);
-    })
-  );
-
-  // Memoize query key hashes for dependency tracking
-  const queryKeyHashes = useMemo(() => queries.map((q) => hashQueryKey(q.queryKey)), [queries]);
-  const queryKeyHashString = queryKeyHashes.join(',');
-
-  // Keep the per-index ref arrays sized to the queries array. On a structural
-  // change (the count differs) reset key-ownership to the current hashes — the
-  // initial state for each index was seeded from that key's cache entry.
-  if (dataKeyRefs.current.length !== queries.length) {
-    dataKeyRefs.current = queryKeyHashes.slice();
-    suspendPromiseRefs.current = queries.map(() => null);
-  }
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
 
   // Update a single query's state
   const updateState = useCallback((index: number, update: Partial<QueryState<unknown, unknown>>) => {
@@ -241,7 +246,7 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
             result = projectQueryData(query, raw);
 
             // Update state if still mounted and current fetch
-            if (isMounted.current && currentFetch === fetchCounts.current[index]) {
+            if (isMounted.current && isCurrentKey(client, index, queryKeyHashes[index]!) && currentFetch === fetchCounts.current[index]) {
               const now = timeUtils.now();
               updateState(index, {
                 data: result,
@@ -285,7 +290,7 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
         // All retries failed
         throw lastError;
       } catch (err) {
-        if (isMounted.current && currentFetch === fetchCounts.current[index]) {
+        if (isMounted.current && isCurrentKey(client, index, queryKeyHashes[index]!) && currentFetch === fetchCounts.current[index]) {
           const now = timeUtils.now();
           updateState(index, {
             error: err as never,
@@ -305,7 +310,7 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
         queryCache.endFetch(query.queryKey);
       }
     },
-    [queries, client, defaults.retry, states, updateState]
+    [queries, client, defaults.retry, defaults.staleTime, queryKeyHashes, states, updateState, isCurrentKey]
   );
 
   // Remove function for a single query
@@ -387,14 +392,16 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
   );
 
   // Initial fetch effect - runs all queries in parallel
-  useEffect(() => {
-    if (isHydrating) return;
+  const activateObservers = useCommittedCallback(() => {
+    if (isHydrating) { activeKeys.current = null; return; }
+    const previous = activeKeys.current;
+    const keys = queries.map((query, index) => query.enabled === false ? null : queryKeyHashes[index]!);
+    activeKeys.current = { client, keys };
 
     const fetchPromises: Promise<void>[] = [];
 
     queries.forEach((query, index) => {
-      const enabled = query.enabled ?? true;
-      if (!enabled) return;
+      if (keys[index] === null || (previous?.client === client && previous.keys[index] === keys[index])) return;
 
       const staleTime = query.staleTime ?? defaults.staleTime;
       const cached = client.getQueryCache().get(query.queryKey);
@@ -420,24 +427,27 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
         // Errors already handled in individual fetchQuery calls
       });
     }
-  }, [queryKeyHashString, isHydrating]);
+  });
+  useEffect(activateObservers, [client, activation, isHydrating, activateObservers]);
 
   // Cache subscriptions for all queries
-  useEffect(() => {
-    const unsubscribers = queries.map((query, index) =>
-      client.getQueryCache().subscribe(query.queryKey, () => {
-        const cached = client.getQueryCache().get(query.queryKey);
-        if (cached !== undefined) {
-          updateState(index, { data: projectQueryData(query, cached) }); // NR-3: project per-query
-          dataKeyRefs.current[index] = queryKeyHashes[index]!; // mirror belongs to current key
-        }
-      })
-    );
-
-    return () => {
-      unsubscribers.forEach((unsub) => unsub());
-    };
-  }, [client, queryKeyHashString, queries, updateState]);
+  const syncObserver = useCommittedCallback((index: number, hash: string) => {
+    const query = queries[index];
+    if (!query || queryKeyHashes[index] !== hash) return;
+    const cached = client.getQueryCache().get(query.queryKey);
+    if (cached !== undefined) {
+      updateState(index, { data: projectQueryData(query, cached) });
+      dataKeyRefs.current[index] = hash;
+    }
+  });
+  const subscribeObservers = useCommittedCallback(() => {
+    const unsubscribers = queries.map((query, index) => {
+      const hash = queryKeyHashes[index]!;
+      return client.getQueryCache().subscribe(query.queryKey, () => syncObserver(index, hash));
+    });
+    return () => { unsubscribers.forEach(unsubscribe => unsubscribe()); };
+  });
+  useEffect(subscribeObservers, [client, activation, subscribeObservers]);
 
   // Refetch intervals
   useEffect(() => {
@@ -487,14 +497,6 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
     return () => window.removeEventListener('focus', handleFocus);
   }, [queries, defaults.refetchOnWindowFocus, defaults.staleTime, states, fetchQuery]);
 
-  // Cleanup
-  useEffect(
-    () => () => {
-      isMounted.current = false;
-    },
-    []
-  );
-
   // Build results array
   const results = useMemo(
     () =>
@@ -533,7 +535,7 @@ export function useQueries<TResults extends readonly QueryObserverResult[], TCom
           remove: createRemove(index),
         } as QueryObserverResult;
       }) as unknown as TResults,
-    [states, queries, queryKeyHashString, defaults.staleTime, createRefetch, createRemove]
+    [states, queries, queryKeyHashes, defaults.staleTime, createRefetch, createRemove]
   );
 
   // Apply combine function if provided, otherwise return results array

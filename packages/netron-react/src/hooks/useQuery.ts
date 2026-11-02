@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { NetronError } from '@omnitron-dev/netron-browser';
+import { useCommittedCallback } from './useCommittedCallback.js';
 import { useNetronClient, useDefaults, useHydration } from '../core/context.js';
 import type { QueryOptions, QueryResult, QueryFunctionContext, RetryConfig } from '../core/types.js';
 import { hashQueryKey, calculateRetryDelay, timeUtils, replaceEqualDeep } from '../cache/utils.js';
@@ -92,16 +93,8 @@ export function useQuery<TData = unknown, TError = NetronError>(
   // a refetch. Before this, `dataUpdatedAt` started at 0 on every
   // mount and `isStale` always evaluated true → tab-switch remounts
   // round-tripped to the network even when the cache was warm.
-  const cachedQueryOnInit = useMemo(
-    () => client.getQueryCache().getQuery<TData, TError>(queryKey),
-    // We intentionally only read the cache once on the first
-    // render — subsequent updates come through the subscription
-    // effect below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
-
-  const [data, setData] = useState<TData | undefined>(() => {
+  const cachedQueryOnInit = client.getQueryCache().getQuery<TData, TError>(queryKey);
+  const readInitialData = () => {
     // NR-3: the shared cache holds RAW data — project it through this observer's select.
     if (cachedQueryOnInit?.state.data !== undefined) return projectData(cachedQueryOnInit.state.data);
 
@@ -114,7 +107,8 @@ export function useQuery<TData = unknown, TError = NetronError>(
     }
 
     return undefined;
-  });
+  };
+  const [data, setData] = useState<TData | undefined>(readInitialData);
 
   const [error, setError] = useState<TError | null>(
     cachedQueryOnInit?.state.error ?? null,
@@ -160,6 +154,22 @@ export function useQuery<TData = unknown, TError = NetronError>(
   // key change until the new key's data arrives — that gap is exactly when
   // keepPreviousData carries the previous key's data over (isPreviousData=true).
   const dataKeyRef = useRef(queryKeyHash);
+
+  const [observed, setObserved] = useState({ client, key: queryKeyHash });
+  if (observed.client !== client || observed.key !== queryKeyHash) {
+    const seed = readInitialData();
+    const cached = cachedQueryOnInit?.state;
+    setObserved({ client, key: queryKeyHash });
+    setData(seed);
+    setError(cached?.error ?? null);
+    setStatus(seed !== undefined ? 'success' : cached?.status === 'error' ? 'error' : 'idle');
+    setIsFetching(false);
+    setDataUpdatedAt(cached?.dataUpdatedAt ?? initialDataUpdatedAt ?? 0);
+    setErrorUpdatedAt(cached?.errorUpdatedAt ?? 0);
+    if (seed !== undefined || observed.client !== client) dataKeyRef.current = queryKeyHash;
+    if (observed.client !== client) previousDataRef.current = { data: undefined, dataUpdatedAt: 0 };
+  }
+  useEffect(() => () => { fetchCount.current++; }, [client, queryKeyHash]);
 
   // Determine if data is stale
   const isStale = useMemo(() => {
@@ -279,7 +289,17 @@ export function useQuery<TData = unknown, TError = NetronError>(
     }
     // NR-5: `status` intentionally omitted — read via statusRef so this callback
     // is stable across status transitions.
-  }, [queryKey, executeFetch, onSuccess, onError, onSettled, client, projectData, staleTime]);
+  }, [queryKey, executeFetch, onSuccess, onError, onSettled, client, projectData, staleTime, queryKeyHash]);
+
+  // Remove function
+  const remove = useCallback(() => {
+    client.getQueryCache().remove(queryKey);
+    setData(undefined);
+    setError(null);
+    setStatus('idle');
+    setDataUpdatedAt(0);
+    setErrorUpdatedAt(0);
+  }, [client, queryKey]);
 
   // Refetch function
   const refetch = useCallback(async (): Promise<QueryResult<TData, TError>> => {
@@ -321,20 +341,10 @@ export function useQuery<TData = unknown, TError = NetronError>(
         remove,
       };
     }
-  }, [fetchData, dataUpdatedAt]);
-
-  // Remove function
-  const remove = useCallback(() => {
-    client.getQueryCache().remove(queryKey);
-    setData(undefined);
-    setError(null);
-    setStatus('idle');
-    setDataUpdatedAt(0);
-    setErrorUpdatedAt(0);
-  }, [client, queryKey]);
+  }, [fetchData, dataUpdatedAt, remove]);
 
   // Initial fetch effect
-  useEffect(() => {
+  const activateObserver = useCommittedCallback(() => {
     if (!enabled || isHydrating) return;
 
     // Check if we need to fetch
@@ -351,20 +361,8 @@ export function useQuery<TData = unknown, TError = NetronError>(
       setStatus('success');
       dataKeyRef.current = queryKeyHash;
     }
-    // `isStale`, `data`, `client`, `queryKey`, `fetchData` and `projectData`
-    // are read here and deliberately NOT dependencies — this effect fetches
-    // once per key, and re-running it on any of them turns it into a refetch
-    // loop driven by the staleness timer. Refetching when data goes stale is
-    // the job of the focus, reconnect and interval effects below, each of
-    // which DOES list `isStale`.
-    //
-    // eslint's exhaustive-deps rightly flags this; do not silence it by adding
-    // the deps. Doing so breaks cache invalidation and stale-while-revalidate
-    // — measured: four integration tests go red, in cache-invalidation and
-    // cache-lifecycle. Lint had not run in this repository since the
-    // TypeScript 7 upgrade, so this warning is newly visible and reads like an
-    // easy fix.
-  }, [queryKeyHash, enabled, isHydrating]);
+  });
+  useEffect(activateObserver, [client, queryKeyHash, enabled, isHydrating, activateObserver]);
 
   // Cache subscription. Observers see every cache mutation
   // (write, error, invalidate, evict) and must keep all of local
@@ -375,7 +373,7 @@ export function useQuery<TData = unknown, TError = NetronError>(
   // `dataUpdatedAt` frozen at the values from the original fetch,
   // making isStale lie. Pass per-observer `cacheTime` so the
   // shared GC respects the most-permissive caller's preference.
-  useEffect(() => {
+  const subscribeObserver = useCommittedCallback(() => {
     const cache = client.getQueryCache();
     const unsubscribe = cache.subscribe(
       queryKey,
@@ -408,7 +406,8 @@ export function useQuery<TData = unknown, TError = NetronError>(
     );
 
     return unsubscribe;
-  }, [client, queryKeyHash, cacheTime]);
+  });
+  useEffect(subscribeObserver, [client, queryKeyHash, cacheTime, subscribeObserver]);
 
   // Refetch interval
   useEffect(() => {

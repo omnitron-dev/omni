@@ -106,6 +106,36 @@ describe('useQueries Hook', () => {
     expect((result.current[2].data as { name: string }).name).toBe('Charlie');
   });
 
+  it('follows enabled observers and ignores fresh array identities', async () => {
+    const first = vi.fn(async () => 1);
+    const second = vi.fn(async () => 2);
+    const { result, rerender } = renderHook(({ enabled }) => useQueries({ queries: [
+      { queryKey: ['one'], queryFn: first },
+      { queryKey: ['two'], queryFn: second, enabled },
+    ] }), { wrapper, initialProps: { enabled: false } });
+    await waitFor(() => expect(result.current[0].data).toBe(1));
+    rerender({ enabled: false });
+    expect(second).not.toHaveBeenCalled();
+    rerender({ enabled: true });
+    await waitFor(() => expect(result.current[1].data).toBe(2));
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it('reconciles added and removed observers and rejects a late result for a replaced key', async () => {
+    let finish!: (value: string) => void;
+    const pending = new Promise<string>(resolve => { finish = resolve; });
+    const { result, rerender } = renderHook(({ keys }) => useQueries({ queries: keys.map(key => ({
+      queryKey: [key], enabled: key !== 'paused', queryFn: () => key === 'slow' ? pending : Promise.resolve(key),
+    })) }), { wrapper, initialProps: { keys: ['slow'] } });
+    rerender({ keys: ['paused', 'next'] });
+    await waitFor(() => expect(result.current[1]?.data).toBe('next'));
+    await act(async () => { finish('obsolete'); await pending; });
+    expect(result.current[0].data).toBeUndefined();
+    rerender({ keys: [] });
+    expect(result.current).toHaveLength(0);
+  });
+
   it('refetch resolves with the FRESH post-fetch result, not a stale snapshot (NR-6)', async () => {
     let n = 0;
     const { result } = renderHook(

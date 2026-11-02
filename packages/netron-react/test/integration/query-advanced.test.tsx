@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { renderHook, waitFor, render, screen } from '@testing-library/react';
+import { act, renderHook, waitFor, render, screen } from '@testing-library/react';
 import React, { Component, Suspense, type ReactNode } from 'react';
 import { useQuery } from '../../src/hooks/useQuery.js';
 import { useInfiniteQuery } from '../../src/hooks/useInfiniteQuery.js';
@@ -53,6 +53,20 @@ describe('useQuery advanced options', () => {
 
   afterEach(() => {
     client.clear();
+  });
+
+  it('does not expose completed or late data after switching to a disabled key', async () => {
+    let finish!: (value: string) => void;
+    const cached = ['cached-key'];
+    client.getQueryCache().set(cached, 'private');
+    const { result, rerender } = renderHook(({ key }) => useQuery({
+      queryKey: [key], enabled: key !== 'disabled', queryFn: () => new Promise<string>(resolve => { finish = resolve; }),
+    }), { wrapper, initialProps: { key: 'cached-key' } });
+    expect(result.current.data).toBe('private');
+    rerender({ key: 'disabled' });
+    expect(result.current.data).toBeUndefined();
+    await act(async () => { finish('late'); });
+    expect(result.current.data).toBeUndefined();
   });
 
   describe('keepPreviousData', () => {

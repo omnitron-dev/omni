@@ -40,6 +40,41 @@ export function useSubscription<TData = unknown>(options: SubscriptionOptions<TD
   // state writes with this ref to avoid setState-after-unmount.
   const isMounted = useRef(true);
 
+  // Flush buffer
+  const flushBuffer = useCallback(() => {
+    // NR-12: the flush timer may fire after unmount — skip the state writes.
+    if (!isMounted.current) return;
+    if (bufferRef.current.length === 0) return;
+
+    const bufferedData = [...bufferRef.current];
+    bufferRef.current = [];
+
+    if (bufferTimeoutRef.current) {
+      clearTimeout(bufferTimeoutRef.current);
+      bufferTimeoutRef.current = undefined;
+    }
+
+    if (!buffer) return;
+
+    let dataToEmit: TData;
+    switch (buffer.strategy) {
+      case 'latest':
+        dataToEmit = bufferedData[bufferedData.length - 1]!;
+        break;
+      case 'first':
+        dataToEmit = bufferedData[0]!;
+        break;
+      case 'all':
+      default:
+        // For 'all' strategy, we emit the full array
+        dataToEmit = bufferedData as unknown as TData;
+    }
+
+    setData(dataToEmit);
+    setHistory((prev) => [...prev.slice(-99), dataToEmit]);
+    onData?.(dataToEmit);
+  }, [buffer, onData]);
+
   // Handle incoming data
   const handleData = useCallback(
     (rawData: unknown) => {
@@ -86,43 +121,9 @@ export function useSubscription<TData = unknown>(options: SubscriptionOptions<TD
         onError?.(handleError);
       }
     },
-    [filter, transform, buffer, onData, onError]
+    [filter, transform, buffer, onData, onError, flushBuffer]
   );
 
-  // Flush buffer
-  const flushBuffer = useCallback(() => {
-    // NR-12: the flush timer may fire after unmount — skip the state writes.
-    if (!isMounted.current) return;
-    if (bufferRef.current.length === 0) return;
-
-    const bufferedData = [...bufferRef.current];
-    bufferRef.current = [];
-
-    if (bufferTimeoutRef.current) {
-      clearTimeout(bufferTimeoutRef.current);
-      bufferTimeoutRef.current = undefined;
-    }
-
-    if (!buffer) return;
-
-    let dataToEmit: TData;
-    switch (buffer.strategy) {
-      case 'latest':
-        dataToEmit = bufferedData[bufferedData.length - 1]!;
-        break;
-      case 'first':
-        dataToEmit = bufferedData[0]!;
-        break;
-      case 'all':
-      default:
-        // For 'all' strategy, we emit the full array
-        dataToEmit = bufferedData as unknown as TData;
-    }
-
-    setData(dataToEmit);
-    setHistory((prev) => [...prev.slice(-99), dataToEmit]);
-    onData?.(dataToEmit);
-  }, [buffer, onData]);
 
   // Subscribe effect
   useEffect(() => {

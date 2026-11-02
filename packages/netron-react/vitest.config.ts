@@ -39,7 +39,7 @@ export default defineConfig({
     alias: {
       '@': './src',
       // Resolve workspace dependencies to their source for better test compatibility
-      '@omnitron-dev/netron-browser': path.resolve(__dirname, '../netron-browser/src/index.ts'),
+      '@omnitron-dev/netron-browser': path.resolve(import.meta.dirname, '../netron-browser/src/index.ts'),
     },
   },
 });

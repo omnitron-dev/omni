@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { NetronError } from '@omnitron-dev/netron-browser';
+import { useCommittedCallback } from './useCommittedCallback.js';
 import { useNetronClient, useDefaults, useHydration } from '../core/context.js';
 import type {
   RetryConfig,
@@ -93,11 +94,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
   // inside the `staleTime` window hydrates synchronously
   // (`data` + `dataUpdatedAt` + `status='success'`) without
   // refetching. See useQuery for the full rationale.
-  const cachedQueryOnInit = useMemo(
-    () => client.getQueryCache().getQuery<InfiniteData<TData>, TError>(queryKey, true),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  const cachedQueryOnInit = client.getQueryCache().getQuery<InfiniteData<TData>, TError>(queryKey, true);
 
   const [data, setData] = useState<InfiniteData<TData> | undefined>(
     cachedQueryOnInit?.state.data,
@@ -133,6 +130,26 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
   // suspense: the in-flight initial-page prime promise thrown to a <Suspense>
   // boundary. Cleared when it settles so a fresh mount can re-prime.
   const suspendPromiseRef = useRef<Promise<void> | null>(null);
+
+  const [observed, setObserved] = useState({ client, key: queryKeyHash });
+  if (observed.client !== client || observed.key !== queryKeyHash) {
+    const cached = cachedQueryOnInit?.state;
+    const previous = keepPreviousData && observed.client === client ? data : undefined;
+    setObserved({ client, key: queryKeyHash });
+    setData(cached?.data ?? previous);
+    setError(cached?.error ?? null);
+    setStatus(cached?.data !== undefined ? 'success' : cached?.status === 'error' ? 'error' : 'idle');
+    setIsFetching(false);
+    setIsFetchingNextPage(false);
+    setIsFetchingPreviousPage(false);
+    setDataUpdatedAt(cached?.dataUpdatedAt ?? 0);
+    if (cached?.data !== undefined || previous === undefined) dataKeyRef.current = queryKeyHash;
+    suspendPromiseRef.current = null;
+  }
+  useEffect(() => () => {
+    fetchCount.current++;
+    abortControllerRef.current?.abort();
+  }, [client, queryKeyHash]);
 
   // Get retry configuration
   const retryConfig = useMemo(() => {
@@ -247,7 +264,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
         setIsFetching(false);
       }
     }
-  }, [client, executeFetchPage, initialPageParam, onError, onSuccess, queryKey, queryKeyHash, status]);
+  }, [client, executeFetchPage, initialPageParam, onError, onSuccess, queryKey, queryKeyHash, status, staleTime]);
 
   // suspense: fetch the initial page and write it to the shared cache WITHOUT
   // touching component state (this runs during render, in the throw path). On
@@ -326,6 +343,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
       }
     }
   }, [
+    staleTime,
     client,
     data,
     executeFetchPage,
@@ -403,6 +421,7 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
       }
     }
   }, [
+    staleTime,
     client,
     data,
     executeFetchPage,
@@ -479,10 +498,10 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
         setIsFetching(false);
       }
     }
-  }, [client, data, executeFetchPage, fetchInitialPage, onError, onSuccess, queryKey]);
+  }, [client, data, executeFetchPage, fetchInitialPage, onError, onSuccess, queryKey, staleTime]);
 
   // Initial fetch effect
-  useEffect(() => {
+  const activateObserver = useCommittedCallback(() => {
     if (!enabled || isHydrating) return;
 
     // Check if we need to fetch
@@ -503,12 +522,13 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
       setStatus('success');
       dataKeyRef.current = queryKeyHash;
     }
-  }, [queryKeyHash, enabled, isHydrating]);
+  });
+  useEffect(activateObserver, [client, queryKeyHash, enabled, isHydrating, activateObserver]);
 
   // Cache subscription — keep local mirror in lockstep with the
   // shared store on every mutation (write/error/invalidate/evict)
   // and forward the per-observer cacheTime hint for GC.
-  useEffect(() => {
+  const subscribeObserver = useCommittedCallback(() => {
     const cache = client.getQueryCache();
     const unsubscribe = cache.subscribe(
       queryKey,
@@ -532,7 +552,8 @@ export function useInfiniteQuery<TData = unknown, TError = NetronError, TPagePar
     );
 
     return unsubscribe;
-  }, [client, queryKeyHash, cacheTime]);
+  });
+  useEffect(subscribeObserver, [client, queryKeyHash, cacheTime, subscribeObserver]);
 
   // Mount/unmount tracking. See useQuery for the StrictMode
   // rationale — without explicit `isMounted.current = true` on

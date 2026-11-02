@@ -4,7 +4,7 @@ import os from 'node:os';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  daemon: vi.fn(), control: vi.fn(), candidate: vi.fn(), migrations: vi.fn(), installation: vi.fn(), supervised: vi.fn(),
+  ambientHome: '/ambient-instance-must-not-be-used', daemon: vi.fn(), control: vi.fn(), candidate: vi.fn(), migrations: vi.fn(), installation: vi.fn(), supervised: vi.fn(),
 }));
 vi.mock('../../src/daemon/daemon-client.js', () => ({ createDaemonClient: mocks.daemon }));
 vi.mock('../../src/daemon/private-control-client.js', () => ({ privateControlClient: mocks.control }));
@@ -12,7 +12,7 @@ vi.mock('../../src/daemon/backend-candidate.js', () => ({ checkBackendCandidate:
 vi.mock('../../src/daemon/runtime-installation.js', () => ({ RuntimeInstallation: { open: mocks.installation } }));
 vi.mock('../../src/daemon/backend-child.js', () => ({ supervisesBackendChildren: mocks.supervised }));
 vi.mock('../../src/config/defaults.js', async importOriginal => ({
-  ...await importOriginal<typeof import('../../src/config/defaults.js')>(), OMNITRON_HOME: '/ambient-instance-must-not-be-used',
+  ...await importOriginal<typeof import('../../src/config/defaults.js')>(), get OMNITRON_HOME() { return mocks.ambientHome; },
 }));
 
 import { replaceBackend, recoverBackend } from '../../src/daemon/backend-upgrade.js';
@@ -23,7 +23,7 @@ import { writePrivateRecord } from '../../src/daemon/execution-journal.js';
 import type { BackendBootRecord } from '../../src/daemon/backend-handoff-types.js';
 
 const roots: string[] = [];
-beforeEach(() => { vi.resetAllMocks(); mocks.supervised.mockReturnValue(false); });
+beforeEach(() => { vi.resetAllMocks(); mocks.ambientHome = '/ambient-instance-must-not-be-used'; mocks.supervised.mockReturnValue(false); });
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
 async function fixture(managed = false) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-instance-')); roots.push(root);
@@ -36,8 +36,8 @@ async function fixture(managed = false) {
   };
   if (managed) await writePrivateRecord(managedRuntimeFile(home), config);
   const socket = path.join(root, 'custom-public.sock'), control = path.join(execution, 'c-test.sock');
-  const status = { instanceHome: home, entry: '/prior/packages/0/dist/daemon/daemon-entry.js', runtime: { owner: { id: 'fixture-owner', pid: 123 } } };
-  const snapshot = { protocol: 1, status: { owner: status.runtime.owner }, capabilities: {} as Record<string, number> };
+  const status = { pid: 741, instanceHome: home, entry: '/prior/packages/0/dist/daemon/daemon-entry.js', runtime: { owner: { id: 'fixture-owner', pid: 123 } } };
+  const snapshot = { inventoryDigest: 'd'.repeat(64), protocol: 1, status: { owner: status.runtime.owner }, capabilities: {} as Record<string, number> };
   const observe = vi.fn().mockImplementation(async () => snapshot);
   const prepare = vi.fn();
   const upgrade = vi.fn().mockResolvedValue({ checked: true, build: { commit: 'target' } });
@@ -84,7 +84,7 @@ it('delegates to the selected managed instance and never the ambient instance', 
   await expect(replaceBackend('/candidate', { socket: target.socket, checkOnly: true })).resolves.toMatchObject({ build: { commit: 'target' } });
   expect(target.upgrade).toHaveBeenCalledWith({ directory: '/candidate', checkOnly: true });
   expect(mocks.control.mock.calls.map(call => call[0])).toEqual([target.control, path.join(target.execution, 'supervisor.sock')]);
-  expect(mocks.candidate).toHaveBeenCalledWith('/candidate');
+  expect(mocks.candidate).toHaveBeenCalledWith('/candidate', undefined, undefined);
 });
 
 it.each([false, true])('refuses an incompatible owner before draining or delegating (managed=%s)', async managed => {
@@ -157,4 +157,24 @@ it('resolves certified crash recovery from the requested journal, including unma
     await changed.close();
     await expect(recoverBackendAfterCrash(target.execution)).rejects.toThrow('different execution directory');
   }
+});
+
+it.each(['revision', 'inventory'])('refuses stale %s under the native selection lease before installation or retirement', async change => {
+  const target = await fixture(true);
+  const previous = 'a'.repeat(64), candidate = 'b'.repeat(64), inventory = 'd'.repeat(64);
+  mocks.ambientHome = target.home; mocks.supervised.mockReturnValue(true);
+  const install = vi.fn(), selection = { current: previous, revision: 4 };
+  const fence = { current: previous, candidate, selectionRevision: 4, backendPid: 741, ownerId: 'fixture-owner', ownerPid: 123, appsDigest: inventory };
+  mocks.candidate.mockImplementation(async directory => ({ directory, runtimeHash: directory === '/candidate' ? candidate : previous }));
+  mocks.installation.mockResolvedValue({
+    close: vi.fn(), activation: () => null, selection: () => selection, install,
+    exclusive: async (work: () => Promise<void>) => {
+      if (change === 'revision') selection.revision++;
+      else target.snapshot.inventoryDigest = 'e'.repeat(64);
+      return work();
+    },
+  });
+  await expect(replaceBackend('/candidate', { socket: target.socket, fence })).rejects.toThrow(
+    change === 'revision' ? 'selection changed since rollout planning' : 'application inventory changed');
+  expect(install).not.toHaveBeenCalled(); expect(target.prepare).not.toHaveBeenCalled();
 });

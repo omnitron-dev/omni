@@ -32,6 +32,8 @@ function node(missingContract = false, failCandidate = false, failHealth = false
   deployer.underLease = vi.fn(async (_target, _purpose, work) => work());
   deployer.sshExecData = vi.fn(async (_target, command: string) => {
     commands.push(command);
+    if (command.includes('Unsupported or unsafe managed supervisor installation'))
+      return execSync(command, { encoding: 'utf8', env: { ...process.env, OMNITRON_HOME: path.join(prefix, 'instance') } });
     if (command.includes('/platform-operations')) return execSync(command, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     if (command.includes('const records=ids.map')) return execSync(command, { encoding: 'utf8' });
     if (command.includes('Candidate bootstrap preflight failed')) {

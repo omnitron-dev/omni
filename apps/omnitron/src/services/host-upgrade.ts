@@ -3,7 +3,10 @@ import { shellEscape } from '../shared/shell-escape.js';
 
 export const HOST_UPGRADE_CONTRACT = 'omnitron.host-upgrade.json';
 export interface ApplicationRuntime { root: string; executable: string; commit: string }
-export interface InstalledBundle { root: string; version: string; commit: string; applicationRuntime?: ApplicationRuntime }
+export interface InstalledBundle {
+  root: string; version: string; commit: string; applicationRuntime?: ApplicationRuntime;
+  managed?: { platform: string; arch: string; nodeVersion: string; backendArtifact: string; backendPid: number; ownerArtifact: string; ownerId: string; ownerPid: number };
+}
 export interface AppUpgradeContract {
   name: string;
   /** Immutable release directory, not a current symlink. Hooks must not replace source or application data. */

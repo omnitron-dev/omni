@@ -114,10 +114,28 @@ async function freshRecoveryRecord(record: BackendBootRecord): Promise<{ file: s
   } finally { await execution.close(); }
 }
 
+/** All IDs in this fence come from an earlier observation of the same native installation. */
+export interface KernelHandoffFence {
+  current: string; candidate: string; selectionRevision: number;
+  backendPid: number; ownerId: string; ownerPid: number; appsDigest: string;
+}
+
+export function assertKernelHandoffFence(fence: KernelHandoffFence): void {
+  if (!fence || ![fence.current, fence.candidate, fence.appsDigest].every(v => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v)) ||
+      ![fence.selectionRevision, fence.backendPid, fence.ownerPid].every(v => Number.isSafeInteger(v) && v > 0) ||
+      typeof fence.ownerId !== 'string' || !fence.ownerId || fence.ownerId.length > 128 || fence.current === fence.candidate)
+    throw Error('Invalid managed kernel handoff fence');
+}
+
 /** Installs verified local artifacts; never downloads packages, migrates schemas or restarts applications. */
 export async function replaceBackend(directory: string, options: {
-  socket?: string; checkOnly?: boolean; schemaPlan?: string; progress?: (message: string) => void;
+  socket?: string; checkOnly?: boolean; schemaPlan?: string; fence?: KernelHandoffFence; progress?: (message: string) => void;
 } = {}): Promise<BackendReplacementResult | { checked: true; build: BackendArtifact['build'] }> {
+  const fence = options.fence;
+  if (fence) {
+    assertKernelHandoffFence(fence);
+    if (!supervisesBackendChildren()) throw Error('Fenced handoff requires the native guardian');
+  }
   const progress = options.progress ?? (() => {});
   const client = createDaemonClient(options.socket, 15_000);
   let address: { socket: string };
@@ -146,9 +164,9 @@ export async function replaceBackend(directory: string, options: {
     // when both use private RPC protocol 1. Check BEFORE delegating to an older
     // guardian or draining the current backend, and again immediately before
     // preparing the handoff. Observation never claims controller authority.
-    const artifact = await checkBackendCandidate(directory);
+    const artifact = await checkBackendCandidate(directory, undefined, fence?.candidate);
     const validateOwner = async () => {
-      if (!Object.keys(artifact.executionRequirements ?? {}).length) return;
+      if (!fence && !Object.keys(artifact.executionRequirements ?? {}).length) return;
       const owner = await privateControlClient<ExecutionHostService>(path.join(path.dirname(address.socket), 'owner.sock'), 'OmnitronExecution');
       try {
         const snapshot = await owner.service.snapshot();
@@ -156,7 +174,9 @@ export async function replaceBackend(directory: string, options: {
             snapshot.status.owner.id !== previous.runtime.owner.id || snapshot.status.owner.pid !== previous.runtime.owner.pid) {
           throw new Error('Execution owner identity changed; backend activation is refused');
         }
-        assertExecutionCapabilities(snapshot.capabilities, artifact.executionRequirements!);
+        if (fence && (snapshot.status.owner.id !== fence.ownerId || snapshot.status.owner.pid !== fence.ownerPid ||
+            snapshot.inventoryDigest !== fence.appsDigest)) throw Error('Planned execution owner or application inventory changed');
+        assertExecutionCapabilities(snapshot.capabilities, artifact.executionRequirements ?? {});
       } finally { await owner.close(); }
     };
     await validateOwner();
@@ -183,6 +203,12 @@ export async function replaceBackend(directory: string, options: {
     if (!installation) throw new Error('Could not open the runtime installation');
     try { return await installation.exclusive(async () => {
       if (installation.activation()) throw new Error('A previous activation is unfinished; inspect its recovery checkpoint first');
+      if (fence) {
+        const current = installation.selection();
+        if (current?.current !== fence.current || current.revision !== fence.selectionRevision ||
+            rollback.runtimeHash !== fence.current || previous.pid !== fence.backendPid) throw Error('Native kernel selection changed since rollout planning');
+        await validateOwner();
+      }
       progress('Installing verified candidate and rollback releases in permanent storage');
       const installedCandidate = await installation.install(artifact.runtimeRoot);
       const installedRollback = await installation.install(rollback.runtimeRoot);
@@ -200,6 +226,8 @@ export async function replaceBackend(directory: string, options: {
       // All fallible pre-retirement checks still have an abort path.
       try {
         record = await readBackendBootRecord(prepared.file);
+        if (fence && (record.previousPid !== fence.backendPid || record.state.ticket.ownerId !== fence.ownerId ||
+            record.state.executionInventory !== fence.appsDigest)) throw Error('Prepared application inventory differs from the kernel rollout plan');
         record.previousEntry = installedRollback.entry;
         await writePrivateRecord(prepared.file, record);
         await verifyBackendEntry(installedCandidate); await verifyBackendEntry(installedRollback);

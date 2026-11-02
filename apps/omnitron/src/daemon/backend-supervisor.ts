@@ -12,7 +12,7 @@ import { PidManager } from './pid-manager.js';
 import { ExecutionClient } from './execution-client.js';
 import { RuntimeInstallation } from './runtime-installation.js';
 import { ownBackendChildren } from './backend-child.js';
-import { replaceBackend, recoverBackend, type BackendReplacementResult } from './backend-upgrade.js';
+import { assertKernelHandoffFence, replaceBackend, recoverBackend, type KernelHandoffFence, type BackendReplacementResult } from './backend-upgrade.js';
 import { recoverBackendAfterCrash } from './backend-crash-recovery.js';
 import { readPrivateRecord, writePrivateRecord } from './execution-journal.js';
 import { managedJobPid, verifyManagedIsolation, hostBootIdentity, type ManagedRuntime } from './managed-runtime.js';
@@ -20,6 +20,8 @@ import type { BackendArtifact } from './backend-candidate.js';
 import { checkBackendCandidate, verifyBackendEntry } from './backend-candidate.js';
 
 export interface SupervisorStatus {
+  kernelHandoff?: 1;
+  operationPending?: boolean;
   pid: number;
   backendPid: number | null;
   ownerPid: number | null;
@@ -57,10 +59,20 @@ export class BackendSupervisorService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async status(): Promise<SupervisorStatus> { return { ...this.state }; }
+  async status(): Promise<SupervisorStatus> { return { ...this.state, kernelHandoff: 1, operationPending: this.busy }; }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async upgrade(data: { directory: string; checkOnly?: boolean; schemaPlan?: string }): Promise<BackendReplacementResult | { checked: true; build: BackendArtifact['build'] }> {
+    return this.replace(data);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async upgradeIfCurrent(fence: KernelHandoffFence): Promise<BackendReplacementResult | { checked: true; build: BackendArtifact['build'] }> {
+    assertKernelHandoffFence(fence);
+    return this.replace({ directory: path.join(this.config.instanceHome, 'runtime/releases', fence.candidate, 'packages/0/dist'), fence });
+  }
+
+  private async replace(data: { directory: string; checkOnly?: boolean; schemaPlan?: string; fence?: KernelHandoffFence }): Promise<BackendReplacementResult | { checked: true; build: BackendArtifact['build'] }> {
     if (!path.isAbsolute(data.directory)) throw new Error('An absolute installed candidate path is required');
     return this.exclusive(async () => {
       await this.isolation();
@@ -68,6 +80,7 @@ export class BackendSupervisorService {
       try { await fs.access(path.join(candidate.directory, 'daemon/managed-entry.js')); }
       catch { throw new Error('This candidate predates independent supervision and cannot replace an OS-managed backend'); }
       const result = await replaceBackend(data.directory, { socket: this.daemonConfig.socketPath, checkOnly: data.checkOnly === true,
+        ...(data.fence ? { fence: data.fence } : {}),
         ...(data.schemaPlan ? { schemaPlan: data.schemaPlan } : {}) });
       if (!('checked' in result)) await this.ready(result.pid);
       return result;

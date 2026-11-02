@@ -55,6 +55,8 @@ import {
 import { gunzipSync } from 'node:zlib';
 import { shellEscape } from '../shared/shell-escape.js';
 import { fromDataChannel, throughDataChannel } from '../execution/data-channel.js';
+import { activateManagedTarget, managedHostCommand, planManagedRollout, reconcileManagedTarget,
+  type ManagedHostEvidence, type ManagedHostRequest, type ManagedRolloutObservation } from './managed-rollout.js';
 
 /** A node that could not be asked at all — the SSH call itself failed. */
 const UNREADABLE = -3;
@@ -1678,12 +1680,63 @@ export class RemoteDeployer {
     await this.sshExecData(target, hostOperationBarrierCommand(prefix, allowance));
   }
 
+  private async readManagedHost(target: DeployTarget, request: ManagedHostRequest): Promise<ManagedHostEvidence | null> {
+    return JSON.parse(await this.sshExecData(target, managedHostCommand(request), 480_000)) as ManagedHostEvidence | null;
+  }
+
+  private assertManagedTarget(target: DeployTarget): void {
+    assertControlledDaemonPort(target.daemonPort);
+    if (!target.expectedHostFingerprint) throw Error('Managed kernel rollout requires a pinned SSH host key');
+  }
+
+  private async checkManagedTarget(target: DeployTarget): Promise<void> {
+    await this.assertNoPendingHostOperations(target, '/opt/omnitron');
+    const pending = JSON.parse(await this.sshExecData(target, pendingReceiptsCommand('/opt/omnitron'))) as HostUpgradeReceipt[];
+    if (pending.length) throw Error('An unfinished host upgrade must be reconciled before kernel rollout');
+  }
+
+  async inspectManagedRollout(target: DeployTarget, commit: string, options: { stage?: boolean } = {}): Promise<ManagedRolloutObservation> {
+    this.assertManagedTarget(target);
+    if (!/^[0-9a-f]{40}$/.test(commit)) throw Error('A full lowercase Git commit is required');
+    const inspect = () => planManagedRollout(request => this.readManagedHost(target, request), commit);
+    if (!options.stage) {
+      await this.checkManagedTarget(target);
+      return inspect();
+    }
+    return this.underLease(target, 'stage managed kernel', async () => {
+      await this.checkManagedTarget(target);
+      const { stageCatalogRuntime } = await import('./kernel-distribution.js');
+      const expected = await stageCatalogRuntime(this, target, commit);
+      const plan = await inspect();
+      if (plan.candidate !== expected) throw Error('Installed runtime differs from the qualified catalog artifact');
+      return plan;
+    });
+  }
+
+  async activateManagedRollout(target: DeployTarget, plan: ManagedRolloutObservation): Promise<void> {
+    this.assertManagedTarget(target);
+    return this.underLease(target, 'managed kernel handoff', async () => {
+      await this.checkManagedTarget(target);
+      await activateManagedTarget(request => this.readManagedHost(target, request), plan);
+    });
+  }
+
+  async reconcileManagedRollout(target: DeployTarget, plan: ManagedRolloutObservation): Promise<'previous' | 'candidate'> {
+    this.assertManagedTarget(target);
+    return this.underLease(target, 'reconcile managed kernel handoff', async () => {
+      await this.checkManagedTarget(target);
+      return reconcileManagedTarget(request => this.readManagedHost(target, request), plan);
+    });
+  }
+
   /** Require a settled host and the actual serving immutable daemon build. */
   async inspectInstalledBundle(target: DeployTarget, prefix = '/opt/omnitron', allowance?: HostOperationAllowance): Promise<InstalledBundle> {
     assertControlledDaemonPort(target.daemonPort);
     await this.assertNoPendingHostOperations(target, prefix, allowance);
     const pending = JSON.parse(await this.sshExecData(target, pendingReceiptsCommand(prefix))) as HostUpgradeReceipt[];
     if (pending.length) throw new Error(`Unfinished host upgrade ${pending.map(r => r.id).join(', ')}; recover it before deploying an app`);
+    const managed = await this.readManagedHost(target, { operation: 'inspect' });
+    if (managed) return managed.bundle;
     const bundle = JSON.parse(await this.sshExecData(target, bundleProbeCommand(prefix))) as InstalledBundle;
     const status = JSON.parse(await this.sshExecData(target, inventoryCommand(bundle, false))) as HostInventory['status'];
     assertServingBundle(bundle, status);
@@ -1719,6 +1772,7 @@ export class RemoteDeployer {
           return false;
         }
         const previous = await this.inspectInstalledBundle(target, prefix, allowance);
+        if (previous.managed) throw Error('Independent owner detected. Use a sealed managed kernel rollout for this node');
         const candidate = JSON.parse(await this.sshExecData(target, bundleProbeCommand(prefix, version))) as InstalledBundle;
         await this.sshExec(target, `${shellEscape(`${candidate.root}/dist/cli/omnitron.js`)} --version`, 120_000);
         const inventory = JSON.parse(await this.sshExecData(target, inventoryCommand(previous, true))) as HostInventory;

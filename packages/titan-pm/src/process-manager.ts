@@ -11,7 +11,7 @@ import path from 'node:path';
 import { Injectable } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
-import { isOperationalError, createOperationalErrorRecorder, isProcessAlive } from '@omnitron-dev/titan/utils';
+import { isOperationalError, createOperationalErrorRecorder, isProcessAlive, withTimeout } from '@omnitron-dev/titan/utils';
 
 import type {
   IProcessManager,
@@ -73,6 +73,8 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
   private readonly inFlightSpawns = new Map<string, Promise<void>>();
   private readonly killRequested = new Set<string>();
   private isShuttingDown = false;
+  private shutdownPromise: Promise<void> | null = null;
+  private readonly initializingPools = new Set<Promise<void>>();
 
   private readonly registry: ProcessRegistry;
   private readonly spawner: IProcessSpawner;
@@ -184,6 +186,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
     processPathOrClass: string | (new (...args: any[]) => T),
     options: IProcessOptions = {}
   ): Promise<ServiceProxy<T>> {
+    this.assertOpen();
     const processId = generateUuidV7();
 
     // Handle both string path and class
@@ -355,10 +358,10 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
     processPathOrClass: string | (new (...args: any[]) => T),
     options: IProcessPoolOptions = {}
   ): Promise<IProcessPool<T>> {
+    this.assertOpen();
     const pool = new ProcessPool<T>(this, processPathOrClass, options, this.logger);
 
-    await pool.initialize();
-
+    // Track before initialization: shutdown also owns pools still spawning.
     // Track pool for graceful shutdown
     const poolId = `pool-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     this.pools.set(poolId, pool as ProcessPool<unknown>);
@@ -367,14 +370,32 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
     pool.on('pool:destroyed', () => {
       this.pools.delete(poolId);
     });
+    const initializing = pool.initialize();
+    this.initializingPools.add(initializing);
+    try {
+      await initializing;
+      if (this.isShuttingDown) {
+        await pool.destroy();
+        this.assertOpen();
+      }
+    } finally { this.initializingPools.delete(initializing); }
 
     // Create a proxy that allows direct method calls on the pool
     // The proxy implements the full IProcessPool<T> interface including ServiceProxy<T> methods
+    type PoolMethod = (...args: unknown[]) => unknown;
+    const boundMethods = new WeakMap<PoolMethod, PoolMethod>();
     return new Proxy(pool, {
       get(target, property: string | symbol) {
-        // Return pool properties and methods if they exist
+        // Bind lifecycle methods to the pool itself. Its private optional fields
+        // must not fall through this RPC proxy as invented remote methods.
         if (property in target) {
-          return (target as any)[property];
+          const value = (target as any)[property];
+          if (typeof value !== 'function') return value;
+          const existing = boundMethods.get(value);
+          if (existing) return existing;
+          const bound: PoolMethod = value.bind(target);
+          boundMethods.set(value, bound);
+          return bound;
         }
 
         // Prevent the proxy from being treated as a Promise
@@ -415,6 +436,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
    * Create a workflow
    */
   async workflow<T>(WorkflowPathOrClass: string | (new () => T)): Promise<T> {
+    this.assertOpen();
     let WorkflowClass: new () => T;
 
     // Handle file path case
@@ -424,6 +446,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
       WorkflowClass = WorkflowPathOrClass;
     }
 
+    this.assertOpen();
     const workflow = new ProcessWorkflow<T>(this, WorkflowClass, this.logger);
 
     return workflow.create();
@@ -531,6 +554,7 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
     classOrConfig: (new () => any) | ISupervisorConfig,
     options: ISupervisorOptions = {}
   ): ProcessSupervisor {
+    this.assertOpen();
     if (typeof classOrConfig === 'function') {
       return new ProcessSupervisor(this, classOrConfig, options, this.logger);
     }
@@ -726,82 +750,62 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
   }
 
   /**
-   * Shutdown all processes
+   * Terminal, single-flight shutdown. Every caller observes the same result,
+   * including failure; calling again never certifies a previously failed stop.
    */
-  async shutdown(options: { timeout?: number; force?: boolean } = {}): Promise<void> {
-    if (this.isShuttingDown) {
-      return;
+  shutdown(options: { timeout?: number; force?: boolean } = {}): Promise<void> {
+    if (this.shutdownPromise) return this.shutdownPromise;
+    const { timeout = 30_000, force = false } = options;
+    if (!Number.isFinite(timeout) || timeout < 0) {
+      return Promise.reject(Errors.badRequest('Shutdown timeout must be finite and non-negative'));
     }
-
+    // Fence admission synchronously, before taking any shutdown inventory.
     this.isShuttingDown = true;
-    const { timeout = 30000, force = false } = options;
+    this.shutdownPromise = Promise.resolve().then(() => this.shutdownOnce(timeout, force));
+    return this.shutdownPromise;
+  }
 
+  private async shutdownOnce(timeout: number, force: boolean): Promise<void> {
     this.logger.info('Shutting down Process Manager');
-
-    // Stop the liveness sweep BEFORE we start tearing things
-    // down — otherwise a sweep firing mid-shutdown could
-    // synthesize spurious crash events for workers we're
-    // already in the process of terminating.
     if (this.livenessSweepTimer) {
       clearInterval(this.livenessSweepTimer);
       this.livenessSweepTimer = undefined;
     }
+    const failures: unknown[] = [];
+    const deadline = Date.now() + timeout;
+    const settle = async (phase: string, work: Promise<unknown>[], budget = deadline - Date.now()) => {
+      try {
+        const results = await withTimeout(Promise.allSettled(work), Math.max(0, budget),
+          `Process Manager shutdown ${phase} exceeded its deadline; termination is unconfirmed`);
+        for (const result of results) if (result.status === 'rejected') failures.push(result.reason);
+      } catch (error) { failures.push(error); }
+    };
 
-    try {
-      // Phase 1: Drain all pools first to complete in-flight requests
-      if (this.pools.size > 0 && !force) {
-        this.logger.info({ poolCount: this.pools.size }, 'Draining pools before shutdown');
-
-        const drainPromises = Array.from(this.pools.values()).map(async (pool) => {
-          try {
-            await pool.drain();
-          } catch (error) {
-            this.logger.warn({ error }, 'Pool drain failed during shutdown');
-          }
-        });
-
-        // Give pools time to drain, but don't block forever
-        const drainTimeout = Math.min(timeout / 2, 15000);
-        await Promise.race([
-          Promise.all(drainPromises),
-          new Promise<void>((resolve) => setTimeout(resolve, drainTimeout)),
-        ]);
-      }
-
-      // Phase 2: Destroy all pools (cleans up pool workers)
-      const destroyPoolPromises = Array.from(this.pools.values()).map(async (pool) => {
-        try {
-          await pool.destroy();
-        } catch (error) {
-          this.logger.warn({ error }, 'Pool destroy failed during shutdown');
-        }
-      });
-      await Promise.all(destroyPoolPromises);
-      this.pools.clear();
-
-      // Phase 3: Kill remaining processes
-      const shutdownPromises = Array.from(this.processes.keys()).map((processId) =>
-        this.kill(processId, force ? 'SIGKILL' : 'SIGTERM')
-      );
-
-      await Promise.race([
-        Promise.all(shutdownPromises),
-        new Promise<void>((_, reject) =>
-          setTimeout(() => reject(Errors.timeout('Process Manager shutdown', timeout)), timeout)
-        ),
-      ]);
-    } catch (error) {
-      if (force) {
-        // Force kill all processes
-        for (const processId of this.processes.keys()) {
-          await this.kill(processId, 'SIGKILL');
-        }
-      } else {
-        throw error;
-      }
+    // Admitted initialization may already be spawning workers. New admission is
+    // fenced, and a late initializer destroys its pool before returning to callers.
+    await settle('initialization', [...this.initializingPools]);
+    const pools = [...this.pools.entries()];
+    if (pools.length && !force) {
+      await settle('pool drain', pools.map(([, pool]) => Promise.resolve().then(() => pool.drain())),
+        Math.min(15_000, Math.max(0, deadline - Date.now()) / 2));
     }
-
+    // Keep failed pools/worker handles owned for diagnosis. Attempt every cleanup
+    // even when a sibling rejects, but never turn an error/timeout into success.
+    await settle('pool destruction', pools.map(([id, pool]) => Promise.resolve().then(async () => {
+      await pool.destroy();
+      this.pools.delete(id);
+    })));
+    await settle('worker termination', [...this.processes.keys()].map(id =>
+      this.kill(id, force ? 'SIGKILL' : 'SIGTERM')));
+    if (failures.length) {
+      throw new AggregateError(failures,
+        `Process Manager shutdown incomplete: ${failures.map(String).join('; ')}`);
+    }
     this.logger.info('Process Manager shutdown complete');
+  }
+
+  private assertOpen(): void {
+    if (this.isShuttingDown) throw Errors.badRequest('Process Manager shutdown has begun; new process admission is closed');
   }
 
   // ============================================================================

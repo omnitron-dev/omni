@@ -1086,6 +1086,8 @@ export interface IProcessManager extends EventEmitter {
   getWorkerHandle(processId: string): IWorkerHandle | undefined;
 
   /** Shutdown all processes */
+  /** Terminal single-flight operation. Repeated calls retain its success or rejection;
+   * a rejected/expired shutdown is never proof of worker termination. */
   shutdown(options?: { timeout?: number; force?: boolean }): Promise<void>;
 }
 

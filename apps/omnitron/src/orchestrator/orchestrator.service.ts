@@ -243,6 +243,8 @@ export class OrchestratorService extends EventEmitter {
    * for the same name isn't permanently locked out.
    */
   private readonly startingApps = new Map<string, Promise<AppHandle>>();
+  private stoppingApps: Promise<number> | null = null;
+  private stopGeneration = 0;
 
   /**
    * Per-app async serial-execution queue covering start / stop / restart
@@ -802,6 +804,8 @@ export class OrchestratorService extends EventEmitter {
   }
 
   async startApp(entry: IEcosystemAppEntry, config?: IEcosystemConfig): Promise<AppHandle> {
+    const stopGeneration = this.stopGeneration;
+    if (this.stoppingApps) throw new Error('Application stop is in progress; new starts are not admitted');
     // T#63: run the one-shot cold-start reconcile (orphan reap +
     // janitor arming) before ANY app spawns. Project-mode boots flow
     // through `projectService.startStack → orchestrator.startApp`
@@ -810,6 +814,9 @@ export class OrchestratorService extends EventEmitter {
     // listen ports and the fresh child failed to bind silently.
     // No-op after first call thanks to `bootReconciled`.
     await this.ensureBootReconciled(config);
+    if (this.stoppingApps || stopGeneration !== this.stopGeneration) {
+      throw new Error('Application stop interrupted start admission');
+    }
 
     // Defensive auto-namespacing — promotes a bare entry.name to the
     // canonical `${project}/${stack}/${name}` form when the env carries
@@ -1179,7 +1186,17 @@ export class OrchestratorService extends EventEmitter {
     });
   }
 
-  async stopAll(force = false): Promise<number> {
+  stopAll(force = false): Promise<number> {
+    if (this.stoppingApps) return this.stoppingApps;
+    this.stopGeneration++;
+    const operation = Promise.resolve().then(() => this.stopAllOnce(force));
+    this.stoppingApps = operation;
+    const settled = () => { if (this.stoppingApps === operation) this.stoppingApps = null; };
+    void operation.then(settled, settled);
+    return operation;
+  }
+
+  private async stopAllOnce(force: boolean): Promise<number> {
 
     if (this.metricsTimer) {
       clearInterval(this.metricsTimer);
@@ -1193,6 +1210,7 @@ export class OrchestratorService extends EventEmitter {
     }
 
     let count = 0;
+    const failures: unknown[] = [];
     // When force=true (daemon shutdown), use short timeout per app (3s SIGTERM, then SIGKILL)
     const perAppTimeout = force ? 3_000 : 10_000;
 
@@ -1230,28 +1248,29 @@ export class OrchestratorService extends EventEmitter {
             await this.stopApp(entry.name, force, perAppTimeout);
             count++;
           } catch (err) {
+            failures.push(new Error(`Application '${entry.name}' stop failed: ${String(err)}`, { cause: err }));
             this.logger.error({ app: entry.name, error: (err as Error).message }, 'Failed to stop');
           }
         })
       );
     }
 
-    try {
-      await this.pm.shutdown({ force, timeout: force ? 5_000 : 30_000 });
-    } catch {
-      /* PM may have nothing left to clean up */
-    }
+    // Stop-all is a reversible application operation. The resident owner (or
+    // Titan lifecycle) owns terminal ProcessManager shutdown, including workers
+    // outside application handles. Keeping that boundary permits startAll later.
 
     // Dispose esbuild watch contexts
     if (this.buildService) {
       try {
         await this.buildService.dispose();
-      } catch { /* best-effort */ }
-      this.buildService = null;
+        this.buildService = null;
+      } catch (error) { failures.push(error); }
     }
     this.buildResults.clear();
     this.bootstrapSources.clear();
 
+    if (failures.length) throw new AggregateError(failures,
+      `Application shutdown incomplete: ${failures.map(String).join('; ')}`);
     return count;
   }
 

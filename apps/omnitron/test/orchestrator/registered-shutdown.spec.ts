@@ -53,7 +53,7 @@ describe('shutdown owns all registered projects', () => {
     state.handles.set(handle.name, handle);
     expect(await service.stopAll()).toBe(1);
     expect(stop).toHaveBeenCalledOnce(); expect(destroy).toHaveBeenCalledOnce();
-    expect(pm.shutdown).toHaveBeenCalledOnce(); expect(handle.status).toBe('stopped');
+    expect(pm.shutdown).not.toHaveBeenCalled(); expect(handle.status).toBe('stopped');
   });
 
   it('resolves dependencies in their own project and stops consumers first', async () => {
@@ -69,6 +69,49 @@ describe('shutdown owns all registered projects', () => {
     }
     expect(await service.stopAll()).toBe(4);
     for (const project of ['first', 'second']) expect(stopped.indexOf(`${project}/local/api`)).toBeLessThan(stopped.indexOf(`${project}/local/core`));
+  });
+
+  it('reports all stop errors after attempting every application and build cleanup', async () => {
+    const { service, state, pm } = harness();
+    const good = vi.fn(async () => {}), bad = vi.fn(async () => { throw new Error('worker survived'); });
+    for (const [name, stop] of [['failed', bad], ['healthy', good]] as const) {
+      const handle = new AppHandle({ name }, 'bootstrap'); handle.status = 'online';
+      handle.supervisor = { stop } as never; state.handles.set(name, handle);
+    }
+    const dispose = vi.fn(async () => { throw new Error('watcher cleanup failed'); });
+    state.buildService = { dispose };
+    const error = await service.stopAll().catch(error => error);
+    expect(error).toBeInstanceOf(AggregateError); expect(error.errors).toHaveLength(2);
+    expect(String(error)).toContain('worker survived'); expect(String(error)).toContain('watcher cleanup failed');
+    expect(good).toHaveBeenCalledOnce(); expect(dispose).toHaveBeenCalledOnce();
+    expect(state.handles.get('healthy').status).toBe('stopped');
+    expect(state.handles.get('failed').status).not.toBe('stopped');
+    expect(pm.shutdown).not.toHaveBeenCalled();
+  });
+
+  it('shares concurrent stop work and permits an explicit retry after failure', async () => {
+    const { service, state } = harness(); let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const handle = new AppHandle({ name: 'worker' }, 'bootstrap'); handle.status = 'online';
+    const stop = vi.fn(async () => { await gate; throw new Error('still alive'); });
+    handle.supervisor = { stop } as never; state.handles.set(handle.name, handle);
+    const first = service.stopAll(); const observed = first.catch(error => error);
+    expect(service.stopAll(true)).toBe(first);
+    await expect(service.startApp({ name: 'late' })).rejects.toThrow('stop is in progress');
+    release(); expect(await observed).toBeInstanceOf(AggregateError);
+    stop.mockResolvedValue(undefined);
+    expect(await service.stopAll()).toBe(1); expect(stop).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects a start waiting at admission when stop-all has already completed', async () => {
+    const { service, state } = harness(); let release!: () => void;
+    state.ensureBootReconciled = vi.fn(() => new Promise<void>(resolve => { release = resolve; }));
+    const launch = vi.spyOn(state, 'startAppInternal');
+    const starting = service.startApp({ name: 'late' });
+    const observed = starting.catch(error => error);
+    expect(await service.stopAll()).toBe(0);
+    release(); expect(await observed).toMatchObject({ message: 'Application stop interrupted start admission' });
+    expect(launch).not.toHaveBeenCalled();
   });
 
   it('does not leak owned processes if a redefinition introduces a dependency cycle', async () => {

@@ -15,6 +15,7 @@ import { PidManager } from './pid-manager.js';
 import { ExecutionJournal } from './execution-journal.js';
 import { ExecutionHostService } from './execution-host.js';
 import { executionProcessConfig, executionLogManager } from './execution-config.js';
+import { shutdownExecutionOwner } from './execution-shutdown.js';
 
 /** A resident process, separate from the replaceable backend and its system workers. */
 export async function startExecutionOwner(options: {
@@ -83,23 +84,17 @@ export async function startExecutionOwner(options: {
   orchestrator.setDaemonNetron(netron, socket);
   let stopping: Promise<void> | null = null;
   return { service, stop() {
-    stopping ??= (async () => {
-      const phase = (stage: string) => logger.info({ stage }, 'Execution owner shutdown stage');
-      phase('applications');
-      watcher?.stop();
-      await orchestrator.stopAll(false);
-      await pm.shutdown({ timeout: 30_000 });
-      phase('state');
-      await state.flush();
-      phase('logs');
-      await logs.dispose();
-      phase('rpc');
-      await netron.stop();
-      phase('storage');
-      await store.dispose();
-      pid.removeOwned();
-      phase('complete');
-    })();
+    stopping ??= Promise.resolve().then(() => shutdownExecutionOwner({
+      phase: stage => logger.info({ stage }, 'Execution owner shutdown stage'),
+      stopWatching: () => { watcher?.stop(); },
+      stopApplications: () => orchestrator.stopAll(false),
+      stopProcesses: () => pm.shutdown({ timeout: 30_000 }),
+      flushState: () => state.flush(),
+      flushLogs: () => logs.dispose(),
+      stopRpc: () => netron.stop(),
+      closeStorage: () => store.dispose(),
+      removePid: () => { pid.removeOwned(); },
+    }));
     return stopping;
   } };
 }

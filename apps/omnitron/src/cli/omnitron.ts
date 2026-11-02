@@ -324,6 +324,14 @@ stack
   });
 
 stack
+  .command('progress <project> [stack]')
+  .description('Inspect the latest remote transfer phases in a project or stack')
+  .structuredAction(async (projectName, stackName) => {
+    const { stackProgressCommand } = await import('../commands/stack.js');
+    await stackProgressCommand(projectName, stackName);
+  });
+
+stack
   .command('diagnose <project> <stack>')
   .description('Inspect stack prerequisites without starting, provisioning or migrating')
   .structuredAction(async (projectName, stackName) => {

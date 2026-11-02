@@ -46,7 +46,7 @@ import {
 } from 'src/assets/icons';
 
 import { useAuthStore } from 'src/auth/store';
-import { useAccess, PAGE_PERMISSIONS, PageAccess, AccessBoundary } from 'src/auth/access';
+import { useAccess, canOpenPage, PAGE_PERMISSIONS, PageAccess, AccessBoundary } from 'src/auth/access';
 import { ProjectSwitcher } from 'src/components/project-switcher';
 import { StackSelector } from 'src/components/stack-selector';
 import { useActiveProject } from 'src/stores/project.store';
@@ -348,7 +348,7 @@ export function ConsoleLayout() {
       ...section,
       items: section.items.filter((item) => {
         const permission = PAGE_PERMISSIONS[item.path?.split('/')[1] || 'dashboard'];
-        return !permission || can(permission);
+        return canOpenPage(can, permission);
       }),
     }))
     .filter((section) => section.items.length > 0);

@@ -218,8 +218,9 @@ export interface RoleBasedGuardProps {
   useAuth: UseAuth;
   /** Required roles (user must have at least one) */
   roles?: Role[];
-  /** Required permissions (user must have ALL) */
+  /** Required permissions. All are required unless permissionStrategy is specified. */
   permissions?: Permission[];
+  permissionStrategy?: 'any' | 'all';
   /** Require email verification */
   requireEmailVerified?: boolean;
   /** Match strategy for roles: 'any' (default) or 'all' */
@@ -307,6 +308,7 @@ export function RoleBasedGuard({
   useAuth,
   roles = [],
   permissions = [],
+  permissionStrategy = 'all',
   requireEmailVerified = false,
   roleMatchStrategy = 'any',
   loadingComponent = null,
@@ -320,7 +322,7 @@ export function RoleBasedGuard({
   if (!isAuthenticated || !user) reason = 'not_authenticated';
   else if (requireEmailVerified && !user.emailVerified) reason = 'email_not_verified';
   else if (roles.length > 0 && !hasRole(user, roles, roleMatchStrategy)) reason = 'missing_role';
-  else if (permissions.length > 0 && !hasPermission(user, permissions, 'all')) reason = 'missing_permission';
+  else if (permissions.length > 0 && !hasPermission(user, permissions, permissionStrategy)) reason = 'missing_permission';
 
   useEffect(() => {
     if (!isLoading && reason) onAccessDenied?.(reason);

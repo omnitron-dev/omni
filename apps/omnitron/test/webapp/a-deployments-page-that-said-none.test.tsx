@@ -4,17 +4,19 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
-const mocks = vi.hoisted(() => ({ history: vi.fn(), starts: vi.fn(), progress: vi.fn(), deploy: vi.fn(),
+const mocks = vi.hoisted(() => ({ history: vi.fn(), starts: vi.fn(), progress: vi.fn(), deploy: vi.fn(), can: vi.fn(),
   state: { activeProject: 'sample', activeStack: null as string | null,
     projects: [{ name: 'sample', configurations: [{ runtimeProject: 'sample-extra', stacks: { prodA: 'prod' } }] }] },
 }));
 vi.mock('src/netron/client', () => ({ deploy: { getHistory: mocks.history, deployApp: mocks.deploy }, project: { getDeployProgress: mocks.progress } }));
 vi.mock('src/netron/release-wire', () => ({ releaseApi: { deployments: mocks.starts } }));
+vi.mock('src/auth/access', () => ({ useAccess: () => ({ can: mocks.can }) }));
 vi.mock('src/stores/project.store', () => ({ useProjectStore: (select: (state: typeof mocks.state) => unknown) => select(mocks.state) }));
 const { default: DeploymentsPage } = await import('../../webapp/src/pages/deployments');
 const draw = () => render(<ThemeProvider theme={createTheme()}><MemoryRouter><DeploymentsPage /></MemoryRouter></ThemeProvider>);
 const start = (project: string, stack: string, release: string) => ({ project, stack, release, releaseUnnamed: false, at: '2026-10-01T00:00:00Z', source: 'operator', actorId: 'operator', projectCommit: null, omniCommit: null });
 beforeEach(() => { vi.resetAllMocks(); mocks.state.activeProject = 'sample'; mocks.state.activeStack = null;
+  mocks.can.mockReturnValue(true);
   mocks.history.mockResolvedValue([]); mocks.starts.mockResolvedValue({ known: true, deployments: [] }); mocks.progress.mockResolvedValue([]);
 });
 afterEach(cleanup);
@@ -39,7 +41,7 @@ describe('deployment operations workspace', () => {
     expect(await screen.findByRole('link', { name: 'sample-release' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'prod' })).toHaveAttribute('href', '/stacks/prod');
     expect(screen.queryByText('foreign-release')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: /Legacy app operations/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /App history/ }));
     expect(await screen.findByText('old-label')).toBeInTheDocument();
     expect(screen.queryByText('foreign-label')).not.toBeInTheDocument();
     expect(screen.getByText('Requested label')).toBeInTheDocument();
@@ -49,9 +51,39 @@ describe('deployment operations workspace', () => {
     mocks.progress.mockResolvedValue([{ node: 'node.example:9700', app: 'api', status: 'installing', progress: 50, message: 'Unscoped transfer', at: new Date().toISOString() }]);
     draw();
     const toggle = await screen.findByRole('button', { name: /Show unscoped observations/ });
-    expect(screen.getByText(/Project and operation identities are not recorded/)).toBeInTheDocument();
     fireEvent.click(toggle);
+    expect(screen.getByText(/no recorded project or stack/)).toBeInTheDocument();
     expect(await screen.findByText('Unscoped transfer')).toBeVisible();
+  });
+  it('shows only the selected stack including an imported configuration and a shared node/app', async () => {
+    mocks.state.activeStack = 'prod';
+    mocks.starts.mockResolvedValue({ known: true, deployments: [start('sample', 'prod', 'public-stack-record')] });
+    const row = { node: 'shared:9700', app: 'api', status: 'installing', progress: 50, at: new Date().toISOString() };
+    mocks.progress.mockResolvedValue([
+      { ...row, project: 'sample-extra', stack: 'prodA', operationId: 'scope-a', releaseId: 'release-a', message: 'Selected transfer' },
+      { ...row, project: 'foreign', stack: 'prodA', operationId: 'scope-b', message: 'Foreign transfer' },
+      { ...row, project: 'sample', stack: 'dev', operationId: 'scope-c', message: 'Other stack' },
+    ]);
+    draw();
+    expect(await screen.findByText('Selected transfer')).toBeVisible();
+    expect(await screen.findByRole('link', { name: 'public-stack-record' })).toBeVisible();
+    expect(mocks.progress).toHaveBeenCalledWith({ project: 'sample', stack: 'prod' });
+    expect(screen.queryByText('Foreign transfer')).not.toBeInTheDocument();
+    expect(screen.queryByText('Other stack')).not.toBeInTheDocument();
+    expect(screen.getByText('scope-a')).toBeInTheDocument();
+    expect(screen.getByText('release-a')).toBeInTheDocument();
+  });
+  it('a transfer-only viewer polls only the permitted service and sees no deploy action', async () => {
+    mocks.can.mockImplementation(permission => permission === 'OmnitronProject.getDeployProgress');
+    draw();
+    expect(await screen.findByText('No attributed transfer observations for this workspace.')).toBeVisible();
+    expect(mocks.history).not.toHaveBeenCalled();
+    expect(mocks.starts).not.toHaveBeenCalled();
+    expect(screen.queryByRole('link', { name: 'Deploy a release' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh deployments' }));
+    expect(mocks.progress).toHaveBeenCalledTimes(2);
+    expect(mocks.history).not.toHaveBeenCalled();
+    expect(mocks.starts).not.toHaveBeenCalled();
   });
   it('shows progress read failure separately from readable stack history', async () => {
     mocks.progress.mockRejectedValue(new Error('peer unavailable'));

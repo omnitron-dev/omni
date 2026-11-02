@@ -5,11 +5,14 @@ export function projectPrefixes(info: Pick<IProjectInfo, 'configurations'> | und
   if (!project) return [];
   const sources = info?.configurations ?? [];
   if (stack) {
+    const prefixes = new Set<string>();
     for (const source of sources) {
-      const runtimeStack = Object.entries(source.stacks).find(([, name]) => name === stack)?.[0];
-      if (runtimeStack) return [`${source.runtimeProject}/${runtimeStack}/`];
+      for (const [runtime, name] of Object.entries(source.stacks)) {
+        if (name === stack) prefixes.add(`${source.runtimeProject}/${runtime}/`);
+      }
     }
-    return [`${project}/${stack}/`];
+    prefixes.add(`${project}/${stack}/`);
+    return [...prefixes];
   }
   return [...new Set([project, ...sources.map(source => source.runtimeProject)])].map(name => `${name}/`);
 }

@@ -25,7 +25,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { RemoteDeployer, type DeployTarget } from '../../src/services/remote-deployer.service.js';
+import { RemoteDeployer, withDeploymentProgress, type DeployTarget, type DeployProgress } from '../../src/services/remote-deployer.service.js';
 
 /** Every remote command this run was asked to execute. */
 const commands: string[] = [];
@@ -114,6 +114,25 @@ beforeEach(() => {
 });
 
 describe('provisionSlaveNode when the host cannot be reached', () => {
+  it('keeps concurrent starts on a shared target distinct and releases attribution after failure', async () => {
+    const deployer = new RemoteDeployer(logger, execution(() => unreachable));
+    const events: DeployProgress[] = [];
+    deployer.onProgress(event => events.push(event));
+    const starts = ['first', 'second'].map(project => withDeploymentProgress(
+      { project, stack: 'test', operationId: project + '-start', releaseId: project + '-release' },
+      () => deployer.provisionSlaveNode(target, 'master.local', 9700, project),
+    ));
+    expect(await Promise.all(starts)).toEqual([false, false]);
+    expect(deployer.getProgress()).toHaveLength(2);
+    for (const project of ['first', 'second']) {
+      expect(deployer.getProgress()).toContainEqual(expect.objectContaining({ project, stack: 'test', app: '*',
+        node: '10.0.0.7:9700', operationId: project + '-start', releaseId: project + '-release', status: 'failed' }));
+      expect(events.filter(event => event.operationId === project + '-start').every(event => event.project === project)).toBe(true);
+    }
+    await deployer.provisionSlaveNode(target, 'master.local', 9700, 'standalone');
+    expect(events.at(-1)?.operationId).toBeUndefined();
+    expect(deployer.getProgress()).toHaveLength(3);
+  });
   it('installs nothing, because it never learned anything', async () => {
     const d = new RemoteDeployer(logger, execution(() => unreachable));
 
@@ -181,7 +200,7 @@ describe('provisionSlaveNode on a host that answered', () => {
     // The `||` chain this replaced reported `apk`'s error on a Debian host.
     const d = new RemoteDeployer(logger, execution((c) => {
       if (isProbe(c)) return { stdout: BLANK_UBUNTU };
-      if (c.includes('nodejs.org')) return { exitCode: 1, stderr: 'curl: (22) 404' };
+      if (c.includes('nodejs.org')) return { exitCode: 1, stderr: 'curl: (22) 404 token=probe-fixture-secret' };
       return { stdout: 'ok' };
     }));
     const progress: string[] = [];
@@ -191,6 +210,8 @@ describe('provisionSlaveNode on a host that answered', () => {
 
     expect(ok).toBe(false);
     const failure = progress.find((p) => p.startsWith('failed:'));
+    expect(failure).not.toContain('probe-fixture-secret');
+    expect(JSON.stringify(d.getProgress())).not.toContain('probe-fixture-secret');
     expect(failure).toContain('Node.js');
     expect(failure).toContain('404');
     // And it stopped: no point installing a CLI onto a host with no runtime.

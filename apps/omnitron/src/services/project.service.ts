@@ -99,10 +99,12 @@ import {
   RemoteDeployer,
   stackNodeToDeployTarget,
   withNodeCredentials,
+  withDeploymentProgress,
   type DeployTarget,
   type DeployProgressRecord,
 } from './remote-deployer.service.js';
 import { withNodeLeases } from './node-deploy-lease.js';
+import { readDeploymentProgress } from '../shared/release-reading.js';
 import { DEFAULT_MAINTENANCE_TIMING, MaintenanceLock } from './maintenance-lock.js';
 import { gatewayRedisDb } from '../infrastructure/gateway-redis-db.js';
 
@@ -416,6 +418,9 @@ export class ProjectService extends EventEmitter {
     // health checks, which is the only one that can present a password or a
     // key passphrase — see the note at the top of `remote-deployer.service.ts`.
     this.deployer = new RemoteDeployer(logger, new ExecutionService(logger));
+    this.deployer.onProgress(event => {
+      if (event.project && event.stack) this.emit('stack:deploy_progress', event.project, event.stack, event);
+    });
   }
 
   setHostedInfrastructure(get: () => InfrastructureService | undefined, drain: (scope: StackExecutionScope) => Promise<void>): void {
@@ -523,8 +528,11 @@ export class ProjectService extends EventEmitter {
    * `deploying` from the first second to the last, and every event that said
    * WHERE it was reached a handler that re-emitted it to nobody.
    */
-  getDeployProgress(): DeployProgressRecord[] {
-    return this.deployer.getProgress();
+  getDeployProgress(scope?: { project: string; stack?: string }): DeployProgressRecord[] {
+    const records = this.deployer.getProgress();
+    if (!scope) return records;
+    const configurations = this.registry.registrations(scope.project).map(configurationInfo);
+    return readDeploymentProgress(records, { name: scope.project, configurations }, scope.stack).transfers;
   }
 
   listProjects(): IProjectInfo[] {
@@ -3316,7 +3324,10 @@ export class ProjectService extends EventEmitter {
   ): Promise<NodeReach> {
     const phases = reportPhases(this.logger, { project: projectName, stack: stackName });
     try {
-      return await this.deployRemoteStack(projectName, stackName, stackConfig, ecosystemConfig, phases, release, reinstall);
+      return await withDeploymentProgress(
+        { project: projectName, stack: stackName, operationId: randomUUID(), ...(release && { releaseId: release.id }) },
+        () => this.deployRemoteStack(projectName, stackName, stackConfig, ecosystemConfig, phases, release, reinstall),
+      );
     } finally {
       // Every exit, including the refusals: a reporter that outlives its
       // deployment narrates a step nobody is taking.
@@ -3540,9 +3551,6 @@ export class ProjectService extends EventEmitter {
           }
 
           // 1. Provision slave: install runtime + omnitron + generate slave config + start daemon
-          const unsubProvision = this.deployer.onProgress((progress) => {
-            this.emit('stack:deploy_progress', projectName, stackName, progress);
-          });
           const target = targets.get(nodeKey)!;
           const master = await resolveMasterHost(
             { advertiseHost: _dc.advertiseHost, bindHost: _dc.host },
@@ -3572,7 +3580,6 @@ export class ProjectService extends EventEmitter {
             masterPort,
             projectName,
           );
-          unsubProvision();
 
           if (!provisioned) {
             skipped.push(nodeKey);
@@ -3695,9 +3702,6 @@ export class ProjectService extends EventEmitter {
 
           // 3. Deploy app artifacts via SSH
           if (nodeArtifacts.length > 0) {
-            const unsubDeploy = this.deployer.onProgress((progress) => {
-              this.emit('stack:deploy_progress', projectName, stackName, progress);
-            });
             // The definitions travel with the artifacts. A node that receives
             // one without the other has files it cannot run, and says so only if
             // someone asks it directly.
@@ -3714,7 +3718,6 @@ export class ProjectService extends EventEmitter {
               // sink on the stack it runs; named as the master names the stack.
               ...(sink && { alertSink: { ...sink, host: `${projectName}/${stackName}` } }),
             });
-            unsubDeploy();
             const failed = results.filter((r) => r.status === 'failed');
             if (failed.length > 0) {
               // The other half of the same invariant. Building every artifact

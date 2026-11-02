@@ -68,7 +68,13 @@ export function Can({ permission, children }: { permission: RpcPermission; child
   return can(permission) ? children : null;
 }
 
-export function AccessBoundary({ permission, children }: { permission: RpcPermission; children: ReactNode }) {
+type PagePermission = RpcPermission | [RpcPermission, ...RpcPermission[]];
+
+export function canOpenPage(can: AccessState['can'], permission?: PagePermission): boolean {
+  return !permission || (Array.isArray(permission) ? permission.some(can) : can(permission));
+}
+
+export function AccessBoundary({ permission, children }: { permission: PagePermission; children: ReactNode }) {
   const { error, refresh } = useAccess();
   if (error)
     return (
@@ -79,7 +85,8 @@ export function AccessBoundary({ permission, children }: { permission: RpcPermis
   return (
     <RoleBasedGuard
       useAuth={useAuthorization}
-      permissions={[permission]}
+      permissions={Array.isArray(permission) ? permission : [permission]}
+      permissionStrategy="any"
       loadingComponent={<LoadingScreen />}
       accessDeniedComponent={
         <Alert severity="info">
@@ -93,7 +100,7 @@ export function AccessBoundary({ permission, children }: { permission: RpcPermis
 }
 
 /** Entry-point permissions come from the actual RPC each page reads. */
-export const PAGE_PERMISSIONS: Record<string, RpcPermission> = {
+export const PAGE_PERMISSIONS: Record<string, PagePermission> = {
   dashboard: 'OmnitronDaemon.status',
   apps: 'OmnitronDaemon.list',
   nodes: 'OmnitronNodes.listNodes',
@@ -109,7 +116,7 @@ export const PAGE_PERMISSIONS: Record<string, RpcPermission> = {
   metrics: 'OmnitronMetrics.getSnapshot',
   topology: 'OmnitronNodes.listNodes',
   containers: 'OmnitronInfra.getState',
-  deployments: 'OmnitronDeploy.getHistory',
+  deployments: ['OmnitronProject.getDeployProgress', 'OmnitronRelease.deployments', 'OmnitronDeploy.getHistory'],
   alerts: 'OmnitronAlerts.getRules',
   pipelines: 'OmnitronPipelines.listPipelines',
   traces: 'OmnitronTraces.queryTraces',

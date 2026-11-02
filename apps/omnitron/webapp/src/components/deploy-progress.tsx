@@ -21,6 +21,7 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
 import type { DeployProgressRecord } from '@omnitron-dev/omnitron/dto/services';
+import { deploymentProgressKey } from '@omnitron-dev/omnitron/release-reading';
 
 type Status = DeployProgressRecord['status'];
 
@@ -79,13 +80,13 @@ function Row({ record, now, unavailable }: { record: DeployProgressRecord; now: 
     <Box sx={{ py: 1 }}>
       <Stack direction="row" spacing={1} sx={{ mb: 0.5, alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
         <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 0, overflowWrap: 'anywhere' }}>
-          {record.app}
+          {record.app === '*' ? 'Node provisioning' : record.app}
         </Typography>
         <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', overflowWrap: 'anywhere' }}>
           {record.node}
         </Typography>
         <Box sx={{ flex: 1 }} />
-        <Chip size="small" variant="filled" color={phase.tone} label={phase.label} sx={{ fontWeight: 600 }} />
+        <Chip size="small" variant="outlined" color={phase.tone} label={phase.label} sx={{ maxWidth: '100%', fontWeight: 600 }} />
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
           {ago(record.at, now)}
         </Typography>
@@ -99,6 +100,7 @@ function Row({ record, now, unavailable }: { record: DeployProgressRecord; now: 
         one.
       */}
       <LinearProgress
+        aria-label={`${record.app === '*' ? 'Node provisioning' : record.app} on ${record.node}`}
         variant={live ? 'indeterminate' : 'determinate'}
         value={record.status === 'success' ? 100 : record.progress}
         color={uncertain ? 'warning' : phase.tone === 'default' ? 'inherit' : phase.tone}
@@ -127,6 +129,13 @@ function Row({ record, now, unavailable }: { record: DeployProgressRecord; now: 
           {record.message}
         </Typography>
       ) : null}
+      {record.operationId && <Box component="details" sx={{ mt: 0.5, typography: 'caption', color: 'text.secondary', overflowWrap: 'anywhere',
+        '& summary': { cursor: 'pointer', width: 'fit-content' } }}>
+        <summary>Transfer details</summary>
+        <div>{record.project}/{record.stack} · {record.at}</div>
+        <div>Operation <code>{record.operationId}</code></div>
+        {record.releaseId && <div>Release <code>{record.releaseId}</code></div>}
+      </Box>}
     </Box>
   );
 }
@@ -163,7 +172,7 @@ export function DeployProgressList({ records, now = Date.now(), unavailable = fa
       </Stack>
       <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, px: 2, py: 0.5 }}>
         {records.map((record) => (
-          <Row key={`${record.node}|${record.app}`} record={record} now={now} unavailable={unavailable} />
+          <Row key={deploymentProgressKey(record)} record={record} now={now} unavailable={unavailable} />
         ))}
       </Box>
     </Box>

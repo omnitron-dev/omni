@@ -67,8 +67,8 @@ export class ProjectRpcService {
    * to reach anything — the same tier as `getStackStatus`.
    */
   @Public({ auth: { roles: VIEWER_ROLES } })
-  async getDeployProgress(): Promise<DeployProgressRecord[]> {
-    return this.projectService.getDeployProgress();
+  async getDeployProgress(scope?: { project: string; stack?: string }): Promise<DeployProgressRecord[]> {
+    return this.projectService.getDeployProgress(scope);
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })

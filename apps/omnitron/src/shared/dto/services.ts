@@ -298,6 +298,11 @@ export type {
  * that failed.
  */
 export interface DeployProgressRecord {
+  /** Present on transfers attributed to a stack start by the serving controller. */
+  project?: string;
+  stack?: string;
+  operationId?: string;
+  releaseId?: string;
   /** `host:port` of the node. */
   node: string;
   app: string;
@@ -320,7 +325,7 @@ export interface IProjectRpcService {
   // --- Projects (Viewer) ---
   listProjects(): Promise<IProjectInfo[]>;
   getProject(data: { name: string }): Promise<IProjectInfo>;
-  getDeployProgress(): Promise<DeployProgressRecord[]>;
+  getDeployProgress(scope?: { project: string; stack?: string }): Promise<DeployProgressRecord[]>;
   scanRequirements(data: { project: string }): Promise<IProjectRequirements>;
 
   // --- Projects (Admin) ---

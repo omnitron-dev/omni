@@ -1,57 +1,14 @@
 import path from 'node:path';
 import { stackExecutionKey } from '../shared/dto/stack-execution.js';
+import { deploymentProgressKey } from '../shared/release-reading.js';
 /**
- * RemoteDeployer — SSH-based artifact deployment to remote/cluster nodes
- *
- * Deployment pipeline for a single node:
- *   1. Connect via SSH (xec SSHAdapter or child_process ssh)
- *   2. Check if omnitron daemon is installed on remote
- *   3. Transfer app artifact (tarball) via SFTP/SCP
- *   4. Extract artifact on remote node
- *   5. Signal remote omnitron daemon to reload/restart apps
- *   6. Verify health on remote
- *
- * For cluster stacks, this runs in parallel across all nodes.
- *
- * Artifact path on remote: /opt/omnitron/artifacts/<project>/<app>/<version>/
- * Remote daemon config: /etc/omnitron/omnitron.config.ts
- *
- * NEVER EXECUTED, as of 2026-09-14. Measured rather than assumed: no log in
- * `~/.omnitron/logs` carries a single line this class emits ("Starting
- * deployment to node", "Slave provisioned", "Deployment successful"), no
- * artifact directory exists, and — decisively — no project config declares
- * `stacks.nodes`, which `startRemoteStack` requires before it can reach here.
- * So both entry points are unreachable in every current configuration.
- *
- * This matters to anyone reading the code below and taking it for a working
- * path. It is careful code — arguments are quoted, path segments validated,
- * heredocs replaced with base64 — and none of that has ever met a real host.
- * Its first run will be its first test. Treat a green read of this file as
- * evidence about intent, not about behaviour.
- *
- * The first thing that first run found, 2026-09-14: **it could not log in.**
- * Every command here went through `ssh -o BatchMode=yes` with an optional
- * `-i <keyfile>`, and `BatchMode=yes` disables every interactive method —
- * password and key passphrase both. The console's Add Node dialog collects
- * exactly those, encrypts them in the daemon's vault, and the health monitor
- * uses them through `ExecutionService.ssh()` on every check round. So the
- * product had two SSH implementations: one that can present what the operator
- * gave it, and one — this — that cannot, on the path where it matters most.
- *
- * Measured against the test host, whose SSH answers a password in 311 ms:
- *
- *   ssh -o BatchMode=yes root@<host> 'echo ok'
- *   → root@<host>: Permission denied (publickey,password).
- *
- * That is the answer to "why can a machine added in the console not be
- * deployed to": not policy, not a missing feature — the deployer could not
- * authenticate as the operator had arranged. It goes through the same
- * `ExecutionService` as the checks now, and takes a `DeployTarget` carrying
- * the credentials rather than an `IStackNode` whose `ISSHConfig` has nowhere
- * to put them.
+ * Ship and verify application artifacts on remote nodes. ExecutionService supplies
+ * Xec SSH connections and the registered credentials. ProjectService attaches a
+ * stack operation to provisioning and delivery so polling and events share identity.
  */
 
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import { redactDiagnosticText } from '@omnitron-dev/titan/diagnostics';
 import { bindApplicationCommand } from '../release/application-closure.js';
 import { releaseOptionsForEnv } from '../release/target-runtime.js';
 import { sealReleaseArtifactCommand, installedReleaseCheckCommand, validOrigin } from '../release/runtime-provenance.js';
@@ -85,6 +42,8 @@ import {
 } from '../release/delivered.js';
 import crypto from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import type { DeployProgressRecord } from '../shared/dto/services.js';
+export type { DeployProgressRecord } from '../shared/dto/services.js';
 import {
   assertControlledDaemonPort, assertServingBundle, bundleProbeCommand, contractPreflightCommand, executeHostUpgrade,
   hookCommand, inventoryCommand, planHostUpgrade, receiptCommand, verifyRestoredInventory,
@@ -284,15 +243,7 @@ const DAEMON_POLL_MS = 3_000;
  * seconds — and reporting it as `extracting` leaves an operator watching a
  * message that stopped being true.
  */
-export type DeployStatus =
-  | 'pending'
-  | 'transferring'
-  | 'extracting'
-  | 'installing'
-  | 'restarting'
-  | 'verifying'
-  | 'success'
-  | 'failed';
+export type DeployStatus = DeployProgressRecord['status'];
 
 export interface DeployResult {
   node: string;
@@ -320,18 +271,12 @@ export interface DeployResult {
   migrationNode?: string;
 }
 
-export interface DeployProgress {
-  node: string;
-  app: string;
-  status: DeployStatus;
-  progress: number; // 0-100
-  message: string;
-}
+export type DeployProgress = Omit<DeployProgressRecord, 'at'>;
+type TransferScope = { project: string; stack: string; operationId: string; releaseId?: string };
+const transferScope = new AsyncLocalStorage<TransferScope>();
 
-/** A progress event with the time it happened, for a console that polls. */
-export interface DeployProgressRecord extends DeployProgress {
-  /** ISO 8601. */
-  at: string;
+export function withDeploymentProgress<T>(scope: TransferScope, work: () => Promise<T>): Promise<T> {
+  return transferScope.run(scope, work);
 }
 
 // =============================================================================
@@ -402,9 +347,7 @@ export class RemoteDeployer {
    * transferring, installing, the message naming the failing step — reached a
    * handler that re-emitted it to nobody.
    *
-   * Keyed by node and app, so this is bounded by the fleet rather than by how
-   * often anyone deploys, and the entry for an app is always its current
-   * state rather than a scroll an operator has to read to the end of.
+   * Each project, stack, node and app retains its latest observation across retries.
    */
   private readonly lastProgress = new Map<string, DeployProgressRecord>();
 
@@ -2072,8 +2015,6 @@ export class RemoteDeployer {
     const { createHash } = await import('node:crypto');
     const fsp = await import('node:fs/promises');
     const os = await import('node:os');
-    const path = await import('node:path');
-
     const stat = await fsp.stat(localDir).catch(() => null);
     if (!stat?.isDirectory()) throw new Error(`No such directory to serve: ${localDir}`);
 
@@ -2467,8 +2408,8 @@ export class RemoteDeployer {
   // ===========================================================================
 
   private emitProgress(node: string, app: string, status: DeployStatus, progress: number, message: string): void {
-    const event: DeployProgress = { node, app, status, progress, message };
-    this.lastProgress.set(`${node}\u0000${app}`, { ...event, at: new Date().toISOString() });
+    const event: DeployProgressRecord = { ...transferScope.getStore(), node, app, status, progress, message: redactDiagnosticText(message), at: new Date().toISOString() };
+    this.lastProgress.set(deploymentProgressKey(event), event);
     for (const handler of this.progressHandlers) {
       try {
         handler(event);

@@ -215,6 +215,8 @@ export interface StackSyncFailedEvent {
 export interface StackDeployProgressEvent {
   project: string;
   stack: string;
+  operationId?: string;
+  releaseId?: string;
   node: string;
   app: string;
   status: string;

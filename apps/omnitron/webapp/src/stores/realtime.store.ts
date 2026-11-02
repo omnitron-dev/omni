@@ -9,6 +9,8 @@
  */
 
 import { create } from 'zustand';
+import { deploymentProgressKey } from '@omnitron-dev/omnitron/release-reading';
+import type { StackDeployProgressEvent } from '@omnitron-dev/omnitron/dto/events';
 import { getDaemonWsClient, type DaemonWsClient } from '../netron/ws-client.js';
 
 interface AppEvent {
@@ -79,6 +81,8 @@ interface RealtimeState {
 }
 
 interface DeployProgressEntry {
+  project?: string;
+  stack?: string;
   node: string;
   app: string;
   status: string;
@@ -252,11 +256,11 @@ export const useRealtimeStore = create<RealtimeState>((set, get) => ({
       ws.on('stack.*', (event) => {
         // Track deploy progress for UI
         if (event.channel === 'stack.deploy_progress') {
-          const data = event.data as any;
+          const data = event.data as StackDeployProgressEvent;
           set((state) => {
             const now = Date.now();
             const filtered = state.deployProgress.filter(
-              (p) => !(p.node === data.node && p.app === data.app),
+              (p) => deploymentProgressKey(p) !== deploymentProgressKey(data),
             );
             return {
               deployProgress: [

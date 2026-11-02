@@ -9,6 +9,7 @@ import { createDaemonClient, LONG_REQUEST_TIMEOUT, isRequestTimeout } from '../d
 import type { IProjectRpcService } from '../shared/dto/services.js';
 import { emitJson, emitError, emitStep, emitSuccess, emitInfo, isJsonMode } from './output.js';
 import { syncFinding, syncWords, syncSeverity } from '../shared/sync-reading.js';
+import { readDeploymentProgress } from '../shared/release-reading.js';
 
 // =============================================================================
 // Helpers
@@ -111,6 +112,23 @@ export async function stackListCommand(options?: { project?: string }): Promise<
   } finally {
     await client.disconnect();
   }
+}
+
+export async function stackProgressCommand(project: string, stack?: string): Promise<void> {
+  const client = createDaemonClient();
+  try {
+    const svc = await client.service<IProjectRpcService>('OmnitronProject');
+    const records = await svc.getDeployProgress({ project, ...(stack && { stack }) });
+    const { transfers, unscoped } = readDeploymentProgress(records, { name: project }, stack);
+    if (isJsonMode()) { emitJson({ project, stack: stack ?? null, transfers, unscopedCount: unscoped.length }); return; }
+    if (unscoped.length) log.warn(`${unscoped.length} controller observations have no recorded workspace.`);
+    if (!transfers.length) log.info('No attributed transfer observations for this workspace.');
+    for (const row of transfers) {
+      log.info(`${row.at}  ${row.project}/${row.stack}  ${row.node}  ${row.app}  ${row.status}  ${row.message}`);
+      if (row.operationId) log.info(`  Operation ${row.operationId}${row.releaseId ? ' · Release ' + row.releaseId : ''}`);
+    }
+  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+  finally { await client.disconnect(); }
 }
 
 export async function stackStatusCommand(projectName: string, stackName: string): Promise<void> {

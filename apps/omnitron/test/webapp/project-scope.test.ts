@@ -8,9 +8,9 @@ const project = { name: 'sample', configurations: [
   { name: 'research', path: '/repo/research', runtimeProject: 'sample-research', stacks: { local: 'research' } },
 ] } as IProjectInfo;
 describe('project ownership across historical namespaces', () => {
-  it('selects all owned namespaces but a single source for an imported stack', () => {
+  it('selects both the public name and its historical runtime namespace for an imported stack', () => {
     expect(projectPrefixes(project, 'sample', null)).toEqual(['sample/', 'sample-research/']);
-    expect(projectPrefixes(project, 'sample', 'research')).toEqual(['sample-research/local/']);
+    expect(projectPrefixes(project, 'sample', 'research')).toEqual(['sample-research/local/', 'sample/research/']);
     expect(projectPrefixes(project, 'sample', 'test')).toEqual(['sample/test/']);
     expect(projectStackName(project, 'sample-research/local/api')).toBe('research');
   });

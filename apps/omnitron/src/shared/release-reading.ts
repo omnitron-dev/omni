@@ -1,9 +1,29 @@
 /** Shared, browser-safe readings of release gates, Git provenance and deployment evidence. */
 
 import type { GateOutcome } from '../release/manifest.js';
-import type { ReleaseDeploymentDto } from './dto/services.js';
-import type { IStackInfo } from './dto/project.js';
+import type { DeployProgressRecord, ReleaseDeploymentDto } from './dto/services.js';
+import type { IProjectInfo, IStackInfo } from './dto/project.js';
 import type { RuntimeReleaseEvidence } from '../config/types.js';
+
+export function deploymentProgressKey(record: Pick<DeployProgressRecord, 'project' | 'stack' | 'node' | 'app'>): string {
+  return JSON.stringify([record.project, record.stack, record.node, record.app]);
+}
+
+/** Current observations, including imported stack names and earlier controllers with no attribution. */
+export function readDeploymentProgress(records: readonly DeployProgressRecord[], project: Pick<IProjectInfo, 'name' | 'configurations'>, stack?: string | null) {
+  const transfers: DeployProgressRecord[] = [];
+  const unscoped: DeployProgressRecord[] = [];
+  for (const record of records) {
+    if (!record.project || !record.stack) { unscoped.push(record); continue; }
+    const source = project.configurations?.find(item => item.runtimeProject === record.project);
+    const publicName = source?.stacks[record.stack] ?? (record.project === project.name ? record.stack : undefined);
+    if (publicName && (!stack || publicName === stack)) {
+      transfers.push(record.project === project.name && record.stack === publicName
+        ? record : { ...record, project: project.name, stack: publicName });
+    }
+  }
+  return { transfers, unscoped };
+}
 
 export function releaseTargetLabel(target?: import('../release/target-runtime.js').TargetRuntime): string {
   return target ? `${target.platform}/${target.arch} · Node ${target.node} · ABI ${target.abi}` : 'Target not recorded';

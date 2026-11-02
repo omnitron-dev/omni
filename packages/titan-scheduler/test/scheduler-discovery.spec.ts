@@ -77,7 +77,6 @@ describe('SchedulerDiscovery', () => {
       const container = new Container();
 
       // Register SchedulerDiscovery which has @Inject(Container)
-      const config = { enabled: true };
       container.register(SCHEDULER_REGISTRY_TOKEN, SchedulerRegistry);
       container.register(SCHEDULER_DISCOVERY_TOKEN, SchedulerDiscovery);
 
@@ -96,7 +95,6 @@ describe('SchedulerDiscovery', () => {
 
     it('should discover @Cron decorated providers', async () => {
       // Register scheduler infrastructure
-      const config = { enabled: false };
       container.register(SCHEDULER_REGISTRY_TOKEN, SchedulerRegistry);
       container.register(SCHEDULER_DISCOVERY_TOKEN, SchedulerDiscovery);
 

@@ -656,11 +656,9 @@ describe('Scheduler Service', () => {
       scheduler.addTimeout('shutdown-test', 10, handler);
       await scheduler.onStart();
 
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      await vi.waitFor(() => expect(handler).toHaveBeenCalledOnce());
       await scheduler.onStop();
-
-      // Job may or may not complete depending on timing
-      expect(handler).toHaveBeenCalled();
+      expect(completed).toBe(true);
     });
 
     it('should cancel jobs on shutdown timeout', async () => {

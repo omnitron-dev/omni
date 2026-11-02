@@ -9,6 +9,7 @@ import { SCHEDULER_EVENTS } from '../src/scheduler.constants.js';
 import { JobStatus, SchedulerJobType } from '../src/scheduler.interfaces.js';
 import type {
   ISchedulerConfig,
+  IJobExecutionContext,
   IScheduledJob,
   IJobListener,
 } from '../src/scheduler.interfaces.js';
@@ -45,6 +46,36 @@ describe('Scheduler Executor', () => {
 
   beforeEach(() => {
     executor = new SchedulerExecutor(config);
+  });
+
+  it('enforces capacity and settles queued work without running it after cancellation', async () => {
+    const bounded = new SchedulerExecutor({ maxConcurrent: 1, queueSize: 1 });
+    let finish!: () => void;
+    const handler = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+    const running = bounded.executeJob(createMockJob('first', handler));
+    await vi.waitFor(() => expect(handler).toHaveBeenCalledOnce());
+    const queuedHandler = vi.fn();
+    const queued = bounded.executeJob(createMockJob('second', queuedHandler));
+    await expect(bounded.executeJob(createMockJob('third', vi.fn()))).rejects.toThrow(/queue is full/);
+    bounded.cancelAllJobs('test shutdown');
+    await Promise.all([running, queued]);
+    expect(queuedHandler).not.toHaveBeenCalled();
+    expect(bounded.getActiveHandlerCount()).toBe(1);
+    finish();
+    await vi.waitFor(() => expect(bounded.getActiveHandlerCount()).toBe(0));
+  });
+
+  it('cancels a retry during backoff under the original execution id', async () => {
+    let id!: string;
+    const handler = vi.fn((ctx: IJobExecutionContext) => { id = ctx.executionId; throw new Error('retry'); });
+    const retrying = vi.fn();
+    const bounded = new SchedulerExecutor({ maxConcurrent: 1, retry: { maxAttempts: 3, delay: 10_000 } },
+      [{ onJobRetry: retrying }]);
+    const result = bounded.executeJob(createMockJob('retry', handler));
+    await vi.waitFor(() => expect(retrying).toHaveBeenCalledOnce());
+    expect(bounded.cancelJob(id)).toBe(true);
+    expect((await result).status).toBe('failure');
+    expect(handler).toHaveBeenCalledOnce();
   });
 
   describe('Basic Execution', () => {
@@ -108,16 +139,15 @@ describe('Scheduler Executor', () => {
       });
     });
 
-    it('should measure execution duration', async () => {
-      const handler = vi.fn(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      });
-      const job = createMockJob('durationJob', handler);
+    it('measures execution duration using the elapsed clock', async () => {
+      vi.useFakeTimers();
+      try {
+        const job = createMockJob('durationJob', () => new Promise(resolve => setTimeout(resolve, 100)));
+        const pending = executor.executeJob(job);
+        await vi.advanceTimersByTimeAsync(100);
+        expect((await pending).duration).toBe(100);
+      } finally { vi.useRealTimers(); }
 
-      const result = await executor.executeJob(job);
-
-      expect(result.duration).toBeGreaterThanOrEqual(100);
-      expect(result.duration).toBeLessThan(200);
     });
   });
 

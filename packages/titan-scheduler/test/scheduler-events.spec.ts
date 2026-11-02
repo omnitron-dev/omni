@@ -14,7 +14,6 @@ describe('Scheduler Events Integration', () => {
   let scheduler: SchedulerService;
   let registry: SchedulerRegistry;
   let executor: SchedulerExecutor;
-  let eventListeners: Map<string, Function[]>;
 
   beforeEach(() => {
     // Create fresh instances
@@ -30,7 +29,6 @@ describe('Scheduler Events Integration', () => {
     scheduler = new SchedulerService(registry, executor, config);
 
     // Track event listeners
-    eventListeners = new Map();
   });
 
   afterEach(async () => {

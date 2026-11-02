@@ -773,12 +773,12 @@ export class SchedulerService implements ILifecycle {
   private async waitForJobsCompletion(timeout: number): Promise<void> {
     const startTime = Date.now();
 
-    while (this.executor.getRunningJobCount() > 0) {
-      if (Date.now() - startTime > timeout) {
+    while (this.executor.getRunningJobCount() > 0 || this.executor.getActiveHandlerCount() > 0) {
+      if (Date.now() - startTime >= timeout) {
         // Timeout waiting for jobs to complete, forcing shutdown
         break;
       }
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, Math.min(100, timeout - (Date.now() - startTime))));
     }
   }
 

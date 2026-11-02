@@ -4,6 +4,7 @@
  * Handles job execution with retry, timeout, and error handling
  */
 
+import { setTimeout as wait } from 'node:timers/promises';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { Inject, Optional, Injectable } from '@omnitron-dev/titan/decorators';
 import { Errors, TitanError, ErrorCode } from '@omnitron-dev/titan/errors';
@@ -53,14 +54,14 @@ export class SchedulerExecutor {
    * (attempt > 1) deliberately bypass the gate so a failing job's own retry
    * chain isn't self-cancelled.
    */
-  private readonly runningJobNames = new Set<string>();
+  private readonly runningJobNames = new Map<string, string>();
+  private activeHandlers = 0;
   private jobQueue: Array<{
     job: IScheduledJob;
     context: IJobExecutionContext;
     resolve: (result: IJobExecutionResult) => void;
     reject: (error: Error) => void;
   }> = [];
-  private isProcessing = false;
   private eventEmitter = new EventEmitter();
   private concurrentJobs = 0;
 
@@ -90,24 +91,22 @@ export class SchedulerExecutor {
     // Store abort controller for cancellation
     this.runningJobs.set(executionId, { controller: abortController, job });
 
-    // SC-4: a retry (attempt > 1) is a continuation of the first attempt, which
-    // still holds the overlap lock — it must bypass the gate, not self-cancel.
-    const isRetry = (fullContext.attempt ?? 1) > 1;
-    // Tracks whether THIS call acquired the overlap lock, so only the acquirer
-    // releases it in `finally` — a cancelled tick must NOT free the lock the
-    // running tick holds.
-    let acquiredOverlapLock = false;
+    try {
+      return await this.runAttempt(job, fullContext);
+    } finally {
+      this.runningJobs.delete(executionId);
+      if (this.runningJobNames.get(job.name) === executionId) this.runningJobNames.delete(job.name);
+    }
+  }
 
-    // Check if we should queue the job.
-    //
-    // The slot must be CLAIMED in the same synchronous step as the check.
-    // `concurrentJobs++` used to live further down, after `await
-    // notifyJobStart(...)`, so every job submitted in one tick saw the counter
-    // at its pre-tick value and sailed through the gate: ten simultaneous
-    // executeJob() calls all ran at once under maxConcurrent: 3. The same
-    // discipline the SC-4 overlap lock already documents ("no `await` between
-    // check and set") applies here.
-    if (this.shouldQueueJob(job)) {
+  private async runAttempt(job: IScheduledJob, fullContext: IJobExecutionContext): Promise<IJobExecutionResult> {
+    const { executionId } = fullContext;
+    const signal = fullContext.signal!;
+    if (signal.aborted) return this.cancelledResult(job, fullContext);
+    if (this.concurrentJobs >= (this.config?.maxConcurrent ?? 10)) {
+      if (this.jobQueue.length >= (this.config?.queueSize ?? 100)) {
+        throw Errors.conflict('Scheduler queue is full', { jobId: job.id });
+      }
       return this.queueJob(job, fullContext);
     }
     this.concurrentJobs++;
@@ -117,6 +116,7 @@ export class SchedulerExecutor {
       await this.notifyJobStart(job, fullContext);
 
       // Check if job is disabled
+      if (signal.aborted) return this.cancelledResult(job, fullContext);
       if (job.options.disabled) {
         return this.createResult(job.id, executionId, 'cancelled', undefined, undefined, 0);
       }
@@ -126,8 +126,9 @@ export class SchedulerExecutor {
       // two concurrent ticks of the same job cannot both pass (the former
       // `job.isRunning` read tested the service's display flag, already set for
       // THIS run — so the guard never actually fired).
-      if (job.options.preventOverlap && !isRetry) {
-        if (this.runningJobNames.has(job.name)) {
+      if (job.options.preventOverlap) {
+        const owner = this.runningJobNames.get(job.name);
+        if (owner !== undefined && owner !== executionId) {
           return this.createResult(
             job.id,
             executionId,
@@ -137,15 +138,14 @@ export class SchedulerExecutor {
             0
           );
         }
-        this.runningJobNames.add(job.name);
-        acquiredOverlapLock = true;
+        this.runningJobNames.set(job.name, executionId);
       }
 
       // Execute with timeout
       const startTime = Date.now();
       const timeout = job.options.timeout || this.config?.shutdownTimeout || 30000;
 
-      const result = await this.executeWithTimeout(job, fullContext, timeout, abortController.signal);
+      const result = await this.executeWithTimeout(job, fullContext, timeout, signal);
 
       const duration = Date.now() - startTime;
 
@@ -169,15 +169,6 @@ export class SchedulerExecutor {
       return this.handleJobFailure(job, fullContext, error, executionId);
     } finally {
       this.concurrentJobs--;
-      this.runningJobs.delete(executionId);
-      // SC-4: release the overlap lock ONLY if this call acquired it — a tick
-      // cancelled by the gate must not free the running tick's lock, and a retry
-      // (which never acquires) must not free it mid-chain. The acquiring first
-      // attempt's `finally` runs LAST (it `return`s the recursive retry chain),
-      // so the name is freed exactly once, after the whole sequence.
-      if (acquiredOverlapLock) {
-        this.runningJobNames.delete(job.name);
-      }
       this.processQueue();
     }
   }
@@ -251,7 +242,8 @@ export class SchedulerExecutor {
         }
       };
 
-      executeAsync();
+      this.activeHandlers++;
+      void executeAsync().finally(() => { this.activeHandlers--; });
     });
   }
 
@@ -290,10 +282,15 @@ export class SchedulerExecutor {
         await this.notifyJobRetry(job, context.attempt, error);
 
         // Wait before retry
-        await this.delay(delay);
+        try {
+          await wait(delay, undefined, { signal: context.signal });
+        } catch (cause) {
+          if (context.signal?.aborted) return this.cancelledResult(job, context);
+          throw cause;
+        }
 
         // Retry execution
-        return this.executeJob(job, {
+        return this.runAttempt(job, {
           ...context,
           attempt: context.attempt + 1,
         });
@@ -405,45 +402,16 @@ export class SchedulerExecutor {
    * Process job queue
    */
   private processQueue(): void {
-    if (this.isProcessing || this.jobQueue.length === 0) {
-      return;
-    }
-
-    const maxConcurrent = this.config?.maxConcurrent || 10;
-    if (this.concurrentJobs >= maxConcurrent) {
-      return;
-    }
-
-    this.isProcessing = true;
-
-    const nextJob = this.jobQueue.shift();
-    if (nextJob) {
-      this.executeJob(nextJob.job, nextJob.context)
-        .then((result) => {
-          // Resolve the queued job's promise with the execution result
-          nextJob.resolve(result);
-        })
-        .catch((error) => {
-          // Reject the queued job's promise with the execution error
-          nextJob.reject(error);
-        })
-        .finally(() => {
-          this.isProcessing = false;
-          this.processQueue();
-        });
-    } else {
-      this.isProcessing = false;
+    while (this.jobQueue.length && this.concurrentJobs < (this.config?.maxConcurrent ?? 10)) {
+      const next = this.jobQueue.shift()!;
+      void this.runAttempt(next.job, next.context).then(next.resolve, next.reject);
     }
   }
 
-  /**
-   * Check if job should be queued
-   */
-  private shouldQueueJob(job: IScheduledJob): boolean {
-    const maxConcurrent = this.config?.maxConcurrent || 10;
-    const queueSize = this.config?.queueSize || 100;
-
-    return this.concurrentJobs >= maxConcurrent && this.jobQueue.length < queueSize;
+  private cancelledResult(job: IScheduledJob, context: IJobExecutionContext) {
+    const error = new TitanError({ code: ErrorCode.INTERNAL_ERROR, message: 'Job execution cancelled',
+      details: { jobId: job.id, cancelled: true } });
+    return this.createResult(job.id, context.executionId, 'failure', undefined, error, 0, context.attempt);
   }
 
   /**
@@ -453,6 +421,11 @@ export class SchedulerExecutor {
     const entry = this.runningJobs.get(executionId);
     if (entry) {
       entry.controller.abort();
+      const queued = this.jobQueue.findIndex(item => item.context.executionId === executionId);
+      if (queued >= 0) {
+        const [item] = this.jobQueue.splice(queued, 1);
+        item!.resolve(this.cancelledResult(entry.job, item!.context));
+      }
       this.runningJobs.delete(executionId);
       void this.notifyJobCancelled(entry.job, reason);
       return true;
@@ -464,14 +437,7 @@ export class SchedulerExecutor {
    * Cancel all running jobs
    */
   cancelAllJobs(reason?: string): void {
-    const cancelled = [...this.runningJobs.values()];
-    for (const { controller } of cancelled) {
-      controller.abort();
-    }
-    this.runningJobs.clear();
-    for (const { job } of cancelled) {
-      void this.notifyJobCancelled(job, reason);
-    }
+    for (const executionId of this.runningJobs.keys()) this.cancelJob(executionId, reason);
   }
 
   /**
@@ -537,11 +503,9 @@ export class SchedulerExecutor {
     };
   }
 
-  /**
-   * Delay helper
-   */
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  /** Includes handlers that have received cancellation but are still unwinding. */
+  getActiveHandlerCount(): number {
+    return this.activeHandlers;
   }
 
   /**

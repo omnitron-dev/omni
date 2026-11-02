@@ -45,7 +45,11 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
     netron.registerTransportServer('ws', { name: 'ws', options: { host: '127.0.0.1', port: 0, invocationWrapper: wrapper } });
     await netron.start(); await netron.peer.exposeService(fixture);
     await netron.peer.exposeService(new ClusterRpcService({ isLeader: false, getClusterState: () => ({ state: 'follower' }) } as never));
-    await netron.peer.exposeService(new ProjectRpcService({ prepareNodeStackStop: () => 'prepared', executeNodeStackStop: () => 'executed' } as never));
+    await netron.peer.exposeService(new ProjectRpcService({
+      resolveProjectStack: (scope: unknown) => scope, reviewStackStop: () => ({ digest: null, targets: [] }),
+      stopStack: () => ({ status: 'stopped', config: {}, apps: [], nodes: [] }),
+      inspectNodeStackStop: () => 'observed', prepareNodeStackStop: () => 'prepared', executeNodeStackStop: () => 'executed',
+    } as never));
     ws = `ws://127.0.0.1:${(netron.transportServers.get('ws') as { port: number }).port}`;
     http = new HttpNativeServer({ host: '127.0.0.1', port: 0, cors: false, invocationWrapper: wrapper });
     http.setPeer(netron.peer); await http.listen();
@@ -80,7 +84,10 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
       const credential = await mint({ role: principal, ...(principal !== 'service_role' && { sid: 'active' }) });
       expect((await request(credential, 'getClusterState', { service: 'OmnitronCluster' })).status).toBe(200);
       expect((await request(credential, 'stepDown', { service: 'OmnitronCluster' })).status).toBe(principal === 'admin' ? 200 : 403);
-      for (const method of ['prepareNodeStackStop', 'executeNodeStackStop']) {
+      const stack = { service: 'OmnitronProject', input: [{ project: 'sample', stack: 'prod' }] };
+      expect((await request(credential, 'reviewStackStop', stack)).status).toBe(principal === 'service_role' ? 403 : 200);
+      expect((await request(credential, 'stopStack', stack)).status).toBe(['operator','admin'].includes(principal) ? 200 : 403);
+      for (const method of ['inspectNodeStackStop', 'prepareNodeStackStop', 'executeNodeStackStop']) {
         expect((await request(credential, method, { service: 'OmnitronProject', input: [{}] })).status).toBe(principal === 'service_role' ? 200 : 403);
       }
     }

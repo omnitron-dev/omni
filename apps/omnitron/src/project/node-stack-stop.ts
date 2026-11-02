@@ -24,6 +24,7 @@ export interface NodeStackStopPlan extends NodeStackStopRequest {
   definition: string;
   containers: Array<{ id: string; name: string }>;
 }
+export type NodeStackStopInventory = Omit<NodeStackStopPlan, 'expiresAt' | 'operationId'>;
 interface StopRecord {
   plan: NodeStackStopPlan;
   phase: 'prepared' | 'applying' | 'failed' | 'stopped';
@@ -34,7 +35,7 @@ interface StopRecord {
 interface StackStopPorts {
   execution: Pick<OrchestratorControl, 'inspectStackExecution' | 'stopStackExecution'>;
   /** Fails closed for unbound legacy app allocations. Never guesses ownership. */
-  definition(scope: NodeStackStopRequest): Promise<{ runtime: StackExecutionScope | null; fingerprint: string }>;
+  definition(scope: NodeStackStopRequest, cached?: boolean): Promise<{ runtime: StackExecutionScope | null; fingerprint: string }>;
   containers(scope: StackExecutionScope): Promise<Array<{ id: string; name: string }>>;
   disableResume(scope: StackExecutionScope): void;
   retireInfrastructure(scope: StackExecutionScope): Promise<void>;
@@ -79,27 +80,32 @@ export class NodeStackStop {
     try { return await this.preparePlan(scope); }
     finally { this.preparing--; }
   }
-  private async preparePlan(scope: NodeStackStopRequest): Promise<NodeStackStopPlan> {
+  async inspect(scope: NodeStackStopRequest, cached = true): Promise<NodeStackStopInventory> {
     const key = stackExecutionKey(scope);
     if (typeof scope.applications !== 'boolean') throw new Error('Application placement must be explicit');
     if (scope.audience?.clusterId !== this.recipient?.audience.clusterId || scope.audience?.nodeId !== this.recipient?.audience.nodeId) {
       throw new Error('Stack stop requires matching controller and recipient cluster enrollment');
     }
     if (this.active.has(key)) throw new Error(`Stack '${key}' is already stopping`);
-    const definition = await this.ports.definition(scope);
+    const definition = await this.ports.definition(scope, cached);
     const execution = definition.runtime ? await this.ports.execution.inspectStackExecution(definition.runtime) : null;
     const containers = await this.ports.containers(scope);
     if (this.active.has(key)) throw new Error(`Stack '${key}' changed while preparing its stop`);
-    const plan: NodeStackStopPlan = { protocol: 1, project: scope.project, stack: scope.stack,
-      applications: scope.applications, operationId: randomUUID(), expiresAt: Date.now() + 10 * 60_000,
+    return { protocol: 1, project: scope.project, stack: scope.stack,
+      applications: scope.applications,
       definition: definition.fingerprint, execution, containers,
       ...(this.recipient && { audience: { ...this.recipient.audience } }) };
+  }
+  private async preparePlan(scope: NodeStackStopRequest): Promise<NodeStackStopPlan> {
+    const inventory = await this.inspect(scope, false);
+    if (this.active.has(stackExecutionKey(scope))) throw new Error('Stack changed while preparing its stop');
+    const plan = { ...inventory, operationId: randomUUID(), expiresAt: Date.now() + 10 * 60_000 };
     return this.write(scope, prior => {
       // Repeated preflights cannot invalidate a still-usable signed challenge.
       if (plan.audience && prior?.phase === 'prepared' && prior.plan.expiresAt > Date.now() &&
           prior.plan.definition === plan.definition && prior.plan.applications === plan.applications &&
           prior.plan.audience?.clusterId === plan.audience.clusterId && prior.plan.audience.nodeId === plan.audience.nodeId &&
-          stackDefinitionFingerprint([prior.plan.execution, prior.plan.containers]) === stackDefinitionFingerprint([execution, containers])) return prior;
+          stackDefinitionFingerprint([prior.plan.execution, prior.plan.containers]) === stackDefinitionFingerprint([plan.execution, plan.containers])) return prior;
       return { plan, phase: 'prepared', suspended: !!prior && (prior.suspended === true || prior.phase === 'applying' || prior.phase === 'failed') };
     }).plan;
   }

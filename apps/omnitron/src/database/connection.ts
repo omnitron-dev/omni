@@ -108,7 +108,7 @@ export async function createOmnitronPool(
   overrides: Partial<PoolConfig> = {},
   onPoolError?: (err: Error) => void
 ): Promise<Pool> {
-  const config = resolveOmnitronPgConfig();
+  const config = overrides.connectionString === undefined ? resolveOmnitronPgConfig() : undefined;
   const pg = await import('pg');
   // A function now, not a class: `titan-database` declares pg, mysql2 and
   // better-sqlite3 as OPTIONAL peer dependencies and used to import all three
@@ -119,11 +119,7 @@ export async function createOmnitronPool(
   const ResilientPgClient = await resilientPgClient();
 
   const pool = new pg.default.Pool({
-    host: config.host,
-    port: config.port,
-    database: config.database,
-    user: config.user,
-    password: config.password,
+    ...config,
     Client: ResilientPgClient,
     ...overrides,
   });

@@ -7,6 +7,8 @@ export function publicStack(info: IStackInfo): IStackInfo {
     ...info,
     config: {
       type: config.type,
+      ...(config.managedOrigin && { managedOrigin: { project: config.managedOrigin.project, stack: config.managedOrigin.stack } }),
+      ...(config.infrastructureOwnership && { infrastructureOwnership: config.infrastructureOwnership }),
       ...(config.release ? { release: { mode: config.release.mode } } : {}),
       ...(config.watch !== undefined ? { watch: config.watch } : {}),
       ...(config.apps ? { apps: config.apps } : {}),
@@ -17,6 +19,7 @@ export function publicStack(info: IStackInfo): IStackInfo {
               host: node.host,
               port: node.port ?? 9700,
               role: node.role,
+              ...(node.nodeId && { nodeId: node.nodeId }),
               ...(node.label ? { label: node.label } : {}),
               ...(node.apps ? { apps: node.apps } : {}),
             })),

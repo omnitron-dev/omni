@@ -29,7 +29,7 @@ export function StackStopNotice({ operation }: { operation: IStackInfo['stopOper
     <Alert severity={failed ? 'error' : 'info'} sx={{ mb: 2, minWidth: 0 }}>
       <Box role="status" aria-live="polite" sx={{ minWidth: 0 }}>
         <Typography variant="subtitle2">
-          {failed ? 'Stop not confirmed' : operation.phase === 'preparing' ? 'Checking stop ownership' : 'Stopping stack'}
+          {failed ? (operation.intentCommitted ? 'Stop not confirmed' : 'Stop declined before execution') : operation.phase === 'preparing' ? 'Checking stop ownership' : 'Stopping stack'}
           {operation.nodes.length > 0 && ` · ${confirmed}/${operation.nodes.length} nodes confirmed`}
         </Typography>
         {!failed && <LinearProgress aria-label="Stack stop in progress" sx={{ mt: 1, mb: 1.5 }} />}

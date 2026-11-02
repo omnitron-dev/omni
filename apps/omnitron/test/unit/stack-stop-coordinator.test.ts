@@ -2,6 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { ProjectService } from '../../src/services/project.service.js';
 import { StackTargets } from '../../src/project/stack-targets.js';
 const project = 'sample', stack = 'prod';
+function inventory(host: string) {
+  return { protocol: 1, project, stack, applications: true, definition: 'current',
+    execution: { project, stack: 'deployed', revision: 1, phase: 'running', apps: [{ name: 'sample/deployed/api', generation: 'one' }] },
+    containers: [{ id: 'a'.repeat(64), name: 'db' }], operationId: host };
+}
 function fixture(remote = true) {
   const data = new Map<string, unknown>();
   const nodes = [{ host: 'one.test', port: 9700, role: 'app' }, { host: 'two.test', port: 9700, role: 'app' }];
@@ -9,13 +14,13 @@ function fixture(remote = true) {
   const calls: string[] = [];
   const invoke = vi.fn(async (host: string, _port: number, _service: string, method: string, args: any[]) => {
     calls.push(`${host}:${method}`);
-    if (method === 'prepareNodeStackStop') return { protocol: 1, project, stack, operationId: host };
+    if (method === 'prepareNodeStackStop' || method === 'inspectNodeStackStop') return inventory(host);
     return { protocol: 1, project, stack, operationId: args[0].operationId, outcome: 'stopped', observedAt: new Date().toISOString() };
   });
   const service: any = Object.assign(Object.create(ProjectService.prototype), {
     startsInFlight: new Map(), stopsInFlight: new Map(), stackStates: new Map(), ownershipFrozen: false,
     emit: vi.fn(), loadProjectConfig: vi.fn(async () => config), resolveStacks: () => config.stacks,
-    resolveStackApps: () => config.apps,
+    getLoadedConfig: () => config, resolveStackApps: () => config.apps,
     registry: { setStackEnabled: vi.fn() },
     daemonStateStore: {
       kvUpdateSync: vi.fn((key: string, update: (current: unknown) => unknown) => { const value = update(data.get(key) ?? null); data.set(key, structuredClone(value)); return value; }),
@@ -23,13 +28,58 @@ function fixture(remote = true) {
     },
     slaveConnector: { invokeOnSlave: invoke, removeSlave: vi.fn() },
     orchestrator: { inspectStackExecution: vi.fn().mockResolvedValue({ project, stack, revision: 0, phase: 'running', apps: [] }), stopStackExecution: vi.fn().mockResolvedValue({}) },
-    infraManager: { teardownStack: vi.fn().mockResolvedValue(undefined) },
+    infraManager: { inspectStopContainers: async () => [], teardownStack: vi.fn().mockResolvedValue(undefined) },
     toStackInfo: () => ({ name: stack, type: config.stacks.prod.type, status: service.stackStates.get('sample/prod')?.status,
       stopOperation: data.get('stack:sample/prod:last-stop') }),
   });
   return { service, calls, invoke, data };
 }
 describe('stack stop coordinator', () => {
+  it('reviews every target without journaling, disabling resume or executing any stop', async () => {
+    const { service, calls, data } = fixture();
+    const review = await service.reviewStackStop(project, stack);
+    expect(review.digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(review.targets.map((target: { node: string }) => target.node)).toEqual(['one.test:9700', 'two.test:9700']);
+    expect(calls).toEqual(['one.test:inspectNodeStackStop', 'two.test:inspectNodeStackStop']);
+    expect(data.size).toBe(0);
+    expect(service.registry.setStackEnabled).not.toHaveBeenCalled();
+    expect((await service.stopStack(project, stack, review.digest)).status).toBe('stopped');
+  });
+  it('refuses a reviewed stop when a process generation changes before execution', async () => {
+    const { service, invoke } = fixture();
+    const review = await service.reviewStackStop(project, stack);
+    invoke.mockImplementation(async host => {
+      const plan = inventory(host);
+      plan.execution.apps[0]!.generation = 'replacement';
+      return plan;
+    });
+    await expect(service.stopStack(project, stack, review.digest)).rejects.toThrow('changed since review');
+    expect(invoke.mock.calls.some(call => call[3] === 'executeNodeStackStop')).toBe(false);
+    expect(service.registry.setStackEnabled).not.toHaveBeenCalled();
+  });
+  it('retains each node refusal in the preview and issues no usable digest', async () => {
+    const { service, invoke, data } = fixture();
+    invoke.mockImplementation(async host => { throw new Error(host + ' is unavailable'); });
+    const result = await service.reviewStackStop(project, stack);
+    expect(result.digest).toBeNull();
+    expect(result.targets.map((target: { reason?: string }) => target.reason)).toEqual(['one.test is unavailable', 'two.test is unavailable']);
+    expect(data.size).toBe(0);
+  });
+  it('resolves an allocation in an explicitly imported project configuration only', async () => {
+    const { service } = fixture();
+    service.registry.get = () => ({ name: project });
+    service.registry.registrations = () => [{ name: project }, { name: 'old-registration' }];
+    const binding = { type: 'local', managedOrigin: { project, stack } };
+    service.getLoadedConfig = (name: string) => ({ apps: [], stacks: name === project ? {} : { runtime: binding } });
+    service.resolveStacks = (config: { stacks: object }) => config.stacks;
+    const request = { project, stack, applications: true };
+    expect(await service.stopDefinition(request, true)).toMatchObject({ runtime: { project: 'old-registration', stack: 'runtime' } });
+    await expect(service.stopDefinition({ ...request, applications: false }, true)).rejects.toThrow('outside the requested placement');
+    service.getLoadedConfig = () => ({ apps: [], stacks: { runtime: binding } });
+    await expect(service.stopDefinition(request, true)).rejects.toThrow('Ambiguous');
+    service.registry.registrations = () => [];
+    await expect(service.stopDefinition(request, true)).rejects.toThrow('no verified');
+  });
   it('includes previous deployment targets after a config edit and clears them only after all receipts', async () => {
     const { service, calls } = fixture();
     const targets = new StackTargets(service.daemonStateStore);
@@ -77,7 +127,7 @@ describe('stack stop coordinator', () => {
     invoke.mockImplementation(async host => {
       if (host === 'two.test') throw new Error('source-stack binding missing');
       calls.push(host);
-      return { protocol: 1, project, stack, operationId: host } as never;
+      return inventory(host);
     });
     await expect(service.stopStack(project, stack)).rejects.toThrow('binding missing');
     expect(invoke.mock.calls.every(call => call[3] === 'prepareNodeStackStop')).toBe(true);

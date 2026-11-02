@@ -365,10 +365,12 @@ stack
 
 stack
   .command('stop <project> <stack>')
-  .description('Stop a stack — stop apps + disconnect slaves + teardown infra')
-  .structuredAction(async (projectName, stackName) => {
+  .description('Stop a stack and verify each target')
+  .option('--dry-run', 'Inspect applications, containers and unresolved targets without creating a stop operation')
+  .option('--review <digest>', 'Stop only if the inventory matches the inspected digest')
+  .structuredAction(async (projectName, stackName, options) => {
     const { stackStopCommand } = await import('../commands/stack.js');
-    await stackStopCommand(projectName, stackName);
+    await stackStopCommand(projectName, stackName, options);
   });
 
 stack

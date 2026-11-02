@@ -1,3 +1,4 @@
+import { StackStopDialog } from 'src/components/stack-stop-dialog';
 import { StackDiagnosisDialog } from 'src/components/stack-diagnosis-dialog';
 import { StackStopNotice } from 'src/components/stack-stop-notice';
 import { Can } from 'src/auth/access';
@@ -65,6 +66,7 @@ export default function StackDetailPage() {
   const clearError = useProjectStore((s) => s.clearError);
   const pendingOps = useProjectStore((s) => s.pendingOps);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [stopOpen, setStopOpen] = useState(false);
   const [diagnoseOpen, setDiagnoseOpen] = useState(false);
   const [deployOpen, setDeployOpen] = useState(false);
 
@@ -87,11 +89,6 @@ export default function StackDetailPage() {
     if (!activeProject || !name) return;
     await startStack(activeProject, name);
   }, [activeProject, name, startStack]);
-
-  const handleStop = useCallback(async () => {
-    if (!activeProject || !name) return;
-    await stopStack(activeProject, name);
-  }, [activeProject, name, stopStack]);
 
   const handleDelete = useCallback(async () => {
     if (!activeProject || !name) return;
@@ -281,14 +278,18 @@ export default function StackDetailPage() {
                 </Button></Can>
               )
             ) : isRunning ? (
-              <Can permission="OmnitronProject.stopStack"><Button startIcon={<StopIcon />} color="error" variant="outlined" size="small" onClick={handleStop}>
-                {stack.stopOperation?.phase === 'failed' && !stack.stopOperation.supersededAt ? 'Retry stop' : 'Stop'}
+              <Can permission="OmnitronProject.reviewStackStop"><Button startIcon={<StopIcon />} color="error" variant="outlined" size="small" onClick={() => setStopOpen(true)}>
+                {stack.stopOperation?.phase === 'failed' && !stack.stopOperation.supersededAt ? 'Review retry…' : 'Review stop…'}
               </Button></Can>
             ) : null}
           </Box>
         }
       />
 
+      {stopOpen && activeProject && name && <StackStopDialog key={`${activeProject}/${name}`} project={activeProject} stack={name}
+        onClose={() => setStopOpen(false)} onConfirm={digest => {
+          setStopOpen(false); void stopStack(activeProject, name, digest);
+        }} />}
       {diagnoseOpen && activeProject && name && <StackDiagnosisDialog key={`${activeProject}/${name}`} project={activeProject} stack={name} onClose={() => setDiagnoseOpen(false)} />}
       <StackStopNotice operation={stack.stopOperation} />
 

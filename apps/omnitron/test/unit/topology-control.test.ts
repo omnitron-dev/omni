@@ -139,6 +139,11 @@ describe('one placement contract for planner and deployment', () => {
     const before = topologySpec(base, entries);
     expect(JSON.stringify(before)).not.toContain('/private/key');
     expect(applyTopologySpec(base, spec).nodes![0]!.ssh!.privateKey).toBe('/private/key');
+    const pinned = { ...base, nodes: base.nodes.map(node => ({ ...node, nodeId: 'old-worker' })) };
+    expect(() => applyTopologySpec(pinned, spec)).toThrow('pinned allocation');
+    const replacement = { ...spec, nodes: spec.nodes.map(node => ({ ...node, nodeId: 'replacement' })) };
+    expect(() => validateTopologySpec(replacement)).toThrow('only once');
+    expect(() => applyTopologySpec(pinned, replacement)).toThrow('pinned allocation');
     expect(topologyChanges(before, spec)).toContainEqual({
       action: 'remove',
       resource: 'application',

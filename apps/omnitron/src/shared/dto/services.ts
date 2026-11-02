@@ -3,7 +3,7 @@ export type { InstalledReleaseInspection, InstalledArtifactObservation, Installe
 import type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace } from './topology.js';
 export type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace, TopologyChange, TopologyIssue } from './topology.js';
 import type { ProjectTopology } from './project.js';
-export type { ConfigurationImport, ProjectConfigurationInfo, RuntimeStackScope, ProjectDependency, ProjectTopology, TopologyMetadataRefresh } from './project.js';
+export type { ConfigurationImport, ProjectConfigurationInfo, RuntimeStackScope, ProjectDependency, ProjectTopology, TopologyMetadataRefresh, StackStopReview } from './project.js';
 import type { LogIngestionStats } from './logs.js';
 /**
  * Omnitron Daemon RPC Service Interfaces
@@ -350,7 +350,8 @@ export interface IProjectRpcService {
   startStack(data: { project: string; stack: string; allowDirty?: boolean; release?: string; reinstall?: boolean }): Promise<IStackInfo>;
   /** Would this stack take this release? The deployment's own decision, asked in advance. */
   checkRelease(data: { project: string; stack: string; release: string }): Promise<{ ok: boolean; because: string }>;
-  stopStack(data: { project: string; stack: string }): Promise<IStackInfo>;
+  reviewStackStop(data: { project: string; stack: string }): Promise<import('./project.js').StackStopReview>;
+  stopStack(data: { project: string; stack: string; review?: string }): Promise<IStackInfo>;
 
   // --- Stacks (Admin) ---
   /** What each node of a stack would find and do on its host — read, never changed. */

@@ -668,6 +668,11 @@ export class InfrastructureService {
     return `${container.labels?.['omnitron.project']}/${container.labels?.['omnitron.stack']}`;
   }
 
+  /** Exact names this local infrastructure owner would remove, without exposing credentials in container specs. */
+  getTeardownNames(): string[] {
+    return [...[...this.desiredContainers].reverse(), ...this.controlPlaneContainers()].map(container => container.name);
+  }
+
   /** Explicit infrastructure removal; process disposal alone preserves containers. */
   @RecoveryMutation()
   async teardown(): Promise<void> {
@@ -680,18 +685,18 @@ export class InfrastructureService {
     this.dispose();
     // Remove all containers in parallel for fast shutdown — the control-plane
     // database only where this service keeps one (`controlPlaneContainers`).
-    const allContainers = [...[...this.desiredContainers].reverse(), ...this.controlPlaneContainers()];
+    const allContainers = this.getTeardownNames();
 
     const results = await Promise.allSettled(
-      allContainers.map(async (c) => {
-        await removeContainer(c.name, { graceful: true });
-        this.logger.info({ service: c.name }, 'Container removed');
+      allContainers.map(async (name) => {
+        await removeContainer(name, { graceful: true });
+        this.logger.info({ service: name }, 'Container removed');
       }),
     );
 
     this.state.ready = false;
     const failures = results.flatMap((result, index) => result.status === 'rejected'
-      ? [new Error(`${allContainers[index]!.name}: ${String(result.reason)}`, { cause: result.reason })] : []);
+      ? [new Error(`${allContainers[index]}: ${String(result.reason)}`, { cause: result.reason })] : []);
     if (failures.length) {
       throw new AggregateError(failures, `Infrastructure stop incomplete: ${failures.map(error => error.message).join('; ')}`);
     }

@@ -34,6 +34,14 @@ function fixture() {
 }
 
 describe('node-confirmed stack stop', () => {
+  it('observes a node without replacing a challenge or writing its journal', async () => {
+    const { service, store } = fixture();
+    const plan = await service.prepare(scope);
+    store.kvUpdateSync.mockClear();
+    expect(await service.inspect(scope)).toMatchObject({ execution: plan.execution, containers: plan.containers });
+    expect(store.kvUpdateSync).not.toHaveBeenCalled();
+    expect((await service.execute(plan)).outcome).toBe('stopped');
+  });
   it('prepares without stopping anything, then acknowledges only observed absence', async () => {
     const { service, ports } = fixture();
     const plan = await service.prepare(scope);

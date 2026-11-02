@@ -68,7 +68,7 @@ interface ProjectState {
    * commands instead — see `admitRelease`.
    */
   startStack: (project: string, stack: string, opts?: { release?: string; allowDirty?: boolean }) => Promise<void>;
-  stopStack: (project: string, stack: string) => Promise<void>;
+  stopStack: (project: string, stack: string, review: string) => Promise<void>;
   createStack: (project: string, data: { name: string; type: 'local' | 'remote' | 'cluster'; apps: string[] | 'all'; nodeIds?: string[] }) => Promise<IStackInfo>;
   deleteStack: (project: string, stack: string) => Promise<void>;
   /** Check if a stack has a pending operation */
@@ -356,7 +356,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     }
   },
 
-  stopStack: async (projectName: string, stackName: string) => {
+  stopStack: async (projectName: string, stackName: string, review: string) => {
     const opKey = `${projectName}/${stackName}`;
     if (get().pendingOps[opKey]) return;
 
@@ -367,7 +367,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     }));
 
     try {
-      const result = await projectRpc.stopStack({ project: projectName, stack: stackName });
+      const result = await projectRpc.stopStack({ project: projectName, stack: stackName, review });
       if (result.status !== 'stopped' || result.stopOperation?.phase !== 'stopped') throw new Error('Daemon did not confirm the complete stack stop');
     } catch (err) {
       set({ error: isRpcTimeout(err)

@@ -126,6 +126,20 @@ export interface IStackAccountRemoved {
 
 export type StackStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'degraded' | 'error' | 'unknown';
 
+export interface StackStopReview {
+  project: string;
+  stack: string;
+  checkedAt: string;
+  /** Present only when every target was inspected. Changes invalidate this review. */
+  digest: string | null;
+  targets: Array<{
+    node: string;
+    runtime?: RuntimeStackScope;
+    applications?: string[];
+    containers?: string[];
+    reason?: string;
+  }>;
+}
 export interface StackStopProgress {
   intentCommitted?: boolean;
   supersededAt?: string;

@@ -172,7 +172,7 @@ export async function isDockerAvailable(): Promise<boolean> {
  * a health check: «nothing is running» and «Docker did not answer» are
  * different states. `orThrow` keeps them apart.
  */
-export async function listManagedContainers(options: { orThrow?: boolean } = {}): Promise<ContainerState[]> {
+export async function listManagedContainers(options: { orThrow?: boolean; checkNames?: ReadonlySet<string> } = {}): Promise<ContainerState[]> {
   try {
     const names = await withAdapter((adapter) => adapter.listContainers(true) as Promise<string[]>);
     if (names.length === 0) return [];
@@ -194,7 +194,10 @@ export async function listManagedContainers(options: { orThrow?: boolean } = {})
 
     const managed: ContainerState[] = [];
     for (const info of inspected) {
-      if (info?.Config?.Labels?.['omnitron.managed'] !== 'true') continue;
+      if (info?.Config?.Labels?.['omnitron.managed'] !== 'true') {
+        if (options.checkNames?.has((info?.Name ?? '').replace(/^\//, ''))) throw new Error('A declared container name is occupied by an unmanaged container');
+        continue;
+      }
       const failure = describeContainerFailure(info.State);
       managed.push({
         name: (info.Name ?? '').replace(/^\//, ''),
@@ -218,6 +221,20 @@ export async function listManagedContainers(options: { orThrow?: boolean } = {})
     if (options.orThrow) throw err;
     return [];
   }
+}
+
+/** Native IDs are the authority for destructive operations. Never follow a reused name. */
+export async function inspectStackContainers(scope: { project: string; stack: string }, names: readonly string[] = []) {
+  const expected = new Set(names);
+  const actual = await listManagedContainers({ orThrow: true, checkNames: expected });
+  return actual.flatMap(container => {
+    if (container.project !== scope.project || container.stack !== scope.stack) {
+      if (expected.has(container.name)) throw new Error(`Container '${container.name}' belongs to another allocation`);
+      return [];
+    }
+    if (!container.containerId || !/^[a-f0-9]{64}$/.test(container.containerId)) throw new Error('Container inventory has no immutable identity');
+    return [{ id: container.containerId, name: container.name }];
+  }).sort((a, b) => a.id.localeCompare(b.id));
 }
 
 /**

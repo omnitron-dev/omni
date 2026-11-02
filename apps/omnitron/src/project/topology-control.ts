@@ -88,16 +88,24 @@ export class TopologyControl {
     if (draft.baseRevision !== context.revision)
       throw new Error('Draft is based on an older configuration; rebase before planning');
     const issues = topologyIssues(draft.spec, context.applications);
-    const known = new Set(
-      [...context.configured.nodes, ...this.sources.nodes()].map((node) => stackNodeKey(node.host, node.port))
-    );
-    for (const node of draft.spec.nodes)
-      if (!known.has(stackNodeKey(node.host, node.port)))
+    const configured = new Map(context.configured.nodes.map(node => [stackNodeKey(node.host, node.port), node]));
+    const fleet = new Map(this.sources.nodes().map(node => [stackNodeKey(node.host, node.port), node]));
+    for (const node of draft.spec.nodes) {
+      const endpoint = stackNodeKey(node.host, node.port);
+      const previous = configured.get(endpoint);
+      const registered = fleet.get(endpoint);
+      if (!registered && !previous)
         issues.push({
           severity: 'error',
           code: 'unregistered-node',
           message: `${stackNodeKey(node.host, node.port)} is not a registered fleet node`,
         });
+      if ((previous?.nodeId && previous.nodeId !== node.nodeId) ||
+          (node.nodeId && previous?.nodeId !== node.nodeId && registered?.id !== node.nodeId) ||
+          (node.nodeId && registered && registered.id !== node.nodeId)) {
+        issues.push({ severity: 'error', code: 'recipient-identity', message: `Reconcile the registered identity and existing allocation at ${endpoint} before changing its pin` });
+      }
+    }
     if (draft.spec.type !== context.stack.type)
       issues.push({
         severity: 'error',

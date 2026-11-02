@@ -82,6 +82,8 @@ export function validateTopologySpec(input: unknown): TopologySpec {
       apps: names(node.apps, 'Node applications'),
     };
   });
+  const pins = nodes.flatMap(node => node.nodeId ? [node.nodeId] : []);
+  if (new Set(pins).size !== pins.length) throw new Error('Each enrolled node identity can appear only once in a topology');
   if (spec.type === 'local' && nodes.length) throw new Error('Local topology cannot declare remote nodes');
   if (spec.type === 'remote' && nodes.length !== 1)
     throw new Error('Remote topology requires one node; use cluster for multiple nodes');
@@ -99,6 +101,7 @@ export function applyTopologySpec(base: IStackConfig, spec: TopologySpec): IStac
       const original = base.nodes?.find(
         (old) => stackNodeKey(old.host, old.port) === stackNodeKey(node.host, node.port)
       );
+      if (original?.nodeId && original.nodeId !== node.nodeId) throw new Error('Reconcile the pinned allocation before changing the node identity');
       return { ...original, ...node, apps: [...node.apps] };
     }),
   };

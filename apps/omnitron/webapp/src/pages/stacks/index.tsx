@@ -1,3 +1,4 @@
+import { StackStopDialog } from 'src/components/stack-stop-dialog';
 import { StackDiagnosisDialog } from 'src/components/stack-diagnosis-dialog';
 import { Can } from 'src/auth/access';
 /**
@@ -79,6 +80,7 @@ export default function StacksPage() {
   const deleteStack = useProjectStore((s) => s.deleteStack);
   const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
+  const [stopTarget, setStopTarget] = useState<{ project: string; stack: string } | null>(null);
   const [diagnoseTarget, setDiagnoseTarget] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deployTarget, setDeployTarget] = useState<string | null>(null);
@@ -107,14 +109,6 @@ export default function StacksPage() {
       await startStack(activeProject, stackName);
     },
     [activeProject, startStack]
-  );
-
-  const handleStop = useCallback(
-    async (stackName: string) => {
-      if (!activeProject) return;
-      await stopStack(activeProject, stackName);
-    },
-    [activeProject, stopStack]
   );
 
   const handleDelete = useCallback(
@@ -200,7 +194,7 @@ export default function StacksPage() {
                 onDiagnose={() => setDiagnoseTarget(stack.name)}
                 onStart={() => handleStart(stack.name)}
                 onDeploy={() => setDeployTarget(stack.name)}
-                onStop={() => handleStop(stack.name)}
+                onStop={() => setStopTarget({ project: activeProject, stack: stack.name })}
                 onDelete={() => setDeleteTarget(stack.name)}
                 onDetail={() => navigate(`/stacks/${stack.name}`)}
               />
@@ -217,6 +211,10 @@ export default function StacksPage() {
         {...(deployTarget ? { stack: deployTarget } : {})}
       /></Can>
 
+      {stopTarget && stopTarget.project === activeProject && <StackStopDialog key={`${stopTarget.project}/${stopTarget.stack}`} {...stopTarget}
+        onClose={() => setStopTarget(null)} onConfirm={digest => {
+          setStopTarget(null); void stopStack(stopTarget.project, stopTarget.stack, digest);
+        }} />}
       {diagnoseTarget && activeProject && <StackDiagnosisDialog key={`${activeProject}/${diagnoseTarget}`} project={activeProject} stack={diagnoseTarget} onClose={() => setDiagnoseTarget(null)} />}
 
       <Dialog open={deleteTarget !== null} onClose={() => setDeleteTarget(null)}>
@@ -376,13 +374,13 @@ function StackCard({
                   Deploy…
                 </Button></Can>
               )}
-              <Can permission="OmnitronProject.stopStack"><Button
+              <Can permission="OmnitronProject.reviewStackStop"><Button
                 size="small"
                 startIcon={<StopIcon />}
                 color="error"
                 onClick={onStop}
               >
-                Stop
+                Review stop…
               </Button></Can>
             </>
           ) : (

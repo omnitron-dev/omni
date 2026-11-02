@@ -315,7 +315,7 @@ describe('omnitron cluster', () => {
 
     await clusterStatusCommand();
 
-    expect(said()).toContain('Cluster mode is off');
+    expect(said()).toContain('no local cluster election service');
     expect(process.exitCode).toBeUndefined();
   });
 
@@ -324,9 +324,7 @@ describe('omnitron cluster', () => {
 
     await clusterStatusCommand();
 
-    // Every daemon start path takes `cluster` from DEFAULT_DAEMON_CONFIG;
-    // the project's omnitron.config.ts is not read for it, and `discovery`
-    // is read by nothing. The old advice changed nothing when followed.
+    expect(said()).toContain('OMNITRON_CLUSTER_DATABASE_URL');
     expect(said()).not.toContain('omnitron.config.ts');
     expect(said()).not.toContain("discovery: 'redis'");
   });
@@ -364,7 +362,7 @@ describe('omnitron cluster', () => {
 
     await clusterStepDownCommand();
 
-    expect(said()).toContain('Cluster mode is off');
+    expect(said()).toContain('no local cluster election service');
     expect(process.exitCode).toBe(1);
   });
 });

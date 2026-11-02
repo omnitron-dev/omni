@@ -1,3 +1,4 @@
+import { inspectStackContainers, removeContainer } from './container-runtime.js';
 import { ownsStackInfrastructure } from '../project/infrastructure-ownership.js';
 import { RecoveryMutation } from '../daemon/recovery-state.js';
 import { usesGatewayTemplate, withInfrastructureScope } from './service-resolver.js';
@@ -321,21 +322,32 @@ export class StackInfrastructureManager {
     return infraService;
   }
 
-  /**
-   * Teardown infrastructure for a stack.
-   */
+  async inspectStopContainers(project: string, stack: string) {
+    const owner = this.getInstance(project, stack);
+    return owner ? inspectStackContainers({ project, stack }, owner.getTeardownNames()) : [];
+  }
+
   @RecoveryMutation()
-  async teardownStack(project: string, stack: string): Promise<void> {
+  async teardownStack(project: string, stack: string, reviewed: ReadonlyArray<{ id: string; name: string }>): Promise<void> {
     const key = `${project}/${stack}`;
     const infraService = this.instances.get(key);
 
     if (!infraService) {
+      if (reviewed.length) throw new Error('Infrastructure owner disappeared after review; container removal is unconfirmed');
       this.logger.debug({ project, stack }, 'No infrastructure to teardown');
       return;
     }
 
     try {
-      await infraService.teardown();
+      const names = await infraService.relinquishMonitoring();
+      const inspect = () => inspectStackContainers({ project, stack }, names);
+      const current = await inspect();
+      const ids = new Set(reviewed.map(container => container.id));
+      if (current.some(container => !ids.has(container.id))) throw new Error('Stack containers changed before removal; review the current allocation');
+      const outcomes = await Promise.allSettled(current.map(container => removeContainer(container.id, { graceful: true })));
+      const failures = outcomes.flatMap((result, index) => result.status === 'rejected' ? [`${current[index]!.name}: ${String(result.reason)}`] : []);
+      if (failures.length) throw new Error(`Container stop incomplete: ${failures.join(', ')}`);
+      if ((await inspect()).length) throw new Error('Stack containers are still present after removal');
     } catch (err) {
       this.logger.error({ project, stack, error: (err as Error).message }, 'Failed to teardown stack infrastructure');
       throw err;

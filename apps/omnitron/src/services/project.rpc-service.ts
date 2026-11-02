@@ -332,12 +332,19 @@ export class ProjectRpcService {
     return this.projectService.checkRelease(data.project, data.stack, data.release);
   }
 
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async reviewStackStop(data: { project: string; stack: string }) {
+    const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
+    const report = await this.projectService.reviewStackStop(scope.project, scope.stack);
+    return { ...report, project: data.project, stack: data.stack };
+  }
+
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async stopStack(data: { project: string; stack: string }): Promise<IStackInfo> {
+  async stopStack(data: { project: string; stack: string; review?: string }): Promise<IStackInfo> {
     const logicalName = data.stack;
     data = await this.projectService.resolveProjectStack(data);
     try {
-      const info = await this.projectService.stopStack(data.project, data.stack);
+      const info = await this.projectService.stopStack(data.project, data.stack, data.review);
       await this.audit?.record({
         action: 'stack.stop', resourceType: 'stack', resourceId: `${data.project}/${data.stack}`, outcome: 'ok',
         details: { type: info.type, operationId: info.stopOperation?.id, nodes: info.stopOperation?.nodes },
@@ -355,6 +362,11 @@ export class ProjectRpcService {
   // ===========================================================================
   // Stacks — Admin
   // ===========================================================================
+
+  @Public({ auth: { roles: ['service_role'] } })
+  async inspectNodeStackStop(data: import('../project/node-stack-stop.js').NodeStackStopRequest) {
+    return this.projectService.inspectNodeStackStop(data);
+  }
 
   @Public({ auth: { roles: ['service_role'] } })
   async prepareNodeStackStop(data: import('../project/node-stack-stop.js').NodeStackStopRequest) {

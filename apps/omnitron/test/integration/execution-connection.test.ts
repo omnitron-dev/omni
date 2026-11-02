@@ -76,6 +76,7 @@ async function fixture() {
 
 it('recovers observation failures without changing controller ownership and distinguishes failed acknowledgments', async () => {
   const { owner, client, internals } = await fixture();
+  client.setLogCollector({ setCaptureStatus: () => undefined, confirmPending: async () => undefined } as never);
   await client.activateObservations();
   const before = client.state();
   owner.unavailable = true;
@@ -87,10 +88,13 @@ it('recovers observation failures without changing controller ownership and dist
   expect(client.state()?.connection).toMatchObject({ status: 'connected', error: null });
   expect(runtimeDiagnostics.snapshot().active.map(item => item.event.id)).toContain('execution.acknowledgment-unavailable');
   expect(runtimeDiagnostics.snapshot().active.map(item => item.event.id)).not.toContain('execution.observation-unavailable');
+  const rejectedCount = owner.acknowledgments;
+  expect(rejectedCount).toBeGreaterThan(0);
   owner.rejectAck = false;
   await internals.connection.disconnect();
   await internals.observations.disconnect();
   await internals.refresh();
+  expect(owner.acknowledgments).toBeGreaterThan(rejectedCount);
   expect(client.state()?.owner.id).toBe(before?.owner.id);
   expect(client.state()?.epoch).toBe(before?.epoch);
   expect(runtimeDiagnostics.snapshot().active.map(item => item.event.id)).not.toContain('execution.acknowledgment-unavailable');

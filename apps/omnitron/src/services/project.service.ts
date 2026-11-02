@@ -4,11 +4,12 @@ import { diagnoseContainers } from '../project/stack-diagnosis.js';
 import { diagnosisStatus, type StackDiagnosis, type StackDiagnosisCheck } from '../shared/dto/stack-diagnosis.js';
 import { buildInfraFromRequirements, requirementsFromDefinitions } from '../project/requirements-scanner.js';
 import { randomUUID } from 'node:crypto';
-import { NodeStackStop, stackDefinitionFingerprint, type NodeStackStopExecution, type NodeStackStopRequest, type NodeStackStopPlan, type NodeStackStopReceipt } from '../project/node-stack-stop.js';
+import { NodeStackStop, stackDefinitionFingerprint, type NodeStackStopExecution, type NodeStackStopRequest, type NodeStackStopPlan, type NodeStackStopInventory, type NodeStackStopReceipt } from '../project/node-stack-stop.js';
+import { stackStopReview, type StopReviewTarget } from '../project/stack-stop-review.js';
 import type { StopPermit, StopRecipient } from '../cluster/stop-authority.js';
 import type { LeaderElection } from '../cluster/leader-election.js';
-import { listManagedContainers, removeContainer } from '../infrastructure/container-runtime.js';
-import { stackExecutionKey, type StackExecutionScope } from '../shared/dto/stack-execution.js';
+import { inspectStackContainers, removeContainer } from '../infrastructure/container-runtime.js';
+import { stackExecutionKey, type StackExecutionPlan, type StackExecutionScope } from '../shared/dto/stack-execution.js';
 import { publicStack } from '../project/public-stack.js';
 import { TopologyStateStore } from '../project/topology-state.js';
 import { TopologyControl } from '../project/topology-control.js';
@@ -16,8 +17,8 @@ import { mergeInfrastructure, mergeInferredInfrastructure } from '../infrastruct
 export { mergeInfrastructure } from '../infrastructure/merge-config.js';
 import type { TopologyScope, TopologySpec, TopologyPlan, TopologyWorkspace } from '../shared/dto/topology.js';
 import { currentActor, describeFailure } from './audit.service.js';
-import { nodeApplicationNames, resolveNodePlacements } from '../project/stack-placement.js';
-import { StackTargets } from '../project/stack-targets.js';
+import { nodeApplicationNames, resolveNodePlacements, stackNodeKey } from '../project/stack-placement.js';
+import { StackTargets, type StackTarget } from '../project/stack-targets.js';
 import { configurationInfo, publicStackName, validateConfigurationNames, type ConfigurationImport, type RuntimeStackScope } from '../project/configuration-catalog.js';
 import { nodePlacement, observeStack } from '../project/stack-observation.js';
 import { getCachedBootstrapDefinition } from '../orchestrator/bootstrap-loader.js';
@@ -259,7 +260,7 @@ export class ProjectService extends EventEmitter {
   recoveryRegistryDigest(): string { return this.registry.recoveryDigest(); }
   /** Read-only bookkeeping; no timers are stopped and no Docker call runs. */
   captureRecoveryState(): Awaited<ReturnType<ProjectService['prepareHandoff']>> {
-    if (this.ownershipFrozen || this.startsInFlight.size || this.stopsInFlight.size || this.reconcilingStacks ||
+    if (this.ownershipFrozen || this.startsInFlight.size || this.stopsInFlight.size || this.nodeStackStop.busy || this.reconcilingStacks ||
         [...this.stackStates.values()].some(state => state.status === 'starting' || state.status === 'stopping')) {
       throw new RecoveryBusyError('Project ownership is changing; a recovery snapshot is not ready');
     }
@@ -390,25 +391,8 @@ export class ProjectService extends EventEmitter {
     this.infraManager = new StackInfrastructureManager(logger);
     this.nodeStackStop = new NodeStackStop(daemonStateStore, {
       execution: orchestrator,
-      definition: async scope => {
-        const config = this.registry.get(scope.project) ? await this.loadProjectConfig(scope.project) : null;
-        const stacks = config ? this.resolveStacks(config, scope.project) : {};
-        const owned = Object.entries(stacks).filter(([, stack]) => stack.type === 'local' &&
-          stack.managedOrigin?.project === scope.project && stack.managedOrigin.stack === scope.stack);
-        if (owned.length > 1) throw new Error('Ambiguous node allocation ownership');
-        const entry = owned[0];
-        if (!entry && (scope.applications || Object.values(stacks).some(stack => stack.type === 'local' && !stack.managedOrigin))) {
-          throw new Error(`Node allocation '${scope.project}/${scope.stack}' has no verified source-stack binding; upgrade its generated configuration before remote stop`);
-        }
-        return { runtime: entry ? { project: scope.project, stack: entry[0] } : null,
-          fingerprint: stackDefinitionFingerprint(entry ? { stack: entry, apps: config!.apps } : { scope, applications: false }) };
-      },
-      containers: async scope => (await listManagedContainers({ orThrow: true }))
-        .filter(container => container.project === scope.project && container.stack === scope.stack)
-        .map(container => {
-          if (!container.containerId || !/^[a-f0-9]{64}$/.test(container.containerId)) throw new Error('Container inventory has no immutable identity');
-          return { id: container.containerId, name: container.name };
-        }).sort((a, b) => a.id.localeCompare(b.id)),
+      definition: (scope, cached) => this.stopDefinition(scope, cached),
+      containers: scope => inspectStackContainers(scope),
       disableResume: scope => this.registry.setStackEnabled(scope.project, scope.stack, false),
       retireInfrastructure: async scope => {
         await this.drainHostedProvisioning(scope);
@@ -439,6 +423,32 @@ export class ProjectService extends EventEmitter {
   setClusterStop(recipient: StopRecipient, election?: LeaderElection): void {
     this.nodeStackStop.setRecipient(recipient);
     this.clusterStop = { recipient, election };
+  }
+
+  private async stopDefinition(scope: NodeStackStopRequest, cached = false) {
+    let allocation: { runtime: StackExecutionScope; fingerprint: string } | undefined;
+    let unbound = false;
+    // Only registrations owned by this project can claim one of its allocations.
+    const registrations = this.registry.get(scope.project) ? this.registry.registrations(scope.project) : [];
+    for (const registration of registrations) {
+      const config = cached ? this.getLoadedConfig(registration.name) : await this.loadProjectConfig(registration.name);
+      if (!config) throw new Error(`Configuration '${registration.name}' is unavailable for inspection; refresh its declarations`);
+      for (const [name, stack] of Object.entries(this.resolveStacks(config, registration.name))) {
+        if (stack.type !== 'local') continue;
+        if (!stack.managedOrigin) { unbound = true; continue; }
+        if (stack.managedOrigin.project !== scope.project || stack.managedOrigin.stack !== scope.stack) continue;
+        if (allocation) throw new Error('Ambiguous node allocation ownership');
+        if (!scope.applications) throw new Error('Node owns an application allocation outside the requested placement; reconcile the topology');
+        const runtime = { project: registration.name, stack: name };
+        allocation = { runtime, fingerprint: stackDefinitionFingerprint([runtime.project, name, stack, config.apps]) };
+      }
+    }
+    if (!allocation && (scope.applications || unbound)) throw new Error(`Node allocation '${scope.project}/${scope.stack}' has no verified source-stack binding; bind its managedOrigin before remote stop`);
+    return allocation ?? { runtime: null, fingerprint: stackDefinitionFingerprint([scope.project, scope.stack, false]) };
+  }
+
+  inspectNodeStackStop(scope: NodeStackStopRequest): Promise<NodeStackStopInventory> {
+    return this.nodeStackStop.inspect(scope);
   }
 
   @RecoveryMutation()
@@ -1649,19 +1659,91 @@ export class ProjectService extends EventEmitter {
     }
   }
 
+  private declaredStopTargets(stack: IStackConfig, config: IEcosystemConfig): StackTarget[] {
+    if (stack.type === 'local') return [];
+    const apps = this.resolveStackApps(stack, config).map(app => app.name);
+    return (stack.nodes ?? []).map(node => ({ host: node.host, port: node.port ?? 9700,
+      applications: nodeApplicationNames(stack, node, apps).length > 0, ...(node.nodeId && { nodeId: node.nodeId }) }));
+  }
+
+  private stopRequest(scope: StackExecutionScope, node: StackTarget): NodeStackStopRequest {
+    if (this.clusterStop && !node.nodeId) throw new Error('A pinned recipient nodeId is required for clustered stack stop');
+    return { ...scope, applications: node.applications,
+      ...(this.clusterStop && { audience: { clusterId: this.clusterStop.recipient.audience.clusterId, nodeId: node.nodeId! } }) };
+  }
+
+  private validateStopInventory(request: NodeStackStopRequest, result: NodeStackStopInventory): void {
+    if (result?.protocol !== 1 || result.project !== request.project || result.stack !== request.stack ||
+        result.applications !== request.applications || !result.definition || !Array.isArray(result.containers) ||
+        (request.applications ? !result.execution || !Array.isArray(result.execution.apps) : result.execution !== null)) {
+      throw new Error('Invalid node stop inventory; update the recipient before stopping');
+    }
+    if (result.audience?.clusterId !== request.audience?.clusterId || result.audience?.nodeId !== request.audience?.nodeId) {
+      throw new Error('Recipient did not confirm the required cluster and node identity');
+    }
+  }
+
+  private async localStopInventory(scope: StackExecutionScope, stack: IStackConfig, execution: StackExecutionPlan): Promise<NodeStackStopInventory> {
+    const containers = await this.infraManager.inspectStopContainers(scope.project, scope.stack);
+    return { ...scope, protocol: 1, applications: true, execution, definition: stackDefinitionFingerprint(stack),
+      containers };
+  }
+
+  async reviewStackStop(project: string, stack: string) {
+    const scope = { project, stack };
+    const key = stackExecutionKey(scope);
+    const targets: StopReviewTarget[] = [];
+    try {
+      if (this.ownershipFrozen || this.startsInFlight.has(key) || this.stopsInFlight.has(key)) throw new Error('A lifecycle operation is active; wait and check again');
+      if (this.clusterStop) {
+        if (!this.clusterStop.election) throw new Error('Review this stop on the elected controller');
+        await this.clusterStop.election.confirmStopAuthority();
+      }
+      const config = this.getLoadedConfig(project);
+      if (!config) throw new Error('Project declarations are unavailable; refresh them before reviewing this stop');
+      const declaration = this.stackStates.get(key)?.config ?? this.resolveStacks(config, project)[stack];
+      if (!declaration) throw new Error(`Stack '${key}' not found`);
+      const journal = new StackTargets(this.daemonStateStore);
+      const { nodes } = journal.inspect(scope, this.declaredStopTargets(declaration, config));
+      if (declaration.type === 'local') {
+        try {
+          if (this.clusterStop && !declaration.managedOrigin) throw new Error('Cluster stack stop requires an explicitly bound allocation');
+          const inventory = declaration.managedOrigin
+            ? await this.nodeStackStop.inspect({ ...declaration.managedOrigin, applications: true,
+              ...(this.clusterStop && { audience: this.clusterStop.recipient.audience }) })
+            : await this.localStopInventory(scope, declaration, await this.orchestrator.inspectStackExecution(scope));
+          targets.push({ node: 'local', inventory });
+        } catch (error) { targets.push({ node: 'local', reason: describeFailure(error) }); }
+      } else if (!nodes.length) throw new Error('No remote allocation inventory is available');
+      for (const node of nodes) {
+        const endpoint = stackNodeKey(node.host, node.port);
+        try {
+          if (!this.slaveConnector) throw new Error('Node RPC is unavailable');
+          const request = this.stopRequest(scope, node);
+          const inventory = await this.slaveConnector.invokeOnSlave(node.host, node.port, 'OmnitronProject', 'inspectNodeStackStop', [request]) as NodeStackStopInventory;
+          this.validateStopInventory(request, inventory);
+          targets.push({ node: endpoint, inventory });
+        } catch (error) { targets.push({ node: endpoint, reason: describeFailure(error) }); }
+      }
+    } catch (error) { targets.push({ node: 'controller', reason: describeFailure(error) }); }
+    return stackStopReview(scope, targets);
+  }
+
   @RecoveryMutation()
-  async stopStack(projectName: string, stackName: string): Promise<IStackInfo> {
+  async stopStack(projectName: string, stackName: string, review?: string): Promise<IStackInfo> {
     const key = stackExecutionKey({ project: projectName, stack: stackName });
     if (this.ownershipFrozen) throw new Error('Project ownership is frozen for backend transfer');
     if (this.startsInFlight.has(key)) throw new Error('This stack is starting; finish or reconcile the start before stopping');
     const pending = this.stopsInFlight.get(key);
+    if (pending && review !== undefined) throw new Error('A stop is already running; inspect its progress');
     if (pending) return pending;
-    const operation = this.stopStackOnce(projectName, stackName).finally(() => this.stopsInFlight.delete(key));
+    if (review !== undefined && (typeof review !== 'string' || !/^[a-f0-9]{64}$/.test(review))) throw new Error('Invalid stack stop review');
+    const operation = this.stopStackOnce(projectName, stackName, review).finally(() => this.stopsInFlight.delete(key));
     this.stopsInFlight.set(key, operation);
     return operation;
   }
 
-  private async stopStackOnce(projectName: string, stackName: string): Promise<IStackInfo> {
+  private async stopStackOnce(projectName: string, stackName: string, review?: string): Promise<IStackInfo> {
     const key = `${projectName}/${stackName}`;
     const config = await this.loadProjectConfig(projectName);
     const stackConfig = this.stackStates.get(key)?.config ?? this.resolveStacks(config, projectName)[stackName];
@@ -1693,11 +1775,9 @@ export class ProjectService extends EventEmitter {
         if (cluster) throw new Error('Cluster stack stop requires an explicitly bound allocation');
         localPlan = await this.orchestrator.inspectStackExecution({ project: projectName, stack: stackName });
       }
-      const appNames = this.resolveStackApps(stackConfig, config).map(app => app.name);
-      const declared = stackConfig.type === 'local' ? [] : (stackConfig.nodes ?? []).map(node => ({
-        host: node.host, port: node.port ?? 9700, applications: nodeApplicationNames(stackConfig, node, appNames).length > 0,
-        ...(node.nodeId && { nodeId: node.nodeId }),
-      }));
+      const scope = { project: projectName, stack: stackName };
+      const localInventory = localPlan ? await this.localStopInventory(scope, stackConfig, localPlan) : null;
+      const declared = this.declaredStopTargets(stackConfig, config);
       const targetJournal = new StackTargets(this.daemonStateStore);
       if (declared.length) targetJournal.remember({ project: projectName, stack: stackName }, declared);
       const targets = targetJournal.inspect({ project: projectName, stack: stackName });
@@ -1710,18 +1790,13 @@ export class ProjectService extends EventEmitter {
         for (const [index, node] of targets.nodes.entries()) {
           let plan: NodeStackStopPlan;
           try {
-            if (cluster && !node.nodeId) throw new Error('A pinned recipient nodeId is required for clustered stack stop');
-            const audience = cluster && { clusterId: cluster.recipient.audience.clusterId, nodeId: node.nodeId! };
-            plan = await this.slaveConnector.invokeOnSlave(node.host, node.port ?? 9700, 'OmnitronProject',
-            'prepareNodeStackStop', [{ project: projectName, stack: stackName, applications: node.applications, ...(audience && { audience }) }]) as NodeStackStopPlan;
-            if (plan?.protocol !== 1 || plan.project !== projectName || plan.stack !== stackName || !plan.operationId) {
-              throw new Error('Invalid node stop plan');
-            }
-            if (plan.audience?.clusterId !== audience?.clusterId || plan.audience?.nodeId !== audience?.nodeId ||
-                (audience && plan.applications !== node.applications)) throw new Error('Recipient did not confirm the required cluster, node and placement');
+            const request = this.stopRequest(scope, node);
+            plan = await this.slaveConnector.invokeOnSlave(node.host, node.port, 'OmnitronProject', 'prepareNodeStackStop', [request]) as NodeStackStopPlan;
+            this.validateStopInventory(request, plan);
+            if (!plan.operationId) throw new Error('Invalid node stop plan');
             const permit = cluster?.election?.authorizeStop(plan);
-            prepared.push({ host: node.host, port: node.port ?? 9700, plan, permit });
-            if (permit && audience) progress.nodes[index]!.authority = { ...audience, epoch: permit.epoch };
+            prepared.push({ host: node.host, port: node.port, plan, permit });
+            if (permit && request.audience) progress.nodes[index]!.authority = { ...request.audience, epoch: permit.epoch };
           } catch (error) {
             progress.nodes[index]!.outcome = 'unknown';
             progress.nodes[index]!.reason = describeFailure(error);
@@ -1729,6 +1804,13 @@ export class ProjectService extends EventEmitter {
           }
           progress.nodes[index]!.outcome = 'prepared'; persist();
         }
+      }
+      if (review !== undefined) {
+        const actual: StopReviewTarget[] = [];
+        if (managedPlan) actual.push({ node: 'local', inventory: managedPlan });
+        if (localInventory) actual.push({ node: 'local', inventory: localInventory });
+        for (const target of prepared) actual.push({ node: stackNodeKey(target.host, target.port), inventory: target.plan });
+        if (stackStopReview(scope, actual).digest !== review) throw new Error('Stack changed since review; inspect the current footprint before stopping');
       }
       // Losing this durable write refuses the operation before any effect.
       if (cluster) await cluster.election!.confirmStopAuthority();
@@ -1739,9 +1821,9 @@ export class ProjectService extends EventEmitter {
       this.emit('stack:stopping', projectName, stackName);
       if (managedPlan) {
         await this.nodeStackStop.execute({ ...stackConfig.managedOrigin!, operationId: managedPlan.operationId, ...(managedPermit && { permit: managedPermit }) });
-      } else if (localPlan) {
+      } else if (localPlan && localInventory) {
         await this.orchestrator.stopStackExecution({ operationId: progress.id, plan: localPlan });
-        await this.infraManager.teardownStack(projectName, stackName);
+        await this.infraManager.teardownStack(projectName, stackName, localInventory.containers);
       }
       if (prepared.length) {
         const failures: string[] = [];
@@ -1774,7 +1856,7 @@ export class ProjectService extends EventEmitter {
       return this.toStackInfo(projectName, stackName, stackConfig);
     } catch (error) {
       progress.phase = 'failed'; progress.error = describeFailure(error); persist();
-      state.status = 'error';
+      if (progress.intentCommitted) state.status = 'error';
       this.emit('stack:error', projectName, stackName, String(error));
       throw error;
     }

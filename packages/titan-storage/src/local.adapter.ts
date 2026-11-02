@@ -60,45 +60,57 @@ export class LocalAdapter implements StorageAdapter {
     const localConfig = this.config.get('storage.local') as LocalConfig;
     this.basePath = localConfig?.basePath || './data/storage';
     await fs.mkdir(this.basePath, { recursive: true });
+    this.basePath = await fs.realpath(this.basePath);
 
     this.loggerModule.logger.info({ basePath: this.basePath }, 'Local adapter initialized');
   }
 
-  /**
-   * Resolve a key under the storage root, and refuse anything that lands
-   * outside it.
-   *
-   * `path.join` COLLAPSES `..`, which is the whole reason a key must never
-   * carry one. `objectStorageKey` is where that is enforced, and it is the
-   * right place — but this adapter takes a plain string, and a belt at the
-   * point of the file operation costs one comparison. If the two ever
-   * disagree, the file system is the one that matters.
-   */
-  private resolveUnderRoot(relative: string): string {
-    const root = path.resolve(this.basePath);
-    const full = path.resolve(root, relative);
-    if (full !== root && !full.startsWith(root + path.sep)) {
+  /** Storage owns this directory. Never follow symbolic links below its configured root. */
+  private async resolveUnderRoot(relative: string): Promise<string> {
+    const pieces = relative.split(path.sep);
+    if (path.isAbsolute(relative) || pieces.includes('..')) {
       throw new Error(`Refusing a storage path outside the root: ${relative}`);
     }
-    return full;
+    let current = this.basePath;
+    for (const piece of pieces) {
+      if (!piece || piece === '.') continue;
+      current = path.join(current, piece);
+      try {
+        if ((await fs.lstat(current)).isSymbolicLink()) {
+          throw new Error(`Refusing a symbolic link in storage path: ${relative}`);
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') break;
+        throw error;
+      }
+    }
+    return path.resolve(this.basePath, relative);
   }
 
-  private getObjectPath(key: string): string {
+  private getObjectPath(key: string) {
+    this.ensureObjectKey(key);
     return this.resolveUnderRoot(key);
   }
 
-  private getMetadataPath(key: string): string {
+  private ensureObjectKey(key: string) {
+    if (!key || key.split('/').some(part => part === '.uploads' || part.endsWith('.meta.json'))) {
+      throw new Error('Reserved local storage key');
+    }
+  }
+
+  private getMetadataPath(key: string) {
+    this.ensureObjectKey(key);
     return this.resolveUnderRoot(`${key}.meta.json`);
   }
 
   private async saveMetadata(key: string, metadata: ObjectMetadata): Promise<void> {
-    const metaPath = this.getMetadataPath(key);
+    const metaPath = await this.getMetadataPath(key);
     await fs.mkdir(path.dirname(metaPath), { recursive: true });
     await fs.writeFile(metaPath, JSON.stringify(metadata, null, 2), 'utf-8');
   }
 
   private async loadMetadata(key: string): Promise<ObjectMetadata> {
-    const metaPath = this.getMetadataPath(key);
+    const metaPath = await this.getMetadataPath(key);
     try {
       const content = await fs.readFile(metaPath, 'utf-8');
       return JSON.parse(content);
@@ -119,7 +131,7 @@ export class LocalAdapter implements StorageAdapter {
   }
 
   async put(key: string, body: Readable | Buffer, options: PutOptions): Promise<{ etag: string; versionId?: string }> {
-    const objectPath = this.getObjectPath(key);
+    const objectPath = await this.getObjectPath(key);
     await fs.mkdir(path.dirname(objectPath), { recursive: true });
 
     // Write object data
@@ -152,7 +164,7 @@ export class LocalAdapter implements StorageAdapter {
   }
 
   async get(key: string, options?: GetOptions): Promise<GetResult> {
-    const objectPath = this.getObjectPath(key);
+    const objectPath = await this.getObjectPath(key);
     const metadata = await this.loadMetadata(key);
 
     // Check if-none-match
@@ -207,8 +219,8 @@ export class LocalAdapter implements StorageAdapter {
   }
 
   async delete(key: string): Promise<void> {
-    const objectPath = this.getObjectPath(key);
-    const metaPath = this.getMetadataPath(key);
+    const objectPath = await this.getObjectPath(key);
+    const metaPath = await this.getMetadataPath(key);
 
     try {
       await fs.unlink(objectPath);
@@ -243,8 +255,8 @@ export class LocalAdapter implements StorageAdapter {
   }
 
   async copy(options: CopyOptions): Promise<{ etag: string; versionId?: string }> {
-    const sourcePath = this.getObjectPath(options.sourceKey);
-    const destPath = this.getObjectPath(options.destinationKey);
+    const sourcePath = await this.getObjectPath(options.sourceKey);
+    const destPath = await this.getObjectPath(options.destinationKey);
 
     // Copy file
     await fs.mkdir(path.dirname(destPath), { recursive: true });
@@ -273,72 +285,48 @@ export class LocalAdapter implements StorageAdapter {
     return { etag };
   }
 
-  async list(options?: ListOptions): Promise<ListResult> {
-    const prefix = options?.prefix || '';
-    const delimiter = options?.delimiter;
-    const maxKeys = options?.maxKeys || 1000;
-
-    const objects: StorageObject[] = [];
-    const prefixes = new Set<string>();
-
-    const searchPath = path.join(this.basePath, prefix);
-    const searchDir = delimiter ? path.dirname(searchPath) : this.basePath;
-
-    try {
-      await fs.access(searchDir);
-    } catch {
-      return { objects: [], prefixes: [], isTruncated: false };
+  async list(options: ListOptions = {}): Promise<ListResult> {
+    const { prefix = '', delimiter, maxKeys = 1000, continuationToken } = options;
+    if (!Number.isSafeInteger(maxKeys) || maxKeys < 0) throw new RangeError('Invalid maxKeys');
+    const result: ListResult = { objects: [], prefixes: [], isTruncated: false };
+    if (!maxKeys) return result;
+    let after = '';
+    if (continuationToken !== undefined) {
+      const cursor: unknown = JSON.parse(Buffer.from(continuationToken, 'base64url').toString());
+      if (!Array.isArray(cursor) || cursor.length !== 3 || cursor[0] !== prefix ||
+          cursor[1] !== (delimiter ?? '') || typeof cursor[2] !== 'string') throw new Error('Invalid list cursor');
+      after = cursor[2];
     }
 
-    // Recursively find all .meta.json files
-    const findMetaFiles = async (dir: string, currentPrefix: string = ''): Promise<void> => {
-      if (objects.length >= maxKeys) return;
-
-      const entries = await fs.readdir(dir, { withFileTypes: true });
-
-      for (const entry of entries) {
-        if (objects.length >= maxKeys) break;
-
-        const fullPath = path.join(dir, entry.name);
-        const relativePath = path.join(currentPrefix, entry.name);
-
+    // Directory entries and sidecars share the same ordering as the keys they emit.
+    // Skip unrelated branches. Only a matching .meta.json identifies a stored object.
+    async function* keys(dir: string, parent = ''): AsyncGenerator<string> {
+      const entries = (await fs.readdir(dir, { withFileTypes: true }))
+        .filter(entry => entry.isDirectory() ? entry.name !== '.uploads' : entry.isFile() && entry.name.endsWith('.meta.json'))
+        .map(entry => ({ entry, key: parent + (entry.isDirectory() ? entry.name + '/' : entry.name.slice(0, -10)) }))
+        .sort((a, b) => a.key < b.key ? -1 : Number(a.key > b.key));
+      for (const { entry, key } of entries) {
         if (entry.isDirectory()) {
-          if (delimiter && relativePath.startsWith(prefix)) {
-            const delimiterIndex = relativePath.indexOf(delimiter, prefix.length);
-            if (delimiterIndex !== -1) {
-              prefixes.add(relativePath.substring(0, delimiterIndex + 1));
-              continue;
-            }
-          }
-          await findMetaFiles(fullPath, relativePath);
-        } else if (entry.name.endsWith('.meta.json')) {
-          const key = relativePath.replace(/\.meta\.json$/, '');
-          if (key.startsWith(prefix)) {
-            try {
-              const metadata = await this.loadMetadata(key);
-              objects.push({
-                key,
-                size: metadata.size,
-                etag: metadata.etag,
-                contentType: metadata.contentType,
-                lastModified: new Date(metadata.lastModified),
-                ...(metadata.metadata && { metadata: metadata.metadata }),
-              });
-            } catch {
-              // Skip if metadata can't be loaded
-            }
-          }
-        }
+          if (key.startsWith(prefix) || prefix.startsWith(key)) yield* keys(path.join(dir, entry.name), key);
+        } else if (key.startsWith(prefix)) yield key;
       }
-    };
+    }
 
-    await findMetaFiles(searchDir);
-
-    return {
-      objects: objects.slice(0, maxKeys),
-      prefixes: Array.from(prefixes).slice(0, maxKeys),
-      isTruncated: objects.length > maxKeys,
-    };
+    let last: string | undefined;
+    for await (const key of keys(this.basePath)) {
+      const split = delimiter ? key.indexOf(delimiter, prefix.length) : -1;
+      const entry = split < 0 ? key : key.slice(0, split + delimiter!.length);
+      if (entry <= after || entry === last) continue;
+      if (result.objects.length + result.prefixes.length === maxKeys) {
+        result.isTruncated = true;
+        result.continuationToken = Buffer.from(JSON.stringify([prefix, delimiter ?? '', last])).toString('base64url');
+        break;
+      }
+      if (split < 0) result.objects.push(await this.head(key));
+      else result.prefixes.push(entry);
+      last = entry;
+    }
+    return result;
   }
 
   async exists(key: string): Promise<boolean> {
@@ -353,12 +341,13 @@ export class LocalAdapter implements StorageAdapter {
   async getSignedUrl(key: string, expiresIn: number): Promise<string> {
     // For local adapter, we can't generate true signed URLs
     // Return a file:// URL as a placeholder
-    const objectPath = this.getObjectPath(key);
+    const objectPath = await this.getObjectPath(key);
     return `file://${objectPath}?expires=${Date.now() + expiresIn * 1000}`;
   }
 
   // Multipart upload methods
   async createMultipartUpload(options: MultipartUploadInit): Promise<{ uploadId: string }> {
+    await this.getObjectPath(options.key);
     const uploadId = generateUuidV7();
     this.multipartUploads.set(uploadId, {
       key: options.key,
@@ -371,15 +360,18 @@ export class LocalAdapter implements StorageAdapter {
 
   async uploadPart(options: UploadPart & { key: string }): Promise<CompletedPart> {
     const upload = this.multipartUploads.get(options.uploadId);
-    if (!upload) {
+    if (!upload || upload.key !== options.key) {
       throw new Error(`Upload not found: ${options.uploadId}`);
     }
 
     // Create temporary directory for parts
-    const partsDir = path.join(this.basePath, '.uploads', options.uploadId);
+    const partsDir = await this.resolveUnderRoot(path.join('.uploads', options.uploadId));
     await fs.mkdir(partsDir, { recursive: true });
 
-    const partPath = path.join(partsDir, `part-${options.partNumber}`);
+    if (!Number.isSafeInteger(options.partNumber) || options.partNumber < 1 || options.partNumber > 10000) {
+      throw new Error('Invalid multipart part number');
+    }
+    const partPath = await this.resolveUnderRoot(path.join('.uploads', options.uploadId, `part-${options.partNumber}`));
 
     // Write part data
     if (Buffer.isBuffer(options.body)) {
@@ -400,9 +392,9 @@ export class LocalAdapter implements StorageAdapter {
     };
   }
 
-  async listParts(uploadId: string, _key: string): Promise<UploadedPart[]> {
+  async listParts(uploadId: string, key: string): Promise<UploadedPart[]> {
     const upload = this.multipartUploads.get(uploadId);
-    if (!upload) return [];
+    if (!upload || upload.key !== key) return [];
     const out: UploadedPart[] = [];
     for (const [partNumber, part] of upload.parts) {
       // A part whose file is gone is a part that did not land; leaving it out
@@ -421,33 +413,36 @@ export class LocalAdapter implements StorageAdapter {
     parts: CompletedPart[]
   ): Promise<{ etag: string; versionId?: string }> {
     const upload = this.multipartUploads.get(uploadId);
-    if (!upload) {
+    if (!upload || upload.key !== key) {
       throw new Error(`Upload not found: ${uploadId}`);
     }
 
-    const objectPath = this.getObjectPath(key);
+    const objectPath = await this.getObjectPath(key);
     await fs.mkdir(path.dirname(objectPath), { recursive: true });
 
-    // Concatenate parts in order
-    const writeStream = createWriteStream(objectPath);
-
-    for (const part of parts.sort((a, b) => a.partNumber - b.partNumber)) {
-      const partData = upload.parts.get(part.partNumber);
-      if (!partData) {
-        throw new Error(`Part ${part.partNumber} not found`);
+    const ordered = [...parts].sort((a, b) => a.partNumber - b.partNumber);
+    const sources: string[] = [];
+    for (const [index, part] of ordered.entries()) {
+      const stored = upload.parts.get(part.partNumber);
+      if (!stored || stored.etag !== part.etag || ordered[index - 1]?.partNumber === part.partNumber) {
+        throw new Error(`Missing, duplicate or mismatched part ${part.partNumber}`);
       }
-
-      const partStream = createReadStream(partData.path);
-      await pipeline(partStream, writeStream, { end: false });
+      sources.push(await this.resolveUnderRoot(path.relative(this.basePath, stored.path)));
     }
 
-    writeStream.end();
-
-    // Wait for write to finish
-    await new Promise((resolve, reject) => {
-      writeStream.on('finish', resolve);
-      writeStream.on('error', reject);
-    });
+    // Commit complete bytes on the same filesystem. A failed read leaves the
+    // previous object intact and its parts available for retry.
+    const staged = await this.resolveUnderRoot(path.join('.uploads', uploadId, generateUuidV7()));
+    await fs.mkdir(path.dirname(staged), { recursive: true });
+    async function* chunks() {
+      for (const source of sources) yield* createReadStream(source);
+    }
+    try {
+      await pipeline(chunks(), createWriteStream(staged, { flags: 'wx' }));
+      await fs.rename(staged, objectPath);
+    } finally {
+      await fs.rm(staged, { force: true });
+    }
 
     // Calculate final etag
     const etag = await this.calculateEtag(objectPath);
@@ -465,21 +460,21 @@ export class LocalAdapter implements StorageAdapter {
     });
 
     // Cleanup
-    const partsDir = path.join(this.basePath, '.uploads', uploadId);
+    const partsDir = await this.resolveUnderRoot(path.join('.uploads', uploadId));
     await fs.rm(partsDir, { recursive: true, force: true });
     this.multipartUploads.delete(uploadId);
 
     return { etag };
   }
 
-  async abortMultipartUpload(uploadId: string, _key: string): Promise<void> {
+  async abortMultipartUpload(uploadId: string, key: string): Promise<void> {
     const upload = this.multipartUploads.get(uploadId);
-    if (!upload) {
-      return; // Already cleaned up or doesn't exist
+    if (!upload || upload.key !== key) {
+      return; // Already cleaned up or belongs to another key
     }
 
     // Cleanup parts directory
-    const partsDir = path.join(this.basePath, '.uploads', uploadId);
+    const partsDir = await this.resolveUnderRoot(path.join('.uploads', uploadId));
     await fs.rm(partsDir, { recursive: true, force: true });
 
     this.multipartUploads.delete(uploadId);
@@ -514,7 +509,7 @@ export class LocalAdapter implements StorageAdapter {
           // Skip internal directories
           if (entry.name === '.uploads') continue;
           await scan(fullPath);
-        } else if (!entry.name.endsWith('.meta.json')) {
+        } else if (entry.isFile() && !entry.name.endsWith('.meta.json')) {
           const stat = await fs.stat(fullPath);
           usedBytes += stat.size;
           objectCount++;

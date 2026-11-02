@@ -13,9 +13,6 @@ import * as crypto from 'crypto';
 import { Readable } from 'stream';
 import type {
   StorageAdapter,
-  PutOptions,
-  GetOptions,
-  CopyOptions,
   CompletedPart,
 } from '../src/adapter.interface.js';
 import { realLocalAdapter } from './real-adapters.js';
@@ -363,6 +360,19 @@ describe('LocalAdapter Integration Tests', () => {
       expect(result.objects.every((o) => o.key.startsWith('documents/'))).toBe(true);
     });
 
+    it('paginates objects and common prefixes together without skipping or repeating keys', async () => {
+      const options = { prefix: 'documents/', delimiter: '/', maxKeys: 1 };
+      const entries: string[] = [];
+      let continuationToken: string | undefined;
+      do {
+        const page = await adapter.list({ ...options, continuationToken });
+        entries.push(...page.prefixes, ...page.objects.map(object => object.key));
+        expect(page.isTruncated).toBe(Boolean(page.continuationToken));
+        continuationToken = page.continuationToken;
+      } while (continuationToken && entries.length < 5);
+      expect(entries).toEqual(['documents/archive/', 'documents/invoice.pdf', 'documents/report.pdf']);
+    });
+
     it('should handle pagination with maxKeys', async () => {
       const result = await adapter.list({ maxKeys: 3 });
       expect(result.objects.length).toBe(3);
@@ -436,6 +446,21 @@ describe('LocalAdapter Integration Tests', () => {
       expect(head.size).toBe(partSize * 3);
     });
 
+    it('binds uploaded parts and finalization to the original object key', async () => {
+      const { uploadId } = await adapter.createMultipartUpload({ key: 'own', contentType: 'text/plain' });
+      const part = { uploadId, key: 'own', partNumber: 1, body: Buffer.from('x'), contentLength: 1 };
+      const receipt = await adapter.uploadPart(part);
+      await expect(adapter.uploadPart({ ...part, key: 'foreign' })).rejects.toThrow(/not found/i);
+      expect(await adapter.listParts(uploadId, 'foreign')).toEqual([]);
+      await adapter.abortMultipartUpload(uploadId, 'foreign');
+      await expect(adapter.completeMultipartUpload(uploadId, 'foreign', [receipt])).rejects.toThrow(/not found/i);
+      await adapter.put('own', Buffer.from('previous'), { contentType: 'text/plain', contentLength: 8 });
+      await expect(adapter.completeMultipartUpload(uploadId, 'own', [{ ...receipt, etag: 'wrong' }])).rejects.toThrow(/mismatched/);
+      expect((await streamToBuffer((await adapter.get('own')).body)).toString()).toBe('previous');
+      expect(await adapter.listParts(uploadId, 'own')).toHaveLength(1);
+      await adapter.abortMultipartUpload(uploadId, 'own');
+    });
+
     it('should abort a multipart upload and clean up', async () => {
       const key = 'aborted-upload.bin';
 
@@ -493,55 +518,22 @@ describe('LocalAdapter Integration Tests', () => {
   });
 
   describe('Path traversal prevention', () => {
-    it('should handle keys with .. safely', async () => {
-      // The adapter should handle path traversal attempts gracefully
-      // by normalizing the path within the base directory
-      const key = '../outside.txt';
-
-      // This might throw or handle differently based on implementation
-      // The important thing is it should not write outside the temp directory
+    it('refuses to read or write through a link beneath the storage root', async () => {
+      const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'storage-link-target-'));
       try {
-        await adapter.put(key, Buffer.from('malicious'), {
-          contentType: 'text/plain',
-          contentLength: 9,
-        });
-
-        // If it succeeds, verify the file is within temp dir
-        const resolvedPath = path.resolve(tempDir, key);
-        // The file should be within temp dir or handled safely
-      } catch {
-        // Expected - adapter rejected the malicious path
-      }
-
-      // Verify nothing was written outside temp dir
-      const outsidePath = path.resolve(tempDir, '..', 'outside.txt');
-      try {
-        await fs.access(outsidePath);
-        // If access succeeds, the file exists - this should not happen
-        // Fail the test if the file exists
-        expect.fail('File should not exist outside temp dir');
-      } catch (error) {
-        // Expected - file does not exist (ENOENT error)
-        // fs.access rejects with ENOENT when file doesn't exist
-        expect(error).toBeDefined();
-      }
+        await fs.symlink(outside, path.join(tempDir, 'linked'));
+        await expect(adapter.put('linked/escape', Buffer.from('x'), { contentType: 'text/plain', contentLength: 1 }))
+          .rejects.toThrow(/symbolic link/);
+        await expect(fs.stat(path.join(outside, 'escape'))).rejects.toMatchObject({ code: 'ENOENT' });
+      } finally { await fs.rm(outside, { recursive: true, force: true }); }
     });
 
-    it('should handle absolute paths safely', async () => {
-      const key = '/etc/passwd';
-
-      try {
-        await adapter.put(key, Buffer.from('malicious'), {
-          contentType: 'text/plain',
-          contentLength: 9,
-        });
-
-        // If it succeeds, verify the file is within temp dir
-        const filePath = path.join(tempDir, key);
-        expect(filePath.startsWith(tempDir)).toBe(true);
-      } catch {
-        // Expected - adapter rejected the absolute path
-      }
+    it.each(['relative', 'absolute'])('refuses a %s path outside the storage root', async (kind) => {
+      const sibling = path.join(path.dirname(tempDir), `${path.basename(tempDir)}-outside.txt`);
+      const key = kind === 'absolute' ? sibling : path.relative(tempDir, sibling);
+      await expect(adapter.put(key, Buffer.from('outside'), { contentType: 'text/plain', contentLength: 7 }))
+        .rejects.toThrow(/outside the root/);
+      await expect(fs.stat(sibling)).rejects.toMatchObject({ code: 'ENOENT' });
     });
   });
 

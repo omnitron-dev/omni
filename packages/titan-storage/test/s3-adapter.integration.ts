@@ -19,11 +19,6 @@ import { Readable } from 'stream';
 import * as crypto from 'crypto';
 import type {
   StorageAdapter,
-  PutOptions,
-  GetOptions,
-  ListOptions,
-  CopyOptions,
-  MultipartUploadInit,
   CompletedPart,
 } from '../src/adapter.interface.js';
 

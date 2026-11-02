@@ -170,6 +170,33 @@ try {
     assert.equal((await applySupervisorTransition(plan.file)).result.backendPid, transitioned.result.backendPid, 'A repeated apply started another backend');
     console.log(JSON.stringify({ stage: 'guardian-transition-complete', result: transitioned.result }));
     await waitCertificate();
+    if (linux) {
+      const { activateManagedTarget, managedHostCommand, planManagedRollout, reconcileManagedTarget } = await import(
+        pathToFileURL(path.join(managementDist, 'services/managed-rollout.js')).href);
+      const readStamp = async directory => JSON.parse(await fs.readFile(path.join(directory, 'BUILD.json'), 'utf8')).commit;
+      const invoke = async request => JSON.parse((await run('/bin/sh', ['-c', managedHostCommand(request)], {
+        env: { ...process.env, OMNITRON_HOME: instance, PATH: path.dirname(artifact.execPath) + ':' + process.env.PATH },
+        cwd: root, timeout: 480_000, maxBuffer: 1024 * 1024,
+      })).stdout);
+      const next = await planManagedRollout(invoke, await readStamp(managementDist));
+      assert.notEqual(next.previous, next.candidate, 'Use distinct old and new builds for managed fleet qualification');
+      assert.equal(next.ownerPid, ownerPid);
+      await activateManagedTarget(invoke, next);
+      assert.equal(await reconcileManagedTarget(invoke, next), 'candidate');
+      const stale = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor', 150_000);
+      try {
+        await assert.rejects(stale.service.upgradeIfCurrent({ current: next.previous, candidate: next.candidate,
+          selectionRevision: next.selectionRevision, backendPid: next.backendPid, ownerId: next.ownerId,
+          ownerPid, appsDigest: next.appsDigest }), /selection changed since rollout planning/);
+      } finally { await stale.close(); }
+      await waitCertificate();
+      const previous = await planManagedRollout(invoke, await readStamp(dist));
+      assert.equal(previous.previous, next.candidate); assert.equal(previous.candidate, next.previous);
+      await activateManagedTarget(invoke, previous);
+      assert.equal(await reconcileManagedTarget(invoke, previous), 'candidate');
+      console.log(JSON.stringify({ stage: 'fenced-managed-kernel-returned', ownerPid, applicationPid, candidate: next.candidate }));
+      await waitCertificate();
+    }
     const rollback = await prepareSupervisorTransition(path.resolve(dist, '../../..'), socket);
     const runner = path.resolve(managementDist, '../../../node');
     const script = `import { applySupervisorTransition } from ${JSON.stringify(pathToFileURL(path.join(managementDist, 'daemon/supervisor-transition.js')).href)};await applySupervisorTransition(${JSON.stringify(rollback.file)});`;

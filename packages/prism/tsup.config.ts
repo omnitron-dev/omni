@@ -1,4 +1,5 @@
 import { defineConfig } from 'tsup';
+import { reactClientEntries } from '../../scripts/react-client-entries.mjs';
 
 export default defineConfig([
   // Main library build (React components)
@@ -94,9 +95,8 @@ export default defineConfig([
     esbuildOptions(options) {
       options.jsx = 'automatic';
     },
-    banner: {
-      js: '"use client";',
-    },
+    plugins: [reactClientEntries((entry: string) =>
+      !['http/index', 'registry/index', 'types/index'].includes(entry))],
   },
   // CLI build (Node.js)
   {

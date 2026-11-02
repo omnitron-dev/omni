@@ -14,6 +14,15 @@ pnpm add @omnitron-dev/netron-react @omnitron-dev/netron-browser
 
 Production-grade React bindings for Netron RPC. Provides hooks for queries, mutations, real-time subscriptions, multi-backend routing, and authentication — all with automatic type inference from service contracts.
 
+In React Server Component applications, render the provider from a client
+component and create its client there. The root, hooks, auth and React test
+entries declare that boundary in both ESM and CommonJS. Import
+`@omnitron-dev/netron-react/cache` for cache operations in server code.
+Node consumers require 22.12 or newer for synchronous CommonJS access to the
+shared ESM Netron Browser client.
+The devtools entry provides logging controls. Its inspector component currently
+renders no UI.
+
 ### Key Features
 
 - **Type-safe hooks** — `useQuery`, `useMutation`, `useService`, `useSubscription`

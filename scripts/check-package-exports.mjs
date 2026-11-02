@@ -35,6 +35,7 @@ function installConsumer(destination) {
     })) include(dependency);
   }
   include('@omnitron-dev/omnitron');
+  include('@omnitron-dev/netron-react');
   fs.writeFileSync(path.join(consumer, 'package.json'), JSON.stringify({ private: true, dependencies }));
   execFileSync('npm', ['install', '--omit=dev', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org/'], {
     cwd: consumer, stdio: 'inherit',
@@ -56,6 +57,18 @@ try {
         encoding: 'utf8', maxBuffer: 1024 * 1024,
       }));
       const files = new Set(packed.files.map(file => file.path));
+      if (['@omnitron-dev/netron-react', '@omnitron-dev/prism'].includes(manifest.name)) {
+        for (const [subpath, conditions] of Object.entries(manifest.exports)) {
+          const client = manifest.name === '@omnitron-dev/netron-react'
+            ? ['.', './hooks', './auth', './test'].includes(subpath)
+            : !['./http', './cli'].includes(subpath);
+          for (const target of strings(conditions).filter(file => /\.(?:cjs|mjs|js)$/.test(file))) {
+            const source = execFileSync('tar', ['-xOf', packed.filename, 'package/' + target.slice(2)], { encoding: 'utf8' });
+            const hasDirective = /^(?:['"]use strict['"];\s*)?['"]use client['"];/.test(source.trimStart());
+            if (hasDirective !== client) failures.push(`${manifest.name}${subpath.slice(1)}: incorrect React boundary in ${target}`);
+          }
+        }
+      }
       if (manifest.engines?.node) {
         const minimum = semver.minVersion(manifest.engines.node);
         for (const dependency of Object.keys(manifest.dependencies ?? {})) {

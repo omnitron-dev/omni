@@ -1,4 +1,5 @@
 import { defineConfig } from 'tsup';
+import { reactClientEntries } from '../../scripts/react-client-entries.mjs';
 
 export default defineConfig({
   entry: {
@@ -22,7 +23,6 @@ export default defineConfig({
   esbuildOptions(options) {
     options.jsx = 'automatic';
   },
-  banner: {
-    js: '"use client";',
-  },
+  plugins: [reactClientEntries((entry: string) =>
+    ['index', 'hooks/index', 'auth/index', 'test/index'].includes(entry))],
 });

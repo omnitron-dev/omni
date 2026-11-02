@@ -9,39 +9,39 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "default": "./dist/index.js"
     },
     "./client": {
       "types": "./dist/client/index.d.ts",
-      "import": "./dist/client/index.js"
+      "default": "./dist/client/index.js"
     },
     "./client/http": {
       "types": "./dist/client/http-client.d.ts",
-      "import": "./dist/client/http-client.js"
+      "default": "./dist/client/http-client.js"
     },
     "./client/websocket": {
       "types": "./dist/client/ws-client.d.ts",
-      "import": "./dist/client/ws-client.js"
+      "default": "./dist/client/ws-client.js"
     },
     "./types": {
       "types": "./dist/types/index.d.ts",
-      "import": "./dist/types/index.js"
+      "default": "./dist/types/index.js"
     },
     "./errors": {
       "types": "./dist/errors/index.d.ts",
-      "import": "./dist/errors/index.js"
+      "default": "./dist/errors/index.js"
     },
     "./utils": {
       "types": "./dist/utils/index.d.ts",
-      "import": "./dist/utils/index.js"
+      "default": "./dist/utils/index.js"
     },
     "./packet": {
       "types": "./dist/packet/index.d.ts",
-      "import": "./dist/packet/index.js"
+      "default": "./dist/packet/index.js"
     },
     "./middleware": {
       "types": "./dist/middleware/index.d.ts",
-      "import": "./dist/middleware/index.js"
+      "default": "./dist/middleware/index.js"
     },
     "./package.json": "./package.json"
   },

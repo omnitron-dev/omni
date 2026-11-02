@@ -4,6 +4,11 @@
 
 Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framework.
 
+Prism's UI entry points declare a React client boundary in the published ESM
+files. In React Server Component applications, render these components with
+serializable props and configure providers inside a client component.
+`@omnitron-dev/prism/http` also works in server code.
+
 ## Installation
 
 ```bash
@@ -12,11 +17,12 @@ pnpm add @omnitron-dev/prism
 
 ## Overview
 
-Prism is a design system built on MUI v7, providing pre-composed, theme-aware components for building production frontends. All reusable UI — layouts, forms, navigation, data display — lives here so that application code stays thin.
+Prism is a design system built on MUI. It provides themed layouts, forms,
+navigation and data displays for application frontends.
 
 ### Key Features
 
-- **MUI v7 foundation** — themed components with full customization
+- **MUI foundation** — themed components with full customization
 - **Layout system** — `DashboardLayout`, navigation items, sidebar, breadcrumbs
 - **Form components** — integrated with react-hook-form + zod validation
 - **Auth-aware** — components that respect authentication state

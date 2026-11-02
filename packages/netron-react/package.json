@@ -136,7 +136,7 @@
   },
   "homepage": "https://github.com/omnitron-dev/omni/tree/main/packages/netron-react#readme",
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.12.0"
   },
   "sideEffects": false
 }

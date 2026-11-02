@@ -6,18 +6,24 @@ const blockers = [
   'DropInPaths', 'ConsistsOf', 'BoundBy', 'RequiredBy', 'RequisiteOf', 'PropagatesStopTo', 'OnFailure', 'OnSuccess', 'Triggers', 'TriggeredBy',
 ];
 const serviceHooks = ['ExecCondition', 'ExecStartPre', 'ExecStartPost', 'ExecStop', 'ExecStopPost'];
-export const guardianUnitProperties = [...blockers, ...serviceHooks, 'FragmentPath', 'LoadState', 'NeedDaemonReload', 'User', 'Group', 'KillMode'];
+export const guardianStopProperties = [...blockers, ...serviceHooks, 'LoadState', 'NeedDaemonReload', 'KillMode'];
+export const guardianUnitProperties = [...guardianStopProperties, 'FragmentPath', 'User', 'Group'];
 
 /** Stopping a unit may also stop its dependents or execute arbitrary site hooks. */
-export function checkSystemGuardian(unit: string, facts: Record<string, string>, requireLoaded: boolean): void {
+export function checkGuardianStopEffects(facts: Record<string, string>, requireLoaded: boolean): void {
   // systemctl omits empty command arrays even with --all. For these fields
   // also validate the loaded, drop-in-free fragment in replaceGuardianExec.
   const unsupported = [...blockers.filter(name => facts[name] !== ''), ...serviceHooks.filter(name => facts[name])];
   if (unsupported.length) throw Error('Independent guardian stop is not proven. Inspect systemd properties: ' + unsupported.join(', '));
-  if (!/^omnitron-[a-z0-9-]+\.service$/.test(unit) || facts['LoadState'] !== 'loaded' ||
-      facts['FragmentPath'] !== '/etc/systemd/system/' + unit || !['', 'root'].includes(facts['User'] ?? '?') ||
-      !['', 'root'].includes(facts['Group'] ?? '?') || facts['KillMode'] !== 'control-group' ||
+  if (facts['LoadState'] !== 'loaded' || facts['KillMode'] !== 'control-group' ||
       requireLoaded && facts['NeedDaemonReload'] !== 'no') throw Error('Unsupported or changed system guardian unit');
+}
+
+export function checkSystemGuardian(unit: string, facts: Record<string, string>, requireLoaded: boolean): void {
+  checkGuardianStopEffects(facts, requireLoaded);
+  if (!/^omnitron-[a-z0-9-]+\.service$/.test(unit) ||
+      facts['FragmentPath'] !== '/etc/systemd/system/' + unit || !['', 'root'].includes(facts['User'] ?? '?') ||
+      !['', 'root'].includes(facts['Group'] ?? '?')) throw Error('Unsupported or changed system guardian unit');
 }
 
 /** Preserve the site's account, environment, restart policy and working directory byte-for-byte. */

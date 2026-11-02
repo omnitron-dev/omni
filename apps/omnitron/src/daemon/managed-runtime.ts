@@ -5,6 +5,8 @@ import { promisify } from 'node:util';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import { readPrivateRecord } from './execution-journal.js';
 import type { ServiceScope } from '../commands/service-units.js';
+import { checkGuardianStopEffects, guardianStopProperties } from './system-guardian-unit.js';
+import { checkGuardianStopFence, guardianControlGroup, verifyStoppedGuardian, type GuardianStopFence } from './system-guardian-cgroup.js';
 import { readHostBootIdentity, isStableHostBootIdentity, provesDifferentHostBoot } from '../shared/host-boot-identity.js';
 
 export interface ManagedRuntime {
@@ -71,6 +73,31 @@ export async function verifyManagedIsolation(config: ManagedRuntime, ownerPid: n
         (childGroup !== null && childGroup !== guardianGroup)) throw new Error('Owner and backend must occupy their separate configured systemd cgroups');
   }
   if (backendPid === process.pid && process.ppid !== guardianPid) throw new Error('The backend was not launched by its OS-supervised guardian');
+}
+
+export async function managedSystemdProperties(config: ManagedRuntime, unit: string, properties: readonly string[]): Promise<Record<string, string>> {
+  const output = await native('systemctl', [...(config.scope === 'user' ? ['--user'] : []), 'show', '--all', unit,
+    '--property=' + properties.join(',')]);
+  return Object.fromEntries(output.trim().split('\n').map(line => {
+    const delimiter = line.indexOf('=');
+    if (delimiter < 1) throw Error('Systemd returned a malformed unit property');
+    return [line.slice(0, delimiter), line.slice(delimiter + 1)];
+  }));
+}
+
+/** Inspect the OS kill scope only for an operation that will stop the Linux guardian. */
+export async function managedGuardianStopFence(
+  config: ManagedRuntime, guardianPid: number, backendPid: number, expected?: GuardianStopFence, retired = false,
+): Promise<GuardianStopFence> {
+  const properties = [...guardianStopProperties, 'Id', 'MainPID', 'ControlGroup', 'Delegate', 'ActiveState'];
+  const facts = await managedSystemdProperties(config, config.backend.unit, properties);
+  checkGuardianStopEffects(facts, true);
+  return checkGuardianStopFence(guardianControlGroup(config.backend.unit, guardianPid, facts), guardianPid, backendPid, expected, retired);
+}
+
+export async function assertGuardianStopped(config: ManagedRuntime, fence?: GuardianStopFence): Promise<void> {
+  const facts = await managedSystemdProperties(config, config.backend.unit, ['Id', 'LoadState', 'ActiveState', 'MainPID', 'ControlGroup']);
+  verifyStoppedGuardian(config.backend.unit, fence, facts);
 }
 
 export async function hostBootIdentity(): Promise<string> {

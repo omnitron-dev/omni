@@ -45,11 +45,16 @@ export async function backendSupervisorPrepareCommand(directory: string): Promis
   } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
 }
 
-export async function backendSupervisorApplyCommand(file: string): Promise<void> {
+export async function backendSupervisorApplyCommand(file: string, checkOnly = false): Promise<void> {
   try {
     const { applySupervisorTransition } = await import('../daemon/supervisor-transition.js');
-    const result = await applySupervisorTransition(path.resolve(file));
-    if (!emitJson(result)) emitInfo(`Guardian PID ${result.result?.guardianPid}; backend PID ${result.result?.backendPid}; execution owner PID ${result.ownerPid} preserved`);
+    const result = await applySupervisorTransition(path.resolve(file), { checkOnly });
+    if (emitJson(result)) return;
+    if (checkOnly) {
+      emitInfo(result.phase === 'complete' ? 'Guardian transition already completed.' : `Guardian plan verified for execution owner PID ${result.ownerPid}.`);
+      return;
+    }
+    emitInfo(`Guardian PID ${result.result?.guardianPid}; backend PID ${result.result?.backendPid}; execution owner PID ${result.ownerPid} preserved`);
   } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
 }
 
@@ -70,7 +75,7 @@ export async function backendInstallCommand(directory: string): Promise<void> {
 export async function backendInstallationCommand(): Promise<void> {
   let installation: RuntimeInstallation | null = null;
   try {
-    installation = await RuntimeInstallation.open(undefined, { existing: true });
+    installation = await RuntimeInstallation.openReadOnly();
     const state = { directory: installation?.directory ?? null, selection: installation?.selection() ?? null,
       activation: installation?.activation() ?? null };
     if (!emitJson(state)) {
@@ -85,13 +90,13 @@ export async function backendInstallationCommand(): Promise<void> {
 export async function backendSelectCommand(id: string, checkOnly = false): Promise<void> {
   let installation: RuntimeInstallation | null = null;
   try {
-    installation = await RuntimeInstallation.open(undefined, { existing: true });
+    installation = checkOnly ? await RuntimeInstallation.openReadOnly() : await RuntimeInstallation.open(undefined, { existing: true });
     if (!installation) throw new Error('Cannot open runtime installation');
     const registry = installation;
     const check = async () => {
       const config = { ...DEFAULT_DAEMON_CONFIG, ...savedDaemonOverrides(readSavedDaemonConfig()) };
       if (registry.activation()) throw new Error('An activation is unfinished; recover or abort its checkpoint before selecting another release');
-      const selected = registry.selection();
+      const selected = checkOnly ? registry.settledSelection({ allowEmpty: true }) : registry.selection();
       const artifact = await registry.artifact(id);
       if (!selected?.bootstrap) {
         try { await fs.access(path.join(artifact.directory, 'cli/installed.js')); }
@@ -108,6 +113,8 @@ export async function backendSelectCommand(id: string, checkOnly = false): Promi
     };
     if (checkOnly) {
       const { selected, scope } = await check();
+      const confirmed = registry.settledSelection({ allowEmpty: true });
+      if (confirmed?.revision !== selected?.revision || confirmed?.current !== selected?.current) throw new Error('Runtime selection changed during the check');
       if (!emitJson({ checked: true, current: selected?.current ?? null, candidate: id, schemaScope: scope })) {
         emitInfo(`Cold selection verified for ${id} (${scope} migrations).`);
       }

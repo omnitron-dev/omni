@@ -62,9 +62,10 @@ guardian.command('prepare <runtime>').description('Install a sealed management r
     await backendSupervisorPrepareCommand(runtime);
   });
 guardian.command('apply <plan>').description('Apply or resume a prepared guardian transition; preserve execution ownership')
-  .structuredAction(async (plan: string) => {
+  .option('--check', 'Recheck a prepared transition against the current host before approval')
+  .structuredAction(async (plan: string, options: { check?: boolean }) => {
     const { backendSupervisorApplyCommand } = await import('../commands/backend.js');
-    await backendSupervisorApplyCommand(plan);
+    await backendSupervisorApplyCommand(plan, options.check === true);
   });
 backend.command('install <runtime>').description('Copy a sealed runtime into permanent storage without activation')
   .structuredAction(async (runtime: string) => {
@@ -693,7 +694,7 @@ rollout.command('builds')
     await listFleetBuilds();
   });
 rollout.command('plan <commit> [nodes...]')
-  .description('Review a batch for the exact Git commit, in the order requested')
+  .description('Review sealed backend updates in the requested node order; omit nodes to select all registered remotes')
   .option('--apply', 'Start the plan if all selected servers are eligible')
   .option('--stage', 'Distribute matching builds from the controller catalog before qualification')
   .option('--wait', 'Wait for qualification, and for activation if requested')
@@ -711,7 +712,7 @@ rollout.command('apply <id>')
     await fleetRolloutCommand({ kind: 'apply', id, wait: options.wait === true });
   });
 rollout.command('reconcile <id>')
-  .description('Resolve an interrupted rollout from fresh node observations')
+  .description('Observe an uncertain backend rollout without replaying activation or rolling it back')
   .structuredAction(async (id: string) => {
     const { fleetRolloutCommand } = await import('../commands/fleet-rollout.js');
     await fleetRolloutCommand({ kind: 'reconcile', id });
@@ -758,7 +759,7 @@ fleet
 
 fleet
   .command('upgrade [nodes...]')
-  .description('Install the omnitron built from this working tree on registered nodes')
+  .description('Install a source bundle from this workspace; use fleet rollout for sealed managed backend updates')
   .option('--dry-run', 'Print the plan and ship nothing')
   .option('--keep <n>', 'Versions to keep on each node (default: 3)', (v: string) => Number(v))
   .option('--allow-dirty', 'Ship a working tree with uncommitted changes, deliberately')

@@ -2,31 +2,64 @@
 
 ## Managed backend rollout
 
-A standalone controller can update the backend on registered Linux servers while their independent execution owners keep applications running. Each server needs a verified SSH host key and a healthy resident owner. Inspect the key with `omnitron node ssh-key <node>` and enroll its independently verified fingerprint with `--trust <fingerprint>`.
+The local controller replaces its backend through its independent supervisor.
+Remote managed Linux backends use `fleet rollout` and the Console's **Managed
+backend updates** panel. A guardian that predates `kernelHandoff@1` needs a
+separate, qualified native guardian transition first. `fleet upgrade` and the
+Console's advanced workspace source bundle controls retain the coupled-host
+workflow described below. They do not substitute for a managed backend handoff.
+The [operator procedure](https://omnitron.dev/docs/omnitron/backend-handoff)
+contains the operation table, exact commands and review steps.
 
-For a preinstalled candidate, give the controller its full Git commit and the desired order. Omitting the nodes selects all registered remote nodes in name order. Review the eligible targets, both artifact digests and the execution owner before applying the returned plan ID.
+A standalone controller can update up to 128 registered remote Linux servers.
+Each target needs an enrolled, independently verified SSH host key, a healthy
+resident owner and an independently stoppable guardian. The controller excludes
+itself by execution-owner identity, including alternate registrations. Elected
+controller clusters need recipient-side fencing across leaders and remain outside
+this fleet workflow.
 
-```sh
-omnitron fleet rollout plan "$COMMIT" test-node prod-node --wait
-omnitron fleet rollout apply "$PLAN_ID" --wait
-omnitron fleet rollout status "$PLAN_ID"
-```
+Planning binds the source commit, ordered targets, staging choice, pinned SSH
+endpoint, both runtime digests, selection revision, backend PID, owner and complete
+application/worker inventory. Staging verifies and installs a catalog artifact
+without selecting it. The first guardian bootstrap cannot rely on a handoff
+protocol the incumbent does not implement. Prepare its management runtime through
+the separately qualified native installation path.
 
-To distribute a candidate from one controller, first import a qualified sealed runtime for each target architecture and exact Node version. Add `--stage` to the plan to transfer a matching build. Staging writes content-addressed files and verifies their integrity before qualification. Backend selection changes only when the plan starts.
+CLI and Console read the same durable plan ID and per-target outcomes. CLI omission
+of node arguments retains its public meaning of all registered remotes in name
+order. Console requires explicit targets or **All registered remote nodes**.
+Aliases resolving to the same target and ambiguous selections refuse before
+planning. Administrative authority is revalidated before staging and dispatch.
+Viewers and operators can inspect receipts without gaining activation rights.
 
-```sh
-omnitron fleet rollout import /path/to/qualified-linux/runtime
-omnitron fleet rollout builds
-omnitron fleet rollout plan "$COMMIT" test-node prod-node --stage --wait
-```
+Guardian preparation installs a sealed management artifact and records its native
+stop boundary. `backend guardian apply <plan> --check` performs read-only validation
+of a prepared plan using the same guards as apply. It requires `checked: true` for
+a fresh approval. A completed receipt reports `checked: false`. Apply rechecks
+under the installation lease before retirement and changes only the guardian job,
+retaining the selected backend and execution owner.
 
-The Console's fleet rollout in Nodes and the CLI use the same durable receipt. Planning returns an ID immediately and records progress for each server. An automation can supply a UUID with `--request-id`. After a lost response, repeat the same commit, target order and staging choice with that ID. A controller restart during preflight permits the same qualification to run again. A rollout requires an administrator with a current session or the authenticated local Unix identity. Viewers and operators can follow status.
+Normal pool recycling can invalidate a reviewed inventory. Before dispatch, a
+stale owner/PID/inventory/selection refuses the operation without handing off.
+Prepare a fresh guardian or fleet plan and review its new identities. Retain the
+old receipt. Once dispatch may have occurred, follow the original running
+operation or reconcile its uncertain outcome before planning further work.
 
-The controller revalidates the administrator before staging or handing off each server. Revoking that session prevents further dispatch. A second SSH registration for the controller is rejected using its execution owner identity, including when the registration uses a different address or host key.
+Reconciliation distinguishes the original runtime with its original PID/revision
+(unchanged) from a verified return after activation (`rolled-back`). An unchanged
+target is recorded as `failed` with its evidence, rather than as a rollback. A failed
+batch can include an earlier successful target and unattempted later targets.
+CLI and Console preserve that per-target result. Reconciliation observes outcomes
+without replaying activation or restoring application data. An unprovable result
+remains uncertain and blocks a new rollout.
 
-Activation is sequential. The controller pins each SSH endpoint, immutable artifacts, runtime selection revision, owner and application inventory. An uncertain dispatch holds the fleet operation open. Inspect it with `omnitron fleet rollout status "$PLAN_ID"` and use `omnitron fleet rollout reconcile "$PLAN_ID"` to obtain fresh evidence under the original node lease. Reconciliation records the proven selection. A separate plan is required to activate remaining targets after an interruption. Earlier successful targets retain their selections.
-
-The local controller uses its independent supervisor and the local backend upgrade procedure. Elected controller clusters currently require a shared cross-node dispatch fence before this fleet operation can run there.
+Activation proceeds sequentially and verifies readiness and ownership between
+nodes. Business acceptance, such as a new committed replication watermark or a
+public transaction, remains an external gate. Use a separate one-node plan before
+advancing to another node when that evidence is required. Reversing an accepted,
+healthy target uses a new plan for its retained previous artifact. Owner updates,
+Node changes, schema changes and the first coupled-to-resident transition remain
+separate maintenance operations.
 
 ## Application releases and coupled hosts
 

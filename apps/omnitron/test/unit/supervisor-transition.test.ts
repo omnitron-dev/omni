@@ -5,12 +5,15 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const fake = vi.hoisted(() => ({ config: null as any, selection: null as any, activation: null as any, snapshot: null as any,
-  control: vi.fn(), opened: vi.fn(), job: vi.fn() }));
+  control: vi.fn(), opened: vi.fn(), job: vi.fn(), stopFence: vi.fn(), stopped: vi.fn(), readBoot: vi.fn() }));
 vi.mock('../../src/daemon/managed-runtime.js', async original => ({
   ...await original<typeof import('../../src/daemon/managed-runtime.js')>(),
-  readManagedRuntime: async () => fake.config, managedJobPid: fake.job,
+  readManagedRuntime: async () => fake.config, managedJobPid: fake.job, managedGuardianStopFence: fake.stopFence, assertGuardianStopped: fake.stopped,
 }));
-vi.mock('../../src/daemon/runtime-installation.js', () => ({ RuntimeInstallation: { open: fake.opened } }));
+vi.mock('../../src/daemon/backend-handoff-types.js', async original => ({
+  ...await original<typeof import('../../src/daemon/backend-handoff-types.js')>(), readBackendBootRecord: fake.readBoot,
+}));
+vi.mock('../../src/daemon/runtime-installation.js', () => ({ RuntimeInstallation: { open: fake.opened, openReadOnly: (home: string) => fake.opened(home, { readOnly: true }) } }));
 vi.mock('../../src/daemon/execution-client.js', () => ({ ExecutionClient: class {
   async connect() { return fake.snapshot; } async close() {}
 } }));
@@ -21,11 +24,12 @@ import { checkSystemGuardian, guardianUnitProperties, replaceGuardianExec } from
 import type { ManagedRuntime } from '../../src/daemon/managed-runtime.js';
 import { applySupervisorTransition } from '../../src/daemon/supervisor-transition.js';
 import { writePrivateRecord } from '../../src/daemon/execution-journal.js';
+import { projectExecutionIdentity } from '../../src/shared/execution-identity.js';
 
 const roots: string[] = [];
 beforeEach(() => {
   vi.resetAllMocks(); fake.activation = null;
-  fake.opened.mockResolvedValue({ exclusive: async (fn: () => unknown) => fn(), close: vi.fn(), artifact: vi.fn(),
+  fake.opened.mockResolvedValue({ exclusive: vi.fn(async (fn: () => unknown) => fn()), close: vi.fn(), artifact: vi.fn(), settledSelection: () => fake.selection,
     selection: () => fake.selection, activation: () => fake.activation });
 });
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { force: true, recursive: true }); });
@@ -107,4 +111,131 @@ it('blocks stoppage when a system guardian cascades, has external hooks, uses dr
   expect(() => replaceGuardianExec('[Service]\nExecStop=/bin/kill\n', {} as ManagedRuntime, {} as ManagedRuntime)).toThrow('hooks');
   const { ConsistsOf: _unknown, ...incomplete } = facts as Record<string, string>;
   expect(() => checkSystemGuardian(unit, incomplete, true)).toThrow('ConsistsOf');
+});
+
+
+it('checks prepare, admission and rollback without taking the installation lease or writing the journal', async () => {
+  const { file, plan } = await fixture();
+  plan.backend.runtime = 'e'.repeat(64); fake.selection.current = plan.backend.runtime;
+  Object.assign(plan, { linuxStop: { group: '/system.slice/daemon.service', directoryId: 'f'.repeat(64),
+    guardianProcess: '5'.repeat(64), backendProcess: '6'.repeat(64) } });
+  await writePrivateRecord(file, plan);
+  const source = await fs.readFile(file);
+  fake.job.mockResolvedValue(plan.guardianPid);
+  const state = { pid: plan.backend.pid, instanceHome: plan.before.instanceHome, runtime: {
+    phase: 'active', owner: plan.owner, connection: { status: 'connected' }, blockers: { terminalSessions: 0, fileTransfers: 0, pipelineRuns: 0, releaseBuilds: 0 } },
+    retired: false, ticketId: null as string | null };
+  const control = { status: vi.fn(async () => state), prepare: vi.fn(), retire: vi.fn() };
+  fake.control.mockResolvedValue({ service: control, close: vi.fn() });
+  await expect(applySupervisorTransition(file, { checkOnly: true })).resolves.toMatchObject({ id: plan.id, phase: 'prepared', checked: true });
+  const installation = await fake.opened.mock.results[0]!.value;
+  expect(fake.opened).toHaveBeenCalledWith(plan.before.instanceHome, { readOnly: true });
+  expect(installation.artifact.mock.calls.map((args: string[]) => args[0]).sort()).toEqual([
+    plan.before.backend.artifact, plan.after.backend.artifact, plan.backend.runtime].sort());
+  expect(installation.exclusive).not.toHaveBeenCalled(); expect(control.prepare).not.toHaveBeenCalled(); expect(control.retire).not.toHaveBeenCalled();
+  expect(await fs.readFile(file)).toEqual(source);
+  state.runtime.blockers.terminalSessions = 1;
+  await expect(applySupervisorTransition(file, { checkOnly: true })).rejects.toThrow(/operations block/);
+  state.runtime.blockers.terminalSessions = 0; state.ticketId = 'foreign';
+  await expect(applySupervisorTransition(file, { checkOnly: true })).rejects.toThrow(/transfer/);
+  expect(await fs.readFile(file)).toEqual(source);
+});
+it('requires reconciliation of an interrupted check and reports completion without revalidating a forward plan', async () => {
+  const interrupted = await fixture('preparing');
+  await expect(applySupervisorTransition(interrupted.file, { checkOnly: true })).rejects.toThrow(/reconcile/);
+  const completed = await fixture('complete');
+  await expect(applySupervisorTransition(completed.file, { checkOnly: true })).resolves.toMatchObject({ phase: 'complete', checked: false });
+  expect(fake.opened).not.toHaveBeenCalled();
+});
+
+it('checks the Linux stop fence again after retirement before issuing a native stop, including resume', async () => {
+  const { plan, file } = await fixture('retired');
+  Object.assign(plan, { linuxStop: { group: '/system.slice/omnitron.service', directoryId: 'd'.repeat(64),
+    guardianProcess: 'e'.repeat(64), backendProcess: 'f'.repeat(64) } });
+  await writePrivateRecord(file, plan);
+  const original = Object.getOwnPropertyDescriptor(process, 'platform')!;
+  const { PidManager } = await import('../../src/daemon/pid-manager.js');
+  const alive = vi.spyOn(PidManager, 'isProcessAlive').mockImplementation(pid => pid === plan.guardianPid);
+  try {
+    Object.defineProperty(process, 'platform', { ...original, value: 'linux' });
+    fake.job.mockResolvedValue(plan.guardianPid); fake.stopFence.mockRejectedValue(Error('Foreign process in the guardian cgroup'));
+    await expect(applySupervisorTransition(file)).rejects.toThrow('Foreign process');
+    expect(fake.stopFence).toHaveBeenCalledWith(plan.before, plan.guardianPid, plan.backend.pid, expect.objectContaining({ group: expect.any(String) }), true);
+    expect(JSON.parse(await fs.readFile(file, 'utf8')).phase).toBe('retired');
+    expect(fake.control).not.toHaveBeenCalled();
+  } finally { Object.defineProperty(process, 'platform', original); alive.mockRestore(); }
+});
+it('rejects a selection revision that changed away and back to the same artifact', async () => {
+  const { file, plan } = await fixture();
+  Object.assign(plan, { selectionRevision: 4 }); await writePrivateRecord(file, plan);
+  fake.selection.revision = 6;
+  await expect(applySupervisorTransition(file, { checkOnly: true })).rejects.toThrow('selection changed');
+  expect(fake.control).not.toHaveBeenCalled();
+});
+
+it.each([false, true])('rechecks the kill scope after drain and fences retirement when abort fails=%s', async abortFails => {
+  const { file, plan } = await fixture();
+  Object.assign(plan, { linuxStop: { group: '/system.slice/omnitron.service', directoryId: 'd'.repeat(64),
+    guardianProcess: 'e'.repeat(64), backendProcess: 'f'.repeat(64) } });
+  await writePrivateRecord(file, plan);
+  const original = Object.getOwnPropertyDescriptor(process, 'platform')!;
+  const ticketId = randomUUID(), operations = {
+    status: async () => ({ pid: plan.backend.pid, instanceHome: plan.before.instanceHome, runtime: { phase: 'active', owner: plan.owner,
+      blockers: { terminalSessions: 0, fileTransfers: 0, pipelineRuns: 0, releaseBuilds: 0 }, connection: { status: 'connected' } } }),
+    prepare: vi.fn(async () => ({ file: path.join(plan.before.directory, 'handoff-' + ticketId + '.json'), ticketId })),
+    abort: vi.fn(async () => { if (abortFails) throw Error('Retirement is uncertain'); }), retire: vi.fn(),
+  };
+  try {
+    Object.defineProperty(process, 'platform', { ...original, value: 'linux' });
+    fake.job.mockResolvedValue(plan.guardianPid); fake.stopFence.mockResolvedValueOnce({}).mockRejectedValueOnce(Error('Process changed while draining'));
+    fake.control.mockResolvedValue({ service: operations, close: vi.fn() });
+    fake.readBoot.mockResolvedValue({ previousPid: plan.backend.pid, state: { executionInventory: plan.owner.inventory, ticket: { id: ticketId, ownerId: plan.owner.id, from: { ownerId: plan.owner.id }, to: { controllerId: plan.id, ownerId: plan.owner.id } } } });
+    await expect(applySupervisorTransition(file)).rejects.toThrow(abortFails ? /reconcile/ : /while draining/);
+    expect(operations.prepare).toHaveBeenCalledOnce(); expect(operations.retire).not.toHaveBeenCalled();
+    expect(operations.abort).toHaveBeenCalledWith({ ticketId });
+    const journal = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(journal.phase).toBe(abortFails ? 'preparing' : 'prepared');
+    expect(Boolean(journal.checkpoint)).toBe(abortFails);
+  } finally { Object.defineProperty(process, 'platform', original); }
+});
+
+it('resumes a legacy retired journal without a historical stop fence only when no native stop is required', async () => {
+  const { file, plan } = await fixture('retired');
+  const original = Object.getOwnPropertyDescriptor(process, 'platform')!;
+  const { PidManager } = await import('../../src/daemon/pid-manager.js');
+  const alive = vi.spyOn(PidManager, 'isProcessAlive').mockReturnValue(false);
+  try {
+    Object.defineProperty(process, 'platform', { ...original, value: 'linux' });
+    // A new native job appeared after both former PIDs exited. Updating
+    // the unit would affect an unreviewed process, so retain the checkpoint.
+    fake.stopped.mockRejectedValue(Error('The previous guardian unit is not verifiably stopped'));
+    await expect(applySupervisorTransition(file)).rejects.toThrow(/not verifiably stopped/);
+    expect(fake.stopped).toHaveBeenCalledWith(plan.before, undefined);
+    expect(fake.stopFence).not.toHaveBeenCalled(); expect(fake.control).not.toHaveBeenCalled();
+    expect(JSON.parse(await fs.readFile(file, 'utf8')).phase).toBe('retired');
+    expect(await fs.readFile(plan.unit.file, 'utf8')).toBe(plan.unit.before);
+  } finally { Object.defineProperty(process, 'platform', original); alive.mockRestore(); }
+});
+
+
+it.each(['prepared', 'retired', 'started'])('names stale worker pools before any dispatch and gives phase-correct advice for %s', async phase => {
+  const { file, plan } = await fixture(phase);
+  const before = { status: fake.snapshot.status, inventoryDigest: plan.owner.inventory,
+    apps: [{ info: { name: 'files', pid: 3000, restarts: 0 }, startedAt: 1,
+      children: [], pools: [{ name: 'transform', workerIds: ['old-worker'] }] }],
+    workers: [{ info: { id: 'old-worker', startTime: 2 }, pid: 3001 }] };
+  Object.assign(plan.owner, { identity: projectExecutionIdentity(before) });
+  await writePrivateRecord(file, plan);
+  const original = await fs.readFile(file, 'utf8');
+  fake.snapshot = structuredClone(before);
+  fake.snapshot.inventoryDigest = 'e'.repeat(64);
+  fake.snapshot.apps[0].pools[0].workerIds = ['new-worker'];
+  fake.snapshot.workers = [{ info: { id: 'new-worker', startTime: 3 }, pid: 3002 }];
+  const error = await applySupervisorTransition(file).catch(cause => cause as Error);
+  expect(error).toBeInstanceOf(Error);
+  expect(error.message).toContain('worker pools: "files/transform"');
+  expect(error.message).toContain(phase === 'prepared' ? 'prepare a new guardian transition plan' : 'Reconcile this transition checkpoint');
+  if (phase !== 'prepared') expect(error.message).not.toContain('prepare a new guardian transition plan');
+  expect(fake.control).not.toHaveBeenCalled(); expect(fake.job).not.toHaveBeenCalled();
+  expect(await fs.readFile(file, 'utf8')).toBe(original);
 });

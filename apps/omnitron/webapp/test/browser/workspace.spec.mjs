@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures.mjs';
 
-async function stubInventory(page, extraReadings = {}) {
+async function stubInventory(page, extraReadings = {}, healthStatus = 'online') {
   const readings = {
     'OmnitronProject.listProjects': ['Example', 'Other'].map(displayName => ({
       name: displayName.toLowerCase(), displayName, path: '/' + displayName, totalStacks: 1, runningStacks: 0,
@@ -21,7 +21,9 @@ async function stubInventory(page, extraReadings = {}) {
       : typeof reading === 'function' ? reading(...input) : reading;
     return route.fulfill({ json: { id, success: data !== undefined, data } });
   });
-  await page.route('**/api/health', route => route.fulfill({ json: { status: 'ok' } }));
+  await page.route('**/api/health', route => route.fulfill({ json: { status: healthStatus } }));
+  // Keep browser fixtures independent of any daemon listening on the developer host.
+  await page.routeWebSocket('**/ws', socket => socket.close());
 }
 
 test('an administrator can prepare a catalog build on a narrow screen before explicitly applying it', async ({ page, url }) => {
@@ -85,6 +87,48 @@ test('managed rollout evidence fits a narrow window for a read-only operator', a
 });
 
 for (const direction of ['ltr', 'rtl']) {
+  for (const healthStatus of ['online', 'offline']) {
+    test('a delayed header tooltip placement cannot widen the ' + healthStatus + ' workspace in ' + direction, async ({ page, url }) => {
+      await stubInventory(page, {}, healthStatus);
+      await page.setViewportSize({ width: 768, height: 840 });
+      await page.goto(url + '/workspace.html?dir=' + direction);
+      await page.getByRole('button', { name: 'Switch workspace: Omnitron' }).click();
+      await page.getByRole('menuitem', { name: /Example/ }).click();
+      const stack = page.getByRole('combobox', { name: 'Stack filter' });
+      if (healthStatus === 'offline') await expect(page.getByRole('alert').filter({ hasText: 'Daemon offline' })).toBeVisible();
+      await stack.hover();
+      const tooltip = page.getByRole('tooltip', { name: /Filter workspace views/ });
+      await expect(tooltip).toBeVisible();
+      const previous = await tooltip.boundingBox();
+      const portal = await tooltip.elementHandle();
+      await page.setViewportSize({ width: 320, height: 840 });
+      // Popper's resize update and pointer-leave can race the browser's new layout.
+      // Retain the preceding measured placement for one painted frame, rather than
+      // relying on host speed to catch the absolute portal widening the document.
+      const measured = await portal.evaluate(async (element, { previous, direction }) => {
+        const attached = element.isConnected;
+        const style = element.style.cssText;
+        if (!attached) document.body.append(element);
+        const x = direction === 'ltr' ? previous.x : previous.x - (768 - 320);
+        await new Promise(requestAnimationFrame);
+        Object.assign(element.style, { left: '0px', right: 'auto', width: previous.width + 'px', transform: `translate(${x}px, 64px)` });
+        const result = { width: document.documentElement.scrollWidth, scroll: window.scrollX };
+        await new Promise(requestAnimationFrame);
+        element.style.cssText = style;
+        if (!attached) element.remove();
+        window.dispatchEvent(new Event('resize'));
+        return result;
+      }, { previous, direction });
+      expect(measured).toEqual({ width: 320, scroll: 0 });
+      await stack.hover();
+      await expect(tooltip).toBeVisible();
+      await expect.poll(async () => {
+        const box = await tooltip.boundingBox();
+        return box.x >= 0 && box.x + box.width <= 320;
+      }).toBe(true);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+    });
+  }
   test('workspace gutters and stack selector follow the reading direction in ' + direction, async ({ page, url }) => {
     await stubInventory(page);
     await page.setViewportSize({ width: 1440, height: 840 });

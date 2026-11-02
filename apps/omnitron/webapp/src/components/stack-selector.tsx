@@ -26,7 +26,12 @@ export function StackSelector() {
       title={menuOpen ? '' : readError
         ? 'Stack inventory unavailable. The current filter is retained; cached options may be stale.'
         : 'Filter workspace views. Opening a stack detail does not change this filter.'}
-      slotProps={{ transition: { timeout: 0 } }}
+      slotProps={{
+        // A pending placement from a wider window must not enlarge the page
+        // while Popper catches up with a resize of this viewport-bound header.
+        popper: { popperOptions: { strategy: 'fixed' } },
+        transition: { timeout: 0 },
+      }}
     >
       <Select
         size="small"

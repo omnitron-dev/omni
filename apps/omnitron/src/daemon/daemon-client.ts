@@ -65,16 +65,7 @@ export type DaemonAbsence =
   /** The pid file could not be read, so the question stays open. */
   | { kind: 'unknown'; reason: string };
 
-/**
- * Timeout for calls that legitimately take minutes — starting or stopping a
- * whole stack, where each app is a Titan application connecting to a
- * database, Redis and its siblings before it reports ready.
- *
- * Six apps take well over a minute on a cold start, so the default ceiling
- * expired mid-operation and the CLI announced a failure for something that
- * went on to succeed.
- */
-export const LONG_REQUEST_TIMEOUT = 10 * 60_000;
+export { LONG_REQUEST_TIMEOUT } from '../shared/dto/services.js';
 
 /**
  * Whether an error is the client giving up rather than the operation failing.

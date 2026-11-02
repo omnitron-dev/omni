@@ -3,7 +3,7 @@ export type { InstalledReleaseInspection, InstalledArtifactObservation, Installe
 import type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace } from './topology.js';
 export type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace, TopologyChange, TopologyIssue } from './topology.js';
 import type { ProjectTopology } from './project.js';
-export type { ConfigurationImport, ProjectConfigurationInfo, RuntimeStackScope, ProjectDependency, ProjectTopology, TopologyMetadataRefresh, StackStopReview } from './project.js';
+export type { InstalledStackResumeResult, ConfigurationImport, ProjectConfigurationInfo, RuntimeStackScope, ProjectDependency, ProjectTopology, TopologyMetadataRefresh, StackStopReview } from './project.js';
 import type { LogIngestionStats } from './logs.js';
 /**
  * Omnitron Daemon RPC Service Interfaces
@@ -32,6 +32,18 @@ export type { AppStatus, SubProcessInfoDto } from '../../config/types.js';
 export type { BackendRuntimeStatus, IOmnitronBackendService } from './backend.js';
 export type { IOmnitronAccessService, ConsoleAccess, ConsoleCapability, ConsoleAccount, ConsoleRole } from './access.js';
 export { consolePasswordError } from './auth.js';
+
+/** Stack lifecycle operations can need several minutes for cold processes to report ready. */
+export const LONG_REQUEST_TIMEOUT = 10 * 60_000;
+
+/** These transport failures cannot attest whether an in-flight mutation took effect. */
+export function isLostRpcAcknowledgement(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const { name, code, message, status } = error as { name?: string; code?: unknown; message?: string; status?: number };
+  return name === 'TransportLostError' || code === 'ECONNRESET' || code === 'EPIPE' ||
+    code === 'NETWORK_ERROR' || code === 'INVALID_RESPONSE' || (code === 'HTTP_ERROR' && status === 502) ||
+    (code === 503 && message === 'Socket closed during RPC');
+}
 
 // ============================================================================
 // Daemon Service Interface
@@ -347,6 +359,7 @@ export interface IProjectRpcService {
   getStackStatus(data: { project: string; stack: string }): Promise<StackRuntime>;
 
   // --- Stacks (Operator) ---
+  resumeInstalledStack(data: { project: string; stack: string }): Promise<import('./project.js').InstalledStackResumeResult>;
   startStack(data: { project: string; stack: string; allowDirty?: boolean; release?: string; reinstall?: boolean }): Promise<IStackInfo>;
   /** Would this stack take this release? The deployment's own decision, asked in advance. */
   checkRelease(data: { project: string; stack: string; release: string }): Promise<{ ok: boolean; because: string }>;

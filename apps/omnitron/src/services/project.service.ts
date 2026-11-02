@@ -1,4 +1,7 @@
 import { infrastructureOwnership, ownsStackInfrastructure } from '../project/infrastructure-ownership.js';
+import { InstalledStackResume, resumeDestinations, type InstalledResumeExecution, type InstalledResumeRequest, type InstalledResumeReceipt, type ResumeDestination } from '../project/installed-stack-resume.js';
+import type { InstalledStackResumeResult, StackStopProgress } from '../shared/dto/project.js';
+import type { ClusterPermit, StackEffectPlan } from '../cluster/stop-authority.js';
 import { isDeepStrictEqual } from 'node:util';
 import { diagnoseContainers } from '../project/stack-diagnosis.js';
 import { diagnosisStatus, type StackDiagnosis, type StackDiagnosisCheck } from '../shared/dto/stack-diagnosis.js';
@@ -260,7 +263,7 @@ export class ProjectService extends EventEmitter {
   recoveryRegistryDigest(): string { return this.registry.recoveryDigest(); }
   /** Read-only bookkeeping; no timers are stopped and no Docker call runs. */
   captureRecoveryState(): Awaited<ReturnType<ProjectService['prepareHandoff']>> {
-    if (this.ownershipFrozen || this.startsInFlight.size || this.stopsInFlight.size || this.nodeStackStop.busy || this.reconcilingStacks ||
+    if (this.ownershipFrozen || this.resumingInstalled || this.startsInFlight.size || this.stopsInFlight.size || this.nodeStackStop.busy || this.reconcilingStacks ||
         [...this.stackStates.values()].some(state => state.status === 'starting' || state.status === 'stopping')) {
       throw new RecoveryBusyError('Project ownership is changing; a recovery snapshot is not ready');
     }
@@ -287,7 +290,7 @@ export class ProjectService extends EventEmitter {
     resumeBackoff: Array<[string, { nextAt: number; delayMs: number }]>;
     reconciling: boolean;
   }> {
-    if (this.ownershipFrozen || this.startsInFlight.size || this.stopsInFlight.size || this.nodeStackStop.busy || this.reconcilingStacks || [...this.stackStates.values()].some(state => state.status === 'starting' || state.status === 'stopping')) {
+    if (this.ownershipFrozen || this.resumingInstalled || this.startsInFlight.size || this.stopsInFlight.size || this.nodeStackStop.busy || this.reconcilingStacks || [...this.stackStates.values()].some(state => state.status === 'starting' || state.status === 'stopping')) {
       throw new Error('A stack lifecycle operation is active; finish it before transferring the backend');
     }
     this.handoffReconciling = this.resumeTimer !== null;
@@ -333,6 +336,10 @@ export class ProjectService extends EventEmitter {
   private readonly infraManager: StackInfrastructureManager;
   private readonly nodeStackStop: NodeStackStop;
   private clusterStop?: { recipient: StopRecipient; election: LeaderElection | undefined };
+  private installedResume?: InstalledStackResume;
+  private coordinatingResume = false;
+
+  private get resumingInstalled(): boolean { return this.coordinatingResume || this.installedResume?.busy === true; }
   private hostedInfrastructure: () => InfrastructureService | undefined = () => undefined;
   private drainHostedProvisioning: (scope: StackExecutionScope) => Promise<void> = async () => {};
   private readonly stopsInFlight = new Map<string, Promise<IStackInfo>>();
@@ -418,19 +425,131 @@ export class ProjectService extends EventEmitter {
   /** Authority needed by an explicit start, including infrastructure provisioning. */
   private assertStartAuthority(scope: StackExecutionScope, stack: IStackConfig): void {
     if (this.clusterStop && (stack.type !== 'local' || stack.managedOrigin)) {
-      throw new Error('Starting this allocation requires a recipient-fenced deployment adapter; observed workloads remain under their existing owner');
+      throw new Error('Deploying this allocation requires a recipient-fenced deployment adapter. To recover retained applications after a confirmed stop, use stack resume.');
     }
     this.assertStackMutable(stack.managedOrigin ?? scope);
   }
 
   assertStackMutable(scope: StackExecutionScope): void {
-    if (this.clusterStop) throw new Error('Cluster infrastructure changes require a recipient-fenced provisioning adapter');
+    this.assertInfrastructureMutable(scope);
+  }
+
+  assertInfrastructureMutable(scope?: StackExecutionScope): void {
+    if (this.clusterStop) throw new Error('Direct cluster lifecycle changes require recipient-fenced authority. Use a reviewed stack stop or resume the installed applications.');
     this.nodeStackStop.assertMutable(scope);
   }
 
   setClusterStop(recipient: StopRecipient, election?: LeaderElection): void {
     this.nodeStackStop.setRecipient(recipient);
     this.clusterStop = { recipient, election };
+    this.installedResume = new InstalledStackResume(recipient, this.nodeStackStop, this.daemonStateStore,
+      this.orchestrator, async scope => {
+        const { runtime, fingerprint } = await this.stopDefinition({ ...scope, applications: true }, true);
+        if (!runtime) throw new Error('No installed application allocation is bound to this stack');
+        const config = this.getLoadedConfig(runtime.project)!;
+        const stack = this.resolveStacks(config, runtime.project)[runtime.stack]!;
+        if (ownsStackInfrastructure(stack)) throw new Error('Installed recovery requires application-only infrastructure ownership');
+        const order = resolveStartupOrder(this.resolveStackApps(stack, config)).flat().map(app => app.name);
+        return { runtime, fingerprint, order };
+      }, (runtime, receipt) => {
+        const state = this.stackStates.get(stackExecutionKey(runtime));
+        if (state) {
+          state.status = receipt.outcome === 'running' ? 'running' : 'error';
+          state.startedAt = receipt.outcome === 'running' ? Date.parse(receipt.observedAt) : null;
+        }
+      });
+  }
+
+  private resumeRecipient(): InstalledStackResume {
+    if (!this.installedResume) throw new Error('This node is not enrolled for signed application recovery');
+    if (this.ownershipFrozen || this.reconcilingStacks || this.startsInFlight.size || this.stopsInFlight.size || this.nodeStackStop.busy) {
+      throw new Error('A stack operation or backend transfer is in progress');
+    }
+    return this.installedResume;
+  }
+
+  prepareNodeInstalledResume(request: InstalledResumeRequest) { return this.resumeRecipient().prepare(request); }
+
+  @RecoveryMutation()
+  executeNodeInstalledResume(request: InstalledResumeExecution) { return this.resumeRecipient().execute(request); }
+
+  getNodeInstalledResumeReceipt(request: InstalledResumeRequest) {
+    if (!this.installedResume) throw new Error('This node is not enrolled for signed application recovery');
+    return this.installedResume.receipt(request);
+  }
+
+  @RecoveryMutation()
+  async resumeInstalledStack(project: string, stack: string): Promise<InstalledStackResumeResult> {
+    const scope = { project, stack }, key = stackExecutionKey(scope);
+    const cluster = this.clusterStop;
+    if (!cluster?.election?.isLeader) throw new Error('Installed stack recovery requires the elected controller');
+    const election = cluster.election;
+    this.resumeRecipient();
+    if (this.resumingInstalled) throw new Error('Another installed allocation is resuming');
+    this.coordinatingResume = true;
+    try {
+      const stop = this.daemonStateStore.kvGetSync<StackStopProgress>(`stack:${key}:last-stop`, { strict: true });
+      if (stop?.phase !== 'stopped' || stop.supersededAt || !stop.intentCommitted || !stop.nodes.length) {
+        throw new Error('Review and complete a signed stop on every recipient before installed recovery');
+      }
+      const config = await this.loadProjectConfig(project);
+      const declaration = this.resolveStacks(config, project)[stack];
+      if (!declaration) throw new Error('Registered stack configuration is unavailable');
+      const apps = this.resolveStackApps(declaration, config);
+      const source = declaration.managedOrigin ?? scope;
+      const operationId = randomUUID();
+      const placements = declaration.type === 'local'
+        ? [{ node: undefined, apps }]
+        : resolveNodePlacements(declaration, apps);
+      if (declaration.type === 'local' && !declaration.managedOrigin) throw new Error('Local recovery requires an explicitly bound allocation');
+      const targets: ResumeDestination[] = placements.map(placement => {
+        const { node } = placement;
+        const nodeId = node ? node.nodeId : cluster.recipient.audience.nodeId;
+        const label = node ? stackNodeKey(node.host, node.port) : 'local';
+        const stopped = stop.nodes.find(item => item.authority?.nodeId === nodeId &&
+          // Older stop journals used unbracketed IPv6 endpoint strings.
+          (item.node === label || (node && item.node === `${node.host}:${node.port ?? 9700}`)));
+        if (!nodeId || !placement.apps.length || !stopped?.observedAt || !stopped.operationId || stopped.outcome !== 'stopped' ||
+            stopped.authority?.clusterId !== cluster.recipient.audience.clusterId) {
+          throw new Error(`Target '${label}' lacks a matching signed stop for the application placement`);
+        }
+        const request: InstalledResumeRequest = { ...source, audience: { clusterId: stopped.authority.clusterId, nodeId },
+          operationId, stopOperationId: stopped.operationId, stopObservedAt: stopped.observedAt, apps: placement.apps.map(app => app.name) };
+        if (!node) return { node: label, request, prepare: () => this.prepareNodeInstalledResume(request),
+          execute: (plan, permit) => this.executeNodeInstalledResume({ ...request, plan, permit }),
+          receipt: async () => this.getNodeInstalledResumeReceipt(request) };
+        const connector = this.slaveConnector;
+        if (!connector) throw new Error('Cluster node RPC is unavailable');
+        const rpc = (method: string, input: unknown, read = false) =>
+          connector.invokeOnSlave(node.host, node.port ?? 9700, 'OmnitronProject', method, [input], { retryOnDisconnect: read });
+        return { node: label, request,
+          prepare: () => rpc('prepareNodeInstalledResume', request, true) as Promise<StackEffectPlan>,
+          execute: (plan: StackEffectPlan, permit: ClusterPermit) => rpc('executeNodeInstalledResume', { ...request, plan, permit }) as Promise<InstalledResumeReceipt>,
+          receipt: () => rpc('getNodeInstalledResumeReceipt', request, true) as Promise<InstalledResumeReceipt | null> };
+      });
+      if (targets.length !== stop.nodes.length || new Set(targets.map(t => t.request.audience.nodeId)).size !== targets.length) {
+        throw new Error('Placement differs from the last confirmed stop');
+      }
+      const report: InstalledStackResumeResult = { ...scope, operationId, stopOperationId: stop.id, outcome: 'unconfirmed', nodes: [] };
+      const journal = `stack:${key}:last-resume`;
+      const previous = this.daemonStateStore.kvGetSync<InstalledStackResumeResult>(journal, { strict: true });
+      if (previous?.stopOperationId === stop.id) throw new Error('Recovery was already attempted. Inspect its receipts and obtain a fresh signed stop before retrying.');
+      let targetsRemembered = false;
+      const result = await resumeDestinations(report, targets, plan => election.authorizeEffect(plan), progress => {
+        if (!targetsRemembered && declaration.type !== 'local') {
+          this.rememberStackTargets(project, stack, declaration, config);
+          targetsRemembered = true;
+        }
+        this.daemonStateStore.kvUpdateSync<InstalledStackResumeResult>(journal, current => {
+          if (current?.stopOperationId === stop.id && current.operationId !== operationId) throw new Error('A different controller already attempted this stop');
+          return progress;
+        });
+      });
+      this.stackStates.set(key, { project, stack, config: declaration, status: result.outcome === 'running' ? 'running' : 'error',
+        startedAt: result.outcome === 'running' ? Date.now() : null, infraService: null });
+      if (result.outcome === 'running') this.markPriorStopSuperseded(project, stack, stop.id);
+      return result;
+    } finally { this.coordinatingResume = false; }
   }
 
   private async stopDefinition(scope: NodeStackStopRequest, cached = false) {
@@ -461,6 +580,7 @@ export class ProjectService extends EventEmitter {
 
   @RecoveryMutation()
   async prepareNodeStackStop(scope: NodeStackStopRequest): Promise<NodeStackStopPlan> {
+    if (this.resumingInstalled) throw new Error('An installed allocation is resuming');
     if (this.ownershipFrozen) throw new Error('Project ownership is frozen for backend transfer');
     if (this.startsInFlight.size || this.stopsInFlight.size) throw new Error('A stack lifecycle operation is active; retry when it finishes');
     return this.nodeStackStop.prepare(scope);
@@ -468,6 +588,7 @@ export class ProjectService extends EventEmitter {
 
   @RecoveryMutation()
   async executeNodeStackStop(scope: NodeStackStopExecution): Promise<NodeStackStopReceipt> {
+    if (this.resumingInstalled) throw new Error('An installed allocation is resuming');
     if (this.ownershipFrozen) throw new Error('Project ownership is frozen for backend transfer');
     const receipt = await this.nodeStackStop.execute(scope);
     if (receipt.applications) {
@@ -611,10 +732,10 @@ export class ProjectService extends EventEmitter {
     validateConfigurationNames(input?.name, input?.stacks);
     if (typeof input.project !== 'string' || typeof input.path !== 'string' || typeof input.expectedRevision !== 'string')
       throw new Error('Project, configuration path and catalogue revision are required');
-    this.registry.prepareConfiguration(input);
+    const candidate = this.registry.prepareConfiguration(input);
     const { loadEcosystemConfig } = await import('../config/loader.js');
-    const source = await loadEcosystemConfig(path.resolve(input.path));
-    const sourceStacks = this.resolveStacks(source, input.registration ?? `${input.project}--${input.name}`);
+    const source = await loadEcosystemConfig(candidate.path);
+    const sourceStacks = this.resolveStacks(source, candidate);
     const declared = Object.keys(sourceStacks);
     if (declared.length !== Object.keys(input.stacks).length || declared.some(name => !Object.hasOwn(input.stacks, name)))
       throw new Error('Map every configured source stack explicitly; none may disappear during import');
@@ -718,7 +839,7 @@ export class ProjectService extends EventEmitter {
   /** Refresh only local container monitoring from the current validated project config. */
   @RecoveryMutation()
   async refreshInfrastructureOwnership(projectName: string, stackName: string): Promise<{ released: string[]; adopted: string[] }> {
-    if (this.ownershipFrozen || this.startsInFlight.size || this.stopsInFlight.size || this.reconcilingStacks)
+    if (this.ownershipFrozen || this.resumingInstalled || this.startsInFlight.size || this.stopsInFlight.size || this.reconcilingStacks)
       throw new Error('Project lifecycle ownership is changing; retry the infrastructure refresh after it settles');
     this.ownershipFrozen = true;
     try { return await this.refreshInfrastructureOwnershipOnce(projectName, stackName); }
@@ -981,8 +1102,7 @@ export class ProjectService extends EventEmitter {
     return path.join(proj.path, 'omnitron.stacks.json');
   }
 
-  private loadUserStacks(project: string): Record<string, IStackConfig> {
-    const filePath = this.getUserStacksPath(project);
+  private loadUserStacks(project: string, filePath = this.getUserStacksPath(project)): Record<string, IStackConfig> {
     try {
       const raw = fs.readFileSync(filePath, 'utf-8');
       const stacks = JSON.parse(raw);
@@ -1316,6 +1436,7 @@ export class ProjectService extends EventEmitter {
     stackName: string,
     opts?: { source?: StackStartSource; allowDirty?: boolean; release?: string; reinstall?: boolean },
   ): Promise<IStackInfo> {
+    if (this.resumingInstalled) throw new Error('An installed allocation is resuming');
     if (this.ownershipFrozen) throw new Error('Project ownership is frozen for backend transfer');
     const inFlightKey = `${projectName}/${stackName}`;
     if (this.stopsInFlight.has(inFlightKey)) throw new Error('This stack is stopping; wait for its acknowledgement');
@@ -1705,7 +1826,7 @@ export class ProjectService extends EventEmitter {
     const key = stackExecutionKey(scope);
     const targets: StopReviewTarget[] = [];
     try {
-      if (this.ownershipFrozen || this.startsInFlight.has(key) || this.stopsInFlight.has(key)) throw new Error('A lifecycle operation is active; wait and check again');
+      if (this.ownershipFrozen || this.resumingInstalled || this.startsInFlight.has(key) || this.stopsInFlight.has(key)) throw new Error('A lifecycle operation is active; wait and check again');
       if (this.clusterStop) {
         if (!this.clusterStop.election) throw new Error('Review this stop on the elected controller');
         await this.clusterStop.election.confirmStopAuthority();
@@ -1743,6 +1864,7 @@ export class ProjectService extends EventEmitter {
   @RecoveryMutation()
   async stopStack(projectName: string, stackName: string, review?: string): Promise<IStackInfo> {
     const key = stackExecutionKey({ project: projectName, stack: stackName });
+    if (this.resumingInstalled) throw new Error('An installed allocation is resuming');
     if (this.ownershipFrozen) throw new Error('Project ownership is frozen for backend transfer');
     if (this.startsInFlight.has(key)) throw new Error('This stack is starting; finish or reconcile the start before stopping');
     const pending = this.stopsInFlight.get(key);
@@ -1831,7 +1953,11 @@ export class ProjectService extends EventEmitter {
       state.status = 'stopping';
       this.emit('stack:stopping', projectName, stackName);
       if (managedPlan) {
-        await this.nodeStackStop.execute({ ...stackConfig.managedOrigin!, operationId: managedPlan.operationId, ...(managedPermit && { permit: managedPermit }) });
+        const receipt = await this.nodeStackStop.execute({ ...stackConfig.managedOrigin!, operationId: managedPlan.operationId, ...(managedPermit && { permit: managedPermit }) });
+        if (receipt.authority) {
+          progress.nodes.push({ node: 'local', outcome: 'stopped', operationId: receipt.operationId, observedAt: receipt.observedAt, authority: receipt.authority });
+          persist();
+        }
       } else if (localPlan && localInventory) {
         await this.orchestrator.stopStackExecution({ operationId: progress.id, plan: localPlan });
         await this.infraManager.teardownStack(projectName, stackName, localInventory.containers);
@@ -1850,7 +1976,7 @@ export class ProjectService extends EventEmitter {
                 receipt.stack !== stackName || receipt.outcome !== 'stopped' || (target.permit &&
                   (receipt.authority?.epoch !== target.permit.epoch || receipt.authority.nodeId !== target.plan.audience!.nodeId ||
                    receipt.authority.clusterId !== target.plan.audience!.clusterId))) throw new Error('Invalid node stop acknowledgement');
-            item.outcome = 'stopped'; item.observedAt = receipt.observedAt;
+            item.outcome = 'stopped'; item.operationId = receipt.operationId; item.observedAt = receipt.observedAt;
           } catch (error) {
             item.outcome = 'unknown'; item.reason = describeFailure(error);
             failures.push(`${item.node}: ${item.reason}`);
@@ -2919,7 +3045,7 @@ export class ProjectService extends EventEmitter {
   startEnabledStacksReconciler(intervalMs = 60_000): void {
     if (this.resumeTimer) return;
     this.resumeTimer = setInterval(() => {
-      if (this.ownershipFrozen || this.reconcilingStacks) return;
+      if (this.ownershipFrozen || this.resumingInstalled || this.reconcilingStacks) return;
       this.reconcilingStacks = true;
       void this.reconcileEnabledStacks().catch((err) => {
         this.logger.warn({ error: (err as Error).message }, 'Enabled-stacks reconciler tick failed');
@@ -4645,11 +4771,12 @@ export class ProjectService extends EventEmitter {
    * Config stacks take precedence over user stacks with the same name.
    * No implicit fallbacks — stacks must be created explicitly.
    */
-  private resolveStacks(config: IEcosystemConfig, projectName?: string): Record<string, IStackConfig> {
+  private resolveStacks(config: IEcosystemConfig, project?: string | ISeedProject): Record<string, IStackConfig> {
     const configStacks = config.stacks ?? {};
 
-    if (projectName) {
-      const userStacks = this.loadUserStacks(projectName);
+    if (project) {
+      const userStacks = typeof project === 'string' ? this.loadUserStacks(project)
+        : this.loadUserStacks(project.name, path.join(project.path, 'omnitron.stacks.json'));
       // Saved topology intent is deliberately separate from executable configuration.
       // A daemon restart, auto-resume or ordinary stack start must not admit a migration.
       return { ...userStacks, ...configStacks };
@@ -4854,9 +4981,11 @@ export class ProjectService extends EventEmitter {
     return allApps.filter((a) => Array.isArray(stackConfig.apps) ? stackConfig.apps.includes(a.name) : true);
   }
 
-  private markPriorStopSuperseded(project: string, stack: string): void {
-    this.daemonStateStore.kvUpdateSync<import('../shared/dto/project.js').StackStopProgress | null>(
-      `stack:${project}/${stack}:last-stop`, prior => prior ? { ...prior, supersededAt: new Date().toISOString() } : null);
+  private markPriorStopSuperseded(project: string, stack: string, expectedStopId?: string): void {
+    this.daemonStateStore.kvUpdateSync<StackStopProgress | null>(`stack:${project}/${stack}:last-stop`, prior => {
+      if (!prior || (expectedStopId && prior.id !== expectedStopId)) return prior;
+      return { ...prior, supersededAt: new Date().toISOString() };
+    });
   }
 
   private updateEnabledStacks(projectName: string, stackName: string, enabled: boolean): void {
@@ -5169,6 +5298,7 @@ export class ProjectService extends EventEmitter {
       name: stackName,
       type: config.type,
       status: state?.status ?? 'stopped',
+      resumeOperation: this.daemonStateStore.kvGetSync<InstalledStackResumeResult>(`stack:${stateKey}:last-resume`, { strict: true }) ?? undefined,
       stopOperation: this.daemonStateStore.kvGetSync<import('../shared/dto/project.js').StackStopProgress>(`stack:${projectName}/${stackName}:last-stop`, { strict: true }) ?? undefined,
       config,
       nodes,

@@ -236,14 +236,14 @@ The CLI is organized into command groups:
 - `omnitron stack account <project> <stack> --remove <name> --id <uuid> [--vault-key <key>]` -- Take the account with that name AND id away, then its password from the vault
 
 ### Infrastructure
-- `omnitron infra up` -- Provision Docker containers
-- `omnitron infra down` -- Stop containers
+- `omnitron infra up` -- Provision the current standalone ecosystem’s declared containers
+- `omnitron infra down` -- Remove its declared containers and retain volumes
 - `omnitron infra status` -- Container status
 - `omnitron infra logs [service]` -- Container logs
 - `omnitron infra psql [db]` -- Open psql shell
 - `omnitron infra redis-cli` -- Open redis-cli
-- `omnitron infra migrate [app]` -- Run DB migrations
-- `omnitron infra reset` -- Destroy and recreate (destructive)
+- `omnitron infra migrate [app] [--dry-run]` -- Plan or run declared workspace migration scripts in dependency order
+- `omnitron infra reset --yes` -- Recreate this standalone ecosystem’s declared containers using existing volumes
 
 ### Fleet & Remote
 - `omnitron remote add/remove/list/status` -- Manage remote servers

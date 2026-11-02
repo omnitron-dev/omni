@@ -13,6 +13,7 @@
 
 import { describe, it, expect } from 'vitest';
 
+import { LONG_REQUEST_TIMEOUT } from '../../src/shared/dto/services.js';
 import { generateNginxConfig } from '../../src/webapp/webapp.service.js';
 
 const config = generateNginxConfig('127.0.0.1', 9801, 9802);
@@ -120,6 +121,12 @@ describe('generateNginxConfig — proxying', () => {
     // $host strips the port; the daemon's same-origin guard then compares
     // "localhost" against "localhost:9800" and rejects every upgrade.
     expect(config).toMatch(/location \/ws \{[\s\S]*?proxy_set_header Host \$http_host;/);
+  });
+
+  it('lets long stack lifecycle calls reach their transport deadline', () => {
+    const rpc = /location \/netron\/ \{([^}]*)\}/.exec(config)?.[1] ?? '';
+    const timeout = Number(/proxy_read_timeout (\d+)ms;/.exec(rpc)?.[1]);
+    expect(timeout).toBeGreaterThan(LONG_REQUEST_TIMEOUT);
   });
 
   it('routes RPC and health to the daemon ports it was given', () => {

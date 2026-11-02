@@ -231,5 +231,5 @@ export async function verifyLaunchRelease(entry: IEcosystemAppEntry, launchId: s
   if (receipt.installedFrameworkCommit !== receipt.origin.frameworkCommit || receipt.frameworkContentUnchanged !== true)
     return { state: 'modified', releaseId, reason: 'The installed framework differs from the framework recorded by this release.' };
   return { state: 'confirmed', releaseId, manifestSha256: receipt.origin.manifestSha256,
-    artifactSha256: receipt.origin.artifactSha256, observedAt: new Date().toISOString(), launchId, basis: 'verified-launch' };
+    artifactSha256: receipt.origin.artifactSha256, treeSha256: receipt.treeSha256, observedAt: new Date().toISOString(), launchId, basis: 'verified-launch' };
 }

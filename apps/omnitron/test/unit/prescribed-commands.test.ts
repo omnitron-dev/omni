@@ -10,7 +10,7 @@
  * The first version of this check covered `doctor.ts` alone, because that is
  * where two wrong remedies had been found: the database check — written for a
  * fourteen-day outage, the most important finding in the command — said
- * `omnitron migrate`, when migrations live under `omnitron infra migrate`;
+ * a migration command without selecting the daemon's registry;
  * the build check said `omnitron daemon restart`, and there is no `daemon`
  * command at all. Widening the same check to the rest of the tree found six
  * more in five files, in every register the product speaks in:
@@ -143,7 +143,6 @@ describe('commands the product prescribes', () => {
       const src = fs.readFileSync(file, 'utf8');
       const rel = path.relative(root, file);
       expect(src, rel).not.toMatch(/`omnitron daemon (start|stop|restart|kill)`/);
-      expect(src, rel).not.toMatch(/`omnitron migrate`/);
       expect(src, rel).not.toMatch(/[`>]omnitron dev[`<\s]/);
     }
   });
@@ -152,7 +151,7 @@ describe('commands the product prescribes', () => {
     // The remedies exist at all — a check that only forbids wrong commands
     // is satisfied by removing every command.
     const doctorSrc = fs.readFileSync(DOCTOR, 'utf8');
-    expect(doctorSrc).toContain('omnitron infra migrate');
+    expect(doctorSrc).toContain('omnitron migrate up --daemon');
     expect(doctorSrc).toContain('omnitron down && omnitron up');
   });
 });

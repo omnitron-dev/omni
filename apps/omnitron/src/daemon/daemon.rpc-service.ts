@@ -58,7 +58,8 @@ export class DaemonRpcService implements IDaemonService {
     private readonly titanHealth: IHealthService,
     private readonly logManager: LogManager,
     private config: IEcosystemConfig,
-    private readonly daemon: OmnitronDaemon
+    private readonly daemon: OmnitronDaemon,
+    private readonly assertLifecycleMutable?: () => void,
   ) {}
 
   // ============================================================================
@@ -67,6 +68,7 @@ export class DaemonRpcService implements IDaemonService {
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async startApp(data: { name: string }): Promise<ProcessInfoDto> {
+    this.assertLifecycleMutable?.();
     const entry = this.findConfiguredApp(data.name);
     if (!entry) {
       // Nothing in THIS daemon's ecosystem config — but a project stack
@@ -193,6 +195,7 @@ export class DaemonRpcService implements IDaemonService {
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async startAll(): Promise<ProcessInfoDto[]> {
+    this.assertLifecycleMutable?.();
     // Bulk startup must carry the same project/stack identity as a single-app
     // start. Preserve declared names/dependencies for startup ordering; the owner
     // promotes each entry when it registers the actual process handle.
@@ -211,6 +214,7 @@ export class DaemonRpcService implements IDaemonService {
     // render, and the typed return preserves back-compat for
     // callers that only checked `success`.
     try {
+      this.assertLifecycleMutable?.();
       await this.orchestrator.stopApp(data.name, data.force, data.timeout);
       return { success: true };
     } catch (err) {
@@ -220,18 +224,21 @@ export class DaemonRpcService implements IDaemonService {
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async stopAll(data: { force?: boolean }): Promise<{ count: number }> {
+    this.assertLifecycleMutable?.();
     const count = await this.orchestrator.stopAll(data.force);
     return { count };
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async restartApp(data: { name: string }): Promise<ProcessInfoDto> {
+    this.assertLifecycleMutable?.();
     await this.orchestrator.restartApp(data.name);
     return this.orchestrator.getApp(data.name)!;
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async restartAll(): Promise<ProcessInfoDto[]> {
+    this.assertLifecycleMutable?.();
     const entries = this.config.apps;
     // P0-H — was a serial `for..await`. One hung app blocked the
     // entire fleet restart (the operator hits "Restart all" and the
@@ -263,6 +270,7 @@ export class DaemonRpcService implements IDaemonService {
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async reloadApp(data: { name: string }): Promise<ProcessInfoDto> {
+    this.assertLifecycleMutable?.();
     await this.orchestrator.reloadApp(data.name);
     return this.orchestrator.getApp(data.name)!;
   }
@@ -452,6 +460,7 @@ export class DaemonRpcService implements IDaemonService {
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async scale(data: { name: string; instances: number }): Promise<ProcessInfoDto> {
+    this.assertLifecycleMutable?.();
     await this.orchestrator.scaleApp(data.name, data.instances);
     return this.orchestrator.getApp(data.name)!;
   }
@@ -471,6 +480,7 @@ export class DaemonRpcService implements IDaemonService {
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async shutdown(_data: { force?: boolean }): Promise<{ success: boolean }> {
+    this.assertLifecycleMutable?.();
     // Defer shutdown to allow RPC response to be sent first.
     // Application's shutdown system handles process.exit() automatically.
     setTimeout(() => {
@@ -481,6 +491,7 @@ export class DaemonRpcService implements IDaemonService {
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async reloadConfig(): Promise<{ success: boolean }> {
+    this.assertLifecycleMutable?.();
     // OS services often start in the user's home, rather than the registered
     // project. Reload and cold start must resolve the same configuration and
     // retain the same runtime project identity.
@@ -746,6 +757,7 @@ export class DaemonRpcService implements IDaemonService {
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async enableWatch(data: { apps?: string[] }): Promise<{ watching: Array<{ name: string; directory: string }> }> {
+    this.assertLifecycleMutable?.();
     const watching = await this.daemon.enableWatch(data.apps);
     return { watching };
   }

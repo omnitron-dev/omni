@@ -69,11 +69,23 @@ export class NodeStackStop {
       return records;
     })[key]!;
   }
-  assertMutable(scope: StackExecutionScope): void {
-    const record = this.records()[stackExecutionKey(scope)];
-    if (record?.suspended || record?.phase === 'applying' || record?.phase === 'failed') {
-      throw new Error(`Stack '${stackExecutionKey(scope)}' has an unconfirmed stop (${record.plan.operationId}); reconcile it before deployment`);
+  assertMutable(scope?: StackExecutionScope): void {
+    const records = this.records();
+    const keys = scope ? [stackExecutionKey(scope)] : Object.keys(records);
+    for (const key of keys) {
+      const record = records[key];
+      if (record?.suspended || record?.phase === 'applying' || record?.phase === 'failed' || this.active.has(key)) {
+        throw new Error(`Stack '${key}' has an unconfirmed stop (${record?.plan.operationId ?? 'in progress'}); reconcile it before deployment`);
+      }
     }
+  }
+  completedStop(scope: StackExecutionScope): { plan: NodeStackStopPlan; receipt: NodeStackStopReceipt } {
+    const record = this.records()[stackExecutionKey(scope)];
+    if (record?.phase !== 'stopped' || !record.receipt?.applications || !record.receipt.authority ||
+        record.suspended || record.receipt.operationId !== record.plan.operationId) {
+      throw new Error('Resume requires a completed, signed stop for this application allocation');
+    }
+    return { plan: record.plan, receipt: record.receipt };
   }
   async prepare(scope: NodeStackStopRequest): Promise<NodeStackStopPlan> {
     this.preparing++;

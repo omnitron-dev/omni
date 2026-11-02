@@ -49,6 +49,8 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
       resolveProjectStack: (scope: unknown) => scope, reviewStackStop: () => ({ digest: null, targets: [] }),
       stopStack: () => ({ status: 'stopped', config: {}, apps: [], nodes: [] }),
       inspectNodeStackStop: () => 'observed', prepareNodeStackStop: () => 'prepared', executeNodeStackStop: () => 'executed',
+      resumeInstalledStack: () => ({ outcome: 'running' }), prepareNodeInstalledResume: () => 'prepared',
+      executeNodeInstalledResume: () => 'executed', getNodeInstalledResumeReceipt: () => 'observed',
     } as never));
     ws = `ws://127.0.0.1:${(netron.transportServers.get('ws') as { port: number }).port}`;
     http = new HttpNativeServer({ host: '127.0.0.1', port: 0, cors: false, invocationWrapper: wrapper });
@@ -87,7 +89,9 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
       const stack = { service: 'OmnitronProject', input: [{ project: 'sample', stack: 'prod' }] };
       expect((await request(credential, 'reviewStackStop', stack)).status).toBe(principal === 'service_role' ? 403 : 200);
       expect((await request(credential, 'stopStack', stack)).status).toBe(['operator','admin'].includes(principal) ? 200 : 403);
-      for (const method of ['inspectNodeStackStop', 'prepareNodeStackStop', 'executeNodeStackStop']) {
+      expect((await request(credential, 'resumeInstalledStack', stack)).status).toBe(['operator','admin'].includes(principal) ? 200 : 403);
+      for (const method of ['inspectNodeStackStop', 'prepareNodeStackStop', 'executeNodeStackStop',
+        'prepareNodeInstalledResume', 'executeNodeInstalledResume', 'getNodeInstalledResumeReceipt']) {
         expect((await request(credential, method, { service: 'OmnitronProject', input: [{}] })).status).toBe(principal === 'service_role' ? 200 : 403);
       }
     }

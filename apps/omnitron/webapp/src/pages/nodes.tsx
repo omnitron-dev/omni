@@ -49,7 +49,7 @@ import type {
   INodeStatus, INodeWithStatus, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState,
   INodeDaemonAnswer, DaemonStatusDto, AggregatedHealthDto, NodeUpgradeProgress as INodeUpgradeProgress,
 } from '@omnitron-dev/omnitron/dto/services';
-import { verdictOf, omnitronVerdict, firstReason, clusterDisagreement, clusterAuthorityProblems, type LayerVerdict } from 'src/utils/node-diagnosis';
+import { verdictOf, omnitronVerdict, firstReason, clusterDisagreement, clusterAuthorityProblems, clusterParticipation, type LayerVerdict } from 'src/utils/node-diagnosis';
 import { omnitronFinding } from '@omnitron-dev/omnitron/node-check';
 import { meshReading, syncFinding, syncSeverity, syncWords, syncProgressWords, historyWords } from '@omnitron-dev/omnitron/sync-reading';
 import { appsMemoryOf } from 'src/utils/daemon-memory';
@@ -1116,6 +1116,7 @@ export function NodeRelay({ data }: { data: INodeRelayStats | null }) {
  * bar showed THAT a node was down and never why.
  */
 type NodeDiagnosisProps = {
+  cluster?: INodeClusterState | undefined;
   open: boolean;
   onClose: () => void;
   node: INodeWithStatus | null;
@@ -1127,7 +1128,7 @@ export function NodeDiagnosisDialog(props: NodeDiagnosisProps) {
 }
 
 function NodeDiagnosisSession({
-  open, onClose, node,
+  open, onClose, node, cluster,
 }: NodeDiagnosisProps) {
   const [history, setHistory] = useState<HealthCheckRow[]>([]);
   const [indicators, setIndicators] = useState<INodeIndicators | null>(null);
@@ -1360,6 +1361,9 @@ function NodeDiagnosisSession({
             )}
           </Box>
         )}
+        {cluster && <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>
+          Cluster · {clusterParticipation(cluster)}
+        </Typography>}
         <NodeSyncStatus data={sync} />
         <NodeRelay data={relay} />
 
@@ -2030,6 +2034,7 @@ export default function NodesPage() {
   nodeListRef.current = nodeList;
 
   const [mesh, setMesh] = useState<Record<string, IMeshNodeStatus>>({});
+  const clusterReading = useRef(0);
   const [clusterStates, setClusterStates] = useState<Record<string, INodeClusterState>>({});
 
   const fetchNodes = useCallback(async () => {
@@ -2074,26 +2079,21 @@ export default function NodesPage() {
     }
   }, []);
 
-  /**
-   * Each node's view of who leads the fleet.
-   *
-   * One call per node, because the question is asked OF the node — a master
-   * that answered for everyone would be reporting its own opinion several
-   * times, which is exactly the disagreement this is meant to detect.
-   *
-   * `allSettled`, and only the answers that came back are merged: a node that
-   * could not be asked must not read as a node that named nobody, or every
-   * unreachable node would manufacture a split brain.
-   */
+  // Sample each participant directly. A newer manual refresh supersedes any slower previous poll.
   const fetchClusterStates = useCallback(async (nodes: INodeWithStatus[]) => {
+    const generation = ++clusterReading.current;
     const settled = await Promise.allSettled(
       nodes.map(async (n) => nodesRpc.getNodeClusterState({ nodeId: n.id })),
     );
     const next: Record<string, INodeClusterState> = {};
-    for (const r of settled) {
-      if (r.status === 'fulfilled' && r.value) next[r.value.nodeId] = r.value as INodeClusterState;
-    }
-    if (Object.keys(next).length > 0) setClusterStates(next);
+    settled.forEach((result, index) => {
+      const id = nodes[index]!.id;
+      next[id] = result.status === 'fulfilled' && result.value?.nodeId === id ? result.value : {
+        nodeId: id, reachable: false, cluster: null,
+        error: result.status === 'rejected' && result.reason instanceof Error ? result.reason.message : 'Cluster participation unavailable',
+      };
+    });
+    if (generation === clusterReading.current) setClusterStates(next);
   }, []);
 
   const fetchUptimeBars = useCallback(async (nodes: INodeWithStatus[]) => {
@@ -2153,7 +2153,7 @@ export default function NodesPage() {
   // election settles in seconds and a disagreement that outlives a minute is
   // the one worth showing, so a faster poll would only add N calls per node
   // for a question whose answer rarely changes.
-  usePollingEffect(() => void fetchClusterStates(nodeListRef.current), { intervalMs: 60_000 });
+  usePollingEffect(() => fetchClusterStates(nodeListRef.current), { intervalMs: 60_000 });
 
   // A check round finished, or a node changed state: read the new list now
   // rather than at the next tick.
@@ -2175,9 +2175,9 @@ export default function NodesPage() {
   // back on the fast schedule by another route.
   const nodeIdKey = nodeList.map((n) => n.id).sort().join(',');
   useEffect(() => {
-    if (!nodeIdKey) return;
-    void fetchUptimeBars(nodeListRef.current);
-  }, [nodeIdKey, fetchUptimeBars]);
+    void fetchClusterStates(nodeListRef.current);
+    if (nodeIdKey) void fetchUptimeBars(nodeListRef.current);
+  }, [nodeIdKey, fetchClusterStates, fetchUptimeBars]);
 
   useEffect(() => {
     // SSH keys change only when an operator edits them; once is enough.
@@ -2394,6 +2394,7 @@ export default function NodesPage() {
       )}
 
       <NodeDiagnosisDialog
+        cluster={diagnoseNode ? clusterStates[diagnoseNode.id] : undefined}
         open={!!diagnoseNode}
         onClose={() => setDiagnoseNode(null)}
         node={diagnoseNode ? (nodeList.find((n) => n.id === diagnoseNode.id) ?? diagnoseNode) : null}

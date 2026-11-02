@@ -16,6 +16,7 @@ import {
   type BackendSchema,
 } from '@omnitron-dev/prism/netron';
 
+import { LONG_REQUEST_TIMEOUT } from '@omnitron-dev/omnitron/dto/services';
 import type {
   IOmnitronAccessService,
   IOmnitronBackendService,
@@ -216,6 +217,13 @@ export const audit = daemonClient.daemon.OmnitronAudit;
 
 /** Project + Stack management */
 export const project = daemonClient.daemon.OmnitronProject;
+
+/** Use the CLI lifecycle budget without extending short reads or replaying a lost mutation. */
+export function invokeStackLifecycle<M extends 'startStack' | 'stopStack' | 'resumeInstalledStack'>(
+  method: M, input: Parameters<IProjectRpcService[M]>[0],
+): Promise<Awaited<ReturnType<IProjectRpcService[M]>>> {
+  return daemonClient.invoke('daemon', 'OmnitronProject', method, [input], { timeout: LONG_REQUEST_TIMEOUT });
+}
 
 /** System information (OS, CPU, memory, disks, network) */
 export const systemInfo = daemonClient.daemon.OmnitronSystemInfo;

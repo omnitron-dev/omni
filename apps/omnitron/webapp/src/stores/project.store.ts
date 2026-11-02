@@ -10,12 +10,13 @@
  * the webapp's filter context. The daemon keeps running everything.
  */
 
+import { isLostRpcAcknowledgement } from '@omnitron-dev/omnitron/dto/services';
 import { readStackStart } from '@omnitron-dev/omnitron/release-reading';
 import { create } from 'zustand';
 import { isRpcTimeout } from '../utils/rpc-error';
 export { isRpcTimeout } from '../utils/rpc-error';
 import { useShallow } from 'zustand/shallow';
-import { project as projectRpc } from '../netron/client';
+import { invokeStackLifecycle, project as projectRpc } from '../netron/client';
 import { readStored, writeStored, removeStored, readStoredJson, writeStoredJson } from '../utils/storage';
 import { stackCounts } from '../utils/stack-inventory';
 import { restoredProjectScope } from '../utils/project-scope';
@@ -31,7 +32,7 @@ import type {
 // =============================================================================
 
 /** Tracks in-flight start/stop operations per stack */
-type PendingOp = 'starting' | 'stopping';
+export type PendingOp = 'starting' | 'stopping' | 'resuming';
 
 export type StackActionResult = { state: 'confirmed' } | { state: 'partial' | 'unconfirmed' | 'failed' | 'busy'; message: string };
 
@@ -73,6 +74,7 @@ interface ProjectState {
    * commands instead — see `admitRelease`.
    */
   startStack: (project: string, stack: string, opts?: { release?: string; allowDirty?: boolean }) => Promise<StackActionResult>;
+  resumeInstalledStack: (project: string, stack: string) => Promise<void>;
   stopStack: (project: string, stack: string, review: string) => Promise<void>;
   createStack: (project: string, data: { name: string; type: 'local' | 'remote' | 'cluster'; apps: string[] | 'all'; nodeIds?: string[] }) => Promise<IStackInfo>;
   deleteStack: (project: string, stack: string) => Promise<void>;
@@ -134,6 +136,20 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     else delete next[key];
     return { stackNotices: next };
   });
+
+  const finishOperation = async (key: string, project: string) => {
+    try {
+      // A poll already in flight may have sampled the stack before the command finished.
+      await stackRequests.get(project);
+      await get().fetchStacks(project);
+    } finally {
+      set(state => {
+        const pendingOps = { ...state.pendingOps };
+        delete pendingOps[key];
+        return { pendingOps };
+      });
+    }
+  };
 
   return {
   projects: [],
@@ -345,7 +361,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     }));
 
     try {
-      const stack = await projectRpc.startStack({
+      const stack = await invokeStackLifecycle('startStack', {
         project: projectName,
         stack: stackName,
         ...(opts?.release ? { release: opts.release } : {}),
@@ -357,20 +373,35 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       notice(opKey, message);
       return { state: 'partial', message };
     } catch (err) {
-      const timeout = isRpcTimeout(err);
-      const message = timeout
+      const unconfirmed = isRpcTimeout(err) || isLostRpcAcknowledgement(err);
+      const message = unconfirmed
         ? `No start acknowledgement for ${opKey}. Inspect the stack and deployment history before retrying.`
         : err instanceof Error ? err.message : String(err);
       notice(opKey, message);
-      return { state: timeout ? 'unconfirmed' : 'failed', message };
+      return { state: unconfirmed ? 'unconfirmed' : 'failed', message };
     } finally {
-      set((s) => {
-        const next = { ...s.pendingOps };
-        delete next[opKey];
-        return { pendingOps: next };
-      });
-      // Always refresh to get real status
-      await get().fetchStacks(projectName);
+      await finishOperation(opKey, projectName);
+    }
+  },
+
+  resumeInstalledStack: async (project, stack) => {
+    const key = `${project}/${stack}`;
+    if (get().pendingOps[key]) return;
+    notice(key);
+    set(state => ({ pendingOps: { ...state.pendingOps, [key]: 'resuming' } }));
+    try {
+      const result = await invokeStackLifecycle('resumeInstalledStack', { project, stack });
+      if (result.outcome !== 'running') {
+        const issues = result.nodes.filter(node => node.outcome !== 'running')
+          .map(node => [node.node, node.outcome, node.reason].filter(Boolean).join(' · '));
+        notice(key, [`Resume ${result.outcome}`, ...issues, result.operationId].join(' · '));
+      }
+    } catch (error) {
+      notice(key, isRpcTimeout(error) || isLostRpcAcknowledgement(error)
+        ? 'Resume acknowledgement unavailable. Check the stack and each recipient before another recovery.'
+        : error instanceof Error ? error.message : String(error));
+    } finally {
+      await finishOperation(key, project);
     }
   },
 
@@ -385,19 +416,14 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     }));
 
     try {
-      const result = await projectRpc.stopStack({ project: projectName, stack: stackName, review });
+      const result = await invokeStackLifecycle('stopStack', { project: projectName, stack: stackName, review });
       if (result.status !== 'stopped' || result.stopOperation?.phase !== 'stopped') throw new Error('Daemon did not confirm the complete stack stop');
     } catch (err) {
-      notice(opKey, isRpcTimeout(err)
+      notice(opKey, isRpcTimeout(err) || isLostRpcAcknowledgement(err)
         ? 'Stop acknowledgement has not arrived. Check the stack operation before retrying; applications may still be running.'
         : (err as Error).message);
     } finally {
-      set((s) => {
-        const next = { ...s.pendingOps };
-        delete next[opKey];
-        return { pendingOps: next };
-      });
-      await get().fetchStacks(projectName);
+      await finishOperation(opKey, projectName);
     }
   },
 

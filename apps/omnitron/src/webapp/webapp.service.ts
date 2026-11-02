@@ -15,6 +15,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { LONG_REQUEST_TIMEOUT } from '../shared/dto/services.js';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -131,7 +132,8 @@ ${securityHeaders('        ')}
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_read_timeout 120s;
+            # Deliver the daemon's final receipt before a gateway deadline can replace it with a 504.
+            proxy_read_timeout ${LONG_REQUEST_TIMEOUT + 5_000}ms;
             proxy_send_timeout 120s;
         }
 

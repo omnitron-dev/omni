@@ -936,7 +936,9 @@ export class OmnitronDaemon {
       loggerModule.logger.child({ component: 'log-retention' })
     );
 
-    const rpcService = new DaemonRpcService(orchestrator, titanHealth, logManager, config, this);
+    const projectService = await container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
+    const rpcService = new DaemonRpcService(orchestrator, titanHealth, logManager, config, this,
+      () => projectService.assertInfrastructureMutable());
     await this.app.netron.peer.exposeService(rpcService);
     await this.app.netron.peer.exposeService(new BackendRpcService(this));
 
@@ -1052,7 +1054,6 @@ export class OmnitronDaemon {
       loggerModule.logger.child({ component: 'infra' }),
     );
     // Project + Stack management RPC service
-    const projectService = await container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
     const stateStore = await container.resolveAsync<import('./daemon-state-store.service.js').DaemonStateStore>(DAEMON_STATE_STORE_TOKEN);
     const { clusterDatabaseUrl, clusterEnrollment } = await import('../cluster/enrollment.js');
     const connectionString = dc.cluster?.enabled
@@ -1077,7 +1078,7 @@ export class OmnitronDaemon {
     }
     const projectRpcService = new ProjectRpcService(projectService, audit);
     projectService.setHostedInfrastructure(() => this.infraService ?? undefined, scope => infraRpcService.drainStackProvisioning(scope));
-    infraRpcService.setStackOperationGate(scope => projectService.assertStackMutable(scope));
+    infraRpcService.setStackOperationGate(scope => projectService.assertInfrastructureMutable(scope));
     await this.app.netron.peer.exposeService(infraRpcService);
     await this.app.netron.peer.exposeService(projectRpcService);
 
@@ -1367,13 +1368,10 @@ export class OmnitronDaemon {
       await this.app.netron.peer.exposeService(deployRpcService);
     }
 
-    if (this.leaderElection) {
-      const { ClusterRpcService: ClusterRpc } = await import('../cluster/cluster.rpc-service.js');
-      const clusterRpcService = new ClusterRpc(this.leaderElection);
-      // The local node's own election state, for the cross-node reader.
-      this.nodeManagerRpcService?.setLeaderElection(this.leaderElection);
-      await this.app.netron.peer.exposeService(clusterRpcService);
-    }
+    const { ClusterRpcService } = await import('../cluster/cluster.rpc-service.js');
+    const clusterReader = new ClusterRpcService(this.leaderElection, audience);
+    this.nodeManagerRpcService?.setClusterReader(clusterReader);
+    await this.app.netron.peer.exposeService(clusterReader);
   }
 
   // ============================================================================
@@ -1474,11 +1472,13 @@ export class OmnitronDaemon {
           await import('../infrastructure/container-runtime.js');
 
         const pgSpec = resolveOmnitronPg();
-        const existing = await getContainerState(pgSpec.name);
+        const existing = await getContainerState(pgSpec.name, { orThrow: true, fullId: true });
+        const { ownedContainerId } = await import('../infrastructure/owned-container.js');
+        const existingId = existing && ownedContainerId(pgSpec, existing);
 
         if (!existing || existing.status !== 'running') {
           logger.info('Provisioning omnitron-pg...');
-          if (existing) await removeContainer(pgSpec.name);
+          if (existingId) await removeContainer(existingId);
           await ensureImage(pgSpec.image);
           for (const vol of pgSpec.volumes) {
             if (!vol.source.startsWith('/')) await createVolume(vol.source);
@@ -1520,6 +1520,11 @@ export class OmnitronDaemon {
     // `infrastructure.services` is informational in this mode (used by
     // stack auto-detection upstream); the daemon does not provision it
     // again here.
+    if (this.dc.cluster?.enabled) {
+      logger.info('Cluster enrollment defers application infrastructure provisioning to the elected controller');
+      gate.markReady({ services: {}, ready: true });
+      return;
+    }
     const { ProjectRegistry } = await import('../project/registry.js');
     const projects = ProjectRegistry.open().listRegistrations();
     const projectModeActive = projects.some(
@@ -1604,7 +1609,7 @@ export class OmnitronDaemon {
       await import('../infrastructure/container-runtime.js');
     const { decideOrphans } = await import('../infrastructure/orphan-containers.js');
 
-    const managed = await listManagedContainers();
+    const managed = await listManagedContainers({ orThrow: true });
     if (managed.length === 0) return;
 
     // Build set of expected container name prefixes from registered projects/stacks
@@ -1657,6 +1662,7 @@ export class OmnitronDaemon {
         status: c.status,
         project: c.project,
         stack: c.stack,
+        internal: c.labels?.['omnitron.internal'] === 'true',
       })),
       projects: projects.map((p) => p.name),
       expectedPrefixes: [...expectedPrefixes],
@@ -1680,8 +1686,9 @@ export class OmnitronDaemon {
         'Removing orphan container (not part of any registered stack)',
       );
       try {
-        if (container.status === 'running') await stopContainer(container.name);
-        await removeContainer(container.name);
+        if (!container.containerId || !/^[a-f0-9]{64}$/.test(container.containerId)) throw new Error('Orphan has no immutable identity');
+        if (container.status === 'running') await stopContainer(container.containerId);
+        await removeContainer(container.containerId, { graceful: true });
         orphanCount++;
       } catch (err) {
         logger.warn(
@@ -1769,7 +1776,8 @@ export class OmnitronDaemon {
   ): Promise<void> {
     if (!this.app) return;
     const orchestrator = await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
-    const enabled = !!options?.watch && !options?.noWatch;
+    const enabled = !!options?.watch && !options?.noWatch && !this.dc?.cluster?.enabled;
+    if (options?.watch && !options.noWatch && this.dc?.cluster?.enabled) logger.warn('File-triggered restarts require standalone lifecycle authority');
     orchestrator.devMode = enabled;
     await orchestrator.setWatchMode(enabled, options?.watchApps);
     if (this.execution) return;
@@ -1851,7 +1859,7 @@ export class OmnitronDaemon {
     // that don't belong to current registered projects/stacks (e.g. leftovers from
     // a previous session or auto-restarted by Docker after a system reboot).
     try {
-      await this.reconcileOrphanContainers(logger, allProjects, projectService);
+      if (!this.dc?.cluster?.enabled) await this.reconcileOrphanContainers(logger, allProjects, projectService);
     } catch (err) {
       logger.warn({ error: (err as Error).message }, 'Orphan container reconciliation failed — continuing');
     }
@@ -2553,6 +2561,7 @@ export class OmnitronDaemon {
   @RecoveryMutation()
   private async reloadConfigOnHup(): Promise<void> {
     if (!this.app) return;
+    if (this.dc?.cluster?.enabled) throw new Error('Cluster application configuration changes require the elected controller');
     // Loading first, on its own: a malformed file must be rejected before
     // anything is touched, and that failure genuinely means "the daemon is as
     // it was".
@@ -2845,7 +2854,7 @@ export class OmnitronDaemon {
         // lifetime. Locally it still tears down — `omnitron down` there means
         // "I am done for the day" — and on either, `omnitron infra down` is
         // the command that removes containers on purpose.
-        if (this.dc.role === 'slave' || this.handingOffBackend || (this.execution && !this.stopApplicationsOnExit)) {
+        if (this.dc.cluster?.enabled || this.dc.role === 'slave' || this.handingOffBackend || (this.execution && !this.stopApplicationsOnExit)) {
           // Said on the way out, because the absence of a teardown is
           // otherwise indistinguishable from a teardown that failed.
           this.infraService.dispose();

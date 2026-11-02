@@ -20,12 +20,11 @@ const startStack = vi.fn();
 const stopStack = vi.fn();
 
 vi.mock('../../webapp/src/netron/client', () => ({
+  invokeStackLifecycle: (method: 'startStack' | 'stopStack', input: unknown) => ({ startStack, stopStack })[method](input),
   project: {
     listProjects: vi.fn(async () => []),
     listStacks: vi.fn(async () => []),
     getStackStatus: vi.fn(async () => null),
-    startStack: (...args: unknown[]) => startStack(...args),
-    stopStack: (...args: unknown[]) => stopStack(...args),
   },
 }));
 

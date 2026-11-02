@@ -1,3 +1,4 @@
+import { hasInstalledRecovery, StackRecoveryAction, StackResumeNotice } from 'src/components/stack-recovery';
 import { StackStopDialog } from 'src/components/stack-stop-dialog';
 import { StackDiagnosisDialog } from 'src/components/stack-diagnosis-dialog';
 import { StackStopNotice } from 'src/components/stack-stop-notice';
@@ -62,6 +63,7 @@ export default function StackDetailPage() {
   const known = useProjectStore(s => Boolean(activeProject && s.stacksByProject[activeProject]));
   const readError = useProjectStore(s => activeProject ? s.stackReadErrors[activeProject] : null);
   const fetchStacks = useProjectStore((s) => s.fetchStacks);
+  const resumeInstalled = useProjectStore(s => s.resumeInstalledStack);
   const startStack = useProjectStore((s) => s.startStack);
   const stopStack = useProjectStore((s) => s.stopStack);
   const deleteStack = useProjectStore((s) => s.deleteStack);
@@ -257,8 +259,10 @@ export default function StackDetailPage() {
                 disabled
                 startIcon={<CircularProgress size={14} />}
               >
-                {pendingOp === 'starting' || stack.status === 'starting' ? 'Starting...' : 'Stopping...'}
+                {pendingOp === 'resuming' ? 'Resuming installed apps…' : pendingOp === 'starting' || stack.status === 'starting' ? 'Starting…' : 'Stopping…'}
               </Button>
+            ) : activeProject && name && hasInstalledRecovery(stack) ? (
+              <StackRecoveryAction stack={stack} onResume={() => void resumeInstalled(activeProject, name)} onReviewStop={() => setStopOpen(true)} />
             ) : isStopped ? (
               // A stack that takes releases only refuses this button by
               // design, and the daemon's refusal names the two commands. The
@@ -294,6 +298,7 @@ export default function StackDetailPage() {
         }} />}
       {diagnoseOpen && activeProject && name && <StackDiagnosisDialog key={`${activeProject}/${name}`} project={activeProject} stack={name} onClose={() => setDiagnoseOpen(false)} />}
       <StackStopNotice operation={stack.stopOperation} />
+      <StackResumeNotice stack={stack} />
 
       {/* Start, stop and delete put their reason in the store's `error` and
           never reject. This page did not read it, so a stack that refused to

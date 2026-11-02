@@ -1,3 +1,4 @@
+import { hasInstalledRecovery, StackRecoveryAction } from 'src/components/stack-recovery';
 import { StackStopDialog } from 'src/components/stack-stop-dialog';
 import { StackDiagnosisDialog } from 'src/components/stack-diagnosis-dialog';
 import { Can } from 'src/auth/access';
@@ -77,6 +78,7 @@ export default function StacksPage() {
   const known = useProjectStore(s => Boolean(activeProject && s.stacksByProject[activeProject]));
   const pendingOps = useProjectStore((s) => s.pendingOps);
   const fetchStacks = useProjectStore((s) => s.fetchStacks);
+  const resumeInstalled = useProjectStore(s => s.resumeInstalledStack);
   const startStack = useProjectStore((s) => s.startStack);
   const stopStack = useProjectStore((s) => s.stopStack);
   const deleteStack = useProjectStore((s) => s.deleteStack);
@@ -192,6 +194,7 @@ export default function StacksPage() {
                 stack={stack}
                 pendingOp={activeProject ? (pendingOps[`${activeProject}/${stack.name}`] ?? null) : null}
                 onDiagnose={() => setDiagnoseTarget(stack.name)}
+                onResume={() => void resumeInstalled(activeProject, stack.name)}
                 onStart={() => handleStart(stack.name)}
                 onDeploy={() => setDeployTarget(stack.name)}
                 onStop={() => setStopTarget({ project: activeProject, stack: stack.name })}
@@ -241,6 +244,7 @@ function StackCard({
   stack,
   pendingOp,
   onStart,
+  onResume,
   onDiagnose,
   onStop,
   onDeploy,
@@ -248,8 +252,9 @@ function StackCard({
   onDetail,
 }: {
   stack: IStackInfo;
-  pendingOp: 'starting' | 'stopping' | null;
+  pendingOp: import('../../stores/project.store').PendingOp | null;
   onStart: () => void;
+  onResume: () => void;
   onDiagnose: () => void;
   onStop: () => void;
   onDeploy: () => void;
@@ -350,8 +355,10 @@ function StackCard({
               disabled
               startIcon={<CircularProgress size={14} />}
             >
-              {pendingOp === 'starting' || stack.status === 'starting' ? 'Starting...' : 'Stopping...'}
+              {pendingOp === 'resuming' ? 'Resuming installed apps…' : pendingOp === 'starting' || stack.status === 'starting' ? 'Starting…' : 'Stopping…'}
             </Button>
+          ) : hasInstalledRecovery(stack) ? (
+            <StackRecoveryAction stack={stack} onResume={onResume} onReviewStop={onStop} />
           ) : isStopped ? (
             takesReleasesOnly ? (
               <Can permission="OmnitronProject.startStack"><Button size="small" startIcon={<DeployIcon />} color="success" onClick={onDeploy}>

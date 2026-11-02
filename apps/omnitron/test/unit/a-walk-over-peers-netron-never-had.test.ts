@@ -310,23 +310,31 @@ describe('omnitron cluster', () => {
     expect(tables).toHaveLength(0);
   });
 
-  it('status: a daemon without cluster mode is told so — an answer, exit 0', async () => {
-    await daemonWith(services.fleet()); // no OmnitronCluster, as on a daemon with cluster.enabled false
-
+  it('status: distinguishes a current standalone daemon from a legacy daemon without the status service', async () => {
+    await daemonWith(new ClusterRpcService(null));
     await clusterStatusCommand();
-
-    expect(said()).toContain('no local cluster election service');
+    expect(said()).toContain('runs standalone');
+    expect(said()).toContain('OMNITRON_CLUSTER_DATABASE_URL');
     expect(process.exitCode).toBeUndefined();
   });
 
-  it('status: names no file that would not switch it on', async () => {
-    await daemonWith();
-
+  it('status: a worker reports its enrollment and supported controls without claiming leadership', async () => {
+    const worker = new ClusterRpcService(null, { nodeId: 'edge-a', clusterId: 'west' });
+    await daemonWith(worker);
     await clusterStatusCommand();
+    expect(said()).toContain('Cluster west · worker edge-a');
+    expect(said()).toContain('stack.stop, stack.resume-installed');
+    expect(said()).not.toContain('Lease:');
+    expect(await worker.isLeader()).toEqual({ leader: false, nodeId: 'edge-a', term: null });
+    expect((await worker.stepDown()).success).toBe(false);
+    expect(process.exitCode).toBeUndefined();
+  });
 
-    expect(said()).toContain('OMNITRON_CLUSTER_DATABASE_URL');
-    expect(said()).not.toContain('omnitron.config.ts');
-    expect(said()).not.toContain("discovery: 'redis'");
+  it('status: a legacy worker without the status service cannot attest its enrollment', async () => {
+    await daemonWith(services.fleet());
+    await clusterStatusCommand();
+    expect(said()).toContain('enrollment is unreported');
+    expect(process.exitCode).toBe(2);
   });
 
   it('status: no daemon at all is a failure, not «cluster mode is off»', async () => {
@@ -362,7 +370,7 @@ describe('omnitron cluster', () => {
 
     await clusterStepDownCommand();
 
-    expect(said()).toContain('no local cluster election service');
+    expect(said()).toContain('enrollment is unreported');
     expect(process.exitCode).toBe(1);
   });
 });

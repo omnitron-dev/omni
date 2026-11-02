@@ -42,7 +42,23 @@ Kysera-backed runner, PostgreSQL pool adapters and configuration helpers. It can
 be imported without starting the daemon. Applications need no direct Kysera
 installation. Use `omnitron migrate status`, `up --dry-run`, `up`, `verify` or
 `down --steps 1` with `omnitron.migrations.ts`. `--daemon` explicitly selects the
-daemon's own registry; status never applies changes.
+daemon's own registry.
+
+For projects that provide a package-level `migrate` script, run
+`omnitron infra migrate --dry-run` in the ecosystem directory to review
+the package paths and their dependency order. `omnitron infra migrate`
+runs the plan once per package. Supply an application name to select one.
+A failure identifies its application and halts the remaining scripts.
+On an enrolled node, direct lifecycle and migration writes require a
+recipient-fenced execution path.
+
+## Standalone infrastructure
+
+`omnitron infra up`, `down` and `reset --yes` operate on containers declared
+by the current standalone ecosystem. Reset keeps their volumes. Projects with
+named stacks use the stack lifecycle. In Console, a **Read only** chip on a
+container explains which owner or operation controls its lifecycle. Its logs
+remain available to authorized users.
 
 `@omnitron-dev/omnitron/diagnostics` exposes the shared Titan finding contract,
 redacted cause formatting and an adapter for the existing durable alert outbox.

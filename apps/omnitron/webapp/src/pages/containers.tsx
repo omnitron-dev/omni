@@ -352,24 +352,28 @@ export default function ContainersPage() {
       align: 'right',
       render: (container) => (
         <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
-          <Can permission="OmnitronInfra.removeContainer"><Tooltip title="Remove">
+          {container.lifecycleRestriction ? (
+            <Tooltip title={container.lifecycleRestriction}>
+              <Chip tabIndex={0} size="small" variant="outlined" label="Read only" aria-label={`Read only. ${container.lifecycleRestriction}`} />
+            </Tooltip>
+          ) : <Can permission="OmnitronInfra.removeContainer"><Tooltip title="Remove">
             <IconButton size="small" color="error" onClick={() => setConfirmRemove(container.name)}>
               <CloseIcon fontSize="small" />
             </IconButton>
-          </Tooltip></Can>
+          </Tooltip></Can>}
           <Tooltip title="Logs">
-            <IconButton size="small" onClick={() => handleViewLogs(container)}>
+            <IconButton size="small" aria-label={`Logs for ${container.name}`} onClick={() => handleViewLogs(container)}>
               <LogsIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          {container.status !== 'running' && (
+          {!container.lifecycleRestriction && container.status !== 'running' && (
             <Can permission="OmnitronInfra.startContainer"><Tooltip title="Start">
               <IconButton size="small" color="success" onClick={() => handleStart(container.name)}>
                 <PlayIcon fontSize="small" />
               </IconButton>
             </Tooltip></Can>
           )}
-          {container.status === 'running' && (
+          {!container.lifecycleRestriction && container.status === 'running' && (
             <Can permission="OmnitronInfra.stopContainer"><Tooltip title="Stop">
               <IconButton size="small" color="warning" onClick={() => handleStop(container.name)}>
                 <StopIcon fontSize="small" />

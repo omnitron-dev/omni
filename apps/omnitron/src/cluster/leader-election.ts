@@ -4,32 +4,15 @@ import { performance } from 'node:perf_hooks';
 import { FailureTracker } from '@omnitron-dev/titan/utils';
 import type { LeaseGrant, LeaseStore } from '@omnitron-dev/titan-database/coordination';
 import type { FleetService } from '../services/fleet.service.js';
-import { StopSigner } from './stop-authority.js';
+import { FENCED_OPERATIONS, type ClusterStateInfo, type ElectionState } from '../shared/dto/cluster.js';
+import { ClusterSigner, type StackEffectPlan } from './stop-authority.js';
 import type { NodeStackStopPlan } from '../project/node-stack-stop.js';
 
-export type ElectionState = 'follower' | 'candidate' | 'leader';
+export type { ClusterStateInfo, ElectionState } from '../shared/dto/cluster.js';
 export interface ElectionConfig {
   clusterId: string;
   leaseTtlMs: number;
   heartbeatInterval: number;
-}
-export interface ClusterStateInfo {
-  nodeId: string;
-  clusterId: string;
-  state: ElectionState;
-  /** Durable decimal epoch. Null until authority has been observed. */
-  term: string | null;
-  leaderId: string | null;
-  peers: number;
-  uptime: number;
-  coordination: 'postgres-lease';
-  authority: 'confirmed' | 'unavailable' | 'expired' | 'stopped' | 'contended';
-  reason: string | null;
-  leaseExpiresAt: string | null;
-  leaseRemainingMs: number;
-  /** A leadership observation does not fence an external side effect. */
-  effectFencing: 'recipient-required';
-  fencedOperations: readonly ['stack.stop'];
 }
 const DEFAULT_CONFIG: ElectionConfig = {
   clusterId: 'default', leaseTtlMs: 15_000, heartbeatInterval: 2_000,
@@ -57,7 +40,7 @@ export class LeaderElection extends EventEmitter {
   private expiry: NodeJS.Timeout | null = null;
   private running = false;
   private generation = 0;
-  private signer: StopSigner | null = null;
+  private signer: ClusterSigner | null = null;
   private inFlight: Promise<void> | null = null;
   private startedAt = performance.now();
   private authority: ClusterStateInfo['authority'] = 'stopped';
@@ -82,7 +65,7 @@ export class LeaderElection extends EventEmitter {
     if (this.inFlight) await this.inFlight;
     if (!this.fleet.selfNodeId) throw new Error('Cluster authority requires this controller to be registered in the fleet');
     this.nodeId = this.fleet.selfNodeId;
-    this.signer = new StopSigner();
+    this.signer = new ClusterSigner();
     this.generation++;
     this.startedAt = performance.now();
     this.running = true;
@@ -116,6 +99,10 @@ export class LeaderElection extends EventEmitter {
     if (!this.isLeader || !this.current || !this.signer) throw new Error('Stack stop requires a confirmed cluster leader');
     return this.signer.issue(plan, this.current);
   }
+  authorizeEffect(plan: StackEffectPlan) {
+    if (!this.isLeader || !this.current || !this.signer) throw new Error('Stack start requires a confirmed cluster leader');
+    return this.signer.issueEffect(plan, this.current);
+  }
   async confirmStopAuthority(): Promise<void> {
     const held = this.current;
     if (!this.isLeader || !held) throw new Error('Stack stop requires a confirmed cluster leader');
@@ -140,7 +127,7 @@ export class LeaderElection extends EventEmitter {
       leaseExpiresAt: fresh ? this.observed?.expiresAt ?? null : null,
       leaseRemainingMs: fresh ? Math.max(0, Math.floor(this.deadline - performance.now())) : 0,
       effectFencing: 'recipient-required',
-      fencedOperations: ['stack.stop'],
+      fencedOperations: FENCED_OPERATIONS,
       ...(leader ? { state: 'leader' as const } : {}),
     };
   }

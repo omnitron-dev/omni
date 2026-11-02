@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest';
 const removed = vi.hoisted(() => [] as string[]);
 vi.mock('../../src/infrastructure/container-runtime.js', async original => ({
   ...(await original<Record<string,unknown>>()),
+  getContainerState: async (name:string) => ({ name, containerId: (name.endsWith('postgres') ? '1' : '2').repeat(64), labels: { 'omnitron.managed': 'true' } }),
   removeContainer: async (name:string) => { removed.push(name); },
 }));
 import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
@@ -11,7 +12,7 @@ it('daemon disposal cancels resource monitors without deleting live stack contai
   removed.length=0;
   const service:any=new ProjectService(logger,{list:()=>[]} as any,{selectProjectsSync:()=>[],kvGetSync:()=>null,get:()=>null,set(){}} as any);
   const infra=new InfrastructureService(logger,{services:{}} as any);
-  (infra as any).desiredContainers=[{name:'one-prod-postgres'},{name:'one-prod-origin'}];
+  (infra as any).desiredContainers=['one-prod-postgres','one-prod-origin'].map(name=>({name,labels:{'omnitron.managed':'true'}}));
   (infra as any).usingGlobalOmnitronPg=true;
   const timer=setInterval(()=>{},60000); (infra as any).healthTimer=timer;
   const stop=vi.fn(); (infra as any).phantomJanitor={stop};
@@ -22,5 +23,5 @@ it('daemon disposal cancels resource monitors without deleting live stack contai
   expect(stop).toHaveBeenCalledOnce();
   expect(service.infraManager.listInstances()).toEqual([]);
   await infra.teardown();
-  expect(removed.sort()).toEqual(['one-prod-origin','one-prod-postgres']);
+  expect(removed.sort()).toEqual(['1'.repeat(64),'2'.repeat(64)]);
 });

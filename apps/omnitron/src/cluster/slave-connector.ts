@@ -27,6 +27,7 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 // Peer type from netron.connect() — RemotePeer for TCP connections
 import type { SyncService } from '../services/sync.service.js';
 import type { ISyncStatus } from '../shared/dto/project.js';
+import { LONG_REQUEST_TIMEOUT } from '../shared/dto/services.js';
 import { directLink, stableNodeUuid, type MeshDialer, type MeshLink } from './mesh-link.js';
 
 // =============================================================================
@@ -155,16 +156,6 @@ export async function authenticatePeer(peer: AuthenticatingPeer, link: MeshLink)
     throw new Error('Node accepted a service credential that is already expired');
   }
 }
-
-/**
- * How long a call to a node may take.
- *
- * Ten minutes, because the operations a master asks of a node are
- * provisioning ones: pulling images, waiting on health checks, installing a
- * bundle. A caller that needs a shorter bound imposes it itself — the
- * heartbeat does.
- */
-const SLAVE_REQUEST_TIMEOUT = 10 * 60_000;
 
 /** A failed resource must not prevent the next connection from being opened. */
 async function bounded<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
@@ -542,7 +533,7 @@ export class SlaveConnector {
       netron = new Netron(createNullLogger(), { id: `master-to-${key}` });
       conn.netron = netron;
       netron.registerTransport('tcp', () => new TcpTransport());
-      netron.setTransportOptions('tcp', { requestTimeout: SLAVE_REQUEST_TIMEOUT });
+      netron.setTransportOptions('tcp', { requestTimeout: LONG_REQUEST_TIMEOUT });
       const ownedNetron = netron;
       netron.on(NETRON_EVENT_PEER_DISCONNECT, () => {
         if (conn.netron !== ownedNetron || conn.status !== 'connected') return;
@@ -814,7 +805,7 @@ export class SlaveConnector {
    * grew instead.
    *
    * The turn belongs to the PEER, not to the connection. A call to a node
-   * may wait out SLAVE_REQUEST_TIMEOUT — ten minutes — and a pull stuck on a
+   * may wait out the lifecycle timeout — ten minutes — and a pull stuck on a
    * peer that has died would otherwise hold the reconnected one off for that
    * long: the guard would become the outage. A reconnect replaces the peer,
    * and a pull on the new one may start while the old one is still stuck.

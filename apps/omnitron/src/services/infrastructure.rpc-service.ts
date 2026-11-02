@@ -5,6 +5,7 @@
  * (Docker-based PostgreSQL, Redis, MinIO, etc.).
  */
 
+import { stackExecutionKey, type StackExecutionScope } from '../shared/dto/stack-execution.js';
 import { HostIngressService } from '../infrastructure/host-ingress.service.js';
 import type { HostIngressApply, HostIngressRemove, HostIngressSettings, HostIngressOwnerRestore, HostIngressTakeoverRollback } from '../infrastructure/host-ingress-types.js';
 import { Service, Public } from '@omnitron-dev/titan/decorators';
@@ -27,26 +28,56 @@ import {
   listManagedContainers,
 } from '../infrastructure/container-runtime.js';
 
+function infrastructureScope(owner?: { project?: string | undefined; stack?: string | undefined }): StackExecutionScope | undefined {
+  if (owner?.project === undefined && owner?.stack === undefined) return undefined;
+  if (!owner.project || !owner.stack) throw Errors.badRequest('Infrastructure requires a project and stack together.');
+  return { project: owner.project, stack: owner.stack };
+}
+
+function nativeId(container: ContainerState): string {
+  if (!container.containerId || !/^[a-f0-9]{64}$/.test(container.containerId)) throw new Error('Managed container has no immutable identity');
+  return container.containerId;
+}
+
+function mutableContainerId(container: ContainerState): string {
+  if (container.labels?.['omnitron.internal'] === 'true') throw new Error('The control plane owns this container. Use its maintenance workflow.');
+  return nativeId(container);
+}
+
 @Service({ name: 'OmnitronInfra' })
 export class InfrastructureRpcService implements IOmnitronInfraService {
-  private readonly provisioning = new Map<string, Set<Promise<unknown>>>();
-  async drainStackProvisioning(scope: { project: string; stack: string }): Promise<void> {
-    await Promise.allSettled([...(this.provisioning.get(`${scope.project}/${scope.stack}`) ?? [])]);
+  private readonly activeMutations = new Map<string | undefined, Set<Promise<unknown>>>();
+  private stackOperationGate?: (scope?: StackExecutionScope) => void;
+
+  setStackOperationGate(gate: (scope?: StackExecutionScope) => void): void {
+    this.stackOperationGate = gate;
   }
-  private trackProvision<T>(scope: { project?: string | undefined; stack?: string | undefined }, work: () => Promise<T>): Promise<T> {
-    if (scope.project && scope.stack) this.stackOperationGate?.({ project: scope.project, stack: scope.stack });
-    const key = `${scope.project}/${scope.stack}`;
-    const active = this.provisioning.get(key) ?? new Set<Promise<unknown>>();
-    this.provisioning.set(key, active);
-    const promise = Promise.resolve().then(work).finally(() => {
+
+  async drainStackProvisioning(scope: StackExecutionScope): Promise<void> {
+    await Promise.allSettled([...(this.activeMutations.get(stackExecutionKey(scope)) ?? []), ...(this.activeMutations.get(undefined) ?? [])]);
+  }
+
+  private trackMutation<T>(
+    owner: { project?: string | undefined; stack?: string | undefined } | undefined,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    const scope = infrastructureScope(owner);
+    const key = scope && stackExecutionKey(scope);
+    this.stackOperationGate?.(scope);
+    const run = () => {
+      this.stackOperationGate?.(scope);
+      return work();
+    };
+
+    const active = this.activeMutations.get(key) ?? new Set<Promise<unknown>>();
+    this.activeMutations.set(key, active);
+    const promise = Promise.resolve().then(run).finally(() => {
       active.delete(promise);
-      if (active.size === 0) this.provisioning.delete(key);
+      if (active.size === 0) this.activeMutations.delete(key);
     });
     active.add(promise);
     return promise;
   }
-  private stackOperationGate?: (scope: { project: string; stack: string }) => void;
-  setStackOperationGate(gate: (scope: { project: string; stack: string }) => void): void { this.stackOperationGate = gate; }
 
   constructor(
     private readonly getInfra: () => InfrastructureService | null,
@@ -105,7 +136,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
   ) {}
 
   @Public({ auth: { roles: ['admin', 'service_role'] } })
-  async configureHostIngress(data: HostIngressSettings) { return this.hostIngress.configure(data); }
+  async configureHostIngress(data: HostIngressSettings) { return this.trackMutation(undefined, () => this.hostIngress.configure(data)); }
 
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async getHostIngress() { return this.hostIngress.status(); }
@@ -114,22 +145,22 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
   async checkHostIngress(data: HostIngressApply) { return this.hostIngress.check(data); }
 
   @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
-  async validateHostIngress(data: HostIngressApply) { return this.hostIngress.validate(data); }
+  async validateHostIngress(data: HostIngressApply) { return this.trackMutation(data.owner, () => this.hostIngress.validate(data)); }
 
   @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
-  async restoreHostIngressOwner(data: HostIngressOwnerRestore) { return this.hostIngress.restoreOwner(data); }
+  async restoreHostIngressOwner(data: HostIngressOwnerRestore) { return this.trackMutation(data.owner, () => this.hostIngress.restoreOwner(data)); }
 
   @Public({ auth: { roles: ['admin', 'service_role'] } })
-  async rollbackHostIngressTakeover(data: HostIngressTakeoverRollback) { return this.hostIngress.rollbackTakeover(data); }
+  async rollbackHostIngressTakeover(data: HostIngressTakeoverRollback) { return this.trackMutation(undefined, () => this.hostIngress.rollbackTakeover(data)); }
 
   @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
-  async applyHostIngress(data: HostIngressApply) { return this.hostIngress.apply(data); }
+  async applyHostIngress(data: HostIngressApply) { return this.trackMutation(data.owner, () => this.hostIngress.apply(data)); }
 
   @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
-  async removeHostIngress(data: HostIngressRemove) { return this.hostIngress.remove(data); }
+  async removeHostIngress(data: HostIngressRemove) { return this.trackMutation(data.owner, () => this.hostIngress.remove(data)); }
 
   @Public({ auth: { roles: ['admin', 'service_role'] } })
-  async recoverHostIngress() { return this.hostIngress.recover(); }
+  async recoverHostIngress() { return this.trackMutation(undefined, () => this.hostIngress.recover()); }
 
   /**
    * Bring up the infrastructure a stack needs, here, on this node.
@@ -236,7 +267,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // Named while it runs, so a stall on this node says what it was doing.
     // Test node, 2026-09-22: it went quiet for ten seconds around the end of a
     // provision and nothing here could name it — `monitoring/event-loop-watch.ts`.
-    return this.trackProvision(data, () => withInfrastructureScope(data?.project, data?.stack, () =>
+    return this.trackMutation(data, () => withInfrastructureScope(data?.project, data?.stack, () =>
       duringPhase(`provisioning ${data?.project ?? 'omnitron'}/${data?.stack ?? 'default'} for the master`, () =>
         this.provisionStackNow(data),
       ),
@@ -247,7 +278,6 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
   private async provisionStackNow(
     data: Parameters<InfrastructureRpcService['provisionStack']>[0],
   ): ReturnType<InfrastructureRpcService['provisionStack']> {
-    if (data?.project && data?.stack) this.stackOperationGate?.({ project: data.project, stack: data.stack });
     if (!this.hostInfra) {
       throw Errors.badRequest('This daemon does not host stack infrastructure.');
     }
@@ -635,7 +665,23 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
    */
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async listContainers(): Promise<ContainerState[]> {
-    return listManagedContainers({ orThrow: true });
+    const containers = await listManagedContainers({ orThrow: true });
+    const restrictions = new Map<string | undefined, string | undefined>();
+    return containers.map(container => {
+      try {
+        mutableContainerId(container);
+        const scope = infrastructureScope(container);
+        const key = scope && stackExecutionKey(scope);
+        if (!restrictions.has(key)) {
+          try { this.stackOperationGate?.(scope); restrictions.set(key, undefined); }
+          catch (error) { restrictions.set(key, (error as Error).message); }
+        }
+        const reason = restrictions.get(key);
+        return reason ? { ...container, lifecycleRestriction: reason } : container;
+      } catch (error) {
+        return { ...container, lifecycleRestriction: (error as Error).message };
+      }
+    });
   }
 
   /**
@@ -681,45 +727,43 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
   /**
    * @throws when the container is not one this daemon manages.
    */
-  private async assertManaged(name: string): Promise<void> {
-    // Resolved against the runtime for the same reason as `listContainers`:
-    // the in-memory map is empty after a daemon restart, so this rejected
-    // every name and the console's start / stop / remove buttons failed with
-    // "Managed container not found" against containers that were plainly
-    // running in the list beside them.
-    const managed = await listManagedContainers();
-    if (!managed.some((container) => container.name === name)) {
-      throw Errors.notFound('Managed container', name);
-    }
+  private async managedContainer(name: string): Promise<ContainerState> {
+    const inventory = await listManagedContainers({ orThrow: true });
+    const container = inventory.find(item => item.name === name);
+    if (!container) throw Errors.notFound('Managed container', name);
+    return container;
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async startContainer(data: { name: string }): Promise<{ success: boolean }> {
-    await this.assertManaged(data.name);
-    await startContainer(data.name);
+    const target = await this.managedContainer(data.name);
+    const id = mutableContainerId(target);
+    await this.trackMutation(target, () => startContainer(id));
     return { success: true };
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async stopContainer(data: { name: string; timeout?: number }): Promise<{ success: boolean }> {
-    await this.assertManaged(data.name);
-    await stopContainer(data.name, data.timeout);
+    const target = await this.managedContainer(data.name);
+    const id = mutableContainerId(target);
+    await this.trackMutation(target, () => stopContainer(id, data.timeout));
     return { success: true };
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async removeContainer(data: { name: string }): Promise<{ success: boolean }> {
-    await this.assertManaged(data.name);
-    await removeContainer(data.name);
+    const target = await this.managedContainer(data.name);
+    const id = mutableContainerId(target);
+    await this.trackMutation(target, () => removeContainer(id));
     return { success: true };
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getContainerLogs(data: { name: string; tail?: number }): Promise<{ logs: string }> {
-    await this.assertManaged(data.name);
+    const id = nativeId(await this.managedContainer(data.name));
     // Cap the tail so a viewer cannot ask the daemon to buffer an unbounded
     // amount of container output into a single RPC response.
     const tail = Math.min(Math.max(data.tail ?? 100, 1), 5_000);
-    return { logs: await getContainerLogs(data.name, tail) };
+    return { logs: await getContainerLogs(id, tail) };
   }
 }

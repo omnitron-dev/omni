@@ -22,25 +22,33 @@ export async function clusterStatusCommand(): Promise<void> {
   try {
     const cluster = await clusterService(client);
     if (!cluster) {
-      // An answer, not a failure: the question was what the cluster looks
-      // like, and on this daemon there is none.
-      if (!emitJson({ enabled: false, reason: 'No local cluster election service' })) reportClusterOff();
+      const reason = 'This daemon has no cluster status service. Its enrollment is unreported.';
+      if (!emitJson({ enabled: null, reason })) log.warn(reason);
+      process.exitCode = 2;
       return;
     }
 
     const state = await cluster.getClusterState();
-    if (emitJson({ enabled: true, ...state })) return;
+    // Older controllers returned the election observation without a participant discriminator.
+    if (emitJson({ ...state, enabled: state.participant !== 'standalone' })) return;
+    if (state.participant === 'standalone') { reportClusterOff(); return; }
+    if (state.participant === 'worker') {
+      log.info(`Cluster ${state.clusterId} · worker ${state.nodeId}`);
+      log.info('  Authority: the recipient must verify the lease before each effect');
+      log.info(`  Fenced protocol operations: ${state.fencedOperations.join(', ')}`);
+      return;
+    }
 
     log.info(`${prism.bold('Cluster State')}`);
     log.info(`  Node ID:    ${state.nodeId}`);
     log.info(`  State:      ${formatElectionState(state.state)}`);
     log.info(`  Epoch:      ${state.term ?? prism.dim('unconfirmed')}`);
     log.info(`  Leader:     ${state.leaderId ?? prism.dim('none')}`);
-    log.info(`  Authority:  ${state.authority} (${state.coordination})`);
-    log.info(`  Lease:      ${state.leaseRemainingMs} ms remaining`);
+    if (state.authority) log.info(`  Authority:  ${state.authority}${state.coordination ? ` (${state.coordination})` : ''}`);
+    if (typeof state.leaseRemainingMs === 'number') log.info(`  Lease:      ${state.leaseRemainingMs} ms remaining`);
     if (state.reason) log.warn(`  Reason:     ${state.reason}`);
-    log.info(`  Fenced operations: ${state.fencedOperations?.join(', ') || 'unreported'}`);
-    log.info(`  Uptime:     ${formatDuration(state.uptime)}`);
+    log.info(`  Fenced protocol operations: ${state.fencedOperations?.join(', ') || 'unreported'}`);
+    if (typeof state.uptime === 'number') log.info(`  Uptime:     ${formatDuration(state.uptime)}`);
 
     // Also show fleet nodes for context
     try {
@@ -88,7 +96,7 @@ export async function clusterStepDownCommand(): Promise<void> {
   try {
     const cluster = await clusterService(client);
     if (!cluster) {
-      reportClusterOff();
+      log.warn('This daemon has no cluster status service. Its enrollment is unreported.');
       // A step-down asked of a daemon with no election deposed nobody.
       process.exitCode = 1;
       return;
@@ -115,27 +123,7 @@ export async function clusterStepDownCommand(): Promise<void> {
 // Helpers
 // =============================================================================
 
-/**
- * The daemon's cluster service, or `null` when this daemon runs none.
- *
- * Through `client.service()`, as every other command reaches a service. This
- * used to walk `client['netron'].getPeers()` — a method Netron does not have
- * (its peers are the `peers` Map) — so the walk never ran and the lookup
- * ended in its own `throw`, «OmnitronCluster service not found — is cluster
- * mode enabled?», every time. `cluster status` then matched «not found» and
- * printed «Cluster mode is not enabled» whatever the daemon ran; the Fleet
- * lookup beside it had the same walk, and `step-down` failed with exit 0.
- * On the development daemon the sentence happens to be true — the daemon
- * exposes `OmnitronCluster` only with `cluster.enabled` (daemon.ts), and
- * measured 2026-09-23 the lookup answers 404 — which is how an answer that
- * could not have been anything else went unnoticed.
- *
- * `null` means exactly one thing: the lookup's own 404, no service by that
- * name. Over the unix socket the CLI holds the admin role, so a 404 there is
- * absence rather than a refusal. Everything else — no daemon, a timeout — is
- * thrown and reported as the failure it is; it used to be sorted by whether
- * the words «not found» or «not running» appeared anywhere in the message.
- */
+/** Legacy daemons can lack the observation service. Other transport failures preserve their cause. */
 async function clusterService(client: DaemonClient): Promise<ClusterRpc | null> {
   try {
     return await client.service<ClusterRpc>('OmnitronCluster');
@@ -146,7 +134,7 @@ async function clusterService(client: DaemonClient): Promise<ClusterRpc | null> 
 }
 
 function reportClusterOff(): void {
-  log.warn('This daemon runs no local cluster election service.');
+  log.info('This daemon runs standalone.');
   log.info('For HA, enroll the controller in the daemon config.json and configure OMNITRON_CLUSTER_DATABASE_URL. Workers verify authority without running elections.');
 }
 

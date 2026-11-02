@@ -985,6 +985,8 @@ export type RuntimeReleaseEvidence = {
   releaseId: string;
   manifestSha256: string;
   artifactSha256: string;
+  /** Installed application and dependency content. Older owner observations do not provide this digest. */
+  treeSha256?: string;
   observedAt: string;
   launchId: string;
   /** Verifies the installed tree at launch, not continuous in-memory integrity. */

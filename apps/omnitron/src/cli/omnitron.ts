@@ -365,6 +365,14 @@ stack
   });
 
 stack
+  .command('resume <project> <stack>')
+  .description('Resume installed applications after a recipient-confirmed HA stack stop')
+  .structuredAction(async (projectName, stackName) => {
+    const { stackResumeCommand } = await import('../commands/stack.js');
+    await stackResumeCommand(projectName, stackName);
+  });
+
+stack
   .command('stop <project> <stack>')
   .description('Stop a stack and verify each target')
   .option('--dry-run', 'Inspect applications, containers and unresolved targets without creating a stop operation')
@@ -817,7 +825,7 @@ const cluster = program.command('cluster').description('Cluster management — l
 
 cluster
   .command('status')
-  .description('Show cluster state: leader, followers, election term')
+  .description('Show cluster participation, supported controls and controller lease observations')
   .structuredAction(async () => {
     const { clusterStatusCommand } = await import('../commands/cluster.js');
     await clusterStatusCommand();
@@ -1000,8 +1008,8 @@ infra
 
 infra
   .command('down')
-  .description('Stop all infrastructure containers')
-  .option('--volumes', 'Remove data volumes (DESTRUCTIVE)')
+  .description('Remove this standalone ecosystem’s declared containers, preserving their volumes')
+  .option('--volumes', 'Refuse teardown if volume deletion is required (unsupported)')
   .action(async (opts) => {
     const { infraDownCommand } = await import('../commands/infra.js');
     await infraDownCommand(opts);
@@ -1059,16 +1067,17 @@ infra
 
 infra
   .command('migrate [app]')
-  .description('Run database migrations')
-  .action(async (app) => {
+  .description('Run declared workspace migration scripts in dependency order')
+  .option('--dry-run', 'List the packages and order without running their scripts')
+  .structuredAction(async (app, options) => {
     const { infraMigrateCommand } = await import('../commands/infra.js');
-    await infraMigrateCommand(app);
+    await infraMigrateCommand(app, options);
   });
 
 infra
   .command('reset')
-  .description('Destroy all infrastructure data and recreate (DESTRUCTIVE)')
-  .option('--yes', 'Skip confirmation prompt')
+  .description('Recreate this standalone ecosystem’s declared containers with their existing volumes')
+  .option('--yes', 'Confirm container recreation')
   .action(async (opts) => {
     const { infraResetCommand } = await import('../commands/infra.js');
     await infraResetCommand(opts);

@@ -172,9 +172,8 @@ export class NodeUpgradeService {
     // recursive `cpSync` of whole packages. On the daemon's own thread that
     // is not slow, it is a STOP: measured from the console, the master
     // answered nothing at all for ~150 s — health checks, node polls and
-    // every other RPC stood still with it — and the request died at nginx's
-    // 120 s `proxy_read_timeout` long before that, so no client deadline can
-    // reach it either.
+    // every other RPC stood still with it — and the request hit the gateway's
+    // then-current timeout. A larger deadline cannot keep this loop responsive.
     //
     // The cheap plan still answers most of the question: which nodes are
     // local, which refused SSH, which would be attempted. What it cannot say

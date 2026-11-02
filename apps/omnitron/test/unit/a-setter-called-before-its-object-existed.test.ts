@@ -55,7 +55,7 @@ describe('the local sources are handed over after the service exists', () => {
   it('wires every local source exactly once', () => {
     // A second call would mean two places believe they own the wiring, and the
     // later one wins silently.
-    for (const setter of ['setSyncService', 'setTelemetryRelay', 'setTitanHealth', 'setLeaderElection']) {
+    for (const setter of ['setSyncService', 'setTelemetryRelay', 'setTitanHealth', 'setClusterReader']) {
       const calls = daemonSrc.split(`.${setter}(`).length - 1;
       expect(calls, `${setter} is wired ${calls} times`).toBe(1);
     }
@@ -74,7 +74,7 @@ describe('every local source has a setter and every setter a call', () => {
     // mesh and indistinguishable from a forgotten line for the local one.
     const setters = [...rpcSrc.matchAll(/^  set([A-Z][A-Za-z]*)\(/gm)].map((m) => `set${m[1]}`);
     const localSources = setters.filter((s) =>
-      ['setSyncService', 'setTelemetryRelay', 'setTitanHealth', 'setLeaderElection'].includes(s));
+      ['setSyncService', 'setTelemetryRelay', 'setTitanHealth', 'setClusterReader'].includes(s));
 
     expect(localSources).toHaveLength(4);
     for (const s of localSources) {

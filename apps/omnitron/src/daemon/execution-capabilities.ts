@@ -3,8 +3,8 @@ export type ExecutionCapabilities = Readonly<Record<string, number>>;
 
 // This contract includes durable stack intent, admission fences and confirmed
 // process exit. Merely having an RPC with the same name is not sufficient.
-export const OWNER_CAPABILITIES: ExecutionCapabilities = Object.freeze({ stackControl: 1 });
-export const REQUIRED_OWNER_CAPABILITIES: ExecutionCapabilities = OWNER_CAPABILITIES;
+export const OWNER_CAPABILITIES: ExecutionCapabilities = Object.freeze({ stackControl: 1, installedStackStart: 1 });
+export const REQUIRED_OWNER_CAPABILITIES: ExecutionCapabilities = Object.freeze({ stackControl: 1 });
 
 export function readExecutionCapabilities(value: unknown): ExecutionCapabilities {
   if (value === undefined) return {};

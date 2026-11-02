@@ -6,7 +6,7 @@
 
 import { log, table, note, prism } from '@xec-sh/kit';
 import { createDaemonClient, LONG_REQUEST_TIMEOUT, isRequestTimeout } from '../daemon/daemon-client.js';
-import type { IProjectRpcService } from '../shared/dto/services.js';
+import { isLostRpcAcknowledgement, type IProjectRpcService } from '../shared/dto/services.js';
 import { emitJson, emitError, emitStep, emitSuccess, emitInfo, isJsonMode } from './output.js';
 import { syncFinding, syncWords, syncSeverity } from '../shared/sync-reading.js';
 import { readDeploymentProgress, readStackStart } from '../shared/release-reading.js';
@@ -281,6 +281,9 @@ function reportLifecycleError(
         `Check with \`omnitron list\` or \`omnitron doctor\` before doing anything else.`,
       { ...details, outcome: 'unknown', reason: 'client-timeout' }
     );
+  } else if (isLostRpcAcknowledgement(err)) {
+    emitError(`Acknowledgement unavailable for ${action}: ${(err as Error).message}. Inspect the stack before retrying.`,
+      { ...details, outcome: 'unknown', reason: 'connection-lost' });
   } else {
     emitError(`Failed: ${(err as Error).message}`, details);
   }
@@ -342,6 +345,26 @@ export async function stackStartCommand(
       project: projectName,
       stack: stackName,
     });
+  } finally {
+    await client.disconnect();
+  }
+}
+
+export async function stackResumeCommand(project: string, stack: string): Promise<void> {
+  const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
+  try {
+    const service = await client.service<IProjectRpcService>('OmnitronProject');
+    emitStep(`Resuming the installed allocation for ${project}/${stack}…`);
+    const result = await service.resumeInstalledStack({ project, stack });
+    if (result.outcome !== 'running') process.exitCode = 1;
+    if (emitJson(result)) return;
+    emitInfo(`${project}/${stack} · ${result.outcome} · operation ${result.operationId}`);
+    for (const node of result.nodes) {
+      emitInfo([node.node, node.outcome, node.apps?.join(', '), node.reason].filter(Boolean).join(' · '));
+    }
+    if (result.outcome !== 'running') emitInfo('Inspect the node outcomes before planning another recovery.');
+  } catch (error) {
+    reportLifecycleError(error, `installed applications in ${project}/${stack} to resume`, { project, stack });
   } finally {
     await client.disconnect();
   }

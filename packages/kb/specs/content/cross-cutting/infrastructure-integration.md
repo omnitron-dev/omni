@@ -100,11 +100,12 @@ Omnitron injects infrastructure connection details as env vars:
 ## CLI Management
 
 ```bash
-omnitron infra up          # Provision all declared infrastructure
-omnitron infra down        # Stop (--volumes to also remove data)
+omnitron infra up          # Provision this standalone ecosystem’s infrastructure
+omnitron infra down        # Remove only its declared containers and keep volumes
 omnitron infra status      # Docker container health
 omnitron infra psql [db]   # Open psql shell
 omnitron infra redis-cli   # Open redis-cli
-omnitron infra migrate     # Run all pending migrations
-omnitron infra reset       # Drop and recreate (DESTRUCTIVE)
+omnitron infra migrate --dry-run  # Review workspace migration scripts in dependency order
+omnitron infra migrate     # Run the reviewed package scripts
+omnitron infra reset --yes # Recreate declared containers using existing volumes
 ```

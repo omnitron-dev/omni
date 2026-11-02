@@ -17,7 +17,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { verdictOf, omnitronVerdict, firstReason, isMeasured, clusterDisagreement, clusterAuthorityProblems } from './node-diagnosis';
+import { verdictOf, omnitronVerdict, firstReason, isMeasured, clusterParticipation, clusterDisagreement, clusterAuthorityProblems } from './node-diagnosis';
 
 describe('an absence is not a failure', () => {
   it('reads a null layer as not measured', () => {
@@ -226,4 +226,18 @@ describe('database lease observations', () => {
   it('does not infer lease failure for a legacy or disabled cluster', () => {
     expect(clusterAuthorityProblems([{nodeId: 'a', reachable: true, cluster: null}])).toEqual([]);
   });
+});
+
+it('keeps a non-electing recipient and a standalone daemon out of controller comparisons', () => {
+  const worker = {nodeId: 'w', reachable: true, cluster: {
+    participant: 'worker', clusterId: 'test', nodeId: 'w', fencedOperations: ['stack.stop', 'stack.resume-installed'],
+  }};
+  const standalone = {nodeId: 's', reachable: true, cluster: {participant: 'standalone', enabled: false}};
+  const leader = {nodeId: 'c', reachable: true, cluster: {clusterId: 'test', leaderId: 'c', term: '1'}};
+  expect(clusterDisagreement([worker, leader, standalone])).toEqual({kind: 'none'});
+  expect(clusterParticipation(worker)).toBe('Worker · test · stack.stop, stack.resume-installed');
+  expect(clusterParticipation({ ...worker, cluster: {} })).toBe('Cluster participation unreported');
+  expect(clusterDisagreement([leader, { ...worker, cluster: { clusterId: 'test' } }])).toEqual({kind: 'none'});
+  expect(clusterParticipation(standalone)).toBe('Standalone');
+  expect(clusterParticipation({nodeId: 'w', reachable: false, cluster: null, error: 'Link lost'})).toBe('Link lost');
 });

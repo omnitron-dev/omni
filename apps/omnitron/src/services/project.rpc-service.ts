@@ -9,7 +9,7 @@ import { publicStackName, type ConfigurationImport } from '../project/configurat
  *
  * RBAC:
  * - Viewer: listProjects, getProject, listStacks, getStack, scanRequirements, getStackStatus
- * - Operator: startStack, stopStack
+ * - Operator: startStack, stopStack, resumeInstalledStack
  * - Admin: addProject, removeProject
  */
 
@@ -360,8 +360,37 @@ export class ProjectRpcService {
   }
 
   // ===========================================================================
-  // Stacks — Admin
+  // Recovery — operator coordination and machine-only recipient methods
   // ===========================================================================
+
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async resumeInstalledStack(data: { project: string; stack: string }) {
+    const scope = await this.projectService.resolveProjectStack(data);
+    const audit = { action: 'stack.resume', resourceType: 'stack', resourceId: `${scope.project}/${scope.stack}` };
+    try {
+      const result = await this.projectService.resumeInstalledStack(scope.project, scope.stack);
+      await this.audit?.record({ ...audit, outcome: result.outcome === 'running' ? 'ok' : 'failed', details: { ...result } });
+      return { ...result, project: data.project, stack: data.stack };
+    } catch (error) {
+      await this.audit?.record({ ...audit, outcome: 'failed', error });
+      throw error;
+    }
+  }
+
+  @Public({ auth: { roles: ['service_role'] } })
+  async prepareNodeInstalledResume(data: import('../project/installed-stack-resume.js').InstalledResumeRequest) {
+    return this.projectService.prepareNodeInstalledResume(data);
+  }
+
+  @Public({ auth: { roles: ['service_role'] } })
+  async executeNodeInstalledResume(data: import('../project/installed-stack-resume.js').InstalledResumeExecution) {
+    return this.projectService.executeNodeInstalledResume(data);
+  }
+
+  @Public({ auth: { roles: ['service_role'] } })
+  async getNodeInstalledResumeReceipt(data: import('../project/installed-stack-resume.js').InstalledResumeRequest) {
+    return this.projectService.getNodeInstalledResumeReceipt(data);
+  }
 
   @Public({ auth: { roles: ['service_role'] } })
   async inspectNodeStackStop(data: import('../project/node-stack-stop.js').NodeStackStopRequest) {

@@ -17,6 +17,10 @@ export async function migrateCommand(action: string, options: { config?: string;
       ...(options.dryRun !== undefined ? { dryRun: options.dryRun } : {}),
     };
     validateMigrationOperation(operation);
+    if (action === 'up' || action === 'down') {
+      const { assertStandaloneInfrastructure } = await import('../cluster/standalone-infrastructure.js');
+      assertStandaloneInfrastructure();
+    }
     let result;
     if (options.daemon) {
       const db = await createOmnitronDb<unknown>({ max: 1 });

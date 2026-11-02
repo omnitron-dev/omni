@@ -140,6 +140,21 @@ export interface StackStopReview {
     reason?: string;
   }>;
 }
+export interface InstalledStackResumeResult {
+  project: string;
+  stack: string;
+  operationId: string;
+  stopOperationId: string;
+  outcome: 'running' | 'partial' | 'unconfirmed';
+  nodes: Array<{
+    node: string;
+    outcome: 'running' | 'failed' | 'unconfirmed' | 'skipped';
+    apps?: string[];
+    reason?: string;
+    observedAt?: string;
+  }>;
+}
+
 export interface StackStopProgress {
   intentCommitted?: boolean;
   supersededAt?: string;
@@ -148,11 +163,13 @@ export interface StackStopProgress {
   startedAt: string;
   completedAt?: string;
   error?: string;
-  nodes: Array<{ node: string; outcome: 'checking' | 'prepared' | 'stopping' | 'stopped' | 'unknown'; observedAt?: string; reason?: string;
+  nodes: Array<{ node: string; outcome: 'checking' | 'prepared' | 'stopping' | 'stopped' | 'unknown'; operationId?: string; observedAt?: string; reason?: string;
     authority?: { clusterId: string; nodeId: string; epoch: string } }>;
 }
 
 export interface IStackInfo {
+  /** Last explicit recovery of the applications retained by their process owners. */
+  resumeOperation?: InstalledStackResumeResult | undefined;
   /** Last durable stop operation; failures and unreachable peers remain visible. */
   stopOperation?: StackStopProgress | undefined;
   /** Execution/history identity, which can predate this stack's public project/name. */

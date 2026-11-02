@@ -1,5 +1,7 @@
+import { installedEntryRevision, installedExecutable, requireInstalledBinding } from './installed-execution.js';
+import { topologyRevision } from '../project/topology-plan.js';
 import { createHash } from 'node:crypto';
-import { stackExecutionKey, type StackExecutionScope, type StackExecutionPlan, type StackExecutionStop, type StackExecutionReceipt } from '../shared/dto/stack-execution.js';
+import { stackExecutionKey, type StackExecutionScope, type StackExecutionPlan, type StackExecutionStop, type StackExecutionReceipt, type InstalledAppBinding, type InstalledStackExecutionPlan } from '../shared/dto/stack-execution.js';
 import type { ProcessOutputContext } from '@omnitron-dev/titan-pm';
 /**
  * OrchestratorService — Core orchestration logic
@@ -806,6 +808,15 @@ export class OrchestratorService extends EventEmitter {
   async startApp(entry: IEcosystemAppEntry, config?: IEcosystemConfig): Promise<AppHandle> {
     const stopGeneration = this.stopGeneration;
     if (this.stoppingApps) throw new Error('Application stop is in progress; new starts are not admitted');
+    // Defensive auto-namespacing — promotes a bare entry.name to the
+    // canonical `${project}/${stack}/${name}` form when the env carries
+    // OMNITRON_PROJECT + OMNITRON_STACK. Catches every code path that
+    // bypasses ProjectService.startStack:
+    //   - direct CLI `omnitron start <name>` (no stack context)
+    //   - legacy ecosystem configs without per-app namespace
+    //   - daemon startAll() flows over a not-yet-namespaced config
+    entry = ensureNamespacedEntry(entry);
+    this.assertAppStartAllowed(this.resolveAppName(entry.name) ?? entry.name);
     // T#63: run the one-shot cold-start reconcile (orphan reap +
     // janitor arming) before ANY app spawns. Project-mode boots flow
     // through `projectService.startStack → orchestrator.startApp`
@@ -818,14 +829,6 @@ export class OrchestratorService extends EventEmitter {
       throw new Error('Application stop interrupted start admission');
     }
 
-    // Defensive auto-namespacing — promotes a bare entry.name to the
-    // canonical `${project}/${stack}/${name}` form when the env carries
-    // OMNITRON_PROJECT + OMNITRON_STACK. Catches every code path that
-    // bypasses ProjectService.startStack:
-    //   - direct CLI `omnitron start <name>` (no stack context)
-    //   - legacy ecosystem configs without per-app namespace
-    //   - daemon startAll() flows over a not-yet-namespaced config
-    entry = ensureNamespacedEntry(entry);
     const inflight = this.startingApps.get(entry.name);
     if (inflight) {
       this.logger.debug({ app: entry.name }, 'Coalescing concurrent startApp into in-flight launch (T#57)');
@@ -844,8 +847,8 @@ export class OrchestratorService extends EventEmitter {
     return promise;
   }
 
-  private async startAppInternal(entry: IEcosystemAppEntry, config?: IEcosystemConfig): Promise<AppHandle> {
-    this.assertAppStartAllowed(entry.name);
+  private async startAppInternal(entry: IEcosystemAppEntry, config?: IEcosystemConfig, installed?: InstalledAppBinding): Promise<AppHandle> {
+    if (!installed) this.assertAppStartAllowed(entry.name);
     // Persist ecosystem config for restartApp — stack mode passes config per-app,
     // but restartApp calls startApp without it.
     if (config && !this.config) {
@@ -885,6 +888,8 @@ export class OrchestratorService extends EventEmitter {
       const existingIsNamespaced = key.includes('/');
       // Qualified identities are separate deployments, even when their basename matches.
       if (newIsNamespaced && existingIsNamespaced) continue;
+      if (installed) throw new Error('Installed stack start cannot displace another application');
+      this.assertAppStartAllowed(key);
       // A bare alias may still refer to the one qualified deployment.
       if (h.status === 'online') {
         if (newIsNamespaced && !existingIsNamespaced) {
@@ -941,7 +946,7 @@ export class OrchestratorService extends EventEmitter {
     // starts, or the new one finds its own predecessor on its port: on
     // sample/test (2026-09-25) payments's crash restarts failed five times on
     // `EADDRINUSE :3004`, «held by … a child this daemon still accounts for».
-    if (existing) {
+    if (existing && !installed) {
       await this.tearDownApp(existing);
     }
 
@@ -972,15 +977,13 @@ export class OrchestratorService extends EventEmitter {
     this.logger.info({ app: entry.name, mode }, 'Starting app');
 
     try {
-      if (mode === 'classic') {
-        await this.launchClassicMode(entry, handle, cfg);
-      } else {
-        await this.launchBootstrapMode(entry, handle, cfg);
-      }
+      const launch = mode === 'classic' ? await this.launchClassicMode(entry, handle, cfg, installed)
+        : await this.launchBootstrapMode(entry, handle, cfg, installed);
       // «App started» only for an app that is. It was logged in the same
       // millisecond as a child's «Process failed to start», for an app whose
       // processes never all came up.
       if (handle.status === 'online') {
+        if (launch) this.installedLaunches.set(handle, { binding: Object.freeze(launch), config: cfg });
         this.logger.info({ app: entry.name, pid: handle.pid, mode }, 'App started');
       } else {
         this.logger.error(
@@ -1009,7 +1012,7 @@ export class OrchestratorService extends EventEmitter {
       handle.markErrored();
       handle.restarts++;
       this.persistState();
-      this.scheduleRecovery(entry, handle, cfg);
+      if (!installed) this.scheduleRecovery(entry, handle, cfg);
       throw err;
     }
   }
@@ -1075,6 +1078,8 @@ export class OrchestratorService extends EventEmitter {
       `Application '${handle.name}' stop incomplete: ${failures.map(String).join('; ')}`);
   }
 
+  /** Historical launch identity stays private to the handle; membership changes can invalidate its live release observation. */
+  private readonly installedLaunches = new WeakMap<AppHandle, { binding: InstalledAppBinding; config: IEcosystemConfig }>();
   private readonly stackStops = new Map<string, { id: string; fingerprint: string; promise: Promise<StackExecutionReceipt> }>();
 
   /** The owner supplies generations; backend caches cannot establish stop authority. */
@@ -1089,15 +1094,121 @@ export class OrchestratorService extends EventEmitter {
         [...this.startingApps.keys()].some(name => name.startsWith(`${key}/`))) {
       throw new Error(`Stack '${key}' has active application operations; retry after they finish`);
     }
-    return { project: scope.project, stack: scope.stack, revision: this.stateStore.getStackIntent(scope).revision,
-      phase: this.stateStore.getStackIntent(scope).phase,
+    const { revision, phase } = this.stateStore.getStackIntent(scope);
+    return { project: scope.project, stack: scope.stack, revision, phase,
       apps: names.map(name => ({ name, generation: this.handles.get(name)!.generation })) };
+  }
+
+  private retainedApp(name: string, generation: string) {
+    const handle = this.handles.get(name);
+    if (!handle || handle.generation !== generation || handle.status !== 'stopped' || handle.pid !== null ||
+        handle.childProcess || handle.supervisor || handle.serviceRouter || handle.topologyPools.size) {
+      throw new Error(`Application '${name}' is not the retained stopped generation`);
+    }
+    const bare = effectiveAppName(name);
+    if (this.handles.has(bare) || this.startingApps.has(bare) || this.lifecycleQueue.isBusy(bare) || this.devMode ||
+        this.buildResults.has(name) || !handle.entry.releaseRoot || !path.isAbsolute(handle.entry.cwd ?? '') ||
+        (handle.entry.bootstrap && !handle.entry.env?.['OMNITRON_STACK'])) {
+      throw new Error(`Application '${name}' requires an unambiguous precompiled installed release with retained launch configuration`);
+    }
+    const launch = this.installedLaunches.get(handle);
+    if (!launch) throw new Error(`Application '${name}' has no verified installed launch recorded for its generation`);
+    if (launch.binding.entrySha256 !== installedEntryRevision(handle.entry, launch.config, this.cwd)) {
+      throw new Error(`Application '${name}' launch configuration changed since its verified launch`);
+    }
+    return { handle, ...launch };
+  }
+
+  /** A stopped intent is insufficient if its handles or their launch inputs disappeared. */
+  async inspectInstalledStack(scope: StackExecutionScope): Promise<InstalledStackExecutionPlan> {
+    const plan = this.stackExecutionPlan(scope);
+    if (plan.phase !== 'stopped' || !plan.apps.length) throw new Error('Installed stack start requires a completed stop with retained applications');
+    const apps: InstalledStackExecutionPlan['apps'] = [];
+    for (const item of plan.apps) {
+      const { handle, binding } = this.retainedApp(item.name, item.generation);
+      const entry = handle.entry;
+      const executable = installedExecutable(entry, this.cwd);
+      const paths = [executable, ...(handle.topologyProcesses ?? []).map(child => path.resolve(path.dirname(executable), child.module))];
+      const release = await verifyLaunchRelease(entry, item.generation, paths);
+      requireInstalledBinding(release, binding.entrySha256, binding);
+      apps.push({ ...item, installed: { ...binding } });
+    }
+    for (const item of plan.apps) this.retainedApp(item.name, item.generation);
+    if (topologyRevision(this.stackExecutionPlan(scope)) !== topologyRevision(plan)) {
+      throw new Error('Installed stack changed during inspection; prepare a new start');
+    }
+    return { ...plan, apps };
+  }
+
+  async openInstalledStack({ operationId, plan }: StackExecutionStop): Promise<void> {
+    if (typeof operationId !== 'string' || !/^[a-f0-9-]{36}$/.test(operationId)) throw new Error('Invalid start operation identity');
+    const observed = this.stackExecutionPlan(plan);
+    if (observed.phase !== 'stopped' || plan.phase !== 'stopped' || observed.revision !== plan.revision ||
+        !observed.apps.length || observed.apps.length !== plan.apps.length ||
+        observed.apps.some((item, index) => {
+          const expected = plan.apps[index];
+          if (!expected?.installed || expected.name !== item.name || expected.generation !== item.generation) return true;
+          return topologyRevision(this.retainedApp(item.name, item.generation).binding) !== topologyRevision(expected.installed);
+        })) throw new Error('Installed stack changed; prepare a new start');
+    const fingerprint = topologyRevision(plan);
+    this.stateStore.updateStackIntent(plan, current => {
+      if (current.phase !== 'stopped' || current.revision !== plan.revision || current.revision === Number.MAX_SAFE_INTEGER) {
+        throw new Error('Installed stack stop is no longer current');
+      }
+      return { phase: 'starting', revision: current.revision + 1, operationId, fingerprint, remaining: plan.apps.map(app => app.name) };
+    });
+  }
+
+  async resumeInstalledApp({ operationId, plan, name }: StackExecutionStop & { name: string }): Promise<void> {
+    const app = plan.apps.find(item => item.name === name);
+    if (!app?.installed || !name.startsWith(`${stackExecutionKey(plan)}/`)) throw new Error('Application is outside the prepared installed stack');
+    const expected = app.installed;
+    const fingerprint = topologyRevision(plan);
+    const stopGeneration = this.stopGeneration;
+    await this.lifecycleQueue.enqueue(name, 'start', async () => {
+      const { handle, config } = this.retainedApp(name, app.generation);
+      const entry = structuredClone(handle.entry);
+      if (this.stoppingApps || this.stopGeneration !== stopGeneration ||
+          installedEntryRevision(entry, config, this.cwd) !== expected.entrySha256) {
+        throw new Error('Installed start admission changed');
+      }
+      // Reserve before the first effect. A crash or lost reply cannot authorize a second attempt.
+      this.stateStore.updateStackIntent(plan, current => {
+        if (current.phase !== 'starting' || current.operationId !== operationId || current.fingerprint !== fingerprint ||
+            current.pendingApp || !current.remaining?.includes(name)) throw new Error('Installed start is stale, busy or already consumed');
+        return { ...current, pendingApp: name };
+      });
+      await this.ensureBootReconciled(config);
+      this.retainedApp(name, app.generation);
+      // Introspection loads bootstrap code. Verify it before reading the process topology;
+      // the final launch verification binds the child modules discovered there.
+      if (entry.bootstrap) {
+        const evidence = await verifyLaunchRelease(entry, app.generation, [installedExecutable(entry, this.cwd)]);
+        requireInstalledBinding(evidence, installedEntryRevision(entry, config, this.cwd), expected);
+        this.retainedApp(name, app.generation);
+      }
+      if (this.stoppingApps || this.stopGeneration !== stopGeneration) throw new Error('Stop interrupted installed start admission');
+      const started = await this.startAppInternal(entry, config, expected);
+      if (started.status !== 'online') throw new Error(`Installed application '${name}' did not come online`);
+      requireInstalledBinding(started.release, installedEntryRevision(started.entry, config, this.cwd), expected);
+      this.stateStore.updateStackIntent(plan, current => {
+        if (current.phase !== 'starting' || current.operationId !== operationId || current.fingerprint !== fingerprint ||
+            current.pendingApp !== name) throw new Error('Installed start was superseded');
+        const remaining = current.remaining!.filter(item => item !== name);
+        if (!remaining.length && plan.apps.some(item => this.handles.get(item.name)?.status !== 'online')) {
+          throw new Error('Installed start incomplete: previously started application is no longer online');
+        }
+        return remaining.length ? { phase: 'starting', revision: current.revision, operationId, fingerprint, remaining }
+          : { phase: 'running', revision: current.revision };
+      });
+    });
   }
 
   async enableStackExecution(scope: StackExecutionScope, options: { automatic?: boolean } = {}): Promise<void> {
     const key = stackExecutionKey(scope);
     if (this.stackStops.has(key)) throw new Error(`Stack '${key}' is still stopping`);
     this.stateStore.updateStackIntent(scope, current => {
+      if (current.phase === 'starting') throw new Error(`Stack '${key}' has an unfinished installed start; inspect and stop it before starting again`);
       if (current.phase === 'stopping') throw new Error(`Stack '${key}' has an unconfirmed stop; complete it before starting`);
       if (current.phase === 'running') return current;
       if (options.automatic) throw new Error(`Stack '${key}' was deliberately stopped; an explicit stack start is required`);
@@ -1162,7 +1273,9 @@ export class OrchestratorService extends EventEmitter {
     const parts = name.split('/');
     if (parts.length !== 3) return;
     const scope = { project: parts[0]!, stack: parts[1]! };
-    if (this.stateStore.getStackIntent(scope).phase !== 'running') {
+    const phase = this.stateStore.getStackIntent(scope).phase;
+    if (phase === 'starting') throw new Error(`Stack '${stackExecutionKey(scope)}' has an unfinished installed stack start; inspect its receipt and stop before retrying`);
+    if (phase !== 'running') {
       throw new Error(`Stack '${stackExecutionKey(scope)}' is stopped or stopping; use stack start after confirming its stop`);
     }
   }
@@ -1283,6 +1396,10 @@ export class OrchestratorService extends EventEmitter {
   async redefineApp(name: string, entry: IEcosystemAppEntry): Promise<boolean> {
     const handle = this.handles.get(this.resolveAppName(name) ?? name);
     if (!handle) return false;
+    const [project, stack, app] = handle.name.split('/');
+    if (project && stack && app && this.stateStore.getStackIntent({ project, stack }).phase === 'starting') {
+      throw new Error('An installed stack start is active; its application entry cannot be changed');
+    }
     handle.redefine(entry);
     if (!this.allowsWatch(entry)) {
       const state = this.restartCoalescer.get(handle.name);
@@ -1387,6 +1504,7 @@ export class OrchestratorService extends EventEmitter {
       throw new Error(`Unknown app: ${name}`);
     }
     name = canonical;
+    this.assertAppStartAllowed(name);
 
     const state = this.getCoalescerState(name);
     if (fromExternal) {
@@ -1497,6 +1615,7 @@ export class OrchestratorService extends EventEmitter {
   private async restartAppNow(name: string): Promise<AppHandle> {
     const handle = this.handles.get(name);
     if (!handle) throw new Error(`Unknown app: ${name}`);
+    this.assertAppStartAllowed(name);
     const entry = handle.entry;
 
     if (this.devMode && entry.bootstrap) {
@@ -1587,6 +1706,7 @@ export class OrchestratorService extends EventEmitter {
     if (!handle) throw new Error(`Unknown app: ${name}`);
     name = canonical;
 
+    this.assertAppStartAllowed(name);
     // Classic mode or no supervisor — cannot do zero-downtime, fall back to restart
     if (handle.mode !== 'bootstrap' || !handle.supervisor) {
       return this.restartApp(name);
@@ -1680,6 +1800,7 @@ export class OrchestratorService extends EventEmitter {
     const handle = this.handles.get(canonical);
     if (!handle) throw new Error(`Unknown app: ${name}`);
     name = canonical;
+    this.assertAppStartAllowed(name);
     if (!this.config) throw new Error('Ecosystem config not loaded');
     if (handle.mode !== 'bootstrap') {
       this.logger.warn({ app: name }, 'Classic mode apps do not support scaling');
@@ -1704,6 +1825,7 @@ export class OrchestratorService extends EventEmitter {
 
   async restartAppChild(name: string, child: string): Promise<void> {
     const canonical = this.resolveAppName(name) ?? name;
+    this.assertAppStartAllowed(canonical);
     await this.lifecycleQueue.enqueue(canonical, 'restart', async () => {
       this.assertAppStartAllowed(canonical);
       const supervisor = this.handles.get(canonical)?.supervisor;
@@ -1999,10 +2121,13 @@ export class OrchestratorService extends EventEmitter {
   private async launchClassicMode(
     entry: IEcosystemAppEntry,
     handle: AppHandle,
-    config: IEcosystemConfig
-  ): Promise<void> {
-    handle.release = await verifyLaunchRelease(entry, handle.generation);
-    const child = await launchClassic(entry, handle, this.cwd, this.logger, this.appLogHandlers);
+    config: IEcosystemConfig,
+    installed?: InstalledAppBinding,
+  ): Promise<InstalledAppBinding | undefined> {
+    handle.release = await verifyLaunchRelease(entry, handle.generation, [installedExecutable(entry, this.cwd)]);
+    const launch = installed || handle.release.state === 'confirmed'
+      ? requireInstalledBinding(handle.release, installedEntryRevision(entry, config, this.cwd), installed) : undefined;
+    const child = await launchClassic(entry, handle, this.cwd, this.logger, this.appLogHandlers, Boolean(installed));
 
     child.on('exit', (code, signal) => {
       if (handle.status === 'stopping') {
@@ -2014,6 +2139,7 @@ export class OrchestratorService extends EventEmitter {
       }
       this.persistState();
     });
+    return launch;
   }
 
   /**
@@ -2026,8 +2152,9 @@ export class OrchestratorService extends EventEmitter {
   private async launchBootstrapMode(
     entry: IEcosystemAppEntry,
     handle: AppHandle,
-    config: IEcosystemConfig
-  ): Promise<void> {
+    config: IEcosystemConfig,
+    installed?: InstalledAppBinding,
+  ): Promise<InstalledAppBinding | undefined> {
     handle.markStarting();
 
     const bootstrapAbsPath = path.resolve(entry.cwd ?? this.cwd, entry.bootstrap!);
@@ -2132,7 +2259,10 @@ export class OrchestratorService extends EventEmitter {
 
     // Build all entry points via esbuild (dev mode bundles from source .ts)
     //
-    if (definition) await this.prepareBootstrapBuild(entry, bootstrapAbsPath, definition);
+    if (installed && (this.devMode || this.buildResults.has(entry.name))) {
+      throw new Error('Installed stack start cannot use a development build');
+    }
+    if (definition && !installed) await this.prepareBootstrapBuild(entry, bootstrapAbsPath, definition);
 
     const buildResult = this.buildResults.get(entry.name);
     // Use bundled bootstrap path for topology import when available
@@ -2140,13 +2270,16 @@ export class OrchestratorService extends EventEmitter {
     handle.release = buildResult
       ? { state: 'unreported', reason: 'This launch uses a generated build; an installed release receipt cannot identify that executable.' }
       : await verifyLaunchRelease(entry, handle.generation,
-        (topology ?? []).map(process => path.resolve(path.dirname(bootstrapAbsPath), process.module)));
+        [bootstrapAbsPath, ...(topology ?? []).map(process => path.resolve(path.dirname(bootstrapAbsPath), process.module))]);
+    const launch = installed || handle.release.state === 'confirmed'
+      ? requireInstalledBinding(handle.release, installedEntryRevision(entry, config, this.cwd), installed) : undefined;
 
     if (topology && topology.length > 0) {
       await this.launchTopology(entry, handle, config, effectiveBootstrapPath, topology, buildResult);
     } else {
       await this.launchSingleProcess(entry, handle, config, effectiveBootstrapPath, buildResult);
     }
+    return launch;
   }
 
   private async prepareBootstrapBuild(entry: IEcosystemAppEntry, bootstrapAbsPath: string, definition: IAppDefinition): Promise<void> {

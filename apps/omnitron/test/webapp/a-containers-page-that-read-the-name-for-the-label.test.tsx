@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
@@ -36,7 +36,7 @@ vi.mock('src/netron/client', () => ({
       container('sample-x-dev-postgres', 'sample-x', 'dev'),
       container('sample-test-postgres', 'sample', 'test'),
       // The daemon's own, in every scope.
-      container('omnitron-pg'),
+      { ...container('omnitron-pg'), lifecycleRestriction: 'The control plane owns this container.' },
     ]),
   },
   project: { listStacks: vi.fn(async () => []) },
@@ -56,7 +56,11 @@ describe('a containers page that read the name for the label', () => {
 
     expect(await screen.findByText('sample-dev-postgres')).toBeInTheDocument();
     expect(screen.getByText('pg-restored-from-backup')).toBeInTheDocument();
-    expect(screen.getByText('omnitron-pg')).toBeInTheDocument();
+    const protectedRow = within(screen.getByText('omnitron-pg').closest('tr')!);
+    expect(protectedRow.getByLabelText('Read only. The control plane owns this container.')).toHaveTextContent('Read only');
+    expect(protectedRow.getByRole('button', { name: 'Logs for omnitron-pg' })).toBeInTheDocument();
+    expect(protectedRow.queryByLabelText('Remove')).not.toBeInTheDocument();
+    expect(protectedRow.queryByLabelText('Stop')).not.toBeInTheDocument();
     expect(screen.queryByText('sample-x-dev-postgres')).not.toBeInTheDocument();
     expect(screen.queryByText('sample-test-postgres')).not.toBeInTheDocument();
   });

@@ -266,7 +266,7 @@ async function checkDatabase(findings: Findings): Promise<void> {
           `expected ${OMNITRON_MIGRATIONS.length} migration(s) to have run`,
         ],
         remedy:
-          'Run `omnitron infra migrate`. If it fails, the error it prints is the real problem — the daemon only logs migration failures as warnings at boot.',
+          'Run `omnitron migrate up --daemon`. If it fails, the error it prints is the real problem — the daemon only logs migration failures as warnings at boot.',
       });
       for (const [id, what] of DB_DEPENDENT_CHECKS.filter(([i]) => i !== 'db.pending-migrations')) {
         findings.skip(id, `not checked: ${what} — the database has no tables`);
@@ -289,7 +289,7 @@ async function checkDatabase(findings: Findings): Promise<void> {
         severity: 'error',
         title: `${pending.length} migration(s) have not been applied`,
         evidence: [`target: ${target}`, `pending: ${pending.join(', ')}`],
-        remedy: 'Run `omnitron infra migrate`.',
+        remedy: 'Run `omnitron migrate up --daemon`.',
       });
     }
 
@@ -305,7 +305,7 @@ async function checkDatabase(findings: Findings): Promise<void> {
         title: 'Tables the daemon queries are missing',
         evidence: [`target: ${target}`, `missing: ${missing.join(', ')}`],
         remedy:
-          'Run `omnitron infra migrate`. Until these exist, alert evaluation and session cleanup fail on every tick and log a warning each time.',
+          'Run `omnitron migrate up --daemon`. Until these exist, alert evaluation and session cleanup fail on every tick and log a warning each time.',
       });
     }
 

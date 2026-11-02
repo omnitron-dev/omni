@@ -5,6 +5,7 @@ import { databaseOfItsOwn, type OwnDatabase } from './a-database-of-its-own.js';
 import { StopSigner, StopRecipient } from '../../src/cluster/stop-authority.js';
 import { NodeStackStop } from '../../src/project/node-stack-stop.js';
 import { LeaderElection } from '../../src/cluster/leader-election.js';
+import { installedAllocation } from '../helpers/installed-resume.js';
 
 let own: OwnDatabase;
 let store: PostgresLeaseStore<unknown>;
@@ -17,6 +18,24 @@ afterAll(async () => { await own?.drop(); });
 beforeEach(async () => { await sql`TRUNCATE titan_database_leases`.execute(own.db); });
 
 describe('PostgreSQL-authoritative cluster leases', () => {
+  it('refuses the next installed app when PostgreSQL transfers the lease between launches', async () => {
+    const { node, request, owner, restartBackend } = installedAllocation(store);
+    const fleet = { selfNodeId: 'a', listNodes: async () => ['a', 'b'].map(id => ({ id })) as never };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const a = new LeaderElection('a', fleet, logger, store, { clusterId: 'west' });
+    const b = new LeaderElection('b', { ...fleet, selfNodeId: 'b' }, logger, store, { clusterId: 'west' });
+    try {
+      await a.start(); await b.start();
+      const plan = await node.prepare(request), permit = a.authorizeEffect(plan);
+      owner.resumeInstalledApp.mockImplementationOnce(async () => { await a.stepDown(); await b.forceElection(); });
+      const result = await node.execute({ ...request, plan, permit });
+      expect(b.isLeader).toBe(true);
+      expect(result).toMatchObject({ outcome: 'unconfirmed', apps: ['sample/deployed/api'] });
+      expect(owner.resumeInstalledApp).toHaveBeenCalledOnce();
+      expect(restartBackend().receipt(request)).toEqual(result);
+      await expect(restartBackend().execute({ ...request, plan, permit })).rejects.toThrow(/lease/);
+    } finally { await a.stop(); await b.stop(); }
+  });
   it('fences a queued stack stop and each later effect across real controller replacement', async () => {
     const data = new Map<string, unknown>();
     const state = {

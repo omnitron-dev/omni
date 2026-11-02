@@ -9,6 +9,7 @@
  * differently by the next component that needs them.
  */
 
+import type { INodeClusterState } from '@omnitron-dev/omnitron/dto/services';
 import { omnitronFinding } from '@omnitron-dev/omnitron/node-check';
 
 /**
@@ -120,10 +121,24 @@ export function isMeasured(check: CheckLayers): boolean {
 }
 
 /** One node's view of the fleet's leadership, as the daemon returns it. */
-export interface ClusterView {
-  nodeId: string;
-  reachable: boolean;
-  cluster: Record<string, unknown> | null;
+export type ClusterView = Pick<INodeClusterState, 'nodeId' | 'reachable' | 'cluster'>;
+
+function reportsElection(state: NonNullable<ClusterView['cluster']>): boolean {
+  return state.participant === 'controller' || (!state.participant && ('leaderId' in state || typeof state.state === 'string'));
+}
+
+export function clusterParticipation(view: ClusterView & { error?: string | null }): string {
+  const state = view.cluster;
+  if (!view.reachable || !state) return view.error || 'Cluster participation unavailable';
+  if (state.participant === 'standalone') return 'Standalone';
+  if (state.participant !== 'worker' && !reportsElection(state)) return 'Cluster participation unreported';
+  const role = state.participant === 'worker' ? 'Worker' : 'Controller';
+  const parts = [role];
+  if (typeof state.clusterId === 'string') parts.push(state.clusterId);
+  if (typeof state.state === 'string') parts.push(state.state);
+  if (typeof state.term === 'string' || typeof state.term === 'number') parts.push(`epoch ${state.term}`);
+  if (state.fencedOperations?.length) parts.push(state.fencedOperations.join(', '));
+  return parts.join(' · ');
 }
 
 export type Disagreement =
@@ -165,7 +180,7 @@ export function clusterAuthorityProblems(views: readonly ClusterView[]): Array<{
 export function clusterDisagreement(views: readonly ClusterView[]): Disagreement {
   const clusters = new Map<string, ClusterView[]>();
   for (const view of views) {
-    if (!view.reachable || !view.cluster) continue;
+    if (!view.reachable || !view.cluster || !reportsElection(view.cluster)) continue;
     const id = typeof view.cluster.clusterId === 'string' ? view.cluster.clusterId : 'legacy';
     clusters.set(id, [...(clusters.get(id) ?? []), view]);
   }

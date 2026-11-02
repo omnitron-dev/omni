@@ -12,14 +12,16 @@
  *   omnitron infra psql main  — Open psql to 'main' database
  *   omnitron infra redis-cli  — Open redis-cli
  *   omnitron infra migrate    — Run all app migrations
- *   omnitron infra reset      — DESTRUCTIVE: wipe volumes, recreate
+ *   omnitron infra reset      — Recreate containers using their existing volumes
  */
 
 import os from 'node:os';
+import { assertStandaloneInfrastructure } from '../cluster/standalone-infrastructure.js';
 import { log, table, prism } from '@xec-sh/kit';
+import { ownedContainerId } from '../infrastructure/owned-container.js';
 import { loadEcosystemConfig } from '../config/loader.js';
 import { createDaemonClient, LONG_REQUEST_TIMEOUT } from '../daemon/daemon-client.js';
-import { emitError, emitJson } from './output.js';
+import { emitError, emitJson, isJsonMode } from './output.js';
 import type { IStackInfo } from '../shared/dto/project.js';
 import { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import type { ContainerState } from '../infrastructure/types.js';
@@ -28,7 +30,6 @@ import { probeFields, type ProbeReading } from '../infrastructure/host-inspectio
 import {
   listManagedContainers,
   getContainerLogs,
-  isDockerAvailable,
   stopContainer,
   removeContainer,
 } from '../infrastructure/container-runtime.js';
@@ -44,21 +45,23 @@ const cliLogger = {
   child: () => cliLogger,
 } as any;
 
-export async function infraUpCommand(): Promise<void> {
-  if (!(await isDockerAvailable())) {
-    log.error('Docker is not available. Install: https://docs.docker.com/get-docker/');
-    return;
-  }
-
+async function standaloneServices(): Promise<InfrastructureService> {
+  assertStandaloneInfrastructure();
   const config = await loadEcosystemConfig();
-  if (!config.infrastructure) {
-    log.warn('No infrastructure section in omnitron.config.ts');
-    return;
-  }
+  if (!config.infrastructure) throw new Error('No infrastructure declared in this ecosystem');
+  if (config.stacks && Object.keys(config.stacks).length) throw new Error('This project declares stacks. Select its project and stack through omnitron stack.');
+  return new InfrastructureService(cliLogger, config.infrastructure, undefined, undefined, undefined, false);
+}
 
-  const infra = new InfrastructureService(cliLogger, config.infrastructure);
-  const state = await infra.provision();
+export async function infraUpCommand(): Promise<void> {
+  await provisionStandalone(await standaloneServices());
+}
 
+async function provisionStandalone(infra: InfrastructureService): Promise<void> {
+  assertStandaloneInfrastructure();
+  let state;
+  try { state = await infra.provision(); }
+  finally { infra.dispose(); }
   // The heading asserted the outcome before looking at it.
   //
   // `Infrastructure ready:` was printed unconditionally, and then whatever
@@ -101,26 +104,30 @@ export async function infraUpCommand(): Promise<void> {
     );
   }
 
-  if (!outcome.ready) {
-    process.exitCode = 1;
-  }
+  if (!outcome.ready) throw new Error('Declared infrastructure is not ready');
 }
 
 export async function infraDownCommand(opts?: { volumes?: boolean }): Promise<void> {
-  const containers = await listManagedContainers();
-  if (containers.length === 0) {
-    log.info('No Omnitron-managed containers running.');
-    return;
-  }
+  assertStandaloneInfrastructure();
+  if (opts?.volumes) throw new Error('Volume removal is unsupported. Select the exact data volumes for manual removal.');
+  await removeStandalone(await standaloneServices());
+}
 
-  for (const c of containers) {
-    log.info(`Stopping ${c.name}...`);
-    try { await stopContainer(c.name, 10); } catch { /* already stopped */ }
-    await removeContainer(c.name);
-  }
-
-  if (opts?.volumes) {
-    log.warn('Volume removal not yet implemented — use `docker volume prune` manually.');
+async function removeStandalone(infra: InfrastructureService): Promise<void> {
+  const desired = new Map(infra.getDesiredContainers().map(container => [container.name, container]));
+  const inventory = await listManagedContainers({ orThrow: true, checkNames: new Set(desired.keys()) });
+  const containers = inventory.flatMap(actual => {
+    const declared = desired.get(actual.name);
+    if (!declared) return [];
+    const id = ownedContainerId(declared, actual);
+    return [{ ...actual, id }];
+  });
+  for (const container of containers) {
+    assertStandaloneInfrastructure();
+    log.info(`Stopping ${container.name}...`);
+    if (container.status !== 'exited' && container.status !== 'created') await stopContainer(container.id, 10);
+    assertStandaloneInfrastructure();
+    await removeContainer(container.id, { graceful: true });
   }
 
   log.info(`Stopped ${containers.length} container(s).`);
@@ -578,36 +585,40 @@ export async function infraRedisCliCommand(): Promise<void> {
   await execInteractively('Redis', ['redis'], () => ['redis-cli']);
 }
 
-export async function infraMigrateCommand(app?: string): Promise<void> {
-  log.info('Running migrations...');
-  const { execFileSync } = await import('node:child_process');
-  const cwd = process.cwd();
-
-  const apps = app ? [app] : ['main', 'storage', 'pricing', 'payments', 'messaging'];
-
-  for (const a of apps) {
-    try {
-      log.step(`Migrating ${a}...`);
-      execFileSync('pnpm', ['--filter', `@omnitron-dev/${a}`, 'migrate'], {
-        cwd,
-        timeout: 30_000,
-        stdio: 'pipe',
-      });
-      log.success(`${a} migrated`);
-    } catch {
-      log.warn(`${a} skipped`);
+export async function infraMigrateCommand(app?: string, options: { dryRun?: boolean } = {}): Promise<void> {
+  assertStandaloneInfrastructure();
+  const { planWorkspaceMigrations } = await import('../migration/workspace.js');
+  const plan = await planWorkspaceMigrations(process.cwd(), (await loadEcosystemConfig()).apps, app);
+  if (options.dryRun) {
+    if (!emitJson({ applications: plan })) {
+      for (const target of plan) log.info(`${target.app} · pnpm run migrate · ${target.directory}`);
     }
+    return;
   }
+  const { spawnSync } = await import('node:child_process');
+  const json = isJsonMode();
+  for (const target of plan) {
+    assertStandaloneInfrastructure();
+    if (!json) log.step(`Migrating ${target.app} in ${target.directory}`);
+    const run = spawnSync('pnpm', ['run', 'migrate'], { cwd: target.directory, stdio: json ? ['inherit', 2, 2] : 'inherit' });
+    if (run.error || run.status !== 0) {
+      throw new Error(`Migration failed for '${target.app}': ${run.error?.message ?? run.signal ?? `exit ${run.status}`}`, { cause: run.error });
+    }
+    if (!json) log.success(`${target.app} migrated`);
+  }
+  emitJson({ migrated: plan.map(target => target.app) });
 }
 
 export async function infraResetCommand(opts?: { yes?: boolean }): Promise<void> {
   if (!opts?.yes) {
-    log.error('This will DESTROY all data volumes. Pass --yes to confirm.');
+    log.error('This will recreate managed containers. Pass --yes to confirm.');
+    process.exitCode = 1;
     return;
   }
 
-  log.warn('Resetting infrastructure — destroying all data...');
-  await infraDownCommand({ volumes: true });
-  await infraUpCommand();
+  log.warn('Recreating managed containers with their existing volumes...');
+  const infra = await standaloneServices();
+  await removeStandalone(infra);
+  await provisionStandalone(infra);
   log.info('Infrastructure reset complete.');
 }

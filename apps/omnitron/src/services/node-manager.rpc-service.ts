@@ -85,7 +85,7 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
 
   private telemetryRelay: { stats(): unknown } | null = null;
 
-  private leaderElection: { getClusterState(): unknown } | null = null;
+  private clusterReader: Pick<import('../cluster/cluster.rpc-service.js').ClusterRpcService, 'getClusterState'> | null = null;
 
   private localDaemon: Pick<import('../daemon/daemon.rpc-service.js').DaemonRpcService, 'status' | 'getHealth' | 'getMetrics'> | null = null;
 
@@ -549,8 +549,8 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   }
 
   /** This daemon's own election state, for the local node. */
-  setLeaderElection(election: { getClusterState(): unknown } | null): void {
-    this.leaderElection = election;
+  setClusterReader(reader: NonNullable<NodeManagerRpcService['clusterReader']>): void {
+    this.clusterReader = reader;
   }
 
 /**
@@ -757,25 +757,12 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   }
 
 
-/**
-   * Which node each node thinks is the leader.
-   *
-   * The fourth reader through `askNode`, and the one that is only meaningful
-   * ACROSS nodes: a single node's answer is unremarkable, and two nodes naming
-   * different leaders, or sitting in different terms, is a split brain — the
-   * state in which every node is individually healthy and the fleet is not.
-   * Nothing in the console could see it, because `OmnitronCluster` is one of
-   * the services its client does not know, and `getClusterState`'s own
-   * docblock says it is "used by CLI and webapp dashboard".
-   */
+  /** Read the same participation report locally and over the mesh. */
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getNodeClusterState(data: { nodeId: string }): Promise<INodeClusterState> {
-    const r = await this.askNode<Record<string, unknown>>(
-      data.nodeId,
-      'OmnitronCluster',
-      'getClusterState',
-      [],
-      this.leaderElection ? () => Promise.resolve(this.leaderElection!.getClusterState() as Record<string, unknown>) : null,
+    const reader = this.clusterReader;
+    const r = await this.askNode<INodeClusterState['cluster']>(
+      data.nodeId, 'OmnitronCluster', 'getClusterState', [], reader ? () => reader.getClusterState() : null,
     );
     return r.ok
       ? { nodeId: data.nodeId, reachable: true, error: null, cluster: r.value ?? null }

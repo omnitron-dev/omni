@@ -15,6 +15,7 @@ import { withControlDeadline, assertPrivateControlSocket } from './private-contr
 import { runtimeDiagnostics } from '../monitoring/runtime-diagnostics.js';
 import { RpcConnection } from './rpc-connection.js';
 import { recoveryState } from './recovery-state.js';
+import { LONG_REQUEST_TIMEOUT } from '../shared/dto/services.js';
 import { readExecutionCapabilities, type ExecutionCapabilities } from './execution-capabilities.js';
 
 /** One controller's connection to a resident process owner. Disconnect never stops applications. */
@@ -57,7 +58,7 @@ export class ExecutionClient {
         this.validateOwner(await owner.snapshot());
       },
     });
-    this.connection = channel(10 * 60_000);
+    this.connection = channel(LONG_REQUEST_TIMEOUT);
     // Monitoring has a transport-level deadline of its own. A silent owner
     // cannot accumulate ten minutes of abandoned polls, and a monitoring
     // timeout must not tear down an application mutation still in progress.
@@ -293,6 +294,7 @@ export class ExecutionClient {
   }
 
   private async submit(method: ExecutionMutation, args: unknown[]): Promise<unknown> {
+    if (method === 'openInstalledStack' || method === 'resumeInstalledApp') this.requireInstalledStart();
     // Sampling drains are not lifecycle changes and run every tick. All
     // other control mutations invalidate recovery before reaching the owner.
     return method === 'drainChildSamples' ? this.submitMutation(method, args)
@@ -308,7 +310,17 @@ export class ExecutionClient {
     return reply.value;
   }
 
+  private requireInstalledStart(): void {
+    if (this.view().capabilities?.['installedStackStart'] !== 1) {
+      throw new Error('Execution owner does not support installed stack start; an owner upgrade is required');
+    }
+  }
+
   private async read(method: ExecutionRead, args: unknown[]): Promise<unknown> {
+    if (method === 'inspectInstalledStack') {
+      this.requireInstalledStart();
+      return this.rpc().read({ method, args });
+    }
     return withControlDeadline(this.rpc().read({ method, args }), 15_000, `Execution read ${method} timed out; application state is unknown`);
   }
 

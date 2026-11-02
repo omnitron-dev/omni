@@ -269,20 +269,12 @@ export interface INodeRelayStats {
   relay: Record<string, unknown> | null;
 }
 
-/**
- * Which node a node believes is the leader.
- *
- * Only meaningful ACROSS nodes: one node's answer is unremarkable, and two
- * nodes naming different leaders — or sitting in different terms — is a split
- * brain, the state in which every node is individually healthy and the fleet
- * is not.
- */
+/** Latest cluster participation or legacy election observation reported by the selected node. */
 export interface INodeClusterState {
   nodeId: string;
   reachable: boolean;
   error: string | null;
-  /** As `LeaderElection.getClusterState()` returns it. */
-  cluster: Record<string, unknown> | null;
+  cluster: import('./cluster.js').NodeClusterObservation | null;
 }
 
 // =============================================================================

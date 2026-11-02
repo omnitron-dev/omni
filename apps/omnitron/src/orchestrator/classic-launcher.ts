@@ -26,7 +26,8 @@ export async function launchClassic(
   handle: AppHandle,
   cwd: string,
   logger: ILogger,
-  logHandlers: Array<(appName: string, line: string, context?: ProcessOutputContext) => void> = []
+  logHandlers: Array<(appName: string, line: string, context?: ProcessOutputContext) => void> = [],
+  requireReady = false,
 ): Promise<ChildProcess> {
   cwd = path.resolve(cwd, entry.cwd ?? '.');
   let scriptPath = path.resolve(cwd, entry.script!);
@@ -90,7 +91,7 @@ export async function launchClassic(
   capture.attach(child.stderr, 'stderr');
 
   // Wait for readiness
-  await waitForReady(child, handle, logger);
+  await waitForReady(child, handle, logger, requireReady);
 
   return child;
 }
@@ -115,13 +116,18 @@ function describeExit(code: number | null, signal: NodeJS.Signals | null): strin
   return signal ? `: killed by ${signal}` : `with code ${code}`;
 }
 
-export function waitForReady(child: ChildProcess, handle: AppHandle, logger: ILogger): Promise<void> {
+export function waitForReady(child: ChildProcess, handle: AppHandle, logger: ILogger, requireReady = false): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     let settled = false;
 
     const timeout = setTimeout(() => {
       if (settled) return;
       settled = true;
+      if (requireReady) {
+        handle.markErrored();
+        reject(new Error(`App '${handle.name}' did not confirm readiness within ${READY_TIMEOUT}ms`));
+        return;
+      }
       // Assume ready on timeout
       logger.warn({ app: handle.name }, 'No ready signal received, assuming ready after timeout');
       handle.markOnline(child.pid ?? 0);

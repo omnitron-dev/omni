@@ -24,6 +24,8 @@
  * age, while the next is collected behind it.
  */
 
+import { CLI_VERSION } from '../config/defaults.js';
+import { OWN_BUILD } from '../shared/build-stamp.js';
 import si from 'systeminformation';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { DaemonRole } from '../config/types.js';
@@ -68,7 +70,7 @@ class SectionQuestion<T> {
   async ask(budgetMs: number): Promise<Answer<T>> {
     if (!this.pending) {
       this.askedAt = Date.now();
-      const question = this.read();
+      const question = Promise.resolve().then(() => this.read());
       this.pending = question;
       // Settled or not, a question that is over frees the slot; the rejection
       // is answered below, or by whichever snapshot is waiting on it.
@@ -131,7 +133,7 @@ const DEFAULT_READERS: SectionReaders = {
   memory: () => si.mem(),
   disks: () => si.fsSize(),
   network: async () => {
-    const [interfaces, stats] = await Promise.all([si.networkInterfaces(), si.networkStats()]);
+    const [interfaces, stats] = await Promise.all([si.networkInterfaces(), si.networkStats('*')]);
     return { interfaces: Array.isArray(interfaces) ? interfaces : [interfaces], stats };
   },
   docker: async () => {
@@ -176,8 +178,8 @@ export class SystemInfoService {
    * The last snapshot, and a newer one on its way when it has aged. Only the
    * very first call waits — for at most one section budget.
    */
-  async getSnapshot(): Promise<SystemSnapshot> {
-    if (!this.last) return this.collect();
+  async getSnapshot({ fresh = false }: { fresh?: boolean } = {}): Promise<SystemSnapshot> {
+    if (!this.last || (fresh && Date.now() - this.last.timestamp >= this.refreshAfterMs)) return this.collect();
     if (Date.now() - this.last.timestamp >= this.refreshAfterMs) void this.collect().catch(() => undefined);
     return this.last;
   }
@@ -212,6 +214,12 @@ export class SystemInfoService {
     const mem = value('memory', memory);
     const diskData = value('disks', disks) ?? [];
     const net = value('network', network);
+    const interfaces = (net?.interfaces ?? []).filter(iface => !iface.internal);
+    const sampled = new Map((net?.stats ?? []).map(stat => [stat.iface, stat]));
+    const upInterfaces = interfaces.filter(iface => iface.operstate === 'up');
+    const rates = upInterfaces.map(iface => sampled.get(iface.iface));
+    const rateAvailable = rates.length > 0 && rates.every(stat =>
+      stat && Number.isFinite(stat.rx_sec) && stat.rx_sec >= 0 && Number.isFinite(stat.tx_sec) && stat.tx_sec >= 0);
     const dockerData = value('docker', docker);
     if (Object.keys(unanswered).length > 0) {
       this.logger.debug({ unanswered }, 'System snapshot collected without some sections');
@@ -279,9 +287,8 @@ export class SystemInfoService {
         })),
 
       network: {
-        interfaces: (net?.interfaces ?? [])
-          .filter((i) => !i.internal)
-          .map((i) => ({
+        rateAvailable,
+        interfaces: interfaces.map((i) => ({
             iface: i.iface,
             ip4: i.ip4,
             ip6: i.ip6,
@@ -289,14 +296,16 @@ export class SystemInfoService {
             speed: i.speed,
             operstate: i.operstate,
           })),
-        rxSec: (net?.stats ?? []).reduce((sum, s) => sum + (s.rx_sec ?? 0), 0),
-        txSec: (net?.stats ?? []).reduce((sum, s) => sum + (s.tx_sec ?? 0), 0),
+        rxSec: rateAvailable ? rates.reduce((sum, stat) => sum + stat!.rx_sec, 0) : 0,
+        txSec: rateAvailable ? rates.reduce((sum, stat) => sum + stat!.tx_sec, 0) : 0,
       },
 
       docker: dockerData,
 
       daemon: {
         role: this.role,
+        version: CLI_VERSION,
+        build: OWN_BUILD,
         pid: process.pid,
         nodeVersion: process.version,
         v8Version: process.versions.v8,

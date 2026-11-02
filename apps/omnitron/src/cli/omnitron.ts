@@ -496,6 +496,15 @@ program
 // ============================================================================
 
 program
+  .command('system')
+  .description('Read the connected host or a registered node, including collection time and missing measurements')
+  .option('--node <id>', 'Read this registered node over the mesh')
+  .structuredAction(async (opts) => {
+    const { systemCommand } = await import('../commands/system.js');
+    await systemCommand(opts);
+  });
+
+program
   .command('logs [app]')
   .description('View logs (omit app for daemon log, specify app name for app log)')
   .option('-f, --follow', 'Follow log output')

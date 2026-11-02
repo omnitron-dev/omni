@@ -129,7 +129,7 @@ export type { OmnitronDiscoveredTarget, DiscoveryScanResult } from './discovery.
 
 export type { Pipeline, PipelineDef, PipelineStep, PipelineRun, PipelineRunStepResult, PipelineRunSummary } from './pipelines.js';
 export type { Trace, TraceSpan, TraceFilter, ServiceMapEntry } from './traces.js';
-export type { SystemSnapshot } from './system-info.js';
+export { readSystemSnapshot, type SystemSnapshot } from './system-info.js';
 
 export type { FleetNode, FleetSummary, NodeRegistration, NodeRole };
 export type { NodeStatus } from './fleet.js';
@@ -553,7 +553,7 @@ export interface IOmnitronTracesService {
 
 /** Host snapshot: OS, CPU, memory, disks, network, daemon runtime. */
 export interface IOmnitronSystemInfoService {
-  getSnapshot(): Promise<SystemSnapshot>;
+  getSnapshot(options?: { fresh?: boolean }): Promise<SystemSnapshot>;
 }
 
 // ============================================================================
@@ -689,6 +689,7 @@ export interface IOmnitronNodesService {
    * does not answer — that is the reason the mesh tunnels over SSH. These
    * three put the same questions through the connection that works.
    */
+  getNodeSystemSnapshot(data: { nodeId: string }): Promise<SystemSnapshot>;
   getNodeDaemonStatus(data: { nodeId: string }): Promise<INodeDaemonAnswer<DaemonStatusDto>>;
   getNodeDaemonHealth(data: { nodeId: string }): Promise<INodeDaemonAnswer<AggregatedHealthDto>>;
   getNodeDaemonMetrics(data: { nodeId: string }): Promise<INodeDaemonAnswer<AggregatedMetricsDto>>;

@@ -121,7 +121,7 @@ function useNavData(): LayoutNavData {
             { id: 'settings', title: 'Settings', path: '/settings', icon: <SettingsIcon /> },
             { id: 'audit', title: 'Audit', path: '/audit', icon: <AuditIcon /> },
             { id: 'access', title: 'Access', path: '/access', icon: <AccessIcon /> },
-            { id: 'system-info', title: 'System Info', path: '/system', icon: <SystemInfoIcon /> },
+            { id: 'system-info', title: 'System', path: '/system', icon: <SystemInfoIcon /> },
           ],
         },
       ];
@@ -181,7 +181,7 @@ function useNavData(): LayoutNavData {
           { id: 'settings', title: 'Settings', path: '/settings', icon: <SettingsIcon /> },
           { id: 'audit', title: 'Audit', path: '/audit', icon: <AuditIcon /> },
           { id: 'access', title: 'Access', path: '/access', icon: <AccessIcon /> },
-          { id: 'system-info', title: 'System Info', path: '/system', icon: <SystemInfoIcon /> },
+          { id: 'system-info', title: 'System', path: '/system', icon: <SystemInfoIcon /> },
         ],
       },
     ];

@@ -42,6 +42,19 @@ function hungDocker() {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe('a system page that waited for Docker', () => {
+  it('coalesces fresh requests and distinguishes an unmeasured rate from measured zero', async () => {
+    let reads = 0;
+    const network = async () => ({ interfaces: [{ iface: 'en0', operstate: 'up' }, { iface: 'lo', internal: true }], stats: [
+      { iface: 'en0', rx_sec: ++reads === 1 ? -1 : 0, tx_sec: 0 }, { iface: 'lo', rx_sec: 50, tx_sec: 100 },
+    ] }) as Awaited<ReturnType<SectionReaders['network']>>;
+    const service = new SystemInfoService(logger, 'master', { readers: { ...quiet, network }, refreshAfterMs: 0 });
+    expect((await service.getSnapshot()).network.rateAvailable).toBe(false);
+    const [first,second] = await Promise.all([service.getSnapshot({ fresh: true }),service.getSnapshot({ fresh: true })]);
+    expect(first).toBe(second);
+    expect(first.network).toMatchObject({ rateAvailable: true, rxSec: 0, txSec: 0 });
+    expect(reads).toBe(2);
+  });
+
   it('answers without the section that did not answer, and says why', async () => {
     const docker = hungDocker();
     const service = new SystemInfoService(logger, 'master', { readers: { ...quiet, docker: docker.read }, budgetMs: 100 });

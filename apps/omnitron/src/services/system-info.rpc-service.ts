@@ -15,7 +15,7 @@ export class SystemInfoRpcService implements IOmnitronSystemInfoService {
   constructor(private readonly systemInfo: SystemInfoService) {}
 
   @Public({ auth: { roles: VIEWER_ROLES } })
-  async getSnapshot(): Promise<SystemSnapshot> {
-    return this.systemInfo.getSnapshot();
+  async getSnapshot(options?: { fresh?: boolean }): Promise<SystemSnapshot> {
+    return this.systemInfo.getSnapshot(options);
   }
 }

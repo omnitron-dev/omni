@@ -68,6 +68,8 @@ export interface SystemSnapshot {
   }>;
 
   network: {
+    /** False until all reported external interfaces have a measurable rate. Older peers omit this field. */
+    rateAvailable?: boolean;
     interfaces: Array<{
       iface: string;
       ip4: string;
@@ -87,6 +89,8 @@ export interface SystemSnapshot {
   } | null;
 
   daemon: {
+    version?: string;
+    build?: import('../build-stamp.js').BuildStamp | null;
     role: DaemonRole;
     pid: number;
     nodeVersion: string;
@@ -99,4 +103,12 @@ export interface SystemSnapshot {
       external: number;
     };
   };
+}
+
+/** Collection normally completes within 3 s and Console polls every 5 s. */
+export function readSystemSnapshot(snapshot: SystemSnapshot, now = Date.now()) {
+  const ageMs = now - snapshot.timestamp;
+  const timing = !Number.isFinite(ageMs) ? 'unknown' : ageMs < -15_000 ? 'clock-skew' : ageMs > 15_000 ? 'stale' : 'current';
+  const missing = Object.entries(snapshot.unanswered ?? {});
+  return { ageMs, timing, missing, complete: !missing.length && timing === 'current' };
 }

@@ -32,6 +32,16 @@ describe('local node daemon readers', () => {
     expect(daemon.status).not.toHaveBeenCalled();
   });
 
+  it('requests a host snapshot through a fixed mesh method and keeps an unreachable peer unavailable', async () => {
+    const { service } = fixture();
+    const snapshot = { timestamp: 100, daemon: { pid: 56 } };
+    const invokeOnSlave = vi.fn().mockResolvedValueOnce(snapshot).mockRejectedValueOnce(new Error('peer disconnected'));
+    service.setSlaveConnector({ invokeOnSlave } as never);
+    expect(await service.getNodeSystemSnapshot({ nodeId: 'remote' })).toEqual(snapshot);
+    expect(invokeOnSlave).toHaveBeenCalledWith('remote', 9700, 'OmnitronSystemInfo', 'getSnapshot', [{ fresh: true }]);
+    await expect(service.getNodeSystemSnapshot({ nodeId: 'remote' })).rejects.toThrow(/remote.*peer disconnected/);
+    await expect(service.getNodeSystemSnapshot({ nodeId: 'missing' })).rejects.toThrow(/No such node/);
+  });
   it('reports a failed or missing local reader without claiming the daemon is healthy', async () => {
     const { service, daemon } = fixture();
     daemon.status.mockRejectedValueOnce(new Error('state unavailable'));

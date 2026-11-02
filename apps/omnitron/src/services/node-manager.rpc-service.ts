@@ -33,6 +33,7 @@ import type {
 import type { NodeCheckConfig } from './remote-ops.service.js';
 import type { FleetHistoryConfig, IMeshNodeStatus, INodeIndicators, INodeSyncStatus, INodeRelayStats, INodeClusterState, INodeDaemonAnswer,
   INodeUpgradePlan, INodeRolloutStart } from '../shared/dto/nodes.js';
+import type { SystemSnapshot } from '../shared/dto/system-info.js';
 import type { DaemonStatusDto, AggregatedHealthDto, AggregatedMetricsDto } from '../config/types.js';
 import type { ISyncStatus } from '../shared/dto/project.js';
 import type { SyncService } from './sync.service.js';
@@ -92,6 +93,7 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
     private readonly nodeManager: NodeManagerService,
     /** The audit trail, when this daemon has one — see `ProjectRpcService`. */
     private readonly audit?: import('./audit.service.js').AuditService | undefined,
+    private readonly hostSnapshot?: () => Promise<SystemSnapshot>,
   ) {}
 
   /** Set the health worker proxy after the worker is spawned */
@@ -625,6 +627,15 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
     return r.ok
       ? { nodeId: data.nodeId, reachable: true, error: null, status: r.value?.status ?? null, indicators: r.value?.indicators ?? {} }
       : { nodeId: data.nodeId, reachable: false, error: r.error, status: null, indicators: {} };
+  }
+
+  /** Fixed read-only mesh operation. A failed remote read must retain its target. */
+  @Public({ auth: { roles: VIEWER_ROLES } })
+  async getNodeSystemSnapshot(data: { nodeId: string }): Promise<SystemSnapshot> {
+    const result = await this.askNode<SystemSnapshot>(data.nodeId, 'OmnitronSystemInfo', 'getSnapshot', [{ fresh: true }], this.hostSnapshot ?? null);
+    if (!result.ok) throw new Error(`System snapshot for ${data.nodeId}: ${result.error}`);
+    if (!result.value?.daemon || !Number.isFinite(result.value.timestamp)) throw new Error(`Invalid system snapshot from ${data.nodeId}`);
+    return result.value;
   }
 
   /**

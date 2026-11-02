@@ -1,441 +1,501 @@
-import { Breadcrumbs } from 'src/components/page-breadcrumbs';
-/**
- * System Info Page — Real-time system metrics + build info
- *
- * Cards:
- * - Daemon: role, PID, uptime, process memory
- * - CPU: model, cores, load per core, temperature
- * - Memory: total/used/free with progress bar, swap
- * - Disks: mount points with usage bars
- * - Network: interfaces, throughput
- * - Docker: container counts
- * - Build: version, runtime, arch, dev-stack
- *
- * Auto-refreshes every 5s via polling (uses OmnitronSystemInfo RPC).
- */
-
-
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import CardHeader from '@mui/material/CardHeader';
-import Typography from '@mui/material/Typography';
-import Stack from '@mui/material/Stack';
-import Grid from '@mui/material/Grid';
-import Chip from '@mui/material/Chip';
-import Divider from '@mui/material/Divider';
-import LinearProgress from '@mui/material/LinearProgress';
-import Box from '@mui/material/Box';
-import { alpha, useTheme } from '@mui/material/styles';
-
-import { systemInfo } from 'src/netron/client';
-import { usePolledResource } from 'src/hooks/use-polled-resource';
-import { formatMemory } from 'src/utils/formatters';
+import { useState, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import {
+  Box,
+  Button,
+  Chip,
+  Divider,
+  IconButton,
+  LinearProgress,
+  MenuItem,
+  Stack,
+  Switch,
+  FormControlLabel,
+  TextField,
+  Typography,
+} from '@mui/material';
 import { Alert } from '@omnitron-dev/prism/components/alert';
-import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
+import { Tabs } from '@omnitron-dev/prism/components/tabs';
+import { readSystemSnapshot, type SystemSnapshot } from '@omnitron-dev/omnitron/dto/services';
+import { useAccess } from 'src/auth/access';
+import { RefreshIcon } from 'src/assets/icons';
+import { Breadcrumbs } from 'src/components/page-breadcrumbs';
+import { OperationStatus } from 'src/components/operation-status';
+import { usePolledResource, usePollingEffect } from 'src/hooks/use-polled-resource';
+import { nodes, systemInfo } from 'src/netron/client';
+import { formatUptime } from 'src/utils/formatters';
+import { formatBytes, formatCpu } from 'src/utils/metric-series';
 
-// =============================================================================
-// Shared
-// =============================================================================
+const grid = {
+  display: 'grid',
+  gridTemplateColumns: { xs: 'minmax(0,1fr)', md: 'repeat(2,minmax(0,1fr))' },
+  gap: { xs: 2, md: 3 },
+};
+const mono = { fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' } as const;
 
-const cardSx = { borderRadius: 2, height: '100%' } as const;
-const cardContentSx = { p: 3, '&:last-child': { pb: 3 } } as const;
-
-function InfoRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <Stack
-      direction="row"
-      sx={{
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: 2,
-        minWidth: 0,
-        py: 0.5
-      }}>
-      <Typography variant="body2" sx={{
-        color: "text.secondary"
-      }}>{label}</Typography>
-      <Typography
-        variant="body2"
-        sx={{
-          fontWeight: 600,
-          minWidth: 0, overflowWrap: 'anywhere', textAlign: 'right',
-          ...(mono && { fontFamily: 'monospace', fontSize: '0.8rem' }),
-        }}>
-        {value}
+    <Box component="section" sx={{ minWidth: 0 }}>
+      <Typography component="h2" variant="subtitle2" sx={{ pb: 1, borderBottom: 1, borderColor: 'divider', mb: 1 }}>
+        {title}
       </Typography>
-    </Stack>
-  );
-}
-
-function UsageBar({ label, used, total, color = 'primary' }: { label: string; used: number; total: number; color?: 'primary' | 'warning' | 'error' | 'success' }) {
-  const percent = total > 0 ? (used / total) * 100 : 0;
-  const barColor = percent > 90 ? 'error' : percent > 70 ? 'warning' : color;
-
-  return (
-    <Box sx={{ mb: 1.5 }}>
-      <Stack
-        direction="row"
-        sx={{
-          justifyContent: "space-between",
-          mb: 0.5
-        }}>
-        <Typography variant="caption" sx={{
-          color: "text.secondary"
-        }}>{label}</Typography>
-        <Typography
-          variant="caption"
-          sx={{
-            fontWeight: 600,
-            fontFamily: 'monospace',
-            fontSize: '0.7rem'
-          }}>
-          {formatMemory(used)} / {formatMemory(total)} ({percent.toFixed(1)}%)
-        </Typography>
-      </Stack>
-      <LinearProgress variant="determinate" value={Math.min(percent, 100)} color={barColor} sx={{ height: 6, borderRadius: 3 }} />
+      {children}
     </Box>
   );
 }
 
-function formatDuration(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const d = Math.floor(s / 86400);
-  const h = Math.floor((s % 86400) / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  if (d > 0) return h > 0 ? `${d}d ${h}h ${m}m` : `${d}d ${m}m`;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
+function Facts({ rows }: { rows: Array<[string, ReactNode]> }) {
+  return (
+    <Box
+      component="dl"
+      sx={{ display: 'grid', gridTemplateColumns: 'minmax(0,2fr) minmax(0,3fr)', columnGap: 2, rowGap: 0.75, m: 0 }}
+    >
+      {rows.map(([label, value]) => (
+        <Box key={label} component="div" sx={{ display: 'contents' }}>
+          <Typography component="dt" variant="body2" color="text.secondary">
+            {label}
+          </Typography>
+          <Typography component="dd" variant="body2" sx={{ ...mono, m: 0, textAlign: 'end' }}>
+            {value ?? '—'}
+          </Typography>
+        </Box>
+      ))}
+    </Box>
+  );
 }
 
-// =============================================================================
-// Page
-// =============================================================================
-
-/**
- * A section's reading, or why there is none. A section that did not answer
- * carries zeros and empty lists, and those are not a reading: «CPU 0.0%» and
- * a missing Docker card were what a slow section looked like.
- */
-function SectionBody({ why, children }: { why?: string | undefined; children: React.ReactNode }) {
-  if (!why) return <>{children}</>;
+function Reading({
+  label,
+  value,
+  detail,
+  percent,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  percent?: number | undefined;
+}) {
   return (
-    <Typography variant="body2" sx={{ color: 'warning.main' }}>
-      Did not answer — {why}
+    <Box sx={{ minWidth: 0, py: 1.25, borderTop: '1px solid', borderColor: 'divider' }}>
+      <Typography variant="caption" color="text.secondary">
+        {label}
+      </Typography>
+      <Typography component="div" variant="h5" sx={{ ...mono, my: 0.4 }}>
+        {value}
+      </Typography>
+      {percent != null && Number.isFinite(percent) && (
+        <LinearProgress
+          aria-label={label}
+          variant="determinate"
+          value={Math.min(100, Math.max(0, percent))}
+          sx={{ height: 3, mb: 0.75 }}
+        />
+      )}
+      <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+        {detail}
+      </Typography>
+    </Box>
+  );
+}
+
+function computeRates({ network, unanswered }: SystemSnapshot) {
+  if (unanswered.network || network.rateAvailable === false || network.rxSec < 0 || network.txSec < 0) return null;
+  return { rx: `${formatBytes(network.rxSec)}/s`, tx: `${formatBytes(network.txSec)}/s` };
+}
+
+function Resources({ data }: { data: SystemSnapshot }) {
+  const { cpu, memory, disks, unanswered } = data;
+  const fullest = unanswered.disks
+    ? undefined
+    : disks.reduce<SystemSnapshot['disks'][number] | undefined>(
+        (max, disk) => (!max || disk.usedPercent > max.usedPercent ? disk : max),
+        undefined
+      );
+  const rates = computeRates(data);
+  return (
+    <Box
+      aria-label="Host measurements"
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: { xs: 'repeat(2,minmax(0,1fr))', md: 'repeat(4,minmax(0,1fr))' },
+        columnGap: { xs: 1.5, md: 3 },
+      }}
+    >
+      <Reading
+        label="CPU load"
+        value={unanswered.cpu ? '—' : formatCpu(cpu.currentLoad)}
+        detail={unanswered.cpu ? 'Reading unavailable' : `${cpu.cores} logical cores`}
+        percent={unanswered.cpu ? undefined : cpu.currentLoad}
+      />
+      <Reading
+        label="Committed memory"
+        value={unanswered.memory ? '—' : formatBytes(memory.committed)}
+        detail={unanswered.memory ? 'Reading unavailable' : `${formatBytes(memory.available)} available`}
+        percent={unanswered.memory ? undefined : memory.usedPercent}
+      />
+      <Reading
+        label="Fullest mount"
+        value={fullest ? formatCpu(fullest.usedPercent) : '—'}
+        detail={
+          fullest
+            ? `${fullest.mount} · ${formatBytes(fullest.available)} available`
+            : unanswered.disks
+              ? 'Reading unavailable'
+              : 'No reported mounts'
+        }
+        percent={fullest?.usedPercent}
+      />
+      <Reading
+        label="Network receive"
+        value={rates?.rx ?? '—'}
+        detail={rates ? `Transmit ${rates.tx}` : 'Transfer rate unavailable'}
+      />
+    </Box>
+  );
+}
+
+function RuntimeDetails({ data }: { data: SystemSnapshot }) {
+  const { os, cpu, memory, daemon, docker, unanswered } = data;
+  return (
+    <Box sx={grid}>
+      <Section title="Host">
+        {unanswered.os ? (
+          <Typography variant="body2">Host details unavailable</Typography>
+        ) : (
+          <Facts
+            rows={[
+              ['Hostname', os.hostname],
+              ['Operating system', [os.distro || os.platform, os.release].filter(Boolean).join(' ')],
+              ['Kernel', os.kernel],
+              ['Architecture', os.arch],
+              ['Host uptime', formatUptime(os.uptime * 1000)],
+            ]}
+          />
+        )}
+      </Section>
+      <Section title="Daemon">
+        <Facts
+          rows={[
+            ['Role / PID', `${daemon.role} / ${daemon.pid}`],
+            ['Daemon uptime', formatUptime(daemon.uptimeMs)],
+            ['Omnitron', daemon.version ?? 'Version not reported'],
+            [
+              'Build commit',
+              daemon.build ? daemon.build.commit + (daemon.build.dirty ? ' (dirty)' : '') : 'Build not reported',
+            ],
+            ['Node.js / V8', `${daemon.nodeVersion} / ${daemon.v8Version}`],
+            ['Resident memory', formatBytes(daemon.memoryUsage.rss)],
+            [
+              'Heap used / allocated',
+              `${formatBytes(daemon.memoryUsage.heapUsed)} / ${formatBytes(daemon.memoryUsage.heapTotal)}`,
+            ],
+            ['External memory', formatBytes(daemon.memoryUsage.external)],
+          ]}
+        />
+      </Section>
+      <Section title="Compute">
+        {!unanswered.cpu && (
+          <>
+            <Facts
+              rows={[
+                ['Processor', [cpu.manufacturer, cpu.brand].filter(Boolean).join(' ')],
+                ['Physical / logical cores', `${cpu.physicalCores} / ${cpu.cores}`],
+                ['Clock', cpu.speed > 0 ? `${cpu.speed} GHz` : '—'],
+                ['Temperature', cpu.temperature != null && cpu.temperature > 0 ? `${cpu.temperature} °C` : '—'],
+              ]}
+            />
+            {cpu.loadPerCore.length > 0 && (
+              <Box component="details" sx={{ my: 1.25 }}>
+                <Typography component="summary" variant="body2" sx={{ cursor: 'pointer' }}>
+                  Per-core load · {cpu.loadPerCore.length}
+                </Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(6rem,1fr))', gap: 1, mt: 1 }}>
+                  {cpu.loadPerCore.map((load, index) => (
+                    <Typography key={index} variant="caption" sx={mono}>
+                      CPU {index} · {formatCpu(load)}
+                    </Typography>
+                  ))}
+                </Box>
+              </Box>
+            )}
+          </>
+        )}
+        {!unanswered.memory && (
+          <Facts
+            rows={[
+              ['RAM capacity', formatBytes(memory.total)],
+              ['Free / available', `${formatBytes(memory.free)} / ${formatBytes(memory.available)}`],
+              ['Swap used / total', `${formatBytes(memory.swapUsed)} / ${formatBytes(memory.swapTotal)}`],
+            ]}
+          />
+        )}
+        {unanswered.cpu && unanswered.memory && <Typography variant="body2">Compute details unavailable</Typography>}
+      </Section>
+      <Section title="Docker">
+        {docker && !unanswered.docker ? (
+          <Facts
+            rows={[
+              ['Running', docker.running],
+              ['Paused', docker.paused],
+              ['Stopped', docker.stopped],
+            ]}
+          />
+        ) : (
+          <Typography variant="body2" color="text.secondary">
+            {unanswered.docker ? 'Container inventory unavailable' : 'No container runtime reported'}
+          </Typography>
+        )}
+      </Section>
+    </Box>
+  );
+}
+
+function StorageDetails({ data }: { data: SystemSnapshot }) {
+  if (data.unanswered.disks) return <Typography variant="body2">Mount inventory unavailable.</Typography>;
+  if (!data.disks.length) return <Typography variant="body2">No mounted filesystems reported.</Typography>;
+  const disks = [...data.disks].sort((a, b) => b.usedPercent - a.usedPercent || a.mount.localeCompare(b.mount));
+  return (
+    <Box sx={grid}>
+      {disks.map((disk) => (
+        <Section key={JSON.stringify([disk.mount, disk.fs])} title={disk.mount}>
+          <Facts
+            rows={[
+              ['Filesystem', `${disk.fs} · ${disk.type}`],
+              ['Available', formatBytes(disk.available)],
+              ['Used / capacity', `${formatBytes(disk.used)} / ${formatBytes(disk.size)}`],
+              ['Utilization', formatCpu(disk.usedPercent)],
+            ]}
+          />
+          <LinearProgress
+            aria-label={`Usage of ${disk.mount}`}
+            variant="determinate"
+            value={Math.min(100, Math.max(0, disk.usedPercent))}
+            sx={{ mt: 1, height: 3 }}
+          />
+        </Section>
+      ))}
+    </Box>
+  );
+}
+
+function NetworkDetails({ data }: { data: SystemSnapshot }) {
+  if (data.unanswered.network) return <Typography variant="body2">Interface inventory unavailable.</Typography>;
+  if (!data.network.interfaces.length)
+    return <Typography variant="body2">No external network interfaces reported.</Typography>;
+  return (
+    <Box sx={grid}>
+      {data.network.interfaces.map((iface) => (
+        <Section key={iface.iface} title={iface.iface}>
+          <Facts
+            rows={[
+              ['Link', iface.operstate],
+              ['IPv4', iface.ip4 || '—'],
+              ['IPv6', iface.ip6 || '—'],
+              ['MAC', iface.mac || '—'],
+              ['Link speed', iface.speed != null && iface.speed > 0 ? `${iface.speed} Mbit/s` : '—'],
+            ]}
+          />
+        </Section>
+      ))}
+    </Box>
+  );
+}
+
+function SnapshotTime({ data, live }: { data: SystemSnapshot; live: boolean }) {
+  const [now, setNow] = useState(Date.now);
+  usePollingEffect(() => setNow(Date.now()), { intervalMs: 5_000 });
+  const { ageMs, timing } = readSystemSnapshot(data, Math.max(now, Date.now()));
+  const time = new Date(data.timestamp);
+  return (
+    <Typography component="div" variant="caption" color={timing === 'current' ? 'text.secondary' : 'warning.main'}>
+      {timing === 'clock-skew'
+        ? 'Host clock ahead'
+        : timing === 'unknown'
+          ? 'Collection time unavailable'
+          : `Collected ${Math.max(0, Math.round(ageMs / 1000))} s ago in ${data.collectedMs} ms`}
+      {Number.isFinite(time.getTime()) && (
+        <>
+          {' '}
+          ·{' '}
+          <time dateTime={time.toISOString()} title={time.toISOString()}>
+            {time.toLocaleTimeString()}
+          </time>
+        </>
+      )}
+      {timing === 'stale' && ' · Stale sample'}
+      {!live && ' · Updates paused'}
     </Typography>
   );
 }
 
 export default function SystemInfoPage() {
-  const theme = useTheme();
-  // Shared polling loop — see `use-polled-resource`. The `isFirstLoad` ref
-  // this replaces existed to stop the skeleton reappearing on every refresh;
-  // `loading` is now true only until the first attempt settles, so the effect
-  // it was guarding cannot happen.
-  const { data, loading, error } = usePolledResource<any>(
-    () => systemInfo.getSnapshot(),
-    { intervalMs: 5_000 }
-  );
-
-  if (loading) {
-    return (
-      <Grid container spacing={3}>
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Grid key={i} size={{ xs: 12, md: 6 }}><Skeleton variant="rounded" height={200} /></Grid>
-        ))}
-      </Grid>
-    );
+  const [params, setParams] = useSearchParams();
+  const target = params.get('node') || '';
+  const view = params.get('view') || 'overview';
+  const { can } = useAccess();
+  const remoteAllowed = can('OmnitronNodes.getNodeSystemSnapshot');
+  const listAllowed = remoteAllowed && can('OmnitronNodes.listNodes');
+  const inventory = usePolledResource(() => nodes.listNodes(), {
+    intervalMs: 30_000,
+    enabled: listAllowed,
+    resourceKey: Number(listAllowed),
+  });
+  const options = (inventory.data ?? []).filter((node) => !node.isLocal);
+  function select(key: string, value: string) {
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (value) next.set(key, value);
+      else next.delete(key);
+      return next;
+    });
   }
-
-  if (error && !data) {
-    return <Alert severity="error">{error}</Alert>;
-  }
-
-  const d = data;
-
   return (
-    <Stack spacing={3}>
-      <Breadcrumbs heading="System info" links={[{ name: 'System info' }]} />
-      {error && <Alert severity="warning" variant="outlined">{error}</Alert>}
-      {d && (
-        // The daemon serves the last snapshot while it collects the next, so
-        // these are figures of an age, and the age is part of the reading.
-        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          Collected {Math.max(0, Math.round((Date.now() - d.timestamp) / 1000))} s ago
-          {d.collectedMs != null ? ` in ${d.collectedMs} ms` : ''}
-        </Typography>
-      )}
-      <Grid container spacing={3}>
-        {/* Daemon */}
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Card variant="outlined" sx={cardSx}>
-            <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }}
-              title="Daemon"
-              action={<Chip label={d?.daemon?.role ?? 'master'} size="small" color="primary" variant="outlined" sx={{ height: 22, fontSize: '0.7rem', fontWeight: 600 }} />}
-            />
-            <CardContent sx={{ ...cardContentSx, pt: 0 }}>
-              <Stack spacing={0.5}>
-                <InfoRow label="PID" value={d?.daemon?.pid ?? '--'} mono />
-                <InfoRow label="Uptime" value={d?.daemon?.uptimeMs ? formatDuration(d.daemon.uptimeMs) : '--'} />
-                <InfoRow label="Node.js" value={d?.daemon?.nodeVersion ?? '--'} mono />
-                <InfoRow label="V8" value={d?.daemon?.v8Version ?? '--'} mono />
-              </Stack>
-              {d?.daemon?.memoryUsage && (
-                <>
-                  <Divider sx={{ my: 1.5 }} />
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      color: "text.secondary",
-                      fontWeight: 600,
-                      mb: 1,
-                      display: 'block'
-                    }}>Process Memory</Typography>
-                  <UsageBar label="Heap" used={d.daemon.memoryUsage.heapUsed} total={d.daemon.memoryUsage.heapTotal} />
-                  <InfoRow label="RSS" value={formatMemory(d.daemon.memoryUsage.rss)} mono />
-                  <InfoRow label="External" value={formatMemory(d.daemon.memoryUsage.external)} mono />
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
+    <SystemHost
+      key={JSON.stringify([target, target ? remoteAllowed : true])}
+      target={target}
+      allowed={!target || remoteAllowed}
+      view={['storage', 'network'].includes(view) ? view : 'overview'}
+      onView={(value) => select('view', value === 'overview' ? '' : value)}
+      selector={
+        (listAllowed || target) && (
+          <TextField
+            select
+            label="Host"
+            size="small"
+            value={target}
+            onChange={(e) => select('node', e.target.value)}
+            slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
+            sx={{ minWidth: '10rem', maxWidth: '100%' }}
+          >
+            <MenuItem value="">Connected daemon</MenuItem>
+            {target && !options.some((node) => node.id === target) && <MenuItem value={target}>{target}</MenuItem>}
+            {options.map((node) => (
+              <MenuItem key={node.id} value={node.id}>
+                {node.name}
+              </MenuItem>
+            ))}
+          </TextField>
+        )
+      }
+      inventoryError={listAllowed ? inventory.error : null}
+    />
+  );
+}
 
-        {/* CPU */}
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Card variant="outlined" sx={cardSx}>
-            <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }}
-              title="CPU"
-              action={
-                d?.cpu?.currentLoad != null && !d.unanswered?.cpu ? (
-                  <Chip
-                    label={`${d.cpu.currentLoad.toFixed(1)}%`}
-                    size="small"
-                    color={d.cpu.currentLoad > 80 ? 'error' : d.cpu.currentLoad > 60 ? 'warning' : 'success'}
-                    sx={{ height: 22, fontSize: '0.7rem', fontWeight: 600 }}
-                  />
-                ) : undefined
+function SystemHost({
+  target,
+  allowed,
+  view,
+  onView,
+  selector,
+  inventoryError,
+}: {
+  target: string;
+  allowed: boolean;
+  view: string;
+  onView(value: string): void;
+  selector: ReactNode;
+  inventoryError: string | null;
+}) {
+  const [live, setLive] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const { data, error, loading, refresh } = usePolledResource(
+    () => (target ? nodes.getNodeSystemSnapshot({ nodeId: target }) : systemInfo.getSnapshot({ fresh: true })),
+    { intervalMs: 5_000, enabled: live && allowed, resourceKey: target }
+  );
+  const update = async () => {
+    setRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  const missing = data ? readSystemSnapshot(data).missing : [];
+  return (
+    <Stack spacing={2} sx={{ minWidth: 0 }}>
+      <Breadcrumbs
+        links={[{ name: 'System' }]}
+        action={
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            {selector}
+            <FormControlLabel
+              control={
+                <Switch size="small" checked={live} disabled={!allowed} onChange={(e) => setLive(e.target.checked)} />
               }
+              label="Live"
+              sx={{ m: 0 }}
             />
-            <CardContent sx={{ ...cardContentSx, pt: 0 }}>
-              <SectionBody why={d?.unanswered?.cpu}>
-              <Stack spacing={0.5}>
-                <InfoRow label="Model" value={`${d?.cpu?.manufacturer ?? ''} ${d?.cpu?.brand ?? ''}`} />
-                <InfoRow label="Cores" value={`${d?.cpu?.physicalCores ?? 0} physical / ${d?.cpu?.cores ?? 0} logical`} />
-                <InfoRow label="Speed" value={d?.cpu?.speed ? `${d.cpu.speed} GHz` : '--'} />
-                {d?.cpu?.temperature != null && <InfoRow label="Temperature" value={`${d.cpu.temperature}°C`} />}
+            <IconButton
+              size="small"
+              aria-label="Refresh system snapshot"
+              data-console-command="refresh"
+              disabled={refreshing || !allowed}
+              onClick={() => void update()}
+            >
+              <RefreshIcon />
+            </IconButton>
+          </Stack>
+        }
+      />
+      {inventoryError && <Alert severity="warning">Node inventory unavailable · {inventoryError}</Alert>}
+      {!allowed ? (
+        <Alert severity="warning">
+          Remote system readings are unavailable for this session. Select the connected daemon to inspect its host.
+        </Alert>
+      ) : (
+        <>
+          <OperationStatus
+            active={loading || refreshing}
+            label={loading ? 'Reading host measurements' : 'Requesting a system snapshot'}
+          />
+          {error && (
+            <Alert severity={data ? 'warning' : 'error'}>
+              {data ? 'Showing the last snapshot' : 'Host measurements unavailable'} · {error}
+            </Alert>
+          )}
+          {data && (
+            <>
+              <Stack spacing={0.25}>
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                  <Typography variant="subtitle1" sx={mono}>
+                    {(!data.unanswered.os && data.os.hostname) || target || 'Connected daemon'}
+                  </Typography>
+                  <Chip size="small" variant="outlined" label={target ? 'Mesh node' : 'Connected daemon'} />
+                </Stack>
+                <SnapshotTime data={data} live={live} />
               </Stack>
-              {d?.cpu?.loadPerCore?.length > 0 && (
-                <>
-                  <Divider sx={{ my: 1.5 }} />
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      color: "text.secondary",
-                      fontWeight: 600,
-                      mb: 1,
-                      display: 'block'
-                    }}>Load per Core</Typography>
-                  <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                    {d.cpu.loadPerCore.map((load: number, i: number) => (
-                      <Box
-                        key={i}
-                        sx={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: 1,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '0.6rem',
-                          fontWeight: 700,
-                          fontFamily: 'monospace',
-                          bgcolor: alpha(load > 80 ? theme.palette.error.main : load > 50 ? theme.palette.warning.main : theme.palette.success.main, 0.12),
-                          color: load > 80 ? 'error.main' : load > 50 ? 'warning.main' : 'success.main',
-                          border: '1px solid',
-                          borderColor: alpha(load > 80 ? theme.palette.error.main : load > 50 ? theme.palette.warning.main : theme.palette.success.main, 0.2),
-                        }}
-                      >
-                        {load.toFixed(0)}%
-                      </Box>
-                    ))}
-                  </Box>
-                </>
-              )}
-              </SectionBody>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Memory */}
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Card variant="outlined" sx={cardSx}>
-            <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }} title="Memory" />
-            <CardContent sx={{ ...cardContentSx, pt: 0 }}>
-              <SectionBody why={d?.unanswered?.memory}>
-              {d?.memory && (
-                <>
-                  {/* `committed`, not `used`: the library reports `used` as
-                      `total - free`, and `free` excludes the cache the kernel
-                      will hand back on demand. This bar read 97.8% while the
-                      Available line below it said 31.9 GB — two numbers on
-                      one card that cannot both be a useful reading. */}
-                  <UsageBar label="RAM" used={d.memory.committed} total={d.memory.total} color="primary" />
-                  {d.memory.swapTotal > 0 && (
-                    <UsageBar label="Swap" used={d.memory.swapUsed} total={d.memory.swapTotal} color="warning" />
-                  )}
-                  <Stack spacing={0.5} sx={{ mt: 1 }}>
-                    <InfoRow label="Total" value={formatMemory(d.memory.total)} mono />
-                    <InfoRow label="Available" value={formatMemory(d.memory.available)} mono />
-                    <InfoRow label="Free" value={formatMemory(d.memory.free)} mono />
-                  </Stack>
-                </>
-              )}
-              </SectionBody>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Disks */}
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Card variant="outlined" sx={cardSx}>
-            <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }} title="Disks" />
-            <CardContent sx={{ ...cardContentSx, pt: 0 }}>
-              <SectionBody why={d?.unanswered?.disks}>
-              {d?.disks?.length > 0 ? (
-                d.disks.map((disk: any, i: number) => (
-                  <Box key={i}>
-                    <UsageBar
-                      label={`${disk.mount} (${disk.type})`}
-                      used={disk.used}
-                      total={disk.size}
-                      color="primary"
-                    />
-                  </Box>
-                ))
-              ) : (
-                <Typography variant="body2" sx={{
-                  color: "text.secondary"
-                }}>No disk information available</Typography>
-              )}
-              </SectionBody>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Network */}
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Card variant="outlined" sx={cardSx}>
-            <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }} title="Network" />
-            <CardContent sx={{ ...cardContentSx, pt: 0 }}>
-              <SectionBody why={d?.unanswered?.network}>
-              {d?.network?.interfaces?.length > 0 ? (
-                <Stack spacing={1}>
-                  {d.network.interfaces.slice(0, 5).map((iface: any, i: number) => (
-                    <Box key={i}>
-                      <Stack
-                        direction="row"
-                        sx={{
-                          justifyContent: "space-between",
-                          alignItems: "center"
-                        }}>
-                        <Typography variant="body2" sx={{
-                          fontWeight: 600
-                        }}>{iface.iface}</Typography>
-                        <Chip
-                          label={iface.operstate}
-                          size="small"
-                          color={iface.operstate === 'up' ? 'success' : 'default'}
-                          variant="outlined"
-                          sx={{ height: 18, fontSize: '0.6rem' }}
-                        />
-                      </Stack>
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          color: "text.secondary",
-                          fontFamily: 'monospace',
-                          fontSize: '0.7rem'
-                        }}>
-                        {iface.ip4 || iface.ip6 || '--'}
-                        {iface.speed ? ` · ${iface.speed} Mbps` : ''}
-                      </Typography>
-                    </Box>
+              {missing.length > 0 && (
+                <Alert severity="warning" variant="outlined">
+                  <Typography variant="subtitle2">
+                    Partial snapshot · {missing.length} {missing.length === 1 ? 'section' : 'sections'} unavailable
+                  </Typography>
+                  {missing.map(([name, reason]) => (
+                    <Typography component="div" variant="body2" key={name}>
+                      <strong>{name}</strong> · <span>Did not answer — {reason}</span>
+                    </Typography>
                   ))}
-                  {(d.network.rxSec > 0 || d.network.txSec > 0) && (
-                    <>
-                      <Divider sx={{ my: 0.5 }} />
-                      <Stack direction="row" spacing={2}>
-                        <InfoRow label="RX" value={`${formatMemory(d.network.rxSec)}/s`} mono />
-                        <InfoRow label="TX" value={`${formatMemory(d.network.txSec)}/s`} mono />
-                      </Stack>
-                    </>
-                  )}
-                </Stack>
-              ) : (
-                <Typography variant="body2" sx={{
-                  color: "text.secondary"
-                }}>No network interfaces</Typography>
+                </Alert>
               )}
-              </SectionBody>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Docker — shown when it did not answer too: `null` with a reason is not «no Docker». */}
-        {(d?.docker || d?.unanswered?.docker) && (
-          <Grid size={{ xs: 12, md: 6 }}>
-            <Card variant="outlined" sx={cardSx}>
-              <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }} title="Docker" />
-              <CardContent sx={{ ...cardContentSx, pt: 0 }}>
-                <SectionBody why={d?.unanswered?.docker}>
-                <Stack spacing={0.5}>
-                  <InfoRow label="Running" value={d.docker?.running ?? '--'} />
-                  <InfoRow label="Paused" value={d.docker?.paused ?? '--'} />
-                  <InfoRow label="Stopped" value={d.docker?.stopped ?? '--'} />
-                </Stack>
-                </SectionBody>
-              </CardContent>
-            </Card>
-          </Grid>
-        )}
-
-        {/* OS */}
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Card variant="outlined" sx={cardSx}>
-            <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }} title="Operating System" />
-            <CardContent sx={{ ...cardContentSx, pt: 0 }}>
-              <SectionBody why={d?.unanswered?.os}>
-              <Stack spacing={0.5}>
-                <InfoRow label="Platform" value={d?.os?.platform ?? '--'} />
-                <InfoRow label="Distribution" value={d?.os?.distro ?? '--'} />
-                <InfoRow label="Release" value={d?.os?.release ?? '--'} mono />
-                <InfoRow label="Kernel" value={d?.os?.kernel ?? '--'} mono />
-                <InfoRow label="Architecture" value={d?.os?.arch ?? '--'} mono />
-                <InfoRow label="Hostname" value={d?.os?.hostname ?? '--'} mono />
-                <InfoRow label="Uptime" value={d?.os?.uptime ? formatDuration(d.os.uptime * 1000) : '--'} />
-              </Stack>
-              </SectionBody>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Build */}
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Card variant="outlined" sx={cardSx}>
-            <CardHeader slotProps={{ title: { variant: 'subtitle1', fontWeight: 700 } }} title="Build" />
-            <CardContent sx={{ ...cardContentSx, pt: 0 }}>
-              <Stack spacing={0.5}>
-                <InfoRow label="Console" value="Vite + React 19" mono />
-                <InfoRow label="RPC" value="Netron HTTP" mono />
-                <InfoRow label="Auth" value="JWT (HS256)" mono />
-                <InfoRow label="Design System" value="Prism (MUI v7)" mono />
-                <InfoRow label="Framework" value="Titan" mono />
-                <InfoRow label="PM" value="Titan-PM (child processes)" mono />
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+              <Resources data={data} />
+              <Divider />
+              <Tabs
+                aria-label="System details"
+                value={view}
+                onChange={onView}
+                variant="scrollable"
+                scrollButtons="auto"
+                tabs={[
+                  { value: 'overview', label: 'Overview', content: <RuntimeDetails data={data} /> },
+                  { value: 'storage', label: 'Storage', content: <StorageDetails data={data} /> },
+                  { value: 'network', label: 'Network', content: <NetworkDetails data={data} /> },
+                ]}
+              />
+            </>
+          )}
+          {!live && !data && !error && <Button onClick={() => void update()}>Read snapshot</Button>}
+        </>
+      )}
     </Stack>
   );
 }

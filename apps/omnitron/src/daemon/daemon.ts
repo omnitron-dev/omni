@@ -1160,7 +1160,7 @@ export class OmnitronDaemon {
         this.terminalRpcService = new TerminalRpcService(nodeManager, terminalAuth, daemonStateStore, audit, dc.terminal);
         await this.app.netron.peer.exposeService(this.terminalRpcService);
       }
-      const nodeManagerRpcService = new NodeManagerRpcService(nodeManager, audit);
+      const nodeManagerRpcService = new NodeManagerRpcService(nodeManager, audit, () => systemInfoService.getSnapshot({ fresh: true }));
       nodeManagerRpcService.setLocalDaemon(rpcService);
       // The deployer reaches nodes through the same SSH implementation as the
       // health checks — the only one that can present a stored password or a

@@ -14,7 +14,7 @@ import { publicStackName, type ConfigurationImport } from '../project/configurat
  */
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
-import { VIEWER_ROLES, OPERATOR_ROLES, ADMIN_ROLES, CONTROL_PLANE_ROLES } from '../shared/roles.js';
+import { VIEWER_ROLES, OPERATOR_ROLES, ADMIN_ROLES } from '../shared/roles.js';
 import type { ProjectService } from './project.service.js';
 import type { DeployProgressRecord } from './remote-deployer.service.js';
 import type {
@@ -356,13 +356,13 @@ export class ProjectRpcService {
   // Stacks — Admin
   // ===========================================================================
 
-  @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
+  @Public({ auth: { roles: ['service_role'] } })
   async prepareNodeStackStop(data: import('../project/node-stack-stop.js').NodeStackStopRequest) {
     return this.projectService.prepareNodeStackStop(data);
   }
 
-  @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
-  async executeNodeStackStop(data: import('../shared/dto/stack-execution.js').StackExecutionScope & { operationId: string }) {
+  @Public({ auth: { roles: ['service_role'] } })
+  async executeNodeStackStop(data: import('../project/node-stack-stop.js').NodeStackStopExecution) {
     return this.projectService.executeNodeStackStop(data);
   }
 

@@ -329,7 +329,7 @@ export function TopologyEditor({ projectName, stackName, onClose, onApplied }: P
                               ...spec,
                               nodes: [
                                 ...spec.nodes,
-                                { host: node.host, port: node.port, role: 'app', label: node.name, apps: [] },
+                                { nodeId: node.id, host: node.host, port: node.port, role: 'app', label: node.name, apps: [] },
                               ],
                             });
                         }}

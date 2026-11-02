@@ -1,5 +1,5 @@
 import { Service, Public } from '@omnitron-dev/titan/decorators';
-import { CONTROL_PLANE_ROLES, CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
+import { ADMIN_ROLES, CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
 import type { LeaderElection, ClusterStateInfo } from './leader-election.js';
 
 /** Authority is held in PostgreSQL; peers cannot vote or announce a leader. */
@@ -12,7 +12,7 @@ export class ClusterRpcService {
     return this.election.getClusterState();
   }
 
-  @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
+  @Public({ auth: { roles: ADMIN_ROLES } })
   async stepDown(): Promise<{ success: boolean; message: string }> {
     if (!this.election.isLeader) return { success: false, message: 'This node has no confirmed leadership lease' };
     await this.election.stepDown();

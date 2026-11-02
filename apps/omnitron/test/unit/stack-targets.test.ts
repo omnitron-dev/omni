@@ -16,6 +16,16 @@ function fixture() {
   return { store, targets: new StackTargets(store) };
 }
 describe('persistent deployment target obligations', () => {
+  it('preserves pinned identities and refuses address or identity reuse until the old allocation is reconciled', () => {
+    const { targets } = fixture();
+    const node = { host: 'first.test', port: 9700, applications: true, nodeId: 'node-1' };
+    targets.remember(scope, [node]);
+    expect(targets.inspect(scope, [{ host: node.host, port: node.port, applications: false }]).nodes).toEqual([node]);
+    expect(() => targets.remember(scope, [{ ...node, nodeId: 'node-2' }])).toThrow('identity changed');
+    expect(() => targets.inspect(scope, [{ ...node, host: 'next.test' }])).toThrow('already pinned');
+    expect(() => targets.remember(scope, [{ ...node, nodeId: 1 as never }])).toThrow('Corrupt');
+    expect(targets.inspect(scope).revision).toBe(1);
+  });
   it('retains old destinations after reopening and merging a changed declaration', async () => {
     const { targets, store } = fixture();
     const first = { host: 'first.test', port: 9700, applications: true };

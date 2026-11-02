@@ -290,6 +290,8 @@ export interface IStackConfig {
 export interface IStackNode {
   /** Node hostname or IP */
   host: string;
+  /** Stable fleet identity of this recipient. Required for clustered lifecycle effects. */
+  nodeId?: string;
   /** Omnitron daemon port on this node (default: 9700) */
   port?: number;
   /** Node role in the stack */
@@ -768,6 +770,8 @@ export interface IDaemonConfig {
     enabled: boolean;
     discovery?: 'postgres' | 'redis' | 'static';
     clusterId?: string;
+    /** This installation's enrolled recipient identity, independent of its address. */
+    recipientId?: string;
     leaseTtlMs?: number;
     /** @deprecated Rejected when enabled; legacy peer voting was unsafe. */
     peers?: string[];

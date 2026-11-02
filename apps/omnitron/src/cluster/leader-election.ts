@@ -1,10 +1,11 @@
 /** PostgreSQL-authoritative leadership; no peer voting or anonymous authority. */
 import { EventEmitter } from 'node:events';
-import { randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { FailureTracker } from '@omnitron-dev/titan/utils';
 import type { LeaseGrant, LeaseStore } from '@omnitron-dev/titan-database/coordination';
 import type { FleetService } from '../services/fleet.service.js';
+import { StopSigner } from './stop-authority.js';
+import type { NodeStackStopPlan } from '../project/node-stack-stop.js';
 
 export type ElectionState = 'follower' | 'candidate' | 'leader';
 export interface ElectionConfig {
@@ -28,10 +29,21 @@ export interface ClusterStateInfo {
   leaseRemainingMs: number;
   /** A leadership observation does not fence an external side effect. */
   effectFencing: 'recipient-required';
+  fencedOperations: readonly ['stack.stop'];
 }
 const DEFAULT_CONFIG: ElectionConfig = {
   clusterId: 'default', leaseTtlMs: 15_000, heartbeatInterval: 2_000,
 };
+export function electionConfig(options?: Partial<ElectionConfig>): ElectionConfig {
+  const config = { ...DEFAULT_CONFIG, ...options };
+  const { clusterId, leaseTtlMs, heartbeatInterval } = config;
+  if (typeof clusterId !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(clusterId)) throw new TypeError('Invalid clusterId');
+  if (!Number.isSafeInteger(leaseTtlMs) || leaseTtlMs < 1000 || leaseTtlMs > 3_600_000 ||
+      !Number.isSafeInteger(heartbeatInterval) || heartbeatInterval < 100 || heartbeatInterval * 3 > leaseTtlMs) {
+    throw new TypeError('Lease TTL must be 1000–3600000ms and at least three heartbeat intervals (>=100ms)');
+  }
+  return config;
+}
 type Logger = Pick<import('@omnitron-dev/titan/module/logger').ILogger, 'info' | 'warn' | 'error' | 'debug'>;
 
 export class LeaderElection extends EventEmitter {
@@ -45,7 +57,7 @@ export class LeaderElection extends EventEmitter {
   private expiry: NodeJS.Timeout | null = null;
   private running = false;
   private generation = 0;
-  private incarnation = '';
+  private signer: StopSigner | null = null;
   private inFlight: Promise<void> | null = null;
   private startedAt = performance.now();
   private authority: ClusterStateInfo['authority'] = 'stopped';
@@ -62,13 +74,7 @@ export class LeaderElection extends EventEmitter {
     config?: Partial<ElectionConfig>,
   ) {
     super();
-    this.config = { ...DEFAULT_CONFIG, ...config };
-    const { clusterId, leaseTtlMs, heartbeatInterval } = this.config;
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(clusterId)) throw new TypeError('Invalid clusterId');
-    if (!Number.isSafeInteger(leaseTtlMs) || leaseTtlMs < 1000 || leaseTtlMs > 3_600_000 ||
-        !Number.isSafeInteger(heartbeatInterval) || heartbeatInterval < 100 || heartbeatInterval * 3 > leaseTtlMs) {
-      throw new TypeError('Lease TTL must be 1000–3600000ms and at least three heartbeat intervals (>=100ms)');
-    }
+    this.config = electionConfig(config);
   }
 
   async start(): Promise<void> {
@@ -76,7 +82,7 @@ export class LeaderElection extends EventEmitter {
     if (this.inFlight) await this.inFlight;
     if (!this.fleet.selfNodeId) throw new Error('Cluster authority requires this controller to be registered in the fleet');
     this.nodeId = this.fleet.selfNodeId;
-    this.incarnation = randomUUID();
+    this.signer = new StopSigner();
     this.generation++;
     this.startedAt = performance.now();
     this.running = true;
@@ -105,6 +111,20 @@ export class LeaderElection extends EventEmitter {
   }
   get isFollower(): boolean { return !this.isLeader && this.state === 'follower'; }
   get isCandidate(): boolean { return this.state === 'candidate'; }
+  /** Single-controller operations never call this path. Only the current incarnation can sign. */
+  authorizeStop(plan: NodeStackStopPlan) {
+    if (!this.isLeader || !this.current || !this.signer) throw new Error('Stack stop requires a confirmed cluster leader');
+    return this.signer.issue(plan, this.current);
+  }
+  async confirmStopAuthority(): Promise<void> {
+    const held = this.current;
+    if (!this.isLeader || !held) throw new Error('Stack stop requires a confirmed cluster leader');
+    const current = await this.leases.read(held.key);
+    if (!this.isLeader || !current || current.key !== held.key || current.owner !== held.owner ||
+        current.incarnation !== held.incarnation || current.epoch !== held.epoch || this.current?.epoch !== held.epoch) {
+      throw new Error('Cluster authority changed before stack stop');
+    }
+  }
   get currentState(): ElectionState { void this.isLeader; return this.state; }
   get currentTerm(): string | null { return this.observed?.epoch ?? null; }
   get currentLeaderId(): string | null { return this.getClusterState().leaderId; }
@@ -120,6 +140,7 @@ export class LeaderElection extends EventEmitter {
       leaseExpiresAt: fresh ? this.observed?.expiresAt ?? null : null,
       leaseRemainingMs: fresh ? Math.max(0, Math.floor(this.deadline - performance.now())) : 0,
       effectFencing: 'recipient-required',
+      fencedOperations: ['stack.stop'],
       ...(leader ? { state: 'leader' as const } : {}),
     };
   }
@@ -166,7 +187,7 @@ export class LeaderElection extends EventEmitter {
   private async reconcile(generation: number): Promise<void> {
     const requestStarted = performance.now();
     const wallStarted = Date.now();
-    const identity = { key: `omnitron/cluster/${this.config.clusterId}`, owner: this.nodeId, incarnation: this.incarnation };
+    const identity = { key: `omnitron/cluster/${this.config.clusterId}`, owner: this.nodeId, incarnation: this.signer!.incarnation };
     try {
       const nodes = await this.fleet.listNodes();
       if (!nodes.some(node => node.id === this.nodeId)) throw new Error('Controller registration is missing');

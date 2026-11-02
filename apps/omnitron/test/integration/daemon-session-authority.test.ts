@@ -10,6 +10,8 @@ import { AuthenticationManager, AuthorizationManager } from '@omnitron-dev/titan
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { createAuthContextWrapper } from '../../src/services/auth-context.js';
 import { createDaemonTokenValidator, createDaemonPrincipalValidator } from '../../src/services/daemon-authority.js';
+import { ClusterRpcService } from '../../src/cluster/cluster.rpc-service.js';
+import { ProjectRpcService } from '../../src/services/project.rpc-service.js';
 
 @Service('SessionFixture@1.0.0')
 class SessionFixture {
@@ -42,6 +44,8 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
     netron.registerTransport('ws', () => new WebSocketTransport());
     netron.registerTransportServer('ws', { name: 'ws', options: { host: '127.0.0.1', port: 0, invocationWrapper: wrapper } });
     await netron.start(); await netron.peer.exposeService(fixture);
+    await netron.peer.exposeService(new ClusterRpcService({ isLeader: false, getClusterState: () => ({ state: 'follower' }) } as never));
+    await netron.peer.exposeService(new ProjectRpcService({ prepareNodeStackStop: () => 'prepared', executeNodeStackStop: () => 'executed' } as never));
     ws = `ws://127.0.0.1:${(netron.transportServers.get('ws') as { port: number }).port}`;
     http = new HttpNativeServer({ host: '127.0.0.1', port: 0, cors: false, invocationWrapper: wrapper });
     http.setPeer(netron.peer); await http.listen();
@@ -69,6 +73,17 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
   it('rejects a signed admin credential without a human session', async () => {
     expect((await request(await mint({ role: 'admin' }))).status).toBe(401);
     expect(fixture.effects).toBe(0);
+  });
+  it('separates human stop authority, controller protocol and administrative leadership transfer at HTTP ingress', async () => {
+    for (const principal of ['viewer', 'operator', 'admin', 'service_role']) {
+      role = principal;
+      const credential = await mint({ role: principal, ...(principal !== 'service_role' && { sid: 'active' }) });
+      expect((await request(credential, 'getClusterState', { service: 'OmnitronCluster' })).status).toBe(200);
+      expect((await request(credential, 'stepDown', { service: 'OmnitronCluster' })).status).toBe(principal === 'admin' ? 200 : 403);
+      for (const method of ['prepareNodeStackStop', 'executeNodeStackStop']) {
+        expect((await request(credential, method, { service: 'OmnitronProject', input: [{}] })).status).toBe(principal === 'service_role' ? 200 : 403);
+      }
+    }
   });
   it('refuses cached admin tokens immediately after demotion and cannot be tricked by caller metadata', async () => {
     expect((await request()).status).toBe(200);

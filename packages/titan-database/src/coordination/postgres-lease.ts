@@ -135,9 +135,12 @@ export class PostgresLeaseStore<DB> implements LeaseStore {
 
   async read(key: string): Promise<LeaseGrant | null> {
     identity({ key, owner: 'read', incarnation: 'read' });
-    const result = await sql<LeaseRow>`SELECT ${projection} FROM titan_database_leases
-      WHERE key = ${key} AND expires_at > clock_timestamp()`.execute(this.db);
-    return grant(result.rows[0]);
+    const result = await sql<LeaseRow & { standby: boolean }>`SELECT pg_is_in_recovery() AS standby, held.*
+      FROM (VALUES (1)) AS single(n) LEFT JOIN LATERAL
+      (SELECT ${projection} FROM titan_database_leases WHERE key = ${key} AND expires_at > clock_timestamp()) AS held ON true`.execute(this.db);
+    const row = result.rows[0];
+    if (!row || row.standby) throw new Error('Lease authority requires a PostgreSQL primary');
+    return grant(row.key ? row : undefined);
   }
 
   /** Serialize an effect and lease transfer in one database transaction. */

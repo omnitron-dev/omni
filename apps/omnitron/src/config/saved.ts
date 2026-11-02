@@ -13,6 +13,7 @@ export function effectiveBindHost(saved: { role?: string; host?: string } | null
 }
 
 export interface SavedDaemonConfig {
+  cluster?: IDaemonConfig['cluster'];
   executionHost?: IDaemonConfig['executionHost'];
   role: DaemonRole;
   master?: { host: string; port: number };
@@ -75,6 +76,7 @@ export function savedDaemonOverrides(saved: SavedDaemonConfig | null): Partial<I
   if (!saved) return {};
   return {
     role: saved.role,
+    ...(saved.cluster !== undefined ? { cluster: saved.cluster } : {}),
     ...(saved.master ? { master: saved.master } : {}),
     ...(saved.httpRateLimit ? { httpRateLimit: saved.httpRateLimit } : {}),
     ...(saved.files !== undefined ? { files: saved.files } : {}),

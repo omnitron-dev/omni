@@ -300,6 +300,7 @@ export class OmnitronDaemon {
   /** Set by the shutdown task so nothing schedules work on the way out. */
   private isShuttingDown = false;
   private leaderElection: import('../cluster/leader-election.js').LeaderElection | null = null;
+  private clusterDb?: import('kysely').Kysely<unknown>;
   private configSyncService: any = null;
   private metricsServer: import('../observability/index.js').MetricsServer | null = null;
   private metricsBridge: import('../observability/index.js').MetricsBridge | null = null;
@@ -1046,13 +1047,34 @@ export class OmnitronDaemon {
       // level and reaches nobody without it.
       loggerModule.logger.child({ component: 'infra' }),
     );
-    await this.app.netron.peer.exposeService(infraRpcService);
-
     // Project + Stack management RPC service
     const projectService = await container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
+    const stateStore = await container.resolveAsync<import('./daemon-state-store.service.js').DaemonStateStore>(DAEMON_STATE_STORE_TOKEN);
+    const { clusterDatabaseUrl, clusterEnrollment } = await import('../cluster/enrollment.js');
+    const connectionString = dc.cluster?.enabled
+      ? clusterDatabaseUrl((await import('../shared/env-config.js')).getEnv().OMNITRON_CLUSTER_DATABASE_URL) : undefined;
+    const audience = clusterEnrollment(dc.cluster, stateStore);
+    if (audience && connectionString) {
+      const { createOmnitronDb } = await import('../database/connection.js');
+      const { PostgresLeaseStore } = await import('@omnitron-dev/titan-database/coordination');
+      const { StopRecipient } = await import('../cluster/stop-authority.js');
+      this.clusterDb = await createOmnitronDb<unknown>({ connectionString, max: 2, connectionTimeoutMillis: 2500, statement_timeout: 5000 });
+      const leases = new PostgresLeaseStore(this.clusterDb);
+      if (!isSlave) {
+        const { LeaderElection } = await import('../cluster/leader-election.js');
+        const fleet = await container.resolveAsync<FleetService>(FLEET_SERVICE_TOKEN);
+        this.leaderElection = new LeaderElection(audience.nodeId, fleet, loggerModule.logger, leases, {
+          clusterId: audience.clusterId,
+          ...(dc.cluster?.leaseTtlMs != null && { leaseTtlMs: dc.cluster.leaseTtlMs }),
+          ...(dc.cluster?.heartbeatInterval != null && { heartbeatInterval: dc.cluster.heartbeatInterval }),
+        });
+      }
+      projectService.setClusterStop(new StopRecipient(audience, leases, stateStore), this.leaderElection ?? undefined);
+    }
     const projectRpcService = new ProjectRpcService(projectService, audit);
     projectService.setHostedInfrastructure(() => this.infraService ?? undefined, scope => infraRpcService.drainStackProvisioning(scope));
     infraRpcService.setStackOperationGate(scope => projectService.assertStackMutable(scope));
+    await this.app.netron.peer.exposeService(infraRpcService);
     await this.app.netron.peer.exposeService(projectRpcService);
 
     // Releases. Master-only, like the builds themselves: a release is built
@@ -1341,31 +1363,8 @@ export class OmnitronDaemon {
       await this.app.netron.peer.exposeService(deployRpcService);
     }
 
-    // Cluster — leader election + config sync (optional, enabled via config, master only)
-    // LeaderElection is created here once and stored; startBackgroundServices() starts it.
-    if (dc.cluster?.enabled && !isSlave) {
-      const { LeaderElection } = await import('../cluster/leader-election.js');
+    if (this.leaderElection) {
       const { ClusterRpcService: ClusterRpc } = await import('../cluster/cluster.rpc-service.js');
-      const { PostgresLeaseStore } = await import('@omnitron-dev/titan-database/coordination');
-      if ((dc.cluster.discovery && dc.cluster.discovery !== 'postgres') || dc.cluster.peers || dc.cluster.electionTimeout) {
-        throw new Error('Cluster coordination uses PostgreSQL leases; legacy discovery, peers and electionTimeout settings are unsupported');
-      }
-
-      const nodeId = `${os.hostname()}-${dc.port}`;
-      const clusterFleetService = await container.resolveAsync<FleetService>(FLEET_SERVICE_TOKEN);
-
-      this.leaderElection = new LeaderElection(
-        nodeId,
-        clusterFleetService,
-        loggerModule.logger,
-        new PostgresLeaseStore(await container.resolveAsync<import('kysely').Kysely<import('../database/schema.js').OmnitronDatabase>>(OMNITRON_DB_TOKEN)),
-        {
-          ...(dc.cluster.clusterId && { clusterId: dc.cluster.clusterId }),
-          ...(dc.cluster.leaseTtlMs != null && { leaseTtlMs: dc.cluster.leaseTtlMs }),
-          ...(dc.cluster!.heartbeatInterval != null && { heartbeatInterval: dc.cluster!.heartbeatInterval }),
-        }
-      );
-
       const clusterRpcService = new ClusterRpc(this.leaderElection);
       // The local node's own election state, for the cross-node reader.
       this.nodeManagerRpcService?.setLeaderElection(this.leaderElection);
@@ -2768,6 +2767,7 @@ export class OmnitronDaemon {
       try {
         if (this.leaderElection) await this.leaderElection.stop();
       } catch { /* non-critical */ }
+      if (this.clusterDb) await this.clusterDb.destroy();
 
       try {
         if (this.configSyncService?.stopPeriodicSync) this.configSyncService.stopPeriodicSync();

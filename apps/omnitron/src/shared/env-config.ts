@@ -60,6 +60,8 @@ export interface OmnitronEnvShape {
 
   /** Override the omnitron-pg connection string used by migrate.ts. */
   OMNITRON_DATABASE_URL?: string;
+  /** Shared primary used only for explicitly enrolled cluster controllers and recipients. */
+  OMNITRON_CLUSTER_DATABASE_URL?: string;
 
   /** Master daemon stamps slave processes with these. Read-only in code. */
   OMNITRON_PROJECT?: string;
@@ -113,6 +115,7 @@ function loadSnapshot(): OmnitronEnvShape {
     OMNITRON_NO_INFRA: raw['OMNITRON_NO_INFRA'] === '1',
     OMNITRON_NO_WATCH: raw['OMNITRON_NO_WATCH'] === '1',
     ...(raw['OMNITRON_DATABASE_URL'] !== undefined && { OMNITRON_DATABASE_URL: raw['OMNITRON_DATABASE_URL'] }),
+    ...(raw['OMNITRON_CLUSTER_DATABASE_URL'] !== undefined && { OMNITRON_CLUSTER_DATABASE_URL: raw['OMNITRON_CLUSTER_DATABASE_URL'] }),
     ...(raw['OMNITRON_PROJECT'] !== undefined && { OMNITRON_PROJECT: raw['OMNITRON_PROJECT'] }),
     ...(raw['OMNITRON_STACK'] !== undefined && { OMNITRON_STACK: raw['OMNITRON_STACK'] }),
     ...(raw['OMNITRON_STACK_TYPE'] !== undefined && { OMNITRON_STACK_TYPE: raw['OMNITRON_STACK_TYPE'] }),

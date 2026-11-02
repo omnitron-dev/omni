@@ -26,6 +26,7 @@ export function topologySpec(config: IStackConfig, apps: readonly IEcosystemAppE
     apps: names,
     nodes: (config.nodes ?? []).map((node) => ({
       host: node.host,
+      ...(node.nodeId && { nodeId: node.nodeId }),
       port: node.port ?? 9700,
       role: node.role,
       ...(node.label ? { label: node.label } : {}),
@@ -57,7 +58,10 @@ export function validateTopologySpec(input: unknown): TopologySpec {
   if (!Array.isArray(spec.nodes) || spec.nodes.length > 64)
     throw new Error('Topology supports up to 64 explicitly placed nodes');
   const nodes = spec.nodes.map((value, index) => {
-    const node = object(value, ['host', 'port', 'role', 'label', 'apps'], `node ${index + 1}`);
+    const node = object(value, ['nodeId', 'host', 'port', 'role', 'label', 'apps'], `node ${index + 1}`);
+    if (node.nodeId !== undefined && (typeof node.nodeId !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(node.nodeId))) {
+      throw new Error('Invalid fleet recipient identity');
+    }
     if (typeof node.host !== 'string' || !node.host || node.host.length > 253 || /[\s/\\\0]/.test(node.host))
       throw new Error('Invalid node host');
     if (!Number.isInteger(node.port) || Number(node.port) < 1 || Number(node.port) > 65535)
@@ -73,6 +77,7 @@ export function validateTopologySpec(input: unknown): TopologySpec {
       host: node.host,
       port: Number(node.port),
       role: node.role as TopologySpec['nodes'][number]['role'],
+      ...(typeof node.nodeId === 'string' && { nodeId: node.nodeId }),
       ...(node.label ? { label: node.label as string } : {}),
       apps: names(node.apps, 'Node applications'),
     };
@@ -121,7 +126,7 @@ export function topologyChanges(before: TopologySpec, after: TopologySpec): Topo
     const key = stackNodeKey(node.host, node.port);
     const prior = priorNodes.get(key);
     if (!prior) continue;
-    const fields = (['role', 'label'] as const).flatMap((field) =>
+    const fields = (['role', 'label', 'nodeId'] as const).flatMap((field) =>
       (prior[field] ?? null) === (node[field] ?? null)
         ? []
         : [{ field, before: prior[field] ?? null, after: node[field] ?? null }]

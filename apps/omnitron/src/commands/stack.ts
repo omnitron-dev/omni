@@ -156,7 +156,7 @@ export async function stackStatusCommand(projectName: string, stackName: string)
       const stop = stack.stopOperation;
       log.info(`Last stop: ${stop.phase}${stop.supersededAt ? ' (followed by a new start)' : ''} — ${stop.id}`);
       if (stop.error) log.warn(stop.error);
-      for (const node of stop.nodes) log.info(`${node.node}: ${node.outcome}${node.reason ? ` — ${node.reason}` : ''}`);
+      for (const node of stop.nodes) log.info(`${node.node}: ${node.outcome}${node.authority ? ` · ${node.authority.clusterId} epoch ${node.authority.epoch} (${node.authority.nodeId})` : ''}${node.reason ? ` — ${node.reason}` : ''}`);
     }
 
     // Infrastructure
@@ -375,7 +375,7 @@ export async function stackStopCommand(projectName: string, stackName: string): 
     const result = await svc.stopStack({ project: projectName, stack: stackName });
     if (result.status !== 'stopped' || result.stopOperation?.phase !== 'stopped') throw new Error('Daemon did not confirm the complete stack stop');
     if (emitJson({ project: projectName, stack: stackName, action: 'stopped', operation: result.stopOperation })) return;
-    for (const node of result.stopOperation.nodes) emitInfo(`${node.node}: ${node.outcome}${node.observedAt ? ` at ${node.observedAt}` : ''}`);
+    for (const node of result.stopOperation.nodes) emitInfo(`${node.node}: ${node.outcome}${node.authority ? ` · ${node.authority.clusterId} epoch ${node.authority.epoch} (${node.authority.nodeId})` : ''}${node.observedAt ? ` at ${node.observedAt}` : ''}`);
     emitSuccess(`Stack ${projectName}/${stackName} stopped`);
   } catch (err) {
     reportLifecycleError(err, `stack ${projectName}/${stackName} to stop`, {

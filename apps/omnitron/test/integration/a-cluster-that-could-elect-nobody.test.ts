@@ -1,7 +1,10 @@
-import { beforeAll, afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sql } from 'kysely';
 import { PostgresLeaseStore, LeaseLostError } from '@omnitron-dev/titan-database/coordination';
 import { databaseOfItsOwn, type OwnDatabase } from './a-database-of-its-own.js';
+import { StopSigner, StopRecipient } from '../../src/cluster/stop-authority.js';
+import { NodeStackStop } from '../../src/project/node-stack-stop.js';
+import { LeaderElection } from '../../src/cluster/leader-election.js';
 
 let own: OwnDatabase;
 let store: PostgresLeaseStore<unknown>;
@@ -14,6 +17,66 @@ afterAll(async () => { await own?.drop(); });
 beforeEach(async () => { await sql`TRUNCATE titan_database_leases`.execute(own.db); });
 
 describe('PostgreSQL-authoritative cluster leases', () => {
+  it('fences a queued stack stop and each later effect across real controller replacement', async () => {
+    const data = new Map<string, unknown>();
+    const state = {
+      kvGetSync: <T>(key: string) => (structuredClone(data.get(key)) ?? null) as T | null,
+      kvUpdateSync: <T>(key: string, update: (previous: T | null) => T) => {
+        const next = update((structuredClone(data.get(key)) ?? null) as T | null);
+        data.set(key, structuredClone(next)); return next;
+      },
+    };
+    const audience = { clusterId: 'west', nodeId: 'node-7' };
+    const request = { project: 'sample', stack: 'prod', applications: true, audience };
+    const runtime = { project: 'sample', stack: 'deployed' };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const controllers = ['a', 'b'].map(id => new LeaderElection(id, {
+      selfNodeId: id, listNodes: async () => (['a','b'].map(n => ({ id: n })) as never),
+    }, logger, store, { clusterId: audience.clusterId }));
+    const [first, second] = controllers as [LeaderElection, LeaderElection];
+    const ports = {
+      definition: async () => ({ runtime, fingerprint: 'immutable-definition' }),
+      execution: {
+        inspectStackExecution: async () => ({ ...runtime, revision: 0, phase: 'running' as const, apps: [] }),
+        stopStackExecution: vi.fn(async () => {
+          await first.stepDown(); await second.forceElection();
+          return { ...runtime, revision: 1, operationId: '', stopped: [], observedAt: new Date().toISOString() };
+        }),
+      },
+      containers: async () => [{ id: 'a'.repeat(64), name: 'sample-db' }],
+      disableResume: vi.fn(), retireInfrastructure: vi.fn(), removeContainer: vi.fn(),
+    };
+    const node = new NodeStackStop(state, ports);
+    const recipient = new StopRecipient(audience, store, state);
+    node.setRecipient(recipient);
+    try {
+      await first.start(); await second.start();
+      const plan = await node.prepare(request);
+      const permit = first.authorizeStop(plan);
+      await expect(node.prepare({ ...request, audience: { ...audience, nodeId: 'other' } })).rejects.toThrow('enrollment');
+      await expect(recipient.admit({ ...plan, stack: 'other' }, permit)).rejects.toThrow('signature');
+      await expect(recipient.admit({ ...plan, containers: [] }, permit)).rejects.toThrow('signature');
+      await expect(recipient.admit(plan, { ...permit, signature: 'A'.repeat(86) })).rejects.toThrow('signature');
+      await expect(node.execute(plan)).rejects.toThrow('authority');
+      expect(ports.disableResume).not.toHaveBeenCalled();
+      await expect(node.execute({ ...plan, permit })).rejects.toThrow('no longer holds');
+      expect(ports.execution.stopStackExecution).toHaveBeenCalledOnce();
+      expect(ports.retireInfrastructure).not.toHaveBeenCalled();
+      expect(ports.removeContainer).not.toHaveBeenCalled();
+      expect(() => first.authorizeStop(plan)).toThrow('confirmed');
+      const restarted = new NodeStackStop(state, ports);
+      restarted.setRecipient(new StopRecipient(audience, store, state));
+      await expect(restarted.execute({ ...plan, permit })).rejects.toThrow('no longer holds');
+      const current = second.authorizeStop(plan);
+      expect(BigInt(current.epoch)).toBeGreaterThan(BigInt(permit.epoch));
+      await recipient.admit(plan, current);
+      const old = { ...permit, key:'omnitron/cluster/west', remainingMs:10000, expiresAt:new Date(Date.now()+10000).toISOString() };
+      const restored = new StopRecipient(audience, { read: async () => old }, state);
+      await expect(restored.admit(plan, permit)).rejects.toThrow('durable node fence');
+      const impostor = new StopSigner();
+      expect(() => impostor.issue(plan, old)).toThrow('does not own');
+    } finally { await first.stop(); await second.stop(); }
+  });
   it('admits exactly one of concurrent controllers', async () => {
     const results = await Promise.all(Array.from({ length: 16 }, (_, i) => store.acquire(claimant(`node-${i}`), 15000)));
     expect(results.filter(Boolean)).toHaveLength(1);

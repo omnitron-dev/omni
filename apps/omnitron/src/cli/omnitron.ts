@@ -806,7 +806,7 @@ const cluster = program.command('cluster').description('Cluster management — l
 cluster
   .command('status')
   .description('Show cluster state: leader, followers, election term')
-  .action(async () => {
+  .structuredAction(async () => {
     const { clusterStatusCommand } = await import('../commands/cluster.js');
     await clusterStatusCommand();
   });

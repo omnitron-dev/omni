@@ -6,6 +6,7 @@
  */
 
 import { log, table, prism } from '@xec-sh/kit';
+import { emitError, emitJson } from './output.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { IOmnitronFleetService } from '../shared/dto/services.js';
 import type { ClusterRpcService } from '../cluster/cluster.rpc-service.js';
@@ -23,11 +24,12 @@ export async function clusterStatusCommand(): Promise<void> {
     if (!cluster) {
       // An answer, not a failure: the question was what the cluster looks
       // like, and on this daemon there is none.
-      reportClusterOff();
+      if (!emitJson({ enabled: false, reason: 'No local cluster election service' })) reportClusterOff();
       return;
     }
 
     const state = await cluster.getClusterState();
+    if (emitJson({ enabled: true, ...state })) return;
 
     log.info(`${prism.bold('Cluster State')}`);
     log.info(`  Node ID:    ${state.nodeId}`);
@@ -37,7 +39,7 @@ export async function clusterStatusCommand(): Promise<void> {
     log.info(`  Authority:  ${state.authority} (${state.coordination})`);
     log.info(`  Lease:      ${state.leaseRemainingMs} ms remaining`);
     if (state.reason) log.warn(`  Reason:     ${state.reason}`);
-    log.info('  Effects:    require recipient-side fencing');
+    log.info(`  Fenced operations: ${state.fencedOperations?.join(', ') || 'unreported'}`);
     log.info(`  Uptime:     ${formatDuration(state.uptime)}`);
 
     // Also show fleet nodes for context
@@ -73,7 +75,7 @@ export async function clusterStatusCommand(): Promise<void> {
       log.warn(`Fleet nodes not shown: ${(err as Error).message}`);
     }
   } catch (err) {
-    log.error(`Failed to get cluster status: ${(err as Error).message}`);
+    emitError(`Failed to get cluster status: ${(err as Error).message}`);
     process.exitCode = 1;
   } finally {
     await client.disconnect();
@@ -143,20 +145,9 @@ async function clusterService(client: DaemonClient): Promise<ClusterRpc | null> 
   }
 }
 
-/**
- * What a daemon without cluster mode is told.
- *
- * The advice here was «Enable it in omnitron.config.ts: cluster: { enabled:
- * true, discovery: 'redis' }». The daemon does not read that file for its own
- * settings: all three start paths — `daemon-entry.ts`, `up.ts`,
- * `daemon-cmd.ts` — take `cluster` from DEFAULT_DAEMON_CONFIG alone
- * (`enabled: false`), and `discovery` is marked NOT READ where it is
- * declared. Following the advice changed nothing. No setting switches cluster
- * mode on today, so none is named.
- */
 function reportClusterOff(): void {
-  log.warn('Cluster mode is off on this daemon: it runs no leader election (no OmnitronCluster service).');
-  log.info('No configuration switches it on yet: every daemon start path takes `cluster` from the built-in defaults, `enabled: false`.');
+  log.warn('This daemon runs no local cluster election service.');
+  log.info('For HA, enroll the controller in the daemon config.json and configure OMNITRON_CLUSTER_DATABASE_URL. Workers verify authority without running elections.');
 }
 
 function formatElectionState(state: string): string {

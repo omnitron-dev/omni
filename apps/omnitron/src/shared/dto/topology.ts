@@ -6,6 +6,7 @@ export interface TopologySpec {
   type: 'local' | 'remote' | 'cluster';
   apps: string[];
   nodes: Array<{
+    nodeId?: string;
     host: string;
     port: number;
     role: 'app' | 'database' | 'cache' | 'gateway' | 'worker' | 'master';
@@ -28,7 +29,7 @@ export interface TopologyChange {
   resource: 'application' | 'node';
   name: string;
   node: string;
-  fields?: Array<{ field: 'role' | 'label'; before: string | null; after: string | null }>;
+  fields?: Array<{ field: 'role' | 'label' | 'nodeId'; before: string | null; after: string | null }>;
 }
 export interface TopologyIssue {
   severity: 'error' | 'warning';

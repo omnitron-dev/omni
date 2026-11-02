@@ -7,6 +7,7 @@ import type { PipelineEvent, PreparedScript } from '@xec-sh/ops';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { redactDiagnosticText } from '@omnitron-dev/titan/diagnostics';
 import type { OmnitronDatabase, PipelinesTable, PipelineRunsTable } from '../database/schema.js';
+import { sshConfig } from '../execution/execution.service.js';
 import type { NodeManagerService } from './node-manager.service.js';
 import {
   PIPELINE_LIMITS,
@@ -231,7 +232,7 @@ export class PipelineService {
           const node = this.nodes?.getNode(step.nodeId);
           if (!node || node.isLocal) throw new Error(`Unknown remote node: ${step.nodeId}`);
           const ssh = await this.nodes!.nodeToSshTarget(node);
-          target = { type: 'ssh', ...ssh, username: ssh.username ?? 'root', hostKeyChecking: 'strict' };
+          target = { type: 'ssh', ...sshConfig(ssh) };
         }
         let command: Command;
         if (step.kind === 'xec') {

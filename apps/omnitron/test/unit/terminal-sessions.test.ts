@@ -37,6 +37,7 @@ function fixture(policy = {}) {
   };
   const service = new TerminalRpcService(
     {
+      emit: vi.fn(),
       getNode: () => node,
       nodeToSshTarget: async () => ({ host: node.host, username: node.sshUser, password: 'private-password' }),
     } as any,

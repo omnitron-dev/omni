@@ -43,7 +43,7 @@ beforeAll(async () => {
     new AuthorizationManager(logger)
   );
   terminal = new TerminalRpcService(
-    { getNode: () => node, nodeToSshTarget: async () => ({ host: node.host, username: node.sshUser }) } as never,
+    { emit: () => true, getNode: () => node, nodeToSshTarget: async () => ({ host: node.host, username: node.sshUser }) } as never,
     { validateSession: async (id: string) => ({ id, role }) } as never,
     {
       kvGetSync: (key: string) => pins.get(key) ?? null,

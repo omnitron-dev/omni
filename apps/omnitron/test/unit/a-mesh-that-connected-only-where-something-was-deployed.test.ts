@@ -27,7 +27,7 @@ import { describe, it, expect, vi } from 'vitest';
 import net from 'node:net';
 
 import { startMesh, meshMembers, type MeshNode } from '../../src/cluster/mesh.js';
-import { probeTcp, mintServiceToken, createMeshDialer, directLink, stableNodeUuid, uuidV5, READ_DAEMON_SECRET } from '../../src/cluster/mesh-link.js';
+import { assertMeshCredentialEndpoint, meshRegistration, probeTcp, mintServiceToken, createMeshDialer, directLink, stableNodeUuid, uuidV5, READ_DAEMON_SECRET } from '../../src/cluster/mesh-link.js';
 
 const logger: any = {
   info: () => {}, warn: () => {}, error: () => {}, debug: () => {}, trace: () => {}, fatal: () => {},
@@ -123,22 +123,30 @@ describe('the mesh follows the node registry', () => {
     expect(c.removed).toEqual([{ host: '10.0.0.7', port: 9700 }]);
   });
 
-  it('keeps the connection when another registry row still points at it', () => {
-    // The registry holds two rows for one machine here — that is how a
-    // single node once drew two health checks an hour on the same socket.
-    // The connector is keyed on host:port, so removing one row must not
-    // disconnect the other's connection: nothing would re-add it, and the
-    // survivor would sit in the map, joined, with nothing behind it.
+  it('waits for a unique registration and restores the surviving ID after a duplicate is removed', () => {
     const reg = registry([node({ id: 'a' }), node({ id: 'b' })]);
     const c = connector();
     startMesh({ registry: reg as never, connector: c, logger });
-
-    reg.emit('node:removed', 'b');
-    expect(c.removed).toEqual([]);
-
-    // ...and the last one out does disconnect it.
+    expect(c.added).toHaveLength(0);
     reg.emit('node:removed', 'a');
-    expect(c.removed).toEqual([{ host: '10.0.0.7', port: 9700 }]);
+    expect(c.addSlave).toHaveBeenCalledWith(expect.objectContaining({ nodeId: 'b' }));
+  });
+
+  it('revokes a peer when its address becomes ambiguous and serializes reconnection through close', async () => {
+    const reg = registry([node({ id: 'a' })]);
+    const c = connector();
+    let release!: () => void;
+    vi.mocked(c.removeSlave).mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+    startMesh({ registry: reg as never, connector: c, logger });
+    reg.emit('node:added', node({ id: 'b' }));
+    expect(c.removeSlave).toHaveBeenCalledTimes(1);
+    reg.emit('node:removed', 'a');
+    reg.emit('node:ssh-trust-changed', node({ id: 'b' }));
+    expect(c.added).toHaveLength(1);
+    release();
+    await Promise.resolve();
+    expect(c.added).toHaveLength(2);
+    expect(c.addSlave).toHaveBeenLastCalledWith(expect.objectContaining({ nodeId: 'b' }));
   });
 
   it('follows an edited address', () => {
@@ -152,6 +160,16 @@ describe('the mesh follows the node registry', () => {
     // Keeping the old connection makes the correction appear to do nothing.
     expect(c.removed).toEqual([{ host: '10.0.0.7', port: 9700 }]);
     expect(c.added.at(-1)).toEqual({ host: '10.0.0.77', port: 9800, label: 'edge-7' });
+  });
+
+  it.each(['node:ssh-trust-changed', 'node:updated'])('redials the peer after %s changes SSH trust', async (event) => {
+    const reg = registry([node({ sshPort: 22, sshUser: 'deploy' })]);
+    const c = connector();
+    startMesh({ registry: reg as never, connector: c, logger });
+    reg.emit(event, node({ sshPort: event === 'node:updated' ? 2222 : 22, sshUser: 'deploy' }));
+    expect(c.removed).toEqual([{ host: '10.0.0.7', port: 9700 }]);
+    await Promise.resolve();
+    expect(c.added).toHaveLength(2);
   });
 
   it('does not churn a connection when something else about a node changes', () => {
@@ -199,12 +217,14 @@ describe('reaching a node', () => {
     expect(Date.now() - started).toBeLessThan(2_000);
   });
 
-  it('dials directly when the daemon port answers', async () => {
+  const loopbackTunnel = () => ({ host: '127.0.0.1', port: 55_555, close: vi.fn(async () => {}) });
+
+  it('sends credentials through SSH even when the public daemon port answers', async () => {
     const server = net.createServer();
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
     const port = (server.address() as net.AddressInfo).port;
 
-    const execution = { ssh: vi.fn(async () => ({ stdout: 'a-secret', stderr: '', exitCode: 0, duration: 1 })), tunnel: vi.fn() } as never;
+    const execution = { ssh: vi.fn(async () => ({ stdout: 'a-secret', stderr: '', exitCode: 0, duration: 1 })), tunnel: vi.fn(async () => loopbackTunnel()) } as never;
     const dial = createMeshDialer({
       logger, execution, subject: 'mesh:test',
       sshTargetFor: async () => ({ host: '127.0.0.1', username: 'root', password: 'x' }),
@@ -212,10 +232,10 @@ describe('reaching a node', () => {
 
     const link = await dial({ host: '127.0.0.1', port });
 
-    expect(link.via).toBe('direct');
-    expect(link.url).toBe(`tcp://127.0.0.1:${port}`);
+    expect(link.via).toBe('ssh-tunnel');
+    expect(link.url).toBe('tcp://127.0.0.1:55555');
     expect(link.token).toBeTruthy();
-    expect((execution as any).tunnel).not.toHaveBeenCalled();
+    expect((execution as any).tunnel).toHaveBeenCalledOnce();
 
     server.close();
   });
@@ -243,7 +263,7 @@ describe('reaching a node', () => {
   });
 
   it('says which door was tried when there is no way in', async () => {
-    const execution = { ssh: vi.fn(), tunnel: vi.fn() } as never;
+    const execution = { ssh: vi.fn(), tunnel: vi.fn(async () => loopbackTunnel()) } as never;
     const dial = createMeshDialer({
       logger, execution, subject: 'mesh:test', directProbeTimeoutMs: 200,
       sshTargetFor: async () => null,
@@ -262,7 +282,7 @@ describe('reaching a node', () => {
 
     const ssh = vi.fn(async () => ({ stdout: 'a-secret', stderr: '', exitCode: 0, duration: 1 }));
     const dial = createMeshDialer({
-      logger, execution: { ssh, tunnel: vi.fn() } as never, subject: 'mesh:test',
+      logger, execution: { ssh, tunnel: vi.fn(async () => loopbackTunnel()) } as never, subject: 'mesh:test',
       sshTargetFor: async () => ({ host: '127.0.0.1', username: 'root', password: 'x' }),
     });
 
@@ -284,7 +304,7 @@ describe('reaching a node', () => {
 
     const ssh = vi.fn(async () => ({ stdout: 'a-secret', stderr: '', exitCode: 0, duration: 1 }));
     const dial = createMeshDialer({
-      logger, execution: { ssh, tunnel: vi.fn() } as never, subject: 'mesh:test',
+      logger, execution: { ssh, tunnel: vi.fn(async () => loopbackTunnel()) } as never, subject: 'mesh:test',
       sshTargetFor: async () => ({ host: '127.0.0.1', username: 'root', password: 'x' }),
     });
 
@@ -313,7 +333,7 @@ describe('reaching a node', () => {
     const noisy: any = { ...logger, warn: (_o: unknown, m?: string) => warned.push(String(m)), child: () => noisy };
     const dial = createMeshDialer({
       logger: noisy,
-      execution: { ssh: vi.fn(async () => ({ stdout: '', stderr: 'no such file', exitCode: 1, duration: 1 })), tunnel: vi.fn() } as never,
+      execution: { ssh: vi.fn(async () => ({ stdout: '', stderr: 'no such file', exitCode: 1, duration: 1 })), tunnel: vi.fn(async () => loopbackTunnel()) } as never,
       subject: 'mesh:test',
       sshTargetFor: async () => ({ host: '127.0.0.1', username: 'root', password: 'x' }),
     });
@@ -327,6 +347,56 @@ describe('reaching a node', () => {
     expect(warned.join(' ')).toMatch(/cannot replicate/i);
 
     server.close();
+  });
+
+  it('refuses a public tunnel listener before reading the signing credential', async () => {
+    const close = vi.fn(async () => {});
+    const execution = { ssh: vi.fn(), tunnel: async () => ({ host: '0.0.0.0', port: 55555, close }) };
+    const dial = createMeshDialer({ logger, execution: execution as never, subject: 'mesh:test',
+      sshTargetFor: async () => ({ host: 'node.example', username: 'ops' }) });
+    await expect(dial({ host: 'node.example', port: 9700 })).rejects.toThrow(/loopback/);
+    expect(execution.ssh).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('never falls back to sending a credential directly if SSH fails', async () => {
+    const ssh = vi.fn();
+    const execution = { ssh, tunnel: async () => { throw new Error('SSH host rejected'); } };
+    const dial = createMeshDialer({ logger, execution: execution as never, subject: 'mesh:test',
+      sshTargetFor: async () => ({ host: 'node.example', username: 'ops' }) });
+    await expect(dial({ host: 'node.example', port: 9700 })).rejects.toThrow('SSH host rejected');
+    expect(ssh).not.toHaveBeenCalled();
+  });
+
+  it('binds registration to both the daemon address and registered identity', () => {
+    const n1 = node(), n2 = node({ id: 'n2', daemonPort: 9701 }), alias = node({ id: 'alias' });
+    expect(meshRegistration([n1, n2], { host: n1.host, port: 9701 })).toBe(n2);
+    expect(() => meshRegistration([n1, alias], { host: n1.host, port: 9700, nodeId: 'alias' })).toThrow(/ambiguous/i);
+    expect(() => meshRegistration([n1, alias], { host: n1.host, port: 9700 })).toThrow(/ambiguous/i);
+    expect(() => meshRegistration([n1, n2], { host: n1.host, port: 9701, nodeId: n1.id })).toThrow(/identity/);
+  });
+
+  it('refreshes the signing secret when SSH trust or the registered node changes', async () => {
+    const ssh = vi.fn(async () => ({ stdout: 'test-secret', exitCode: 0 }));
+    let pin = 'first';
+    const dial = createMeshDialer({ logger, execution: { ssh, tunnel: loopbackTunnel } as never, subject: 'mesh:test',
+      sshTargetFor: async () => ({ host: 'node.example', username: 'ops', expectedHostFingerprint: pin }) });
+    const target = { host: 'node.example', port: 9700, nodeId: 'original' };
+    const first = await dial(target);
+    pin = 'replacement';
+    await dial(target);
+    first.onRejected?.();
+    await dial(target);
+    await dial({ ...target, nodeId: 're-registered' });
+    expect(ssh).toHaveBeenCalledTimes(3);
+  });
+
+  it('restricts credential endpoints to numeric loopback TCP listeners', () => {
+    for (const url of ['tcp://127.0.0.1:9700', 'tcp://[::1]:9700']) expect(() => assertMeshCredentialEndpoint(url)).not.toThrow();
+    for (const url of ['tcp://172.17.0.1:9700', 'tcp://localhost:9700', 'tcp://127.0.0.1.example:9700',
+      'tcp://127.0.0.1@evil.test:9700', 'tcp://0.0.0.0:9700', 'tcp://[::]:9700', 'ws://127.0.0.1:9700']) {
+      expect(() => assertMeshCredentialEndpoint(url)).toThrow(/loopback/);
+    }
   });
 
   it('needs nothing arranged for a plain direct link', async () => {
@@ -373,7 +443,8 @@ describe('a refusal is not a broken connection', () => {
 
   it('accepts a node that accepts the credential', async () => {
     const { authenticatePeer } = await import('../../src/cluster/slave-connector.js');
-    const ok = { runTask: async () => ({ success: true }) };
+    const ok = { runTask: async () => ({ success: true, context: { roles: ['service_role'],
+      metadata: { principalType: 'service', expiresAt: Date.now() + 60_000 } } }) };
 
     await expect(authenticatePeer(ok, link(() => {}) as never)).resolves.toBeUndefined();
   });
@@ -396,7 +467,7 @@ describe('a refusal is not a broken connection', () => {
 
     const dial = createMeshDialer({
       logger: noisy,
-      execution: { ssh: vi.fn(async () => ({ stdout: 'a-secret', stderr: '', exitCode: 0, duration: 1 })), tunnel: vi.fn() } as never,
+      execution: { ssh: vi.fn(async () => ({ stdout: 'a-secret', stderr: '', exitCode: 0, duration: 1 })), tunnel: async () => ({ host: '127.0.0.1', port, close: async () => {} }) } as never,
       subject: 'mesh:test',
       sshTargetFor: async () => ({ host: '127.0.0.1', username: 'root', password: 'x' }),
     });

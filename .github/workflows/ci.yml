@@ -88,6 +88,13 @@ jobs:
           pnpm exec vitest run --maxWorkers 2
           test/integration/a-cluster-that-could-elect-nobody.test.ts
           test/integration/daemon-session-authority.test.ts
+          test/integration/mesh-source-authority.test.ts
+          test/integration/replication-reconciliation.test.ts
+          test/unit/mesh-recovery.test.ts
+          test/unit/a-mesh-that-connected-only-where-something-was-deployed.test.ts
+          test/unit/ssh-host-trust.test.ts
+          test/unit/node-registry-writes.test.ts
+          test/unit/sync-delivery.test.ts
           test/integration/installed-stack-recovery.test.ts
           test/unit/stack-effect-authority.test.ts
           test/unit/installed-stack-owner.test.ts

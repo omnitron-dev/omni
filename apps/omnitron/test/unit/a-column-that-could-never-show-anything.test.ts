@@ -63,7 +63,8 @@ function connectedSlave(connector: SlaveConnector, answer: () => Promise<ISyncSt
     lastError: null,
     reconnectAttempt: 0,
     reconnectTimer: null,
-    link: null,
+    authenticated: true,
+    link: { via: 'ssh-tunnel', url: 'tcp://127.0.0.1:1', token: 'worker-service', expiresAt: Date.now() + 300_000 },
   };
   // The sweep's own registry. Reached directly because the alternative is a
   // real TCP dial, and what is under test is what the connector does with

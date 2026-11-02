@@ -29,13 +29,15 @@ export interface MeshNode {
   name: string;
   host: string;
   daemonPort: number;
+  sshPort?: number;
+  sshUser?: string;
   isLocal: boolean;
 }
 
 /** The part of the node registry this needs — an EventEmitter with a list. */
 export interface MeshRegistry {
   listNodes(): MeshNode[];
-  on(event: 'node:added' | 'node:updated', listener: (node: MeshNode) => void): unknown;
+  on(event: 'node:added' | 'node:updated' | 'node:ssh-trust-changed', listener: (node: MeshNode) => void): unknown;
   on(event: 'node:removed', listener: (id: string) => void): unknown;
 }
 
@@ -65,91 +67,98 @@ export function startMesh(options: {
   const { registry, connector, logger } = options;
   let stopped = false;
 
-  /**
-   * Node id → the address it was joined at.
-   *
-   * `node:removed` carries the id and fires AFTER the row is deleted, so
-   * asking the registry where that node lived answers nothing. The connector
-   * is keyed on host:port, so the address has to be remembered while it
-   * still exists or a removed node keeps its connection — and its SSH
-   * tunnel — for the life of the daemon.
-   */
-  const joined = new Map<string, { host: string; port: number }>();
+  const address = (node: MeshNode) => JSON.stringify([node.host, node.daemonPort]);
+  const addressById = new Map<string, string>();
+  const groups = new Map<string, Map<string, MeshNode>>();
+  function remember(node: MeshNode): void {
+    const key = address(node);
+    const group = groups.get(key) ?? new Map<string, MeshNode>();
+    group.set(node.id, node);
+    groups.set(key, group);
+    addressById.set(node.id, key);
+  }
+  function forget(id: string, key: string): void {
+    const group = groups.get(key);
+    group?.delete(id);
+    if (!group?.size) groups.delete(key);
+    addressById.delete(id);
+  }
+  const connected = new Map<string, MeshNode>();
+  const closing = new Set<string>();
 
-  const join = (node: MeshNode) => {
-    if (stopped || node.isLocal) return;
-    joined.set(node.id, { host: node.host, port: node.daemonPort });
-    void connector
-      .addSlave({ host: node.host, port: node.daemonPort, label: node.name, nodeId: node.id })
-      .catch((err: unknown) =>
-        logger.warn(
-          { host: node.host, port: node.daemonPort, error: (err as Error).message },
-          'Could not add a registered node to the mesh',
-        ),
-      );
-  };
-
-  const drop = (id: string) => {
-    const at = joined.get(id);
-    if (!at) return;
-    joined.delete(id);
-
-    // One connection per ADDRESS, and the registry can hold two rows for one
-    // machine — it does here, which is how a single node once drew two
-    // health checks an hour apart on the same socket. The connector is keyed
-    // on host:port, so removing the second row would disconnect the
-    // connection the first row still needs, and nothing would re-add it:
-    // the remaining node would sit in the mesh's own map, joined, with no
-    // connection behind it.
-    const stillWanted = [...joined.values()].some((other) => other.host === at.host && other.port === at.port);
-    if (stillWanted) {
-      logger.debug({ host: at.host, port: at.port }, 'Node removed, but another registry entry still points at this address');
+  // Close the previous peer before joining another identity at the same address.
+  // During shutdown or an overlapping edit, reconcile the latest registry state.
+  function reconcile(key: string, trustChanged = false): void {
+    if (stopped || closing.has(key)) return;
+    const candidates = groups.get(key);
+    const desired = candidates?.size === 1 ? candidates.values().next().value : undefined;
+    const previous = connected.get(key);
+    if (previous) {
+      if (!trustChanged && desired && previous.id === desired.id &&
+          previous.sshPort === desired.sshPort && previous.sshUser === desired.sshUser) return;
+      closing.add(key);
+      // removeSlave synchronously revokes the peer and resolves after closing the tunnel.
+      void connector.removeSlave(previous.host, previous.daemonPort).then(() => {
+        connected.delete(key);
+        closing.delete(key);
+        reconcile(key);
+      }, (error: Error) => {
+        closing.delete(key);
+        logger.warn({ host: previous.host, error: error.message }, 'Failed to close previous mesh peer');
+      });
       return;
     }
+    if (!desired) {
+      if (candidates && candidates.size > 1) logger.warn({ nodeIds: [...candidates.keys()] },
+        'Mesh paused: multiple node registrations share this daemon address');
+      return;
+    }
+    connected.set(key, desired);
+    void connector.addSlave({ host: desired.host, port: desired.daemonPort, label: desired.name, nodeId: desired.id })
+      .catch((error: Error) => logger.warn({ host: desired.host, port: desired.daemonPort, error: error.message },
+        'Could not add a registered node to the mesh'));
+  }
 
-    void connector.removeSlave(at.host, at.port).catch(() => undefined);
-  };
+  for (const node of meshMembers(registry.listNodes())) remember(node);
+  for (const key of groups.keys()) reconcile(key);
+  logger.info({ nodes: addressById.size }, 'Mesh following the node registry');
 
-  const known = meshMembers(registry.listNodes());
-  for (const node of known) join(node);
-  logger.info({ nodes: known.length }, 'Mesh following the node registry');
-
-  const onAdded = (node: MeshNode) => join(node);
-
-  /**
-   * An edited address is a different node to the connector.
-   *
-   * Editing a node's host or daemon port in the console is how an operator
-   * corrects a mistake or follows a machine that moved. Without this the
-   * master keeps dialling the old address forever and the corrected one is
-   * never tried — the edit appears to do nothing, which is the worst way for
-   * a correction to fail.
-   */
   const onUpdated = (node: MeshNode) => {
-    if (stopped) return;
-    const at = joined.get(node.id);
-    const moved = !at || at.host !== node.host || at.port !== node.daemonPort;
-    if (!moved) return;
-    if (at) drop(node.id);
-    join(node);
+    if (stopped || node.isLocal) return;
+    const before = addressById.get(node.id);
+    const key = address(node);
+    if (before && before !== key) {
+      forget(node.id, before);
+      reconcile(before);
+    }
+    remember(node);
+    reconcile(key);
   };
-
+  const onSshTrustChanged = (node: MeshNode) => {
+    const key = addressById.get(node.id);
+    if (key) reconcile(key, true);
+  };
   const onRemoved = (id: string) => {
-    if (stopped) return;
-    drop(id);
+    const key = addressById.get(id);
+    if (key) {
+      forget(id, key);
+      reconcile(key);
+    }
   };
 
-  registry.on('node:added', onAdded);
+  registry.on('node:added', onUpdated);
   registry.on('node:updated', onUpdated);
   registry.on('node:removed', onRemoved);
+  registry.on('node:ssh-trust-changed', onSshTrustChanged);
 
   return {
     stop() {
       stopped = true;
       const emitter = registry as unknown as { off?: (event: string, listener: unknown) => void };
-      emitter.off?.('node:added', onAdded);
+      emitter.off?.('node:added', onUpdated);
       emitter.off?.('node:updated', onUpdated);
       emitter.off?.('node:removed', onRemoved);
+      emitter.off?.('node:ssh-trust-changed', onSshTrustChanged);
     },
   };
 }

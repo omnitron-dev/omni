@@ -50,6 +50,8 @@ export interface INodeCheckTarget {
   sshUser: string;
   sshAuthMethod: 'password' | 'key';
   sshPrivateKey?: string;
+  expectedHostFingerprint?: string;
+  sshCredentialError?: string;
   /** Passphrase for an SSH private key (key auth only) */
   sshPassphrase?: string;
   /** Password for SSH password authentication (password auth only) */

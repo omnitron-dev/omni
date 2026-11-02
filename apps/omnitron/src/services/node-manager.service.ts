@@ -25,6 +25,7 @@ import {
 } from './remote-ops.service.js';
 import { OMNITRON_HOME, CLI_VERSION } from '../config/defaults.js';
 import type { INodeHealthSummary, INodeCheckTarget, NodeHealthStatus } from '../workers/types.js';
+import { nodeHostFingerprint, nodeSshIdentity } from './node-host-key.js';
 import type { SecretsService } from './secrets.service.js';
 import type {
   INode,
@@ -84,6 +85,7 @@ const CHECK_CONFIG_KEY = 'nodes:check-config';
 
 export class NodeManagerService extends EventEmitter {
   private nodes: Map<string, INode> = new Map();
+  private readonly changingNodes = new Set<string>();
   private statusCache: Map<string, INodeStatus> = new Map();
   /**
    * Aggregated health per node — the shape the worker reports and the console
@@ -333,8 +335,26 @@ export class NodeManagerService extends EventEmitter {
   }
 
   async updateNode(id: string, input: UpdateNodeInput): Promise<INode> {
-    const node = this.nodes.get(id);
-    if (!node) throw new Error(`Node not found: ${id}`);
+    const previous = this.nodes.get(id);
+    if (!previous) throw new Error(`Node not found: ${id}`);
+    if (this.changingNodes.has(id)) throw new Error('Node registration is changing; retry after the current operation');
+    this.changingNodes.add(id);
+    try {
+      return await this.writeNodeUpdate(previous, input);
+    } finally {
+      this.changingNodes.delete(id);
+      const current = this.nodes.get(id);
+      if (current && current !== previous) {
+        this.emit('node:updated', current);
+        if (!current.isLocal) void this.checkNodeStatus(id).catch((err) => {
+          this.logger.warn({ nodeId: id, err }, 'Connectivity check failed to run');
+        });
+      }
+    }
+  }
+
+  private async writeNodeUpdate(node: INode, input: UpdateNodeInput): Promise<INode> {
+    const id = node.id;
     if (node.isLocal && input.host) throw new Error('Cannot change host of local node');
 
     // Extract secrets before spreading into node (they must not be saved to nodes.json)
@@ -370,6 +390,21 @@ export class NodeManagerService extends EventEmitter {
     const addressChanged = updated.host !== node.host || updated.daemonPort !== node.daemonPort;
     if (addressChanged) {
       this.assertAddressIsFree(updated.host, updated.daemonPort, id);
+    }
+
+    if (nodeSshIdentity(updated) !== nodeSshIdentity(node)) {
+      const passwordCleared = updated.sshAuthMethod !== node.sshAuthMethod && updated.sshAuthMethod === 'key';
+      const keyCleared = updated.sshAuthMethod !== node.sshAuthMethod && updated.sshAuthMethod === 'password';
+      if ((!passwordCleared && node.hasPassword && sshPassword === undefined)
+          || (!keyCleared && (node.sshPrivateKey && safeInput.sshPrivateKey === undefined
+            || node.hasPassphrase && sshPassphrase === undefined)))
+        throw new Error('SSH destination changed. Explicitly supply or clear the SSH credential for the new host, port and account.');
+      // Commit the replacement address without credentials before changing its ID-keyed vault slots.
+      // A crash between these stores leaves a node that needs credentials. Xec requires explicit auth.
+      const detached = { ...updated, hasPassword: false, hasPassphrase: false };
+      delete detached.sshPrivateKey;
+      this.persistNode(detached, true);
+      this.nodes.set(id, detached);
     }
 
     // Update encrypted secrets — await to ensure they're persisted before connectivity check
@@ -410,15 +445,8 @@ export class NodeManagerService extends EventEmitter {
       }
     }
 
+    this.persistNode(updated, true);
     this.nodes.set(id, updated);
-    this.save();
-    this.emit('node:updated', updated);
-    // Re-check connectivity after update
-    if (!updated.isLocal) {
-      void this.checkNodeStatus(id).catch((err) => {
-        this.logger.warn({ nodeId: id, err }, 'Connectivity check failed to run');
-      });
-    }
     return updated;
   }
 
@@ -440,7 +468,17 @@ export class NodeManagerService extends EventEmitter {
     if (!node) throw new Error(`Node not found: ${id}`);
     if (node.isLocal) throw new Error('Cannot remove local node');
 
-    // Clean up encrypted secrets
+    if (this.changingNodes.has(id)) throw new Error('Node registration is changing; retry after the current operation');
+    this.changingNodes.add(id);
+    try {
+      await this.deleteNodeRegistration(node);
+    } finally {
+      this.changingNodes.delete(id);
+    }
+  }
+
+  private async deleteNodeRegistration(node: INode): Promise<void> {
+    const id = node.id;
     await this.deleteSecret(id, 'passphrase');
     await this.deleteSecret(id, 'password');
 
@@ -673,6 +711,10 @@ export class NodeManagerService extends EventEmitter {
 
   /** Convert node to SSH target — used for manual SSH checks from UI */
   async nodeToSshTarget(node: INode): Promise<import('../execution/execution.service.js').SSHTarget> {
+    const registered = this.nodes.get(node.id);
+    if (!registered || this.changingNodes.has(node.id) || nodeSshIdentity(node) !== nodeSshIdentity(registered))
+      throw new Error('SSH node registration changed; resolve the current target again');
+    node = registered;
     const target: import('../execution/execution.service.js').SSHTarget = {
       host: node.host,
       port: node.sshPort,
@@ -689,6 +731,10 @@ export class NodeManagerService extends EventEmitter {
       const password = await this.getSecret(node.id, 'password');
       if (password) target.password = password;
     }
+    if (this.nodes.get(node.id) !== registered || this.changingNodes.has(node.id))
+      throw new Error('SSH node registration changed during credential lookup');
+    const fingerprint = nodeHostFingerprint(this.store, node);
+    if (fingerprint) target.expectedHostFingerprint = fingerprint;
     return target;
   }
 
@@ -731,6 +777,7 @@ export class NodeManagerService extends EventEmitter {
     if (ssh.privateKey) target.privateKey = ssh.privateKey;
     if (ssh.passphrase) target.passphrase = ssh.passphrase;
     if (ssh.password) target.password = ssh.password;
+    if (ssh.expectedHostFingerprint) target.expectedHostFingerprint = ssh.expectedHostFingerprint;
     return target;
   }
 
@@ -861,18 +908,14 @@ export class NodeManagerService extends EventEmitter {
         isLocal: node.isLocal,
         offlineTimeout: node.offlineTimeout ?? null,
       };
-      // Resolve key content from file path
-      if (node.sshPrivateKey) {
-        target.sshPrivateKey = readKeyFile(node.sshPrivateKey);
-      }
-      // Resolve secrets — worker needs plaintext values for SSH
-      if (node.hasPassphrase) {
-        const val = await this.getSecret(node.id, 'passphrase');
-        if (val) target.sshPassphrase = val;
-      }
-      if (node.hasPassword) {
-        const val = await this.getSecret(node.id, 'password');
-        if (val) target.sshPassword = val;
+      try {
+        const ssh = await this.nodeToSshTarget(node);
+        if (ssh.privateKey) target.sshPrivateKey = ssh.privateKey;
+        if (ssh.passphrase) target.sshPassphrase = ssh.passphrase;
+        if (ssh.password) target.sshPassword = ssh.password;
+        if (ssh.expectedHostFingerprint) target.expectedHostFingerprint = ssh.expectedHostFingerprint;
+      } catch (error) {
+        target.sshCredentialError = error instanceof Error ? error.message : 'SSH registration is unavailable';
       }
       targets.push(target);
     }
@@ -1175,7 +1218,7 @@ export class NodeManagerService extends EventEmitter {
    * status-touch. Pre-T-7 every mutation rewrote the entire
    * registry JSON file; now it's a single atomic UPSERT.
    */
-  private persistNode(node: INode): void {
+  private persistNode(node: INode, strict = false): void {
     try {
       // Carry the status forward. `upsertNodeSync` defaults it to `'unknown'`,
       // so a `save()` triggered by an unrelated edit used to erase what the
@@ -1193,6 +1236,7 @@ export class NodeManagerService extends EventEmitter {
       });
     } catch (err) {
       this.logger.warn({ id: node.id, error: (err as Error).message }, 'Failed to persist node');
+      if (strict) throw err;
     }
   }
 

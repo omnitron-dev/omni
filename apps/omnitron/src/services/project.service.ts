@@ -2916,7 +2916,7 @@ export class ProjectService extends EventEmitter {
     return Promise.all(
       (stackConfig.nodes ?? []).map(async (node) => {
         try {
-          const pong = (await connector.invokeOnSlave(node.host, node.port ?? 9700, 'OmnitronDaemon', 'ping', [])) as
+          const pong = (await connector.invokeOnSlave(node.host, node.port ?? 9700, 'OmnitronDaemon', 'ping', [], { requireCredential: true })) as
             | { version?: string }
             | undefined;
           return { host: node.host, version: pong?.version ?? null };

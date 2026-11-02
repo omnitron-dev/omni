@@ -250,6 +250,8 @@ The CLI is organized into command groups:
 - `omnitron fleet status/health/metrics` -- Fleet-wide operations
 - `omnitron cluster status/step-down` -- Cluster management
 - `omnitron node add/list/update/remove/check/ssh-keys` -- Node management
+- `omnitron node ssh-key <node>` shows the observed and approved SSH fingerprints. Verify the fingerprint against independent inventory, then run `omnitron node ssh-key <node> --trust <SHA256:fingerprint>`. The Console terminal requires this approval. Mesh tunnels, remote commands, uploads, health checks and pipelines use the same approved fingerprint. Without a pin, automation requires a matching entry in the daemon account’s OpenSSH `~/.ssh/known_hosts`.
+- Approvals bind to the registered host, SSH port and user. When changing any of them, submit the replacement credential or explicitly clear the previous one. If the vault write is interrupted, the new address remains registered with SSH credentials detached. Repeat the credential update for that address, then verify its SSH fingerprint. A stack overriding the SSH account or port uses its own credentials. Key rotation refreshes the mesh connection and closes existing terminal sessions. Multiple registrations for the same daemon endpoint suspend that mesh connection until one registration remains.
 
 ### Deployment
 - `omnitron deploy app <app>` -- Deploy with strategy

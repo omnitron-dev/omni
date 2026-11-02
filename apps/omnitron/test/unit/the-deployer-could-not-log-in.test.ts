@@ -58,6 +58,7 @@ const target: DeployTarget = {
   host: '203.0.113.7',
   sshPort: 2222,
   username: 'deploy',
+  expectedHostFingerprint: `SHA256:${'a'.repeat(43)}`,
   password: 'the password the operator typed into the console',
   daemonPort: 9700,
 };
@@ -73,7 +74,7 @@ describe('every remote command carries the credentials', () => {
     for (const call of exec.ssh.mock.calls) {
       // Every single one: a provisioning run that authenticates for the first
       // command and not the rest is worse than one that fails at the door.
-      expect(call[0]).toMatchObject({ password: target.password, username: 'deploy' });
+      expect(call[0]).toMatchObject({ password: target.password, username: 'deploy', expectedHostFingerprint: target.expectedHostFingerprint });
     }
   });
 
@@ -102,7 +103,7 @@ describe('every remote command carries the credentials', () => {
     // a deployment that can run commands and cannot copy a file is not a
     // deployment.
     expect(exec.uploadFile).toHaveBeenCalledTimes(1);
-    expect(exec.uploadFile.mock.calls[0]![0]).toMatchObject({ password: target.password });
+    expect(exec.uploadFile.mock.calls[0]![0]).toMatchObject({ password: target.password, expectedHostFingerprint: target.expectedHostFingerprint });
   });
 
   it('treats a failed command as a failure, not as an empty answer', async () => {

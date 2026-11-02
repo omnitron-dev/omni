@@ -11,6 +11,7 @@ import type { NodeManagerService } from './node-manager.service.js';
 import type { AuthService } from './auth.service.js';
 import type { AuditService } from './audit.service.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
+import { isSshHostFingerprint, nodeHostFingerprint, nodeHostPinKey, nodeSshIdentity } from './node-host-key.js';
 import { XecTerminalDriver, type TerminalDriver, type TerminalPty } from './terminal-ssh.js';
 
 export const TERMINAL_LIMITS = {
@@ -50,10 +51,6 @@ interface Session {
   reading: boolean;
   wake?: () => void;
   targetIdentity: string;
-}
-interface HostPin {
-  fingerprint: string;
-  target: string;
 }
 
 /** Limits are server policy, never values supplied by a browser. */
@@ -98,7 +95,7 @@ export class TerminalRpcService implements IOmnitronTerminalService {
   private stopped = false;
 
   constructor(
-    private readonly nodes: Pick<NodeManagerService, 'getNode' | 'nodeToSshTarget'>,
+    private readonly nodes: Pick<NodeManagerService, 'getNode' | 'nodeToSshTarget' | 'emit'>,
     private readonly auth: Pick<AuthService, 'validateSession'>,
     private readonly store: Pick<DaemonStateStore, 'kvGetSync' | 'kvSetSync'>,
     private readonly audit: Pick<AuditService, 'record'>,
@@ -144,13 +141,8 @@ export class TerminalRpcService implements IOmnitronTerminalService {
     return node;
   }
 
-  private identity(node: { host: string; sshPort: number; sshUser: string }): string {
-    return JSON.stringify([node.host, node.sshPort, node.sshUser]);
-  }
-
   private pin(node: ReturnType<TerminalRpcService['node']>): string | null {
-    const pin = this.store.kvGetSync<HostPin>(`terminal:host-key:${node.id}`);
-    return pin?.target === this.identity(node) ? pin.fingerprint : null;
+    return nodeHostFingerprint(this.store, node);
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
@@ -178,9 +170,9 @@ export class TerminalRpcService implements IOmnitronTerminalService {
   async trustHost(data: { nodeId: string; fingerprint: string; previous: string | null }): Promise<void> {
     await this.owner();
     const node = this.node(data?.nodeId);
-    if (typeof data.fingerprint !== 'string' || !/^SHA256:[A-Za-z0-9+/]{43}$/.test(data.fingerprint))
+    if (!isSshHostFingerprint(data.fingerprint))
       throw Errors.badRequest('Provide the independently verified SHA256 host fingerprint');
-    const targetIdentity = this.identity(node);
+    const targetIdentity = nodeSshIdentity(node);
     const previous = this.pin(node);
     if (data.previous !== previous) throw Errors.badRequest('The trusted host key changed; inspect the node again');
     await this.audit.record(
@@ -194,14 +186,17 @@ export class TerminalRpcService implements IOmnitronTerminalService {
     );
     // Audit is async: recheck the registry and pin before committing a trust change.
     await this.owner();
-    if (this.identity(this.node(node.id)) !== targetIdentity || this.pin(node) !== previous)
+    if (nodeSshIdentity(this.node(node.id)) !== targetIdentity || this.pin(node) !== previous)
       throw Errors.badRequest('Node or host key changed; inspect it again');
-    this.store.kvSetSync(`terminal:host-key:${node.id}`, {
+    this.store.kvSetSync(nodeHostPinKey(node.id), {
       fingerprint: data.fingerprint,
-      target: this.identity(node),
+      target: nodeSshIdentity(node),
     });
-    for (const session of this.sessions.values())
-      if (session.view.nodeId === node.id) this.finish(session, 'host_key_changed');
+    if (previous !== data.fingerprint) {
+      for (const session of this.sessions.values())
+        if (session.view.nodeId === node.id) this.finish(session, 'host_key_changed');
+      this.nodes.emit('node:ssh-trust-changed', node);
+    }
     await this.audit.record({
       action: 'terminal.host-key.trust',
       resourceType: 'node',
@@ -244,7 +239,7 @@ export class TerminalRpcService implements IOmnitronTerminalService {
       writing: false,
       reading: false,
       abort: new AbortController(),
-      targetIdentity: this.identity(node),
+      targetIdentity: nodeSshIdentity(node),
       view: {
         id: randomUUID(),
         nodeId: node.id,
@@ -273,7 +268,7 @@ export class TerminalRpcService implements IOmnitronTerminalService {
       const target = await this.nodes.nodeToSshTarget(node);
       if (
         !(await this.valid(owner)) ||
-        this.identity(this.node(node.id)) !== session.targetIdentity ||
+        nodeSshIdentity(this.node(node.id)) !== session.targetIdentity ||
         this.pin(this.node(node.id)) !== fingerprint
       )
         throw new Error('Terminal access or host key changed');
@@ -316,7 +311,7 @@ export class TerminalRpcService implements IOmnitronTerminalService {
     if (!session || session.owner.key !== owner.key) throw Errors.forbidden('Terminal is unavailable to this session');
     if (session.view.state !== 'closed') {
       const node = this.nodes.getNode(session.view.nodeId);
-      if (!node || this.identity(node) !== session.targetIdentity || this.pin(node) !== session.view.fingerprint)
+      if (!node || nodeSshIdentity(node) !== session.targetIdentity || this.pin(node) !== session.view.fingerprint)
         this.finish(session, 'node_changed');
     }
     return session;
@@ -476,7 +471,7 @@ export class TerminalRpcService implements IOmnitronTerminalService {
             reason = 'session_store_unavailable';
           }
           const node = this.nodes.getNode(session.view.nodeId);
-          if (!node || this.identity(node) !== session.targetIdentity || this.pin(node) !== session.view.fingerprint)
+          if (!node || nodeSshIdentity(node) !== session.targetIdentity || this.pin(node) !== session.view.fingerprint)
             reason = 'node_changed';
         }
         if (reason) this.finish(session, reason);

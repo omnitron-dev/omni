@@ -66,7 +66,7 @@ const ECOSYSTEM = { apps: [{ name: 'main', script: 'apps/main/dist/main.js' }] }
 const RELEASE = {
   id: 'sample-202609222110-2c9fc913',
   files: [{ app: 'main', version: '0.0.1', path: '/nowhere/main.tgz', bytes: 1, inputs: 'i', sha256: 's' }],
-  manifest: { builtAt: '2026-09-22T21:10:00Z' },
+  manifest: { omni: { commit: '1'.repeat(40) }, builtAt: '2026-09-22T21:10:00Z' },
   staticsDir: null,
 } as never;
 
@@ -86,6 +86,8 @@ function deployment(answer: (service: string, n: number) => Promise<Record<strin
   // what a dead connection looks like, its second call.
   const connector = new SlaveConnector(logger, null);
   connectors.push(connector);
+  const authority = { authenticated: true,
+    link: { via: 'ssh-tunnel', url: 'tcp://127.0.0.1:1', token: 'worker-service', expiresAt: Date.now() + 300_000 } };
   let n = 0;
   const peer = {
     queryInterface: async () => ({
@@ -93,15 +95,16 @@ function deployment(answer: (service: string, n: number) => Promise<Record<strin
     }),
   };
   const c: any = connector;
-  c.connections.set(`${NODE.host}:${NODE.port}`, { peer, status: 'connected', config: { ...NODE }, reconnectAttempt: 0 });
+  c.connections.set(`${NODE.host}:${NODE.port}`, { ...authority, peer, status: 'connected', config: { ...NODE }, reconnectAttempt: 0 });
   const reconnected: string[] = [];
   c.removeSlave = async (host: string, port: number) => void reconnected.push(`${host}:${port}`);
-  c.addSlave = async () => { c.connections.set(`${NODE.host}:${NODE.port}`, { peer, status: 'connected', config: { ...NODE }, reconnectAttempt: 0 }); };
+  c.addSlave = async () => { c.connections.set(`${NODE.host}:${NODE.port}`, { ...authority, peer, status: 'connected', config: { ...NODE }, reconnectAttempt: 0 }); };
   c.waitUntilConnected = async () => {
     const key = `${NODE.host}:${NODE.port}`, connection = c.connections.get(key);
     if (connection.status !== 'connected') {
       clearTimeout(connection.reconnectTimer);
       connection.reconnectTimer = null;
+      Object.assign(connection, authority);
       connection.peer = peer;
       connection.status = 'connected';
       reconnected.push(key);

@@ -161,6 +161,49 @@ describe('editing a node', () => {
     expect(secrets.values.has(`node:${node.id}:passphrase`)).toBe(false);
   });
 
+  it('uses existing endpoint-bound approvals for mesh, deployment and worker health', async () => {
+    const store = makeStore();
+    const manager = new NodeManagerService(silentLogger, store);
+    const node = await manager.addNode({ name: 'edge', host: 'example.test' });
+    const fingerprint = `SHA256:${'a'.repeat(43)}`;
+    expect((await manager.nodeToSshTarget(node)).expectedHostFingerprint).toBeUndefined();
+    store.kv.set(`terminal:host-key:${node.id}`, { target: JSON.stringify([node.host, node.sshPort, node.sshUser]), fingerprint });
+    expect((await manager.nodeToSshTarget(node)).expectedHostFingerprint).toBe(fingerprint);
+    expect((await manager.nodeToDeployTarget(node.id)).expectedHostFingerprint).toBe(fingerprint);
+    expect((await manager.getNodeCheckTargets()).find(n => n.id === node.id)?.expectedHostFingerprint).toBe(fingerprint);
+    const moved = await manager.updateNode(node.id, { sshPort: 2222 });
+    expect((await manager.nodeToSshTarget(moved)).expectedHostFingerprint).toBeUndefined();
+    store.kv.set(`terminal:host-key:${node.id}`, { fingerprint: '' });
+    await expect(manager.nodeToSshTarget(moved)).rejects.toThrow(/stored SSH host key/);
+    expect((await manager.getNodeCheckTargets()).find(n => n.id === node.id)?.sshCredentialError).toMatch(/stored SSH host key/);
+  });
+
+  it('requires an explicit credential decision before changing the SSH destination', async () => {
+    const node = await service.addNode({ name: 'n1', host: 'example.test', sshAuthMethod: 'password', sshPassword: 'old' });
+    await expect(service.updateNode(node.id, { host: 'replacement.test' })).rejects.toThrow(/SSH destination changed/);
+    expect(service.getNode(node.id)?.host).toBe('example.test');
+    expect(secrets.values.get(`node:${node.id}:password`)).toBe('old');
+    const moved = await service.updateNode(node.id, { host: 'replacement.test', sshPassword: 'replacement' });
+    expect((await service.nodeToSshTarget(moved)).password).toBe('replacement');
+  });
+
+  it('cannot send a replacement vault secret to the old endpoint, even during a concurrent edit or interrupted write', async () => {
+    const node = await service.addNode({ name: 'n1', host: 'old.test', sshAuthMethod: 'password', sshPassword: 'old' });
+    let fail!: () => void;
+    secrets.set.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { fail = () => reject(new Error('vault unavailable')); }));
+    const update = service.updateNode(node.id, { host: 'replacement.test', sshPassword: 'replacement' });
+    const detached = service.getNode(node.id)!;
+    expect(detached).toMatchObject({ host: 'replacement.test', hasPassword: false });
+    await expect(service.updateNode(node.id, { name: 'concurrent' })).rejects.toThrow(/changing/);
+    await expect(service.removeNode(node.id)).rejects.toThrow(/changing/);
+    await expect(service.nodeToSshTarget(node)).rejects.toThrow(/registration changed/);
+    fail();
+    await expect(update).rejects.toThrow(/vault unavailable/);
+    const restored = new NodeManagerService(silentLogger, store, secrets);
+    expect(await restored.nodeToSshTarget(restored.getNode(node.id)!)).not.toHaveProperty('password');
+    await expect(restored.nodeToSshTarget(node)).rejects.toThrow(/registration changed/);
+  });
+
   it('validates the host on the way in, not on the way out', async () => {
     const node = await service.addNode({ name: 'n1', host: '10.0.0.1' });
     await expect(service.updateNode(node.id, { host: "x'; id; '" })).rejects.toThrow(/Invalid host/);

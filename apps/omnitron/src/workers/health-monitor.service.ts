@@ -325,11 +325,19 @@ export class HealthMonitorService {
       result.pingReachable = true;
     }
 
-    // 2. SSH — always attempt
+    if (node.sshCredentialError) {
+      result.sshError = node.sshCredentialError;
+      result.omnitronError = 'SSH unavailable — omnitron state unknown';
+      result.checkDurationMs = Date.now() - start;
+      return result;
+    }
+
+    // 2. SSH
     const sshTarget = {
       host: node.host,
       port: node.sshPort,
       username: node.sshUser,
+      ...(node.expectedHostFingerprint && { expectedHostFingerprint: node.expectedHostFingerprint }),
       ...(node.sshPrivateKey && { privateKey: readKeyContent(node.sshPrivateKey) }),
       // Key auth: passphrase decrypts the private key
       ...(node.sshAuthMethod === 'key' && node.sshPassphrase && { passphrase: node.sshPassphrase }),

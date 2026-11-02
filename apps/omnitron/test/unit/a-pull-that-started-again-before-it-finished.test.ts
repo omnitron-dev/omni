@@ -173,7 +173,8 @@ function connected(peer: unknown, sync: unknown) {
     lastError: null,
     reconnectAttempt: 0,
     reconnectTimer: null,
-    link: null,
+    authenticated: true,
+    link: { via: 'ssh-tunnel', url: 'tcp://127.0.0.1:1', token: 'worker-service', expiresAt: Date.now() + 300_000 },
   };
   (connector as unknown as { connections: Map<string, unknown> }).connections.set('203.0.113.7:9700', conn);
   return { connector, conn };

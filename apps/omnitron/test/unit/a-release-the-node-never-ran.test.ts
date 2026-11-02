@@ -136,7 +136,7 @@ describe('admission asks the node before anything moves', () => {
     await expect(svc.startStack('sample', 'test', { source: 'operator', release: id })).rejects.toThrow(
       /37\.27\.130\.185's daemon runs omni 311bddb1 .* gated on omni de454a80/
     );
-    expect(invokeOnSlave).toHaveBeenCalledWith('37.27.130.185', 9700, 'OmnitronDaemon', 'ping', []);
+    expect(invokeOnSlave).toHaveBeenCalledWith('37.27.130.185', 9700, 'OmnitronDaemon', 'ping', [], { requireCredential: true });
     expect(svc.startRemoteStack).not.toHaveBeenCalled();
   });
 

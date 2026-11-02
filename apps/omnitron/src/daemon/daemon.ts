@@ -1242,7 +1242,7 @@ export class OmnitronDaemon {
       // master, or two connectors pull the same buffer and race to ack it.
       try {
         const { SlaveConnector } = await import('../cluster/slave-connector.js');
-        const { createMeshDialer } = await import('../cluster/mesh-link.js');
+        const { createMeshDialer, meshRegistration } = await import('../cluster/mesh-link.js');
         const { startMesh } = await import('../cluster/mesh.js');
         const { ExecutionService: Exec } = await import('../execution/execution.service.js');
 
@@ -1253,8 +1253,8 @@ export class OmnitronDaemon {
             logger: meshLogger,
             execution: new Exec(meshLogger),
             subject: `mesh:${os.hostname()}`,
-            sshTargetFor: async ({ host }) => {
-              const node = nodeManager.listNodes().find((n) => n.host === host && !n.isLocal);
+            sshTargetFor: async target => {
+              const node = meshRegistration(nodeManager.listNodes(), target);
               return node ? nodeManager.nodeToSshTarget(node) : null;
             },
           }),
@@ -2215,15 +2215,19 @@ export class OmnitronDaemon {
       });
 
       // Wire node CRUD events → sync to worker
+      let nodeSyncRevision = 0;
       const syncNodesToWorker = async () => {
         if (!workerManager.get('health-monitor')) return;
+        const revision = ++nodeSyncRevision;
         const targets = await nodeManager.getNodeCheckTargets();
+        if (revision !== nodeSyncRevision) return;
         await callWorkerMethod(workerManager, 'updateNodes', JSON.stringify(targets)).catch((err: Error) => {
           logger.warn({ error: err.message }, 'Failed to sync node list to health monitor');
         });
       };
       nodeManager.on('node:added', syncNodesToWorker);
       nodeManager.on('node:updated', syncNodesToWorker);
+      nodeManager.on('node:ssh-trust-changed', syncNodesToWorker);
       nodeManager.on('node:removed', syncNodesToWorker);
 
       // A node changing state is the event the console subscribes to. Four of

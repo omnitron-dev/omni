@@ -132,6 +132,7 @@ export interface DeployTarget {
    * same mistake reaches SSH's default instead of the wrong number.
    */
   sshPort?: number;
+  expectedHostFingerprint?: string;
   username?: string;
   /** Path to a private key file, read by the SSH engine. */
   privateKey?: string;
@@ -151,6 +152,7 @@ export interface DeployTarget {
 function sshTargetOf(target: DeployTarget): SSHTarget {
   const ssh: SSHTarget = { host: target.host };
   if (target.sshPort != null) ssh.port = target.sshPort;
+  if (target.expectedHostFingerprint) ssh.expectedHostFingerprint = target.expectedHostFingerprint;
   if (target.username) ssh.username = target.username;
   if (target.privateKey) ssh.privateKey = target.privateKey;
   if (target.passphrase) ssh.passphrase = target.passphrase;
@@ -202,6 +204,10 @@ export function withNodeCredentials(target: DeployTarget, registered: SSHTarget 
   const merged: DeployTarget = { ...target };
   if (merged.sshPort == null && registered.port != null) merged.sshPort = registered.port;
   if (!merged.username && registered.username) merged.username = registered.username;
+  // Vault credentials and approval belong to one registered SSH account and port.
+  if (target.host !== registered.host || (merged.sshPort ?? 22) !== (registered.port ?? 22)
+      || (merged.username ?? 'root') !== (registered.username ?? 'root')) return merged;
+  if (registered.expectedHostFingerprint) merged.expectedHostFingerprint = registered.expectedHostFingerprint;
   if (!merged.privateKey && registered.privateKey) merged.privateKey = registered.privateKey;
   if (!merged.passphrase && registered.passphrase) merged.passphrase = registered.passphrase;
   if (!merged.password && registered.password) merged.password = registered.password;

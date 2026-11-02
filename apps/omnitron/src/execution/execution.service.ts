@@ -13,6 +13,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { shellEscape } from '../shared/shell-escape.js';
+import type { SSHAdapterOptions } from '@xec-sh/core';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
 // =============================================================================
@@ -30,6 +31,7 @@ export interface SSHTarget {
   host: string;
   port?: number;
   username?: string;
+  expectedHostFingerprint?: string;
   privateKey?: string;
   /** Passphrase for encrypted private keys */
   passphrase?: string;
@@ -194,9 +196,11 @@ export function uploadDeadlineMs(bytes: number): number {
   return 60_000 + Math.ceil(bytes / (32 * 1024)) * 1000;
 }
 
-function sshConfig(target: SSHTarget): Record<string, unknown> {
+export function sshConfig(target: SSHTarget): Omit<SSHAdapterOptions, 'type'> {
   return {
     host: target.host,
+    hostKeyChecking: 'strict',
+    ...(target.expectedHostFingerprint !== undefined && { expectedHostFingerprint: target.expectedHostFingerprint }),
     port: target.port ?? 22,
     username: target.username ?? 'root',
     ...(target.privateKey && { privateKey: target.privateKey }),
@@ -264,7 +268,7 @@ export class ExecutionService {
     } catch (err) {
       this.logger.warn(
         { error: (err as Error).message },
-        'Failed to initialize xec ExecutionEngine — falling back to child_process'
+        'Xec execution engine unavailable; SSH disabled, local commands use child_process'
       );
     }
 
@@ -374,33 +378,28 @@ export class ExecutionService {
     const engine = await this.getEngine();
     const start = Date.now();
 
-    if (engine) {
-      try {
-        const ssh = engine.ssh(sshConfig(target));
-        // Use raw template literal to avoid options interpolation into command
-        let proc = ssh.raw([command] as any);
-        if (options?.timeout) proc = proc.timeout(options.timeout);
-        if (options?.env) proc = proc.env(options.env);
-        const result = await proc.nothrow();
-        return {
-          stdout: result.stdout?.trim() ?? '',
-          stderr: result.stderr?.trim() ?? '',
-          exitCode: result.exitCode ?? 0,
-          duration: Date.now() - start,
-        };
-      } catch (err: any) {
-        return {
-          stdout: '',
-          stderr: err.message,
-          exitCode: 1,
-          duration: Date.now() - start,
-        };
-      }
+    if (!engine) return { stdout: '', stderr: 'SSH requires the Xec execution engine', exitCode: 1, duration: Date.now() - start };
+    try {
+      const ssh = engine.ssh(sshConfig(target));
+      // Use raw template literal to avoid options interpolation into command
+      let proc = ssh.raw([command] as any);
+      if (options?.timeout) proc = proc.timeout(options.timeout);
+      if (options?.env) proc = proc.env(options.env);
+      const result = await proc.nothrow();
+      return {
+        stdout: result.stdout?.trim() ?? '',
+        stderr: result.stderr?.trim() ?? '',
+        exitCode: result.exitCode ?? 0,
+        duration: Date.now() - start,
+      };
+    } catch (err: any) {
+      return {
+        stdout: '',
+        stderr: err.message,
+        exitCode: 1,
+        duration: Date.now() - start,
+      };
     }
-
-    // Fallback: ssh command via child_process
-    const sshCmd = `ssh -o StrictHostKeyChecking=no -p ${target.port ?? 22} ${target.username ?? 'root'}@${target.host} "${command.replace(/"/g, '\\"')}"`;
-    return this.execFallback(sshCmd, options);
   }
 
   /**

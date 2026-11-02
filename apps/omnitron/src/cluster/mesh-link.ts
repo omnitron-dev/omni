@@ -1,41 +1,11 @@
 /**
- * How a master reaches a node's daemon, and what it presents when it gets
- * there.
- *
- * Both halves were missing, and each hid the other.
- *
- * TRANSPORT. `SlaveConnector` dials `tcp://<host>:<port>` directly. A node on
- * the public internet normally permits SSH and little else — the first one
- * provisioned by this code allows 22/tcp and three ports from one private
- * address — so the daemon port is unreachable and the connection times out.
- * Nothing above reads that as "the mesh cannot form": the node answers SSH,
- * deploys, reports healthy, and replicates nothing.
- *
- * CREDENTIAL. Past the transport, `OmnitronSync.drainBuffer` answers
- * `Authentication required`. It is declared for `admin | operator |
- * service_role`, and the master had no token any node would accept. The
- * comment on that endpoint has said so since it was written: "`service_role`
- * cannot be presented today … this is one end of an unfinished cross-daemon
- * path". This is the other end.
- *
- * A daemon persists its own `auth.jwtSecret` in `~/.omnitron/config.json` and
- * verifies HS256 tokens issued `omnitron` against it. The master already
- * holds root SSH for every node it provisioned — that is how it put the
- * daemon there — so it can read that secret and mint a short-lived
- * `service_role` token. This grants the master nothing it did not already
- * have: whoever can run `omnitron up` on a machine can read the file.
- *
- * Measured against the live node, in this order:
- *
- *     direct tcp://37.27.130.185:9700        → connection timeout
- *     through the tunnel, OmnitronDaemon.ping → v0.2.0+local.de0ccff6b022…
- *     OmnitronSync.drainBuffer, no token      → Authentication required
- *     OmnitronSync.drainBuffer, service_role  → 2 entries
+ * Registered peers receive short-lived daemon credentials over a loopback
+ * listener forwarded to the node by Xec. Direct TCP is for public liveness.
  */
-
 import net from 'node:net';
 import { createHash } from 'node:crypto';
 import { decodeJwt } from 'jose';
+import { isLoopbackHost } from '../daemon/network-publication.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { ExecutionService, SSHTarget } from '../execution/execution.service.js';
 
@@ -73,15 +43,40 @@ export interface MeshTarget {
   host: string;
   /** The daemon's TCP port on the node. */
   port: number;
+  nodeId?: string;
+}
+
+export function meshRegistration<T extends { id: string; host: string; daemonPort: number; isLocal: boolean }>(
+  nodes: readonly T[], target: MeshTarget,
+): T | null {
+  const matches = nodes.filter(node => !node.isLocal && node.host === target.host && node.daemonPort === target.port);
+  if (matches.length > 1) throw new Error('Ambiguous mesh address: multiple registered nodes share this daemon endpoint');
+  if (target.nodeId !== undefined && matches[0]?.id !== target.nodeId) throw new Error('Registered mesh identity no longer matches this endpoint');
+  return matches[0] ?? null;
 }
 
 export type MeshDialer = (target: MeshTarget) => Promise<MeshLink>;
 
 /** The transport that needs nothing arranged. */
 export const directLink = async (target: MeshTarget): Promise<MeshLink> => ({
-  url: `tcp://${target.host}:${target.port}`,
+  url: tcpEndpoint(target.host, target.port),
   via: 'direct',
 });
+
+function tcpEndpoint(host: string, port: number): string {
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('Invalid mesh TCP port');
+  return `tcp://${net.isIPv6(host) ? `[${host}]` : host}:${port}`;
+}
+
+/** Check the actual destination before handing a bearer token to Netron. */
+export function assertMeshCredentialEndpoint(endpoint: string): void {
+  const url = new URL(endpoint);
+  const host = url.hostname.replace(/^\[|\]$/g, '');
+  if (url.protocol !== 'tcp:' || url.username || url.password || !url.port || url.pathname || url.search || url.hash ||
+      !net.isIP(host) || !isLoopbackHost(host) || tcpEndpoint(host, Number(url.port)) !== endpoint) {
+    throw new Error('Mesh credentials require a numeric loopback endpoint. Use an Xec SSH tunnel for a remote daemon.');
+  }
+}
 
 /**
  * Can a TCP connection be made, within a budget?
@@ -90,7 +85,7 @@ export const directLink = async (target: MeshTarget): Promise<MeshLink> => ({
  * fails has already built a Netron, registered a transport and started a
  * handshake, and the failure surfaces as a protocol timeout that reads like
  * a broken daemon. A refused or timed-out socket is the plain fact, and it
- * is what decides between the two transports.
+ * is what the unauthenticated liveness probe reports.
  */
 export function probeTcp(host: string, port: number, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -153,85 +148,60 @@ export interface MeshDialerOptions {
   sshTargetFor: (target: MeshTarget) => Promise<SSHTarget | null>;
   /** Names the master in the `sub` claim, so a node's log says who called. */
   subject: string;
-  /** How long to wait on a direct connection before reaching for SSH. */
+  /** Budget for public liveness when no SSH registration exists. */
   directProbeTimeoutMs?: number;
 }
 
-/**
- * Build the dialer the connector uses: direct where direct works, SSH where
- * it does not.
- *
- * Direct is tried first on every connect rather than remembered, because
- * which one works is a property of the network at this moment — a firewall
- * rule changes, a node moves onto the cluster's private side — and a cached
- * answer to that question is a node that stays on the slow path forever, or
- * one that stops connecting at all.
- *
- * A node the master has no SSH credentials for still gets a direct link:
- * that is the cluster case, where nodes share a private network and the
- * console never held a password. Failing instead would be refusing to do
- * the thing that had always worked.
- */
 export function createMeshDialer(options: MeshDialerOptions): MeshDialer {
   const { logger, execution, sshTargetFor, subject } = options;
   const probeTimeout = options.directProbeTimeoutMs ?? 2_000;
   /** Per node, so one unreadable node does not cost every other one a read. */
-  const secrets = new Map<string, string>();
+  const secrets = new Map<string, { identity: string; secret: string }>();
 
   return async (target: MeshTarget): Promise<MeshLink> => {
     const key = `${target.host}:${target.port}`;
-    const ssh = await sshTargetFor(target).catch(() => null);
-
-    const token = ssh ? await tokenFor(key, ssh) : undefined;
-    const expiresAt = token ? decodeJwt(token).exp! * 1000 : undefined;
-    const refreshCredential = ssh && token ? async () => {
-      const renewed = await tokenFor(key, ssh);
-      if (!renewed) throw new Error('Node service credential could not be renewed');
-      return { token: renewed, expiresAt: decodeJwt(renewed).exp! * 1000 };
-    } : undefined;
-    const onRejected = (reason?: string) => {
-      secrets.delete(key);
-      logger.warn(
-        // The node's own words for the refusal. Without them this line names
-        // a conclusion and withholds the evidence for it, and the next
-        // question — WHY did it refuse — has nowhere to go.
-        { host: target.host, reason: reason ?? 'no reason given' },
-        'Node refused the master credential — its signing secret will be read again on the next attempt',
-      );
-    };
-
-    if (await probeTcp(target.host, target.port, probeTimeout)) {
-      return { url: `tcp://${target.host}:${target.port}`, token, expiresAt, refreshCredential, via: 'direct', onRejected };
-    }
-
+    const ssh = await sshTargetFor(target);
     if (!ssh) {
-      // Say which door was tried. "Connection refused" against a node that
-      // is plainly up sends an operator to the daemon; the answer is the
-      // firewall, or a credential this master does not hold.
-      throw new Error(
-        `${key} is not reachable on its daemon port, and this master holds no SSH credentials for it`,
-      );
+      if (await probeTcp(target.host, target.port, probeTimeout)) return directLink(target);
+      throw new Error(`${key} is not reachable on its daemon port, and this master holds no SSH credentials for it`);
     }
 
+    const identity = JSON.stringify([target.nodeId ?? null, ssh.host, ssh.port ?? 22, ssh.username ?? 'root', ssh.expectedHostFingerprint ?? null]);
+    // A reachable management port is still plaintext. Establish the tunnel before
+    // reading a credential, and release it if credential setup or validation fails.
     const tunnel = await execution.tunnel(ssh, target.port);
-    logger.info(
-      { host: target.host, daemonPort: target.port, via: 'ssh-tunnel' },
-      'Node daemon reached over SSH — its daemon port is not open to this master',
-    );
-    return {
-      url: `tcp://${tunnel.host}:${tunnel.port}`,
-      token,
-      expiresAt,
-      refreshCredential,
-      via: 'ssh-tunnel',
-      close: tunnel.close,
-      onRejected,
-    };
+    try {
+      const url = tcpEndpoint(tunnel.host, tunnel.port);
+      assertMeshCredentialEndpoint(url);
+      const token = await tokenFor(key, identity, ssh);
+      const expiresAt = token ? decodeJwt(token).exp! * 1000 : undefined;
+      const refreshCredential = token ? async () => {
+        const renewed = await tokenFor(key, identity, ssh);
+        if (!renewed) throw new Error('Node service credential could not be renewed');
+        return { token: renewed, expiresAt: decodeJwt(renewed).exp! * 1000 };
+      } : undefined;
+      const onRejected = (reason?: string) => {
+        if (secrets.get(key)?.identity === identity) secrets.delete(key);
+        logger.warn(
+          // The node's own words for the refusal. Without them this line names
+          // a conclusion and withholds the evidence for it, and the next
+          // question — WHY did it refuse — has nowhere to go.
+          { host: target.host, reason: reason ?? 'no reason given' },
+          'Node refused the master credential — its signing secret will be read again on the next attempt',
+        );
+      };
+
+      logger.info({ host: target.host, daemonPort: target.port, via: 'ssh-tunnel' }, 'Node daemon reached over SSH');
+      return { url, token, expiresAt, refreshCredential, via: 'ssh-tunnel', close: tunnel.close, onRejected };
+    } catch (error) {
+      await tunnel.close();
+      throw error;
+    }
   };
 
-  async function tokenFor(key: string, ssh: SSHTarget): Promise<string | undefined> {
+  async function tokenFor(key: string, identity: string, ssh: SSHTarget): Promise<string | undefined> {
     const cached = secrets.get(key);
-    if (cached) return mintServiceToken(cached, subject);
+    if (cached?.identity === identity) return mintServiceToken(cached.secret, subject);
 
     const result = await execution.ssh(ssh, READ_DAEMON_SECRET, { timeout: 20_000, quiet: true });
     const secret = result.stdout.trim();
@@ -247,7 +217,7 @@ export function createMeshDialer(options: MeshDialerOptions): MeshDialer {
       return undefined;
     }
 
-    secrets.set(key, secret);
+    secrets.set(key, { identity, secret });
     return mintServiceToken(secret, subject);
   }
 }

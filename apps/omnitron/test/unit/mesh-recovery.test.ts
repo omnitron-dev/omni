@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
-import { SlaveConnector } from '../../src/cluster/slave-connector.js';
+import { authenticatePeer, SlaveConnector } from '../../src/cluster/slave-connector.js';
 import { meshReading } from '../../src/shared/sync-reading.js';
 
 const network = vi.hoisted(() => ({ peers: [] as any[], instances: [] as any[] }));
@@ -19,15 +19,18 @@ vi.mock('@omnitron-dev/titan/netron', () => ({
 const connectors: SlaveConnector[] = [];
 const config = { host: 'test.invalid', port: 9700, nodeId: 'registered-id', project: 'project', stack: 'production' };
 const status = (pendingItems = 0) => ({ connected: false, oldestPendingAgeMs: 1000, pendingItems, bufferSize: 100, lastSyncAt: Date.now(), failedAttempts: 0, lastError: null });
+function serviceAuth() {
+  return { success: true, context: { roles: ['service_role'], metadata: { principalType: 'service', expiresAt: Date.now() + 1_800_000 } } };
+}
 function peer() {
   const ping = vi.fn(async () => ({ version: 'test' }));
   const getSyncStatus = vi.fn(async () => status());
-  return { ping, getSyncStatus, queryInterface: vi.fn(async (name: string) => name === 'OmnitronDaemon'
+  return { ping, getSyncStatus, runTask: vi.fn(async () => serviceAuth()), queryInterface: vi.fn(async (name: string) => name === 'OmnitronDaemon'
     ? { ping } : { getSyncStatus, drainBuffer: async () => ({ entries: [] }) }) };
 }
 function connector(dial?: any) {
   const c = new SlaveConnector(createNullLogger(), null, { cleanupTimeout: 50, heartbeatInterval: 60000,
-    dial: dial ?? (async () => ({ via: 'ssh-tunnel', url: 'tcp://127.0.0.1:1', close: async () => {} })) });
+    dial: dial ?? (async () => ({ via: 'ssh-tunnel', url: 'tcp://127.0.0.1:1', token: 'worker-service', close: async () => {} })) });
   connectors.push(c); return c;
 }
 beforeEach(() => { vi.useFakeTimers(); network.peers.length = 0; network.instances.length = 0; });
@@ -55,14 +58,52 @@ describe('mesh recovery and resource ownership', () => {
     for (const old of network.instances.slice(0, -1)) expect(old.stop).toHaveBeenCalledOnce();
   });
 
+  it('redials a stack-discovered node with its registered identity and refuses a conflicting registration', async () => {
+    network.peers.push(peer(), peer());
+    const dial = vi.fn(async () => ({ url: 'tcp://127.0.0.1:1', via: 'ssh-tunnel', token: 'worker-service' }));
+    const c = connector(dial);
+    await c.addSlave({ host: config.host, port: config.port });
+    await settle();
+    await c.addSlave(config);
+    await settle();
+    expect(dial.mock.calls).toEqual([[{ host: config.host, port: config.port }],
+      [{ host: config.host, port: config.port, nodeId: config.nodeId }]]);
+    expect(network.instances[0].stop).toHaveBeenCalledOnce();
+    await expect(c.addSlave({ ...config, nodeId: 'other' })).rejects.toThrow(/conflicting registered node identities/i);
+    expect(dial).toHaveBeenCalledTimes(2);
+  });
+
+  it('never sends a bearer token to a network endpoint outside a local tunnel listener', async () => {
+    const remote = peer();
+    await expect(authenticatePeer(remote, { url: 'tcp://203.0.113.8:9700', via: 'direct', token: 'private' }))
+      .rejects.toThrow(/loopback/);
+    expect(remote.runTask).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { success: true },
+    { success: true, context: { roles: ['admin'], metadata: { principalType: 'human' } } },
+    { success: true, context: { roles: ['service_role', 'admin'], metadata: { principalType: 'service' } } },
+    { success: true, context: { roles: ['service_role'], metadata: { principalType: 'service' } } },
+    { success: true, context: { roles: ['service_role'], metadata: { principalType: 'service', expiresAt: 1 } } },
+  ])('requires a bounded, current service identity in the authentication response', async result => {
+    const remote = { ...peer(), runTask: vi.fn(async () => result) };
+    network.peers.push(remote);
+    const c = connector();
+    await c.addSlave(config);
+    await settle();
+    expect(c.getConnections()[0]).toMatchObject({ status: 'error', authenticated: false, lastCredentialError: expect.any(String) });
+    expect(remote.queryInterface).not.toHaveBeenCalled();
+  });
+
   it('reports authentication only after this peer verifies the credential and drops it on disconnect', async () => {
     let accept!: (value: { success: boolean }) => void;
     const authenticated = { ...peer(), runTask: vi.fn(() => new Promise(resolve => { accept = resolve; })) };
-    network.peers.push(authenticated, peer());
+    network.peers.push(authenticated, { ...peer(), runTask: undefined });
     const c = connector(async () => ({ url: 'tcp://127.0.0.1:1', via: 'direct', token: 'test-credential', close: async () => {} }));
     await c.addSlave(config); await settle();
     expect(c.getConnections()[0]).toMatchObject({ status: 'connecting', authenticated: false });
-    accept({ success: true }); await settle();
+    accept(serviceAuth()); await settle();
     expect(c.getConnections()[0]).toMatchObject({ status: 'connected', authenticated: true });
     network.instances[0].handlers.get('peer:disconnect')(); await settle();
     expect(c.getConnections()[0]?.authenticated).toBe(false);
@@ -72,7 +113,7 @@ describe('mesh recovery and resource ownership', () => {
 
   it('renews once for concurrent calls on the same peer without replaying any operation or replacing its tunnel', async () => {
     const effects = vi.fn(async () => 'done');
-    const remote = { ...peer(), runTask: vi.fn(async () => ({ success: true })) };
+    const remote = { ...peer(), runTask: vi.fn(async () => serviceAuth()) };
     const discover = remote.queryInterface;
     remote.queryInterface = vi.fn(async (name: string) => name === 'Mutations' ? { execute: effects } : discover(name)) as any;
     network.peers.push(remote);
@@ -95,7 +136,7 @@ describe('mesh recovery and resource ownership', () => {
   });
 
   it('refuses a mutation after renewal rejection and reports the actual authentication failure', async () => {
-    const remote = { ...peer(), runTask: vi.fn().mockResolvedValueOnce({ success: true }).mockResolvedValue({ success: false, error: 'signature mismatch' }) };
+    const remote = { ...peer(), runTask: vi.fn().mockResolvedValueOnce(serviceAuth()).mockResolvedValue({ success: false, error: 'signature mismatch' }) };
     network.peers.push(remote);
     const rejected = vi.fn();
     const c = connector(async () => ({ url: 'tcp://127.0.0.1:1', via: 'direct', token: 'initial', expiresAt: Date.now() + 300_000,
@@ -111,8 +152,8 @@ describe('mesh recovery and resource ownership', () => {
 
   it('never publishes a late refresh into a replacement connection', async () => {
     let finish!: (value: { token: string; expiresAt: number }) => void;
-    const remote = { ...peer(), runTask: vi.fn(async () => ({ success: true })) };
-    const next = { ...peer(), runTask: vi.fn(async () => ({ success: true })) };
+    const remote = { ...peer(), runTask: vi.fn(async () => serviceAuth()) };
+    const next = { ...peer(), runTask: vi.fn(async () => serviceAuth()) };
     network.peers.push(remote, next);
     const firstLink = { url: 'tcp://127.0.0.1:1', via: 'direct', token: 'initial', expiresAt: Date.now() + 300_000,
       refreshCredential: () => new Promise(resolve => { finish = resolve; }) };
@@ -132,7 +173,7 @@ describe('mesh recovery and resource ownership', () => {
   });
 
   it('expires non-renewable credentials before dispatch and never advertises expired authority', async () => {
-    const remote = { ...peer(), runTask: vi.fn(async () => ({ success: true })) };
+    const remote = { ...peer(), runTask: vi.fn(async () => serviceAuth()) };
     network.peers.push(remote);
     const c = connector(async () => ({ url: 'tcp://127.0.0.1:1', via: 'direct', token: 'initial', expiresAt: Date.now() + 300_000 }));
     await c.addSlave(config); await settle();
@@ -145,7 +186,7 @@ describe('mesh recovery and resource ownership', () => {
 
   it('bounds a stuck refresh and fences a late authentication completion after timeout', async () => {
     let accept!: (value: { success: boolean }) => void;
-    const remote = { ...peer(), runTask: vi.fn().mockResolvedValueOnce({ success: true })
+    const remote = { ...peer(), runTask: vi.fn().mockResolvedValueOnce(serviceAuth())
       .mockImplementation(() => new Promise(resolve => { accept = resolve; })) };
     network.peers.push(remote);
     const link = { url: 'tcp://127.0.0.1:1', via: 'direct', token: 'initial', expiresAt: Date.now() + 300_000,
@@ -155,7 +196,7 @@ describe('mesh recovery and resource ownership', () => {
     const result = c.invokeOnSlave(config.host, 9700, 'OmnitronDaemon', 'ping', []).catch(error => error);
     await settle(); await vi.advanceTimersByTimeAsync(10_000);
     expect((await result).message).toContain('renewal timed out');
-    accept({ success: true }); await settle();
+    accept(serviceAuth()); await settle();
     expect(link.token).toBe('initial');
     expect(c.getConnections()[0]).toMatchObject({ authenticated: false, lastCredentialError: 'Service credential renewal timed out' });
   });
@@ -224,7 +265,8 @@ describe('mesh recovery and resource ownership', () => {
     const drainBuffer = vi.fn(async () => ({ entries: [{ id: 'rejected' }] }));
     const remote = { queryInterface: async () => ({ drainBuffer, ackDrained }) };
     (c as any).syncService = { receiveBatch: async () => ({ acceptedIds: [], duplicateIds: [], discardedIds: [] }) };
-    const conn = { config, peer: remote, status: 'connected', lastPullError: null };
+    const conn = { config, authenticated: true,
+    link: { via: 'ssh-tunnel', url: 'tcp://127.0.0.1:1', token: 'worker-service', expiresAt: Date.now() + 300_000 }, peer: remote, status: 'connected', lastPullError: null };
     await (c as any).pullSyncData('test.invalid:9700', conn);
     expect(conn.lastPullError).toContain('Replication stalled');
     expect(ackDrained).not.toHaveBeenCalled();

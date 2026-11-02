@@ -7,7 +7,7 @@
  * - Auto-connect on stack start
  * - Exponential backoff reconnection on disconnect
  * - Heartbeat monitoring (detect slave failures)
- * - Sync wiring (push sync invoke to SyncService)
+ * - Authenticated replication pulls into SyncService
  * - Fleet node status updates
  *
  * Each slave runs its own omnitron daemon on the remote machine.
@@ -28,7 +28,8 @@ import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { SyncService } from '../services/sync.service.js';
 import type { ISyncStatus } from '../shared/dto/project.js';
 import { LONG_REQUEST_TIMEOUT } from '../shared/dto/services.js';
-import { directLink, stableNodeUuid, type MeshDialer, type MeshLink } from './mesh-link.js';
+import { sweepMadeProgress } from '../services/sync-policy.js';
+import { assertMeshCredentialEndpoint, directLink, stableNodeUuid, type MeshDialer, type MeshLink } from './mesh-link.js';
 
 // =============================================================================
 // Types
@@ -116,7 +117,7 @@ export interface SlaveConnection {
 /** The part of a peer this needs: netron's `authenticate` core-task. */
 export interface AuthenticatingPeer {
   runTask?: (task: string, payload: unknown) => Promise<{
-    success?: boolean; error?: string; context?: { metadata?: Record<string, unknown> };
+    success?: boolean; error?: string; context?: { roles?: unknown; metadata?: Record<string, unknown> };
   } | undefined>;
 }
 
@@ -138,6 +139,8 @@ export interface AuthenticatingPeer {
  * looking at authentication, which is the one thing that was working.
  */
 export async function authenticatePeer(peer: AuthenticatingPeer, link: MeshLink): Promise<void> {
+  assertMeshCredentialEndpoint(link.url);
+  if (!link.token) throw new Error('Missing mesh service credential');
   const runTask = peer.runTask;
   if (typeof runTask !== 'function') {
     throw new Error(`cannot present a credential over ${link.url} — this transport has no authenticate task`);
@@ -148,11 +151,17 @@ export async function authenticatePeer(peer: AuthenticatingPeer, link: MeshLink)
     link.onRejected?.(auth?.error);
     throw new Error(`node refused the master's credential: ${auth?.error ?? 'no reason given'}`);
   }
-  const expiresAt = auth.context?.metadata?.['expiresAt'];
-  if (typeof expiresAt === 'number' && Number.isFinite(expiresAt)) {
-    link.expiresAt = Math.min(link.expiresAt ?? expiresAt, expiresAt);
+  const context = auth.context;
+  if (!Array.isArray(context?.roles) || context.roles.length !== 1 || context.roles[0] !== 'service_role' ||
+      context.metadata?.['principalType'] !== 'service') {
+    throw new Error('Node did not confirm a service_role principal; verify the registered daemon and its version');
   }
-  if (link.expiresAt !== undefined && (!Number.isFinite(link.expiresAt) || link.expiresAt <= Date.now())) {
+  const expiresAt = context.metadata['expiresAt'];
+  if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt)) {
+    throw new Error('Node did not confirm a finite service credential expiry; verify the registered daemon and its version');
+  }
+  link.expiresAt = Math.min(link.expiresAt ?? expiresAt, expiresAt);
+  if (!Number.isFinite(link.expiresAt) || link.expiresAt <= Date.now()) {
     throw new Error('Node accepted a service credential that is already expired');
   }
 }
@@ -192,6 +201,8 @@ export function isConnectionGone(err: unknown): boolean {
     message,
   );
 }
+
+const LIVENESS_ONLY = 'Only OmnitronDaemon.ping is available without a verified service credential. Configure SSH access and daemon authentication for the registered node.';
 
 export class SlaveConnector {
   private readonly connections = new Map<string, SlaveConnection>();
@@ -237,12 +248,20 @@ export class SlaveConnector {
   async addSlave(config: SlaveNodeConfig): Promise<void> {
     const key = `${config.host}:${config.port}`;
 
-    if (this.connections.has(key)) {
-      // Debug, not warn: the node registry re-asserts its members whenever a
-      // health check sees one, so "already registered" is the normal case
-      // and a warning per node per check is noise that hides the real ones.
-      this.logger.debug({ host: config.host, port: config.port }, 'Node already in the mesh');
-      return;
+    const previous = this.connections.get(key);
+    let replacing: Promise<void> | undefined;
+    if (previous) {
+      if (!config.nodeId || config.nodeId === previous.config.nodeId) {
+        this.logger.debug({ host: config.host, port: config.port }, 'Node already in the mesh');
+        return;
+      }
+      if (previous.config.nodeId) {
+        throw new Error(`Conflicting registered node identities for ${key}. Resolve duplicate registrations before joining the mesh.`);
+      }
+      // A stack can discover this endpoint before the registry does. Revoke
+      // that transport before publishing a connection with a different identity.
+      replacing = this.removeSlave(config.host, config.port);
+      config = { ...previous.config, ...config };
     }
 
     const conn: SlaveConnection = {
@@ -264,8 +283,11 @@ export class SlaveConnector {
     this.connections.set(key, conn);
     this.logger.info({ host: config.host, port: config.port, stack: config.stack }, 'Slave registered');
 
-    // Start connection attempt
-    this.connectSlave(key, conn);
+    // Publish the replacement before awaiting cleanup, so removal or disposal
+    // during a slow close cannot resurrect a revoked registration.
+    if (replacing) await replacing;
+    if (this.disposed || this.connections.get(key) !== conn) return;
+    void this.connectSlave(key, conn);
 
     // Start heartbeat loop if not running
     if (!this.heartbeatTimer) {
@@ -393,7 +415,7 @@ export class SlaveConnector {
       lastError: conn.lastError,
       via: conn.link?.via ?? null,
       authenticated: conn.status === 'connected' && conn.authenticated === true &&
-        (conn.link?.expiresAt === undefined || conn.link.expiresAt > Date.now()),
+        Boolean(conn.link?.token && conn.link.expiresAt && conn.link.expiresAt > Date.now()),
       credentialExpiresAt: conn.link?.expiresAt ?? null,
       credentialRefreshedAt: conn.credentialRefreshedAt ?? null,
       lastCredentialError: conn.lastCredentialError ?? null,
@@ -440,10 +462,12 @@ export class SlaveConnector {
        * must keep failing loudly instead.
        */
       retryOnDisconnect?: boolean;
+      /** Require authenticated evidence when a public ping informs a release decision. */
+      requireCredential?: boolean;
     },
   ): Promise<unknown> {
     try {
-      return await this.callOnSlave(host, port, service, method, args);
+      return await this.callOnSlave(host, port, service, method, args, options?.requireCredential);
     } catch (err) {
       if (!options?.retryOnDisconnect || !isConnectionGone(err)) throw err;
 
@@ -463,11 +487,11 @@ export class SlaveConnector {
           cause: err,
         });
       }
-      return await this.callOnSlave(host, port, service, method, args);
+      return await this.callOnSlave(host, port, service, method, args, options?.requireCredential);
     }
   }
 
-  private async callOnSlave(host: string, port: number, service: string, method: string, args: unknown[]): Promise<unknown> {
+  private async callOnSlave(host: string, port: number, service: string, method: string, args: unknown[], requireCredential = false): Promise<unknown> {
     const key = `${host}:${port}`;
     const conn = this.connections.get(key);
     if (conn?.status !== 'connected' || !conn.peer) {
@@ -475,8 +499,10 @@ export class SlaveConnector {
     }
     const peer = conn.peer;
     try {
-      await this.ensureCredential(conn, peer);
+      const publicPing = !requireCredential && service === 'OmnitronDaemon' && method === 'ping' && args.length === 0;
+      await this.ensureCredential(conn, peer, publicPing);
       const proxy = await peer.queryInterface(service);
+      await this.ensureCredential(conn, peer, publicPing);
       const fn = (proxy as any)[method];
       if (typeof fn !== 'function') throw new Error(`Method ${method} not found on service ${service}`);
       return await fn.call(proxy, ...args);
@@ -527,7 +553,7 @@ export class SlaveConnector {
     try {
       if (conn.cleanup) await conn.cleanup;
       if (!current()) return;
-      link = await this.dial({ host: conn.config.host, port: conn.config.port });
+      link = await this.dial({ host: conn.config.host, port: conn.config.port, ...(conn.config.nodeId && { nodeId: conn.config.nodeId }) });
       if (!current()) { await this.closeResources(null, link); return; }
       conn.link = link;
       netron = new Netron(createNullLogger(), { id: `master-to-${key}` });
@@ -543,7 +569,13 @@ export class SlaveConnector {
       if (!current()) { await this.closeResources(netron, link); return; }
       const connectedLink = link;
       const pingResult = await bounded<{ version?: string }>((async () => {
-        if (connectedLink.token) await authenticatePeer(peer as AuthenticatingPeer, connectedLink);
+        if (connectedLink.token) {
+          try { await authenticatePeer(peer as AuthenticatingPeer, connectedLink); }
+          catch (error) {
+            if (current()) conn.lastCredentialError = error instanceof Error ? error.message : String(error);
+            throw error;
+          }
+        }
         const daemon = await peer.queryInterface<any>('OmnitronDaemon');
         return daemon.ping();
       })(), 10_000, 'RPC authentication or initial heartbeat timed out');
@@ -552,7 +584,7 @@ export class SlaveConnector {
       conn.status = 'connected';
       conn.authenticated = Boolean(connectedLink.token);
       conn.credentialRefreshedAt = conn.authenticated ? Date.now() : null;
-      conn.lastCredentialError = null;
+      conn.lastCredentialError = conn.authenticated ? null : LIVENESS_ONLY;
       conn.lastHeartbeat = Date.now();
       conn.lastError = null;
       conn.cleanupError = null;
@@ -647,13 +679,17 @@ export class SlaveConnector {
   // ===========================================================================
 
   /** Coalesce renewal across calls and polling. Never replay a business invocation. */
-  private async ensureCredential(conn: SlaveConnection, peer: unknown): Promise<void> {
+  private async ensureCredential(conn: SlaveConnection, peer: unknown, publicPing = false): Promise<void> {
     if (conn.peer !== peer || conn.status !== 'connected') throw new Error('RPC connection changed before authentication');
     const link = conn.link;
-    if (!link?.token) return;
+    if (!link?.token || !conn.authenticated) {
+      if (publicPing) return;
+      throw new Error(LIVENESS_ONLY);
+    }
     const pending = conn.credentialRefresh;
     if (pending && pending.peer === peer) { await pending.promise; return; }
-    if (link.expiresAt === undefined || link.expiresAt - Date.now() > 30_000) return;
+    if (link.expiresAt === undefined || !Number.isFinite(link.expiresAt)) throw new Error('Missing service credential expiry');
+    if (link.expiresAt - Date.now() > 30_000) return;
     // A non-renewable caller may use its valid token until expiry; it must
     // redial afterwards. Built-in mesh credentials always support renewal.
     if (!link.refreshCredential && link.expiresAt > Date.now()) return;
@@ -704,7 +740,7 @@ export class SlaveConnector {
         const peer = conn.peer;
         try {
           await bounded((async () => {
-            await this.ensureCredential(conn, peer);
+            await this.ensureCredential(conn, peer, true);
             const daemon = await peer.queryInterface('OmnitronDaemon');
             await daemon.ping();
           })(), 10_000, 'Heartbeat timeout');
@@ -743,6 +779,8 @@ export class SlaveConnector {
         const syncProxy = await peer.queryInterface('OmnitronSync');
         return await syncProxy.getSyncStatus() as ISyncStatus | undefined;
       })(), 10_000, 'Replication status read timed out');
+      if (conn.peer !== peer || conn.status !== 'connected') return;
+      await this.ensureCredential(conn, peer);
       if (conn.peer !== peer || conn.status !== 'connected') return;
       conn.syncStatus = status ?? null;
       conn.syncStatusAt = Date.now();
@@ -862,10 +900,18 @@ export class SlaveConnector {
       while (conn.peer === peer && conn.status === 'connected') {
         await this.ensureCredential(conn, peer);
         const drained = await syncProxy.drainBuffer({ limit: 1000 });
+        await this.ensureCredential(conn, peer);
+        if (conn.peer !== peer || conn.status !== 'connected') return;
         if (!drained || !drained.entries || drained.entries.length === 0) break;
         const batch = { ...drained, nodeId };
 
         // Ingest into master, then release on the slave — in that order.
+        const ids = batch.entries.map((entry: { id: string }) => entry.id);
+        if (!sweepMadeProgress(seen, ids)) {
+          throw new Error(`Replication stalled: ${ids.length} oldest entries remain pending after ingestion; inspect master sync errors`);
+        }
+        for (const id of ids) seen.add(id);
+
         // `drainBuffer` used to mark entries synced before returning them,
         // so anything that went wrong from here on lost the data on both
         // sides while this loop logged the failure at debug level.
@@ -887,15 +933,6 @@ export class SlaveConnector {
           if (conn.peer === peer) conn.lastPullAt = Date.now();
         }
         totalPulled += delivered.length;
-
-        // Entries the master rejected stay pending on the slave, so the next
-        // fetch returns them again. Without this the sweep would re-fetch and
-        // re-reject the same page until the safety limit.
-        const ids: string[] = batch.entries.map((e: { id: string }) => e.id);
-        if (!ids.some((id) => !seen.has(id))) {
-          throw new Error(`Replication stalled: ${ids.length} oldest entries remain pending after ingestion; inspect master sync errors`);
-        }
-        for (const id of ids) seen.add(id);
 
         // Safety: don't pull more than 10k entries in one sweep
         if (totalPulled >= 10_000) break;

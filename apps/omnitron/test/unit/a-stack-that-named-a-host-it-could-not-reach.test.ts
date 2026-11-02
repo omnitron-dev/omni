@@ -20,13 +20,14 @@ import { describe, it, expect } from 'vitest';
 import { withNodeCredentials, stackNodeToDeployTarget } from '../../src/services/remote-deployer.service.js';
 
 const stackNode = { host: '37.27.130.185', port: 9700, role: 'app' as const, label: 'test' };
-const registered = { host: '37.27.130.185', port: 22, username: 'root', password: 'from-the-vault' };
+const registered = { host: '37.27.130.185', port: 22, username: 'root', password: 'from-the-vault', expectedHostFingerprint: `SHA256:${'a'.repeat(43)}` };
 
 describe('a stack node and the registry entry for the same machine', () => {
   it('takes the credential from the registry', () => {
     const target = withNodeCredentials(stackNodeToDeployTarget(stackNode), registered);
 
     expect(target.username).toBe('root');
+    expect(target.expectedHostFingerprint).toBe(registered.expectedHostFingerprint);
     expect(target.password).toBe('from-the-vault');
     // And keeps what the stack said: the daemon port is the stack's business.
     expect(target.daemonPort).toBe(9700);
@@ -41,8 +42,9 @@ describe('a stack node and the registry entry for the same machine', () => {
     // entry is the default, not an override.
     expect(target.username).toBe('deploy');
     expect(target.sshPort).toBe(2222);
-    // What the stack left out still comes from the registry.
-    expect(target.password).toBe('from-the-vault');
+    // An explicit different SSH account or port cannot receive another registration's credentials.
+    expect(target.password).toBeUndefined();
+    expect(target.expectedHostFingerprint).toBeUndefined();
   });
 
   it('changes nothing for a host the registry does not know', () => {

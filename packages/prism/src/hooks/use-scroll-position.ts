@@ -87,7 +87,6 @@ export function useScrollPosition(options: UseScrollPositionOptions = {}): Scrol
     // SSR guard - only run on client
     if (typeof window === 'undefined') return;
 
-    const target = element ?? window;
     const scrollX = element ? element.scrollLeft : window.scrollX;
     const scrollY = element ? element.scrollTop : window.scrollY;
 

@@ -175,9 +175,7 @@ export function createVersionedStorage<TState>(config: VersionedSettingsConfig<T
   migrate: (persistedState: unknown, version: number) => TState;
   defaultState: TState;
 } {
-  const { version, name, migrations, validate, onMigrationError, onCorruptData, defaultState } = config;
-
-  const storageKey = `prism-settings-${name}`;
+  const { version, migrations, validate, onMigrationError, onCorruptData, defaultState } = config;
 
   /**
    * Custom storage adapter that handles versioned data.

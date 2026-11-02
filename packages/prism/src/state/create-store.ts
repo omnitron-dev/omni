@@ -29,8 +29,6 @@ export interface CreateStoreOptions<T> {
  * Middleware type helpers for proper typing.
  */
 type ImmerMiddleware = ['zustand/immer', never];
-type DevtoolsMiddleware = ['zustand/devtools', never];
-type PersistMiddleware<T> = ['zustand/persist', T];
 
 /**
  * Creates a Zustand store with Prism defaults.

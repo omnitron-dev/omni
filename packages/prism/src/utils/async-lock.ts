@@ -326,7 +326,7 @@ export async function withLock<T>(key: string, operation: () => Promise<T>, opti
 export function locked(key: string, options?: AsyncLockOptions) {
   const lock = new AsyncLock(options);
 
-  return function <T extends (...args: unknown[]) => Promise<unknown>>(
+  return function decorateLockedMethod<T extends (...args: unknown[]) => Promise<unknown>>(
     _target: object,
     _propertyKey: string,
     descriptor: TypedPropertyDescriptor<T>
@@ -337,7 +337,7 @@ export function locked(key: string, options?: AsyncLockOptions) {
       return descriptor;
     }
 
-    descriptor.value = async function (this: unknown, ...args: unknown[]) {
+    descriptor.value = async function runLockedMethod(this: unknown, ...args: unknown[]) {
       const { value } = await lock.acquire(key, () => originalMethod.apply(this, args));
       return value;
     } as T;

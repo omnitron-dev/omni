@@ -60,47 +60,6 @@ export interface EmptyContentProps {
 // DEFAULT ILLUSTRATION
 // =============================================================================
 
-function DefaultIllustration({ sx }: { sx?: SxProps<Theme> }) {
-  return (
-    <Box
-      component="svg"
-      viewBox="0 0 480 360"
-      sx={{
-        width: 240,
-        height: 'auto',
-        color: 'text.disabled',
-        ...sx,
-      }}
-    >
-      <defs>
-        <linearGradient id="emptyGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" style={{ stopColor: 'currentColor', stopOpacity: 0.2 }} />
-          <stop offset="100%" style={{ stopColor: 'currentColor', stopOpacity: 0.05 }} />
-        </linearGradient>
-      </defs>
-      <ellipse cx="240" cy="300" rx="160" ry="30" fill="url(#emptyGradient)" />
-      <rect x="140" y="120" width="200" height="140" rx="8" fill="currentColor" opacity="0.08" />
-      <rect x="160" y="140" width="160" height="8" rx="4" fill="currentColor" opacity="0.12" />
-      <rect x="160" y="160" width="120" height="8" rx="4" fill="currentColor" opacity="0.12" />
-      <rect x="160" y="180" width="140" height="8" rx="4" fill="currentColor" opacity="0.12" />
-      <circle cx="240" cy="80" r="40" fill="currentColor" opacity="0.1" />
-      <path
-        d="M225 75 L230 80 L255 55"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-        opacity="0.2"
-      />
-    </Box>
-  );
-}
-
-// =============================================================================
-// ICON WRAPPER
-// =============================================================================
-
 function IconWrapper({ icon, color = 'primary.main', size = 64 }: { icon: ReactNode; color?: string; size?: number }) {
   return (
     <Box

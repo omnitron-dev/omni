@@ -22,15 +22,15 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { styled, alpha, useTheme } from '@mui/material/styles';
 
 // MUI Icons (standard for design system components)
-import { CloseIcon as CloseIcon } from '../../icons/controls.js';
-import { ChevronLeftIcon as ChevronLeftIcon } from '../../icons/controls.js';
-import { ChevronRightIcon as ChevronRightIcon } from '../../icons/controls.js';
-import { ZoomInIcon as ZoomInIcon } from '../../icons/controls.js';
-import { ZoomOutIcon as ZoomOutIcon } from '../../icons/controls.js';
-import { FullscreenIcon as FullscreenIcon } from '../../icons/controls.js';
-import { FullscreenExitIcon as FullscreenExitIcon } from '../../icons/controls.js';
-import { DownloadIcon as DownloadIcon } from '../../icons/controls.js';
-import { ShareIcon as ShareIcon } from '../../icons/controls.js';
+import { CloseIcon } from '../../icons/controls.js';
+import { ChevronLeftIcon } from '../../icons/controls.js';
+import { ChevronRightIcon } from '../../icons/controls.js';
+import { ZoomInIcon } from '../../icons/controls.js';
+import { ZoomOutIcon } from '../../icons/controls.js';
+import { FullscreenIcon } from '../../icons/controls.js';
+import { FullscreenExitIcon } from '../../icons/controls.js';
+import { DownloadIcon } from '../../icons/controls.js';
+import { ShareIcon } from '../../icons/controls.js';
 import { PlayIcon as PlayArrowIcon } from '../../icons/controls.js';
 
 import { cn } from '../../utils/cn.js';

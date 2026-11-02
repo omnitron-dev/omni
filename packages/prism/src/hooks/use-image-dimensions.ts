@@ -241,13 +241,14 @@ export function useMultipleImageDimensions(
     Map<string, { dimensions: ImageDimensions | null; loading: boolean; error: Error | null }>
   >(new Map());
 
+  const sourcesKey = JSON.stringify([...new Set(urls.filter((url): url is string => Boolean(url)))]);
   useEffect(() => {
     if (!immediate) return undefined;
 
     const cleanups: (() => void)[] = [];
 
-    urls.forEach((url) => {
-      if (!url) return;
+    const sources: string[] = JSON.parse(sourcesKey);
+    sources.forEach((url) => {
 
       setResults((prev) => {
         const next = new Map(prev);
@@ -326,7 +327,7 @@ export function useMultipleImageDimensions(
     return () => {
       cleanups.forEach((cleanup) => cleanup());
     };
-  }, [urls.join(','), crossOrigin, timeout, immediate]);
+  }, [sourcesKey, crossOrigin, timeout, immediate]);
 
   return urls.map((url) => {
     if (!url) {

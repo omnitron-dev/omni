@@ -17,7 +17,7 @@ import { useCallback, useMemo } from 'react';
 import MuiTable from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
-import { TableViewport } from '../table/table-viewport.js';
+import { isRowActionTarget, TableViewport } from '../table/table-viewport.js';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TableSortLabel from '@mui/material/TableSortLabel';
@@ -578,18 +578,9 @@ export function AdminDataTable<T>({
                       key={key}
                       hover
                       selected={isSelected}
-                      tabIndex={onRowClick ? 0 : undefined}
-                      onKeyDown={(event) => {
-                        if (
-                          event.target === event.currentTarget &&
-                          onRowClick &&
-                          (event.key === 'Enter' || event.key === ' ')
-                        ) {
-                          event.preventDefault();
-                          onRowClick(row);
-                        }
-                      }}
-                      onClick={onRowClick ? () => onRowClick(row) : undefined}
+                      tabIndex={onRowClick || selectable ? -1 : undefined}
+                      data-row-action={onRowClick ? true : undefined}
+                      onClick={onRowClick ? event => { if (isRowActionTarget(event.target)) onRowClick(row); } : undefined}
                       sx={{
                         cursor: onRowClick ? 'pointer' : 'default',
                         '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 },

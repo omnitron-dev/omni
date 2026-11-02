@@ -268,6 +268,7 @@ export interface DataGridBlockProps<R extends Record<string, unknown> = Record<s
  * DataGridBlock context value.
  */
 export interface DataGridBlockContextValue {
+  toolbar?: DataGridToolbarConfig;
   /** Current loading state */
   loading: boolean;
   /** Current error state */
@@ -310,6 +311,8 @@ export interface UseDataGridBlockOptions<R = Record<string, unknown>> {
  * Fetch parameters passed to the fetcher function.
  */
 export interface DataGridFetchParams {
+  /** Aborted when the request is superseded or the grid unmounts. */
+  signal?: AbortSignal;
   /** Current page (0-indexed) */
   page: number;
   /** Page size */

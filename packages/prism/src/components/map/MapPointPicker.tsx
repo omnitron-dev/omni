@@ -75,15 +75,17 @@ export function MapPointPicker({
     ...initialViewport,
   }));
   const [loaded, setLoaded] = useState(false);
+  const longitude = valid?.lng;
+  const latitude = valid?.lat;
   useEffect(() => {
-    if (value && isMapPoint(value))
+    if (longitude !== undefined && latitude !== undefined)
       setCamera((old) => ({
         ...old,
-        longitude: value.lng,
-        latitude: mapCameraLatitude(value.lat),
+        longitude,
+        latitude: mapCameraLatitude(latitude),
         zoom: Math.max(old.zoom, selectionZoom),
       }));
-  }, [value?.lng, value?.lat, selectionZoom]);
+  }, [longitude, latitude, selectionZoom]);
   function choose(lng: number, lat: number) {
     const point = normalizeMapPoint(lng, lat);
     if (point && !readOnly) onChange(point);

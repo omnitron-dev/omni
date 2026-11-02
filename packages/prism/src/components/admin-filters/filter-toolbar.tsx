@@ -259,7 +259,7 @@ export function FilterToolbar({
   // Render individual filter
   const renderFilter = useCallback(
     (config: FilterConfig): ReactNode => {
-      const { key, type, label, placeholder, options, width } = config;
+      const { key, type, label, placeholder, options } = config;
 
       switch (type) {
         case 'search':

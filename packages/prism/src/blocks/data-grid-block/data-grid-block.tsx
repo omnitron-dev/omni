@@ -31,10 +31,14 @@ import ListItemIcon from '@mui/material/ListItemIcon';
 import ListItemText from '@mui/material/ListItemText';
 import Divider from '@mui/material/Divider';
 import Tooltip from '@mui/material/Tooltip';
-import { SearchInput } from '../../components/search-input/search-input.js';
+import { useEventCallback } from '@mui/material/utils';
+import { CloseIcon } from '../../icons/controls.js';
 import LinearProgress from '@mui/material/LinearProgress';
 import {
   DataGrid,
+  QuickFilter,
+  QuickFilterControl,
+  QuickFilterClear,
   type GridColDef,
   type GridRenderCellParams,
   type GridPaginationModel,
@@ -126,59 +130,12 @@ function EmptyIcon(): ReactNode {
 // CUSTOM TOOLBAR
 // =============================================================================
 
-interface CustomToolbarProps {
-  quickFilter?: {
-    enabled?: boolean;
-    placeholder?: string;
-    debounceMs?: number;
-  };
-  exportConfig?: {
-    csv?: boolean;
-    excel?: boolean;
-    print?: boolean;
-  };
-  showColumnSelector?: boolean;
-  showDensitySelector?: boolean;
-  startContent?: ReactNode;
-  endContent?: ReactNode;
-  actions?: ReactNode;
-  onQuickFilterChange?: (value: string) => void;
-}
-
-function CustomToolbar({
-  quickFilter,
-  exportConfig,
-  showColumnSelector = true,
-  showDensitySelector = true,
-  startContent,
-  endContent,
-  actions,
-  onQuickFilterChange,
-}: CustomToolbarProps): ReactNode {
-  const [searchValue, setSearchValue] = useState('');
-  const debounceRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Cleanup debounce timer on unmount
-  useEffect(
-    () => () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    },
-    []
-  );
-
-  const handleSearchChange = useCallback(
-    (value: string) => {
-      setSearchValue(value);
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-      debounceRef.current = setTimeout(() => {
-        onQuickFilterChange?.(value);
-      }, quickFilter?.debounceMs ?? 300);
-    },
-    [onQuickFilterChange, quickFilter?.debounceMs]
-  );
-
+function CustomToolbar(): ReactNode {
+  const { toolbar } = useDataGridBlockContext();
+  const { quickFilter, export: exportConfig, actions, startContent, endContent } = toolbar ?? {};
+  const showColumnSelector = toolbar?.columnVisibility?.enabled !== false;
+  const showDensitySelector = toolbar?.densitySelector !== false;
+  const placeholder = quickFilter?.placeholder ?? 'Search...';
   return (
     <GridToolbarContainer
       sx={{
@@ -191,13 +148,18 @@ function CustomToolbar({
       {startContent}
 
       {quickFilter?.enabled !== false && (
-        <SearchInput
-          value={searchValue}
-          onChange={handleSearchChange}
-          placeholder={quickFilter?.placeholder ?? 'Search...'}
-          fullWidth={false}
-          minWidth={200}
-        />
+        <QuickFilter data-keyboard-search expanded debounceMs={quickFilter?.debounceMs ?? 300}>
+          <QuickFilterControl
+            placeholder={placeholder}
+            size="small"
+            slotProps={{ htmlInput: { role: 'searchbox', 'aria-label': placeholder } }}
+          />
+          <QuickFilterClear
+            aria-label="Clear search"
+            size="small"
+            render={(props, state) => state.value ? <IconButton {...props}><CloseIcon fontSize="small" /></IconButton> : <span />}
+          />
+        </QuickFilter>
       )}
 
       <Box sx={{ flex: 1 }} />
@@ -510,7 +472,6 @@ export function DataGridBlock<R extends Record<string, unknown> = Record<string,
     type: 'include',
     ids: new Set<GridRowId>(),
   });
-  const [quickFilterValue, setQuickFilterValue] = useState('');
 
   // Use controlled or internal state
   const paginationModel = controlledPaginationModel ?? internalPaginationModel;
@@ -586,35 +547,16 @@ export function DataGridBlock<R extends Record<string, unknown> = Record<string,
       error,
       density,
       setDensity,
+      toolbar,
       rowCount: rows.length,
       selectedCount: selectionModelValue.ids.size,
       refresh: onRetry,
     }),
-    [loading, error, density, rows.length, selectionModelValue, onRetry]
+    [loading, error, density, rows.length, selectionModelValue, onRetry, toolbar]
   );
 
   // Determine row count for pagination
-  const rowCount = pagination?.mode === 'server' ? (pagination.rowCount ?? 0) : rows.length;
-
-  // Custom toolbar slot
-  const toolbarSlot = useMemo(() => {
-    if (toolbar?.show === false) {
-      return undefined;
-    }
-
-    return () => (
-      <CustomToolbar
-        quickFilter={toolbar?.quickFilter}
-        exportConfig={toolbar?.export}
-        showColumnSelector={toolbar?.columnVisibility?.enabled !== false}
-        showDensitySelector={toolbar?.densitySelector !== false}
-        startContent={toolbar?.startContent}
-        endContent={toolbar?.endContent}
-        actions={toolbar?.actions}
-        onQuickFilterChange={setQuickFilterValue}
-      />
-    );
-  }, [toolbar]);
+  const rowCount = pagination?.mode === 'server' ? (pagination.rowCount ?? 0) : undefined;
 
   // No data overlay
   const noRowsOverlay = useMemo(() => {
@@ -651,6 +593,8 @@ export function DataGridBlock<R extends Record<string, unknown> = Record<string,
             columns={finalColumns}
             loading={loading}
             density={density}
+            onDensityChange={setDensity}
+            showToolbar={toolbar?.show !== false}
             autoHeight={autoHeight}
             rowHeight={rowHeight}
             getRowId={getRowId}
@@ -671,6 +615,7 @@ export function DataGridBlock<R extends Record<string, unknown> = Record<string,
             filterModel={filterModel}
             onFilterModelChange={handleFilterChange}
             // Selection
+            rowSelection={selection?.enabled ?? true}
             checkboxSelection={selection?.checkboxSelection ?? false}
             rowSelectionModel={selectionModelValue}
             onRowSelectionModelChange={handleSelectionChange}
@@ -688,7 +633,7 @@ export function DataGridBlock<R extends Record<string, unknown> = Record<string,
             hideFooter={hideFooter || pagination?.hide}
             // Slots
             slots={{
-              toolbar: toolbarSlot,
+              toolbar: CustomToolbar,
               noRowsOverlay,
               loadingOverlay: () => <LinearProgress sx={{ position: 'absolute', top: 0, left: 0, right: 0 }} />,
               ...slots,
@@ -698,9 +643,6 @@ export function DataGridBlock<R extends Record<string, unknown> = Record<string,
               border: 0,
               '& .MuiDataGrid-columnHeaders': {
                 bgcolor: 'action.hover',
-              },
-              '& .MuiDataGrid-cell:focus': {
-                outline: 'none',
               },
               '& .MuiDataGrid-row:hover': {
                 bgcolor: 'action.hover',
@@ -767,41 +709,39 @@ export function useDataGridBlock<R extends Record<string, unknown> = Record<stri
   const [sortModel, setSortModel] = useState<GridSortModel>(initialSortModel);
   const [filterModel, setFilterModel] = useState<GridFilterModel>(initialFilterModel);
 
-  const isMountedRef = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const fetchData = useCallback(
-    async (params: DataGridFetchParams) => {
-      // Cancel previous request
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
+  const fetchData = useEventCallback(async (params: DataGridFetchParams) => {
+    // Cancel previous request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const result = await fetcher({ ...params, quickFilterValue: params.filterModel.quickFilterValues?.join(' '), signal: controller.signal });
+      if (!controller.signal.aborted) {
+        setRows(result.rows);
+        setTotal(result.total);
       }
-      abortControllerRef.current = new AbortController();
-
-      setLoading(true);
-      setError(null);
-
-      try {
-        const result = await fetcher(params);
-        if (isMountedRef.current) {
-          setRows(result.rows);
-          setTotal(result.total);
-        }
-      } catch (err) {
-        if (isMountedRef.current && err instanceof Error && err.name !== 'AbortError') {
-          setError(err);
-          if (!keepPreviousData) {
-            setRows([]);
-          }
-        }
-      } finally {
-        if (isMountedRef.current) {
-          setLoading(false);
+    } catch (err) {
+      if (!controller.signal.aborted && err instanceof Error && err.name !== 'AbortError') {
+        setError(err);
+        if (!keepPreviousData) {
+          setRows([]);
+          setTotal(0);
         }
       }
-    },
-    [fetcher, keepPreviousData]
-  );
+    } finally {
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
+    }
+  });
 
   const refresh = useCallback(() => {
     fetchData({
@@ -833,7 +773,6 @@ export function useDataGridBlock<R extends Record<string, unknown> = Record<stri
   // Cleanup on unmount
   useEffect(
     () => () => {
-      isMountedRef.current = false;
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }

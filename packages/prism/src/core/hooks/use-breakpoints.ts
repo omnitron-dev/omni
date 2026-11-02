@@ -126,7 +126,7 @@ export function useBreakpoints(): UseBreakpointsReturn {
       isLg: isLgUp && !isXlUp,
       isXl: isXlUp,
     };
-  }, [isXsUp, isSmUp, isMdUp, isLgUp, isXlUp]);
+  }, [isSmUp, isMdUp, isLgUp, isXlUp]);
 
   // Semantic breakpoints
   const isMobile = !isMdUp;

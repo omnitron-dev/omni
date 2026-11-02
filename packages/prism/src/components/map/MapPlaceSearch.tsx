@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Autocomplete, Box, Button, CircularProgress, TextField } from '@mui/material';
 import { isMapPoint } from './coordinates.js';
 import type { MapPointPickerValue } from './coordinates.js';
@@ -65,12 +65,12 @@ export function MapPlaceSearch<T extends MapPlace>({
   const provider = useRef(search);
   provider.current = search;
   const validQuery = query.trim().length >= minLength && query.length <= 200;
-  function cancel() {
+  const cancel = useCallback(() => {
     generation.current++;
     active.current?.abort();
     active.current = null;
-  }
-  async function run() {
+  }, []);
+  const run = useCallback(async () => {
     cancel();
     if (!validQuery || disabled) return;
     const id = generation.current;
@@ -104,20 +104,20 @@ export function MapPlaceSearch<T extends MapPlace>({
     } finally {
       if (id === generation.current) setLoading(false);
     }
-  }
+  }, [cancel, validQuery, disabled, query, limit]);
   useEffect(() => {
     if (mode !== 'autocomplete' || !validQuery || disabled || selected) return undefined;
     const timer = setTimeout(() => void run(), debounceMs);
     return () => clearTimeout(timer);
-  }, [query, mode, debounceMs, disabled, selected]);
+  }, [run, validQuery, mode, debounceMs, disabled, selected]);
   useEffect(() => {
     if (disabled) {
       cancel();
       setLoading(false);
       setOpen(false);
     }
-  }, [disabled]);
-  useEffect(() => () => cancel(), []);
+  }, [disabled, cancel]);
+  useEffect(() => () => cancel(), [cancel]);
   function input(value: string) {
     cancel();
     setQuery(value);

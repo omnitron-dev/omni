@@ -98,6 +98,7 @@ export function SearchInput({
   // Sync internal state when controlled value changes externally
   useEffect(() => {
     if (controlledValue !== undefined) {
+      clearTimeout(timerRef.current);
       setLocalValue(controlledValue);
     }
   }, [controlledValue]);

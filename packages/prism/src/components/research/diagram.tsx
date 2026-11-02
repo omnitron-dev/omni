@@ -99,7 +99,7 @@ export function ResearchDiagram({
       cancelled = true;
       target?.replaceChildren();
     };
-  }, [source, engine, id, theme]);
+  }, [source, engine, id, theme, mode]);
   return (
     <figure className="prism-research__diagram">
       {state !== 'ready' && <p role="status">{state === 'error' ? labels.invalid : labels.loading}</p>}

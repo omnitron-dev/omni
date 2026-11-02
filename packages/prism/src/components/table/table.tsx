@@ -11,7 +11,7 @@
 import type { ReactNode, ChangeEvent, Ref } from 'react';
 import { useCallback, useState, useMemo } from 'react';
 import MuiTable from '@mui/material/Table';
-import { TableViewport } from './table-viewport.js';
+import { isRowActionTarget, TableViewport } from './table-viewport.js';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
 import TableHead from '@mui/material/TableHead';
@@ -367,13 +367,8 @@ export function Table<T>({
                     hover
                     selected={isSelected}
                     tabIndex={onRowClick || selectable ? -1 : undefined}
-                    onKeyDown={(event) => {
-                      if (event.target === event.currentTarget && onRowClick && event.key === 'Enter') {
-                        event.preventDefault();
-                        onRowClick(row, index);
-                      }
-                    }}
-                    onClick={() => onRowClick?.(row, index)}
+                    data-row-action={onRowClick ? true : undefined}
+                    onClick={onRowClick ? event => { if (isRowActionTarget(event.target)) onRowClick(row, index); } : undefined}
                     sx={{
                       cursor: onRowClick ? 'pointer' : 'default',
                       '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 },

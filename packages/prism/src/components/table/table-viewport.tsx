@@ -13,10 +13,16 @@ export interface TableViewportProps extends TableContainerProps {
   keyboardNavigation?: boolean;
 }
 
+const rowControls = 'input,textarea,select,button,a,[contenteditable="true"],[role="button"],[role="checkbox"]';
+
+export function isRowActionTarget(target: EventTarget) {
+  return target instanceof Element && !target.closest(rowControls);
+}
+
 function browseRows(event: KeyboardEvent<HTMLDivElement>): void {
   if (event.defaultPrevented || event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
   const target = event.target as HTMLElement;
-  if (target.closest('input,textarea,select,button,a,[contenteditable="true"]')) return;
+  if (!isRowActionTarget(target)) return;
   const viewport = event.currentTarget;
   const rows = Array.from(viewport.querySelectorAll<HTMLElement>('tbody > tr')).filter(
     (row) => !row.querySelector('[role="progressbar"],.MuiSkeleton-root')
@@ -42,14 +48,11 @@ function browseRows(event: KeyboardEvent<HTMLDivElement>): void {
     event.preventDefault();
     event.stopPropagation();
     viewport.focus({ preventScroll: true });
-  } else if (event.key === 'Enter' && row) {
-    event.preventDefault();
-    row.click();
-  } else if (event.key === ' ' && row) {
-    const checkbox = row.querySelector<HTMLInputElement>('input[type="checkbox"]:not(:disabled)');
-    if (checkbox) {
+  } else if (row && (event.key === 'Enter' || event.key === ' ')) {
+    const selection = event.key === ' ' ? row.querySelector<HTMLInputElement>('input[type="checkbox"]:not(:disabled)') : null;
+    if (selection || event.key === 'Enter' || row.hasAttribute('data-row-action')) {
       event.preventDefault();
-      checkbox.click();
+      (selection ?? row).click();
     }
   }
 }

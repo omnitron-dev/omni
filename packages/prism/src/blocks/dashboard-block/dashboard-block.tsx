@@ -93,7 +93,7 @@ const sizeConfig = {
  * Dashboard block header component.
  */
 export function DashboardBlockHeader({ title, subtitle, icon, actions, sx }: DashboardBlockHeaderProps): ReactNode {
-  const { collapsed, toggleCollapse, variant, size, labels } = useDashboardBlockContext();
+  const { collapsed, toggleCollapse, size, labels } = useDashboardBlockContext();
   const config = sizeConfig[size];
 
   return (
@@ -181,7 +181,7 @@ export function DashboardBlockHeader({ title, subtitle, icon, actions, sx }: Das
  * Dashboard block content component.
  */
 export function DashboardBlockContent({ children, disablePadding = false, sx }: DashboardBlockContentProps): ReactNode {
-  const { collapsed, loading, error, size } = useDashboardBlockContext();
+  const { collapsed, size } = useDashboardBlockContext();
   const config = sizeConfig[size];
 
   return (

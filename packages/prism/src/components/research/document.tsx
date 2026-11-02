@@ -127,7 +127,7 @@ export function ResearchDocument({
 }: ResearchDocumentProps) {
   const uid = useId();
   const prefix = documentId ?? `research-${uid.replace(/[^\w-]/g, '')}`;
-  const labels = { ...defaultResearchLabels, ...overrides };
+  const labels = useMemo(() => ({ ...defaultResearchLabels, ...overrides }), [overrides]);
   const parsed = useMemo(() => {
     try {
       return { data: parseResearchMarkdown(source, prefix, sourceProfile) };
@@ -160,7 +160,7 @@ export function ResearchDocument({
       )),
       researchWidget: bounded((n) => <Widget node={n} widgets={widgets} labels={labels} />),
     };
-  }, [widgets, labels.invalid, labels.unavailable, labels.loading, labels.source]);
+  }, [widgets, labels]);
   if (!parsed.data) return <p role="alert">{labels.invalid}</p>;
   return (
     <Box

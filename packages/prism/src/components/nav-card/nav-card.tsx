@@ -20,7 +20,7 @@ import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Chip from '@mui/material/Chip';
 import Typography from '@mui/material/Typography';
-import { ChevronRightIcon as ChevronRightIcon } from '../../icons/controls.js';
+import { ChevronRightIcon } from '../../icons/controls.js';
 import { alpha, type SxProps, type Theme } from '@mui/material/styles';
 
 export interface NavCardProps {

@@ -26,11 +26,12 @@ import { enclosingRect, placeEdgeLabels, type LabelAnchor, type LabelRect } from
 export const EdgeLabelsContext = createContext<EdgeLabelStore | null>(null);
 export function useEdgeLabel(anchor: LabelAnchor | undefined) {
   const store = useContext(EdgeLabelsContext);
+  const { id, text, x, y } = anchor ?? {};
   useLayoutEffect(() => {
-    if (!store || !anchor) return undefined;
-    store.set(anchor);
-    return () => store.remove(anchor.id);
-  }, [store, anchor?.id, anchor?.text, anchor?.x, anchor?.y]);
+    if (!store || id === undefined || text === undefined || x === undefined || y === undefined) return undefined;
+    store.set({ id, text, x, y });
+    return () => store.remove(id);
+  }, [store, id, text, x, y]);
 }
 type Size = { width: number; height: number };
 function MeasuredLabel({

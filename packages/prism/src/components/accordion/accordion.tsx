@@ -9,7 +9,7 @@
  */
 
 import type { ReactNode, ComponentProps } from 'react';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import MuiAccordion from '@mui/material/Accordion';
 import MuiAccordionSummary from '@mui/material/AccordionSummary';
 import MuiAccordionDetails from '@mui/material/AccordionDetails';
@@ -91,12 +91,12 @@ export function Accordion({
     return Array.isArray(defaultExpanded) ? defaultExpanded : [defaultExpanded];
   });
 
-  const expanded =
+  const expanded = useMemo(() =>
     controlledExpanded !== undefined
       ? Array.isArray(controlledExpanded)
         ? controlledExpanded
         : [controlledExpanded]
-      : internalExpanded;
+      : internalExpanded, [controlledExpanded, internalExpanded]);
 
   const handleChange = useCallback(
     (panelId: string) => (_event: React.SyntheticEvent, isExpanded: boolean) => {

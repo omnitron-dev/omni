@@ -18,8 +18,8 @@ import IconButton from '@mui/material/IconButton';
 import { styled, alpha } from '@mui/material/styles';
 
 // MUI Icons
-import { ChevronLeftIcon as ChevronLeftIcon } from '../../icons/controls.js';
-import { ChevronRightIcon as ChevronRightIcon } from '../../icons/controls.js';
+import { ChevronLeftIcon } from '../../icons/controls.js';
+import { ChevronRightIcon } from '../../icons/controls.js';
 import { ChevronUpIcon as KeyboardArrowUpIcon } from '../../icons/controls.js';
 import { ChevronDownIcon as KeyboardArrowDownIcon } from '../../icons/controls.js';
 

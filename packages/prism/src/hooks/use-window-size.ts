@@ -249,6 +249,14 @@ export interface BreakpointChecks {
   isBetween: (start: keyof Breakpoints, end: keyof Breakpoints) => boolean;
 }
 
+const orderedBreakpoints: (keyof Breakpoints)[] = ['xs', 'sm', 'md', 'lg', 'xl'];
+
+const getNextBreakpoint = (bp: keyof Breakpoints): keyof Breakpoints | null => {
+  const index = orderedBreakpoints.indexOf(bp);
+  return index < orderedBreakpoints.length - 1 ? orderedBreakpoints[index + 1] : null;
+};
+
+
 /**
  * useBreakpointChecks - Hook for advanced breakpoint checking.
  *
@@ -266,13 +274,6 @@ export function useBreakpointChecks(customBreakpoints?: Partial<Breakpoints>): B
   // Memoize breakpoints to prevent callback recreation on every render
   const breakpoints = useMemo(() => ({ ...defaultBreakpoints, ...customBreakpoints }), [customBreakpoints]);
   const { width } = useWindowSize({ breakpoints: customBreakpoints });
-
-  const orderedBreakpoints: (keyof Breakpoints)[] = ['xs', 'sm', 'md', 'lg', 'xl'];
-
-  const getNextBreakpoint = (bp: keyof Breakpoints): keyof Breakpoints | null => {
-    const index = orderedBreakpoints.indexOf(bp);
-    return index < orderedBreakpoints.length - 1 ? orderedBreakpoints[index + 1] : null;
-  };
 
   const isUp = useCallback(
     (breakpoint: keyof Breakpoints): boolean => width >= breakpoints[breakpoint],

@@ -11,7 +11,8 @@
  * @module @omnitron-dev/prism/hooks
  */
 
-import { useEffect, useCallback, useMemo } from 'react';
+import { useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
+import { useEventCallback } from '@mui/material/utils';
 import type { ThemePreset, ThemeMode, ThemeDirection, ComponentDensity } from '../types/theme.js';
 import { PRESET_NAMES } from '../theme/create-theme.js';
 
@@ -54,6 +55,8 @@ export interface UseConfigFromQueryOptions {
   onConfigChange?: (config: UrlConfigValues) => void;
   /** Enable two-way sync (updates URL when config changes) */
   syncToUrl?: boolean;
+  /** Settings to mirror when syncToUrl is enabled. A shared URL takes precedence on mount. */
+  values?: UrlConfigValues;
 }
 
 /**
@@ -84,6 +87,27 @@ const DEFAULT_PARAM_NAMES = {
   density: 'density',
   contrast: 'contrast',
 } as const;
+
+const configKeys = Object.keys(DEFAULT_PARAM_NAMES) as (keyof UrlConfigValues)[];
+const configUrlChanged = 'prism:config-url-change';
+const readSearch = () => window.location.search;
+const serverSearch = () => '';
+
+function subscribeToSearch(onChange: () => void) {
+  window.addEventListener('popstate', onChange);
+  window.addEventListener(configUrlChanged, onChange);
+  return () => {
+    window.removeEventListener('popstate', onChange);
+    window.removeEventListener(configUrlChanged, onChange);
+  };
+}
+
+function replaceUrl(url: URL) {
+  if (url.href !== window.location.href) {
+    window.history.replaceState(window.history.state, '', url);
+    window.dispatchEvent(new Event(configUrlChanged));
+  }
+}
 
 const VALID_MODES: ThemeMode[] = ['light', 'dark', 'system'];
 const VALID_DIRECTIONS: ThemeDirection[] = ['ltr', 'rtl'];
@@ -169,16 +193,13 @@ function isValidHexColor(value: string | null): boolean {
  * ```
  */
 export function useConfigFromQuery(options: UseConfigFromQueryOptions = {}): UseConfigFromQueryReturn {
-  const { paramNames = DEFAULT_PARAM_NAMES, onConfigChange, syncToUrl = false } = options;
-
-  // Merge with defaults
-  const params = { ...DEFAULT_PARAM_NAMES, ...paramNames };
-
-  // Parse config from current URL
+  const { paramNames, onConfigChange, syncToUrl = false, values } = options;
+  const { preset = 'preset', mode = 'mode', primary = 'primary', direction = 'dir', density = 'density', contrast = 'contrast' } = paramNames ?? DEFAULT_PARAM_NAMES;
+  const params = useMemo(() => ({ preset, mode, primary, direction, density, contrast }),
+    [preset, mode, primary, direction, density, contrast]);
+  const search = useSyncExternalStore(subscribeToSearch, readSearch, serverSearch);
   const configFromUrl = useMemo<UrlConfigValues>(() => {
-    if (typeof window === 'undefined') return {};
-
-    const searchParams = new URLSearchParams(window.location.search);
+    const searchParams = new URLSearchParams(search);
     const config: UrlConfigValues = {};
 
     const presetValue = searchParams.get(params.preset);
@@ -212,132 +233,60 @@ export function useConfigFromQuery(options: UseConfigFromQueryOptions = {}): Use
     }
 
     return config;
-  }, [params.preset, params.mode, params.primary, params.direction, params.density, params.contrast]);
+  }, [params, search]);
 
-  // Notify on config change from URL
+  const receivedConfig = useRef(false);
+  const notifyConfig = useEventCallback((next: UrlConfigValues) => onConfigChange?.(next));
   useEffect(() => {
-    if (onConfigChange && Object.keys(configFromUrl).length > 0) {
-      onConfigChange(configFromUrl);
+    const hasValues = Object.keys(configFromUrl).length > 0;
+    if (hasValues || receivedConfig.current) notifyConfig(configFromUrl);
+    receivedConfig.current = hasValues;
+  }, [configFromUrl, notifyConfig]);
+
+  const applyValues = useCallback((url: URL, next: Partial<UrlConfigValues>) => {
+    for (const key of configKeys) {
+      const value = next[key];
+      if (value !== undefined) {
+        if (value) url.searchParams.set(params[key], value);
+        else url.searchParams.delete(params[key]);
+      }
     }
-  }, [configFromUrl, onConfigChange]);
-
-  // Update URL with new config values
-  const updateUrl = useCallback(
-    (values: Partial<UrlConfigValues>) => {
-      if (typeof window === 'undefined') return;
-
-      const searchParams = new URLSearchParams(window.location.search);
-
-      // Update or remove each param
-      if (values.preset !== undefined) {
-        if (values.preset) {
-          searchParams.set(params.preset, values.preset);
-        } else {
-          searchParams.delete(params.preset);
-        }
-      }
-
-      if (values.mode !== undefined) {
-        if (values.mode) {
-          searchParams.set(params.mode, values.mode);
-        } else {
-          searchParams.delete(params.mode);
-        }
-      }
-
-      if (values.primary !== undefined) {
-        if (values.primary) {
-          searchParams.set(params.primary, values.primary);
-        } else {
-          searchParams.delete(params.primary);
-        }
-      }
-
-      if (values.direction !== undefined) {
-        if (values.direction) {
-          searchParams.set(params.direction, values.direction);
-        } else {
-          searchParams.delete(params.direction);
-        }
-      }
-
-      if (values.density !== undefined) {
-        if (values.density) {
-          searchParams.set(params.density, values.density);
-        } else {
-          searchParams.delete(params.density);
-        }
-      }
-
-      if (values.contrast !== undefined) {
-        if (values.contrast) {
-          searchParams.set(params.contrast, values.contrast);
-        } else {
-          searchParams.delete(params.contrast);
-        }
-      }
-
-      // Update URL without page reload
-      const newUrl = searchParams.toString()
-        ? `${window.location.pathname}?${searchParams.toString()}`
-        : window.location.pathname;
-
-      window.history.replaceState({}, '', newUrl);
-    },
-    [params]
-  );
-
-  // Clear all config from URL
-  const clearUrl = useCallback(() => {
-    if (typeof window === 'undefined') return;
-
-    const searchParams = new URLSearchParams(window.location.search);
-
-    // Remove all config params
-    searchParams.delete(params.preset);
-    searchParams.delete(params.mode);
-    searchParams.delete(params.primary);
-    searchParams.delete(params.direction);
-    searchParams.delete(params.density);
-    searchParams.delete(params.contrast);
-
-    const newUrl = searchParams.toString()
-      ? `${window.location.pathname}?${searchParams.toString()}`
-      : window.location.pathname;
-
-    window.history.replaceState({}, '', newUrl);
+    return url;
   }, [params]);
 
-  // Generate URL with config values
-  const generateUrl = useCallback(
-    (values: Partial<UrlConfigValues>, baseUrl?: string) => {
-      const base = baseUrl ?? (typeof window !== 'undefined' ? window.location.origin + window.location.pathname : '');
-      const searchParams = new URLSearchParams();
+  const updateUrl = useCallback((next: Partial<UrlConfigValues>) => {
+    if (typeof window !== 'undefined') replaceUrl(applyValues(new URL(window.location.href), next));
+  }, [applyValues]);
 
-      if (values.preset) {
-        searchParams.set(params.preset, values.preset);
-      }
-      if (values.mode) {
-        searchParams.set(params.mode, values.mode);
-      }
-      if (values.primary) {
-        searchParams.set(params.primary, values.primary);
-      }
-      if (values.direction) {
-        searchParams.set(params.direction, values.direction);
-      }
-      if (values.density) {
-        searchParams.set(params.density, values.density);
-      }
-      if (values.contrast) {
-        searchParams.set(params.contrast, values.contrast);
-      }
+  const clearUrl = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    for (const key of configKeys) url.searchParams.delete(params[key]);
+    replaceUrl(url);
+  }, [params]);
 
-      const queryString = searchParams.toString();
-      return queryString ? `${base}?${queryString}` : base;
-    },
-    [params]
-  );
+  // URL navigation is an independent input. Mirror only changes to the supplied
+  // settings, so Back and a shared URL cannot be overwritten by an old render.
+  const previousValues = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!syncToUrl || !values) { previousValues.current = undefined; return; }
+    const signature = JSON.stringify(configKeys.map(key => values[key]));
+    const previous = previousValues.current;
+    previousValues.current = signature;
+    if (previous === signature) return;
+    if (previous !== undefined || !configKeys.some(key => new URLSearchParams(window.location.search).has(params[key]))) {
+      updateUrl(values);
+    }
+  }, [syncToUrl, values, params, updateUrl]);
+
+  const generateUrl = useCallback((next: Partial<UrlConfigValues>, baseUrl?: string) => {
+    const origin = typeof window === 'undefined' ? 'http://localhost' : window.location.origin;
+    const base = baseUrl ?? (typeof window === 'undefined' ? '' : origin + window.location.pathname);
+    const url = applyValues(new URL(base || '/', origin), next);
+    if (/^[a-z][a-z\d+.-]*:/i.test(base)) return url.href;
+    if (base.startsWith('//')) return `//${url.host}${url.pathname}${url.search}${url.hash}`;
+    return (base ? base.split(/[?#]/, 1)[0] : '') + url.search + url.hash;
+  }, [applyValues]);
 
   // Check if URL has any config params
   const hasUrlConfig = Object.keys(configFromUrl).length > 0;

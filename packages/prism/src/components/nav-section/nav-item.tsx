@@ -85,7 +85,7 @@ export function NavItem(props: NavItemProps & { ref?: Ref<HTMLButtonElement> }) 
     info,
     caption,
     disabled,
-    children,
+    children: _children,
     // State props
     open,
     active,

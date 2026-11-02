@@ -131,9 +131,6 @@ export class AppHandle {
    */
   public topologyPools: Map<string, IProcessPool<unknown>> = new Map();
 
-  /** Timer for classic-mode crash restart backoff (cleared on explicit stop) */
-  public crashRestartTimer: ReturnType<typeof setTimeout> | null = null;
-
   /** Stdout/stderr log buffer (ring buffer) */
   private logBuffer: string[] = [];
   private readonly maxLogLines = 1000;
@@ -335,10 +332,6 @@ export class AppHandle {
     this.pid = null;
     this.childProcess = null;
     this.supervisor = null;
-    if (this.crashRestartTimer) {
-      clearTimeout(this.crashRestartTimer);
-      this.crashRestartTimer = null;
-    }
   }
 
   markErrored(): void {

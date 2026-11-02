@@ -263,16 +263,17 @@ export class OrchestratorService extends EventEmitter {
    * The queue collapses all four into one primitive ordered by
    * priority (stop > restart > start > crash-restart). The same-key
    * mutex means stop ALWAYS observes a completed start, and an
-   * explicit stop ALWAYS preempts a pending crash-restart timer.
+   * explicit stop cancels recovery waits before joining the queue.
    */
   private readonly lifecycleQueue = new ProcessLifecycleQueue();
 
   /**
-   * Pending post-escalation cool-down timers, keyed by app name.
+   * Pending crash backoff and post-escalation timers, keyed by app name.
    * Held here rather than inside a lifecycle-queue slot so that a
    * crashed app still answers operator commands while it waits.
    */
   private readonly coolDownTimers = new Map<string, NodeJS.Timeout>();
+  private readonly appStopIntents = new Map<string, { revision: number; stopped: boolean }>();
   private readonly readinessMonitor = new ReadinessMonitor();
   private readonly readinessSignatures = new WeakMap<AppHandle, string>();
   private config: IEcosystemConfig | null = null;
@@ -817,6 +818,10 @@ export class OrchestratorService extends EventEmitter {
     //   - daemon startAll() flows over a not-yet-namespaced config
     entry = ensureNamespacedEntry(entry);
     this.assertAppStartAllowed(this.resolveAppName(entry.name) ?? entry.name);
+    if (!this.appStopIntents.has(entry.name)) {
+      this.appStopIntents.set(entry.name, { revision: 0, stopped: false });
+    }
+    const stopRevision = this.appStopIntents.get(entry.name)?.revision;
     // T#63: run the one-shot cold-start reconcile (orphan reap +
     // janitor arming) before ANY app spawns. Project-mode boots flow
     // through `projectService.startStack → orchestrator.startApp`
@@ -825,12 +830,16 @@ export class OrchestratorService extends EventEmitter {
     // listen ports and the fresh child failed to bind silently.
     // No-op after first call thanks to `bootReconciled`.
     await this.ensureBootReconciled(config);
-    if (this.stoppingApps || stopGeneration !== this.stopGeneration) {
+    if (this.stoppingApps || stopGeneration !== this.stopGeneration ||
+        stopRevision !== this.appStopIntents.get(entry.name)?.revision) {
       throw new Error('Application stop interrupted start admission');
     }
 
+    const intent = this.appStopIntents.get(entry.name);
+    const wasStopped = intent?.stopped;
+    if (intent) intent.stopped = false;
     const inflight = this.startingApps.get(entry.name);
-    if (inflight) {
+    if (inflight && !wasStopped) {
       this.logger.debug({ app: entry.name }, 'Coalescing concurrent startApp into in-flight launch (T#57)');
       return inflight;
     }
@@ -841,7 +850,7 @@ export class OrchestratorService extends EventEmitter {
     const promise = this.lifecycleQueue.enqueue(entry.name, 'start', () =>
       this.startAppInternal(entry, config),
     ).finally(() => {
-      this.startingApps.delete(entry.name);
+      if (this.startingApps.get(entry.name) === promise) this.startingApps.delete(entry.name);
     });
     this.startingApps.set(entry.name, promise);
     return promise;
@@ -1165,6 +1174,7 @@ export class OrchestratorService extends EventEmitter {
     const expected = app.installed;
     const fingerprint = topologyRevision(plan);
     const stopGeneration = this.stopGeneration;
+    const stopRevision = this.appStopIntents.get(name)?.revision;
     await this.lifecycleQueue.enqueue(name, 'start', async () => {
       const { handle, config } = this.retainedApp(name, app.generation);
       const entry = structuredClone(handle.entry);
@@ -1187,7 +1197,10 @@ export class OrchestratorService extends EventEmitter {
         requireInstalledBinding(evidence, installedEntryRevision(entry, config, this.cwd), expected);
         this.retainedApp(name, app.generation);
       }
-      if (this.stoppingApps || this.stopGeneration !== stopGeneration) throw new Error('Stop interrupted installed start admission');
+      if (this.stoppingApps || this.stopGeneration !== stopGeneration ||
+          stopRevision !== this.appStopIntents.get(name)?.revision) throw new Error('Stop interrupted installed start admission');
+      const intent = this.appStopIntents.get(name);
+      if (intent) intent.stopped = false;
       const started = await this.startAppInternal(entry, config, expected);
       if (started.status !== 'online') throw new Error(`Installed application '${name}' did not come online`);
       requireInstalledBinding(started.release, installedEntryRevision(started.entry, config, this.cwd), expected);
@@ -1284,7 +1297,21 @@ export class OrchestratorService extends EventEmitter {
     const canonical = this.resolveAppName(name) ?? name;
     // Outside the queue on purpose: the operator's intent lands the
     // moment the command arrives, not whenever the queue drains.
+    // Unknown names need no retained intent. Start admission registers its
+    // token before its first await, including before a handle exists.
+    if (this.handles.has(canonical) || this.appStopIntents.has(canonical)) {
+      this.appStopIntents.set(canonical, {
+        revision: (this.appStopIntents.get(canonical)?.revision ?? 0) + 1,
+        stopped: true,
+      });
+    }
     this.clearCoolDown(canonical);
+    const restart = this.restartCoalescer.get(canonical);
+    if (restart) {
+      restart.manualSerial = 0;
+      restart.watchSerial = 0;
+      restart.cooldownUntil = 0;
+    }
     return this.lifecycleQueue.enqueue(canonical, 'stop', async () => {
       const handle = this.handles.get(canonical);
       if (!handle || (handle.status === 'stopped' && !handle.serviceRouter && !handle.supervisor && !handle.childProcess && handle.topologyPools.size === 0)) return;
@@ -1302,6 +1329,7 @@ export class OrchestratorService extends EventEmitter {
   stopAll(force = false): Promise<number> {
     if (this.stoppingApps) return this.stoppingApps;
     this.stopGeneration++;
+    for (const name of this.coolDownTimers.keys()) this.clearCoolDown(name);
     const operation = Promise.resolve().then(() => this.stopAllOnce(force));
     this.stoppingApps = operation;
     const settled = () => { if (this.stoppingApps === operation) this.stoppingApps = null; };
@@ -1622,7 +1650,13 @@ export class OrchestratorService extends EventEmitter {
       clearCacheFor(path.resolve(entry.cwd ?? this.cwd, entry.bootstrap));
     }
 
-    await this.stopApp(name);
+    const stopped = this.stopApp(name);
+    const intent = this.appStopIntents.get(name);
+    const generation = this.stopGeneration;
+    await stopped;
+    if (this.stoppingApps || generation !== this.stopGeneration || intent !== this.appStopIntents.get(name)) {
+      throw new Error('Application stop interrupted restart');
+    }
     return this.startApp(entry);
   }
 
@@ -3247,132 +3281,49 @@ export class OrchestratorService extends EventEmitter {
     handle: AppHandle,
     config: IEcosystemConfig
   ): Promise<void> {
+    const generation = this.stopGeneration;
+    const revision = this.appStopIntents.get(entry.name)?.revision;
+    const eligible = () => !this.stoppingApps && generation === this.stopGeneration &&
+      revision === this.appStopIntents.get(entry.name)?.revision &&
+      !this.appStopIntents.get(entry.name)?.stopped &&
+      this.handles.get(entry.name) === handle &&
+      (handle.status === 'crashed' || handle.status === 'errored');
+    if (!eligible()) return;
     const policy = buildRestartPolicy(entry, config);
     if (!policy.enabled) return;
-
-    if (handle.restarts >= (policy.maxRestarts ?? 5)) {
+    const exhausted = handle.restarts >= (policy.maxRestarts ?? 5);
+    if (exhausted) {
       handle.status = 'crashed';
       this.logger.error({ app: entry.name }, 'Max restarts exceeded');
       this.emit('app:escalated', entry.name);
-      // P1-I — auto-recovery after a cool-down. pm2 has this as
-      // `restart_delay` + a fresh attempt window; pre-fix omnitron
-      // left the app permanently 'crashed' until human intervention.
-      // We reset the counter + schedule one fresh attempt 10 minutes
-      // out. If THAT attempt also crashes through maxRestarts we
-      // land back here and pause another 10 minutes — bounded
-      // self-healing without thrashing.
-      //
-      // The wait happens OUTSIDE the lifecycle queue, and that is the
-      // whole point. It used to be a queued `crash-restart` whose
-      // `run()` slept for the entire cool-down — but `enqueue` will
-      // not preempt a RUNNING head, and with an empty queue the
-      // sleeper always became the head immediately. So the `onPreempt`
-      // hook meant to cancel it could never fire, and an operator's
-      // `stop` or `restart` simply queued behind ten minutes of sleep:
-      // the CLI's RPC timed out after 60s while the op stayed queued,
-      // to fire whenever the cool-down finally elapsed. An app that
-      // exhausted its restart budget was unreachable by every command
-      // the CLI offers — `restart` hung, `stop` hung, `stack start`
-      // skipped it — and the only recovery was restarting the daemon.
-      const COOL_DOWN_MS = 10 * 60_000;
-      this.clearCoolDown(entry.name);
-      const timer = setTimeout(() => {
-        this.coolDownTimers.delete(entry.name);
-        // Re-read the handle: every start replaces it (see
-        // `startAppInternal`), so the one captured above is stale the
-        // moment anything restarts this app. Only a still-crashed app
-        // wants this attempt — an operator who started it meanwhile
-        // has already settled the question.
-        const current = this.handles.get(entry.name);
-        if (!current || current.status !== 'crashed') return;
-        this.logger.info({ app: entry.name }, 'Cool-down elapsed — attempting fresh recovery');
-        current.restarts = 0; // fresh attempt window
-        current.status = 'stopped';
-        void this.lifecycleQueue
-          .enqueue(entry.name, 'crash-restart', () => this.startAppInternal(entry, config))
-          .catch((err) => {
-            if (err instanceof LifecyclePreempted) return;
-            this.logger.error({ app: entry.name, err: (err as Error).message }, 'Cool-down recovery failed');
-          });
-      }, COOL_DOWN_MS);
-      timer.unref?.();
-      this.coolDownTimers.set(entry.name, timer);
-      return;
     }
-
-    const backoff = policy.backoff ?? config.supervision.backoff;
-    const delay = this.calculateBackoff(handle.restarts, backoff);
-    this.logger.info({ app: entry.name, delay, attempt: handle.restarts + 1 }, 'Scheduling restart');
-
-    // P0-I — schedule the crash-restart through the lifecycle queue
-    // so an explicit stop preempts the pending restart before it
-    // fires. The setTimeout is still the timing source, but the
-    // queue.enqueue with `onPreempt` guarantees the timer is cleared
-    // (and the promise rejected with LifecyclePreempted) the moment a
-    // higher-priority op for the same app arrives. Pre-fix the timer
-    // could fire during stopApp's `await stopChild(...)` window and
-    // spawn a zombie under the same handle.
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const restartPromise = this.lifecycleQueue.enqueue(
-      entry.name,
-      'crash-restart',
-      () => new Promise<void>((resolve, reject) => {
-        timer = setTimeout(async () => {
-          timer = null;
-          // Guard: don't restart if orchestrator was stopped during backoff
-          if (handle.status === 'stopping' || handle.status === 'stopped') {
-            resolve();
-            return;
-          }
-          try {
-            handle.status = 'stopped';
-            // `startAppInternal`, not `startApp`.
-            //
-            // This task holds the lifecycle-queue slot for `entry.name`.
-            // `startApp` enqueues 'start' on that same key, and the queue
-            // cannot run it until this task returns — so the await never
-            // settles and the restart silently never happens. Measured:
-            // `startApp:enter` with no matching exit, and the app left in
-            // whatever state the crash put it in.
-            //
-            // This is why the whole policy below — bounded attempts,
-            // exponential backoff, the ten-minute cool-down described in its
-            // own comment as "bounded self-healing" — had never restarted
-            // anything. The queue was introduced (P0-I) to stop a restart
-            // timer racing a stop; it also made the restart unreachable, and
-            // nothing failed loudly enough to say so.
-            await this.startAppInternal(entry, config);
-            resolve();
-          } catch (err) {
-            const message = (err as Error).message;
-            this.logger.error({ app: entry.name, error: message }, 'Restart failed');
-            // Said separately and after, because reading the process table
-            // takes a moment and the failure itself must not wait for it.
-            void this.explainPortConflict(message).then((held) => {
-              if (held) this.logger.error({ app: entry.name }, `Restart failed — ${held}`);
-            });
-            reject(err);
-          }
-        }, delay);
-      }),
-      () => {
-        // onPreempt — explicit stop / restart arrived. Cancel the
-        // pending timer so the restart never fires.
-        if (timer) { clearTimeout(timer); timer = null; }
-      },
+    const delay = exhausted ? 10 * 60_000 : this.calculateBackoff(
+      handle.restarts, policy.backoff ?? config.supervision.backoff,
     );
-
-    // Swallow LifecyclePreempted — that's the explicit-stop happy
-    // path, not an error. Anything else gets logged.
-    restartPromise.catch((err) => {
-      if (err instanceof LifecyclePreempted) return;
-      this.logger.warn({ app: entry.name, err: (err as Error).message }, 'Crash restart task rejected');
-    });
-
-    // Legacy field — callers still poke handle.crashRestartTimer to
-    // check "is a restart pending"; keep it in sync with the queued
-    // timer so existing inspect / status code paths don't break.
-    handle.crashRestartTimer = timer;
+    this.logger.info({ app: entry.name, delay, attempt: handle.restarts + 1 }, 'Scheduling restart');
+    this.clearCoolDown(entry.name);
+    // Waiting must not occupy the lifecycle queue: a running queue head
+    // cannot be preempted. Only the actual launch takes the queue slot.
+    const timer = setTimeout(() => {
+      this.coolDownTimers.delete(entry.name);
+      if (!eligible()) return;
+      void this.lifecycleQueue.enqueue(entry.name, 'crash-restart', async () => {
+        // A stop can arrive after the timer fires but before this job runs.
+        if (!eligible()) return;
+        if (exhausted) handle.restarts = 0;
+        handle.status = 'stopped';
+        await this.startAppInternal(entry, config);
+      }).catch((err) => {
+        if (err instanceof LifecyclePreempted) return;
+        const message = (err as Error).message;
+        this.logger.error({ app: entry.name, error: message }, 'Restart failed');
+        void this.explainPortConflict(message).then((held) => {
+          if (held) this.logger.error({ app: entry.name }, `Restart failed — ${held}`);
+        });
+      });
+    }, delay);
+    timer.unref?.();
+    this.coolDownTimers.set(entry.name, timer);
   }
 
   private calculateBackoff(

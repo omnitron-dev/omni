@@ -7,7 +7,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import type { LeaseGrant } from '@omnitron-dev/titan-database/coordination';
-import { OMNITRON_HOME } from '../../src/config/defaults.js';
+import { DEFAULT_ECOSYSTEM, OMNITRON_HOME } from '../../src/config/defaults.js';
 import { StateStore } from '../../src/daemon/state-store.js';
 import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
@@ -35,13 +35,49 @@ afterAll(async () => {
   await fs.rm(isolatedHome, { recursive: true, force: true });
 });
 
-it('recovers a signed source-stack stop through its imported allocation and verifies the installed PID and manifest', async () => {
+function createOwner(database: string) {
   expect(OMNITRON_HOME).toBe(isolatedHome);
   const logger = createNullLogger();
-  const store = new DaemonStateStore(logger, path.join(isolatedHome, 'worker.db'));
+  const store = new DaemonStateStore(logger, path.join(isolatedHome, database));
   const owner = new OrchestratorService(logger, {} as never, new StateStore(store), isolatedHome, { reapForeignOrphans: false });
   // Observe only the classic child under test. No host inventory polling, janitor or periodic state snapshots.
   Object.assign(owner, { ensureBootReconciled: async () => {}, ensureMetricsPolling: () => {}, persistState: () => {} });
+  return { logger, store, owner };
+}
+
+it('stops during startup backoff without spawning a child until the next explicit start', async () => {
+  const { store, owner } = createOwner('backoff.db');
+  const attempts = path.join(isolatedHome, 'attempts.jsonl');
+  const script = path.join(isolatedHome, 'fail-once.cjs');
+  const entry = { name: 'fail-once', script, cwd: isolatedHome };
+  const delay = 400;
+  const config = { ...DEFAULT_ECOSYSTEM, apps: [entry], supervision: { ...DEFAULT_ECOSYSTEM.supervision,
+    backoff: { type: 'exponential' as const, initial: delay, max: delay, factor: 1 } } };
+  await fs.writeFile(script, `
+    const fs = require('node:fs'), attempts = ${JSON.stringify(attempts)};
+    const first = !fs.existsSync(attempts);
+    fs.appendFileSync(attempts, process.pid + '\\n');
+    if (first) process.exit(42);
+    process.send('ready'); setInterval(() => {}, 1000);
+  `);
+  try {
+    await expect(owner.startApp(entry, config)).rejects.toThrow(/exited during startup with code 42/);
+    const first = await fs.readFile(attempts, 'utf8');
+    expect(first).toMatch(/^\d+\n$/);
+    await owner.stopAll();
+    await new Promise(resolve => setTimeout(resolve, delay + 100));
+    expect(await fs.readFile(attempts, 'utf8')).toBe(first);
+    const restarted = await owner.startApp(entry, config);
+    expect(restarted.pid).toBeGreaterThan(0);
+    expect(await fs.readFile(attempts, 'utf8')).toBe(`${first}${restarted.pid}\n`);
+  } finally {
+    try { await owner.stopApp(entry.name); }
+    finally { await store.dispose(); }
+  }
+});
+
+it('recovers a signed source-stack stop through its imported allocation and verifies the installed PID and manifest', async () => {
+  const { logger, store, owner } = createOwner('worker.db');
   const service = new ProjectService(logger, owner, store);
   const projectDir = path.join(isolatedHome, 'project'), allocationDir = path.join(projectDir, 'allocation');
   const releaseRoot = path.join(isolatedHome, 'release');

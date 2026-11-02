@@ -46,6 +46,8 @@ function orchestrator() {
     stateStore: { getStackIntent: () => ({ revision: 0, phase: 'running' }) },
     handles: new Map<string, AppHandle>(),
     coolDownTimers: new Map(),
+    appStopIntents: new Map(),
+    restartCoalescer: new Map(),
     config,
     lifecycleQueue: { enqueue: (_key: string, _op: string, fn: () => Promise<unknown>) => fn() },
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

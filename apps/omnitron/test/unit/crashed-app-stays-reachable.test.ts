@@ -129,4 +129,80 @@ describe('a crashed app keeps answering the operator during its cool-down', () =
     await vi.advanceTimersByTimeAsync(11 * 60_000);
     expect(attempts.n, 'the cool-down must still try again').toBeGreaterThan(before);
   });
+  it('cancels startup backoff immediately and admits a later explicit start', async () => {
+    const orch: any = orchestrator();
+    const cfg = config();
+    cfg.supervision.backoff = { type: 'fixed', initial: 2_000, max: 2_000 };
+    const launch = vi.fn().mockRejectedValue(new Error('startup failed'));
+    orch.launchClassicMode = launch;
+    await expect(orch.startApp(entry, cfg)).rejects.toThrow('startup failed');
+    await orch.stopApp('demo');
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(launch).toHaveBeenCalledTimes(1);
+    expect(orch.handles.get('demo').status).toBe('stopped');
+
+    launch.mockImplementation(async (_entry: any, handle: any) => { handle.status = 'online'; });
+    await orch.startApp(entry, cfg);
+    expect(launch).toHaveBeenCalledTimes(2);
+    expect(orch.handles.get('demo').status).toBe('online');
+  });
+
+  it('refuses a late crash callback after stop intent while the queue is occupied', async () => {
+    const orch: any = orchestrator();
+    const cfg = config();
+    const launch = vi.fn(async (_entry: any, handle: any) => { handle.status = 'online'; });
+    orch.launchClassicMode = launch;
+    await orch.startApp(entry, cfg);
+    let release!: () => void;
+    const busy = orch.lifecycleQueue.enqueue('demo', 'start', () => new Promise<void>(resolve => { release = resolve; }));
+    const stopped = orch.stopApp('demo');
+    const handle = orch.handles.get('demo');
+    handle.markCrashed();
+    await orch.scheduleRecovery(entry, handle, cfg);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(launch).toHaveBeenCalledTimes(1);
+    release();
+    await busy;
+    await stopped;
+    await orch.startApp(entry, cfg);
+    expect(launch).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retain stop intents for unknown application names', async () => {
+    const orch: any = orchestrator();
+    for (let i = 0; i < 20; i++) await orch.stopApp(`unknown-${i}`);
+    expect(orch.appStopIntents.size).toBe(0);
+  });
+
+  it('revokes a manual restart waiting for cooldown without losing the next explicit restart', async () => {
+    const orch: any = orchestrator();
+    const launch = vi.fn(async (_entry: any, handle: any) => { handle.status = 'online'; });
+    orch.launchClassicMode = launch;
+    await orch.startApp(entry, config());
+    orch.getCoalescerState('demo').cooldownUntil = Date.now() + 2_000;
+    const pending = orch.restartApp('demo');
+    await orch.stopApp('demo');
+    await vi.advanceTimersByTimeAsync(3_000);
+    await pending;
+    expect(launch).toHaveBeenCalledTimes(1);
+    await orch.restartApp('demo');
+    expect(launch).toHaveBeenCalledTimes(2);
+  });
+
+  it('interrupts an admission stopped before its handle exists and admits a fresh start', async () => {
+    const orch: any = orchestrator();
+    let release!: () => void;
+    orch.ensureBootReconciled = () => new Promise<void>(resolve => { release = resolve; });
+    const launch = vi.fn(async (_entry: any, handle: any) => { handle.status = 'online'; });
+    orch.launchClassicMode = launch;
+    const pending = expect(orch.startApp(entry, config())).rejects.toThrow('stop interrupted start admission');
+    await orch.stopApp('demo');
+    release();
+    await pending;
+    expect(launch).not.toHaveBeenCalled();
+    orch.ensureBootReconciled = async () => {};
+    await orch.startApp(entry, config());
+    expect(launch).toHaveBeenCalledOnce();
+  });
+
 });

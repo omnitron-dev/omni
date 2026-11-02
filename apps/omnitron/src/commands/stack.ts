@@ -680,9 +680,10 @@ export async function stackRuntimeCommand(projectName: string, stackName: string
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
     const runtime = await svc.getStackStatus({ project: projectName, stack: stackName });
-    console.log(JSON.stringify(runtime, null, 2));
+    if (!emitJson(runtime)) console.log(JSON.stringify(runtime, null, 2));
   } catch (err) {
-    log.error((err as Error).message);
+    emitError((err as Error).message);
+    process.exitCode = 1;
   } finally {
     await client.disconnect();
   }

@@ -19,17 +19,7 @@ export function isJsonMode(): boolean {
   return isJsonOutput();
 }
 
-/**
- * Whether this process has written anything machine-readable yet.
- *
- * `--json` is a global flag, but honouring it is per-command, and most
- * commands do not: they render a table with box-drawing characters and ANSI
- * colour, and say nothing about having ignored the flag. A script asking for
- * JSON gets a picture of a table, with no way to tell that from data.
- *
- * `installJsonModeGuard` uses this to turn that silence into a parseable
- * answer.
- */
+/** Whether the admitted action has emitted its shared machine result. */
 let emittedJson = false;
 
 export function hasEmittedJson(): boolean {
@@ -37,26 +27,44 @@ export function hasEmittedJson(): boolean {
 }
 
 /**
- * Announce, in JSON, that this command has no JSON output — and fail.
- *
- * Called on exit when `--json` was asked for and nothing answered it.
- * Refusing loudly is the only honest option: succeeding would hand the
- * caller a table, and staying silent would hand it nothing while claiming
- * success.
+ * A declared machine-output action must produce a result even when its handler
+ * accidentally returns silently. Admission happens before the action in
+ * prepareCommandOutput; this fallback must never claim no operation occurred.
  */
-export function installJsonModeGuard(commandPath: string): void {
-  process.on('exit', () => {
+let removeJsonGuard: (() => void) | undefined;
+let completeJsonGuard: (() => void) | undefined;
+export function installJsonModeGuard(commandPath: string): () => void {
+  removeJsonGuard?.();
+  emittedJson = false;
+  const onExit = () => {
     if (!isJsonMode() || emittedJson) return;
-    process.stderr.write(
-      JSON.stringify({
-        ok: false,
-        error: `\`${commandPath}\` does not support --json; its output is human-readable only.`,
-        command: commandPath,
-        hint: 'Commands that do support it emit a single {"ok":…} object on stdout.',
-      }) + '\n'
-    );
-    if (process.exitCode === undefined || process.exitCode === 0) process.exitCode = 2;
-  });
+    emitError(`\`${commandPath}\` completed without its declared JSON result.`, {
+      code: 'JSON_OUTPUT_CONTRACT_VIOLATION',
+      command: commandPath,
+      outcome: 'unknown',
+      hint: 'The operation may have completed. Inspect its state before retrying.',
+    });
+    if (process.exitCode === undefined || process.exitCode === 0) process.exitCode = 1;
+  };
+  process.on('exit', onExit);
+  const remove = () => {
+    process.removeListener('exit', onExit);
+    if (removeJsonGuard === remove) {
+      removeJsonGuard = undefined;
+      completeJsonGuard = undefined;
+    }
+  };
+  removeJsonGuard = remove;
+  completeJsonGuard = () => {
+    onExit();
+    remove();
+  };
+  return remove;
+}
+
+/** Validate the result before exitAfterOutput drains stdout/stderr. */
+export function finishJsonModeGuard(): void {
+  completeJsonGuard?.();
 }
 
 /**

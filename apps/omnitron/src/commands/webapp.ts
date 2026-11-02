@@ -1,118 +1,141 @@
-/**
- * Webapp CLI Commands
- *
- *   omnitron webapp build     — Build webapp (vite build)
- *   omnitron webapp start     — Start nginx serving webapp + API gateway
- *   omnitron webapp stop      — Stop nginx
- *   omnitron webapp status    — Show nginx status
- *   omnitron webapp open      — Open webapp in browser
- */
-
+/** Console lifecycle commands share the CLI output and outcome contract. */
 import { log, prism } from '@xec-sh/kit';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { WebappService } from '../webapp/webapp.service.js';
 import { expandPath } from '../shared/paths.js';
+import { emitError, emitInfo, emitJson, isJsonMode } from './output.js';
 
 function createWebappService(): WebappService {
+  const message = (obj: unknown, text?: string) => text ?? (typeof obj === 'string' ? obj : JSON.stringify(obj));
   const cliLogger = {
-    info: (obj: any, msg?: string) => log.info(msg ?? (typeof obj === 'string' ? obj : JSON.stringify(obj))),
-    warn: (obj: any, msg?: string) => log.warn(msg ?? (typeof obj === 'string' ? obj : JSON.stringify(obj))),
-    error: (obj: any, msg?: string) => log.error(msg ?? (typeof obj === 'string' ? obj : JSON.stringify(obj))),
+    info: (obj: unknown, text?: string) => emitInfo(message(obj, text)),
+    warn: (obj: unknown, text?: string) => {
+      if (!isJsonMode()) log.warn(message(obj, text));
+    },
+    // Service logging is progress. Only the command boundary emits the final
+    // machine error, including whether the lifecycle action already completed.
+    error: (obj: unknown, text?: string) => {
+      if (!isJsonMode()) log.error(message(obj, text));
+    },
     debug: () => {},
-    fatal: (obj: any, msg?: string) => log.error(msg ?? (typeof obj === 'string' ? obj : JSON.stringify(obj))),
+    fatal: (obj: unknown, text?: string) => {
+      if (!isJsonMode()) log.error(message(obj, text));
+    },
     trace: () => {},
     child: () => cliLogger,
   } as any;
-
   return new WebappService(cliLogger, process.cwd());
 }
 
+async function requireRunningDaemon(): Promise<boolean> {
+  const { PidManager } = await import('../daemon/pid-manager.js');
+  const { DEFAULT_DAEMON_CONFIG } = await import('../config/defaults.js');
+  if (new PidManager(expandPath(DEFAULT_DAEMON_CONFIG.pidFile)).isRunning()) return true;
+  emitError('Omnitron daemon is not running. Start it first: omnitron up', {
+    code: 'DAEMON_NOT_RUNNING',
+    outcome: 'not-started',
+  });
+  process.exitCode = 1;
+  return false;
+}
+
+async function persistAutoStart(enabled: boolean): Promise<boolean | null> {
+  const { readSavedDaemonConfig, writeSavedDaemonConfig } = await import('../config/saved.js');
+  const saved = readSavedDaemonConfig();
+  if (!saved) return null;
+  if (saved.webapp !== enabled) writeSavedDaemonConfig({ ...saved, webapp: enabled });
+  return enabled;
+}
+
+function failed(error: unknown, operation: string, applied: boolean): void {
+  emitError(error instanceof Error ? error.message : String(error), {
+    operation,
+    outcome: applied ? 'applied' : 'unknown',
+    hint: applied
+      ? 'The Console action completed, but a subsequent step failed. Inspect its state before retrying.'
+      : 'Inspect Console status before retrying; a failed operation can have partially changed the container.',
+  });
+  process.exitCode = 1;
+}
+
 export async function webappBuildCommand(): Promise<void> {
-  const svc = createWebappService();
   try {
-    const { distPath, duration } = await svc.build();
-    log.info(`Built in ${Math.round(duration / 1000)}s → ${distPath}`);
-  } catch (err) {
-    log.error((err as Error).message);
-    process.exitCode = 1;
+    const { distPath, duration } = await createWebappService().build();
+    if (!emitJson({ operation: 'build', distPath, durationMs: duration })) {
+      emitInfo(`Built in ${Math.round(duration / 1000)}s → ${distPath}`);
+    }
+  } catch (error) {
+    failed(error, 'build', false);
   }
 }
 
 export async function webappStartCommand(options?: { force?: boolean }): Promise<void> {
-  // Check if daemon is running
-  const { PidManager } = await import('../daemon/pid-manager.js');
-  const { DEFAULT_DAEMON_CONFIG } = await import('../config/defaults.js');
-  const pidFile = expandPath(DEFAULT_DAEMON_CONFIG.pidFile);
-  const pidManager = new PidManager(pidFile);
-
-  if (!pidManager.isRunning()) {
-    log.error('Omnitron daemon is not running.');
-    log.info('Start the daemon first: omnitron up');
-    process.exitCode = 1;
-    return;
-  }
-
-  const svc = createWebappService();
+  let applied = false;
   try {
+    if (!(await requireRunningDaemon())) return;
+    const svc = createWebappService();
     await svc.start(options?.force ? { force: true } : undefined);
-    log.info(`Omnitron Console: http://localhost:9800`);
-
-    // Persist — auto-start webapp on future daemon restarts
-    const { readSavedDaemonConfig, writeSavedDaemonConfig } = await import('../config/saved.js');
-    const saved = readSavedDaemonConfig();
-    if (saved && !saved.webapp) {
-      saved.webapp = true;
-      writeSavedDaemonConfig(saved);
-    }
-  } catch (err) {
-    log.error((err as Error).message);
-    process.exitCode = 1;
+    applied = true;
+    const autoStart = await persistAutoStart(true);
+    const status = await svc.status();
+    const url = `http://localhost:${status.port}`;
+    if (!emitJson({ operation: 'start', ...status, url, autoStart })) emitInfo(`Omnitron Console: ${url}`);
+  } catch (error) {
+    failed(error, 'start', applied);
   }
 }
 
 export async function webappStopCommand(): Promise<void> {
-  const svc = createWebappService();
-  await svc.stop();
-
-  // Persist — don't auto-start webapp on future daemon restarts
-  const { readSavedDaemonConfig, writeSavedDaemonConfig } = await import('../config/saved.js');
-  const saved = readSavedDaemonConfig();
-  if (saved && saved.webapp) {
-    saved.webapp = false;
-    writeSavedDaemonConfig(saved);
+  let applied = false;
+  try {
+    await createWebappService().stop();
+    applied = true;
+    const autoStart = await persistAutoStart(false);
+    if (!emitJson({ operation: 'stop', stopped: true, autoStart })) emitInfo('Omnitron Console stopped');
+  } catch (error) {
+    failed(error, 'stop', applied);
   }
 }
 
 export async function webappStatusCommand(): Promise<void> {
-  const svc = createWebappService();
-  const status = await svc.status();
-
-  if (status.running) {
-    const health = status.healthy ? prism.green('healthy') : prism.yellow('starting');
-    log.success(`Omnitron Console: ${prism.green('running')} on port ${status.port} (${health})`);
-    log.info(`URL: http://localhost:${status.port}`);
-  } else {
-    log.warn(`Omnitron Console: ${prism.red('stopped')}`);
-    log.info('Start with: omnitron webapp start');
+  try {
+    const status = await createWebappService().status();
+    const url = `http://localhost:${status.port}`;
+    if (emitJson({ ...status, url })) return;
+    if (status.running) {
+      const health = status.healthy ? prism.green('healthy') : prism.yellow('starting');
+      log.success(`Omnitron Console: ${prism.green('running')} on port ${status.port} (${health})`);
+      emitInfo(`URL: ${url}`);
+    } else {
+      log.warn(`Omnitron Console: ${prism.red('stopped')}`);
+      emitInfo('Start with: omnitron webapp start');
+    }
+  } catch (error) {
+    emitError(error instanceof Error ? error.message : String(error), { operation: 'status', outcome: 'not-started' });
+    process.exitCode = 1;
   }
 }
 
 export async function webappOpenCommand(): Promise<void> {
-  const svc = createWebappService();
-  const status = await svc.status();
-
-  if (!status.running) {
-    log.warn('Webapp not running. Starting...');
-    await svc.start();
-  }
-
-  const url = `http://localhost:${status.port}`;
-  log.info(`Opening ${url}...`);
-
+  let applied = false;
   try {
-    const { exec } = await import('node:child_process');
-    const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
-    exec(`${cmd} ${url}`);
-  } catch {
-    log.info(`Open manually: ${url}`);
+    const svc = createWebappService();
+    let status = await svc.status();
+    if (!status.running) {
+      if (!(await requireRunningDaemon())) return;
+      emitInfo('Webapp not running. Starting...');
+      await svc.start();
+      applied = true;
+      status = await svc.status();
+    }
+    const url = `http://localhost:${status.port}`;
+    emitInfo(`Opening ${url}...`);
+    const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd.exe' : 'xdg-open';
+    const args = process.platform === 'win32' ? ['/d', '/c', 'start', '', url] : [url];
+    await promisify(execFile)(command, args, { timeout: 10_000 });
+    if (!emitJson({ operation: 'open', url, browserOpened: true, started: applied })) emitInfo(`Opened ${url}`);
+  } catch (error) {
+    failed(error, 'open', applied);
   }
 }

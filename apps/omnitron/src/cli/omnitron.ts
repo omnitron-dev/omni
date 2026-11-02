@@ -7,12 +7,11 @@
  * @xec-sh/kit for TUI rendering.
  */
 
-import { Command } from 'commander';
+import { OutputCommand, prepareCommandOutput } from './output-command.js';
 import { CLI_VERSION } from '../config/defaults.js';
-import { setEnvOverride } from '../shared/env-config.js';
 import { exitAfterOutput } from './exit-after-output.js';
 
-const program = new Command();
+const program = new OutputCommand();
 
 program.command('migrate [action]')
   .description('Inspect or execute application migrations (default: status)')
@@ -21,7 +20,7 @@ program.command('migrate [action]')
   .option('--steps <count>', 'Number of migrations to roll back with down')
   .option('--to <name>', 'Apply through this migration, inclusive')
   .option('--dry-run', 'Preview up/down without writing to the database')
-  .action(async (action = 'status', options) => {
+  .structuredAction(async (action = 'status', options) => {
     const { migrateCommand } = await import('../commands/migrate.js');
     await migrateCommand(action, options);
   });
@@ -32,29 +31,7 @@ program.name('omnitron').description('Production-grade Titan application supervi
 // suppresses spinners / styled prose. Also honors `OMNITRON_OUTPUT=json`
 // for environments where flag plumbing is awkward (CI templates, hooks).
 program.option('--json', 'Emit machine-readable JSON output (no spinners, no styling)');
-program.hook('preAction', async (cmd, actionCommand) => {
-  const opts = cmd.opts();
-  if (opts['json'] || process.env['OMNITRON_OUTPUT'] === 'json') {
-    // Update both the actual env (for child processes / subprocess
-    // inheritance) and the cached snapshot in env-config so
-    // subsequent getEnv() readers in this process see the flag.
-    process.env['OMNITRON_OUTPUT'] = 'json';
-    setEnvOverride({ OMNITRON_OUTPUT: 'json' });
-
-    // Most commands render tables regardless of this flag and say nothing
-    // about it, so a caller asking for JSON silently receives a picture of a
-    // table. The guard makes that refusal explicit and parseable.
-    // The full path, not the leaf: `status` alone names four different
-    // subcommands, so the message has to say which one refused.
-    const path: string[] = [];
-    for (let node: typeof actionCommand | null = actionCommand; node; node = node.parent) {
-      if (node.parent) path.unshift(node.name());
-    }
-
-    const { installJsonModeGuard } = await import('../commands/output.js');
-    installJsonModeGuard(path.join(' ') || actionCommand.name());
-  }
-});
+program.hook('preAction', (_root, actionCommand) => prepareCommandOutput(actionCommand));
 
 // ============================================================================
 // Daemon Lifecycle
@@ -63,65 +40,65 @@ program.hook('preAction', async (cmd, actionCommand) => {
 const backend = program.command('backend').description('Inspect and replace the control plane without restarting resident applications');
 const ownerRecovery = backend.command('owner-reconcile').description('Explicit offline recovery after an execution-owner crash; never stops applications');
 ownerRecovery.command('prepare <worker-pids>').description('Record native ownership evidence; pass comma-separated pre-crash worker PIDs')
-  .action(async (pids: string) => { const { ownerReconciliationCommand } = await import('../daemon/owner-reconciliation.js'); await ownerReconciliationCommand('prepare', pids); });
+  .structuredAction(async (pids: string) => { const { ownerReconciliationCommand } = await import('../daemon/owner-reconciliation.js'); await ownerReconciliationCommand('prepare', pids); });
 ownerRecovery.command('acknowledge <plan>').description('Certify empty ownership cgroups after a separately approved drain, preserving the crash receipt')
-  .action(async (file: string) => { const { ownerReconciliationCommand } = await import('../daemon/owner-reconciliation.js'); await ownerReconciliationCommand('acknowledge', file); });
+  .structuredAction(async (file: string) => { const { ownerReconciliationCommand } = await import('../daemon/owner-reconciliation.js'); await ownerReconciliationCommand('acknowledge', file); });
 const schema = backend.command('schema').description('Prepare and apply reviewed compatible schema expansions');
 schema.command('prepare <runtime>').description('Inspect the current schema and save an exact expansion plan without database writes')
   .option('--from-plan <plan>', 'Bind an already applied expansion to a corrected candidate after rollback')
-  .action(async (runtime: string, options: { fromPlan?: string }) => {
+  .structuredAction(async (runtime: string, options: { fromPlan?: string }) => {
     const { backendSchemaPrepareCommand } = await import('../commands/backend.js');
     await backendSchemaPrepareCommand(runtime, options);
   });
 schema.command('apply <plan>').description('Apply or resume a reviewed expansion under the shared migration lock')
-  .action(async (plan: string) => {
+  .structuredAction(async (plan: string) => {
     const { backendSchemaApplyCommand } = await import('../commands/backend.js');
     await backendSchemaApplyCommand(plan);
   });
 const guardian = backend.command('guardian').description('Update independent user-service supervision without restarting applications');
 guardian.command('prepare <runtime>').description('Install a sealed management runtime and save a private guardian transition plan')
-  .action(async (runtime: string) => {
+  .structuredAction(async (runtime: string) => {
     const { backendSupervisorPrepareCommand } = await import('../commands/backend.js');
     await backendSupervisorPrepareCommand(runtime);
   });
 guardian.command('apply <plan>').description('Apply or resume a prepared guardian transition; preserve execution ownership')
-  .action(async (plan: string) => {
+  .structuredAction(async (plan: string) => {
     const { backendSupervisorApplyCommand } = await import('../commands/backend.js');
     await backendSupervisorApplyCommand(plan);
   });
 backend.command('install <runtime>').description('Copy a sealed runtime into permanent storage without activation')
-  .action(async (runtime: string) => {
+  .structuredAction(async (runtime: string) => {
     const { backendInstallCommand } = await import('../commands/backend.js');
     await backendInstallCommand(runtime);
   });
 backend.command('installation').description('Inspect the cold-start selection and any unfinished activation')
-  .action(async () => {
+  .structuredAction(async () => {
     const { backendInstallationCommand } = await import('../commands/backend.js');
     await backendInstallationCommand();
   });
 backend.command('select <sha256>').description('Select an installed runtime while backend and execution owner are stopped')
-  .action(async (sha256: string) => {
+  .structuredAction(async (sha256: string) => {
     const { backendSelectCommand } = await import('../commands/backend.js');
     await backendSelectCommand(sha256);
   });
 backend.command('abort <checkpoint>').description('Cancel preparation before backend retirement')
-  .action(async (checkpoint: string) => {
+  .structuredAction(async (checkpoint: string) => {
     const { backendAbortCommand } = await import('../commands/backend.js');
     await backendAbortCommand(checkpoint);
   });
-backend.command('status').description('Show backend and execution-owner capabilities').action(async () => {
+backend.command('status').description('Show backend and execution-owner capabilities').structuredAction(async () => {
   const { backendStatusCommand } = await import('../commands/backend.js');
   await backendStatusCommand();
 });
 backend.command('upgrade <dist>').description('Activate a built backend artifact; retain application processes')
   .option('--check', 'Validate compatibility without draining or activating')
   .option('--schema-plan <path>', 'Require the exact applied expansion plan for a schema-changing upgrade or rollback')
-  .action(async (dist: string, options: { check?: boolean; schemaPlan?: string }) => {
+  .structuredAction(async (dist: string, options: { check?: boolean; schemaPlan?: string }) => {
     const { backendUpgradeCommand } = await import('../commands/backend.js');
     await backendUpgradeCommand(dist, options);
   });
 backend.command('recover [checkpoint]').description('Recover a dead backend from its certified state, or reconcile an explicit activation checkpoint')
-  .action(async (checkpoint?: string) => {
+  .structuredAction(async (checkpoint?: string) => {
     const { backendRecoverCommand } = await import('../commands/backend.js');
     await backendRecoverCommand(checkpoint);
   });
@@ -220,7 +197,7 @@ project
 project
   .command('list')
   .description('List registered projects')
-  .action(async () => {
+  .structuredAction(async () => {
     const { projectListCommand } = await import('../commands/project.js');
     await projectListCommand();
   });
@@ -229,7 +206,7 @@ project
   .command('topology [name]')
   .description('Inspect configured dependencies without exposing credentials')
   .option('--stack <name>', 'Limit to one stack')
-  .action(async (name, options) => {
+  .structuredAction(async (name, options) => {
     const { projectTopologyCommand } = await import('../commands/project.js');
     await projectTopologyCommand(name, options);
   });
@@ -244,19 +221,19 @@ project
 
 const configuration = project.command('configuration').description('Manage configuration sources inside one project');
 configuration.command('list <project>').description('Show project stack sources and preserved runtime identities')
-  .action(async name => {
+  .structuredAction(async name => {
     const { projectConfigurationCommand } = await import('../commands/project.js');
     await projectConfigurationCommand('list', name);
   });
 configuration.command('import <project> <name> <path>').description('Import stack configuration without restarting applications')
   .option('--registration <name>', 'Preserve an existing registration and its execution/history namespace')
   .requiredOption('--stack <source=target...>', 'Map each source stack to its name inside the project')
-  .action(async (projectName, name, directory, options) => {
+  .structuredAction(async (projectName, name, directory, options) => {
     const { projectConfigurationCommand } = await import('../commands/project.js');
     await projectConfigurationCommand('import', projectName, name, directory, options);
   });
 configuration.command('detach <project> <name>').description('Undo a configuration import; keep processes and history intact')
-  .action(async (projectName, name) => {
+  .structuredAction(async (projectName, name) => {
     const { projectConfigurationCommand } = await import('../commands/project.js');
     await projectConfigurationCommand('detach', projectName, name);
   });
@@ -280,7 +257,7 @@ project
 const topology = program.command('topology').description('Inspect, edit and plan desired application placement');
 topology.command('refresh <project> [stack]')
   .description('Read trusted bootstrap declarations in isolated processes; save metadata without restarting workloads (admin)')
-  .action(async (projectName, stackName) => {
+  .structuredAction(async (projectName, stackName) => {
     const { topologyCommand } = await import('../commands/topology.js');
     await topologyCommand('refresh', projectName, stackName);
   });
@@ -291,20 +268,20 @@ for (const action of ['show', 'export', 'plan'] as const) {
       : action === 'plan'
         ? 'Validate the saved draft and preview changes'
         : 'Show desired placement and observation gaps')
-    .action(async (projectName, stackName) => {
+    .structuredAction(async (projectName, stackName) => {
       const { topologyCommand } = await import('../commands/topology.js');
       await topologyCommand(action, projectName, stackName);
     });
 }
 topology.command('draft <project> <stack> <file>')
   .description('Save a versioned draft from JSON; no workloads change')
-  .action(async (projectName, stackName, file) => {
+  .structuredAction(async (projectName, stackName, file) => {
     const { topologyCommand } = await import('../commands/topology.js');
     await topologyCommand('draft', projectName, stackName, file);
   });
 topology.command('apply <project> <stack> <plan>')
   .description('Accept a reviewed target; executable deployment configuration is unchanged')
-  .action(async (projectName, stackName, plan) => {
+  .structuredAction(async (projectName, stackName, plan) => {
     const { topologyCommand } = await import('../commands/topology.js');
     await topologyCommand('apply', projectName, stackName, plan);
   });
@@ -315,7 +292,7 @@ stack
   .command('list')
   .description('List all stacks across all projects')
   .option('-p, --project <name>', 'Filter to specific project')
-  .action(async (opts) => {
+  .structuredAction(async (opts) => {
     const { stackListCommand } = await import('../commands/stack.js');
     await stackListCommand({ project: opts.project });
   });
@@ -341,7 +318,7 @@ stack
 stack
   .command('status <project> <stack>')
   .description('Show stack detail (apps, nodes, infrastructure, sync)')
-  .action(async (projectName, stackName) => {
+  .structuredAction(async (projectName, stackName) => {
     const { stackStatusCommand } = await import('../commands/stack.js');
     await stackStatusCommand(projectName, stackName);
   });
@@ -349,7 +326,7 @@ stack
 stack
   .command('diagnose <project> <stack>')
   .description('Inspect stack prerequisites without starting, provisioning or migrating')
-  .action(async (projectName, stackName) => {
+  .structuredAction(async (projectName, stackName) => {
     const { stackDiagnoseCommand } = await import('../commands/stack.js');
     await stackDiagnoseCommand(projectName, stackName);
   });
@@ -369,7 +346,7 @@ stack
   // For an operator who doubts a node's record of what an app runs: every
   // artifact is shipped and every app restarted, whatever the record says.
   .option('--reinstall', "Ship and restart every app, whatever the node's record says it runs")
-  .action(async (projectName, stackName, options) => {
+  .structuredAction(async (projectName, stackName, options) => {
     const { stackStartCommand } = await import('../commands/stack.js');
     await stackStartCommand(projectName, stackName, {
       allowDirty: options.allowDirty === true,
@@ -381,7 +358,7 @@ stack
 stack
   .command('stop <project> <stack>')
   .description('Stop a stack — stop apps + disconnect slaves + teardown infra')
-  .action(async (projectName, stackName) => {
+  .structuredAction(async (projectName, stackName) => {
     const { stackStopCommand } = await import('../commands/stack.js');
     await stackStopCommand(projectName, stackName);
   });
@@ -404,7 +381,7 @@ stack
   .option('--remove <name>', 'Take the account with this name away — with --id, and its password from the vault')
   .option('--id <uuid>', 'The id of the account --remove takes away (as --show prints it)')
   .option('--vault-key <key>', 'Where the password is kept (default: <project>.<stack>.account.<username>.password)')
-  .action(
+  .structuredAction(
     async (
       projectName: string,
       stackName: string,
@@ -432,7 +409,7 @@ stack
     "The stack's maintenance lock at its gateway: `status` (the default), `on` — hold the platform for --minutes and let go by itself — or `off`",
   )
   .option('--minutes <n>', 'With `on`: how long to hold, 1–60 (default 15)')
-  .action(async (projectName: string, stackName: string, action: string | undefined, options: { minutes?: string }) => {
+  .structuredAction(async (projectName: string, stackName: string, action: string | undefined, options: { minutes?: string }) => {
     const { stackMaintenanceCommand } = await import('../commands/stack.js');
     await stackMaintenanceCommand(projectName, stackName, action, options);
   });
@@ -440,7 +417,7 @@ stack
 stack
   .command('runtime <project> <stack>')
   .description('Show stack runtime status as JSON')
-  .action(async (projectName, stackName) => {
+  .structuredAction(async (projectName, stackName) => {
     const { stackRuntimeCommand } = await import('../commands/stack.js');
     await stackRuntimeCommand(projectName, stackName);
   });
@@ -490,7 +467,7 @@ program
   .command('list')
   .aliases(['ls'])
   .description('List all managed processes')
-  .action(async () => {
+  .structuredAction(async () => {
     const { listCommand } = await import('../commands/list.js');
     await listCommand();
   });
@@ -498,7 +475,7 @@ program
 program
   .command('status')
   .description('Show daemon status overview')
-  .action(async () => {
+  .structuredAction(async () => {
     const { statusCommand } = await import('../commands/status.js');
     await statusCommand();
   });
@@ -517,7 +494,7 @@ program
   .option('--node <node>', 'Read replicated logs from one registered node (name or ID)')
   .option('--file', 'Read from log files instead of daemon (auto when daemon offline)')
   .option('--status', 'Show local capture, durable queue and database commit status')
-  .action(async (app, opts) => {
+  .structuredAction(async (app, opts) => {
     const { logsCommand } = await import('../commands/logs.js');
     await logsCommand(app, {
       status: opts.status,
@@ -541,7 +518,7 @@ program
 program
   .command('doctor')
   .description('Diagnose why the platform is unhealthy — findings, evidence, and what to do')
-  .action(async () => {
+  .structuredAction(async () => {
     const { doctorCommand } = await import('../commands/doctor.js');
     await doctorCommand();
   });
@@ -549,7 +526,7 @@ program
 program
   .command('health [app]')
   .description('Health check report')
-  .action(async (app) => {
+  .structuredAction(async (app) => {
     const { healthCommand } = await import('../commands/health.js');
     await healthCommand(app);
   });
@@ -557,7 +534,7 @@ program
 program
   .command('metrics [app]')
   .description('Show CPU/memory/latency metrics')
-  .action(async (app) => {
+  .structuredAction(async (app) => {
     const { metricsCommand } = await import('../commands/metrics.js');
     await metricsCommand(app);
   });
@@ -589,7 +566,7 @@ program
     'Closure direction when --focus is set: ancestors, descendants, or both (default)',
     'both',
   )
-  .action(async (app, opts) => {
+  .structuredAction(async (app, opts) => {
     if (opts.graph) {
       const { inspectGraphCommand } = await import('../commands/inspect-graph.js');
       await inspectGraphCommand(app, {
@@ -615,7 +592,7 @@ program
   .command('env <app>')
   .description('Show resolved environment variables, secrets replaced')
   .option('--reveal', 'Show secrets in clear (admin only; recorded in the audit trail)')
-  .action(async (app, options: { reveal?: boolean }) => {
+  .structuredAction(async (app, options: { reveal?: boolean }) => {
     const { envCommand } = await import('../commands/env.js');
     await envCommand(app, options);
   });
@@ -701,7 +678,7 @@ fleet
 fleet
   .command('recover <node> <receipt>')
   .description('Recover an interrupted host upgrade from its recorded receipt')
-  .action(async (node: string, receipt: string) => {
+  .structuredAction(async (node: string, receipt: string) => {
     const { fleetRecoverCommand } = await import('../commands/fleet-recover.js');
     await fleetRecoverCommand(node, receipt);
   });
@@ -746,7 +723,7 @@ release
 release
   .command('list')
   .description('Every release built on this machine, newest first')
-  .action(async () => {
+  .structuredAction(async () => {
     const { releaseListCommand } = await import('../commands/release.js');
     await releaseListCommand();
   });
@@ -755,7 +732,7 @@ release
   .command('status <project>')
   .description('Observe stack placement and execution separately from deployment history')
   .option('--inspect-installed', 'Explicitly compare installed entry points with retained release archives (read-only)')
-  .action(async (projectName: string, options: { inspectInstalled?: boolean }) => {
+  .structuredAction(async (projectName: string, options: { inspectInstalled?: boolean }) => {
     const { releaseStatusCommand } = await import('../commands/release.js');
     await releaseStatusCommand(projectName, options);
   });
@@ -763,7 +740,7 @@ release
 release
   .command('show <id>')
   .description('One release in full: its commits, its gates, its artifacts')
-  .action(async (id: string) => {
+  .structuredAction(async (id: string) => {
     const { releaseShowCommand } = await import('../commands/release.js');
     await releaseShowCommand(id);
   });
@@ -784,7 +761,7 @@ release
   .description("Put a release in the artifact store (`releaseStore` in ~/.omnitron/config.json, its key in the daemon's vault)")
   .option('--root <dir>', 'Where the release is read from (default: ~/.omnitron/releases)')
   .option('--repair', "Write every object again even where the store's index matches — for a store a pull found damaged")
-  .action(async (id: string, options: { root?: string; repair?: boolean }) => {
+  .structuredAction(async (id: string, options: { root?: string; repair?: boolean }) => {
     const { releasePushCommand } = await import('../commands/release-store.js');
     await releasePushCommand(id, options);
   });
@@ -793,7 +770,7 @@ release
   .command('pull <id>')
   .description('Take a release from the artifact store and check it as a deployment would, before it appears here')
   .option('--root <dir>', 'Where the release is written (default: ~/.omnitron/releases)')
-  .action(async (id: string, options: { root?: string }) => {
+  .structuredAction(async (id: string, options: { root?: string }) => {
     const { releasePullCommand } = await import('../commands/release-store.js');
     await releasePullCommand(id, options);
   });
@@ -915,7 +892,7 @@ program
 program
   .command('health-check [app]')
   .description('Detailed composable health report (HTTP/TCP probes)')
-  .action(async (app) => {
+  .structuredAction(async (app) => {
     const { healthCheckCommand } = await import('../commands/health-check.js');
     await healthCheckCommand(app);
   });
@@ -968,7 +945,7 @@ program
 program
   .command('tor [project] [stack]')
   .description('Show Tor hidden service onion addresses (every tor container on this machine, or one stack\'s)')
-  .action(async (projectName?: string, stackName?: string) => {
+  .structuredAction(async (projectName?: string, stackName?: string) => {
     const { torCommand } = await import('../commands/tor.js');
     await torCommand(projectName, stackName);
   });
@@ -979,7 +956,7 @@ const ingress = infra.command('ingress').description('Manage host-owned public i
 for (const operation of ['configure', 'check', 'validate', 'apply', 'restore', 'rollback-takeover', 'remove'] as const) {
   ingress.command(`${operation} <manifest>`)
     .description(`${operation} host ingress using a JSON manifest (host daemon, exact generation CAS)`)
-    .action(async (manifest: string) => {
+    .structuredAction(async (manifest: string) => {
       const { hostIngressCommand } = await import('../commands/host-ingress.js');
       await hostIngressCommand(operation, manifest);
     });
@@ -987,7 +964,7 @@ for (const operation of ['configure', 'check', 'validate', 'apply', 'restore', '
 for (const operation of ['status', 'recover'] as const) {
   ingress.command(operation)
     .description(operation === 'status' ? 'Read configured and observed ingress generation' : 'Recover an interrupted host ingress publication')
-    .action(async () => {
+    .structuredAction(async () => {
       const { hostIngressCommand } = await import('../commands/host-ingress.js');
       await hostIngressCommand(operation);
     });
@@ -1028,7 +1005,7 @@ infra
   .option('--path <path>', 'Also measure this path: owner, size, free space (repeatable)', collect)
   .option('--snap <name>', 'Also read this snap package (repeatable)', collect)
   .option('--config <file:key,key>', 'Also read these keys of a key=value file; credentials refused (repeatable)', collect)
-  .action(async (target: string, opts: { unit?: string[]; path?: string[]; snap?: string[]; config?: string[] }) => {
+  .structuredAction(async (target: string, opts: { unit?: string[]; path?: string[]; snap?: string[]; config?: string[] }) => {
     const { infraInspectCommand } = await import('../commands/infra.js');
     await infraInspectCommand(target, opts);
   });
@@ -1086,7 +1063,7 @@ const pipeline = program.command('pipeline').description('CI/CD pipeline managem
 pipeline
   .command('list')
   .description('List all pipelines')
-  .action(async () => {
+  .structuredAction(async () => {
     const { pipelineListCommand } = await import('../commands/pipeline.js');
     await pipelineListCommand();
   });
@@ -1095,7 +1072,7 @@ pipeline
   .command('run <id>')
   .description('Execute a pipeline')
   .option('--params-file <file>', 'JSON parameters, supplied as data to the executor')
-  .action(async (id, options) => {
+  .structuredAction(async (id, options) => {
     const { pipelineRunCommand } = await import('../commands/pipeline.js');
     await pipelineRunCommand(id, options);
   });
@@ -1104,19 +1081,19 @@ pipeline
   .command('status <runId>')
   .description('Check pipeline run status')
   .option('--output', 'Include retained stdout and stderr')
-  .action(async (runId, options) => {
+  .structuredAction(async (runId, options) => {
     const { pipelineStatusCommand } = await import('../commands/pipeline.js');
     await pipelineStatusCommand(runId, options);
   });
 
 pipeline.command('save <file>').description('Create a pipeline from JSON, or update an existing definition')
   .option('--id <id>', 'Existing pipeline ID to update')
-  .action(async (file, options) => {
+  .structuredAction(async (file, options) => {
     const { pipelineSaveCommand } = await import('../commands/pipeline.js');
     await pipelineSaveCommand(file, options);
   });
 pipeline.command('cancel <runId>').description('Cancel a run and wait for its executor to stop')
-  .action(async runId => {
+  .structuredAction(async runId => {
     const { pipelineCancelCommand } = await import('../commands/pipeline.js');
     await pipelineCancelCommand(runId);
   });
@@ -1223,7 +1200,7 @@ node.command('reconcile <node>').description('Inspect historical metric receipts
   .option('--after <sequence>', 'Resume after this source sequence')
   .option('--through <sequence>', 'Fixed source frontier returned by a previous page')
   .option('--epoch <id>', 'Require the buffer epoch returned by a previous page')
-  .action(async (name: string, options) => {
+  .structuredAction(async (name: string, options) => {
     const { nodeReconcileCommand } = await import('../commands/node-reconcile.js');
     await nodeReconcileCommand(name, options);
   });
@@ -1296,22 +1273,22 @@ node
   });
 
 const access = program.command('access').description('Console roles, effective RPC permissions and human accounts');
-access.command('show').description('Show effective permissions from the running daemon').action(async () => {
+access.command('show').description('Show effective permissions from the running daemon').structuredAction(async () => {
   const { accessCommand } = await import('../commands/access.js'); await accessCommand('show');
 });
-access.command('users').description('List console accounts without secrets').option('--after <id>', 'Continue after this account ID').action(async (opts) => {
+access.command('users').description('List console accounts without secrets').option('--after <id>', 'Continue after this account ID').structuredAction(async (opts) => {
   const { accessCommand } = await import('../commands/access.js'); await accessCommand('users', opts);
 });
 access.command('create <username>').description('Create a human console account; password stays out of arguments and output')
   .option('--role <role>', 'viewer, operator or admin', 'viewer').option('--display-name <name>', 'Display name')
-  .requiredOption('--password-stdin', 'Read password from a hidden terminal prompt or stdin until EOF').action(async (username, opts) => {
+  .requiredOption('--password-stdin', 'Read password from a hidden terminal prompt or stdin until EOF').structuredAction(async (username, opts) => {
     const { accessCommand } = await import('../commands/access.js'); await accessCommand('create', { ...opts, username });
   });
 access.command('role <id> <role>').description('Change an account role and revoke its sessions')
-  .requiredOption('--expect <role>', 'The role you reviewed; refuse if it changed').action(async (id, role, opts) => {
+  .requiredOption('--expect <role>', 'The role you reviewed; refuse if it changed').structuredAction(async (id, role, opts) => {
     const { accessCommand } = await import('../commands/access.js'); await accessCommand('role', { id, role, expect: opts.expect });
   });
-access.command('revoke <id>').description('Revoke all sessions for a console account').action(async (id) => {
+access.command('revoke <id>').description('Revoke all sessions for a console account').structuredAction(async (id) => {
   const { accessCommand } = await import('../commands/access.js'); await accessCommand('revoke', { id });
 });
 
@@ -1323,7 +1300,7 @@ program
   .option('--resource <type>', 'Only this resource type, e.g. node')
   .option('--actor <who>', 'Only this actor: user, service or system — or an id, e.g. omnitron-local')
   .option('--before <time>', 'Only entries older than this ISO time, e.g. 2026-09-22T21:20:37Z')
-  .action(async (opts: any) => {
+  .structuredAction(async (opts: any) => {
     const { auditListCommand } = await import('../commands/audit.js');
     // As typed. `parseInt` here turned `-n abc` into NaN, which reached
     // Postgres as `LIMIT NaN`, and `-n 0` into a request for one row; the
@@ -1370,7 +1347,7 @@ node.command('ssh <node>').description('Open an audited interactive SSH terminal
   .action(async (name: string) => { const { nodeSshCommand } = await import('../commands/terminal.js'); await nodeSshCommand(name); });
 node.command('ssh-key <node>').description('Inspect SSH host fingerprint; trust only after independent verification')
   .option('--trust <fingerprint>', 'Store an independently verified SHA256 fingerprint')
-  .action(async (name: string, options: { trust?: string }) => { const { nodeHostKeyCommand } = await import('../commands/terminal.js'); await nodeHostKeyCommand(name, options); });
+  .structuredAction(async (name: string, options: { trust?: string }) => { const { nodeHostKeyCommand } = await import('../commands/terminal.js'); await nodeHostKeyCommand(name, options); });
 const fileWorkspace = program.command('files').description('Audited multi-node file workspace');
 for (const [name, signature, description] of [
   ['archive-formats', '', 'Probe archive formats on source and optional destination'],
@@ -1392,7 +1369,7 @@ for (const [name, signature, description] of [
     .option('--archive-format <format>', 'Source-side archive format; inspect archive-formats')
     .option('--archive-output <mode>', 'Explicit result: archive or directory').option('--archive-name <name>', 'New archive filename or restored directory name')
     .option('--after <name>', 'Directory page cursor').option('--revision <version>', 'Directory revision from first page')
-    .action(async (...args) => {
+    .structuredAction(async (...args) => {
       const { filesCommand } = await import('../commands/files.js');
       await filesCommand(name, signature ? args[0] : undefined, signature ? args[1] : args[0]);
     });
@@ -1400,16 +1377,16 @@ for (const [name, signature, description] of [
 
 const terminal = program.command('terminal').description('Manage SSH sessions owned by this local CLI identity');
 terminal.command('list').description('List this caller’s SSH sessions')
-  .action(async () => { const { terminalSessionsCommand } = await import('../commands/terminal.js'); await terminalSessionsCommand(); });
+  .structuredAction(async () => { const { terminalSessionsCommand } = await import('../commands/terminal.js'); await terminalSessionsCommand(); });
 terminal.command('close <id>').description('Close this caller’s SSH session')
-  .action(async (id: string) => { const { terminalSessionsCommand } = await import('../commands/terminal.js'); await terminalSessionsCommand(id); });
+  .structuredAction(async (id: string) => { const { terminalSessionsCommand } = await import('../commands/terminal.js'); await terminalSessionsCommand(id); });
 
 const webapp = program.command('webapp').description('Manage Omnitron Console webapp');
 
 webapp
   .command('build')
   .description('Build webapp (vite build)')
-  .action(async () => {
+  .structuredAction(async () => {
     const { webappBuildCommand } = await import('../commands/webapp.js');
     await webappBuildCommand();
   });
@@ -1418,7 +1395,7 @@ webapp
   .command('start')
   .description('Start webapp (nginx container serving static + API gateway)')
   .option('-f, --force', 'Force recreate container even if already running')
-  .action(async (opts) => {
+  .structuredAction(async (opts) => {
     const { webappStartCommand } = await import('../commands/webapp.js');
     await webappStartCommand({ force: opts.force });
   });
@@ -1426,7 +1403,7 @@ webapp
 webapp
   .command('stop')
   .description('Stop webapp nginx container')
-  .action(async () => {
+  .structuredAction(async () => {
     const { webappStopCommand } = await import('../commands/webapp.js');
     await webappStopCommand();
   });
@@ -1434,7 +1411,7 @@ webapp
 webapp
   .command('status')
   .description('Show webapp status')
-  .action(async () => {
+  .structuredAction(async () => {
     const { webappStatusCommand } = await import('../commands/webapp.js');
     await webappStatusCommand();
   });
@@ -1442,7 +1419,7 @@ webapp
 webapp
   .command('open')
   .description('Open webapp in browser')
-  .action(async () => {
+  .structuredAction(async () => {
     const { webappOpenCommand } = await import('../commands/webapp.js');
     await webappOpenCommand();
   });
@@ -1479,12 +1456,11 @@ program
   .command('config')
   .description('Show resolved ecosystem configuration')
   .option('--json', 'Output as JSON')
-  .action(async (opts) => {
+  .structuredAction(async () => {
     const { loadEcosystemConfig } = await import('../config/loader.js');
+    const { emitJson } = await import('../commands/output.js');
     const config = await loadEcosystemConfig();
-    if (opts.json) {
-      process.stdout.write(JSON.stringify(config, null, 2) + '\n');
-    } else {
+    if (!emitJson(config)) {
       const { log } = await import('@xec-sh/kit');
       log.info(`Project: ${config.project ?? '(unnamed)'}`);
       log.info(`Apps: ${config.apps.map((a: any) => a.name).join(', ')}`);
@@ -1566,13 +1542,21 @@ kb.command('query <question>')
  * the loop with their own work and never reach here.
  */
 program.parseAsync().then(
-  () => exitAfterOutput(process.exitCode ?? 0),
-  (err: unknown) => {
+  async () => {
+    const { finishJsonModeGuard } = await import('../commands/output.js');
+    finishJsonModeGuard();
+    return exitAfterOutput(process.exitCode ?? 0);
+  },
+  async (err: unknown) => {
     // Commander prints its own errors and sets an exit code; anything else
     // reaching here is a bug in a command, and swallowing it would hide it.
     if ((err as { exitCode?: number })?.exitCode == null) {
-      console.error(err instanceof Error ? err.stack ?? err.message : String(err));
+      const { emitError, isJsonMode } = await import('../commands/output.js');
+      if (isJsonMode()) emitError(err instanceof Error ? err.message : String(err), { code: 'COMMAND_FAILED', outcome: 'unknown' });
+      else console.error(err instanceof Error ? err.stack ?? err.message : String(err));
     }
+    const { finishJsonModeGuard } = await import('../commands/output.js');
+    finishJsonModeGuard();
     return exitAfterOutput(process.exitCode ?? 1);
   },
 );

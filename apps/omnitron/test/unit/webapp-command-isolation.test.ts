@@ -25,6 +25,7 @@ vi.mock('../../src/webapp/webapp.service.js', () => ({
   WebappService: class {
     start = runtime.start;
     stop = runtime.stop;
+    status = async () => ({ running: true, healthy: true, port: 9800 });
   },
 }));
 vi.mock('@xec-sh/kit', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: runtime.error }, prism: {} }));

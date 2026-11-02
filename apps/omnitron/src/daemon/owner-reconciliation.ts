@@ -196,17 +196,21 @@ export async function consumeOwnerReconciliation(config: ManagedRuntime, previou
 }
 
 export async function ownerReconciliationCommand(action: 'prepare' | 'acknowledge', input?: string): Promise<void> {
+  const { emitJson } = await import('../commands/output.js');
   const config = await readManagedRuntime();
   if (!config) throw new Error('Independent supervision is not configured');
   if (action === 'prepare') {
     const pids = (input ?? '').split(',').filter(Boolean).map(Number);
     const plan = await prepareOwnerReconciliation(config, pids);
     const file = path.join(config.directory, 'owner-reconciliations', plan.id + '.plan.json');
-    await writePrivateRecord(file, plan); console.log(JSON.stringify({ plan: file, processCount: plan.processes.length }));
+    await writePrivateRecord(file, plan);
+    const result = { plan: file, processCount: plan.processes.length };
+    if (!emitJson(result)) console.log(JSON.stringify(result));
   } else {
     if (!input || !path.isAbsolute(input)) throw new Error('An absolute private recovery-plan path is required');
     const plan = await readPrivateRecord<OwnerReconciliationPlan>(input);
     if (!plan) throw new Error('Owner recovery plan is unavailable');
-    console.log(JSON.stringify({ archived: await acknowledgeOwnerReconciliation(config, plan) }));
+    const result = { archived: await acknowledgeOwnerReconciliation(config, plan) };
+    if (!emitJson(result)) console.log(JSON.stringify(result));
   }
 }

@@ -1,4 +1,8 @@
 overrides:
+  "katex@<0.18.2": ^0.19.1
+  "minimatch@10": ^11.0.3
+  "minimatch@9": ^11.0.3
+  "glob@10": ^14.0.3
   "@kysera/audit": 0.10.1
   "@kysera/core": 0.10.1
   "@kysera/dal": 0.10.1

@@ -38,7 +38,7 @@
     "@types/semver": "^7.8.0",
     "@xec-sh/kit": "^0.11.1",
     "add": "^2.0.9",
-    "eslint": "10.13.0",
+    "eslint": "10.14.0",
     "eslint-plugin-perfectionist": "^5.13.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.13.0",
@@ -57,7 +57,7 @@
     "pnpm": ">=12.16.1"
   },
   "dependencies": {
-    "framer-motion": "^14.7.1",
-    "systeminformation": "^5.33.18"
+    "framer-motion": "^14.9.0",
+    "systeminformation": "^5.33.19"
   }
 }

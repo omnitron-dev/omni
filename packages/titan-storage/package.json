@@ -22,9 +22,9 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1159.0",
-    "@aws-sdk/s3-request-presigner": "^3.1159.0",
-    "@smithy/node-http-handler": "^4.13.0"
+    "@aws-sdk/client-s3": "^3.1161.0",
+    "@aws-sdk/s3-request-presigner": "^3.1161.0",
+    "@smithy/node-http-handler": "^4.14.1"
   },
   "peerDependencies": {
     "@omnitron-dev/titan": "workspace:*"

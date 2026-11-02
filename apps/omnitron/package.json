@@ -105,13 +105,14 @@
     "@xec-sh/ops": "^0.11.1",
     "better-sqlite3": "^13.0.3",
     "commander": "^15.0.0",
-    "cron-parser": "^5.10.2",
+    "cron-parser": "^5.10.3",
     "esbuild": "^0.28.2",
-    "jose": "^6.2.13",
-    "kysely": "^0.29.7",
+    "jose": "^6.2.14",
+    "kysely": "^0.29.8",
     "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
-    "systeminformation": "^5.33.18",
+    "systeminformation": "^5.33.19",
+    "tar": "7.5.22",
     "tsx": "^4.23.15"
   },
   "devDependencies": {
@@ -123,13 +124,13 @@
     "@testing-library/user-event": "^14.6.8",
     "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "happy-dom": "^21.0.4",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-router-dom": "7.18.5",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^5.0.5",
-    "@typescript/native": "npm:typescript@^7.0.2"
+    "vitest": "^5.0.5"
   },
   "files": [
     "dist",

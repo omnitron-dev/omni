@@ -36,7 +36,7 @@
   },
   "dependencies": {
     "@omnitron-dev/access": "workspace:*",
-    "jose": "^6.2.13",
+    "jose": "^6.2.14",
     "reflect-metadata": "^0.2.2"
   },
   "peerDependencies": {

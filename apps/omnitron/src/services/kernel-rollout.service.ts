@@ -5,14 +5,14 @@ import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import type { KernelRollout, KernelRolloutTarget } from '../shared/dto/nodes.js';
 import type { DeployTarget } from './remote-deployer.service.js';
 import { describeFailure } from './audit.service.js';
-import { ManagedRolloutFailure, type ManagedRolloutObservation } from './managed-rollout.js';
+import { ManagedRolloutFailure, type ManagedRolloutObservation, type ManagedSelection } from './managed-rollout.js';
 
 type Store = Pick<DaemonStateStore, 'kvGetSync' | 'kvSetSync' | 'kvUpdateSync'>;
 type Revalidate = () => Promise<void>;
 type Driver = {
   inspectManagedRollout(target: DeployTarget, commit: string, options?: { stage?: boolean; excludeOwnerId?: string }): Promise<ManagedRolloutObservation>;
-  activateManagedRollout(target: DeployTarget, preflight: ManagedRolloutObservation): Promise<void>;
-  reconcileManagedRollout(target: DeployTarget, preflight: ManagedRolloutObservation): Promise<'previous' | 'candidate'>;
+  activateManagedRollout(target: DeployTarget, preflight: ManagedRolloutObservation, beforeDispatch: () => Promise<void>): Promise<void>;
+  reconcileManagedRollout(target: DeployTarget, preflight: ManagedRolloutObservation, options: { detailed: true }): Promise<ManagedSelection>;
 };
 type NodeSource = {
   listNodes(): Array<{ id: string; name: string; isLocal?: boolean }>;
@@ -279,7 +279,7 @@ export class KernelRolloutService {
   }
 
   private async execute(record: Record, revalidate?: Revalidate) {
-    const { id, commit, targets } = record.rollout;
+    const { id, targets } = record.rollout;
     for (const [i, node] of targets.entries()) {
       const pin = record.observations[i]!;
       const update = (state: KernelRolloutTarget['state'], reason: string | null, global?: KernelRollout['state']) =>
@@ -294,21 +294,24 @@ export class KernelRolloutService {
         this.assertController();
         this.assertRemoteOwner(pin.preflight.ownerId);
         if (node.state === 'current') {
-          const current = await this.driver.inspectManagedRollout(target, commit);
-          if (current.previous !== pin.preflight.previous || current.candidate !== pin.preflight.candidate ||
-              current.ownerId !== pin.preflight.ownerId || current.ownerPid !== pin.preflight.ownerPid ||
-              current.commit !== commit || current.backendPid !== pin.preflight.backendPid || current.selectionRevision !== pin.preflight.selectionRevision ||
-              current.appsDigest !== pin.preflight.appsDigest) throw Error('Previously current target changed after planning');
+          const current = await this.driver.reconcileManagedRollout(target, pin.preflight, { detailed: true });
+          if (current !== 'candidate') throw Error('Previously current target changed after planning');
           update('succeeded', 'Already current. Reverified owner, selection and applications.');
           continue;
         }
-        update('running', null);
-        dispatched = true;
-        await this.driver.activateManagedRollout(target, pin.preflight);
+        await this.driver.activateManagedRollout(target, pin.preflight, async () => {
+          await revalidate?.();
+          await this.connection(node.nodeId, pin.endpoint);
+          this.assertController();
+          this.assertRemoteOwner(pin.preflight.ownerId);
+          update('running', null);
+          dispatched = true;
+        });
         update('succeeded', null);
       } catch (error) {
         const outcome = !dispatched ? 'unchanged' : error instanceof ManagedRolloutFailure ? error.outcome : 'uncertain';
-        update(outcome === 'uncertain' ? 'uncertain' : outcome === 'rolled-back' ? 'rolled-back' : 'failed', describeFailure(error),
+        const reason = dispatched ? describeFailure(error) : 'Handoff was not dispatched. ' + describeFailure(error);
+        update(outcome === 'uncertain' ? 'uncertain' : outcome === 'rolled-back' ? 'rolled-back' : 'failed', reason,
           outcome === 'uncertain' ? 'uncertain' : 'failed');
         return;
       }
@@ -323,13 +326,13 @@ export class KernelRolloutService {
     if (record.rollout.state !== 'uncertain' && !(record.rollout.state === 'running' && record.writer && !this.mayStillRun(record.rollout.id, record.writer)))
       throw Error('Only an uncertain rollout or one whose original writer exited can be reconciled');
     const i = record.rollout.targets.findIndex(n => n.state === 'running' || n.state === 'uncertain');
-    let result: 'previous' | 'candidate' | null = null;
+    let result: ManagedSelection | undefined;
     if (i !== -1) {
       const pin = record.observations[i]!;
       try {
         this.assertRemoteOwner(pin.preflight.ownerId);
-        result = await this.driver.reconcileManagedRollout(await this.connection(record.rollout.targets[i]!.nodeId, pin.endpoint), pin.preflight);
-        if (result !== 'previous' && result !== 'candidate') throw Error('The node could not prove a terminal selection');
+        result = await this.driver.reconcileManagedRollout(await this.connection(record.rollout.targets[i]!.nodeId, pin.endpoint), pin.preflight, { detailed: true });
+        if (result !== 'unchanged' && result !== 'rolled-back' && result !== 'candidate') throw Error('The node could not prove a terminal selection');
       } catch (error) {
         const reason = 'Reconciliation could not certify this node: ' + describeFailure(error);
         this.change(id, (current, index) => {
@@ -344,9 +347,14 @@ export class KernelRolloutService {
     this.assertController();
     return this.change(id, (current, index) => {
       if (index.active !== id || current.revision !== record.revision) throw Error('Rollout changed while its node was being observed');
-      if (i !== -1) {
-        current.rollout.targets[i]!.state = result === 'candidate' ? 'succeeded' : 'rolled-back';
-        current.rollout.targets[i]!.reason = result === 'candidate' ? 'Candidate confirmed by reconciliation' : 'Previous runtime confirmed by reconciliation';
+      if (result) {
+        const target = current.rollout.targets[i]!;
+        target.state = result === 'candidate' ? 'succeeded' : result === 'rolled-back' ? 'rolled-back' : 'failed';
+        target.reason = {
+          candidate: 'Candidate confirmed by reconciliation',
+          'rolled-back': 'Return to the previous runtime confirmed by reconciliation',
+          unchanged: 'The original runtime, PID and selection revision are still in place',
+        }[result];
       }
       const complete = current.rollout.targets.every(n => n.state === 'succeeded');
       current.rollout.state = complete ? 'succeeded' : 'failed';

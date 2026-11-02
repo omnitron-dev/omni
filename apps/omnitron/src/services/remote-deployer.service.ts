@@ -56,7 +56,7 @@ import { gunzipSync } from 'node:zlib';
 import { shellEscape } from '../shared/shell-escape.js';
 import { fromDataChannel, throughDataChannel } from '../execution/data-channel.js';
 import { activateManagedTarget, managedHostCommand, planManagedRollout, reconcileManagedTarget,
-  type ManagedHostEvidence, type ManagedHostRequest, type ManagedRolloutObservation } from './managed-rollout.js';
+  type ManagedHostEvidence, type ManagedHostRequest, type ManagedRolloutObservation, type ManagedSelection } from './managed-rollout.js';
 
 /** A node that could not be asked at all — the SSH call itself failed. */
 const UNREADABLE = -3;
@@ -1713,19 +1713,22 @@ export class RemoteDeployer {
     });
   }
 
-  async activateManagedRollout(target: DeployTarget, plan: ManagedRolloutObservation): Promise<void> {
+  async activateManagedRollout(target: DeployTarget, plan: ManagedRolloutObservation, beforeDispatch?: () => Promise<void>): Promise<void> {
     this.assertManagedTarget(target);
     return this.underLease(target, 'managed kernel handoff', async () => {
       await this.checkManagedTarget(target);
-      await activateManagedTarget(request => this.readManagedHost(target, request), plan);
+      await activateManagedTarget(request => this.readManagedHost(target, request), plan, beforeDispatch);
     });
   }
 
-  async reconcileManagedRollout(target: DeployTarget, plan: ManagedRolloutObservation): Promise<'previous' | 'candidate'> {
+  async reconcileManagedRollout(target: DeployTarget, plan: ManagedRolloutObservation): Promise<'previous' | 'candidate'>;
+  async reconcileManagedRollout(target: DeployTarget, plan: ManagedRolloutObservation, options: { detailed: true }): Promise<ManagedSelection>;
+  async reconcileManagedRollout(target: DeployTarget, plan: ManagedRolloutObservation, options?: { detailed: true }): Promise<ManagedSelection | 'previous'> {
     this.assertManagedTarget(target);
     return this.underLease(target, 'reconcile managed kernel handoff', async () => {
       await this.checkManagedTarget(target);
-      return reconcileManagedTarget(request => this.readManagedHost(target, request), plan);
+      const selection = await reconcileManagedTarget(request => this.readManagedHost(target, request), plan);
+      return options?.detailed || selection === 'candidate' ? selection : 'previous';
     });
   }
 

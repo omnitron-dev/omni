@@ -22,15 +22,31 @@ if (
   (await managedJobPid(config, 'backend')) !== Number(guardian)
 )
   throw Error('Managed supervisor identity changed');
-const dbPath = path.join(dir, 'state.db');
-for (const suffix of ['', '-wal', '-shm', '-journal']) {
-  const s = fs.lstatSync(dbPath + suffix, { throwIfNoEntry: false });
-  if (s && (!s.isFile() || s.isSymbolicLink() || s.uid !== process.getuid() || s.mode & 0o077))
-    throw Error('Unsafe runtime registry');
+// Older guardian SDKs predate the read-only installation API. Their open() may
+// migrate the registry, so inspection must use a read-only SQLite connection.
+function openLegacyReader() {
+  const dbPath = path.join(dir, 'state.db');
+  for (const suffix of ['', '-wal', '-shm', '-journal']) {
+    const stat = fs.lstatSync(dbPath + suffix, { throwIfNoEntry: false });
+    if (stat && (!stat.isFile() || stat.uid !== process.getuid() || stat.mode & 0o077))
+      throw Error('Unsafe runtime registry');
+  }
+  const Sqlite = createRequire(path.join(pkg, 'package.json'))('better-sqlite3');
+  const db = new Sqlite(dbPath, { readonly: true, fileMustExist: true });
+  const read = db.prepare("SELECT value FROM state_kv WHERE key='runtime.selection'");
+  const pending = db.prepare("SELECT 1 FROM state_kv WHERE key IN ('runtime.lease','runtime.activation') LIMIT 1");
+  return {
+    settledSelection: db.transaction(() => {
+      const selection = JSON.parse(read.get()?.value ?? 'null');
+      if (selection?.protocol !== 1 || !Number.isSafeInteger(selection.revision) || selection.revision < 1 ||
+          !hash.test(selection.current) || (selection.previous !== null && !hash.test(selection.previous)) ||
+          (selection.bootstrap !== null && !hash.test(selection.bootstrap)) || !Number.isFinite(Date.parse(selection.selectedAt)) ||
+          pending.get()) throw Error('Runtime selection is invalid or a native operation is unfinished');
+      return selection;
+    }).deferred,
+    close: () => db.close(),
+  };
 }
-const Sqlite = createRequire(path.join(pkg, 'package.json'))('better-sqlite3');
-const db = new Sqlite(dbPath, { readonly: true, fileMustExist: true });
-const kv = (key) => JSON.parse(db.prepare('SELECT value FROM state_kv WHERE key=?').get(key)?.value ?? 'null');
 const hash = /^[0-9a-f]{64}$/;
 const checked = new Map();
 const checkout = async (id) => {
@@ -40,18 +56,12 @@ const checkout = async (id) => {
   if (!checked.has(id)) checked.set(id, checkBackendCandidate(path.join(r, 'packages/0/dist'), undefined, id));
   return checked.get(id);
 };
+const { RuntimeInstallation } = await sdk('daemon/runtime-installation');
+const registry = typeof RuntimeInstallation.openReadOnly === 'function' ? await RuntimeInstallation.openReadOnly(home) : openLegacyReader();
+if (!registry) throw Error('Runtime installation is absent');
 const client = createDaemonClient();
 try {
-  const selection = kv('runtime.selection');
-  if (
-    !selection ||
-    selection.protocol !== 1 ||
-    !Number.isSafeInteger(selection.revision) ||
-    selection.revision < 1 ||
-    kv('runtime.activation') ||
-    kv('runtime.lease')
-  )
-    throw Error('Runtime selection is absent or a native operation is unfinished');
+  const selection = registry.settledSelection();
   const status = await client.status(),
     live = status.execution;
   if (
@@ -89,8 +99,8 @@ try {
   if (manifest.sha256 !== selection.current || manifest.platform !== process.platform || manifest.arch !== process.arch || manifest.nodeVersion !== nodeVersion)
     throw Error('Serving runtime metadata differs from its native executable');
   const assertSelection = () => {
-    const now = kv('runtime.selection');
-    if (now?.current !== selection.current || now?.revision !== selection.revision || kv('runtime.activation') || kv('runtime.lease'))
+    const now = registry.settledSelection();
+    if (now.current !== selection.current || now.revision !== selection.revision)
       throw Error('Runtime selection changed during inspection');
   };
   const bundle = {
@@ -113,8 +123,8 @@ try {
     assertSelection();
     console.log(JSON.stringify({ bundle }));
   } else {
-    if (Object.values(live.blockers ?? {}).some((n) => n !== 0) || !live.blockers)
-      throw Error('Active operations block kernel qualification');
+    if (!live.blockers || !wanted.requiredCounters.every(key => Object.hasOwn(live.blockers, key)) ||
+        Object.values(live.blockers).some(count => count !== 0)) throw Error('Active or unknown backend operations block kernel qualification');
     const channel = await privateControlClient(path.join(config.directory, 'owner.sock'), 'OmnitronExecution');
     let snap;
     try {
@@ -136,7 +146,27 @@ try {
         (app) => app.status !== 'stopped' && (app.status !== 'online' || health.apps?.[app.name]?.status !== 'healthy')
       )
       .map((app) => app.name);
+    // The existing snapshot supplies all identity input. Legacy bootstrap SDKs
+    // may omit diagnostics; the strict inventory digest below remains required.
+    let identity;
+    const identityFile = path.join(pkg, 'dist/shared/execution-identity.js');
+    const identityFileStat = fs.lstatSync(identityFile, { throwIfNoEntry: false });
+    if (identityFileStat) {
+      if (!identityFileStat.isFile() || identityFileStat.uid !== process.getuid() || (identityFileStat.mode & 0o022) || fs.realpathSync(identityFile) !== identityFile)
+        throw Error('Unsafe installed identity diagnostics SDK; verify the guardian runtime before retrying');
+      try {
+        const details = await sdk('shared/execution-identity');
+        if (typeof details.projectExecutionIdentity !== 'function' || typeof details.isExecutionIdentityEvidence !== 'function')
+          throw Error('Incompatible identity diagnostics exports');
+        const projected = details.projectExecutionIdentity(snap);
+        if (projected !== null && !details.isExecutionIdentityEvidence(projected)) throw Error('Malformed identity diagnostic projection');
+        if (projected) identity = projected;
+      } catch {
+        throw Error('Installed identity diagnostics SDK could not be verified; repair the guardian runtime before retrying');
+      }
+    }
     const evidence = {
+      ...(identity ? { identity } : {}),
       bundle,
       current: selection.current,
       ownerId: live.owner.id,
@@ -219,8 +249,7 @@ try {
       const destination = await checkout(to);
       if (to === expected.candidate && destination.build.commit !== expected.commit)
         throw Error('Planned source changed');
-      if (kv('runtime.activation') || kv('runtime.lease') || kv('runtime.selection')?.revision !== revision)
-        throw Error('Another native operation began');
+      assertSelection();
       const supervisor = await privateControlClient(
         path.join(config.directory, 'supervisor.sock'),
         'OmnitronSupervisor',
@@ -244,6 +273,5 @@ try {
     console.log(JSON.stringify(evidence));
   }
 } finally {
-  await client.disconnect();
-  db.close();
+  try { await client.disconnect(); } finally { await registry.close(); }
 }

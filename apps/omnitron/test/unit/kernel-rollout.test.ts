@@ -7,7 +7,7 @@ import { METADATA_KEYS } from '@omnitron-dev/titan/decorators';
 import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
 import { runWithAuth } from '../../src/services/auth-context.js';
 import { KernelRolloutService } from '../../src/services/kernel-rollout.service.js';
-import { ManagedRolloutFailure, type ManagedRolloutObservation } from '../../src/services/managed-rollout.js';
+import { ManagedRolloutFailure, type ManagedRolloutObservation, type ManagedSelection } from '../../src/services/managed-rollout.js';
 import { NodeManagerRpcService } from '../../src/services/node-manager.rpc-service.js';
 import type { DeployTarget } from '../../src/services/remote-deployer.service.js';
 
@@ -37,16 +37,20 @@ function fixture() {
   const proof = (host: string): ManagedRolloutObservation => ({
     commit, previous, candidate, ownerId: 'owner-' + host, ownerPid: 10, backendPid: 11, appsDigest: 'a'.repeat(64), selectionRevision: 2,
   });
+  const switchRuntime = vi.fn(async () => {});
   const driver = {
     inspectManagedRollout: vi.fn(async (target: DeployTarget) => proof(target.host)),
-    activateManagedRollout: vi.fn(async (_target: DeployTarget, _plan: ManagedRolloutObservation) => {}),
-    reconcileManagedRollout: vi.fn(async (): Promise<'candidate' | 'previous'> => 'candidate'),
+    activateManagedRollout: vi.fn(async (_target: DeployTarget, _plan: ManagedRolloutObservation, beforeDispatch: () => Promise<void>) => {
+      await beforeDispatch();
+      await switchRuntime();
+    }),
+    reconcileManagedRollout: vi.fn(async (): Promise<ManagedSelection> => 'candidate'),
   };
   const authority = vi.fn<() => void>(() => {});
   const controllerOwner = vi.fn<() => string | null>(() => null);
   const service = new KernelRolloutService(store, nodes, driver, logger.error, authority, controllerOwner);
   const observer = new KernelRolloutService(reader, nodes, driver, logger.error, authority, controllerOwner);
-  return { service, observer, driver, nodes, store, logger, proof, authority, controllerOwner };
+  return { service, observer, driver, switchRuntime, nodes, store, logger, proof, authority, controllerOwner };
 }
 
 describe('durable managed fleet kernel controller', () => {
@@ -95,7 +99,8 @@ describe('durable managed fleet kernel controller', () => {
     expect(driver.inspectManagedRollout).toHaveBeenCalledWith(expect.objectContaining({ host:'a' }), commit, { stage: true });
     service.start(pending.id);
     await vi.waitFor(() => expect(service.get()?.state).toBe('succeeded'));
-    expect(driver.inspectManagedRollout).toHaveBeenLastCalledWith(expect.objectContaining({ host:'a' }), commit);
+    expect(driver.inspectManagedRollout).toHaveBeenCalledTimes(1);
+    expect(driver.reconcileManagedRollout).toHaveBeenCalledWith(expect.objectContaining({ host:'a' }), expect.objectContaining({ previous: candidate, candidate }), { detailed: true });
     expect(driver.activateManagedRollout).not.toHaveBeenCalled();
   });
 
@@ -149,11 +154,11 @@ describe('durable managed fleet kernel controller', () => {
   });
 
   it('publishes a committed running intent before dispatch, serializes nodes, and rejects concurrent plans across connections', async () => {
-    const { service, observer, driver, store } = fixture();
+    const { service, switchRuntime, observer, driver, store } = fixture();
     const other = await ready(observer, commit, ['a']);
     const plan = await ready(service, commit, ['b', 'a']);
     const gate = Promise.withResolvers<void>();
-    driver.activateManagedRollout.mockImplementationOnce(() => gate.promise);
+    switchRuntime.mockImplementationOnce(() => gate.promise);
     expect(service.start(plan.id).state).toBe('running');
     await vi.waitFor(() => expect(driver.activateManagedRollout).toHaveBeenCalledTimes(1));
     expect(observer.get()?.targets.map(t => t.state)).toEqual(['running', 'ready']);
@@ -170,7 +175,7 @@ describe('durable managed fleet kernel controller', () => {
   });
 
   it('refuses an endpoint rebinding before dispatch and stops immediately after a confirmed rollback', async () => {
-    const { service, observer, driver, nodes } = fixture();
+    const { service, switchRuntime, observer, driver, nodes } = fixture();
     const plan = await ready(service, commit);
     nodes.nodeToDeployTarget.mockResolvedValueOnce({ host: 'replacement', expectedHostFingerprint: 'pin-a' });
     service.start(plan.id);
@@ -178,16 +183,49 @@ describe('durable managed fleet kernel controller', () => {
     expect(observer.get(plan.id)?.targets[0]?.reason).toMatch(/changed after plan/);
     expect(driver.activateManagedRollout).not.toHaveBeenCalled();
     const next = await ready(service, commit);
-    driver.activateManagedRollout.mockRejectedValueOnce(new ManagedRolloutFailure('Rollback confirmed', 'rolled-back'));
+    switchRuntime.mockRejectedValueOnce(new ManagedRolloutFailure('Rollback confirmed', 'rolled-back'));
     service.start(next.id);
     await vi.waitFor(() => expect(observer.get()?.targets.map(t => t.state)).toEqual(['rolled-back', 'ready']));
     expect(driver.activateManagedRollout).toHaveBeenCalledTimes(1);
   });
 
+  it('releases the fleet after a pre-dispatch refusal and keeps other targets eligible for a fresh plan', async () => {
+    const { service, observer, driver, switchRuntime } = fixture();
+    const first = await ready(service, commit, ['a', 'b']);
+    driver.activateManagedRollout.mockRejectedValueOnce(new Error('Application inventory has changed'));
+    service.start(first.id);
+    await vi.waitFor(() => expect(observer.get(first.id)?.state).toBe('failed'));
+    expect(observer.get(first.id)?.targets[0]?.reason).toMatch(/not dispatched.*inventory/i);
+    expect(switchRuntime).not.toHaveBeenCalled();
+    expect((await ready(observer, commit, ['b'])).state).toBe('planned');
+  });
+
+  it('checks authority again under the host lease, before writing a dispatch or changing the node', async () => {
+    const { service, switchRuntime, observer } = fixture();
+    const plan = await ready(service, commit, ['a']);
+    const check = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(Error('Session revoked'));
+    service.start(plan.id, check);
+    await vi.waitFor(() => expect(observer.get(plan.id)?.state).toBe('failed'));
+    expect(switchRuntime).not.toHaveBeenCalled();
+    expect(observer.get(plan.id)?.targets[0]?.reason).toMatch(/not dispatched.*revoked/i);
+  });
+
+  it('reports a proven unchanged selection separately from a completed reverse handoff', async () => {
+    const { service, driver, switchRuntime } = fixture();
+    const plan = await ready(service, commit, ['a']);
+    switchRuntime.mockRejectedValueOnce(Error('Connection lost after dispatch'));
+    service.start(plan.id);
+    await vi.waitFor(() => expect(service.get(plan.id)?.state).toBe('uncertain'));
+    driver.reconcileManagedRollout.mockResolvedValueOnce('unchanged');
+    const reconciled = await service.reconcile(plan.id);
+    expect(reconciled.targets[0]).toMatchObject({ state: 'failed', reason: expect.stringMatching(/original runtime/) });
+    expect(switchRuntime).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps a lost reply fenced until the pinned node returns terminal evidence and never resumes remaining targets', async () => {
-    const { service, observer, driver } = fixture();
+    const { service, switchRuntime, observer, driver } = fixture();
     const plan = await ready(service, commit);
-    driver.activateManagedRollout.mockRejectedValueOnce(new Error('RPC disconnected'));
+    switchRuntime.mockRejectedValueOnce(new Error('RPC disconnected'));
     service.start(plan.id);
     await vi.waitFor(() => expect(observer.get(plan.id)?.state).toBe('uncertain'));
     await expect(observer.plan(commit)).rejects.toThrow(plan.id);
@@ -204,10 +242,10 @@ describe('durable managed fleet kernel controller', () => {
   });
 
   it('recovers interrupted post-dispatch journal writes without requiring a controller restart', async () => {
-    const { service, driver, store, logger } = fixture();
+    const { service, switchRuntime, driver, store, logger } = fixture();
     const plan = await ready(service, commit, ['b']);
     const gate = Promise.withResolvers<void>();
-    driver.activateManagedRollout.mockImplementationOnce(() => gate.promise);
+    switchRuntime.mockImplementationOnce(() => gate.promise);
     service.start(plan.id);
     await vi.waitFor(() => expect(driver.activateManagedRollout).toHaveBeenCalledTimes(1));
     const unavailable = vi.spyOn(store, 'kvUpdateSync').mockImplementation(() => { throw Error('disk full'); });
@@ -225,7 +263,7 @@ describe('durable managed fleet kernel controller', () => {
     driver.inspectManagedRollout.mockImplementation(async t => ({ ...proof(t.host), previous: candidate }));
     const plan = await ready(service, commit, ['a']);
     expect(plan.targets[0]?.state).toBe('current');
-    driver.inspectManagedRollout.mockResolvedValueOnce({ ...proof('a'), previous: candidate, selectionRevision: 3 });
+    driver.reconcileManagedRollout.mockRejectedValueOnce(new Error('Observed kernel selection cannot be attributed to this plan'));
     service.start(plan.id);
     await vi.waitFor(() => expect(service.get()?.state).toBe('failed'));
     expect(driver.activateManagedRollout).not.toHaveBeenCalled();
@@ -237,9 +275,11 @@ describe('durable managed fleet kernel controller', () => {
   });
 
   it('stops before the next target when the administrator loses authority mid-rollout', async () => {
-    const { service, driver } = fixture();
+    const { service, driver, switchRuntime } = fixture();
     const plan = await ready(service, commit);
-    const revalidate = vi.fn(async () => {}).mockResolvedValueOnce(undefined).mockRejectedValueOnce(Error('Session revoked'));
+    let authorized = true;
+    switchRuntime.mockImplementationOnce(async () => { authorized = false; });
+    const revalidate = async () => { if (!authorized) throw Error('Session revoked'); };
     service.start(plan.id, revalidate);
     await vi.waitFor(() => expect(service.get()?.state).toBe('failed'));
     expect(driver.activateManagedRollout.mock.calls.map(([target]) => target.host)).toEqual(['a']);
@@ -260,7 +300,7 @@ describe('durable managed fleet kernel controller', () => {
     expect(observer.start(plan.id).state).toBe('uncertain');
     expect(driver.activateManagedRollout).not.toHaveBeenCalled();
     await expect(observer.plan(commit)).rejects.toThrow(plan.id);
-    driver.reconcileManagedRollout.mockResolvedValueOnce('previous');
+    driver.reconcileManagedRollout.mockResolvedValueOnce('rolled-back');
     expect((await observer.reconcile(plan.id)).targets[0]?.state).toBe('rolled-back');
     expect(driver.activateManagedRollout).not.toHaveBeenCalled();
     store.kvSetSync(key, { ...original, writer: { ...writer, pid: 0 } });

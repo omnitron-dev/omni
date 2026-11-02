@@ -1,5 +1,8 @@
 import type { BuildStamp } from '../build-stamp.js';
 
+/** Counters all resident backends must report before transferring control. */
+export const BACKEND_ACTIVITY_COUNTERS = ['terminalSessions', 'fileTransfers', 'pipelineRuns', 'releaseBuilds'] as const;
+
 export interface BackendRuntimeStatus {
   mode: 'coupled' | 'resident';
   handoffSupported: boolean;
@@ -19,7 +22,7 @@ export interface BackendRuntimeStatus {
   };
   recovery?: { status: 'pending' | 'ready' | 'unavailable'; at: string | null; reason: string | null };
   supervision?: { type: 'independent'; guardianPid: number; ownerUnit: string; backendUnit: string };
-  blockers: { terminalSessions: number; fileTransfers: number; pipelineRuns: number; releaseBuilds: number; kernelRollouts?: number };
+  blockers: Record<typeof BACKEND_ACTIVITY_COUNTERS[number], number> & { kernelRollouts?: number };
 }
 
 /** Binds admission to the resident observed by authenticated daemon status. */

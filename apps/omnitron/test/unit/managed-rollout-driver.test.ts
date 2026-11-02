@@ -50,6 +50,49 @@ describe('fenced resident kernel transitions', () => {
     }
   });
 
+  it('never switches an already-current runtime whose build or native selection no longer matches', async () => {
+    const { dispatch, set } = fixture();
+    const current = { ...plan, previous: candidate };
+    set({ current: candidate, bundle: { root: '/instance/runtime', version: '1', commit } });
+    expect(await reconcileManagedTarget(dispatch, current)).toBe('candidate');
+    set({ selectionRevision: current.selectionRevision + 1 });
+    await expect(activateManagedTarget(dispatch, current)).rejects.toThrow(/attributed/);
+    set({ selectionRevision: current.selectionRevision, bundle: { root: '/instance/runtime', version: '1', commit: '0'.repeat(40) } });
+    await expect(activateManagedTarget(dispatch, current)).rejects.toThrow(/attributed/);
+    expect(dispatch.mock.calls.some(([r]) => r.operation === 'switch')).toBe(false);
+  });
+
+  it('explains a pool rotation without dispatch and keeps identity details out of the switch request', async () => {
+    const { dispatch, set } = fixture();
+    const identity = { protocol: 1 as const, owner: { id: plan.ownerId, pid: plan.ownerPid }, appCount: 1, workerCount: 1,
+      workersDigest: 'a'.repeat(64), groups: [
+        { kind: 'app' as const, app: 'worker', members: 0, digest: 'a'.repeat(64) },
+        { kind: 'pool' as const, app: 'worker', pool: 'analysis', members: 1, digest: 'b'.repeat(64) },
+      ] };
+    set({ identity });
+    const reviewed = await planManagedRollout(dispatch, commit);
+    expect(reviewed.identity).toEqual(identity);
+    const rotated = structuredClone(identity);
+    rotated.groups[1]!.digest = 'c'.repeat(64);
+    set({ identity: rotated, appsDigest: 'e'.repeat(64) });
+    await expect(activateManagedTarget(dispatch, reviewed)).rejects.toThrow('worker/analysis');
+    expect(dispatch.mock.calls.some(([r]) => r.operation === 'switch')).toBe(false);
+    set({ identity, appsDigest: plan.appsDigest });
+    await activateManagedTarget(dispatch, reviewed);
+    const sent = dispatch.mock.calls.map(([r]) => r).find(r => r.operation === 'switch');
+    expect(sent?.expected).toEqual(plan);
+  });
+
+  it('rechecks inventory before the dispatch intent, and refuses rotation without sending a switch', async () => {
+    const { dispatch, set } = fixture();
+    const intent = vi.fn();
+    expect(await reconcileManagedTarget(dispatch, plan)).toBe('unchanged');
+    set({ appsDigest: 'f'.repeat(64) });
+    await expect(activateManagedTarget(dispatch, plan, intent)).rejects.toThrow(/inventory/);
+    expect(intent).not.toHaveBeenCalled();
+    expect(dispatch.mock.calls.every(([request]) => request.operation === 'observe')).toBe(true);
+  });
+
   it('rolls back the exact candidate after a failed postcondition with the same owner and unchanged inventory', async () => {
     const { dispatch, set } = fixture();
     const run = async (r: ManagedHostRequest) => {
@@ -58,7 +101,7 @@ describe('fenced resident kernel transitions', () => {
       return result;
     };
     await expect(activateManagedTarget(run, plan)).rejects.toMatchObject({ outcome: 'rolled-back' });
-    expect(await reconcileManagedTarget(run, plan)).toBe('previous');
+    expect(await reconcileManagedTarget(run, plan)).toBe('rolled-back');
   });
 
   it('accepts a lost SSH acknowledgement when the same healthy owner independently confirms the exact new selection', async () => {

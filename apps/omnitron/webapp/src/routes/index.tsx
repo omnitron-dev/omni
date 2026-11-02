@@ -71,6 +71,7 @@ export function Router() {
         <Route path="system" element={<Page><SystemInfoPage /></Page>} />
         <Route path="settings" element={<Page><SettingsPage /></Page>} />
         <Route path="logs" element={<Page><LogsPage /></Page>} />
+        <Route path="alerts" element={<Page><AlertsPage /></Page>} />
         <Route path="audit" element={<Page><AuditPage /></Page>} />
         <Route path="access" element={<Page><AccessPage /></Page>} />
         <Route path="pipelines" element={<Page><PipelinesPage /></Page>} />
@@ -95,7 +96,6 @@ export function Router() {
         <Route path="topology" element={<Page><TopologyPage /></Page>} />
         <Route path="containers" element={<ProjectRoute><ContainersPage /></ProjectRoute>} />
         <Route path="deployments" element={<ProjectRoute><DeploymentsPage /></ProjectRoute>} />
-        <Route path="alerts" element={<ProjectRoute><AlertsPage /></ProjectRoute>} />
         <Route path="traces" element={<ProjectRoute><TracesPage /></ProjectRoute>} />
 
         {/* Legacy redirects */}

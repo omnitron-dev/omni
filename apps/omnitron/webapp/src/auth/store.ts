@@ -76,7 +76,7 @@ function handleSessionEvent(event: 'refreshed' | 'expired') {
     useAuthStore.setState({ user: null, sessionId: null });
     // Redirect to sign-in
     if (typeof window !== 'undefined') {
-      const raw = window.location.pathname + window.location.search;
+      const raw = window.location.pathname + window.location.search + window.location.hash;
       const returnTo = encodeURIComponent(sanitizeReturnTo(raw));
       window.location.href = `/auth/sign-in?returnTo=${returnTo}`;
     }

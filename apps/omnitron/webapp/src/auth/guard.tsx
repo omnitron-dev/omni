@@ -31,7 +31,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
   }
 
   if (!user) {
-    const returnTo = encodeURIComponent(location.pathname + location.search);
+    const returnTo = encodeURIComponent(location.pathname + location.search + location.hash);
     return <Navigate to={`/auth/sign-in?returnTo=${returnTo}`} replace />;
   }
 

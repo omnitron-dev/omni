@@ -1,5 +1,6 @@
 import { Can, useAccess } from 'src/auth/access';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import Card from '@mui/material/Card';
@@ -54,6 +55,8 @@ type ActiveAlert = import('@omnitron-dev/omnitron/dto/services').ActiveAlert;
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
+
+const ACTIVE_ALERT_LIMIT = 100;
 
 const SEVERITY_COLORS: Record<string, 'error' | 'warning' | 'info'> = {
   critical: 'error',
@@ -259,6 +262,11 @@ function StatCard({ title, value, icon, color, loading }: StatCardProps) {
 
 export default function AlertsPage() {
   const { can } = useAccess();
+  const { hash, key } = useLocation();
+  const firingSection = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (hash === '#firing') firingSection.current?.focus();
+  }, [hash, key]);
   // No stack context here on purpose. An `AlertRule` is an expression over
   // metrics with no app field, and an `ActiveAlert` names the rule that fired,
   // so there is nothing for `namespacePrefix` to narrow. The page used to pull
@@ -269,9 +277,9 @@ export default function AlertsPage() {
 
   const { data, loading, error, refresh: fetchData } = usePolledResource(
     async () => {
-      const { first, second, partialFailure } = await settledPair<AlertRule[], ActiveAlert[]>(
-        [alerts.getRules(), alerts.getActiveAlerts()],
-        [[], []]
+      const { first, second, partialFailure } = await settledPair<AlertRule[], ActiveAlert[] | null>(
+        [alerts.getRules(), alerts.getActiveAlerts({ limit: ACTIVE_ALERT_LIMIT })],
+        [[], null]
       );
       return { rules: first, activeAlerts: second, partialFailure };
     },
@@ -295,7 +303,13 @@ export default function AlertsPage() {
 
   // The list is firing alerts only; «resolved» counted from it was always 0.
   const firingCount = activeAlerts.length;
+  const limitReached = firingCount === ACTIVE_ALERT_LIMIT;
+  const activeAvailable = data?.activeAlerts != null;
   const acknowledgedCount = activeAlerts.filter((a) => a.acknowledged).length;
+  let activeCaption = 'No alerts are currently firing.';
+  if (!activeAvailable) activeCaption = loading ? 'Loading firing alerts…' : 'Firing alerts unavailable.';
+  else if (limitReached) activeCaption = `Showing the latest ${ACTIVE_ALERT_LIMIT} firing alerts across all workspaces`;
+  else if (firingCount) activeCaption = `${firingCount} currently firing across all workspaces`;
 
   const handleToggleRule = async (ruleId: string, enabled: boolean) => {
     try {
@@ -456,7 +470,7 @@ export default function AlertsPage() {
         <Grid size={{ xs: 12, sm: 4 }}>
           <StatCard
             title="Firing"
-            value={firingCount}
+            value={activeAvailable ? `${firingCount}${limitReached ? '+' : ''}` : '—'}
             icon={<AlertIcon />}
             color={firingCount > 0 ? 'error' : 'success'}
             loading={loading}
@@ -465,7 +479,7 @@ export default function AlertsPage() {
         <Grid size={{ xs: 12, sm: 4 }}>
           <StatCard
             title="Acknowledged"
-            value={acknowledgedCount}
+            value={activeAvailable ? `${acknowledgedCount}${limitReached ? '+' : ''}` : '—'}
             icon={<CheckIcon />}
             color={acknowledgedCount < firingCount ? 'warning' : 'success'}
             loading={loading}
@@ -482,11 +496,12 @@ export default function AlertsPage() {
         </Grid>
       </Grid>
       {/* Active Alerts */}
-      {firingCount > 0 && (
-        <Card variant="outlined">
+      {(hash === '#firing' || firingCount > 0) && (
+        <Card component="section" id="firing" aria-label="Active alerts across all workspaces" ref={firingSection}
+          tabIndex={-1} variant="outlined" sx={{ '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 } }}>
           <CardHeader slotProps={{ subheader: { variant: 'caption' }, title: { variant: 'subtitle1', fontWeight: 600 } }}
             title="Active Alerts"
-            subheader={`${firingCount} alert${firingCount !== 1 ? 's' : ''} currently firing`}
+            subheader={activeCaption}
           />
           <CardContent sx={{ pt: 0 }}>
             <Stack spacing={1}>

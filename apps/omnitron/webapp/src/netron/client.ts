@@ -148,7 +148,7 @@ daemonClient.use(
     if (typeof window === 'undefined') return;
     if (window.location.pathname.startsWith('/auth/')) return;
 
-    const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+    const returnTo = encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);
     window.location.href = `/auth/sign-in?returnTo=${returnTo}`;
   },
   { name: 'session-expired-redirect', priority: 10 },

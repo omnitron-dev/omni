@@ -16,9 +16,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
+import { type ReactElement } from 'react';
+import userEvent from '@testing-library/user-event';
+import { render as renderView, screen, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 
+const can = vi.fn(() => true);
+vi.mock('src/auth/access', () => ({ useAccess: () => ({ can }) }));
+const render = (ui: ReactElement) => renderView(ui, { wrapper: MemoryRouter });
 const status = vi.fn();
 const ping = vi.fn();
 const listNodes = vi.fn();
@@ -66,6 +72,7 @@ const alertChip = () =>
   screen.queryAllByText((_content, el) => /^\d+ alerts?$/.test(el?.textContent?.trim() ?? ''));
 
 beforeEach(() => {
+  can.mockReturnValue(true);
   initializeRealtime.mockClear();
   releaseRealtime.mockClear();
   status.mockReset();
@@ -79,6 +86,29 @@ beforeEach(() => {
 });
 
 describe('StatusBar', () => {
+  it('opens the firing list with the keyboard from the system workspace', async () => {
+    function Location() { const { pathname, hash } = useLocation(); return <output>{pathname}{hash}</output>; }
+    getSummary.mockResolvedValue({ firing: 1, resolved: 8 });
+    render(<><StatusBar /><Location /></>);
+    const link = await screen.findByRole('link', { name: 'View 1 firing alert across all workspaces' });
+    expect(link).toHaveAttribute('href', '/alerts#firing');
+    const user = userEvent.setup();
+    await user.tab();
+    expect(link).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByText('/alerts#firing')).toBeInTheDocument();
+  });
+
+  it('omits the global count and its query when alerts are unavailable to the caller', async () => {
+    can.mockReturnValue(false);
+    getSummary.mockResolvedValue({ firing: 2 });
+    render(<StatusBar />);
+    await screen.findByLabelText(/Infrastructure status/);
+    expect(getSummary).not.toHaveBeenCalled();
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getByLabelText(/Infrastructure status/)).not.toHaveAttribute('aria-label', expect.stringContaining('alerts'));
+  });
+
   it('keeps a realtime subscription on routes that do not own one themselves', async () => {
     getSummary.mockResolvedValue({ firing: 0 });
     const { rerender, unmount } = render(<StatusBar />);

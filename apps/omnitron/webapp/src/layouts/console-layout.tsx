@@ -77,6 +77,7 @@ function useNavData(): LayoutNavData {
 
   return useMemo(() => {
     const builder = { id: 'dashboard-builder', title: 'Dashboard Builder', path: '/dashboard-builder', icon: <DashboardBuilderIcon /> };
+    const alertNav = { id: 'alerts', title: 'Alerts', path: '/alerts', icon: <AlertIcon /> };
     if (!activeProject) {
       // Omnitron system workspace
       return [
@@ -88,7 +89,7 @@ function useNavData(): LayoutNavData {
         {
           id: 'observability',
           subheader: 'Observability',
-          items: [{ id: 'logs', title: 'Logs', path: '/logs', icon: <LogsIcon /> }],
+          items: [{ id: 'logs', title: 'Logs', path: '/logs', icon: <LogsIcon /> }, alertNav],
         },
         {
           id: 'infrastructure',
@@ -146,7 +147,7 @@ function useNavData(): LayoutNavData {
           { id: 'logs', title: 'Logs', path: '/logs', icon: <LogsIcon /> },
           { id: 'metrics', title: 'Metrics', path: '/metrics', icon: <MetricsIcon /> },
           { id: 'traces', title: 'Traces', path: '/traces', icon: <TraceIcon /> },
-          { id: 'alerts', title: 'Alerts', path: '/alerts', icon: <AlertIcon /> },
+          alertNav,
         ],
       },
       {
@@ -358,18 +359,18 @@ export function ConsoleLayout() {
   }, [filesVisible]);
   useEffect(() => {
     const main = document.getElementById('main-content');
-    main?.scrollTo({ top: 0 });
+    if (!location.hash) main?.scrollTo({ top: 0 });
     // A retained page can hide the focused terminal/file row on navigation.
     if (main && (!document.activeElement || !isVisible(document.activeElement as HTMLElement)))
       main.focus({ preventScroll: true });
-  }, [location.pathname]);
+  }, [location.pathname, location.hash]);
   const [terminalVisited, setTerminalVisited] = useState(terminalVisible);
   useEffect(() => {
     if (terminalVisible) setTerminalVisited(true);
   }, [terminalVisible]);
   // Every page of the console, so an alert that fires is heard wherever the
   // operator is — and only while someone is signed in to hear it.
-  useAlertNotifications(useAuthStore((s) => Boolean(s.user)));
+  useAlertNotifications(can('OmnitronAlerts.getActiveAlerts'));
 
   return (
     <ConsoleKeyboard navigation={navData}>

@@ -7,6 +7,8 @@ import { stackApps, stackCounts } from 'src/utils/stack-inventory';
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
+import { useAccess } from 'src/auth/access';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
@@ -124,6 +126,8 @@ export function StatusBar({ docked = false }: { docked?: boolean }) {
 }
 
 function StatusBarReader({ docked, lastKnown }: { docked: boolean; lastKnown: React.RefObject<{ nodesOnline: number; nodesTotal: number; firingAlerts: number; appsOnline: number; appsTotal: number; appsKnown: boolean }> }) {
+  const { can } = useAccess();
+  const showAlerts = can('OmnitronAlerts.getSummary') && can('OmnitronAlerts.getActiveAlerts') && can('OmnitronAlerts.getRules');
   const [data, setData] = useState<StatusData | null>(null);
   /**
    * The last values the nodes and alerts queries actually produced.
@@ -164,7 +168,7 @@ function StatusBarReader({ docked, lastKnown }: { docked: boolean; lastKnown: Re
         daemon.status(),
         activeProject ? fetchStacks(activeProject) : Promise.resolve(null),
         nodesRpc.listNodes(),
-        alerts.getSummary(),
+        showAlerts ? alerts.getSummary() : null,
       ]);
 
       const st = status.status === 'fulfilled' ? (status.value as any) : null;
@@ -209,7 +213,7 @@ function StatusBarReader({ docked, lastKnown }: { docked: boolean; lastKnown: Re
   // Another selection is another question: its answer should not wait a poll.
   useEffect(() => {
     void refresh();
-  }, [activeProject, activeStack, refresh]);
+  }, [activeProject, activeStack, showAlerts, refresh]);
 
   // Instant re-fetch on relevant WS events.
   //
@@ -236,7 +240,7 @@ function StatusBarReader({ docked, lastKnown }: { docked: boolean; lastKnown: Re
 
   return (
     <Box
-      aria-label={`Infrastructure status: ${data.daemonOnline ? 'online' : 'offline'}, applications ${appCount}, nodes ${data.nodesOnline}/${data.nodesTotal}, ${data.firingAlerts} alerts`}
+      aria-label={`Infrastructure status: ${data.daemonOnline ? 'online' : 'offline'}, applications ${appCount}, nodes ${data.nodesOnline}/${data.nodesTotal}${showAlerts ? `, ${data.firingAlerts} alerts` : ''}`}
       sx={{
         position: docked ? 'relative' : 'fixed',
         bottom: 0,
@@ -289,13 +293,22 @@ function StatusBarReader({ docked, lastKnown }: { docked: boolean; lastKnown: Re
       )}
 
       {/* Alerts */}
-      {data.firingAlerts > 0 && (
-        <StatusItem>
-          <Dot color="#ef4444" pulse />
-          <Typography variant="caption" sx={{ fontSize: 'inherit', color: '#ef4444', fontWeight: 600 }}>
-            {data.firingAlerts} alert{data.firingAlerts > 1 ? 's' : ''}
-          </Typography>
-        </StatusItem>
+      {showAlerts && data.firingAlerts > 0 && (
+        <Box
+          component={RouterLink}
+          to="/alerts#firing"
+          aria-label={`View ${data.firingAlerts} firing ${data.firingAlerts === 1 ? 'alert' : 'alerts'} across all workspaces`}
+          sx={{
+            display: 'inline-flex', alignItems: 'center', gap: 0.5, minHeight: 24, px: 0.5,
+            whiteSpace: 'nowrap', flexShrink: 0, borderRadius: 0.5, textDecoration: 'none',
+            color: 'error.main', fontWeight: 600,
+            '&:hover': { textDecoration: 'underline' },
+            '&:focus-visible': { outline: '2px solid currentColor', outlineOffset: -2 },
+          }}
+        >
+          <Dot color="currentColor" />
+          {data.firingAlerts} alert{data.firingAlerts > 1 ? 's' : ''}
+        </Box>
       )}
 
       {/* Connection type */}

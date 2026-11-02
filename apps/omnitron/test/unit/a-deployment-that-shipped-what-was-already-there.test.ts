@@ -325,7 +325,7 @@ describe('an artifact is identified by what it ships, not when it was packed', (
       fs.readFileSync(path.join(here, '../../src/project/artifact-builder.ts'), 'utf8'),
     );
 
-    expect(builder).toMatch(/const checksum = await this\.createTarball\(/);
+    expect(builder).toMatch(/const checksum = options\?\.releaseCheckouts\s*\? await this\.createFrozenTarball\([^;]+:\s*await this\.createTarball\(/);
     expect(builder).toMatch(/bundleChecksum/);
     expect(builder).not.toMatch(/computeChecksum\(artifactPath\)/);
   });

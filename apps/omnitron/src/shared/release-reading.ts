@@ -5,6 +5,10 @@ import type { ReleaseDeploymentDto } from './dto/services.js';
 import type { IStackInfo } from './dto/project.js';
 import type { RuntimeReleaseEvidence } from '../config/types.js';
 
+export function releaseTargetLabel(target?: import('../release/target-runtime.js').TargetRuntime): string {
+  return target ? `${target.platform}/${target.arch} · Node ${target.node} · ABI ${target.abi}` : 'Target not recorded';
+}
+
 /**
  * The part of a release summary its gates are read from. Not the per-outcome
  * counts beyond `failed`: what did not pass and did not fail is unfinished,

@@ -46,8 +46,9 @@ describe('failed preparation preserves the running release', () => {
     const bytes = await readFile(archive), digest = createHash('sha256').update(bytes).digest('hex');
     const commands: string[] = [];
     const local = (path: string) => path.replaceAll('/opt/omnitron/artifacts', join(root, 'artifacts'));
-    const svc: any = Object.create(RemoteDeployer.prototype);
+    const svc: any = new RemoteDeployer({ info() {}, warn() {}, error() {} } as never, {} as never);
     Object.assign(svc, { logger: { info() {}, warn() {}, error() {} }, emitProgress() {}, verifySSH: async () => {},
+      inspectInstalledBundle: async () => ({ root: '/unused-owner', commit: 'a'.repeat(40) }),
       scpTransfer: async (_target: unknown, from: string, to: string) => copyFile(from, local(to)),
       sshExec: async (_target: unknown, command: string) => {
         commands.push(command);
@@ -97,13 +98,13 @@ describe('failed preparation preserves the running release', () => {
     expect(JSON.parse(await readFile(join(root, 'omnitron.host-upgrade.json'), 'utf8'))).toEqual(contract);
   });
   it('refuses deployment without source ownership before installing any artifact', async () => {
-    const svc: any = Object.create(RemoteDeployer.prototype);
+    const svc: any = new RemoteDeployer({ info() {}, warn() {}, error() {} } as never, {} as never);
     svc.deployToNode = vi.fn();
     await expect(svc.deployToStack([{ host: 'example.invalid' }], [{ app: 'api', version: '1' }], 'project', { apps: [{ name: 'api' }] })).rejects.toThrow(/explicit source stack/);
     expect(svc.deployToNode).not.toHaveBeenCalled();
   });
   it('reports registration failure and does not proceed to restart or health success', async () => {
-    const svc: any = Object.create(RemoteDeployer.prototype);
+    const svc: any = new RemoteDeployer({ info() {}, warn() {}, error() {} } as never, {} as never);
     Object.assign(svc, { logger: { info() {}, warn() {}, error() {} }, emitProgress() {},
       deployToNode: async () => ({ node: 'example.invalid:9700', app: 'api', version: '1', status: 'success' }),
       migrateNodeApps: async () => new Map(), registerNodeApps: async () => { throw Error('read refused'); }, signalRemoteDaemon: vi.fn(),

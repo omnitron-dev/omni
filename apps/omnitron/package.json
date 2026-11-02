@@ -27,6 +27,10 @@
       "types": "./dist/shared/alert-expression.d.ts",
       "default": "./dist/shared/alert-expression.js"
     },
+    "./release-archive": {
+      "types": "./dist/release/archive.d.ts",
+      "default": "./dist/release/archive.js"
+    },
     "./release-reading": {
       "types": "./dist/shared/release-reading.d.ts",
       "default": "./dist/shared/release-reading.js"

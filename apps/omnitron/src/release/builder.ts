@@ -99,6 +99,7 @@ export interface ManifestInput {
   readonly artifactFailures: ReadonlyArray<{ app: string; error: string }>;
   readonly gates: readonly GateOutcome[];
   readonly omnitron: string;
+  readonly target?: ReleaseManifest['builtWith']['target'];
   readonly packages: ReadonlyArray<{ name: string; distBuiltAt: string }>;
   readonly machine?: ReleaseManifest['machine'];
   readonly builtAt: Date;
@@ -130,7 +131,7 @@ export function assembleManifest(input: ManifestInput): ReleaseManifest {
     ...(input.artifactFailures.length > 0 ? { artifactFailures: input.artifactFailures } : {}),
     gates: input.gates,
     ...(input.machine ? { machine: input.machine } : {}),
-    builtWith: { omnitron: input.omnitron, packages: input.packages },
+    builtWith: { omnitron: input.omnitron, packages: input.packages, ...(input.target ? { target: input.target } : {}) },
     builtAt: input.builtAt.toISOString(),
     builtBy: input.builtBy,
     ...(input.statics ? { statics: input.statics } : {}),

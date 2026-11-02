@@ -225,7 +225,7 @@ describe('current status', () => {
   it('reports a fully stopped observed stack without treating its history as current', async () => {
     daemon.stacks = [{ name: 'test', type: 'remote', status: 'stopped', apps: [{ status: 'stopped' }], nodes: [] }];
     await releaseStatusCommand('sample');
-    expect(said.some(row => row.text.includes('none — applications stopped'))).toBe(true);
+    expect(said.some(row => row.text.includes('No applications running'))).toBe(true);
     expect(said.some(row => row.text.includes(`last recorded deployment: ${R0810}`))).toBe(true);
     expect(process.exitCode).toBe(0);
   });

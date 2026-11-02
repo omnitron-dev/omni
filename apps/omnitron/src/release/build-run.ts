@@ -478,6 +478,9 @@ async function buildRelease(
   const started = Date.now();
   const extra = checkedEnv(options.env);
   const env = buildEnv({ ...process.env, ...extra });
+  // Native install scripts and compilation must use the same Node that fingerprints the closure.
+  const bin = path.dirname(process.execPath);
+  env['PATH'] = [bin, ...(env['PATH'] ?? '').split(path.delimiter).filter(dir => dir && dir !== bin)].join(path.delimiter);
   const signal = options.signal;
   const ctx = { env, ...(signal ? { signal } : {}) };
   const step = (cmd: string, args: string[], opts: { cwd: string; logFile: string; timeoutMs: number }) =>
@@ -505,6 +508,7 @@ async function buildRelease(
 
   say('reading both commits', 2);
   const projectSha = await git(['rev-parse', '--verify', `${options.projectCommit ?? 'HEAD'}^{commit}`], project.path);
+  env['SOURCE_DATE_EPOCH'] = await git(['show', '-s', '--format=%ct', projectSha], project.path);
   // The lockfile AT THE COMMIT: the working tree's may differ, and it is the
   // commit's that the clone will install from.
   const layout = readLinkLayout(await git(['show', `${projectSha}:pnpm-lock.yaml`], project.path));
@@ -657,7 +661,7 @@ async function buildRelease(
   const builder = new ArtifactBuilder(plan.projectDir, path.join(releaseRoot, 'artifacts'), {
     info: (msg) => fs.appendFileSync(artifactsLog, `${msg}\n`),
   });
-  const packed = await builder.buildAll(apps);
+  const packed = await builder.buildAll(apps, { releaseCheckouts: [plan.projectDir, plan.omniDir], env });
 
   // 6. The static bundle, for the stack named — built in the clone.
   let statics: StaticsRecord | null = null;
@@ -694,6 +698,7 @@ async function buildRelease(
     project: await sourceOf(projectPath, projectSha),
     omni: await sourceOf(omniPath, omniSha),
     artifacts: packed.built,
+    target: await (await import('./target-runtime.js')).targetRuntime(),
     artifactFailures: packed.failed,
     gates,
     omnitron,

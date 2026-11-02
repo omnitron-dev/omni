@@ -1,5 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { targetRuntime, releaseNodeOptions, type TargetRuntime } from './target-runtime.js';
 import { shellEscape } from '../shared/shell-escape.js';
 import type { IEcosystemAppEntry, RuntimeReleaseEvidence } from '../config/types.js';
 
@@ -15,7 +17,10 @@ export interface ReleaseArtifactOrigin {
 }
 
 interface InstalledReleaseReceipt {
-  version: 1;
+  version: 1 | 2;
+  nodeOptions?: string;
+  target?: TargetRuntime;
+  ownerPackage?: string;
   origin: ReleaseArtifactOrigin;
   root: string;
   treeSha256: string;
@@ -39,6 +44,7 @@ export async function releaseTreeDigest(directory: string, portable = false, ski
     if (process.getuid && before.uid !== BigInt(process.getuid())) throw new Error('Release tree belongs to another user');
     if (before.isSymbolicLink()) {
       const target = await io.realpath(absolute);
+      if (portable && target !== root && !target.startsWith(root + paths.sep)) throw Error('Release payload links outside its packed boundary');
       if (!portable) digest.update(`link\0${label}\0${await io.readlink(absolute)}\0${target}\0`);
       // Follow dependency links, including an externally bound framework, once.
       await walk(target, portable ? label : `resolved:${target}`);
@@ -62,7 +68,7 @@ export async function releaseTreeDigest(directory: string, portable = false, ski
     } else if (before.isFile()) {
       if (++files > 200_000 || (bytes += Number(before.size)) > 2_147_483_648 || before.size > 268_435_456n)
         throw new Error('Release tree exceeds verification capacity');
-      digest.update(`file\0${label}\0${before.mode & 0o111n}\0`);
+      digest.update(`file\0${label}\0${portable ? (before.mode & 0o111n ? 0o111n : 0n) : before.mode & 0o111n}\0`);
       digest.update(await io.readFile(absolute)); digest.update('\0');
     } else throw new Error('Unsupported file in release tree');
     const after = await io.lstat(absolute, { bigint: true });
@@ -74,7 +80,7 @@ export async function releaseTreeDigest(directory: string, portable = false, ski
 }
 
 /** Compare package bytes and resolution edges, independent of installation paths. */
-export async function frameworkDependencyDigest(application: string): Promise<string> {
+export async function frameworkDependencyDigest(application: string, selected?: Readonly<Record<string, string>>): Promise<string> {
   const io = await import('node:fs/promises');
   const paths = await import('node:path');
   const { createRequire } = await import('node:module');
@@ -106,7 +112,8 @@ export async function frameworkDependencyDigest(application: string): Promise<st
   };
   const scope = paths.join(application, 'node_modules', '@omnitron-dev');
   const roots: Record<string, number> = {};
-  for (const name of (await io.readdir(scope)).filter(packageName => !packageName.startsWith('.')).sort()) roots[name] = await visit(paths.join(scope, name));
+  const pathsByName = selected ?? Object.fromEntries((await io.readdir(scope)).filter(name => !name.startsWith('.')).map(name => [name, paths.join(scope, name)]));
+  for (const name of Object.keys(pathsByName).sort()) roots[name] = await visit(pathsByName[name]!);
   return createHash('sha256').update(JSON.stringify({ roots, graph })).digest('hex');
 }
 
@@ -120,7 +127,7 @@ export function artifactPayloadDigestCommand(application: string, archiveName: s
   return `node --input-type=module -e ${shellEscape(`const inspect=${releaseTreeDigest.toString()};console.log(await inspect(${JSON.stringify(application)},true,true,${JSON.stringify(excluded)}));`)}`;
 }
 
-function validOrigin(value: ReleaseArtifactOrigin): boolean {
+export function validOrigin(value: ReleaseArtifactOrigin): boolean {
   return Boolean(value && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value.releaseId) && !value.releaseId.includes('..') &&
     /^[a-f0-9]{64}$/.test(value.manifestSha256) && /^[a-f0-9]{64}$/.test(value.artifactSha256) &&
     /^[a-f0-9]{40}$/.test(value.frameworkCommit) && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value.app) &&
@@ -128,24 +135,43 @@ function validOrigin(value: ReleaseArtifactOrigin): boolean {
 }
 
 /** Called only after checked delivery and dependency installation in a new directory. */
-export function sealReleaseArtifactCommand(directory: string, origin: ReleaseArtifactOrigin, installedFrameworkCommit: string, frameworkContentUnchanged: boolean, artifactPayloadUnchanged: boolean): string {
+export function sealReleaseArtifactCommand(directory: string, origin: ReleaseArtifactOrigin, installedFrameworkCommit: string, frameworkContentUnchanged: boolean, artifactPayloadUnchanged: boolean,
+  launch?: { nodeOptions: string; executable: string; ownerPackage: string }): string {
   if (!validOrigin(origin) || !path.isAbsolute(directory) || !/^[a-f0-9]{40}$/.test(installedFrameworkCommit))
     throw new Error('Invalid release origin');
+  if (launch && (!path.isAbsolute(launch.executable) || !path.isAbsolute(launch.ownerPackage) ||
+    releaseNodeOptions(launch.nodeOptions) !== launch.nodeOptions || !frameworkContentUnchanged || !artifactPayloadUnchanged ||
+    installedFrameworkCommit !== origin.frameworkCommit)) throw new Error('A verified release requires an unchanged payload and owner');
   const source = `import fs from 'node:fs/promises';
 const root=await fs.realpath(${JSON.stringify(directory)}), origin=${JSON.stringify(origin)};
 const treeSha256=await (${releaseTreeDigest.toString()})(root);
-await fs.writeFile(root+'/${RELEASE_RECEIPT}',JSON.stringify({version:1,root,origin,treeSha256,installedFrameworkCommit:${JSON.stringify(installedFrameworkCommit)},frameworkContentUnchanged:${JSON.stringify(frameworkContentUnchanged)},artifactPayloadUnchanged:${JSON.stringify(artifactPayloadUnchanged)}}),{mode:0o600,flag:'wx'});`;
-  return `node --input-type=module -e ${shellEscape(source)}`;
+const launch=${launch ? `{version:2,nodeOptions:${JSON.stringify(launch.nodeOptions)},ownerPackage:await fs.realpath(${JSON.stringify(launch.ownerPackage)}),target:await (${targetRuntime.toString()})()}` : '{version:1}'};
+await fs.writeFile(root+'/${RELEASE_RECEIPT}',JSON.stringify({...launch,root,origin,treeSha256,installedFrameworkCommit:${JSON.stringify(installedFrameworkCommit)},frameworkContentUnchanged:${JSON.stringify(frameworkContentUnchanged)},artifactPayloadUnchanged:${JSON.stringify(artifactPayloadUnchanged)}}),{mode:0o600,flag:'wx'});`;
+  return `env -u NODE_OPTIONS -u NODE_PATH ${launch ? shellEscape(launch.executable) : 'node'} --input-type=module -e ${shellEscape(source)}`;
+}
+
+/** The old input marker is only a performance hint. Reuse also requires this
+ * exact installed receipt, unchanged bytes and the current execution binding. */
+export function installedReleaseCheckCommand(directory: string, origin: ReleaseArtifactOrigin, owner: { root: string; executable: string; commit: string }, nodeOptions: string): string {
+  if (!validOrigin(origin) || ![directory, owner.executable, owner.root].every(p => path.isAbsolute(p))) throw Error('Invalid release verification input');
+  const source = `import fs from 'node:fs/promises';try {
+const root=await fs.realpath(${JSON.stringify(directory)}),file=root+'/${RELEASE_RECEIPT}',stat=await fs.lstat(file);
+if(!stat.isFile()||stat.size>16384||(stat.mode&63)!==0||(process.getuid&&stat.uid!==process.getuid()))throw Error();
+const r=JSON.parse(await fs.readFile(file,'utf8')), expected=${JSON.stringify(origin)};
+if(r.version!==2||r.root!==root||r.nodeOptions!==${JSON.stringify(releaseNodeOptions(nodeOptions))}||r.ownerPackage!==await fs.realpath(${JSON.stringify(owner.root)})||r.installedFrameworkCommit!==${JSON.stringify(owner.commit)}||
+r.installedFrameworkCommit!==expected.frameworkCommit||r.frameworkContentUnchanged!==true||r.artifactPayloadUnchanged!==true||
+Object.keys(expected).some(key=>r.origin?.[key]!==expected[key]))throw Error();
+const target=await (${targetRuntime.toString()})();if(Object.keys(target).some(key=>target[key]!==r.target?.[key]))throw Error();
+if(await (${releaseTreeDigest.toString()})(root)!==r.treeSha256)throw Error();console.log('verified');
+}catch{console.log('stale')}`;
+  return `env -u NODE_OPTIONS -u NODE_PATH ${shellEscape(owner.executable)} --input-type=module -e ${shellEscape(source)}`;
 }
 
 /** A fresh launch may verify a receipt; a surviving legacy process may not. */
 export async function verifyLaunchRelease(entry: IEcosystemAppEntry, launchId: string, executionPaths: readonly string[] = []): Promise<RuntimeReleaseEvidence> {
   const unavailable = (reason: string): RuntimeReleaseEvidence => ({ state: 'unreported', reason });
-  for (const option of ['NODE_OPTIONS', 'NODE_PATH']) {
-    const effective = entry.env && Object.hasOwn(entry.env, option) ? entry.env[option] : process.env[option];
-    if (typeof effective === 'string' && effective.trim())
-      return unavailable('Node runtime options or additional module paths are configured outside the installed release receipt.');
-  }
+  const effective = (key: string): unknown => entry.env && Object.hasOwn(entry.env, key) ? entry.env[key] : process.env[key];
+  if (effective('NODE_PATH')) return unavailable('Additional Node module paths are outside the release boundary.');
   if (!entry.releaseRoot || !path.isAbsolute(entry.releaseRoot)) return unavailable('No installed release boundary was recorded for this launch.');
   const root = await fs.realpath(entry.releaseRoot).catch(() => null);
   if (!root) return unavailable('The launch directory could not be read.');
@@ -156,9 +182,23 @@ export async function verifyLaunchRelease(entry: IEcosystemAppEntry, launchId: s
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 16_384 || (stat.mode & 0o077) !== 0 ||
       (process.getuid && stat.uid !== process.getuid())) return unavailable('The installed release receipt is not a private regular file.');
     receipt = JSON.parse(await fs.readFile(receiptPath, 'utf8')) as InstalledReleaseReceipt;
-    if (receipt.version !== 1 || receipt.root !== root || !validOrigin(receipt.origin) ||
+    if ((receipt.version !== 1 && receipt.version !== 2) || receipt.root !== root || !validOrigin(receipt.origin) ||
       !/^[a-f0-9]{64}$/.test(receipt.treeSha256) || !/^[a-f0-9]{40}$/.test(receipt.installedFrameworkCommit))
       return unavailable('The installed release receipt is invalid.');
+    if (receipt.version === 1) {
+      if (effective('NODE_OPTIONS')) return unavailable('Node runtime options are outside this legacy receipt.');
+    } else {
+      let options: string;
+      try { options = releaseNodeOptions(effective('NODE_OPTIONS')); }
+      catch { return unavailable('This launch uses Node options not permitted for a verified release.'); }
+      if (receipt.nodeOptions !== options) return unavailable('The Node resource settings differ from the settings sealed at build time.');
+      const ownerPackage = await fs.realpath(fileURLToPath(new URL('../../', import.meta.url)));
+      if (receipt.ownerPackage !== ownerPackage)
+        return { state: 'modified', releaseId: receipt.origin.releaseId, reason: 'This launch uses a different execution owner than the verified delivery.' };
+      const target = await targetRuntime();
+      if (Object.keys(target).some(k => target[k as keyof TargetRuntime] !== receipt.target?.[k as keyof TargetRuntime]))
+        return { state: 'modified', releaseId: receipt.origin.releaseId, reason: 'The execution runtime differs from the target verified at delivery.' };
+    }
     const executable = entry.bootstrap ?? entry.script;
     if (executable && /\.(?:[cm]?ts|tsx)$/.test(executable))
       return unavailable('This launch compiles source files; the installed release receipt does not identify the generated executable.');

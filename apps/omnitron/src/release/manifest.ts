@@ -117,6 +117,8 @@ export interface GateOutcome {
  * only its commits therefore names something that was true of two of them.
  */
 export interface BuiltWith {
+  /** Exact execution target of the frozen application archives. Absent in legacy manifests. */
+  readonly target?: import('./target-runtime.js').TargetRuntime;
   /** The omnitron that packed this, by its own version string. */
   readonly omnitron: string;
   /** Each linked package, and when the `dist` that went in was produced. */

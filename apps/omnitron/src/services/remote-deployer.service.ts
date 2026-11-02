@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { stackExecutionKey } from '../shared/dto/stack-execution.js';
 /**
  * RemoteDeployer — SSH-based artifact deployment to remote/cluster nodes
@@ -51,7 +52,9 @@ import { stackExecutionKey } from '../shared/dto/stack-execution.js';
  */
 
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
-import { artifactPayloadDigestCommand, frameworkDigestCommand, sealReleaseArtifactCommand } from '../release/runtime-provenance.js';
+import { bindApplicationCommand } from '../release/application-closure.js';
+import { releaseOptionsForEnv } from '../release/target-runtime.js';
+import { sealReleaseArtifactCommand, installedReleaseCheckCommand, validOrigin } from '../release/runtime-provenance.js';
 import type { StaticAssetPublication, StaticAssetReceipt } from './static-carry-forward.js';
 import type { MaintenanceLock as HeldLock } from './maintenance-lock.js';
 import type { IStackNode } from '../config/types.js';
@@ -313,6 +316,8 @@ export interface DeployResult {
   checksum?: string;
   /** Immutable installation directory segment; the application version may be reused. */
   directory?: string;
+  /** Verified executable, used by pre-activation migrations for frozen releases. */
+  migrationNode?: string;
 }
 
 export interface DeployProgress {
@@ -443,6 +448,8 @@ export class RemoteDeployer {
        * install, a file edited on the node by hand.
        */
       force?: boolean;
+      /** Effective settings from the same app definition used for registration. */
+      launchEnv?: Readonly<Record<string, unknown>>;
     },
   ): Promise<DeployResult> {
     const startTime = Date.now();
@@ -454,6 +461,11 @@ export class RemoteDeployer {
     );
 
     try {
+      if (artifact.release && (!validOrigin(artifact.release) || artifact.release.app !== artifact.app ||
+          artifact.release.artifactSha256 !== artifact.tarballSha256 || artifact.release.artifactBytes !== artifact.size))
+        throw new Error('Release origin does not identify the supplied artifact');
+      const nodeOptions = artifact.release ? releaseOptionsForEnv(options?.launchEnv) : '';
+      let inspected: InstalledBundle | undefined;
       // 1. Verify SSH connectivity
       this.emitProgress(nodeKey, artifact.app, 'pending', 0, 'Connecting via SSH...');
       await this.verifySSH(target);
@@ -479,7 +491,11 @@ export class RemoteDeployer {
         const recorded = parseRecordedChecksum(
           await this.sshExec(target, readChecksumCommand(shellEscape(remotePath))),
         );
-        if (artifactChanged(recorded, artifact.checksum) === false) {
+        const sameInputs = artifactChanged(recorded, artifact.checksum) === false;
+        if (sameInputs && artifact.release) inspected = await this.inspectInstalledBundle(target);
+        const binding = inspected?.applicationRuntime;
+        if (sameInputs && (!artifact.release || (binding &&
+            (await this.sshExec(target, installedReleaseCheckCommand(remotePath, artifact.release, binding, nodeOptions), 120_000)).trim() === 'verified'))) {
           const duration = Date.now() - startTime;
           this.emitProgress(nodeKey, artifact.app, 'success', 75, 'Already installed — unchanged');
           this.logger.info(
@@ -494,6 +510,7 @@ export class RemoteDeployer {
             duration,
             unchanged: true,
             directory,
+            ...(artifact.release && binding ? { migrationNode: binding.executable } : {}),
           };
         }
       }
@@ -561,105 +578,113 @@ export class RemoteDeployer {
       this.emitProgress(nodeKey, artifact.app, 'extracting', 50, 'Extracting candidate artifact...');
       const archiveName = `${artifact.app}-${artifact.version}.tar.gz`;
       await this.sshExec(target, `cd ${shellEscape(remotePath)} && tar -xzf ${shellEscape(archiveName)}`);
-      const beforePayload = artifact.release ? (await this.sshExec(target, artifactPayloadDigestCommand(remotePath, archiveName), 90_000)).trim() : null;
+      const daemonBundle = inspected ?? await this.inspectInstalledBundle(target);
+      const runtime = daemonBundle.applicationRuntime;
+      if (artifact.release) {
+        if (artifact.release.artifactSha256 !== artifact.tarballSha256 || artifact.release.artifactBytes !== artifact.size ||
+            artifact.release.app !== artifact.app || !runtime || runtime.commit !== artifact.release.frameworkCommit)
+          throw new Error('Release identity does not match the verified delivery or the actual execution owner');
+        this.emitProgress(nodeKey, artifact.app, 'installing', 60, 'Verifying the shipped dependency graph against the execution owner...');
+        const result = await this.sshExec(target, bindApplicationCommand(remotePath, runtime.root, runtime.executable, archiveName), 240_000);
+        const value: unknown = JSON.parse(result.trim());
+        if (value !== nodeOptions) throw new Error('Stack Node settings differ from the verified application build; rebuild for this configuration');
+      } else {
+        // 5. Install the dependencies ON THE NODE.
+        //
+        // Three shapes of this step, and the two that were wrong are worth
+        // keeping written down because each looked finished.
+        //
+        // It first ran `npm install --production --ignore-scripts 2>/dev/null
+        // || true`. That could not work even once — the manifests use pnpm's
+        // `workspace:` protocol, npm answers `EUNSUPPORTEDPROTOCOL` — and the
+        // `|| true` meant nobody found out.
+        //
+        // It then trusted the artifact to arrive complete, from `pnpm deploy`,
+        // and checked `test -d node_modules`. The artifact was NOT complete:
+        // every `@omnitron-dev/*` package was a symlink into a home directory
+        // on the master, twenty-three of them, and a directory of dangling
+        // symlinks passes `test -d`. A symlink to `/opt/omnitron/current`
+        // patched the one the first import happened to name; the other
+        // twenty-two were waiting behind it.
+        //
+        // Now the artifact carries `vendor/*.tgz` and a manifest that installs
+        // them, exactly like the daemon's own bundle, and the install runs
+        // here. That is not a cost to be minimised — it is the only step that
+        // happens on a machine that knows it is Linux, which is what decides
+        // between `@esbuild/darwin-arm64` and `@esbuild/linux-x64`.
+        this.emitProgress(nodeKey, artifact.app, 'installing', 60, 'Installing dependencies on the node...');
+        try {
+          await this.sshExec(
+            target,
+            `cd ${shellEscape(remotePath)} && npm install --omit=dev --engine-strict --no-audit --no-fund`,
+            900_000,
+          );
+        } catch (err) {
+          const duration = Date.now() - startTime;
+          const detail = `dependency install failed on the node: ${(err as Error).message.slice(0, 400)}`;
+          this.emitProgress(nodeKey, artifact.app, 'failed', 60, detail);
+          this.logger.error({ node: nodeKey, app: artifact.app, path: remotePath }, detail);
+          return { node: nodeKey, app: artifact.app, version: artifact.version, status: 'failed', duration, error: detail };
+        }
 
-      // 5. Install the dependencies ON THE NODE.
-      //
-      // Three shapes of this step, and the two that were wrong are worth
-      // keeping written down because each looked finished.
-      //
-      // It first ran `npm install --production --ignore-scripts 2>/dev/null
-      // || true`. That could not work even once — the manifests use pnpm's
-      // `workspace:` protocol, npm answers `EUNSUPPORTEDPROTOCOL` — and the
-      // `|| true` meant nobody found out.
-      //
-      // It then trusted the artifact to arrive complete, from `pnpm deploy`,
-      // and checked `test -d node_modules`. The artifact was NOT complete:
-      // every `@omnitron-dev/*` package was a symlink into a home directory
-      // on the master, twenty-three of them, and a directory of dangling
-      // symlinks passes `test -d`. A symlink to `/opt/omnitron/current`
-      // patched the one the first import happened to name; the other
-      // twenty-two were waiting behind it.
-      //
-      // Now the artifact carries `vendor/*.tgz` and a manifest that installs
-      // them, exactly like the daemon's own bundle, and the install runs
-      // here. That is not a cost to be minimised — it is the only step that
-      // happens on a machine that knows it is Linux, which is what decides
-      // between `@esbuild/darwin-arm64` and `@esbuild/linux-x64`.
-      this.emitProgress(nodeKey, artifact.app, 'installing', 60, 'Installing dependencies on the node...');
-      try {
+        // 5a. One physical copy of every package the daemon shares with the app.
+        //
+        // A supervised app does not run alone in its process: omnitron's own
+        // `bootstrap-process.js` is the entry point, and the app's modules are
+        // loaded into it. Titan keeps identities at module scope — the
+        // `Container` class among them — so two physical installations of
+        // `@omnitron-dev/titan` in one process means `@Inject(Container)`
+        // resolves against a class that is not the one the daemon registered,
+        // and the failure reads `Dependency 'Container' not found`.
+        //
+        // `bootstrap-process.ts` checks for exactly this and refuses to start,
+        // which is how a freshly installed artifact answered:
+        //
+        //     Titan package identity mismatch detected between omnitron daemon
+        //     and app 'geo'. Daemon resolves @omnitron-dev/titan from
+        //     /opt/omnitron/versions/…; App resolves … from /opt/omnitron/
+        //     artifacts/sample/geo/0.0.1/node_modules/@omnitron-dev/titan
+        //
+        // That is the correct refusal, and the answer is not to install less:
+        // the vendored copies are what let `npm install` resolve a coherent
+        // tree in the first place. They are replaced afterwards by links to
+        // the daemon's own, computed ON THE NODE from what the daemon actually
+        // has, so the set stays right as the daemon's closure changes rather
+        // than being a list here that drifts from it.
+        //
+        // `@omnitron-dev/omnitron` is deliberately NOT one of them, and this is
+        // the second time that lesson has been paid for. The daemon IS that
+        // package, so it is not inside its own `node_modules`, and linking to
+        // the install root instead gives node a directory whose package.json
+        // carries `name`, `version`, `type` and `dependencies` and NO `main`
+        // and NO `exports` — `bundleRootManifest` writes an install manifest,
+        // not a library manifest. Resolution then falls back to `index.js`,
+        // which is not there:
+        //
+        //     Cannot find package
+        //     '.../node_modules/@omnitron-dev/omnitron/index.js'
+        //
+        // — the exact error this whole line of work started from. The vendored
+        // copy that `pnpm pack` produces from `apps/omnitron` has the real
+        // manifest, so it is left alone. Its identity is not shared across the
+        // process boundary the way titan's is: `defineSystem` returns data that
+        // the daemon's bootstrap reads, not a class anything does `instanceof`
+        // against.
+        //
+        // `rm -rf` before each `ln -sfn`: linking onto an existing DIRECTORY
+        // puts the link INSIDE it, leaving a directory with no package.json
+        // that node reports as a missing `index.js` — a message about a file
+        // that was never the problem.
+        const daemonRoot = runtime?.root ?? daemonBundle.root;
         await this.sshExec(
           target,
-          `cd ${shellEscape(remotePath)} && npm install --omit=dev --engine-strict --no-audit --no-fund`,
-          900_000,
+          `set -e; APP=${shellEscape(`${remotePath}/node_modules/@omnitron-dev`)}; ` +
+            `mkdir -p "$APP"; ` +
+            `for p in ${shellEscape(daemonRoot)}/node_modules/@omnitron-dev/*; do ` +
+            `[ -e "$p" ] || continue; n=$(basename "$p"); ` +
+            `rm -rf "$APP/$n"; ln -sfn "$p" "$APP/$n"; done`,
         );
-      } catch (err) {
-        const duration = Date.now() - startTime;
-        const detail = `dependency install failed on the node: ${(err as Error).message.slice(0, 400)}`;
-        this.emitProgress(nodeKey, artifact.app, 'failed', 60, detail);
-        this.logger.error({ node: nodeKey, app: artifact.app, path: remotePath }, detail);
-        return { node: nodeKey, app: artifact.app, version: artifact.version, status: 'failed', duration, error: detail };
       }
-
-      // 5a. One physical copy of every package the daemon shares with the app.
-      //
-      // A supervised app does not run alone in its process: omnitron's own
-      // `bootstrap-process.js` is the entry point, and the app's modules are
-      // loaded into it. Titan keeps identities at module scope — the
-      // `Container` class among them — so two physical installations of
-      // `@omnitron-dev/titan` in one process means `@Inject(Container)`
-      // resolves against a class that is not the one the daemon registered,
-      // and the failure reads `Dependency 'Container' not found`.
-      //
-      // `bootstrap-process.ts` checks for exactly this and refuses to start,
-      // which is how a freshly installed artifact answered:
-      //
-      //     Titan package identity mismatch detected between omnitron daemon
-      //     and app 'geo'. Daemon resolves @omnitron-dev/titan from
-      //     /opt/omnitron/versions/…; App resolves … from /opt/omnitron/
-      //     artifacts/sample/geo/0.0.1/node_modules/@omnitron-dev/titan
-      //
-      // That is the correct refusal, and the answer is not to install less:
-      // the vendored copies are what let `npm install` resolve a coherent
-      // tree in the first place. They are replaced afterwards by links to
-      // the daemon's own, computed ON THE NODE from what the daemon actually
-      // has, so the set stays right as the daemon's closure changes rather
-      // than being a list here that drifts from it.
-      //
-      // `@omnitron-dev/omnitron` is deliberately NOT one of them, and this is
-      // the second time that lesson has been paid for. The daemon IS that
-      // package, so it is not inside its own `node_modules`, and linking to
-      // the install root instead gives node a directory whose package.json
-      // carries `name`, `version`, `type` and `dependencies` and NO `main`
-      // and NO `exports` — `bundleRootManifest` writes an install manifest,
-      // not a library manifest. Resolution then falls back to `index.js`,
-      // which is not there:
-      //
-      //     Cannot find package
-      //     '.../node_modules/@omnitron-dev/omnitron/index.js'
-      //
-      // — the exact error this whole line of work started from. The vendored
-      // copy that `pnpm pack` produces from `apps/omnitron` has the real
-      // manifest, so it is left alone. Its identity is not shared across the
-      // process boundary the way titan's is: `defineSystem` returns data that
-      // the daemon's bootstrap reads, not a class anything does `instanceof`
-      // against.
-      //
-      // `rm -rf` before each `ln -sfn`: linking onto an existing DIRECTORY
-      // puts the link INSIDE it, leaving a directory with no package.json
-      // that node reports as a missing `index.js` — a message about a file
-      // that was never the problem.
-      const daemonBundle = await this.inspectInstalledBundle(target);
-      const daemonRoot = daemonBundle.root;
-      const beforeFramework = artifact.release ? (await this.sshExec(target, frameworkDigestCommand(remotePath), 90_000)).trim() : null;
-      await this.sshExec(
-        target,
-        `set -e; APP=${shellEscape(`${remotePath}/node_modules/@omnitron-dev`)}; ` +
-          `mkdir -p "$APP"; ` +
-          `for p in ${shellEscape(daemonRoot)}/node_modules/@omnitron-dev/*; do ` +
-          `[ -e "$p" ] || continue; n=$(basename "$p"); ` +
-          `rm -rf "$APP/$n"; ln -sfn "$p" "$APP/$n"; done`,
-      );
 
       // The install either produced a tree that resolves or it did not, and
       // `test -d node_modules` cannot tell those apart — it was true for the
@@ -675,14 +700,17 @@ export class RemoteDeployer {
       this.emitProgress(nodeKey, artifact.app, 'extracting', 70, 'Checking dependencies...');
       const resolved = await this.sshExec(
         target,
-        `cd ${shellEscape(remotePath)} && node -e ${shellEscape(
-          "const r=require('module').createRequire(process.cwd()+'/package.json');" +
-            "r.resolve('@omnitron-dev/omnitron');r.resolve('@omnitron-dev/titan')",
+        `cd ${shellEscape(remotePath)} && ${artifact.release && runtime ? 'env -u NODE_OPTIONS -u NODE_PATH ' + shellEscape(runtime.executable) : 'node'} -e ${shellEscape(
+          artifact.release
+            ? "const fs=require('node:fs'),path=require('node:path'),root=fs.realpathSync('.');" +
+              "const file=fs.realpathSync('dist/bootstrap.js');if(!file.startsWith(root+path.sep)||!fs.statSync(file).isFile())process.exit(1)"
+            : "const r=require('module').createRequire(process.cwd()+'/package.json');" +
+              "r.resolve('@omnitron-dev/omnitron');r.resolve('@omnitron-dev/titan')",
         )} >/dev/null 2>&1 && echo resolves || echo broken`,
       ).catch(() => 'broken');
       if (resolved.trim() !== 'resolves') {
         const duration = Date.now() - startTime;
-        const detail =
+        const detail = artifact.release ? 'The packed application bootstrap is missing or outside its verified directory' :
           'the installed tree cannot resolve @omnitron-dev/omnitron or @omnitron-dev/titan, ' +
           'so the app will fail at its first import';
         this.emitProgress(nodeKey, artifact.app, 'failed', 70, detail);
@@ -701,14 +729,9 @@ export class RemoteDeployer {
 
       // A delivery receipt is not running-state evidence. The owner verifies
       // this exact installed tree before capturing it for a fresh launch.
-      if (artifact.release) {
-        if (artifact.release.artifactSha256 !== artifact.tarballSha256 || artifact.release.artifactBytes !== artifact.size || artifact.release.app !== artifact.app)
-          throw new Error('Release origin does not match the delivered artifact');
-        const afterFramework = (await this.sshExec(target, frameworkDigestCommand(remotePath), 90_000)).trim();
-        const unchanged = Boolean(beforeFramework && /^[a-f0-9]{64}$/.test(beforeFramework) && afterFramework === beforeFramework);
-        const afterPayload = (await this.sshExec(target, artifactPayloadDigestCommand(remotePath, archiveName), 90_000)).trim();
-        const payloadUnchanged = Boolean(beforePayload && /^[a-f0-9]{64}$/.test(beforePayload) && beforePayload === afterPayload);
-        await this.sshExec(target, sealReleaseArtifactCommand(remotePath, artifact.release, daemonBundle.commit, unchanged, payloadUnchanged), 90_000);
+      if (artifact.release && runtime) {
+        await this.sshExec(target, sealReleaseArtifactCommand(remotePath, artifact.release, runtime.commit, true, true,
+          { nodeOptions, executable: runtime.executable, ownerPackage: runtime.root }), 120_000);
       }
 
       // 6. Installed. Starting is a SEPARATE phase, and the order matters:
@@ -728,6 +751,7 @@ export class RemoteDeployer {
           duration,
           directory,
           ...(artifact.checksum ? { checksum: artifact.checksum } : {}),
+          ...(artifact.release && runtime ? { migrationNode: runtime.executable } : {}),
         };
       }
 
@@ -806,6 +830,10 @@ export class RemoteDeployer {
         // started before the node knows it exists.
         const result = await this.deployToNode(task.target, task.artifact, project, {
           startAfterInstall: !options?.apps?.length,
+          ...(task.artifact.release ? { launchEnv: {
+            ...options?.apps?.find(app => app.name === task.artifact.app)?.env,
+            ...options?.appEnv?.[task.artifact.app],
+          } } : {}),
           ...(options?.force === true ? { force: true } : {}),
         });
         results.push(result);
@@ -834,7 +862,7 @@ export class RemoteDeployer {
         const nodeKey = `${target.host}:${target.daemonPort ?? 9700}`;
         const landed = results
           .filter((r) => r.node === nodeKey && r.status === 'success')
-          .map((r) => ({ app: r.app, version: r.version, ...(r.directory ? { directory: r.directory } : {}) }));
+          .map((r) => ({ app: r.app, version: r.version, ...(r.migrationNode ? { migrationNode: r.migrationNode } : {}), ...(r.directory ? { directory: r.directory } : {}) }));
         const expected = tasks.filter(task => task.target === target).length;
         if (landed.length !== expected) {
           for (const result of results.filter(r => r.node === nodeKey && r.status === 'success')) {
@@ -1101,7 +1129,7 @@ export class RemoteDeployer {
   private async migrateNodeApps(
     target: DeployTarget,
     project: string,
-    landed: ReadonlyArray<{ app: string; version: string; directory?: string }>,
+    landed: ReadonlyArray<{ app: string; version: string; directory?: string; migrationNode?: string }>,
     appEnv?: Readonly<Record<string, Record<string, string>>> | undefined,
   ): Promise<Map<string, string>> {
     const failed = new Map<string, string>();
@@ -1180,7 +1208,7 @@ export class RemoteDeployer {
         // credential must not put it in the master's log.
         const said = await this.sshExec(
           target,
-          `cd ${shellEscape(dir)} && ${assignments} node ${shellEscape(script)}`,
+          `cd ${shellEscape(dir)} && ${assignments} ${entry.migrationNode ? 'env -u NODE_OPTIONS -u NODE_PATH ' + shellEscape(entry.migrationNode) : 'node'} ${shellEscape(script)}`,
           600_000,
         );
         for (const line of migrationOutput(said)) {
@@ -1710,8 +1738,13 @@ export class RemoteDeployer {
     const bundle = JSON.parse(await this.sshExecData(target, bundleProbeCommand(prefix))) as InstalledBundle;
     const status = JSON.parse(await this.sshExecData(target, inventoryCommand(bundle, false))) as HostInventory['status'];
     assertServingBundle(bundle, status);
-    await this.sshExecData(target, runtimeProbeCommand(bundle, status.pid));
-    return bundle;
+    const host = JSON.parse(await this.sshExecData(target, runtimeProbeCommand(bundle, status.pid))) as HostRuntime;
+    const execution = host.applicationRuntime ?? (host.kind !== 'managed' && host.executable ? {
+      root: bundle.root, executable: host.executable, commit: bundle.commit,
+    } : undefined);
+    if (execution && (!path.isAbsolute(execution.root) || !path.isAbsolute(execution.executable) || !/^[a-f0-9]{40}$/.test(execution.commit)))
+      throw new Error('Invalid execution owner identity');
+    return { ...bundle, ...(execution ? { applicationRuntime: execution } : {}) };
   }
 
   async activateBundle(

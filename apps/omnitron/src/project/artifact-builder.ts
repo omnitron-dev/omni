@@ -29,21 +29,8 @@ import { decideBuild, buildRecordPath, type BuildDecision, type BuildRecord } fr
 
 export { resolvePnpmForTests };
 
-/**
- * sha256 of a file, read in a stream rather than into memory: an artifact is
- * tens of megabytes and this runs inside the daemon.
- */
-async function sha256OfFile(file: string): Promise<string> {
-  const { createHash } = await import('node:crypto');
-  const hash = createHash('sha256');
-  await new Promise<void>((resolve, reject) => {
-    const stream = fs.createReadStream(file);
-    stream.on('data', (chunk) => hash.update(chunk));
-    stream.on('error', reject);
-    stream.on('end', () => resolve());
-  });
-  return hash.digest('hex');
-}
+import { sha256File } from '../release/portable-archive.js';
+
 import { execInGroup } from './exec-in-group.js';
 
 // =============================================================================
@@ -81,6 +68,10 @@ export interface BuildOptions {
   skipInstall?: boolean;
   /** Skip tsc build (use existing dist/) */
   skipBuild?: boolean;
+  /** For a checked release, ship the installed production closure of these isolated checkouts. */
+  readonly releaseCheckouts?: readonly string[];
+  /** Environment shared with the release dependency installation and gates. */
+  readonly env?: NodeJS.ProcessEnv;
   /** Output directory for artifacts */
   outputDir?: string;
 }
@@ -250,7 +241,7 @@ export class ArtifactBuilder {
         // for a single app at four and a half minutes, with nothing in the log
         // to say so.
         this.logger?.info(`building ${entry.name} — ${decision.because}`);
-        await this.runBuild(appDir, entry.name);
+        await this.runBuild(appDir, entry.name, options?.env);
       }
     }
 
@@ -260,10 +251,11 @@ export class ArtifactBuilder {
       throw new Error(`No dist/ directory found for ${entry.name}. Build failed?`);
     }
 
-    // 3. Create tarball: dist + package.json + config, and take the
-    //    artifact's identity from the bundle rather than from the archive —
-    //    see `bundleChecksum`.
-    const checksum = await this.createTarball(appDir, artifactPath, entry.name, session);
+    // The checked release is identified by delivered bytes. Development builds
+    // keep their input checksum for the existing redeployment decision.
+    const checksum = options?.releaseCheckouts
+      ? await this.createFrozenTarball(appDir, artifactPath, entry, options.releaseCheckouts)
+      : await this.createTarball(appDir, artifactPath, entry.name, session);
 
     // What this artifact was built from, recorded AFTER it was packed.
     //
@@ -291,7 +283,7 @@ export class ArtifactBuilder {
     if (!options?.skipBuild) await this.recordBuild(appDir, session);
 
     const stat = fs.statSync(artifactPath);
-    const tarballSha256 = await sha256OfFile(artifactPath);
+    const tarballSha256 = options?.releaseCheckouts ? checksum : await sha256File(artifactPath);
 
     return {
       app: entry.name,
@@ -446,7 +438,7 @@ export class ArtifactBuilder {
    * last one is evidence about this one — and fixing it per app means fixing
    * it again for every app added later.
    */
-  private async runBuild(appDir: string, appName: string): Promise<void> {
+  private async runBuild(appDir: string, appName: string, env?: NodeJS.ProcessEnv): Promise<void> {
     // Two spellings were removed here and the workspace uses four: a
     // `tsconfig.build.json` points `tsBuildInfoFile` at
     // `node_modules/.tmp/`, and `tsc` also leaves one inside `dist`. Missing
@@ -488,7 +480,7 @@ export class ArtifactBuilder {
       // FOR is a build that has stopped making progress — which today hangs
       // the deployment forever, since a start in flight is never retried —
       // not one that is slow because the machine is busy.
-      await execInGroup(resolvePnpm(), ['build'], { cwd: appDir, timeout: 30 * 60_000 });
+      await execInGroup(resolvePnpm(), ['build'], { cwd: appDir, ...(env ? { env } : {}), timeout: 30 * 60_000 });
     } catch (err: any) {
       // Everything the child said, in the order a reader wants it. `stderr`
       // alone produced `Build failed for payments: ` — an empty string, because
@@ -514,6 +506,19 @@ export class ArtifactBuilder {
         cause: err,
       });
     }
+  }
+
+  /** A checked release ships all production packages from its clean, target-specific install. */
+  private async createFrozenTarball(appDir: string, artifactPath: string, entry: IEcosystemAppEntry, roots: readonly string[]): Promise<string> {
+    const io = await import('node:fs/promises');
+    const { stageApplicationClosure } = await import('../release/application-closure.js');
+    const { archiveBundle } = await import('../services/bundle-builder.js');
+    const staging = await io.mkdtemp(path.join(os.tmpdir(), 'omnitron-closure-'));
+    try {
+      await stageApplicationClosure(appDir, staging, entry, roots);
+      await archiveBundle(staging, artifactPath);
+      return await sha256File(artifactPath);
+    } finally { await io.rm(staging, { recursive: true, force: true }); }
   }
 
   /**

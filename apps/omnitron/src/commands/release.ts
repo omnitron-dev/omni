@@ -44,7 +44,7 @@ import {
   noGateRan,
   pruneBlindness,
   readGates,
-  readSourcePublication,
+  releaseTargetLabel, readSourcePublication,
   readReleaseDeploymentState,
   runningReleaseLabel,
   stacksByRelease,
@@ -410,6 +410,7 @@ export async function releaseShowCommand(id: string): Promise<void> {
     return;
   log.info(`Release ${m.id}`);
   log.info(`  built ${m.builtAt} by ${m.builtBy} with omnitron ${m.builtWith.omnitron}`);
+  log.info(`  ${releaseTargetLabel(m.builtWith?.target)}`);
   for (const [what, source] of [['project', m.project], ['omni', m.omni]] as const) {
     const publication = readSourcePublication({ project: source.onRemote ?? null, omni: true }, what);
     log.info(`  ${what}: ${source.commit.slice(0, 12)} ${source.repo} — ${publication.label} (build-time snapshot)`);

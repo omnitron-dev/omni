@@ -135,10 +135,10 @@ describe('show, text', () => {
     expect(said.some((s) => s.text.includes('against dev'))).toBe(false);
   });
 
-  it('says where it runs instead of comparing it with itself', async () => {
+  it('reports the last deployment separately from current execution', async () => {
     daemon.deployments = testRuns(R0810);
     await releaseShowCommand(R0810);
-    expect(said.some((s) => s.text.includes('deployed on test since 2026-09-23T07:40:00.000Z'))).toBe(true);
+    expect(said.some((s) => s.text.includes('last recorded deployment: sample/test at 2026-09-23T07:40:00.000Z'))).toBe(true);
     expect(said.some((s) => s.text.includes('against test'))).toBe(false);
   });
 
@@ -146,7 +146,7 @@ describe('show, text', () => {
     daemon.up = false;
     await releaseShowCommand(R0810);
     expect(lineOf('main')).toContain(`inputs ${inputsOf(R0810, 'main').slice(0, 12)}`);
-    expect(said.find((s) => s.level === 'warn' && s.text.includes('deployed on: unknown'))?.text).toContain('Daemon is not running');
+    expect(said.find((s) => s.level === 'warn' && s.text.includes('deployment history: unknown'))?.text).toContain('Daemon is not running');
   });
 });
 

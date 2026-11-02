@@ -55,6 +55,11 @@ jobs:
       - name: Rebuild and compare two independent release archives
         working-directory: apps/omnitron
         run: node test/runtime/reproducible-bundle.mjs dist
+      - name: Verify offline application delivery and owner-bound launch receipts
+        working-directory: apps/omnitron
+        run: |
+          node test/runtime/application-closure.mjs dist
+          node test/runtime/release-provenance.mjs dist
       - name: Verify package archive exports
         run: pnpm check:packages
       - name: Console publication and recovery

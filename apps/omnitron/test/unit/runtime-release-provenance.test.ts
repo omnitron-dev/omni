@@ -1,12 +1,14 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { releaseTreeDigest, frameworkDependencyDigest, RELEASE_RECEIPT, verifyLaunchRelease, type ReleaseArtifactOrigin } from '../../src/release/runtime-provenance.js';
 import { AppHandle } from '../../src/orchestrator/app-handle.js';
 import { selectNodeApps } from '../../src/project/node-app-config.js';
 
 const directories: string[] = [];
+// pnpm can set NODE_PATH for Vitest. Fixtures represent a clean execution owner.
+beforeEach(() => { vi.stubEnv('NODE_PATH', ''); vi.stubEnv('NODE_OPTIONS', ''); });
 afterEach(async () => { vi.unstubAllEnvs(); for (const directory of directories.splice(0)) await fs.rm(directory, { recursive: true, force: true }); });
 const origin: ReleaseArtifactOrigin = { releaseId: 'sample-release', manifestSha256: 'a'.repeat(64),
   artifactSha256: 'b'.repeat(64), artifactBytes: 100, app: 'api', frameworkCommit: 'c'.repeat(40) };

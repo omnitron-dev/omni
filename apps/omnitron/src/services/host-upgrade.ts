@@ -2,7 +2,8 @@
 import { shellEscape } from '../shared/shell-escape.js';
 
 export const HOST_UPGRADE_CONTRACT = 'omnitron.host-upgrade.json';
-export interface InstalledBundle { root: string; version: string; commit: string }
+export interface ApplicationRuntime { root: string; executable: string; commit: string }
+export interface InstalledBundle { root: string; version: string; commit: string; applicationRuntime?: ApplicationRuntime }
 export interface AppUpgradeContract {
   name: string;
   /** Immutable release directory, not a current symlink. Hooks must not replace source or application data. */
@@ -14,7 +15,7 @@ export interface AppUpgradeContract {
     kind: 'hook'; bundleRoot: string; bundleEnv: string; rebind: string[]; verify: string[];
   };
 }
-export type HostRuntime = { cwd: string; executable?: string; execArgv?: string[] } & (
+export type HostRuntime = { cwd: string; executable?: string; execArgv?: string[]; applicationRuntime?: ApplicationRuntime } & (
   { kind: 'fork' } | { kind: 'systemd'; scope: 'system' | 'user'; file: string; contents: string; enabled: boolean } |
   { kind: 'managed'; scope: 'system' | 'user'; ownerPid: number; guardianPid: number; artifact: string }
 );
@@ -401,7 +402,14 @@ export function runtimeProbeCommand(bundle: InstalledBundle, pid: number): strin
         await verifyManagedIsolation(config,ownerPid,guardianPid,pid);
         const stat=fs.readFileSync('/proc/'+pid+'/stat','utf8');
         if(Number(stat.slice(stat.lastIndexOf(')')+2).split(' ')[1])!==guardianPid) throw Error('Serving backend is not a child of its native guardian');
-        console.log(JSON.stringify({kind:'managed',cwd,executable,execArgv,scope:config.scope,ownerPid,guardianPid,artifact:selection.current}));
+        const ownerRoot=path.join(config.instanceHome,'runtime','releases',config.owner.artifact);
+        const ownerExecutable=fs.realpathSync('/proc/'+ownerPid+'/exe');
+        if(ownerExecutable!==path.join(fs.realpathSync(ownerRoot),'node')) throw Error('Execution owner does not use its registered Node executable');
+        const ownerPackage=path.join(fs.realpathSync(ownerRoot),'packages/0');
+        const stamp=JSON.parse(fs.readFileSync(path.join(ownerPackage,'dist/BUILD.json'),'utf8'));
+        if(!/^[a-f0-9]{40}$/.test(stamp.commit) || stamp.dirty!==false) throw Error('Execution owner has no clean framework identity');
+        console.log(JSON.stringify({kind:'managed',cwd,executable,execArgv,scope:config.scope,ownerPid,guardianPid,artifact:selection.current,
+          applicationRuntime:{root:ownerPackage,executable:ownerExecutable,commit:stamp.commit}}));
       } finally { await installation.close(); }
     } else {
     const candidates=[{scope:'system',file:'/etc/systemd/system/omnitron-daemon.service'},{scope:'user',file:path.join(os.homedir(),'.config/systemd/user/omnitron-daemon.service')}].filter(c=>fs.existsSync(c.file));

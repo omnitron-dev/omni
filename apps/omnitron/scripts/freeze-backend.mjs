@@ -1,20 +1,22 @@
 /** Offline snapshot of an already-built backend. No install scripts or npm writes. */
 import fs from 'node:fs';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
 const [sourceInput, outputInput, ...overlayInputs] = process.argv.slice(2);
 if (!sourceInput || !outputInput) throw Error('Usage: node freeze-backend.mjs <built-package> <new-directory> [package=compiled-package-directory ...]');
 const source = fs.realpathSync(sourceInput), output = path.resolve(outputInput);
 if (fs.existsSync(output)) throw Error('Runtime destination already exists; never overwrite a release');
-if (fs.existsSync(path.join(source, 'webapp/index.html'))) {
+const consoleSources = path.join(source, 'webapp/package.json');
+const isConsoleWorkspace = fs.existsSync(consoleSources) && JSON.parse(fs.readFileSync(consoleSources, 'utf8')).name === '@omnitron/console';
+if (!isConsoleWorkspace && fs.existsSync(path.join(source, 'webapp/index.html'))) {
   throw Error('Console output is misplaced at webapp/index.html. Publish the prebuilt Console to webapp/dist before freezing; nginx serves only that directory.');
 }
 if (fs.existsSync(path.join(source, 'webapp')) && !fs.existsSync(path.join(source, 'webapp/dist/index.html'))) {
   throw Error('Console package is incomplete: webapp/dist/index.html is missing. Include the prebuilt Console, or prepare a headless package without the webapp directory.');
 }
 const { runtimeArtifactDigest, verifyRuntimeArtifact } = await import(pathToFileURL(path.join(source, 'dist/shared/runtime-artifact.js')));
+const { installedGraph, materializeGraph } = await import('../dist/release/installed-graph.js');
 const overlays = new Map();
 for (const input of overlayInputs) {
   const split = input.indexOf('=');
@@ -23,43 +25,8 @@ for (const input of overlayInputs) {
   if (JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).name !== name) throw Error('Overlay package identity mismatch');
   overlays.set(name, root);
 }
-const sources = new Map(), packages = [];
-function locate(name, from) {
-  // Names such as process/buffer also name Node builtins. Asking for their
-  // package subpath finds the installed polyfill used by dependencies.
-  for (const parent of createRequire(path.join(from, 'package.json')).resolve.paths(`${name}/package.json`) ?? []) {
-    const candidate = path.join(parent, name);
-    if (fs.existsSync(path.join(candidate, 'package.json'))) return fs.realpathSync(candidate);
-  }
-  return null;
-}
-function visit(root) {
-  root = fs.realpathSync(root);
-  const meta = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  const overlay = overlays.get(meta.name);
-  if (overlay && overlay !== root) {
-    const replacement = JSON.parse(fs.readFileSync(path.join(overlay, 'package.json'), 'utf8'));
-    if (replacement.version !== meta.version) throw Error(`Overlay changes the installed version of ${meta.name}; align dependencies first`);
-    root = overlay;
-  }
-  if (sources.has(root)) return sources.get(root);
-  const id = packages.length;
-  const metadata = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  sources.set(root, id);
-  const item = { root, metadata, dependencies: {} };
-  packages.push(item);
-  for (const name of Object.keys({ ...metadata.dependencies, ...metadata.optionalDependencies, ...metadata.peerDependencies }).sort()) {
-    const dependency = locate(name, root);
-    if (!dependency) {
-      if (name in (metadata.optionalDependencies ?? {}) || metadata.peerDependenciesMeta?.[name]?.optional) continue;
-      throw Error(`Missing installed dependency: ${metadata.name} -> ${name}`);
-    }
-    item.dependencies[name] = visit(dependency);
-  }
-  return id;
-}
 overlays.set(JSON.parse(fs.readFileSync(path.join(source, 'package.json'), 'utf8')).name, source);
-visit(source);
+const packages = await installedGraph(source, overlays);
 // Reusing an immutable installed graph is also an offline build. Registry
 // packages inside it no longer have a node_modules path, but their files have
 // already been selected by packing. Validate the entire containing release
@@ -77,33 +44,7 @@ for (const item of packages) {
   sealedPackages.add(item.root);
 }
 fs.mkdirSync(output, { mode: 0o700, recursive: true });
-const skip = name => ['node_modules', '.git', '.DS_Store', '.codex', '.agents', '.turbo', '.cache', 'coverage'].includes(name) || name === '.env' || name.startsWith('.env.');
-for (const [id, item] of packages.entries()) {
-  const destination = path.join(output, 'packages', String(id));
-  const copy = (from, to) => fs.cpSync(from, to, { recursive: true, dereference: true,
-    mode: fs.constants.COPYFILE_FICLONE,
-    filter: file => !skip(path.basename(file)) });
-  fs.mkdirSync(destination, { recursive: true });
-  // Local workspaces may contain private developer files. Copy their declared
-  // publication surface; registry packages already contain their packed files.
-  if (!sealedPackages.has(item.root) && !item.root.includes(`${path.sep}node_modules${path.sep}`) && Array.isArray(item.metadata.files)) {
-    const entries = new Set(['package.json', 'LICENSE', 'README.md', ...item.metadata.files]);
-    for (const relative of entries) {
-      if (typeof relative !== 'string' || /[*?{}!]/.test(relative) || path.isAbsolute(relative) || relative.split('/').includes('..')) {
-        throw Error(`Unsupported publication pattern in ${item.metadata.name}; prepare an unpacked package first`);
-      }
-      const file = path.join(item.root, relative);
-      if (fs.existsSync(file)) copy(file, path.join(destination, relative));
-    }
-  } else copy(item.root, destination);
-}
-for (const [id, item] of packages.entries()) {
-  for (const [name, child] of Object.entries(item.dependencies)) {
-    const link = path.join(output, 'packages', String(id), 'node_modules', name);
-    fs.mkdirSync(path.dirname(link), { recursive: true });
-    fs.symlinkSync(path.relative(path.dirname(link), path.join(output, 'packages', String(child))), link);
-  }
-}
+await materializeGraph(packages, packages.map((_, id) => path.join(output, 'packages', String(id))), { verifiedPackages: sealedPackages });
 fs.copyFileSync(process.execPath, path.join(output, 'node'), fs.constants.COPYFILE_FICLONE);
 fs.chmodSync(path.join(output, 'node'), 0o500);
 // Some Linux copy implementations retain the source uid when copying as root

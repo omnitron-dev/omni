@@ -1,27 +1,48 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { create, extract } from 'tar';
 
-/** Canonical archive of a staged tree. No host metadata, traversal order, or clock in its identity. */
-export async function writePortableArchive(directory: string, destination: string): Promise<void> {
+async function* archiveEntries(root: string, folder = ''): AsyncGenerator<{ relative: string; file: string; directory: boolean; link: boolean }> {
+  for (const name of (await fs.readdir(path.join(root, folder))).sort()) {
+    const relative = path.join(folder, name);
+    const file = path.join(root, relative);
+    const stat = await fs.lstat(file);
+    if (stat.isSymbolicLink()) {
+      const target = await fs.realpath(file);
+      if (path.isAbsolute(await fs.readlink(file)) || (target !== root && !target.startsWith(root + path.sep)))
+        throw new Error(`Release archive contains a non-portable link: ${relative}`);
+    } else if (!stat.isFile() && !stat.isDirectory()) throw new Error(`Unsupported release archive entry: ${relative}`);
+    yield { relative, file, directory: stat.isDirectory(), link: stat.isSymbolicLink() };
+    if (stat.isDirectory()) yield* archiveEntries(root, relative);
+  }
+}
+
+export async function sha256File(file: string): Promise<string> {
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(file)) hash.update(chunk);
+  return hash.digest('hex');
+}
+
+/** Deterministic per-file integrity manifest for releases that require a regular-file payload. */
+export async function releaseFileHashes(directory: string): Promise<Record<string, string>> {
+  const hashes: Record<string, string> = Object.create(null);
+  for await (const entry of archiveEntries(await fs.realpath(directory))) {
+    if (entry.link) throw Error('Release file manifest cannot contain symbolic links: ' + entry.relative);
+    if (!entry.directory) hashes[entry.relative.split(path.sep).join('/')] = await sha256File(entry.file);
+  }
+  return hashes;
+}
+
+/** Canonical archive of a staged tree, with executable bits and relative links preserved. */
+export async function writePortableArchive(directory: string, destination: string, options: { exclusive?: boolean } = {}): Promise<void> {
   const cwd = await fs.realpath(directory);
   const entries: string[] = [];
-  const walk = async (folder: string): Promise<void> => {
-    for (const name of (await fs.readdir(path.join(cwd, folder))).sort()) {
-      const relative = path.join(folder, name);
-      if (entries.length >= 200_000) throw new Error('Release archive exceeds file count limit');
-      entries.push(relative);
-      const file = path.join(cwd, relative);
-      const stat = await fs.lstat(file);
-      if (stat.isDirectory()) await walk(relative);
-      else if (stat.isSymbolicLink()) {
-        if (path.isAbsolute(await fs.readlink(file)) || !(await fs.realpath(file)).startsWith(cwd + path.sep))
-          throw new Error(`Release archive contains a non-portable link: ${relative}`);
-      } else if (!stat.isFile()) throw new Error(`Unsupported release archive entry: ${relative}`);
-    }
-  };
-  await walk('');
+  for await (const { relative } of archiveEntries(cwd)) {
+    if (entries.length >= 200_000) throw new Error('Release archive exceeds file count limit');
+    entries.push(relative);
+  }
   if (!entries.length) throw new Error('Cannot pack an empty release');
   const temporary = path.join(path.dirname(destination), '.archive-' + randomUUID());
   try {
@@ -37,7 +58,8 @@ export async function writePortableArchive(directory: string, destination: strin
       }
       return true;
     } }, entries);
-    await fs.rename(temporary, destination);
+    if (options.exclusive) await fs.link(temporary, destination);
+    else await fs.rename(temporary, destination);
   } finally { await fs.rm(temporary, { force: true }); }
 }
 

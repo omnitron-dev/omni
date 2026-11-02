@@ -5,6 +5,9 @@ node_modules/
 
 # Build outputs
 dist/
+# Transient directories of scripts/build-package.sh during a parallel workspace build.
+/packages/*/dist.next/
+/packages/*/dist.old/
 *.tsbuildinfo
 
 # Test & coverage

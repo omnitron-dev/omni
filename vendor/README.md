@@ -1,18 +1,7 @@
 # Dependency inputs
 
-Install the workspace with `pnpm install --frozen-lockfile`. Kysera packages,
-including the migration runner, come from the registry. Keep them on one tested
-release: Titan's database adapters and their plugins share the same executor.
+Install with `pnpm install --frozen-lockfile`. The workspace pins a single registry release of Xec and Kysera for every consumer. The lockfile records the SHA-512 integrity of each npm archive.
 
-Until the reviewed Xec changes are published together, the workspace overrides
-point to content-addressed archives. `xec-manifest.json` records their source
-revisions and digests. For Core, prepare the package with Xec's
-`scripts/ssh-transport.mjs prepare`, pack that directory, and run
-`scripts/check-ssh-security.mjs --archive <archive>` with both the npm and pnpm
-consumers. A pack of the unprepared workspace or a registry copy with the same
-version is not a substitute: Core bundles the reviewed SSH transport.
+When updating Xec, download the exact Core release with `npm pack @xec-sh/core@<version> --ignore-scripts`. Run Xec's `scripts/check-ssh-security.mjs --archive <archive>` against the downloaded bytes with both its npm and pnpm consumers. The Core package ships the SSH transport and its license. Applications use the public Xec API.
 
-Update the archive, manifest, override and lockfile together. A frozen install
-and a test of the actual packed consumer are independent checks. Once a new
-registry release contains those bytes, remove the corresponding override in
-the same change that updates the lockfile. Never republish an existing version.
+Kysera plugins and Titan's database adapter share one executor. Update their workspace pins and lockfile together, compare the registry digests with the publisher's release receipts, and run the database and migration tests against the installed packages.

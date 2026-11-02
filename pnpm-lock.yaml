@@ -167,18 +167,18 @@ overrides:
   minimatch@10: ^11.0.3
   minimatch@9: ^11.0.3
   glob@10: ^14.0.3
-  '@kysera/audit': 0.10.1
-  '@kysera/core': 0.10.1
-  '@kysera/dal': 0.10.1
-  '@kysera/dialects': 0.10.1
-  '@kysera/executor': 0.10.1
-  '@kysera/infra': 0.10.1
-  '@kysera/migrations': 0.10.1
-  '@kysera/repository': 0.10.1
-  '@kysera/rls': 0.10.1
-  '@kysera/soft-delete': 0.10.1
-  '@kysera/testing': 0.10.1
-  '@kysera/timestamps': 0.10.1
+  '@kysera/audit': 0.10.2
+  '@kysera/core': 0.10.2
+  '@kysera/dal': 0.10.2
+  '@kysera/dialects': 0.10.2
+  '@kysera/executor': 0.10.2
+  '@kysera/infra': 0.10.2
+  '@kysera/migrations': 0.10.2
+  '@kysera/repository': 0.10.2
+  '@kysera/rls': 0.10.2
+  '@kysera/soft-delete': 0.10.2
+  '@kysera/testing': 0.10.2
+  '@kysera/timestamps': 0.10.2
   web-worker: 1.5.0
   rollup-plugin-dts: 6.5.1
   '@typescript-eslint/eslint-plugin': 8.72.1
@@ -191,10 +191,10 @@ overrides:
   react: 19.3.1
   react-dom: 19.3.1
   react-router-dom: 7.18.5
-  '@xec-sh/core': file:vendor/xec-sh-core-0.11.1-dbda64fb8ced.tgz
-  '@xec-sh/kit': file:vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz
-  '@xec-sh/loader': file:vendor/xec-sh-loader-0.11.1-52fcf8dc7c0c.tgz
-  '@xec-sh/ops': file:vendor/xec-sh-ops-0.11.1-e559606232c0.tgz
+  '@xec-sh/core': 0.11.2
+  '@xec-sh/kit': 0.11.2
+  '@xec-sh/loader': 0.11.2
+  '@xec-sh/ops': 0.11.2
 
 patchedDependencies:
   vitest@5.0.5: 00368f70ece4e928463dc220e1f92faf297e8d5e782d993025fcfd095a3cabd4
@@ -235,8 +235,8 @@ importers:
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
       '@xec-sh/kit':
-        specifier: file:vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz
-        version: file:vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz
+        specifier: 0.11.2
+        version: 0.11.2
       add:
         specifier: ^2.0.9
         version: 2.0.9
@@ -310,14 +310,14 @@ importers:
         specifier: workspace:*
         version: link:../../packages/titan-telemetry-relay
       '@xec-sh/core':
-        specifier: file:../../vendor/xec-sh-core-0.11.1-dbda64fb8ced.tgz
-        version: file:vendor/xec-sh-core-0.11.1-dbda64fb8ced.tgz
+        specifier: 0.11.2
+        version: 0.11.2
       '@xec-sh/kit':
-        specifier: file:../../vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz
-        version: file:vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz
+        specifier: 0.11.2
+        version: 0.11.2
       '@xec-sh/ops':
-        specifier: file:../../vendor/xec-sh-ops-0.11.1-e559606232c0.tgz
-        version: file:vendor/xec-sh-ops-0.11.1-e559606232c0.tgz
+        specifier: 0.11.2
+        version: 0.11.2
       better-sqlite3:
         specifier: ^13.0.3
         version: 13.0.3
@@ -1097,8 +1097,8 @@ importers:
   packages/testing:
     dependencies:
       '@kysera/testing':
-        specifier: 0.10.1
-        version: 0.10.1(@kysera/executor@0.10.1(kysely@0.29.8))(better-sqlite3@13.0.3)(kysely@0.29.8)
+        specifier: 0.10.2
+        version: 0.10.2(@kysera/executor@0.10.2(kysely@0.29.8))(better-sqlite3@13.0.3)(kysely@0.29.8)
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
@@ -1149,8 +1149,8 @@ importers:
   packages/titan:
     dependencies:
       '@kysera/rls':
-        specifier: 0.10.1
-        version: 0.10.1(@kysera/executor@0.10.1(kysely@0.29.8))(@kysera/repository@0.10.1(kysely@0.29.8)(zod@4.6.7))(kysely@0.29.8)(zod@4.6.7)
+        specifier: 0.10.2
+        version: 0.10.2(@kysera/executor@0.10.2(kysely@0.29.8))(@kysera/repository@0.10.2(kysely@0.29.8)(zod@4.6.7))(kysely@0.29.8)(zod@4.6.7)
       '@omnitron-dev/access':
         specifier: workspace:*
         version: link:../access
@@ -1299,38 +1299,38 @@ importers:
   packages/titan-database:
     dependencies:
       '@kysera/audit':
-        specifier: 0.10.1
-        version: 0.10.1(@kysera/executor@0.10.1(kysely@0.29.8))(@kysera/repository@0.10.1(kysely@0.29.8)(zod@4.6.7))(kysely@0.29.8)(zod@4.6.7)
+        specifier: 0.10.2
+        version: 0.10.2(@kysera/executor@0.10.2(kysely@0.29.8))(@kysera/repository@0.10.2(kysely@0.29.8)(zod@4.6.7))(kysely@0.29.8)(zod@4.6.7)
       '@kysera/core':
-        specifier: 0.10.1
-        version: 0.10.1(kysely@0.29.8)
+        specifier: 0.10.2
+        version: 0.10.2(kysely@0.29.8)
       '@kysera/dal':
-        specifier: 0.10.1
-        version: 0.10.1(kysely@0.29.8)
+        specifier: 0.10.2
+        version: 0.10.2(kysely@0.29.8)
       '@kysera/dialects':
-        specifier: 0.10.1
-        version: 0.10.1(kysely@0.29.8)
+        specifier: 0.10.2
+        version: 0.10.2(kysely@0.29.8)
       '@kysera/executor':
-        specifier: 0.10.1
-        version: 0.10.1(kysely@0.29.8)
+        specifier: 0.10.2
+        version: 0.10.2(kysely@0.29.8)
       '@kysera/infra':
-        specifier: 0.10.1
-        version: 0.10.1(kysely@0.29.8)
+        specifier: 0.10.2
+        version: 0.10.2(kysely@0.29.8)
       '@kysera/migrations':
-        specifier: 0.10.1
-        version: 0.10.1(kysely@0.29.8)(zod@4.6.7)
+        specifier: 0.10.2
+        version: 0.10.2(kysely@0.29.8)(zod@4.6.7)
       '@kysera/repository':
-        specifier: 0.10.1
-        version: 0.10.1(kysely@0.29.8)(zod@4.6.7)
+        specifier: 0.10.2
+        version: 0.10.2(kysely@0.29.8)(zod@4.6.7)
       '@kysera/rls':
-        specifier: 0.10.1
-        version: 0.10.1(@kysera/executor@0.10.1(kysely@0.29.8))(@kysera/repository@0.10.1(kysely@0.29.8)(zod@4.6.7))(kysely@0.29.8)(zod@4.6.7)
+        specifier: 0.10.2
+        version: 0.10.2(@kysera/executor@0.10.2(kysely@0.29.8))(@kysera/repository@0.10.2(kysely@0.29.8)(zod@4.6.7))(kysely@0.29.8)(zod@4.6.7)
       '@kysera/soft-delete':
-        specifier: 0.10.1
-        version: 0.10.1(@kysera/executor@0.10.1(kysely@0.29.8))(kysely@0.29.8)(zod@4.6.7)
+        specifier: 0.10.2
+        version: 0.10.2(@kysera/executor@0.10.2(kysely@0.29.8))(kysely@0.29.8)(zod@4.6.7)
       '@kysera/timestamps':
-        specifier: 0.10.1
-        version: 0.10.1(@kysera/executor@0.10.1(kysely@0.29.8))(@kysera/repository@0.10.1(kysely@0.29.8)(zod@4.6.7))(kysely@0.29.8)(zod@4.6.7)
+        specifier: 0.10.2
+        version: 0.10.2(@kysera/executor@0.10.2(kysely@0.29.8))(@kysera/repository@0.10.2(kysely@0.29.8)(zod@4.6.7))(kysely@0.29.8)(zod@4.6.7)
       '@omnitron-dev/eventemitter':
         specifier: workspace:*
         version: link:../eventemitter
@@ -2554,12 +2554,12 @@ packages:
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
 
-  '@kysera/audit@0.10.1':
-    resolution: {integrity: sha512-b9/3EgrowxCNzz3ErIkL6w6VZNMpzq3q2k2UeNbecWTXeTJNywD6iqAaUE8r1P5B8sQoonuPdyP5Abul0/E94g==}
+  '@kysera/audit@0.10.2':
+    resolution: {integrity: sha512-bjlKHsMT4O4yiWQRWnK9haDHKfOR6WD5v+2Hz/fIUHQk0WgTekQnKu298QumnPKcjGktavsGtinMgvUXdetfdQ==}
     engines: {bun: '>=1.0.0', node: '>=22.0.0'}
     peerDependencies:
-      '@kysera/executor': 0.10.1
-      '@kysera/repository': 0.10.1
+      '@kysera/executor': 0.10.2
+      '@kysera/repository': 0.10.2
       kysely: '>=0.29.0'
       zod: ^4.3.6
     peerDependenciesMeta:
@@ -2568,45 +2568,45 @@ packages:
       zod:
         optional: true
 
-  '@kysera/core@0.10.1':
-    resolution: {integrity: sha512-dluUJ3lEtUjXkFPVNu6TjXPF49m1eV5IGrTXPkusfBkpJWz52pCuh3X1SUpoKeoNplsoAIXoASJ/imLu0A/7yA==}
+  '@kysera/core@0.10.2':
+    resolution: {integrity: sha512-Y5/RJhZ+3c9YjdbTZSmicxPOcS02BZ9NSX1oxbd6QUuteVAd0wCDlHXDSFUgWDroC8sOrF5cLqmG3LvNK1VVdA==}
     engines: {bun: '>=1.0.0', node: '>=22.0.0'}
     peerDependencies:
       kysely: '>=0.29.0'
 
-  '@kysera/dal@0.10.1':
-    resolution: {integrity: sha512-AlY3KB0qHsQkmGhKjGDvqpQWjD3RB4VouEvfMZJ45eqotEwx/sF6Xipbf/hBhJwXSQNg6T6SeAuhxKrNHZH9gg==}
+  '@kysera/dal@0.10.2':
+    resolution: {integrity: sha512-Z4VZd8wYM4aL3ez9ANhhhyMjdaqLhYko+KsmncqE+DD9fDIvjU/He7I8cOMITQtUc51PGZzVy3u6uClteM+zmw==}
     engines: {bun: '>=1.0.0', node: '>=22.0.0'}
     peerDependencies:
       kysely: '>=0.29.0'
 
-  '@kysera/dialects@0.10.1':
-    resolution: {integrity: sha512-5aVLn85kyrgavp+sL3WDpOp+xcUFhVkHhYwavYQUp4YnJQpI5BIKyLR3n1CdkS6YGFp29arykOSFmhblAC3mgw==}
+  '@kysera/dialects@0.10.2':
+    resolution: {integrity: sha512-xhSoO+SyZmsNGeMu19WCRhP6uF3qCSf0CdW9D2//8BAHe+qS9cRSqf2jV67r5k48LJNrTTkHmWMEUuZRbAhq/A==}
     engines: {bun: '>=1.0.0', node: '>=22.0.0'}
     peerDependencies:
       kysely: '>=0.29.0'
 
-  '@kysera/executor@0.10.1':
-    resolution: {integrity: sha512-RthYXB0Ke2GMdhUUxruntzBT8QjON2ydzuu7GFqY+jJe48H1FWVbOJUzbTF6IjCd8yI0uYjthCqxfHutN29Fuw==}
+  '@kysera/executor@0.10.2':
+    resolution: {integrity: sha512-I2zHf5aWVWNMde8cyQMYHEO7ivOk6yw2rz9rXaeIReqbwKUGwKNx2rVXiMpCzAOTAdMC2f+6LkUZe5leF+Cy+A==}
     engines: {bun: '>=1.0.0', node: '>=22.0.0'}
     peerDependencies:
       kysely: '>=0.29.0'
 
-  '@kysera/infra@0.10.1':
-    resolution: {integrity: sha512-xJv2uSLOf2j5Ox4pQNPMv9SEDq0lc4pWU1HsEYtbVDExIXi6c00ztHG4jPbkm5oqSo9jpiWaNcGHUPQW0gmkag==}
+  '@kysera/infra@0.10.2':
+    resolution: {integrity: sha512-9KrlIzjA4q9u/yGih/qxGhKfjEgXOsf1UmaPmjh/J4KHqIRSFlCvbgT2psVB1ql6RBSbK+a1iQsTFJ/nEo8eEA==}
     engines: {bun: '>=1.0.0', node: '>=22.0.0'}
     peerDependencies:
       kysely: '>=0.29.0'
 
-  '@kysera/migrations@0.10.1':
-    resolution: {integrity: sha512-810OUALqCG379ccE9KS7plGKI63Ry1MGplz7VST6mheFy+hia/gkE7VR4cVk7CwbYDlTMQTyxhKXwKPN5+vKBg==}
+  '@kysera/migrations@0.10.2':
+    resolution: {integrity: sha512-evZpZO4VCbOeiYRyQusXv0ioHuHskCmgxWCn43aWI+XkdMsk5BDlZBTwLhCoBQZuB3Nc1bugaLj2niQ//vgMZQ==}
     engines: {bun: '>=1.0.0', node: '>=22.0.0'}
     peerDependencies:
       kysely: '>=0.29.0'
       zod: ^4.3.6
 
-  '@kysera/repository@0.10.1':
-    resolution: {integrity: sha512-Bd7v5p7R9cjd5okVZy+5H9gceFjzPAQCvSR2q+YzDfY/Y8VvyFOfel72hUsEQJNvhK51SNayw1K5F86ozffFSA==}
+  '@kysera/repository@0.10.2':
+    resolution: {integrity: sha512-wpOyWWS/bdEjG3NKsLlqj8i08NIWPmprxkJ5mNM3jFvCdnti7G2/bc0cc8QuJShc40z9Tt2+GOCdyNVjMJoXEw==}
     engines: {bun: '>=1.0.0', node: '>=22.0.0'}
     peerDependencies:
       kysely: '>=0.29.0'
@@ -2615,12 +2615,12 @@ packages:
       zod:
         optional: true
 
-  '@kysera/rls@0.10.1':
-    resolution: {integrity: sha512-63l+L4Ia5eRfIwLluoPkvlpssa+bmlX1dGJjjc5qQUJer8xENl/r3H859jyxVyOpNFWgezAJ2qAb7Ztc6UteAg==}
+  '@kysera/rls@0.10.2':
+    resolution: {integrity: sha512-uM85d93RYwRKZaKkkqWOFuY3GXNeWe1GNJB8m6ss91ekPFDAnbwAmS+81QXOzS91x3o4SWQZz1A1heHbf5lDyQ==}
     engines: {bun: '>=1.0.0', node: '>=22.0.0'}
     peerDependencies:
-      '@kysera/executor': 0.10.1
-      '@kysera/repository': 0.10.1
+      '@kysera/executor': 0.10.2
+      '@kysera/repository': 0.10.2
       kysely: '>=0.29.0'
       zod: ^4.3.6
     peerDependenciesMeta:
@@ -2629,22 +2629,22 @@ packages:
       zod:
         optional: true
 
-  '@kysera/soft-delete@0.10.1':
-    resolution: {integrity: sha512-8QtmuNrPD8JfhjWdkeYm+qJSETh5X/8aHNZBcP/iajG1rx8Z+HeNICkcGuwvdmTgVxoG8FUmlxVzXKwZtU8pBQ==}
+  '@kysera/soft-delete@0.10.2':
+    resolution: {integrity: sha512-6tg/ydsxDIgYFJgDa5YqXjyie3HIWCKq21vtDgtr+gKsDqfaDwDanKrtkcnoJHC8Am65A2SLUtbGWhxKpgNeFg==}
     engines: {bun: '>=1.0.0', node: '>=22.0.0'}
     peerDependencies:
-      '@kysera/executor': 0.10.1
+      '@kysera/executor': 0.10.2
       kysely: '>=0.29.0'
       zod: ^4.3.6
     peerDependenciesMeta:
       zod:
         optional: true
 
-  '@kysera/testing@0.10.1':
-    resolution: {integrity: sha512-oPZ/u+BlcV31Wlb0cTdO9DZOyy5cyFv2LTYbx4/lh91//4IVXsl57u6YRiBhYL/trLmmVUgBuOVSTYYGBRGeuw==}
+  '@kysera/testing@0.10.2':
+    resolution: {integrity: sha512-28VWCWm7A0+Hr2+ZlMKgiKzo7pb+A+PKYnDvO2/+taQX+7XxbE7Rmwn0QsrWYgobk7cTreA3H6gsBSpG72Sa2w==}
     engines: {bun: '>=1.0.0', node: '>=22.0.0'}
     peerDependencies:
-      '@kysera/executor': 0.10.1
+      '@kysera/executor': 0.10.2
       better-sqlite3: '>=9.0.0'
       kysely: '>=0.29.0'
     peerDependenciesMeta:
@@ -2653,12 +2653,12 @@ packages:
       better-sqlite3:
         optional: true
 
-  '@kysera/timestamps@0.10.1':
-    resolution: {integrity: sha512-A3vlsTgPPvArSc4L/5sC6gCm/BWv9v8GVOVy5QXqy/Y23kY3WwueAKZ8BjZk062SGTcJGCZvSf3K/q07LWMUzg==}
+  '@kysera/timestamps@0.10.2':
+    resolution: {integrity: sha512-wgQKBOjprjj23mie6stLvZYxCPkCw4Ls8iT+Vogoz5m2tHtdk+pyScBNf378+Q4xeJPg2uU46YzGilNJ4aiRHw==}
     engines: {bun: '>=1.0.0', node: '>=22.0.0'}
     peerDependencies:
-      '@kysera/executor': 0.10.1
-      '@kysera/repository': 0.10.1
+      '@kysera/executor': 0.10.2
+      '@kysera/repository': 0.10.2
       kysely: '>=0.29.0'
       zod: ^4.3.6
     peerDependenciesMeta:
@@ -4251,26 +4251,22 @@ packages:
   '@vitest/utils@5.0.5':
     resolution: {integrity: sha512-/rBu7gzLDQI/SC79Tn98b5DwOgaHU/Gt4I9OVeP3YofzNaYtbImRCOJQmT1S6vOJg9gEIlWC+r3QxKkjuSa1nQ==}
 
-  '@xec-sh/core@file:vendor/xec-sh-core-0.11.1-dbda64fb8ced.tgz':
-    resolution: {integrity: sha512-ipn+BVi6kGAWTncgl3f7YqnNhyzZNnfZs2Af4Rdh45xwkTFqOkDaYczOXRvAkZEUW25uXrdFEcM7DSq+THS2VA==, tarball: file:vendor/xec-sh-core-0.11.1-dbda64fb8ced.tgz}
-    version: 0.11.1
+  '@xec-sh/core@0.11.2':
+    resolution: {integrity: sha512-/v1lrCJ8HmHZKnLyBkaLRcwTi4pEkiOotAFJqAu3TOsDs/Xr9tJoG8ypGNjImkYcL/Rh6KwcsseMxL0DA33Uxw==}
     engines: {node: '>=20.0.0'}
     bundledDependencies:
       - ssh2
 
-  '@xec-sh/kit@file:vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz':
-    resolution: {integrity: sha512-InYeKUhxGedEv8b/ItQ6YcCQfN//cmwkwqG/MfEY889b/LnbFxLf1clf9h4bhbyqxUpCxocjUEnCw8xEfL7k7g==, tarball: file:vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz}
-    version: 0.11.1
+  '@xec-sh/kit@0.11.2':
+    resolution: {integrity: sha512-1XIa378Mt5ISQT8xzqOGuOb4nwlUJIVk3Q0tevqDEUJHk4ulBYoKffQsK11Cwz1ic9aiigTrX6zkIxWYwGUxSg==}
     engines: {bun: '>=1.2.0', node: '>=20.0.0'}
 
-  '@xec-sh/loader@file:vendor/xec-sh-loader-0.11.1-52fcf8dc7c0c.tgz':
-    resolution: {integrity: sha512-xd9GfvXluMNbPHNw+mbq+mvVJdp7csWQvXqqH9W+qHWTXZvDMuqEASWJu1S7UgyyWIy8aDx4ry055+Qc2/aJcg==, tarball: file:vendor/xec-sh-loader-0.11.1-52fcf8dc7c0c.tgz}
-    version: 0.11.1
+  '@xec-sh/loader@0.11.2':
+    resolution: {integrity: sha512-JY2GCV1YPfShIMUnXjJy/3Ge6y5zxbUZ8JbkMUx+orZ+8ZdahWEkSmBfVJCfJI6AvVnVyehdeVO9/vTfmDFN9Q==}
     engines: {node: '>=20.0.0'}
 
-  '@xec-sh/ops@file:vendor/xec-sh-ops-0.11.1-e559606232c0.tgz':
-    resolution: {integrity: sha512-XpRkkNIwZLThbZLBHNiFJu57eDdkAnQe97ZASUD63ZHfu3d8vdymXevUfrGGTlPK6h6R/UC6RZKV5jfLR4k82w==, tarball: file:vendor/xec-sh-ops-0.11.1-e559606232c0.tgz}
-    version: 0.11.1
+  '@xec-sh/ops@0.11.2':
+    resolution: {integrity: sha512-5d7Iwd1XccmGaR3jxnMW9Nwh4RAIIo2mTfdyctZAThEBvCW6xXIS/levjG8JI3CBaklJ9JVX6Rzi5EG/GW2cYw==}
     engines: {node: '>=20.0.0'}
 
   '@xterm/addon-fit@0.11.0':
@@ -8344,87 +8340,87 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
-  '@kysera/audit@0.10.1(@kysera/executor@0.10.1(kysely@0.29.8))(@kysera/repository@0.10.1(kysely@0.29.8)(zod@4.6.7))(kysely@0.29.8)(zod@4.6.7)':
+  '@kysera/audit@0.10.2(@kysera/executor@0.10.2(kysely@0.29.8))(@kysera/repository@0.10.2(kysely@0.29.8)(zod@4.6.7))(kysely@0.29.8)(zod@4.6.7)':
     dependencies:
-      '@kysera/core': 0.10.1(kysely@0.29.8)
-      '@kysera/executor': 0.10.1(kysely@0.29.8)
+      '@kysera/core': 0.10.2(kysely@0.29.8)
+      '@kysera/executor': 0.10.2(kysely@0.29.8)
       kysely: 0.29.8
     optionalDependencies:
-      '@kysera/repository': 0.10.1(kysely@0.29.8)(zod@4.6.7)
+      '@kysera/repository': 0.10.2(kysely@0.29.8)(zod@4.6.7)
       zod: 4.6.7
 
-  '@kysera/core@0.10.1(kysely@0.29.8)':
+  '@kysera/core@0.10.2(kysely@0.29.8)':
     dependencies:
-      '@kysera/executor': 0.10.1(kysely@0.29.8)
+      '@kysera/executor': 0.10.2(kysely@0.29.8)
       kysely: 0.29.8
 
-  '@kysera/dal@0.10.1(kysely@0.29.8)':
+  '@kysera/dal@0.10.2(kysely@0.29.8)':
     dependencies:
-      '@kysera/core': 0.10.1(kysely@0.29.8)
-      '@kysera/executor': 0.10.1(kysely@0.29.8)
+      '@kysera/core': 0.10.2(kysely@0.29.8)
+      '@kysera/executor': 0.10.2(kysely@0.29.8)
       kysely: 0.29.8
 
-  '@kysera/dialects@0.10.1(kysely@0.29.8)':
+  '@kysera/dialects@0.10.2(kysely@0.29.8)':
     dependencies:
-      '@kysera/core': 0.10.1(kysely@0.29.8)
+      '@kysera/core': 0.10.2(kysely@0.29.8)
       kysely: 0.29.8
 
-  '@kysera/executor@0.10.1(kysely@0.29.8)':
+  '@kysera/executor@0.10.2(kysely@0.29.8)':
     dependencies:
       kysely: 0.29.8
 
-  '@kysera/infra@0.10.1(kysely@0.29.8)':
+  '@kysera/infra@0.10.2(kysely@0.29.8)':
     dependencies:
-      '@kysera/core': 0.10.1(kysely@0.29.8)
+      '@kysera/core': 0.10.2(kysely@0.29.8)
       kysely: 0.29.8
 
-  '@kysera/migrations@0.10.1(kysely@0.29.8)(zod@4.6.7)':
+  '@kysera/migrations@0.10.2(kysely@0.29.8)(zod@4.6.7)':
     dependencies:
-      '@kysera/core': 0.10.1(kysely@0.29.8)
+      '@kysera/core': 0.10.2(kysely@0.29.8)
       kysely: 0.29.8
       zod: 4.6.7
 
-  '@kysera/repository@0.10.1(kysely@0.29.8)(zod@4.6.7)':
+  '@kysera/repository@0.10.2(kysely@0.29.8)(zod@4.6.7)':
     dependencies:
-      '@kysera/core': 0.10.1(kysely@0.29.8)
-      '@kysera/dal': 0.10.1(kysely@0.29.8)
-      '@kysera/executor': 0.10.1(kysely@0.29.8)
-      kysely: 0.29.8
-    optionalDependencies:
-      zod: 4.6.7
-
-  '@kysera/rls@0.10.1(@kysera/executor@0.10.1(kysely@0.29.8))(@kysera/repository@0.10.1(kysely@0.29.8)(zod@4.6.7))(kysely@0.29.8)(zod@4.6.7)':
-    dependencies:
-      '@kysera/core': 0.10.1(kysely@0.29.8)
-      '@kysera/executor': 0.10.1(kysely@0.29.8)
-      kysely: 0.29.8
-    optionalDependencies:
-      '@kysera/repository': 0.10.1(kysely@0.29.8)(zod@4.6.7)
-      zod: 4.6.7
-
-  '@kysera/soft-delete@0.10.1(@kysera/executor@0.10.1(kysely@0.29.8))(kysely@0.29.8)(zod@4.6.7)':
-    dependencies:
-      '@kysera/core': 0.10.1(kysely@0.29.8)
-      '@kysera/executor': 0.10.1(kysely@0.29.8)
+      '@kysera/core': 0.10.2(kysely@0.29.8)
+      '@kysera/dal': 0.10.2(kysely@0.29.8)
+      '@kysera/executor': 0.10.2(kysely@0.29.8)
       kysely: 0.29.8
     optionalDependencies:
       zod: 4.6.7
 
-  '@kysera/testing@0.10.1(@kysera/executor@0.10.1(kysely@0.29.8))(better-sqlite3@13.0.3)(kysely@0.29.8)':
+  '@kysera/rls@0.10.2(@kysera/executor@0.10.2(kysely@0.29.8))(@kysera/repository@0.10.2(kysely@0.29.8)(zod@4.6.7))(kysely@0.29.8)(zod@4.6.7)':
     dependencies:
-      '@kysera/core': 0.10.1(kysely@0.29.8)
+      '@kysera/core': 0.10.2(kysely@0.29.8)
+      '@kysera/executor': 0.10.2(kysely@0.29.8)
       kysely: 0.29.8
     optionalDependencies:
-      '@kysera/executor': 0.10.1(kysely@0.29.8)
+      '@kysera/repository': 0.10.2(kysely@0.29.8)(zod@4.6.7)
+      zod: 4.6.7
+
+  '@kysera/soft-delete@0.10.2(@kysera/executor@0.10.2(kysely@0.29.8))(kysely@0.29.8)(zod@4.6.7)':
+    dependencies:
+      '@kysera/core': 0.10.2(kysely@0.29.8)
+      '@kysera/executor': 0.10.2(kysely@0.29.8)
+      kysely: 0.29.8
+    optionalDependencies:
+      zod: 4.6.7
+
+  '@kysera/testing@0.10.2(@kysera/executor@0.10.2(kysely@0.29.8))(better-sqlite3@13.0.3)(kysely@0.29.8)':
+    dependencies:
+      '@kysera/core': 0.10.2(kysely@0.29.8)
+      kysely: 0.29.8
+    optionalDependencies:
+      '@kysera/executor': 0.10.2(kysely@0.29.8)
       better-sqlite3: 13.0.3
 
-  '@kysera/timestamps@0.10.1(@kysera/executor@0.10.1(kysely@0.29.8))(@kysera/repository@0.10.1(kysely@0.29.8)(zod@4.6.7))(kysely@0.29.8)(zod@4.6.7)':
+  '@kysera/timestamps@0.10.2(@kysera/executor@0.10.2(kysely@0.29.8))(@kysera/repository@0.10.2(kysely@0.29.8)(zod@4.6.7))(kysely@0.29.8)(zod@4.6.7)':
     dependencies:
-      '@kysera/core': 0.10.1(kysely@0.29.8)
-      '@kysera/executor': 0.10.1(kysely@0.29.8)
+      '@kysera/core': 0.10.2(kysely@0.29.8)
+      '@kysera/executor': 0.10.2(kysely@0.29.8)
       kysely: 0.29.8
     optionalDependencies:
-      '@kysera/repository': 0.10.1(kysely@0.29.8)(zod@4.6.7)
+      '@kysera/repository': 0.10.2(kysely@0.29.8)(zod@4.6.7)
       zod: 4.6.7
 
   '@lezer/common@1.5.4': {}
@@ -9824,26 +9820,27 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.2.0
 
-  '@xec-sh/core@file:vendor/xec-sh-core-0.11.1-dbda64fb8ced.tgz': {}
+  '@xec-sh/core@0.11.2': {}
 
-  '@xec-sh/kit@file:vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz':
+  '@xec-sh/kit@0.11.2':
     dependencies:
       sisteransi: 2.0.0
 
-  '@xec-sh/loader@file:vendor/xec-sh-loader-0.11.1-52fcf8dc7c0c.tgz':
+  '@xec-sh/loader@0.11.2':
     dependencies:
-      '@xec-sh/kit': file:vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz
+      '@xec-sh/kit': 0.11.2
       esbuild: 0.28.2
 
-  '@xec-sh/ops@file:vendor/xec-sh-ops-0.11.1-e559606232c0.tgz':
+  '@xec-sh/ops@0.11.2':
     dependencies:
-      '@xec-sh/core': file:vendor/xec-sh-core-0.11.1-dbda64fb8ced.tgz
-      '@xec-sh/kit': file:vendor/xec-sh-kit-0.11.1-695c3fd925ba.tgz
-      '@xec-sh/loader': file:vendor/xec-sh-loader-0.11.1-52fcf8dc7c0c.tgz
+      '@xec-sh/core': 0.11.2
+      '@xec-sh/kit': 0.11.2
+      '@xec-sh/loader': 0.11.2
       dotenv: 18.0.9
       fs-extra: 11.4.1
       glob: 14.0.3
       js-yaml: 5.5.0
+      semver: 7.8.5
       zod: 4.6.7
 
   '@xterm/addon-fit@0.11.0': {}

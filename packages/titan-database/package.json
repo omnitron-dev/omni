@@ -55,20 +55,20 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@kysera/audit": "^0.10.1",
-    "@kysera/core": "^0.10.1",
-    "@kysera/dialects": "^0.10.1",
-    "@kysera/executor": "^0.10.1",
-    "@kysera/infra": "^0.10.1",
-    "@kysera/migrations": "^0.10.1",
-    "@kysera/repository": "^0.10.1",
-    "@kysera/rls": "^0.10.1",
-    "@kysera/soft-delete": "^0.10.1",
-    "@kysera/timestamps": "^0.10.1",
+    "@kysera/audit": "^0.10.2",
+    "@kysera/core": "^0.10.2",
+    "@kysera/dialects": "^0.10.2",
+    "@kysera/executor": "^0.10.2",
+    "@kysera/infra": "^0.10.2",
+    "@kysera/migrations": "^0.10.2",
+    "@kysera/repository": "^0.10.2",
+    "@kysera/rls": "^0.10.2",
+    "@kysera/soft-delete": "^0.10.2",
+    "@kysera/timestamps": "^0.10.2",
     "@omnitron-dev/eventemitter": "workspace:*",
     "kysely": "^0.29.8",
     "zod": "^4.6.7",
-    "@kysera/dal": "^0.10.1"
+    "@kysera/dal": "^0.10.2"
   },
   "peerDependencies": {
     "@omnitron-dev/titan": "workspace:*",

@@ -58,7 +58,7 @@ describe('TelemetryWal — async I/O & bounded-memory replay (T#69)', () => {
     const count = await wal.entryCount();
     expect(count).toBe(1000);
 
-    wal.dispose();
+    await wal.dispose();
   });
 
   it("readAll() streams segments instead of buffering each into memory", async () => {
@@ -92,7 +92,7 @@ describe('TelemetryWal — async I/O & bounded-memory replay (T#69)', () => {
     // catch obvious regressions.
     expect(heapDelta).toBeLessThan(50 * 1024 * 1024);
 
-    wal.dispose();
+    await wal.dispose();
   });
 
   it('readAll() returns chronological order across segments', async () => {
@@ -104,7 +104,7 @@ describe('TelemetryWal — async I/O & bounded-memory replay (T#69)', () => {
     const all = await wal.readAll();
     const timestamps = all.map((e) => e.timestamp);
     expect(timestamps).toEqual([...timestamps].sort((a, b) => a - b));
-    wal.dispose();
+    await wal.dispose();
   });
 
   it('flush() awaits all queued async writes', async () => {
@@ -116,6 +116,6 @@ describe('TelemetryWal — async I/O & bounded-memory replay (T#69)', () => {
     // After flush, the file system shows all entries.
     const count = await wal.entryCount();
     expect(count).toBe(200);
-    wal.dispose();
+    await wal.dispose();
   });
 });

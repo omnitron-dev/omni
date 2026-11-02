@@ -1985,7 +1985,7 @@ export class OmnitronDaemon {
     const container = this.app.container;
     const isSlave = this.dc.role === 'slave';
 
-    // Start telemetry relay (master only — requires PG)
+    // Local application telemetry uses the controller's persistent log sink.
     if (!isSlave) {
       try {
         const telemetryRelay = await container.resolveAsync<TelemetryRelayService>(TELEMETRY_RELAY_TOKEN);
@@ -2743,7 +2743,9 @@ export class OmnitronDaemon {
         try {
           const relay = await container.resolveAsync<TelemetryRelayService>(TELEMETRY_RELAY_TOKEN);
           await relay.stop();
-        } catch { /* non-critical */ }
+        } catch (error) {
+          runtimeDiagnostics.failure('runtime.telemetry-shutdown', 'Final local telemetry delivery was not confirmed', error);
+        }
 
         try {
           const fleet = await container.resolveAsync<FleetService>(FLEET_SERVICE_TOKEN);

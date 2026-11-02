@@ -13,17 +13,16 @@
  *   1. Memory buffer batches entries (10s / 1000 entries)
  *   2. On flush, entries are written to WAL before transport
  *   3. If transport fails, entries remain in WAL for retry
- *   4. On reconnect, WAL is replayed from last ack
+ *   4. On reconnect, the retained WAL is replayed in bounded batches
  *   5. WAL segments are rotated (50MB/segment, 10 segments max = 500MB)
  *
- * Zero data loss guarantee (within WAL capacity):
- *   - Buffer overflow: oldest in-memory entries dropped (WAL preserves)
- *   - Transport failure: WAL retains until successful ack
- *   - Process crash: WAL survives on disk, replayed on restart
+ * Bounded queues protect the producer. Delivery is at least once while the WAL
+ * retains an entry. Consumers can deduplicate by entry ID after a lost acknowledgement.
  *
  * @module titan/modules/telemetry-relay
  */
 
+import { randomUUID } from 'node:crypto';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { TelemetryBuffer } from './telemetry-buffer.js';
 import { TelemetryWal } from './telemetry-wal.js';
@@ -47,6 +46,9 @@ export class TelemetryRelayService extends EventEmitter {
 
   private retryTimer: NodeJS.Timeout | null = null;
   private disposed = false;
+  private started = false;
+  private delivery: Promise<void> = Promise.resolve();
+  private lastError: string | null = null;
 
   /** Stats */
   totalEmitted = 0;
@@ -87,6 +89,7 @@ export class TelemetryRelayService extends EventEmitter {
 
     const fullEntry: TelemetryEntry = {
       ...entry,
+      id: entry.id ?? randomUUID(),
       nodeId: this.nodeId,
       timestamp: entry.timestamp ?? new Date().toISOString(),
     };
@@ -141,15 +144,26 @@ export class TelemetryRelayService extends EventEmitter {
    */
   setAggregator(aggregator: TelemetryAggregator): void {
     this.aggregator = aggregator;
+    if (this.role === 'both' && this.wal && this.started && !this.disposed) void this.forwardEntries([]).catch(() => {});
   }
 
   /**
-   * Receive a batch from a remote producer (called by Netron RPC handler).
+   * Accept entries from a peer authenticated by the caller's transport.
    */
   async receive(nodeId: string, entries: TelemetryEntry[]): Promise<number> {
     if (!this.aggregator) return 0;
-    this.totalReceived += entries.length;
-    return this.aggregator.ingest(nodeId, entries);
+    const expected = entries.length;
+    try {
+      if (!nodeId || entries.some(entry => entry.nodeId !== nodeId)) throw new Error('Telemetry source identity mismatch');
+      const acknowledged = this.validateAck(await this.aggregator.ingest(nodeId, entries), expected);
+      this.totalReceived += acknowledged;
+      this.lastError = acknowledged === expected ? null : `Incomplete telemetry acknowledgement: ${acknowledged} of ${expected}`;
+      return acknowledged;
+    } catch (error) {
+      this.totalFailed += expected;
+      this.lastError = error instanceof Error ? error.message : String(error);
+      throw error;
+    }
   }
 
   // ===========================================================================
@@ -160,25 +174,11 @@ export class TelemetryRelayService extends EventEmitter {
    * Start the relay (buffer flushing + WAL replay).
    */
   async start(): Promise<void> {
+    if (this.disposed) throw new Error('Telemetry relay has stopped');
+    this.started = true;
     this.buffer.start();
 
-    // Replay WAL entries that weren't ack'd before shutdown
-    if (this.wal && this.transport) {
-      const walEntries = await this.wal.readAll();
-      if (walEntries.length > 0) {
-        try {
-          if (this.transport.isConnected()) {
-            const ackd = await this.transport.send(walEntries);
-            if (ackd === walEntries.length) {
-              this.wal.clear();
-              this.totalSent += ackd;
-            }
-          }
-        } catch {
-          // Will retry on next flush
-        }
-      }
-    }
+    if (this.wal) await this.forwardEntries([]);
   }
 
   /**
@@ -192,17 +192,13 @@ export class TelemetryRelayService extends EventEmitter {
       this.retryTimer = null;
     }
 
-    // Flush remaining buffer → WAL
-    await this.buffer.dispose();
-
-    // Disconnect transport
-    if (this.transport?.isConnected()) {
-      await this.transport.disconnect().catch(() => {});
+    try {
+      await this.buffer.dispose();
+      await this.delivery;
+    } finally {
+      try { await this.transport?.disconnect(); }
+      finally { await this.wal?.dispose(); }
     }
-
-    // T#70: await pending WAL writes before closing the FD so a
-    // graceful shutdown can't drop buffered telemetry.
-    if (this.wal) await this.wal.dispose();
   }
 
   /**
@@ -210,6 +206,7 @@ export class TelemetryRelayService extends EventEmitter {
    */
   setTransport(transport: TelemetryTransport): void {
     this.transport = transport;
+    if (this.wal && this.started && !this.disposed) void this.forwardEntries([]).catch(() => {});
   }
 
   /**
@@ -224,6 +221,7 @@ export class TelemetryRelayService extends EventEmitter {
     totalSent: number;
     totalFailed: number;
     totalReceived: number;
+    lastError: string | null;
     transportConnected: boolean;
   } {
     return {
@@ -235,6 +233,7 @@ export class TelemetryRelayService extends EventEmitter {
       totalSent: this.totalSent,
       totalFailed: this.totalFailed,
       totalReceived: this.totalReceived,
+      lastError: this.lastError,
       transportConnected: this.transport?.isConnected() ?? false,
     };
   }
@@ -243,85 +242,74 @@ export class TelemetryRelayService extends EventEmitter {
   // Private — Forward entries to WAL + transport
   // ===========================================================================
 
-  private async forwardEntries(entries: TelemetryEntry[]): Promise<void> {
-    // 1. Write to WAL first (durability)
-    if (this.wal) {
-      this.wal.append(entries);
+  private validateAck(count: number, requested: number): number {
+    if (!Number.isSafeInteger(count) || count < 0 || count > requested) {
+      throw new Error('Invalid telemetry acknowledgement count');
     }
+    return count;
+  }
 
-    // 2. Try transport
-    if (this.transport) {
-      try {
-        if (!this.transport.isConnected()) {
-          await this.transport.connect();
-        }
+  /** Replay, retry and ordinary flush operate on one snapshot at a time. */
+  private forwardEntries(entries: TelemetryEntry[]): Promise<void> {
+    const current = this.delivery.then(() => this.forward(entries));
+    this.delivery = current.catch(() => {});
+    return current;
+  }
 
-        // TR-1: send everything durably buffered (this batch plus any un-acked
-        // backlog) and TRUNCATE the WAL on full ack. The happy path previously
-        // appended to the WAL but NEVER cleared it, so the WAL grew without
-        // bound and `start()` re-sent every entry ever buffered on each restart
-        // (duplicate telemetry — defeating the "zero data loss" + dedup design).
-        // Sending the full WAL contents (rather than just `entries`) makes clear()
-        // safe even when a prior send failed and left a backlog.
-        //
-        // append() schedules its write asynchronously (T#69 write chain) and
-        // readAll() reads segment files from disk, so flush() FIRST to guarantee
-        // the just-appended batch is on disk before we read+clear — otherwise we
-        // could read a stale view and clear() entries that were still in flight.
-        let pending = entries;
-        if (this.wal) {
-          await this.wal.flush();
-          pending = await this.wal.readAll();
-        }
-        const ackd = await this.transport.send(pending);
-        this.totalSent += ackd;
-
-        if (this.wal && ackd === pending.length) {
-          // All durably-buffered entries acknowledged → drop them.
-          this.wal.clear();
-        } else if (ackd < pending.length) {
-          // Partial ack — keep the WAL and retry the remainder.
-          this.scheduleRetry();
-        }
-      } catch {
-        this.totalFailed += entries.length;
-        // Entries are safe in WAL — will be replayed on reconnect
-        this.scheduleRetry();
+  private async forward(entries: TelemetryEntry[]): Promise<void> {
+    let persisted = false;
+    let attempted = entries.length;
+    try {
+      if (this.wal) {
+        this.wal.append(entries);
+        await this.wal.flush();
+        persisted = true;
       }
-    } else if (this.role === 'both' && this.aggregator) {
-      // Self-contained mode: directly feed to aggregator
-      const ackd = await this.aggregator.ingest(this.nodeId, entries);
-      this.totalSent += ackd;
-      // Drain the WAL too — in self-contained mode the aggregator IS the sink,
-      // so a successful ingest is a durable ack.
-      if (this.wal && ackd === entries.length) {
+      const transport = this.transport;
+      const local = this.role === 'both' && this.aggregator;
+      if (!transport && !local) {
+        if (entries.length || this.wal?.stats().totalSize) throw new Error('No telemetry destination configured');
+        return;
+      }
+      // The buffer owns its original batch until success, even if a sink consumes its input array.
+      const batches = this.wal ? this.wal.readBatches(this.buffer.maxBatchSize) : [entries.slice()];
+      let sent = 0;
+      for await (const batch of batches) {
+        const expected = batch.length;
+        if (!expected) continue;
+        attempted = sent + expected;
+        let count: number;
+        if (transport) {
+          if (!transport.isConnected()) await transport.connect();
+          if (!transport.isConnected()) throw new Error('Telemetry transport did not connect');
+          count = await transport.send(batch);
+        } else {
+          count = await this.aggregator!.ingest(this.nodeId, batch);
+        }
+        this.validateAck(count, expected);
+        if (count !== expected) throw new Error(`Incomplete telemetry acknowledgement: ${count} of ${expected}`);
+        sent += count;
+      }
+      if (this.wal && sent) {
         this.wal.clear();
+        await this.wal.flush();
       }
+      this.totalSent += sent;
+      this.lastError = null;
+    } catch (error) {
+      this.totalFailed += attempted;
+      this.lastError = error instanceof Error ? error.message : String(error);
+      if (!persisted) throw error; // The memory buffer still owns these entries.
+      if (this.transport || this.aggregator) this.scheduleRetry();
     }
   }
 
   private scheduleRetry(): void {
     if (this.retryTimer || this.disposed) return;
-    this.retryTimer = setTimeout(async () => {
+    this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
-      if (this.disposed || !this.wal || !this.transport) return;
-
-      try {
-        if (!this.transport.isConnected()) {
-          await this.transport.connect();
-        }
-        const entries = await this.wal.readAll();
-        if (entries.length > 0) {
-          const ackd = await this.transport.send(entries);
-          if (ackd === entries.length) {
-            this.wal.clear();
-            this.totalSent += ackd;
-          }
-        }
-      } catch {
-        // Will retry again on next buffer flush failure
-      }
-    }, 30_000); // Retry after 30s
+      void this.forwardEntries([]).catch(() => this.scheduleRetry());
+    }, 30_000);
     this.retryTimer.unref();
   }
 }

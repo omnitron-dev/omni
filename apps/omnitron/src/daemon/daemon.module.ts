@@ -686,13 +686,8 @@ export function createDaemonModule(ecosystemConfig: IEcosystemConfig, dc: IDaemo
       ...(!isSlave ? [[
         TELEMETRY_RELAY_TOKEN,
         {
-          useFactory: (
-            db: Kysely<OmnitronDatabase>,
-            logCollector: LogCollectorService,
-            loggerModule: ILoggerModule,
-          ) =>
-            createTelemetryRelay({ db, logCollector, logger: loggerModule.logger }),
-          inject: [OMNITRON_DB_TOKEN, LOG_COLLECTOR_TOKEN, LOGGER_SERVICE_TOKEN],
+          useFactory: (logCollector: LogCollectorService) => createTelemetryRelay(logCollector),
+          inject: [LOG_COLLECTOR_TOKEN],
           scope: Scope.Singleton,
         },
       ] as any] : []),

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { Kysely, SqliteDialect, sql } from 'kysely';
+import { createTelemetryRelay } from '../../src/services/telemetry.service.js';
 import { LogJournal } from '../../src/monitoring/log-journal.js';
 import { LineAssembler, type LogRecord } from '../../src/monitoring/log-line.js';
 import { logEntryOf } from '../../src/monitoring/log-entry.js';
@@ -43,6 +44,30 @@ function collector(db: Kysely<OmnitronDatabase>, filename: string) {
 }
 
 describe('durable log delivery', () => {
+  it('confirms relay logs only after their SQLite transaction commits with the original identity and time', async () => {
+    const dir = directory(), db = database(dir), sink = collector(db, path.join(dir, 'queue.sqlite'));
+    const relay = createTelemetryRelay(sink);
+    cleanup.push(() => relay.stop());
+    const entry = { id: randomUUID(), nodeId: relay.nodeId, type: 'log' as const, timestamp: '2026-10-31T01:02:03.004Z',
+      data: { level: 'error', message: 'two\nlines' } };
+    sink.setSyncSink(async () => { throw new Error('outbox unavailable'); });
+    await expect(relay.receive(relay.nodeId, [entry])).rejects.toThrow('outbox unavailable');
+    expect(relay.totalReceived).toBe(0);
+    expect(await db.selectFrom('logs').select('id').execute()).toEqual([]);
+    sink.setSyncSink(async () => {});
+    await expect(relay.receive(relay.nodeId, [entry])).resolves.toBe(1);
+    await expect(relay.receive(relay.nodeId, [entry])).resolves.toBe(1);
+    expect((await sink.queryLogs({})).entries).toHaveLength(1);
+    const [row] = (await sink.queryLogs({})).entries;
+    expect(row).toMatchObject({ id: entry.id, message: entry.data.message });
+    expect(new Date(row!.timestamp).toISOString()).toBe(entry.timestamp);
+    for (const type of ['health', 'metric'] as const) {
+      await expect(relay.receive(relay.nodeId, [{ ...entry, id: randomUUID() }, { ...entry, type }])).rejects.toThrow('cannot persist');
+    }
+    await expect(relay.receive('foreign', [entry])).rejects.toThrow('identity mismatch');
+    expect(await db.selectFrom('logs').select('id').execute()).toEqual([{ id: entry.id }]);
+  });
+
   it('uses exact namespace boundaries and identical project filters for entries, counts and live tail', async () => {
     const dir = directory(), db = database(dir), service = collector(db, path.join(dir, 'queue.sqlite'));
     await service.persistCaptured(['sample/local/api', 'sample_research/local/api', 'sampleXresearch/local/api', 'sample-other/local/api'].map((app, i) => ({

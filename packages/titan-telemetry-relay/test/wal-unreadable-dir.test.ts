@@ -43,6 +43,7 @@ describe('TelemetryWal — unreadable segment directory', () => {
     const stats = wal.stats();
     expect(stats.segments).toBeGreaterThan(0);
     expect(stats.listError).toBeUndefined();
+    await wal.dispose();
   });
 
   it('distinguishes "could not look" from "nothing there"', async () => {
@@ -61,6 +62,7 @@ describe('TelemetryWal — unreadable segment directory', () => {
     expect(stats.segments).toBe(0);
     expect(stats.listError).toBeDefined();
     expect(stats.listError).toMatch(/ENOENT|no such file/i);
+    await wal.dispose();
   });
 
   it('clears the error once the directory can be read again', async () => {
@@ -71,5 +73,6 @@ describe('TelemetryWal — unreadable segment directory', () => {
     fs.mkdirSync(dir, { recursive: true });
 
     expect(wal.stats().listError).toBeUndefined();
+    await wal.dispose();
   });
 });

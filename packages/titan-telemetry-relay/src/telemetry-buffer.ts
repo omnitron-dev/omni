@@ -37,6 +37,9 @@ export class TelemetryBuffer {
     this.maxSize = config?.maxBufferSize ?? DEFAULT_MAX_SIZE;
     this.flushIntervalMs = config?.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL;
     this.maxBatchSize = config?.maxBatchSize ?? DEFAULT_MAX_BATCH;
+    if (![this.maxSize, this.flushIntervalMs, this.maxBatchSize].every(n => Number.isSafeInteger(n) && n > 0)) {
+      throw new Error('Telemetry buffer limits must be positive integers');
+    }
   }
 
   /**
@@ -52,10 +55,8 @@ export class TelemetryBuffer {
   start(): void {
     if (this.flushTimer) return;
     this.flushTimer = setInterval(() => {
-      // `flush()` catches its own failures — it explains there why a lost batch
-    // is acceptable (the WAL carries durability; this buffer is batching).
-    // It cannot reject, so this guards the floating promise and nothing else.
-    this.flush().catch(() => {});
+      // A failed batch stays in the buffer for the next tick.
+      void this.flush().catch(() => {});
     }, this.flushIntervalMs);
     this.flushTimer.unref();
   }
@@ -113,15 +114,18 @@ export class TelemetryBuffer {
     if (this.flushing || this.entries.length === 0 || !this.onFlush) return;
     this.flushing = true;
 
+    const batch = this.drain();
     try {
-      const batch = this.drain();
-      if (batch.length > 0) {
-        await this.onFlush(batch);
-        this.totalFlushed += batch.length;
+      await this.onFlush(batch);
+      this.totalFlushed += batch.length;
+    } catch (error) {
+      this.entries = batch.concat(this.entries);
+      if (this.entries.length > this.maxSize) {
+        const excess = this.entries.length - this.maxSize;
+        this.entries.splice(0, excess);
+        this.totalDropped += excess;
       }
-    } catch {
-      // On failure, entries are lost (they were already drained).
-      // WAL provides durability — buffer is for performance batching only.
+      throw error;
     } finally {
       this.flushing = false;
     }
@@ -139,8 +143,7 @@ export class TelemetryBuffer {
       await new Promise((r) => setTimeout(r, 50));
     }
 
-    // Final flush
-    await this.flush();
+    while (this.entries.length && this.onFlush) await this.flush();
   }
 
   /**

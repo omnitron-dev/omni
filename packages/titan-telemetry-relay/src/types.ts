@@ -15,6 +15,8 @@
 // =============================================================================
 
 export interface TelemetryEntry {
+  /** Producer-assigned identity retained through retries and WAL replay. Older WAL records may lack it. */
+  id?: string;
   /** Entry type for routing at the aggregator */
   type: 'log' | 'metric' | 'event' | 'health' | 'alert';
   /** ISO 8601 timestamp */
@@ -34,7 +36,7 @@ export interface TelemetryEntry {
 // =============================================================================
 
 export interface TelemetryBufferConfig {
-  /** Maximum entries in memory buffer before forcing flush (default: 1000) */
+  /** Maximum entries retained in memory before oldest entries are dropped (default: 1000) */
   maxBufferSize?: number;
   /** Flush interval in ms (default: 10_000 — 10s) */
   flushIntervalMs?: number;
@@ -60,7 +62,7 @@ export interface TelemetryWalConfig {
 // =============================================================================
 
 export interface TelemetryTransport {
-  /** Send a batch of entries to the aggregator. Returns ack'd count. */
+  /** Return the number durably accepted by the authenticated recipient. */
   send(entries: TelemetryEntry[]): Promise<number>;
   /** Check if the transport is connected to the aggregator */
   isConnected(): boolean;
@@ -103,7 +105,7 @@ export interface TelemetryRelayModuleOptions {
   buffer?: TelemetryBufferConfig;
   /** WAL configuration (set to false to disable WAL) */
   wal?: TelemetryWalConfig | false;
-  /** Custom transport (default: Netron TCP to leader) */
+  /** Application-supplied transport, responsible for authenticating its peer. */
   transport?: TelemetryTransport;
   /** Role: 'producer' sends data, 'aggregator' receives and stores */
   role?: 'producer' | 'aggregator' | 'both';

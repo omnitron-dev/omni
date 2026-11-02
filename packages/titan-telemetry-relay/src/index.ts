@@ -6,7 +6,7 @@
  * @example Producer (follower node):
  * ```typescript
  * const relay = new TelemetryRelayService({ role: 'producer', nodeId: 'app-2' });
- * relay.setTransport(netronTransport); // Sends to leader via Netron TCP
+ * relay.setTransport(authenticatedTransport); // Application-supplied
  * await relay.start();
  * relay.emitLog('main', 'info', 'App started');
  * relay.emitMetric('cpu', 45.2, { app: 'main' });
@@ -17,7 +17,7 @@
  * const relay = new TelemetryRelayService({ role: 'aggregator' });
  * relay.setAggregator(pgAggregator); // Writes to PostgreSQL
  * await relay.start();
- * // Receives data via Netron RPC: relay.receive(nodeId, entries)
+ * // The application authenticates the peer, then calls relay.receive(verifiedNodeId, entries).
  * ```
  *
  * @example Self-contained (single node):

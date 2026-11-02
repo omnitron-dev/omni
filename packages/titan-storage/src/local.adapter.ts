@@ -67,12 +67,13 @@ export class LocalAdapter implements StorageAdapter {
 
   /** Storage owns this directory. Never follow symbolic links below its configured root. */
   private async resolveUnderRoot(relative: string): Promise<string> {
-    const pieces = relative.split(path.sep);
-    if (path.isAbsolute(relative) || pieces.includes('..')) {
+    const full = path.resolve(this.basePath, relative);
+    const fromRoot = path.relative(this.basePath, full);
+    if (path.isAbsolute(relative) || path.isAbsolute(fromRoot) || fromRoot === '..' || fromRoot.startsWith('..' + path.sep)) {
       throw new Error(`Refusing a storage path outside the root: ${relative}`);
     }
     let current = this.basePath;
-    for (const piece of pieces) {
+    for (const piece of fromRoot.split(path.sep)) {
       if (!piece || piece === '.') continue;
       current = path.join(current, piece);
       try {
@@ -84,7 +85,7 @@ export class LocalAdapter implements StorageAdapter {
         throw error;
       }
     }
-    return path.resolve(this.basePath, relative);
+    return full;
   }
 
   private getObjectPath(key: string) {
@@ -93,7 +94,7 @@ export class LocalAdapter implements StorageAdapter {
   }
 
   private ensureObjectKey(key: string) {
-    if (!key || key.split('/').some(part => part === '.uploads' || part.endsWith('.meta.json'))) {
+    if (!key || key.split(/[\\/]/).some(part => part === '.uploads' || part.endsWith('.meta.json'))) {
       throw new Error('Reserved local storage key');
     }
   }

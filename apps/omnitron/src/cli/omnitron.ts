@@ -39,9 +39,9 @@ program.hook('preAction', (_root, actionCommand) => prepareCommandOutput(actionC
 
 const backend = program.command('backend').description('Inspect and replace the control plane without restarting resident applications');
 const ownerRecovery = backend.command('owner-reconcile').description('Explicit offline recovery after an execution-owner crash; never stops applications');
-ownerRecovery.command('prepare <worker-pids>').description('Record native ownership evidence; pass comma-separated pre-crash worker PIDs')
+ownerRecovery.command('prepare <worker-pids>').description('Seal native recovery evidence on macOS/Linux; pass every recorded application/worker/descendant PID, comma-separated')
   .structuredAction(async (pids: string) => { const { ownerReconciliationCommand } = await import('../daemon/owner-reconciliation.js'); await ownerReconciliationCommand('prepare', pids); });
-ownerRecovery.command('acknowledge <plan>').description('Certify empty ownership cgroups after a separately approved drain, preserving the crash receipt')
+ownerRecovery.command('acknowledge <plan>').description('Certify quiescent native ownership groups after a separately approved drain, preserving the crash receipt')
   .structuredAction(async (file: string) => { const { ownerReconciliationCommand } = await import('../daemon/owner-reconciliation.js'); await ownerReconciliationCommand('acknowledge', file); });
 const schema = backend.command('schema').description('Prepare and apply reviewed compatible schema expansions');
 schema.command('prepare <runtime>').description('Inspect the current schema and save an exact expansion plan without database writes')

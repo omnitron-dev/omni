@@ -41,6 +41,14 @@ describe('explicit execution-owner crash reconciliation', () => {
     expect(() => assertOwnerReconciliationEvidence(plan, { ...stopped(), bootId: 'boot-b' })).toThrow('Host boot');
     expect(() => assertOwnerReconciliationEvidence(plan, { ...stopped(), sockets: ['owner.sock'] })).toThrow('socket');
   });
+  it('refuses a changed Darwin boot session or launchd domain even when the coarse boot time matches', () => {
+    const native = { platform: 'darwin' as const, domain: 'gui/501', bootSession: 'session-a', processGroups: [20] };
+    const darwinPlan = { ...plan, native };
+    expect(() => assertOwnerReconciliationEvidence(darwinPlan, { ...stopped(), native })).not.toThrow();
+    expect(() => assertOwnerReconciliationEvidence(darwinPlan, { ...stopped(), native: { ...native, bootSession: 'session-b' } })).toThrow('boot session');
+    expect(() => assertOwnerReconciliationEvidence(darwinPlan, { ...stopped(), native: { ...native, domain: 'system' } })).toThrow('domain');
+    expect(() => assertOwnerReconciliationEvidence(darwinPlan, stopped())).toThrow('boot session');
+  });
   it('allows the new service-owned owner only after all predecessor identities are gone', () => {
     const evidence = stopped(); evidence.units[0] = { mainPid: 30, state: 'activating' }; evidence.groups[0] = [30];
     expect(() => assertOwnerReconciliationEvidence(plan, evidence, 30)).not.toThrow();

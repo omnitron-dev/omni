@@ -210,6 +210,8 @@ export interface InfrastructureConfig {
 export type ContainerStatus = 'not_found' | 'created' | 'running' | 'paused' | 'restarting' | 'exited' | 'dead';
 
 export interface ContainerState {
+  /** Read-only reason returned by the recipient for direct container lifecycle operations. */
+  lifecycleRestriction?: string;
   /** Actual mounts from Docker inspection, used to verify legacy instance ownership. */
   mounts?: Array<{ source: string; target: string }>;
   /** Native container labels, used to verify explicit ownership adoption. */

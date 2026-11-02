@@ -45,6 +45,7 @@ vi.mock('../../src/infrastructure/service-resolver.js', () => ({
     name: 'omnitron-pg',
     image: 'postgres:16',
     env: {},
+    labels: { 'omnitron.managed': 'true', 'omnitron.service': 'sample' },
     ports: [],
     volumes: [],
     network: undefined,
@@ -75,6 +76,7 @@ function mkSvc(): InfrastructureService {
     name: 'test-svc',
     image: 'busybox:latest',
     env: {},
+    labels: { 'omnitron.managed': 'true', 'omnitron.service': 'sample' },
     ports: [],
     volumes: [],
     network: undefined,
@@ -100,7 +102,8 @@ describe('InfrastructureService — health sweep (T#58)', () => {
       name: 'test-svc',
       status: 'restarting',
       health: 'unhealthy',
-      containerId: 'c1',
+      containerId: '1'.repeat(64),
+      labels: { 'omnitron.managed': 'true', 'omnitron.service': 'sample' },
       image: 'busybox:latest',
     });
 
@@ -128,7 +131,8 @@ describe('InfrastructureService — health sweep (T#58)', () => {
         name: 'test-svc',
         status: 'exited',
         health: 'none',
-        containerId: 'c1',
+        containerId: '1'.repeat(64),
+      labels: { 'omnitron.managed': 'true', 'omnitron.service': 'sample' },
         image: 'busybox:latest',
       });
     });
@@ -151,7 +155,8 @@ describe('InfrastructureService — health sweep (T#58)', () => {
       name: 'test-svc',
       status: 'running',
       health: 'healthy',
-      containerId: 'c1',
+      containerId: '1'.repeat(64),
+      labels: { 'omnitron.managed': 'true', 'omnitron.service': 'sample' },
       image: 'busybox:latest',
     });
     await Promise.all([a, b]);

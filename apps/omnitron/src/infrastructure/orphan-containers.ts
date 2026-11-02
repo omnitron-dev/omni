@@ -46,6 +46,7 @@
 export interface SweepCandidate {
   readonly name: string;
   readonly status: string;
+  readonly internal?: boolean;
   /** From the `omnitron.project` label, written at creation. */
   readonly project?: string | undefined;
   /** From the `omnitron.stack` label. */
@@ -140,7 +141,7 @@ export function decideOrphans(input: SweepInput): SweepDecision {
   const containers: string[] = [];
 
   for (const container of input.managed) {
-    if (internal.has(container.name)) continue;
+    if (container.internal || internal.has(container.name)) continue;
     if (input.expectedPrefixes.some((prefix) => container.name.startsWith(prefix))) continue;
 
     // The container's own account of itself. A container labelled for a

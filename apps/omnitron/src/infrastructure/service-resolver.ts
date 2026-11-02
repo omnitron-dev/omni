@@ -417,6 +417,19 @@ export function resolveServiceRequirement(
   // Convert IServiceHealthCheck → ContainerHealthCheck
   const healthCheck = docker.healthCheck ?? convertHealthCheck(requirement.healthCheck, binding.ports);
 
+  const ownershipLabels: Record<string, string> = {
+    'omnitron.managed': 'true',
+    'omnitron.service': serviceName,
+    'com.docker.compose.service': serviceName,
+    ...(appName && { 'omnitron.app': appName }),
+    ...stackLabels(),
+  };
+  for (const [key, value] of Object.entries(docker.labels ?? {})) {
+    if ((key.startsWith('omnitron.') || key === 'com.docker.compose.project' || key === 'com.docker.compose.service') &&
+        ownershipLabels[key] !== value) {
+      throw new Error(`Docker label '${key}' is reserved for Omnitron ownership`);
+    }
+  }
   const spec = applyManagedDefaults({
     name: containerName(serviceName),
     image,
@@ -427,14 +440,7 @@ export function resolveServiceRequirement(
     entrypoint: docker.entrypoint,
     critical: requirement.critical ?? true,
     healthCheck,
-    labels: {
-      'omnitron.managed': 'true',
-      'omnitron.service': serviceName,
-      'com.docker.compose.service': serviceName,
-      ...(appName && { 'omnitron.app': appName }),
-      ...stackLabels(),
-      ...(docker.labels ?? {}),
-    },
+    labels: { ...docker.labels, ...ownershipLabels },
     restart: docker.restart ?? 'unless-stopped',
     shmSize: docker.shmSize,
     resources: docker.resources,

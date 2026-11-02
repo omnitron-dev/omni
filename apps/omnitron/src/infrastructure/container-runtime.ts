@@ -8,7 +8,7 @@
  * All Omnitron-managed containers are labeled with `omnitron.managed=true`.
  */
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { CONFIG_ROOT_PREFIX } from './shipped-config.js';
 import type { ContainerState, ContainerStatus, ResolvedContainer } from './types.js';
 
@@ -308,7 +308,7 @@ async function inspectContainers(names: string[], strict = false): Promise<any[]
 /**
  * Get state of a specific container by name.
  */
-export async function getContainerState(name: string, options: { orThrow?: boolean } = {}): Promise<ContainerState | null> {
+export async function getContainerState(name: string, options: { orThrow?: boolean; fullId?: boolean } = {}): Promise<ContainerState | null> {
   try {
     return await withAdapter(async (adapter) => {
       // containerExists deliberately returns false for every inspect failure.
@@ -331,7 +331,7 @@ export async function getContainerState(name: string, options: { orThrow?: boole
         name: (info.Name ?? name).replace(/^\//, ''),
         image: info.Config?.Image ?? '',
         status: mapInspectStatus(info.State?.Status),
-        containerId: info.Id?.slice(0, 12),
+        containerId: options.fullId ? info.Id : info.Id?.slice(0, 12),
         health: mapInspectHealth(info.State?.Health?.Status, info.State?.Status),
         startedAt: info.State?.StartedAt,
         ports: publishedPorts(info),
@@ -529,7 +529,8 @@ export async function createContainer(config: ResolvedContainer): Promise<string
   // Labels — stamp the desired-spec fingerprint so a later reconcile can
   // detect config drift (env/ports/volumes/cmd change under the same image)
   // and recreate instead of silently no-op'ing.
-  const labels = { ...(config.labels ?? {}), [SPEC_HASH_LABEL]: containerSpecHash(config) };
+  const creation = randomUUID();
+  const labels = { ...(config.labels ?? {}), [SPEC_HASH_LABEL]: containerSpecHash(config), 'omnitron.creation': creation };
   for (const [key, value] of Object.entries(labels)) {
     args.push('--label', `${key}=${value}`);
   }
@@ -626,7 +627,12 @@ export async function createContainer(config: ResolvedContainer): Promise<string
       const msg = err instanceof Error ? err.message : String(err);
 
       if (isStaleContainerState(msg)) {
-        await scrubStaleContainerState(config.name, config.network);
+        await cleanFailedCreation(config.name, creation);
+        if (config.network) {
+          const { PhantomEndpointJanitor } = await import('./phantom-endpoint-janitor.js');
+          const { createNullLogger } = await import('@omnitron-dev/titan/module/logger');
+          await new PhantomEndpointJanitor({ networks: [config.network], logger: createNullLogger() }).sweepNetwork(config.network, config.name);
+        }
         continue;
       }
 
@@ -634,7 +640,7 @@ export async function createContainer(config: ResolvedContainer): Promise<string
         // The failed run leaves the container in `Created` holding the name,
         // so the next attempt would hit the name conflict instead of the
         // port. Remove it, then wait for the bind to go.
-        await removeContainer(config.name).catch(() => undefined);
+        await cleanFailedCreation(config.name, creation);
         await new Promise((resolve) => setTimeout(resolve, attempt * 1_000));
         continue;
       }
@@ -660,7 +666,7 @@ export async function createContainer(config: ResolvedContainer): Promise<string
   // rebuild once from clean state so a successful return always means the
   // declared ports are actually reachable.
   if (config.ports.length > 0 && !(await arePortsPublished(config.name, config.ports))) {
-    await scrubStaleContainerState(config.name, config.network);
+    await cleanFailedCreation(config.name, creation);
     ({ stdout } = await runDocker());
   }
 
@@ -670,31 +676,14 @@ export async function createContainer(config: ResolvedContainer): Promise<string
   return (output || config.name).slice(0, 12);
 }
 
-/**
- * Clear stale Docker state that blocks (re)creating a managed container: a
- * leftover container holding the name, and an orphaned libnetwork endpoint
- * holding the name on the managed network. Best-effort — every step may
- * legitimately find nothing to remove.
- */
-async function scrubStaleContainerState(name: string, network?: string): Promise<void> {
-  const { execFile } = await import('node:child_process');
-  const { promisify } = await import('node:util');
-  const execFileAsync = promisify(execFile);
-  try {
-    await execFileAsync('docker', ['rm', '-f', name], { encoding: 'utf-8', timeout: 15_000 });
-  } catch {
-    // No leftover container.
+/** A failed docker run may leave its own container in Created. Never follow a reused name. */
+async function cleanFailedCreation(name: string, creation: string): Promise<void> {
+  const actual = await getContainerState(name, { orThrow: true, fullId: true });
+  if (!actual) return;
+  if (actual.labels?.['omnitron.creation'] !== creation || !actual.containerId || !/^[a-f0-9]{64}$/.test(actual.containerId)) {
+    throw new Error(`Container '${name}' belongs to another creation; inspect its ownership before retrying`);
   }
-  if (network) {
-    try {
-      await execFileAsync('docker', ['network', 'disconnect', '-f', network, name], {
-        encoding: 'utf-8',
-        timeout: 15_000,
-      });
-    } catch {
-      // No orphaned endpoint for this name.
-    }
-  }
+  await removeContainer(actual.containerId);
 }
 
 /**

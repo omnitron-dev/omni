@@ -27,6 +27,9 @@ import type {
   ReconcileAction,
 } from './types.js';
 import { resolveInfrastructure, resolveOmnitronPg, getManagedNetwork } from './service-resolver.js';
+import { ownedContainerId } from './owned-container.js';
+import { normalizeInfraConfig } from './config-normalizer.js';
+import { createDefaultRegistry } from './presets/index.js';
 import { PhantomEndpointJanitor } from './phantom-endpoint-janitor.js';
 import { LOCAL_INFRA_HOST } from '../shared/local-infra-host.js';
 import {
@@ -199,7 +202,11 @@ export class InfrastructureService {
      */
     private readonly needsControlPlaneDatabase = true,
   ) {
-    this.normalizedServices = normalizedServices ?? {};
+    if (!normalizedServices) {
+      this.presetRegistry ??= createDefaultRegistry();
+      normalizedServices = normalizeInfraConfig(config, this.presetRegistry);
+    }
+    this.normalizedServices = normalizedServices;
     this.desiredContainers = resolveInfrastructure(config, normalizedServices, serviceOverrides);
     this.omnitronPgContainer = resolveOmnitronPg();
   }
@@ -291,12 +298,10 @@ export class InfrastructureService {
       // A stack-prefixed leftover cannot run beside the global one — they
       // share port 5480 — so it goes before anything else touches that port.
       if (this.omnitronPgContainer.name !== decision.reconcileName) {
-        const stalePg = await getContainerState(this.omnitronPgContainer.name);
+        const stalePg = await getContainerState(this.omnitronPgContainer.name, { orThrow: true, fullId: true });
         if (stalePg) {
-          try {
-            await removeContainer(this.omnitronPgContainer.name);
-            this.logger.info({ service: this.omnitronPgContainer.name }, 'Removed stale stack-prefixed PG container');
-          } catch { /* already gone */ }
+          await removeContainer(ownedContainerId(this.omnitronPgContainer, stalePg));
+          this.logger.info({ service: this.omnitronPgContainer.name }, 'Removed stale stack-prefixed PG container');
         }
       }
 
@@ -685,18 +690,24 @@ export class InfrastructureService {
     this.dispose();
     // Remove all containers in parallel for fast shutdown — the control-plane
     // database only where this service keeps one (`controlPlaneContainers`).
-    const allContainers = this.getTeardownNames();
+    const allContainers = [...this.desiredContainers, ...this.controlPlaneContainers()];
+    // Validate every target before removing the first. Absence is an idempotent success.
+    const reviewed = await Promise.all(allContainers.map(async desired => {
+      const actual = await getContainerState(desired.name, { orThrow: true, fullId: true });
+      return actual ? ownedContainerId(desired, actual) : null;
+    }));
 
     const results = await Promise.allSettled(
-      allContainers.map(async (name) => {
-        await removeContainer(name, { graceful: true });
-        this.logger.info({ service: name }, 'Container removed');
+      reviewed.map(async (id, index) => {
+        if (!id) return;
+        await removeContainer(id, { graceful: true });
+        this.logger.info({ service: allContainers[index]!.name }, 'Container removed');
       }),
     );
 
     this.state.ready = false;
     const failures = results.flatMap((result, index) => result.status === 'rejected'
-      ? [new Error(`${allContainers[index]}: ${String(result.reason)}`, { cause: result.reason })] : []);
+      ? [new Error(`${allContainers[index]!.name}: ${String(result.reason)}`, { cause: result.reason })] : []);
     if (failures.length) {
       throw new AggregateError(failures, `Infrastructure stop incomplete: ${failures.map(error => error.message).join('; ')}`);
     }
@@ -900,9 +911,10 @@ export class InfrastructureService {
 
   @RecoveryMutation()
   private async reconcileServiceLocked(desired: ResolvedContainer): Promise<void> {
-    const actual = await getContainerState(desired.name);
+    const actual = await getContainerState(desired.name, { orThrow: true, fullId: true });
     if (this.ownershipFrozen || this.retiredStacks.has(this.containerScope(desired))) return;
 
+    const id = actual && ownedContainerId(desired, actual);
     const action = this.computeAction(desired, actual);
     // A container that was created, started or recreated is listening on a
     // NEW socket. Applications already running hold pools pointing at the
@@ -924,8 +936,8 @@ export class InfrastructureService {
 
       case 'start':
         this.logger.info({ service: desired.name }, 'Starting existing service');
-        await startContainer(action.containerId);
-        await this.waitHealthy(desired.name);
+        await startContainer(id!);
+        await this.waitHealthy(id!);
         break;
 
       case 'recreate':
@@ -933,7 +945,7 @@ export class InfrastructureService {
           { service: desired.name, reason: action.reason },
           'Recreating service'
         );
-        await removeContainer(desired.name);
+        await removeContainer(id!);
         await this.createAndStart(desired);
         break;
 
@@ -1062,49 +1074,30 @@ export class InfrastructureService {
     if (desired.critical === false) {
       this.logger.info({ service: desired.name }, 'Non-critical service — skipping health wait');
     } else {
-      await this.waitHealthy(desired.name);
+      await this.waitHealthy(id);
     }
   }
 
   private async waitHealthy(name: string): Promise<void> {
     // Poll Docker health via async CLI — avoids blocking event loop
-    const { exec } = await import('node:child_process');
+    const { execFile } = await import('node:child_process');
     const { promisify } = await import('node:util');
-    const execAsync = promisify(exec);
+    const inspect = promisify(execFile);
     const startTime = Date.now();
-    const pollInterval = 2000;
-
     while (Date.now() - startTime < STARTUP_TIMEOUT) {
       try {
-        const { stdout } = await execAsync(
-          `docker inspect --format='{{.State.Health.Status}}' ${name} 2>/dev/null || echo "none"`,
-          { encoding: 'utf-8', timeout: 5000 }
-        );
-        const output = (stdout ?? '').trim().replace(/'/g, '');
-
-        if (output === 'healthy') {
-          this.logger.info({ service: name, elapsed: Date.now() - startTime }, 'Service healthy');
+        const { stdout } = await inspect('docker', ['inspect', '--format', '{{json .State}}', '--', name],
+          { encoding: 'utf8', timeout: 5000 });
+        const state = JSON.parse(stdout) as { Status: string; Health?: { Status: string } };
+        if (state.Health?.Status === 'healthy' || (state.Status === 'running' && (!state.Health || state.Health.Status === 'none'))) return;
+        if (state.Status === 'exited' || state.Status === 'dead') {
+          this.logger.warn({ service: name, status: state.Status }, 'Container not running');
           return;
-        }
-        if (output === 'none' || output === '') {
-          const { stdout: statusOut } = await execAsync(
-            `docker inspect --format='{{.State.Status}}' ${name} 2>/dev/null || echo "missing"`,
-            { encoding: 'utf-8', timeout: 5000 }
-          );
-          const status = (statusOut ?? '').trim().replace(/'/g, '');
-          if (status === 'running') {
-            this.logger.info({ service: name, elapsed: Date.now() - startTime }, 'Service running (no health check)');
-            return;
-          }
-          if (status === 'exited' || status === 'dead' || status === 'missing') {
-            this.logger.warn({ service: name, status }, 'Container not running');
-            return;
-          }
         }
       } catch {
         // docker CLI failed — retry
       }
-      await new Promise((r) => setTimeout(r, pollInterval));
+      await new Promise((r) => setTimeout(r, 2000));
     }
 
     this.logger.warn({ service: name, timeout: STARTUP_TIMEOUT }, 'Service did not become healthy within timeout');
@@ -1160,7 +1153,9 @@ export class InfrastructureService {
       const container = this.desiredContainers.find((c) => c.name.endsWith(`-${serviceName}`));
       if (!container) continue;
 
-      const cName = container.name;
+      const actual = await getContainerState(container.name, { orThrow: true, fullId: true });
+      if (!actual || this.state.services[container.name]?.error) continue;
+      const cName = ownedContainerId(container, actual);
       await waitForHealthy(cName, 30_000);
 
       // Resolve secrets from requirement
@@ -1181,7 +1176,7 @@ export class InfrastructureService {
 
       try {
         await preset.postProvision({
-          containerName: cName,
+          containerName: container.name,
           userConfig: requirement._presetConfig ?? {},
           secrets,
           execInContainer: execInCont,
@@ -1284,7 +1279,7 @@ export class InfrastructureService {
     // service keeps one.
     const allContainers = [...this.controlPlaneContainers(), ...this.desiredContainers];
     for (const desired of allContainers) {
-      const actual = await getContainerState(desired.name);
+      const actual = await getContainerState(desired.name, { orThrow: true, fullId: true });
       if (this.ownershipFrozen) return;
       if (this.retiredStacks.has(this.containerScope(desired))) continue;
 
@@ -1350,7 +1345,7 @@ export class InfrastructureService {
             'Service unhealthy past threshold — restarting container'
           );
           try {
-            await removeContainer(desired.name);
+            await removeContainer(ownedContainerId(desired, actual));
             await this.createAndStart(desired);
           } catch (err) {
             this.logger.error(

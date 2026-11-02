@@ -21,7 +21,7 @@ function service(...containers: ResolvedContainer[]): any {
   return svc;
 }
 function actual(d: ResolvedContainer, extras: any = {}) {
-  return { name: d.name, image: d.image, status: 'running', containerId: '123456789abc', labels: d.labels, specHash: containerSpecHash(d), ...extras };
+  return { name: d.name, image: d.image, status: 'running', containerId: '1'.repeat(64), labels: d.labels, specHash: containerSpecHash(d), ...extras };
 }
 function deferred<T>() { let resolve!: (value: T) => void; let reject!: (reason: unknown) => void;
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
@@ -76,6 +76,7 @@ describe('native monitoring ownership refresh', () => {
   });
   it('drains admitted provisioning and its late janitor before explicit teardown removes resources', async () => {
     const original = service(desired('redis')), provision = deferred<any>(), janitor = deferred<void>();
+    runtime.get.mockResolvedValue(actual(desired('redis')));
     original.provisionOwned = vi.fn(async () => {
       await provision.promise;
       original.phantomJanitor = { drain: () => janitor.promise, stop: vi.fn() };
@@ -86,7 +87,7 @@ describe('native monitoring ownership refresh', () => {
     provision.resolve({}); await running; await Promise.resolve();
     expect(runtime.remove).not.toHaveBeenCalled(); janitor.resolve(); await stopped;
     expect(runtime.remove).toHaveBeenCalledOnce();
-    expect(runtime.remove).toHaveBeenCalledWith('redis', { graceful: true });
+    expect(runtime.remove).toHaveBeenCalledWith('1'.repeat(64), { graceful: true });
   });
   it('transfers a verified failed creation as absent, preserving its failure and desired service', async () => {
     const redis = desired('redis'), original = service(redis);
@@ -110,7 +111,7 @@ describe('native monitoring ownership refresh', () => {
     original.dispose();
   });
   it.each([
-    { status: 'running' }, { status: 'exited', containerId: '123456789abc', error: 'Stopped previously' },
+    { status: 'running' }, { status: 'exited', containerId: '1'.repeat(64), error: 'Stopped previously' },
     { status: 'exited' },
   ])('refuses missing running, previously identified or unproven service %j', async previous => {
     const original = service(desired('redis')); original.state.services.redis = { name: 'redis', ...previous };
@@ -127,7 +128,7 @@ describe('native monitoring ownership refresh', () => {
   it('refuses a replacement container even when its desired labels and spec match', async () => {
     const redis = desired('redis'), original = service(redis); runtime.get.mockResolvedValue(actual(redis));
     const checkpoint = await original.prepareHandoff();
-    runtime.get.mockResolvedValue(actual(redis, { containerId: 'abcdef123456' }));
+    runtime.get.mockResolvedValue(actual(redis, { containerId: 'a'.repeat(64) }));
     await expect(InfrastructureService.adoptHandoff(logger, checkpoint)).rejects.toThrow('identity or specification changed');
     original.dispose();
   });

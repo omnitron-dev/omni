@@ -109,7 +109,7 @@ export class PhantomEndpointJanitor {
     return totalCleaned;
   }
 
-  private async sweepNetwork(network: string): Promise<number> {
+  async sweepNetwork(network: string, targetName?: string): Promise<number> {
     const inspect = await this.runDocker(['network', 'inspect', network]);
     if (!inspect.ok) {
       // Network doesn't exist or docker daemon unreachable. Either
@@ -147,7 +147,7 @@ export class PhantomEndpointJanitor {
 
     let cleaned = 0;
     for (const [containerId, info] of endpoints) {
-      if (liveContainerIds.has(containerId)) continue;
+      if (liveContainerIds.has(containerId) || (targetName && info?.Name !== targetName)) continue;
 
       // Absent from the listing is not yet proof: the container may have
       // been created between the listing and now. Confirm per-endpoint,

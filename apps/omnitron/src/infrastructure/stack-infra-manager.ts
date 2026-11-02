@@ -248,11 +248,11 @@ export class StackInfrastructureManager {
       );
     } catch (err) {
       if (strict) throw err;
-      this.logger.warn({ error: (err as Error).message }, 'Preset normalization failed — using legacy resolvers');
+      this.logger.warn({ error: (err as Error).message }, 'Preset normalization failed — only application declarations will be resolved');
       infraService = new InfrastructureService(
         this.logger.child({ stack: key }),
         stackInfraConfig,
-        undefined,
+        {},
         undefined,
         undefined,
         false

@@ -33,6 +33,7 @@ import Typography from '@mui/material/Typography';
 import type { IStackInfo, StoredAttestation } from '@omnitron-dev/omnitron/dto/services';
 import { daemonClient } from 'src/netron/client';
 import { useProjectStore } from 'src/stores/project.store';
+import { isRpcTimeout } from 'src/utils/rpc-error';
 
 import { GATE_TONE, GateStrip, when } from './release-bits';
 
@@ -103,11 +104,6 @@ function ProbeOutput({ output }: { output: string }) {
       )}
     </Box>
   );
-}
-
-/** A gateway or client deadline, as opposed to the daemon refusing. */
-function isDeadline(message: string): boolean {
-  return /^HTTP 50\d|Request timeout|Gateway Time-?out/i.test(message);
 }
 
 /**
@@ -181,7 +177,8 @@ export function ReleaseAttestations({
   const [running, setRunning] = useState(false);
   const [answer, setAnswer] = useState<AttestAnswer | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-  const [waitingSince, setWaitingSince] = useState<number | null>(null);
+  const [waiting, setWaiting] = useState<{ stack: string; previous?: string } | null>(null);
+  const [unconfirmed, setUnconfirmed] = useState(false);
 
   useEffect(() => {
     if (canRun && canReadStacks && !stacksByProject[project]) void fetchStacks(project);
@@ -191,23 +188,28 @@ export function ReleaseAttestations({
     if (!stack && remote.length > 0) setStack(remote[0]!.name);
   }, [remote, stack]);
 
-  // After a gateway timeout: watch for the attestation the daemon is still
-  // producing, by asking the page to refresh until one newer than the press
-  // appears — ten minutes at most, which is past any probe suite's deadline.
+  // Compare two records from the same daemon clock, independent of browser clock skew.
+  const recorded = Boolean(waiting && attestations.some((record) =>
+    record.stack === waiting.stack && record.storedAt !== waiting.previous
+  ));
   useEffect(() => {
-    if (waitingSince === null) return undefined;
-    const landed = attestations.some((a) => a.stack === stack && Date.parse(a.storedAt) >= waitingSince);
-    if (landed || Date.now() - waitingSince > 600_000) {
-      setWaitingSince(null);
+    if (!waiting) return undefined;
+    if (recorded) {
+      setWaiting(null);
       return undefined;
     }
-    const timer = setTimeout(onChanged, 5_000);
-    return () => clearTimeout(timer);
-  }, [waitingSince, attestations, stack, onChanged]);
+    const poll = setInterval(onChanged, 5_000);
+    const deadline = setTimeout(() => {
+      setUnconfirmed(true);
+      setWaiting(null);
+    }, 600_000);
+    return () => { clearInterval(poll); clearTimeout(deadline); };
+  }, [waiting, recorded, onChanged]);
 
   const run = useCallback(async () => {
     if (!stack) return;
-    const pressedAt = Date.now();
+    const previous = attestations.find((record) => record.stack === stack)?.storedAt;
+    setUnconfirmed(false);
     setRunning(true);
     setFailure(null);
     setAnswer(null);
@@ -216,12 +218,12 @@ export function ReleaseAttestations({
       onChanged();
     } catch (err) {
       const message = (err as Error).message;
-      if (isDeadline(message)) setWaitingSince(pressedAt);
+      if (isRpcTimeout(err)) setWaiting({ stack, previous });
       else setFailure(message);
     } finally {
       setRunning(false);
     }
-  }, [releaseId, stack, onChanged]);
+  }, [releaseId, stack, attestations, onChanged]);
 
   return (
     <Card variant="outlined">
@@ -239,7 +241,7 @@ export function ReleaseAttestations({
                 size="small"
                 value={stack}
                 onChange={(e) => setStack(e.target.value)}
-                disabled={running}
+                disabled={running || waiting !== null}
                 sx={{ minWidth: 120 }}
               >
                 {remote.map((s) => (
@@ -257,10 +259,10 @@ export function ReleaseAttestations({
                     size="small"
                     variant="outlined"
                     onClick={() => void run()}
-                    disabled={running || waitingSince !== null || !stack}
-                    startIcon={running || waitingSince !== null ? <CircularProgress size={14} /> : undefined}
+                    disabled={running || waiting !== null || !stack}
+                    startIcon={running || waiting !== null ? <CircularProgress size={14} /> : undefined}
                   >
-                    {running ? 'Running on the node…' : waitingSince !== null ? 'Still running…' : 'Run the probes'}
+                    {running ? 'Running on the node…' : waiting !== null ? 'Awaiting result…' : 'Run the probes'}
                   </Button>
                 </span>
               </Tooltip>
@@ -268,10 +270,14 @@ export function ReleaseAttestations({
           )}
         </Stack>
 
-        {waitingSince !== null && (
+        {waiting !== null && (
           <Alert severity="info" sx={{ mb: 1.5 }}>
-            The gateway stopped waiting after 120 seconds; the master did not. The probes are still running on the node,
-            and the result will appear here when it is written.
+            The gateway did not return a result. Checking for a new attestation on {waiting.stack} before another run.
+          </Alert>
+        )}
+        {unconfirmed && (
+          <Alert severity="warning" sx={{ mb: 1.5 }}>
+            No new attestation was recorded within ten minutes. Inspect the node logs before retrying.
           </Alert>
         )}
         {answer && (

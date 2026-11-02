@@ -37,7 +37,8 @@ export function useDashboardSources(board: DashboardConfig, live: boolean) {
   const intervalMs = board.refreshInterval;
   const status = usePolledResource(() => daemon.status(), {
     intervalMs,
-    enabled: live && needStatus && canStatus,
+    paused: !live,
+    enabled: needStatus && canStatus,
     resourceKey: Number(canStatus),
   });
   const inventory = usePolledResource(
@@ -47,13 +48,15 @@ export function useDashboardSources(board: DashboardConfig, live: boolean) {
     },
     {
       intervalMs,
-      enabled: live && Boolean(activeProject) && needApps && canApps,
+      paused: !live,
+      enabled: Boolean(activeProject) && needApps && canApps,
       resourceKey: JSON.stringify([scopeKey, canApps]),
     }
   );
   const alert = usePolledResource(() => alerts.getSummary(), {
     intervalMs,
-    enabled: live && needAlerts && canAlerts,
+    paused: !live,
+    enabled: needAlerts && canAlerts,
     resourceKey: Number(canAlerts),
   });
   const history = usePolledResource<ChartData>(
@@ -82,7 +85,8 @@ export function useDashboardSources(board: DashboardConfig, live: boolean) {
     },
     {
       intervalMs,
-      enabled: live && needHistory && canHistory,
+      paused: !live,
+      enabled: needHistory && canHistory,
       resourceKey: JSON.stringify([scopeKey, board.window, canHistory]),
     }
   );

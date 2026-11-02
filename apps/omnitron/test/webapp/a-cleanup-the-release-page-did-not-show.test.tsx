@@ -9,13 +9,15 @@
  * page showed the tally and the failing probes and nothing of that.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render as rtlRender, screen } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import '@testing-library/jest-dom/vitest';
 
-vi.mock('src/netron/client', () => ({ daemonClient: { service: vi.fn() } }));
+const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
+vi.mock('src/netron/client', () => ({ daemonClient: { invoke } }));
+vi.mock('src/auth/access', () => ({ useAccess: () => ({ can: () => true }) }));
 vi.mock('src/stores/project.store', () => ({
-  useProjectStore: (select: (s: unknown) => unknown) => select({ stacksByProject: {}, fetchStacks: () => undefined }),
+  useProjectStore: (select: (s: unknown) => unknown) => select({ stacksByProject: { sample: [{ name: 'test', type: 'remote' }] }, fetchStacks: () => undefined }),
 }));
 
 const base = {
@@ -77,4 +79,23 @@ describe('a cleanup the release page did not show', () => {
     await render(base);
     expect(screen.queryByTestId('cleanup-test')).toBeNull();
   });
+});
+
+it('waits for a changed record on the requested stack after a gateway deadline regardless of clock skew', async () => {
+  const { ReleaseAttestations } = await import('../../webapp/src/components/release-attestations.js');
+  const changed = vi.fn();
+  const view = (records: Array<typeof base>) => <ThemeProvider theme={createTheme()}>
+    <ReleaseAttestations project="sample" releaseId={base.release} attestations={records as never} onChanged={changed} />
+  </ThemeProvider>;
+  const result = rtlRender(view([base]));
+  invoke.mockRejectedValueOnce({ status: 504, message: 'gateway deadline' });
+  const button = screen.getByRole('button', { name: 'Run the probes' });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
+  await screen.findByRole('button', { name: 'Awaiting result…' });
+  result.rerender(view([base, { ...base, stack: 'other', storedAt: '2026-09-25T01:51:00Z' }]));
+  expect(screen.getByRole('button', { name: 'Awaiting result…' })).toBeDisabled();
+  result.rerender(view([{ ...base, storedAt: '2026-09-25T01:51:00Z' }]));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Run the probes' })).toBeEnabled());
+  expect(invoke).toHaveBeenCalledTimes(1);
 });

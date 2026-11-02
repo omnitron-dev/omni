@@ -286,7 +286,7 @@ function ReleaseDetails({ id }: { id: string }) {
           releaseId={release.id}
           project={release.project}
           attestations={release.attestations}
-          onChanged={() => void refresh()}
+          onChanged={refresh}
         />
       )}
 

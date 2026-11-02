@@ -401,7 +401,7 @@ function SystemHost({
   const [refreshing, setRefreshing] = useState(false);
   const { data, error, loading, refresh } = usePolledResource(
     () => (target ? nodes.getNodeSystemSnapshot({ nodeId: target }) : systemInfo.getSnapshot({ fresh: true })),
-    { intervalMs: 5_000, enabled: live && allowed, resourceKey: target }
+    { intervalMs: 5_000, enabled: allowed, paused: !live, resourceKey: target }
   );
   const update = async () => {
     setRefreshing(true);

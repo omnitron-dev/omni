@@ -22,9 +22,9 @@ import '@testing-library/jest-dom/vitest';
 
 import { usePolledResource, usePollingEffect } from '../../webapp/src/hooks/use-polled-resource.js';
 
-function Resource({ fetcher, enabled, scope = null }: { scope?: string | null; fetcher: () => Promise<string>; enabled?: boolean }) {
+function Resource({ fetcher, enabled, paused = false, scope = null }: { scope?: string | null; fetcher: () => Promise<string>; enabled?: boolean; paused?: boolean }) {
   const { data, error, loading, refresh } = usePolledResource(fetcher, {
-    intervalMs: 50, resourceKey: scope,
+    intervalMs: 50, resourceKey: scope, paused,
     ...(enabled !== undefined && { enabled }),
   });
 
@@ -43,6 +43,19 @@ function Resource({ fetcher, enabled, scope = null }: { scope?: string | null; f
 const strict = (node: ReactNode) => <StrictMode>{node}</StrictMode>;
 
 describe('usePolledResource under StrictMode', () => {
+  it('reads each permitted scope once while paused and preserves the selected reading', async () => {
+    const first = vi.fn(async () => 'one');
+    const next = vi.fn(async () => 'two');
+    const root = render(strict(<Resource scope="one" paused fetcher={first} />));
+    await screen.findByText('one', { selector: '[data-testid="state"]' });
+    root.rerender(strict(<Resource scope="two" paused enabled={false} fetcher={next} />));
+    expect(next).not.toHaveBeenCalled();
+    root.rerender(strict(<Resource scope="two" paused fetcher={next} />));
+    await screen.findByText('two', { selector: '[data-testid="state"]' });
+    await new Promise((r) => setTimeout(r, 130));
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
   it('delivers the first result', async () => {
     // The regression: the simulated unmount called `stop()`, which was
     // terminal, so the in-flight result was dropped AND every later tick

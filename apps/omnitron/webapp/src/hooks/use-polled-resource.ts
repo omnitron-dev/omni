@@ -24,6 +24,8 @@ export interface UsePolledResourceOptions {
    * whose query has no subject yet, such as one waiting on a selected project.
    */
   enabled?: boolean;
+  /** Read an enabled scope once, then retain it until manual refresh or a scope change. */
+  paused?: boolean;
   /** Identity of the requested resource. A new identity starts with no previous readings. */
   resourceKey?: string | number | null;
   /** Turns an unknown throw into something worth showing. */
@@ -116,7 +118,7 @@ export function usePollingEffect(
 
 export function usePolledResource<T>(
   fetcher: () => Promise<T>,
-  { intervalMs, enabled = true, describeError, pauseWhileHidden = true, resourceKey = null }: UsePolledResourceOptions
+  { intervalMs, enabled = true, paused = false, describeError, pauseWhileHidden = true, resourceKey = null }: UsePolledResourceOptions
 ): PolledResource<T> {
   // The fetcher is read through a ref so a caller need not memoise it: an
   // inline arrow would otherwise re-arm the timer on every render, which is
@@ -155,7 +157,10 @@ export function usePolledResource<T>(
     return () => runner.stop();
   }, [runner]);
 
-  usePollingEffect(() => void runner.tick(), { intervalMs, enabled, pauseWhileHidden, resourceKey: resource.key });
+  usePollingEffect(() => void runner.tick(), { intervalMs, enabled: enabled && !paused, pauseWhileHidden, resourceKey: resource.key });
+  useEffect(() => {
+    if (enabled && paused && runner.current.loading) void runner.tick();
+  }, [runner, enabled, paused]);
 
   const refresh = useCallback(async () => {
     await runner.tick();

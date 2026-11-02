@@ -99,18 +99,18 @@ MIT
 
 ## Publishing Omnitron
 
-Run `pnpm release --list` to see the public packages in dependency order.
-`pnpm release <version> --dry-run` checks the version, current commit and
+Run `node scripts/release.mjs --list` to see the public packages in dependency order.
+`node scripts/release.mjs <version> --dry-run` checks the version, current commit and
 worktree. Choose the version before preparing a release.
 
 From a clean `main`, run the following operations in order. Replace
 `<version>` with the same exact version throughout.
 
 ```sh
-pnpm release <version> --prepare
-pnpm release <version> --push
-pnpm release <version> --publish
-pnpm release <version> --github
+node scripts/release.mjs <version> --prepare
+node scripts/release.mjs <version> --push
+node scripts/release.mjs <version> --publish
+node scripts/release.mjs <version> --github
 ```
 
 Preparation builds a separate checkout and creates a local annotated tag.
@@ -119,5 +119,5 @@ Review the package inventory, SHA-512 digests and release notes in
 the selected branch and tag atomically. Publication verifies the remote
 tag and checks the sealed SHA-512 digests against npm metadata. For an interrupted
 publication, keep the archives, return to the same clean commit and run
-`pnpm release <version> --resume`. The GitHub release can be completed
+`node scripts/release.mjs <version> --resume`. The GitHub release can be completed
 separately after all npm packages are confirmed.

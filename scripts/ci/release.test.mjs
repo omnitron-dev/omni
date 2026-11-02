@@ -60,10 +60,10 @@ test('release plans, seals, pushes one tag and resumes a partial registry public
     GIT_COMMITTER_NAME: 'Fixture', GIT_AUTHOR_EMAIL: 'fixture@localhost', GIT_COMMITTER_EMAIL: 'fixture@localhost' };
   const exec = (bin, args, cwd = workspace) => run(bin, args, { cwd, env });
   const git = async (...args) => (await exec('git', args)).stdout.trim();
-  const release = (...args) => exec(process.execPath, ['--import', 'tsx', 'scripts/release.ts', version, ...args]);
+  const release = (...args) => exec(process.execPath, ['scripts/release.mjs', version, ...args]);
   const json = (name, value) => fs.writeFile(path.join(workspace, name), JSON.stringify(value, null, 2));
   await fs.mkdir(path.join(workspace, 'scripts'), { recursive: true });
-  for (const file of ['release.ts', 'build-release.mjs']) await fs.copyFile(path.join(repo, 'scripts', file), path.join(workspace, 'scripts', file));
+  for (const file of ['release.mjs', 'build-release.mjs']) await fs.copyFile(path.join(repo, 'scripts', file), path.join(workspace, 'scripts', file));
   await json('package.json', { name: 'fixture', private: true, type: 'module', scripts: { build: 'node scripts/build.mjs' } });
   await fs.writeFile(path.join(workspace, 'scripts/build.mjs'), "import {writeFileSync} from 'node:fs'; for(const n of ['base','client']) writeFileSync('packages/'+n+'/index.js', 'export default 1;');");
   await fs.writeFile(path.join(workspace, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n");

@@ -293,7 +293,6 @@ export function FilterToolbar({
                 minWidth: 0,
                 width: '100%',
                 '& .MuiOutlinedInput-root': { borderRadius: 1 },
-                '& .MuiOutlinedInput-notchedOutline legend': { width: 0 },
               }}
             >
               <MenuItem value="">
@@ -367,7 +366,6 @@ export function FilterToolbar({
                 minWidth: 0,
                 width: '100%',
                 '& .MuiOutlinedInput-root': { borderRadius: 1 },
-                '& .MuiOutlinedInput-notchedOutline legend': { width: 0 },
               }}
             >
               {options?.map((opt) => (

@@ -263,7 +263,8 @@ export const outlinedInputStyles = {
     // Align fieldset font-size with InputLabel (14px) so the legend
     // notch width (0.75em) matches the visually-scaled label exactly.
     fontSize: theme.typography.pxToRem(14),
-    '& legend > span': { paddingInline: 3 },
+    // MUI uses an aria-hidden zero-width spacer when the field has no label.
+    '& legend > span:not([aria-hidden])': { paddingInline: 3 },
   }),
 };
 

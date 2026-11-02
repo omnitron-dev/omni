@@ -5,6 +5,9 @@ import Table from '@mui/material/Table';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TableCell from '@mui/material/TableCell';
+import MenuItem from '@mui/material/MenuItem';
+import Select from '@mui/material/Select';
+import TextField from '@mui/material/TextField';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
@@ -30,6 +33,21 @@ function styles(container: HTMLElement, selector: string) {
   return getComputedStyle(element);
 }
 describe('component style composition at the rendered MUI boundary', () => {
+  it('reserves outline space only for fields with a visible label', () => {
+    const { container, getByRole } = render(
+      <ThemeProvider theme={createPrismTheme()}>
+        <Select displayEmpty defaultValue="" inputProps={{ 'aria-label': 'Stack filter' }}>
+          <MenuItem value="">All stacks</MenuItem>
+        </Select>
+        <TextField label="Project" defaultValue="example" />
+      </ThemeProvider>
+    );
+    fireEvent.focus(getByRole('combobox', { name: 'Stack filter' }));
+    const [unlabelled, labelled] = container.querySelectorAll('fieldset legend > span');
+    expect(getComputedStyle(unlabelled!).paddingInline).not.toBe('3px');
+    expect(labelled?.textContent).toBe('Project');
+    expect(getComputedStyle(labelled!).paddingInline).toBe('3px');
+  });
   it('keeps layout-owned spacing stable in both disclosure states', () => {
     const { container } = render(
       <ThemeProvider theme={createPrismTheme()}>

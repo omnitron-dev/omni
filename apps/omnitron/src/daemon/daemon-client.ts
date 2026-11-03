@@ -195,7 +195,7 @@ export class DaemonClient implements IDaemonService {
     return this.proxy!.getLogs(data);
   }
 
-  async scale(data: { name: string; instances: number }): Promise<ProcessInfoDto> {
+  async scale(data: { name: string; instances: number; process?: string }): Promise<ProcessInfoDto> {
     await this.ensureConnected();
     return this.proxy!.scale(data);
   }

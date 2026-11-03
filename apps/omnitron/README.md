@@ -273,3 +273,23 @@ the backend cannot replace its capture mechanism without an owner maintenance wi
 ## License
 
 MIT
+
+### Resizing a process pool
+
+`omnitron scale <app> <count> --process <name>` resizes one running, explicitly
+named topology pool. `apps.scale` exposes the same required `process` to agents.
+Classic applications and singleton processes cannot be replicated through this
+operation. Counts must be positive safe integers. Fixed pools allow 1 through
+`scaling.maxInstances` (default: their declared `instances`); automatic pools use
+their declared instance count as the minimum and `maxInstances` (default: four
+times that count) as the maximum. Automatic scaling continues after the request.
+
+This changes runtime membership until restart. It does not modify project
+configuration, release metadata, or the durable declared size. CLI, Console and
+RPC report observed `instances` beside `declaredInstances` for the selected
+process; the application's aggregate instance field is not the pool size. Change
+the project declaration and deploy it to persist a different size.
+
+The resident owner must advertise `processPoolResize@1`. Older owners refuse
+this operation before dispatch; backend updates remain possible. Installing an
+owner with this capability requires a separately planned application restart.

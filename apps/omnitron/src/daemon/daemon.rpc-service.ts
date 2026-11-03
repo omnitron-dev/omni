@@ -1,3 +1,4 @@
+import { parsePoolScaleRequest, assertPoolScaleTarget } from '../shared/pool-scale.js';
 /**
  * DaemonRpcService — Netron RPC service exposed by the daemon
  *
@@ -464,10 +465,22 @@ export class DaemonRpcService implements IDaemonService {
   // ============================================================================
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async scale(data: { name: string; instances: number }): Promise<ProcessInfoDto> {
+  async scale(data: { name: string; instances: number; process?: string }): Promise<ProcessInfoDto> {
     this.assertLifecycleMutable?.();
-    await this.orchestrator.scaleApp(data.name, data.instances);
-    return this.orchestrator.getApp(data.name)!;
+    const request = parsePoolScaleRequest(data);
+    assertPoolScaleTarget(this.orchestrator.getApp(request.name), request);
+    try {
+      await this.orchestrator.scaleApp(request.name, request.instances, request.process);
+      const observed = this.orchestrator.getApp(request.name)!;
+      await this.audit?.record({ action: 'app.pool.resize', resourceType: 'app', resourceId: observed.name,
+        details: { process: request.process, requested: request.instances,
+          observed: observed.processes?.find(item => item.name === request.process)?.instances, lifetime: 'until-restart' }, outcome: 'ok' });
+      return observed;
+    } catch (error) {
+      await this.audit?.record({ action: 'app.pool.resize', resourceType: 'app', resourceId: request.name,
+        details: { process: request.process, requested: request.instances, lifetime: 'until-restart' }, outcome: 'failed', error });
+      throw error;
+    }
   }
 
   // ============================================================================

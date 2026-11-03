@@ -5,6 +5,7 @@ import { afterEach, expect, it } from 'vitest';
 import { Netron, Public, Service } from '@omnitron-dev/titan/netron';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { ExecutionClient } from '../../src/daemon/execution-client.js';
+import { recoveryState } from '../../src/daemon/recovery-state.js';
 import { runtimeDiagnostics } from '../../src/monitoring/runtime-diagnostics.js';
 
 @Service({ name: 'OmnitronExecution' })
@@ -153,4 +154,12 @@ it('revalidates socket permissions on reconnect before making an RPC', async () 
   await fs.chmod(socket, 0o600);
   await internals.refresh();
   expect(client.state()?.connection.status).toBe('connected');
+});
+
+
+it('refuses pool resize on an older owner before mutation and recovery invalidation', async () => {
+  const { client, owner } = await fixture();
+  const before = recoveryState.token();
+  await expect(client.orchestrator.scaleApp('fixture', 2, 'workers')).rejects.toThrow('does not support declared process pool resizing');
+  expect(owner.mutations).toBe(0); expect(recoveryState.token()).toBe(before);
 });

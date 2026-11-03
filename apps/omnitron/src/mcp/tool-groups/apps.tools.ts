@@ -1,3 +1,4 @@
+import { parsePoolScaleRequest } from '../../shared/pool-scale.js';
 import type { IMcpToolDef } from '../types.js';
 import type { DaemonClient } from '../../daemon/daemon-client.js';
 
@@ -77,16 +78,17 @@ export function createAppsTools(daemonClient: DaemonClient): IMcpToolDef[] {
     },
     {
       name: 'apps.scale',
-      description: 'Scale an application to a specific number of instances.',
+      description: 'Resize one declared application process pool until restart. Does not change source configuration; automatic scaling remains active.',
       inputSchema: {
         type: 'object',
         properties: {
           name: { type: 'string', description: 'App name' },
-          count: { type: 'number', description: 'Target instance count' },
+          process: { type: 'string', description: 'Exact declared pool process name' },
+          count: { type: 'integer', minimum: 1, description: 'Target worker count within declared limits' },
         },
-        required: ['name', 'count'],
+        required: ['name', 'process', 'count'],
       },
-      handler: async (params: any) => daemonClient.scale({ name: params.name, instances: params.count }),
+      handler: async (params: any) => daemonClient.scale(parsePoolScaleRequest({ name: params.name, instances: params.count, process: params.process })),
     },
     {
       name: 'apps.inspect',

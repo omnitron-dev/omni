@@ -1,3 +1,5 @@
+import { Errors } from '@omnitron-dev/titan/errors';
+import { parsePoolScaleRequest, assertPoolScaleTarget } from '../shared/pool-scale.js';
 import { installedEntryRevision, installedExecutable, requireInstalledBinding } from './installed-execution.js';
 import { topologyRevision } from '../project/topology-plan.js';
 import { createHash } from 'node:crypto';
@@ -12,7 +14,7 @@ import type { ProcessOutputContext } from '@omnitron-dev/titan-pm';
  *   - Each app gets a ProcessSupervisor via pm.supervisor(config)
  *   - Supervisor manages all child lifecycle: spawn, health, metrics, crash recovery, restart
  *   - Single or multi-instance (pool) — configured via ISupervisorChildConfig
- *   - Scaling delegates to supervisor.scaleChild()
+ *   - Runtime resizing addresses one declared topology pool
  *
  * Classic mode:
  *   - child_process.fork() with manual exit handling (legacy compat)
@@ -1830,31 +1832,40 @@ export class OrchestratorService extends EventEmitter {
   // Scaling — delegates to PM supervisor
   // ============================================================================
 
-  async scaleApp(name: string, instances: number): Promise<AppHandle> {
-    const canonical = this.resolveAppName(name) ?? name;
-    const handle = this.handles.get(canonical);
-    if (!handle) throw new Error(`Unknown app: ${name}`);
-    name = canonical;
-    this.assertAppStartAllowed(name);
-    if (!this.config) throw new Error('Ecosystem config not loaded');
-    if (handle.mode !== 'bootstrap') {
-      this.logger.warn({ app: name }, 'Classic mode apps do not support scaling');
+  async scaleApp(name: string, instances: number, process?: string): Promise<AppHandle> {
+    const request = parsePoolScaleRequest({ name, instances, process });
+    const canonical = this.resolveAppName(request.name) ?? request.name;
+    assertPoolScaleTarget(this.getApp(canonical), request);
+    const handle = this.handles.get(canonical)!;
+    const generation = handle.generation;
+    this.assertAppStartAllowed(canonical);
+    return this.lifecycleQueue.enqueue(canonical, 'restart', async () => {
+      this.assertAppStartAllowed(canonical);
+      if (this.handles.get(canonical) !== handle || handle.generation !== generation) throw new Error('Application changed while queued; retry the operation');
+      assertPoolScaleTarget(this.getApp(canonical), request);
+      if (handle.status !== 'online') throw Errors.conflict('Process pools can only be resized while the application is online');
+      const declaration = handle.topologyProcesses!.find(item => item.name === request.process)!;
+      const pool = handle.topologyPools.get(request.process);
+      if (!pool) throw Errors.conflict('Declared process pool is not running');
+      const declared = declaration.instances!;
+      const automatic = declaration.scaling?.strategy === 'auto';
+      const minimum = automatic ? declared : 1;
+      const maximum = declaration.scaling?.maxInstances ?? (automatic ? declared * 4 : declared);
+      if (!Number.isSafeInteger(declared) || declared < 2 || !Number.isSafeInteger(maximum) || maximum < declared)
+        throw new Error('Process pool has invalid declared scaling limits');
+      if (request.instances < minimum || request.instances > maximum)
+        throw Errors.badRequest(`Process pool resize must stay within declared limits ${minimum}..${maximum}`);
+      if (pool.size === request.instances) return handle;
+      this.logger.info({ app: canonical, process: request.process, from: pool.size, to: request.instances,
+        automatic, lifetime: 'until-restart' }, 'Resizing a declared process pool');
+      handle.invalidateRelease();
+      // PM owns membership serialization and waits for every admitted spawn/exit.
+      // The source declaration and installed entry remain unchanged. Automatic
+      // pools retain their policy and can subsequently resize within its limits.
+      await pool.scale(request.instances);
+      if (pool.size !== request.instances) throw new Error('Process pool resize is unconfirmed; inspect its observed membership');
+      this.persistState(); // Observations only, never a durable desired-size override.
       return handle;
-    }
-    if (instances < 1) throw new Error('Instance count must be at least 1');
-    if (instances === handle.instanceCount) return handle;
-
-    if (!handle.supervisor) throw new Error(`No supervisor for app: ${name}`);
-
-    return this.lifecycleQueue.enqueue(name, 'restart', async () => {
-      this.assertAppStartAllowed(name);
-      if (this.handles.get(name) !== handle) throw new Error('Application changed while queued; retry the operation');
-    this.logger.info({ app: name, from: handle.instanceCount, to: instances }, 'Scaling app');
-    handle.invalidateRelease();
-    await handle.supervisor!.scaleChild(name, instances);
-    handle.instanceCount = instances;
-    this.persistState();
-    return handle;
     });
   }
 

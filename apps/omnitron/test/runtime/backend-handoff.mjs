@@ -22,6 +22,7 @@ const temporary = path.join(directory, 'tmp');
 await fs.mkdir(temporary, {mode: 0o700});
 process.env.TMPDIR = temporary;
 const master = process.argv.includes('--master');
+const lifecycleOnly = process.argv.includes('--lifecycle-only');
 const schemaCandidateArg = process.argv.indexOf('--schema-candidate');
 const schemaCandidate = schemaCandidateArg === -1 ? null : path.resolve(process.argv[schemaCandidateArg + 1]);
 if (schemaCandidate) assert.ok(master && schemaCandidate.includes('omnitron-handoff-'), 'Use an isolated master schema candidate');
@@ -75,7 +76,7 @@ Module({name:'Fixture${name}Module',providers:[Counter],exports:[Counter]})(Fixt
 export default FixtureModule;
 `);
 await fs.writeFile(topology, JSON.stringify({name:'topology',processes:[
- {name:'pool',module:'./Pool.mjs',instances:2,topology:{expose:true}},
+ {name:'pool',module:'./Pool.mjs',instances:2,scaling:{strategy:'fixed',maxInstances:3},topology:{expose:true}},
  {name:'single',module:'./Single.mjs',topology:{expose:true}}
 ]}).replace(/^/,'export default ')+';');
 
@@ -148,6 +149,64 @@ try {
   };
   await verifyAuthority();
   const { privateControlClient } = await import(url('daemon/private-control-client.js'));
+  // Same private owner and public lifecycle API in both modes. The shorter
+  // mode selects these tests only; full handoff qualification also runs them.
+  const observeTopology = async (expectedSize = 2) => {
+    const pool = await privateControlClient(path.join(directory, 'e/owner.sock'), 'FixturePool');
+    const single = await privateControlClient(path.join(directory, 'e/owner.sock'), 'FixtureSingle');
+    try {
+      const poolPids = new Set();
+      for (let attempt = 0; attempt < 64; attempt++) {
+        const worker = await pool.service.snapshot();
+        assert.equal(worker.parent, ownerPid); poolPids.add(worker.pid);
+      }
+      assert.equal(poolPids.size, expectedSize, 'Every observed pool instance must answer');
+      const worker = await single.service.snapshot();
+      assert.equal(worker.parent, ownerPid); assert.ok(!poolPids.has(worker.pid));
+      return { pool: [...poolPids].sort((a, b) => a - b), single: worker.pid };
+    } finally { await Promise.all([pool.close(), single.close()]); }
+  };
+  const counterBeforeLifecycle = (await client.getApp({ name: 'counter' })).pid;
+  const beforeLifecycle = await observeTopology();
+  await client.startApp({ name: 'topology' });
+  assert.deepEqual(await observeTopology(), beforeLifecycle, 'Repeated start must retain all worker identities');
+  for (const request of [
+    { name: 'counter', process: 'pool', instances: 2 },
+    { name: 'topology', instances: 2 },
+    { name: 'topology', process: 'single', instances: 2 },
+    { name: 'topology', process: 'missing', instances: 2 },
+    ...[0, 1.5, NaN, Number.MAX_SAFE_INTEGER + 1, 4].map(instances => ({ name: 'topology', process: 'pool', instances })),
+  ]) await assert.rejects(() => client.scale(request));
+  assert.deepEqual(await observeTopology(), beforeLifecycle, 'Refused resize must not change workers');
+  const scaled = await client.scale({ name: 'topology', process: 'pool', instances: 3 });
+  const selected = scaled.processes.find(item => item.name === 'pool');
+  assert.equal(selected.instances, 3); assert.equal(selected.declaredInstances, 2);
+  assert.equal(scaled.instances, 1, 'The app aggregate is not the selected pool size');
+  const grown = await observeTopology(3);
+  assert.equal(grown.single, beforeLifecycle.single, 'A pool resize must not replace its singleton sibling');
+  await client.scale({ name: 'topology', process: 'pool', instances: 1 });
+  const shrunk = await observeTopology(1);
+  assert.equal(shrunk.single, beforeLifecycle.single);
+  for (const pid of grown.pool.filter(pid => !shrunk.pool.includes(pid))) await waitDead(pid);
+  await client.stopApp({ name: 'topology' });
+  for (const pid of [...grown.pool, grown.single]) await waitDead(pid);
+  assert.equal((await client.getApp({ name: 'topology' })).status, 'stopped');
+  await client.startApp({ name: 'topology' });
+  const startedAgain = await observeTopology();
+  for (const pid of [...startedAgain.pool, startedAgain.single])
+    assert.ok(![...beforeLifecycle.pool, beforeLifecycle.single].includes(pid), 'Restarted workers must be new OS processes');
+  await client.restartApp({ name: 'topology' });
+  for (const pid of [...startedAgain.pool, startedAgain.single]) await waitDead(pid);
+  const restarted = await observeTopology();
+  for (const pid of [...restarted.pool, restarted.single])
+    assert.ok(![...startedAgain.pool, startedAgain.single].includes(pid));
+  assert.equal((await client.getApp({ name: 'counter' })).pid, counterBeforeLifecycle, 'Unrelated application must retain its process');
+  assert.ok(PidManager.isProcessAlive(counterBeforeLifecycle));
+  const lifecycleProof = { before: beforeLifecycle, afterStopStart: startedAgain, afterRestart: restarted, grown, shrunk, declarationRestoredAfterRestart: true, unrelatedPid: counterBeforeLifecycle };
+  if (lifecycleOnly) {
+    await client.disconnect();
+    console.log(JSON.stringify({ test: 'orchestrator-native-lifecycle', directory, ownerPid, lifecycle: lifecycleProof }));
+  } else {
   topologyConnection = await privateControlClient(path.join(directory,'e/owner.sock'),'FixturePool');
   const poolPids = new Set();
   for(let i=0;i<10;i++)poolPids.add((await topologyConnection.service.snapshot()).pid);
@@ -339,7 +398,8 @@ try {
   console.log(JSON.stringify({ test: 'backend-replacement-and-rollback', role:master?'master':'slave', verifiedRoles:[...sessions.keys()], directory, ownerPid,
     applicationPid: before.pid, poolPids:[...poolPids], backendPids: [...ownedBackends], epoch: recovered.execution.epoch,
     samples, failures, selectorReconciliationPreservedPid: true, actualBackendCrashRecovered: true, schemaTransition,
-    counterBefore: before.counter, counterAfter: after.counter, delivery }));
+    counterBefore: before.counter, counterAfter: after.counter, delivery, lifecycle: lifecycleProof }));
+  }
 } finally {
   if (sampler) clearInterval(sampler);
   await topologyConnection?.close();

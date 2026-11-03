@@ -146,11 +146,11 @@ describe('public orchestrator lifecycle with real classic children', () => {
     expect(service.getApp('missing')).toBeNull();
     await service.stopApp('worker'); expect((await service.getHealth('worker'))['worker']?.status).not.toBe('healthy');
   });
-  it('refuses unknown restart/scale and leaves classic scaling unchanged', async () => {
+  it('refuses unknown restart/scale and classic replication explicitly', async () => {
     await expect(service.restartApp('missing')).rejects.toThrow('Unknown app');
-    await expect(service.scaleApp('missing', 2)).rejects.toThrow('Unknown app');
+    await expect(service.scaleApp('missing', 2, 'worker')).rejects.toThrow(/App/);
     const handle = await start(await classic('worker')); const pid = handle.pid;
-    expect(await service.scaleApp('worker', 3)).toBe(handle); expect(handle.pid).toBe(pid);
+    await expect(service.scaleApp('worker', 3, 'worker')).rejects.toThrow('Classic'); expect(handle.pid).toBe(pid);
     expect((await events()).filter(row => row.event === 'start')).toHaveLength(1);
   });
 });
@@ -221,7 +221,7 @@ describe('bootstrap admission at the current PM boundary', () => {
   it('refuses invalid counts before invoking supervisor scaling', async () => {
     holdSupervisor(); const handle = await start(await bootstrap());
     const scale = vi.spyOn(handle.supervisor!, 'scaleChild');
-    await expect(service.scaleApp('fixture', 0)).rejects.toThrow('at least 1'); expect(scale).not.toHaveBeenCalled();
-    expect(await service.scaleApp('fixture', 1)).toBe(handle); expect(scale).not.toHaveBeenCalled();
+    await expect(service.scaleApp('fixture', 0, 'worker')).rejects.toThrow('positive safe integer'); expect(scale).not.toHaveBeenCalled();
+    await expect(service.scaleApp('fixture', 1, 'worker')).rejects.toThrow('singleton'); expect(scale).not.toHaveBeenCalled();
   });
 });

@@ -36,7 +36,7 @@ export interface OrchestratorControl extends Methods {
   restartAfterChange(name: string): Promise<AppExecutionView | undefined>;
   restartApp(name: string): Promise<AppExecutionView>;
   reloadApp(name: string): Promise<AppExecutionView>;
-  scaleApp(name: string, instances: number): Promise<AppExecutionView>;
+  scaleApp(name: string, instances: number, process?: string): Promise<AppExecutionView>;
   getHandle(name: string): AppExecutionView | undefined;
   getWorkerHandle(id: string): Pick<IWorkerHandle, 'pid' | 'serviceName' | 'serviceVersion'> | undefined;
   getChildProcessInfo(id: string): IProcessInfo | undefined;

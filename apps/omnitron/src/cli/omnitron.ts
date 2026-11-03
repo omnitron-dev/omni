@@ -584,10 +584,11 @@ program
 
 program
   .command('scale <app> <count>')
-  .description('Scale app instances')
-  .action(async (app, count) => {
+  .description('Resize one declared process pool until restart (automatic policy remains active)')
+  .requiredOption('--process <name>', 'Exact declared pool process name')
+  .structuredAction(async (app, count, options) => {
     const { scaleCommand } = await import('../commands/scale.js');
-    await scaleCommand(app, count);
+    await scaleCommand(app, count, options.process);
   });
 
 // ============================================================================

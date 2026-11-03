@@ -72,7 +72,7 @@ export interface IDaemonService {
   getLogs(data: { name?: string; lines?: number }): Promise<LogEntryDto[]>;
 
   // --- Scaling ---
-  scale(data: { name: string; instances: number }): Promise<ProcessInfoDto>;
+  scale(data: { name: string; instances: number; process?: string }): Promise<ProcessInfoDto>;
 
   // --- Lifecycle ---
   ping(): Promise<{ uptime: number; version: string; pid: number }>;

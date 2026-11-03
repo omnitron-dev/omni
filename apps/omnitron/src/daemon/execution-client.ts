@@ -1,3 +1,4 @@
+import { parsePoolScaleRequest } from '../shared/pool-scale.js';
 import type { LogCollectorService } from '../services/log-collector.service.js';
 import { logEntryOf } from '../monitoring/log-entry.js';
 import type { ProcessOutputContext } from '@omnitron-dev/titan-pm';
@@ -304,6 +305,9 @@ export class ExecutionClient {
 
   private async submit(method: ExecutionMutation, args: unknown[]): Promise<unknown> {
     if (method === 'openInstalledStack' || method === 'resumeInstalledApp') this.requireInstalledStart();
+    if (method === 'scaleApp' && this.view().capabilities?.['processPoolResize'] !== 1)
+      throw new Error('Execution owner does not support declared process pool resizing; prepare an owner upgrade with an application restart plan. Backend updates remain available.');
+    if (method === 'scaleApp') parsePoolScaleRequest({ name: args[0], instances: args[1], process: args[2] });
     // Sampling drains are not lifecycle changes and run every tick. All
     // other control mutations invalidate recovery before reaching the owner.
     return method === 'drainChildSamples' ? this.submitMutation(method, args)

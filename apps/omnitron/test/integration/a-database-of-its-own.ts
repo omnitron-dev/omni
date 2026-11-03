@@ -10,7 +10,7 @@
  * see `requires-test-postgres.ts` for how a missing server is reported.
  */
 
-import { Kysely, PostgresDialect, sql } from 'kysely';
+import { Kysely, PostgresDialect, sql, type LogEvent } from 'kysely';
 import pg from 'pg';
 
 import { migrateOmnitronDb } from '../../src/database/migration-runner.js';
@@ -51,11 +51,11 @@ export async function databaseOfItsOwn(
   own.pathname = `/${name}`;
   const db = new Kysely<OmnitronDatabase>({
     dialect: new PostgresDialect({ pool: quietPool(own.toString(), 4) }),
-    log: onStatement
-      ? (event) => {
-          if (event.level === 'query') onStatement(event.query.sql);
-        }
-      : undefined,
+    ...(onStatement ? {
+      log: (event: LogEvent) => {
+        if (event.level === 'query') onStatement(event.query.sql);
+      },
+    } : {}),
   });
   await migrateOmnitronDb(db as unknown as Kysely<unknown>);
 

@@ -247,7 +247,8 @@ export class BuildService {
   async buildApp(
     _appName: string,
     bootstrapAbsPath: string,
-    definition: IAppDefinition
+    definition: IAppDefinition,
+    sourceMaps = this.isDev,
   ): Promise<BuildResult> {
     const startedAt = Date.now();
     let ok = false;
@@ -263,14 +264,14 @@ export class BuildService {
 
         // Build bootstrap file (for daemon to import topology config)
         const bootstrapOutPath = path.join(outDir, 'bootstrap.js');
-        await this.buildEntry(esbuild, bootstrapAbsPath, bootstrapOutPath);
+        await this.buildEntry(esbuild, bootstrapAbsPath, bootstrapOutPath, sourceMaps);
 
         // Build each process module entry point
         const buildPromises = definition.processes.map(async (proc) => {
           const moduleSourcePath = this.resolveModuleSource(bootstrapAbsPath, proc.module);
           const outPath = path.join(outDir, `${proc.name}.js`);
 
-          await this.buildEntry(esbuild, moduleSourcePath, outPath);
+          await this.buildEntry(esbuild, moduleSourcePath, outPath, sourceMaps);
           modulePaths.set(proc.name, outPath);
         });
 
@@ -279,7 +280,7 @@ export class BuildService {
         return {
           bootstrapPath: bootstrapOutPath,
           modulePaths,
-          sourceSignature: this.sourceSignature(bootstrapAbsPath, definition),
+          sourceSignature: this.sourceSignature(bootstrapAbsPath, definition, sourceMaps),
         };
       });
       ok = true;
@@ -299,7 +300,8 @@ export class BuildService {
     appName: string,
     bootstrapAbsPath: string,
     definition: IAppDefinition,
-    onChange: () => void
+    onChange: () => void,
+    sourceMaps = this.isDev,
   ): Promise<void> {
     // Publish ownership before the first await: unwatch must also cancel a
     // context that is still being created, not just one already watching.
@@ -333,7 +335,7 @@ export class BuildService {
         ];
         for (const [source, output] of entries) {
           if (session.closed) break;
-          session.handles.push(await this.createWatchContext(esbuild, source!, output!, debouncedOnChange));
+          session.handles.push(await this.createWatchContext(esbuild, source!, output!, debouncedOnChange, sourceMaps));
         }
       });
     })();
@@ -371,7 +373,7 @@ export class BuildService {
   // Private
   // ===========================================================================
 
-  private async buildEntry(esbuild: any, entryPath: string, outPath: string): Promise<void> {
+  private async buildEntry(esbuild: any, entryPath: string, outPath: string, sourceMaps: boolean): Promise<void> {
     const result = await esbuild.build({
       entryPoints: [entryPath],
       outfile: outPath,
@@ -379,7 +381,7 @@ export class BuildService {
       format: 'esm',
       platform: 'node',
       target: 'node22',
-      sourcemap: this.isDev,
+      sourcemap: sourceMaps,
       plugins: [externalizeNonRelativePlugin()],
       tsconfigRaw: JSON.stringify({
         compilerOptions: {
@@ -405,6 +407,7 @@ export class BuildService {
     entryPath: string,
     outPath: string,
     onRebuild: () => void,
+    sourceMaps: boolean,
   ): Promise<WatchHandle> {
     // Self-healing wrapper: when esbuild reports build errors that
     // reference lines past the current source's EOF, the watch
@@ -428,7 +431,9 @@ export class BuildService {
     // and concurrent workspace-package rebuilds that emit the same bytes), we
     // skip onRebuild() entirely. Eliminates the dominant source of phantom
     // restart storms.
-    let lastBundleHash: string | null = null;
+    // Re-enabling watch must reconcile changes made while watching was off.
+    // Keep the previous executable fingerprint before the initial rebuild.
+    let lastBundleHash = hashFileSafe(outPath);
 
     const buildOptions = (): unknown => ({
       entryPoints: [entryPath],
@@ -437,7 +442,7 @@ export class BuildService {
       format: 'esm',
       platform: 'node',
       target: 'node22',
-      sourcemap: this.isDev,
+      sourcemap: sourceMaps,
       plugins: [
         externalizeNonRelativePlugin(),
         {
@@ -466,13 +471,13 @@ export class BuildService {
                 }
               }
               if (isInitialBuild) {
-                // Seed the hash from the initial build so the first
-                // legitimate change actually triggers a restart.
-                if (result.errors.length === 0) {
-                  lastBundleHash = hashFileSafe(outPath);
-                }
                 isInitialBuild = false;
-                return;
+                // A new context without a prior executable only establishes
+                // its baseline. An existing executable must be reconciled.
+                if (lastBundleHash === null) {
+                  if (result.errors.length === 0) lastBundleHash = hashFileSafe(outPath);
+                  return;
+                }
               }
               if (result.errors.length > 0) return;
               // Content-equality gate. If esbuild fired onEnd but the output
@@ -602,8 +607,8 @@ export class BuildService {
   }
 
   /** A watch recompiles existing entry points; it cannot add/remove or retarget them. */
-  canReuseBuild(result: BuildResult, bootstrapPath: string, definition: IAppDefinition): boolean {
-    return result.sourceSignature === this.sourceSignature(bootstrapPath, definition)
+  canReuseBuild(result: BuildResult, bootstrapPath: string, definition: IAppDefinition, sourceMaps = this.isDev): boolean {
+    return result.sourceSignature === this.sourceSignature(bootstrapPath, definition, sourceMaps)
       && result.modulePaths.size === definition.processes.length
       && fs.existsSync(result.bootstrapPath)
       && definition.processes.every((process) => {
@@ -612,8 +617,9 @@ export class BuildService {
       });
   }
 
-  private sourceSignature(bootstrapPath: string, definition: IAppDefinition): string {
+  private sourceSignature(bootstrapPath: string, definition: IAppDefinition, sourceMaps: boolean): string {
     return JSON.stringify({
+      sourceMaps,
       bootstrap: path.resolve(bootstrapPath),
       root: this.resolveAppDir(bootstrapPath),
       processes: definition.processes.map(({ name, module }) => [name, path.resolve(path.dirname(bootstrapPath), module)]),

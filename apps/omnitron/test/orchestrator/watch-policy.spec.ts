@@ -156,11 +156,43 @@ describe('shared source edits, real esbuild and real child processes', () => {
     expect(workers.get('live')!.child.pid).toBe(livePid);
     expect(fs.readFileSync(liveBundle, 'utf8')).toBe(liveBytes);
     await service.setWatchMode(true, ['live']);
-    await pause(400);
+    // A change made while watch was disabled must reach the running process
+    // on enable, without requiring another source edit to reveal it.
+    await vi.waitFor(() => expect(workers.get('live')!.value).toBe(4), { timeout: 10000 });
     fs.writeFileSync(path.join(root, 'source.ts'), 'export const value = 5;');
     await vi.waitFor(() => expect(workers.get('live')!.value).toBe(5), { timeout: 10000 });
     expect(workers.get('switchable')!.child.pid).toBe(switchedPid);
   }, 30000);
+
+  it('arms watches after a production source build and keeps sealed entries out of automatic restarts', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-watch-enable-'));
+    cleanups.push(async () => fs.rmSync(root, { recursive: true, force: true }));
+    fs.writeFileSync(path.join(root, 'package.json'), '{"type":"module"}');
+    const bootstrap = path.join(root, 'bootstrap.ts');
+    fs.writeFileSync(bootstrap, 'export default {name:"source",processes:[]};');
+    const { service, internals, add } = harness();
+    service.devMode = false;
+    const entry = { name: 'source', bootstrap };
+    const handle = add(entry);
+    const definition = { name: 'source', processes: [] };
+    await internals.prepareBootstrapBuild(entry, bootstrap, definition);
+    const buildService = internals.buildService;
+    expect(service.getBuildWatchedApps()).toEqual([]);
+    const restart = vi.fn(async () => handle);
+    internals.restartAppNow = restart;
+    fs.writeFileSync(bootstrap, 'export default {name:"changed",processes:[]};');
+    await service.setWatchMode(true);
+    await vi.waitFor(() => expect(restart).toHaveBeenCalledTimes(1), { timeout: 10000 });
+    expect(internals.buildService).toBe(buildService);
+    expect(service.getBuildWatchedApps().map(app => app.name)).toEqual(['source']);
+    expect(fs.existsSync(path.join(root, '.omnitron-build/bootstrap.js.map'))).toBe(true);
+    const sealed = add({ name: 'sealed', script: 'main.js', releaseRoot: '/installed/release' });
+    await service.restartAfterChange(sealed.name);
+    expect(restart).toHaveBeenCalledTimes(1);
+    await service.setWatchMode(false);
+    expect(service.devMode).toBe(false);
+    expect(service.getBuildWatchedApps()).toEqual([]);
+  }, 15000);
 
   it('cancels an already scheduled debounce and an unfinished watch registration', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-watch-cancel-'));

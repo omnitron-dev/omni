@@ -7,16 +7,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
 
 describe('precompiled release launch', () => {
-  it('discards a prior source build and its watcher before selecting the installed executable', async () => {
+  it.each([false, true])('discards source builds before selecting a sealed executable with global dev=%s', async (devMode) => {
     const name = 'sample/test/api';
     const unwatchApp = vi.fn().mockResolvedValue(undefined);
     const service = Object.assign(Object.create(OrchestratorService.prototype), {
-      devMode: false,
+      devMode,
+      restartCoalescer: new Map(),
       buildService: { unwatchApp },
       buildResults: new Map([[name, { bootstrapPath: '/old/generated/bootstrap.js' }]]),
       bootstrapSources: new Map([[name, { path: '/old/source/bootstrap.ts' }]]),
     });
-    await service.prepareBootstrapBuild({ name, bootstrap: '/installed/dist/bootstrap.js' }, '/installed/dist/bootstrap.js', {
+    await service.prepareBootstrapBuild({ name, bootstrap: '/installed/dist/bootstrap.js', releaseRoot: '/installed' }, '/installed/dist/bootstrap.js', {
       processes: [{ name: 'server', module: './server.js' }],
     });
     expect(unwatchApp).toHaveBeenCalledWith(name);

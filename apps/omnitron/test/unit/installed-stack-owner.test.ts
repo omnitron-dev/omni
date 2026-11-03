@@ -80,6 +80,7 @@ async function fixture(bootstrapWorker = false) {
 describe('installed stack process owner', () => {
   it('forks only the sealed retained entries, closes the fence after every IPC ready signal and refuses replay', async () => {
     const { owner, handles, state } = await fixture();
+    await owner.setWatchMode(true);
     const plan = await owner.inspectInstalledStack(scope);
     const first = plan.apps[0]!, second = plan.apps[1]!;
     expect(first.installed.releaseId).toBe('r1');

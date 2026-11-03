@@ -294,12 +294,13 @@ export class OrchestratorService extends EventEmitter {
   private readonly bootstrapSources = new Map<string, { path: string; definition: IAppDefinition }>();
 
   private allowsWatch(entry: IEcosystemAppEntry): boolean {
-    return this.devMode && !this.watchDisabled && entry.watch !== false &&
+    return this.devMode && !this.watchDisabled && !entry.releaseRoot && entry.watch !== false &&
       (!this.watchSelection || this.watchSelection.has(entry.name));
   }
 
   /** One policy for both fs.watch and esbuild; disabling does not stop apps. */
   async setWatchMode(enabled: boolean, apps?: string[]): Promise<void> {
+    this.devMode = enabled;
     this.watchDisabled = !enabled;
     this.watchSelection = apps ? new Set(apps.map((name) => this.resolveAppName(name) ?? name)) : null;
     for (const [name, state] of this.restartCoalescer) {
@@ -329,7 +330,7 @@ export class OrchestratorService extends EventEmitter {
       void this.restartAfterChange(name).catch((error) => {
         this.logger.error({ app: name, error: (error as Error).message }, 'Restart after source change failed');
       });
-    });
+    }, this.devMode);
   }
 
   /** Automatic triggers remain revocable while queued; manual restart is independent. */
@@ -962,6 +963,10 @@ export class OrchestratorService extends EventEmitter {
       await this.tearDownApp(existing);
     }
 
+    // A sealed entry never inherits a former source build, including a
+    // bootstrap-to-classic transition. Retained resumes still reject pollution.
+    if (entry.releaseRoot && !installed) await this.discardSourceBuild(entry.name);
+
     const mode = entry.bootstrap ? 'bootstrap' : 'classic';
     const handle = new AppHandle(entry, mode);
     // The restart budget belongs to the APP, not to this handle instance.
@@ -1118,7 +1123,7 @@ export class OrchestratorService extends EventEmitter {
       throw new Error(`Application '${name}' is not the retained stopped generation`);
     }
     const bare = effectiveAppName(name);
-    if (this.handles.has(bare) || this.startingApps.has(bare) || this.lifecycleQueue.isBusy(bare) || this.devMode ||
+    if (this.handles.has(bare) || this.startingApps.has(bare) || this.lifecycleQueue.isBusy(bare) ||
         this.buildResults.has(name) || !handle.entry.releaseRoot || !path.isAbsolute(handle.entry.cwd ?? '') ||
         (handle.entry.bootstrap && !handle.entry.env?.['OMNITRON_STACK'])) {
       throw new Error(`Application '${name}' requires an unambiguous precompiled installed release with retained launch configuration`);
@@ -2216,7 +2221,7 @@ export class OrchestratorService extends EventEmitter {
     let topology: IProcessEntry[] | undefined;
     let definition: IAppDefinition | undefined;
     try {
-      const captured = await readBootstrapMetadata(bootstrapAbsPath, this.devMode, 60_000);
+      const captured = await readBootstrapMetadata(bootstrapAbsPath, this.devMode && !entry.releaseRoot, 60_000);
       definition = captured.definition;
       handle.bootstrapMetadata = captured.metadata;
       topology = definition.processes;
@@ -2305,7 +2310,7 @@ export class OrchestratorService extends EventEmitter {
 
     // Build all entry points via esbuild (dev mode bundles from source .ts)
     //
-    if (installed && (this.devMode || this.buildResults.has(entry.name))) {
+    if (installed && this.buildResults.has(entry.name)) {
       throw new Error('Installed stack start cannot use a development build');
     }
     if (definition && !installed) await this.prepareBootstrapBuild(entry, bootstrapAbsPath, definition);
@@ -2328,15 +2333,21 @@ export class OrchestratorService extends EventEmitter {
     return launch;
   }
 
+  private async discardSourceBuild(name: string): Promise<void> {
+    const state = this.restartCoalescer.get(name);
+    if (state) state.watchSerial = 0;
+    await this.buildService?.unwatchApp(name);
+    this.buildResults.delete(name);
+    this.bootstrapSources.delete(name);
+  }
+
   private async prepareBootstrapBuild(entry: IEcosystemAppEntry, bootstrapAbsPath: string, definition: IAppDefinition): Promise<void> {
     const sourceTopology = /\.(?:[cm]?ts|tsx)$/.test(bootstrapAbsPath) ||
       definition.processes.some((process) => /\.(?:[cm]?ts|tsx)$/.test(process.module));
-    if (!this.devMode && !sourceTopology) {
+    if (entry.releaseRoot || (!this.devMode && !sourceTopology)) {
       // A prior source launch under this name must not redirect a prebuilt
       // release to a stale generated executable or leave its watcher active.
-      await this.buildService?.unwatchApp(entry.name);
-      this.buildResults.delete(entry.name);
-      this.bootstrapSources.delete(entry.name);
+      await this.discardSourceBuild(entry.name);
       return;
     }
     try {
@@ -2348,13 +2359,13 @@ export class OrchestratorService extends EventEmitter {
       const existing = this.buildResults.get(entry.name);
       const current = this.handles.get(entry.name)?.entry ?? entry;
       const reusable = existing && this.allowsWatch(current) && this.buildService.isWatching(entry.name) &&
-        this.buildService.canReuseBuild(existing, bootstrapAbsPath, definition);
+        this.buildService.canReuseBuild(existing, bootstrapAbsPath, definition, this.devMode);
       if (!reusable) {
         // A manual restart with watch:false deliberately compiles the current
         // sources. It must not reuse an artifact that stopped being maintained.
         await this.buildService.unwatchApp(entry.name);
         this.buildResults.delete(entry.name);
-        this.buildResults.set(entry.name, await this.buildService.buildApp(entry.name, bootstrapAbsPath, definition));
+        this.buildResults.set(entry.name, await this.buildService.buildApp(entry.name, bootstrapAbsPath, definition, this.devMode));
         this.logger.info({ app: entry.name }, 'Built entry points via esbuild');
       }
       this.bootstrapSources.set(entry.name, { path: bootstrapAbsPath, definition });

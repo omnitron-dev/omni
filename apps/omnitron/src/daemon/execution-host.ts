@@ -262,7 +262,6 @@ export class ExecutionHostService {
     const result = await fn.apply(this.orchestrator, args);
     if (method === 'setWatchMode') {
       const [enabled, apps] = args as [boolean, string[] | undefined];
-      this.orchestrator.devMode = enabled;
       this.hooks.watch?.(enabled, apps);
     }
     if (method === 'setConfig') this.hooks.watchConfig?.(args[0] as Parameters<OrchestratorService['setConfig']>[0]);

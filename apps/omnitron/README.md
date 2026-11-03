@@ -256,6 +256,29 @@ can be verified through its managed OS service. An unsupported or unverified
 owner refuses preparation with an actionable error. Working-tree development
 continues to use the explicit unavailable context.
 
+Local and remote checked installations preserve the complete application package,
+including its own Omnitron bootstrap adapter and Titan dependency identity. The
+execution owner's SDK may be a different release: its responsibilities are the
+verified Node image, lifecycle supervision and control authorization. Neither path
+replaces application packages with owner dependencies, installs missing packages,
+or ignores metadata and license files when comparing the admitted payload.
+
+Remote admission authenticates the existing resident execution protocol (version
+1), native owner process and controller epoch. It rechecks this binding around
+transfer and activation. A coupled daemon or unknown protocol is refused before
+transfer and requires an explicit owner transition. This does not grant missing
+installed-start capabilities, bypass roles or recipient-fenced cluster admission,
+or make a multi-node rollout atomic. An owner/controller change interrupts the
+attempt instead of being silently adopted.
+
+Both paths use the same bounded archive extraction and closure verification. The
+manifest-selected `bootstrap` or `script` entry, closure digest, full payload,
+Node executable/ABI/platform, resource options and aligned app-owned adapter are
+checked before a receipt is published. Receipt v2 binds the **application SDK** to
+the admitted producer and separately binds the **execution owner** by its physical
+package and runtime target. Older receipts remain readable for diagnosis; they do
+not authorize graph rewriting or adoption of unverified installations.
+
 ## Host-owned public ingress
 
 See [host ingress setup, application publication and recovery](HOST-INGRESS.md) for independent multi-application HTTPS hosting through the native CLI and RPC API.
@@ -372,6 +395,23 @@ original identity and content. `omnitron logs --status` and Console Logs share t
 same persistence verdict, including pending delivery, commit evidence and errors.
 An older resident owner is explicitly reported as `legacy-owner`; updating only
 the backend cannot replace its capture mechanism without an owner maintenance window.
+
+## Source development and installed releases
+
+One owner can supervise development applications and installed releases together.
+Watch applies only to source entries allowed by the application and global watch
+policy. An installed entry (`releaseRoot`) never enters the source build pipeline
+or either watcher, even when development mode is enabled. Launch receipts and
+artifact integrity still determine whether an installed executable is trusted;
+setting `releaseRoot` does not grant that trust.
+
+Enabling watch reconciles edits made while watch was disabled. Disabling watch
+awaits disposal and cancels queued automatic restarts. `watch: false` leaves a
+source application available for an explicit restart, which rebuilds its current
+TypeScript sources. Stopping and resuming an installed stack reuses its verified
+release and retained launch configuration, independently of other applications'
+watch policy. CLI and Console report both file and source build watchers through
+the same owner state.
 
 ## License
 

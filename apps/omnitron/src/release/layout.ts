@@ -1,7 +1,7 @@
 /**
  * Resolve framework inputs from the project commit's pnpm lock. External
  * workspace links have to land on an isolated checkout at the same relative
- * path. Archive inputs pin the SHA-512 of either a public npm tarball or
+ * path. Archive inputs pin the SHA-512 of either a configured registry tarball or
  * a regular file committed in the project.
  */
 import fs from 'node:fs';
@@ -25,7 +25,7 @@ type LockDocument = {
   patchedDependencies?: Record<string, unknown>;
 };
 const sections = ['dependencies', 'devDependencies', 'optionalDependencies'] as const;
-export type RegistryPackage = { name: string; version: string; integrity: string };
+export type RegistryPackage = { name: string; version: string; integrity: string; tarball?: string };
 export type VendoredPackage = RegistryPackage & { file: string };
 const VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*)?(?:\+[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*)?$/;
 const INTEGRITY = /^sha512-[A-Za-z0-9+/]{85}[AQgw]==$/;
@@ -82,20 +82,25 @@ function readGraph(lockfile: string) {
         }
         vendored.push({ name, version: pkg.version, file, integrity });
       } else {
-        if (!VERSION.test(locator) || (resolution.tarball && resolution.tarball !== npmTarball(name, locator))) {
-          throw Error('Framework dependency must resolve to an exact public npm archive with SHA-512: ' + key);
+        if (!VERSION.test(locator)) {
+          throw Error('Framework dependency must resolve to an exact registry archive with SHA-512: ' + name);
         }
-        packages.push({ name, version: locator, integrity });
+        if (resolution.tarball !== undefined) {
+          let url: URL;
+          try { url = new URL(resolution.tarball); } catch { throw Error('Invalid locked framework archive URL: ' + name); }
+          // Credentials belong to pnpm's operator auth configuration, never to
+          // a committed lockfile or the public release source receipt.
+          if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash ||
+              resolution.tarball.length > 8192)
+            throw Error('Locked framework archive URL must be credential-free HTTP(S): ' + name);
+        }
+        packages.push({ name, version: locator, integrity, ...(resolution.tarball === undefined ? {} : { tarball: resolution.tarball }) });
       }
     }
     if (Object.keys(graph.patchedDependencies ?? {}).some(key => key.startsWith('@omnitron-dev/')))
       throw Error('Local patches of framework packages cannot be attested');
   }
   return { links, packages, vendored, frameworkInputs, snapshots, importers: [...new Set(importers)] };
-}
-
-export function npmTarball(name: string, version: string): string {
-  return 'https://registry.npmjs.org/' + name + '/-/' + name.split('/')[1] + '-' + version + '.tgz';
 }
 
 /**

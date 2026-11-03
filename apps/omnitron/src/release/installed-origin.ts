@@ -75,7 +75,8 @@ export function validOrigin(value: unknown): value is ReleaseArtifactOrigin {
     identifier(value['app']) &&
     Number.isSafeInteger(value['artifactBytes']) &&
     (value['artifactBytes'] as number) > 0 &&
-    (value['runtimeOrigin'] === undefined || validRuntimeOrigin(value['runtimeOrigin']))
+    (value['runtimeOrigin'] === undefined || (validRuntimeOrigin(value['runtimeOrigin']) &&
+      value['runtimeOrigin'].consumer.app === value['app']))
   );
 }
 

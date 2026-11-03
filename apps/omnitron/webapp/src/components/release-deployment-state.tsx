@@ -61,6 +61,7 @@ export function ReleaseDeploymentState({ project, stack }: { project: string; st
           <Stack spacing={0.75} sx={{ pt: 0.75 }}>
             {row.releaseEvidence.observations.map((observation, index) => <Box key={`${observation.node}:${observation.app}:${index}`}>
               <Typography variant="caption" component="div">{observation.node ? `${observation.node} / ` : ''}{observation.app} · {observation.state}{observation.releaseId ? ` · ${observation.releaseId}` : ''}</Typography>
+              {observation.consumer && observation.consumer.releaseId !== observation.releaseId && <Typography variant="caption" color="text.secondary" component="div" sx={{ overflowWrap: 'anywhere' }}>Producer {observation.releaseId} · selected consumer {observation.consumer.releaseId}</Typography>}
               {observation.reason && <Typography variant="caption" color="warning.main" component="div">{observation.reason}</Typography>}
               {observation.observedAt && <Typography variant="caption" color="text.secondary" component="div">Launch verified {when(observation.observedAt)}</Typography>}
             </Box>)}

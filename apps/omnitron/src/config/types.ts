@@ -974,6 +974,8 @@ export type RuntimeReleaseEvidence = {
   releaseId: string;
   manifestSha256: string;
   artifactSha256: string;
+  /** Selected consumer release, verified in the same receipt; producer fields above remain unchanged. */
+  consumer?: { releaseId: string; manifestSha256: string; app: string };
   /** Installed application and dependency content. Older owner observations do not provide this digest. */
   treeSha256?: string;
   observedAt: string;

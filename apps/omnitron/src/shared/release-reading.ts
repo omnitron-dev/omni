@@ -207,6 +207,8 @@ export interface StackReleaseEvidence {
     pid: number | null;
     state: 'confirmed' | 'unreported' | 'modified' | 'unavailable';
     releaseId?: string;
+    /** Original producer remains releaseId; this is the separately verified installed selection. */
+    consumer?: { releaseId: string; manifestSha256: string; app: string };
     reason?: string;
     observedAt?: string;
     launchId?: string;
@@ -217,6 +219,7 @@ export interface StackReleaseEvidence {
 export function readStackRelease(stack: IStackInfo): Pick<ReleaseStackObservation, 'runningRelease' | 'releaseEvidence'> {
   const observations: StackReleaseEvidence['observations'] = [];
   const releases = new Map<string, StackReleaseEvidence['releases'][number]>();
+  const producerManifests = new Map<string, Set<string>>();
   const inspect = (app: { name: string; status: string; pid?: number | null; release?: RuntimeReleaseEvidence }, node: string | null, available = true) => {
     if (available && app.status === 'stopped') return;
     const base = { app: app.name, node, pid: app.pid ?? null };
@@ -225,18 +228,28 @@ export function readStackRelease(stack: IStackInfo): Pick<ReleaseStackObservatio
       return;
     }
     const evidence = app.release;
+    const consumer = evidence?.state === 'confirmed' ? evidence.consumer : undefined;
+    const validConsumer = consumer === undefined || (consumer && typeof consumer === 'object' && !Array.isArray(consumer) &&
+      Object.keys(consumer).sort().join(',') === 'app,manifestSha256,releaseId' &&
+      typeof consumer.releaseId === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/.test(consumer.releaseId) && !consumer.releaseId.includes('..') &&
+      /^[a-f0-9]{64}$/.test(consumer.manifestSha256) && consumer.app === app.name.split('/').at(-1));
     if (evidence?.state === 'confirmed' && app.status === 'online' && Number.isSafeInteger(app.pid) && app.pid! > 0 &&
       evidence.basis === 'verified-launch' && typeof evidence.releaseId === 'string' && evidence.releaseId.length > 0 &&
       /^[a-f0-9]{64}$/.test(evidence.manifestSha256) && /^[a-f0-9]{64}$/.test(evidence.artifactSha256) &&
-      typeof evidence.launchId === 'string' && evidence.launchId.length > 0 && Number.isFinite(Date.parse(evidence.observedAt))) {
-      observations.push({ ...base, state: 'confirmed', releaseId: evidence.releaseId, observedAt: evidence.observedAt, launchId: evidence.launchId });
-      releases.set(`${evidence.releaseId}:${evidence.manifestSha256}`, { releaseId: evidence.releaseId, manifestSha256: evidence.manifestSha256 });
+      typeof evidence.launchId === 'string' && evidence.launchId.length > 0 && Number.isFinite(Date.parse(evidence.observedAt)) && validConsumer) {
+      observations.push({ ...base, state: 'confirmed', releaseId: evidence.releaseId, observedAt: evidence.observedAt, launchId: evidence.launchId,
+        ...(consumer && { consumer: { ...consumer } }) });
+      const selected = consumer ?? evidence;
+      releases.set(`${selected.releaseId}:${selected.manifestSha256}`, { releaseId: selected.releaseId, manifestSha256: selected.manifestSha256 });
+      const producer = producerManifests.get(evidence.releaseId) ?? new Set<string>();
+      producer.add(evidence.manifestSha256); producerManifests.set(evidence.releaseId, producer);
     } else if (evidence?.state === 'modified') {
       observations.push({ ...base, state: 'modified', ...(evidence.releaseId && { releaseId: evidence.releaseId }), reason: evidence.reason });
     } else {
       observations.push({ ...base, state: 'unreported', reason: app.status !== 'online'
         ? `Application is ${app.status}; no active launch is confirmed`
         : evidence?.state === 'confirmed' && (!Number.isSafeInteger(app.pid) || app.pid! <= 0) ? 'Application is online but its process identity is unavailable; the launch receipt cannot be bound to this instance'
+        : !validConsumer ? 'Runtime launch consumer does not match this application or has invalid identity'
         : evidence?.state === 'unreported' ? evidence.reason : evidence ? 'Runtime launch evidence is incomplete or invalid' : 'Runtime does not report a verified launch receipt' });
     }
   };
@@ -253,7 +266,8 @@ export function readStackRelease(stack: IStackInfo): Pick<ReleaseStackObservatio
   }
   const releaseEvidence: StackReleaseEvidence = { verified: observations.filter(row => row.state === 'confirmed').length,
     total: observations.length, releases: [...releases.values()], observations };
-  const conflictingManifests = new Set(releaseEvidence.releases.map(row => row.releaseId)).size !== releases.size;
+  const conflictingManifests = new Set(releaseEvidence.releases.map(row => row.releaseId)).size !== releases.size ||
+    [...producerManifests.values()].some(manifests => manifests.size > 1);
   const runningRelease = observations.length === 0 && stack.status === 'stopped' ? 'not-running'
     : conflictingManifests || observations.some(row => row.state === 'modified') ? 'modified'
       : observations.length === 0 || observations.some(row => row.state !== 'confirmed') ? 'unreported'

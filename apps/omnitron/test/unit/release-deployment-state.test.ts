@@ -66,6 +66,39 @@ const placement = (nodeKey: string, evidence: unknown = receipt()) => ({
   apps: [{ name: 'main', expected: true, process: { name: 'sample/deployed/main', status: 'online', pid: 123, release: evidence } }],
 });
 
+it('groups separately produced applications by their verified consumer selection without hiding producer identity', () => {
+  const current = stack('dev', 'running');
+  const consumer = { releaseId: 'consumer', manifestSha256: 'c'.repeat(64), app: 'main' };
+  current.apps = [
+    { name: 'sample/dev/main', pid: 123, status: 'online', release: { ...receipt('producer-a'), consumer } },
+    { name: 'sample/dev/worker', pid: 124, status: 'online', release: { ...receipt('producer-b'), consumer: { ...consumer, app: 'worker' } } },
+  ];
+  expect(readStackRelease(current)).toMatchObject({ runningRelease: 'confirmed', releaseEvidence: {
+    releases: [{ releaseId: 'consumer', manifestSha256: 'c'.repeat(64) }], verified: 2,
+    observations: [{ releaseId: 'producer-a', consumer }, { releaseId: 'producer-b' }],
+  } });
+  current.apps[1]!.release = { ...receipt('producer-a'), manifestSha256: 'd'.repeat(64), consumer: { ...consumer, app: 'worker' } };
+  expect(readStackRelease(current).runningRelease).toBe('modified');
+});
+
+it('never uses a malformed consumer claim or deployment history to manufacture launch confirmation', () => {
+  const current = stack('dev', 'running');
+  for (const consumer of [null, { releaseId: 'consumer', manifestSha256: 'c'.repeat(64), app: 'another' },
+    { releaseId: 'consumer', manifestSha256: 'invalid', app: 'main' }]) {
+    current.apps = [{ name: 'main', pid: 123, status: 'online', release: { ...receipt('producer'), consumer } }] as IStackInfo['apps'];
+    expect(readStackRelease(current)).toMatchObject({ runningRelease: 'unreported', releaseEvidence: { verified: 0, releases: [] } });
+  }
+  current.apps = [{ name: 'main', pid: 123, status: 'online', release: { state: 'unreported', reason: 'legacy owner' } }];
+  expect(readStackRelease(current).runningRelease).toBe('unreported');
+});
+
+it('retains different selected consumers as mixed even when their producer archive is identical', () => {
+  const current = stack('test', 'running');
+  current.placements = [placement('a', { ...receipt(), consumer: { releaseId: 'consumer-a', manifestSha256: 'c'.repeat(64), app: 'main' } }),
+    placement('b', { ...receipt(), consumer: { releaseId: 'consumer-b', manifestSha256: 'd'.repeat(64), app: 'main' } })] as IStackInfo['placements'];
+  expect(readStackRelease(current).runningRelease).toBe('mixed');
+});
+
 it('reads verified current launch provenance independently from an older deployment audit', async () => {
   const current = stack('test', 'running');
   current.placements = [placement('node-a:9700')] as IStackInfo['placements'];

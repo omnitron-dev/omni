@@ -141,6 +141,8 @@ export async function releaseStatusCommand(project: string, options: { inspectIn
       if (stack.releaseEvidence.total > 0) log.info(`    ${stack.releaseEvidence.verified}/${stack.releaseEvidence.total} launch identities verified`);
       for (const observation of stack.releaseEvidence.observations) {
         log.info(`    ${observation.node ? `${observation.node} / ` : ''}${observation.app}: ${observation.state}${observation.releaseId ? ` · ${observation.releaseId}` : ''}${observation.reason ? ` — ${observation.reason}` : ''}`);
+        if (observation.consumer && observation.consumer.releaseId !== observation.releaseId)
+          log.info(`      producer: ${observation.releaseId}; selected consumer: ${observation.consumer.releaseId} · manifest ${observation.consumer.manifestSha256}`);
       }
       const history = stack.history;
       log.info(`  last recorded deployment: ${!history.known ? `unknown — ${history.why}` : !history.last ? 'none recorded'

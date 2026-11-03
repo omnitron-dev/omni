@@ -1,30 +1,4 @@
-import { test, expect } from './fixtures.mjs';
-
-async function stubInventory(page, extraReadings = {}, healthStatus = 'online') {
-  const readings = {
-    'OmnitronProject.listProjects': ['Example', 'Other'].map(displayName => ({
-      name: displayName.toLowerCase(), displayName, path: '/' + displayName, totalStacks: 1, runningStacks: 0,
-    })),
-    'OmnitronProject.listStacks': [{ name: 'dev', status: 'stopped', apps: [] }],
-    'OmnitronDaemon.status': { apps: [], uptime: 1000 }, 'OmnitronDaemon.ping': { uptime: 1000 },
-    ...extraReadings,
-  };
-  const capabilities = Object.keys(readings).map(key => {
-    const [service, method] = key.split('.');
-    return { service, method, allowed: true, roles: ['viewer'], conditional: false };
-  });
-  await page.route('**/netron/invoke', route => {
-    const { id, service, method, input } = route.request().postDataJSON();
-    const key = service + '.' + method;
-    const reading = readings[key];
-    const data = key === 'OmnitronAccess.describe' ? { userId: 'reader', role: 'viewer', capabilities, roles: [] }
-      : typeof reading === 'function' ? reading(...input) : reading;
-    return route.fulfill({ json: { id, success: data !== undefined, data } });
-  });
-  await page.route('**/api/health', route => route.fulfill({ json: { status: healthStatus } }));
-  // Keep browser fixtures independent of any daemon listening on the developer host.
-  await page.routeWebSocket('**/ws', socket => socket.close());
-}
+import { test, expect, stubInventory } from './fixtures.mjs';
 
 test('an administrator can prepare a catalog build on a narrow screen before explicitly applying it', async ({ page, url }) => {
   const commit = '4'.repeat(40);

@@ -6,6 +6,8 @@ import { build, preview } from 'vite';
 
 export { expect };
 export const test = base.extend({
+  channel: [({ launchOptions }, use) => use(process.env.PLAYWRIGHT_CHANNEL ?? launchOptions.channel), { scope: 'worker', option: true }],
+  reducedMotion: ['reduce', { option: true }],
   url: [async ({}, use) => {
     const root = import.meta.dirname;
     const output = await mkdtemp(path.join(os.tmpdir(), 'omnitron-console-browser-'));
@@ -24,4 +26,29 @@ export const test = base.extend({
     }
   }, { scope: 'worker', timeout: 90_000 }],
 });
-test.use({ channel: process.env.PLAYWRIGHT_CHANNEL, reducedMotion: 'reduce' });
+
+export async function stubInventory(page, extraReadings = {}, healthStatus = 'online') {
+  const readings = {
+    'OmnitronProject.listProjects': ['Example', 'Other'].map(displayName => ({
+      name: displayName.toLowerCase(), displayName, path: '/' + displayName, totalStacks: 1, runningStacks: 0,
+    })),
+    'OmnitronProject.listStacks': [{ name: 'dev', status: 'stopped', apps: [] }],
+    'OmnitronDaemon.status': { apps: [], uptime: 1000 }, 'OmnitronDaemon.ping': { uptime: 1000 },
+    ...extraReadings,
+  };
+  const capabilities = Object.keys(readings).map(key => {
+    const [service, method] = key.split('.');
+    return { service, method, allowed: true, roles: ['viewer'], conditional: false };
+  });
+  await page.route('**/netron/invoke', async route => {
+    const { id, service, method, input } = route.request().postDataJSON();
+    const key = service + '.' + method;
+    const reading = readings[key];
+    const data = key === 'OmnitronAccess.describe' ? { userId: 'reader', role: 'viewer', capabilities, roles: [] }
+      : typeof reading === 'function' ? await reading(...input) : reading;
+    return route.fulfill({ json: { id, success: data !== undefined, data } });
+  });
+  await page.route('**/api/health', route => route.fulfill({ json: { status: healthStatus } }));
+  // Keep browser fixtures independent of any daemon listening on the developer host.
+  await page.routeWebSocket('**/ws', socket => socket.close());
+}

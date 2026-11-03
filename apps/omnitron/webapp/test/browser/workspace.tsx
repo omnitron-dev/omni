@@ -7,15 +7,18 @@ import { ConsoleLayout } from '../../src/layouts/console-layout';
 import { consoleTheme } from '../../src/theme';
 import { FleetRollout } from '../../src/components/fleet-rollout';
 
-const direction = new URLSearchParams(location.search).get('dir') === 'rtl' ? 'rtl' : 'ltr';
+const params = new URLSearchParams(location.search);
+const view = params.get('view');
+const direction = params.get('dir') === 'rtl' ? 'rtl' : 'ltr';
 useAuthStore.setState({ user: { id: 'reader', username: 'reader', displayName: 'Reader', role: 'viewer' } });
 createRoot(document.getElementById('root')!).render(
   <PrismProvider themeOverrides={consoleTheme} defaultSettings={{ mode: 'dark', preset: 'midnight', direction }}>
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[view === 'files' ? '/files' : '/']}>
       <ConsoleAccessProvider>
         <Routes>
           <Route element={<ConsoleLayout />}>
-            <Route index element={new URLSearchParams(location.search).get('view') === 'rollout'
+            <Route path="files" element={null} />
+            <Route index element={view === 'rollout'
               ? <FleetRollout nodes={[]} /> : <div data-testid="content">Project content</div>} />
           </Route>
         </Routes>

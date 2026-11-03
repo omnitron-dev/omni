@@ -56,6 +56,7 @@
 
 import type { Kysely } from 'kysely';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import { redactDiagnosticText } from '@omnitron-dev/titan/diagnostics';
 
 import type { OmnitronDatabase } from '../database/schema.js';
 import { redactTokens } from '../release/publish.js';
@@ -108,23 +109,34 @@ export type { AuditRow, AuditQuery } from '../shared/dto/audit.js';
 export const MAX_AUDIT_PAGE = 500;
 
 /** Keys whose VALUE is a credential, whatever the caller meant by them. */
-const SECRET_KEY = /password|passphrase|secret|token|credential|privatekey|apikey/i;
+const SECRET_KEY = /password|passphrase|secret|token|credential|private[_-]?key|api[_-]?key|authorization|cookie|mnemonic|seed/i;
 
-/** `details`, with anything that looks like a credential removed. */
-export function scrubDetails(
-  details: Record<string, unknown> | null | undefined,
-): Record<string, unknown> | null {
+/** Preserve structured facts, with bounded recursion and redaction at every level.
+ * Applied at write AND read so historical array payloads cannot expose credentials. */
+export function scrubDetails(details: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
   if (!details) return null;
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(details)) {
-    if (SECRET_KEY.test(key)) {
-      out[key] = '[redacted]';
-      continue;
-    }
-    // One level. A nested object is a payload, and this table takes facts.
-    out[key] = value && typeof value === 'object' && !Array.isArray(value) ? '[object]' : value;
-  }
-  return out;
+  const active = new WeakSet<object>();
+  let remaining = 1000;
+  const visit = (value: unknown, depth: number): unknown => {
+    if (--remaining < 0 || depth > 8) return '[truncated]';
+    if (typeof value === 'string') return redactDiagnosticText(value);
+    if (value === null || typeof value === 'number' || typeof value === 'boolean') return value;
+    if (typeof value !== 'object') return '[unsupported]';
+    if (active.has(value)) return '[circular]';
+    active.add(value);
+    try {
+      if (Array.isArray(value)) {
+        const items = value.slice(0, 100).map(item => visit(item, depth + 1));
+        if (value.length > 100) items.push('[truncated]');
+        return items;
+      }
+      const entries = Object.entries(value).slice(0, 100).map(([key, item]) =>
+        [key, SECRET_KEY.test(key) ? '[redacted]' : visit(item, depth + 1)] as const);
+      if (Object.keys(value).length > 100) entries.push(['[truncated]', true]);
+      return Object.fromEntries(entries);
+    } finally { active.delete(value); }
+  };
+  return visit(details, 0) as Record<string, unknown>;
 }
 
 /** The longest failure a row keeps. The whole error is in the daemon log. */
@@ -239,6 +251,8 @@ export class AuditService {
       throw new Error(`limit is a number of entries, 1 to ${MAX_AUDIT_PAGE} — not "${String(query.limit)}"`);
     }
     const limit = Math.min(MAX_AUDIT_PAGE, Math.max(1, Math.floor(asked)));
+    if (query.before && query.beforeId) throw new Error('Use before or beforeId, not both');
+    if (query.beforeId && !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(query.beforeId)) throw new Error('beforeId must be an audit entry UUID');
     const before = query.before ? new Date(query.before) : null;
     if (before && Number.isNaN(before.getTime())) {
       throw new Error(`before is an ISO timestamp such as 2026-09-22T21:20:37Z — not "${String(query.before)}"`);
@@ -248,6 +262,7 @@ export class AuditService {
       .selectFrom('omnitron_audit_log')
       .selectAll()
       .orderBy('createdAt', 'desc')
+      .orderBy('id', 'desc')
       .limit(limit);
 
     if (query.action) q = q.where('action', '=', query.action);
@@ -255,8 +270,21 @@ export class AuditService {
     if (query.actorId) q = q.where('actorId', '=', query.actorId);
     if (query.actorType) q = q.where('actorType', '=', query.actorType);
     if (before) q = q.where('createdAt', '<', before as never);
+    if (query.beforeId) {
+      const id = query.beforeId;
+      // Keep PostgreSQL microseconds inside SQL: converting the anchor to Date loses precision.
+      const anchor = this.db.selectFrom('omnitron_audit_log as cursor').select('cursor.createdAt').where('cursor.id', '=', id);
+      q = q.where(eb => eb.or([
+        eb('createdAt', '<', anchor),
+        eb.and([eb('createdAt', '=', anchor), eb('id', '<', id)]),
+      ]));
+    }
 
     const rows = await q.execute();
+    if (query.beforeId && rows.length === 0) {
+      const exists = await this.db.selectFrom('omnitron_audit_log').select('id').where('id', '=', query.beforeId).executeTakeFirst();
+      if (!exists) throw new Error('Audit page cursor is no longer available; refresh the query');
+    }
     return rows.map(toAuditRow);
   }
 
@@ -280,6 +308,7 @@ export class AuditService {
       .where('resourceId', 'is not', null)
       .orderBy('resourceId')
       .orderBy('createdAt', 'desc')
+      .orderBy('id', 'desc')
       .execute();
     return rows.map(toAuditRow);
   }
@@ -303,7 +332,7 @@ function toAuditRow(r: {
     actorType: r.actorType,
     resourceType: r.resourceType,
     resourceId: r.resourceId ?? null,
-    details: (r.details as Record<string, unknown> | null) ?? null,
+    details: scrubDetails((r.details as Record<string, unknown> | null) ?? null),
     ipAddress: r.ipAddress ?? null,
     createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
   };

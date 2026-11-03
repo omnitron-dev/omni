@@ -1393,6 +1393,7 @@ program
   .option('--resource <type>', 'Only this resource type, e.g. node')
   .option('--actor <who>', 'Only this actor: user, service or system — or an id, e.g. omnitron-local')
   .option('--before <time>', 'Only entries older than this ISO time, e.g. 2026-09-22T21:20:37Z')
+  .option('--before-id <id>', 'Continue after an audit entry without skipping timestamp ties')
   .structuredAction(async (opts: any) => {
     const { auditListCommand } = await import('../commands/audit.js');
     // As typed. `parseInt` here turned `-n abc` into NaN, which reached
@@ -1404,6 +1405,7 @@ program
       resource: opts.resource,
       actor: opts.actor,
       before: opts.before,
+      beforeId: opts.beforeId,
     });
   });
 

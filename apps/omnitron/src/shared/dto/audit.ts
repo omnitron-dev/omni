@@ -27,4 +27,7 @@ export interface AuditQuery {
   readonly actorType?: string | undefined;
   /** Keyset: rows strictly older than this ISO timestamp. */
   readonly before?: string | undefined;
+  /** Stable page cursor: row ID. The database retains timestamp precision and breaks ties by ID.
+   * Mutually exclusive with before; missing/deleted cursors require refreshing the query. */
+  readonly beforeId?: string | undefined;
 }

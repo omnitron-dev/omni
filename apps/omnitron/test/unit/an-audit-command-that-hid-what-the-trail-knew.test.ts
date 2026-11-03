@@ -61,7 +61,7 @@ async function run(options: Parameters<typeof auditListCommand>[0]) {
 let id = 0;
 function row(over: Partial<AuditRow>): AuditRow {
   return {
-    id: String(++id),
+    id: `00000000-0000-4000-8000-${String(++id).padStart(12, '0')}`,
     action: 'stack.start',
     actorId: null,
     actorType: 'system',
@@ -231,14 +231,23 @@ describe('--before pages the trail', () => {
     expect(asked[0]).toMatchObject({ before: '2026-09-22T21:20:37.000Z' });
   });
 
-  it('names the instant to page from when the page is full', async () => {
+  it('names a stable row cursor when the page is full', async () => {
     rows = [row({ createdAt: '2026-09-22T21:20:37.512Z' }), row({ createdAt: '2026-09-22T21:19:02.114Z' })];
 
     const { out } = await run({ limit: '2' });
 
-    // Exact to the millisecond: the WHEN column's second would skip a row
-    // that shares it.
-    expect(out).toContain('--before 2026-09-22T21:19:02.114Z');
+    // The cursor retains database microseconds and breaks timestamp ties.
+    expect(out).toContain(`--before-id ${rows[1]!.id}`);
+  });
+
+  it('passes a stable row cursor and rejects conflicting or malformed cursors', async () => {
+    const id = '00000000-0000-4000-8000-000000000002';
+    await run({ beforeId: id });
+    expect(asked[0]).toEqual({ limit: 50, beforeId: id });
+    createDaemonClient.mockClear();
+    expect((await run({ beforeId: 'invalid' })).exitCode).toBe(1);
+    expect((await run({ beforeId: id, before: '2026-09-22T21:20:37Z' })).exitCode).toBe(1);
+    expect(createDaemonClient).not.toHaveBeenCalled();
   });
 
   it('refuses a time with no zone rather than reading it in this machine’s', async () => {

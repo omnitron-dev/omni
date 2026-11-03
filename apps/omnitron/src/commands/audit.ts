@@ -26,6 +26,8 @@ export interface AuditListOptions {
   actor?: string;
   /** Only entries older than this ISO time. */
   before?: string;
+  /** Stable cursor from a previous row, including timestamp ties. */
+  beforeId?: string;
 }
 
 /** What `-n` means when it is not given; the CLI's own default says the same. */
@@ -91,6 +93,8 @@ export function parseAuditBefore(raw: string): string {
 export function auditQueryFrom(options: AuditListOptions): AuditQuery & { limit: number } {
   const limit = parseAuditLimit(options.limit);
   const actor = options.actor?.trim();
+  if (options.before && options.beforeId) throw new AuditUsageError('Use --before or --before-id, not both.');
+  if (options.beforeId && !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(options.beforeId)) throw new AuditUsageError('--before-id takes an audit entry UUID.');
   return {
     limit,
     ...(options.action ? { action: options.action } : {}),
@@ -101,6 +105,7 @@ export function auditQueryFrom(options: AuditListOptions): AuditQuery & { limit:
         : { actorId: actor }
       : {}),
     ...(options.before ? { before: parseAuditBefore(options.before) } : {}),
+    ...(options.beforeId ? { beforeId: options.beforeId } : {}),
   };
 }
 
@@ -266,9 +271,8 @@ export async function auditListCommand(options: AuditListOptions = {}): Promise<
     renderFailures(rows);
 
     if (rows.length === query.limit) {
-      // The exact instant, not the WHEN column's second: two rows can share a
-      // second, and paging from the rounded one would skip the other.
-      log.info(`${rows.length} shown, newest first — older ones: --before ${rows[rows.length - 1]!.createdAt}`);
+      // An ID preserves server timestamp precision and orders ties without missing rows.
+      log.info(`${rows.length} shown, newest first — older ones: --before-id ${rows[rows.length - 1]!.id}`);
     }
   } catch (err) {
     emitError(`Failed: ${(err as Error).message}`);

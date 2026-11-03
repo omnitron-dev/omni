@@ -167,7 +167,20 @@ export interface StackStopProgress {
     authority?: { clusterId: string; nodeId: string; epoch: string } }>;
 }
 
+export interface ReleaseAdmission {
+  ok: boolean;
+  because: string;
+  state?: 'unprepared' | 'requires-stop';
+}
+
+export interface SelectedRelease {
+  id: string;
+  manifestSha256: string;
+}
+
 export interface IStackInfo {
+  /** Desired release for the next local launch. Runtime evidence is reported separately. */
+  selectedRelease?: SelectedRelease;
   /** Last explicit recovery of the applications retained by their process owners. */
   resumeOperation?: InstalledStackResumeResult | undefined;
   /** Last durable stop operation; failures and unreachable peers remain visible. */

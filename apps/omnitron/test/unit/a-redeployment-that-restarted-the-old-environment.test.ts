@@ -35,6 +35,8 @@ describe('a restart starts from the definition the app was last given', () => {
     const self = {
       handles: new Map([[OLD.name, handle]]),
       devMode: false,
+      assertAppStartAllowed: vi.fn(),
+      appStopIntents: new Map(),
       stopApp: vi.fn(async () => undefined),
       startApp: vi.fn(async (entry: unknown) => entry),
     };
@@ -64,6 +66,8 @@ describe('a project added again at its own path is read again', () => {
     const redefined: Array<{ name: string; env: unknown }> = [];
     const svc: any = Object.create(ProjectService.prototype);
     Object.assign(svc, {
+      startsInFlight: new Map(),
+      daemonStateStore: { kvGetSync: () => null },
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       registry: {
         get: (name: string) => (name === 'sample' ? { name: 'sample', path: dir, registeredAt: '2026-09-20T00:00:00Z' } : undefined),

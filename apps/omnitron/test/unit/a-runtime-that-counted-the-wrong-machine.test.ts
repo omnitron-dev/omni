@@ -64,6 +64,7 @@ function service(opts: {
   };
   const svc: any = Object.create(ProjectService.prototype);
   Object.assign(svc, {
+    registry: { get: () => ({ registeredAt: '2026-01-01T00:00:00.000Z' }) },
     daemonStateStore: { kvGetSync: () => null },
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     stackStates: new Map([['sample/test', { status: 'running', config: stackConfig }]]),
@@ -204,6 +205,7 @@ describe('«this stack is already running» is asked of the machine that runs it
     const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
     const svc: any = Object.create(ProjectService.prototype);
     Object.assign(svc, {
+    registry: { get: () => ({ registeredAt: '2026-01-01T00:00:00.000Z' }) },
     daemonStateStore: { kvGetSync: () => null },
       nodeStackStop: { assertMutable() {} },
       logger,

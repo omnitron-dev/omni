@@ -150,6 +150,7 @@ describe('every start is recorded, and says who asked', () => {
       // from the refusal, and this one is local — what the fixture owes is
       // the lookup, not a repository.
       registry: { get: () => ({ name: 'sample', path: tmpdir() }), list: () => [] },
+      localSelection: () => ({ read: () => ({ revision: 0, release: null }) }),
       stackStates: new Map(),
       orchestrator: { enableStackExecution: vi.fn(async () => {}) },
     startsInFlight: new Map(),
@@ -258,6 +259,7 @@ describe('the row says what the deployment reached', () => {
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       audit: { record },
       registry: { get: () => null, list: () => [] },
+      localSelection: () => ({ read: () => ({ revision: 0, release: null }) }),
       stackStates: new Map(),
       orchestrator: { enableStackExecution: vi.fn(async () => {}) },
     startsInFlight: new Map(),

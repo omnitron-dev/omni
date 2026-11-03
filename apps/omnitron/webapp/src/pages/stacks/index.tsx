@@ -360,7 +360,7 @@ function StackCard({
           ) : hasInstalledRecovery(stack) ? (
             <StackRecoveryAction stack={stack} onResume={onResume} onReviewStop={onStop} />
           ) : isStopped ? (
-            takesReleasesOnly ? (
+            takesReleasesOnly && !stack.selectedRelease ? (
               <Can permission="OmnitronProject.startStack"><Button size="small" startIcon={<DeployIcon />} color="success" onClick={onDeploy}>
                 Deploy release…
               </Button></Can>

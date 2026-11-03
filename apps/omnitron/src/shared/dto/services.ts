@@ -361,9 +361,9 @@ export interface IProjectRpcService {
 
   // --- Stacks (Operator) ---
   resumeInstalledStack(data: { project: string; stack: string }): Promise<import('./project.js').InstalledStackResumeResult>;
-  startStack(data: { project: string; stack: string; allowDirty?: boolean; release?: string; reinstall?: boolean }): Promise<IStackInfo>;
+  startStack(data: { project: string; stack: string; allowDirty?: boolean; release?: string; workingTree?: boolean; reinstall?: boolean }): Promise<IStackInfo>;
   /** Would this stack take this release? The deployment's own decision, asked in advance. */
-  checkRelease(data: { project: string; stack: string; release: string }): Promise<{ ok: boolean; because: string }>;
+  checkRelease(data: { project: string; stack: string; release: string; prepare?: boolean }): Promise<import('./project.js').ReleaseAdmission>;
   reviewStackStop(data: { project: string; stack: string }): Promise<import('./project.js').StackStopReview>;
   stopStack(data: { project: string; stack: string; review?: string }): Promise<IStackInfo>;
 

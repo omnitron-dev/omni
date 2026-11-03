@@ -103,7 +103,7 @@ describe('immutable releases preserve project identity', () => {
 
   it('rejects moving a running stack, then invalidates the old config after a stopped move', () => {
     registry.add('research-lab', original);
-    const stack = { project: 'research-lab', stack: 'production', status: 'running' };
+    const stack = { project: 'research-lab', stack: 'production', status: 'running', config: { type: 'local' } };
     const cache = new Map([['research-lab', { config: 'old' }]]);
     const service = Object.assign(Object.create(ProjectService.prototype), {
       registry, logger, configRegistry: cache,

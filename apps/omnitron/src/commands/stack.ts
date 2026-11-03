@@ -143,6 +143,7 @@ export async function stackStatusCommand(projectName: string, stackName: string)
       [
         `${prism.bold(`${projectName}/${stack.name}`)}  ${prism.dim(typeLabel)}`,
         `Status: ${statusIcon(stack.status)} ${stack.status}`,
+        ...(stack.selectedRelease ? ['Next launch: ' + stack.selectedRelease.id] : []),
         ...(stack.startedAt ? [`Started: ${stack.startedAt}`] : []),
         ...(stack.uptime > 0 ? [`Uptime: ${formatDuration(stack.uptime)}`] : []),
         // When this master took charge of it — not when it started.
@@ -290,10 +291,26 @@ function reportLifecycleError(
   process.exitCode = 1;
 }
 
+export async function stackPrepareReleaseCommand(project: string, stack: string, release: string): Promise<void> {
+  const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
+  try {
+    const service = await client.service<IProjectRpcService>('OmnitronProject');
+    const report = await service.checkRelease({ project, stack, release, prepare: true });
+    const prepared = report.ok || report.state === 'requires-stop';
+    if (!prepared) process.exitCode = 1;
+    if (!emitJson({ project, stack, release, prepared, ...report })) {
+      if (prepared) emitSuccess('Release prepared. ' + report.because);
+      else emitError(report.because, { project, stack, release });
+    }
+  } catch (error) {
+    reportLifecycleError(error, 'preparing the local release', { project, stack, release });
+  } finally { await client.disconnect(); }
+}
+
 export async function stackStartCommand(
   projectName: string,
   stackName: string,
-  opts?: { allowDirty?: boolean; release?: string; reinstall?: boolean },
+  opts?: { allowDirty?: boolean; release?: string; workingTree?: boolean; reinstall?: boolean },
 ): Promise<void> {
   // Starting a stack boots every app in it; a minute is not enough.
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
@@ -306,6 +323,7 @@ export async function stackStartCommand(
       stack: stackName,
       ...(opts?.allowDirty === true ? { allowDirty: true } : {}),
       ...(opts?.release ? { release: opts.release } : {}),
+      ...(opts?.workingTree === true ? { workingTree: true } : {}),
       ...(opts?.reinstall === true ? { reinstall: true } : {}),
     });
     const { confirmed, outcome, online, total, issues } = readStackStart(stack);

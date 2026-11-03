@@ -1,3 +1,4 @@
+import { LocalReleaseSelection } from '../project/local-release-selection.js';
 import { resolveAppPath } from '../config/app-path.js';
 import { infrastructureOwnership, ownsStackInfrastructure } from '../project/infrastructure-ownership.js';
 import { InstalledStackResume, resumeDestinations, type InstalledResumeExecution, type InstalledResumeRequest, type InstalledResumeReceipt, type ResumeDestination } from '../project/installed-stack-resume.js';
@@ -131,6 +132,13 @@ import { ExecutionService, type SSHTarget } from '../execution/execution.service
 
 
 
+class LocalReleaseStopRequired extends Error {}
+
+function sameLaunchCode(actual: IEcosystemAppEntry, expected: IEcosystemAppEntry): boolean {
+  if (!expected.releaseRoot) return !actual.releaseRoot;
+  return actual.bootstrap === expected.bootstrap && actual.script === expected.script && actual.releaseRoot === expected.releaseRoot;
+}
+
 /** Whether two paths name one directory — symlinks and `..` resolved. */
 function samePath(a: string, b: string): boolean {
   const real = (p: string) => {
@@ -195,6 +203,7 @@ interface StackStartKnown {
   /** A restart re-attaching a remote stack: it deploys nothing and writes no row. */
   attach: boolean;
   type?: IStackConfig['type'];
+  release?: string;
   /** The project tree's commit once it was read; `null` when it could not be. */
   commit?: string | null;
 }
@@ -267,7 +276,7 @@ export class ProjectService extends EventEmitter {
   recoveryRegistryDigest(): string { return this.registry.recoveryDigest(); }
   /** Read-only bookkeeping; no timers are stopped and no Docker call runs. */
   captureRecoveryState(): Awaited<ReturnType<ProjectService['prepareHandoff']>> {
-    if (this.ownershipFrozen || this.resumingInstalled || this.startsInFlight.size || this.stopsInFlight.size || this.nodeStackStop.busy || this.reconcilingStacks ||
+    if (this.rereading?.size || this.ownershipFrozen || this.resumingInstalled || this.startsInFlight.size || this.stopsInFlight.size || this.nodeStackStop.busy || this.reconcilingStacks ||
         [...this.stackStates.values()].some(state => state.status === 'starting' || state.status === 'stopping')) {
       throw new RecoveryBusyError('Project ownership is changing; a recovery snapshot is not ready');
     }
@@ -294,7 +303,7 @@ export class ProjectService extends EventEmitter {
     resumeBackoff: Array<[string, { nextAt: number; delayMs: number }]>;
     reconciling: boolean;
   }> {
-    if (this.ownershipFrozen || this.resumingInstalled || this.startsInFlight.size || this.stopsInFlight.size || this.nodeStackStop.busy || this.reconcilingStacks || [...this.stackStates.values()].some(state => state.status === 'starting' || state.status === 'stopping')) {
+    if (this.rereading?.size || this.ownershipFrozen || this.resumingInstalled || this.startsInFlight.size || this.stopsInFlight.size || this.nodeStackStop.busy || this.reconcilingStacks || [...this.stackStates.values()].some(state => state.status === 'starting' || state.status === 'stopping')) {
       throw new Error('A stack lifecycle operation is active; finish it before transferring the backend');
     }
     this.handoffReconciling = this.resumeTimer !== null;
@@ -812,6 +821,14 @@ export class ProjectService extends EventEmitter {
    */
   @RecoveryMutation()
   async rereadProject(name: string): Promise<number> {
+    if (this.ownershipFrozen || this.rereading?.has(name) || [...this.startsInFlight.keys()].some(key => key.startsWith(name + '/')))
+      throw new Error('Project launch definitions are changing; retry after the current operation');
+    (this.rereading ??= new Set()).add(name);
+    try { return await this.rereadProjectOnce(name); }
+    finally { this.rereading.delete(name); }
+  }
+
+  private async rereadProjectOnce(name: string): Promise<number> {
     this.configRegistry.delete(name);
     const config = await this.loadProjectConfig(name);
     const stacks = this.resolveStacks(config, name);
@@ -822,8 +839,10 @@ export class ProjectService extends EventEmitter {
       const stackConfig = stacks[state.stack];
       // A remote stack's apps run on its nodes; they are redefined there.
       if (!stackConfig || stackConfig.type !== 'local') continue;
-      const definitions = await this.loadAppDefinitions(name, stackConfig, config);
-      const entries = this.resolveStackApps(stackConfig, config);
+      const entries = await this.launchEntries(name, state.stack, stackConfig, config);
+      if (entries.some(entry => entry.releaseRoot) && !stackConfig.managedOrigin)
+        await this.checkLocalOwner(name, state.stack, entries, false);
+      const definitions = await this.loadAppDefinitions(name, stackConfig, config, entries);
       const stackEnv = await this.stackEnvFor(name, state.stack, stackConfig, entries.map((e) => e.name));
       const build = this.stackEntryBuilder(name, state.stack, stackConfig, config, definitions, stackEnv);
       for (const entry of entries) {
@@ -863,7 +882,8 @@ export class ProjectService extends EventEmitter {
       if (state) { state.config = stack; state.infraService = null; }
       return released;
     }
-    const definitions = await this.loadAppDefinitions(projectName, stack, config);
+    const entries = await this.launchEntries(projectName, stackName, stack, config);
+    const definitions = await this.loadAppDefinitions(projectName, stack, config, entries);
     // The same requirements merge used at stack start. A failed fresh scan must
     // refuse a handoff rather than silently releasing auto-detected services.
     const auto = buildInfraFromRequirements(requirementsFromDefinitions(definitions));
@@ -1093,6 +1113,10 @@ export class ProjectService extends EventEmitter {
       throw new Error(`Stack '${stackName}' is currently ${state.status}. Stop it first.`);
     }
 
+    if (userStacks[stackName]!.type === 'local') {
+      const selection = this.localSelection(project, stackName).read();
+      if (selection.release) throw new Error('Clear the selected release before deleting this stack');
+    }
     this.deleteUserStack(project, stackName);
     this.stackStates.delete(stateKey);
 
@@ -1245,7 +1269,16 @@ export class ProjectService extends EventEmitter {
       add('start.authority', 'Start authority', 'blocked', (err as Error).message, 'Inspect the allocation owner and its stop operation before planning a start.');
     }
     add('configuration.loaded', 'Project configuration', 'pass', `Using daemon configuration loaded at ${new Date(loaded.loadedAt).toISOString()}.`, 'Reload project configuration after editing it.');
-    const entries = this.resolveStackApps(stack, config);
+    let entries: IEcosystemAppEntry[];
+    try {
+      entries = await this.launchEntries(projectName, stackName, stack, config);
+      const selected = stack.type === 'local' && !stack.managedOrigin ? this.localSelection(projectName, stackName).read().release : null;
+      if (selected) add('release.selected', 'Release', 'pass', 'Next start uses verified release ' + selected.id);
+      else if (stack.release?.mode === 'required') add('release.required', 'Release', 'unknown', 'This stack requires an immutable release; no release was selected for this check.', 'Use Deploy release and review its admission checks.');
+    } catch (error) {
+      add('release.unavailable', 'Selected release', 'blocked', describeFailure(error), 'Restore the pinned installation or select another verified release.');
+      return done();
+    }
     if (Array.isArray(stack.apps)) {
       const available = new Set(entries.map(entry => entry.name));
       for (const name of stack.apps) if (!available.has(name)) add('application.undeclared', name, 'blocked', 'The selected application is absent or disabled in project configuration.');
@@ -1255,7 +1288,6 @@ export class ProjectService extends EventEmitter {
     catch { add('dependencies.invalid', 'Application dependencies', 'blocked', 'Application dependencies cannot be ordered.', 'Check missing dependencies and dependency cycles in the project configuration.'); }
     try { await this.stackEnvFor(projectName, stackName, stack, entries.map(entry => entry.name)); add('environment.valid', 'Environment', 'pass', 'Environment declarations and vault references resolved; values are withheld.'); }
     catch { add('environment.invalid', 'Environment', 'blocked', 'Environment declarations or vault references could not be resolved.', 'Check stack environment variable names and required vault entries.'); }
-    if (stack.release?.mode === 'required') add('release.required', 'Release', 'unknown', 'This stack requires an immutable release; no release was selected for this check.', 'Use Deploy release and review its admission checks.');
     const definitions = new Map<string, IAppDefinition>();
     for (const entry of entries) {
       if (!entry.bootstrap) {
@@ -1319,6 +1351,7 @@ export class ProjectService extends EventEmitter {
         if (scope.stack && stack !== scope.stack) continue;
         try {
           const entries = this.resolveStackApps(stackConfig, config);
+          const pinned = stackConfig.type === 'local' && !stackConfig.managedOrigin && this.localSelection(project, stack).read().release;
           const definitions = new Map<string, IAppDefinition>();
           const directory = this.registry.get(project)?.path;
           for (const entry of entries) {
@@ -1327,7 +1360,13 @@ export class ProjectService extends EventEmitter {
               continue;
             }
             if (!directory) continue;
-            const bootstrap = resolveAppPath(directory, entry, entry.bootstrap);
+            const bootstrap = pinned ? this.orchestrator.getHandle(ProjectService.handleKey(project, stack, entry.name))?.bootstrapMetadata?.bootstrap
+              : resolveAppPath(directory, entry, entry.bootstrap);
+            if (!bootstrap) {
+              result.coverage!.push({ project, stack, app: entry.name, source: 'missing' });
+              result.warnings.push({ project, stack, app: entry.name, reason: 'Owner has not reported a launch declaration for the selected release' });
+              continue;
+            }
             const { state, record, metadata, declared, observed } = this.readAppDeclaration(project, stack, entry.name, bootstrap);
             result.coverage!.push({ project, stack, app: entry.name,
               source: record ? record === observed ? 'launch' : 'snapshot' : metadata ? 'memory' : 'missing',
@@ -1362,7 +1401,7 @@ export class ProjectService extends EventEmitter {
     if (scope.stack && !stacks[scope.stack]) throw new Error('Stack is not configured');
     for (const [name, stack] of Object.entries(stacks)) {
       if (scope.stack && scope.stack !== name) continue;
-      for (const app of this.resolveStackApps(stack, config))
+      for (const app of await this.launchEntries(scope.project, name, stack, config))
         if (app.bootstrap) bootstraps.set(resolveAppPath(directory, app, app.bootstrap), app.name);
     }
     const result: import('../shared/dto/project.js').TopologyMetadataRefresh = { refreshed: 0, failures: [] };
@@ -1432,25 +1471,30 @@ export class ProjectService extends EventEmitter {
    * asking for a stack that is already being started should end when it has
    * been started, which is what the caller meant.
    */
-  private readonly startsInFlight = new Map<string, Promise<IStackInfo>>();
+  private rereading?: Set<string>;
+  private readonly startsInFlight = new Map<string, { selection: string; promise: Promise<IStackInfo> }>();
 
   @RecoveryMutation()
   async startStack(
     projectName: string,
     stackName: string,
-    opts?: { source?: StackStartSource; allowDirty?: boolean; release?: string; reinstall?: boolean },
+    opts?: { source?: StackStartSource; allowDirty?: boolean; release?: string; workingTree?: boolean; reinstall?: boolean },
   ): Promise<IStackInfo> {
     if (this.resumingInstalled) throw new Error('An installed allocation is resuming');
     if (this.ownershipFrozen) throw new Error('Project ownership is frozen for backend transfer');
     const inFlightKey = `${projectName}/${stackName}`;
     if (this.stopsInFlight.has(inFlightKey)) throw new Error('This stack is stopping; wait for its acknowledgement');
+    if (this.rereading?.has(projectName)) throw new Error('Project definitions are being updated; retry the start');
+    if (opts?.workingTree && opts.release) throw new Error('Select either a release or the working tree');
+    const selection = JSON.stringify([opts?.release, opts?.workingTree === true, opts?.reinstall === true]);
     const running = this.startsInFlight.get(inFlightKey);
     if (running) {
       this.logger.info(
         { project: projectName, stack: stackName },
         'This stack is already being started — joining the run in progress',
       );
-      return running;
+      if (running.selection !== selection) throw new Error('Another stack start selected different launch code; retry after it completes');
+      return running.promise;
     }
 
     const started = this.startStackOnce(
@@ -1460,10 +1504,11 @@ export class ProjectService extends EventEmitter {
       opts?.allowDirty === true,
       opts?.release,
       opts?.reinstall === true,
+      opts?.workingTree === true,
     ).finally(() => {
       this.startsInFlight.delete(inFlightKey);
     });
-    this.startsInFlight.set(inFlightKey, started);
+    this.startsInFlight.set(inFlightKey, { selection, promise: started });
     return started;
   }
 
@@ -1499,10 +1544,11 @@ export class ProjectService extends EventEmitter {
     allowDirty: boolean,
     releaseId?: string,
     reinstall = false,
+    workingTree = false,
   ): Promise<IStackInfo> {
     const known: StackStartKnown = { attach: false };
     try {
-      return await this.runStackStart(projectName, stackName, source, allowDirty, releaseId, known, reinstall);
+      return await this.runStackStart(projectName, stackName, source, allowDirty, releaseId, known, reinstall, workingTree);
     } catch (err) {
       if (!known.attach) {
         await this.audit?.record({
@@ -1514,7 +1560,7 @@ export class ProjectService extends EventEmitter {
           details: {
             source,
             ...(known.type ? { type: known.type } : {}),
-            ...(releaseId ? { release: releaseId } : {}),
+            ...((releaseId ?? known.release) ? { release: releaseId ?? known.release } : {}),
             ...(known.commit !== undefined ? { commit: known.commit } : {}),
           },
         });
@@ -1531,6 +1577,7 @@ export class ProjectService extends EventEmitter {
     releaseId: string | undefined,
     known: StackStartKnown,
     reinstall = false,
+    workingTree = false,
   ): Promise<IStackInfo> {
     const config = await this.loadProjectConfig(projectName);
     const stacks = this.resolveStacks(config, projectName);
@@ -1548,9 +1595,18 @@ export class ProjectService extends EventEmitter {
     this.assertStartAuthority({ project: projectName, stack: stackName }, stackConfig);
 
     // A release, when one is named — and a stack that takes nothing else.
+    const local = stackConfig.type === 'local' && !stackConfig.managedOrigin;
+    if ((workingTree || (releaseId && stackConfig.type === 'local')) && !local)
+      throw new Error('Only an independently managed local stack can change its local release selection');
+    const selector = local ? this.localSelection(projectName, stackName) : null;
+    const prior = selector?.read();
+    const requested = releaseId ?? (workingTree ? undefined : prior?.release?.id);
     let release: LoadedRelease | null = null;
-    if (releaseId) {
-      release = await this.admitRelease(projectName, stackName, stackConfig, config, releaseId);
+    if (requested) {
+      known.release = requested;
+      release = await this.admitRelease(projectName, stackName, stackConfig, config, requested);
+      if (prior?.release?.id === requested && prior.release.manifestSha256 !== release.manifestSha256)
+        throw new Error('The selected release manifest changed on disk; restore its original bytes');
     } else if (stackConfig.release?.mode === 'required') {
       throw new Error(
         `${projectName}/${stackName} takes releases only: \`omnitron release build ${projectName} --for ${stackName}\`, ` +
@@ -1631,12 +1687,20 @@ export class ProjectService extends EventEmitter {
       }
     }
 
+    const selected = release ? { id: release.id, manifestSha256: release.manifestSha256 } : null;
+    const changing = !!selector && !isDeepStrictEqual(prior?.release, selected);
+    const entries = local && release ? await this.installedEntries(projectName, stackName, stackConfig, config, release, true) : undefined;
+    if (local && (release || changing)) {
+      const plan = await this.checkLocalOwner(projectName, stackName, entries ?? this.resolveStackApps(stackConfig, config), changing);
+      if ((source === 'boot' || source === 'auto-resume') && plan.phase !== 'running')
+        throw new Error('The selected local stack is fenced; an explicit start must recover or roll back the selection');
+    }
     const stateKey = `${projectName}/${stackName}`;
     const existing = this.stackStates.get(stateKey);
     // Not for a release: putting a release onto a running stack is the point.
     const completedLocalStart = stackConfig.type === 'local' && existing?.startedAt != null &&
       (existing.status === 'degraded' || existing.status === 'error');
-    if ((existing?.status === 'running' || completedLocalStart) && !release) {
+    if ((existing?.status === 'running' || completedLocalStart) && !changing && (!release || local)) {
       // `running` is a claim about the past, and nothing revises it when the
       // apps underneath fall over — so this short-circuit used to hand the
       // operator a stack it had not touched. `toStackInfo` reads live
@@ -1702,10 +1766,21 @@ export class ProjectService extends EventEmitter {
     try {
       this.assertStackMutable(stackConfig.managedOrigin ?? { project: projectName, stack: stackName });
       if (stackConfig.type === 'local') {
-        await this.orchestrator.enableStackExecution({ project: projectName, stack: stackName }, {
-          automatic: source === 'boot' || source === 'auto-resume',
-        });
-        await this.startLocalStack(projectName, stackName, stackConfig, config);
+        const scope = { project: projectName, stack: stackName };
+        const enable = () => this.orchestrator.enableStackExecution(scope, { automatic: source === 'boot' || source === 'auto-resume' });
+        if (selector && prior && (changing || prior.revision > 0)) {
+          const target = entries ?? this.resolveStackApps(stackConfig, config);
+          await this.startLocalStack(projectName, stackName, stackConfig, config, target, async build => {
+            await this.prepareLocalOwner(projectName, stackName, target, changing, build, () => {
+              if (changing) selector.select(prior.revision, selected);
+              else if (selector.read().revision !== prior.revision) throw new Error('Local release selection changed during admission');
+            });
+            await enable();
+          });
+        } else {
+          await enable();
+          await this.startLocalStack(projectName, stackName, stackConfig, config);
+        }
       } else {
         this.rememberStackTargets(projectName, stackName, stackConfig, config);
         reach = await this.startRemoteStack(projectName, stackName, stackConfig, config, release, reinstall);
@@ -1784,6 +1859,7 @@ export class ProjectService extends EventEmitter {
           ...(release
             ? {
                 release: release.id,
+                releaseManifestSha256: release.manifestSha256,
                 releaseProjectCommit: release.manifest.project.commit.slice(0, 8),
                 releaseOmniCommit: release.manifest.omni.commit.slice(0, 8),
               }
@@ -2156,14 +2232,22 @@ export class ProjectService extends EventEmitter {
     projectName: string,
     stackName: string,
     releaseId: string,
-  ): Promise<{ ok: boolean; because: string }> {
+    prepare = false,
+  ): Promise<import('../shared/dto/project.js').ReleaseAdmission> {
     try {
       const config = await this.loadProjectConfig(projectName);
       const stacks = this.resolveStacks(config, projectName);
       const stackConfig = stacks[stackName];
       if (!stackConfig) throw new Error(`Stack '${stackName}' not found in project '${projectName}'`);
       this.assertStartAuthority({ project: projectName, stack: stackName }, stackConfig);
+      if (prepare && stackConfig.type !== 'local') throw new Error('Preparing a local release requires a local stack');
       const release = await this.admitRelease(projectName, stackName, stackConfig, config, releaseId, 'check');
+      if (stackConfig.type === 'local') {
+        const entries = await this.installedEntries(projectName, stackName, stackConfig, config, release, prepare);
+        const prior = this.localSelection(projectName, stackName).read().release;
+        if (prior?.id === release.id && prior.manifestSha256 !== release.manifestSha256) throw new Error('Selected manifest changed on disk');
+        await this.checkLocalOwner(projectName, stackName, entries, prior?.id !== release.id);
+      }
       const gates = release.manifest.gates;
       const passed = gates.filter((g) => g.status === 'passed').length;
       return {
@@ -2174,7 +2258,10 @@ export class ProjectService extends EventEmitter {
           `${release.staticsDir ? `, static bundle built for ${release.manifest.statics?.stack}` : ''}.`,
       };
     } catch (err) {
-      return { ok: false, because: (err as Error).message };
+      const { LocalReleaseNotPreparedError } = await import('../release/local-installation.js');
+      return { ok: false, because: (err as Error).message,
+        ...(err instanceof LocalReleaseNotPreparedError && { state: 'unprepared' as const }),
+        ...(err instanceof LocalReleaseStopRequired && { state: 'requires-stop' as const }) };
     }
   }
 
@@ -2769,9 +2856,8 @@ export class ProjectService extends EventEmitter {
     releaseId: string,
     purpose: 'deploy' | 'check' = 'deploy',
   ): Promise<LoadedRelease> {
-    if (stackConfig.type === 'local') {
-      throw new Error(`A release is for a remote stack — ${projectName}/${stackName} is local and runs its working tree.`);
-    }
+    if (stackConfig.type === 'local' && stackConfig.managedOrigin)
+      throw new Error('A node allocation takes its release from its owning controller');
     const { loadRelease, treeEqualsCommit } = await import('../release/load.js');
     const { decideStackRelease } = await import('../release/manifest.js');
     const release = await loadRelease(releaseId, await this.releaseStore());
@@ -2829,6 +2915,15 @@ export class ProjectService extends EventEmitter {
     const project = this.registry.get(projectName);
     if (!project) throw new Error(`Project '${projectName}' is not in the registry`);
     const commit = release.manifest.project.commit;
+    if (stackConfig.type === 'local') {
+      if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error('A local release requires a full source commit');
+      const { promisify } = await import('node:util');
+      const { execFile } = await import('node:child_process');
+      const { stdout } = await promisify(execFile)('git', ['rev-parse', '--show-prefix'], { cwd: project.path });
+      const directory = stdout.trimEnd().replace(/\/$/, '');
+      if (directory !== (release.manifest.project.directory ?? ''))
+        throw new Error('This local release belongs to another project directory in the repository');
+    }
     // Only what the definition reads has to be the release's — see
     // `release/definition-inputs.ts`. The rest of the checkout is other
     // people's work in progress, which no deployment reads. When the files
@@ -2836,7 +2931,14 @@ export class ProjectService extends EventEmitter {
     const root = fs.realpathSync(project.path);
     let inputs: string[] | undefined;
     try {
-      inputs = await this.deploymentReads(projectName, stackConfig, config, root);
+      // Local launches read executable app declarations from the verified installation. Only
+      // project-level configuration and explicitly mounted infrastructure still come from Git.
+      if (stackConfig.type === 'local') {
+        const { definitionInputs } = await import('../release/definition-inputs.js');
+        const { shippedDirsOf } = await import('../infrastructure/shipped-config.js');
+        inputs = await definitionInputs(root, [], shippedDirsOf(mergeInfrastructure(config, stackConfig), {}).map(([, dir]) => dir));
+        if (!inputs.length) throw new Error('No registered configuration inputs are available');
+      } else inputs = await this.deploymentReads(projectName, stackConfig, config, root);
     } catch (err) {
       this.logger.warn(
         { project: projectName, stack: stackName, error: (err as Error).message },
@@ -2857,7 +2959,7 @@ export class ProjectService extends EventEmitter {
 
     // Admission and installation must agree on the framework the application owner actually loads.
     const { refuseForeignOmni } = await import('../release/daemon-omni.js');
-    const foreign = refuseForeignOmni(release.manifest.omni.commit, await this.askDaemonBuilds(stackConfig), Boolean(release.manifest.omni.registry));
+    const foreign = stackConfig.type === 'local' ? null : refuseForeignOmni(release.manifest.omni.commit, await this.askDaemonBuilds(stackConfig), Boolean(release.manifest.omni.registry));
     if (foreign) {
       throw new Error(`Refusing release ${release.id} for ${projectName}/${stackName}: ${foreign}.`);
     }
@@ -2866,6 +2968,8 @@ export class ProjectService extends EventEmitter {
       | { gateway?: { staticDir?: string }; services?: Record<string, { config?: { staticDir?: string } }> }
       | undefined;
     const servesStatics = Boolean(infra?.services?.['gateway']?.config?.staticDir ?? infra?.gateway?.staticDir);
+    if (servesStatics && stackConfig.type === 'local')
+      throw new Error('This local gateway serves a working-tree static directory; an immutable local gateway binding is required');
     if (servesStatics && (!release.staticsDir || release.manifest.statics?.stack !== stackName)) {
       throw new Error(
         `Refusing release ${release.id} for ${projectName}/${stackName}: the stack's gateway serves a static bundle, and the ` +
@@ -3404,19 +3508,21 @@ export class ProjectService extends EventEmitter {
     stackName: string,
     stackConfig: IStackConfig,
     ecosystemConfig: IEcosystemConfig,
+    selectedEntries?: IEcosystemAppEntry[],
+    enable?: (build: (entry: IEcosystemAppEntry) => IEcosystemAppEntry) => Promise<void>,
   ): Promise<void> {
     const ownsInfrastructure = ownsStackInfrastructure(stackConfig);
     const stateKey = `${projectName}/${stackName}`;
     const state = this.stackStates.get(stateKey)!;
 
     // 1. Load bootstrap definitions (needed for both infra provisioning and config resolution)
-    const appEntries = this.resolveStackApps(stackConfig, ecosystemConfig);
+    const appEntries = selectedEntries ?? this.resolveStackApps(stackConfig, ecosystemConfig);
     // What the stack gives its apps, vault references resolved — now, before
     // anything is provisioned: a key the vault does not hold refuses the
     // start here (project/stack-env.ts).
     const stackEnv = await this.stackEnvFor(projectName, stackName, stackConfig, appEntries.map((e) => e.name));
     const project = this.registry.get(projectName);
-    const appDefinitions = await this.loadAppDefinitions(projectName, stackConfig, ecosystemConfig);
+    const appDefinitions = await this.loadAppDefinitions(projectName, stackConfig, ecosystemConfig, appEntries);
 
     // 2. Provision per-stack infrastructure (built-in + app-declared services)
     //    Auto-detect core services (postgres, redis, minio) from app requirements,
@@ -3490,6 +3596,7 @@ export class ProjectService extends EventEmitter {
     // Resolve once for both migrations and application startup. Inferred service
     // requirements are not permission to connect to a database or run migrations.
     const appConfigBuilder = this.stackEntryBuilder(projectName, stackName, stackConfig, ecosystemConfig, appDefinitions, stackEnv);
+    await enable?.(appConfigBuilder);
     if (effectiveInfra && project) {
       await this.runStackMigrations(projectName, stackName, this.infraManager.getNormalizedServices(projectName, stackName) ?? {}, appEntries, project.path, appConfigBuilder);
     }
@@ -4893,9 +5000,9 @@ export class ProjectService extends EventEmitter {
     projectName: string,
     stackConfig: IStackConfig,
     ecosystemConfig: IEcosystemConfig,
+    appEntries = this.resolveStackApps(stackConfig, ecosystemConfig),
   ): Promise<Map<string, IAppDefinition>> {
     const appDefinitions = new Map<string, IAppDefinition>();
-    const appEntries = this.resolveStackApps(stackConfig, ecosystemConfig);
     const project = this.registry.get(projectName);
 
     for (const entry of appEntries) {
@@ -4967,6 +5074,71 @@ export class ProjectService extends EventEmitter {
     }
 
     return merged;
+  }
+
+  private localSelection(project: string, stack: string): LocalReleaseSelection {
+    const registration = this.registry.get(project);
+    if (!registration) throw new Error('Project is not registered');
+    return new LocalReleaseSelection(this.daemonStateStore, { project, stack }, registration.registeredAt);
+  }
+
+  private async installedEntries(project: string, stack: string, definition: IStackConfig, config: IEcosystemConfig, release: LoadedRelease, prepare = false) {
+    const root = this.registry.get(project)?.path;
+    if (!root) throw new Error('Project is not registered');
+    const { inspectLocalReleaseInstallation } = await import('../release/local-installation.js');
+    const configured = this.resolveStackApps(definition, config);
+    const env = await this.stackEnvFor(project, stack, definition, configured.map(entry => entry.name));
+    const entries = configured.map(entry => ({
+      ...entry, env: { ...entry.env, ...env[entry.name] }, cwd: resolveAppPath(root, entry),
+      ...(entry.bootstrap && { bootstrap: resolveAppPath(root, entry, entry.bootstrap) }),
+    }));
+    const ownerPid = this.orchestrator.getExecutionOwnerPid?.();
+    if (!ownerPid) throw new Error('A verified local release requires a connected independent execution owner');
+    return inspectLocalReleaseInstallation(release, stack, entries, { prepare, ownerPid });
+  }
+
+  /** All consumers of executable declarations must see the same physical entry as the owner. */
+  private async launchEntries(project: string, stack: string, definition: IStackConfig, config: IEcosystemConfig) {
+    const selected = definition.type === 'local' && !definition.managedOrigin ? this.localSelection(project, stack).read().release : null;
+    if (!selected) return this.resolveStackApps(definition, config);
+    const { loadRelease } = await import('../release/load.js');
+    const release = await loadRelease(selected.id, await this.releaseStore());
+    if (release.manifestSha256 !== selected.manifestSha256) throw new Error('Selected release manifest changed on disk');
+    return this.installedEntries(project, stack, definition, config, release);
+  }
+
+  private async checkLocalOwner(project: string, stack: string, entries: IEcosystemAppEntry[], changing: boolean) {
+    const plan = await this.orchestrator.inspectStackExecution({ project, stack });
+    await this.orchestrator.refreshObservation?.();
+    const expected = new Map(entries.map(entry => [ProjectService.handleKey(project, stack, entry.name), entry]));
+    for (const app of plan.apps) {
+      const handle = this.orchestrator.getHandle(app.name);
+      const entry = expected.get(app.name);
+      if (!handle || !entry) throw new Error('Cannot reconcile a retained application outside the selected local release: ' + app.name);
+      if (handle.status === 'stopped' && handle.pid === null) continue;
+      if (changing || !sameLaunchCode(handle.entry, entry))
+        throw new LocalReleaseStopRequired('Stop the applications of this local stack before changing launch code: ' + app.name);
+    }
+    if (plan.phase === 'stopping' || plan.phase === 'starting')
+      throw new Error('Stack has an unfinished owner operation; inspect it before selecting a release');
+    return plan;
+  }
+
+  /** The owner's durable stop fence covers the gap between the SQLite commit and the last redefinition. */
+  private async prepareLocalOwner(project: string, stack: string, entries: IEcosystemAppEntry[], changing: boolean,
+    build: (entry: IEcosystemAppEntry) => IEcosystemAppEntry, commit: () => void) {
+    const plan = await this.checkLocalOwner(project, stack, entries, changing);
+    if (changing && plan.phase !== 'stopped') {
+      await this.orchestrator.stopStackExecution({ operationId: randomUUID(), plan });
+    }
+    commit();
+    if (changing || plan.phase === 'stopped') {
+      const next = new Map(entries.map(entry => { const built = build(entry); return [built.name, built]; }));
+      for (const { name } of plan.apps) {
+        if (!await this.orchestrator.redefineApp(name, next.get(name)!))
+          throw new Error('Owner could not confirm the selected entry for ' + name + '; the stack remains fenced');
+      }
+    }
   }
 
   private resolveStackApps(
@@ -5312,9 +5484,11 @@ export class ProjectService extends EventEmitter {
       else status = 'error';
     }
 
+    const selectedRelease = config.type === 'local' && !config.managedOrigin ? this.localSelection(projectName, stackName).read().release : null;
     return {
       name: stackName,
       type: config.type,
+      ...(selectedRelease && { selectedRelease }),
       status,
       ...(notUp.length > 0 && { notUp }),
       resumeOperation: this.daemonStateStore.kvGetSync<InstalledStackResumeResult>(`stack:${stateKey}:last-resume`, { strict: true }) ?? undefined,

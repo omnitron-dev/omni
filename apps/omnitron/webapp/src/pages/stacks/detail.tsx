@@ -75,6 +75,7 @@ export default function StackDetailPage() {
   const [stopOpen, setStopOpen] = useState(false);
   const [diagnoseOpen, setDiagnoseOpen] = useState(false);
   const [deployOpen, setDeployOpen] = useState(false);
+  const [workingTreeOpen, setWorkingTreeOpen] = useState(false);
 
   const stack = stacks.find((s) => s.name === name);
   const pendingOp = activeProject && name ? (pendingOps[`${activeProject}/${name}`] ?? null) : null;
@@ -268,7 +269,7 @@ export default function StackDetailPage() {
               // design, and the daemon's refusal names the two commands. The
               // console says it BEFORE the press instead: the release card
               // below carries the button that works.
-              takesReleasesOnly ? (
+              takesReleasesOnly && !stack.selectedRelease ? (
                 <Can permission="OmnitronProject.startStack"><Button
                   startIcon={<DeployIcon />}
                   color="success"
@@ -320,7 +321,9 @@ export default function StackDetailPage() {
           project={activeProject}
           stack={name}
           requiresRelease={Boolean(takesReleasesOnly)}
-          local={stack.type === 'local'}
+          managed={Boolean(stack.config.managedOrigin)}
+          selected={stack.selectedRelease?.id}
+          onWorkingTree={stack.selectedRelease && isStopped && !busy && !takesReleasesOnly ? () => setWorkingTreeOpen(true) : undefined}
           onDeploy={() => setDeployOpen(true)}
         />
       )}
@@ -460,6 +463,20 @@ export default function StackDetailPage() {
         release={null}
         {...(name ? { stack: name } : {})}
       /></Can>
+
+      <Dialog open={workingTreeOpen} onClose={() => setWorkingTreeOpen(false)}>
+        <DialogTitle>Start from the working tree?</DialogTitle>
+        <DialogContent><DialogContentText>
+          {stack.name} will start from its registered project directory. Future restarts will use that directory until you select a release.
+        </DialogContentText></DialogContent>
+        <DialogActions>
+          <Button onClick={() => setWorkingTreeOpen(false)}>Cancel</Button>
+          <Can permission="OmnitronProject.startStack"><Button variant="contained" disabled={!isStopped || busy || takesReleasesOnly}
+            onClick={() => { setWorkingTreeOpen(false); if (activeProject && name) void startStack(activeProject, name, { workingTree: true }); }}>
+            Start from working tree
+          </Button></Can>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
         <DialogTitle>Delete Stack</DialogTitle>

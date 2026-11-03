@@ -45,7 +45,8 @@ it('reads cold topology without executing or compiling an application bootstrap'
     fs.writeFileSync(path.join(directory, 'apps/api/config/default.json'), JSON.stringify({ omnitron: { redis: true } }));
     const entries = [{ name: 'api', bootstrap: 'apps/api/src/bootstrap.ts' }];
     const service = Object.assign(Object.create(ProjectService.prototype), {
-      registry: { get: () => ({ path: directory }) }, bootstrapTopology: new Map(),
+      localSelection: () => ({ read: () => ({ revision: 0, release: null }) }),
+    registry: { get: () => ({ path: directory }) }, bootstrapTopology: new Map(),
       ensureConfig: async () => ({ apps: entries }), resolveStacks: () => ({ dev: { type: 'local', apps: 'all' } }),
       resolveStackApps: () => entries, stackEnvFor: async () => ({}),
       infraManager: { getPortAllocation: () => undefined, getNormalizedServices: () => undefined },

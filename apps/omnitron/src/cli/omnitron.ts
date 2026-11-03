@@ -342,6 +342,14 @@ stack
   });
 
 stack
+  .command('prepare-release <project> <stack> <release>')
+  .description('Verify and stage local application archives before a maintenance window')
+  .structuredAction(async (projectName, stackName, release) => {
+    const { stackPrepareReleaseCommand } = await import('../commands/stack.js');
+    await stackPrepareReleaseCommand(projectName, stackName, release);
+  });
+
+stack
   .command('start <project> <stack>')
   .description('Start a stack — provision infra + deploy + start apps')
   // A remote deployment ships the working tree, so it refuses one that is
@@ -352,7 +360,8 @@ stack
   // A release instead of the working tree: built by `omnitron release build`
   // from two commits in clean clones, every gate run. A stack whose config
   // says `release: { mode: 'required' }` takes nothing else.
-  .option('--release <id>', 'Deploy this release (see `omnitron release build`) instead of the working tree')
+  .option('--release <id>', 'Start from a verified release; local stacks retain this choice across restarts')
+  .option('--working-tree', 'Return a stopped local stack to its registered working tree')
   // For an operator who doubts a node's record of what an app runs: every
   // artifact is shipped and every app restarted, whatever the record says.
   .option('--reinstall', "Ship and restart every app, whatever the node's record says it runs")
@@ -361,6 +370,7 @@ stack
     await stackStartCommand(projectName, stackName, {
       allowDirty: options.allowDirty === true,
       ...(typeof options.release === 'string' ? { release: options.release } : {}),
+      ...(options.workingTree === true ? { workingTree: true } : {}),
       ...(options.reinstall === true ? { reinstall: true } : {}),
     });
   });

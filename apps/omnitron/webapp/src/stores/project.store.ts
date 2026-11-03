@@ -74,7 +74,7 @@ interface ProjectState {
    * `release: { mode: 'required' }` refuses that outright and names the two
    * commands instead — see `admitRelease`.
    */
-  startStack: (project: string, stack: string, opts?: { release?: string; allowDirty?: boolean }) => Promise<StackActionResult>;
+  startStack: (project: string, stack: string, opts?: { release?: string; allowDirty?: boolean; workingTree?: boolean }) => Promise<StackActionResult>;
   resumeInstalledStack: (project: string, stack: string) => Promise<void>;
   stopStack: (project: string, stack: string, review: string) => Promise<void>;
   createStack: (project: string, data: { name: string; type: 'local' | 'remote' | 'cluster'; apps: string[] | 'all'; nodeIds?: string[] }) => Promise<IStackInfo>;
@@ -377,7 +377,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     }
   },
 
-  startStack: async (projectName: string, stackName: string, opts?: { release?: string; allowDirty?: boolean }) => {
+  startStack: async (projectName: string, stackName: string, opts?: { release?: string; allowDirty?: boolean; workingTree?: boolean }) => {
     const opKey = `${projectName}/${stackName}`;
     if (get().pendingOps[opKey]) return { state: 'busy', message: `An operation is already pending for ${opKey}.` };
 
@@ -393,6 +393,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         project: projectName,
         stack: stackName,
         ...(opts?.release ? { release: opts.release } : {}),
+        ...(opts?.workingTree ? { workingTree: true } : {}),
         ...(opts?.allowDirty ? { allowDirty: true } : {}),
       });
       const { outcome, issues, online, total } = readStackStart(stack);

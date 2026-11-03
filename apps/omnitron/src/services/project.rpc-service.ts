@@ -296,7 +296,7 @@ export class ProjectRpcService {
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async startStack(data: { project: string; stack: string; allowDirty?: boolean; release?: string; reinstall?: boolean }): Promise<IStackInfo> {
+  async startStack(data: { project: string; stack: string; allowDirty?: boolean; release?: string; workingTree?: boolean; reinstall?: boolean }): Promise<IStackInfo> {
     const logicalName = data.stack;
     data = await this.projectService.resolveProjectStack(data);
     // The report an operator acts on, and a script exits on: `only 0/6 apps
@@ -313,6 +313,7 @@ export class ProjectRpcService {
         source: 'operator',
         ...(data.allowDirty === true ? { allowDirty: true } : {}),
         ...(typeof data.release === 'string' && data.release ? { release: data.release } : {}),
+        ...(data.workingTree === true ? { workingTree: true } : {}),
         ...(data.reinstall === true ? { reinstall: true } : {}),
       }),
     );
@@ -327,9 +328,9 @@ export class ProjectRpcService {
    * pressing Deploy.
    */
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async checkRelease(data: { project: string; stack: string; release: string }): Promise<{ ok: boolean; because: string }> {
+  async checkRelease(data: { project: string; stack: string; release: string; prepare?: boolean }): Promise<import('../shared/dto/project.js').ReleaseAdmission> {
     data = await this.projectService.resolveProjectStack(data);
-    return this.projectService.checkRelease(data.project, data.stack, data.release);
+    return this.projectService.checkRelease(data.project, data.stack, data.release, data.prepare === true);
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })

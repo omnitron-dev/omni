@@ -142,6 +142,7 @@ describe('a remote stack will not start from a tree that is not its commit', () 
       logger: { info: vi.fn(), warn: (o: any) => warned.push(o), error: vi.fn(), debug: vi.fn() },
       registry: { get: () => ({ name: 'sample', path: dir }), list: () => [] },
       audit: { record: vi.fn(async () => {}) },
+      localSelection: () => ({ read: () => ({ revision: 0, release: null }) }),
       stackStates: new Map(),
       orchestrator: { enableStackExecution: vi.fn(async () => {}) },
     startsInFlight: new Map(),

@@ -23,7 +23,8 @@ function fixture() {
   const entries = [{ name: 'api', bootstrap: 'app/src/bootstrap.js' }];
   const metadata = () => new BootstrapMetadataStore(db);
   const service = Object.assign(Object.create(ProjectService.prototype), {
-    logger, registry: { get: () => ({ path: directory }) }, bootstrapTopology: new Map(),
+    logger, localSelection: () => ({ read: () => ({ revision: 0, release: null }) }),
+    registry: { get: () => ({ path: directory }) }, bootstrapTopology: new Map(),
     get bootstrapMetadata() { return metadata(); },
     orchestrator: { getHandle: () => undefined },
     ensureConfig: async () => ({ apps: entries }),

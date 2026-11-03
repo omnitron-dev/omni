@@ -21,6 +21,7 @@ function fixture() {
   const plan = vi.fn(async () => []);
   const service = Object.assign(Object.create(ProjectService.prototype), {
     nodeStackStop: { assertMutable: vi.fn() },
+    localSelection: () => ({ read: () => ({ revision: 0, release: null }) }),
     registry: { get: () => ({ path: directory }) }, configRegistry: new Map([['sample', { config, loadedAt: Date.now() }]]),
     bootstrapTopology: new Map(), diagnosesInFlight: new Map(), bootstrapMetadata: metadata, orchestrator: { getHandle: () => undefined },
     resolveStacks: () => config.stacks, resolveStackApps: () => entries, stackEnvFor: async () => ({}),

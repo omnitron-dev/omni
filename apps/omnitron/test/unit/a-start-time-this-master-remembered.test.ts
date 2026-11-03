@@ -55,6 +55,7 @@ function service(opts: {
   const asked: string[] = [];
   const svc: any = Object.create(ProjectService.prototype);
   Object.assign(svc, {
+    registry: { get: () => ({ registeredAt: '2026-01-01T00:00:00.000Z' }) },
     daemonStateStore: { kvGetSync: () => null },
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     stackStates: new Map(

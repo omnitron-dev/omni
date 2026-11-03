@@ -74,6 +74,7 @@ function service(stack: Record<string, unknown>, overrides: Record<string, unkno
     registry: { get: () => null, list: () => [] },
     stackStates: new Map(),
     orchestrator: { enableStackExecution: vi.fn(async () => {}) },
+    localSelection: () => ({ read: () => ({ revision: 0, release: null }) }),
     startsInFlight: new Map(),
     stopsInFlight: new Map(),
     assertStackMutable: vi.fn(),

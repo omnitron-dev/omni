@@ -31,7 +31,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
 import type { IStackInfo, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
-import { project as projectRpc } from 'src/netron/client';
+import { invokeStackLifecycle } from 'src/netron/client';
 import { releaseApi } from 'src/netron/release-wire';
 import { useProjectStore } from 'src/stores/project.store';
 import { DeployIcon } from 'src/assets/icons';
@@ -71,7 +71,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
   const [available, setAvailable] = useState<ReleaseSummary[]>([]);
   const [picked, setPicked] = useState('');
   const [target, setTarget] = useState(stack ?? '');
-  const [answer, setVerdict] = useState<{ key: string; ok: boolean; because: string } | null>(null);
+  const [answer, setVerdict] = useState<{ key: string; ok: boolean; because: string; state?: 'unprepared' | 'requires-stop' } | null>(null);
   const [checking, setChecking] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [inspectTarget, setInspectTarget] = useState(false);
@@ -131,8 +131,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
     if (!open || !releaseId || !target) return undefined;
     let current = true;
     setChecking(true);
-    projectRpc
-      .checkRelease({ project, stack: target, release: releaseId })
+    invokeStackLifecycle('checkRelease', { project, stack: target, release: releaseId })
       .then((response) => {
         if (current) setVerdict({ ...response, key });
       })
@@ -146,6 +145,13 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
       current = false;
     };
   }, [open, project, target, releaseId, key]);
+
+  const handlePrepare = async () => {
+    setChecking(true);
+    try { setVerdict({ ...await invokeStackLifecycle('checkRelease', { project, stack: target, release: releaseId, prepare: true }), key }); }
+    catch (err) { setFailure((err as Error).message); }
+    finally { setChecking(false); }
+  };
 
   const handleDeploy = async () => {
     if (!release || !target || !verdict?.ok) return;
@@ -241,7 +247,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
             size="small"
             fullWidth
             disabled={deploying}
-            helperText="A release is deployed to a remote or cluster stack; a local stack runs the working tree."
+            helperText={chosen?.type === 'local' ? 'Local stacks keep the selected release across restarts. Stop their applications before changing it.' : undefined}
           >
             {stacks.length === 0 && (
               <MenuItem disabled value="">
@@ -249,7 +255,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
               </MenuItem>
             )}
             {stacks.map((s) => (
-              <MenuItem key={s.name} value={s.name} disabled={s.type === 'local'}>
+              <MenuItem key={s.name} value={s.name} disabled={Boolean(s.config?.managedOrigin)}>
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'center', width: '100%' }}>
                   <Typography variant="body2">{s.name}</Typography>
                   <Chip label={s.type} size="small" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
@@ -286,7 +292,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
           )}
 
           {verdict && (
-            <Alert severity={verdict.ok ? 'success' : 'error'}>
+            <Alert severity={verdict.ok ? 'success' : verdict.state ? 'info' : 'error'}>
               <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
                 {verdict.because}
               </Typography>
@@ -296,7 +302,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
           {stackError && <Alert severity="warning">Stack inventory unavailable · {stackError}</Alert>}
           {requiresRelease && (
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              {target} takes releases only — its plain Start is refused by the daemon on purpose.
+              {target} requires an immutable release.
             </Typography>
           )}
 
@@ -317,10 +323,10 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
           variant="contained"
           size="small"
           startIcon={deploying ? <CircularProgress size={14} color="inherit" /> : <DeployIcon />}
-          disabled={!release || !target || deploying || checking || (!inspectTarget && verdict?.ok !== true)}
-          onClick={inspectTarget ? () => inspect(target) : handleDeploy}
+          disabled={!release || !target || deploying || checking || (!inspectTarget && verdict?.state !== 'unprepared' && verdict?.ok !== true)}
+          onClick={inspectTarget ? () => inspect(target) : verdict?.state === 'unprepared' ? handlePrepare : handleDeploy}
         >
-          {deploying ? 'Deploying…' : inspectTarget ? 'Inspect stack' : 'Deploy'}
+          {deploying ? 'Deploying…' : inspectTarget ? 'Inspect stack' : verdict?.state === 'unprepared' ? 'Prepare release' : 'Deploy'}
         </Button>
       </DialogActions>
     </Dialog>

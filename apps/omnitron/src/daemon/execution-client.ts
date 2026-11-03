@@ -38,7 +38,7 @@ export class ExecutionClient {
   private readonly emitter = new EventEmitter();
   private logHandlers: Array<(name: string, line: string, context?: ProcessOutputContext) => void> = [];
   private poll: NodeJS.Timeout | null = null;
-  private polling = false;
+  private observation: Promise<void> | null = null;
   private setup: Promise<void> = Promise.resolve();
   private setupFailure: unknown;
   private closed = false;
@@ -191,9 +191,16 @@ export class ExecutionClient {
     return this.inventory;
   }
 
-  private async refresh(): Promise<void> {
-    if (this.polling || this.closed) return;
-    this.polling = true;
+  private refresh(): Promise<void> {
+    if (this.closed) return Promise.resolve();
+    // Callers joining the periodic poll must await its acknowledgment too.
+    // A boolean guard made replay activation appear complete while the owner
+    // still retained records awaiting persistence and acknowledgment.
+    this.observation ??= this.observe().finally(() => { this.observation = null; });
+    return this.observation;
+  }
+
+  private async observe(): Promise<void> {
     let observed = false;
     try {
       if (this.ownerChanged) throw new Error('Execution owner identity changed; automatic process adoption is refused');
@@ -243,7 +250,6 @@ export class ExecutionClient {
           'Inspect the private execution-owner log, controller grant and socket. Do not restart applications merely because the backend lost its observation channel.');
       }
     }
-    finally { this.polling = false; }
   }
 
   private validateOwner(snapshot: ExecutionSnapshot): void {

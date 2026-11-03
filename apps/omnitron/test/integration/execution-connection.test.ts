@@ -14,12 +14,14 @@ class Owner {
   mutations = 0;
   unavailable = false;
   rejectAck = false;
+  beforeObservation?: () => Promise<void>;
   revision = 0;
   constructor(readonly id: string) {}
 
   @Public()
   async snapshot(input?: { afterEvent?: number }) {
     this.snapshots.push(input);
+    if (input?.afterEvent !== undefined) await this.beforeObservation?.();
     if (this.unavailable) throw new Error('Owner observation fixture is unavailable');
     return { protocol: 1, revision: ++this.revision,
       status: { owner: { id: this.id, pid: process.pid, startedAt: new Date().toISOString() },
@@ -73,6 +75,31 @@ async function fixture() {
   internals.grant = { ownerId: first.owner.id, controllerId: 'test', epoch: 1 };
   return { ...first, client, internals, serve, socket };
 }
+
+it('waits for an in-flight observation before reporting replay activation complete', async () => {
+  const { owner, client, internals } = await fixture();
+  client.setLogCollector({ setCaptureStatus: () => undefined, confirmPending: async () => undefined } as never);
+  let release!: () => void;
+  let entered!: () => void;
+  const waiting = new Promise<void>(resolve => { entered = resolve; });
+  const paused = new Promise<void>(resolve => { release = resolve; });
+  owner.beforeObservation = async () => { entered(); await paused; };
+  const poll = internals.refresh();
+  await waiting;
+  let activated = false;
+  const activation = client.activateObservations().then(() => { activated = true; });
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    expect(activated).toBe(false);
+    expect(owner.acknowledgments).toBe(0);
+  } finally {
+    release();
+    await Promise.all([poll, activation]);
+  }
+  expect(activated).toBe(true);
+  expect(owner.acknowledgments).toBe(1);
+  expect(owner.snapshots.filter(input => input !== undefined)).toHaveLength(1);
+});
 
 it('recovers observation failures without changing controller ownership and distinguishes failed acknowledgments', async () => {
   const { owner, client, internals } = await fixture();

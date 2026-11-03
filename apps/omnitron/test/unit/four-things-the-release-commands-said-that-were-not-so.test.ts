@@ -84,6 +84,21 @@ afterEach(() => {
   process.exitCode = exitCodeBefore;
 });
 
+it('reports unsafe recorded metadata without printing credentials or blaming an unfinished build', async () => {
+  const id = 'sample-202609221438-6c62b7ae-09d95ed2';
+  writeManifest(id, '2026-09-22T14:40:00.000Z', [{ name: 'test', status: 'passed' }]);
+  const file = path.join(ROOT, id, 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+  manifest.project.repo = 'https://synthetic-secret@source.invalid/project';
+  fs.writeFileSync(file, JSON.stringify(manifest));
+  await releaseShowCommand(id);
+  expect(process.exitCode).toBe(1);
+  expect(said.filter(row => row.level === 'error')).toEqual([{ level: 'error', text: expect.stringContaining('cannot be read') }]);
+  expect(JSON.stringify(said)).not.toMatch(/synthetic-secret|did not finish/);
+  await releaseListCommand();
+  expect(tables.at(-1)?.data[0]?.['gates']).toBe('invalid manifest');
+});
+
 describe('1. a timed-out gate is not a gate that did not run', () => {
   it('counts each outcome word under its own name', () => {
     const id = 'sample-202609230557-367f5cc7-f9e17151';

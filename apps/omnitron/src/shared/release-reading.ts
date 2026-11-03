@@ -63,6 +63,7 @@ export function frameworkSourceLabel(manifest: ReleaseManifest): string {
  */
 export interface ReleaseGates {
   readonly complete: boolean;
+  readonly manifestError?: string;
   readonly gates: { readonly total: number; readonly passed: number; readonly failed: number };
   readonly gateList: readonly GateOutcome[];
 }
@@ -84,6 +85,7 @@ export function noGateRan(gates: readonly GateOutcome[]): GateOutcome | null {
 }
 
 export function readGates(release: ReleaseGates): GatesReading {
+  if (release.manifestError) return { text: 'invalid manifest', tone: 'failed' };
   if (!release.complete) return { text: 'no manifest', tone: 'none' };
   const none = noGateRan(release.gateList);
   // The builder records `--skip-gates` only as that outcome's reason, so the

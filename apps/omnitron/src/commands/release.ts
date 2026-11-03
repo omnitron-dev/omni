@@ -365,7 +365,9 @@ function cannotShow(id: string, err: unknown): void {
   }
   if (detail && !detail.complete) {
     const said = emitError(
-      `Release ${id} has no manifest — its build did not finish, or has not yet: ${detail.root} holds only what the build left (${size(detail.bytes)})`,
+      detail.manifestError
+        ? `Release ${id} cannot be read: ${detail.manifestError}`
+        : `Release ${id} has no manifest — its build did not finish, or has not yet: ${detail.root} holds only what the build left (${size(detail.bytes)})`,
       { root: detail.root, bytes: detail.bytes, logs: detail.logs },
     );
     if (!said) for (const l of detail.logs) log.info(`    logs/${l.name} — ${size(l.bytes)}`);

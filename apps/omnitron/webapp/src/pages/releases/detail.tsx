@@ -139,9 +139,8 @@ function ReleaseDetails({ id }: { id: string }) {
       {error && <Alert severity="warning">Last confirmed manifest · {error}</Alert>}
       {data?.builds.error && <Alert severity="warning">Build activity unavailable · {data.builds.error}</Alert>}
       {!release.complete && (
-        <Alert severity="warning" variant="outlined">
-          This directory holds no manifest: the build did not finish, and what is here is its logs. Nothing can be
-          deployed from it.
+        <Alert severity={release.manifestError ? 'error' : 'warning'} variant="outlined">
+          {release.manifestError ?? 'This directory holds no manifest: the build did not finish, and what is here is its logs. Nothing can be deployed from it.'}
         </Alert>
       )}
 

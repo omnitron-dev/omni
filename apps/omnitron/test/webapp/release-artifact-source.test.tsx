@@ -7,6 +7,7 @@ import { ReleaseArtifactSource } from '../../webapp/src/components/release-artif
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('src/netron/client', () => ({ releases: { get }, audit: {} }));
 import { releaseApi } from '../../webapp/src/netron/release-wire.js';
+import { readGates } from '../../src/shared/release-reading.js';
 
 afterEach(cleanup);
 describe('release source details', () => {
@@ -38,5 +39,13 @@ describe('release source details', () => {
     expect(await releaseApi.get('release')).toMatchObject({ manifestSha256: 'c'.repeat(64), artifactSources: [source] });
     get.mockResolvedValueOnce({ id: 'legacy' });
     expect(await releaseApi.get('legacy')).toMatchObject({ manifestSha256: null, artifactSources: null });
+  });
+  it('preserves an explicit metadata refusal rather than showing an unfinished build', async () => {
+    get.mockResolvedValueOnce({ id: 'unsafe', complete: false, manifestError: 'Repository identity is unsafe' });
+    const detail = await releaseApi.get('unsafe');
+    expect(detail.manifestError).toBe('Repository identity is unsafe');
+    expect(readGates(detail)).toEqual({ text: 'invalid manifest', tone: 'failed' });
+    get.mockResolvedValueOnce({ id: 'unfinished', complete: false });
+    expect(readGates(await releaseApi.get('unfinished'))).toEqual({ text: 'no manifest', tone: 'none' });
   });
 });

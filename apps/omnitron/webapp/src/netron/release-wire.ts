@@ -56,6 +56,7 @@ function summary(r: Partial<ReleaseSummary> & { id: string }): ReleaseSummaryVie
     id: r.id,
     project: r.project ?? fromId.project,
     complete: r.complete ?? false,
+    ...(r.manifestError && { manifestError: r.manifestError }),
     builtAt: r.builtAt ?? null,
     builtBy: r.builtBy ?? null,
     builtWith: r.builtWith ?? null,

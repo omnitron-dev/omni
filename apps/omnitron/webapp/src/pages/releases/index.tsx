@@ -151,8 +151,8 @@ export default function ReleasesPage() {
             <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
               <CommitPair projectCommit={r.projectCommit} omniCommit={r.omniCommit} onRemote={r.onRemote} project={r.project} />
               {!r.complete && (
-                <Tooltip title="This directory holds no manifest: the build did not finish. Its logs are still there." arrow>
-                  <Chip label="unfinished" size="small" color="warning" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
+                <Tooltip title={r.manifestError ?? 'This directory holds no manifest: the build did not finish. Its logs are still there.'} arrow>
+                  <Chip label={r.manifestError ? 'invalid manifest' : 'unfinished'} size="small" color={r.manifestError ? 'error' : 'warning'} variant="outlined" sx={{ height: 18, fontSize: 10 }} />
                 </Tooltip>
               )}
               {targets.map((t) => (

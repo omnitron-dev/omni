@@ -57,6 +57,11 @@ imports and decorators; built packages remain external to preserve shared module
 and DI identity. Source workspace dependencies participate in the incremental
 watch graph. Reading a definition never requires changing those package exports
 to built output or installing a second runtime loader in the application.
+Compiled imports retain the dependency selected from their original package,
+including its ESM conditions and version. Generated local bundles reference that
+file relative to their output, so library dependencies need not be copied into
+every application manifest. These `.omnitron-build` files belong to the local
+installation; checked releases use the ordinary package build and sealed closure.
 
 Each application with a Titan bootstrap must declare `@omnitron-dev/titan`
 in its own runtime dependencies. Before packing, the builder verifies that

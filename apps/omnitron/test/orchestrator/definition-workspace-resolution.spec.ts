@@ -32,10 +32,10 @@ afterEach(async () => {
 });
 afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 
-function fixture(importOnly = false) {
+function fixture(importOnly = false, libraryDirectory = 'kit') {
   const project = path.join(root, 'project-' + ++sequence);
   const app = path.join(project, 'apps/probe');
-  const kit = path.join(project, 'packages/kit');
+  const kit = path.join(project, 'packages', libraryDirectory);
   const built = path.join(project, 'node_modules/@fixture/built');
   for (const directory of [path.join(app, 'src'), path.join(kit, 'src'), built]) fs.mkdirSync(directory, { recursive: true });
   fs.writeFileSync(path.join(app, 'package.json'), '{"type":"module"}');
@@ -58,7 +58,7 @@ import { marker } from '@fixture/built';
 export default { name: current.value + '-' + marker, processes: [{ name: 'worker', module: './worker.ts' }] };
 `);
   fs.writeFileSync(path.join(app, 'src/worker.ts'), "export { current as default } from '@fixture/kit';\n");
-  return { project, app, bootstrap, change };
+  return { project, app, kit, bootstrap, change };
 }
 
 function plainRead(bootstrap: string, fresh: boolean) {
@@ -91,7 +91,7 @@ describe('one workspace source policy for definitions and worker builds', () => 
     const result = await builder.buildApp('probe', f.bootstrap, definition);
     expect(plainRead(result.bootstrapPath, false).name).toBe(definition.name);
     const output = fs.readFileSync(result.bootstrapPath, 'utf8');
-    expect(output).toContain('@fixture/built');
+    expect(output).toContain('node_modules/%40fixture/built/index.js');
     expect(output).not.toContain('prebuilt-runtime-value');
     expect(output).not.toContain('@fixture/kit');
     // watch() starts asynchronously. Remove the preceding build outputs and
@@ -106,5 +106,51 @@ describe('one workspace source policy for definitions and worker builds', () => 
     await expect.poll(() => changes, { timeout: 10_000 }).toBeGreaterThan(0);
     expect(plainRead(result.bootstrapPath, false).name).toBe('watched-prebuilt-runtime-value');
     expect(plainRead(f.bootstrap, true).name).toBe('watched-prebuilt-runtime-value');
+  }, 45_000);
+
+  it('keeps library-owned compiled dependencies and import conditions after relocating the workspace', async () => {
+    const libraryDirectory = 'kit #1%';
+    const f = fixture(true, libraryDirectory);
+    const dependency = (directory: string, marker: string, version = '1.0.0') => {
+      fs.mkdirSync(directory, { recursive: true });
+      fs.writeFileSync(path.join(directory, 'package.json'), JSON.stringify({ name: '@fixture/' + path.basename(directory), version, type: 'module',
+        exports: { '.': { import: './import.js', require: './require.cjs' } } }));
+      fs.writeFileSync(path.join(directory, 'import.js'), `export const marker=${JSON.stringify(marker)}; export const identity={};`);
+      fs.writeFileSync(path.join(directory, 'require.cjs'), "throw Error('Wrong require condition');");
+    };
+    dependency(path.join(f.project, 'node_modules/@fixture/conditional'), 'app-version');
+    dependency(path.join(f.kit, 'node_modules/@fixture/conditional'), 'library-version', '2.0.0');
+    const manifest = path.join(f.kit, 'package.json');
+    fs.writeFileSync(manifest, JSON.stringify({ ...JSON.parse(fs.readFileSync(manifest, 'utf8')),
+      dependencies: { '@fixture/conditional': '2.0.0', '@fixture/private': '1.0.0' } }));
+    fs.appendFileSync(path.join(f.kit, 'src/index.ts'), "export { marker as libraryMarker, identity as libraryIdentity } from '@fixture/conditional';\n");
+    // Only the library declares this package. It cannot resolve from the app.
+    const privateDependency = path.join(f.kit, 'node_modules/@fixture/private');
+    dependency(privateDependency, 'library-private');
+    fs.appendFileSync(path.join(f.kit, 'src/index.ts'), "export { marker as privateMarker } from '@fixture/private';\n");
+    fs.writeFileSync(f.bootstrap, `
+import { libraryMarker, libraryIdentity, privateMarker } from '@fixture/kit';
+import { marker, identity } from '@fixture/conditional';
+import { identity as again } from '@fixture/conditional';
+if(identity !== again || identity === libraryIdentity) throw Error('Compiled dependency identity changed');
+export default {name:[marker,libraryMarker,privateMarker].join(':'),processes:[{name:'worker',module:'./worker.ts'}]};
+`);
+    const expected = 'app-version:library-version:library-private';
+    expect(plainRead(f.bootstrap, true).name).toBe(expected);
+    const builder = new BuildService(true); builders.push(builder);
+    const built = await builder.buildApp('relocated', f.bootstrap, plainRead(f.bootstrap, true));
+    expect(plainRead(built.bootstrapPath, false).name).toBe(expected);
+    const compiled = fs.readFileSync(built.bootstrapPath, 'utf8');
+    expect(compiled).not.toContain(f.project);
+    expect(compiled).not.toContain('library-version');
+    // The dependency layout travels as a unit: there must be no reference to
+    // the former absolute installation or a change in selected package version.
+    const moved = f.project + '-moved #1%';
+    fs.renameSync(f.project, moved);
+    fs.unlinkSync(path.join(moved, 'node_modules/@fixture/kit'));
+    fs.symlinkSync('../../packages/' + libraryDirectory, path.join(moved, 'node_modules/@fixture/kit'), 'dir');
+    const relocate = (file: string) => path.join(moved, path.relative(f.project, file));
+    expect(plainRead(relocate(built.bootstrapPath), false).name).toBe(expected);
+    expect(plainRead(relocate(f.bootstrap), true).name).toBe(expected);
   }, 45_000);
 });

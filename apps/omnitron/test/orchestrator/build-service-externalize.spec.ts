@@ -132,8 +132,9 @@ export const out = fromBuilt;
     // The marker from the built package must NOT appear inline — it's
     // expected to be loaded at runtime via the import.
     expect(bundle).not.toContain('built-marker-67890');
-    // And the import must be preserved as a runtime specifier.
-    expect(bundle).toContain('"@ws/built"');
+    // Preserve the original importer's physical dependency, relative to the
+    // generated output; a hoisted bare name could select another version.
+    expect(bundle).toContain('"../node_modules/%40ws/built/dist/index.js"');
   }, 30000);
 
   it('leaves unresolvable npm specifiers external', async () => {

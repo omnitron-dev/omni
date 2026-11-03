@@ -93,7 +93,7 @@ const sizeConfig = {
  * Dashboard block header component.
  */
 export function DashboardBlockHeader({ title, subtitle, icon, actions, sx }: DashboardBlockHeaderProps): ReactNode {
-  const { collapsed, toggleCollapse, size, labels } = useDashboardBlockContext();
+  const { collapsible, collapsed, toggleCollapse, size, labels } = useDashboardBlockContext();
   const config = sizeConfig[size];
 
   return (
@@ -161,7 +161,7 @@ export function DashboardBlockHeader({ title, subtitle, icon, actions, sx }: Das
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
         {actions}
-        {collapsed !== undefined && (
+        {collapsible && (
           <IconButton
             size="small"
             onClick={toggleCollapse}
@@ -181,26 +181,24 @@ export function DashboardBlockHeader({ title, subtitle, icon, actions, sx }: Das
  * Dashboard block content component.
  */
 export function DashboardBlockContent({ children, disablePadding = false, sx }: DashboardBlockContentProps): ReactNode {
-  const { collapsed, size } = useDashboardBlockContext();
+  const { size } = useDashboardBlockContext();
   const config = sizeConfig[size];
 
   return (
-    <Collapse in={!collapsed} timeout="auto">
-      <Box
-        data-testid="prism-dashboard-block-content"
-        sx={[
-          {
-            ...(!disablePadding && {
-              px: config.contentPx,
-              py: config.contentPy,
-            }),
-          },
-          ...(Array.isArray(sx) ? sx : [sx]),
-        ]}
-      >
-        {children}
-      </Box>
-    </Collapse>
+    <Box
+      data-testid="prism-dashboard-block-content"
+      sx={[
+        {
+          ...(!disablePadding && {
+            px: config.contentPx,
+            py: config.contentPy,
+          }),
+        },
+        ...(Array.isArray(sx) ? sx : [sx]),
+      ]}
+    >
+      {children}
+    </Box>
   );
 }
 
@@ -369,28 +367,20 @@ export function DashboardBlock({
   const isControlled = controlledCollapsed !== undefined;
   const collapsed = isControlled ? controlledCollapsed : uncontrolledCollapse.value;
 
-  const handleToggleCollapse = useCallback(() => {
-    if (isControlled) {
-      onCollapseChange?.(!controlledCollapsed);
-    } else {
-      uncontrolledCollapse.onToggle();
-    }
-  }, [isControlled, controlledCollapsed, onCollapseChange, uncontrolledCollapse]);
-
   const handleSetCollapsed = useCallback(
     (value: boolean) => {
-      if (isControlled) {
-        onCollapseChange?.(value);
-      } else {
-        uncontrolledCollapse.setValue(value);
-      }
+      if (!collapsible || value === collapsed) return;
+      if (!isControlled) uncontrolledCollapse.setValue(value);
+      onCollapseChange?.(value);
     },
-    [isControlled, onCollapseChange, uncontrolledCollapse]
+    [collapsible, collapsed, isControlled, onCollapseChange, uncontrolledCollapse]
   );
+  const handleToggleCollapse = useCallback(() => handleSetCollapsed(!collapsed), [collapsed, handleSetCollapsed]);
 
   // Context value
   const contextValue = useMemo<DashboardBlockContextValue>(
     () => ({
+      collapsible,
       collapsed: collapsible ? collapsed : false,
       toggleCollapse: collapsible ? handleToggleCollapse : collapseNoop,
       setCollapsed: collapsible ? handleSetCollapsed : collapseNoop,
@@ -455,28 +445,30 @@ export function DashboardBlock({
         {title && <Divider />}
 
         {/* Content */}
-        <Box aria-live="polite" aria-busy={loading}>
-          {catchErrors ? (
-            <ErrorBoundary
-              resetKeys={[loading, error, empty]}
-              fallback={({ resetErrorBoundary }) => (
-                <ErrorState
-                  message={labels.error}
-                  retryLabel={labels.retry}
-                  onRetry={() => {
-                    resetErrorBoundary();
-                    errorConfig?.onRetry?.();
-                  }}
-                  size={size}
-                />
-              )}
-            >
-              {body}
-            </ErrorBoundary>
-          ) : (
-            body
-          )}
-        </Box>
+        <Collapse in={!contextValue.collapsed} timeout="auto">
+          <Box aria-live="polite" aria-busy={loading}>
+            {catchErrors ? (
+              <ErrorBoundary
+                resetKeys={[loading, error, empty]}
+                fallback={({ resetErrorBoundary }) => (
+                  <ErrorState
+                    message={labels.error}
+                    retryLabel={labels.retry}
+                    onRetry={() => {
+                      resetErrorBoundary();
+                      errorConfig?.onRetry?.();
+                    }}
+                    size={size}
+                  />
+                )}
+              >
+                {body}
+              </ErrorBoundary>
+            ) : (
+              body
+            )}
+          </Box>
+        </Collapse>
 
         {/* Footer */}
         {footer && !loading && !error && (

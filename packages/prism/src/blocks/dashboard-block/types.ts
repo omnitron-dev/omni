@@ -148,13 +148,13 @@ export interface DashboardBlockProps {
    * error state with a retry, and the page around it goes on working.
    */
   catchErrors?: boolean;
-  /** Collapsible block */
+  /** Enable collapse controls and state. Defaults to false; disabled blocks remain expanded. */
   collapsible?: boolean;
   /** Initial collapsed state */
   defaultCollapsed?: boolean;
   /** Controlled collapsed state */
   collapsed?: boolean;
-  /** Collapse change handler */
+  /** Called for a user-requested change in both controlled and uncontrolled mode. */
   onCollapseChange?: (collapsed: boolean) => void;
   /** Disable default content padding */
   disablePadding?: boolean;
@@ -174,6 +174,8 @@ export interface DashboardBlockProps {
  * Dashboard block context value.
  */
 export interface DashboardBlockContextValue {
+  /** Whether this block allows collapse; independent of its current state. */
+  collapsible: boolean;
   /** Current collapsed state */
   collapsed: boolean;
   /** Toggle collapse */

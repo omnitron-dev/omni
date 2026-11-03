@@ -10,12 +10,13 @@
  * blocks, one per module, in two languages.
  */
 import { useState, type ReactElement } from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ThemeProvider } from '@mui/material/styles';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createPrismTheme } from '../../theme/create-theme.js';
-import { DashboardBlock } from './dashboard-block.js';
+import { DashboardBlock, useDashboardBlockContext } from './dashboard-block.js';
+import { useDashboardBlock } from './use-dashboard-block.js';
 
 function themed(node: ReactElement) {
   return render(<ThemeProvider theme={createPrismTheme()}>{node}</ThemeProvider>);
@@ -24,6 +25,74 @@ function themed(node: ReactElement) {
 const RU = { error: 'Не удалось загрузить', retry: 'Повторить', expand: 'Развернуть', collapse: 'Свернуть' };
 
 describe('DashboardBlock', () => {
+  it.each([undefined, false])('has no collapse affordance when capability is %s, even with a collapsed prop', collapsible => {
+    const onChange = vi.fn();
+    function Probe() {
+      const context = useDashboardBlockContext();
+      return <><output>{String(context.collapsible) + ':' + String(context.collapsed)}</output>
+        <button onClick={() => { context.setCollapsed(true); context.toggleCollapse(); }}>Request collapse</button></>;
+    }
+    themed(<DashboardBlock title="Fixed" collapsible={collapsible} collapsed defaultCollapsed onCollapseChange={onChange} footer="Footer"><Probe /></DashboardBlock>);
+    expect(screen.queryByTestId('prism-dashboard-block-collapse')).toBeNull();
+    expect(screen.getByText('false:false')).toBeVisible();
+    expect(screen.getByText('Footer')).toBeVisible();
+    fireEvent.click(screen.getByText('Request collapse'));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByText('false:false')).toBeVisible();
+  });
+
+  it.each([false, true])('owns uncontrolled state starting at %s and notifies changes', async defaultCollapsed => {
+    const onChange = vi.fn();
+    themed(<DashboardBlock title="Local" collapsible defaultCollapsed={defaultCollapsed} onCollapseChange={onChange} footer="Footer">Body</DashboardBlock>);
+    const button = screen.getByTestId('prism-dashboard-block-collapse');
+    expect(button).toHaveAttribute('aria-expanded', String(!defaultCollapsed));
+    fireEvent.click(button);
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(!defaultCollapsed);
+    expect(button).toHaveAttribute('aria-expanded', String(defaultCollapsed));
+    await waitFor(() => defaultCollapsed ? expect(screen.getByText('Body')).toBeVisible() : expect(screen.getByText('Body')).not.toBeVisible());
+    if (defaultCollapsed) expect(screen.getByText('Footer')).toBeVisible();
+    else expect(screen.queryByText('Footer')).toBeNull();
+  });
+
+  it('leaves controlled state with the caller and requests the next value once', () => {
+    const onChange = vi.fn();
+    const view = themed(<DashboardBlock title="Controlled" collapsible collapsed={false} onCollapseChange={onChange}>Body</DashboardBlock>);
+    fireEvent.click(screen.getByTestId('prism-dashboard-block-collapse'));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(true);
+    expect(screen.getByTestId('prism-dashboard-block-collapse')).toHaveAttribute('aria-expanded', 'true');
+    view.rerender(<ThemeProvider theme={createPrismTheme()}><DashboardBlock title="Controlled" collapsible collapsed onCollapseChange={onChange}>Body</DashboardBlock></ThemeProvider>);
+    fireEvent.click(screen.getByTestId('prism-dashboard-block-collapse'));
+    expect(onChange.mock.calls.map(([value]) => value)).toEqual([true, false]);
+    expect(screen.getByTestId('prism-dashboard-block-collapse')).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('connects the public hook to an explicitly collapsible block', () => {
+    function Widget() {
+      const { state, actions, blockProps } = useDashboardBlock();
+      return <><output>{state.collapsed ? 'closed' : 'open'}</output><button onClick={actions.expand}>External expand</button>
+        <DashboardBlock title="Hook" collapsible {...blockProps}>Body</DashboardBlock></>;
+    }
+    themed(<Widget />);
+    fireEvent.click(screen.getByTestId('prism-dashboard-block-collapse'));
+    expect(screen.getByText('closed')).toBeVisible();
+    expect(screen.getByTestId('prism-dashboard-block-collapse')).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(screen.getByText('External expand'));
+    expect(screen.getByText('open')).toBeVisible();
+    expect(screen.getByTestId('prism-dashboard-block-collapse')).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it.each(['loading', 'error', 'empty'] as const)('collapses the %s body through the same block state', async state => {
+    themed(<DashboardBlock title="State" collapsible {...{ [state]: true }}
+      loadingConfig={{ loadingComponent: <div>State body</div> }}
+      errorConfig={{ errorComponent: <div>State body</div> }}
+      emptyConfig={{ emptyComponent: <div>State body</div> }}>Content</DashboardBlock>);
+    expect(screen.getByText('State body')).toBeVisible();
+    fireEvent.click(screen.getByTestId('prism-dashboard-block-collapse'));
+    await waitFor(() => expect(screen.getByText('State body')).not.toBeVisible());
+    fireEvent.click(screen.getByTestId('prism-dashboard-block-collapse'));
+    await waitFor(() => expect(screen.getByText('State body')).toBeVisible());
+  });
+
   it('draws a failure as a failure, even when the list it failed to load is empty', () => {
     themed(
       <DashboardBlock title="Заказы" error empty emptyConfig={{ title: 'Заказов нет' }} labels={RU}>

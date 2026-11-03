@@ -103,6 +103,32 @@ profile leaves that syntax literal. This is an inert rendering profile, not an M
 runtime or a Docusaurus configuration executor. Corpus routes and semantic metadata
 are supplied by the host's source adapter; Prism does not infer knowledge status.
 
+## Dashboard blocks
+
+`DashboardBlock` from `@omnitron-dev/prism/blocks` stays expanded by default.
+Set `collapsible` to enable its header control; `collapsed` and `defaultCollapsed`
+describe state and never grant that capability. Custom headers can read the same
+`collapsible` flag from `useDashboardBlockContext`. Disabling collapse keeps the
+body expanded and context collapse actions inert.
+
+Use `defaultCollapsed` for internal state, or pair `collapsed` with
+`onCollapseChange` for controlled state. The callback reports user requests in
+both modes. Content, loading, error and empty states share the same collapse
+boundary; header controls remain available to expand the block again.
+
+```tsx
+import { DashboardBlock, useDashboardBlock } from '@omnitron-dev/prism/blocks';
+function RequestsPanel() {
+  const { blockProps } = useDashboardBlock({ defaultCollapsed: false });
+  return <DashboardBlock title="Requests" collapsible {...blockProps}>
+    <RequestsChart />
+  </DashboardBlock>;
+}
+```
+
+The hook supplies state props and external `actions.expand()` / `actions.collapse()`;
+enabling the visual capability remains explicit.
+
 ## Corpus navigation
 
 `@omnitron-dev/prism/components/doc-layout` exposes `DocSidebar`, `DocLayout`

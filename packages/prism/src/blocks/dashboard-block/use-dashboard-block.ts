@@ -55,7 +55,7 @@ export interface UseDashboardBlockReturn {
   state: DashboardBlockState;
   /** Actions to modify state */
   actions: DashboardBlockActions;
-  /** Props to spread on DashboardBlock */
+  /** State props to spread on DashboardBlock; enable its capability separately with collapsible. */
   blockProps: Pick<DashboardBlockProps, 'collapsed' | 'onCollapseChange' | 'loading' | 'error' | 'errorConfig'>;
 }
 
@@ -93,7 +93,7 @@ export interface UseDashboardBlockOptions {
  *   }, []);
  *
  *   return (
- *     <DashboardBlock title="My Widget" {...blockProps}>
+ *     <DashboardBlock title="My Widget" collapsible {...blockProps}>
  *       <Content />
  *     </DashboardBlock>
  *   );

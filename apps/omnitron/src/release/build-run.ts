@@ -516,8 +516,11 @@ async function buildRelease(
   say('reading project and framework sources', 2);
   const projectSha = await git(['rev-parse', '--verify', `${options.projectCommit ?? 'HEAD'}^{commit}`], project.path);
   env['SOURCE_DATE_EPOCH'] = await git(['show', '-s', '--format=%ct', projectSha], project.path);
-  const layout = readFrameworkLayout(await git(['show', `${projectSha}:pnpm-lock.yaml`], project.path));
   const projectPath = fs.realpathSync(project.path);
+  const repositoryPath = fs.realpathSync(await git(['rev-parse', '--show-toplevel'], projectPath));
+  const projectPrefix = path.relative(repositoryPath, projectPath).split(path.sep).join('/');
+  const lockPath = path.posix.join(projectPrefix, 'pnpm-lock.yaml');
+  const layout = readFrameworkLayout(await git(['show', `${projectSha}:${lockPath}`], repositoryPath));
   let checkout: { path: string; sha: string; layout: import('./layout.js').LinkLayout } | undefined;
   let registry: Awaited<ReturnType<typeof resolveRegistryFramework>> | undefined;
   let omniSource: ReleaseSource;
@@ -555,7 +558,7 @@ async function buildRelease(
   const logs = path.join(releaseRoot, 'logs');
   fs.mkdirSync(logs, { recursive: true });
   const srcRoot = path.join(releaseRoot, 'src');
-  const plan = checkout ? planBuildRoot(srcRoot, projectPath, checkout.layout) : { projectDir: path.join(srcRoot, 'project'), omniDir: null };
+  const plan = planBuildRoot(srcRoot, projectPath, checkout?.layout, repositoryPath);
   if ('refusal' in plan) throw new Error(plan.refusal);
 
   // Read at the START: the identity of the omnitron that packs this, not of
@@ -566,7 +569,7 @@ async function buildRelease(
   // 1. Clean clones of the two commits.
   say(checkout ? 'cloning project and framework commits' : 'cloning project commit', 5);
   const cloneLog = path.join(logs, 'clone.log');
-  const clones: Array<[string, string, string]> = [[projectPath, projectSha, plan.projectDir]];
+  const clones: Array<[string, string, string]> = [[repositoryPath, projectSha, plan.repositoryDir]];
   if (checkout && plan.omniDir) clones.push([checkout.path, checkout.sha, plan.omniDir]);
   for (const [from, sha, to] of clones) {
     fs.mkdirSync(path.dirname(to), { recursive: true });
@@ -750,7 +753,7 @@ async function buildRelease(
   const migrations = await migrationDigests(plan.projectDir);
   const manifest = assembleManifest({
     id,
-    project: await sourceOf(projectPath, projectSha),
+    project: { ...await sourceOf(repositoryPath, projectSha), ...(projectPrefix ? { directory: projectPrefix } : {}) },
     omni: omniSource,
     artifacts: packed.built,
     target: await (await import('./target-runtime.js')).targetRuntime(),

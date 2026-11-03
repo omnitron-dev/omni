@@ -66,7 +66,7 @@ describe('the build root puts omni where the lockfile will look', () => {
     const plan = planBuildRoot('/r/src', '/Users/dev/projects/examples/sample', layout);
     if ('refusal' in plan) throw new Error(plan.refusal);
 
-    expect(plan).toEqual({ projectDir: '/r/src/examples/sample', omniDir: '/r/src/luxquant/omnitron-dev/omni' });
+    expect(plan).toEqual({ repositoryDir: '/r/src/examples/sample', projectDir: '/r/src/examples/sample', omniDir: '/r/src/luxquant/omnitron-dev/omni' });
     // What pnpm will do with the frozen lockfile, from both importers.
     expect(path.resolve(plan.projectDir, '../../luxquant/omnitron-dev/omni/apps/omnitron')).toBe(
       '/r/src/luxquant/omnitron-dev/omni/apps/omnitron',
@@ -74,6 +74,24 @@ describe('the build root puts omni where the lockfile will look', () => {
     expect(path.resolve(plan.projectDir, 'apps/main', '../../../../luxquant/omnitron-dev/omni/packages/titan')).toBe(
       '/r/src/luxquant/omnitron-dev/omni/packages/titan',
     );
+  });
+
+  it('clones a whole monorepo and runs pnpm inside the registered project', () => {
+    const project = '/dev/products/example/portal';
+    expect(planBuildRoot('/r/src', project, undefined, '/dev/products/example')).toEqual({
+      repositoryDir: '/r/src/project', projectDir: '/r/src/project/portal', omniDir: null,
+    });
+    const linked = { omniRel: '../../../framework/omni', climbs: 3, linkedDirs: ['packages/titan'] };
+    expect(planBuildRoot('/r/src', project, linked, '/dev/products/example')).toEqual({
+      repositoryDir: '/r/src/products/example', projectDir: '/r/src/products/example/portal', omniDir: '/r/src/framework/omni',
+    });
+  });
+
+  it('refuses a linked framework checkout that would overwrite the project clone', () => {
+    const linked = { omniRel: '../framework', climbs: 1, linkedDirs: ['packages/titan'] };
+    expect(planBuildRoot('/r/src', '/dev/monorepo/app', linked, '/dev/monorepo')).toEqual({
+      refusal: expect.stringContaining('separate Git checkouts'),
+    });
   });
 
   it('refuses links into two outside checkouts rather than choose one', () => {

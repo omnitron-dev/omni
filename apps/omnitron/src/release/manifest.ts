@@ -127,6 +127,8 @@ export interface BuiltWith {
 
 /** A repository and the commit taken from it. */
 export interface ReleaseSource {
+  /** Project directory inside this Git commit when the checkout contains multiple projects. */
+  readonly directory?: string;
   readonly repo: string;
   readonly commit: string;
   /** Public npm archives whose verified manifests named this exact source commit. */

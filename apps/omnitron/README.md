@@ -45,7 +45,10 @@ Ranked levels in the CLI are minimum severities. Use `--level unknown` for recor
 
 `omnitron release build <project> --for <stack>` uses the selected project
 commit, its `pnpm-lock.yaml` and the stack's build environment. The Console
-Build action runs the same builder. Declare `@omnitron-dev/omnitron` in a
+Build action runs the same builder. A registered project can live in a Git
+subdirectory. Its lockfile and configuration belong in that directory. The
+builder clones the selected commit and records the subdirectory in the release
+manifest. Declare `@omnitron-dev/omnitron` in a
 workspace importer and commit the lockfile. Install all `@omnitron-dev/*`
 dependencies from the same framework release.
 

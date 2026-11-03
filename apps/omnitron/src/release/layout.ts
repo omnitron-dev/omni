@@ -135,26 +135,38 @@ export function readFrameworkLayout(lockfile: string): FrameworkLayout {
   return { kind: 'registry', packages: graph.packages.sort((a, b) => a.name.localeCompare(b.name)), importers: graph.importers };
 }
 
-/**
- * The two checkouts inside `srcRoot`: the project where its own last
- * `climbs` path segments put it, and omni where its links then land.
- */
+/** Lay out complete checkouts while preserving the registered project's location inside Git. */
 export function planBuildRoot(
   srcRoot: string,
   projectPath: string,
-  layout: LinkLayout,
-): { projectDir: string; omniDir: string } | { refusal: string } {
+  layout: LinkLayout | undefined,
+  repositoryPath = projectPath,
+): { repositoryDir: string; projectDir: string; omniDir: string | null } | { refusal: string } {
+  const subdirectory = path.relative(repositoryPath, projectPath);
+  if (subdirectory === '..' || subdirectory.startsWith('..' + path.sep) || path.isAbsolute(subdirectory)) {
+    return { refusal: `project ${projectPath} is outside its Git checkout ${repositoryPath}` };
+  }
+  if (!layout) {
+    const repositoryDir = path.join(srcRoot, 'project');
+    return { repositoryDir, projectDir: path.join(repositoryDir, subdirectory), omniDir: null };
+  }
+
   const segments = path.resolve(projectPath).split(path.sep).filter(Boolean);
   if (layout.climbs < 1 || layout.climbs > segments.length) {
     return { refusal: `the links climb ${layout.climbs} directories above a project at ${projectPath}` };
   }
-  const projectDir = path.join(srcRoot, ...segments.slice(-layout.climbs));
+  const prefixDepth = subdirectory.split(path.sep).filter(Boolean).length;
+  const retained = Math.max(layout.climbs, prefixDepth + 1);
+  const projectDir = path.join(srcRoot, ...segments.slice(-retained));
+  const repositoryDir = path.resolve(projectDir, path.relative(projectPath, repositoryPath));
   const omniDir = path.resolve(projectDir, layout.omniRel);
-  const inside = omniDir.startsWith(path.resolve(srcRoot) + path.sep);
-  if (!inside) {
+  if (!omniDir.startsWith(path.resolve(srcRoot) + path.sep)) {
     return { refusal: `omni would land at ${omniDir}, outside the build root ${srcRoot}` };
   }
-  return { projectDir, omniDir };
+  if (omniDir === repositoryDir || omniDir.startsWith(repositoryDir + path.sep) || repositoryDir.startsWith(omniDir + path.sep)) {
+    return { refusal: 'project and framework need separate Git checkouts in the build root' };
+  }
+  return { repositoryDir, projectDir, omniDir };
 }
 
 /**

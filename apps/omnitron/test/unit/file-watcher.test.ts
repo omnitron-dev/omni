@@ -263,6 +263,52 @@ describe('FileWatcher', () => {
     expect(restartMock()).toHaveBeenCalledTimes(1);
   });
 
+  it('never watches declared installed entries even with an explicit watch request', () => {
+    const script = path.join(appDir, 'src', 'bootstrap.ts');
+    const w = startWatcher(50, [{ name: 'test-app', script, releaseRoot: appDir, watch: true }]);
+    expect(w.getWatchedApps()).toEqual([]);
+    expect(w.watchedDirs).toEqual([]);
+    w.addApp({ name: 'another-installed-app', script, releaseRoot: appDir, watch: srcDir });
+    expect(w.getWatchedApps()).toEqual([]);
+    expect(w.watchedDirs).toEqual([]);
+    // Conservative source policy is not a receipt authenticity assertion.
+    w.addApp({ name: 'unverified-boundary', script, releaseRoot: '/missing-boundary' });
+    expect(w.watchedDirs).toEqual([]);
+  });
+
+  it('removes a same-path source watcher when config declares an installed boundary', async () => {
+    const script = path.join(appDir, 'src', 'bootstrap.ts');
+    const source = { name: 'test-app', script };
+    const w = startWatcher(50, [source]);
+    w.emit('src/changed.ts');
+    w.applyConfig(createTestConfig([{ ...source, releaseRoot: appDir }]));
+    expect(w.getWatchedApps()).toEqual([]);
+    expect(() => w.emit('src/late.ts')).toThrow(/no directory is being watched/);
+    await settle();
+    expect(restartMock()).not.toHaveBeenCalled();
+    // Returning explicitly to source mode can watch again; no global disable.
+    w.applyConfig(createTestConfig([source]));
+    w.emit('src/changed-again.ts');
+    await settle();
+    expect(restartMock()).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['releaseRoot', 'watch'] as const)('revokes a queued event when the owner changes %s before config reload', async (policy) => {
+    const script = path.join(appDir, 'src', 'bootstrap.ts');
+    const handle = { entry: { name: 'test-app', script } as IEcosystemAppEntry };
+    orchestrator = createMockOrchestrator({ getHandle: () => handle, getAppStatus: () => 'online' });
+    const w = startWatcher(50, [{ name: 'test-app', script }]);
+    w.emit('src/positive-control.ts');
+    await settle();
+    expect(restartMock()).toHaveBeenCalledTimes(1);
+    w.emit('src/queued.ts');
+    handle.entry = { ...handle.entry, ...(policy === 'releaseRoot' ? { releaseRoot: appDir } : { watch: false as const }) };
+    await settle();
+    expect(restartMock()).toHaveBeenCalledTimes(1);
+    expect(w.getWatchedApps()).toEqual([]);
+    expect(() => w.emit('src/late.ts')).toThrow(/no directory is being watched/);
+  });
+
   it('watches only the named apps when a filter is given', () => {
     const app2Dir = path.join(tmpDir, 'other-app');
     const app2Src = path.join(app2Dir, 'src');

@@ -179,7 +179,7 @@ export class FileWatcher {
     if (!this.running) return;
 
     const desired = new Map(
-      config.apps.filter((a) => a.enabled !== false && a.watch !== false &&
+      config.apps.filter((a) => a.enabled !== false && a.watch !== false && !a.releaseRoot &&
         (!this.selection || this.selection.includes(a.name))).map((a) => [a.name, a] as const)
     );
 
@@ -220,8 +220,9 @@ export class FileWatcher {
   }
 
   private watchApp(entry: IEcosystemAppEntry): void {
-    // If explicitly disabled
-    if (entry.watch === false) {
+    // A declared installed boundary is never a source watch target. This
+    // conservative policy grants no release trust; launch verification owns it.
+    if (entry.watch === false || entry.releaseRoot) {
       this.logger.debug({ app: entry.name }, 'File watching disabled for this app');
       return;
     }
@@ -439,6 +440,12 @@ export class FileWatcher {
       //
       // Comparing the entry point settles it: the same app has the same one.
       const handle = this.orchestrator.getHandle?.(appName);
+      // The owner can change the retained launch entry before its ecosystem
+      // config is refreshed. Revoke a queued source event at that boundary too.
+      if (handle?.entry?.releaseRoot || handle?.entry?.watch === false) {
+        this.removeApp(app.entry.name);
+        return;
+      }
       const runningEntry = handle?.entry?.bootstrap ?? handle?.entry?.script;
       const watchedEntry = app.entry.bootstrap ?? app.entry.script;
       if (handle && runningEntry && watchedEntry && runningEntry !== watchedEntry) {

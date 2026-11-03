@@ -46,6 +46,7 @@ function service(appStatus: 'online' | 'crashed') {
   };
   const stateStore: any = { selectProjectsSync: () => [], kvGetSync: () => null, save() {}, load: () => null, get: () => null, set() {} };
   const svc: any = new ProjectService(logger, orchestrator, stateStore);
+  svc.registry.get = () => ({ name: 'demo', path: '/project', registeredAt: '2026-11-03T20:00:00.000Z' });
 
   svc.loadProjectConfig = async () => ({ apps: [{ name: 'main', script: './main.js' }] });
   svc.getLoadedConfig = () => ({ apps: [{ name: 'main', script: './main.js' }] });
@@ -101,7 +102,6 @@ describe('local startup observations', () => {
     svc.getLoadedConfig = () => config;
     svc.resolveStacks = () => ({ dev: { type: 'local', apps: 'all', infrastructureOwnership: 'external' } });
     svc.resolveStackApps = () => apps;
-    svc.registry.get = () => ({ name: 'demo', path: '/project' });
     const online = new Set<string>();
     const start = vi.fn(async (entry: { name: string; cwd?: string }) => {
       if (entry.name.endsWith('/api')) throw new Error('exited during startup with code 1');
@@ -127,7 +127,7 @@ describe('local startup observations', () => {
       'api (stopped): exited during startup with code 1', 'workers (stopped): dependency api did not start',
     ] });
     expect(readStackStart(stack)).toMatchObject({ outcome: 'failed', online: 0, total: 2, issues: [...stack.notUp, 'stack state: error'] });
-    expect(await svc.getStackStatus('demo', 'dev')).toMatchObject({ status: 'error', totalApps: 2, onlineApps: 0 });
+    expect(await svc.getStackStatus('demo', 'dev')).toMatchObject({ status: 'error', totalApps: 2, onlineApps: 0, notUp: stack.notUp });
     const persisted = JSON.parse(JSON.stringify(svc.projectSnapshot({}, false)));
     svc.stackStates = new Map(persisted.stacks);
     expect(svc.getStack('demo', 'dev').notUp).toEqual(stack.notUp);
@@ -153,6 +153,26 @@ describe('local startup observations', () => {
     start.mockRejectedValueOnce(new Error('opaque-test-credential in /private/installation'));
     const info = await svc.startStack('demo', 'dev');
     expect(info.notUp).toEqual(['api (stopped): launch failed (see daemon log)']);
+  });
+
+  it('retains a legacy owner module failure across handoff and all status readers until recovery', async () => {
+    const { svc, start, online } = configured([
+      { name: 'api', script: 'api.cjs' }, { name: 'worker', script: 'worker.cjs', dependsOn: ['api'] },
+    ]);
+    start.mockRejectedValueOnce(new Error("Could not load demo/dev/api's definition from /private/bootstrap.ts: Cannot find module '/private/sdk/like-pattern.js' imported from /private/sdk/index.ts"));
+    const info = await svc.startStack('demo', 'dev');
+    expect(info.notUp).toEqual([
+      'api (stopped): module "like-pattern.js" is unavailable; verify dependency installation and the active runtime compiler',
+      'worker (stopped): dependency api did not start',
+    ]);
+    const persisted = JSON.parse(JSON.stringify(svc.projectSnapshot({}, false)));
+    svc.stackStates = new Map(persisted.stacks);
+    expect(svc.getStack('demo', 'dev').notUp).toEqual(info.notUp);
+    expect((await svc.getStackStatus('demo', 'dev')).notUp).toEqual(info.notUp);
+    expect(JSON.stringify(info.notUp)).not.toContain('/private/');
+    online.add('demo/dev/api'); online.add('demo/dev/worker');
+    expect(svc.getStack('demo', 'dev')).not.toHaveProperty('notUp');
+    expect(await svc.getStackStatus('demo', 'dev')).not.toHaveProperty('notUp');
   });
 
   it('keeps independent apps running and reflects later recovery without restarting them', async () => {

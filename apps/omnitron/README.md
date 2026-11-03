@@ -268,6 +268,20 @@ cancellation terminates that child and reports an unknown outcome. Stack diagnos
 in CLI and Console verifies program availability without connecting to the database;
 authentication, schema and the actual migration result remain explicitly unverified.
 
+`omnitron stack status <project> <stack>`, its JSON response and Console stack
+cards/details retain unavailable applications and safe reasons from the last start.
+Known missing modules identify the filename or package and the corrective action;
+host directories, credentials and arbitrary application output stay out of reader
+views. A source module missing during development can indicate an incompatible
+active runtime compiler, not an application that merely needs building; verify
+both dependency installation and the compiler used by its process owner.
+These observations survive backend handoff and disappear from current status
+when the application is online. `stack diagnose` also reports previous failed starts
+and declaration reads, with their observation time. They remain **unknown**, rather
+than a new startup test: editing a dependency does not prove a successful retry.
+Successful declaration refresh replaces its previous failure; diagnosis itself
+does not execute application code, provision services or run migrations.
+
 ## Standalone infrastructure
 
 `omnitron infra up`, `down` and `reset --yes` operate on containers declared

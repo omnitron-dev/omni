@@ -52,10 +52,24 @@ describe('durable bootstrap declaration evidence', () => {
     f.metadata().fail(f.bootstrap);
     await f.reopen();
     graph = await f.service.getTopology({ project: 'sample', stack: 'dev' });
-    expect(graph.warnings).toEqual([expect.objectContaining({ reason: expect.stringContaining('refresh failed') })]);
+    expect(graph.warnings).toEqual([expect.objectContaining({ reason: expect.stringContaining('Declaration read failed') })]);
     expect(f.metadata().read(f.bootstrap)).toEqual(record);
     f.metadata().save(record);
     expect((await f.service.getTopology({ project: 'sample', stack: 'dev' })).warnings).toEqual([]);
+  });
+  it('persists safe missing-module evidence and clears it only after a successful declaration capture', async () => {
+    const f = fixture();
+    const record = captureBootstrapMetadata(f.bootstrap, f.bootstrap, {});
+    f.metadata().save(record);
+    f.metadata().fail(f.bootstrap, new Error("Cannot find module '/private/project/build/dependency.js' imported from /private/project/index.ts"));
+    await f.reopen();
+    const state = f.metadata().readState(f.bootstrap);
+    expect(state.failure?.reason).toContain('module "dependency.js" is unavailable');
+    expect(state.failure?.reason).not.toContain('/private');
+    expect(Number.isFinite(Date.parse(state.failure!.at))).toBe(true);
+    expect(state.metadata).toEqual(record);
+    f.metadata().save(record);
+    expect(f.metadata().readState(f.bootstrap).failure).toBeNull();
   });
   it('reports changed or missing declaration sources without executing them or silently discarding the snapshot', async () => {
     const f = fixture();
@@ -67,6 +81,19 @@ describe('durable bootstrap declaration evidence', () => {
     fs.unlinkSync(f.bootstrap);
     expect(metadataSourceChanged(record)).toBe(true);
     expect(f.metadata().read(f.bootstrap)).toEqual(record);
+  });
+  it('propagates a real isolated loader failure through refresh, durable evidence and start prerequisite refusal', async () => {
+    const f = fixture();
+    fs.writeFileSync(f.bootstrap, "import './not-built.js'; export default {};");
+    const report = await f.service.refreshTopologyMetadata({ project: 'sample', stack: 'dev' });
+    expect(report.refreshed).toBe(0);
+    expect(report.failures[0]?.reason).toContain('module "not-built.js" is unavailable');
+    expect(JSON.stringify(report)).not.toContain(f.directory);
+    await expect(f.service['loadAppDefinitions']('sample', { type: 'local' } as never,
+      { apps: [{ name: 'api', bootstrap: 'app/src/bootstrap.js' }] } as never))
+      .rejects.toThrow('Could not read declarations for api: module "not-built.js" is unavailable');
+    await f.reopen();
+    expect(f.metadata().readState(f.bootstrap).failure?.reason).toContain('module "not-built.js" is unavailable');
   });
   it('uses owner launch declarations after a backend replacement even when there was no controller cache', async () => {
     const f = fixture();

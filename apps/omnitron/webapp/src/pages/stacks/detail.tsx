@@ -2,6 +2,7 @@ import { hasInstalledRecovery, StackRecoveryAction, StackResumeNotice } from 'sr
 import { StackStopDialog } from 'src/components/stack-stop-dialog';
 import { StackDiagnosisDialog } from 'src/components/stack-diagnosis-dialog';
 import { StackStopNotice } from 'src/components/stack-stop-notice';
+import { StackStartNotice } from 'src/components/stack-start-notice';
 import { Can } from 'src/auth/access';
 /**
  * StackDetailPage — Detailed view of a single stack
@@ -300,6 +301,7 @@ export default function StackDetailPage() {
       {diagnoseOpen && activeProject && name && <StackDiagnosisDialog key={`${activeProject}/${name}`} project={activeProject} stack={name} onClose={() => setDiagnoseOpen(false)} />}
       <StackStopNotice operation={stack.stopOperation} />
       <StackResumeNotice stack={stack} />
+      <StackStartNotice stack={stack} />
 
       {/* Start, stop and delete put their reason in the store's `error` and
           never reject. This page did not read it, so a stack that refused to

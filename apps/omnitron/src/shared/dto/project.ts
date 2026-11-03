@@ -420,6 +420,8 @@ export interface StackRuntime {
   type: 'local' | 'remote' | 'cluster';
   /** Current status */
   status: StackStatus;
+  /** Current unavailable applications and bounded evidence from the last start, as in IStackInfo. */
+  notUp?: string[];
   /** Total apps */
   totalApps: number;
   /** Online apps */

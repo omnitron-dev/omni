@@ -23,7 +23,7 @@ function fixture() {
     nodeStackStop: { assertMutable: vi.fn() },
     localSelection: () => ({ read: () => ({ revision: 0, release: null }) }),
     registry: { get: () => ({ path: directory }) }, configRegistry: new Map([['sample', { config, loadedAt: Date.now() }]]),
-    bootstrapTopology: new Map(), diagnosesInFlight: new Map(), bootstrapMetadata: metadata, orchestrator: { getHandle: () => undefined },
+    bootstrapTopology: new Map(), diagnosesInFlight: new Map(), stackStates: new Map(), bootstrapMetadata: metadata, orchestrator: { getHandle: () => undefined },
     resolveStacks: () => config.stacks, resolveStackApps: () => entries, stackEnvFor: async () => ({}),
     infraManager: { planStack: plan, getPortAllocation: () => null, getNormalizedServices: () => null },
   }) as ProjectService;
@@ -75,6 +75,29 @@ describe('read-only readiness contract', () => {
     const report = await f.service.diagnoseStack('sample', 'dev');
     expect(report.status).toBe('unknown'); expect(report.checks).toContainEqual(expect.objectContaining({ code: 'declaration.unknown' }));
   });
+  it('labels a retained launch failure as history, not a fresh startup probe, even after source edits', async () => {
+    const f = fixture();
+    const at = '2026-11-03T20:00:00.000Z';
+    const reason = 'api (errored): module "like-pattern.js" is unavailable; verify dependency installation and the active runtime compiler';
+    const status = vi.fn(() => ({ startedAt: at, notUp: [reason] as string[] }));
+    Object.assign(f.service, { stackStates: new Map([['sample/dev', { appStartErrors: { api: reason } }]]), toStackInfo: status });
+    fs.appendFileSync(f.bootstrap, '\n// dependency repaired, not retried yet');
+    let report = await f.service.diagnoseStack('sample', 'dev');
+    expect(report.checks).toContainEqual({ code: 'application.previous-start', resource: 'Previous start', state: 'unknown',
+      message: `${at} · ${reason}`, action: expect.stringContaining('current startup remains unverified') });
+    expect(report.status).toBe('unknown');
+    status.mockReturnValue({ startedAt: at, notUp: [] });
+    report = await f.service.diagnoseStack('sample', 'dev');
+    expect(report.checks.some(check => check.code === 'application.previous-start')).toBe(false);
+  });
+  it('shows the retained declaration failure with its observation time', async () => {
+    const f = fixture();
+    const failure = { at: '2026-11-03T20:00:00.000Z', reason: 'Declaration read failed: package "@example/sdk" is unavailable; install the declared dependencies' };
+    f.metadata.readState.mockReturnValue({ metadata: null, failure } as never);
+    const report = await f.service.diagnoseStack('sample', 'dev');
+    expect(report.checks).toContainEqual(expect.objectContaining({ code: 'declaration.unknown', state: 'unknown',
+      message: `Last declaration read at ${failure.at}: ${failure.reason}` }));
+  });
   it('does not probe local Docker for remote placements', async () => {
     const f = fixture(); Object.assign(f.config.stacks.dev, { type: 'remote', nodes: [{ host: 'test.example', role: 'app' }] });
     const report = await f.service.diagnoseStack('sample', 'dev');
@@ -89,7 +112,7 @@ describe('read-only readiness contract', () => {
   it('exposes diagnosis as a reader operation without widening declaration refresh', () => {
     const read = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, ProjectRpcService.prototype, 'diagnoseStack');
     const refresh = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, ProjectRpcService.prototype, 'refreshTopologyMetadata');
-    expect(read.roles).toContain('viewer'); expect(refresh.roles).not.toContain('viewer');
+    expect(read.roles).toEqual(expect.arrayContaining(['viewer', 'operator'])); expect(refresh.roles).not.toContain('viewer');
   });
   it('shows release admission without leaking unrelated stack configuration', () => {
     const info = publicStack({ config: { type: 'local', release: { mode: 'required' }, env: { TOKEN: 'private-value' } } } as never);

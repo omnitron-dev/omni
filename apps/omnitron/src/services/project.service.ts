@@ -22,6 +22,7 @@ import { mergeInfrastructure, mergeInferredInfrastructure } from '../infrastruct
 export { mergeInfrastructure } from '../infrastructure/merge-config.js';
 import type { TopologyScope, TopologySpec, TopologyPlan, TopologyWorkspace } from '../shared/dto/topology.js';
 import { currentActor, describeFailure } from './audit.service.js';
+import { publicLaunchFailure } from '../project/launch-failure.js';
 import { nodeApplicationNames, resolveNodePlacements, stackNodeKey } from '../project/stack-placement.js';
 import { StackTargets, type StackTarget } from '../project/stack-targets.js';
 import { configurationInfo, publicStackName, validateConfigurationNames, type ConfigurationImport, type RuntimeStackScope } from '../project/configuration-catalog.js';
@@ -1277,6 +1278,15 @@ export class ProjectService extends EventEmitter {
       add('start.authority', 'Start authority', 'blocked', (err as Error).message, 'Inspect the allocation owner and its stop operation before planning a start.');
     }
     add('configuration.loaded', 'Project configuration', 'pass', `Using daemon configuration loaded at ${new Date(loaded.loadedAt).toISOString()}.`, 'Reload project configuration after editing it.');
+    // This is observed history, not a fresh execution of user code. Reuse the
+    // status reader so a recovered app or an intentionally stopped stack does
+    // not keep an obsolete launch failure in its readiness report.
+    if (stack.type === 'local' && this.stackStates.get(`${projectName}/${stackName}`)?.appStartErrors) {
+      const previous = this.toStackInfo(projectName, stackName, stack);
+      for (const issue of previous.notUp ?? []) add('application.previous-start', 'Previous start', 'unknown',
+        `${previous.startedAt ? previous.startedAt + ' · ' : ''}${issue}`,
+        'This records the previous start attempt; current startup remains unverified. Correct the cause and retry the stack start.');
+    }
     let entries: IEcosystemAppEntry[];
     try {
       entries = await this.launchEntries(projectName, stackName, stack, config);
@@ -1311,7 +1321,9 @@ export class ProjectService extends EventEmitter {
       if (!fs.existsSync(bootstrap)) add('bootstrap.missing', entry.name, 'blocked', 'The configured bootstrap file is missing.', 'Restore the application sources or correct its bootstrap path.');
       const { metadata, declared, state, record } = this.readAppDeclaration(projectName, stackName, entry.name, bootstrap);
       if (declared.malformed) add('declaration.invalid', entry.name, 'blocked', 'Application configuration is invalid or unreadable.', 'Check config/default.json syntax and permissions.');
-      if (!metadata || !record || metadataSourceChanged(record) || state?.failure) add('declaration.unknown', entry.name, 'unknown', 'Current bootstrap declarations have not been verified.', 'Refresh declarations as an administrator, then run diagnosis again.');
+      if (!metadata || !record || metadataSourceChanged(record) || state?.failure) add('declaration.unknown', entry.name, 'unknown',
+        state?.failure ? `Last declaration read at ${state.failure.at}: ${state.failure.reason}` : 'Current bootstrap declarations have not been verified.',
+        'Refresh declarations as an administrator, then run diagnosis again.');
       else add('declaration.current', entry.name, 'pass', `Bootstrap declaration captured at ${record.capturedAt}; source file is unchanged.`);
       if (metadata || declared.omnitron) definitions.set(entry.name, withDeclaredConfig({ name: entry.name, version: '', processes: [], ...metadata }, declared));
     }
@@ -1446,9 +1458,9 @@ export class ProjectService extends EventEmitter {
         this.bootstrapTopology.set(bootstrap, record.definition);
         result.refreshed += 1;
       } catch (error) {
-        this.bootstrapMetadata.fail(bootstrap);
+        this.bootstrapMetadata.fail(bootstrap, error);
         this.logger.error({ project: scope.project, app, error }, 'Bootstrap metadata refresh failed; previous declaration retained');
-        result.failures.push({ project: scope.project, app, reason: 'Declaration read failed; inspect the daemon log. Previous metadata was retained.' });
+        result.failures.push({ project: scope.project, app, reason: `Declaration read failed: ${publicLaunchFailure(error)}. Previous metadata was retained.` });
       }
     }
     await this.audit?.record({ action: 'topology.metadata.refresh', resourceType: 'project', resourceId: scope.project,
@@ -2160,6 +2172,7 @@ export class ProjectService extends EventEmitter {
       name: stackName,
       type: stackConfig.type,
       status: info.status,
+      ...(info.notUp?.length && { notUp: info.notUp }),
       totalApps: info.apps.length,
       onlineApps: info.apps.filter(app => app.status === 'online').length,
       totalNodes: stackConfig.type === 'local' ? 1 : stackConfig.nodes?.length ?? 0,
@@ -3715,9 +3728,7 @@ export class ProjectService extends EventEmitter {
           } catch (err) {
             // The raw exception can contain credentials, app output or host paths.
             // Keep bounded process evidence in stack views available to readers.
-            const failure = describeFailure(err);
-            const evidence = failure.match(/exited during startup (?:with code -?\d+|: killed by SIG[A-Z0-9]+)|did not confirm readiness within \d+ms/);
-            problems.set(entry.name, evidence?.[0] ?? 'launch failed (see daemon log)');
+            problems.set(entry.name, publicLaunchFailure(err));
             this.logger.error(
               { app: entry.name, project: projectName, stack: stackName, error: (err as Error).message },
               'Failed to start app in stack',
@@ -4997,9 +5008,9 @@ export class ProjectService extends EventEmitter {
 
           appDefinitions.set(entry.name, definition);
         } catch (err) {
-          this.bootstrapMetadata.fail(resolveAppPath(project.path, entry, entry.bootstrap));
+          this.bootstrapMetadata.fail(resolveAppPath(project.path, entry, entry.bootstrap), err);
           this.logger.error({ app: entry.name, bootstrap: entry.bootstrap }, 'Stack prerequisites unavailable; refusing incomplete provisioning');
-          throw new Error(`Could not read declarations for ${entry.name}; refresh declarations and check application configuration before starting`, { cause: err });
+          throw new Error(`Could not read declarations for ${entry.name}: ${publicLaunchFailure(err)}. Refresh declarations before starting.`, { cause: err });
         }
       }
     }

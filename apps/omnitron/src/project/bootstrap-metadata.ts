@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import type { IAppDefinition } from '../config/types.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import { bootstrapDefinitionSource, loadBootstrapConfig } from '../orchestrator/bootstrap-loader.js';
+import { publicLaunchFailure } from './launch-failure.js';
 
 export type BootstrapDeclaration = Pick<IAppDefinition, 'requires' | 'omnitronConfig'>;
 export const TOPOLOGY_REFRESH_TIMEOUT_MS = 90_000;
@@ -83,8 +84,8 @@ export class BootstrapMetadataStore {
     this.store.kvUpdateSync<MetadataState>(this.key(metadata.bootstrap), () => ({ version: 1,
       bootstrap: metadata.bootstrap, metadata: structuredClone(metadata), failure: null }));
   }
-  fail(bootstrap: string): void {
+  fail(bootstrap: string, error?: unknown): void {
     this.store.kvUpdateSync<MetadataState>(this.key(bootstrap), () => ({ ...this.readState(bootstrap),
-      failure: { at: new Date().toISOString(), reason: 'Declaration refresh failed; previous snapshot retained. Inspect the daemon log.' } }));
+      failure: { at: new Date().toISOString(), reason: `Declaration read failed: ${publicLaunchFailure(error)}. Previous snapshot retained.` } }));
   }
 }

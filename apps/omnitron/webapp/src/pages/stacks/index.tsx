@@ -1,6 +1,7 @@
 import { hasInstalledRecovery, StackRecoveryAction } from 'src/components/stack-recovery';
 import { StackStopDialog } from 'src/components/stack-stop-dialog';
 import { StackDiagnosisDialog } from 'src/components/stack-diagnosis-dialog';
+import { StackStartNotice } from 'src/components/stack-start-notice';
 import { Can } from 'src/auth/access';
 /**
  * StacksPage — Grid of stack cards per project
@@ -327,6 +328,8 @@ function StackCard({
             </Box>
           )}
         </Box>
+
+        <StackStartNotice stack={stack} compact />
 
         {/* Port range */}
         {stack.portRange && (

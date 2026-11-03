@@ -153,6 +153,8 @@ export async function stackStatusCommand(projectName: string, stackName: string)
       'Stack'
     );
 
+    for (const issue of stack.notUp ?? []) log.warn(`Not up: ${issue}`);
+
     if (stack.stopOperation) {
       const stop = stack.stopOperation;
       log.info(`Last stop: ${stop.phase}${stop.supersededAt ? ' (followed by a new start)' : ''} — ${stop.id}`);

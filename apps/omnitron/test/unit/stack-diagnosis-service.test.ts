@@ -36,6 +36,15 @@ describe('read-only readiness contract', () => {
     expect(f.plan.mock.calls[0]).toEqual(expect.arrayContaining([expect.objectContaining({ postgres: { databases: { api: {} } } })]));
     expect(report.deferred).toContain('Database authentication, schema and migrations');
   });
+  it('reports an unselected imported release instead of treating it as an unchecked classic command', async () => {
+    const f = fixture();
+    Object.assign(f.service, { resolveStackApps: () => [{ name: 'imported', releaseFrom: { release: 'producer-1', manifestSha256: 'a'.repeat(64), app: 'api' } }] });
+    const report = await f.service.diagnoseStack('sample', 'dev');
+    expect(report.status).toBe('blocked');
+    expect(report.checks).toContainEqual(expect.objectContaining({ code: 'release.import-unselected', state: 'blocked' }));
+    expect(report.checks.some(check => check.code === 'application.classic')).toBe(false);
+    await expect(f.service['loadAppDefinitions']('sample', f.config.stacks.dev as never, f.config as never)).rejects.toThrow('requires a prepared and selected release');
+  });
   it('reports the same authority refusal for start readiness and release preflight', async () => {
     const f = fixture();
     Object.assign(f.config.stacks.dev, { type: 'remote', nodes: [{ host: 'test.example', role: 'app' }] });

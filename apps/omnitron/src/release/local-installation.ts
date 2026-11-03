@@ -11,6 +11,7 @@ import { CLOSURE_FILE } from './application-closure.js';
 import type { LoadedRelease } from './load.js';
 import { assertOwnerExecutable } from './owner-executable.js';
 import type { ReleaseLaunch } from './manifest.js';
+import { artifactReleaseContexts } from './origin.js';
 import { sha256File } from './portable-archive.js';
 import { RELEASE_RECEIPT, releaseTreeDigest } from './runtime-provenance.js';
 import { releaseOptionsForEnv, targetRuntime, type TargetRuntime } from './target-runtime.js';
@@ -119,35 +120,44 @@ async function verify(root: string, launch: ReleaseLaunch, entry: IEcosystemAppE
  * it never installs packages, mutates an owner, or rewrites a developer checkout. */
 export async function inspectLocalReleaseInstallation(release: LoadedRelease, stack: string, entries: readonly IEcosystemAppEntry[], options: { prepare?: boolean; ownerPid?: number } = {}): Promise<IEcosystemAppEntry[]> {
   if (!digest(release.manifestSha256)) throw Error('Invalid local release manifest digest');
+  const runtime = await targetRuntime();
+  const sources = new Map(artifactReleaseContexts(release.manifest).map(source => [source.app, source]));
   const selected = entries.map(entry => {
     const unique = release.manifest.artifacts.filter(a => a.app === entry.name), files = release.files.filter(f => f.app === entry.name);
     const launch = unique[0]?.launch, artifact = files[0];
+    const source = sources.get(entry.name);
+    if (!source) throw Error('No verified release artifact for ' + entry.name);
+    if (Boolean(unique[0]?.origin) !== Boolean(entry.releaseFrom))
+      throw Error('Configured application source differs from the selected release for ' + entry.name);
+    if (entry.releaseFrom && (unique[0]?.origin?.release !== entry.releaseFrom.release ||
+        unique[0]?.origin?.manifestSha256 !== entry.releaseFrom.manifestSha256 || unique[0]?.origin?.app !== entry.releaseFrom.app))
+      throw Error('The selected release does not carry the configured producer for ' + entry.name);
     if (unique.length !== 1 || !launch || files.length !== 1 || !artifact || !digest(artifact.sha256) ||
-        artifact.sha256 !== unique[0]!.sha256 || !digest(launch.closureSha256) || !!entry.bootstrap === !!entry.script ||
-        launch.mode !== (entry.bootstrap ? 'bootstrap' : 'script'))
+        artifact.sha256 !== unique[0]!.sha256 || !digest(launch.closureSha256) ||
+        (entry.releaseFrom ? !!entry.bootstrap || !!entry.script : !!entry.bootstrap === !!entry.script ||
+          launch.mode !== (entry.bootstrap ? 'bootstrap' : 'script')))
       throw Error('No unique verified local launch for ' + stack + '/' + entry.name + '; rebuild with a packaged entry');
     if (typeof launch.file !== 'string' || !componentPath(launch.file) || !/\.[cm]?js$/.test(launch.file))
       throw Error('Expected a package-relative compiled JavaScript entry');
+    const builtFor = source.manifest.builtWith?.target;
+    if (!builtFor || Object.entries(runtime).some(([k,v]) => builtFor[k as keyof TargetRuntime] !== v))
+      throw Error('The local execution owner does not match the recorded release target for ' + entry.name);
     return { launch, artifact, entry };
   });
   if (!options.ownerPid) throw Error('An authenticated local execution owner PID is required');
-  const runtime = await targetRuntime(), result: IEcosystemAppEntry[] = [];
+  const result: IEcosystemAppEntry[] = [];
   await assertOwnerExecutable(options.ownerPid, runtime.executableSha256);
-  const builtFor = release.manifest.builtWith?.target;
-  if (!builtFor || Object.entries(runtime).some(([k,v]) => builtFor[k as keyof TargetRuntime] !== v))
-    throw Error('The local execution owner does not match the recorded release target');
   const releases = await fs.realpath(path.dirname(release.root));
   const store = path.join(releases, '.installed'), group = path.join(store, release.manifestSha256);
   if (options.prepare) { await privateDirectory(releases, '.installed'); await privateDirectory(store, release.manifestSha256); }
   else {
     try { await assertDirectory(store); await assertDirectory(group); }
-    catch (error) { if (!absent(error)) throw error; throw new LocalReleaseNotPreparedError('Local release has not been prepared: ' + release.id); }
+    catch (error) { if (!absent(error)) throw error; throw new LocalReleaseNotPreparedError('Local release has not been prepared: ' + release.id, { cause: error }); }
   }
   for (const { launch, artifact, entry } of selected) {
     const root = path.join(group, artifact.sha256);
-    try { await fs.lstat(root); }
-    catch (error) {
-      if (!absent(error)) throw error;
+    const exists = await fs.lstat(root).then(() => true, error => { if (!absent(error)) throw error; return false; });
+    if (!exists) {
       if (!options.prepare) throw new LocalReleaseNotPreparedError('Local release has not been prepared: ' + stack + '/' + entry.name);
       const tmp = await fs.mkdtemp(path.join(group, '.install-'));
       try {
@@ -161,7 +171,9 @@ export async function inspectLocalReleaseInstallation(release: LoadedRelease, st
       } finally { await fs.rm(tmp, { recursive: true, force: true }); }
     }
     const executable = await verify(root, launch, entry, runtime);
-    result.push({ ...entry, [launch.mode]: executable, releaseRoot: root, watch: false });
+    const { releaseFrom: _releaseFrom, ...runtimeEntry } = entry;
+    result.push({ ...runtimeEntry, ...(entry.releaseFrom ? { cwd: entry.cwd ?? root } : {}),
+      [launch.mode]: executable, releaseRoot: root, watch: false });
   }
   return result;
 }

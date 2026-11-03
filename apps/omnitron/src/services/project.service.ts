@@ -126,6 +126,7 @@ const MAINTENANCE_PROBE_PATHS = ['/', '/api/main/health'] as const;
 import { migrationOutput } from './migration-output.js';
 import type { LoadedRelease } from '../release/load.js';
 import { readArchiveInfrastructure } from '../release/infrastructure.js';
+import { artifactReleaseContexts } from '../release/origin.js';
 import type { DeclaredConfig } from '../project/declared-config.js';
 
 import type { SyncService } from './sync.service.js';
@@ -1293,6 +1294,10 @@ export class ProjectService extends EventEmitter {
     catch { add('environment.invalid', 'Environment', 'blocked', 'Environment declarations or vault references could not be resolved.', 'Check stack environment variable names and required vault entries.'); }
     const definitions = new Map<string, IAppDefinition>();
     for (const entry of entries) {
+      if (entry.releaseFrom) {
+        add('release.import-unselected', entry.name, 'blocked', 'This application comes from a pinned producer release; no verified installation is selected.', 'Prepare and select the consumer release before checking its application prerequisites.');
+        continue;
+      }
       if (!entry.bootstrap) {
         add('application.classic', entry.name, 'unknown', 'Executable prerequisites for this command-based application have not been probed.', 'Check the configured command and working directory before starting.');
         continue;
@@ -1358,16 +1363,17 @@ export class ProjectService extends EventEmitter {
           const definitions = new Map<string, IAppDefinition>();
           const directory = this.registry.get(project)?.path;
           for (const entry of entries) {
-            if (!entry.bootstrap) {
+            const handle = pinned ? this.orchestrator.getHandle(ProjectService.handleKey(project, stack, entry.name)) : undefined;
+            if (!entry.bootstrap && (!entry.releaseFrom || (handle?.entry?.script && !handle.entry.bootstrap))) {
               result.coverage!.push({ project, stack, app: entry.name, source: 'entry' });
               continue;
             }
             if (!directory) continue;
-            const bootstrap = pinned ? this.orchestrator.getHandle(ProjectService.handleKey(project, stack, entry.name))?.bootstrapMetadata?.bootstrap
-              : resolveAppPath(directory, entry, entry.bootstrap);
+            const bootstrap = pinned ? handle?.bootstrapMetadata?.bootstrap
+              : entry.bootstrap ? resolveAppPath(directory, entry, entry.bootstrap) : undefined;
             if (!bootstrap) {
               result.coverage!.push({ project, stack, app: entry.name, source: 'missing' });
-              result.warnings.push({ project, stack, app: entry.name, reason: 'Owner has not reported a launch declaration for the selected release' });
+              result.warnings.push({ project, stack, app: entry.name, reason: pinned ? 'Owner has not reported a launch declaration for the selected release' : 'Imported application has no selected release; prepare and select it before reading topology declarations' });
               continue;
             }
             const { state, record, metadata, declared, observed } = this.readAppDeclaration(project, stack, entry.name, bootstrap);
@@ -2866,7 +2872,10 @@ export class ProjectService extends EventEmitter {
     const { decideStackRelease } = await import('../release/manifest.js');
     const release = await loadRelease(releaseId, await this.releaseStore());
 
-    const apps = this.resolveStackApps(stackConfig, config).map((a) => a.name);
+    const configuredApps = this.resolveStackApps(stackConfig, config);
+    if (stackConfig.type !== 'local' && configuredApps.some(entry => entry.releaseFrom || release.manifest.artifacts.some(artifact => artifact.app === entry.name && artifact.origin)))
+      throw Error('Imported applications require verified local release installation. Remote admission needs producer-captured deployment declarations and a compatible execution owner.');
+    const apps = configuredApps.map((a) => a.name);
     // The fourth argument, which was `[]` for as long as nothing wrote one:
     // a stack declaring `verifiedOn` refused every release forever, with a
     // refusal that read «nothing has been verified on 'test'» while there
@@ -2889,15 +2898,23 @@ export class ProjectService extends EventEmitter {
         'No release is recorded as running on this stack — applied migrations are not compared',
       );
     } else if (running !== release.id) {
-      let ran: Readonly<Record<string, string>> | undefined;
+      let previous: import('../release/manifest.js').ReleaseManifest | undefined;
       try {
-        ran = (await loadRelease(running, await this.releaseStore())).manifest.migrations;
+        previous = (await loadRelease(running, await this.releaseStore())).manifest;
       } catch (err) {
         this.logger.warn(
           { project: projectName, stack: stackName, running, error: (err as Error).message },
           'The release running on this stack could not be read — its migrations are not compared',
         );
       }
+      if (previous) {
+        const { changedImportedMigrations } = await import('../release/migrations.js');
+        const imported = changedImportedMigrations(previous, release.manifest, apps);
+        if (imported.length) throw Error('Refusing release ' + release.id + ': imported migration history changed (' + imported.slice(0, 5).join(', ') + '). Preserve applied migrations in the producer package.');
+      } else if (release.manifest.artifacts.some(artifact => apps.includes(artifact.app) && artifact.origin)) {
+        throw Error('Cannot verify imported migration history because the previously running release is unavailable: ' + running);
+      }
+      const ran = previous?.migrations;
       if (ran && release.manifest.migrations) {
         const { changedReleasedMigrations } = await import('../release/migrations.js');
         const changed = changedReleasedMigrations(ran, release.manifest.migrations);
@@ -2974,8 +2991,8 @@ export class ProjectService extends EventEmitter {
     }
 
     // Admission and installation must agree on the framework the application owner actually loads.
-    const { refuseForeignOmni } = await import('../release/daemon-omni.js');
-    const foreign = stackConfig.type === 'local' ? null : refuseForeignOmni(release.manifest.omni.commit, await this.askDaemonBuilds(stackConfig), Boolean(release.manifest.omni.registry || release.manifest.omni.reproduced));
+    const { refuseReleaseOwners } = await import('../release/daemon-omni.js');
+    const foreign = stackConfig.type === 'local' ? null : refuseReleaseOwners(release.manifest, stackConfig, configuredApps, await this.askDaemonBuilds(stackConfig));
     if (foreign) {
       throw new Error(`Refusing release ${release.id} for ${projectName}/${stackName}: ${foreign}.`);
     }
@@ -3030,9 +3047,9 @@ export class ProjectService extends EventEmitter {
               throw new Error('The resident owner needs authenticated native build verification on the target backend: ' + describeFailure(err), { cause: err });
             }
           }
-          return { host: node.host, version: status?.version ?? null, build: status?.build, execution };
+          return { host: node.host, port: node.port ?? 9700, version: status?.version ?? null, build: status?.build, execution };
         } catch (err) {
-          return { host: node.host, version: null, error: (err as Error).message };
+          return { host: node.host, port: node.port ?? 9700, version: null, error: (err as Error).message };
         }
       }),
     );
@@ -3778,6 +3795,7 @@ export class ProjectService extends EventEmitter {
       // Built in clean clones, gated, and checked against the manifest by
       // `loadRelease` — nothing is compiled here, from this machine's disk.
       const files = new Map(release.files.map((f) => [f.app, f]));
+      const sources = new Map(artifactReleaseContexts(release.manifest).map(source => [source.app, source.manifest.omni]));
       artifacts = appEntries.flatMap((entry) => {
         const file = files.get(entry.name);
         return file
@@ -3795,7 +3813,7 @@ export class ProjectService extends EventEmitter {
                 artifactSha256: file.sha256,
                 artifactBytes: file.bytes,
                 app: file.app,
-                frameworkCommit: release.manifest.omni.commit,
+                frameworkCommit: sources.get(file.app)!.commit,
               },
             }]
           : [];
@@ -5026,6 +5044,7 @@ export class ProjectService extends EventEmitter {
     const project = this.registry.get(projectName);
 
     for (const entry of appEntries) {
+      if (entry.releaseFrom) throw Error('Application ' + entry.name + ' requires a prepared and selected release before its prerequisites can be read');
       if (entry.bootstrap && project) {
         try {
           const bootstrapAbsPath = resolveAppPath(project.path, entry, entry.bootstrap);
@@ -5110,7 +5129,8 @@ export class ProjectService extends EventEmitter {
     const configured = this.resolveStackApps(definition, config);
     const env = await this.stackEnvFor(project, stack, definition, configured.map(entry => entry.name));
     const entries = configured.map(entry => ({
-      ...entry, env: { ...entry.env, ...env[entry.name] }, cwd: resolveAppPath(root, entry),
+      ...entry, env: { ...entry.env, ...env[entry.name] },
+      ...(!entry.releaseFrom || entry.cwd !== undefined ? { cwd: resolveAppPath(root, entry) } : {}),
       ...(entry.bootstrap && { bootstrap: resolveAppPath(root, entry, entry.bootstrap) }),
     }));
     const ownerPid = this.orchestrator.getExecutionOwnerPid?.();

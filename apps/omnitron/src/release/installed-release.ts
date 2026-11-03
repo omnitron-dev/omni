@@ -3,6 +3,7 @@ import { open, opendir } from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import type { ReleaseManifest } from './manifest.js';
+import { artifactReleaseContext, validateReleaseOrigins, MAX_RELEASE_MANIFEST_BYTES } from './origin.js';
 import { projectOfId } from './store.js';
 import type { InstalledArtifactObservation, InstalledReleaseCandidate, InstalledReleaseInspection } from '../shared/dto/installed-release.js';
 
@@ -56,7 +57,7 @@ export async function installedReleaseCatalog(root: string, project: string): Pr
       if (!handle) continue;
       try {
         const stat = await handle.stat();
-        if (!stat.isFile() || stat.size > 1024 * 1024) throw new Error('Invalid release manifest');
+        if (!stat.isFile() || stat.size > MAX_RELEASE_MANIFEST_BYTES) throw new Error('Invalid release manifest');
         const bytes = await handle.readFile();
         const after = await handle.stat();
         if (stat.size !== after.size || stat.ctimeMs !== after.ctimeMs) throw new Error('Release manifest changed while being read');
@@ -64,6 +65,7 @@ export async function installedReleaseCatalog(root: string, project: string): Pr
         if (manifest.id !== directory.name || !Array.isArray(manifest.artifacts) || manifest.artifacts.length > 256 ||
           typeof manifest.omni?.commit !== 'string' || !/^[a-f0-9]{7,40}$/.test(manifest.omni.commit) ||
           manifest.artifacts.some(a => typeof a.app !== 'string' || !/^[a-f0-9]{64}$/.test(a.sha256) || !Number.isSafeInteger(a.bytes) || a.bytes <= 0)) throw new Error('Invalid release manifest');
+        validateReleaseOrigins(manifest);
         catalog.releases.push({ manifest, sha256: createHash('sha256').update(bytes).digest('hex') });
       } catch {
         catalog.complete = false;
@@ -87,6 +89,9 @@ export function installedReleaseCandidates(observation: InstalledArtifactObserva
     const matches = manifest.artifacts.filter(artifact => artifact.app === app).flatMap(artifact => observation.archives.filter(archive => archive.sha256 === artifact.sha256 && archive.bytes === artifact.bytes));
     if (!matches.length) return [];
     const reasons: string[] = [];
+    let framework: ReleaseManifest['omni'];
+    try { framework = artifactReleaseContext(manifest, app!).manifest.omni; }
+    catch { return [{ releaseId: manifest.id, manifestSha256: sha256, state: 'incomplete' as const, reasons: ['The artifact producer could not be verified from the retained release manifest'] }]; }
     let modified = false;
     let incomplete = false;
     for (const match of matches) {
@@ -101,10 +106,10 @@ export function installedReleaseCandidates(observation: InstalledArtifactObserva
     if (!observation.frameworkCommit) {
       incomplete = true;
       reasons.push('Installed framework build identity is unavailable');
-    } else if (!manifest.omni.commit.startsWith(observation.frameworkCommit) && !observation.frameworkCommit.startsWith(manifest.omni.commit)) {
+    } else if (!framework.commit.startsWith(observation.frameworkCommit) && !observation.frameworkCommit.startsWith(framework.commit)) {
       modified = true;
-      reasons.push(`Installed framework reports ${observation.frameworkCommit}; release records ${manifest.omni.commit}`);
-    } else if ((manifest.omni.registry || manifest.omni.reproduced) && (observation.frameworkCommit.length !== 40 || observation.frameworkCommit !== manifest.omni.commit)) {
+      reasons.push(`Installed framework reports ${observation.frameworkCommit}; artifact producer records ${framework.commit}`);
+    } else if ((framework.registry || framework.reproduced) && (observation.frameworkCommit.length !== 40 || observation.frameworkCommit !== framework.commit)) {
       incomplete = true;
       reasons.push('An archive-backed release requires the full framework commit for an exact comparison');
     }

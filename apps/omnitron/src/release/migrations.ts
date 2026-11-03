@@ -28,7 +28,8 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import type { ReleasePackageSource } from './manifest.js';
+import type { ReleaseManifest, ReleasePackageSource } from './manifest.js';
+import { artifactReleaseContexts } from './origin.js';
 
 const exec = promisify(execFile);
 
@@ -112,4 +113,29 @@ export function changedReleasedMigrations(
   return Object.keys(deployed)
     .filter((file) => candidate[file] !== deployed[file])
     .sort();
+}
+
+/** A consumer's workspace migration map cannot describe another producer's
+ * schema history. Compare the physical package that supplied each retained app. */
+export function changedImportedMigrations(deployed: ReleaseManifest, candidate: ReleaseManifest, apps: readonly string[]): string[] {
+  const changes: string[] = [];
+  const oldSources = new Map(artifactReleaseContexts(deployed).map(source => [source.app, source]));
+  const newSources = new Map(artifactReleaseContexts(candidate).map(source => [source.app, source]));
+  for (const app of apps) {
+    const previous = deployed.artifacts.find(artifact => artifact.app === app);
+    const next = candidate.artifacts.find(artifact => artifact.app === app);
+    if (!previous || !next || (!previous.origin && !next.origin)) continue;
+    const before = oldSources.get(app)!, after = newSources.get(app)!;
+    const oldPackage = before.artifact.packageSource, newPackage = after.artifact.packageSource;
+    if (!oldPackage || !newPackage) {
+      changes.push(app + ': migration provenance is unavailable for one of the producer packages');
+      continue;
+    }
+    if (Object.keys(oldPackage.migrations).length && (before.manifest.project.repo !== after.manifest.project.repo || oldPackage.directory !== newPackage.directory)) {
+      changes.push(app + ': the package that owns existing migrations changed');
+      continue;
+    }
+    changes.push(...changedReleasedMigrations(oldPackage.migrations, newPackage.migrations).map(file => app + '/' + file));
+  }
+  return changes;
 }

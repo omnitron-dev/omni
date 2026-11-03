@@ -77,6 +77,26 @@ describe('durable bootstrap declaration evidence', () => {
     expect(graph.dependencies[0]).toMatchObject({ service: 'postgres' });
     expect(graph.coverage?.[0]?.source).toBe('launch');
   });
+  it('reads imported application topology from the owner launch after handoff and reports absent selection', async () => {
+    const f = fixture();
+    const record = captureBootstrapMetadata(f.bootstrap, f.bootstrap, { omnitronConfig: { database: true } });
+    const entries = [{ name: 'imported', releaseFrom: { release: 'producer-1', manifestSha256: 'a'.repeat(64), app: 'api' } }];
+    Object.assign(f.service, { resolveStackApps: () => entries, ensureConfig: async () => ({ apps: entries }),
+      localSelection: () => ({ read: () => ({ release: { id: 'consumer-1', manifestSha256: 'b'.repeat(64) } }) }),
+      orchestrator: { getHandle: () => ({ bootstrapMetadata: record }) } });
+    let graph = await f.service.getTopology({ project: 'sample', stack: 'dev' });
+    expect(graph.warnings).toEqual([]);
+    expect(graph.dependencies[0]).toMatchObject({ service: 'postgres' });
+    expect(graph.coverage?.[0]).toMatchObject({ app: 'imported', source: 'launch' });
+    Object.assign(f.service, { orchestrator: { getHandle: () => ({ entry: { script: '/installed/worker.js' } }) } });
+    graph = await f.service.getTopology({ project: 'sample', stack: 'dev' });
+    expect(graph.coverage?.[0]?.source).toBe('entry');
+    expect(graph.warnings).toEqual([]);
+    Object.assign(f.service, { localSelection: () => ({ read: () => ({ release: null }) }) });
+    graph = await f.service.getTopology({ project: 'sample', stack: 'dev' });
+    expect(graph.coverage?.[0]?.source).toBe('missing');
+    expect(graph.warnings[0]?.reason).toContain('no selected release');
+  });
   it('explicitly refreshes shared bootstrap declarations once across stacks without launching workloads', async () => {
     const f = fixture();
     const marker = path.join(f.directory, 'imports.txt');

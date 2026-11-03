@@ -1,11 +1,15 @@
 /** Applications bind their framework packages to the runtime that owns their processes.
  * A backend handoff can replace the controller while that runtime keeps running. */
 
-import type { DaemonStatusDto } from '../config/types.js';
+import type { DaemonStatusDto, IEcosystemAppEntry, IStackConfig } from '../config/types.js';
+import { resolveNodePlacements, stackNodeKey } from '../project/stack-placement.js';
+import type { ReleaseManifest } from './manifest.js';
+import { artifactReleaseContexts } from './origin.js';
 
 /** Provenance reported by authenticated node status. */
 export interface DaemonAnswer {
   readonly host: string;
+  readonly port?: number;
   readonly version: string | null;
   readonly build?: DaemonStatusDto['build'];
   readonly execution?: DaemonStatusDto['execution'];
@@ -78,4 +82,23 @@ export function refuseForeignOmni(releaseOmni: string, daemons: readonly DaemonA
     `${reasons.join('; ')}. This release was gated on omni ${requireExactBuild ? wanted : wanted.slice(0, 8)}. ` +
     'Review `omnitron fleet upgrade <node> --dry-run` and plan the transition of the application owner to the required build'
   );
+}
+
+/** Each placement runs its own artifact producer. Cache-only nodes and the
+ * controller's build do not determine an application's framework identity. */
+export function refuseReleaseOwners(manifest: ReleaseManifest, stack: IStackConfig, apps: readonly IEcosystemAppEntry[], daemons: readonly DaemonAnswer[]): string | null {
+  const sources = new Map(artifactReleaseContexts(manifest).map(source => [source.app, source.manifest.omni]));
+  for (const placement of resolveNodePlacements(stack, apps)) {
+    if (!placement.apps.length) continue;
+    const key = stackNodeKey(placement.node.host, placement.node.port);
+    const answers = daemons.filter(answer => stackNodeKey(answer.host, answer.port) === key);
+    if (answers.length !== 1) return key + ' has no unique authenticated execution owner observation';
+    for (const app of placement.apps) {
+      const source = sources.get(app.name);
+      if (!source) return 'No verified release artifact for ' + app.name;
+      const reason = refuseForeignOmni(source.commit, answers, Boolean(source.registry || source.reproduced));
+      if (reason) return app.name + ' on ' + key + ': ' + reason;
+    }
+  }
+  return null;
 }

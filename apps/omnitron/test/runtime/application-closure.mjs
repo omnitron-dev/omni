@@ -98,6 +98,36 @@ try {
   const portable = loaded(await builder.buildApp(privateEntry,pack));
   const [selected] = await inspect(portable, 'dev', [privateEntry], { ...opts, prepare:true });
   assert.equal((await import(pathToFileURL(selected.bootstrap))).default,42);
+  // A consumer imports immutable producer bytes with its own SDK/runtime identity.
+  // Its own framework/target cannot override the producer, and no new owner protocol is claimed.
+  const producer = { ...portable.manifest, id: 'producer-1',
+    builtWith: { ...portable.manifest.builtWith, omnitron: '0.3.1', packages: [] },
+    project: { repo: 'https://example.test/producer.git', commit: 'b'.repeat(40) },
+    omni: { repo: 'https://example.test/omni.git', commit: 'c'.repeat(40) },
+    gates: [{ name: 'unit', status: 'passed' }],
+    artifacts: portable.manifest.artifacts.map(a => ({ ...a, packageSource: { directory: 'apps/api', manifestBlob: 'd'.repeat(40), migrations: {} } })) };
+  const manifestJson = JSON.stringify(producer), producerDigest = sha(manifestJson);
+  const importOrigin = { release: producer.id, manifestSha256: producerDigest, app: 'private-api' };
+  const importedEntry = { name: 'imported-api', releaseFrom: importOrigin };
+  const imported = { ...portable, id: 'consumer-1', manifestSha256: sha('consumer-1'),
+    files: portable.files.map(f => ({ ...f, app: 'imported-api' })), manifest: { ...producer, id: 'consumer-1',
+      omni: { ...producer.omni, commit: 'e'.repeat(40) },
+      builtWith: { ...producer.builtWith, target: { ...localTarget, arch: 'different-consumer-builder' } },
+      artifacts: producer.artifacts.map(a => ({ ...a, app: 'imported-api', origin: importOrigin })), imports: [{ sha256: producerDigest, manifestJson }] } };
+  const [importedLaunch] = await inspect(imported, 'dev', [importedEntry], { ...opts, prepare: true });
+  assert.equal(importedLaunch.name, 'imported-api');
+  assert.equal(importedLaunch.releaseFrom, undefined);
+  assert.equal(importedLaunch.cwd, importedLaunch.releaseRoot);
+  assert.equal((await verifyLaunchRelease(importedLaunch, 'fixture-import')).state, 'unreported');
+  assert.equal((await import(pathToFileURL(importedLaunch.bootstrap))).default,42);
+  assert.ok(importedLaunch.bootstrap.startsWith(importedLaunch.releaseRoot + path.sep));
+  assert.equal((await inspect(imported, 'dev', [importedEntry], opts))[0].bootstrap, importedLaunch.bootstrap);
+  await assert.rejects(inspect(imported, 'dev', [{ ...importedEntry, releaseFrom: { ...importOrigin, app: 'another' } }], opts), /configured producer/);
+  const changedTarget = structuredClone(imported), mismatchedProducer = { ...producer, builtWith: { ...producer.builtWith, target: { ...localTarget, abi: 'wrong-ABI' } } };
+  const wrongJson = JSON.stringify(mismatchedProducer), wrongDigest = sha(wrongJson);
+  changedTarget.manifest.imports = [{ sha256: wrongDigest, manifestJson: wrongJson }];
+  changedTarget.manifest.artifacts[0].origin = { ...importOrigin, manifestSha256: wrongDigest };
+  await assert.rejects(inspect(changedTarget, 'dev', [{ ...importedEntry, releaseFrom: changedTarget.manifest.artifacts[0].origin }], opts), /recorded release target for imported-api/);
   const alteredClosure = path.join(selected.releaseRoot,'.omnitron-closure.json');
   await fs.appendFile(alteredClosure,' ');
   await assert.rejects(inspect(portable,'dev',[privateEntry],opts),/closure differs/);

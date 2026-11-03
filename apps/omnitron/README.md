@@ -112,6 +112,38 @@ and builds the linked packages. `--omni-commit` selects the checkout revision
 in this mode. With registry dependencies it is an assertion and must be the
 full commit recorded by the pinned archives. A release uses one source mode for its whole framework.
 
+## Imported applications in local releases
+
+A local stack can use an application built by another project without linking
+its source tree or adopting the consumer's SDK. Declare an application entry
+with `releaseFrom: { release, manifestSha256, app }`, where `release` is the
+producer release ID and `manifestSha256` pins its exact manifest bytes. The
+consumer release retains that evidence and the unchanged application archive.
+Each producer's gates must pass. Its package source, framework and Node target
+remain independent of the consumer's build.
+
+Use `omnitron stack prepare-release <project> <stack> <release>` to verify and
+materialize the consumer's immutable entries. Preparation runs no application
+code and changes no running selection. Starting with `--release <release>`
+stores the selection durably; an unresolved imported entry cannot start from a
+working tree. Startup loads declarations from the verified installed package
+and resolves its own Omnitron adapter and Titan. Imported applications default
+to their installed package as the working directory; an explicit `cwd` selects
+a separate data directory. The actual owner's Node
+executable must match the producer's recorded target. Changes to imported
+migration history are checked against the previous producer package.
+
+Read-only diagnosis and topology use captured launch declarations. If no
+release is selected, or an older owner has not supplied declaration evidence,
+they report the missing information. A retained archive match proves installed
+bytes; it does not confirm which release an already-running process loaded.
+Updating the controller cannot manufacture that missing owner evidence.
+
+Remote imports are currently refused before provisioning or transfer. They
+need producer-captured deployment declarations and a compatible execution
+owner; controller-side execution of a foreign bootstrap is not a substitute.
+Existing single-project remote deployments keep their normal declaration path.
+
 ## Host-owned public ingress
 
 See [host ingress setup, application publication and recovery](HOST-INGRESS.md) for independent multi-application HTTPS hosting through the native CLI and RPC API.

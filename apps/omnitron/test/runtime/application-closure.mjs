@@ -63,7 +63,46 @@ try {
   await assert.rejects(builder.buildApp({ name: 'broken-api', cwd: broken, bootstrap: 'dist/bootstrap.js' }, pack), { code: 'MODULE_NOT_FOUND' });
   assert.deepEqual(await fs.readdir(path.join(tmp, 'archives')), []);
   // A classic Node script can have an empty production graph.
-  await builder.buildApp({ name: 'plain-script', cwd: missing, script: 'dist/index.js' }, pack);
+  const classicEntry = { name: 'plain-script', cwd: missing, script: 'dist/index.js', env: { STATE_PATH: '/var/example' } };
+  const classic = await builder.buildApp(classicEntry, pack);
+  // A standalone local release keeps state in the registered cwd but never resolves code from it.
+  const { inspectLocalReleaseInstallation: inspect, LocalReleaseNotPreparedError } = await load('local-installation');
+  const directory = path.join(tmp, 'releases', 'test-release');
+  await fs.mkdir(directory, { recursive: true });
+  const localTarget = await (await load('target-runtime')).targetRuntime();
+  const loaded = (a) => {
+    const file = { app: a.app, version: a.version, sha256: a.tarballSha256, bytes: a.size, path: a.path };
+    return { root: directory, id: 'test-release', manifestSha256: sha(a.app), files: [file],
+      manifest: { builtWith: { target: localTarget }, artifacts: [{ ...file, launch: a.launch }] } };
+  };
+  const first = loaded(classic), opts = { ownerPid: process.pid };
+  await assert.rejects(inspect(first, 'dev', [classicEntry], opts), LocalReleaseNotPreparedError);
+  assert.deepEqual(await fs.readdir(path.dirname(directory)), ['test-release']);
+  const [[installed],[other]] = await Promise.all([1,2].map(() => inspect(first, 'dev', [classicEntry], { ...opts, prepare: true })));
+  assert.equal(installed.script, other.script);
+  assert.ok(installed.script.startsWith(installed.releaseRoot + path.sep));
+  assert.equal(installed.cwd, classicEntry.cwd);
+  assert.equal(installed.watch, false);
+  assert.deepEqual(installed.env, classicEntry.env);
+  await fs.writeFile(path.join(missing, 'dist/index.js'), 'throw Error("working tree executed")');
+  await execFile(process.execPath, [installed.script], { cwd: installed.cwd });
+  const [again] = await inspect(first, 'dev', [classicEntry], opts);
+  assert.equal(again.script, installed.script);
+  await fs.appendFile(installed.script, '// changed');
+  await assert.rejects(inspect(first, 'dev', [classicEntry], opts), /files differ/);
+  const privateApi = await pkg('private-api', {'@omnitron-dev/titan': titan, '@omnitron-dev/omnitron': daemon});
+  await fs.mkdir(path.join(daemon,'dist/orchestrator'),{recursive:true});
+  await fs.writeFile(path.join(daemon,'dist/orchestrator/bootstrap-process.js'),'export default {};');
+  await fs.writeFile(path.join(privateApi,'dist/bootstrap.js'), "export {default} from '@omnitron-dev/titan';");
+  const privateEntry = { name: 'private-api', cwd: privateApi, bootstrap: 'dist/bootstrap.js' };
+  const portable = loaded(await builder.buildApp(privateEntry,pack));
+  const [selected] = await inspect(portable, 'dev', [privateEntry], { ...opts, prepare:true });
+  assert.equal((await import(pathToFileURL(selected.bootstrap))).default,42);
+  const alteredClosure = path.join(selected.releaseRoot,'.omnitron-closure.json');
+  await fs.appendFile(alteredClosure,' ');
+  await assert.rejects(inspect(portable,'dev',[privateEntry],opts),/closure differs/);
+  const malformed = structuredClone(portable); malformed.manifest.artifacts[0].launch.file = '../outside.js';
+  await assert.rejects(inspect(malformed,'dev',[privateEntry],opts),/package-relative/);
 
   const staged=path.join(tmp,'stage'); await stageApplicationClosure(app,staged,{...cfg, bootstrap: 'dist/index.js'},[src]);
   assert.equal(await fs.access(path.join(staged,'.env')).then(()=>true,()=>false),false);

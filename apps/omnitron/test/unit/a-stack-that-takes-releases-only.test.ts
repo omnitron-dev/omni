@@ -118,6 +118,16 @@ describe('the files on this disk are the release that was built', () => {
     ]);
   });
 
+  it('refuses a manifest naming outside files or duplicate applications', async () => {
+    const root = releaseOnDisk('bad', { main: 'real bytes' });
+    const file = path.join(root, 'bad', 'manifest.json');
+    const original = JSON.parse(fs.readFileSync(file, 'utf8'));
+    for (const artifacts of [[{ ...original.artifacts[0], app: '../elsewhere' }], [...original.artifacts, ...original.artifacts]]) {
+      fs.writeFileSync(file, JSON.stringify({ ...original, artifacts }));
+      await expect(loadRelease('bad', root)).rejects.toThrow('Invalid or duplicate');
+    }
+  });
+
   it('refuses a truncated tarball by its size, before hashing', async () => {
     const root = releaseOnDisk('r2', { main: 'main-bytes' });
     fs.writeFileSync(path.join(root, 'r2', 'artifacts', 'main-0.0.1.tar.gz'), 'main-by');

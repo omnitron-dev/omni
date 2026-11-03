@@ -230,7 +230,7 @@ export function listReleases(root: string = releasesRoot()): ReleaseSummary[] {
     return [];
   }
   return entries
-    .filter((e) => e.isDirectory())
+    .filter((e) => e.isDirectory() && isReleaseId(e.name))
     .map((e) => summarise(e.name, path.join(root, e.name), readManifest(path.join(root, e.name))))
     .sort((a, b) => (a.builtAt ?? '') < (b.builtAt ?? '') ? 1 : (a.builtAt ?? '') > (b.builtAt ?? '') ? -1 : a.id < b.id ? 1 : -1);
 }

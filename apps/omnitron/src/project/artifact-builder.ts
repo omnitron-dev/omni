@@ -62,6 +62,7 @@ export interface ArtifactInfo {
    * directory and does not hash what it finds.
    */
   tarballSha256?: string;
+  launch?: import('../release/manifest.js').ReleaseLaunch;
 }
 
 export interface BuildOptions {
@@ -255,9 +256,10 @@ export class ArtifactBuilder {
 
     // The checked release is identified by delivered bytes. Development builds
     // keep their input checksum for the existing redeployment decision.
-    const checksum = options?.releaseCheckouts
+    const frozen = options?.releaseCheckouts
       ? await this.createFrozenTarball(appDir, artifactPath, entry, options.releaseCheckouts, options.verifyFrameworkPackage)
-      : await this.createTarball(appDir, artifactPath, entry.name, session);
+      : undefined;
+    const checksum = frozen?.sha256 ?? await this.createTarball(appDir, artifactPath, entry.name, session);
 
     // What this artifact was built from, recorded AFTER it was packed.
     //
@@ -295,6 +297,7 @@ export class ArtifactBuilder {
       builtAt: new Date().toISOString(),
       checksum,
       tarballSha256,
+      ...(frozen?.launch && { launch: frozen.launch }),
     };
   }
 
@@ -538,15 +541,18 @@ export class ArtifactBuilder {
 
   /** A checked release ships all production packages from its clean, target-specific install. */
   private async createFrozenTarball(appDir: string, artifactPath: string, entry: IEcosystemAppEntry, roots: readonly string[],
-    verifyPackage?: import('../release/registry-framework.js').RegistryFramework['verifyPackage']): Promise<string> {
+    verifyPackage?: import('../release/registry-framework.js').RegistryFramework['verifyPackage']) {
     const io = await import('node:fs/promises');
     const { stageApplicationClosure } = await import('../release/application-closure.js');
     const { archiveBundle } = await import('../services/bundle-builder.js');
     const staging = await io.mkdtemp(path.join(os.tmpdir(), 'omnitron-closure-'));
     try {
       await stageApplicationClosure(appDir, staging, entry, roots, verifyPackage);
+      const { describeReleaseLaunch } = await import('../release/local-installation.js');
+      const relativeScript = entry.script && path.relative(appDir, resolveAppPath(this.projectRoot, entry, entry.script));
+      const launch = await describeReleaseLaunch(staging, entry, relativeScript);
       await archiveBundle(staging, artifactPath);
-      return await sha256File(artifactPath);
+      return { sha256: await sha256File(artifactPath), launch };
     } finally { await io.rm(staging, { recursive: true, force: true }); }
   }
 

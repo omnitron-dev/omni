@@ -34,6 +34,14 @@
  * satisfied by none of those.
  */
 
+/** A local owner can launch this exact member without resolving anything in a developer checkout. */
+export interface ReleaseLaunch {
+  readonly mode: 'bootstrap' | 'script';
+  readonly file: string;
+  /** Binds the checked payload tree and execution target in .omnitron-closure.json to this manifest. */
+  readonly closureSha256: string;
+}
+
 /** One packed application, identified by content rather than by name. */
 export interface ReleaseArtifact {
   readonly app: string;
@@ -56,6 +64,7 @@ export interface ReleaseArtifact {
    * the app running, as a deployment of the tree would.
    */
   readonly inputs?: string;
+  readonly launch?: ReleaseLaunch;
 }
 
 /**

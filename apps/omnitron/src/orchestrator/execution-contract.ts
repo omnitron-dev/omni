@@ -27,6 +27,8 @@ type Methods = Omit<OrchestratorService, HandleMethods | 'getHandle' | 'getWorke
 export interface OrchestratorControl extends Methods {
   /** Fresh owner inventory for explicit diagnostics; supported without an owner upgrade. */
   refreshObservation?(): Promise<void>;
+  /** PID from the authenticated resident owner; in-process supervisors do not implement this. */
+  getExecutionOwnerPid?(): number;
   startApp(...args: Parameters<OrchestratorService['startApp']>): Promise<AppExecutionView>;
   startKnownApp(name: string): Promise<AppExecutionView | undefined>;
   restartAfterChange(name: string): Promise<AppExecutionView | undefined>;

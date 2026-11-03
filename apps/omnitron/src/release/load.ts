@@ -61,18 +61,30 @@ export async function loadRelease(id: string, root: string = releasesRoot()): Pr
   if (!fs.existsSync(manifestPath)) {
     throw new Error(`No release '${id}' on this machine — ${manifestPath} does not exist. \`ls ${root}\` lists what was built.`);
   }
+  if (fs.realpathSync(manifestPath) !== path.join(fs.realpathSync(root), id, 'manifest.json') ||
+      !fs.lstatSync(manifestPath).isFile()) throw Error('Release manifest must be a physical file in its store');
   const manifestBytes = fs.readFileSync(manifestPath);
   const manifest = JSON.parse(manifestBytes.toString('utf8')) as ReleaseManifest;
   const manifestSha256 = crypto.createHash('sha256').update(manifestBytes).digest('hex');
   if (manifest.id !== id) throw new Error(`${manifestPath} names release '${manifest.id}', not '${id}'`);
 
   const files: Array<LoadedRelease['files'][number]> = [];
+  const seen = new Set<string>();
+  if (!Array.isArray(manifest.artifacts) || manifest.artifacts.length > 256) throw Error('Invalid release artifact inventory');
   for (const a of manifest.artifacts) {
+    if (!a || typeof a.app !== 'string' || !RELEASE_ID.test(a.app) || a.app.includes('..') ||
+      typeof a.version !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(a.version) || a.version.includes('..') ||
+      seen.has(a.app) || !Number.isSafeInteger(a.bytes) || a.bytes <= 0 || !/^[a-f0-9]{64}$/.test(a.sha256))
+      throw Error('Invalid or duplicate release artifact');
+    seen.add(a.app);
     const file = path.join(dir, 'artifacts', `${a.app}-${a.version}.tar.gz`);
     if (!fs.existsSync(file)) throw new Error(`Release ${id} names ${a.app}@${a.version}, and ${file} is not there`);
     // Size first: it tells a truncated copy from a different file, which a
     // checksum mismatch alone does not.
-    const bytes = fs.statSync(file).size;
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || fs.realpathSync(file) !== path.join(fs.realpathSync(root), id, 'artifacts', path.basename(file)))
+      throw Error('Release artifact must be a physical file in its store');
+    const bytes = stat.size;
     if (bytes !== a.bytes) {
       throw new Error(`Release ${id}: ${a.app}'s tarball is ${bytes} bytes, and the manifest recorded ${a.bytes}`);
     }

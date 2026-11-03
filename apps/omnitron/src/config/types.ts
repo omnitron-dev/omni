@@ -634,6 +634,8 @@ export interface IEcosystemAppEntry {
   name: string;
   /** Explicit installed artifact boundary; never inferred from the process cwd or a release-like directory name. */
   releaseRoot?: string;
+  /** Optional package-relative compiled entry in a frozen release (for example dist/server.js). */
+  releaseEntry?: string;
   /** External readiness, independent of process liveness. Re-read applies probes without restarting the app. */
   readiness?: import('../health/contracts.js').AppReadinessConfig;
   /** Bootstrap mode: app exports defineSystem() */

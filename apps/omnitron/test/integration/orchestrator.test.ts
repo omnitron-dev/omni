@@ -1,575 +1,227 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import 'reflect-metadata';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ProcessManager, type ISupervisorConfig } from '@omnitron-dev/titan-pm';
+import { Netron } from '@omnitron-dev/titan/netron';
+import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
-import { StateStore } from '../../src/daemon/state-store.js';
+import type { StateStore } from '../../src/daemon/state-store.js';
 import { DEFAULT_ECOSYSTEM } from '../../src/config/defaults.js';
-import type { IEcosystemConfig, IEcosystemAppEntry } from '../../src/config/types.js';
-import type { ProcessManager, ProcessSupervisor } from '@omnitron-dev/titan-pm';
+import type { IEcosystemConfig, IEcosystemAppEntry, IProcessEntry } from '../../src/config/types.js';
 
-// ============================================================================
-// Mock factories
-// ============================================================================
+// Source-level admission tests use the real PM and supervisor, with only the
+// supervisor's start boundary held for configuration/event assertions. Actual
+// bootstrap and pool processes are exercised by runtime/backend-handoff.mjs.
+// Classic tests below fork real private children through public startApp.
+let directory: string;
+let pm: ProcessManager;
+let netron: Netron;
+let service: OrchestratorService;
+const save = vi.fn<StateStore['save']>();
+const logger = createNullLogger();
+const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const owned = new Set<number>();
 
-function createMockLogger() {
-  return {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-    trace: vi.fn(),
-    fatal: vi.fn(),
-    child: vi.fn().mockReturnThis(),
-  };
+beforeEach(async () => {
+  directory = await fs.mkdtemp('/tmp/omni-orchestrator-');
+  pm = new ProcessManager(logger, { testing: { useMockSpawner: false }, isolation: 'child' });
+  netron = new Netron(logger);
+  await netron.start();
+  save.mockClear();
+  service = new OrchestratorService(logger, pm, { save } as unknown as StateStore, directory,
+    { reapForeignOrphans: false });
+  service.setDaemonNetron(netron, path.join(directory, 'owner.sock'));
+});
+afterEach(async () => {
+  try { await service?.stopAll(true); }
+  finally {
+    try { await pm?.shutdown({ force: true, timeout: 5000 }); }
+    finally {
+      await netron?.stop();
+      for (const pid of owned) expect(alive(pid), `private child ${pid} leaked`).toBe(false);
+      owned.clear();
+      await fs.rm(directory, { recursive: true, force: true });
+      vi.restoreAllMocks();
+    }
+  }
+});
+function config(apps: IEcosystemAppEntry[], overrides: Partial<IEcosystemConfig> = {}): IEcosystemConfig {
+  return { ...structuredClone(DEFAULT_ECOSYSTEM), apps, ...overrides } as IEcosystemConfig;
+}
+async function classic(name: string, overrides: Partial<IEcosystemAppEntry> = {}): Promise<IEcosystemAppEntry> {
+  const script = path.join(directory, `${name}.cjs`);
+  await fs.writeFile(script, `const fs=require('node:fs');
+const history=${JSON.stringify(path.join(directory, 'events.jsonl'))};
+const record=event=>fs.appendFileSync(history,JSON.stringify({event,name:${JSON.stringify(name)},pid:process.pid})+'\\n');
+record('start'); process.stdout.write('startup one\\n    startup two\\n');
+process.on('SIGTERM',()=>{record('stop'); process.exit(0)});
+process.send({type:'ready'}); setInterval(()=>{},1000);
+`);
+  return { name, script, cwd: directory, watch: false, restartPolicy: { enabled: false }, ...overrides };
+}
+async function start(entry: IEcosystemAppEntry) {
+  const handle = await service.startApp(entry, config([entry]));
+  if (handle.pid) owned.add(handle.pid);
+  return handle;
+}
+async function events(): Promise<Array<{event: string; name: string; pid: number}>> {
+  return (await fs.readFile(path.join(directory, 'events.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+}
+async function bootstrap(processes: IProcessEntry[] = [{ name: 'worker', module: './module.mjs' }]) {
+  const file = path.join(directory, 'bootstrap.mjs');
+  await fs.writeFile(file, `export default ${JSON.stringify({ name: 'fixture', processes })};`);
+  return { name: 'fixture', bootstrap: file, cwd: directory, watch: false } satisfies IEcosystemAppEntry;
+}
+function holdSupervisor() {
+  const create = pm.createSupervisor.bind(pm);
+  return vi.spyOn(pm, 'createSupervisor').mockImplementation((...args) => {
+    const supervisor = create(...args);
+    vi.spyOn(supervisor, 'start').mockResolvedValue(undefined);
+    return supervisor;
+  });
 }
 
-function createMockSupervisor(overrides: Partial<ProcessSupervisor> = {}): ProcessSupervisor {
-  const listeners = new Map<string, ((...args: any[]) => void)[]>();
-  return {
-    start: vi.fn().mockResolvedValue(undefined),
-    stop: vi.fn().mockResolvedValue(undefined),
-    restartChild: vi.fn().mockResolvedValue(undefined),
-    getChildNames: vi.fn().mockReturnValue(['test-app']),
-    getChildProcessId: vi.fn().mockReturnValue('proc-1'),
-    getAllProcessIds: vi.fn().mockReturnValue(['proc-1']),
-    getRestartCount: vi.fn().mockReturnValue(0),
-    scaleChild: vi.fn().mockResolvedValue(undefined),
-    getChildMetrics: vi.fn().mockResolvedValue({ cpu: 5, memory: 100_000 }),
-    getChildHealth: vi.fn().mockResolvedValue({
-      status: 'healthy',
-      checks: [{ name: 'app', status: 'pass' }],
-      timestamp: Date.now(),
-    }),
-    getChildProxy: vi.fn().mockReturnValue(null),
-    running: true,
-    on: vi.fn().mockImplementation(function registerListener(this: any, event: string, handler: (...args: any[]) => void) {
-      if (!listeners.has(event)) listeners.set(event, []);
-      listeners.get(event)!.push(handler);
-      return this;
-    }),
-    off: vi.fn(),
-    emit: vi.fn().mockImplementation((event: string, ...args: any[]) => {
-      for (const handler of listeners.get(event) ?? []) handler(...args);
-    }),
-    ...overrides,
-  } as unknown as ProcessSupervisor;
-}
-
-function createMockPM(supervisor?: ProcessSupervisor): ProcessManager {
-  const mock = supervisor ?? createMockSupervisor();
-  return {
-    spawn: vi.fn().mockResolvedValue({ __processId: 'proc-1' }),
-    pool: vi.fn().mockResolvedValue({ __processId: 'pool-1', destroy: vi.fn(), scale: vi.fn() }),
-    supervisor: vi.fn().mockResolvedValue(mock),
-    getProcess: vi.fn().mockReturnValue({ pid: 12345 }),
-    getMetrics: vi.fn().mockResolvedValue({ cpu: 5, memory: 100_000 }),
-    getHealth: vi.fn().mockResolvedValue({ status: 'healthy', checks: [], timestamp: Date.now() }),
-    listProcesses: vi.fn().mockReturnValue([]),
-    kill: vi.fn().mockResolvedValue(undefined),
-    shutdown: vi.fn().mockResolvedValue(undefined),
-    on: vi.fn().mockReturnThis(),
-    off: vi.fn(),
-    emit: vi.fn(),
-  } as unknown as ProcessManager;
-}
-
-function createMockStateStore(): StateStore {
-  return {
-    save: vi.fn(),
-    load: vi.fn().mockReturnValue(null),
-    clear: vi.fn(),
-  } as unknown as StateStore;
-}
-
-function makeConfig(overrides?: Partial<IEcosystemConfig>): IEcosystemConfig {
-  return {
-    apps: [],
-    supervision: DEFAULT_ECOSYSTEM.supervision,
-    monitoring: DEFAULT_ECOSYSTEM.monitoring,
-    logging: DEFAULT_ECOSYSTEM.logging,
-    daemon: DEFAULT_ECOSYSTEM.daemon,
-    env: 'test',
-    ...overrides,
-  } as IEcosystemConfig;
-}
-
-function makeEntry(name: string, overrides?: Partial<IEcosystemAppEntry>): IEcosystemAppEntry {
-  return { name, bootstrap: `./apps/${name}/src/bootstrap.ts`, ...overrides };
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-describe('OrchestratorService', () => {
-  let logger: ReturnType<typeof createMockLogger>;
-  let pm: ProcessManager;
-  let stateStore: ReturnType<typeof createMockStateStore>;
-  let orchestrator: OrchestratorService;
-
-  beforeEach(() => {
-    logger = createMockLogger();
-    pm = createMockPM();
-    stateStore = createMockStateStore();
-    orchestrator = new OrchestratorService(logger as any, pm, stateStore as any, '/test/cwd');
+describe('public orchestrator lifecycle with real classic children', () => {
+  it('starts a distinct process, reports online identity and persists it', async () => {
+    const handle = await start(await classic('worker'));
+    expect(handle.mode).toBe('classic'); expect(handle.status).toBe('online');
+    expect(handle.pid).toBeGreaterThan(0); expect(handle.pid).not.toBe(process.pid);
+    expect(alive(handle.pid!)).toBe(true);
+    expect(service.getApp('worker')).toMatchObject({ name: 'worker', mode: 'classic', status: 'online', pid: handle.pid });
+    expect(save.mock.lastCall?.[0].apps).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'worker', pid: handle.pid, status: 'online' })]));
   });
-
-  describe('startApp — bootstrap mode', () => {
-    it('creates PM supervisor for bootstrap app', async () => {
-      const entry = makeEntry('main');
-      const config = makeConfig({ apps: [entry] });
-
-      await orchestrator.startApp(entry, config);
-
-      expect(pm.supervisor).toHaveBeenCalledTimes(1);
-      const supervisorConfig = (pm.supervisor as any).mock.calls[0][0];
-      expect(supervisorConfig.children).toHaveLength(1);
-      expect(supervisorConfig.children[0].name).toBe('main');
-      expect(supervisorConfig.children[0].process).toContain('bootstrap-process');
-    });
-
-    it('passes correct spawn options with bootstrapPath dependency', async () => {
-      const entry = makeEntry('main');
-      const config = makeConfig({ apps: [entry] });
-
-      await orchestrator.startApp(entry, config);
-
-      const supervisorConfig = (pm.supervisor as any).mock.calls[0][0];
-      const child = supervisorConfig.children[0];
-      expect(child.spawnOptions.dependencies.bootstrapPath).toContain('apps/main/src/bootstrap.ts');
-      expect(child.spawnOptions.health.enabled).toBe(true);
-      expect(child.spawnOptions.observability.metrics).toBe(true);
-    });
-
-    it('configures pool options for multi-instance apps', async () => {
-      const entry = makeEntry('main', { instances: 3 });
-      const config = makeConfig({ apps: [entry] });
-
-      await orchestrator.startApp(entry, config);
-
-      const supervisorConfig = (pm.supervisor as any).mock.calls[0][0];
-      const child = supervisorConfig.children[0];
-      expect(child.poolOptions).toBeDefined();
-      expect(child.poolOptions.size).toBe(3);
-      expect(child.poolOptions.replaceUnhealthy).toBe(true);
-      expect(child.poolOptions.spawnOptionsFactory).toBeTypeOf('function');
-    });
-
-    it('spawnOptionsFactory provides unique portOffset per instance', async () => {
-      const entry = makeEntry('main', { instances: 3 });
-      const config = makeConfig({ apps: [entry] });
-
-      await orchestrator.startApp(entry, config);
-
-      const supervisorConfig = (pm.supervisor as any).mock.calls[0][0];
-      const factory = supervisorConfig.children[0].poolOptions.spawnOptionsFactory;
-
-      const opts0 = factory(0);
-      const opts1 = factory(1);
-      const opts2 = factory(2);
-
-      expect(opts0.dependencies.portOffset).toBe(0);
-      expect(opts1.dependencies.portOffset).toBe(1);
-      expect(opts2.dependencies.portOffset).toBe(2);
-      expect(opts0.name).toBe('main-0');
-      expect(opts1.name).toBe('main-1');
-    });
-
-    it('does not configure pool for single instance', async () => {
-      const entry = makeEntry('main', { instances: 1 });
-      const config = makeConfig({ apps: [entry] });
-
-      await orchestrator.startApp(entry, config);
-
-      const supervisorConfig = (pm.supervisor as any).mock.calls[0][0];
-      expect(supervisorConfig.children[0].poolOptions).toBeUndefined();
-    });
-
-    it('maps supervision strategy from config', async () => {
-      const entry = makeEntry('main');
-      const config = makeConfig({
-        apps: [entry],
-        supervision: { ...DEFAULT_ECOSYSTEM.supervision, strategy: 'one_for_all' },
-      });
-
-      await orchestrator.startApp(entry, config);
-
-      const supervisorConfig = (pm.supervisor as any).mock.calls[0][0];
-      expect(supervisorConfig.strategy).toBe('one-for-all');
-    });
-
-    it('sets critical flag on supervisor child', async () => {
-      const entry = makeEntry('main', { critical: true });
-      const config = makeConfig({ apps: [entry] });
-
-      await orchestrator.startApp(entry, config);
-
-      const supervisorConfig = (pm.supervisor as any).mock.calls[0][0];
-      expect(supervisorConfig.children[0].critical).toBe(true);
-    });
-
-    it('stores supervisor in handle', async () => {
-      const entry = makeEntry('main');
-      const config = makeConfig({ apps: [entry] });
-
-      const handle = await orchestrator.startApp(entry, config);
-
-      expect(handle.supervisor).not.toBeNull();
-    });
-
-    it('persists state after start', async () => {
-      const entry = makeEntry('main');
-      const config = makeConfig({ apps: [entry] });
-
-      await orchestrator.startApp(entry, config);
-
-      expect(stateStore.save).toHaveBeenCalled();
-    });
-
-    it('skips already running app', async () => {
-      const entry = makeEntry('main');
-      const config = makeConfig({ apps: [entry] });
-
-      await orchestrator.startApp(entry, config);
-      // Simulate supervisor emitting child:started to mark online
-      const supervisorConfig = (pm.supervisor as any).mock.calls[0][0];
-      expect(supervisorConfig).toBeDefined();
-
-      // Start again — should return existing handle
-      const handle2 = await orchestrator.startApp(entry, config);
-      // supervisor() should still have been called only once
-      // (second call returns early because status changes to 'starting' not 'online')
-      expect(handle2.mode).toBe('bootstrap');
-    });
+  it('deduplicates simultaneous and repeated starts without another process', async () => {
+    const entry = await classic('worker');
+    const [one, two] = await Promise.all([start(entry), start(entry)]);
+    const three = await start(entry);
+    expect(two).toBe(one); expect(three).toBe(one);
+    expect((await events()).filter(row => row.event === 'start')).toHaveLength(1);
   });
-
-  describe('startApp — classic mode', () => {
-    it('launches classic mode for script entries', async () => {
-      const entry: IEcosystemAppEntry = { name: 'legacy', script: './apps/legacy/main.ts' };
-
-      // Classic launcher will try to fork, which we can't do in test
-      // Just verify the mode detection
-      const handle = orchestrator.getHandle('legacy');
-      expect(handle).toBeUndefined(); // Not started yet
-
-      // We can't fully test classic mode without real fork
-      // but we verify mode detection
-      expect(entry.bootstrap).toBeUndefined();
-      expect(entry.script).toBeDefined();
-    });
+  it('waits for exit and permits repeated stop', async () => {
+    const handle = await start(await classic('worker')); const pid = handle.pid!;
+    await service.stopApp('worker'); await service.stopApp('worker');
+    expect(alive(pid)).toBe(false); expect(handle.status).toBe('stopped');
+    expect((await events()).filter(row => row.event === 'stop')).toHaveLength(1);
+    await expect(service.stopApp('missing')).resolves.toBeUndefined();
   });
-
-  describe('stopApp', () => {
-    it('delegates to supervisor.stop() for bootstrap apps', async () => {
-      const supervisor = createMockSupervisor();
-      const pm = createMockPM(supervisor);
-      const orch = new OrchestratorService(logger as any, pm, stateStore as any, '/test');
-
-      const entry = makeEntry('main');
-      await orch.startApp(entry, makeConfig({ apps: [entry] }));
-
-      await orch.stopApp('main');
-
-      expect(supervisor.stop).toHaveBeenCalledTimes(1);
-    });
-
-    it('marks handle as stopped', async () => {
-      const entry = makeEntry('main');
-      const config = makeConfig({ apps: [entry] });
-      const handle = await orchestrator.startApp(entry, config);
-
-      await orchestrator.stopApp('main');
-
-      expect(handle.status).toBe('stopped');
-      expect(handle.supervisor).toBeNull();
-    });
-
-    it('is idempotent for already stopped apps', async () => {
-      // stopApp on non-existent app should not throw
-      await expect(orchestrator.stopApp('nonexistent')).resolves.toBeUndefined();
-    });
+  it('restarts the retained entry under a new process and generation', async () => {
+    const before = await start(await classic('worker'));
+    const pid = before.pid!, generation = before.generation;
+    const after = await service.restartApp('worker'); owned.add(after.pid!);
+    expect(after.pid).not.toBe(pid); expect(alive(pid)).toBe(false);
+    expect(after.generation).not.toBe(generation); expect(after.status).toBe('online');
+    expect((await events()).map(row => row.event)).toEqual(['start', 'stop', 'start']);
   });
-
-  describe('stopAll', () => {
-    it('stops all apps in reverse dependency order', async () => {
-      const apps = [makeEntry('main'), makeEntry('storage', { dependsOn: ['main'] })];
-      const config = makeConfig({ apps });
-
-      await orchestrator.startAll(config);
-      const count = await orchestrator.stopAll();
-
-      expect(count).toBe(2);
-    });
-
-    it('calls pm.shutdown()', async () => {
-      const config = makeConfig({ apps: [makeEntry('main')] });
-      await orchestrator.startAll(config);
-      await orchestrator.stopAll();
-
-      expect(pm.shutdown).toHaveBeenCalled();
-    });
+  it('starts dependencies first and stops consumers before providers', async () => {
+    const provider = await classic('provider'), consumer = await classic('consumer', { dependsOn: ['provider'] });
+    await service.startAll(config([consumer, provider]));
+    for (const item of service.list()) if (item.pid) owned.add(item.pid);
+    expect((await events()).map(row => row.name)).toEqual(['provider', 'consumer']);
+    expect(await service.stopAll()).toBe(2);
+    expect((await events()).filter(row => row.event === 'stop').map(row => row.name)).toEqual(['consumer', 'provider']);
   });
-
-  describe('restartApp', () => {
-    it('stops and starts app', async () => {
-      const supervisor = createMockSupervisor();
-      const localPm = createMockPM(supervisor);
-      const orch = new OrchestratorService(logger as any, localPm, stateStore as any, '/test');
-
-      const entry = makeEntry('main');
-      const config = makeConfig({ apps: [entry] });
-
-      // Use startAll to set this.config, so restartApp can call startApp without explicit config
-      await orch.startAll(config);
-      const handle = await orch.restartApp('main');
-
-      expect(handle.mode).toBe('bootstrap');
-      // supervisor() called 3x: startAll + stopApp's supervisor.stop + restartApp's startApp
-      expect(localPm.supervisor).toHaveBeenCalledTimes(2);
-    });
-
-    it('throws for unknown app', async () => {
-      await expect(orchestrator.restartApp('unknown')).rejects.toThrow('Unknown app');
-    });
+  it('does not shut down PM on reversible stopAll and can start again', async () => {
+    const entry = await classic('worker'); const shutdown = vi.spyOn(pm, 'shutdown');
+    await service.startAll(config([entry])); owned.add(service.getHandle('worker')!.pid!);
+    await service.stopAll(); expect(shutdown).not.toHaveBeenCalled();
+    await service.startAll(config([entry])); owned.add(service.getHandle('worker')!.pid!);
+    expect(service.getApp('worker')).toMatchObject({ status: 'online' });
   });
-
-  describe('scaleApp', () => {
-    it('delegates to supervisor.scaleChild()', async () => {
-      const supervisor = createMockSupervisor();
-      const localPm = createMockPM(supervisor);
-      const orch = new OrchestratorService(logger as any, localPm, stateStore as any, '/test');
-
-      const entry = makeEntry('main');
-      const config = makeConfig({ apps: [entry] });
-      await orch.startAll(config);
-      await orch.scaleApp('main', 3);
-
-      expect(supervisor.scaleChild).toHaveBeenCalledWith('main', 3);
-    });
-
-    it('updates handle instanceCount', async () => {
-      const entry = makeEntry('main');
-      const config = makeConfig({ apps: [entry] });
-      await orchestrator.startAll(config);
-
-      const handle = await orchestrator.scaleApp('main', 4);
-      expect(handle.instanceCount).toBe(4);
-    });
-
-    it('throws for unknown app', async () => {
-      await orchestrator.startAll(makeConfig({ apps: [makeEntry('x')] }));
-      await expect(orchestrator.scaleApp('unknown', 2)).rejects.toThrow('Unknown app');
-    });
-
-    it('throws for instances < 1', async () => {
-      const entry = makeEntry('main');
-      await orchestrator.startAll(makeConfig({ apps: [entry] }));
-      await expect(orchestrator.scaleApp('main', 0)).rejects.toThrow('at least 1');
-    });
-
-    it('returns early when instances unchanged', async () => {
-      const supervisor = createMockSupervisor();
-      const localPm = createMockPM(supervisor);
-      const orch = new OrchestratorService(logger as any, localPm, stateStore as any, '/test');
-
-      const entry = makeEntry('main');
-      await orch.startAll(makeConfig({ apps: [entry] }));
-      await orch.scaleApp('main', 1); // default is 1
-
-      expect(supervisor.scaleChild).not.toHaveBeenCalled();
-    });
+  it('skips disabled and transitively blocked apps but starts independent apps', async () => {
+    const missing: IEcosystemAppEntry = { name: 'bad', bootstrap: path.join(directory, 'absent.mjs') };
+    await service.startAll(config([missing, await classic('disabled', { enabled: false }),
+      await classic('dependent', { dependsOn: ['bad'] }), await classic('indirect', { dependsOn: ['dependent'] }), await classic('healthy')]));
+    owned.add(service.getHandle('healthy')!.pid!);
+    expect(service.getHandle('disabled')).toBeUndefined(); expect(service.getHandle('dependent')).toBeUndefined();
+    expect(service.getHandle('indirect')).toBeUndefined(); expect(service.getApp('healthy')).toMatchObject({ status: 'online' });
+    expect((await events()).map(row => row.name)).toEqual(['healthy']);
   });
-
-  describe('list / getApp', () => {
-    it('returns process info for all apps', async () => {
-      const apps = [makeEntry('main'), makeEntry('storage')];
-      await orchestrator.startAll(makeConfig({ apps }));
-
-      const list = orchestrator.list();
-      expect(list).toHaveLength(2);
-      expect(list.map((l) => l.name).sort()).toEqual(['main', 'storage']);
-    });
-
-    it('returns null for unknown app', () => {
-      expect(orchestrator.getApp('nonexistent')).toBeNull();
-    });
-
-    it('returns correct ProcessInfoDto', async () => {
-      const entry = makeEntry('main');
-      await orchestrator.startApp(entry, makeConfig({ apps: [entry] }));
-
-      const info = orchestrator.getApp('main');
-      expect(info).not.toBeNull();
-      expect(info!.name).toBe('main');
-      expect(info!.mode).toBe('bootstrap');
-      expect(info!.instances).toBe(1);
-    });
+  it('captures actual startup output and keeps diagnostics scoped', async () => {
+    await start(await classic('worker'));
+    await vi.waitFor(() => expect(service.getLogs('worker')[0]?.lines.join('\n')).toContain('startup two'));
+    expect(service.getLogs('worker')[0]?.lines.join('\n')).toContain('startup one');
+    expect(Object.keys(await service.getHealth('worker'))).toEqual(['worker']);
+    expect(await service.getHealth('missing')).toEqual({}); expect(await service.getMetrics('missing')).toEqual({});
+    expect(service.getApp('missing')).toBeNull();
+    await service.stopApp('worker'); expect((await service.getHealth('worker'))['worker']?.status).not.toBe('healthy');
   });
-
-  describe('getMetrics', () => {
-    it('delegates to supervisor.getChildMetrics()', async () => {
-      const supervisor = createMockSupervisor();
-      const pm = createMockPM(supervisor);
-      const orch = new OrchestratorService(logger as any, pm, stateStore as any, '/test');
-
-      const entry = makeEntry('main');
-      await orch.startApp(entry, makeConfig({ apps: [entry] }));
-
-      const metrics = await orch.getMetrics();
-      expect(metrics['main']).toBeDefined();
-      expect(supervisor.getChildMetrics).toHaveBeenCalled();
-    });
-
-    it('filters by app name', async () => {
-      const apps = [makeEntry('main'), makeEntry('storage')];
-      await orchestrator.startAll(makeConfig({ apps }));
-
-      const metrics = await orchestrator.getMetrics('main');
-      expect(Object.keys(metrics)).toEqual(['main']);
-    });
+  it('refuses unknown restart/scale and leaves classic scaling unchanged', async () => {
+    await expect(service.restartApp('missing')).rejects.toThrow('Unknown app');
+    await expect(service.scaleApp('missing', 2)).rejects.toThrow('Unknown app');
+    const handle = await start(await classic('worker')); const pid = handle.pid;
+    expect(await service.scaleApp('worker', 3)).toBe(handle); expect(handle.pid).toBe(pid);
+    expect((await events()).filter(row => row.event === 'start')).toHaveLength(1);
   });
+});
 
-  describe('getHealth', () => {
-    it('delegates to supervisor.getChildHealth()', async () => {
-      const supervisor = createMockSupervisor();
-      const pm = createMockPM(supervisor);
-      const orch = new OrchestratorService(logger as any, pm, stateStore as any, '/test');
-
-      const entry = makeEntry('main');
-      await orch.startApp(entry, makeConfig({ apps: [entry] }));
-
-      const health = await orch.getHealth();
-      expect(health['main']).toBeDefined();
-      expect(supervisor.getChildHealth).toHaveBeenCalled();
-    });
+describe('bootstrap admission at the current PM boundary', () => {
+  it('refuses a missing definition before creating a supervisor', async () => {
+    const create = vi.spyOn(pm, 'createSupervisor');
+    await expect(start({ name: 'missing', bootstrap: path.join(directory, 'absent.mjs') })).rejects.toThrow('Could not load');
+    expect(create).not.toHaveBeenCalled();
   });
-
-  describe('getLogs', () => {
-    it('returns logs from handles', async () => {
-      const entry = makeEntry('main');
-      await orchestrator.startApp(entry, makeConfig({ apps: [entry] }));
-
-      const handle = orchestrator.getHandle('main')!;
-      handle.appendLog('test log line');
-
-      const logs = orchestrator.getLogs('main');
-      expect(logs).toHaveLength(1);
-      expect(logs[0]!.app).toBe('main');
-      expect(logs[0]!.lines).toContain('test log line');
-    });
+  it('refuses an empty topology instead of silently starting legacy single mode', async () => {
+    const create = vi.spyOn(pm, 'createSupervisor');
+    await expect(start(await bootstrap([]))).rejects.toThrow('must export defineSystem() result');
+    expect(create).not.toHaveBeenCalled();
   });
-
-  describe('supervisor event wiring', () => {
-    it('emits app:crash on child:crash', async () => {
-      const supervisor = createMockSupervisor();
-      const pm = createMockPM(supervisor);
-      const orch = new OrchestratorService(logger as any, pm, stateStore as any, '/test');
-
-      const crashPromise = new Promise<[string, Error]>((resolve) => {
-        orch.on('app:crash', (name: string, error: Error) => resolve([name, error]));
-      });
-
-      const entry = makeEntry('main');
-      await orch.startApp(entry, makeConfig({ apps: [entry] }));
-
-      // Trigger child:crash event on supervisor
-      const crashHandler = (supervisor.on as any).mock.calls.find((c: any[]) => c[0] === 'child:crash')?.[1];
-      expect(crashHandler).toBeDefined();
-      crashHandler('main', new Error('OOM'));
-
-      const [name, error] = await crashPromise;
-      expect(name).toBe('main');
-      expect(error.message).toBe('OOM');
-    });
-
-    it('emits app:restart on child:restart', async () => {
-      const supervisor = createMockSupervisor();
-      const pm = createMockPM(supervisor);
-      const orch = new OrchestratorService(logger as any, pm, stateStore as any, '/test');
-
-      const restartPromise = new Promise<[string, number]>((resolve) => {
-        orch.on('app:restart', (name: string, attempt: number) => resolve([name, attempt]));
-      });
-
-      const entry = makeEntry('main');
-      await orch.startApp(entry, makeConfig({ apps: [entry] }));
-
-      const restartHandler = (supervisor.on as any).mock.calls.find((c: any[]) => c[0] === 'child:restart')?.[1];
-      expect(restartHandler).toBeDefined();
-      restartHandler('main', 3);
-
-      const [name, attempt] = await restartPromise;
-      expect(name).toBe('main');
-      expect(attempt).toBe(3);
-    });
-
-    it('emits critical:crash on escalate', async () => {
-      const supervisor = createMockSupervisor();
-      const pm = createMockPM(supervisor);
-      const orch = new OrchestratorService(logger as any, pm, stateStore as any, '/test');
-
-      const escalatePromise = new Promise<string>((resolve) => {
-        orch.on('critical:crash', (name: string) => resolve(name));
-      });
-
-      const entry = makeEntry('main', { critical: true });
-      await orch.startApp(entry, makeConfig({ apps: [entry] }));
-
-      const escalateHandler = (supervisor.on as any).mock.calls.find((c: any[]) => c[0] === 'escalate')?.[1];
-      expect(escalateHandler).toBeDefined();
-      escalateHandler('main', new Error('exceeded max restarts'));
-
-      const name = await escalatePromise;
-      expect(name).toBe('main');
-    });
-
-    it('emits app:online on child:started', async () => {
-      const supervisor = createMockSupervisor();
-      const pm = createMockPM(supervisor);
-      const orch = new OrchestratorService(logger as any, pm, stateStore as any, '/test');
-
-      const onlinePromise = new Promise<string>((resolve) => {
-        orch.on('app:online', (name: string) => resolve(name));
-      });
-
-      const entry = makeEntry('main');
-      await orch.startApp(entry, makeConfig({ apps: [entry] }));
-
-      const startedHandler = (supervisor.on as any).mock.calls.find((c: any[]) => c[0] === 'child:started')?.[1];
-      expect(startedHandler).toBeDefined();
-      startedHandler('main');
-
-      const name = await onlinePromise;
-      expect(name).toBe('main');
-    });
+  it('forwards qualified child identity, bootstrap, environment and bounded health settings', async () => {
+    const create = holdSupervisor();
+    const entry = { ...await bootstrap(), env: { FIXTURE_INPUT: 'value' }, startupTimeout: 4321 };
+    const handle = await start(entry);
+    const definition = create.mock.calls[0]![0] as ISupervisorConfig;
+    expect(definition.children).toHaveLength(1);
+    expect(definition.children![0]).toMatchObject({ name: 'fixture/worker', spawnOptions: {
+      name: 'fixture/worker', env: entry.env, startupTimeout: 4321,
+      dependencies: { bootstrapPath: entry.bootstrap, processName: 'worker' }, observability: { metrics: true },
+      health: { enabled: true, interval: DEFAULT_ECOSYSTEM.monitoring!.healthCheck.interval },
+    } });
+    expect(handle.supervisor).toBe(create.mock.results[0]!.value);
+    expect(handle.bootstrapMetadata?.source.path).toBe(entry.bootstrap);
+    expect(handle.status).toBe('starting'); // Held admission is not actual readiness.
   });
-
-  describe('startAll', () => {
-    it('starts apps in dependency order', async () => {
-      const startOrder: string[] = [];
-      const localPm = createMockPM();
-      (localPm.supervisor as any) = vi.fn().mockImplementation(async (config: any) => {
-        startOrder.push(config.children[0].name);
-        return createMockSupervisor();
-      });
-      const orch = new OrchestratorService(logger as any, localPm, stateStore as any, '/test');
-
-      const apps = [
-        makeEntry('messaging', { dependsOn: ['main'] }),
-        makeEntry('main'),
-        makeEntry('storage', { dependsOn: ['main'] }),
-      ];
-      await orch.startAll(makeConfig({ apps }));
-
-      expect(startOrder[0]).toBe('main');
-      // storage and messaging are in same batch (parallel), order may vary
-      expect(startOrder.slice(1).sort()).toEqual(['messaging', 'storage']);
+  it('maps supervision strategy and inherits criticality without overriding child policy', async () => {
+    const create = holdSupervisor(); const entry = { ...await bootstrap([
+      { name: 'inherited', module: './module.mjs' }, { name: 'optional', module: './module.mjs', critical: false },
+    ]), critical: true };
+    await service.startApp(entry, config([entry], { supervision: { ...DEFAULT_ECOSYSTEM.supervision!, strategy: 'one_for_all' } }));
+    const definition = create.mock.calls[0]![0] as ISupervisorConfig;
+    expect(definition.strategy).toBe('one-for-all');
+    expect(definition.children!.map(child => [child.name, child.critical])).toEqual([['fixture/inherited', true], ['fixture/optional', false]]);
+  });
+  it.each(['fixed', 'auto'] as const)('honors %s pool scaling and forwards real health policy', async strategy => {
+    // Stop at the actual asynchronous pool-admission boundary, rather than
+    // returning a fake healthy pool and claiming that workers were spawned.
+    const refusal = new Error('fixture: pool admission held');
+    const pool = vi.spyOn(pm, 'pool').mockRejectedValue(refusal);
+    const entry = await bootstrap([{ name: 'workers', module: './module.mjs', instances: 3,
+      scaling: { strategy, maxInstances: 7 }, health: { enabled: true, interval: 1234, timeout: 4567 } }]);
+    await expect(start(entry)).rejects.toThrow('fixture: pool admission held');
+    expect(pool).toHaveBeenCalledOnce();
+    expect(pool.mock.calls[0]![1]).toMatchObject({ size: 3, metrics: true,
+      healthCheck: { enabled: true, interval: 1234 }, autoScale: { enabled: strategy === 'auto', min: 3, max: strategy === 'auto' ? 7 : 3 },
+      spawnOptions: { name: 'fixture/workers', dependencies: { bootstrapPath: entry.bootstrap, processName: 'workers' },
+        health: { enabled: true, interval: 1234, timeout: 4567 } },
     });
-
-    it('skips disabled apps', async () => {
-      const apps = [makeEntry('main'), makeEntry('disabled', { enabled: false })];
-      await orchestrator.startAll(makeConfig({ apps }));
-
-      expect(orchestrator.list()).toHaveLength(1);
-      expect(orchestrator.list()[0]!.name).toBe('main');
-    });
+    expect(pool.mock.calls[0]![1]).not.toHaveProperty('replaceUnhealthy');
+  });
+  it('publishes crash, restart and escalation from the actual supervisor emitter', async () => {
+    holdSupervisor(); const handle = await start(await bootstrap()); const supervisor = handle.supervisor!;
+    const crash = vi.fn(), restart = vi.fn(), escalated = vi.fn();
+    service.on('app:crash', crash); service.on('app:restart', restart); service.on('app:escalated', escalated);
+    const failure = new Error('fixture worker failed');
+    supervisor.emit('child:crash', 'fixture/worker', failure);
+    expect(crash).toHaveBeenCalledWith('fixture', failure); expect(handle.lastExit?.message).toBe(failure.message);
+    supervisor.emit('child:restart', 'fixture/worker', 3);
+    expect(restart).toHaveBeenCalledWith('fixture', 3); expect(handle.restarts).toBe(3);
+    supervisor.emit('escalate', 'fixture/worker', failure);
+    expect(escalated).toHaveBeenCalledWith('fixture', 'fixture/worker'); expect(handle.status).toBe('crashed');
+  });
+  it('refuses invalid counts before invoking supervisor scaling', async () => {
+    holdSupervisor(); const handle = await start(await bootstrap());
+    const scale = vi.spyOn(handle.supervisor!, 'scaleChild');
+    await expect(service.scaleApp('fixture', 0)).rejects.toThrow('at least 1'); expect(scale).not.toHaveBeenCalled();
+    expect(await service.scaleApp('fixture', 1)).toBe(handle); expect(scale).not.toHaveBeenCalled();
   });
 });

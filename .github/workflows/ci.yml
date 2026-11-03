@@ -50,8 +50,16 @@ jobs:
         run: |
           node test/runtime/application-closure.mjs dist
           node test/runtime/release-provenance.mjs dist
+          node test/runtime/installed-runtime-context.mjs dist dist ../..
           pnpm exec vitest run --maxWorkers 2 test/integration/execution-connection.test.ts
           node test/runtime/execution-host.mjs dist
+      - name: Enforce one service identity and authorization decision across Netron transports
+        working-directory: packages/titan
+        run: >-
+          pnpm exec vitest run --maxWorkers 2
+          test/netron/transport/http/service-identity.spec.ts
+          test/netron/auth/transport-declared-authority.test.ts
+          test/netron/transport/http/configure-auth-enforcement.spec.ts
       - name: Linked and npm framework builds and recipient admission
         working-directory: apps/omnitron
         run: >-

@@ -1,9 +1,10 @@
-import { Fragment, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Box, Button, ButtonBase, Collapse, Tooltip, Typography } from '@mui/material';
 import { alpha, getContrastRatio, keyframes, useTheme, type Theme } from '@mui/material/styles';
 import { ChevronRightIcon, CopyIcon, CheckIcon } from '@omnitron-dev/prism/icons';
 import { useCopyToClipboard } from '@omnitron-dev/prism/core';
 import { shortLogLevel } from 'src/utils/log-levels';
+import { EventFields } from 'src/components/event-fields';
 import type { LogEntryRow } from '@omnitron-dev/omnitron/dto/services';
 
 const MONO = "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', monospace";
@@ -27,53 +28,6 @@ function timeOf(value: Date | string): string {
     [date.getHours(), date.getMinutes(), date.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':') +
     '.' +
     String(date.getMilliseconds()).padStart(3, '0')
-  );
-}
-
-function Fields({ values }: { values: Array<[string, unknown]> }) {
-  return (
-    <Box
-      component="dl"
-      sx={{
-        m: 0,
-        display: 'grid',
-        gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: '120px minmax(0, 1fr)' },
-        columnGap: 2,
-        rowGap: 0.5,
-      }}
-    >
-      {values.map(([key, value]) => (
-        <Fragment key={key}>
-          <Typography
-            component="dt"
-            sx={{
-              fontFamily: MONO,
-              fontSize: 11,
-              color: 'text.secondary',
-              overflowWrap: 'anywhere',
-              pt: { xs: 0.5, sm: 0 },
-            }}
-          >
-            {key}
-          </Typography>
-          <Box
-            component="dd"
-            sx={{
-              m: 0,
-              minWidth: 0,
-              fontFamily: MONO,
-              fontSize: 11.5,
-              lineHeight: 1.65,
-              color: 'text.primary',
-              whiteSpace: 'pre-wrap',
-              overflowWrap: 'anywhere',
-            }}
-          >
-            {typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
-          </Box>
-        </Fragment>
-      ))}
-    </Box>
   );
 }
 
@@ -227,11 +181,11 @@ export function LogEntryRowView({
       <Collapse in={expanded} timeout={0} unmountOnExit>
         <Box id={id} sx={{ minWidth: 0, pl: '34px', pr: 1.5, pb: 1.5 }}>
           <Box sx={{ pt: 1.25, mt: 0.5, borderTop: '1px solid', borderColor: 'divider' }}>
-            <Fields values={context} />
+            <EventFields values={context} />
           </Box>
           {fields.length > 0 && (
             <Box sx={{ mt: 1.25, pt: 1.25, borderTop: '1px solid', borderColor: 'divider' }}>
-              <Fields values={fields} />
+              <EventFields values={fields} />
             </Box>
           )}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mt: 1 }}>

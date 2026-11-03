@@ -1,13 +1,4 @@
-/**
- * Who an audit row names, in words.
- *
- * Since 02815620 the daemon records a call from the CLI or an MCP tool as the
- * account `omnitron-local` — the context it grants every connection on its
- * owner-only unix socket (`daemon.ts`) — and keeps `system` for the daemon
- * acting on its own. The audit page cut every id longer than twelve
- * characters to eight, so the CLI read «omnitron…», and explained `system` as
- * «a local call over the unix socket», which it no longer is.
- */
+/** Human-readable identity kinds without changing the recorded principal. */
 
 /** The account the daemon grants its unix socket, where the CLI arrives. */
 export const LOCAL_CALLER = 'omnitron-local';
@@ -18,33 +9,40 @@ const GENERATED_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
 export interface ActorWords {
   readonly text: string;
   readonly title: string;
-  /** An id, set in monospace; otherwise a kind of caller. */
-  readonly id: boolean;
+  readonly kind: 'local' | 'user' | 'service' | 'system' | 'unknown';
 }
 
 export function actorWords(actorId: string | null, actorType: string): ActorWords {
   if (actorId === LOCAL_CALLER && actorType === 'user') {
     return {
-      text: LOCAL_CALLER,
+      text: 'Local client',
       title:
-        "The CLI or an MCP tool on this machine, over the daemon's owner-only unix socket — the trust is the socket's permissions, not a session",
-      id: true,
+        "omnitron-local: CLI or a local tool through the daemon's owner-only Unix socket; this record does not identify a person or a specific tool",
+      kind: 'local',
     };
   }
   if (actorId) {
     const label = GENERATED_ID.test(actorId) ? `${actorId.slice(0, 8)}…` : actorId;
-    return { text: actorType === 'user' ? label : `${actorType}: ${label}`,
-      title: actorType === 'user' ? actorId : `${actorType}: ${actorId}`, id: true };
+    return {
+      text: `${actorType === 'user' ? 'User' : actorType === 'service' ? 'Service' : actorType}: ${label}`,
+      title: `${actorType}: ${actorId}`,
+      kind: actorType === 'user' || actorType === 'service' || actorType === 'system' ? actorType : 'unknown',
+    };
   }
   if (actorType === 'service') {
-    return { text: 'service', title: 'Another omnitron acting as the control plane — service_role, no account behind it', id: false };
+    return {
+      text: 'Service',
+      title: 'Service identity recorded by the control plane; no account identifier was recorded',
+      kind: 'service',
+    };
   }
   if (actorType === 'system') {
     return {
-      text: 'system',
-      title: 'The daemon acting on its own — a boot autostart, the enabled-stacks reconciler. Nobody asked.',
-      id: false,
+      text: 'System',
+      title:
+        'Daemon system identity; no calling account was recorded. Historical records do not identify a specific initiator.',
+      kind: 'system',
     };
   }
-  return { text: actorType, title: actorType, id: false };
+  return { text: actorType || 'Unknown', title: actorType || 'No actor kind recorded', kind: 'unknown' };
 }

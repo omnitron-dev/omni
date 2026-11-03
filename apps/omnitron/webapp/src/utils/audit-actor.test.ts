@@ -13,20 +13,23 @@ import { describe, it, expect } from 'vitest';
 import { LOCAL_CALLER, actorWords } from './audit-actor';
 
 describe('an audit trail that named the CLI «omnitron…»', () => {
-  it('shows the CLI’s account whole, and says what it is', () => {
+  it('explains the local client without inventing a human or tool identity', () => {
     const words = actorWords(LOCAL_CALLER, 'user');
-    expect(words.text).toBe('omnitron-local');
+    expect(words.text).toBe('Local client');
+    expect(words.title).toContain('omnitron-local');
+    expect(words.title).toContain('does not identify a person');
     expect(words.title).toMatch(/CLI/);
   });
 
   it('still shortens a generated id, and only that', () => {
-    expect(actorWords('019f2601-d65d-7b0b-9395-1f0d29385b1d', 'user').text).toBe('019f2601…');
-    expect(actorWords('a-long-account-name', 'user').text).toBe('a-long-account-name');
+    expect(actorWords('019f2601-d65d-7b0b-9395-1f0d29385b1d', 'user').text).toBe('User: 019f2601…');
+    expect(actorWords('a-long-account-name', 'user').text).toBe('User: a-long-account-name');
   });
 
-  it('calls «system» the daemon on its own, not a socket', () => {
+  it('keeps a recorded system identity distinct from a local socket caller', () => {
     const words = actorWords(null, 'system');
-    expect(words.title).toMatch(/daemon acting on its own/);
+    expect(words.title).toMatch(/Daemon system identity/);
+    expect(words.title).toContain('Historical records');
     expect(words.title).not.toMatch(/socket/);
   });
 });

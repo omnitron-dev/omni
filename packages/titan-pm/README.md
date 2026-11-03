@@ -30,6 +30,12 @@ Recovery is serialized per supervisor, preserving declaration order for `ONE_FOR
 
 Observe `child:start-failed` for the original exception, `child:restart` for each attempt, `child:started` for readiness, and `child:recovery-stopped` when policy declines further attempts. A critical budget exhaustion emits `escalate`. A successful sibling does not establish that the entire application is ready.
 
+## Pool resizing
+
+`await pool.scale(size)` changes the runtime worker count. Sizes must be non-negative safe integers; zero removes workers while preserving the pool so it can grow again. Resizing does not rewrite application configuration or disable the declared autoscaling policy.
+
+Initialization, explicit and automatic resizing, worker replacement, and destruction use the same lifecycle queue. A resize acknowledges only the observed target count after every admitted spawn or termination has settled. `pool:scaled` and scaling history describe completed changes. On partial failure, the call rejects with the cause and the remaining worker count; surviving workers remain owned. Inspect `pool.size` and `pool.getWorkerIds()` before retrying. Destruction fences new admissions, joins in-flight membership changes, and retains unconfirmed survivors for a subsequent stop attempt.
+
 ## Output capture
 
 Subscribe to `process:output` **before** spawning applications to receive output during startup, after readiness, and from replacement pool workers:

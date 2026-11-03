@@ -506,7 +506,7 @@ describe('Process Events - Comprehensive Coverage', () => {
     });
 
     it('should allow unsubscribing from events with off()', async () => {
-      const proxies = [createMockProxy('worker-1')];
+      const proxies = [createMockProxy('worker-1'), createMockProxy('worker-2'), createMockProxy('worker-3')];
       const mockManager = createMockManager(proxies);
 
       pool = new ProcessPool(
@@ -526,6 +526,7 @@ describe('Process Events - Comprehensive Coverage', () => {
 
       // First scale
       await pool.scale(2);
+      expect(pool.size).toBe(2);
       expect(scaledCount).toBe(1);
 
       // Unsubscribe
@@ -533,6 +534,7 @@ describe('Process Events - Comprehensive Coverage', () => {
 
       // Second scale - listener should not fire
       await pool.scale(3);
+      expect(pool.size).toBe(3);
       expect(scaledCount).toBe(1); // Still 1
     });
 

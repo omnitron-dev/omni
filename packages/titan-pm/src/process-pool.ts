@@ -14,6 +14,13 @@ import { FailureTracker, computeBackoff, type IFailureDecision } from '@omnitron
 import type { IProcessPoolOptions, ServiceProxy, IPoolMetrics, IProcessManager, IProcessMetrics } from './types.js';
 import { PoolStrategy } from './types.js';
 import { Deque } from './utils/index.js';
+import { ProcessLifecycleQueue } from './lifecycle-queue.js';
+
+function assertPoolSize(size: number): void {
+  if (!Number.isSafeInteger(size) || size < 0) {
+    throw Errors.badRequest('Pool size must be a non-negative safe integer');
+  }
+}
 
 /**
  * Thrown when the pool queue is full. Callers should retry after `retryAfterMs`.
@@ -93,6 +100,7 @@ export class ProcessPool<T> {
   private isInitialized = false;
   private isShuttingDown = false;
   private readonly pendingSpawns = new Set<Promise<void>>();
+  private readonly membership = new ProcessLifecycleQueue();
   private destroyPromise: Promise<void> | undefined;
   private isDraining = false;
   private currentRoundRobinIndex = 0;
@@ -165,6 +173,9 @@ export class ProcessPool<T> {
     private readonly logger: ILogger
   ) {
     this.poolOptions = this.normalizeOptions(options);
+    if (this.poolOptions.size !== undefined && this.poolOptions.size !== 'auto') {
+      assertPoolSize(this.poolOptions.size);
+    }
 
     // Parse memory limit (default 512MB per worker)
     this.memoryLimitBytes = this.parseMemoryLimit((options as any).memoryLimit || '512MB');
@@ -246,6 +257,11 @@ export class ProcessPool<T> {
    * Initialize the pool
    */
   async initialize(): Promise<void> {
+    return this.membership.enqueue('pool', 'start', () => this.initializeNow());
+  }
+
+  private async initializeNow(): Promise<void> {
+    if (this.isShuttingDown) throw Errors.conflict('Pool is shutting down');
     if (this.isInitialized) return;
 
     const size = this.getPoolSize();
@@ -264,7 +280,7 @@ export class ProcessPool<T> {
       spawnPromises.push(this.spawnWorker());
     }
 
-    await Promise.all(spawnPromises);
+    await this.settleMembership(spawnPromises, 'initialize');
     if (this.isShuttingDown) throw Errors.conflict('Pool is shutting down');
     this.isInitialized = true;
 
@@ -437,9 +453,17 @@ export class ProcessPool<T> {
    * Scale the pool to a new size
    */
   async scale(newSize: number): Promise<void> {
+    // Zero is a supported low-level pool size; callers such as Omnitron can
+    // require a positive minimum for their declared workload.
+    assertPoolSize(newSize);
+    return this.membership.enqueue('pool', 'restart', () => this.scaleNow(newSize));
+  }
+
+  private async scaleNow(newSize: number): Promise<void> {
     if (this.isShuttingDown) {
       throw Errors.conflict('Cannot scale pool during shutdown');
     }
+    if (this.isDraining) throw Errors.conflict('Cannot scale a draining pool');
 
     const currentSize = this.workers.size;
     if (newSize === currentSize) return;
@@ -453,7 +477,16 @@ export class ProcessPool<T> {
       'Scaling process pool'
     );
 
-    // Record scale action
+    if (newSize > currentSize) {
+      await this.scaleUp(newSize - currentSize);
+    } else {
+      await this.scaleDown(currentSize - newSize);
+    }
+    if (this.isShuttingDown || this.isDraining || this.workers.size !== newSize) {
+      throw Errors.conflict(`Pool resize was not confirmed: requested ${newSize}, observed ${this.workers.size}`);
+    }
+
+    // History and the success event describe completed membership changes.
     this.scaleHistory.push({
       timestamp: Date.now(),
       action: newSize > currentSize ? 'up' : 'down',
@@ -464,14 +497,6 @@ export class ProcessPool<T> {
     // Cleanup old history entries (keep last 100)
     if (this.scaleHistory.length > 100) {
       this.scaleHistory = this.scaleHistory.slice(-100);
-    }
-
-    if (newSize > currentSize) {
-      // Scale up
-      await this.scaleUp(newSize - currentSize);
-    } else {
-      // Scale down
-      await this.scaleDown(currentSize - newSize);
     }
 
     this.emit('pool:scaled', {
@@ -511,7 +536,11 @@ export class ProcessPool<T> {
    */
   destroy(): Promise<void> {
     if (this.destroyPromise) return this.destroyPromise;
-    this.destroyPromise = this.destroyNow().finally(() => { this.destroyPromise = undefined; });
+    // Fence new admissions immediately; join the running membership operation
+    // before taking the final shutdown inventory.
+    this.isShuttingDown = true;
+    this.destroyPromise = this.membership.enqueue('pool', 'stop', () => this.destroyNow())
+      .finally(() => { this.destroyPromise = undefined; });
     return this.destroyPromise;
   }
 
@@ -1908,6 +1937,12 @@ export class ProcessPool<T> {
    * Private: Replace a worker
    */
   private async replaceWorker(workerId: string): Promise<void> {
+    return this.membership.enqueue('pool', 'crash-restart', () => this.replaceWorkerNow(workerId));
+  }
+
+  private async replaceWorkerNow(workerId: string): Promise<void> {
+    // A queued replacement may have been made obsolete by a resize or drain.
+    if (this.isShuttingDown || this.isDraining || !this.workers.has(workerId)) return;
     this.logger.info({ workerId }, 'Replacing pool worker');
 
     // Spawn replacement first
@@ -1947,7 +1982,7 @@ export class ProcessPool<T> {
     for (let i = 0; i < count; i++) {
       spawnPromises.push(this.spawnWorker());
     }
-    await Promise.all(spawnPromises);
+    await this.settleMembership(spawnPromises, 'grow');
   }
 
   /**
@@ -1960,7 +1995,16 @@ export class ProcessPool<T> {
     const toRemove = sortedWorkers.slice(0, count);
 
     // Parallel shutdown for faster scale-down
-    await Promise.all(toRemove.map((worker) => this.shutdownWorker(worker.id)));
+    await this.settleMembership(toRemove.map((worker) => this.shutdownWorker(worker.id)), 'shrink');
+  }
+
+  private async settleMembership(operations: Promise<void>[], operation: string): Promise<void> {
+    // A rejected sibling must not release the queue while other workers are
+    // still arriving or exiting. Keep survivors owned and report partial work.
+    const results = await Promise.allSettled(operations);
+    const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (failures.length) throw new AggregateError(failures.map(result => result.reason),
+      `Pool ${operation} incomplete (${this.workers.size} workers remain): ${failures.map(result => String(result.reason)).join('; ')}`);
   }
 
   /**

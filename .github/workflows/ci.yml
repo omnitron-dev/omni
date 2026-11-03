@@ -101,7 +101,11 @@ jobs:
             test/unit/runtime-installation.test.ts test/unit/system-guardian-cgroup.test.ts test/unit/execution-identity.test.ts
       - name: Supervision restart budgets and operator stop precedence
         run: |
-          pnpm --filter @omnitron-dev/titan-pm exec vitest run --maxWorkers 2 test/restart-window.test.ts test/t60-supervisor-defects.test.ts
+          pnpm --filter @omnitron-dev/titan-pm exec vitest run --maxWorkers 2 \
+            test/restart-window.test.ts test/t60-supervisor-defects.test.ts \
+            test/unit/pool-membership.spec.ts test/unit/process-pool.spec.ts \
+            test/unit/confirmed-termination.spec.ts test/unit/autoscaling.spec.ts test/unit/autoscaling-units.spec.ts \
+            test/unit/process-events.spec.ts
           pnpm --filter @omnitron-dev/omnitron exec vitest run --maxWorkers 2 test/unit/classic-restart-window.test.ts test/unit/crashed-app-stays-reachable.test.ts test/unit/restart-policy.test.ts
       - name: Verify package archive exports and install the packed CLI
         run: node scripts/check-package-exports.mjs --install-consumer "$RUNNER_TEMP/omnitron-npm-consumer"

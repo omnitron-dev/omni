@@ -63,6 +63,8 @@ export interface ArtifactInfo {
    */
   tarballSha256?: string;
   launch?: import('../release/manifest.js').ReleaseLaunch;
+  /** Workspace-relative physical package whose build and closure produced this checked archive. */
+  sourceDirectory?: string;
 }
 
 export interface BuildOptions {
@@ -297,6 +299,7 @@ export class ArtifactBuilder {
       builtAt: new Date().toISOString(),
       checksum,
       tarballSha256,
+      ...(frozen && { sourceDirectory: path.relative(fs.realpathSync(this.projectRoot), fs.realpathSync(appDir)) || '.' }),
       ...(frozen?.launch && { launch: frozen.launch }),
     };
   }

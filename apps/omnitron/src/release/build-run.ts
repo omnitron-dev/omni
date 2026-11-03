@@ -788,14 +788,18 @@ async function buildRelease(
 
   // 7. The manifest — with the migrations the release carries, from the clone
   // of its commit, so admission can refuse one that ran and changed.
-  const { migrationDigests } = await import('./migrations.js');
-  const migrations = await migrationDigests(plan.projectDir);
+  const { releaseMigrationSources } = await import('./migrations.js');
+  const packageDirectories = packed.built.map(artifact => {
+    if (artifact.sourceDirectory === undefined) throw Error('Missing checked package directory for ' + artifact.app);
+    return artifact.sourceDirectory;
+  });
+  const { migrations, packages } = await releaseMigrationSources(plan.projectDir, projectSha, packageDirectories);
   const manifest = assembleManifest({
     id,
     project: { ...await sourceOf(repositoryPath, projectSha), ...(projectPrefix ? { directory: projectPrefix } : {}),
       ...(workspace !== projectPrefix && { workspace }) },
     omni: omniSource,
-    artifacts: packed.built,
+    artifacts: packed.built.map((artifact, i) => ({ ...artifact, packageSource: packages.get(packageDirectories[i]!)! })),
     target: await (await import('./target-runtime.js')).targetRuntime(),
     artifactFailures: packed.failed,
     gates,
@@ -805,7 +809,7 @@ async function buildRelease(
     builtAt: new Date(),
     builtBy: `${os.userInfo().username}@${os.hostname()}`,
     ...(statics ? { statics } : {}),
-    ...(Object.keys(migrations).length > 0 ? { migrations } : {}),
+    migrations,
   });
   const manifestPath = path.join(releaseRoot, 'manifest.json');
   fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);

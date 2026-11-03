@@ -42,6 +42,16 @@ export interface ReleaseLaunch {
   readonly closureSha256: string;
 }
 
+/** Git evidence for the package compiled into this artifact. Paths use Git's slash separator. */
+export interface ReleasePackageSource {
+  /** Physical package path within project.commit. A repository-root package uses a single dot. */
+  readonly directory: string;
+  /** Git blob id of its package.json. */
+  readonly manifestBlob: string;
+  /** Package-relative tracked migration source files and SHA-256 of their contents. */
+  readonly migrations: Readonly<Record<string, string>>;
+}
+
 /** One packed application, identified by content rather than by name. */
 export interface ReleaseArtifact {
   readonly app: string;
@@ -65,6 +75,8 @@ export interface ReleaseArtifact {
    */
   readonly inputs?: string;
   readonly launch?: ReleaseLaunch;
+  /** Older releases did not attribute migration files to individual packages. */
+  readonly packageSource?: ReleasePackageSource;
 }
 
 /**

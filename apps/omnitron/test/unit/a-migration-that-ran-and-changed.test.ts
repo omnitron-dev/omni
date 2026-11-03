@@ -19,7 +19,7 @@ import path from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 
 import type { ReleaseManifest } from '../../src/release/manifest.js';
-import { changedReleasedMigrations, migrationDigests } from '../../src/release/migrations.js';
+import { changedReleasedMigrations, migrationDigests, releaseMigrationSources } from '../../src/release/migrations.js';
 import { ProjectService } from '../../src/services/project.service.js';
 
 const scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'migration-ran-')));
@@ -56,6 +56,46 @@ describe('what a release records of its migrations', () => {
       'apps/main/src/database/migrations/001_first.migration.ts': sha('export const up = 1;\n'),
       'apps/storage/src/database/migrations/001_s.migration.ts': sha('export const up = 2;\n'),
     });
+  });
+
+  it('attributes tracked migrations to the compiled package across nested configurations and package boundaries', async () => {
+    const { dir, git } = repo(), workspace = path.join(dir, 'portal');
+    const write = (relative: string, contents: string) => {
+      const file = path.join(workspace, relative);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, contents);
+    };
+    write('package.json', '{}');
+    write('apps/trading/package.json', '{"name":"@test/trading"}');
+    write('apps/trading/src/migrations/001.sql', 'select 1;');
+    write('apps/trading/tools/submodule/package.json', '{}');
+    write('apps/trading/tools/submodule/migrations/other.ts', 'export {};');
+    write('migrations/root.sql', 'select 0;');
+    write('apps/prices/package.json', '{}');
+    git('add', '.'); git('commit', '-qm', 'packages');
+    const commit = git('rev-parse', 'HEAD');
+    const { packages, migrations } = await releaseMigrationSources(workspace, commit, ['apps/trading', 'apps/prices', '.']);
+    expect(packages.get('apps/trading')).toEqual({
+      directory: 'portal/apps/trading',
+      manifestBlob: git('rev-parse', commit + ':portal/apps/trading/package.json'),
+      migrations: { 'src/migrations/001.sql': sha('select 1;') },
+    });
+    expect(packages.get('apps/prices')?.migrations).toEqual({});
+    expect(packages.get('.')?.migrations).toEqual({ 'migrations/root.sql': sha('select 0;') });
+    expect(migrations['migrations/root.sql']).toBe(sha('select 0;'));
+    expect(migrations['apps/trading/tools/submodule/migrations/other.ts']).toBe(sha('export {};'));
+    write('apps/trading/src/migrations/001.sql', 'select 2;');
+    await expect(releaseMigrationSources(workspace, commit, ['apps/trading'])).rejects.toThrow(/differs from its Git commit/);
+    write('apps/trading/src/migrations/001.sql', 'select 1;');
+    write('apps/trading/package.json', '{"name":"@test/changed"}');
+    await expect(releaseMigrationSources(workspace, commit, ['apps/trading'])).rejects.toThrow(/package.json/);
+    await expect(releaseMigrationSources(workspace, commit, ['../elsewhere'])).rejects.toThrow(/Invalid release package/);
+    await expect(releaseMigrationSources(workspace, commit, ['missing'])).rejects.toThrow(/no tracked package/);
+    write('apps/trading/package.json', '{"name":"@test/trading"}');
+    const migration = path.join(workspace, 'apps/trading/src/migrations/001.sql');
+    fs.unlinkSync(migration);
+    fs.symlinkSync(path.join(workspace, 'migrations/root.sql'), migration);
+    await expect(releaseMigrationSources(workspace, commit, ['apps/trading'])).rejects.toThrow(/physical tracked file/);
   });
 
   it('names what ran and changed or went away — never what is new', () => {

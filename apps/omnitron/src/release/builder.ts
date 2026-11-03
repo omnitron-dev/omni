@@ -95,7 +95,7 @@ export interface ManifestInput {
   readonly id: string;
   readonly project: ReleaseSource;
   readonly omni: ReleaseSource;
-  readonly artifacts: ReadonlyArray<{ app: string; version: string; tarballSha256?: string; size: number; checksum?: string; launch?: ReleaseArtifact['launch'] }>;
+  readonly artifacts: ReadonlyArray<{ app: string; version: string; tarballSha256?: string; size: number; checksum?: string; launch?: ReleaseArtifact['launch']; packageSource?: ReleaseArtifact['packageSource'] }>;
   readonly artifactFailures: ReadonlyArray<{ app: string; error: string }>;
   readonly gates: readonly GateOutcome[];
   readonly omnitron: string;
@@ -122,6 +122,7 @@ export function assembleManifest(input: ManifestInput): ReleaseManifest {
     sha256: a.tarballSha256 ?? '',
     bytes: a.size,
     ...(a.launch ? { launch: a.launch } : {}),
+    ...(a.packageSource ? { packageSource: a.packageSource } : {}),
     ...(a.checksum ? { inputs: a.checksum } : {}),
   }));
   return {

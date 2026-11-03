@@ -55,6 +55,15 @@ Each application with a Titan bootstrap must declare `@omnitron-dev/titan`
 in its own runtime dependencies. Before packing, the builder verifies that
 the public Titan entry resolves inside the application’s staged package.
 
+Each new manifest records the Git directory and `package.json` blob of the
+package compiled for each artifact under `artifacts[].packageSource`. Its
+`migrations` map contains package-relative paths and SHA-256 digests of the
+tracked migration sources in that package. Files owned by a nested package
+are counted separately. A checked build refuses a source migration or package
+manifest whose bytes differ from the selected commit. An empty map records a
+checked package with no matching source files. Older artifacts lack this
+inventory. The runtime database journal records which migrations actually ran.
+
 For registry dependencies the builder downloads the exact public npm archives
 and compares each SHA-512 digest with the lockfile. Each package must carry the
 same full `gitHead`. Omnitron's own `dist/BUILD.json` must confirm that clean

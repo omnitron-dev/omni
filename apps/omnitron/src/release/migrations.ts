@@ -28,20 +28,77 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import type { ReleasePackageSource } from './manifest.js';
 
 const exec = promisify(execFile);
 
-/** A tracked file inside a `migrations` directory of an app. */
-const MIGRATION = /^apps\/[^/]+\/(?:.+\/)?migrations\/[^/]+\.(?:ts|mts|js|mjs|sql)$/;
+/** Migration filenames the existing stack admission policy recognizes. */
+const MIGRATION = /(?:^|\/)migrations\/[^/]+\.(?:ts|mts|js|mjs|sql)$/;
 
-/** Every tracked migration file under `dir`: repository path → sha256 of its bytes. */
-export async function migrationDigests(dir: string): Promise<Record<string, string>> {
-  const { stdout } = await exec('git', ['ls-files', '-z', '--', 'apps'], { cwd: dir, maxBuffer: 64 * 1024 * 1024 });
-  const out: Record<string, string> = {};
-  for (const file of stdout.split('\0').filter((f) => MIGRATION.test(f)).sort()) {
-    out[file] = createHash('sha256').update(fs.readFileSync(path.join(dir, file))).digest('hex');
+/** Read a tracked regular file as it exists in the checked-out package, and prove
+ * its bytes against the named Git object. Gates and builds can change a checkout. */
+function checkedBlob(root: string, file: string, mode: string, object: string): Buffer {
+  const full = path.join(root, file);
+  if (!/^100(?:644|755)$/.test(mode) || fs.realpathSync(full) !== full || !fs.lstatSync(full).isFile())
+    throw Error('Release source must be a physical tracked file: ' + file);
+  const bytes = fs.readFileSync(full);
+  const oid = createHash(object.length === 64 ? 'sha256' : 'sha1')
+    .update('blob ' + bytes.length + '\0').update(bytes).digest('hex');
+  if (oid !== object) throw Error('Release source differs from its Git commit: ' + file);
+  return bytes;
+}
+
+export async function releaseMigrationSources(workspace: string, commit: string, packageDirectories: readonly string[]): Promise<{
+  migrations: Record<string, string>; packages: Map<string, ReleasePackageSource>;
+}> {
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(commit)) throw Error('Expected the full release source commit');
+  const root = fs.realpathSync((await exec('git', ['rev-parse', '--show-toplevel'], { cwd: workspace })).stdout.trimEnd());
+  const physicalWorkspace = fs.realpathSync(workspace);
+  const prefix = path.relative(root, physicalWorkspace).split(path.sep).join('/');
+  const { stdout } = await exec('git', ['--no-replace-objects', '--literal-pathspecs', 'ls-tree', '-r', '-z', '--full-tree',
+    commit, '--', prefix || '.'], { cwd: root, maxBuffer: 64 * 1024 * 1024 });
+  const files = new Map<string, { mode: string; oid: string }>();
+  for (const record of stdout.split('\0').filter(Boolean)) {
+    const tab = record.indexOf('\t'), [mode, kind, oid] = record.slice(0, tab).split(' ');
+    const file = record.slice(tab + 1);
+    if (kind === 'blob' && (path.posix.basename(file) === 'package.json' || MIGRATION.test(file)))
+      files.set(file, { mode: mode!, oid: oid! });
   }
-  return out;
+  const packages = new Map<string, ReleasePackageSource>();
+  const owned = new Map<string, Record<string, string>>();
+  for (const input of new Set(packageDirectories)) {
+    const directory = input.split(path.sep).join('/');
+    if (directory !== '.' && directory.split('/').some(p => !p || p === '.' || p === '..' || /[\\:\0]/.test(p)))
+      throw Error('Invalid release package directory: ' + input);
+    const pkg = path.posix.join(prefix, directory), file = path.posix.join(pkg, 'package.json'), tracked = files.get(file);
+    if (!tracked) throw Error('Compiled package has no tracked package.json: ' + file);
+    checkedBlob(root, file, tracked.mode, tracked.oid);
+    const migrations: Record<string, string> = {};
+    owned.set(pkg, migrations);
+    packages.set(input, { directory: pkg, manifestBlob: tracked.oid, migrations });
+  }
+  const migrations: Record<string, string> = {};
+  for (const [file, blob] of files) {
+    if (!MIGRATION.test(file)) continue;
+    // Attribute a file to its nearest tracked package, even if that nested
+    // package is not among the applications selected for this release.
+    let owner = path.posix.dirname(file);
+    while (owner !== '.' && !files.has(path.posix.join(owner, 'package.json'))) owner = path.posix.dirname(owner);
+    const scoped = owned.get(owner);
+    const workspaceFile = prefix ? file.slice(prefix.length + 1) : file;
+    const stackFile = /^apps\/[^/]+\/(?:.+\/)?migrations\//.test(workspaceFile);
+    if (!scoped && !stackFile) continue;
+    const digest = createHash('sha256').update(checkedBlob(root, file, blob.mode, blob.oid)).digest('hex');
+    if (scoped) scoped[path.posix.relative(owner, file)] = digest;
+    migrations[workspaceFile] = digest;
+  }
+  return { migrations, packages };
+}
+
+/** Existing workspace inventory, also used by release admission for older releases. */
+export async function migrationDigests(dir: string): Promise<Record<string, string>> {
+  const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd: dir });
+  return (await releaseMigrationSources(dir, stdout.trim(), [])).migrations;
 }
 
 /**

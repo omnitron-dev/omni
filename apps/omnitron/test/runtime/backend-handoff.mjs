@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { reserveDaemonPorts } from './fixture-ports.mjs';
+import { cleanupFixture } from './fixture-cleanup.mjs';
 import { fork, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
@@ -106,9 +107,9 @@ const initial = fork(boot, [], { cwd: directory, env: { ...process.env, OMNITRON
 await output.close();
 const ownedBackends = new Set();
 if (initial.pid) ownedBackends.add(initial.pid);
-let ownerPid, topologyConnection, sampler, inProbe = false, failures = 0, samples = 0;
-const waitDead = async pid => {
-  for (let attempt = 0; attempt < 400 && PidManager.isProcessAlive(pid); attempt++) await new Promise(resolve => setTimeout(resolve, 50));
+let ownerPid, topologyConnection, sampler, primaryFailure, inProbe = false, failures = 0, samples = 0;
+const waitDead = async (pid, timeoutMs = 20_000) => {
+  for (let attempt = 0; attempt < timeoutMs / 50 && PidManager.isProcessAlive(pid); attempt++) await new Promise(resolve => setTimeout(resolve, 50));
   assert.equal(PidManager.isProcessAlive(pid), false, `Own fixture process ${pid} did not exit`);
 };
 try {
@@ -400,21 +401,36 @@ try {
     samples, failures, selectorReconciliationPreservedPid: true, actualBackendCrashRecovered: true, schemaTransition,
     counterBefore: before.counter, counterAfter: after.counter, delivery, lifecycle: lifecycleProof }));
   }
+} catch (error) {
+  primaryFailure = { error };
+  // Keep the first failure visible even if an outer runner later times out
+  // while a broken fixture resource is shutting down.
+  console.error(new Error(`Runtime fixture failed before cleanup; diagnostics: ${directory}`, { cause: error }));
 } finally {
   if (sampler) clearInterval(sampler);
-  await topologyConnection?.close();
-  // Discoveries here are confined to the private fixture directory and are
-  // verified against its marker; no system daemon marker is ever read.
-  const marker = new PidManager(path.join(instance, 'daemon.pid'));
-  const current = marker.getPid();
-  if (current) ownedBackends.add(current);
-  if (!ownerPid) ownerPid = new PidManager(path.join(directory, 'e/owner.pid')).getPid();
-  for (const pid of ownedBackends) if (PidManager.isProcessAlive(pid)) { process.kill(pid, 'SIGTERM'); await waitDead(pid); }
-  if (ownerPid && PidManager.isProcessAlive(ownerPid)) { process.kill(ownerPid, 'SIGTERM'); await waitDead(ownerPid); }
-  if (databaseAdmin) {
-    try { await databaseAdmin.query(`DROP DATABASE "${databaseName}" WITH (FORCE)`); }
-    finally { await databaseAdmin.end(); }
-  }
+  await cleanupFixture(directory, primaryFailure, async attempt => {
+    await attempt('topology connection', () => topologyConnection?.close());
+    // Discoveries here are confined to the private fixture directory and are
+    // verified against its marker; no system daemon marker is ever read.
+    await attempt('backend marker', () => {
+      const current = new PidManager(path.join(instance, 'daemon.pid')).getPid();
+      if (current) ownedBackends.add(current);
+    });
+    await attempt('owner marker', () => {
+      if (!ownerPid) ownerPid = new PidManager(path.join(directory, 'e/owner.pid')).getPid();
+    });
+    // Cleanup grants Titan its 30s shutdown budget plus 5s exit safety timer.
+    // Functional lifecycle assertions retain their original 20s wait above.
+    const terminate = async pid => {
+      if (PidManager.isProcessAlive(pid)) { process.kill(pid, 'SIGTERM'); await waitDead(pid, 35_000); }
+    };
+    for (const pid of ownedBackends) await attempt(`backend ${pid}`, () => terminate(pid));
+    if (ownerPid) await attempt(`owner ${ownerPid}`, () => terminate(ownerPid));
+    if (databaseAdmin) {
+      await attempt('private database', () => databaseAdmin.query(`DROP DATABASE "${databaseName}" WITH (FORCE)`));
+      await attempt('database pool', () => databaseAdmin.end());
+    }
+  });
 }
 // Retain failed fixtures for diagnosis. Successful runs release their private runtime copies.
 if (process.env.OMNITRON_KEEP_TEST_ARTIFACTS !== '1') await fs.rm(directory, { recursive: true, force: true });

@@ -68,6 +68,7 @@ export class NetronClient {
         url: this.url,
         timeout: options.timeout,
         headers: options.headers,
+        redirect: options.http?.redirect,
         retry: options.http?.retry,
         maxRetries: options.http?.maxRetries,
       });

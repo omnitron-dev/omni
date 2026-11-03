@@ -364,8 +364,35 @@ describe('Basic HTTP Tests', () => {
 
       const lastRequest = mockServer.requests[mockServer.requests.length - 1];
       expect(lastRequest.headers['x-custom-header']).toBe('custom-value');
-      expect(lastRequest.headers['x-request-id']).toBe('test-123');
+      expect(lastRequest.headers['x-request-id']).toBe(lastRequest.body.id);
+      expect(lastRequest.body.id).not.toBe('test-123');
     });
+  });
+
+  it('can refuse a 307 before sending the RPC or credentials to a second origin', async () => {
+    const redirector = await createMockServer({
+      handler: (_req, res) => {
+        res.writeHead(307, { Location: mockServer.url + '/netron/invoke' });
+        res.end();
+      },
+    });
+    try {
+      const pinned = new HttpClient({
+        url: redirector.url,
+        redirect: 'error',
+        headers: { Authorization: 'Bearer test-only', 'X-CSRF-Token': 'private-test-value' },
+      });
+      await expect(pinned.invoke('calculator@1.0.0', 'add', [5, 3]))
+        .rejects.toMatchObject({ code: 'NETWORK_ERROR' });
+      expect(redirector.requests).toHaveLength(1);
+      expect(mockServer.requests).toHaveLength(0);
+
+      const ordinary = new HttpClient({ url: redirector.url });
+      await expect(ordinary.invoke('calculator@1.0.0', 'add', [5, 3])).resolves.toBe(8);
+      expect(mockServer.requests).toHaveLength(1);
+    } finally {
+      await redirector.close();
+    }
   });
 
   describe('Response headers received', () => {
@@ -1381,8 +1408,6 @@ describe('Connection State Tests', () => {
   });
 
   it('should track error count for network errors', async () => {
-    // Note: HttpClient only tracks network-level errors (exceptions) in metrics.errors
-    // RPC-level errors (success=false in response body) are not counted as network errors.
     const client = new HttpClient({
       url: 'http://127.0.0.1:59999', // Non-existent server
       timeout: 100,
@@ -1402,25 +1427,10 @@ describe('Connection State Tests', () => {
     expect(metrics.errors).toBeGreaterThan(0);
   });
 
-  it('should not count RPC errors as network errors', async () => {
+  it('counts a received RPC refusal once in total errors', async () => {
     const client = new HttpClient({ url: mockServer.url });
-    await client.connect();
-
-    const initialMetrics = client.getMetrics();
-    expect(initialMetrics.errors).toBe(0);
-
-    try {
-      // This causes an RPC error (division by zero) but not a network error
-      await client.invoke('calculator@1.0.0', 'divide', [10, 0]);
-    } catch {
-      // Expected - RPC error
-    }
-
-    const metrics = client.getMetrics();
-    // RPC errors are not counted as network errors
-    expect(metrics.errors).toBe(0);
-
-    await client.disconnect();
+    await expect(client.invoke('calculator@1.0.0', 'divide', [10, 0])).rejects.toThrow();
+    expect(client.getMetrics()).toMatchObject({ responsesReceived: 1, errors: 1 });
   });
 
   it('should calculate average latency', async () => {

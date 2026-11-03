@@ -43,6 +43,9 @@ export interface HttpClientOptions {
    */
   headers?: Record<string, string>;
 
+  /** Fetch redirect policy for RPC requests. Defaults to the Fetch standard (follow). */
+  redirect?: RequestRedirect;
+
   /**
    * Enable network-failure retries for invocations explicitly marked idempotent
    * @default false
@@ -150,6 +153,7 @@ export class HttpClient {
   private baseUrl: string;
   private timeout: number;
   private headers: Record<string, string>;
+  private readonly redirect?: RequestRedirect;
   private retry: boolean;
   private maxRetries: number;
   private auth?: AuthenticationClient;
@@ -166,6 +170,7 @@ export class HttpClient {
     this.baseUrl = normalizeUrl(options.url);
     this.timeout = options.timeout ?? 30000;
     this.headers = options.headers ?? {};
+    this.redirect = options.redirect;
     this.retry = options.retry ?? false;
     this.maxRetries = options.maxRetries ?? 3;
     this.auth = options.auth;
@@ -269,7 +274,7 @@ export class HttpClient {
       try {
         this.metrics.requestsSent++;
         const response = await abortable(() => fetch(url, {
-          method: 'POST', headers, body, signal,
+          method: 'POST', headers, body, signal, redirect: this.redirect,
           ...(credentials !== undefined ? { credentials } : {}),
         }), signal);
         let value: unknown;

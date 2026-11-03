@@ -152,6 +152,7 @@ export class BackendClient implements IBackendClient {
         url: this.fullUrl,
         timeout: this.defaultTimeout,
         headers: this.defaultHeaders,
+        redirect: this.config.http?.redirect,
         retry: this.config.http?.retry,
         maxRetries: this.config.http?.maxRetries,
         auth: this.auth,

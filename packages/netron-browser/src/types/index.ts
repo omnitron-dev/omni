@@ -69,10 +69,12 @@ export interface NetronClientOptions {
    * `create(...)` within the TTL would return the first result instead of
    * executing). Caching, request batching, and circuit-breaking are opt-in,
    * per-call concerns of the fluent HTTP interface (`peer.queryFluentInterface()`
-   * → `.cache()` / `HttpCacheManager`), not the basic client. Only `retry` /
-   * `maxRetries` are consumed here.
+   * → `.cache()` / `HttpCacheManager`), not the basic client.
    */
   http?: {
+    /** Fetch redirect policy for RPC requests. */
+    redirect?: RequestRedirect;
+
     /**
      * Enable retry mechanism
      * @default false

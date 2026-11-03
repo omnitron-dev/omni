@@ -54,6 +54,9 @@ export interface WebSocketBackendOptions {
  * HTTP-specific backend options
  */
 export interface HttpBackendOptions {
+  /** Fetch redirect policy for RPC requests. */
+  redirect?: RequestRedirect;
+
   /**
    * Enable HTTP network retries for invocations explicitly marked idempotent
    * @default false

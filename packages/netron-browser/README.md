@@ -25,6 +25,17 @@ A browser RPC client for communicating with Titan backend services. Provides bot
 - **Fluent interface** — chainable `.cache().retry().timeout().api.method()`
 - **Connection manager** — pooling, health checks, metrics
 
+Use the HTTP-only entry point for a fixed-origin automation check. Setting
+`redirect: 'error'` makes Fetch reject a redirect before forwarding the RPC to
+another endpoint. The default uses the standard Fetch redirect behavior.
+
+```typescript
+import { HttpClient } from '@omnitron-dev/netron-browser/client/http';
+
+const client = new HttpClient({ url: 'https://api.example.com', redirect: 'error', timeout: 5000 });
+const readiness = await client.invoke('Health', 'check', []);
+```
+
 ## Quick Start
 
 ```typescript

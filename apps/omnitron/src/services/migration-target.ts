@@ -82,7 +82,12 @@ export async function localMigrationTargets(names: readonly string[], entries: r
       script = path.join(cwd, 'src/database/migrate.ts');
     }
     try {
-      if (await fs.realpath(cwd) !== cwd || await fs.realpath(script) !== script || !(await fs.lstat(script)).isFile()) throw Error();
+      const physicalCwd = await fs.realpath(cwd), physicalScript = await fs.realpath(script);
+      if (entry.releaseRoot && (physicalCwd !== cwd || physicalScript !== script)) throw Error();
+      // Developer checkouts may be registered through an intentional workspace alias.
+      // Resolve it once; the caller compares the canonical target again after DB readiness.
+      cwd = physicalCwd; script = physicalScript;
+      if (!(await fs.lstat(script)).isFile()) throw Error();
     } catch { throw Error(`Migration requested for ${app}, but its migration script is unavailable or not a physical file`); }
     targets.push({ app, environmentApp, script, cwd, sealed: !!entry.releaseRoot, nodeOptions });
   }

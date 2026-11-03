@@ -164,6 +164,15 @@ describe('a master that stood still while it migrated', () => {
     expect(fs.readFileSync(path.join(root, 'apps/main/attempts'), 'utf8')).toBe('one\n');
   });
 
+  it('preserves a developer checkout registered through an intentional filesystem alias', async () => {
+    const root = project('');
+    fs.writeFileSync(path.join(root, 'apps/main/src/database/migrate.ts'),
+      `import assert from 'node:assert/strict'; assert.equal(process.cwd(), ${JSON.stringify(fs.realpathSync(path.join(root, 'apps/main')))});`);
+    const alias = root + '-alias'; cleanup.push(alias); fs.symlinkSync(root, alias, 'dir');
+    await service().migrate(alias);
+    expect(probe).toHaveBeenCalledTimes(1);
+  });
+
   it('honors an explicit named service and preserves the resolved application connection', async () => {
     const url = 'postgresql://app%40user:p%2Fword@127.0.0.1:5544/main';
     const root = project(`

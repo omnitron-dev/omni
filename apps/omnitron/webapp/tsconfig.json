@@ -30,5 +30,7 @@
       "@omnitron-dev/omnitron/sync-reading": ["../src/shared/sync-reading.ts"]
     }
   },
-  "include": ["src", "test/browser/**/*.tsx"]
+  // Keep the keyboard workspace fixture on the same typed component contract.
+  // noEmit ensures test modules never become part of the published bundle.
+  "include": ["src", "test/browser/**/*.tsx", "../test/webapp/files-keyboard.test.tsx"]
 }

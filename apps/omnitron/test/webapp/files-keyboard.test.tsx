@@ -2,7 +2,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, type ComponentProps } from 'react';
 import userEvent from '@testing-library/user-event';
 import { files } from '../../webapp/src/netron/client.js';
 import { ConsoleKeyboard } from '../../webapp/src/components/console-keyboard.js';
@@ -38,22 +38,24 @@ function Workspace({ compact = false, visible = true }) {
   };
   return (
     <><nav aria-label="Sidebar"><button>Sidebar link</button></nav><main id="main-content">
-      {(['left', 'right'] as const).map((side) => (
-        <FilePane
-          key={side}
-          side={side}
-          hosts={[{ id: 'local', name: 'Local', isLocal: true }]}
-          active={active === side}
-          hidden={compact && active !== side}
-          visible={visible}
-          refreshKey={0}
-          onFocus={() => setActive(side)}
-          onSelection={() => {}}
-          onAction={action}
-          onOpen={open}
-          onSwitchPanel={switchPanel}
-        />
-      ))}
+      {(['left', 'right'] as const).map((side) => {
+        const props = {
+          side,
+          hosts: [{ id: 'local', name: 'Local', host: 'localhost', isLocal: true }],
+          discovery: { pending: false },
+          retryDiscovery: () => {},
+          active: active === side,
+          hidden: compact && active !== side,
+          visible,
+          refreshKey: 0,
+          onFocus: () => setActive(side),
+          onSelection: () => {},
+          onAction: action,
+          onOpen: open,
+          onSwitchPanel: switchPanel,
+        } satisfies ComponentProps<typeof FilePane>;
+        return <FilePane key={side} {...props} />;
+      })}
     </main></>
   );
 }
@@ -85,9 +87,10 @@ describe('File panel keyboard', () => {
     await waitFor(() => expect(document.activeElement?.closest('[data-file-side]')?.getAttribute('data-file-side')).toBe('right'));
     expect(document.querySelectorAll('[data-cursor="true"]')).toHaveLength(1);
     await user.keyboard('{Escape}');
-    expect(document.activeElement?.getAttribute('role')).toBe('combobox');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'New right location tab' }));
     await user.tab();
-    expect(document.activeElement?.getAttribute('role')).toBe('combobox');
+    const right = screen.getByRole('region', { name: 'right file panel' });
+    expect(document.activeElement).toBe(within(right).getByRole('button', { name: /^Root$/ }));
     await user.keyboard('{Escape}');
     expect(document.activeElement?.hasAttribute('data-file-list')).toBe(true);
     await user.keyboard('{F6}');
@@ -105,7 +108,7 @@ describe('File panel keyboard', () => {
       fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey: true });
       await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('table', { name: 'left files' })));
       fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
-      expect(document.activeElement?.getAttribute('role')).toBe('combobox');
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'New left location tab' }));
       expect(fireEvent.keyDown(document.activeElement!, { key: 'Tab' })).toBe(true);
     }
   );

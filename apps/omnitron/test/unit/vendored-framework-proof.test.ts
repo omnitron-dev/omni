@@ -6,8 +6,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { normalizePackedWorkspace } from '../../src/release/portable-archive.js';
-import { FRAMEWORK_REPOSITORY } from '../../src/release/registry-framework.js';
-import { reproduceVendoredFramework, requireFrameworkCommit, verifyCommittedArchive } from '../../src/release/vendored-framework.js';
+import { reproduceVendoredFramework, requireFrameworkCommit, vendoredFrameworkSource, verifyCommittedArchive } from '../../src/release/vendored-framework.js';
 
 const exec = promisify(execFile);
 const name = '@omnitron-dev/omnitron', version = '1.0.0', file = 'vendor/omni.tgz';
@@ -48,7 +47,7 @@ it('refuses a forged archive and matching consumer lock even when its clean buil
   await fs.writeFile(path.join(upstream, '.gitignore'), 'dist/\n');
   await fs.writeFile(path.join(upstream, 'pnpm-workspace.yaml'), "packages: ['apps/*']\n");
   await fs.writeFile(path.join(upstream, 'package.json'), JSON.stringify({ name: 'fixture', private: true }));
-  await fs.writeFile(path.join(pkg, 'package.json'), JSON.stringify({ name, version, files: ['dist'] }));
+  await fs.writeFile(path.join(pkg, 'package.json'), JSON.stringify({ name, version, files: ['dist'], repository: { type: 'git', url: upstream } }));
   await fs.writeFile(path.join(pkg, 'code.txt'), 'export default 1;\n');
   const sha = await commit(upstream);
   const tree = await command(upstream, 'git', 'rev-parse', 'HEAD^{tree}');
@@ -63,10 +62,7 @@ it('refuses a forged archive and matching consumer lock even when its clean buil
   await fs.mkdir(path.dirname(archive), { recursive: true });
   await command(project, 'git', 'init', '-q', '-b', 'main');
   const run = async (tool: string, args: string[], cwd: string) => {
-    if (tool === 'git' && args[0] === 'clone') {
-      expect(args.at(-2)).toBe(FRAMEWORK_REPOSITORY);
-      await command(cwd, tool, ...args.slice(0, -2), upstream, args.at(-1)!);
-    } else if (tool === 'pnpm' && args[0] === 'exec') await compile(cwd);
+    if (tool === 'pnpm' && args[0] === 'exec') await compile(cwd);
     else if (tool !== 'pnpm' || args[0] !== 'install') await command(cwd, tool, ...args);
   };
   const check = async (stage: string) => {
@@ -75,10 +71,15 @@ it('refuses a forged archive and matching consumer lock even when its clean buil
     const integrity = 'sha512-' + createHash('sha512').update(await fs.readFile(archive)).digest('base64');
     const pin = { name, version, file, integrity };
     const projectCommit = await commit(project);
-    return reproduceVendoredFramework([pin], { projectDir: project, projectCommit, frameworkCommit: sha, scratch: path.join(root, stage), run, env: {} });
+    const frameworkSource = await vendoredFrameworkSource([pin], { projectDir: project, projectCommit, frameworkCommit: sha });
+    expect(frameworkSource).toEqual({ repository: upstream });
+    return reproduceVendoredFramework([pin], { projectDir: project, projectCommit, frameworkCommit: sha,
+      frameworkSource: { ...frameworkSource, ref: 'refs/heads/main' }, sourceBase: project,
+      scratch: path.join(root, stage), run, env: {} });
   };
   const result = await check('clean');
-  expect(result.source).toMatchObject({ commit: sha, reproduced: { tree, packages: [{ file, name, version }] } });
+  expect(result.source).toMatchObject({ repo: upstream, ref: 'refs/heads/main', commit: sha, onRemote: false,
+    reproduced: { tree, packages: [{ file, name, version }] } });
   expect(result.source.registry).toBeUndefined();
   // The package remains otherwise identical and the clean BUILD.json is preserved.
   await fs.writeFile(path.join(pkg, 'dist/index.js'), 'export default 2;\n');

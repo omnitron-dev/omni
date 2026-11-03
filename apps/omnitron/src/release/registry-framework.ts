@@ -7,14 +7,17 @@ import { pipeline } from 'node:stream/promises';
 import { sha256File } from './portable-archive.js';
 import { list } from 'tar';
 import { parseBuildStamp } from '../shared/build-stamp.js';
-import { npmTarball, type RegistryPackage } from './layout.js';
+import type { RegistryPackage } from './layout.js';
 import type { ReleaseSource } from './manifest.js';
+import { parseFrameworkSource, type FrameworkSource } from '../shared/framework-source.js';
+import { checkoutFrameworkSource, defaultFrameworkSource, frameworkRepositoryLocation, type FrameworkStep } from './framework-source.js';
+import { sourcePublication } from './source.js';
+import { withRegistryArchive, type RegistryTransportOptions } from './registry-transport.js';
 
-export const FRAMEWORK_REPOSITORY = 'https://github.com/omnitron-dev/omni';
 const CORE = '@omnitron-dev/omnitron';
 const SHA = /^[a-f0-9]{40}$/;
 type FileEvidence = { digest: string; size: number; executable: boolean };
-type PackageEvidence = { commit: string; files: Map<string, FileEvidence> };
+type PackageEvidence = { commit: string; files: Map<string, FileEvidence>; repository?: unknown };
 export interface RegistryFramework {
   source: ReleaseSource;
   verifyPackage(name: string, directory: string): Promise<void>;
@@ -31,13 +34,8 @@ function limitedBytes(maximum: number, digest?: ReturnType<typeof createHash>) {
 
 /** Hash the compressed archive as received. Stream its contents without
  * extracting paths to disk or executing package lifecycle scripts. */
-async function registryArchive(pkg: RegistryPackage, signal?: AbortSignal): Promise<PackageEvidence> {
-  const label = pkg.name + '@' + pkg.version;
-  const timeout = AbortSignal.timeout(60_000);
-  const deadline = signal ? AbortSignal.any([signal, timeout]) : timeout;
-  const response = await fetch(npmTarball(pkg.name, pkg.version), { redirect: 'error', signal: deadline });
-  if (!response.ok || !response.body) { await response.body?.cancel(); throw Error('Cannot read public npm archive for ' + label + ' (HTTP ' + response.status + ')'); }
-  return inspectFrameworkArchive(pkg, Readable.from(response.body), deadline);
+async function registryArchive(pkg: RegistryPackage, options: RegistryTransportOptions): Promise<PackageEvidence> {
+  return withRegistryArchive(pkg, options, (input, signal) => inspectFrameworkArchive(pkg, input, signal));
 }
 
 /** Compare the exact compressed bytes and record the installed file tree. A
@@ -70,7 +68,7 @@ export async function inspectFrameworkArchive(
   await pipeline(input, limitedBytes(64 * 1024 * 1024, archiveHash), createGunzip(),
     limitedBytes(256 * 1024 * 1024), tar, { signal });
   if ('sha512-' + archiveHash.digest('base64') !== pkg.integrity) throw Error('Framework archive differs from the committed SHA-512: ' + label);
-  const metadata = JSON.parse(records.get('package.json')?.toString('utf8') ?? '{}') as { name?: string; version?: string; gitHead?: string; bin?: string | Record<string, string> };
+  const metadata = JSON.parse(records.get('package.json')?.toString('utf8') ?? '{}') as { name?: string; version?: string; gitHead?: string; bin?: string | Record<string, string>; repository?: unknown };
   if (metadata?.name !== pkg.name || metadata.version !== pkg.version)
     throw Error('Framework archive name or version differs from the lockfile: ' + label);
   const commit = reproducedCommit ?? metadata.gitHead;
@@ -88,7 +86,7 @@ export async function inspectFrameworkArchive(
     const file = files.get(bin.replace(/^\.\//, ''));
     if (file) file.executable = true;
   }
-  return { commit, files };
+  return { commit, files, ...(metadata.repository !== undefined && { repository: metadata.repository }) };
 }
 
 /** Compare real files in the installation or staged artifact with the archive.
@@ -113,31 +111,38 @@ async function verifyTree(root: string, files: Map<string, FileEvidence>): Promi
   if (count !== files.size) throw Error('Installed framework is missing files from its verified archive: ' + root);
 }
 
-/** Git branch visibility and npm publication are two independent observations. */
-async function sourceOnMain(commit: string, signal?: AbortSignal): Promise<true | null> {
-  const timeout = AbortSignal.timeout(8000);
-  try {
-    const response = await fetch('https://api.github.com/repos/omnitron-dev/omni/compare/' + commit + '...main?per_page=1', {
-      redirect: 'error', signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-    });
-    if (!response.ok) { await response.body?.cancel(); return null; }
-    const comparison = await response.json() as { base_commit?: { sha: string }; status?: string };
-    return comparison.base_commit?.sha === commit && ['ahead', 'identical'].includes(comparison.status ?? '') ? true : null;
-  } catch { signal?.throwIfAborted(); return null; }
+export interface RegistryFrameworkOptions extends RegistryTransportOptions {
+  readonly requestedCommit?: string;
+  readonly frameworkSource?: FrameworkSource;
+  readonly sourceBase: string;
+  readonly run: FrameworkStep;
+  readonly sourcePhase?: (source: FrameworkSource, commit: string) => void;
 }
 
-export async function resolveRegistryFramework(packages: RegistryPackage[], requested?: string, signal?: AbortSignal): Promise<RegistryFramework> {
+export async function resolveRegistryFramework(packages: RegistryPackage[], options: RegistryFrameworkOptions): Promise<RegistryFramework> {
   const verified = new Map<string, PackageEvidence>();
   let commit: string | undefined;
   for (const pkg of packages) {
-    const archive = await registryArchive(pkg, signal);
+    const archive = await registryArchive(pkg, options);
     if (commit && archive.commit !== commit) throw Error('Registry framework packages were built from different commits: ' + pkg.name);
     commit = archive.commit;
     verified.set(pkg.name, archive);
   }
   if (!commit || !verified.has(CORE)) throw Error('The lockfile lacks an attested Omnitron package');
-  if (requested !== undefined && requested !== commit) throw Error('--omni-commit must match the full registry source commit ' + commit);
-  return verifiedFramework({ repo: FRAMEWORK_REPOSITORY, commit, onRemote: await sourceOnMain(commit, signal), registry: { packages } }, verified);
+  if (options.requestedCommit !== undefined && options.requestedCommit !== commit) throw Error('--omni-commit must match the full registry source commit ' + commit);
+  const selected = options.frameworkSource !== undefined ? parseFrameworkSource(options.frameworkSource) : defaultFrameworkSource(verified.get(CORE)!.repository);
+  options.sourcePhase?.(selected, commit);
+  let source: ReleaseSource;
+  if (selected.ref) {
+    source = await checkoutFrameworkSource(path.join(options.scratch, 'source-proof'), {
+      source: selected, commit, sourceBase: options.sourceBase, env: options.env, run: options.run,
+      ...(options.signal && { signal: options.signal }),
+    });
+  } else {
+    source = { repo: selected.repository, commit, onRemote: await sourcePublication(options.checkout,
+      frameworkRepositoryLocation(selected.repository, options.sourceBase), commit, { ...(options.signal && { signal: options.signal }) }) };
+  }
+  return verifiedFramework({ ...source, registry: { packages } }, verified);
 }
 
 export function verifiedFramework(source: ReleaseSource, verified: ReadonlyMap<string, PackageEvidence>): RegistryFramework {

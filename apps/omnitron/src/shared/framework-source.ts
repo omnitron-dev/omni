@@ -8,7 +8,7 @@ export interface FrameworkSource {
 
 export function isFrameworkRef(value: unknown): value is string {
   return typeof value === 'string' && value.length <= 1024 && /^refs\/(?:heads|tags)\/.+/.test(value) &&
-    !/[\x00-\x20\x7f~^:?*[\\]/.test(value) && !value.includes('..') && !value.includes('@{') &&
+    !/[\s~^:?*[\\]|\p{Cc}/u.test(value) && !value.includes('..') && !value.includes('@{') &&
     !value.endsWith('.') && value.split('/').every(part => part && !part.startsWith('.') && !part.endsWith('.lock'));
 }
 
@@ -19,6 +19,7 @@ export function parseFrameworkSource(value: unknown): FrameworkSource {
   if (Object.keys(source).some(key => key !== 'repository' && key !== 'ref')) throw Error('Unknown framework source option');
   assertRepositoryIdentity(source['repository']);
   if (source['repository'] === '(no origin)') throw Error('Framework source requires a repository');
+  if (source['repository'].startsWith('-')) throw Error('Framework repository cannot start with an option; use ./ for a local path');
   if (source['ref'] !== undefined && !isFrameworkRef(source['ref'])) throw Error('Framework ref must be a full refs/heads/ or refs/tags/ name');
   return Object.freeze({ repository: source['repository'], ...(source['ref'] === undefined ? {} : { ref: source['ref'] }) });
 }

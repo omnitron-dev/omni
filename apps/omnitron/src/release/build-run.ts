@@ -26,12 +26,15 @@ import { planBuildRoot, readFrameworkLayout, resolveCheckouts } from './layout.j
 import { assertReleaseId } from './load.js';
 import { releaseWorkspaceDirectory } from './workspace-source.js';
 import { readPackageGates, runPackageGates } from './package-gates.js';
-import { FRAMEWORK_REPOSITORY, resolveRegistryFramework } from './registry-framework.js';
-import { reproduceVendoredFramework, requireFrameworkCommit } from './vendored-framework.js';
+import { resolveRegistryFramework } from './registry-framework.js';
+import { reproduceVendoredFramework, requireFrameworkCommit, vendoredFrameworkSource } from './vendored-framework.js';
+import { checkoutFrameworkSource, projectFrameworkSource } from './framework-source.js';
+import type { FrameworkSource } from '../shared/framework-source.js';
 import { OWN_BUILD } from '../shared/build-stamp.js';
 import { importReleaseArtifacts } from './import-artifacts.js';
 import { MAX_RELEASE_MANIFEST_BYTES, validateReleaseOrigins } from './origin.js';
-import { assertRepositoryIdentity } from './repository-identity.js';
+import { readReleaseSource } from './source.js';
+export { readReleaseSource } from './source.js';
 import type { GateOutcome, ReleaseManifest, ReleaseSource } from './manifest.js';
 
 const exec = promisify(execFile);
@@ -42,6 +45,8 @@ export interface ReleaseBuildOptions {
   projectCommit?: string;
   /** Linked checkout revision, registry constraint or full upstream commit to reproduce vendored framework archives. */
   omniCommit?: string;
+  /** Override the committed omnitron.framework source without assuming a Git host or branch. */
+  frameworkSource?: FrameworkSource;
   /** Keep the clones after a successful build. */
   keepSource?: boolean;
   /** Record every gate as not-run instead of running them — for a look, never for a stack. */
@@ -189,26 +194,12 @@ function tail(file: string, lines = 12): string {
 /** A step that must succeed for there to be a release at all. */
 async function must(what: string, run: Promise<StepResult>, logFile: string): Promise<StepResult> {
   const r = await run;
-  if (r.code !== 0) {
+  if (r.code !== 0 || r.timedOut) {
     throw new Error(
       `${what} failed (${r.timedOut ? 'timed out' : `exit ${r.code === null ? 'by signal' : r.code}`}) — ${logFile}\n${tail(logFile)}`,
     );
   }
   return r;
-}
-
-export async function readReleaseSource(checkout: string, commit: string): Promise<ReleaseSource> {
-  const repo = await git(['remote', 'get-url', 'origin'], checkout).catch(() => '(no origin)');
-  assertRepositoryIdentity(repo);
-  let onRemote: boolean | null;
-  try {
-    const remotes = await git(['branch', '-r', '--contains', commit], checkout);
-    const any = await git(['branch', '-r'], checkout);
-    onRemote = any.length === 0 ? null : remotes.length > 0;
-  } catch {
-    onRemote = null;
-  }
-  return { repo, commit, onRemote };
 }
 
 /**
@@ -520,6 +511,8 @@ async function buildRelease(
   let id: string | null = null;
   const say = (phase: string, percent: number, more: { gates?: readonly GateOutcome[] } = {}) =>
     onPhase({ phase, percent, at: new Date().toISOString(), ...(id ? { releaseId: id } : {}), ...more });
+  const announceFramework = (source: FrameworkSource, commit: string) =>
+    say(`framework source: ${source.repository}${source.ref ? ' [' + source.ref + ']' : ''} @ ${commit}`, 2);
 
   say('reading project and framework sources', 2);
   const projectSha = await git(['rev-parse', '--verify', `${options.projectCommit ?? 'HEAD'}^{commit}`], project.path);
@@ -532,23 +525,50 @@ async function buildRelease(
   const workspacePath = path.join(repositoryPath, workspace);
   const lockPath = path.posix.join(workspace, 'pnpm-lock.yaml');
   const layout = readFrameworkLayout(await git(['show', `${projectSha}:${lockPath}`], repositoryPath));
-  let checkout: { path: string; sha: string; layout: import('./layout.js').LinkLayout } | undefined;
+  let selectedSource = projectFrameworkSource(JSON.parse(await git(['show', `${projectSha}:${path.posix.join(workspace, 'package.json')}`], repositoryPath)), options.frameworkSource);
+  let checkout: { path: string; sha: string; layout: import('./layout.js').LinkLayout; source?: FrameworkSource } | undefined;
+  let pristineProject: string | undefined;
   let registry: Awaited<ReturnType<typeof resolveRegistryFramework>> | undefined;
   let omniSource: ReleaseSource;
   if (layout.kind === 'linked') {
     const { omniPath } = resolveCheckouts(workspacePath, layout.layout);
-    if (!fs.existsSync(path.join(omniPath, '.git'))) throw Error('No linked omni checkout at ' + omniPath);
-    const sha = await git(['rev-parse', '--verify', `${options.omniCommit ?? 'HEAD'}^{commit}`], omniPath);
-    checkout = { path: omniPath, sha, layout: layout.layout };
-    omniSource = await readReleaseSource(omniPath, sha);
+    if (selectedSource && options.omniCommit !== undefined && !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(options.omniCommit))
+      throw Error('An explicit framework repository requires a full --omni-commit, not a revision from another checkout');
+    if (!(selectedSource && options.omniCommit !== undefined) && !fs.existsSync(path.join(omniPath, '.git')))
+      throw Error('No linked omni checkout at ' + omniPath + '; choose a framework repository and its full commit');
+    const sha = selectedSource && options.omniCommit !== undefined ? options.omniCommit
+      : await git(['rev-parse', '--verify', `${options.omniCommit ?? 'HEAD'}^{commit}`], omniPath);
+    checkout = { path: omniPath, sha, layout: layout.layout, ...(selectedSource && { source: selectedSource }) };
+    omniSource = selectedSource ? { repo: selectedSource.repository, commit: sha, ...(selectedSource.ref && { ref: selectedSource.ref }) }
+      : await readReleaseSource(omniPath, sha);
   } else if (layout.kind === 'vendored') {
     // Reserve the release ID. The verified source replaces this before a manifest is written.
-    omniSource = { repo: FRAMEWORK_REPOSITORY, commit: requireFrameworkCommit(options.omniCommit) };
+    const commit = requireFrameworkCommit(options.omniCommit);
+    selectedSource = await vendoredFrameworkSource(layout.packages, { projectDir: workspacePath, projectCommit: projectSha,
+      frameworkCommit: commit, ...(selectedSource && { frameworkSource: selectedSource }), ...(signal && { signal }) });
+    omniSource = { repo: selectedSource.repository, commit, ...(selectedSource.ref && { ref: selectedSource.ref }) };
   } else {
+    // Registry configuration belongs to the same committed checkout used by install.
+    // Its gitHead determines the release ID, so prepare this one clone before naming it.
+    where.tmp = makeBuildTempDir(); env['TMPDIR'] = where.tmp;
+    pristineProject = path.join(where.tmp, 'project');
+    const preflightLog = path.join(where.tmp, 'registry.log');
+    say('preparing the committed project registry configuration', 2);
+    await must('project clone', step('git', ['clone', '--quiet', '--shared', '--no-checkout', '--', repositoryPath, pristineProject],
+      { cwd: where.tmp, logFile: preflightLog, timeoutMs: 10 * MINUTE }), preflightLog);
+    await must('project checkout', step('git', ['checkout', '--quiet', '--detach', projectSha],
+      { cwd: pristineProject, logFile: preflightLog, timeoutMs: 10 * MINUTE }), preflightLog);
     say(`verifying ${layout.packages.length} framework archives against the project lockfile`, 2);
-    registry = await resolveRegistryFramework(layout.packages, options.omniCommit, signal);
+    registry = await resolveRegistryFramework(layout.packages, {
+      checkout: path.join(pristineProject, workspace), env, scratch: path.join(where.tmp, 'registry'), sourceBase: workspacePath,
+      ...(options.omniCommit !== undefined && { requestedCommit: options.omniCommit }), ...(selectedSource && { frameworkSource: selectedSource }),
+      ...(signal && { signal }), sourcePhase: announceFramework,
+      run: async (command, args, cwd, toolEnv) => must('framework source verification', runStep(command, args,
+        { cwd, env: toolEnv, logFile: preflightLog, timeoutMs: 3 * MINUTE, ...(signal && { signal }) }), preflightLog).then(() => {}),
+    });
     omniSource = registry.source;
   }
+  if (layout.kind !== 'registry') announceFramework({ repository: omniSource.repo, ...(selectedSource?.ref && { ref: selectedSource.ref }) }, omniSource.commit);
   id = releaseId(projectName, new Date(), projectSha, omniSource.commit);
   assertReleaseId(id);
   const releasesDirectory = path.join(OMNITRON_HOME, 'releases');
@@ -567,10 +587,11 @@ async function buildRelease(
   // Every step from here on — clones, installs, builds, the gates — keeps its
   // temporary files where the build removes them (`makeBuildTempDir`). `env`
   // is this build's own copy (`buildEnv` above), never this process's.
-  where.tmp = makeBuildTempDir();
+  where.tmp ??= makeBuildTempDir();
   env['TMPDIR'] = where.tmp;
   const logs = path.join(releaseRoot, 'logs');
   fs.mkdirSync(logs, { recursive: true });
+  if (fs.existsSync(path.join(where.tmp, 'registry.log'))) fs.copyFileSync(path.join(where.tmp, 'registry.log'), path.join(logs, 'registry.log'));
   const srcRoot = path.join(releaseRoot, 'src');
   const plan = planBuildRoot(srcRoot, workspacePath, checkout?.layout, repositoryPath);
   if ('refusal' in plan) throw new Error(plan.refusal);
@@ -583,13 +604,29 @@ async function buildRelease(
   // 1. Clean clones of the two commits.
   say(checkout ? 'cloning project and framework commits' : 'cloning project commit', 5);
   const cloneLog = path.join(logs, 'clone.log');
-  const clones: Array<[string, string, string]> = [[repositoryPath, projectSha, plan.repositoryDir]];
-  if (checkout && plan.omniDir) clones.push([checkout.path, checkout.sha, plan.omniDir]);
+  const clones: Array<[string, string, string]> = [];
+  if (pristineProject) {
+    fs.mkdirSync(path.dirname(plan.repositoryDir), { recursive: true });
+    try { fs.renameSync(pristineProject, plan.repositoryDir); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error;
+      fs.cpSync(pristineProject, plan.repositoryDir, { recursive: true, verbatimSymlinks: true, force: false, errorOnExist: true });
+      if (await git(['rev-parse', 'HEAD'], plan.repositoryDir) !== projectSha || await git(['status', '--porcelain'], plan.repositoryDir))
+        throw Error('The committed project clone changed while moving to the release filesystem', { cause: error });
+      fs.rmSync(pristineProject, { recursive: true });
+    }
+  } else clones.push([repositoryPath, projectSha, plan.repositoryDir]);
+  if (checkout && plan.omniDir && !checkout.source) clones.push([checkout.path, checkout.sha, plan.omniDir]);
   for (const [from, sha, to] of clones) {
     fs.mkdirSync(path.dirname(to), { recursive: true });
-    await must('clone', step('git', ['clone', '--quiet', '--shared', '--no-checkout', from, to], { cwd: releaseRoot, logFile: cloneLog, timeoutMs: 10 * MINUTE }), cloneLog);
+    await must('clone', step('git', ['clone', '--quiet', '--shared', '--no-checkout', '--', from, to], { cwd: releaseRoot, logFile: cloneLog, timeoutMs: 10 * MINUTE }), cloneLog);
     await must('checkout', step('git', ['checkout', '--quiet', '--detach', sha], { cwd: to, logFile: cloneLog, timeoutMs: 10 * MINUTE }), cloneLog);
   }
+  if (checkout?.source && plan.omniDir) omniSource = await checkoutFrameworkSource(plan.omniDir, {
+    source: checkout.source, commit: checkout.sha, sourceBase: workspacePath, env, ...(signal && { signal }),
+    run: async (command, args, cwd, toolEnv) => must('framework clone', runStep(command, args,
+      { cwd, env: toolEnv, logFile: cloneLog, timeoutMs: 10 * MINUTE, ...(signal && { signal }) }), cloneLog).then(() => {}),
+  });
 
   // 2. omni: install, and build what the project links (with what those depend on).
   const builtPackages: Array<{ name: string; distBuiltAt: string }> = [];
@@ -623,12 +660,13 @@ async function buildRelease(
     upstreamEnv['PATH'] = [bin, ...(upstreamEnv['PATH'] ?? '').split(path.delimiter).filter(dir => dir && dir !== bin)].join(path.delimiter);
     registry = await reproduceVendoredFramework(layout.packages, {
       projectDir: workspacePath, projectCommit: projectSha, frameworkCommit: omniSource.commit,
+      frameworkSource: selectedSource!, sourceBase: workspacePath,
       scratch: path.join(srcRoot, 'framework-proof'), env: upstreamEnv,
       ...(signal ? { signal } : {}),
       run: async (command, args, cwd, toolEnv) => {
         stillWanted();
         await must('reproduce framework', runStep(command, args, {
-          cwd, env: toolEnv, logFile, timeoutMs: 60 * MINUTE, ...(signal ? { signal } : {}),
+          cwd, env: toolEnv, logFile, timeoutMs: command === 'git' ? 10 * MINUTE : 60 * MINUTE, ...(signal ? { signal } : {}),
         }), logFile);
       },
     });
@@ -725,7 +763,7 @@ async function buildRelease(
       logFile: gatesLog,
       timeoutMs: 120 * MINUTE,
     });
-    gates = gateOutcomesFromGates(r.stdout, r.code);
+    gates = gateOutcomesFromGates(r.stdout, r.code, r.timedOut ? 'timed-out' : signal?.aborted || r.code === null ? 'killed' : undefined);
     const passed = gates.filter((g) => g.status === 'passed').length;
     say(`gates: ${passed} of ${gates.length} passed`, 80, { gates });
   }
@@ -758,7 +796,8 @@ async function buildRelease(
   });
   let integrityFailure: unknown;
   const imported = await importReleaseArtifacts(apps.filter(app => app.releaseFrom), path.join(releaseRoot, 'artifacts'));
-  const packed = await builder.buildAll(apps.filter(app => !app.releaseFrom), { releaseCheckouts: clones.map(([, , directory]) => directory), env,
+  const releaseCheckouts = [plan.repositoryDir, ...(plan.omniDir ? [plan.omniDir] : [])];
+  const packed = await builder.buildAll(apps.filter(app => !app.releaseFrom), { releaseCheckouts, env,
     ...(registry && { verifyFrameworkPackage: async (name, directory) => {
       try { await registry.verifyPackage(name, directory); }
       catch (error) { integrityFailure = error; throw error; }

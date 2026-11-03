@@ -17,7 +17,7 @@ describe('generic framework source configuration', () => {
     expect(isFrameworkRef(ref)).toBe(false);
     expect(() => parseFrameworkSource({ repository: '../framework', ref })).toThrow('Framework ref');
   });
-  it.each([null, [], {}, { repository: '(no origin)' }, { repository: '../framework', ref: 1 },
+  it.each([null, [], {}, { repository: '(no origin)' }, { repository: '--upload-pack=command' }, { repository: '../framework', ref: 1 },
     { repository: '../framework', branch: 'main' }, { repository: '../framework', ref: null }])
   ('refuses malformed explicit configuration without fallback', value => {
     expect(() => parseFrameworkSource(value)).toThrow();

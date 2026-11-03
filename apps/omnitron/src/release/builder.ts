@@ -41,7 +41,9 @@ const MARKS: Record<string, GateOutcome['status']> = {
  * absence. An outcome word this does not know is `not-run` too, named in the
  * detail: a status nobody recognises must not read as a pass.
  */
-export function gateOutcomesFromGates(stdout: string, exitCode: number | null): GateOutcome[] {
+export function gateOutcomesFromGates(stdout: string, exitCode: number | null, termination?: 'timed-out' | 'killed'): GateOutcome[] {
+  if (termination) return [{ name: 'gates', status: termination,
+    detail: termination === 'timed-out' ? 'The release gate runner exceeded its deadline' : 'The release gate runner was cancelled or killed' }];
   const lines = stdout.split('\n').map((l) => l.trim()).filter(Boolean);
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i]!;
@@ -53,7 +55,7 @@ export function gateOutcomesFromGates(stdout: string, exitCode: number | null): 
       continue;
     }
     if (!parsed || !Array.isArray(parsed.gates)) continue;
-    return (parsed.gates as Array<Record<string, unknown>>).map((g) => {
+    const outcomes = (parsed.gates as Array<Record<string, unknown>>).map((g): GateOutcome => {
       const name = String(g['name'] ?? '(unnamed)');
       const word = String(g['outcome'] ?? '');
       const status = OUTCOMES[word];
@@ -66,6 +68,12 @@ export function gateOutcomesFromGates(stdout: string, exitCode: number | null): 
         ...(ms !== undefined ? { durationMs: ms } : {}),
       };
     });
+    if (exitCode !== 0 && outcomes.every(gate => gate.status === 'passed')) {
+      let name = 'gates';
+      while (outcomes.some(gate => gate.name === name)) name += ':runner';
+      outcomes.push({ name, status: exitCode === null ? 'killed' : 'failed', detail: `The release gate runner exited ${exitCode === null ? 'by signal' : 'with code ' + exitCode}` });
+    }
+    return outcomes;
   }
   // No result object: the script was stopped, or died, before its last line.
   // The verdicts that had landed are still in their own lines — `PASS  scans

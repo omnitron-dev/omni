@@ -27,6 +27,8 @@ import { Table, type TableColumn } from '@omnitron-dev/prism/components/table';
 
 import { daemon, logs, metrics } from 'src/netron/client';
 import { formatUptime, formatMemory } from 'src/utils/formatters';
+import { LogLevelFilter } from 'src/components/log-level-filter';
+import { shortLogLevel } from 'src/utils/log-levels';
 import { STATUS_COLORS, LEVEL_COLORS } from 'src/utils/constants';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { countedTraffic, daemonNameFor, latencyCaption, measuredProcess, requestsCaption } from 'src/utils/app-address';
@@ -425,8 +427,6 @@ function InfoRow({ label, value, mono }: { label: string; value: string | number
 // Logs Tab — streaming log viewer with filtering
 // ---------------------------------------------------------------------------
 
-const LEVELS = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const;
-const LEVEL_LABELS: Record<string, string> = { trace: 'TRC', debug: 'DBG', info: 'INF', warn: 'WRN', error: 'ERR', fatal: 'FTL' };
 const LEVEL_ROW_BG: Record<string, string> = { fatal: 'rgba(220,38,38,0.08)', error: 'rgba(239,68,68,0.05)', warn: 'rgba(245,158,11,0.04)' };
 const MONO = "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', monospace";
 const STREAM_INTERVAL = 2000;
@@ -449,8 +449,8 @@ function formatDateFull(ts: Date | string): string {
 
 function LogRow({ log, isNew }: { log: LogEntryRow; isNew?: boolean }) {
   const [expanded, setExpanded] = useState(false);
-  const levelColor = LEVEL_COLORS[log.level] ?? '#6b7280';
-  const rowBg = LEVEL_ROW_BG[log.level] ?? 'transparent';
+  const levelColor = Object.hasOwn(LEVEL_COLORS, log.level) ? LEVEL_COLORS[log.level]! : '#6b7280';
+  const rowBg = Object.hasOwn(LEVEL_ROW_BG, log.level) ? LEVEL_ROW_BG[log.level] : 'transparent';
   const hasDetail = log.labels || log.traceId || log.spanId || log.metadata;
 
   return (
@@ -478,7 +478,7 @@ function LogRow({ log, isNew }: { log: LogEntryRow; isNew?: boolean }) {
           </Typography>
         </Tooltip>
         <Typography component="span" sx={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: levelColor, lineHeight: '20px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          {LEVEL_LABELS[log.level] ?? log.level.slice(0, 3).toUpperCase()}
+          {shortLogLevel(log.level)}
         </Typography>
         <Typography component="span" sx={{
           fontFamily: MONO, fontSize: 11.5, lineHeight: '20px', overflow: 'hidden',
@@ -533,12 +533,6 @@ function LogsTab({ appName }: { appName: string }) {
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
   }, [searchInput]);
 
-  // Level toggle
-  const toggleLevel = (level: string) => {
-    setSelectedLevels((prev) => prev.includes(level) ? prev.filter((l) => l !== level) : [...prev, level]);
-  };
-
-  // Stream filter
   const streamFilter = useMemo(() => {
     const f: Record<string, unknown> = { tail: 200, app: appName };
     if (selectedLevels.length > 0) f.level = selectedLevels;
@@ -606,8 +600,8 @@ function LogsTab({ appName }: { appName: string }) {
 
   // Level counts from current logs
   const levelCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const log of logRows) counts[log.level] = (counts[log.level] ?? 0) + 1;
+    const counts = new Map<string, number>();
+    for (const log of logRows) counts.set(log.level, (counts.get(log.level) ?? 0) + 1);
     return counts;
   }, [logRows]);
 
@@ -636,28 +630,7 @@ function LogsTab({ appName }: { appName: string }) {
           sx={{ minWidth: 200, flex: 1, maxWidth: 320 }}
         />
 
-        {/* Level chips */}
-        <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap' }}>
-          {LEVELS.map((level) => (
-            <Chip
-              key={level}
-              label={`${LEVEL_LABELS[level]} ${levelCounts[level] ?? 0}`}
-              size="small"
-              onClick={() => toggleLevel(level)}
-              variant={selectedLevels.includes(level) ? 'filled' : 'outlined'}
-              sx={{
-                fontSize: 11,
-                height: 24,
-                fontFamily: MONO,
-                fontWeight: 600,
-                color: selectedLevels.includes(level) ? '#fff' : LEVEL_COLORS[level],
-                borderColor: alpha(LEVEL_COLORS[level] ?? '#666', 0.4),
-                bgcolor: selectedLevels.includes(level) ? alpha(LEVEL_COLORS[level] ?? '#666', 0.8) : undefined,
-                '&:hover': { bgcolor: alpha(LEVEL_COLORS[level] ?? '#666', 0.2) },
-              }}
-            />
-          ))}
-        </Stack>
+        <LogLevelFilter selected={selectedLevels} counts={levelCounts} onChange={setSelectedLevels} showCounts />
 
         <Box sx={{ flex: 1 }} />
 

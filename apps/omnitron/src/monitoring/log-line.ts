@@ -1,5 +1,8 @@
 import { generateUuidV7 } from '@omnitron-dev/titan/utils';
 import type { ProcessOutputContext } from '@omnitron-dev/titan-pm';
+import { UNKNOWN_LEVEL, levelRank } from '../shared/log-levels.js';
+
+export { LEVEL_RANK, UNKNOWN_LEVEL, levelRank, type KnownLevel } from '../shared/log-levels.js';
 
 /**
  * What one line of an application's output says about itself — the single
@@ -49,27 +52,6 @@ import type { ProcessOutputContext } from '@omnitron-dev/titan-pm';
  * line of its own (`fileLineOf`) carrying the level and time decided here,
  * and read back from there as the JSON it now is.
  */
-
-/** A level this module can name. Other JSON level strings are kept as written. */
-export type KnownLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
-
-/** Pino's numbers for the levels it names — the file and the filters speak these. */
-export const LEVEL_RANK: Readonly<Record<KnownLevel, number>> = {
-  trace: 10,
-  debug: 20,
-  info: 30,
-  warn: 40,
-  error: 50,
-  fatal: 60,
-};
-
-/** The level of a line that says nothing about its level. */
-export const UNKNOWN_LEVEL = 'unknown';
-
-/** The rank of a level, or `undefined` for one that has no place in the order. */
-export function levelRank(level: string): number | undefined {
-  return Object.prototype.hasOwnProperty.call(LEVEL_RANK, level) ? LEVEL_RANK[level as KnownLevel] : undefined;
-}
 
 /**
  * The level a JSON record states.

@@ -20,7 +20,8 @@ import { OMNITRON_HOME } from '../config/defaults.js';
 import type { AppDiagnosticsDto, LogEntryDto } from '../config/types.js';
 import type { IStackInfo } from '../shared/dto/project.js';
 import { NODE_STACK } from '../project/node-app-config.js';
-import { BackwardAssembler, LineAssembler, LEVEL_RANK, levelRank, type KnownLevel, type LogRecord } from '../monitoring/log-line.js';
+import { BackwardAssembler, LineAssembler, type LogRecord } from '../monitoring/log-line.js';
+import { isQueryLogLevel, levelRank, LEVEL_RANK, RANKED_LOG_LEVELS, UNKNOWN_LEVEL } from '../shared/log-levels.js';
 import { emitJson, emitError, isJsonMode } from './output.js';
 import { describeAbsence } from './daemon-required.js';
 import { resolveNodeArgument } from './node.js';
@@ -49,7 +50,7 @@ export interface LogsOptions {
   lines?: number;
   follow?: boolean;
   file?: boolean;
-  /** Minimum log level to display (e.g. 'warn' shows warn + error + fatal) */
+  /** Minimum ranked severity, or an exact unranked level such as unknown */
   level?: string;
   /** Grep pattern — only show entries whose message matches */
   grep?: string;
@@ -58,8 +59,9 @@ export interface LogsOptions {
 /** What the options ask for, once they have been checked. */
 interface Wanted {
   lines: number;
-  /** Pino rank of `--level`, or null for no level filter. */
-  minLevel: number | null;
+  /** Exact stored levels shared by the file reader, live capture and RPC. */
+  levels: string[] | undefined;
+  errorFile: boolean;
   pattern: RegExp | null;
 }
 
@@ -117,7 +119,7 @@ export async function logsCommand(appName?: string, options: LogsOptions = {}): 
   // `omnitron logs`; it printed the apps' buffers instead — 193 payments and 7
   // storage records out of 200, not one daemon line.
   if (!appName || appName === DAEMON_LOG_NAME) {
-    const file = path.join(LOG_DIR, wanted.minLevel !== null && wanted.minLevel >= LEVEL_RANK.error ? 'omnitron.error.log' : 'omnitron.log');
+    const file = path.join(LOG_DIR, wanted.errorFile ? 'omnitron.error.log' : 'omnitron.log');
     await showFile(DAEMON_LOG_NAME, file, wanted, match, options.follow ?? false);
     return;
   }
@@ -155,14 +157,14 @@ export async function logsCommand(appName?: string, options: LogsOptions = {}): 
       // a path guessed from the name: `~/.omnitron/logs/main/app.log` exists
       // on this host, last written weeks ago, and `logs main -l error` printed
       // its May errors as the answer while the live `error.log` held 27 089.
-      const logFile = wanted.minLevel !== null && wanted.minLevel >= LEVEL_RANK.error ? diag.logPaths.error : diag.logPaths.app;
+      const logFile = wanted.errorFile ? diag.logPaths.error : diag.logPaths.app;
       if (options.file) {
         await client.disconnect();
         await showFile(diag.name, logFile, wanted, match, options.follow ?? false);
         return;
       }
 
-      const window = wanted.minLevel !== null || wanted.pattern ? CAPTURED_WINDOW : wanted.lines;
+      const window = wanted.levels || wanted.pattern ? CAPTURED_WINDOW : wanted.lines;
       const captured = await client.getLogs({ name: diag.name, lines: window });
       const hits = captured.filter(match);
 
@@ -184,7 +186,7 @@ export async function logsCommand(appName?: string, options: LogsOptions = {}): 
 
     // Not an app the daemon runs now: what is stored about it, which for an
     // app on a node is what that node synced here.
-    const window = wanted.minLevel !== null || wanted.pattern ? STORED_WINDOW : wanted.lines;
+    const window = wanted.levels || wanted.pattern ? STORED_WINDOW : wanted.lines;
     let stored = await client.getLogs({ name: appName, lines: window });
     let note: string | undefined;
     let fetch = () => client.getLogs({ name: appName!, lines: FOLLOW_WINDOW });
@@ -192,7 +194,7 @@ export async function logsCommand(appName?: string, options: LogsOptions = {}): 
     if (!stored.some((e) => typeof e.data?.['sourceNode'] === 'string')) {
       // Only this machine's own records, or none: an app that ran here left
       // its file, and the file is the record.
-      const derived = derivedLogFile(appName, wanted.minLevel !== null && wanted.minLevel >= LEVEL_RANK.error ? 'error' : 'app');
+      const derived = derivedLogFile(appName, wanted.errorFile ? 'error' : 'app');
       if (derived) {
         await client.disconnect();
         await showDerivedFile(appName, wanted, match, options.follow ?? false);
@@ -240,29 +242,23 @@ export async function logsCommand(appName?: string, options: LogsOptions = {}): 
 // Options
 // ---------------------------------------------------------------------------
 
-const LEVEL_NAMES = Object.keys(LEVEL_RANK) as KnownLevel[];
-
-/**
- * Check the options before anything is read.
- *
- * `--grep '('` used to escape as a raw `SyntaxError` stack (the pattern was
- * compiled outside every `try`), and `--level bogus` silently disabled the
- * level filter — a query that asks for nothing recognisable answered as if
- * it had asked for everything. Both are refused now, with what IS accepted.
- */
 function readOptions(options: LogsOptions): { ok: true; wanted: Wanted } | { ok: false; error: string } {
   const lines = options.lines ?? 50;
   if (!Number.isInteger(lines) || lines < 1) {
     return { ok: false, error: `-n must be a whole number of records, 1 or more (got ${String(options.lines)})` };
   }
 
-  let minLevel: number | null = null;
+  let levels: string[] | undefined;
+  let errorFile = false;
   if (options.level !== undefined) {
-    const rank = levelRank(options.level.trim().toLowerCase());
-    if (rank === undefined) {
-      return { ok: false, error: `Unknown level '${options.level}' — use one of ${LEVEL_NAMES.join(', ')}` };
-    }
-    minLevel = rank;
+    const value = options.level.trim();
+    if (!isQueryLogLevel(options.level)) return { ok: false, error: 'Invalid --level value' };
+    const normalized = value.toLowerCase();
+    const rank = levelRank(normalized);
+    levels = rank === undefined
+      ? [normalized === UNKNOWN_LEVEL ? UNKNOWN_LEVEL : value]
+      : RANKED_LOG_LEVELS.filter(level => LEVEL_RANK[level] >= rank);
+    errorFile = rank !== undefined && rank >= LEVEL_RANK.error;
   }
 
   let pattern: RegExp | null = null;
@@ -274,24 +270,12 @@ function readOptions(options: LogsOptions): { ok: true; wanted: Wanted } | { ok:
     }
   }
 
-  return { ok: true, wanted: { lines, minLevel, pattern } };
+  return { ok: true, wanted: { lines, levels, errorFile, pattern } };
 }
 
-/**
- * The filter a record must pass.
- *
- * A level filter keeps records at or above it. A record whose level could not
- * be read (`unknown`) has no place in that order, so it is shown only when no
- * `--level` is given — it is not `info`, which is what it used to be called.
- */
 function matcher(wanted: Wanted): Match {
-  return (entry) => {
-    if (wanted.minLevel !== null) {
-      const rank = levelRank(entry.level);
-      if (rank === undefined || rank < wanted.minLevel) return false;
-    }
-    return !wanted.pattern || wanted.pattern.test(entry.message);
-  };
+  return entry => (!wanted.levels || wanted.levels.includes(entry.level))
+    && (!wanted.pattern || wanted.pattern.test(entry.message));
 }
 
 function refuse(message: string, appName?: string): void {
@@ -333,9 +317,8 @@ async function showNodeLogs(app: string, node: string, wanted: Wanted, match: Ma
     const target = result.node;
     if (target.isLocal) throw new Error('For this machine, omit --node to read its live capture and log files');
     const service = await client.service<IOmnitronLogsService>('OmnitronLogs');
-    const levels = wanted.minLevel === null ? undefined : LEVEL_NAMES.filter((level) => LEVEL_RANK[level] >= wanted.minLevel!);
     const read = async (tail: number): Promise<LogEntryDto[]> => (await service.streamLogs({
-      app, nodeId: target.id, ...(levels ? { level: levels } : {}), tail,
+      app, nodeId: target.id, ...(wanted.levels && { level: wanted.levels }), tail,
     })).map((entry) => ({
       timestamp: new Date(entry.timestamp).getTime(), app: entry.app,
       level: entry.level, message: entry.message,
@@ -453,7 +436,7 @@ function listDirs(dir: string): string[] {
 }
 
 async function showDerivedFile(appName: string, wanted: Wanted, match: Match, following: boolean): Promise<void> {
-  const kind = wanted.minLevel !== null && wanted.minLevel >= LEVEL_RANK.error ? 'error' : 'app';
+  const kind = wanted.errorFile ? 'error' : 'app';
   const derived = derivedLogFile(appName, kind);
   if (!derived) {
     if (emitJson({ app: appName, source: 'file', count: 0, entries: [] })) return;

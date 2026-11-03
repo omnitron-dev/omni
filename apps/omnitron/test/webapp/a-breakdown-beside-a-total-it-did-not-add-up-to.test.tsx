@@ -79,19 +79,19 @@ vi.mock('src/netron/client', () => ({
   project: {},
 }));
 
-async function renderPage() {
+async function renderPage(initial = '/') {
   useProjectStore.setState({ activeProject: 'sample', activeStack: null });
   const { default: LogsPage } = await import('../../webapp/src/pages/logs.js');
   render(
     <ThemeProvider theme={createTheme()}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[initial]}>
         <LogsPage />
       </MemoryRouter>
     </ThemeProvider>
   );
   // Logs now opens in live mode. These assertions concern the explicit
   // paginated hour view and its total, not the live tail's retained rows.
-  fireEvent.click(screen.getByRole('button', { name: 'Filters', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: /^Filters/ }));
   fireEvent.click(screen.getByRole('button', { name: '1h', exact: true }));
   await screen.findByText('Showing 2 of 48,991');
 }
@@ -113,6 +113,20 @@ describe('a breakdown beside a total it did not add up to', () => {
     expect(row).toHaveAttribute('aria-expanded', 'true');
     await keyboard.keyboard(' ');
     expect(row).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('uses unknown and observed writer levels as exact shareable filters', async () => {
+    await renderPage('/logs?level=unknown');
+    const unknown = screen.getByRole('button', { name: 'unknown', exact: true });
+    expect(unknown).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => expect(queryLogs).toHaveBeenCalledWith(expect.objectContaining({ level: ['unknown'] })));
+    const keyboard = userEvent.setup();
+    const input = screen.getByRole('combobox', { name: 'Custom levels' });
+    await keyboard.click(input);
+    await keyboard.click(await screen.findByRole('option', { name: 'medium' }));
+    await waitFor(() => expect(queryLogs).toHaveBeenCalledWith(expect.objectContaining({ level: ['unknown', 'medium'] })));
+    fireEvent.click(unknown);
+    await waitFor(() => expect(queryLogs).toHaveBeenCalledWith(expect.objectContaining({ level: ['medium'] })));
   });
 
   it('narrows with the filter, and does not group the whole table again for it', async () => {

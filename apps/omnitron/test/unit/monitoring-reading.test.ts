@@ -57,12 +57,16 @@ describe('monitoring evidence and budgets', () => {
       { limit: -1 },
       { tail: Infinity },
       { offset: 100001 },
-      { level: ['invented'] },
+      { level: [] },
+      { level: [''] },
+      { level: '\x00' },
+      { level: 'x'.repeat(257) },
+      { level: Array(65).fill('warn') },
       { from: 'invalid' },
       { from: '2026-02-01', to: '2026-01-01' },
     ])
       expect(() => validateLogQuery(filter)).toThrow();
-    expect(() => validateLogQuery({ app: 'project/prod/api', level: ['error', 'fatal'], tail: 100 })).not.toThrow();
+    expect(() => validateLogQuery({ app: 'project/prod/api', level: ['unknown', 'custom', 'error', 'fatal'], tail: 100 })).not.toThrow();
   });
   it('does not query full log counts or acknowledge alerts when taking a snapshot', async () => {
     const queryLogs = vi.fn(),

@@ -3,24 +3,16 @@ import { Box, Button, ButtonBase, Collapse, Tooltip, Typography } from '@mui/mat
 import { alpha, getContrastRatio, keyframes, useTheme, type Theme } from '@mui/material/styles';
 import { ChevronRightIcon, CopyIcon, CheckIcon } from '@omnitron-dev/prism/icons';
 import { useCopyToClipboard } from '@omnitron-dev/prism/core';
+import { shortLogLevel } from 'src/utils/log-levels';
 import type { LogEntryRow } from '@omnitron-dev/omnitron/dto/services';
 
 const MONO = "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', monospace";
-const LEVEL_LABELS: Record<string, string> = {
-  trace: 'TRC',
-  debug: 'DBG',
-  info: 'INF',
-  warn: 'WRN',
-  error: 'ERR',
-  fatal: 'FTL',
-};
 const arrive = keyframes`from { opacity: 0; } to { opacity: 1; }`;
 
 export function logLevelColor(level: string, theme: Theme): string {
   const tones = { info: 'info', warn: 'warning', error: 'error', fatal: 'error' } as const;
-  const tone = tones[level as keyof typeof tones];
-  if (!tone) return theme.palette.text.secondary;
-  const palette = theme.palette[tone];
+  if (!Object.hasOwn(tones, level)) return theme.palette.text.secondary;
+  const palette = theme.palette[tones[level as keyof typeof tones]];
   // Prism adapts shade semantics to the mode; a literal "light" shade is not always bright.
   return (
     [palette.main, palette.dark, palette.light].find(
@@ -212,7 +204,7 @@ export function LogEntryRowView({
           component="span"
           sx={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, lineHeight: '20px', color: tone }}
         >
-          {LEVEL_LABELS[log.level] ?? log.level.slice(0, 3).toUpperCase()}
+          {shortLogLevel(log.level)}
         </Typography>
         <Typography
           component="span"

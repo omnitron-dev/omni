@@ -34,6 +34,8 @@ import { Skeleton } from '@omnitron-dev/prism/components/skeleton';
 import { useCopyToClipboard } from '@omnitron-dev/prism/core';
 import { logs, daemon, nodes as nodesRpc } from 'src/netron/client';
 import { useStackContext } from 'src/hooks/use-stack-context';
+import { LogLevelFilter } from 'src/components/log-level-filter';
+import { DEFAULT_LOG_LEVELS } from 'src/utils/log-levels';
 import { logCommand } from 'src/utils/log-location';
 
 import type { LogEntryRow, LevelCount } from '@omnitron-dev/omnitron/dto/services';
@@ -41,8 +43,6 @@ import type { LogEntryRow, LevelCount } from '@omnitron-dev/omnitron/dto/service
 // =============================================================================
 // Constants
 // =============================================================================
-
-const LEVELS = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const;
 
 /**
  * The known levels in severity order, then any other a writer recorded, as
@@ -52,8 +52,8 @@ const LEVELS = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const;
  */
 function inLevelOrder(counts: readonly LevelCount[]): LevelCount[] {
   const rank = (level: string) => {
-    const known = (LEVELS as readonly string[]).indexOf(level);
-    return known === -1 ? LEVELS.length : known;
+    const known = DEFAULT_LOG_LEVELS.indexOf(level);
+    return known === -1 ? DEFAULT_LOG_LEVELS.length : known;
   };
   return [...counts].sort((a, b) => rank(a.level) - rank(b.level));
 }
@@ -148,7 +148,7 @@ export default function LogsPage() {
     () => Object.fromEntries(nodeNames.map((n) => [n.id, n.hostname])),
     [nodeNames],
   );
-  const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
+  const selectedLevels = useMemo(() => [...new Set(params.getAll('level'))], [params]);
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -555,16 +555,16 @@ export default function LogsPage() {
   }, []);
 
   // ---- Level toggle ----
-  const toggleLevel = (level: string) => {
-    setSelectedLevels((prev) =>
-      prev.includes(level) ? prev.filter((l) => l !== level) : [...prev, level],
-    );
-  };
+  const setLevels = (levels: string[]) => setParams(previous => {
+    const next = new URLSearchParams(previous);
+    next.delete('level');
+    for (const level of levels) next.append('level', level);
+    return next;
+  }, { replace: true });
 
   // ---- Clear all filters ----
   const clearFilters = () => {
     setParams({ app: '' }, { replace: true });
-    setSelectedLevels([]);
     setSearchInput('');
     setDebouncedSearch('');
     setLabelInput('');
@@ -803,56 +803,7 @@ export default function LogsPage() {
             alignItems: "center",
             flexWrap: "wrap"
           }}>
-          {/* Level chips */}
-          <Stack direction="row" spacing={0.5} sx={{
-            alignItems: "center", flexWrap: 'wrap'
-          }}>
-            {LEVELS.map((level) => {
-              const active = selectedLevels.includes(level);
-              const color = logLevelColor(level, theme);
-              return (
-                <Chip
-                  key={level}
-                  size="small"
-                  label={
-                    <Stack direction="row" spacing={0.5} sx={{
-                      alignItems: "center"
-                    }}>
-                      <Box
-                        sx={{
-                          width: 6,
-                          height: 6,
-                          borderRadius: '50%',
-                          bgcolor: color,
-                          flexShrink: 0,
-                          boxShadow: active ? `0 0 6px ${color}` : undefined,
-                        }}
-                      />
-                      <span>{level}</span>
-                    </Stack>
-                  }
-                  variant={active ? 'filled' : 'outlined'}
-                  aria-pressed={active}
-                  onClick={() => toggleLevel(level)}
-                  sx={{
-                    fontFamily: MONO,
-                    fontSize: 10,
-                    fontWeight: 600,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.04em',
-                    height: 24,
-                    borderColor: active ? color : alpha(color, 0.3),
-                    color: active ? theme.palette.getContrastText(color) : color,
-                    bgcolor: active ? color : 'transparent',
-                    '&:hover': {
-                      bgcolor: active ? alpha(color, 0.9) : alpha(color, 0.12),
-                    },
-                    transition: 'all 0.15s ease',
-                  }}
-                />
-              );
-            })}
-          </Stack>
+          <LogLevelFilter selected={selectedLevels} counts={new Map(levelBreakdown.map(row => [row.level, row.count]))} onChange={setLevels} />
 
           {/* Divider */}
           <Box sx={{ width: '1px', height: 20, bgcolor: 'text.disabled', mx: 0.5 }} />

@@ -518,7 +518,7 @@ program
   .description('View logs (omit app for daemon log, specify app name for app log)')
   .option('-f, --follow', 'Follow log output')
   .option('-n, --lines <N>', 'Number of lines', '50')
-  .option('-l, --level <level>', 'Minimum log level (trace|debug|info|warn|error|fatal)')
+  .option('-l, --level <level>', 'Minimum severity (trace|debug|info|warn|error|fatal), or an exact level such as unknown')
   .option('-g, --grep <pattern>', 'Filter by message pattern (regex)')
   .option('--node <node>', 'Read replicated logs from one registered node (name or ID)')
   .option('--file', 'Read from log files instead of daemon (auto when daemon offline)')

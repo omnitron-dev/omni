@@ -139,6 +139,25 @@ describe('omnitron logs, daemon up and buffer empty', () => {
     expect(printed.join('\n')).toMatch(/No log file found|No log entries found|No log directory/);
   });
 
+  it('filters unclassified lines exactly in the local file and the live buffer', async () => {
+    const app = 'acme/dev/unclassified';
+    const msg = 'startup diagnostic without a level';
+    writeAppLog(app, [msg, JSON.stringify({ level: 50, msg: 'other severity' })]);
+    await logsCommand(app, { level: 'unknown', lines: 1 });
+    expect(consoleLines.join('\n')).toContain(msg);
+    expect(consoleLines.join('\n')).not.toContain('other severity');
+    runs.add(app);
+    try {
+      consoleLines.length = 0;
+      daemonEntries.value = ['unknown', 'info'].map(level => ({
+        app, level, timestamp: Date.now(), message: `captured ${level}`,
+      }));
+      await logsCommand(app, { level: 'unknown', lines: 1 });
+      expect(consoleLines.join('\n')).toContain('captured unknown');
+      expect(consoleLines.join('\n')).not.toContain('captured info');
+    } finally { runs.delete(app); }
+  });
+
   it('uses the daemon while its records hold as many as were asked for', async () => {
     runs.add('acme/dev/main');
     daemonEntries.value = [1, 2, 3].map((n) => ({

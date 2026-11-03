@@ -31,8 +31,11 @@ omnitron dev
 # View logs
 omnitron logs
 omnitron logs --level warn --grep "error"
+omnitron logs project/test/api --node test --level unknown
 omnitron logs --status
 ```
+
+Ranked levels in the CLI are minimum severities. Use `--level unknown` for records without a recognized level, or specify the exact stored spelling of a custom level. In Console, the level chips and the custom-level selector match exact values in both live and historical logs. Share the main log view with one `level` URL parameter per selected level.
 
 ## Building an application release
 

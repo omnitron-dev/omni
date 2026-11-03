@@ -81,6 +81,18 @@ describe('durable log delivery', () => {
     expect((await service.getRecentLogs(filter)).map(row => row.app).sort()).toEqual(result.entries.map(row => row.app).sort());
     expect((await service.queryLogs({ ...filter, app: 'sample-other/local/api' })).total).toBe(0);
   });
+  it('reads unknown and writer-defined severities exactly in history and live queries', async () => {
+    const dir = directory(), db = database(dir), service = collector(db, path.join(dir, 'queue.sqlite'));
+    await service.persistCaptured(['unknown', 'info', 'Audit', 'constructor'].map(level => ({
+      id: randomUUID(), app: 'sample/local/api', level, message: level, timestamp: '2026-10-31T01:02:03.004Z',
+    })));
+    for (const level of ['unknown', 'Audit', 'constructor']) {
+      const history = await service.queryLogs({ level });
+      expect(history.entries.map(row => row.message)).toEqual([level]);
+      expect(history.byLevel).toEqual([{ level, count: 1 }]);
+      expect((await service.getRecentLogs({ level: [level] })).map(row => row.id)).toEqual([history.entries[0]!.id]);
+    }
+  });
   it('preserves trailing spaces and blank lines inside a captured multiline message', () => {
     const records: LogRecord[] = [];
     const assembler = new LineAssembler((_app, record) => records.push(record));

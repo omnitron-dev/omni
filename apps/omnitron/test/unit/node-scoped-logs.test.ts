@@ -56,6 +56,13 @@ describe('explicit node log scope', () => {
       })
     );
   });
+  it.each(['unknown', 'Audit'])('uses the exact unranked level %s for the RPC and displayed records', async level => {
+    const record = { timestamp: new Date(), app: 'sample/prod/mail', level, message: 'match', nodeId: 'remote-id', metadata: { deliveryId: 'opaque-id' } };
+    state.stream.mockResolvedValueOnce([record, { ...record, level: 'warn', message: 'other' }]);
+    await logsCommand(record.app, { node: 'worker-1', level });
+    expect(state.stream).toHaveBeenCalledWith({ app: record.app, nodeId: record.nodeId, level: [level], tail: 50 });
+    expect(state.json).toHaveBeenCalledWith(expect.objectContaining({ count: 1, entries: [expect.objectContaining({ level })] }));
+  });
   it('fails closed for an unknown node and a local-file override', async () => {
     await logsCommand('sample/prod/mail', { node: 'missing' });
     expect(state.error).toHaveBeenCalled();

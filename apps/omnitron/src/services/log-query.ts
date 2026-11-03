@@ -1,6 +1,6 @@
 import type { LogQueryFilter } from '../shared/dto/logs.js';
+import { isQueryLogLevel, MAX_QUERY_LEVELS } from '../shared/log-levels.js';
 
-const levels = new Set(['trace', 'debug', 'info', 'warn', 'error', 'fatal']);
 /** Validate before constructing SQL; limits apply to CLI, Console and RPC alike. */
 export function validateLogQuery(filter: LogQueryFilter & { tail?: number }): void {
   if (!filter || typeof filter !== 'object' || Array.isArray(filter))
@@ -28,7 +28,7 @@ export function validateLogQuery(filter: LogQueryFilter & { tail?: number }): vo
   }
   if (filter.level !== undefined) {
     const values = Array.isArray(filter.level) ? filter.level : [filter.level];
-    if (!values.length || values.length > levels.size || values.some((value) => !levels.has(value)))
+    if (!values.length || values.length > MAX_QUERY_LEVELS || !values.every(isQueryLogLevel))
       throw new Error('Invalid log level');
   }
   if (

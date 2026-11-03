@@ -13,6 +13,17 @@ const definition = {
 };
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 describe('pipeline edit review', () => {
+  it('preserves loaded trigger declarations when editing the name or steps', async () => {
+    const triggers = [{ type: 'manual' as const, config: { label: 'Operator review' } }];
+    update.mockResolvedValue({ ...definition, triggers });
+    render(<PipelineEditor definition={{ ...definition, triggers }} onClose={vi.fn()} onSaved={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'renamed' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save/ }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith({
+      id: definition.id, expectedRevision: definition.revision,
+      definition: { name: 'renamed', description: '', steps: definition.steps, triggers },
+    }));
+  });
   it('sends the original revision and preserves the draft when a concurrent edit wins', async () => {
     update.mockRejectedValue(Error('Pipeline changed after review. Reload and review the current definition'));
     const close = vi.fn(), saved = vi.fn();

@@ -29,13 +29,13 @@ export class PipelineRpcService implements IOmnitronPipelinesService {
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async createPipeline(data: PipelineDef): Promise<Pipeline> {
-    await this.authorize('create');
+    await this.authorize('create.requested');
     return this.pipelines.createPipeline(data);
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async updatePipeline(data: { id: string; definition: PipelineDef; expectedRevision: string }): Promise<Pipeline> {
-    await this.authorize('update', data.id);
+    await this.authorize('update.requested', data.id);
     if (!/^[a-f0-9]{64}$/.test(data.expectedRevision ?? ''))
       throw new Error('Review the current definition before updating it');
     return this.pipelines.updatePipeline(data.id, data.definition, data.expectedRevision);
@@ -55,7 +55,7 @@ export class PipelineRpcService implements IOmnitronPipelinesService {
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async deletePipeline(data: { id: string }): Promise<{ success: boolean }> {
-    await this.authorize('delete', data.id);
+    await this.authorize('delete.requested', data.id);
     await this.pipelines.deletePipeline(data.id);
     return { success: true };
   }

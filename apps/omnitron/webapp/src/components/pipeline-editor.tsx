@@ -56,7 +56,7 @@ export function PipelineEditor({
     setSaving(true);
     setError(null);
     try {
-      const input = { name, description, steps: advanced ? JSON.parse(json) : steps };
+      const input = { name, description, steps: advanced ? JSON.parse(json) : steps, triggers: definition?.triggers ?? [] };
       if (definition) {
         if (!definition.conditionalUpdates) throw new Error('Update the daemon to support conditional pipeline edits');
         await pipelines.updatePipeline({ id: definition.id, definition: input, expectedRevision: definition.revision });

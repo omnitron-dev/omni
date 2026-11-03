@@ -73,4 +73,14 @@ describe('automation authority at the execution boundary', () => {
     }))).rejects.toThrow();
     expect(f.pipelines.updatePipeline).not.toHaveBeenCalled();
   });
+  it('records a rejected stale edit as a request, never as an applied update', async () => {
+    const f = fixture();
+    f.pipelines.updatePipeline.mockRejectedValueOnce(Error('Pipeline changed after review'));
+    await expect(runWithAuth(actor(), () => f.service.updatePipeline({
+      ...request, definition: { name: 'inspect', steps: [{ name: 'one', run: 'echo ready' }] },
+    }))).rejects.toThrow('changed after review');
+    expect(f.audit.record).toHaveBeenCalledExactlyOnceWith(
+      { action: 'pipeline.update.requested', resourceType: 'pipeline', resourceId: 'pipeline' }, true
+    );
+  });
 });

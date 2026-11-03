@@ -1112,7 +1112,7 @@ export class RemoteDeployer {
           600_000,
           migration.stdin,
         );
-        for (const line of migrationOutput(redactDiagnosticText(said))) {
+        for (const line of migrationOutput(said).map(redactDiagnosticText)) {
           this.logger.info({ node: target.host, app: entry.app, line }, 'Migration said');
         }
         this.logger.info({ node: target.host, app: entry.app }, 'Database migrations applied on the node');

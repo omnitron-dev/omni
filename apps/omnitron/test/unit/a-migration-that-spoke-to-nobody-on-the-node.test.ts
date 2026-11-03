@@ -28,7 +28,7 @@ const MIGRATOR_SAID = [
   'Done',
 ].join('\n');
 
-function deployment() {
+function deployment(output = MIGRATOR_SAID) {
   const said: Array<{ msg: string; fields: Record<string, unknown> }> = [];
   const info = (fields: Record<string, unknown>, msg: string) => said.push({ fields, msg });
   const svc: any = new RemoteDeployer({} as never, {} as never);
@@ -38,7 +38,7 @@ function deployment() {
     execution: {
       ssh: async (_t: unknown, cmd: string) => {
         if (cmd.startsWith('test -f')) return { stdout: 'yes', stderr: '', exitCode: 0, duration: 1 };
-        if (cmd.includes('migrate.js')) return { stdout: `${MIGRATOR_SAID}\n`, stderr: '', exitCode: 0, duration: 1 };
+        if (cmd.includes('migrate.js')) return { stdout: `${output}\n`, stderr: '', exitCode: 0, duration: 1 };
         return { stdout: '', stderr: '', exitCode: 0, duration: 1 };
       },
     },
@@ -65,6 +65,17 @@ function deployment() {
 }
 
 describe('a migration that spoke to nobody — on the node', () => {
+  it('retains every output line while redacting each diagnostic independently', async () => {
+    const expected = Array.from({ length: 300 }, (_, index) => `Migration ${index} committed successfully`);
+    const { run, said } = deployment([...expected, 'database=postgres://user:synthetic-secret@host/db'].join('\n'));
+    await run();
+    const lines = said.filter(item => item.msg === 'Migration said').map(item => item.fields['line']);
+    expect(lines.slice(0, 300)).toEqual(expected);
+    expect(lines).toHaveLength(301);
+    expect(JSON.stringify(lines)).not.toContain('synthetic-secret');
+    expect(lines[300]).toContain('host/db');
+  });
+
   it("logs what the node's migrator said, in order, before the verdict", async () => {
     const { run, said } = deployment();
 

@@ -8,6 +8,14 @@ import type { ReleaseSource } from './manifest.js';
 const SHA = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
 const MAX_HEADS = 4096;
 const TIMEOUT = 10_000;
+const REPOSITORY_ENV = ['GIT_DIR', 'GIT_COMMON_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY',
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE', 'GIT_REPLACE_REF_BASE', 'GIT_SHALLOW_FILE', 'GIT_GRAFT_FILE'] as const;
+
+class GitSourceContextError extends Error {}
+function assertCheckoutEnvironment(): void {
+  const present = REPOSITORY_ENV.filter(name => process.env[name] !== undefined);
+  if (present.length) throw new GitSourceContextError('Git source verification requires an explicit checkout; unset repository redirection variables: ' + present.join(', '));
+}
 
 export function networkRepository(repository: string): boolean {
   if (/^(?:\/|\.\.?\/|~\/|[A-Za-z]:[\\/])/.test(repository)) return false;
@@ -17,10 +25,9 @@ export function networkRepository(repository: string): boolean {
 
 function environment(): NodeJS.ProcessEnv {
   const env = { ...process.env };
-  // The checkout and its actual objects supply identity, not an inherited Git worktree,
-  // replacement graph or a partial-clone fetch performed while inspecting ancestry.
-  for (const key of ['GIT_DIR', 'GIT_COMMON_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY',
-    'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE', 'GIT_REPLACE_REF_BASE', 'GIT_SHALLOW_FILE', 'GIT_GRAFT_FILE']) delete env[key];
+  // Xec 0.11.2 merges the ambient environment. Refuse repository redirects instead
+  // of pretending that omitting them here isolates a child. User transport remains intact.
+  assertCheckoutEnvironment();
   return { ...env, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: 'false', SSH_ASKPASS: 'false', GCM_INTERACTIVE: 'Never',
     SSH_ASKPASS_REQUIRE: 'never', GIT_NO_REPLACE_OBJECTS: '1', GIT_NO_LAZY_FETCH: '1' };
 }
@@ -41,6 +48,7 @@ async function git(checkout: string, args: string[], signal: AbortSignal, stdin 
  * bounded-out reads and unavailable transport remain unknown instead of becoming false. */
 async function advertisedCommit(checkout: string, repository: string, commit: string,
   options: { ref?: string; signal?: AbortSignal } = {}): Promise<boolean | null> {
+  assertCheckoutEnvironment();
   assertRepositoryIdentity(repository);
   if (!SHA.test(commit) || options.ref !== undefined && !isFrameworkRef(options.ref)) return null;
   const deadline = AbortSignal.timeout(TIMEOUT);
@@ -89,12 +97,13 @@ async function advertisedCommit(checkout: string, repository: string, commit: st
     }
     if (known.length && await git(checkout, ['rev-list', '--max-count=1', '--ancestry-path', ...known, '--not', commit], signal)) return true;
     return unknown ? null : false;
-  } catch { options.signal?.throwIfAborted(); return null; }
+  } catch (error) { if (error instanceof GitSourceContextError) throw error; options.signal?.throwIfAborted(); return null; }
 }
 
 /** Publication is a network-origin observation, independent of explicit local-source trust. */
 export async function sourcePublication(checkout: string, repository: string, commit: string,
   options: { ref?: string; signal?: AbortSignal } = {}): Promise<boolean | null> {
+  assertCheckoutEnvironment();
   assertRepositoryIdentity(repository);
   if (!networkRepository(repository)) return repository === '(no origin)' ? null : false;
   const deadline = AbortSignal.timeout(TIMEOUT);
@@ -106,7 +115,7 @@ export async function sourcePublication(checkout: string, repository: string, co
     const effective = await git(checkout, ['ls-remote', '--get-url', '--', transport], signal);
     if (!networkRepository(effective)) return false;
     return await advertisedCommit(checkout, repository, commit, { ...options, signal });
-  } catch { options.signal?.throwIfAborted(); return null; }
+  } catch (error) { if (error instanceof GitSourceContextError) throw error; options.signal?.throwIfAborted(); return null; }
 }
 
 /** An explicitly selected ref is a build constraint, including in offline/local repositories. */
@@ -118,8 +127,9 @@ export async function sourceRefContains(checkout: string, repository: string, co
 
 /** Credential-free recorded identity and an independently checked publication fact. */
 export async function readReleaseSource(checkout: string, commit: string): Promise<ReleaseSource> {
+  assertCheckoutEnvironment();
   const repo = await git(checkout, ['config', '--get-all', 'remote.origin.url'], AbortSignal.timeout(TIMEOUT))
-    .then(value => value.split('\n')[0]!).catch(() => '(no origin)');
+    .then(value => value.split('\n')[0]!).catch(error => { if (error instanceof GitSourceContextError) throw error; return '(no origin)'; });
   assertRepositoryIdentity(repo);
   return { repo, commit, onRemote: await sourcePublication(checkout, repo, commit) };
 }

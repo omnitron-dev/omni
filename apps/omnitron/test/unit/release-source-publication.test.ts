@@ -115,6 +115,13 @@ describe('source publication from current upstream advertisement', () => {
     git(f.checkout, 'config', 'url.' + f.repository + '.insteadOf', logical);
     expect(await readReleaseSource(f.checkout, f.second)).toEqual({ repo: logical, commit: f.second, onRemote: false });
   });
+  it.each(['GIT_DIR', 'GIT_OBJECT_DIRECTORY'])('refuses ambient %s without observing another repository or mutating the environment', async variable => {
+    const f = await fixture(), injected = path.join(f.repository, variable === 'GIT_DIR' ? '' : 'objects');
+    vi.stubEnv(variable, injected);
+    await expect(readReleaseSource(f.checkout, f.second)).rejects.toThrow('unset repository redirection variables: ' + variable);
+    await expect(sourcePublication(f.checkout, f.url, f.second)).rejects.toThrow('unset repository redirection variables: ' + variable);
+    expect(process.env[variable]).toBe(injected);
+  });
   it('waits for an aborted configured transport and its child to close before settling', async () => {
     const f = await fixture(), marker = path.join(f.root, 'pids.json'), helper = path.join(f.root, 'hanging.mjs');
     await fs.writeFile(helper, `import{writeFileSync}from'node:fs';import{spawn}from'node:child_process';\nconst c=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'inherit'});\nwriteFileSync(${JSON.stringify(marker)},JSON.stringify([process.pid,c.pid]));setInterval(()=>{},1000);\n`);

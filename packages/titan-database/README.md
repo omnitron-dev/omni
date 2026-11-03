@@ -58,6 +58,28 @@ an exact PostgreSQL `pg_get_expr` expression when the default's meaning matters;
 `default` checks only its presence. `schema` selects an explicit schema, otherwise
 the connection's `current_schema()` applies. These are PostgreSQL guarantees.
 
+`typeSchema` supports named enum/domain types outside `pg_catalog`.
+`formattedType` optionally binds PostgreSQL's `format_type` spelling, including
+precision and length. An insert table requires writable, non-generated columns
+unless their generated expression is explicitly declared. A read projection can
+leave that distinction unspecified. Routine contracts check zero input arguments,
+body, language, volatility, invoker security and configuration; `returnType` uses
+`format_type` (for example `bigint`). Trigger functions must return `trigger`.
+`configuration` is an exact set of `pg_proc.proconfig` entries, empty by default.
+`schemaSearchPath: true` additionally requires exactly
+`pg_catalog, <checked schema>, pg_temp`, using PostgreSQL identifier quoting.
+Built-ins precede the component schema and temporary objects come last; other
+intentional settings must still be declared. This avoids relying on the caller's
+mutable search path for component-owned functions.
+
+The third argument accepts positive `statementTimeoutMs` and `lockTimeoutMs`.
+Defaults are **10 seconds per statement** and **1 second per lock wait**, restored
+when the read-only transaction ends. These are not a total-operation deadline.
+Configure a finite pool `connectionTimeoutMillis` separately: acquiring a
+connection is the owner's responsibility and cannot be cancelled by a fake timeout
+around the borrowed pool. Function requirements prove only declared properties;
+this is not a universal PostgreSQL schema-equivalence or SQL-security proof.
+
 A mismatch throws `SchemaReadinessError` with code `database_schema_incompatible`,
 the component name and individual violations. This does not apply migrations,
 alter journals, prove every database invariant or replace query authorization.

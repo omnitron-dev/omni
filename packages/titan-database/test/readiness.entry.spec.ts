@@ -27,3 +27,12 @@ it('publishes matching type/runtime entry points and keeps the root independent'
   const omni = JSON.parse(readFileSync(new URL('../../../apps/omnitron/package.json', import.meta.url), 'utf8'));
   expect(omni.exports['./readiness']).toEqual({ types: './dist/readiness.d.ts', default: './dist/readiness.js' });
 });
+
+it('refuses unbounded or invalid timeouts before acquiring a connection', async () => {
+  const { requirePostgresSchema } = await import('../src/exports/readiness.js');
+  const pool = { options: {}, connect: vi.fn(), end: vi.fn() };
+  for (const invalid of [0, -1, Number.POSITIVE_INFINITY, 1.5, 2_147_483_648]) {
+    await expect(requirePostgresSchema(pool, { name: 'fixture', tables: {} }, { statementTimeoutMs: invalid })).rejects.toThrow('positive PostgreSQL timeout');
+  }
+  expect(pool.connect).not.toHaveBeenCalled();
+});

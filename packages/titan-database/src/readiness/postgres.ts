@@ -5,10 +5,16 @@ import { createPostgresMigrationDatabase } from '../migration/postgres.js';
 export interface PostgresColumnRequirement {
   type: string;
   nullable: boolean;
+  /** PostgreSQL type namespace; built-in types use pg_catalog. */
+  typeSchema?: string;
+  /** Exact format_type representation, including modifiers such as numeric(12,2). */
+  formattedType?: string;
   default?: boolean;
   /** Exact pg_get_expr representation, when default semantics are a required invariant. */
   defaultExpression?: string;
-  generated?: string;
+  /** Exact generated expression, or false for a writable/non-generated column.
+   * Defaults to false for insert tables; unspecified read projections permit either. */
+  generated?: string | false;
 }
 export interface PostgresForeignKeyRequirement {
   columns: readonly string[];
@@ -23,9 +29,9 @@ export interface PostgresTableRequirement {
   insert?: boolean;
   unique?: readonly (readonly string[])[];
   foreignKeys?: readonly PostgresForeignKeyRequirement[];
-  immutable?: { function: string; bodySha256: string };
+  immutable?: { function: string; bodySha256: string; configuration?: readonly string[]; schemaSearchPath?: boolean };
   /** PostgreSQL trigger type bitmask; the declared function must be unchanged. */
-  triggers?: readonly { function: string; bodySha256: string; type: number }[];
+  triggers?: readonly { function: string; bodySha256: string; type: number; configuration?: readonly string[]; schemaSearchPath?: boolean }[];
 }
 export interface PostgresSchemaRequirement {
   name: string;
@@ -36,6 +42,12 @@ export interface PostgresSchemaRequirement {
     bodySha256: string;
     language: 'sql' | 'plpgsql';
     volatility: string;
+    /** Exact format_type of the return type (for example bigint, not int8). */
+    returnType?: string;
+    /** Exact pg_proc.proconfig settings; defaults to none. */
+    configuration?: readonly string[];
+    /** Require pg_catalog, the checked schema, then pg_temp; settings are namespace-bound. */
+    schemaSearchPath?: boolean;
   }[];
   tables: Readonly<Record<string, PostgresTableRequirement>>;
 }
@@ -55,8 +67,23 @@ export class SchemaReadinessError extends Error {
   }
 }
 
-/** Connection-only pool view: no migration registry, journal mutation or DDL. */
-export async function requirePostgresSchema(pool: PostgresPool, contract: PostgresSchemaRequirement): Promise<void> {
+export interface PostgresReadinessOptions {
+  /** Per-statement deadline, not a total operation or pool acquisition deadline. Default 10 seconds. */
+  statementTimeoutMs?: number;
+  /** PostgreSQL lock wait per statement. Default 1 second. */
+  lockTimeoutMs?: number;
+}
+
+/** Connection-only pool view: no migration registry, journal mutation or DDL.
+ * The caller must bound pool acquisition with its own connectionTimeoutMillis. */
+export async function requirePostgresSchema(pool: PostgresPool, contract: PostgresSchemaRequirement, options: PostgresReadinessOptions = {}): Promise<void> {
+  const timeout = (name: string, value: number) => {
+    if (!Number.isInteger(value) || value < 1 || value > 2_147_483_647)
+      throw new TypeError(`${name} must be a positive PostgreSQL timeout in milliseconds`);
+    return `${value}ms`;
+  };
+  const statementTimeout = timeout('statementTimeoutMs', options.statementTimeoutMs ?? 10_000);
+  const lockTimeout = timeout('lockTimeoutMs', options.lockTimeoutMs ?? 1_000);
   const db = createPostgresMigrationDatabase(pool);
   try {
     await db
@@ -64,9 +91,10 @@ export async function requirePostgresSchema(pool: PostgresPool, contract: Postgr
       .setIsolationLevel('repeatable read')
       .setAccessMode('read only')
       .execute(async (tx) => {
+        await sql`SELECT set_config('statement_timeout', ${statementTimeout}, true), set_config('lock_timeout', ${lockTimeout}, true)`.execute(tx);
         const {
           rows: [namespace],
-        } = await sql<{ schema: string }>`SELECT coalesce(${contract.schema ?? null}::text, current_schema()) AS schema`.execute(tx);
+        } = await sql<{ schema: string; quoted_schema: string }>`SELECT coalesce(${contract.schema ?? null}::text, current_schema()) AS schema, pg_catalog.quote_ident(coalesce(${contract.schema ?? null}::text, current_schema())) AS quoted_schema`.execute(tx);
         if (!namespace?.schema)
           throw new SchemaReadinessError(contract.name, ['schema: unavailable']);
         const tables = await tx.introspection.getTables();
@@ -101,9 +129,13 @@ export async function requirePostgresSchema(pool: PostgresPool, contract: Postgr
           language: string;
           args: number;
           columns: string;
+          return_type: string;
+          configuration: string[] | null;
+          security: boolean;
         }>`SELECT c.relname AS table,t.tgenabled AS enabled,t.tgtype::integer AS type,
         t.tgqual IS NOT NULL AS qualified,p.proname AS function,pn.nspname AS function_schema,
-        p.prosrc AS body,l.lanname AS language,t.tgnargs AS args,t.tgattr::text AS columns
+        p.prosrc AS body,l.lanname AS language,t.tgnargs AS args,t.tgattr::text AS columns,
+        format_type(p.prorettype,NULL) AS return_type,p.proconfig AS configuration,p.prosecdef AS security
         FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
         JOIN pg_proc p ON p.oid=t.tgfoid JOIN pg_language l ON l.oid=p.prolang JOIN pg_namespace pn ON pn.oid=p.pronamespace
         WHERE NOT t.tgisinternal AND n.nspname=${namespace.schema} AND c.relname=ANY(${names}::text[])`.execute(
@@ -114,8 +146,9 @@ export async function requirePostgresSchema(pool: PostgresPool, contract: Postgr
           column: string;
           generated: boolean;
           expression: string | null;
+          formatted_type: string;
         }>`
-        SELECT c.relname AS table,a.attname AS column,a.attgenerated<>'' AS generated,pg_get_expr(d.adbin,d.adrelid) AS expression
+        SELECT c.relname AS table,a.attname AS column,a.attgenerated<>'' AS generated,pg_get_expr(d.adbin,d.adrelid) AS expression,format_type(a.atttypid,a.atttypmod) AS formatted_type
         FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace
         LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
         WHERE n.nspname=${namespace.schema} AND c.relname=ANY(${names}::text[]) AND a.attnum>0 AND NOT a.attisdropped`.execute(
@@ -127,8 +160,10 @@ export async function requirePostgresSchema(pool: PostgresPool, contract: Postgr
           language: string;
           volatility: string;
           security: boolean;
+          return_type: string;
+          configuration: string[] | null;
         }>`
-          SELECT p.proname AS name,p.prosrc AS body,l.lanname AS language,p.provolatile AS volatility,p.prosecdef AS security
+          SELECT p.proname AS name,p.prosrc AS body,l.lanname AS language,p.provolatile AS volatility,p.prosecdef AS security,format_type(p.prorettype,NULL) AS return_type,p.proconfig AS configuration
           FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace JOIN pg_language l ON l.oid=p.prolang
           WHERE n.nspname=${namespace.schema} AND p.pronargs=0 AND p.proname=ANY(${(contract.routines ?? []).map((r) => r.name)}::text[])`.execute(
           tx,
@@ -140,6 +175,11 @@ export async function requirePostgresSchema(pool: PostgresPool, contract: Postgr
           'set null': 'n',
           'set default': 'd',
         };
+        const sameSettings = (actual: string[] | null, expected: readonly string[] = [], schemaSearchPath = false) => {
+          const selected = schemaSearchPath ? [...expected, `search_path=pg_catalog, ${namespace.quoted_schema}, pg_temp`] : expected;
+          const sorted = [...(actual ?? [])].sort();
+          return sorted.length === selected.length && [...selected].sort().every((value, i) => value === sorted[i]);
+        };
         const violations: string[] = [];
         for (const expected of contract.routines ?? []) {
           if (
@@ -149,6 +189,8 @@ export async function requirePostgresSchema(pool: PostgresPool, contract: Postgr
                 !r.security &&
                 r.language === expected.language &&
                 r.volatility === expected.volatility &&
+                (expected.returnType === undefined || r.return_type === expected.returnType) &&
+                sameSettings(r.configuration, expected.configuration, expected.schemaSearchPath) &&
                 createHash('sha256').update(r.body).digest('hex') === expected.bodySha256,
             )
           ) {
@@ -168,12 +210,14 @@ export async function requirePostgresSchema(pool: PostgresPool, contract: Postgr
             if (
               !column ||
               column.dataType !== spec.type ||
-              column.dataTypeSchema !== 'pg_catalog' ||
+              column.dataTypeSchema !== (spec.typeSchema ?? 'pg_catalog') ||
+              (spec.formattedType !== undefined && !columns.some((c) => c.table === name && c.column === nameOfColumn && c.formatted_type === spec.formattedType)) ||
               column.isNullable !== spec.nullable ||
               (spec.default !== undefined && column.hasDefaultValue !== spec.default) ||
               (spec.defaultExpression !== undefined &&
                 !columns.some((c) => c.table === name && c.column === nameOfColumn && !c.generated && c.expression === spec.defaultExpression)) ||
-              (spec.generated !== undefined &&
+              ((spec.generated === false || (expected.insert && spec.generated === undefined)) && columns.some((c) => c.table === name && c.column === nameOfColumn && c.generated)) ||
+              (typeof spec.generated === 'string' &&
                 !columns.some(
                   (c) =>
                     c.table === name &&
@@ -244,6 +288,9 @@ export async function requirePostgresSchema(pool: PostgresPool, contract: Postgr
                   t.columns === '' &&
                   t.function_schema === namespace.schema &&
                   t.language === 'plpgsql' &&
+                  t.return_type === 'trigger' &&
+                  !t.security &&
+                  sameSettings(t.configuration, expectedTrigger.configuration, expectedTrigger.schemaSearchPath) &&
                   t.function === expectedTrigger.function &&
                   createHash('sha256').update(t.body).digest('hex') === expectedTrigger.bodySha256,
               )

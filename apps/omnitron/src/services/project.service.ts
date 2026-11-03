@@ -2980,10 +2980,8 @@ export class ProjectService extends EventEmitter {
       if (directory !== (release.manifest.project.directory ?? ''))
         throw new Error('This local release belongs to another project directory in the repository');
     }
-    // Only what the definition reads has to be the release's — see
-    // `release/definition-inputs.ts`. The rest of the checkout is other
-    // people's work in progress, which no deployment reads. When the files
-    // cannot be named, the whole tree is compared, as before.
+    // Only what the definition reads has to be the release's. A failed input
+    // inventory cannot be replaced by a narrower or unverified comparison.
     const root = fs.realpathSync(project.path);
     // Local admission materializes the verified package itself. On remote deployments
     // the old single-project bootstrap still supplies its code declarations; its data
@@ -3008,10 +3006,7 @@ export class ProjectService extends EventEmitter {
         if (!inputs.length) throw new Error('No registered configuration inputs are available');
       } else inputs = await this.deploymentReads(projectName, stackConfig, config, root, remoteDefinitions);
     } catch (err) {
-      this.logger.warn(
-        { project: projectName, stack: stackName, error: (err as Error).message },
-        'Could not name the files the definition reads — the whole working tree has to be the release\'s commit',
-      );
+      throw new Error(`Cannot verify deployment inputs for ${projectName}/${stackName}: ${(err as Error).message}`, { cause: err });
     }
     const tree = await treeEqualsCommit(root, commit, inputs);
     if (!tree.equal) {

@@ -123,11 +123,18 @@ export async function treeEqualsCommit(
   paths?: readonly string[],
 ): Promise<{ equal: true } | { equal: false; files: string[] }> {
   if (paths && paths.length === 0) return { equal: true };
+  const repository = (await exec('git', ['rev-parse', '--show-toplevel'], { cwd: dir })).stdout.trimEnd();
+  const selected = paths?.map(file => {
+    const relative = path.relative(repository, path.resolve(dir, file));
+    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
+      throw new Error('A compared deployment input is outside the source repository');
+    return relative || '.';
+  });
   const run = async (args: string[]) =>
-    (await exec('git', args, { cwd: dir, maxBuffer: 16 * 1024 * 1024 })).stdout.split('\n').filter(Boolean);
-  const scope = paths ? ['--', ...paths] : ['--'];
-  const changed = await run(['diff', '--name-only', commit, ...scope]);
-  const untracked = await run(['ls-files', '--others', '--exclude-standard', ...(paths ? ['--', ...paths] : [])]);
+    (await exec('git', ['--literal-pathspecs', ...args], { cwd: repository, maxBuffer: 16 * 1024 * 1024 })).stdout.split('\0').filter(Boolean);
+  const scope = selected ? ['--', ...selected] : ['--'];
+  const changed = await run(['diff', '--no-ext-diff', '--no-textconv', '--name-only', '-z', commit, ...scope]);
+  const untracked = await run(['ls-files', '--others', '--exclude-standard', '-z', ...scope]);
   const files = [...changed, ...untracked.map((f) => `${f} (untracked)`)];
   return files.length === 0 ? { equal: true } : { equal: false, files };
 }

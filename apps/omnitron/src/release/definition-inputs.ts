@@ -9,8 +9,7 @@
  * edit to a file no deployment reads twice sent a release back to its build.
  *
  * What the definition actually reads is knowable:
- *   - `omnitron.config.*` and every file it imports relatively — the config
- *     loader bundles exactly that graph;
+ *   - `omnitron.config.*` and its relative import graph;
  *   - each app's bootstrap and every file IT imports relatively — the
  *     bootstrap loader bundles exactly that graph (non-relative imports stay
  *     external, as they do there);
@@ -30,10 +29,17 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 import { CONFIG_FILE_NAMES } from '../config/loader.js';
 
-/** Paths relative to the project root, sorted, each once. */
+/** A partial source comparison must never hide inputs outside its Git boundary. */
+export class UnverifiableDefinitionInputError extends Error {
+  override name = 'UnverifiableDefinitionInputError';
+}
+
+/** Paths relative to the configuration root, including siblings in the same repository. */
 export async function definitionInputs(
   projectPath: string,
   bootstraps: readonly string[],
@@ -41,18 +47,23 @@ export async function definitionInputs(
   shipped: readonly string[] = [],
 ): Promise<string[]> {
   const root = fs.realpathSync(projectPath);
+  const git = async (...args: string[]) => (await promisify(execFile)('git', args, { cwd: root, maxBuffer: 16 * 1024 * 1024 })).stdout;
+  const repository = fs.realpathSync((await git('rev-parse', '--show-toplevel')).trimEnd());
+  const inside = (file: string) => {
+    const relative = path.relative(repository, file);
+    return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+  };
   const configFile = CONFIG_FILE_NAMES.map((name) => path.join(root, name)).find((p) => fs.existsSync(p));
   const entries = [
     ...(configFile ? [configFile] : []),
     ...bootstraps.map((b) => path.resolve(root, b)),
   ];
-  if (entries.length === 0) return [];
   for (const entry of entries) {
     if (!fs.existsSync(entry)) throw new Error(`a definition entry is missing from the working tree: ${path.relative(root, entry)}`);
   }
 
   const esbuild = await import('esbuild');
-  const result = await esbuild.build({
+  const result = entries.length ? await esbuild.build({
     entryPoints: entries,
     absWorkingDir: root,
     bundle: true,
@@ -71,9 +82,10 @@ export async function definitionInputs(
         },
       },
     ],
-  });
+  }) : undefined;
 
-  const inputs = new Set<string>(Object.keys(result.metafile.inputs).map((p) => path.normalize(p)));
+  const inputs = new Set<string>(Object.keys(result?.metafile?.inputs ?? {}).map((p) => path.relative(root, path.resolve(root, p))));
+  const imported = [...inputs];
 
   const stacksFile = path.join(root, 'omnitron.stacks.json');
   if (fs.existsSync(stacksFile)) inputs.add('omnitron.stacks.json');
@@ -91,5 +103,35 @@ export async function definitionInputs(
 
   for (const dir of shipped) inputs.add(path.relative(root, path.resolve(root, dir)));
 
-  return [...inputs].filter((p) => p !== '' && !p.startsWith('..') && !path.isAbsolute(p)).sort();
+  for (const input of inputs) {
+    const file = path.resolve(root, input);
+    if (!inside(file) || (fs.existsSync(file) && !inside(fs.realpathSync(file))))
+      throw new UnverifiableDefinitionInputError(`A deployment input is outside the source repository: ${input}`);
+  }
+  // esbuild reports resolved targets. A tracked symlink can redirect an import
+  // while both old and new targets are unchanged, so bind the repository's link
+  // declarations as well. Their targets are still checked above when consumed.
+  const links = await git('ls-files', '--stage', '--full-name', '-z', '--', ':(top,glob)**');
+  for (const entry of links.split('\0')) {
+    if (entry.startsWith('120000 ')) inputs.add(path.relative(root, path.join(repository, entry.slice(entry.indexOf('\t') + 1))));
+    if (entry.startsWith('160000 ')) {
+      const submodule = path.join(repository, entry.slice(entry.indexOf('\t') + 1));
+      if ([...inputs].some(input => {
+        const relative = path.relative(submodule, path.resolve(root, input));
+        return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+      })) throw new UnverifiableDefinitionInputError('Deployment source inside a Git submodule requires its own verified source binding');
+    }
+  }
+  // Imported ignored source has no commit identity. Machine-local secrets read
+  // explicitly by configuration remain runtime inputs, rather than code imports.
+  if (imported.length) {
+    try {
+      const ignored = await git('--literal-pathspecs', 'ls-files', '--others', '--ignored', '--exclude-standard', '-z', '--', ...imported);
+      if (ignored) throw new UnverifiableDefinitionInputError(`A deployment input is ignored by Git: ${ignored.split('\0')[0]}`);
+    } catch (error) {
+      if (error instanceof UnverifiableDefinitionInputError) throw error;
+      throw new UnverifiableDefinitionInputError('Deployment inputs could not be checked against the source repository', { cause: error });
+    }
+  }
+  return [...inputs].sort();
 }

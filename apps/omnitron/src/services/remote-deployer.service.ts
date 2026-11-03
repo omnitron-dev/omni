@@ -64,6 +64,7 @@ const UNREADABLE = -3;
 import { withNodeLeases, type LeaseRunner } from './node-deploy-lease.js';
 import { hostOperationBarrierCommand, type HostOperationAllowance } from './host-operation-barrier.js';
 import { migrationOutput } from './migration-output.js';
+import { COMPILED_MIGRATION_ENTRY, migrationDatabaseEnvironment } from './migration-target.js';
 import { publishNodeConfigCommand, restoreNodeConfigCommand } from './node-registration.js';
 
 
@@ -291,31 +292,6 @@ export function withDeploymentProgress<T>(scope: TransferScope, work: () => Prom
 // =============================================================================
 // RemoteDeployer
 // =============================================================================
-
-/**
- * The parts of a postgres URL, for the environment a migrator expects.
- *
- * Returns null rather than guessing at a URL it cannot read: a migration run
- * against half-parsed connection details is worse than one that does not run,
- * because it can succeed somewhere nobody meant.
- */
-function parseDatabaseUrl(
-  url: string,
-): { host: string; port: string; database: string; user: string; password: string } | null {
-  try {
-    const u = new URL(url);
-    if (!u.protocol.startsWith('postgres')) return null;
-    return {
-      host: u.hostname,
-      port: u.port || '5432',
-      database: decodeURIComponent(u.pathname.replace(/^\//, '')),
-      user: decodeURIComponent(u.username),
-      password: decodeURIComponent(u.password),
-    };
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Is this a gzip stream of a COMPLETE tar archive?
@@ -1093,7 +1069,7 @@ export class RemoteDeployer {
         `/opt/omnitron/artifacts/${assertRemotePathSegment('project name', project)}` +
         `/${assertRemotePathSegment('app name', entry.app)}` +
         `/${assertRemotePathSegment('version', entry.directory ?? entry.version)}`;
-      const script = `${dir}/dist/database/migrate.js`;
+      const script = `${dir}/${COMPILED_MIGRATION_ENTRY}`;
 
       // A node that could not be asked is not an app without a migrator.
       // This command exits 0 either way, so `sshExec` throws only when the
@@ -1122,38 +1098,9 @@ export class RemoteDeployer {
         75,
         'Applying database migrations...',
       );
-      // Both spellings, because the migrators read the second one.
-      //
-      // `apps/payments/src/database/migrate.ts` declares
-      // `envPrefix: 'PAYMENTS__DATABASE'` and builds its connection from
-      // `PAYMENTS__DATABASE__HOST` / `__PORT` / `__USER` / `__PASSWORD` /
-      // `__DATABASE`. Given only `DATABASE_URL` it falls back to its own
-      // defaults and reports `password authentication failed for user
-      // "postgres"` — against a password that is correct and that it never
-      // read. All six apps failed that way, which is what a convention
-      // nobody wrote down costs when a second caller appears.
-      //
-      // `ProjectService` passes both, with the comment "App-specific env
-      // vars (various naming conventions)". This is the second caller.
-      const parsed = parseDatabaseUrl(databaseUrl);
-      const prefix = entry.app.toUpperCase().replace(/-/g, '_');
-      const dbEnv = parsed
-        ? {
-            [`${prefix}__DATABASE__HOST`]: parsed.host,
-            [`${prefix}__DATABASE__PORT`]: parsed.port,
-            [`${prefix}__DATABASE__DATABASE`]: parsed.database,
-            [`${prefix}__DATABASE__USER`]: parsed.user,
-            [`${prefix}__DATABASE__PASSWORD`]: parsed.password,
-          }
-        : {};
-
       try {
-        // `cd` into the artifact so the script resolves its own imports, and
-        // every value in the environment rather than the command line, where
-        // it would be in every process listing on the host.
-        const assignments = Object.entries({ DATABASE_URL: databaseUrl, ...dbEnv })
-          .map(([k, v]) => `${k}=${shellEscape(v)}`)
-          .join(' ');
+        const { env } = migrationDatabaseEnvironment(entry.app, databaseUrl);
+        const assignments = Object.entries(env).map(([key, value]) => `${key}=${shellEscape(value)}`).join(' ');
         // What the migrations said, in order, before the verdict (see
         // `migration-output.ts`). The masked channel on purpose: these lines
         // are for reading, not parsing, and a migrator that ever printed a

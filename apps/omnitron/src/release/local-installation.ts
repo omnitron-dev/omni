@@ -129,7 +129,7 @@ async function verify(root: string, launch: ReleaseLaunch, entry: IEcosystemAppE
 
 /** Selection is stored by the caller. This only materializes verified immutable inputs;
  * it never installs packages, mutates an owner, or rewrites a developer checkout. */
-export async function inspectLocalReleaseInstallation(release: LoadedRelease, stack: string, entries: readonly IEcosystemAppEntry[], options: { prepare?: boolean; ownerPid?: number; ownerPackage?: string } = {}): Promise<IEcosystemAppEntry[]> {
+export async function inspectLocalReleaseInstallation(release: LoadedRelease, stack: string, entries: readonly IEcosystemAppEntry[], options: { prepare?: boolean; ownerPid?: number; ownerPackage?: string; requiredFiles?: Readonly<Record<string, readonly string[]>> } = {}): Promise<IEcosystemAppEntry[]> {
   if (!digest(release.manifestSha256)) throw Error('Invalid local release manifest digest');
   const runtime = await targetRuntime();
   const sources = new Map(releaseArtifactOrigins(release.manifest, release.manifestSha256).map(source => [source.app, source]));
@@ -209,6 +209,10 @@ export async function inspectLocalReleaseInstallation(release: LoadedRelease, st
       }
     }
     const executable = await verify(root, launch, entry, runtime, { origin, ownerPackage });
+    for (const relative of options.requiredFiles?.[entry.name] ?? []) {
+      try { await member(root, relative); }
+      catch { throw Error(`Requested release file is unavailable or is not a physical compiled member: ${entry.name}/${relative}`); }
+    }
     const { releaseFrom: _releaseFrom, ...runtimeEntry } = entry;
     result.push({ ...runtimeEntry, ...(entry.releaseFrom ? { cwd: entry.cwd ?? root } : {}),
       [launch.mode]: executable, releaseRoot: root, watch: false });

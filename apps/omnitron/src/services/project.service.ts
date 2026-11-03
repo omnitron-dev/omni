@@ -124,6 +124,11 @@ import { gatewayRedisDb } from '../infrastructure/gateway-redis-db.js';
  */
 const MAINTENANCE_PROBE_PATHS = ['/', '/api/main/health'] as const;
 import { migrationOutput } from './migration-output.js';
+import { redactDiagnosticText } from '@omnitron-dev/titan/diagnostics';
+import { COMPILED_MIGRATION_ENTRY, localMigrationTargets, requestedMigrations, migrationDatabaseEnvironment, type VerifyMigrationEntries } from './migration-target.js';
+import { executeLocalMigration } from './migration-process.js';
+import { normalizeInfraConfig } from '../infrastructure/config-normalizer.js';
+import { createDefaultRegistry } from '../infrastructure/presets/index.js';
 import type { LoadedRelease } from '../release/load.js';
 import { readArchiveInfrastructure } from '../release/infrastructure.js';
 import { releaseArtifactOrigins } from '../release/origin.js';
@@ -1066,7 +1071,6 @@ export class ProjectService extends EventEmitter {
           // `pull access denied` for, while the preset named the image the
           // resolver actually uses. A prefetch that pulls something else is
           // worse than none — it reports success and warms nothing.
-          const { createDefaultRegistry } = await import('../infrastructure/presets/index.js');
           const presets = createDefaultRegistry();
           const images = new Set<string>();
           for (const name of ['postgres', 'redis', 'minio'] as const) {
@@ -1290,7 +1294,8 @@ export class ProjectService extends EventEmitter {
     if (!entries.length) add('applications.empty', 'Applications', 'blocked', 'No enabled applications are selected.');
     try { resolveStartupOrder(entries); add('dependencies.valid', 'Application dependencies', 'pass', 'Startup dependency order resolved.'); }
     catch { add('dependencies.invalid', 'Application dependencies', 'blocked', 'Application dependencies cannot be ordered.', 'Check missing dependencies and dependency cycles in the project configuration.'); }
-    try { await this.stackEnvFor(projectName, stackName, stack, entries.map(entry => entry.name)); add('environment.valid', 'Environment', 'pass', 'Environment declarations and vault references resolved; values are withheld.'); }
+    let migrationEnvironment: Readonly<Record<string, Readonly<Record<string, string>>>> | null = null;
+    try { migrationEnvironment = await this.stackEnvFor(projectName, stackName, stack, entries.map(entry => entry.name)); add('environment.valid', 'Environment', 'pass', 'Environment declarations and vault references resolved; values are withheld.'); }
     catch { add('environment.invalid', 'Environment', 'blocked', 'Environment declarations or vault references could not be resolved.', 'Check stack environment variable names and required vault entries.'); }
     const definitions = new Map<string, IAppDefinition>();
     for (const entry of entries) {
@@ -1330,6 +1335,24 @@ export class ProjectService extends EventEmitter {
     }
     try {
       const effective = mergeInferredInfrastructure(buildInfraFromRequirements(requirementsFromDefinitions(definitions)), mergeInfrastructure(config, stack));
+      const migrations = requestedMigrations(normalizeInfraConfig(effective, createDefaultRegistry()));
+      if (migrations.length) {
+        try {
+          const targets = await localMigrationTargets(migrations, entries, project.path,
+            names => this.launchEntries(projectName, stackName, stack, config, names));
+          if (migrationEnvironment) {
+            const resolveMigration = this.stackEntryBuilder(projectName, stackName, stack, config, definitions, migrationEnvironment);
+            for (const target of targets) {
+              const entry = entries.find(app => app.name === target.app)!;
+              migrationDatabaseEnvironment(target.environmentApp, resolveMigration(entry).env?.['DATABASE_URL'] ?? '', target.app);
+            }
+          }
+          add('migrations.entries', 'Database migration programs', 'pass', 'Requested migration programs are available in the selected source or verified release. Database access and application of migrations remain unverified.');
+        } catch (error) {
+          add('migrations.unavailable', 'Database migration programs', 'blocked', describeFailure(error),
+            'Restore the requested migration program or prepare a complete verified release. No database or infrastructure was changed.');
+        }
+      }
       const declaredServices = { ...effective.services };
       for (const definition of definitions.values()) Object.assign(declaredServices, definition.omnitronConfig?.infrastructure);
       for (const [service, requirement] of Object.entries(declaredServices)) {
@@ -1785,10 +1808,9 @@ export class ProjectService extends EventEmitter {
               else if (selector.read().revision !== prior.revision) throw new Error('Local release selection changed during admission');
             });
             await enable();
-          });
+          }, release ? names => this.installedEntries(projectName, stackName, stackConfig, config, release, false, names) : undefined);
         } else {
-          await enable();
-          await this.startLocalStack(projectName, stackName, stackConfig, config);
+          await this.startLocalStack(projectName, stackName, stackConfig, config, undefined, async () => { await enable(); });
         }
       } else {
         this.rememberStackTargets(projectName, stackName, stackConfig, config);
@@ -3543,6 +3565,7 @@ export class ProjectService extends EventEmitter {
     ecosystemConfig: IEcosystemConfig,
     selectedEntries?: IEcosystemAppEntry[],
     enable?: (build: (entry: IEcosystemAppEntry) => IEcosystemAppEntry) => Promise<void>,
+    verifyMigrations?: VerifyMigrationEntries,
   ): Promise<void> {
     const ownsInfrastructure = ownsStackInfrastructure(stackConfig);
     const stateKey = `${projectName}/${stackName}`;
@@ -3567,6 +3590,16 @@ export class ProjectService extends EventEmitter {
     const effectiveInfra = ownsInfrastructure ? mergeInferredInfrastructure(
       buildInfraFromRequirements(requirementsFromDefinitions(appDefinitions)), mergeInfrastructure(ecosystemConfig, stackConfig),
     ) : undefined;
+    // Refuse missing/tampered migrators before creating or changing infrastructure.
+    if (effectiveInfra && project) {
+      const migrations = await localMigrationTargets(requestedMigrations(normalizeInfraConfig(effectiveInfra, createDefaultRegistry())),
+        appEntries, project.path, verifyMigrations);
+      const resolveMigration = this.stackEntryBuilder(projectName, stackName, stackConfig, ecosystemConfig, appDefinitions, stackEnv);
+      for (const target of migrations) {
+        const entry = appEntries.find(app => app.name === target.app)!;
+        migrationDatabaseEnvironment(target.environmentApp, resolveMigration(entry).env?.['DATABASE_URL'] ?? '', target.app);
+      }
+    }
     if (effectiveInfra) {
       try {
         const infraService = await this.infraManager.provisionStack(
@@ -3629,10 +3662,10 @@ export class ProjectService extends EventEmitter {
     // Resolve once for both migrations and application startup. Inferred service
     // requirements are not permission to connect to a database or run migrations.
     const appConfigBuilder = this.stackEntryBuilder(projectName, stackName, stackConfig, ecosystemConfig, appDefinitions, stackEnv);
-    await enable?.(appConfigBuilder);
     if (effectiveInfra && project) {
-      await this.runStackMigrations(projectName, stackName, this.infraManager.getNormalizedServices(projectName, stackName) ?? {}, appEntries, project.path, appConfigBuilder);
+      await this.runStackMigrations(projectName, stackName, this.infraManager.getNormalizedServices(projectName, stackName) ?? {}, appEntries, project.path, appConfigBuilder, verifyMigrations);
     }
+    await enable?.(appConfigBuilder);
 
     // 4. Start apps in dependency-aware parallel batches.
     //
@@ -4778,127 +4811,34 @@ export class ProjectService extends EventEmitter {
     appEntries: IEcosystemAppEntry[],
     projectPath: string,
     resolveEntry: (entry: IEcosystemAppEntry) => IEcosystemAppEntry,
+    verifyMigrations?: VerifyMigrationEntries,
   ): Promise<void> {
-    const requested = new Set<string>();
-    for (const service of Object.values(services)) {
-      if (service._preset !== 'postgres') continue;
-      const databases = service._presetConfig?.['databases'];
-      if (!databases || typeof databases !== 'object' || Array.isArray(databases)) continue;
-      for (const [name, config] of Object.entries(databases)) {
-        if (config && typeof config === 'object' && 'migrate' in config && config.migrate === true) requested.add(name);
-      }
-    }
-    if (!requested.size) return;
-
-    // Resolve and validate every target before performing any database operation.
-    // Use the same environment as the application, including named services,
-    // allocated host ports, vault values and explicit per-app overrides.
-    const targets = [];
-    for (const dbName of requested) {
-      const entry = appEntries.find(app => app.name === dbName);
-      if (!entry) throw new Error(`Migration requested for ${dbName}, but this stack has no matching application`);
-      const migrateScript = path.join(projectPath, 'apps', dbName, 'src', 'database', 'migrate.ts');
-      try { await fs.promises.access(migrateScript); }
-      catch { throw new Error(`Migration requested for ${projectName}/${stackName}/${dbName}, but its migration script is unavailable`); }
-      const env = resolveEntry(entry).env;
-      const connectionString = env?.['DATABASE_URL'];
-      let url: URL, user: string, password: string;
-      try {
-        if (typeof connectionString !== 'string' || !connectionString) throw new Error();
-        url = new URL(connectionString);
-        if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname ||
-            decodeURIComponent(url.pathname.slice(1)) !== dbName) throw new Error();
-        user = decodeURIComponent(url.username);
-        password = decodeURIComponent(url.password);
-      } catch {
-        throw new Error(`Migration for ${projectName}/${stackName}/${dbName} requires its resolved PostgreSQL DATABASE_URL targeting ${dbName}`);
-      }
-      targets.push({ dbName, migrateScript, env, connectionString: connectionString as string, url, user, password });
-    }
-
-    for (const { dbName, migrateScript, env, connectionString, url, user, password } of targets) {
-      const host = url.hostname.replace(/^\[|\]$/g, '');
-      const port = Number(url.port || 5432);
-      this.logger.info({ project: projectName, stack: stackName, database: dbName, host, port }, 'Waiting for migration database');
+    const names = requestedMigrations(services);
+    const planned = await localMigrationTargets(names, appEntries, projectPath, verifyMigrations);
+    // Validate every resolved destination before the first DB probe. No missing source fallback.
+    const targets = planned.map(target => {
+      const env = resolveEntry(appEntries.find(entry => entry.name === target.app)!).env;
+      const database = migrationDatabaseEnvironment(target.environmentApp, env?.['DATABASE_URL'] ?? '', target.app);
+      return { target, env, database };
+    });
+    for (const { target, env, database } of targets) {
+      const { host, port, user, password, connectionString } = database;
+      this.logger.info({ project: projectName, stack: stackName, database: target.app, host, port }, 'Waiting for migration database');
       await waitForPostgres(host, port, user, password, 180_000, connectionString);
-
-      this.logger.info(
-        { project: projectName, stack: stackName, database: dbName },
-        'Running database migrations',
-      );
-
-      // Retry policy: up to 5 attempts with exponential backoff (1s, 2s, 4s, 8s, 16s).
-      // Migration tools are typically idempotent, so retrying after a transient
-      // ECONNREFUSED / role-creation race is safe.
-      const maxAttempts = 5;
-      let attempt = 0;
-      let lastErr: Error | null = null;
-      while (attempt < maxAttempts) {
-        attempt++;
-        try {
-          // Asynchronously. This was `execFileSync`, and a synchronous spawn
-          // holds the daemon's whole event loop for as long as the child runs
-          // — no RPC answered, no heartbeat, no mesh — which the event-loop
-          // watch caught at a master boot on 2026-09-23: six migrations back
-          // to back, 1 539 / 871 / 727 / 941 / 740 / 782 ms, 5.6 s of a daemon
-          // that answered nothing, on every restart. And with the retries
-          // below, a migration that hangs held it up to 60 s per attempt.
-          const { execFile } = await import('node:child_process');
-          const { promisify } = await import('node:util');
-          const running = promisify(execFile)(
-            process.execPath,
-            ['--import', 'tsx/esm', migrateScript],
-            {
-              cwd: path.join(projectPath, 'apps', dbName),
-              env: {
-                ...process.env,
-                ...env,
-                DATABASE_URL: connectionString,
-                // App-specific env vars (various naming conventions)
-                [`${dbName.toUpperCase()}__DATABASE__HOST`]: host,
-                [`${dbName.toUpperCase()}__DATABASE__PORT`]: String(port),
-                [`${dbName.toUpperCase()}__DATABASE__DATABASE`]: dbName,
-                [`${dbName.toUpperCase()}__DATABASE__USER`]: user,
-                [`${dbName.toUpperCase()}__DATABASE__PASSWORD`]: password,
-              },
-              timeout: 60_000,
-              maxBuffer: 16 * 1024 * 1024,
-            },
-          );
-          // Nothing to read from us, as `stdio: 'ignore'` said before.
-          running.child.stdin?.end();
-          const { stdout } = await running;
-          // What the migrations said, in order — see `migrationOutput`.
-          for (const line of migrationOutput(String(stdout))) {
-            this.logger.info({ database: dbName, line }, 'Migration said');
-          }
-          this.logger.info({ database: dbName, attempts: attempt }, 'Migrations applied');
-          lastErr = null;
-          break;
-        } catch (err: any) {
-          lastErr = err;
-          const stderr = err.stderr?.toString?.()?.trim?.() ?? '';
-          // Only retry on transient connection errors. Schema / SQL errors
-          // are deterministic and won't go away by trying again.
-          const transient = /ECONNREFUSED|ECONNRESET|ENOTCONN|terminat(ing|ed)|server closing|kysely.*Connection/i.test(stderr) ||
-            /ECONNREFUSED|ECONNRESET/i.test(err.message ?? '');
-          if (!transient || attempt >= maxAttempts) {
-            this.logger.error(
-              { database: dbName, attempt, error: err.message, stderr },
-              'Migration failed — stack startup refused',
-            );
-            break;
-          }
-          const delayMs = Math.min(1000 * 2 ** (attempt - 1), 16_000);
-          this.logger.warn(
-            { database: dbName, attempt, nextRetryInMs: delayMs, error: err.message },
-            'Migration transient failure — retrying',
-          );
-          await new Promise((r) => setTimeout(r, delayMs));
-        }
-      }
-      if (lastErr) {
-        throw new Error(`Migration failed for ${projectName}/${stackName}/${dbName}; stack startup refused`, { cause: lastErr });
+      // Database readiness may take minutes. Recheck the canonical payload and owner immediately before execution.
+      const [current] = await localMigrationTargets([target.app], appEntries, projectPath, verifyMigrations);
+      if (!current || !isDeepStrictEqual(current, target)) throw Error('Migration target changed during database readiness');
+      this.logger.info({ project: projectName, stack: stackName, database: target.app }, 'Running database migrations');
+      try {
+        const { stdout } = await executeLocalMigration(target, { ...env, ...database.env });
+        for (const line of migrationOutput(stdout)) this.logger.info({ database: target.app, line: redactDiagnosticText(line) }, 'Migration said');
+        this.logger.info({ database: target.app, attempts: 1 }, 'Migrations applied');
+      } catch (error) {
+        const failed = error as Error & { stderr?: string };
+        this.logger.error({ database: target.app, error: redactDiagnosticText(failed.message), stderr: redactDiagnosticText(failed.stderr?.trim() ?? '') },
+          'Migration failed — stack startup refused');
+        const reason = describeFailure(failed.stderr?.trim() || failed);
+        throw new Error(`Migration failed for ${projectName}/${stackName}/${target.app}; stack startup refused: ${reason}. Inspect the migration ledger before retrying.`, { cause: error });
       }
     }
   }
@@ -5115,11 +5055,11 @@ export class ProjectService extends EventEmitter {
     return new LocalReleaseSelection(this.daemonStateStore, { project, stack }, registration.registeredAt);
   }
 
-  private async installedEntries(project: string, stack: string, definition: IStackConfig, config: IEcosystemConfig, release: LoadedRelease, prepare = false) {
+  private async installedEntries(project: string, stack: string, definition: IStackConfig, config: IEcosystemConfig, release: LoadedRelease, prepare = false, requiredMigrations?: readonly string[]) {
     const root = this.registry.get(project)?.path;
     if (!root) throw new Error('Project is not registered');
     const { inspectLocalReleaseInstallation } = await import('../release/local-installation.js');
-    const configured = this.resolveStackApps(definition, config);
+    const configured = this.resolveStackApps(definition, config).filter(entry => !requiredMigrations || requiredMigrations.includes(entry.name));
     const env = await this.stackEnvFor(project, stack, definition, configured.map(entry => entry.name));
     const entries = configured.map(entry => ({
       ...entry, env: { ...entry.env, ...env[entry.name] },
@@ -5130,17 +5070,19 @@ export class ProjectService extends EventEmitter {
     if (!ownerPid) throw new Error('A verified local release requires a connected independent execution owner');
     const ownerPackage = await this.orchestrator.getExecutionOwnerPackage?.();
     if (!ownerPackage) throw new Error('Verified runtime origin requires an independently verified execution-owner package');
-    return inspectLocalReleaseInstallation(release, stack, entries, { prepare, ownerPid, ownerPackage });
+    return inspectLocalReleaseInstallation(release, stack, entries, { prepare, ownerPid, ownerPackage,
+      ...(requiredMigrations && { requiredFiles: Object.fromEntries(requiredMigrations.map(app => [app, [COMPILED_MIGRATION_ENTRY]])) }),
+    });
   }
 
   /** All consumers of executable declarations must see the same physical entry as the owner. */
-  private async launchEntries(project: string, stack: string, definition: IStackConfig, config: IEcosystemConfig) {
+  private async launchEntries(project: string, stack: string, definition: IStackConfig, config: IEcosystemConfig, requiredMigrations?: readonly string[]) {
     const selected = definition.type === 'local' && !definition.managedOrigin ? this.localSelection(project, stack).read().release : null;
     if (!selected) return this.resolveStackApps(definition, config);
     const { loadRelease } = await import('../release/load.js');
     const release = await loadRelease(selected.id, await this.releaseStore());
     if (release.manifestSha256 !== selected.manifestSha256) throw new Error('Selected release manifest changed on disk');
-    return this.installedEntries(project, stack, definition, config, release);
+    return this.installedEntries(project, stack, definition, config, release, false, requiredMigrations);
   }
 
   private async checkLocalOwner(project: string, stack: string, entries: IEcosystemAppEntry[], changing: boolean) {

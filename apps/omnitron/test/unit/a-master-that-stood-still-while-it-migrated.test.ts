@@ -143,7 +143,7 @@ describe('a master that stood still while it migrated', () => {
     const root = project("process.stderr.write('ERROR: relation \"wallets\" does not exist\\n'); process.exit(1);\n");
     const { migrate, said } = service();
 
-    await expect(migrate(root)).rejects.toThrow('stack startup refused');
+    await expect(migrate(root)).rejects.toThrow('stack startup refused: ERROR: relation "wallets" does not exist');
 
     const failed = said.find((s) => s.msg === 'Migration failed — stack startup refused');
     expect(failed?.level).toBe('error');
@@ -156,8 +156,16 @@ describe('a master that stood still while it migrated', () => {
     expect(probe).not.toHaveBeenCalled();
   });
 
+  it('does not retry a connection failure after the migrator has executed', async () => {
+    const root = project(`import fs from 'node:fs';
+      fs.appendFileSync('attempts', 'one\\n');
+      process.stderr.write('ECONNRESET after commit'); process.exit(1);`);
+    await expect(service().migrate(root)).rejects.toThrow('Inspect the migration ledger before retrying');
+    expect(fs.readFileSync(path.join(root, 'apps/main/attempts'), 'utf8')).toBe('one\n');
+  });
+
   it('honors an explicit named service and preserves the resolved application connection', async () => {
-    const url = 'postgresql://app%40user:p%2Fword@127.0.0.1:5544/main?sslmode=require';
+    const url = 'postgresql://app%40user:p%2Fword@127.0.0.1:5544/main';
     const root = project(`
       import assert from 'node:assert/strict';
       assert.equal(process.env.DATABASE_URL, ${JSON.stringify(url)});
@@ -167,6 +175,13 @@ describe('a master that stood still while it migrated', () => {
     `);
     await service().migrate(root, { services: { database: { preset: 'postgres', config: { databases: { main: { migrate: true } } } } } }, { DATABASE_URL: url, APP_SETTING: 'kept' });
     expect(probe).toHaveBeenCalledExactlyOnceWith('127.0.0.1', 5544, 'app@user', 'p/word', 180_000, url);
+  });
+
+  it('refuses URL options that the standard migrator cannot guarantee before probing the database', async () => {
+    const root = project("throw Error('must not execute');");
+    await expect(service().migrate(root, undefined, { DATABASE_URL: 'postgres://u:secret@localhost:5544/main?sslmode=require' }))
+      .rejects.toThrow('refuses DATABASE_URL options');
+    expect(probe).not.toHaveBeenCalled();
   });
 
   it('an explicit named service overrides legacy migration sugar, just as provisioning does', async () => {
@@ -199,7 +214,7 @@ describe('a master that stood still while it migrated', () => {
  * Only Docker provisioning, bootstrap loading and process creation are substituted.
  */
 describe('local stack migration admission', () => {
-  function stack(root: string, migrate: boolean) {
+  function stack(root: string, migrate: boolean, env?: Record<string, string>) {
     const { svc } = service();
     const startApp = vi.fn(async (..._args: unknown[]) => {});
     const manager = new StackInfrastructureManager(svc.logger);
@@ -221,7 +236,7 @@ describe('local stack migration admission', () => {
       } },
     };
     return { startApp, manager, start: () => svc.startLocalStack('sample', 'dev', configuration, {
-      apps: [{ name: 'main', bootstrap: 'apps/main/bootstrap.ts' }],
+      apps: [{ name: 'main', bootstrap: 'apps/main/bootstrap.ts', ...(env && { env }) }],
     }) };
   }
 
@@ -235,6 +250,30 @@ describe('local stack migration admission', () => {
       const connection = new URL(entry.env.DATABASE_URL!);
       expect(connection.port).toBe('5544');
       expect(connection.pathname).toBe('/main');
+    } finally { fixture.manager.dispose(); }
+  });
+
+  it('refuses a missing requested migrator before infrastructure provisioning', async () => {
+    const root = project('');
+    fs.unlinkSync(path.join(root, 'apps/main/src/database/migrate.ts'));
+    const fixture = stack(root, true);
+    const provision = vi.spyOn(fixture.manager, 'provisionStack');
+    try {
+      await expect(fixture.start()).rejects.toThrow('migration script is unavailable');
+      expect(provision).not.toHaveBeenCalled();
+      expect(probe).not.toHaveBeenCalled();
+      expect(fixture.startApp).not.toHaveBeenCalled();
+    } finally { fixture.manager.dispose(); }
+  });
+
+  it('refuses unsupported migration connection options before changing infrastructure', async () => {
+    const fixture = stack(project(''), true, { DATABASE_URL: 'postgres://u:p@localhost:5544/main?sslmode=require' });
+    const provision = vi.spyOn(fixture.manager, 'provisionStack');
+    try {
+      await expect(fixture.start()).rejects.toThrow('refuses DATABASE_URL options');
+      expect(provision).not.toHaveBeenCalled();
+      expect(probe).not.toHaveBeenCalled();
+      expect(fixture.startApp).not.toHaveBeenCalled();
     } finally { fixture.manager.dispose(); }
   });
 

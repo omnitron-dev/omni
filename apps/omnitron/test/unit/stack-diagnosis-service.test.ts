@@ -25,7 +25,7 @@ function fixture() {
     registry: { get: () => ({ path: directory }) }, configRegistry: new Map([['sample', { config, loadedAt: Date.now() }]]),
     bootstrapTopology: new Map(), diagnosesInFlight: new Map(), bootstrapMetadata: metadata, orchestrator: { getHandle: () => undefined },
     resolveStacks: () => config.stacks, resolveStackApps: () => entries, stackEnvFor: async () => ({}),
-    infraManager: { planStack: plan },
+    infraManager: { planStack: plan, getPortAllocation: () => null, getNormalizedServices: () => null },
   }) as ProjectService;
   return { service, config, bootstrap, metadata, plan };
 }
@@ -35,6 +35,22 @@ describe('read-only readiness contract', () => {
     expect(report.status).toBe('ready');
     expect(f.plan.mock.calls[0]).toEqual(expect.arrayContaining([expect.objectContaining({ postgres: { databases: { api: {} } } })]));
     expect(report.deferred).toContain('Database authentication, schema and migrations');
+  });
+  it('reports a missing requested migrator without executing application code or connecting to the DB', async () => {
+    const f = fixture();
+    Object.assign(f.config.stacks.dev, { infrastructure: { postgres: { databases: { api: { migrate: true } } } } });
+    const blocked = await f.service.diagnoseStack('sample', 'dev');
+    expect(blocked.status).toBe('blocked');
+    expect(blocked.checks).toContainEqual(expect.objectContaining({ code: 'migrations.unavailable', state: 'blocked', message: expect.stringContaining('migration script is unavailable') }));
+    const root = path.dirname(path.dirname(path.dirname(f.bootstrap)));
+    fs.mkdirSync(path.join(root, 'apps/api/src/database'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'apps/api/src/database/migrate.ts'), 'throw Error("MUST NOT EXECUTE")');
+    const available = await f.service.diagnoseStack('sample', 'dev');
+    expect(available.checks).toContainEqual(expect.objectContaining({ code: 'migrations.entries', state: 'pass' }));
+    expect(available.deferred).toContain('Database authentication, schema and migrations');
+    Object.assign(f.config.apps[0]!, { env: { DATABASE_URL: 'postgres://u:p@localhost/api?sslmode=require' } });
+    const incompatible = await f.service.diagnoseStack('sample', 'dev');
+    expect(incompatible.checks).toContainEqual(expect.objectContaining({ code: 'migrations.unavailable', state: 'blocked', message: expect.stringContaining('refuses DATABASE_URL options') }));
   });
   it('reports an unselected imported release instead of treating it as an unchecked classic command', async () => {
     const f = fixture();

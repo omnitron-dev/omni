@@ -226,6 +226,27 @@ A failure identifies its application and halts the remaining scripts.
 On an enrolled node, direct lifecycle and migration writes require a
 recipient-fenced execution path.
 
+For a stack with explicitly requested PostgreSQL migrations (`migrate: true`),
+startup validates every migration program before provisioning infrastructure.
+A development stack uses its application’s `src/database/migrate.ts`; a selected
+local release uses only `dist/database/migrate.js` inside the verified installed
+artifact, with that artifact’s dependencies and the verified Node executable.
+The compiled convention is shared with remote deployment. The current standard
+migrator consumes the app-prefixed host, port, database, user and password fields.
+A `DATABASE_URL` query or fragment is refused before local provisioning: frozen
+migrators do not guarantee those options, including TLS settings. This is an
+explicit compatibility limit, not permission to drop connection options. Imported applications
+retain the original producer’s migration program and environment prefix. A missing
+or modified compiled program refuses startup; it never falls back to the working tree.
+
+After database readiness, the installed closure is checked again and each migrator
+runs once. A failed or interrupted execution blocks application start and is not
+automatically retried: the database may already have committed. Inspect the migration
+ledger before retrying. The child execution has a ten-minute deadline; timeout or
+cancellation terminates that child and reports an unknown outcome. Stack diagnosis
+in CLI and Console verifies program availability without connecting to the database;
+authentication, schema and the actual migration result remain explicitly unverified.
+
 ## Standalone infrastructure
 
 `omnitron infra up`, `down` and `reset --yes` operate on containers declared

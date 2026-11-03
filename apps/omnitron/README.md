@@ -136,6 +136,11 @@ Readiness declarations are checked against the resolved execution mode:
 bootstrap applications publish domain health through Titan hooks, while file
 heartbeats remain available to classic scripts.
 
+Concurrent preparation of the same entry accepts only a complete receipt for
+the same application, owner and runtime. If receipt publication interrupts a
+tree scan, preparation verifies the published receipt and the admitted payload
+again; changed files or an incompatible binding still fail verification.
+
 Read-only diagnosis and topology use captured launch declarations. If no
 release is selected, or an older owner has not supplied declaration evidence,
 they report the missing information. A retained archive match proves installed

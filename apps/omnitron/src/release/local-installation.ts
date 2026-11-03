@@ -190,23 +190,22 @@ export async function inspectLocalReleaseInstallation(release: LoadedRelease, st
     if (options.prepare && !await fs.lstat(path.join(root, RELEASE_RECEIPT)).then(() => true, error => {
       if (absent(error)) return false; throw error;
     })) {
-      let publishedByPeer = false;
-      try { await verify(root, launch, entry, runtime); }
-      catch (error) {
-        // A concurrent preparer can publish after our absence check. Accept only
-        // its complete, exact binding; every payload/runtime check still applies.
-        if (!await fs.lstat(path.join(root, RELEASE_RECEIPT)).then(() => true, e => {
-          if (absent(e)) return false; throw e;
-        })) throw error;
-        await verify(root, launch, entry, runtime, { origin, ownerPackage });
-        publishedByPeer = true;
-      }
-      if (!publishedByPeer) {
+      try {
+        await verify(root, launch, entry, runtime);
         const receipt = { version: 2 as const, root, origin, ownerPackage, target: runtime,
           nodeOptions: releaseOptionsForEnv(entry.env), treeSha256: await releaseTreeDigest(root),
           installedFrameworkCommit: origin.frameworkCommit, frameworkContentUnchanged: true, artifactPayloadUnchanged: true };
         try { await writeInstalledReleaseReceipt(root, receipt); }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
+      } catch (error) {
+        // Publication may race either payload verification or the seal's tree
+        // digest. It changes the directory metadata even though the receipt is
+        // excluded from the digest. Retry once, only against a complete receipt;
+        // exact origin, runtime and both payload digests are still verified.
+        if (!await fs.lstat(path.join(root, RELEASE_RECEIPT)).then(() => true, e => {
+          if (absent(e)) return false; throw e;
+        })) throw error;
+        await verify(root, launch, entry, runtime, { origin, ownerPackage });
       }
     }
     const executable = await verify(root, launch, entry, runtime, { origin, ownerPackage });

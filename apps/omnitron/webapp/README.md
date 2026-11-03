@@ -46,6 +46,14 @@ destructive confirmation; never move the confirmation into the initial/default
 focus position just to match a toolbar. Preserve each command's `Can` permission,
 disabled state and existing confirmation flow when changing its layout.
 
+## Refresh after an operation
+
+Use the shared `usePolledResource.refresh` after a mutation. It waits for a read
+started after the refresh request, including when a background poll is already
+running. Concurrent refreshes share one queued read; background ticks do not
+create a queue. Disposing a scope cancels its queued work, and failed reads keep
+the previous data with an error. Do not add page-specific retry loops.
+
 ## Browser tests
 
 Run the workspace and topology checks from this directory. Playwright serves the Console components on a private loopback port with a fixed inventory.

@@ -52,7 +52,8 @@ const defaultDescribeError = (err: unknown): string =>
  */
 export class PollRunner<T> {
   private state: PollState<T> = { data: null, error: null, loading: true };
-  private inFlight = false;
+  private inFlight: Promise<boolean> | null = null;
+  private queuedRefresh: { promise: Promise<boolean>; resolve: (active: boolean) => void; reject: (error: unknown) => void } | null = null;
   private stopped = false;
   private readonly describeError: (err: unknown) => string;
 
@@ -67,31 +68,62 @@ export class PollRunner<T> {
 
   /** True while a fetch is outstanding. */
   get busy(): boolean {
-    return this.inFlight;
+    return this.inFlight !== null;
   }
 
   /**
    * Run one fetch, unless one is already outstanding.
    *
-   * @returns true if a fetch was started, false if it was skipped because the
-   *          previous one had not come back. A skipped tick is not an error:
+   * @returns true when the read completes while active, false when stopped or
+   *          skipped because the previous one had not come back. A skipped tick is not an error:
    *          the next one will run, and the data is only as stale as the slow
    *          request that is still running.
    */
-  async tick(): Promise<boolean> {
-    if (this.inFlight || this.stopped) return false;
-    this.inFlight = true;
+  tick(): Promise<boolean> {
+    if (this.inFlight || this.stopped) return Promise.resolve(false);
+    let resolve!: (active: boolean) => void, reject!: (error: unknown) => void;
+    const promise = new Promise<boolean>((accept, refuse) => { resolve = accept; reject = refuse; });
+    // Install the barrier before invoking even a synchronously throwing fetcher.
+    this.inFlight = promise;
+    const finish = () => {
+      this.inFlight = null;
+      const queued = this.queuedRefresh;
+      this.queuedRefresh = null;
+      if (queued) {
+        if (this.stopped) queued.resolve(false);
+        else void this.tick().then(queued.resolve, queued.reject);
+      }
+    };
+    void this.read().then(
+      (active) => { finish(); resolve(active); },
+      (error) => { finish(); reject(error); },
+    );
+    return promise;
+  }
 
+  /** Explicit invalidation must observe a read started after the request. Concurrent
+   * invalidations share one queued read; background ticks continue to skip overlap.
+   * A later invalidation during that follow-up queues at most one further read. */
+  refresh(): Promise<boolean> {
+    if (this.stopped) return Promise.resolve(false);
+    if (!this.inFlight) return this.tick();
+    if (!this.queuedRefresh) {
+      let resolve!: (active: boolean) => void, reject!: (error: unknown) => void;
+      const promise = new Promise<boolean>((accept, refuse) => { resolve = accept; reject = refuse; });
+      this.queuedRefresh = { promise, resolve, reject };
+    }
+    return this.queuedRefresh.promise;
+  }
+
+  private async read(): Promise<boolean> {
     try {
       const data = await this.options.fetcher();
-      if (this.stopped) return true;
+      if (this.stopped) return false;
       this.emit({ data, error: null, loading: false });
     } catch (err) {
-      if (this.stopped) return true;
+      if (this.stopped) return false;
       // Keep `data`: a failed poll must not blank a table someone is reading.
       this.emit({ data: this.state.data, error: this.describeError(err), loading: false });
-    } finally {
-      this.inFlight = false;
     }
 
     return true;
@@ -105,6 +137,8 @@ export class PollRunner<T> {
    */
   stop(): void {
     this.stopped = true;
+    this.queuedRefresh?.resolve(false);
+    this.queuedRefresh = null;
   }
 
   /**

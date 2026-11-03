@@ -182,3 +182,71 @@ describe('PollRunner', () => {
     expect(runner.current.error).toBe('daemon: ECONNREFUSED');
   });
 });
+
+it('coalesces explicit refreshes into one read started after the outstanding poll', async () => {
+  const old = deferred<string>(), fresh = deferred<string>();
+  const fetcher = vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise);
+  const runner = new PollRunner({ fetcher, onState: vi.fn() });
+  const poll = runner.tick();
+  const first = runner.refresh(), second = runner.refresh();
+  expect(first).toBe(second);
+  let settled = false;
+  void first.then(() => { settled = true; });
+  expect(await runner.tick()).toBe(false);
+  old.resolve('before mutation');
+  await poll;
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(settled).toBe(false);
+  fresh.resolve('after mutation');
+  expect(await first).toBe(true);
+  expect(runner.current.data).toBe('after mutation');
+  expect(runner.busy).toBe(false);
+});
+
+it('queues one later read for refreshes arriving during the follow-up without polling forever', async () => {
+  const a = deferred<string>(), b = deferred<string>(), c = deferred<string>();
+  const fetcher = vi.fn().mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise).mockReturnValueOnce(c.promise);
+  const runner = new PollRunner({ fetcher, onState: vi.fn() });
+  const initial = runner.tick(), first = runner.refresh();
+  a.resolve('a'); await initial;
+  const later = runner.refresh(), coalesced = runner.refresh();
+  expect(later).toBe(coalesced);
+  let settled = false; void later.then(() => { settled = true; });
+  b.resolve('b'); await first;
+  expect(settled).toBe(false);
+  expect(fetcher).toHaveBeenCalledTimes(3);
+  c.resolve('c'); await later;
+  await Promise.resolve();
+  expect(fetcher).toHaveBeenCalledTimes(3);
+  expect(runner.busy).toBe(false);
+});
+
+it('cancels a queued refresh on stop and does not revive it on resume', async () => {
+  const old = deferred<string>(), states = collector<string>();
+  const fetcher = vi.fn().mockReturnValueOnce(old.promise).mockResolvedValue('new scope');
+  const runner = new PollRunner({ fetcher, onState: states.onState });
+  const poll = runner.tick(), queued = runner.refresh();
+  runner.stop();
+  expect(await queued).toBe(false);
+  old.resolve('disposed scope'); await poll;
+  expect(states.states).toEqual([]);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(await runner.refresh()).toBe(false);
+  runner.resume();
+  expect(await runner.refresh()).toBe(true);
+  expect(runner.current.data).toBe('new scope');
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it('settles a synchronous refresh failure and allows the next explicit retry', async () => {
+  const old = deferred<string>();
+  const fetcher = vi.fn().mockReturnValueOnce(old.promise)
+    .mockImplementationOnce(() => { throw Error('connection refused'); }).mockResolvedValue('recovered');
+  const runner = new PollRunner({ fetcher, onState: vi.fn() });
+  const initial = runner.tick(), queued = runner.refresh();
+  old.resolve('last good'); await initial; await queued;
+  expect(runner.current).toEqual({ data: 'last good', error: 'connection refused', loading: false });
+  expect(runner.busy).toBe(false);
+  await runner.refresh();
+  expect(runner.current).toEqual({ data: 'recovered', error: null, loading: false });
+});

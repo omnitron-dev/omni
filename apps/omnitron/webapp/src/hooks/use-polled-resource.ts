@@ -40,7 +40,7 @@ export interface UsePolledResourceOptions {
 }
 
 export interface PolledResource<T> extends PollState<T> {
-  /** Fetch now, outside the schedule. Skipped if one is already in flight. */
+  /** Read after this explicit refresh request, coalescing requests made during an existing poll. */
   refresh: () => Promise<void>;
 }
 
@@ -163,7 +163,7 @@ export function usePolledResource<T>(
   }, [runner, enabled, paused]);
 
   const refresh = useCallback(async () => {
-    await runner.tick();
+    await runner.refresh();
   }, [runner]);
 
   return { ...state, refresh };

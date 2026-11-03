@@ -91,6 +91,33 @@ describe('usePolledResource under StrictMode', () => {
 });
 
 describe('usePolledResource', () => {
+  it('refreshes a paused resource after an already outstanding reading instead of losing the request', async () => {
+    let finishOld!: (value: string) => void, finishNew!: (value: string) => void;
+    const fetcher = vi.fn().mockImplementationOnce(() => new Promise<string>(resolve => { finishOld = resolve; }))
+      .mockImplementationOnce(() => new Promise<string>(resolve => { finishNew = resolve; }));
+    render(<Resource paused fetcher={fetcher} />);
+    await act(async () => { screen.getByRole('button', { name: 'refresh' }).click(); });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await act(async () => { finishOld('before mutation'); });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await act(async () => { finishNew('after mutation'); });
+    expect(screen.getByTestId('state')).toHaveTextContent('after mutation');
+  });
+
+  it('drops a queued refresh when the selected scope changes', async () => {
+    let finish!: (value: string) => void;
+    const old = vi.fn(() => new Promise<string>(resolve => { finish = resolve; }));
+    const next = vi.fn(async () => 'new scope');
+    const view = render(<Resource scope="old" paused fetcher={old} />);
+    await act(async () => { screen.getByRole('button', { name: 'refresh' }).click(); });
+    view.rerender(<Resource scope="new" paused fetcher={next} />);
+    await screen.findByText('new scope', { selector: '[data-testid="state"]' });
+    await act(async () => { finish('old scope'); });
+    expect(old).toHaveBeenCalledTimes(1);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('state')).toHaveTextContent('new scope');
+  });
+
   it('separates a new target immediately and ignores the previous target when it answers late', async () => {
     let finish!: (value: string) => void;
     const old = vi.fn(() => new Promise<string>(resolve => { finish = resolve; }));

@@ -12,7 +12,10 @@ import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';
 import { createAuthContextWrapper, runWithAuth } from '../../src/services/auth-context.js';
 
 const runner = vi.hoisted(() => vi.fn());
-vi.mock('../../src/release/build-run.js', () => ({ runReleaseBuild: runner }));
+vi.mock('../../src/release/build-run.js', async () => ({
+  ...await vi.importActual<typeof import('../../src/release/build-run.js')>('../../src/release/build-run.js'),
+  runReleaseBuild: runner,
+}));
 const { ReleaseService } = await import('../../src/services/release.service.js');
 const { ReleaseRpcService } = await import('../../src/services/release.rpc-service.js');
 const logger = {
@@ -21,6 +24,7 @@ const logger = {
 } as unknown as ILogger;
 const source = { repository: 'https://forge.example/platform/omni.git', ref: 'refs/heads/stable' };
 const request = { project: 'sample', frameworkSource: source };
+const envRequest = { project: 'sample', env: { GIT_SSH_COMMAND: 'private-helper-value', TEST_DATABASE__PORT: '45432' } };
 const actor = (role = 'admin') => ({ userId: 'alice', roles: [role], permissions: [], metadata: { sessionId: 'session' } });
 
 function fixture() {
@@ -59,7 +63,7 @@ async function transportFixture(protocol: 'http' | 'ws') {
   await server.peer.exposeService(f.rpc);
   const port = server.transportServers.get(protocol)!.port!;
   expect(port).toBeGreaterThan(0);
-  const invoke = async (role: string, input = request) => {
+  const invoke = async (role: string, input: Parameters<InstanceType<typeof ReleaseRpcService>['build']>[0] = request) => {
     if (protocol === 'http') {
       const response = await fetch(`http://127.0.0.1:${port}/netron/invoke`, {
         method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${role}` },
@@ -118,6 +122,51 @@ describe('release source authority before build admission', () => {
     expect(runner).toHaveBeenCalledOnce();
     expect(f.auth.validateSession).not.toHaveBeenCalled();
     expect(f.audit.record).toHaveBeenCalledOnce();
+  });
+
+  it('treats an explicit empty environment object as no override', async () => {
+    const f = fixture();
+    await runWithAuth(actor('operator'), () => f.rpc.build({ project: 'sample', env: {} }));
+    expect(runner).toHaveBeenCalledOnce();
+    expect(f.auth.validateSession).not.toHaveBeenCalled();
+    expect(f.audit.record).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { TEST_DATABASE__PORT: '45432' },
+    { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.sshCommand', GIT_CONFIG_VALUE_0: 'private-helper-value' },
+  ])('requires administrator admission for every nonempty environment, regardless of variable name', async (env) => {
+    const f = fixture();
+    await expect(runWithAuth(actor('operator'), () => f.rpc.build({ project: 'sample', env }))).rejects.toThrow(/admin/i);
+    expect(f.releases.builds()).toEqual([]);
+    expect(f.audit.record).not.toHaveBeenCalled();
+    expect(runner).not.toHaveBeenCalled();
+  });
+
+  it.each([null, [], '', 1, { TEST_PORT: 123 }, { NODE_OPTIONS: 'private-value' }, new Date(0)])(
+    'rejects malformed or prohibited environment before admission (%j)', async (env) => {
+      const f = fixture();
+      await expect(runWithAuth(actor(), () => f.rpc.build({ project: 'sample', env: env as never }))).rejects.toThrow();
+      expect(f.auth.validateSession).not.toHaveBeenCalled();
+      expect(f.audit.record).not.toHaveBeenCalled();
+      expect(f.releases.builds()).toEqual([]);
+      expect(runner).not.toHaveBeenCalled();
+    },
+  );
+
+  it('records only environment names, freezing the admitted values before asynchronous audit', async () => {
+    const f = fixture();
+    const env = { GIT_SSH_COMMAND: 'private-helper-value', TEST_PORT: '45432' };
+    f.audit.record.mockImplementationOnce(async () => { env.TEST_PORT = '1'; });
+    const record = await runWithAuth(actor(), () => f.rpc.build({ project: 'sample', env }));
+    expect(f.audit.record).toHaveBeenNthCalledWith(1, {
+      action: 'release.build.requested', resourceType: 'release', details: { project: 'sample', envKeys: 'GIT_SSH_COMMAND,TEST_PORT' },
+    }, true);
+    expect(record.request.envKeys).toEqual(['GIT_SSH_COMMAND', 'TEST_PORT']);
+    expect(JSON.stringify(f.audit.record.mock.calls)).not.toContain('private-helper-value');
+    expect(JSON.stringify(f.releases.builds())).not.toContain('private-helper-value');
+    expect(runner.mock.calls[0]?.[1].env).toEqual({ GIT_SSH_COMMAND: 'private-helper-value', TEST_PORT: '45432' });
+    expect(Object.isFrozen(runner.mock.calls[0]?.[1].env)).toBe(true);
   });
 
   it('records a required normalized intent before admitting an administrator build', async () => {
@@ -209,34 +258,45 @@ it('carries the local administrator over an actual private Netron Unix socket', 
   expect(runner).toHaveBeenCalledOnce();
 });
 
-describe.each(['http', 'ws'] as const)('release source authority over real Netron %s', (protocol) => {
-  it('denies viewer/operator overrides and permits a validated administrator', async () => {
+describe.each(['http', 'ws'] as const)('build override authority over real Netron %s', (protocol) => {
+  it('allows an operator build with only registered project defaults', async () => {
     const f = await transportFixture(protocol);
-    for (const role of ['viewer', 'operator']) {
-      await expect(f.invoke(role)).rejects.toThrow();
-      expect(f.releases.builds()).toEqual([]);
-      expect(f.audit.record).not.toHaveBeenCalled();
-      expect(runner).not.toHaveBeenCalled();
-    }
-    const record = await f.invoke('admin');
-    expect(record.request.frameworkSource).toEqual(source);
+    const record = await f.invoke('operator', { project: 'sample' });
+    expect(record.request).toEqual({ project: 'sample' });
     expect(runner).toHaveBeenCalledOnce();
   });
 
-  it('refuses an admitted admin transport token after session demotion', async () => {
-    const f = await transportFixture(protocol);
-    f.auth.validateSession.mockResolvedValue({ id: 'alice', role: 'operator' });
-    await expect(f.invoke('admin')).rejects.toThrow();
-    expect(f.releases.builds()).toEqual([]);
-    expect(f.audit.record).not.toHaveBeenCalled();
-    expect(runner).not.toHaveBeenCalled();
-  });
+  describe.each([['source', request], ['environment', envRequest]] as const)('%s override', (_kind, override) => {
+    it('denies viewer/operator overrides and permits a validated administrator', async () => {
+      const f = await transportFixture(protocol);
+      for (const role of ['viewer', 'operator']) {
+        await expect(f.invoke(role, override)).rejects.toThrow();
+        expect(f.releases.builds()).toEqual([]);
+        expect(f.audit.record).not.toHaveBeenCalled();
+        expect(runner).not.toHaveBeenCalled();
+      }
+      const record = await f.invoke('admin', override);
+      expect(record.request).toMatchObject('frameworkSource' in override
+        ? { frameworkSource: source } : { envKeys: ['GIT_SSH_COMMAND', 'TEST_DATABASE__PORT'] });
+      expect(JSON.stringify(f.audit.record.mock.calls)).not.toContain('private-helper-value');
+      expect(runner).toHaveBeenCalledOnce();
+    });
 
-  it('refuses an administrator when the required audit write fails', async () => {
-    const f = await transportFixture(protocol);
-    f.audit.record.mockRejectedValueOnce(Error('audit unavailable'));
-    await expect(f.invoke('admin')).rejects.toThrow(/audit unavailable/);
-    expect(f.releases.builds()).toEqual([]);
-    expect(runner).not.toHaveBeenCalled();
+    it('refuses an admitted admin transport token after session demotion', async () => {
+      const f = await transportFixture(protocol);
+      f.auth.validateSession.mockResolvedValue({ id: 'alice', role: 'operator' });
+      await expect(f.invoke('admin', override)).rejects.toThrow();
+      expect(f.releases.builds()).toEqual([]);
+      expect(f.audit.record).not.toHaveBeenCalled();
+      expect(runner).not.toHaveBeenCalled();
+    });
+
+    it('refuses an administrator when the required audit write fails', async () => {
+      const f = await transportFixture(protocol);
+      f.audit.record.mockRejectedValueOnce(Error('audit unavailable'));
+      await expect(f.invoke('admin', override)).rejects.toThrow(/audit unavailable/);
+      expect(f.releases.builds()).toEqual([]);
+      expect(runner).not.toHaveBeenCalled();
+    });
   });
 });

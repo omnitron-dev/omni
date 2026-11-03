@@ -72,6 +72,30 @@ it('keeps an operator build on the registered project defaults', async () => {
   render(<BuildReleaseDialog {...props()} />);
   fireEvent.click(submit());
   await waitFor(() => expect(mocks.build).toHaveBeenCalledWith({ project: 'sample' }));
+  expect(screen.getByLabelText('Environment for the gates').hasAttribute('disabled')).toBe(true);
+});
+
+it('allows an administrator to submit environment overrides', async () => {
+  render(<BuildReleaseDialog {...props()} />);
+  fireEvent.change(screen.getByLabelText('Environment for the gates'), { target: { value: 'TEST_PORT=45432' } });
+  fireEvent.click(submit());
+  await waitFor(() => expect(mocks.build).toHaveBeenCalledWith({ project: 'sample', env: { TEST_PORT: '45432' } }));
+});
+
+it('refuses prepared environment overrides after role loss and resets them when reopened', async () => {
+  const p = props();
+  const view = render(<BuildReleaseDialog {...p} />);
+  fireEvent.change(screen.getByLabelText('Environment for the gates'), { target: { value: 'TEST_PORT=45432' } });
+  mocks.snapshot = { role: 'operator' };
+  view.rerender(<BuildReleaseDialog {...p} />);
+  expect(screen.getByLabelText('Environment for the gates').hasAttribute('disabled')).toBe(true);
+  expect(submit().hasAttribute('disabled')).toBe(true);
+  fireEvent.click(submit());
+  expect(mocks.build).not.toHaveBeenCalled();
+  view.rerender(<BuildReleaseDialog {...p} open={false} />);
+  view.rerender(<BuildReleaseDialog {...p} />);
+  fireEvent.click(submit());
+  await waitFor(() => expect(mocks.build).toHaveBeenCalledWith({ project: 'sample' }));
 });
 
 it.each(['operator', null])('refuses a prepared override when administrator access is lost (%s)', (role) => {

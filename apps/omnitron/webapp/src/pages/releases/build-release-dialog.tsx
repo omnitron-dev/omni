@@ -104,6 +104,7 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
       setFailure(null);
       setFrameworkRepository('');
       setFrameworkRef('');
+      setEnvText('');
     }
   }, [open, defaultProject]);
 
@@ -122,7 +123,9 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
 
   const { env, bad } = useMemo(() => parseEnv(envText), [envText]);
   const supportsSourceOverride = preflight?.frameworkSource === 1;
-  const canOverrideSource = supportsSourceOverride && snapshot?.role === 'admin';
+  const canOverrideBuild = snapshot?.role === 'admin';
+  const canOverrideSource = supportsSourceOverride && canOverrideBuild;
+  const hasEnvOverride = Object.keys(env).length > 0;
   const framework = useMemo(() => {
     if (!frameworkRepository.trim() && !frameworkRef.trim()) return { source: undefined, error: null };
     try {
@@ -141,6 +144,10 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
       setFailure(supportsSourceOverride
         ? 'An administrator must select an SDK source override. Build with project defaults or sign in with administrator access.'
         : 'This controller does not support SDK source overrides. Update it before using an override.');
+      return;
+    }
+    if (hasEnvOverride && !canOverrideBuild) {
+      setFailure('Environment overrides require administrator access. Reopen the dialog to build with project defaults.');
       return;
     }
     setStarting(true);
@@ -296,9 +303,11 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
             fullWidth
             multiline
             minRows={2}
-            disabled={starting}
+            disabled={starting || !canOverrideBuild}
             helperText={
-              bad.length > 0
+              !canOverrideBuild
+                ? 'Environment overrides require administrator access. Ordinary builds use the project and controller environment.'
+                : bad.length > 0
                 ? `Not a NAME=value line: ${bad.slice(0, 2).join(' · ')}`
                 : 'One NAME=value per line. The daemon has the system environment, not your shell’s.'
             }
@@ -338,7 +347,7 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
         <Button
           variant="contained"
           size="small"
-          disabled={!project || starting || bad.length > 0 || framework.error !== null || (!!framework.source && !canOverrideSource)}
+          disabled={!project || starting || bad.length > 0 || framework.error !== null || (!!framework.source && !canOverrideSource) || (hasEnvOverride && !canOverrideBuild)}
           startIcon={starting ? <CircularProgress size={14} color="inherit" /> : undefined}
           onClick={handleBuild}
         >

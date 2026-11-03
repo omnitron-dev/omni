@@ -14,7 +14,7 @@
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 
-import { buildEnv, missingTools } from '../release/build-run.js';
+import { buildEnv, checkedEnv, missingTools } from '../release/build-run.js';
 import type { ReleaseDetail, ReleaseSummary } from '../release/store.js';
 import { ADMIN_ROLES, OPERATOR_ROLES, VIEWER_ROLES } from '../shared/roles.js';
 import { parseFrameworkSource } from '../shared/framework-source.js';
@@ -112,24 +112,26 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
   async build(data: Parameters<IOmnitronReleaseService['build']>[0]): Promise<BuildRecord> {
     if (!data?.project || typeof data.project !== 'string') throw new Error('A build needs a project name');
     const { currentActor } = await import('./audit.service.js');
-    // An operator may build registered project code. Selecting another SDK
-    // repository admits its install/build scripts as the daemon's OS user.
+    // An operator may build registered project code. Source and environment
+    // overrides can admit arbitrary code as the daemon's OS user.
     // Normalize before audit, then revalidate the administrator before any build
     // record or asynchronous execution exists. Transport role caches are not authority.
-    if (data.frameworkSource !== undefined) {
-      const frameworkSource = parseFrameworkSource(data.frameworkSource);
-      if (!this.auth) throw Errors.forbidden('SDK source overrides require authenticated administrator access');
+    const frameworkSource = data.frameworkSource === undefined ? undefined : parseFrameworkSource(data.frameworkSource);
+    const env = data.env === undefined ? undefined : Object.freeze(checkedEnv(data.env));
+    const envKeys = Object.keys(env ?? {}).sort();
+    data = { ...data, ...(frameworkSource && { frameworkSource }), ...(env && { env }) };
+    if (frameworkSource || envKeys.length) {
+      if (!this.auth) throw Errors.forbidden('Build overrides require authenticated administrator access');
       await daemonPrincipal(this.auth, 'admin');
-      if (!this.audit) throw new Error('Audit storage is unavailable; SDK source override refused');
+      if (!this.audit) throw new Error('Audit storage is unavailable; build override refused');
       await this.audit.record({
         action: 'release.build.requested',
         resourceType: 'release',
-        details: { project: data.project, frameworkSource },
+        details: { project: data.project, ...(frameworkSource && { frameworkSource }), ...(envKeys.length && { envKeys: envKeys.join(',') }) },
       }, true);
       // The required audit write can await storage; revocation while it is in
       // flight must not turn an admitted intent into executable authority.
       await daemonPrincipal(this.auth, 'admin');
-      data = { ...data, frameworkSource };
     }
     const actor = currentActor();
     const record = this.releases.start(data, actor.actorId);

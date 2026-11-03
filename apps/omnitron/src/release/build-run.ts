@@ -63,10 +63,10 @@ export interface ReleaseBuildOptions {
    *
    * The gates need what the developer's shell had — sample's want
    * `TEST_DATABASE__PORT` — and a daemon started by launchd has none of it.
-   * Only `[A-Z][A-Z0-9_]*` names are taken, and never one that changes what
-   * an interpreter LOADS (`PATH`, `NODE_OPTIONS`, `LD_PRELOAD`…): a build
-   * request is permission to build this project, not to run something else
-   * as the daemon's user.
+   * Daemon RPC requires administrator admission for any nonempty override:
+   * tool configuration can execute code even through ordinary environment
+   * names. The validation below retains additional loader restrictions; it
+   * is not an authorization boundary. Local CLI uses its OS user's authority.
    */
   env?: Record<string, string>;
   /** Stop the build: the running step's process group is ended. */
@@ -97,6 +97,10 @@ const ENV_FORBIDDEN = new Set([
  * and the operator has no way to see that the variable never arrived.
  */
 export function checkedEnv(env: Record<string, string> | undefined): Record<string, string> {
+  if (env !== undefined && (env === null || typeof env !== 'object' || Array.isArray(env) ||
+    ![Object.prototype, null].includes(Object.getPrototypeOf(env)))) {
+    throw new Error('Build environment must be an object of variable names and string values');
+  }
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(env ?? {})) {
     if (!ENV_NAME.test(key)) throw new Error(`'${key}' is not an environment variable name a build takes`);

@@ -24,6 +24,8 @@ import { ProjectRegistry } from '../project/registry.js';
 import { assembleManifest, gateOutcomesFromGates, releaseId } from './builder.js';
 import { planBuildRoot, readFrameworkLayout, resolveCheckouts } from './layout.js';
 import { assertReleaseId } from './load.js';
+import { releaseWorkspaceDirectory } from './workspace-source.js';
+import { readPackageGates, runPackageGates } from './package-gates.js';
 import { FRAMEWORK_REPOSITORY, resolveRegistryFramework } from './registry-framework.js';
 import { reproduceVendoredFramework, requireFrameworkCommit } from './vendored-framework.js';
 import { OWN_BUILD } from '../shared/build-stamp.js';
@@ -521,13 +523,15 @@ async function buildRelease(
   const projectPath = fs.realpathSync(project.path);
   const repositoryPath = fs.realpathSync(await git(['rev-parse', '--show-toplevel'], projectPath));
   const projectPrefix = path.relative(repositoryPath, projectPath).split(path.sep).join('/');
-  const lockPath = path.posix.join(projectPrefix, 'pnpm-lock.yaml');
+  const workspace = await releaseWorkspaceDirectory(repositoryPath, projectSha, projectPrefix);
+  const workspacePath = path.join(repositoryPath, workspace);
+  const lockPath = path.posix.join(workspace, 'pnpm-lock.yaml');
   const layout = readFrameworkLayout(await git(['show', `${projectSha}:${lockPath}`], repositoryPath));
   let checkout: { path: string; sha: string; layout: import('./layout.js').LinkLayout } | undefined;
   let registry: Awaited<ReturnType<typeof resolveRegistryFramework>> | undefined;
   let omniSource: ReleaseSource;
   if (layout.kind === 'linked') {
-    const { omniPath } = resolveCheckouts(projectPath, layout.layout);
+    const { omniPath } = resolveCheckouts(workspacePath, layout.layout);
     if (!fs.existsSync(path.join(omniPath, '.git'))) throw Error('No linked omni checkout at ' + omniPath);
     const sha = await git(['rev-parse', '--verify', `${options.omniCommit ?? 'HEAD'}^{commit}`], omniPath);
     checkout = { path: omniPath, sha, layout: layout.layout };
@@ -563,7 +567,7 @@ async function buildRelease(
   const logs = path.join(releaseRoot, 'logs');
   fs.mkdirSync(logs, { recursive: true });
   const srcRoot = path.join(releaseRoot, 'src');
-  const plan = planBuildRoot(srcRoot, projectPath, checkout?.layout, repositoryPath);
+  const plan = planBuildRoot(srcRoot, workspacePath, checkout?.layout, repositoryPath);
   if ('refusal' in plan) throw new Error(plan.refusal);
 
   // Read at the START: the identity of the omnitron that packs this, not of
@@ -613,7 +617,7 @@ async function buildRelease(
     const upstreamEnv = buildEnv({ ...process.env, TMPDIR: where.tmp });
     upstreamEnv['PATH'] = [bin, ...(upstreamEnv['PATH'] ?? '').split(path.delimiter).filter(dir => dir && dir !== bin)].join(path.delimiter);
     registry = await reproduceVendoredFramework(layout.packages, {
-      projectDir: projectPath, projectCommit: projectSha, frameworkCommit: omniSource.commit,
+      projectDir: workspacePath, projectCommit: projectSha, frameworkCommit: omniSource.commit,
       scratch: path.join(srcRoot, 'framework-proof'), env: upstreamEnv,
       ...(signal ? { signal } : {}),
       run: async (command, args, cwd, toolEnv) => {
@@ -693,10 +697,17 @@ async function buildRelease(
   // five red each time and `connect ETIMEDOUT` to containers that were up.
   // Recording the load turns the next hour in a diff into one glance.
   const loadAtGateStart = os.loadavg() as [number, number, number];
+  const packageGates = readPackageGates(plan.projectDir);
   let gates: GateOutcome[];
   if (options.skipGates) {
     gates = [{ name: 'gates', status: 'not-run', detail: 'skipped by --skip-gates' }];
     say('gates skipped — recorded as not-run', 80, { gates });
+  } else if (packageGates) {
+    say('running the workspace release gates', 50);
+    gates = await runPackageGates(packageGates, (name, index) => step('pnpm', ['run', name], {
+      cwd: plan.projectDir, logFile: path.join(logs, 'gate-' + index + '-' + name.replaceAll(':','_') + '.log'), timeoutMs: 120 * MINUTE,
+    }), signal);
+    say(`gates: ${gates.filter(g => g.status === 'passed').length} of ${gates.length} passed`, 80, { gates });
   } else if (!fs.existsSync(path.join(plan.projectDir, 'scripts', 'gates.mjs'))) {
     gates = [{ name: 'gates', status: 'not-run', detail: `scripts/gates.mjs does not exist at ${projectSha.slice(0, 8)}` }];
     say('no gates script at this commit — recorded as not-run', 80, { gates });
@@ -734,7 +745,8 @@ async function buildRelease(
   const artifactsLog = path.join(logs, 'artifacts.log');
   const { loadEcosystemConfig } = await import('../config/loader.js');
   const { ArtifactBuilder } = await import('../project/artifact-builder.js');
-  const config = await loadEcosystemConfig(plan.projectDir, 'release');
+  const configDirectory = path.join(plan.repositoryDir, projectPrefix);
+  const config = await loadEcosystemConfig(configDirectory, 'release');
   const apps = config.apps.filter((a) => a.enabled !== false);
   const builder = new ArtifactBuilder(plan.projectDir, path.join(releaseRoot, 'artifacts'), {
     info: (msg) => fs.appendFileSync(artifactsLog, `${msg}\n`),
@@ -752,7 +764,7 @@ async function buildRelease(
   let statics: StaticsRecord | null = null;
   if (options.forStack) {
     say(`building the static bundle for ${options.forStack}`, 92, { gates });
-    statics = await buildStaticsFor(options.forStack, plan.projectDir, config, releaseRoot, path.join(logs, 'statics.log'), ctx);
+    statics = await buildStaticsFor(options.forStack, configDirectory, config, releaseRoot, path.join(logs, 'statics.log'), ctx);
     say(
       statics
         ? `static bundle: ${statics.files} files, ${(statics.bytes / 1024 / 1024).toFixed(1)} MB`
@@ -780,7 +792,8 @@ async function buildRelease(
   const migrations = await migrationDigests(plan.projectDir);
   const manifest = assembleManifest({
     id,
-    project: { ...await sourceOf(repositoryPath, projectSha), ...(projectPrefix ? { directory: projectPrefix } : {}) },
+    project: { ...await sourceOf(repositoryPath, projectSha), ...(projectPrefix ? { directory: projectPrefix } : {}),
+      ...(workspace !== projectPrefix && { workspace }) },
     omni: omniSource,
     artifacts: packed.built,
     target: await (await import('./target-runtime.js')).targetRuntime(),

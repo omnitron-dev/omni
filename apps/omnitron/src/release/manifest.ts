@@ -138,6 +138,8 @@ export interface BuiltWith {
 export interface ReleaseSource {
   /** Project directory inside this Git commit when the checkout contains multiple projects. */
   readonly directory?: string;
+  /** Workspace that supplied the lock and gates when the selected config lives deeper in Git. */
+  readonly workspace?: string;
   readonly repo: string;
   readonly commit: string;
   /** Public npm archives whose verified manifests named this exact source commit. */

@@ -47,9 +47,10 @@ describe('Remote Service Publication', () => {
     expect(def).toBeDefined();
     expect(def.id).toBeTruthy();
     expect(def.peerId).toBe('peer-a');
-    expect(netron.services.has('RemoteService')).toBe(true);
+    expect(netron.services.has('RemoteService@1.0.0')).toBe(true);
+    expect(netron.services.has('RemoteService')).toBe(false);
 
-    const stub = netron.services.get('RemoteService')!;
+    const stub = netron.services.get('RemoteService@1.0.0')!;
     expect(stub).toBeDefined();
     expect(stub.definition.meta.name).toBe('RemoteService');
     expect(stub.definition.meta.version).toBe('1.0.0');
@@ -87,7 +88,7 @@ describe('Remote Service Publication', () => {
 
     await netron.peer.exposeRemoteService(peer, meta);
 
-    const stub = netron.services.get('InterfaceService')!;
+    const stub = netron.services.get('InterfaceService@1.0.0')!;
     expect(stub.instance).toBeDefined();
     // Stub should have a valid definition linking back to the peer
     expect(stub.definition).toBeDefined();
@@ -101,12 +102,12 @@ describe('Remote Service Publication', () => {
 
     const def = await netron.peer.exposeRemoteService(peer, meta);
 
-    expect(netron.services.has('CleanupService')).toBe(true);
+    expect(netron.services.has('CleanupService@1.0.0')).toBe(true);
     expect(peer.definitions.has(def.id)).toBe(true);
 
-    await netron.peer.unexposeRemoteService(peer, 'CleanupService');
+    await netron.peer.unexposeRemoteService(peer, 'CleanupService@1.0.0');
 
-    expect(netron.services.has('CleanupService')).toBe(false);
+    expect(netron.services.has('CleanupService@1.0.0')).toBe(false);
     expect(peer.definitions.has(def.id)).toBe(false);
   });
 
@@ -118,14 +119,14 @@ describe('Remote Service Publication', () => {
     await netron.peer.exposeRemoteService(peerB, { name: 'ServiceB', version: '1.0.0' });
 
     expect(netron.services.size).toBe(2);
-    expect(netron.services.has('ServiceA')).toBe(true);
-    expect(netron.services.has('ServiceB')).toBe(true);
+    expect(netron.services.has('ServiceA@1.0.0')).toBe(true);
+    expect(netron.services.has('ServiceB@1.0.0')).toBe(true);
 
     // Unexpose only ServiceA
-    await netron.peer.unexposeRemoteService(peerA, 'ServiceA');
+    await netron.peer.unexposeRemoteService(peerA, 'ServiceA@1.0.0');
 
     expect(netron.services.size).toBe(1);
-    expect(netron.services.has('ServiceA')).toBe(false);
-    expect(netron.services.has('ServiceB')).toBe(true);
+    expect(netron.services.has('ServiceA@1.0.0')).toBe(false);
+    expect(netron.services.has('ServiceB@1.0.0')).toBe(true);
   });
 });

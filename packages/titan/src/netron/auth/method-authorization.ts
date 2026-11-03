@@ -23,6 +23,7 @@
 
 import type { AuthContext, ExecutionContext, PolicyExpression } from './types.js';
 import type { PolicyEngine } from './policy-engine.js';
+import type { AuthorizationManager } from './authorization-manager.js';
 import type { MethodOptions } from '../../decorators/types.js';
 import type { ILogger } from '../../modules/logger/logger.types.js';
 import { METADATA_KEYS } from '../../decorators/core.js';
@@ -103,6 +104,28 @@ export interface EnforceMethodAuthorizationInput {
   transport?: string;
   clientIp?: string;
   headers?: Record<string, string>;
+}
+
+/** The same complete access decision for every transport. An absent manager
+ * means no registered ACLs, never permission to ignore a declared method gate.
+ */
+export async function enforceInvocationAuthorization(input: EnforceMethodAuthorizationInput & {
+  authorizationManager?: Pick<AuthorizationManager, 'canAccessMethod' | 'hasACL'>;
+  defaultDeny?: boolean;
+}): Promise<void> {
+  const { authorizationManager, serviceName, methodName, authContext, logger } = input;
+  const refuse = (reason: string): never => {
+    logger.warn({ serviceName, methodName, userId: authContext?.userId }, reason);
+    throw new TitanError({ code: ErrorCode.FORBIDDEN,
+      message: `Access denied to method ${serviceName}.${methodName}`,
+      details: { service: serviceName, method: methodName } });
+  };
+  if (authorizationManager && !authorizationManager.canAccessMethod(serviceName, methodName, authContext))
+    refuse('Method access denied by authorization manager (ACL)');
+  await enforceMethodAuthorization(input);
+  if (input.defaultDeny && !authorizationManager?.hasACL(serviceName) &&
+      readMethodMetadata(input.serviceInstance, methodName)?.auth === undefined)
+    refuse('Method access denied by default-deny policy (no ACL, no @Public auth gate)');
 }
 
 /**

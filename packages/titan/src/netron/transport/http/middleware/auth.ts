@@ -10,8 +10,7 @@ import type { PolicyEngine } from '../../../auth/policy-engine.js';
 import type { AuthorizationManager } from '../../../auth/authorization-manager.js';
 import type { ILogger } from '../../../../modules/logger/logger.types.js';
 import { METADATA_KEYS } from '../../../../decorators/core.js';
-import { enforceMethodAuthorization } from '../../../auth/method-authorization.js';
-import { TitanError, ErrorCode } from '../../../../errors/index.js';
+import { enforceInvocationAuthorization } from '../../../auth/method-authorization.js';
 import type { RemotePeer } from '../../../remote-peer.js';
 
 /**
@@ -27,8 +26,8 @@ export interface AuthMiddlewareOptions {
    */
   policyEngine?: PolicyEngine;
 
-  /** Authorization manager for role/permission/scope validation (required) */
-  authorizationManager: AuthorizationManager;
+  /** Registered ACLs; method declarations are enforced even without a manager. */
+  authorizationManager?: AuthorizationManager;
 
   /** Logger instance */
   logger: ILogger;
@@ -196,40 +195,20 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
     const headers = ctx.metadata?.get('headers');
     const transport = ctx.metadata?.get('transport');
     const clientIp = ctx.metadata?.get('clientIp') || ctx.metadata?.get('ip');
-    await enforceMethodAuthorization({
+    await enforceInvocationAuthorization({
       serviceInstance,
       serviceName: ctx.serviceName,
       methodName: ctx.methodName,
       args: Array.isArray(ctx.input) ? ctx.input : [ctx.input],
       authContext,
       policyEngine,
+      authorizationManager,
+      defaultDeny,
       logger,
       transport: typeof transport === 'string' ? transport : 'http',
       ...(typeof clientIp === 'string' ? { clientIp } : {}),
       ...(typeof headers === 'object' && headers !== null ? { headers: headers as Record<string, string> } : {}),
     });
-
-    // (SEC-2) opt-in default-deny — mirror of `RemotePeer.enforceMethodAccess`
-    // step (3). `enforceMethodAuthorization` above returned without throwing,
-    // which means the method declared no `@Public({ auth })` gate (a declared
-    // gate that failed would have thrown). If it ALSO has no registered ACL, it
-    // carries no access-control decision at all — fail closed when the
-    // deployment opted into `authDefaultDeny`.
-    if (defaultDeny) {
-      const hasAcl = authorizationManager?.hasACL(ctx.serviceName) ?? false;
-      const hasDecoratorAuth = readMethodMetadata(serviceInstance, ctx.methodName)?.auth !== undefined;
-      if (!hasAcl && !hasDecoratorAuth) {
-        logger.warn(
-          { service: ctx.serviceName, method: ctx.methodName, userId: authContext?.userId },
-          'Method access denied by default-deny policy (no ACL, no @Public auth gate)'
-        );
-        throw new TitanError({
-          code: ErrorCode.FORBIDDEN,
-          message: `Access denied to method ${ctx.serviceName}.${ctx.methodName}`,
-          details: { service: ctx.serviceName, method: ctx.methodName },
-        });
-      }
-    }
 
     // Store authContext in metadata for business logic access
     // Business logic can retrieve it with: ctx.metadata?.get('authContext')

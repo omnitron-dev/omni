@@ -82,3 +82,19 @@ it reaches its destination.
 ## License
 
 MIT
+
+### Service identity and transport authorization
+
+HTTP and persistent Netron transports select the same published service. An exact
+unversioned publication wins for `Service` or `Service@*`; otherwise the highest
+semantic version is selected. `Service@1.0.0` always selects that exact publication.
+Registration order does not change this rule, and removing one publication leaves
+other versions available. HTTP OpenAPI paths identify the actual publications.
+
+Every invocation applies registered ACLs, then `@Public({ auth })`, then optional
+`authDefaultDeny`. This applies equally to individual HTTP calls, HTTP batches and
+persistent transports. A declared protected method refuses anonymous calls even
+when no authentication manager is configured; ordinary public methods remain open
+unless default-deny is enabled. Missing policy engines refuse declared policies.
+The resolved service identity is used for ACL and policy checks, so an unqualified
+request cannot bypass the selected version's permissions.

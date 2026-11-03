@@ -43,7 +43,7 @@ import { SERVICE_ANNOTATION } from '../decorators/core.js';
 import type { ExtendedServiceMetadata } from '../decorators/core.js';
 import type { ITransport } from './transport/types.js';
 import type { AuthContext } from './auth/types.js';
-import { enforceMethodAuthorization, readMethodMetadata, isPublishedMember } from './auth/method-authorization.js';
+import { enforceInvocationAuthorization, isPublishedMember } from './auth/method-authorization.js';
 
 /** A request's authorized identity cannot be replaced by a concurrent login. */
 const invocationAuthority = new AsyncLocalStorage<{ peer: RemotePeer; context: AuthContext | undefined }>();
@@ -1603,10 +1603,9 @@ export class RemotePeer extends AbstractPeer {
   /**
    * Enforce method-level ACL for the current peer's auth context.
    *
-   * Throws `Errors.forbidden` if the configured AuthorizationManager
-   * denies access; returns silently when no authorization manager is
-   * wired (backwards compatibility — Netron deployments without auth
-   * continue to work unchanged).
+   * Enforces registered ACLs, declared method authorization and optional
+   * default-deny through the same decision used by HTTP. Missing managers
+   * never disable a method's declared protection.
    *
    * This is invoked from the wire-level TYPE_SET / TYPE_GET / TYPE_CALL
    * branches BEFORE the call reaches the stub. Without it,
@@ -1622,7 +1621,6 @@ export class RemotePeer extends AbstractPeer {
   ): Promise<AuthContext | undefined> {
     const netron = this.netron as INetronInternal;
     const authzManager = netron.authorizationManager;
-    const authnManager = netron.authenticationManager;
 
     // The stub MUST exist and carry a versioned definition for any guard to
     // apply — without it we cannot form the qualified service name, so we let
@@ -1683,71 +1681,22 @@ export class RemotePeer extends AbstractPeer {
       throw Errors.notFound(`Property '${serviceName}.${methodName}'`);
     }
 
-    // Auth-less deployment (neither manager wired) → no further enforcement.
-    // Preserves the historical "Netron without auth works unchanged" contract.
-    if (!authzManager && !authnManager) return this.getAuthContext();
-
     const auth = await this.revalidateAuthority();
 
-    // (1) ACL check (T#34) — registered AuthorizationManager ACLs. Runs first so
-    // ACL-protected methods keep their existing "Access denied to method …"
-    // error contract. Skipped when no AuthorizationManager is wired.
-    if (authzManager && !authzManager.canAccessMethod(serviceName, methodName, auth)) {
-      this.logger.warn(
-        { serviceName, methodName, userId: auth?.userId, isAuthenticated: this.isAuthenticated() },
-        'Method access denied by authorization manager (ACL)',
-      );
-      throw Errors.forbidden(`Access denied to method ${serviceName}.${methodName}`, {
-        service: serviceName,
-        method: methodName,
-      });
-    }
-
-    // (2) SEC-1 FIX: enforce the `@Public({ auth })` decorator on the wire path,
-    // exactly as the HTTP middleware does. Without this, decorator-only-protected
-    // methods (roles/permissions/scopes/policies, no ACL) were callable by any —
-    // or no — authenticated peer over WS/TCP/Unix because the ACL check above
-    // is default-allow when no ACL is registered. Shared with HTTP via
-    // `enforceMethodAuthorization` so the two transports cannot diverge.
-    await enforceMethodAuthorization({
+    // Shared ACL → method declaration → default-deny decision on every transport.
+    await enforceInvocationAuthorization({
       serviceInstance: (stub?.instance as object | undefined) ?? undefined,
       serviceName,
       serviceVersion: meta.version,
       methodName,
       args,
       authContext: auth,
+      authorizationManager: authzManager,
+      defaultDeny: netron.options?.authDefaultDeny,
       policyEngine: netron.policyEngine,
       logger: this.logger,
       transport: 'netron',
     });
-
-    // (3) SEC-2 opt-in default-deny. A method that reaches this point was gated
-    // by NEITHER a registered ACL (step 1 passed because none matched) NOR a
-    // `@Public({ auth })` decorator (step 2 returned early because none was
-    // present) — it carries NO access-control decision at all. Historically
-    // that means "allow": any peer holding the service's definition id can
-    // invoke it, including non-`@Public` instance methods, because the stub
-    // dispatches by name with no public-surface whitelist. Deployments that opt
-    // into `authDefaultDeny` fail closed here instead. Methods that declared a
-    // gate already returned/threw above on their own terms, so they are
-    // unaffected (a bare `@Public()` with no `auth` key is intentionally denied:
-    // under this posture exposure must be explicit — `@Public({ auth: false })`
-    // / `{ allowAnonymous: true }` / an ACL).
-    if (netron.options?.authDefaultDeny) {
-      const hasAcl = authzManager?.hasACL(serviceName) ?? false;
-      const hasDecoratorAuth =
-        readMethodMetadata(stub?.instance as object | undefined, methodName)?.auth !== undefined;
-      if (!hasAcl && !hasDecoratorAuth) {
-        this.logger.warn(
-          { serviceName, methodName, userId: auth?.userId, isAuthenticated: this.isAuthenticated() },
-          'Method access denied by default-deny policy (no ACL, no @Public auth gate)',
-        );
-        throw Errors.forbidden(`Access denied to method ${serviceName}.${methodName}`, {
-          service: serviceName,
-          method: methodName,
-        });
-      }
-    }
     return auth;
   }
 

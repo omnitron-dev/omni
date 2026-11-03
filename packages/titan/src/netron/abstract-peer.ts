@@ -1,4 +1,4 @@
-import semver from 'semver';
+import { selectServiceName } from './service-selection.js';
 
 // Use type-only imports from interfaces to break circular dependencies
 import type { INetron, IPeer, EventSubscriber } from './interfaces/core-types.js';
@@ -439,44 +439,9 @@ export abstract class AbstractPeer implements IPeer {
    * const latestAuth = findLatestServiceVersion('auth@1.0.0');
    */
   protected findLatestServiceVersion(serviceName: string): Definition {
-    // First, try to find an exact match without version specification
-    // This handles cases where the service name is provided without a version
-    if (!serviceName.includes('@')) {
-      try {
-        return this.getDefinitionByServiceName(serviceName);
-      } catch {
-        // If no exact match is found, proceed to version resolution
-      }
-    }
-
-    // Create a regex pattern to match service names with versions.
-    // SECURITY: Escape special regex characters in serviceName to prevent ReDoS attacks.
-    // Without escaping, a malicious service name like "test.*+?^" could cause
-    // exponential backtracking in the regex engine, leading to denial of service.
-    const escapedServiceName = serviceName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // The pattern captures the version number in a group
-    const regex = new RegExp(`^${escapedServiceName}@([^@]+)$`);
-
-    // Process all available service names to find matching versions
-    const candidates = Array.from(this.getServiceNames())
-      // Map each service name to a version-info object if it matches the pattern
-      .map((key) => {
-        const match = key.match(regex);
-        if (match) return { version: match[1], key };
-        return null;
-      })
-      // Filter out non-matching services and ensure type safety
-      .filter((x): x is { version: string; key: string } => x !== null)
-      // Sort versions in descending order using semver comparison
-      .sort((a, b) => semver.rcompare(a.version, b.version));
-
-    // If no matching versions were found, throw an error
-    if (candidates.length === 0) {
-      throw NetronErrors.serviceNotFound(serviceName);
-    }
-
-    // Return the definition for the highest version found
-    return this.getDefinitionByServiceName(candidates[0]!.key);
+    const selected = selectServiceName(this.getServiceNames(), serviceName);
+    if (!selected) throw NetronErrors.serviceNotFound(serviceName);
+    return this.getDefinitionByServiceName(selected);
   }
 
   /**

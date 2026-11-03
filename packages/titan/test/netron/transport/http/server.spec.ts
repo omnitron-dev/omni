@@ -112,9 +112,9 @@ describe('HttpServer (Legacy Tests)', () => {
 
       // Verify service was registered
       const services = (server as any).services;
-      expect(services.has('TestService')).toBe(true);
+      expect(services.has('TestService@1.0.0')).toBe(true);
 
-      const service = services.get('TestService');
+      const service = services.get('TestService@1.0.0');
       expect(service.name).toBe('TestService');
       expect(service.version).toBe('1.0.0');
       expect(service.methods.has('testMethod')).toBe(true);
@@ -151,7 +151,7 @@ describe('HttpServer (Legacy Tests)', () => {
       server.setPeer(mockPeer);
 
       const services = (server as any).services;
-      const service = services.get('UserService');
+      const service = services.get('UserService@1.0.0');
       const method = service.methods.get('getUser');
 
       expect(method.contract).toBeDefined();
@@ -331,13 +331,13 @@ describe('HttpServer (Legacy Tests)', () => {
       expect(spec.openapi).toBe('3.0.3');
       expect(spec.info.title).toBe('Netron HTTP Services');
       // RPC-style paths
-      expect(spec.paths).toHaveProperty('/rpc/UserService/getUser');
-      expect(spec.paths['/rpc/UserService/getUser']).toHaveProperty('post');
-      expect(spec.paths).toHaveProperty('/rpc/UserService/createUser');
-      expect(spec.paths['/rpc/UserService/createUser']).toHaveProperty('post');
+      expect(spec.paths).toHaveProperty('/rpc/UserService@1.0.0/getUser');
+      expect(spec.paths['/rpc/UserService@1.0.0/getUser']).toHaveProperty('post');
+      expect(spec.paths).toHaveProperty('/rpc/UserService@1.0.0/createUser');
+      expect(spec.paths['/rpc/UserService@1.0.0/createUser']).toHaveProperty('post');
       // Check OpenAPI metadata
-      expect(spec.paths['/rpc/UserService/getUser'].post.summary).toBe('Get user by ID');
-      expect(spec.paths['/rpc/UserService/createUser'].post.summary).toBe('Create new user');
+      expect(spec.paths['/rpc/UserService@1.0.0/getUser'].post.summary).toBe('Get user by ID');
+      expect(spec.paths['/rpc/UserService@1.0.0/createUser'].post.summary).toBe('Create new user');
     });
 
     it('should require authentication for OpenAPI spec', async () => {

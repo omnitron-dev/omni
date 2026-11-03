@@ -209,16 +209,12 @@ describe('HTTP — T#100: configureAuth wires NetronAuthMiddleware', () => {
     expect(r.body.error?.message).toMatch(/Authentication required/i);
   });
 
-  it('leaves all methods open when NO auth is configured at all (no managers in options OR on netron)', async () => {
-    // Regression guard: the fix must not register the middleware on
-    // platforms that haven't configured auth — otherwise it would
-    // break tests/apps that intentionally run without auth.
+  it('enforces declared protection even when no managers are configured', async () => {
     setupServer({});
     await server.listen();
     const r = await invoke('restricted');
-    // No middleware registered → reaches the handler → succeeds.
-    expect(r.status).toBe(200);
-    expect(r.body.success).toBe(true);
-    expect(r.body.data).toEqual({ ok: 'restricted-ran' });
+    expect(r.status).toBe(401);
+    expect(r.body.success).toBe(false);
+    expect((await invoke('anon')).body.success).toBe(true);
   });
 });

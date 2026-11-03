@@ -32,7 +32,8 @@ import {
 import type { MethodContract } from '../../../validation/contract.js';
 import { validateMethodInput as validateInputAgainstContract, resolveMethodContract } from '../../validate-input.js';
 import type { HttpRequestContext, HttpRequestHints } from './types.js';
-import { detectRuntime, generateRequestId } from '../../utils.js';
+import { detectRuntime, generateRequestId, getQualifiedName } from '../../utils.js';
+import { selectServiceName } from '../../service-selection.js';
 import { generateUuidV7 } from '../../../utils/id.js';
 import { AuthorizationManager } from '../../auth/authorization-manager.js';
 import type { PolicyEngine } from '../../auth/policy-engine.js';
@@ -116,7 +117,7 @@ export interface MethodHandlerContext {
  */
 interface ServiceDescriptor {
   name: string;
-  version: string;
+  version?: string;
   methods: Map<string, MethodDescriptor>;
   description?: string;
   metadata?: Record<string, unknown>;
@@ -658,7 +659,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         );
       this.httpSecurityInstalled = true;
     }
-    const optsPolicyEngine = (this.options as any).policyEngine as PolicyEngine | undefined;
+    const optsPolicyEngine = ((this.options as any).policyEngine ?? netron?.policyEngine) as PolicyEngine | undefined;
     const optsAuthorizationManager = (this.options as any).authorizationManager as AuthorizationManager | undefined;
     // Auto-instantiation needs a real logger (AuthorizationManager calls
     // `logger.child(...)` in its constructor). Some test peers stub the
@@ -669,7 +670,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       optsAuthorizationManager ||
       (netron?.authorizationManager as AuthorizationManager | undefined) ||
       (canAutoInstantiate ? new AuthorizationManager(peer.logger) : undefined);
-    if (resolvedAuthorizationManager && peer.logger) {
+    // Declarations and default-deny apply even when authentication is not configured.
+    if (peer.logger) {
       this.globalPipeline.use(
         NetronAuthMiddleware.create({
           // policyEngine is optional — methods that declare `policies`
@@ -698,7 +700,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
     for (const [_id, stub] of this.netronPeer.stubs) {
       const serviceName = stub.definition.meta.name;
-      const version = stub.definition.meta.version || '1.0.0';
+      const version = stub.definition.meta.version;
       const meta = stub.definition.meta as {
         description?: string;
         metadata?: Record<string, unknown>;
@@ -748,13 +750,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         });
       }
 
-      // IMPORTANT: Store by qualified name (name@version) for stateless HTTP
-      // Client sends serviceName as "calculator@1.0.0", not just "calculator"
-      const qualifiedName = `${serviceName}@${version}`;
-      this.services.set(qualifiedName, descriptor);
-
-      // Also store by name only for backward compatibility
-      this.services.set(serviceName, descriptor);
+      this.services.set(getQualifiedName(serviceName, version), descriptor);
     }
   }
 
@@ -811,7 +807,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   registerService(serviceName: string, definition: any, contract?: any): void {
     if (!this.netronPeer) return;
 
-    const version = definition.meta.version || '1.0.0';
+    const version = definition.meta.version;
     const meta = definition.meta as {
       description?: string;
       metadata?: Record<string, unknown>;
@@ -877,10 +873,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       });
     }
 
-    // Store by both qualified name and simple name
-    const qualifiedName = `${serviceName}@${version}`;
-    this.services.set(qualifiedName, descriptor);
-    this.services.set(serviceName, descriptor);
+    this.services.set(getQualifiedName(serviceName, version), descriptor);
   }
 
   /**
@@ -888,15 +881,15 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    * Called by LocalPeer when a service is unexposed
    */
   unregisterService(serviceName: string): void {
-    // Remove from services map (both qualified and simple names)
+    // LocalPeer removes one exact publication. Other versions remain available.
     this.services.delete(serviceName);
+  }
 
-    // Also try to remove qualified name variants
-    for (const key of this.services.keys()) {
-      if (key.startsWith(`${serviceName}@`)) {
-        this.services.delete(key);
-      }
-    }
+  private findService(name: string): ServiceDescriptor | undefined {
+    const exact = this.services.get(name);
+    if (exact) return exact;
+    const selected = selectServiceName(this.services.keys(), name);
+    return selected === undefined ? undefined : this.services.get(selected);
   }
 
   /**
@@ -1153,7 +1146,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   private async handleSimpleInvocation(request: Request, message: HttpRequestMessage): Promise<Response> {
     try {
       // Get service descriptor
-      const service = this.services.get(message.service);
+      const service = this.findService(message.service);
       if (!service) {
         throw new TitanError({
           code: ErrorCode.NOT_FOUND,
@@ -1170,6 +1163,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         });
       }
       this.noteHeld(method, request);
+      const serviceName = getQualifiedName(service.name, service.version);
 
       // Validate input using consolidated helper and get transformed data
       const validatedInput = this.validateMethodInput(message.input, method.contract);
@@ -1177,7 +1171,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       // Create minimal handler context (no middleware)
       const metadata = new Map<string, unknown>();
       metadata.set('requestId', message.id);
-      metadata.set('serviceName', message.service);
+      metadata.set('serviceName', serviceName);
       metadata.set('methodName', message.method);
       const handlerContext: MethodHandlerContext = {
         context: message.context,
@@ -1185,7 +1179,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         request,
         middleware: {
           peer: this.netronPeer!,
-          serviceName: message.service,
+          serviceName,
           methodName: message.method,
           input: validatedInput,
           metadata,
@@ -1498,13 +1492,16 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
     try {
       // Get service descriptor
-      const service = this.services.get(message.service);
+      const service = this.findService(message.service);
       if (!service) {
         throw new TitanError({
           code: ErrorCode.NOT_FOUND,
           message: `Service ${message.service} not found`,
         });
       }
+
+      context.serviceName = getQualifiedName(service.name, service.version);
+      metadata.set('serviceName', context.serviceName);
 
       // Get method descriptor
       const method = service.methods.get(message.method);
@@ -1833,7 +1830,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     fallbackContext: HttpRequestContext | undefined,
     setCookies: string[]
   ): Promise<unknown> {
-    const service = this.services.get(req.service);
+    const service = this.findService(req.service);
     const method = service?.methods.get(req.method);
     if (!service || !method) {
       throw NetronErrors.methodNotFound(req.service, req.method);
@@ -1854,7 +1851,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     }
     metadata.set('requestContext', untrustedContext);
     metadata.set('requestId', req.id);
-    metadata.set('serviceName', req.service);
+    metadata.set('serviceName', getQualifiedName(service.name, service.version));
     metadata.set('methodName', req.method);
     request.headers.forEach((value, key) => {
       metadata.set(key.toLowerCase(), value);
@@ -1862,7 +1859,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
     const context: NetronMiddlewareContext & { output?: unknown; request?: Request } = {
       peer: this.netronPeer!,
-      serviceName: req.service,
+      serviceName: getQualifiedName(service.name, service.version),
       methodName: req.method,
       input: req.input,
       metadata,

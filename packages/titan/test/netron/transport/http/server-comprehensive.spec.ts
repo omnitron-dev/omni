@@ -192,7 +192,7 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
 
       const services = (server as any).services;
       expect(services.has('TestService@2.0.0')).toBe(true);
-      expect(services.has('TestService')).toBe(true); // Also by name
+      expect(services.has('TestService')).toBe(false); // No synthetic publication
     });
 
     it('should register individual service dynamically', () => {
@@ -238,7 +238,7 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
       const services = (server as any).services;
       expect(services.has('TestService@2.0.0')).toBe(true);
 
-      server.unregisterService('TestService');
+      server.unregisterService('TestService@2.0.0');
 
       expect(services.has('TestService@2.0.0')).toBe(false);
       expect(services.has('TestService')).toBe(false);
@@ -778,7 +778,7 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
       mockPeer.stubs.set('cors-def-id', stub);
 
       try {
-        server.unregisterService('CorsService'); // Clear if exists
+        server.unregisterService('CorsService@1.0.0'); // Clear if exists
       } catch (_e) {
         // Ignore if doesn't exist
       }

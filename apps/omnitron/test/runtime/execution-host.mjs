@@ -17,6 +17,7 @@ const { LogCollectorService } = await import(pathToFileURL(path.join(dist, 'serv
 const { logEntryOf } = await import(pathToFileURL(path.join(dist, 'monitoring/log-entry.js')));
 const { withDateBinding } = await import(pathToFileURL(path.join(dist, 'database/sqlite-date-binding.js')));
 const { ExecutionClient } = await import(pathToFileURL(path.join(dist, 'daemon/execution-client.js')));
+const { withControlDeadline } = await import(pathToFileURL(path.join(dist, 'daemon/private-control-client.js')));
 const { OWN_BUILD } = await import(pathToFileURL(path.join(dist, 'shared/build-stamp.js')));
 const { DEFAULT_ECOSYSTEM, DEFAULT_DAEMON_CONFIG } = await import(pathToFileURL(path.join(dist, 'config/defaults.js')));
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-owner-'));
@@ -36,11 +37,19 @@ await fs.writeFile(script, `
 import http from 'node:http';
 import fs from 'node:fs';
 process.stdout.write(JSON.stringify({level:30,time:'2026-10-31T01:02:03.004567Z',msg:${JSON.stringify(largeMessage)}})+'\\n');
-process.stderr.write('Error: fixture boot detail\\n    at fixture\\n');
 let counter = 0;
 const started = Date.now();
 const timer = setInterval(() => { counter++; }, 5);
-const server = http.createServer((_request, response) => response.end(JSON.stringify({ pid: process.pid, parent: process.ppid, started, counter })));
+let bootErrorScheduled = false;
+const server = http.createServer((_request, response) => {
+  if (!bootErrorScheduled) {
+    bootErrorScheduled = true;
+    // Startup output may arrive after IPC/HTTP readiness. Reproduce that order
+    // deliberately instead of depending on a slow CI host to expose it.
+    setTimeout(() => process.stderr.write('Error: fixture boot detail\\n    at fixture\\n'), 500);
+  }
+  response.end(JSON.stringify({ pid: process.pid, parent: process.ppid, started, counter }));
+});
 server.listen(0, '127.0.0.1', () => {
   fs.writeFileSync(${JSON.stringify(path.join(directory, 'address.json'))}, JSON.stringify({ port: server.address().port }));
   process.send?.({ type: 'ready' });
@@ -86,10 +95,20 @@ try {
   assert.equal(before.pid, launched.pid);
   assert.equal(before.parent, owner.pid);
   first.setLogCollector(collector);
-  await new Promise(resolve => setTimeout(resolve, 200));
-  const capture = await first.remote.readLogs();
-  assert(capture.some(item => item.value.record.message === largeMessage));
-  assert(capture.some(item => item.value.record.message === 'Error: fixture boot detail\n    at fixture'));
+  // App readiness is not a barrier for pipe delivery or multiline assembly.
+  // Wait for the exact durable records; never flush a partial message merely
+  // because the controller read it, and never acknowledge before persistence.
+  const captureDeadline = performance.now() + 10_000;
+  let capture = [];
+  while (performance.now() < captureDeadline) {
+    capture = await withControlDeadline(first.remote.readLogs(), Math.max(1, captureDeadline - performance.now()), 'Startup log observation timed out');
+    if (capture.some(item => item.value.record.message === largeMessage)
+      && capture.some(item => item.value.record.message === 'Error: fixture boot detail\n    at fixture')) break;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.equal(capture.filter(item => item.value.record.message === largeMessage).length, 1, 'Exact JSON startup record must become durable once');
+  assert.equal(capture.filter(item => item.value.record.message === 'Error: fixture boot detail\n    at fixture').length, 1, 'Complete multiline startup record must become durable once');
+  assert.equal(capture.length, 2, 'Startup output must neither split nor duplicate records');
   // Commit, then deliberately lose its acknowledgment. The ordinary poll replays it.
   await collector.persistCaptured(capture.map(item => logEntryOf(item.value.app, item.value.record)));
   await first.activateObservations();

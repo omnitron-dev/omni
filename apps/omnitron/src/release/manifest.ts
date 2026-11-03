@@ -144,6 +144,11 @@ export interface ReleaseSource {
   readonly registry?: {
     readonly packages: ReadonlyArray<{ readonly name: string; readonly version: string; readonly integrity: string }>;
   };
+  /** The project committed these archives; each was reproduced byte for byte from this upstream Git tree. */
+  readonly reproduced?: {
+    readonly tree: string;
+    readonly packages: ReadonlyArray<{ readonly name: string; readonly version: string; readonly file: string; readonly integrity: string }>;
+  };
   /**
    * Whether a remote-tracking branch contains the commit — null when the
    * checkout has no remote refs to ask. A release built from a commit that

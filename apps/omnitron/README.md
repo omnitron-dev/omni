@@ -62,7 +62,20 @@ commit. The manifest records the package names, versions and archive digests in
 `omni.registry.packages`. Frozen installs can use a local store or registry
 mirror. Independent archive verification requires access to
 `registry.npmjs.org` on every build. Older packages without packed source
-metadata, including Omnitron 0.3.1, require a linked source checkout.
+metadata require a linked source checkout or committed, reproducible archives.
+
+For a workspace that commits its framework tarballs, use
+`omnitron release build <project> --omni-commit <full-upstream-commit>`.
+The lockfile must pin every framework archive by its project-relative path,
+version and SHA-512. The builder reads the blobs directly from the project
+commit, checks out the requested commit on Omnitron's upstream main branch,
+installs its frozen dependencies, builds the workspace and reproduces each
+package with pnpm. The canonical archive must match the committed bytes.
+The manifest records the upstream tree, package paths, versions and digests
+in `omni.reproduced`. Supply a Node and pnpm toolchain capable of producing
+the same bytes. An existing Omnitron source checkout can provide the Git
+objects when its upstream tracking branch contains that commit. Otherwise
+the builder clones the official repository.
 
 The builder compares the installed framework with those archives and checks
 the framework files again inside each application's staged dependency graph.
@@ -81,8 +94,7 @@ Projects developing against a linked Omni checkout can keep their existing
 relative layout. The builder clones that repository at its selected commit
 and builds the linked packages. `--omni-commit` selects the checkout revision
 in this mode. With registry dependencies it is an assertion and must be the
-full commit recorded by the pinned archives. Mixing both framework sources
-in a single release is rejected.
+full commit recorded by the pinned archives. A release uses one source mode for its whole framework.
 
 ## Host-owned public ingress
 

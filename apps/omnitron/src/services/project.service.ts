@@ -2959,7 +2959,7 @@ export class ProjectService extends EventEmitter {
 
     // Admission and installation must agree on the framework the application owner actually loads.
     const { refuseForeignOmni } = await import('../release/daemon-omni.js');
-    const foreign = stackConfig.type === 'local' ? null : refuseForeignOmni(release.manifest.omni.commit, await this.askDaemonBuilds(stackConfig), Boolean(release.manifest.omni.registry));
+    const foreign = stackConfig.type === 'local' ? null : refuseForeignOmni(release.manifest.omni.commit, await this.askDaemonBuilds(stackConfig), Boolean(release.manifest.omni.registry || release.manifest.omni.reproduced));
     if (foreign) {
       throw new Error(`Refusing release ${release.id} for ${projectName}/${stackName}: ${foreign}.`);
     }

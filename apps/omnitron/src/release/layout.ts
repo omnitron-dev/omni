@@ -1,7 +1,8 @@
 /**
  * Resolve framework inputs from the project commit's pnpm lock. External
  * workspace links have to land on an isolated checkout at the same relative
- * path. Registry packages are pinned by the SHA-512 of their public archive.
+ * path. Archive inputs pin the SHA-512 of either a public npm tarball or
+ * a regular file committed in the project.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,14 +17,20 @@ export interface LinkLayout {
   readonly linkedDirs: readonly string[];
 }
 
-type Dependency = { version: string };
+type Dependency = { version: string; specifier?: string };
 type LockDocument = {
   importers?: Record<string, Record<string, Record<string, Dependency>>>;
-  packages?: Record<string, { resolution?: { integrity?: string; tarball?: string; type?: string } }>;
+  snapshots?: Record<string, unknown>;
+  packages?: Record<string, { version?: string; resolution?: { integrity?: string; tarball?: string; type?: string } }>;
   patchedDependencies?: Record<string, unknown>;
 };
 const sections = ['dependencies', 'devDependencies', 'optionalDependencies'] as const;
 export type RegistryPackage = { name: string; version: string; integrity: string };
+export type VendoredPackage = RegistryPackage & { file: string };
+const VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*)?(?:\+[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*)?$/;
+const INTEGRITY = /^sha512-[A-Za-z0-9+/]{85}[AQgw]==$/;
+
+type FrameworkInput = { importer: string; name: string; dependency: Dependency };
 type Link = { importer: string; name: string; rel: string };
 
 function externalFile(importer: string, dependency: string) {
@@ -34,12 +41,16 @@ function externalFile(importer: string, dependency: string) {
 
 function readGraph(lockfile: string) {
   const links: Link[] = [], packages: RegistryPackage[] = [], importers: string[] = [];
-  const localFramework: string[] = [];
+  const vendored: VendoredPackage[] = [], frameworkInputs: FrameworkInput[] = [];
+  const snapshots = new Set<string>();
   for (const document of parseAllDocuments(lockfile)) {
     if (document.errors.length) throw Error('Invalid pnpm-lock.yaml: ' + document.errors[0]!.message);
     const graph = document.toJS() as LockDocument | null;
-    if (!graph?.importers) continue;
-    for (const [importer, dependencies] of Object.entries(graph.importers)) {
+    if (!graph) continue;
+    for (const key of Object.keys(graph.snapshots ?? {})) {
+      if (key.startsWith('@omnitron-dev/')) snapshots.add(key);
+    }
+    for (const [importer, dependencies] of Object.entries(graph.importers ?? {})) {
       if (importer !== '.' && (path.posix.normalize(importer) !== importer || importer.startsWith('/') ||
           importer.split('/').includes('..') || importer.includes('\\'))) throw Error('Unsafe lockfile importer: ' + importer);
       importers.push(importer);
@@ -48,25 +59,39 @@ function readGraph(lockfile: string) {
         if (entry.version.startsWith('file:') && externalFile(importer, entry.version))
           throw Error('File dependency resolves outside the committed project: ' + name);
         if (entry.version.startsWith('link:')) links.push({ importer, name, rel: entry.version.slice(5) });
-        if (name.startsWith('@omnitron-dev/') && /^(?:link:|file:|workspace:)/.test(entry.version)) localFramework.push(name);
+        if (name.startsWith('@omnitron-dev/')) frameworkInputs.push({ importer, name, dependency: entry });
       }
     }
     for (const [key, pkg] of Object.entries(graph.packages ?? {})) {
-      const file = key.indexOf('@file:');
-      if (file !== -1 && externalFile('.', key.slice(file + 1))) throw Error('File dependency resolves outside the committed project: ' + key);
+      const filePrefix = key.indexOf('@file:');
+      if (filePrefix !== -1 && externalFile('.', key.slice(filePrefix + 1))) throw Error('File dependency resolves outside the committed project: ' + key);
       if (!key.startsWith('@omnitron-dev/')) continue;
-      const match = /^(@omnitron-dev\/([a-z0-9][a-z0-9.-]*))@(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?)$/.exec(key);
+      const match = /^(@omnitron-dev\/[a-z0-9][a-z0-9._-]*)@(.+)$/.exec(key);
       const resolution = pkg.resolution;
-      if (!match || !resolution || typeof resolution.integrity !== 'string' || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(resolution.integrity) ||
-          resolution.type || (resolution.tarball && resolution.tarball !== npmTarball(match[1]!, match[3]!))) {
-        throw Error('Framework dependency must resolve to an exact public npm archive with SHA-512: ' + key);
+      if (!match || !resolution || typeof resolution.integrity !== 'string' || !INTEGRITY.test(resolution.integrity) || resolution.type)
+        throw Error('Framework dependency requires an exact archive with SHA-512: ' + key);
+      const name = match[1]!, locator = match[2]!, integrity = resolution.integrity;
+      if (locator.startsWith('file:')) {
+        const file = locator.slice(5);
+        if (!file.endsWith('.tgz') || !file.split('/').every(part => /^[A-Za-z0-9_@.-]+$/.test(part) && part !== '.' && part !== '..')) {
+          throw Error('Unsafe committed framework archive path: ' + file);
+        }
+        if (resolution.tarball !== locator || Object.keys(resolution).some(field => field !== 'tarball' && field !== 'integrity') ||
+            typeof pkg.version !== 'string' || !VERSION.test(pkg.version)) {
+          throw Error('Vendored framework package requires a matching file tarball and an exact version: ' + key);
+        }
+        vendored.push({ name, version: pkg.version, file, integrity });
+      } else {
+        if (!VERSION.test(locator) || (resolution.tarball && resolution.tarball !== npmTarball(name, locator))) {
+          throw Error('Framework dependency must resolve to an exact public npm archive with SHA-512: ' + key);
+        }
+        packages.push({ name, version: locator, integrity });
       }
-      packages.push({ name: match[1]!, version: match[3]!, integrity: resolution.integrity });
     }
     if (Object.keys(graph.patchedDependencies ?? {}).some(key => key.startsWith('@omnitron-dev/')))
-      throw Error('Local patches of registry framework packages cannot be attested');
+      throw Error('Local patches of framework packages cannot be attested');
   }
-  return { links, packages, importers: [...new Set(importers)], localFramework };
+  return { links, packages, vendored, frameworkInputs, snapshots, importers: [...new Set(importers)] };
 }
 
 export function npmTarball(name: string, version: string): string {
@@ -120,19 +145,42 @@ export function readLinkLayout(lockfile: string): LinkLayout | { refusal: string
 
 export type FrameworkLayout =
   | { kind: 'linked'; layout: LinkLayout }
-  | { kind: 'registry'; packages: RegistryPackage[]; importers: string[] };
+  | { kind: 'registry'; packages: RegistryPackage[]; importers: string[] }
+  | { kind: 'vendored'; packages: VendoredPackage[]; importers: string[] };
 
 export function readFrameworkLayout(lockfile: string): FrameworkLayout {
   const graph = readGraph(lockfile);
   const linked = layoutOf(graph.links);
   if (linked && 'refusal' in linked) throw Error(linked.refusal);
-  if (linked && !graph.packages.length) return { kind: 'linked', layout: linked };
-  if (linked || graph.localFramework.length) throw Error('Cannot combine local framework packages and npm release inputs');
-  if (!graph.packages.some(pkg => pkg.name === '@omnitron-dev/omnitron'))
-    throw Error('The lockfile must include @omnitron-dev/omnitron with a verifiable npm archive or checkout');
-  const names = new Set(graph.packages.map(pkg => pkg.name));
-  if (names.size !== graph.packages.length) throw Error('Multiple versions of the same framework package cannot identify one release');
-  return { kind: 'registry', packages: graph.packages.sort((a, b) => a.name.localeCompare(b.name)), importers: graph.importers };
+  if (graph.vendored.length) {
+    if (linked || graph.packages.length) throw Error('Cannot combine local framework archives with a linked checkout or npm release inputs');
+    if (new Set(graph.vendored.map(pkg => pkg.file)).size !== graph.vendored.length)
+      throw Error('A committed framework archive must identify a single package');
+    const byName = new Map(graph.vendored.map(pkg => [pkg.name, pkg]));
+    for (const { importer, name, dependency } of graph.frameworkInputs) {
+      const pkg = byName.get(name);
+      const suffix = dependency.version.indexOf('(');
+      const base = suffix === -1 ? dependency.version : dependency.version.slice(0, suffix);
+      if (!pkg || base !== 'file:' + pkg.file || (suffix !== -1 && !graph.snapshots.has(name + '@' + dependency.version)))
+        throw Error('Framework importer must resolve to its committed archive and exact peer snapshot: ' + importer + ' / ' + name);
+      if (dependency.specifier?.startsWith('file:') && dependency.specifier.slice(5) !== path.posix.relative(importer, pkg.file))
+        throw Error('Importer file specifier differs from its committed framework archive: ' + importer + ' / ' + name);
+    }
+  } else {
+    if (linked && !graph.packages.length && !graph.frameworkInputs.some(input => input.dependency.version.startsWith('file:')))
+      return { kind: 'linked', layout: linked };
+    if (linked || graph.frameworkInputs.some(input => /^(?:link:|file:|workspace:)/.test(input.dependency.version)))
+      throw Error('Cannot combine local framework packages and npm release inputs');
+  }
+  const archives = graph.vendored.length ? graph.vendored : graph.packages;
+  if (!archives.some(pkg => pkg.name === '@omnitron-dev/omnitron'))
+    throw Error('The lockfile must include @omnitron-dev/omnitron with a verifiable archive or checkout');
+  if (new Set(archives.map(pkg => pkg.name)).size !== archives.length)
+    throw Error('Multiple versions of the same framework package cannot identify one release');
+  const byName = (a: RegistryPackage, b: RegistryPackage) => a.name.localeCompare(b.name);
+  return graph.vendored.length
+    ? { kind: 'vendored', packages: graph.vendored.sort(byName), importers: graph.importers }
+    : { kind: 'registry', packages: graph.packages.sort(byName), importers: graph.importers };
 }
 
 /** Lay out complete checkouts while preserving the registered project's location inside Git. */

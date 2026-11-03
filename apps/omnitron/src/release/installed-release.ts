@@ -104,9 +104,9 @@ export function installedReleaseCandidates(observation: InstalledArtifactObserva
     } else if (!manifest.omni.commit.startsWith(observation.frameworkCommit) && !observation.frameworkCommit.startsWith(manifest.omni.commit)) {
       modified = true;
       reasons.push(`Installed framework reports ${observation.frameworkCommit}; release records ${manifest.omni.commit}`);
-    } else if (manifest.omni.registry && (observation.frameworkCommit.length !== 40 || observation.frameworkCommit !== manifest.omni.commit)) {
+    } else if ((manifest.omni.registry || manifest.omni.reproduced) && (observation.frameworkCommit.length !== 40 || observation.frameworkCommit !== manifest.omni.commit)) {
       incomplete = true;
-      reasons.push('A registry release requires the full framework commit for an exact comparison');
+      reasons.push('An archive-backed release requires the full framework commit for an exact comparison');
     }
     return [{ releaseId: manifest.id, manifestSha256: sha256, state: modified ? 'modified' as const : incomplete ? 'incomplete' as const : 'entry-matches' as const, reasons: [...new Set(reasons)] }];
   });

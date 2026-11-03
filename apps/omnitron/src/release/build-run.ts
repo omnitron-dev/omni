@@ -24,7 +24,8 @@ import { ProjectRegistry } from '../project/registry.js';
 import { assembleManifest, gateOutcomesFromGates, releaseId } from './builder.js';
 import { planBuildRoot, readFrameworkLayout, resolveCheckouts } from './layout.js';
 import { assertReleaseId } from './load.js';
-import { resolveRegistryFramework } from './registry-framework.js';
+import { FRAMEWORK_REPOSITORY, resolveRegistryFramework } from './registry-framework.js';
+import { reproduceVendoredFramework, requireFrameworkCommit } from './vendored-framework.js';
 import { OWN_BUILD } from '../shared/build-stamp.js';
 import type { GateOutcome, ReleaseManifest, ReleaseSource } from './manifest.js';
 
@@ -34,7 +35,7 @@ const MINUTE = 60_000;
 export interface ReleaseBuildOptions {
   /** The project commit to build; default: the project checkout's HEAD. */
   projectCommit?: string;
-  /** Linked checkout revision or exact full commit required of the pinned registry packages. */
+  /** Linked checkout revision, registry constraint or full upstream commit to reproduce vendored framework archives. */
   omniCommit?: string;
   /** Keep the clones after a successful build. */
   keepSource?: boolean;
@@ -134,6 +135,7 @@ function runStep(
   args: string[],
   opts: { cwd: string; logFile: string; timeoutMs: number; env?: NodeJS.ProcessEnv; signal?: AbortSignal },
 ): Promise<StepResult> {
+  if (opts.signal?.aborted) return Promise.reject(new Error('The build was stopped'));
   return new Promise((resolve) => {
     const out = fs.createWriteStream(opts.logFile, { flags: 'a' });
     out.write(`$ ${cmd} ${args.join(' ')}\n  (in ${opts.cwd})\n`);
@@ -530,6 +532,9 @@ async function buildRelease(
     const sha = await git(['rev-parse', '--verify', `${options.omniCommit ?? 'HEAD'}^{commit}`], omniPath);
     checkout = { path: omniPath, sha, layout: layout.layout };
     omniSource = await sourceOf(omniPath, sha);
+  } else if (layout.kind === 'vendored') {
+    // Reserve the release ID. The verified source replaces this before a manifest is written.
+    omniSource = { repo: FRAMEWORK_REPOSITORY, commit: requireFrameworkCommit(options.omniCommit) };
   } else {
     say(`verifying ${layout.packages.length} framework archives against the project lockfile`, 2);
     registry = await resolveRegistryFramework(layout.packages, options.omniCommit, signal);
@@ -599,6 +604,28 @@ async function buildRelease(
     builtPackages.push(...linked.map(pkg => ({ name: pkg.name, distBuiltAt: distBuiltAt(path.join(omniDir, pkg.dir)) })));
   }
 
+  if (layout.kind === 'vendored') {
+    stillWanted();
+    say(`reproducing ${layout.packages.length} framework archives from upstream commit ${omniSource.commit}`, 12);
+    const logFile = path.join(logs, 'reproduce-framework.log');
+    // A project may set environment variables for its own gates. The upstream
+    // build uses only the operator's environment and the build's private temp directory.
+    const upstreamEnv = buildEnv({ ...process.env, TMPDIR: where.tmp });
+    upstreamEnv['PATH'] = [bin, ...(upstreamEnv['PATH'] ?? '').split(path.delimiter).filter(dir => dir && dir !== bin)].join(path.delimiter);
+    registry = await reproduceVendoredFramework(layout.packages, {
+      projectDir: projectPath, projectCommit: projectSha, frameworkCommit: omniSource.commit,
+      scratch: path.join(srcRoot, 'framework-proof'), env: upstreamEnv,
+      ...(signal ? { signal } : {}),
+      run: async (command, args, cwd, toolEnv) => {
+        stillWanted();
+        await must('reproduce framework', runStep(command, args, {
+          cwd, env: toolEnv, logFile, timeoutMs: 60 * MINUTE, ...(signal ? { signal } : {}),
+        }), logFile);
+      },
+    });
+    omniSource = registry.source;
+  }
+
   // 3. The project: install, then prove the links landed on the clone.
   stillWanted();
   say(`installing ${projectName}`, 35);
@@ -614,7 +641,7 @@ async function buildRelease(
       );
     }
     say(`${links.checked} @omnitron-dev links resolve inside the omni clone`, 42);
-  } else if (registry && layout.kind === 'registry') {
+  } else if (registry && layout.kind !== 'linked') {
     const verified = new Set<string>();
     let coreInstalled = false;
     const root = await fs.promises.realpath(plan.projectDir);
@@ -633,7 +660,7 @@ async function buildRelease(
       }
     }
     if (!coreInstalled) throw Error('Declare @omnitron-dev/omnitron in a workspace importer so the frozen installation can be verified');
-    say(`${verified.size} installed framework packages match their public npm archives`, 42);
+    say(`${verified.size} installed framework packages match their verified archives`, 42);
   }
 
   // The project's own workspace packages, before anything compiles against

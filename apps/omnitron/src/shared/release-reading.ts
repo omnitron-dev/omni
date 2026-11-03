@@ -48,10 +48,11 @@ export function releaseTargetLabel(target?: import('../release/target-runtime.js
 }
 
 export function frameworkSourceLabel(manifest: ReleaseManifest): string {
-  const packages = manifest.omni.registry?.packages;
+  const reproduced = manifest.omni.reproduced;
+  const packages = reproduced?.packages ?? manifest.omni.registry?.packages;
   const count = packages?.length ?? manifest.builtWith?.packages?.length;
   if (count === undefined) return 'Framework source not recorded';
-  return `${packages ? 'npm registry' : 'Linked checkout'} · ${count} framework package${count === 1 ? '' : 's'}`;
+  return `${reproduced ? 'Reproduced archives' : packages ? 'npm registry' : 'Linked checkout'} · ${count} framework package${count === 1 ? '' : 's'}`;
 }
 
 /**

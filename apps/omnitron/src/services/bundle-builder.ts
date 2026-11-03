@@ -533,7 +533,7 @@ export function staleDist(packageDir: string): string | null {
 }
 
 /** Where a workspace package lives, as recorded by `readWorkspace`. */
-function directoryOf(manifest: PackageManifest): string {
+export function directoryOf(manifest: PackageManifest): string {
   const dir = (manifest as PackageManifest & { __dir?: string }).__dir;
   if (!dir) throw new Error(`No directory recorded for ${manifest.name}`);
   return dir;

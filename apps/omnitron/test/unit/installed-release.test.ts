@@ -32,8 +32,15 @@ async function fixture() {
   return { root, app, handle, orchestrator, refreshObservation };
 }
 const manifest = (id: string, observation: InstalledArtifactObservation): ReleaseManifest => ({
-  id, omni: { commit: 'a'.repeat(40) }, artifacts: observation.archives.map(archive => ({ app: 'main', version: '1', sha256: archive.sha256, bytes: archive.bytes })),
-} as ReleaseManifest);
+  id,
+  project: { repo: 'fixture-project', commit: 'd'.repeat(40) },
+  omni: { repo: 'fixture-framework', commit: 'a'.repeat(40) },
+  artifacts: observation.archives.map(archive => ({ app: 'main', version: '1', sha256: archive.sha256, bytes: archive.bytes })),
+  gates: [{ name: 'fixture', status: 'passed' }],
+  builtWith: { omnitron: '0.3.1', packages: [] },
+  builtAt: '2026-11-03T00:00:00.000Z',
+  builtBy: 'fixture',
+});
 
 it('binds a read-only archive comparison to fresh owner observations without synthesizing launch evidence', async () => {
   const f = await fixture();
@@ -58,7 +65,8 @@ it('reports modified bootstrap and framework separately from the retained base a
   expect(report.apps[0]!.candidates.every(candidate => candidate.state === 'modified')).toBe(true);
   expect(report.apps[0]!.candidates[0]!.reasons).toEqual(expect.arrayContaining([expect.stringContaining('entry point differs'), expect.stringContaining('framework reports')]));
   expect(report.limitations.join(' ')).toContain('does not prove what a running process loaded');
-  catalog.releases[0]!.manifest.artifacts[0] = { ...catalog.releases[0]!.manifest.artifacts[0]!, bytes: 1 };
+  const first = catalog.releases[0]!;
+  first.manifest = { ...first.manifest, artifacts: [{ ...first.manifest.artifacts[0]!, bytes: 1 }] };
   expect(installedReleaseCandidates(observed!, catalog)).toHaveLength(1);
 });
 
@@ -81,6 +89,15 @@ it('discards disk evidence when owner PID or entry changes during the scan', asy
   f.refreshObservation.mockImplementation(async () => { if (f.refreshObservation.mock.calls.length === 2) f.handle.pid++; });
   const [observed] = await inspectInstalledArtifacts(f.orchestrator, [f.handle.name]);
   expect(observed).toMatchObject({ state: 'changed-during-inspection', archives: [], entrySha256: null });
+});
+
+it('does not turn an archive checksum match into provenance for an incomplete manifest', async () => {
+  const f = await fixture();
+  const [observed] = await inspectInstalledArtifacts(f.orchestrator, [f.handle.name]);
+  const { project: _project, ...missingSource } = manifest('sample-missing-source', observed!);
+  const candidates = installedReleaseCandidates(observed!, { complete: true, reasons: [],
+    releases: [{ manifest: missingSource as ReleaseManifest, sha256: 'b'.repeat(64) }] });
+  expect(candidates).toMatchObject([{ state: 'incomplete', reasons: [expect.stringContaining('producer could not be verified')] }]);
 });
 
 it('accepts only canonical inventory names and rejects escaping entry points and symlink archives', async () => {

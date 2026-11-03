@@ -82,6 +82,10 @@
     "./runtime/identity": {
       "types": "./dist/runtime/identity.d.ts",
       "default": "./dist/runtime/identity.js"
+    },
+    "./readiness": {
+      "types": "./dist/readiness.d.ts",
+      "default": "./dist/readiness.js"
     }
   },
   "scripts": {

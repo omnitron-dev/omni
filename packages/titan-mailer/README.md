@@ -83,6 +83,15 @@ pass an existing pool/transaction executor; the adapter never creates a second c
 An existing Titan database transaction can supply this executor. Applications with an older
 mail schema must migrate its columns explicitly before enabling the worker.
 
+The same entry exports `POSTGRES_MAIL_OUTBOX_REQUIREMENTS`, a plain-data readiness
+contract owned alongside the schema. Before starting the worker, pass an existing
+pool and this contract to `requirePostgresSchema` from
+`@omnitron-dev/titan-database/readiness` (or `@omnitron-dev/omnitron/readiness`).
+The check reads schema metadata; it neither migrates nor sends mail. It detects
+missing columns, changed retry defaults and lost delivery-ID uniqueness before
+delivery begins. The PostgreSQL entry and the root mailer keep their existing
+dependencies: the contract itself imports no database engine or driver.
+
 ```typescript
 const outbox = new PostgresMailOutbox(database, {
   messageIdDomain: 'example.org',

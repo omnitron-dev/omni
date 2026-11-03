@@ -244,34 +244,72 @@ installation. Use `omnitron migrate status`, `up --dry-run`, `up`, `verify` or
 `down --steps 1` with `omnitron.migrations.ts`. `--daemon` explicitly selects the
 daemon's own registry.
 
-For projects that provide a package-level `migrate` script, run
-`omnitron infra migrate --dry-run` in the ecosystem directory to review
-the package paths and their dependency order. `omnitron infra migrate`
-runs the plan once per package. Supply an application name to select one.
-A failure identifies its application and halts the remaining scripts.
-On an enrolled node, direct lifecycle and migration writes require a
-recipient-fenced execution path.
+`@omnitron-dev/omnitron/readiness` exposes Titan Database's read-only
+`requirePostgresSchema(pool, requirements)`. Applications use it after the declared
+migration phase and before accepting traffic. Each component declares only the
+schema it consumes; additive unrelated migrations remain compatible. A mismatch
+reports `database_schema_incompatible` and exact violations without executing DDL
+or closing the application pool. This is independent of migration-journal integrity,
+which remains the responsibility of `migrate verify` and the shared runner.
 
-For a stack with explicitly requested PostgreSQL migrations (`migrate: true`),
-startup validates every migration program before provisioning infrastructure.
-A development stack uses its application’s `src/database/migrate.ts`; a selected
-local release uses only `dist/database/migrate.js` inside the verified installed
-artifact, with that artifact’s dependencies and the verified Node executable.
-The compiled convention is shared with remote deployment. The current standard
-migrator consumes the app-prefixed host, port, database, user and password fields.
-A `DATABASE_URL` query or fragment is refused before local provisioning: frozen
-migrators do not guarantee those options, including TLS settings. This is an
-explicit compatibility limit, not permission to drop connection options. Imported applications
-retain the original producer’s migration program and environment prefix. A missing
-or modified compiled program refuses startup; it never falls back to the working tree.
+Migration ownership belongs to the stack, not each application instance. A PostgreSQL
+consumer does not gain permission to apply DDL. Declare one owner by its application
+alias, independently of the database name:
 
-After database readiness, the installed closure is checked again and each migrator
-runs once. A failed or interrupted execution blocks application start and is not
-automatically retried: the database may already have committed. Inspect the migration
-ledger before retrying. The child execution has a ten-minute deadline; timeout or
-cancellation terminates that child and reports an unknown outcome. Stack diagnosis
-in CLI and Console verifies program availability without connecting to the database;
-authentication, schema and the actual migration result remain explicitly unverified.
+```ts
+api: {
+  migrate: [
+    { app: 'api-service', config: 'src/database/portal.migrations.ts', releaseConfig: 'dist/database/portal.migrations.js' },
+    { app: 'api-service', config: 'src/database/market.migrations.ts', releaseConfig: 'dist/database/market.migrations.js' },
+  ],
+}
+```
+
+This entry belongs to the PostgreSQL preset's `config.databases` (or legacy
+`infrastructure.postgres.databases`). A single binding can be an object. Every module
+exports the existing `defineMigrationConfig`; its runner options, registry, checksum
+format and lock remain independent. Source paths are relative to the owner's declared
+`cwd`. Its ordinary package build must emit each `releaseConfig` within the sealed
+application payload. Imported aliases retain their producer's admitted package.
+
+Local startup and remote deployment use one normalized ownership plan. They validate
+all destinations and programs, then import every config and resolve its definitions
+before opening a migration connection. Config factories load definitions; `connect()`
+owns connection creation. Every config uses the existing public `executeMigrationOperation`
+in an isolated child. Programs never fall back to the working tree or another file.
+Sealed payloads are reverified before execution. Configs receive the complete resolved
+`DATABASE_URL`, including transport settings; URL options cannot override its host,
+port, database or credentials.
+
+`migrate: true` preserves the conventional `src/database/migrate.ts` →
+`dist/database/migrate.js` script and app-prefixed environment. An omitted/root cwd
+retains `apps/<database>` for this compatibility spelling; another declared cwd wins.
+The old script cannot guarantee URL query options and refuses them. `migrationDir`
+never controlled execution and is now refused with an explicit binding remedy.
+Absent/false opt-in means no migration, including on remote nodes: an existing script
+and `DATABASE_URL` are not permission to run it. Requirement discovery also grants none.
+
+Several registries run in declaration order under one database owner. A failure blocks
+candidate application activation, but previously committed migrations are history;
+there is no transaction across registries or databases. Execution has a ten-minute
+deadline, never retries an ambiguous outcome, and requires ledger inspection after
+interruption. For explicit remote ownership, the owner must occupy exactly one node;
+that node is processed first. Multiple explicit owning nodes are refused before
+provisioning because the current deployment path has no global migration barrier.
+Legacy boolean bindings describe node-local databases, not shared cluster ownership.
+
+`omnitron infra migrate --stack dev --dry-run` previews the same declarations without
+connecting. The standalone command uses the application's and stack's explicit
+settings, or the invoking environment; it does not retrieve a managed vault or invent
+connection defaults. Use the elected controller for enrolled or remote stacks. When
+no database migration policy exists, the older explicit `infra migrate` command
+continues running package `migrate` scripts in dependency order; a declared `false`
+never falls through to that compatibility path.
+
+Console and CLI stack diagnosis show the declared owner and available programs.
+They do not execute config factories, authenticate to databases or certify schema
+readiness. Runtime workers should inspect their required schema through the shared
+read-only migration API instead of applying migrations on every restart.
 
 `omnitron stack status <project> <stack>`, its JSON response and Console stack
 cards/details retain unavailable applications and safe reasons from the last start.

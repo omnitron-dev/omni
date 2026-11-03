@@ -47,6 +47,10 @@
     "./sqlite": {
       "types": "./dist/exports/sqlite.d.ts",
       "default": "./dist/exports/sqlite.js"
+    },
+    "./readiness": {
+      "types": "./dist/exports/readiness.d.ts",
+      "default": "./dist/exports/readiness.js"
     }
   },
   "files": [

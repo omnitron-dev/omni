@@ -1,6 +1,7 @@
 import { mailFailure, type MailFailureKind } from './errors.js';
 import type { MailMessage, MailReceipt } from './types.js';
 import type { MailOutbox } from './notifications.js';
+export { POSTGRES_MAIL_OUTBOX_REQUIREMENTS } from './postgres-readiness.js';
 /** Existing transaction executor: compatible with a pg pool/client or a Titan database adapter.
  * The adapter never owns, reconnects, or closes the application's database.
  */

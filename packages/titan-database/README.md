@@ -43,6 +43,28 @@ whole-batch transactions, and keeps inspection read-only. Preserve the journal
 and checksum format when moving an existing deployment. SQL definitions can use
 `defineSqlMigration`; arbitrary callbacks need a stable explicit checksum.
 
+## Read-only component readiness
+
+`@omnitron-dev/titan-database/readiness` exports `requirePostgresSchema(pool, requirements)`.
+It borrows an existing PostgreSQL pool, checks the component's declared table/column,
+key, trigger and routine requirements in a read-only repeatable-read transaction,
+and leaves the pool open. Importing the entry loads no driver, DI graph or migrator.
+Omnitron applications can use the same API through `@omnitron-dev/omnitron/readiness`.
+
+Declare only the objects the component consumes. Compatible additional tables,
+nullable columns and columns with defaults are accepted; `insert: true` rejects
+additional required inputs the component cannot supply. `defaultExpression` checks
+an exact PostgreSQL `pg_get_expr` expression when the default's meaning matters;
+`default` checks only its presence. `schema` selects an explicit schema, otherwise
+the connection's `current_schema()` applies. These are PostgreSQL guarantees.
+
+A mismatch throws `SchemaReadinessError` with code `database_schema_incompatible`,
+the component name and individual violations. This does not apply migrations,
+alter journals, prove every database invariant or replace query authorization.
+The stack's declared migration phase owns schema changes; application startup
+checks compatibility before accepting traffic. A later unrelated migration does
+not require modifying an older component's migration registry.
+
 ## License
 
 MIT

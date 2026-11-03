@@ -15,6 +15,7 @@ import { render, screen } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
+import type { IStackInfo } from '../../src/shared/dto/services.js';
 
 import { useProjectStore } from '../../webapp/src/stores/project.store.js';
 
@@ -23,14 +24,16 @@ vi.mock('src/auth/access', () => ({ useAccess: () => ({ can: () => true }), Can:
 vi.mock('src/netron/client', () => ({
   infra: {
     listContainers: vi.fn(async () => [
-      { name: 'omnitron-pg', image: 'postgres:17-alpine', status: 'running', health: 'healthy', ports: [] },
-      { name: 'sample-dev-postgres', image: 'postgis', status: 'running', health: 'healthy', ports: [] },
+      { name: 'omnitron-pg', image: 'postgres:17-alpine', status: 'running', health: 'healthy', ports: {} },
+      { name: 'sample-dev-postgres', image: 'postgis', status: 'running', health: 'healthy', ports: {} },
     ]),
   },
   project: { listProjects: vi.fn(async () => []), listStacks: vi.fn(async () => []) },
 }));
 
-const stack = (name: string, type: 'local' | 'remote') => ({ name, type }) as never;
+const stack = (name: string, type: 'local' | 'remote'): IStackInfo => ({ name, type, config: { type },
+  status: 'stopped', nodes: [], apps: [], infrastructure: { ready: true, services: {} },
+  portRange: null, startedAt: null, uptime: 0, attachedAt: null });
 
 beforeEach(() => {
   useProjectStore.setState({
@@ -51,7 +54,8 @@ describe('a containers page that hid a stack', () => {
       </ThemeProvider>,
     );
 
-    expect(await screen.findByText(/These are this machine/)).toBeInTheDocument();
+    expect(await screen.findByText(/This controller's Docker engine/)).toBeInTheDocument();
+    expect(screen.getByText('Remote infrastructure:')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'test' })).toHaveAttribute('href', '/stacks/test');
   });
 });

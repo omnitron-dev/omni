@@ -96,7 +96,7 @@ interface StatCardProps {
 function StatCard({ title, value, icon, color, loading }: StatCardProps) {
   return (
     <Card variant="outlined">
-      <CardContent>
+      <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
         <Stack
           direction="row"
           spacing={2}
@@ -113,7 +113,7 @@ function StatCard({ title, value, icon, color, loading }: StatCardProps) {
             {loading ? (
               <Skeleton width={60} height={40} />
             ) : (
-              <Typography variant="h4">{value}</Typography>
+              <Typography variant="h4" sx={{ fontSize: { xs: 24, sm: 28 } }}>{value}</Typography>
             )}
           </Stack>
           <Box
@@ -122,7 +122,7 @@ function StatCard({ title, value, icon, color, loading }: StatCardProps) {
               borderRadius: 2,
               bgcolor: (t) => alpha(t.palette[color].main, 0.12),
               color: `${color}.main`,
-              display: 'flex',
+              display: { xs: 'none', sm: 'flex' },
             }}
           >
             {icon}
@@ -457,8 +457,8 @@ export default function ContainersPage() {
         </Alert>
       )}
       {remoteStacks.length > 0 && (
-        <Alert severity="info" variant="outlined">
-          These are this machine&apos;s containers.{' '}
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          Remote infrastructure:{' '}
           {remoteStacks.map((s, i) => (
             <span key={s.name}>
               {i > 0 && ', '}
@@ -466,14 +466,12 @@ export default function ContainersPage() {
                 {s.name}
               </Link>
             </span>
-          ))}{' '}
-          {remoteStacks.length === 1 ? 'runs' : 'run'} on {remoteStacks.length === 1 ? 'its node' : 'their nodes'}; its
-          infrastructure is on its stack page, as the node reports it.
-        </Alert>
+          ))}
+        </Typography>
       )}
       {/* Summary Cards */}
-      <Grid container spacing={3}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+      <Grid container spacing={{ xs: 1.5, sm: 3 }}>
+        <Grid size={{ xs: 6, md: 3 }}>
           <StatCard
             title="Local total"
             value={count(totalCount)}
@@ -482,7 +480,7 @@ export default function ContainersPage() {
             loading={loading}
           />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 6, md: 3 }}>
           <StatCard
             title="Running"
             value={count(runningCount)}
@@ -491,7 +489,7 @@ export default function ContainersPage() {
             loading={loading}
           />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 6, md: 3 }}>
           <StatCard
             title="Stopped"
             value={count(stoppedCount)}
@@ -500,7 +498,7 @@ export default function ContainersPage() {
             loading={loading}
           />
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <Grid size={{ xs: 6, md: 3 }}>
           <StatCard
             title="Unhealthy"
             value={count(unhealthyCount)}

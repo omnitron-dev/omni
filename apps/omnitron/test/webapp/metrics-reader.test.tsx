@@ -4,7 +4,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
 
-const { api } = vi.hoisted(() => ({
+const { api, selection } = vi.hoisted(() => ({
+  selection: { activeProject: 'sample', activeStack: 'dev', namespacePrefix: 'sample/dev/' },
   api: {
     list: vi.fn(),
     apps: vi.fn(),
@@ -24,7 +25,7 @@ vi.mock('src/netron/client', () => ({
   nodes: { listNodes: api.nodes },
 }));
 vi.mock('src/hooks/use-stack-context', () => ({
-  useStackContext: () => ({ activeProject: 'sample', activeStack: 'dev', namespacePrefix: 'sample/dev/' }),
+  useStackContext: () => selection,
 }));
 vi.mock('src/components/metric-chart', () => ({
   MetricChart: ({ title, lines, error }: any) => (
@@ -52,6 +53,7 @@ const app = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  Object.assign(selection, { activeProject: 'sample', activeStack: 'dev', namespacePrefix: 'sample/dev/' });
   api.storage.mockResolvedValue({ type: 'postgres', durability: 'persistent', pendingSamples: 0, capacity: 50000, pendingBytes: 0, capacityBytes: 16777216, writing: false, writtenSamples: 123, droppedSamples: 0, failedWrites: 0, lastWriteAt: new Date().toISOString(), oldestPendingAt: null, lastError: null, cleanupError: null, syncError: null });
   api.list.mockResolvedValue([
     { ...app, name: app.handleKey },
@@ -89,6 +91,32 @@ describe('metrics for the selected deployment', () => {
     expect(totals).toHaveTextContent('warn27');
     expect(totals).toHaveTextContent('error0');
     expect(api.stats).toHaveBeenCalledTimes(1);
+  });
+  it('reads each selected scope and window once while paused, including storage, and refreshes explicitly', async () => {
+    const view = () => <MemoryRouter><MetricsPage /></MemoryRouter>;
+    const rendered = render(view());
+    await screen.findByText('postgres · database writes confirmed');
+    await screen.findByText('worker');
+    expect(api.series).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('switch', { name: 'Live' }));
+    expect(api.series).toHaveBeenCalledTimes(1);
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Time window' }));
+    fireEvent.click(await screen.findByRole('option', { name: '1 hour' }));
+    await screen.findByText('postgres · database writes confirmed');
+    await waitFor(() => expect(api.series).toHaveBeenCalledTimes(2));
+    expect(api.storage).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('switch', { name: 'Live' })).not.toBeChecked();
+    selection.activeStack = 'test';
+    selection.namespacePrefix = 'sample/test/';
+    rendered.rerender(view());
+    await screen.findByText('postgres · database writes confirmed');
+    await waitFor(() => expect(api.series).toHaveBeenCalledTimes(3));
+    expect(api.storage).toHaveBeenCalledTimes(3);
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh metrics' }));
+    await waitFor(() => expect(api.series).toHaveBeenCalledTimes(4));
+    expect(api.storage).toHaveBeenCalledTimes(4);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh metrics' })).toBeEnabled());
+    expect(screen.getByRole('switch', { name: 'Live' })).not.toBeChecked();
   });
   it('keeps the last history and reports a failed refresh', async () => {
     render(

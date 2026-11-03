@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -67,7 +67,7 @@ function MetricsReader({
   const [refreshing, setRefreshing] = useState(false);
   const previousIngestion = useRef<{ total: number; at: number } | null>(null);
   const period = METRIC_WINDOWS[window];
-  const storage = usePolledResource(() => metrics.getStorageStatus(), { intervalMs: 10_000, enabled: autoRefresh });
+  const storage = usePolledResource(() => metrics.getStorageStatus(), { intervalMs: 10_000, paused: !autoRefresh });
   const storageReading = metricsStorageReading(storage.error ? null : storage.data);
 
   const inventory = usePolledResource(
@@ -84,7 +84,7 @@ function MetricsReader({
         at: Date.now(),
       };
     },
-    { intervalMs: 10_000, enabled: autoRefresh }
+    { intervalMs: 10_000, paused: !autoRefresh }
   );
 
   const history = usePolledResource(
@@ -111,7 +111,7 @@ function MetricsReader({
         scope: activeProject ? metricScope(activeProject, activeStack, stacks, registry) : undefined,
       };
     },
-    { intervalMs: 10_000, enabled: autoRefresh }
+    { intervalMs: 10_000, paused: !autoRefresh }
   );
 
   const ingestion = usePolledResource(
@@ -124,18 +124,11 @@ function MetricsReader({
       previousIngestion.current = { total: stats.ingestedTotal, at };
       return rate;
     },
-    { intervalMs: 10_000, enabled: autoRefresh }
+    { intervalMs: 10_000, paused: !autoRefresh }
   );
 
-  // Explicit scope/window selection asks once, even while automatic refresh is paused.
-  const refreshInventory = inventory.refresh;
-  const refreshHistory = history.refresh;
-  const refreshIngestion = ingestion.refresh;
-  useEffect(() => {
-    void refreshInventory();
-    void refreshHistory();
-    void refreshIngestion();
-  }, [refreshInventory, refreshHistory, refreshIngestion]);
+  // A new reader loads its scope once, including while paused. Manual refresh
+  // then uses the same polling runner instead of scheduling a second mount read.
   const refresh = async () => {
     setRefreshing(true);
     try {

@@ -13,15 +13,16 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
 
+import type { AuditRow } from '../../src/shared/dto/audit.js';
 import { outcomeReason } from '../../src/shared/audit-outcome.js';
 
 const at = new Date(Date.now() - 60_000).toISOString();
-const row = (id: string, action: string, resourceId: string, details: Record<string, unknown> | null) => ({
+const row = (id: string, action: string, resourceId: string, details: Record<string, unknown> | null): AuditRow => ({
   id,
   action,
   actorId: 'omnitron-local',
@@ -58,6 +59,8 @@ vi.mock('src/netron/client', () => ({
   audit: { available: vi.fn(async () => ({ available: true })), list: vi.fn(async () => rows) },
 }));
 
+vi.mock('src/auth/access', () => ({ useAccess: () => ({ can: () => true }) }));
+
 async function renderPage() {
   const { default: AuditPage } = await import('../../webapp/src/pages/audit.js');
   render(
@@ -67,30 +70,44 @@ async function renderPage() {
       </MemoryRouter>
     </ThemeProvider>
   );
-  await screen.findByText('stack:sample/dev');
+  await screen.findByText('stack · sample/dev');
   return (resource: string) => within(screen.getByText(resource).closest('tr')!);
+}
+
+function expand(event: ReturnType<typeof within>) {
+  const button = event.getByRole('button', { name: /Details for/ });
+  fireEvent.click(button);
+  return within(document.getElementById(button.getAttribute('aria-controls')!)!);
+}
+
+function expectField(details: ReturnType<typeof within>, label: string, value: string) {
+  expect(details.getByText(label, { selector: 'dt' }).nextElementSibling).toHaveTextContent(value);
 }
 
 describe('a partial start the audit page read like any other', () => {
   it('says a start half-happened, and which apps did not come up', async () => {
     const event = await renderPage();
-    const dev = event('stack:sample/dev');
+    const dev = event('stack · sample/dev');
 
     expect(dev.getByText('partial').closest('.MuiChip-root')).toHaveClass('MuiChip-colorWarning');
     expect(dev.getByText('not up: payments (errored), messaging (errored)')).toBeInTheDocument();
-    expect(dev.getByText('type=local · apps=6 · source=boot')).toBeInTheDocument();
+    const details = expand(dev);
+    expectField(details, 'type', 'local');
+    expectField(details, 'apps', '6');
+    expectField(details, 'source', 'boot');
+    expectField(details, 'Outcome', 'partial');
     expect(dev.queryByText(/outcome=|notUp=/)).not.toBeInTheDocument();
   });
 
   it('says a start failed, and why — in either convention a failure was recorded in', async () => {
     const event = await renderPage();
 
-    const staging = event('stack:sample/staging');
+    const staging = event('stack · sample/staging');
     expect(staging.getByText('failed').closest('.MuiChip-root')).toHaveClass('MuiChip-colorError');
     expect(staging.getByText('Port 5432 is already in use')).toBeInTheDocument();
     expect(staging.queryByText(/error=/)).not.toBeInTheDocument();
 
-    const node = event('node:test-node');
+    const node = event('node · test-node');
     expect(node.getByText('failed').closest('.MuiChip-root')).toHaveClass('MuiChip-colorError');
     expect(node.getByText('tarball checksum mismatch')).toBeInTheDocument();
     expect(node.queryByText(/message=/)).not.toBeInTheDocument();
@@ -99,12 +116,19 @@ describe('a partial start the audit page read like any other', () => {
   it('says a start worked, and claims nothing for a row that records no ending', async () => {
     const event = await renderPage();
 
-    const test = event('stack:sample/test');
+    const test = event('stack · sample/test');
     expect(test.getByText('ok').closest('.MuiChip-root')).toHaveClass('MuiChip-colorSuccess');
-    expect(test.getByText('type=remote · apps=6 · source=operator')).toBeInTheDocument();
+    const details = expand(test);
+    expectField(details, 'type', 'remote');
+    expectField(details, 'apps', '6');
+    expectField(details, 'source', 'operator');
+    expectField(details, 'Outcome', 'ok');
 
-    expect(event('stack:sample/prod').queryByText(/^(ok|partial|failed)$/)).not.toBeInTheDocument();
-    expect(event('stack:sample/next').getByText('source=operator · outcome=skipped')).toBeInTheDocument();
+    expect(event('stack · sample/prod').queryByText(/^(ok|partial|failed)$/)).not.toBeInTheDocument();
+    const unknown = expand(event('stack · sample/next'));
+    expectField(unknown, 'Outcome', 'Not recorded');
+    expectField(unknown, 'source', 'operator');
+    expectField(unknown, 'outcome', 'skipped');
   });
 });
 

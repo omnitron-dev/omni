@@ -129,6 +129,16 @@ describe('generateNginxConfig — proxying', () => {
     expect(timeout).toBeGreaterThan(LONG_REQUEST_TIMEOUT);
   });
 
+  it('overwrites untrusted client addresses on every upstream, including WS upgrades', () => {
+    const upstreams = [...config.matchAll(/location [^{}]+ \{([^{}]+)\}/g)]
+      .map(match => match[1]).filter(location => location.includes('proxy_pass '));
+    expect(upstreams).toHaveLength(4);
+    for (const location of upstreams) {
+      expect(location).toContain('proxy_set_header X-Forwarded-For $remote_addr;');
+      expect(location).toContain('proxy_set_header X-Real-IP $remote_addr;');
+    }
+  });
+
   it('routes RPC and health to the daemon ports it was given', () => {
     expect(config).toContain('proxy_pass http://127.0.0.1:9801/netron/');
     expect(config).toContain('proxy_pass http://127.0.0.1:9802/');

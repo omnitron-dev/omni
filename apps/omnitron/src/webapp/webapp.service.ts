@@ -62,6 +62,11 @@ function securityHeaders(indent: string): string {
   return SECURITY_HEADERS.map((h) => `${indent}${h}`).join('\n');
 }
 
+// The Console is the trusted forwarding hop. Replace caller-supplied addresses
+// on every proxied route, including the WebSocket upgrade.
+const CLIENT_ADDRESS_HEADERS = `proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Real-IP $remote_addr;`;
+
 export function generateNginxConfig(apiHost: string, apiPort: number, wsPort: number): string {
   return `
 worker_processes auto;
@@ -129,8 +134,7 @@ ${securityHeaders('        ')}
         location /netron/ {
             proxy_pass http://${apiHost}:${apiPort}/netron/;
             proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            ${CLIENT_ADDRESS_HEADERS}
             proxy_set_header X-Forwarded-Proto $scheme;
             # Deliver the daemon's final receipt before a gateway deadline can replace it with a 504.
             proxy_read_timeout ${LONG_REQUEST_TIMEOUT + 5_000}ms;
@@ -140,11 +144,13 @@ ${securityHeaders('        ')}
         # Health endpoint (under /api/ prefix to avoid SPA route conflicts)
         location /api/health {
             proxy_pass http://${apiHost}:${apiPort}/health;
+            ${CLIENT_ADDRESS_HEADERS}
         }
 
         # Metrics endpoint (under /api/ prefix to avoid SPA route conflicts)
         location /api/metrics {
             proxy_pass http://${apiHost}:${apiPort}/metrics;
+            ${CLIENT_ADDRESS_HEADERS}
         }
 
         # WebSocket support — the daemon's Netron WS transport listens on a
@@ -152,6 +158,7 @@ ${securityHeaders('        ')}
         # the trailing slash rewrites "/ws" → "/" on the upstream.
         location /ws {
             proxy_pass http://${apiHost}:${wsPort}/;
+            ${CLIENT_ADDRESS_HEADERS}
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";

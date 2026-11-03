@@ -1,5 +1,6 @@
 import path from 'path';
-import { defineConfig, type Plugin } from 'vite';
+import type { ClientRequest, IncomingMessage } from 'node:http';
+import { defineConfig, type Plugin, type ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 
 /**
@@ -14,6 +15,19 @@ import react from '@vitejs/plugin-react-swc';
  * stop.
  */
 const here = import.meta.dirname;
+
+// Match the production gateway even if the daemon trusts this dev proxy.
+const forwardClientAddress: NonNullable<ProxyOptions['configure']> = proxy => {
+  const overwrite = (outgoing: ClientRequest, incoming: IncomingMessage) => {
+    const ip = incoming.socket.remoteAddress;
+    for (const header of ['x-forwarded-for', 'x-real-ip']) {
+      if (ip) outgoing.setHeader(header, ip);
+      else outgoing.removeHeader(header);
+    }
+  };
+  proxy.on('proxyReq', overwrite);
+  proxy.on('proxyReqWs', overwrite);
+};
 
 const fsStubPath = path.resolve(here, 'src/stubs/fs.ts');
 const pathStubPath = path.resolve(here, 'src/stubs/path.ts');
@@ -138,15 +152,18 @@ export default defineConfig({
       // Proxy Netron RPC to daemon internal HTTP port
       '/netron/': {
         target: 'http://localhost:9801',
+        configure: forwardClientAddress,
         changeOrigin: true,
       },
       '/api/health': {
         target: 'http://localhost:9801',
+        configure: forwardClientAddress,
         changeOrigin: true,
         rewrite: (path: string) => path.replace(/^\/api/, ''),
       },
       '/api/metrics': {
         target: 'http://localhost:9801',
+        configure: forwardClientAddress,
         changeOrigin: true,
         rewrite: (path: string) => path.replace(/^\/api/, ''),
       },
@@ -156,7 +173,8 @@ export default defineConfig({
       '/ws': {
         target: 'ws://localhost:9802',
         ws: true,
-        changeOrigin: true,
+        configure: forwardClientAddress,
+        changeOrigin: false,
         rewrite: (path: string) => path.replace(/^\/ws/, ''),
       },
     },

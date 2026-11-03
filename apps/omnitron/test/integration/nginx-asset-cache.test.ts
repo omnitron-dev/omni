@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
+import { isIP } from 'node:net';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
@@ -25,7 +26,14 @@ describe.skipIf(!image)('Console asset caching through nginx', () => {
   beforeAll(async () => {
     directory = await fs.mkdtemp(path.join(os.tmpdir(), 'omnitron-nginx-cache-'));
     await fs.chmod(directory, 0o755);
-    await fs.writeFile(path.join(directory, 'nginx.conf'), generateNginxConfig('127.0.0.1', 9801, 9802));
+    // Echo the headers actually received by an upstream in the same isolated container.
+    const upstream = `server {
+      listen 127.0.0.1:9801;
+      listen 127.0.0.1:9802;
+      return 200 "$http_x_forwarded_for|$http_x_real_ip";
+    }`;
+    const gateway = generateNginxConfig('127.0.0.1', 9801, 9802);
+    await fs.writeFile(path.join(directory, 'nginx.conf'), gateway.replace(/}\s*$/, upstream + '\n}'));
     for (const asset of assets) await fs.writeFile(path.join(directory, asset.url.slice(1)), 'console.log("fixture");');
     const { stdout: id } = await exec('docker', ['run', '--rm', '-d', '--pull=never', '--name', container,
       '-p', '127.0.0.1::80', '-v', `${directory}/nginx.conf:/etc/nginx/nginx.conf:ro`,
@@ -35,6 +43,21 @@ describe.skipIf(!image)('Console asset caching through nginx', () => {
     expect(stdout.trim()).toMatch(/^127\.0\.0\.1:\d+$/);
     origin = `http://${stdout.trim()}`;
   }, 40_000);
+
+  it('sets one socket-derived address across every upstream route', async () => {
+    const headers = { 'X-Forwarded-For': '192.0.2.12, 203.0.113.30', 'X-Real-IP': '198.51.100.7' };
+    const addresses = new Set<string>();
+    for (const url of ['/netron/invoke', '/ws', '/api/health', '/api/metrics']) {
+      const response = await fetch(origin + url, { headers });
+      expect(response.status).toBe(200);
+      const [forwarded, real] = (await response.text()).split('|');
+      expect(isIP(forwarded)).toBeGreaterThan(0);
+      expect(forwarded).toBe(real);
+      expect([headers['X-Real-IP'], ...headers['X-Forwarded-For'].split(', ')]).not.toContain(real);
+      addresses.add(real);
+    }
+    expect(addresses.size).toBe(1);
+  });
 
   afterAll(async () => {
     if (started) await exec('docker', ['rm', '-f', container], { timeout: 15_000 });

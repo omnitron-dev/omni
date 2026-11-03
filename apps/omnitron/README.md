@@ -51,6 +51,9 @@ builder clones the selected commit and records the subdirectory in the release
 manifest. Declare `@omnitron-dev/omnitron` in a
 workspace importer and commit the lockfile. Install all `@omnitron-dev/*`
 dependencies from the same framework release.
+Each application with a Titan bootstrap must declare `@omnitron-dev/titan`
+in its own runtime dependencies. Before packing, the builder verifies that
+the public Titan entry resolves inside the application’s staged package.
 
 For registry dependencies the builder downloads the exact public npm archives
 and compares each SHA-512 digest with the lockfile. Each package must carry the

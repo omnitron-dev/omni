@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import type { IEcosystemAppEntry } from '../config/types.js';
 import { installedGraph, materializeGraph } from './installed-graph.js';
 import { frameworkDependencyGraph, frameworkDependencyDigest, frameworkGraphCommandSource, releaseTreeDigest } from './runtime-provenance.js';
@@ -23,6 +24,16 @@ export async function stageApplicationClosure(source: string, directory: string,
   const packages = await installedGraph(source, new Map(), await Promise.all(checkouts.map(root => fs.realpath(root))));
   const destinations = packages.map((_, index) => index === 0 ? directory : path.join(directory, 'node_modules/.omnitron', String(index)));
   await materializeGraph(packages, destinations, { application: true });
+  if (entry.bootstrap) {
+    // Every bootstrap resolves Titan from the app, including when the owner supplies its adapter.
+    // An ancestor or NODE_PATH on the build machine is outside the portable graph.
+    const titan = packages[0]!.dependencies.get('@omnitron-dev/titan');
+    if (titan === undefined) throw Error(`Bootstrap application ${entry.name} must declare @omnitron-dev/titan as a runtime dependency`);
+    const request = createRequire(path.join(directory, 'package.json'));
+    const resolved = await fs.realpath(request.resolve('@omnitron-dev/titan'));
+    const shipped = await fs.realpath(destinations[titan]!);
+    if (!resolved.startsWith(shipped + path.sep)) throw Error(`Bootstrap application ${entry.name} resolved Titan outside its packaged dependency`);
+  }
   if (verifyPackage) {
     // An app build controls its installed tree. A renamed manifest must not
     // erase the identity promised by the dependency edge pointing at it.

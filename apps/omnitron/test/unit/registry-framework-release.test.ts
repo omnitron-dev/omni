@@ -85,7 +85,7 @@ describe('verified npm framework inputs', () => {
   });
 });
 
-it('builds a clean consumer release from a registry, including its gated application archive', async () => {
+it.each(['', 'projects/consumer'])('builds and verifies a registry release from Git subdirectory "%s"', async (subdirectory) => {
   const archives = [await packed(core), await packed(titan)];
   const server = createServer((req, res) => {
     const pathname = decodeURIComponent(req.url ?? '').slice(1);
@@ -100,7 +100,8 @@ it('builds a clean consumer release from a registry, including its gated applica
   });
   await new Promise<void>((resolve, reject) => server.once('error', reject).listen(0, '127.0.0.1', resolve));
   try {
-    const project = path.join(root, 'consumer'), app = path.join(project, 'apps/worker');
+    const repository = path.join(root, 'repository');
+    const project = path.join(repository, subdirectory), app = path.join(project, 'apps/worker');
     const home = path.join(root, 'instance');
     vi.stubEnv('OMNITRON_HOME', home);
     vi.stubEnv('XDG_CACHE_HOME', path.join(root, 'cache'));
@@ -121,15 +122,17 @@ it('builds a clean consumer release from a registry, including its gated applica
     await fs.writeFile(path.join(project, 'omnitron.config.mjs'), "export default { apps: [{name:'worker',cwd:'apps/worker',script:'dist/main.js'}] };");
     await fs.writeFile(path.join(project, 'scripts/gates.mjs'), "console.log(JSON.stringify({gates:[{name:'smoke',outcome:'passed'}]}));");
     await exec('pnpm', ['install', '--lockfile-only', '--ignore-scripts'], { cwd: project, timeout: 45_000 });
-    await exec('git', ['init', '-q'], { cwd: project });
-    await exec('git', ['add', '.'], { cwd: project });
-    await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'fixture'], { cwd: project });
+    if (subdirectory) await fs.writeFile(path.join(repository, 'pnpm-lock.yaml'), 'unrelated project lock');
+    await exec('git', ['init', '-q'], { cwd: repository });
+    await exec('git', ['add', '.'], { cwd: repository });
+    await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'fixture'], { cwd: repository });
     vi.resetModules();
     const { ProjectRegistry } = await import('../../src/project/registry.js');
     vi.spyOn(ProjectRegistry, 'open').mockReturnValue({ get: () => ({ name: 'consumer', path: project }) } as unknown as InstanceType<typeof ProjectRegistry>);
     const { runReleaseBuild } = await import('../../src/release/build-run.js');
     const result = await runReleaseBuild('consumer', {});
     expect(result.root.startsWith(home + path.sep)).toBe(true);
+    expect(result.manifest.project.directory).toBe(subdirectory || undefined);
     expect(result.manifest.artifactFailures).toBeUndefined();
     expect(result.manifest.artifacts).toEqual([expect.objectContaining({ app: 'worker', sha256: expect.stringMatching(/^[a-f0-9]{64}$/) })]);
     expect(result.manifest.omni).toMatchObject({ commit, registry: { packages: archives.map(a => a.pin) } });

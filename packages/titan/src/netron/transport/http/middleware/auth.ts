@@ -5,12 +5,10 @@
 
 import type { NetronMiddlewareContext, MiddlewareFunction } from './types.js';
 import type { AuthContext, ExecutionContext } from '../../../auth/types.js';
-import type { MethodOptions } from '../../../../decorators/types.js';
 import type { PolicyEngine } from '../../../auth/policy-engine.js';
 import type { AuthorizationManager } from '../../../auth/authorization-manager.js';
 import type { ILogger } from '../../../../modules/logger/logger.types.js';
-import { METADATA_KEYS } from '../../../../decorators/core.js';
-import { enforceInvocationAuthorization } from '../../../auth/method-authorization.js';
+import { enforceInvocationAuthorization, enforceInvocationTransport, enforceForwardedAuthorization } from '../../../auth/method-authorization.js';
 import { TitanError, ErrorCode } from '../../../../errors/index.js';
 import type { RemotePeer } from '../../../remote-peer.js';
 
@@ -81,7 +79,7 @@ export function buildExecutionContext(ctx: NetronMiddlewareContext, authContext?
   }
 
   // Add environment information
-  const transport = ctx.metadata?.get('transport');
+  const transport = ctx.transport;
   execCtx.environment = {
     timestamp: new Date(),
     transport: typeof transport === 'string' ? transport : 'unknown',
@@ -103,45 +101,7 @@ export function buildExecutionContext(ctx: NetronMiddlewareContext, authContext?
   return execCtx;
 }
 
-/**
- * Read @Public metadata from service prototype
- */
-export function readMethodMetadata(
-  serviceInstance: object | null | undefined,
-  methodName: string
-): MethodOptions | undefined {
-  if (!serviceInstance || !methodName) {
-    return undefined;
-  }
-
-  const prototype = Object.getPrototypeOf(serviceInstance);
-
-  // Try to read complete METHOD_OPTIONS first
-  const methodOptions = Reflect.getMetadata(METADATA_KEYS.METHOD_OPTIONS, prototype, methodName);
-
-  if (methodOptions) {
-    return methodOptions;
-  }
-
-  // Fallback: construct from individual metadata keys
-  const auth = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, prototype, methodName);
-  const rateLimit = Reflect.getMetadata(METADATA_KEYS.METHOD_RATE_LIMIT, prototype, methodName);
-  const cache = Reflect.getMetadata(METADATA_KEYS.METHOD_CACHE, prototype, methodName);
-  const prefetch = Reflect.getMetadata(METADATA_KEYS.METHOD_PREFETCH, prototype, methodName);
-  const audit = Reflect.getMetadata(METADATA_KEYS.METHOD_AUDIT, prototype, methodName);
-
-  if (!auth && !rateLimit && !cache && !prefetch && !audit) {
-    return undefined;
-  }
-
-  return {
-    auth,
-    rateLimit,
-    cache,
-    prefetch,
-    audit,
-  };
-}
+export { readMethodMetadata } from '../../../auth/method-authorization.js';
 
 /**
  * Extract auth context from peer
@@ -173,6 +133,12 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
 
     // Skip if service or method is in skip list
     if (skipServices.includes(ctx.serviceName) || skipMethods.includes(`${ctx.serviceName}.${ctx.methodName}`)) {
+      const instance = ctx.metadata.get('serviceInstance');
+      enforceInvocationTransport({ serviceInstance: typeof instance === 'object' ? instance : undefined,
+        serviceName: ctx.serviceName, methodName: ctx.methodName, logger, transport: ctx.transport,
+        serviceTransports: ctx.serviceTransports, memberTransports: ctx.memberTransports });
+      enforceForwardedAuthorization({ serviceInstance: typeof instance === 'object' ? instance : undefined,
+        serviceName: ctx.serviceName, methodName: ctx.methodName, logger, authorizationManager, authContext: getAuthContext(ctx) });
       logger.debug({ service: ctx.serviceName, method: ctx.methodName }, 'Skipping auth for service/method');
       return next();
     }
@@ -194,7 +160,7 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
     // (the divergence was the SEC-1 root cause). Throws UNAUTHORIZED/FORBIDDEN
     // on denial; resolves (no-op) when the method declares no auth.
     const headers = ctx.metadata?.get('headers');
-    const transport = ctx.metadata?.get('transport');
+    const transport = ctx.transport;
     const clientIp = ctx.metadata?.get('clientIp') || ctx.metadata?.get('ip');
     await enforceInvocationAuthorization({
       serviceInstance,
@@ -206,7 +172,9 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
       authorizationManager,
       defaultDeny,
       logger,
-      transport: typeof transport === 'string' ? transport : 'http',
+      transport,
+      serviceTransports: ctx.serviceTransports,
+      memberTransports: ctx.memberTransports,
       ...(typeof clientIp === 'string' ? { clientIp } : {}),
       ...(typeof headers === 'object' && headers !== null ? { headers: headers as Record<string, string> } : {}),
     });

@@ -6,6 +6,7 @@
 
 import 'reflect-metadata';
 import semver from 'semver';
+import { normalizeTransportPolicy } from '../netron/transport-policy.js';
 import { Scope, type ScopeValue, type Constructor } from '../nexus/index.js';
 import { Errors } from '../errors/index.js';
 import type { ServiceMetadata } from '../netron/types.js';
@@ -79,9 +80,8 @@ export interface ExtendedServiceMetadata extends ServiceMetadata {
   contract?: ServiceContract;
 
   /**
-   * Transport names this service should be exposed on (for decorator → ServiceStub transfer)
-   * This field is extracted during ServiceStub construction and stored on the stub itself.
-   * It is NOT included in the ServiceMetadata that gets sent to clients.
+   * Normalized transport restriction, retained in published definitions so
+   * forwarding proxies cannot widen the original service boundary.
    */
   transports?: string[];
 
@@ -540,6 +540,9 @@ export const Service = (
     serviceOptions = { name: target.name };
   }
 
+  if (serviceOptions.transports !== undefined && !Array.isArray(serviceOptions.transports)) {
+    throw Errors.badRequest('Service transports must be an array of transport instances');
+  }
   const qualifiedName = serviceOptions.name || target.name;
   // Parse the qualified name into name and version components
   const [name, versionFromName] = qualifiedName.split('@');
@@ -568,7 +571,7 @@ export const Service = (
     properties: {},
     methods: {},
     contract: serviceOptions.contract,
-    transports: serviceOptions.transports?.map((t) => t.name),
+    transports: normalizeTransportPolicy(serviceOptions.transports?.map((t) => t?.name)),
     _transports: serviceOptions.transports,
     transportConfig: serviceOptions.transportConfig,
   };
@@ -591,7 +594,9 @@ export const Service = (
       const returnType = Reflect.getMetadata('design:returntype', target.prototype, key)?.name || 'void';
 
       // Store method metadata
+      const transports = normalizeTransportPolicy(Reflect.getMetadata('method:transports', target.prototype, key));
       metadata.methods[key] = {
+        ...(transports !== undefined ? { transports } : {}),
         type: returnType,
         arguments: paramTypes.map((type: any, index: number) => ({
           index,
@@ -617,7 +622,9 @@ export const Service = (
       const isReadonly = Reflect.getMetadata('readonly', target.prototype, key);
 
       // Store property metadata
+      const transports = normalizeTransportPolicy(Reflect.getMetadata('method:transports', target.prototype, key));
       metadata.properties[key] = {
+        ...(transports !== undefined ? { transports } : {}),
         type,
         readonly: !!isReadonly,
       };
@@ -734,10 +741,8 @@ export function Global() {
  * })
  * async getDocument(id: string) {}
  *
- * // Transport tagging — NOT filtering. This records a `method:transports`
- * // reflect key that the framework does not read; the method stays callable
- * // over every transport. Kept for applications that read the metadata and
- * // enforce it themselves. (Service-level `transports` IS honoured.)
+ * // Available only over WebSocket or TCP, additionally restricted by the
+ * // service's own transport list. Authentication and permissions still apply.
  * @Public({ transports: ['ws', 'tcp'] })
  * public taggedWsAndTcp(): void {}
  *
@@ -758,7 +763,9 @@ export const Public =
 
     // Store all method options for later retrieval
     if (options) {
-      Reflect.defineMetadata(METADATA_KEYS.METHOD_OPTIONS, options, target, propertyKey);
+      Reflect.defineMetadata(METADATA_KEYS.METHOD_OPTIONS, { ...options,
+        ...(options.transports !== undefined ? { transports: normalizeTransportPolicy(options.transports) } : {}),
+      }, target, propertyKey);
     }
 
     // Store auth metadata
@@ -788,7 +795,7 @@ export const Public =
 
     // Store transports metadata (legacy support)
     if (options?.transports) {
-      Reflect.defineMetadata('method:transports', options.transports, target, propertyKey);
+      Reflect.defineMetadata('method:transports', normalizeTransportPolicy(options.transports), target, propertyKey);
     }
   };
 

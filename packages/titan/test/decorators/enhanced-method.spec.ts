@@ -33,7 +33,7 @@ describe('Enhanced @Public Decorator', () => {
       expect(readonly).toBe(true);
     });
 
-    it('should support transports option (legacy)', () => {
+    it('normalizes transport aliases', () => {
       class TestService {
         @Public({ transports: ['ws', 'tcp'] })
         wsAndTcpMethod() {
@@ -42,7 +42,7 @@ describe('Enhanced @Public Decorator', () => {
       }
 
       const transports = Reflect.getMetadata('method:transports', TestService.prototype, 'wsAndTcpMethod');
-      expect(transports).toEqual(['ws', 'tcp']);
+      expect(transports).toEqual(['websocket', 'tcp']);
     });
   });
 
@@ -498,7 +498,7 @@ describe('Enhanced @Public Decorator', () => {
         'fullFeaturedMethod'
       );
 
-      expect(transports).toEqual(['ws']);
+      expect(transports).toEqual(['websocket']);
       expect(authConfig.roles).toEqual(['user']);
       expect(rateLimitConfig.maxRequests).toBe(100);
       expect(cacheConfig.ttl).toBe(30000);

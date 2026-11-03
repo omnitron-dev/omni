@@ -150,8 +150,8 @@ describe('Service Decorator with Transports', () => {
 
       const metadata = Reflect.getMetadata(SERVICE_ANNOTATION, MultiTransportService) as ExtendedServiceMetadata;
 
-      expect(metadata.transports).toHaveLength(3);
-      expect(metadata.transports).toEqual(['websocket', 'tcp', 'websocket']);
+      expect(metadata.transports).toHaveLength(2);
+      expect(metadata.transports).toEqual(['websocket', 'tcp']);
       // Check internal transport instances
       expect(metadata._transports).toHaveLength(3);
       expect(metadata._transports).toEqual(transports);

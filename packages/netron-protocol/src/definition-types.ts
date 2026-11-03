@@ -23,6 +23,8 @@ export interface ArgumentInfo {
  * Information about a method: its return type and arguments.
  */
 export interface MethodInfo {
+  /** Publisher restriction retained by forwarding proxies; omitted is unrestricted. */
+  transports?: string[];
   /** The method's return type as a string. */
   type: string;
   /** Each argument's position and type. */
@@ -33,6 +35,8 @@ export interface MethodInfo {
  * Information about a property: its type and mutability.
  */
 export interface PropertyInfo {
+  /** Publisher restriction retained by forwarding proxies; omitted is unrestricted. */
+  transports?: string[];
   /** The property's type as a string. */
   type: string;
   /** Whether the property is read-only. */
@@ -44,6 +48,8 @@ export interface PropertyInfo {
  * Only public members appear in the maps.
  */
 export interface ServiceMetadata {
+  /** Restricts every remote member. An explicit empty list denies all transports. */
+  transports?: string[];
   /** Service name (alphanumerics + dots). */
   name: string;
   /** Service version (semver when specified). */

@@ -72,6 +72,21 @@ jobs:
           test/unit/installed-release.test.ts
           test/unit/local-installation-publication.test.ts
           test/unit/vitest-worker-budget.test.ts
+      - name: Framework source verification and authenticated build overrides
+        working-directory: apps/omnitron
+        run: >-
+          pnpm exec vitest run --maxWorkers 2
+          test/unit/framework-source.test.ts
+          test/unit/framework-source-selection.test.ts
+          test/unit/linked-framework-source.test.ts
+          test/unit/registry-transport.test.ts
+          test/unit/release-source-reading.test.ts
+          test/unit/release-source-request.test.ts
+          test/unit/release-source-publication.test.ts
+          test/unit/vendored-framework-layout.test.ts
+          test/unit/vendored-framework-proof.test.ts
+          test/unit/workspace-release-source.test.ts
+          test/unit/release-source-authority.test.ts
       - name: Managed fleet distribution, handoff and reconciliation
         working-directory: apps/omnitron
         run: |

@@ -1,3 +1,5 @@
+import { canonicalTransportName } from './transport-policy.js';
+import { publicServiceMetadata } from './service-metadata.js';
 import type { ILogger } from '../types/logger.js';
 /**
  * Imports required dependencies for the RemotePeer class implementation.
@@ -178,6 +180,8 @@ function isRefusal(err: unknown): boolean {
 }
 
 export class RemotePeer extends AbstractPeer {
+  /** Established by the local transport factory, never by the remote handshake. */
+  readonly transportName: string | undefined;
   /** Event emitter for handling internal events */
   private events = new EventEmitter();
 
@@ -328,9 +332,12 @@ export class RemotePeer extends AbstractPeer {
     netron: INetron,
     id: string = '',
     private requestTimeout?: number,
-    cacheOptions?: DefinitionCacheOptions
+    cacheOptions?: DefinitionCacheOptions,
+    transportName?: string,
   ) {
     super(netron, id, cacheOptions);
+    this.transportName = transportName === undefined ? undefined : canonicalTransportName(transportName);
+    Object.defineProperty(this, 'transportName', { writable: false, configurable: false });
 
     // T#51: brand as stateful so `isStatefulPeer(peer)` returns
     // true. WS / TCP / Unix peers support subscriptions and
@@ -445,7 +452,7 @@ export class RemotePeer extends AbstractPeer {
       );
     }
 
-    const def = await this.runTask('expose_service', meta);
+    const def = await this.runTask('expose_service', publicServiceMetadata(meta));
 
     const localPeer = this.netron.peer as ILocalPeerInternal;
     const stub = new ServiceStub(localPeer, instance, meta);
@@ -1614,7 +1621,7 @@ export class RemotePeer extends AbstractPeer {
    * every persistent transport (WS / TCP / Unix).
    */
   private async enforceMethodAccess(
-    stub: { definition?: Definition; instance?: unknown } | undefined,
+    stub: { definition?: Definition; instance?: unknown; transports?: readonly string[] } | undefined,
     methodName: string,
     args: unknown[] = [],
     kind: 'call' | 'get' | 'set' = 'call',
@@ -1622,12 +1629,10 @@ export class RemotePeer extends AbstractPeer {
     const netron = this.netron as INetronInternal;
     const authzManager = netron.authorizationManager;
 
-    // The stub MUST exist and carry a versioned definition for any guard to
-    // apply — without it we cannot form the qualified service name, so we let
-    // the call through and rely on downstream not-found errors. Keeps unit-test
-    // mocks that bypass `getStubByDefinitionId` working.
+    // A missing publication has no remote authority. Fail before dispatch,
+    // including for a guessed definition ID or an incomplete registry entry.
     const meta = stub?.definition?.meta;
-    if (!meta) return this.getAuthContext();
+    if (!meta) throw Errors.notFound('Service');
     const serviceName = getQualifiedName(meta.name, meta.version);
 
     // (0) NET-14: PUBLIC-SURFACE whitelist for method CALLS. `meta.methods` is
@@ -1673,7 +1678,9 @@ export class RemotePeer extends AbstractPeer {
     // properties and methods alike and which needs no instance. Publishing a
     // property has always meant annotating it — that is what the decorator's
     // own `@Public({ readonly: true })` example documents.
-    if ((kind === 'get' || kind === 'set') && !isPublishedMember(stub?.instance as object | undefined, methodName)) {
+    const publishedProperty = isPublishedMember(stub?.instance as object | undefined, methodName) ||
+      (stub?.instance instanceof Interface && Object.hasOwn(meta.properties ?? {}, methodName));
+    if ((kind === 'get' || kind === 'set') && !publishedProperty) {
       this.logger.warn(
         { serviceName, property: methodName, kind, userId: this.getAuthContext()?.userId },
         'NET-14b: property access outside the @Public surface rejected',
@@ -1695,7 +1702,9 @@ export class RemotePeer extends AbstractPeer {
       defaultDeny: netron.options?.authDefaultDeny,
       policyEngine: netron.policyEngine,
       logger: this.logger,
-      transport: 'netron',
+      transport: this.transportName,
+      serviceTransports: stub?.transports,
+      memberTransports: (meta.methods?.[methodName] ?? meta.properties?.[methodName])?.transports,
     });
     return auth;
   }

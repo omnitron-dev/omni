@@ -109,27 +109,7 @@ export class LocalPeer extends AbstractPeer {
     this.netron.services.set(serviceKey, stub);
     this.serviceInstances.set(instance, stub);
 
-    // Register service with all transport servers that support registerService
-    // Type guard for transport servers with service registration capabilities
-    const isTransportWithServices = (s: unknown): s is ITransportServerWithServices =>
-      s !== null &&
-      typeof s === 'object' &&
-      'registerService' in s &&
-      typeof (s as ITransportServerWithServices).registerService === 'function';
-
-    for (const [, server] of this.netron.transportServers) {
-      if (isTransportWithServices(server)) {
-        // Contract is stored in the metadata, not directly on the constructor
-        const metaWithContract = meta as ServiceMetadataWithContract;
-        const constructor = instance.constructor as { contract?: Record<string, unknown> };
-        const contract =
-          metaWithContract.contract ||
-          (Reflect.getMetadata('validation:contract', instance.constructor) as Record<string, unknown> | undefined) ||
-          constructor.contract;
-        this.warnUnpublishedContractMethods(meta.name, def, contract);
-        server.registerService?.(meta.name, def, contract);
-      }
-    }
+    this.registerWithTransports(stub);
 
     await this.netron.emitSpecial(NETRON_EVENT_SERVICE_EXPOSE, getServiceEventName(serviceKey), {
       name: def.meta.name,
@@ -142,6 +122,33 @@ export class LocalPeer extends AbstractPeer {
     this.logger.info({ serviceKey }, 'Service exposed successfully');
 
     return def;
+  }
+
+  /** The same publication path serves local providers and admitted forwarding proxies. */
+  private registerWithTransports(stub: ServiceStub): void {
+    const def = stub.definition;
+    const meta = def.meta;
+    // Type guard for transport servers with service registration capabilities
+    const isTransportWithServices = (s: unknown): s is ITransportServerWithServices =>
+      s !== null &&
+      typeof s === 'object' &&
+      'registerService' in s &&
+      typeof (s as ITransportServerWithServices).registerService === 'function';
+
+    for (const [, server] of this.netron.transportServers) {
+      if (isTransportWithServices(server)) {
+        // Contract is stored in the metadata, not directly on the constructor
+        const metaWithContract = meta as ServiceMetadataWithContract;
+        const constructor = stub.instance instanceof Interface ? undefined
+          : stub.instance.constructor as { contract?: Record<string, unknown> };
+        const contract = metaWithContract.contract ?? (constructor
+          ? (Reflect.getMetadata('validation:contract', constructor) as Record<string, unknown> | undefined) ?? constructor.contract
+          : undefined);
+        this.warnUnpublishedContractMethods(meta.name, def, contract);
+        server.registerService?.(meta.name, def, contract);
+      }
+    }
+
   }
 
   /**
@@ -168,6 +175,7 @@ export class LocalPeer extends AbstractPeer {
     this.netron.services.set(meta.name, stub);
     this.serviceInstances.set(iInstance, stub);
     peer.definitions.set(def.id, def);
+    this.registerWithTransports(stub);
 
     await this.netron.emitSpecial(NETRON_EVENT_SERVICE_EXPOSE, getServiceEventName(def.meta.name), {
       name: def.meta.name,

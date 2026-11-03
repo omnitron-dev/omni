@@ -775,11 +775,6 @@ export class Netron extends EventEmitter implements INetron {
         for (const [, stub] of this.services) {
           const meta = stub.definition.meta;
 
-          // Check if service should be exposed on this transport
-          if (stub.transports && !stub.transports.includes(name)) {
-            continue; // Skip this service for this transport
-          }
-
           const contract =
             (meta as ServiceMetadataWithContract).contract ||
             (stub.instance?.constructor as { contract?: ServiceContract })?.contract;
@@ -818,6 +813,8 @@ export class Netron extends EventEmitter implements INetron {
           this,
           peerId,
           serverRequestTimeout ?? transportOpts.requestTimeout,
+          undefined,
+          transport.name,
         );
         connection.setResponseMatcher?.(id => peer.expectsResponse(id));
         // Every socket transport shares RemotePeer's dispatcher, so handing the
@@ -1199,7 +1196,7 @@ export class Netron extends EventEmitter implements INetron {
             const adapter = TransportConnectionFactory.fromConnection(connection);
             adapter.setLogger(this.logger.child({ connectionId: connection.id, address }));
             // RemotePeer accepts any socket-like object (WebSocket or TransportAdapter)
-            const connectedPeer = new RemotePeer(adapter as RemotePeerSocket, this, address, transportOpts.requestTimeout);
+            const connectedPeer = new RemotePeer(adapter as RemotePeerSocket, this, address, transportOpts.requestTimeout, undefined, transport.name);
             peer = connectedPeer;
             // Listen before the greeting: disconnect can precede handshake
             // completion, and published peers must settle all pending RPCs

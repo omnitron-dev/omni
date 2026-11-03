@@ -65,10 +65,9 @@ describe('query_interface core-task', () => {
           version: '1.0.0',
           properties: {},
           methods: {
-            getUser: { type: 'function', transports: [] },
-            updateUser: { type: 'function', transports: [] },
+            getUser: { type: 'function' },
+            updateUser: { type: 'function' },
           },
-          transports: [],
         },
       };
 
@@ -110,9 +109,8 @@ describe('query_interface core-task', () => {
           version: '1.0.0',
           properties: {},
           methods: {
-            deleteUser: { type: 'function', transports: [] },
+            deleteUser: { type: 'function' },
           },
-          transports: [],
         },
       };
 
@@ -138,7 +136,7 @@ describe('query_interface core-task', () => {
         name: 'vault',
         version: '1.0.0',
         properties: {},
-        methods: { read: { type: 'function', transports: [] } },
+        methods: { read: { type: 'function' } },
         transports: [],
       };
       // A REAL Definition instance — production service stubs always hold one.
@@ -173,7 +171,6 @@ describe('query_interface core-task', () => {
           version: '1.0.0',
           properties: {},
           methods: {},
-          transports: [],
         },
       };
 
@@ -214,9 +211,8 @@ describe('query_interface core-task', () => {
           version: '1.0.0',
           properties: {},
           methods: {
-            getInfo: { type: 'function', transports: [] },
+            getInfo: { type: 'function' },
           },
-          transports: [],
         },
       };
 
@@ -244,19 +240,18 @@ describe('query_interface core-task', () => {
           version: '1.0.0',
           properties: {},
           methods: {
-            getUser: { type: 'function', transports: [] },
-            updateUser: { type: 'function', transports: [] },
-            deleteUser: { type: 'function', transports: [] },
+            getUser: { type: 'function' },
+            updateUser: { type: 'function' },
+            deleteUser: { type: 'function' },
           },
-          transports: [],
         },
       };
 
       const filteredMeta = {
         ...fullDefinition.meta,
         methods: {
-          getUser: { type: 'function', transports: [] },
-          updateUser: { type: 'function', transports: [] },
+          getUser: { type: 'function' },
+          updateUser: { type: 'function' },
           // deleteUser removed due to permissions
         },
       };
@@ -289,9 +284,8 @@ describe('query_interface core-task', () => {
           version: '1.0.0',
           properties: {},
           methods: {
-            secretMethod: { type: 'function', transports: [] },
+            secretMethod: { type: 'function' },
           },
-          transports: [],
         },
       };
 
@@ -332,9 +326,8 @@ describe('query_interface core-task', () => {
           version: '1.0.0',
           properties: {},
           methods: {
-            getData: { type: 'function', transports: [] },
+            getData: { type: 'function' },
           },
-          transports: [],
         },
       };
 
@@ -368,19 +361,18 @@ describe('query_interface core-task', () => {
           version: '1.0.0',
           properties: {},
           methods: {
-            method1: { type: 'function', transports: [] },
-            method2: { type: 'function', transports: [] },
-            method3: { type: 'function', transports: [] },
+            method1: { type: 'function' },
+            method2: { type: 'function' },
+            method3: { type: 'function' },
           },
-          transports: [],
         },
       };
 
       const filteredMeta = {
         ...definition.meta,
         methods: {
-          method1: { type: 'function', transports: [] },
-          method2: { type: 'function', transports: [] },
+          method1: { type: 'function' },
+          method2: { type: 'function' },
         },
       };
 
@@ -419,7 +411,6 @@ describe('query_interface core-task', () => {
           version: '1.0.0',
           properties: {},
           methods: {},
-          transports: [],
         },
       };
 

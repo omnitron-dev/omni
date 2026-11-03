@@ -4,6 +4,7 @@ import { Serializer, registerCommonTypesFor } from '@omnitron-dev/msgpack';
 import { Reference } from '../reference.js';
 import { Definition } from '../definition.js';
 import { TitanError } from '../../errors/core.js';
+import { publicServiceMetadata } from '../service-metadata.js';
 
 /**
  * Global serializer instance for the Netron application.
@@ -32,9 +33,7 @@ export const serializer = new Serializer();
  * stays home. Nothing is lost that a peer ever successfully received.
  */
 function metaForTheWire(meta: Definition['meta']): Definition['meta'] {
-  if (!meta || (meta as { contract?: unknown }).contract === undefined) return meta;
-  const { contract: _contract, ...rest } = meta as Definition['meta'] & { contract?: unknown };
-  return rest as Definition['meta'];
+  return publicServiceMetadata(meta);
 }
 
 

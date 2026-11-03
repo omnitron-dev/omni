@@ -23,6 +23,11 @@ export interface NetronMiddlewareContext {
   task?: Task;
   packet?: Packet;
 
+  /** Host-owned ingress identity; request metadata never supplies this value. */
+  readonly transport?: string;
+  readonly serviceTransports?: readonly string[];
+  readonly memberTransports?: readonly string[];
+
   // Service invocation
   serviceName?: string;
   methodName?: string;

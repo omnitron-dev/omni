@@ -1,3 +1,4 @@
+import { projectTransportDefinition } from '../transport-surface.js';
 /**
  * Query Interface core-task for Netron
  * Handles service discovery with authorization checks
@@ -99,7 +100,8 @@ export async function query_interface(peer: RemotePeer, serviceName: string): Pr
   }
 
   // Get definition from stub
-  const definition = serviceStub.definition;
+  const definition = projectTransportDefinition(serviceStub, peer.transportName);
+  if (!definition) throw serviceNotFound(serviceName);
 
   // Get AuthorizationManager from Netron
   const authzManager = peer.netron.authorizationManager;

@@ -1,3 +1,4 @@
+import { projectTransportDefinition } from '../../transport-surface.js';
 /**
  * Native HTTP Server implementation for Netron v1.0
  *
@@ -130,6 +131,7 @@ interface ServiceDescriptor {
    * `@Public({ auth: { roles: [...] } })` method becomes anonymous).
    */
   instance?: object;
+  transports?: readonly string[];
 }
 
 /**
@@ -137,6 +139,7 @@ interface ServiceDescriptor {
  * Generic parameters allow for type-safe input/output when known
  */
 interface MethodDescriptor<TInput = unknown, TOutput = unknown> {
+  transports?: readonly string[];
   name: string;
   handler: (input: TInput, context: MethodHandlerContext) => Promise<TOutput>;
   contract?: MethodContract;
@@ -662,15 +665,10 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     }
     const optsPolicyEngine = ((this.options as any).policyEngine ?? netron?.policyEngine) as PolicyEngine | undefined;
     const optsAuthorizationManager = (this.options as any).authorizationManager as AuthorizationManager | undefined;
-    // Auto-instantiation needs a real logger (AuthorizationManager calls
-    // `logger.child(...)` in its constructor). Some test peers stub the
-    // logger with an empty object — in that case skip auto-wire so we
-    // don't crash the transport boot.
-    const canAutoInstantiate = !!netron?.authenticationManager && typeof (peer.logger as any)?.child === 'function';
     const resolvedAuthorizationManager =
       optsAuthorizationManager ||
       (netron?.authorizationManager as AuthorizationManager | undefined) ||
-      (canAutoInstantiate ? new AuthorizationManager(peer.logger) : undefined);
+      (netron?.authenticationManager ? new AuthorizationManager(peer.logger) : undefined);
     // Declarations and default-deny apply even when authentication is not configured.
     this.globalPipeline.use(
       NetronAuthMiddleware.create({
@@ -698,59 +696,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   private registerPeerServices(): void {
     if (!this.netronPeer) return;
 
-    for (const [_id, stub] of this.netronPeer.stubs) {
-      const serviceName = stub.definition.meta.name;
-      const version = stub.definition.meta.version;
-      const meta = stub.definition.meta as {
-        description?: string;
-        metadata?: Record<string, unknown>;
-        contract?: unknown;
-      };
-
-      const descriptor: ServiceDescriptor = {
-        name: serviceName,
-        version,
-        methods: new Map(),
-        description: meta.description,
-        metadata: meta.metadata,
-        instance: stub.instance,
-      };
-
-      // Only what the service declares — see `publishedMethodNames`.
-      const allMethodNames = this.publishedMethodNames(stub.definition.meta as never);
-
-      // Register all methods found
-      for (const methodName of allMethodNames) {
-        // Get contract for this method if available. Shared with the packet
-        // path so both transports read a contract the same way.
-        const methodContract = resolveMethodContract(meta, methodName);
-
-        // Get method-level metadata from definition
-        const methodMeta = (stub.definition.meta.methods?.[methodName] || {}) as {
-          cacheable?: boolean;
-          cacheMaxAge?: number;
-          cacheTags?: string[];
-        };
-
-        descriptor.methods.set(methodName, {
-          name: methodName,
-          handler: async (input: unknown, context: MethodHandlerContext) => {
-            // Input is already an array of arguments from HTTP peer
-            const args = Array.isArray(input) ? input : [input];
-            // Pass null as callerPeer for HTTP transport to get raw async generators
-            // This avoids wrapping generators in StreamReference (HTTP doesn't support streaming)
-            return stub.call(methodName, args, null);
-          },
-          contract: methodContract,
-          // Pass through caching configuration from method metadata
-          cacheable: methodMeta.cacheable,
-          cacheMaxAge: methodMeta.cacheMaxAge,
-          cacheTags: methodMeta.cacheTags,
-          holds: holdsItsCaller(stub.instance, methodName),
-        });
-      }
-
-      this.services.set(getQualifiedName(serviceName, version), descriptor);
+    for (const stub of this.netronPeer.stubs.values()) {
+      this.registerService(stub.definition.meta.name, stub.definition);
     }
   }
 
@@ -823,6 +770,13 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       });
     }
 
+    const projected = projectTransportDefinition(stub, 'http');
+    if (!projected) {
+      this.services.delete(getQualifiedName(serviceName, version));
+      return;
+    }
+    definition = projected;
+
     // Create service descriptor
     const descriptor: ServiceDescriptor = {
       name: serviceName,
@@ -831,38 +785,30 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       description: meta.description,
       metadata: meta.metadata,
       instance: stub.instance,
+      transports: stub.transports,
     };
 
     // Only what the service declares — see `publishedMethodNames`.
     const allMethodNames = this.publishedMethodNames(definition.meta as never);
 
     for (const methodName of allMethodNames) {
-      let methodContract: MethodContract | undefined;
-
-      // Use provided contract or extract from metadata
-      const contractObj = contract || meta.contract;
-
-      if (contractObj) {
-        // Check if it's a Contract class instance
-        if (contractObj.definition && contractObj.getMethod) {
-          methodContract = contractObj.getMethod(methodName);
-        } else if (contractObj[methodName]) {
-          // Direct contract definition
-          methodContract = contractObj[methodName] as MethodContract;
-        }
-      }
+      const methodContract = resolveMethodContract({ contract: contract ?? meta.contract }, methodName);
 
       // Get method-level metadata from definition
       const methodMeta = definition.meta.methods?.[methodName] || {};
 
       descriptor.methods.set(methodName, {
         name: methodName,
+        transports: methodMeta.transports,
         handler: async (input: unknown, context: MethodHandlerContext) => {
           // Input is already an array of arguments from HTTP peer
           const args = Array.isArray(input) ? input : [input];
-          // Pass null as callerPeer for HTTP transport to get raw async generators
-          // This avoids wrapping generators in StreamReference (HTTP doesn't support streaming)
-          return stub.call(methodName, args, null);
+          // A stateless caller keeps generators local while enforcing nested-service
+          // admission with the HTTP request's already validated authority.
+          return stub.call(methodName, args, {
+            transportName: 'http',
+            getAuthContext: () => context.middleware?.metadata.get('authContext'),
+          });
         },
         contract: methodContract,
         // Pass through caching configuration from method metadata
@@ -1500,6 +1446,10 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         });
       }
 
+      Object.defineProperties(context, {
+        transport: { value: 'http', enumerable: true },
+        serviceTransports: { value: service.transports },
+      });
       context.serviceName = getQualifiedName(service.name, service.version);
       metadata.set('serviceName', context.serviceName);
 
@@ -1512,6 +1462,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         });
       }
       this.noteHeld(method, request);
+      Object.defineProperty(context, 'memberTransports', { value: method.transports });
 
       // Surface the live service instance to PRE_INVOKE middleware.
       // NetronAuthMiddleware reads `@Public` decoration metadata via
@@ -1866,6 +1817,12 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       timing: { start: performance.now(), middlewareTimes: new Map() },
       request,
     };
+
+    Object.defineProperties(context, {
+      transport: { value: 'http', enumerable: true },
+      serviceTransports: { value: service.transports },
+      memberTransports: { value: method.transports },
+    });
 
     // The auth middleware reads `@Public` metadata off the live instance;
     // without it every protected method degrades to anonymous.

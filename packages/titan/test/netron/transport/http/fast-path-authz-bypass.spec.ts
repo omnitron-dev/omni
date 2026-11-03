@@ -30,63 +30,37 @@
  * reached.
  */
 
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { HttpServer } from '../../../../src/netron/transport/http/server.js';
-import { LocalPeer } from '../../../../src/netron/local-peer.js';
-import { Definition } from '../../../../src/netron/definition.js';
-import { contract } from '../../../../src/validation/contract.js';
+import { Netron } from '../../../../src/netron/netron.js';
+import { Public, Service } from '../../../../src/decorators/core.js';
+import { AuthenticationManager } from '../../../../src/netron/auth/authentication-manager.js';
+import { AuthorizationManager } from '../../../../src/netron/auth/authorization-manager.js';
+import { createMockLogger } from '../../test-utils.js';
 import { z } from 'zod';
 import { MiddlewareStage } from '../../../../src/netron/transport/http/middleware/types.js';
 import { TitanError } from '../../../../src/errors/core.js';
 import { ErrorCode } from '../../../../src/errors/codes.js';
 import type { HttpRequestMessage } from '../../../../src/netron/transport/http/types.js';
-import { nextTestPort } from '../../../utils/index.js';
+
+@Service({ name: 'Vault', version: '1.0.0', contract: { ping: { input: z.any(), output: z.any() } } })
+class Vault { @Public({ auth: false }) ping() { return { ok: true }; } }
 
 describe('HTTP fast-path — T#35 authz bypass', () => {
   let server: HttpServer;
-  let mockPeer: LocalPeer;
-  let baseUrl: string;
-  let testPort: number;
+  let netron: Netron;
 
-  function setupServer(opts: { withNetronAuth?: boolean; withPreInvokeMiddleware?: boolean } = {}) {
-    // Worker-safe port allocation to avoid collisions with other HTTP
-    // server tests running in parallel.
-    testPort = nextTestPort();
-    baseUrl = `http://localhost:${testPort}`;
-    server = new HttpServer({ port: testPort, host: 'localhost' });
-
-    const fakeNetron: any = {};
+  async function setupServer(opts: { withNetronAuth?: boolean; withPreInvokeMiddleware?: boolean } = {}) {
+    server = new HttpServer({ port: 0, host: '127.0.0.1' });
+    const logger = createMockLogger();
+    netron = new Netron(logger);
     if (opts.withNetronAuth) {
-      fakeNetron.authenticationManager = { validateToken: vi.fn() };
-      fakeNetron.authorizationManager = { canAccessService: () => true, canAccessMethod: () => true, filterDefinition: (_n: string, m: any) => m };
+      netron.configureAuth(new AuthenticationManager(logger, {
+        authenticate: () => ({ userId: 'fixture', roles: [], permissions: [] }),
+      }), new AuthorizationManager(logger));
     }
-
-    mockPeer = {
-      stubs: new Map(),
-      netron: fakeNetron,
-      on: vi.fn(),
-      off: vi.fn(),
-      emit: vi.fn(),
-    } as any;
-
-    const c = contract({
-      ping: { input: z.any(), output: z.any() },
-    });
-    const def = new Definition('svc-id', 'peer-id', {
-      name: 'Vault',
-      version: '1.0.0',
-      description: 'Vault',
-      contract: c,
-      methods: { ping: { description: 'ping' } },
-      properties: {},
-    });
-    const stub: any = {
-      definition: def,
-      call: vi.fn(async () => ({ ok: true })),
-    };
-    mockPeer.stubs.set('svc-id', stub);
-
-    server.setPeer(mockPeer);
+    await netron.peer.exposeService(new Vault());
+    server.setPeer(netron.peer);
 
     if (opts.withPreInvokeMiddleware) {
       // A blocker middleware that proves the pipeline ran. If the
@@ -111,9 +85,8 @@ describe('HTTP fast-path — T#35 authz bypass', () => {
       service: 'Vault@1.0.0',
       method: 'ping',
       input: {},
-      timestamp: Date.now(),
     };
-    const r = await fetch(`${baseUrl}/netron/invoke`, {
+    const r = await fetch(`http://127.0.0.1:${server.port}/netron/invoke`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
@@ -123,10 +96,11 @@ describe('HTTP fast-path — T#35 authz bypass', () => {
 
   afterEach(async () => {
     if (server) await server.close();
+    if (netron) await netron.stop();
   });
 
-  it('takes fast-path when no auth manager and no PRE_INVOKE middleware exist', async () => {
-    setupServer({ withNetronAuth: false, withPreInvokeMiddleware: false });
+  it('allows a declared public method when no auth manager or custom middleware exists', async () => {
+    await setupServer({ withNetronAuth: false, withPreInvokeMiddleware: false });
     await server.listen();
     const r = await invokePing();
     expect(r.status).toBe(200);
@@ -135,7 +109,7 @@ describe('HTTP fast-path — T#35 authz bypass', () => {
   });
 
   it('skips fast-path when the netron has an authorization manager (even for anon requests)', async () => {
-    setupServer({ withNetronAuth: true, withPreInvokeMiddleware: true });
+    await setupServer({ withNetronAuth: true, withPreInvokeMiddleware: true });
     await server.listen();
     const r = await invokePing();
     // Slow path ran → our blocker middleware fired → 403.
@@ -145,7 +119,7 @@ describe('HTTP fast-path — T#35 authz bypass', () => {
   });
 
   it('skips fast-path when PRE_INVOKE middleware is registered without an auth manager', async () => {
-    setupServer({ withNetronAuth: false, withPreInvokeMiddleware: true });
+    await setupServer({ withNetronAuth: false, withPreInvokeMiddleware: true });
     await server.listen();
     const r = await invokePing();
     expect(r.status).toBe(403);
@@ -157,7 +131,7 @@ describe('HTTP fast-path — T#35 authz bypass', () => {
     // so the very first request to a fresh server bypassed even
     // explicitly-registered middleware. We register PRE_INVOKE
     // middleware and verify request #1 already sees it.
-    setupServer({ withNetronAuth: false, withPreInvokeMiddleware: true });
+    await setupServer({ withNetronAuth: false, withPreInvokeMiddleware: true });
     await server.listen();
     const r = await invokePing();
     expect(r.status).toBe(403);

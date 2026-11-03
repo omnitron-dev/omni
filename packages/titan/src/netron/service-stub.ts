@@ -1,3 +1,6 @@
+import { normalizeTransportPolicy, transportAllowed } from './transport-policy.js';
+import { projectTransportDefinition } from './transport-surface.js';
+import { publicServiceMetadata } from './service-metadata.js';
 /**
  * Service Stub for Netron Framework
  *
@@ -22,6 +25,7 @@ import { Interface } from './interface.js';
 import { Errors } from '../errors/index.js';
 import { getServiceMetadata } from './utils.js';
 import { readMethodMetadata } from './auth/method-authorization.js';
+import { isStatefulPeer } from './interfaces/core-types.js';
 
 /**
  * ServiceStub is a proxy object for a service instance in the Netron system.
@@ -41,8 +45,8 @@ export class ServiceStub {
   /** Service definition containing metadata and interface specification */
   public definition: Definition;
 
-  /** Transport names this service is exposed on (server-side only) */
-  public transports?: string[];
+  /** Normalized publisher restriction, also retained in remote definitions */
+  public readonly transports?: readonly string[];
 
   /**
    * SEC-5: per-remote-peer reference counts for DYNAMIC sub-service stubs.
@@ -104,12 +108,14 @@ export class ServiceStub {
       this.definition = new Definition(Definition.nextId(), peer.id, metaOrDefinition);
     }
 
-    // Extract transports from metadata (but don't include in definition)
+    // Keep an immutable server-side snapshot of the published restriction.
     const meta = isServiceDefinition(metaOrDefinition) ? metaOrDefinition.meta : metaOrDefinition;
 
+    // Validate every published policy before adding a stub to any registry.
+    publicServiceMetadata(meta);
     const extendedMeta = meta as ServiceMetadataExtended;
     if (extendedMeta.transports) {
-      this.transports = extendedMeta.transports;
+      this.transports = Object.freeze(normalizeTransportPolicy(extendedMeta.transports)!);
     }
   }
 
@@ -130,6 +136,8 @@ export class ServiceStub {
     if (!Reflect.set(this.instance, prop, this.processValue(value))) {
       throw Errors.badRequest('Published property is not writable');
     }
+    if (this.instance instanceof Interface) return this.instance.waitForAssigned(prop);
+    return undefined;
   }
 
   /**
@@ -140,7 +148,9 @@ export class ServiceStub {
    * @throws {Error} If property does not exist or is not readable
    */
   get(prop: string, callerPeer?: any) {
-    return this.processResult(this.instance[prop], callerPeer);
+    const value = this.instance[prop];
+    return value instanceof Promise ? value.then(result => this.processResult(result, callerPeer))
+      : this.processResult(value, callerPeer);
   }
 
   /**
@@ -158,7 +168,7 @@ export class ServiceStub {
     // Check if result is an AsyncGenerator before awaiting Promise
     if (isAsyncGenerator(result)) {
       // If callerPeer is null, this is a local call - return the generator directly
-      if (callerPeer === null) {
+      if (callerPeer === null || (callerPeer && !isStatefulPeer(callerPeer))) {
         // For local calls within the same process, we can return the generator directly
         return result;
       }
@@ -228,7 +238,14 @@ export class ServiceStub {
       // (when there is one) so unref_service can refcount per-peer. Local/trusted
       // calls (no callerPeer) create an un-attributed stub torn down by the local
       // release path.
-      return this.peer.refService(result, this.definition, callerPeer?.id);
+      const definition = this.peer.refService(result, this.definition, callerPeer?.id);
+      if (!callerPeer) return definition;
+      if (!isServiceDefinition(definition)) throw Errors.notFound('Nested service');
+      const stub = this.peer.getStubByDefinitionId(definition.id);
+      if (!(stub instanceof ServiceStub)) throw Errors.notFound('Nested service');
+      const projected = projectTransportDefinition(stub, callerPeer.transportName);
+      if (!projected) throw Errors.notFound('Service', definition.meta.name);
+      return projected;
     } else if (isNetronStream(result)) {
       return StreamReference.from(result);
     }
@@ -243,7 +260,6 @@ export class ServiceStub {
     if (!callerPeer) return;
     const netron: any = (this.peer as any).netron;
     const authzManager: any = netron?.authorizationManager;
-    if (!authzManager || typeof authzManager.canAccessService !== 'function') return;
 
     // Resolve the nested service's qualified name. Interface instances
     // carry their definition via `$def`; raw service instances have
@@ -253,8 +269,10 @@ export class ServiceStub {
     const meta = serviceOrIface instanceof Interface
       ? serviceOrIface.$def?.meta
       : getServiceMetadata(serviceOrIface);
-    if (!meta?.name) return; // shape unknown — fail open is consistent
-    // with how the wire-level handler treats meta-less stubs (T#34).
+    if (!meta?.name) throw Errors.notFound('Nested service');
+    if (!transportAllowed(normalizeTransportPolicy((meta as ServiceMetadataExtended).transports), callerPeer.transportName))
+      throw Errors.notFound('Service', meta.name);
+    if (!authzManager || typeof authzManager.canAccessService !== 'function') return;
 
     const qualifiedName = meta.version ? `${meta.name}@${meta.version}` : meta.name;
     const authContext = typeof callerPeer.getAuthContext === 'function' ? callerPeer.getAuthContext() : undefined;

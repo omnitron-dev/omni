@@ -29,6 +29,8 @@ import type { ILogger } from '../../modules/logger/logger.types.js';
 import { METADATA_KEYS } from '../../decorators/core.js';
 import { TitanError, ErrorCode } from '../../errors/index.js';
 import { validateAccessRequirements } from './utils.js';
+import { transportSurfaceAllowed } from '../transport-policy.js';
+import { Interface } from '../interface.js';
 
 /**
  * Read method-decorator options (`@Public`, `@Method`, …) from a service
@@ -44,18 +46,23 @@ export function readMethodMetadata(
   const prototype = Object.getPrototypeOf(serviceInstance);
   if (!prototype) return undefined;
 
-  const methodOptions = Reflect.getMetadata(METADATA_KEYS.METHOD_OPTIONS, prototype, methodName);
-  if (methodOptions) return methodOptions;
-
-  // Fallback: assemble from individual metadata keys.
-  const auth = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, prototype, methodName);
-  const rateLimit = Reflect.getMetadata(METADATA_KEYS.METHOD_RATE_LIMIT, prototype, methodName);
-  const cache = Reflect.getMetadata(METADATA_KEYS.METHOD_CACHE, prototype, methodName);
-  const prefetch = Reflect.getMetadata(METADATA_KEYS.METHOD_PREFETCH, prototype, methodName);
-  const audit = Reflect.getMetadata(METADATA_KEYS.METHOD_AUDIT, prototype, methodName);
-
-  if (!auth && !rateLimit && !cache && !prefetch && !audit) return undefined;
-  return { auth, rateLimit, cache, prefetch, audit };
+  const options = Reflect.getMetadata(METADATA_KEYS.METHOD_OPTIONS, prototype, methodName) as MethodOptions | undefined;
+  const result: MethodOptions = { ...options };
+  // Composable decorators write these same keys independently. A @Public
+  // transport option must never hide an @Auth declaration (in either order).
+  const keys = {
+    auth: METADATA_KEYS.METHOD_AUTH,
+    rateLimit: METADATA_KEYS.METHOD_RATE_LIMIT,
+    cache: METADATA_KEYS.METHOD_CACHE,
+    prefetch: METADATA_KEYS.METHOD_PREFETCH,
+    audit: METADATA_KEYS.METHOD_AUDIT,
+    transports: 'method:transports',
+  } as const;
+  for (const [field, key] of Object.entries(keys)) {
+    const value: unknown = Reflect.getMetadata(key, prototype, methodName);
+    if (value !== undefined) Object.assign(result, { [field]: value });
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 /**
@@ -100,10 +107,42 @@ export interface EnforceMethodAuthorizationInput {
   /** Policy engine for `policies` evaluation. Absent → fail-closed when policies declared. */
   policyEngine?: PolicyEngine;
   logger: ILogger;
-  /** Transport label for the policy ExecutionContext. */
+  /** Canonical ingress identity supplied by the transport host, never request metadata. */
   transport?: string;
+  /** Server-owned service restriction, intersected with the member declaration. */
+  serviceTransports?: readonly string[];
+  /** Restriction carried by the publisher, including forwarded interfaces. */
+  memberTransports?: readonly string[];
   clientIp?: string;
   headers?: Record<string, string>;
+}
+
+/** Transport confinement remains mandatory even for an explicitly auth-exempt method. */
+export function enforceInvocationTransport(input: EnforceMethodAuthorizationInput): void {
+  const { serviceName, methodName, logger } = input;
+  if (!transportSurfaceAllowed(input.serviceTransports, input.memberTransports,
+    input.transport, readMethodMetadata(input.serviceInstance, methodName)?.transports)) {
+    logger.warn({ serviceName, methodName, transport: input.transport }, 'Member is unavailable on this transport');
+    throw new TitanError({ code: ErrorCode.NOT_FOUND, message: `Method '${serviceName}.${methodName}' not found` });
+  }
+}
+
+/** A forwarding hop is a delegation boundary: upstream credentials never
+ * authorize the incoming caller. Only an explicit gateway ACL can grant it.
+ * Returns whether this invocation uses a forwarded interface.
+ */
+export function enforceForwardedAuthorization(input: EnforceMethodAuthorizationInput & {
+  authorizationManager?: Pick<AuthorizationManager, 'canAccessMethod' | 'hasACL'>;
+}): boolean {
+  if (!(input.serviceInstance instanceof Interface)) return false;
+  const { authorizationManager, serviceName, methodName, authContext, logger } = input;
+  if (!authorizationManager?.hasACL(serviceName) ||
+      !authorizationManager.canAccessMethod(serviceName, methodName, authContext)) {
+    logger.warn({ serviceName, methodName, userId: authContext?.userId }, 'Forwarded invocation requires an explicit gateway ACL grant');
+    throw new TitanError({ code: ErrorCode.FORBIDDEN,
+      message: `Access denied to forwarded method ${serviceName}.${methodName}` });
+  }
+  return true;
 }
 
 /** The same complete access decision for every transport. An absent manager
@@ -120,7 +159,9 @@ export async function enforceInvocationAuthorization(input: EnforceMethodAuthori
       message: `Access denied to method ${serviceName}.${methodName}`,
       details: { service: serviceName, method: methodName } });
   };
-  if (authorizationManager && !authorizationManager.canAccessMethod(serviceName, methodName, authContext))
+  enforceInvocationTransport(input);
+  const forwarded = enforceForwardedAuthorization(input);
+  if (!forwarded && authorizationManager && !authorizationManager.canAccessMethod(serviceName, methodName, authContext))
     refuse('Method access denied by authorization manager (ACL)');
   await enforceMethodAuthorization(input);
   if (input.defaultDeny && !authorizationManager?.hasACL(serviceName) &&

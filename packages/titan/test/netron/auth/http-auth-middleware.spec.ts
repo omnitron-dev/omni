@@ -1194,7 +1194,8 @@ describe('HTTP Auth Middleware Integration', () => {
         authContext,
         input: ['arg1', 'arg2'],
       });
-      ctx.metadata.set('transport', 'http');
+      Object.defineProperty(ctx, 'transport', { value: 'http' });
+      ctx.metadata.set('transport', 'tcp'); // Untrusted metadata does not define ingress.
       ctx.metadata.set('clientIp', '192.168.1.1');
       ctx.metadata.set('headers', { 'content-type': 'application/json' });
 
@@ -1410,7 +1411,8 @@ describe('HTTP Auth Middleware Integration', () => {
       });
 
       // Add HTTP-specific metadata
-      ctx.metadata.set('transport', 'http');
+      Object.defineProperty(ctx, 'transport', { value: 'http' });
+      ctx.metadata.set('transport', 'tcp'); // Untrusted metadata does not define ingress.
       ctx.metadata.set('method', 'POST');
       ctx.metadata.set('path', '/api/test');
       ctx.metadata.set('headers', {

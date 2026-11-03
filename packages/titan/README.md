@@ -98,3 +98,35 @@ when no authentication manager is configured; ordinary public methods remain ope
 unless default-deny is enabled. Missing policy engines refuse declared policies.
 The resolved service identity is used for ACL and policy checks, so an unqualified
 request cannot bypass the selected version's permissions.
+
+## Transport boundaries
+
+`@Service({ transports: [new HttpTransport()] })` restricts the entire service.
+`@Public({ transports: ['http'] })` restricts one method or property. The effective
+remote surface is their intersection; a member cannot widen its service. Missing
+`transports` means unrestricted, while `[]` explicitly denies every remote
+transport. Invalid declarations fail during publication. `ws` is the documented
+alias for `websocket`; custom transport implementation names are supported.
+
+Netron obtains the actual ingress from the transport factory, including callbacks
+on outgoing connections. HTTP headers and request context cannot override it.
+HTTP single calls, both batch modes, and persistent CALL/GET/SET enforce the same
+boundary before executing a member. Transport restrictions do not replace roles,
+permissions, session validation, or domain authorization.
+
+Discovery, HTTP OpenAPI and nested interfaces present the corresponding restricted
+surface. Published definitions retain optional transport restrictions when they
+are forwarded through another server; old definitions without these fields remain
+unrestricted. Direct calls by a known service name or definition ID still enforce
+the boundary. Trusted in-process `LocalPeer` calls are local operations, not remote
+requests. HTTP custom routes need their own endpoint authorization; HTTP does not
+currently provide an SSE invocation endpoint.
+
+Forwarding an `Interface` through a gateway is an explicit delegation boundary.
+Register a gateway `AuthorizationManager` ACL for the forwarded service or method;
+Netron evaluates it against the actual incoming caller. Without a matching ACL
+there is no remote forwarding grant, even when the upstream connection holds
+privileged credentials or HTTP authentication has an exemption. The upstream
+service still applies its own guards. Definitions carry transport restrictions,
+not the publisher's executable authorization policy; trusted local proxy calls
+continue to use the existing local contract.

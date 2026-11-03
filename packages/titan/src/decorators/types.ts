@@ -90,17 +90,10 @@ export interface MethodOptions {
   readonly?: boolean;
 
   /**
-   * Transport protocols (legacy support)
-   *
-   * NOT ENFORCED. The decorator writes a `method:transports` reflect key and
-   * nothing in the framework reads it — there is no per-method transport
-   * filtering at dispatch. Service-level transports ARE honoured (a service
-   * is skipped when starting a transport server it does not list), so the
-   * name reads as though the method-level version works the same way.
-   *
-   * `test/netron/method-transport-filter.spec.ts` says the same thing in its
-   * test names: "filtering is application-level". An application wanting this
-   * must read the metadata and enforce it itself.
+   * Remote transports allowed to invoke this member, intersected with the
+   * service restriction. Omitted allows all; [] denies every remote transport.
+   * Names identify transport implementations (ws aliases websocket). Trusted
+   * in-process calls remain local and do not acquire remote permissions.
    */
   transports?: string[];
 

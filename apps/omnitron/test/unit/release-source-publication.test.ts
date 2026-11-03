@@ -13,7 +13,7 @@ function git(cwd: string, ...args: string[]) {
     env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 'Fixture', GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
       GIT_COMMITTER_NAME: 'Fixture', GIT_COMMITTER_EMAIL: 'fixture@example.invalid' } }).trim();
 }
-async function fixture() {
+async function fixture(authenticated = false) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'release-publication-'));
   cleanup.push(() => fs.rm(root, { recursive: true, force: true }));
   const repository = path.join(root, 'repo.git'), checkout = path.join(root, 'checkout');
@@ -26,6 +26,9 @@ async function fixture() {
   git(repository, 'update-server-info');
   const server = createServer(async (req, res) => {
     try {
+      if (authenticated && req.headers.authorization !== 'Basic ' + Buffer.from('fixture:fixture-token').toString('base64')) {
+        res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="private fixture"' }).end(); return;
+      }
       const request = decodeURIComponent(new URL(req.url!, 'http://localhost').pathname);
       const file = path.resolve(root, '.' + request);
       if (!file.startsWith(repository + path.sep)) { res.writeHead(404).end(); return; }
@@ -86,6 +89,24 @@ describe('source publication from current upstream advertisement', () => {
     vi.stubEnv('GIT_SSH_VARIANT', 'ssh');
     expect(await sourcePublication(f.checkout, 'ssh://git@provider.invalid/team/framework.git', f.second)).toBe(true);
     expect(await fs.readFile(marker, 'utf8')).toBe('operator transport');
+  });
+  it.each(['GIT_ASKPASS', 'core.askPass'])('preserves a configured %s token program for actual private HTTP Git authentication', async setting => {
+    const f = await fixture(true), marker = path.join(f.root, 'askpass-used'), helper = path.join(f.root, 'askpass.mjs');
+    await fs.writeFile(helper, `#!/usr/bin/env node\nimport{appendFileSync}from'node:fs';appendFileSync(${JSON.stringify(marker)},'called\\n');console.log(process.argv.at(-1).includes('Username')?'fixture':'fixture-token');\n`, { mode: 0o700 });
+    git(f.checkout, 'config', 'credential.helper', '');
+    if (setting === 'GIT_ASKPASS') vi.stubEnv(setting, helper);
+    else { vi.stubEnv('GIT_ASKPASS', undefined); git(f.checkout, 'config', setting, helper); }
+    expect(await sourcePublication(f.checkout, f.url, f.second)).toBe(true);
+    expect(await fs.readFile(marker, 'utf8')).toContain('called');
+  });
+  it('preserves explicit SSH askpass selection and requirement for the configured transport', async () => {
+    const f = await fixture(), marker = path.join(f.root, 'ssh-environment.json'), helper = path.join(f.root, 'transport-env.mjs');
+    await fs.writeFile(helper, `import{writeFileSync}from'node:fs';import{spawnSync}from'node:child_process';writeFileSync(${JSON.stringify(marker)},JSON.stringify([process.env.SSH_ASKPASS,process.env.SSH_ASKPASS_REQUIRE]));const r=spawnSync('git',['upload-pack',${JSON.stringify(f.repository)}],{stdio:'inherit'});process.exit(r.status??1);\n`);
+    const quote = (value: string) => "'" + value.replace(/'/g, "'\\''") + "'";
+    vi.stubEnv('GIT_SSH_COMMAND', quote(process.execPath) + ' ' + quote(helper)); vi.stubEnv('GIT_SSH_VARIANT', 'ssh');
+    vi.stubEnv('SSH_ASKPASS', '/operator/token-helper'); vi.stubEnv('SSH_ASKPASS_REQUIRE', 'force');
+    expect(await sourcePublication(f.checkout, 'ssh://git@provider.invalid/team/framework.git', f.second)).toBe(true);
+    expect(JSON.parse(await fs.readFile(marker, 'utf8'))).toEqual(['/operator/token-helper', 'force']);
   });
   it('keeps absent ancestry unknown and never fetches the advertised object', async () => {
     const f = await fixture();

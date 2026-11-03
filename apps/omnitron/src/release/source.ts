@@ -28,8 +28,11 @@ function environment(): NodeJS.ProcessEnv {
   // Xec 0.11.2 merges the ambient environment. Refuse repository redirects instead
   // of pretending that omitting them here isolates a child. User transport remains intact.
   assertCheckoutEnvironment();
-  return { ...env, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: 'false', SSH_ASKPASS: 'false', GCM_INTERACTIVE: 'Never',
-    SSH_ASKPASS_REQUIRE: 'never', GIT_NO_REPLACE_OBJECTS: '1', GIT_NO_LAZY_FETCH: '1' };
+  // Preserve configured askpass programs (including core.askPass): they may be
+  // noninteractive token providers. Only terminal/GCM interaction is disabled.
+  return { ...env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never',
+    ...(!env['SSH_ASKPASS'] && env['SSH_ASKPASS_REQUIRE'] === undefined ? { SSH_ASKPASS_REQUIRE: 'never' } : {}),
+    GIT_NO_REPLACE_OBJECTS: '1', GIT_NO_LAZY_FETCH: '1' };
 }
 
 async function git(checkout: string, args: string[], signal: AbortSignal, stdin = ''): Promise<string> {

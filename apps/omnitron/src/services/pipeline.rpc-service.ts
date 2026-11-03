@@ -34,9 +34,11 @@ export class PipelineRpcService implements IOmnitronPipelinesService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async updatePipeline(data: { id: string; definition: PipelineDef }): Promise<Pipeline> {
+  async updatePipeline(data: { id: string; definition: PipelineDef; expectedRevision: string }): Promise<Pipeline> {
     await this.authorize('update', data.id);
-    return this.pipelines.updatePipeline(data.id, data.definition);
+    if (!/^[a-f0-9]{64}$/.test(data.expectedRevision ?? ''))
+      throw new Error('Review the current definition before updating it');
+    return this.pipelines.updatePipeline(data.id, data.definition, data.expectedRevision);
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })

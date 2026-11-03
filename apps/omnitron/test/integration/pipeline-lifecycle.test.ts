@@ -56,9 +56,36 @@ describe.skipIf(!postgres.ok)('durable Xec automation lifecycle', () => {
   });
   it('rejects edits made after review, before inserting or running a job', async () => {
     const def = await service.createPipeline({ name: 'review', steps: [{ name: 'one', run: 'echo first' }] });
-    await service.updatePipeline(def.id, { name: 'review', steps: [{ name: 'one', run: 'echo changed' }] });
+    await service.updatePipeline(def.id, { name: 'review', steps: [{ name: 'one', run: 'echo changed' }] }, def.revision);
     await expect(service.executePipeline(def.id, {}, 'reviewer', def.revision)).rejects.toThrow('changed after review');
     expect(await service.listRuns(def.id)).toEqual([]);
+  });
+  it('allows only one concurrent editor to replace a reviewed definition', async () => {
+    const def = await service.createPipeline({ name: 'concurrent', steps: [{ name: 'one', run: 'echo first' }] });
+    const other = new PipelineService(own.db, logger);
+    const results = await Promise.allSettled([service, other].map((editor, index) =>
+      editor.updatePipeline(def.id, { name: 'concurrent', steps: [{ name: 'one', run: `echo edit-${index}` }] }, def.revision)));
+    const success = results.filter((result) => result.status === 'fulfilled');
+    const failures = results.filter((result) => result.status === 'rejected');
+    expect(success).toHaveLength(1);
+    expect(failures).toHaveLength(1);
+    expect(failures[0]!.reason.message).toContain('changed after review');
+    expect(await service.getPipeline(def.id)).toEqual(success[0]!.value);
+    expect(success[0]!.value).toMatchObject({ id: def.id, conditionalUpdates: true });
+    expect(success[0]!.value.revision).not.toBe(def.revision);
+    await other.dispose();
+  });
+  it('retains completed run history and invalidates a revision even for an identical save', async () => {
+    const input = { name: 'keep-history', steps: [{ name: 'one', run: 'echo ready' }] };
+    const def = await service.createPipeline(input);
+    const run = await service.executePipeline(def.id, {}, 'editor', def.revision);
+    await terminal(run.id);
+    const edited = await service.updatePipeline(def.id, input, def.revision);
+    expect(edited.id).toBe(def.id);
+    expect(edited.revision).not.toBe(def.revision);
+    expect((await service.getRunStatus(run.id))?.status).toBe('success');
+    await expect(service.updatePipeline(def.id, input, def.revision)).rejects.toThrow('changed after review');
+    await expect(service.updatePipeline(def.id, input, '')).rejects.toThrow('Review');
   });
   it('waits for local cancellation, and prevents a dependent step from running', async () => {
     const pidPath = join(dir, 'pid'),

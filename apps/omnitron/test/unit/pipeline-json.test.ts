@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetEnvCache, setEnvOverride } from '../../src/shared/env-config.js';
 
-const { service } = vi.hoisted(() => ({ service: { getRunStatus: vi.fn(), listPipelines: vi.fn() } }));
+const { service } = vi.hoisted(() => ({ service: { getRunStatus: vi.fn(), listPipelines: vi.fn(), getPipeline: vi.fn(), updatePipeline: vi.fn(), createPipeline: vi.fn() } }));
+vi.mock('node:fs/promises', () => ({ readFile: async () => JSON.stringify({ name: 'inspect', steps: [{ name: 'one', run: 'echo ready' }] }) }));
 vi.mock('../../src/daemon/daemon-client.js', () => ({
   createDaemonClient: () => ({ service: async () => service, disconnect: async () => {} }),
 }));
-import { pipelineListCommand, pipelineStatusCommand } from '../../src/commands/pipeline.js';
+import { pipelineListCommand, pipelineStatusCommand, pipelineSaveCommand } from '../../src/commands/pipeline.js';
 import { hasEmittedJson } from '../../src/commands/output.js';
 
 beforeEach(() => {
@@ -59,5 +60,24 @@ describe('pipeline CLI uses the shared machine output protocol', () => {
     const output = await capture(pipelineListCommand);
     expect(JSON.parse(output.out)).toEqual({ ok: true, data: { pipelines: [] } });
     expect(output.err).toBe('');
+  });
+  it('requires a reviewed revision for updating and refuses an older daemon', async () => {
+    const missing = await capture(() => pipelineSaveCommand('pipeline.json', { id: 'pipeline' }));
+    expect(JSON.parse(missing.err).error).toContain('--expected-revision');
+    expect(service.updatePipeline).not.toHaveBeenCalled();
+    service.getPipeline.mockResolvedValue({ id: 'pipeline', revision: 'a'.repeat(64) });
+    const old = await capture(() => pipelineSaveCommand('pipeline.json', { id: 'pipeline', expectedRevision: 'a'.repeat(64) }));
+    expect(JSON.parse(old.err).error).toContain('Update the daemon');
+    expect(service.updatePipeline).not.toHaveBeenCalled();
+  });
+  it('preserves the explicit revision even if another editor changed the current definition', async () => {
+    service.getPipeline.mockResolvedValue({ id: 'pipeline', revision: 'b'.repeat(64), conditionalUpdates: true });
+    service.updatePipeline.mockRejectedValue(Error('Pipeline changed after review'));
+    const result = await capture(() => pipelineSaveCommand('pipeline.json', { id: 'pipeline', expectedRevision: 'a'.repeat(64) }));
+    expect(service.updatePipeline).toHaveBeenCalledWith({
+      id: 'pipeline', expectedRevision: 'a'.repeat(64), definition: { name: 'inspect', steps: [{ name: 'one', run: 'echo ready' }] },
+    });
+    expect(JSON.parse(result.err).error).toContain('changed after review');
+    expect(result.exitCode).toBe(1);
   });
 });

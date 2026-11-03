@@ -1173,6 +1173,7 @@ pipeline
 
 pipeline.command('save <file>').description('Create a pipeline from JSON, or update an existing definition')
   .option('--id <id>', 'Existing pipeline ID to update')
+  .option('--expected-revision <sha256>', 'Reviewed revision, required with --id')
   .structuredAction(async (file, options) => {
     const { pipelineSaveCommand } = await import('../commands/pipeline.js');
     await pipelineSaveCommand(file, options);

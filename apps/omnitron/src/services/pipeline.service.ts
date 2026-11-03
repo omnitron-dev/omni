@@ -161,22 +161,25 @@ export class PipelineService {
       .executeTakeFirstOrThrow();
     return this.mapPipeline(row);
   }
-  async updatePipeline(id: string, def: PipelineDef): Promise<Pipeline> {
+  async updatePipeline(id: string, def: PipelineDef, expectedRevision: string): Promise<Pipeline> {
+    if (!/^[a-f0-9]{64}$/.test(expectedRevision ?? ''))
+      throw new Error('Review the current definition before updating it');
     await this.validate(def);
-    const row = await this.db
-      .updateTable('pipelines')
-      .set({
+    return this.db.transaction().execute(async (trx) => {
+      const current = await trx.selectFrom('pipelines').selectAll().where('id', '=', id)
+        .forUpdate().executeTakeFirst();
+      if (!current) throw new Error(`Pipeline '${id}' not found`);
+      if (this.mapPipeline(current).revision !== expectedRevision)
+        throw new Error('Pipeline changed after review. Reload and review the current definition');
+      const row = await trx.updateTable('pipelines').set({
         name: def.name.trim(),
         description: def.description ?? null,
         steps: JSON.stringify(def.steps),
         triggers: JSON.stringify(def.triggers ?? []),
-        updatedAt: new Date(),
-      })
-      .where('id', '=', id)
-      .returningAll()
-      .executeTakeFirst();
-    if (!row) throw new Error(`Pipeline '${id}' not found`);
-    return this.mapPipeline(row);
+        updatedAt: new Date(Math.max(Date.now(), new Date(current.updatedAt).getTime() + 1)),
+      }).where('id', '=', id).returningAll().executeTakeFirstOrThrow();
+      return this.mapPipeline(row);
+    });
   }
   async getPipeline(id: string): Promise<Pipeline | null> {
     const row = await this.db.selectFrom('pipelines').selectAll().where('id', '=', id).executeTakeFirst();
@@ -460,7 +463,7 @@ export class PipelineService {
       createdAt: new Date(row.createdAt).toISOString(),
       updatedAt: new Date(row.updatedAt).toISOString(),
     };
-    return { ...definition, revision: createHash('sha256').update(JSON.stringify(definition)).digest('hex') };
+    return { ...definition, revision: createHash('sha256').update(JSON.stringify(definition)).digest('hex'), conditionalUpdates: true };
   }
   private mapRun(row: Selectable<PipelineRunsTable>): PipelineRun {
     const steps = (typeof row.steps === 'string'

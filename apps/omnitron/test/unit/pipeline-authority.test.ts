@@ -10,6 +10,7 @@ const actor = (role = 'admin') => ({
 });
 function fixture() {
   const pipelines = {
+    updatePipeline: vi.fn(async () => ({ id: 'pipeline' })),
     executePipeline: vi.fn(async () => ({ id: 'run' })),
     cancelRun: vi.fn(async () => {}),
     listRuns: vi.fn(async () => []),
@@ -52,5 +53,24 @@ describe('automation authority at the execution boundary', () => {
       runWithAuth(actor(), () => f.service.executePipeline({ ...request, expectedRevision: '' }))
     ).rejects.toThrow('Review');
     expect(f.pipelines.executePipeline).not.toHaveBeenCalled();
+  });
+  it('requires a revision and an audit write before changing a definition', async () => {
+    const f = fixture();
+    const update = { ...request, definition: { name: 'inspect', steps: [{ name: 'one', run: 'echo ready' }] } };
+    await expect(runWithAuth(actor(), () => f.service.updatePipeline({ ...update, expectedRevision: '' })))
+      .rejects.toThrow('Review');
+    expect(f.pipelines.updatePipeline).not.toHaveBeenCalled();
+    f.audit.record.mockRejectedValueOnce(Error('audit unavailable'));
+    await expect(runWithAuth(actor(), () => f.service.updatePipeline(update))).rejects.toThrow('audit unavailable');
+    expect(f.pipelines.updatePipeline).not.toHaveBeenCalled();
+    await runWithAuth(actor(), () => f.service.updatePipeline(update));
+    expect(f.pipelines.updatePipeline).toHaveBeenCalledExactlyOnceWith(update.id, update.definition, update.expectedRevision);
+  });
+  it.each(['viewer', 'operator'])('denies definition updates by %s', async (role) => {
+    const f = fixture();
+    await expect(runWithAuth(actor(role), () => f.service.updatePipeline({
+      ...request, definition: { name: 'inspect', steps: [{ name: 'one', run: 'echo ready' }] },
+    }))).rejects.toThrow();
+    expect(f.pipelines.updatePipeline).not.toHaveBeenCalled();
   });
 });

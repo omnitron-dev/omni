@@ -37,6 +37,8 @@ export interface Pipeline {
   id: string;
   /** Content revision required when admitting the reviewed definition. */
   revision: string;
+  /** Older daemons silently ignore update preconditions. Require this before sending an update. */
+  conditionalUpdates?: true;
   name: string;
   description: string | null;
   steps: PipelineStep[];

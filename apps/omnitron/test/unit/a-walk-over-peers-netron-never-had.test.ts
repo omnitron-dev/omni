@@ -218,10 +218,11 @@ describe('omnitron pipeline run', () => {
     const client = createDaemonClient();
     try {
       const rpc = await client.service<import('../../src/shared/dto/services.js').IOmnitronPipelinesService>('OmnitronPipelines');
-      const result = await rpc.updatePipeline({id:'stable-id', definition});
+      const revision = 'a'.repeat(64);
+      const result = await rpc.updatePipeline({id:'stable-id', definition, expectedRevision: revision});
       expect(result.id).toBe('stable-id');
       expect(result.steps).toEqual(definition.steps);
-      expect(update).toHaveBeenCalledExactlyOnceWith('stable-id', definition);
+      expect(update).toHaveBeenCalledExactlyOnceWith('stable-id', definition, revision);
     } finally { await client.disconnect(); }
   });
   it.each(['release', 'pipeline-id'])('resolves %s to the registered pipeline over Netron', async (name) => {

@@ -128,12 +128,20 @@ export async function pipelineStatusCommand(runId: string, options: { output?: b
   }
 }
 
-export async function pipelineSaveCommand(file: string, options: { id?: string } = {}): Promise<void> {
+export async function pipelineSaveCommand(file: string, options: { id?: string; expectedRevision?: string } = {}): Promise<void> {
   try {
+    if (options.id && !/^[a-f0-9]{64}$/.test(options.expectedRevision ?? ''))
+      throw new Error('Updating requires --expected-revision <revision> from the reviewed pipeline');
+    if (!options.id && options.expectedRevision)
+      throw new Error('--expected-revision requires --id');
     const definition = JSON.parse(await readFile(file, 'utf8'));
-    const result = await withPipelines((svc) =>
-      options.id ? svc.updatePipeline({ id: options.id, definition }) : svc.createPipeline(definition)
-    );
+    const result = await withPipelines(async (svc) => {
+      if (!options.id) return svc.createPipeline(definition);
+      const current = await svc.getPipeline({ id: options.id });
+      if (!current) throw new Error(`Pipeline '${options.id}' not found`);
+      if (!current.conditionalUpdates) throw new Error('Update the daemon to support conditional pipeline edits');
+      return svc.updatePipeline({ id: options.id, definition, expectedRevision: options.expectedRevision! });
+    });
     if (!emitJson(result)) log.success(`Pipeline saved: ${result.id} (${result.name})`);
   } catch (error) {
     emitError(`Failed: ${(error as Error).message}`);

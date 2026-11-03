@@ -71,6 +71,7 @@ jobs:
           test/unit/a-release-the-node-never-ran.test.ts
           test/unit/installed-release.test.ts
           test/unit/local-installation-publication.test.ts
+          test/unit/vitest-worker-budget.test.ts
       - name: Managed fleet distribution, handoff and reconciliation
         working-directory: apps/omnitron
         run: |

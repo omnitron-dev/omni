@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { mkdtempSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -9,7 +10,8 @@ import { runWithAuth } from '../../src/services/auth-context.js';
 import { KernelRolloutService } from '../../src/services/kernel-rollout.service.js';
 import { ManagedRolloutFailure, type ManagedRolloutObservation, type ManagedSelection } from '../../src/services/managed-rollout.js';
 import { NodeManagerRpcService } from '../../src/services/node-manager.rpc-service.js';
-import type { DeployTarget } from '../../src/services/remote-deployer.service.js';
+import { RemoteDeployer, type DeployTarget } from '../../src/services/remote-deployer.service.js';
+import { commandFailure } from '../../src/execution/command-failure.js';
 
 const commit = 'f'.repeat(40), previous = '0'.repeat(64), candidate = '1'.repeat(64);
 const recordKey = (id: string) => 'fleet:kernel:v1:plan:' + id;
@@ -54,6 +56,30 @@ function fixture() {
 }
 
 describe('durable managed fleet kernel controller', () => {
+  it('stores the redacted native refusal for CLI and Console after nested Node and SSH failures', async () => {
+    const { service, observer, driver, switchRuntime, logger } = fixture();
+    // Node puts the evaluated source and a caret before the error. The
+    // preflight cause must survive even when that source exceeds 4 KiB.
+    const inner = spawnSync(process.execPath, ['--input-type=module', '-e',
+      'throw Error("Guardian busy, password=test-private-value"); //' + 'x'.repeat(5000)], { encoding: 'utf8' });
+    expect(inner.status).toBe(1);
+    expect(inner.stderr.indexOf('Error: Guardian busy')).toBeGreaterThan(4000);
+    const outer = spawnSync(process.execPath, ['--input-type=module', '-e',
+      `throw Error("Managed kernel plan failed: " + (${commandFailure.toString()})(process.argv[1], "exit 1"))`, inner.stderr], { encoding: 'utf8' });
+    expect(outer.status).toBe(1);
+    const remote = new RemoteDeployer(logger as never, {} as never);
+    const read = vi.spyOn(remote, 'readFromNode')
+      .mockResolvedValueOnce({ stdout: '{"clear":true}', stderr: '', code: 0 })
+      .mockResolvedValueOnce({ stdout: '[]', stderr: '', code: 0 })
+      .mockResolvedValueOnce({ stdout: 'private machine data', stderr: outer.stderr, code: 1 });
+    driver.inspectManagedRollout.mockImplementation((target) => remote.inspectManagedRollout(target, commit));
+    const plan = await ready(service, commit, ['a']);
+    expect(read).toHaveBeenCalledTimes(3);
+    expect(plan.state).toBe('blocked');
+    expect(observer.get(plan.id)?.targets[0]?.reason).toBe('ssh root@a: Managed kernel plan failed: Guardian busy, password=***');
+    expect(switchRuntime).not.toHaveBeenCalled();
+  });
+
   it('records reviewed order, independent owner and sealed artifacts in SQLite, excluding SSH credentials', async () => {
     const { service, observer, store } = fixture();
     expect(observer.get()).toBeNull();

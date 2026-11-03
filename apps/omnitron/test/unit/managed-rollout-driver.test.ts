@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { commandFailure } from '../../src/execution/command-failure.js';
 import { stageCatalogRuntime } from '../../src/services/kernel-distribution.js';
 import { assertKernelHandoffFence } from '../../src/daemon/backend-upgrade.js';
 import { activateManagedTarget, planManagedRollout, reconcileManagedTarget,
@@ -30,6 +31,14 @@ function fixture() {
 }
 
 describe('fenced resident kernel transitions', () => {
+  it('reads the native CLI failure envelope after process warnings and omits eval source when a child gives no reason', () => {
+    const stderr = '(node:123) Warning: experimental\n' + JSON.stringify({ ok: false, error: 'Wait for the recovery certificate' });
+    expect(commandFailure(stderr, 'exit 1')).toBe('Wait for the recovery certificate');
+    expect(commandFailure(JSON.stringify({ ok: false, error: 'Command failed: node -e private-data' }), 'exit 1')).toBe('exit 1');
+    expect(commandFailure('file:///node/[eval1]:16\nthrow Error(secret)\n  ^', 'SIGTERM')).toBe('SIGTERM');
+    expect(commandFailure('', 'ETIMEDOUT')).toBe('ETIMEDOUT');
+  });
+
   it('plans only a full source SHA and dispatches a native compare-and-switch exactly once', async () => {
     const { dispatch } = fixture();
     await expect(planManagedRollout(dispatch, '../source')).rejects.toThrow(/full lowercase/);

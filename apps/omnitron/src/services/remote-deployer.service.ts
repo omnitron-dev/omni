@@ -55,6 +55,7 @@ import {
 import { gunzipSync } from 'node:zlib';
 import { shellEscape } from '../shared/shell-escape.js';
 import { fromDataChannel, throughDataChannel } from '../execution/data-channel.js';
+import { commandFailure } from '../execution/command-failure.js';
 import { activateManagedTarget, managedHostCommand, planManagedRollout, reconcileManagedTarget,
   type ManagedHostEvidence, type ManagedHostRequest, type ManagedRolloutObservation, type ManagedSelection } from './managed-rollout.js';
 
@@ -1948,7 +1949,8 @@ export class RemoteDeployer {
   private async sshExecData(target: DeployTarget, command: string, timeout = 60_000): Promise<string> {
     const result = await this.readFromNode(target, command, timeout);
     if (result.code !== 0) {
-      throw new Error(`ssh ${target.username ?? 'root'}@${target.host}: ${result.stderr || result.stdout || `exit ${result.code}`}`);
+      const reason = redactDiagnosticText(commandFailure(result.stderr, `exit ${result.code}`));
+      throw new Error(`ssh ${target.username ?? 'root'}@${target.host}: ${reason}`);
     }
     return result.stdout.trim();
   }

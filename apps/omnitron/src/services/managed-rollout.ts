@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { commandFailure } from '../execution/command-failure.js';
 import { BACKEND_ACTIVITY_COUNTERS } from '../shared/dto/backend.js';
 import { compareExecutionIdentityEvidence, describeExecutionIdentityDrift, isExecutionIdentityEvidence, type ExecutionIdentityEvidence } from '../shared/execution-identity.js';
 import type { InstalledBundle } from './host-upgrade.js';
@@ -43,9 +44,10 @@ export type ManagedHostRequest = { operation: 'inspect' | 'observe' } | { operat
  * The SSH login's Node discovers the OS process. It never loads SQLite native
  * extensions or treats an old /opt/omnitron/current alias as a serving identity. */
 export function managedHostCommand(request: ManagedHostRequest): string {
-  const body = readFileSync(new URL('../../data/operations/managed-kernel.mjs', import.meta.url), 'utf8');
+  const program = readFileSync(new URL('../../data/operations/managed-kernel.mjs', import.meta.url), 'utf8');
   const wire = JSON.stringify({ ...request, requiredCounters: BACKEND_ACTIVITY_COUNTERS });
   return remoteNode(`import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {execFileSync,spawnSync} from 'node:child_process';
+    const commandFailure=${commandFailure.toString()};
     const home=process.env.OMNITRON_HOME||path.join(os.homedir(),'.omnitron'),directory=path.join(home,'runtime');
     const file=path.join(directory,'supervision.json'),stat=fs.lstatSync(file,{throwIfNoEntry:false});
     if(!stat)console.log('null');
@@ -59,9 +61,13 @@ export function managedHostCommand(request: ManagedHostRequest): string {
       if(!/^[1-9][0-9]*$/.test(pid))throw Error('The native guardian is unavailable');
       const bootstrap=path.join(directory,'releases',job.artifact),node=path.join(bootstrap,'node');
       if(fs.realpathSync(node)!==node||fs.realpathSync('/proc/'+pid+'/exe')!==node)throw Error('Registered guardian is not executing its pinned Node');
-      const result=spawnSync(node,['--input-type=module','-e',${JSON.stringify(body)},home,bootstrap,pid,${JSON.stringify(wire)}],{encoding:'utf8',timeout:450000,maxBuffer:1048576});
-      if(result.error||result.status!==0)throw Error(('Managed host verification failed: '+(result.stderr||result.error?.message||result.signal||result.status)).slice(0,4000));
-      process.stdout.write(result.stdout);
+      const source='const commandFailure='+commandFailure.toString()+';\\n'+${JSON.stringify(program)};
+      const result=spawnSync(node,['--input-type=module','-e',source,home,bootstrap,pid,${JSON.stringify(wire)}],{encoding:'utf8',timeout:450000,maxBuffer:1048576});
+      if(result.error||result.status!==0) {
+        const reason=commandFailure(result.stderr||'',result.error?.code||result.signal||'exit '+result.status);
+        process.stderr.write(JSON.stringify({ok:false,error:'Managed kernel '+${JSON.stringify(request.operation)}+' failed: '+reason})+'\\n');
+        process.exitCode=1;
+      } else process.stdout.write(result.stdout);
     }`);
 }
 

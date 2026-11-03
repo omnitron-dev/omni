@@ -1,10 +1,11 @@
 // Executed with the verified Node binary of the OS-managed guardian over the pinned SSH connection.
+/* global commandFailure -- shared failed-process reader supplied by managedHostCommand */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 const [home, bootstrap, guardian, request] = process.argv.slice(1);
 const wanted = JSON.parse(request);
 const dir = path.join(home, 'runtime'),
@@ -217,7 +218,7 @@ try {
       if ((await backendMigrationDigest(current.directory)) !== (await backendMigrationDigest(candidate.directory)))
         throw Error('Kernel rollout requires identical migration sets; qualify schema changes separately');
       if (candidate.runtimeHash !== current.runtimeHash) {
-        const out = execFileSync(
+        const check = spawnSync(
           candidate.execPath,
           [
             path.join(candidate.directory, 'cli/omnitron.js'),
@@ -229,8 +230,13 @@ try {
           ],
           { encoding: 'utf8', timeout: 150000, env: { ...process.env, OMNITRON_HOME: home } }
         );
-        const result = JSON.parse(out);
-        if (!result.ok || !result.data?.checked) throw Error('Native backend preflight did not confirm the candidate');
+        if (check.error || check.status !== 0) {
+          const reason = commandFailure(check.stderr || '', check.error?.code || check.signal || 'exit ' + check.status);
+          throw Error('Native backend preflight failed: ' + reason);
+        }
+        const result = JSON.parse(check.stdout);
+        if (result.ok !== true || result.data?.checked !== true)
+          throw Error('Native backend preflight failed: ' + (typeof result.error === 'string' ? result.error : 'candidate was not confirmed'));
       }
       evidence.qualified = candidate.runtimeHash;
     }

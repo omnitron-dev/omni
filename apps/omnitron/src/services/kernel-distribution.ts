@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { redactDiagnosticText } from '@omnitron-dev/titan/diagnostics';
+import { commandFailure } from '../execution/command-failure.js';
 import { shellEscape } from '../shared/shell-escape.js';
 import { resolveKernelBuild } from './kernel-catalog.js';
 import type { RemoteDeployer, DeployTarget } from './remote-deployer.service.js';
@@ -27,7 +29,10 @@ export async function stageCatalogRuntime(
     const command = [path.posix.join(release, 'node'), '--input-type=module', '-e', receiver, phase,
       registry, bundle.managed!.backendArtifact, JSON.stringify(entry)].map(shellEscape).join(' ');
     const result = await deployer.readFromNode(target, command, 600_000);
-    if (result.code !== 0) throw Error('Kernel staging failed: ' + (result.stderr || 'receiver exited ' + result.code));
+    if (result.code !== 0) {
+      const reason = redactDiagnosticText(commandFailure(result.stderr, 'receiver exited ' + result.code));
+      throw Error('Kernel staging ' + phase + ' failed: ' + reason);
+    }
     const answer = JSON.parse(result.stdout) as { artifact: string; installed: boolean };
     if (answer.artifact !== entry.artifact || typeof answer.installed !== 'boolean') throw Error('Unconfirmed kernel staging receipt');
     return answer.installed;

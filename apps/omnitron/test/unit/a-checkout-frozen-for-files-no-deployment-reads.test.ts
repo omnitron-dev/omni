@@ -16,6 +16,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { definitionInputs, UnverifiableDefinitionInputError } from '../../src/release/definition-inputs.js';
@@ -135,6 +136,87 @@ describe('admission, against the release commit', () => {
     const inputs = await definitionInputs(root, []);
     expect(inputs).toContain('selected.ts');
     expect(await treeEqualsCommit(root, commit, inputs)).toEqual({ equal: false, files: ['selected.ts'] });
+  });
+
+  it.each(['./selected.ts', './selected'])('refuses an ignored import link resolved by esbuild: %s', async (specifier) => {
+    const { root, write } = project();
+    write('.gitignore', 'selected.ts\n');
+    write('a.ts', "export const pin = 'a';\n");
+    write('b.ts', "export const pin = 'b';\n");
+    write('omnitron.config.ts', `import { pin } from ${JSON.stringify(specifier)}; export default { pin };\n`);
+    commitAll(root);
+    for (const target of ['a.ts', 'b.ts']) {
+      fs.rmSync(path.join(root, 'selected.ts'), { force: true });
+      fs.symlinkSync(target, path.join(root, 'selected.ts'));
+      await expect(definitionInputs(root, [])).rejects.toBeInstanceOf(UnverifiableDefinitionInputError);
+    }
+  });
+
+  it('checks intermediate links, not just the tracked first link and final physical target', async () => {
+    const { root, write } = project();
+    write('.gitignore', 'middle.ts\n');
+    write('a.ts', "export const pin = 'a';\n");
+    fs.symlinkSync('middle.ts', path.join(root, 'selected.ts'));
+    write('omnitron.config.ts', "import { pin } from './selected.ts'; export default { pin };\n");
+    commitAll(root);
+    fs.symlinkSync('a.ts', path.join(root, 'middle.ts'));
+    await expect(definitionInputs(root, [])).rejects.toBeInstanceOf(UnverifiableDefinitionInputError);
+  });
+
+  it('binds file URL imports and stack registry symlinks to their tracked sources', async () => {
+    const { root, write } = project();
+    fs.symlinkSync('lib/apps.ts', path.join(root, 'selected.ts'));
+    write('omnitron.config.ts', `import { apps } from ${JSON.stringify(pathToFileURL(path.join(root, 'selected.ts')).href)}; export default { apps };\n`);
+    fs.renameSync(path.join(root, 'omnitron.stacks.json'), path.join(root, 'stacks.json'));
+    fs.symlinkSync('stacks.json', path.join(root, 'omnitron.stacks.json'));
+    const commit = commitAll(root);
+    const inputs = await definitionInputs(root, []);
+    expect(inputs).toEqual(expect.arrayContaining(['selected.ts', 'lib/apps.ts', 'stacks.json', 'omnitron.stacks.json']));
+    write('stacks.json', '{}\n');
+    expect(await treeEqualsCommit(root, commit, inputs)).toEqual({ equal: false, files: ['stacks.json'] });
+  });
+
+  it('binds a directory link without freezing unrelated files under its target', async () => {
+    const { root, write } = project();
+    fs.symlinkSync('lib', path.join(root, 'selected'));
+    write('omnitron.config.ts', "import { apps } from './selected/apps'; export default { apps };\n");
+    write('lib/unrelated.ts', 'export const unrelated = 1;\n');
+    const commit = commitAll(root);
+    write('lib/unrelated.ts', 'export const unrelated = 2;\n');
+    const inputs = await definitionInputs(root, []);
+    expect(inputs).toContain('selected');
+    expect(inputs).toContain('lib/apps.ts');
+    expect(inputs).not.toContain('lib');
+    expect(await treeEqualsCommit(root, commit, inputs)).toEqual({ equal: true });
+  });
+
+  it('includes a shipped symlink target outside that directory and refuses repository escapes', async () => {
+    const { root, write } = project();
+    write('shared.txt', 'first\n');
+    fs.mkdirSync(path.join(root, 'gateway'));
+    fs.symlinkSync('../shared.txt', path.join(root, 'gateway/settings.txt'));
+    const commit = commitAll(root);
+    const inputs = await definitionInputs(root, [], ['gateway']);
+    expect(inputs).toContain('shared.txt');
+    write('shared.txt', 'second\n');
+    expect(await treeEqualsCommit(root, commit, inputs)).toEqual({ equal: false, files: ['shared.txt'] });
+    const foreign = project();
+    fs.unlinkSync(path.join(root, 'gateway/settings.txt'));
+    fs.symlinkSync(path.join(foreign.root, 'lib/apps.ts'), path.join(root, 'gateway/settings.txt'));
+    await expect(definitionInputs(root, [], ['gateway'])).rejects.toBeInstanceOf(UnverifiableDefinitionInputError);
+  });
+
+  it('refuses ignored symlink targets in shipped data without freezing regular runtime-only files', async () => {
+    const { root, write } = project();
+    write('.gitignore', 'machine-only.txt\ngateway/secrets.json\n');
+    write('machine-only.txt', 'unverified\n');
+    write('gateway/committed.txt', 'verified\n');
+    write('gateway/secrets.json', '{}\n');
+    const commit = commitAll(root);
+    expect(await treeEqualsCommit(root, commit, await definitionInputs(root, [], ['gateway']))).toEqual({ equal: true });
+    fs.symlinkSync('../machine-only.txt', path.join(root, 'gateway/settings.txt'));
+    commitAll(root);
+    await expect(definitionInputs(root, [], ['gateway'])).rejects.toBeInstanceOf(UnverifiableDefinitionInputError);
   });
 
   it('treats file names as literal pathspecs and retains newlines and double-dot prefixes', async () => {

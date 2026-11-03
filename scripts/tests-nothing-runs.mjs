@@ -19,8 +19,8 @@
  * The distinction this scan is built on:
  *
  *   - a file named by a config's exclude is a DECISION. Someone saw the file
- *     and wrote down that it should not run. `apps/omnitron`'s excluded
- *     integration test carries fifteen lines of reason. Reported as a count.
+ *     and wrote down that it should not run. Reported as a count, independently
+ *     of which tests a particular package currently excludes.
  *   - a file matched by no include anywhere is NOBODY'S decision. It is the
  *     product of a directory named `test` next to one named `tests`, or a
  *     rename, or a file dropped a level too high. That is the finding.
@@ -166,14 +166,13 @@ function playwrightCollects(pkg, config) {
 }
 
 /** Paths a config names in `exclude` — a decision, read through the stripper. */
+function excludedPatterns(source) {
+  const blocks = stripComments(source).match(/exclude\s*:\s*\[([\s\S]*?)\]/g) ?? [];
+  return blocks.flatMap(block => [...block.matchAll(/['"`]([^'"`]+)['"`]/g)].map(match => match[1]));
+}
+
 function excludedBy(pkg, configs) {
-  const out = [];
-  for (const c of configs) {
-    const src = stripComments(readFileSync(join(ROOT, pkg, c), 'utf8'));
-    const blocks = src.match(/exclude\s*:\s*\[([\s\S]*?)\]/g) ?? [];
-    for (const b of blocks) for (const m of b.matchAll(/['"`]([^'"`]+)['"`]/g)) out.push(m[1]);
-  }
-  return out;
+  return configs.flatMap(config => excludedPatterns(readFileSync(join(ROOT, pkg, config), 'utf8')));
 }
 
 const globToRe = (g) =>
@@ -194,23 +193,20 @@ const globToRe = (g) =>
 const selfCheck = [];
 const notAnchored = [];
 {
-  // The exclude reader must see a real one. `apps/omnitron` excludes exactly
-  // one file and writes down why; if this stops matching, every deliberate
-  // exclusion starts reading as a finding.
-  //
-  // Two anchors below name files in THIS repository. Under `--root` they may
-  // not exist, and an anchor whose subject is absent has not been violated —
-  // it has not been evaluated. The first version treated the two the same and
-  // exited 2 on a healthy tree, which is the shape this scan exists to catch
-  // pointed at itself: a check that cannot run, reported as a verdict.
-  if (existsSync(join(ROOT, 'apps/omnitron/vitest.config.ts'))) {
-    const omni = excludedBy('apps/omnitron', ['vitest.config.ts']);
-    if (!omni.some((g) => g.includes('orchestrator'))) {
-      selfCheck.push('the exclude reader no longer sees apps/omnitron’s one written-down exclusion');
-    }
-  } else {
-    notAnchored.push('the exclude reader (no apps/omnitron/vitest.config.ts under this root)');
+  // Exercise the parser independently of a package's changing test inventory.
+  // Removing an obsolete exclusion must improve coverage, not fail this scan.
+  const excludeFixture = `
+    // exclude: ['commented.test.ts'],
+    test: { exclude: ['test/runtime/**', "test/integration/manual.spec.ts"] },
+    /* exclude: ['also-commented.test.ts'] */
+    coverage: { exclude: [\`src/generated/**\`] }
+  `;
+  const expected = ['test/runtime/**', 'test/integration/manual.spec.ts', 'src/generated/**'];
+  if (JSON.stringify(excludedPatterns(excludeFixture)) !== JSON.stringify(expected)
+    || excludedPatterns('test: { include: ["test/**/*.ts"], exclude: [] }').length !== 0) {
+    selfCheck.push('the exclude reader confuses active, commented or empty exclusions');
   }
+  // Repository-specific anchors below are reported as untested when absent.
   // The playwright reader must find a testDir. prism runs its e2e and its
   // accessibility suites from one; if this returns nothing, 56 prism files
   // become orphans at once.

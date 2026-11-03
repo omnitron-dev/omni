@@ -46,10 +46,10 @@ async function fixture(body?: string, imported = false) {
     artifacts: [artifact], gates: [], builtWith: { omnitron: '1', packages: [], target: runtime }, builtAt: '', builtBy: '' };
   let reference: { release: string; manifestSha256: string; app: string } | undefined;
   if (imported) {
-    const producer: ReleaseManifest = { ...manifest, id: 'producer', artifacts: [{ ...artifact, app: 'priceverse',
-      packageSource: { directory: 'apps/priceverse', manifestBlob: 'c'.repeat(40), migrations: {} } }] };
+    const producer: ReleaseManifest = { ...manifest, id: 'producer', artifacts: [{ ...artifact, app: 'collector',
+      packageSource: { directory: 'apps/collector', manifestBlob: 'c'.repeat(40), migrations: {} } }] };
     const raw = JSON.stringify(producer);
-    reference = { release: producer.id, manifestSha256: createHash('sha256').update(raw).digest('hex'), app: 'priceverse' };
+    reference = { release: producer.id, manifestSha256: createHash('sha256').update(raw).digest('hex'), app: 'collector' };
     manifest = { ...manifest, artifacts: [{ ...producer.artifacts[0]!, app: 'main', origin: reference }],
       imports: [{ sha256: reference.manifestSha256, manifestJson: raw }] };
   }
@@ -78,10 +78,10 @@ it('runs the compiled member inside its admitted closure, without source tsx or 
 
 it('executes an imported migration with its original producer prefix and consumer database', async () => {
   const f = await fixture(`import assert from 'node:assert/strict';
-    assert.equal(process.env.PRICEVERSE__DATABASE__DATABASE, 'main');
+    assert.equal(process.env.COLLECTOR__DATABASE__DATABASE, 'main');
     assert.equal(process.env.MAIN__DATABASE__DATABASE, undefined); console.log('producer preserved');`, true);
   const [target] = await localMigrationTargets(['main'], f.entries, f.dev, f.verify);
-  expect(target!.environmentApp).toBe('priceverse');
+  expect(target!.environmentApp).toBe('collector');
   const database = migrationDatabaseEnvironment(target!.environmentApp, 'postgres://u:p@127.0.0.1/main', 'main');
   expect((await executeLocalMigration(target!, database.env)).stdout.trim()).toBe('producer preserved');
 });
@@ -119,9 +119,9 @@ it.each(['timeout', 'abort'] as const)('waits for process exit after %s and neve
 });
 
 it('validates exact PostgreSQL schemes, rejects unsupported options and keeps producer prefixes', () => {
-  const db = migrationDatabaseEnvironment('priceverse', 'postgresql://u%40x:p%2Fq@[::1]:5555/collector', 'collector');
-  expect(db).toMatchObject({ host: '::1', port: 5555, database: 'collector', env: { PRICEVERSE__DATABASE__USER: 'u@x', PRICEVERSE__DATABASE__PASSWORD: 'p/q' } });
-  expect(() => migrationDatabaseEnvironment('priceverse', 'postgres://u:p@localhost/collector?sslmode=require')).toThrow('refuses DATABASE_URL options');
+  const db = migrationDatabaseEnvironment('collector', 'postgresql://u%40x:p%2Fq@[::1]:5555/collector', 'collector');
+  expect(db).toMatchObject({ host: '::1', port: 5555, database: 'collector', env: { COLLECTOR__DATABASE__USER: 'u@x', COLLECTOR__DATABASE__PASSWORD: 'p/q' } });
+  expect(() => migrationDatabaseEnvironment('collector', 'postgres://u:p@localhost/collector?sslmode=require')).toThrow('refuses DATABASE_URL options');
   expect(() => migrationDatabaseEnvironment('main', 'postgres-malicious://u:secret@localhost/main')).toThrow('requires its resolved PostgreSQL');
 });
 

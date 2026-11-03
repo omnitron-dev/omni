@@ -29,7 +29,10 @@ export const CONFIG_FILE_NAMES = ['omnitron.config.ts', 'omnitron.config.js', 'o
  */
 function stampProjectRoot(config: IEcosystemConfig, projectRoot: string): IEcosystemConfig {
   if (!config.apps?.length) return config;
-  config.apps = config.apps.map((app) => ({ ...app, cwd: resolveAppPath(projectRoot, app) }));
+  // A release-only entry defaults to its verified package at installation time.
+  // Stamping the consumer checkout here would silently restore a development dependency.
+  config.apps = config.apps.map((app) => app.releaseFrom && app.cwd === undefined
+    ? app : { ...app, cwd: resolveAppPath(projectRoot, app) });
   return config;
 }
 

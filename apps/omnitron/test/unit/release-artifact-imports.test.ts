@@ -149,6 +149,7 @@ describe('ordinary store import and configuration', () => {
     const config = await loadEcosystemConfigFile(file, 'release');
     expect(config.apps[0]!.releaseFrom).toEqual(f.ref);
     expect(config.apps[0]!.bootstrap).toBeUndefined();
+    expect(config.apps[0]!.cwd).toBeUndefined();
   });
   it.each([{ script: 'local.js' }, { bootstrap: 'local.js' }, { releaseEntry: 'dist/other.js' }, { releaseRoot: '/other' }, { watch: true }])('refuses ambiguous imported entry options %j', override => {
     const ref: ReleaseArtifactReference = { release: 'upstream', app: 'worker', manifestSha256: 'a'.repeat(64) };

@@ -1,8 +1,21 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { serializer } from '../src/index.js';
+import { Buffer } from 'buffer';
 import { SmartBuffer } from '../src/smart-buffer.js';
 
 describe('Large packet encoding/decoding', () => {
+  it('wraps received bytes without allocating a second payload-sized buffer', () => {
+    const bytes = Buffer.alloc(256 * 1024, 0x2a);
+    const alloc = vi.spyOn(Buffer, 'allocUnsafe');
+    try {
+      const wrapped = SmartBuffer.wrap(bytes);
+      expect(wrapped.readUInt8()).toBe(0x2a);
+      expect(alloc.mock.calls.every(([size]) => size < bytes.length)).toBe(true);
+    } finally {
+      alloc.mockRestore();
+    }
+  });
+
   it('should encode and decode a large Definition-like object', () => {
     // Create a large object similar to Definition from Titan
     const largeObject = {

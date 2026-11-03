@@ -17,7 +17,9 @@ export class SmartBuffer {
 
   /** Create SmartBufferCompat from existing Buffer for reading */
   static fromBuffer(buf: Buffer): SmartBuffer {
-    const instance = new SmartBuffer(buf.length);
+    // The caller already owns these bytes. Allocating the payload size again
+    // here would discard that allocation as soon as the input is attached.
+    const instance = new SmartBuffer(0);
     instance.buffer = buf;
     instance.capacity = buf.length;
     instance.position = buf.length; // Set to length since buffer is pre-filled

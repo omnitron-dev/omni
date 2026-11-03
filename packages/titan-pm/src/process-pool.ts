@@ -14,7 +14,7 @@ import { FailureTracker, computeBackoff, type IFailureDecision } from '@omnitron
 import type { IProcessPoolOptions, ServiceProxy, IPoolMetrics, IProcessManager, IProcessMetrics } from './types.js';
 import { PoolStrategy } from './types.js';
 import { Deque } from './utils/index.js';
-import { ProcessLifecycleQueue } from './lifecycle-queue.js';
+import { LifecyclePreempted, ProcessLifecycleQueue } from './lifecycle-queue.js';
 
 function assertPoolSize(size: number): void {
   if (!Number.isSafeInteger(size) || size < 0) {
@@ -101,6 +101,8 @@ export class ProcessPool<T> {
   private isShuttingDown = false;
   private readonly pendingSpawns = new Set<Promise<void>>();
   private readonly membership = new ProcessLifecycleQueue();
+  /** Keep a completed replacement while the previous worker's exit is unconfirmed. */
+  private readonly replacements = new Map<string, string>();
   private destroyPromise: Promise<void> | undefined;
   private isDraining = false;
   private currentRoundRobinIndex = 0;
@@ -276,12 +278,15 @@ export class ProcessPool<T> {
 
     // Spawn initial workers
     const spawnPromises = [];
-    for (let i = 0; i < size; i++) {
+    for (let i = this.workers.size; i < size; i++) {
       spawnPromises.push(this.spawnWorker());
     }
 
     await this.settleMembership(spawnPromises, 'initialize');
     if (this.isShuttingDown) throw Errors.conflict('Pool is shutting down');
+    if (this.workers.size !== size) {
+      throw Errors.conflict(`Pool initialization was not confirmed: requested ${size}, observed ${this.workers.size}`);
+    }
     this.isInitialized = true;
 
     // Setup monitoring and features
@@ -700,14 +705,14 @@ export class ProcessPool<T> {
   /**
    * Private: Spawn a new worker
    */
-  private spawnWorker(): Promise<void> {
+  private spawnWorker(replaces?: string): Promise<void> {
     if (this.isShuttingDown) return Promise.reject(Errors.conflict('Pool is shutting down'));
-    const spawning = this.spawnWorkerNow().finally(() => this.pendingSpawns.delete(spawning));
+    const spawning = this.spawnWorkerNow(replaces).finally(() => this.pendingSpawns.delete(spawning));
     this.pendingSpawns.add(spawning);
     return spawning;
   }
 
-  private async spawnWorkerNow(): Promise<void> {
+  private async spawnWorkerNow(replaces?: string): Promise<void> {
     try {
       const workerIndex = this.workerIndexCounter++;
 
@@ -759,6 +764,9 @@ export class ProcessPool<T> {
       };
 
       this.workers.set(workerId, worker);
+      // Register the relationship before notifying listeners: even a failed
+      // notification must not cause recovery to spawn the same replacement again.
+      if (replaces !== undefined) this.replacements.set(replaces, workerId);
       this.invalidateHealthyWorkersCache(); // New worker added
 
       this.logger.debug(
@@ -812,6 +820,7 @@ export class ProcessPool<T> {
       await this.manager.kill(workerId);
 
       this.workers.delete(workerId);
+      this.replacements.delete(workerId);
       this.unhealthyWorkers.delete(workerId);
       this.invalidateHealthyWorkersCache(); // Worker removed
 
@@ -1420,7 +1429,7 @@ export class ProcessPool<T> {
     const MAX_BACKOFF_MULTIPLIER = 8; // Max 8x the base interval for unhealthy workers
 
     this.healthCheckTimer = setInterval(async () => {
-      if (this.healthCheckRunning) return;
+      if (this.isShuttingDown || this.isDraining || this.healthCheckRunning) return;
       this.healthCheckRunning = true;
       try {
       let healthChanged = false;
@@ -1540,6 +1549,12 @@ export class ProcessPool<T> {
           await this.replaceWorker(worker.id);
         }
       }
+      } catch (error) {
+        if (error instanceof LifecyclePreempted) {
+          this.logger.debug({ error }, 'Pool health recovery deferred to an explicit lifecycle operation');
+        } else {
+          this.logger.error({ error }, 'Pool health recovery incomplete; remaining workers are still owned');
+        }
       } finally {
         this.healthCheckRunning = false;
       }
@@ -1943,10 +1958,18 @@ export class ProcessPool<T> {
   private async replaceWorkerNow(workerId: string): Promise<void> {
     // A queued replacement may have been made obsolete by a resize or drain.
     if (this.isShuttingDown || this.isDraining || !this.workers.has(workerId)) return;
+    for (const [previous, replacement] of this.replacements) {
+      if (replacement === workerId && this.workers.has(previous)) {
+        throw Errors.conflict(`Cannot replace worker ${workerId}: exit of its previous worker ${previous} is still unconfirmed`);
+      }
+    }
     this.logger.info({ workerId }, 'Replacing pool worker');
 
-    // Spawn replacement first
-    await this.spawnWorker();
+    // Preserve the previous worker until its replacement exists, but do not
+    // multiply replacements when termination repeatedly fails. A resize may
+    // have removed the replacement; only then is a fresh one needed.
+    const replacement = this.replacements.get(workerId);
+    if (replacement === undefined || !this.workers.has(replacement)) await this.spawnWorker(workerId);
 
     // Then shutdown old worker
     await this.shutdownWorker(workerId);

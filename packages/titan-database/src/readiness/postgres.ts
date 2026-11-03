@@ -39,6 +39,8 @@ export interface PostgresSchemaRequirement {
   schema?: string;
   routines?: readonly {
     name: string;
+    /** Exact ordered format_type spellings. Defaults to an argument-free function. */
+    argumentTypes?: readonly string[];
     bodySha256: string;
     language: 'sql' | 'plpgsql';
     volatility: string;
@@ -156,6 +158,10 @@ export async function requirePostgresSchema(pool: PostgresPool, contract: Postgr
         );
         const { rows: routines } = await sql<{
           name: string;
+          argument_types: string[];
+          variadic: boolean;
+          default_arguments: number;
+          returns_set: boolean;
           body: string;
           language: string;
           volatility: string;
@@ -163,9 +169,11 @@ export async function requirePostgresSchema(pool: PostgresPool, contract: Postgr
           return_type: string;
           configuration: string[] | null;
         }>`
-          SELECT p.proname AS name,p.prosrc AS body,l.lanname AS language,p.provolatile AS volatility,p.prosecdef AS security,format_type(p.prorettype,NULL) AS return_type,p.proconfig AS configuration
+          SELECT p.proname AS name,p.prosrc AS body,l.lanname AS language,p.provolatile AS volatility,p.prosecdef AS security,format_type(p.prorettype,NULL) AS return_type,p.proconfig AS configuration,
+          ARRAY(SELECT pg_catalog.format_type(argument,NULL) FROM unnest(p.proargtypes::oid[]) WITH ORDINALITY a(argument,i) ORDER BY i) AS argument_types,
+          p.provariadic<>0 AS variadic,p.pronargdefaults AS default_arguments,p.proretset AS returns_set
           FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace JOIN pg_language l ON l.oid=p.prolang
-          WHERE n.nspname=${namespace.schema} AND p.pronargs=0 AND p.proname=ANY(${(contract.routines ?? []).map((r) => r.name)}::text[])`.execute(
+          WHERE n.nspname=${namespace.schema} AND p.prokind='f' AND p.proname=ANY(${(contract.routines ?? []).map((r) => r.name)}::text[])`.execute(
           tx,
         );
         const actions = {
@@ -186,6 +194,9 @@ export async function requirePostgresSchema(pool: PostgresPool, contract: Postgr
             !routines.some(
               (r) =>
                 r.name === expected.name &&
+                !r.variadic && r.default_arguments === 0 && !r.returns_set &&
+                r.argument_types.length === (expected.argumentTypes ?? []).length &&
+                r.argument_types.every((type, index) => type === (expected.argumentTypes ?? [])[index]) &&
                 !r.security &&
                 r.language === expected.language &&
                 r.volatility === expected.volatility &&

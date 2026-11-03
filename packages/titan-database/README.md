@@ -62,8 +62,10 @@ the connection's `current_schema()` applies. These are PostgreSQL guarantees.
 `formattedType` optionally binds PostgreSQL's `format_type` spelling, including
 precision and length. An insert table requires writable, non-generated columns
 unless their generated expression is explicitly declared. A read projection can
-leave that distinction unspecified. Routine contracts check zero input arguments,
-body, language, volatility, invoker security and configuration; `returnType` uses
+leave that distinction unspecified. Routine contracts check ordered `argumentTypes`
+(zero arguments by default), body, language, volatility, invoker security and
+configuration. They require ordinary scalar functions without variadic/default
+arguments, so an unrelated overload cannot satisfy readiness. `returnType` uses
 `format_type` (for example `bigint`). Trigger functions must return `trigger`.
 `configuration` is an exact set of `pg_proc.proconfig` entries, empty by default.
 `schemaSearchPath: true` additionally requires exactly

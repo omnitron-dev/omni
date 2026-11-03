@@ -155,4 +155,20 @@ describe.skipIf(!process.env['TEST_DATABASE_URL'])('Postgres mail component read
       await expect(requirePostgresSchema(pool, contract)).rejects.toMatchObject({ violations: ['component_clock: required database routine'] });
     } finally { await pool.query(`DROP SCHEMA "${quotedSchema}" CASCADE`); }
   });
+
+  it('requires the exact routine signature and does not accept a matching overload, default or set-returning replacement', async () => {
+    const body = 'SELECT jsonb_build_object()';
+    const hash = createHash('sha256').update(body).digest('hex');
+    await pool.query(`CREATE FUNCTION component_inventory(text) RETURNS jsonb LANGUAGE sql VOLATILE AS '${body}'; CREATE FUNCTION component_inventory(bigint) RETURNS jsonb LANGUAGE sql VOLATILE AS '${body}'`);
+    const contract: PostgresSchemaRequirement = { name: 'inventory-consumer', tables: {}, routines: [{
+      name: 'component_inventory', argumentTypes: ['text'], returnType: 'jsonb', bodySha256: hash, language: 'sql', volatility: 'v',
+    }] };
+    await requirePostgresSchema(pool, contract);
+    await pool.query('DROP FUNCTION component_inventory(text)');
+    await expect(requirePostgresSchema(pool, contract)).rejects.toMatchObject({ violations: ['component_inventory: required database routine'] });
+    await pool.query(`CREATE FUNCTION component_inventory(text DEFAULT 'changed') RETURNS jsonb LANGUAGE sql VOLATILE AS '${body}'`);
+    await expect(requirePostgresSchema(pool, contract)).rejects.toMatchObject({ violations: ['component_inventory: required database routine'] });
+    await pool.query(`DROP FUNCTION component_inventory(text); CREATE FUNCTION component_inventory(text) RETURNS SETOF jsonb LANGUAGE sql VOLATILE AS '${body}'`);
+    await expect(requirePostgresSchema(pool, contract)).rejects.toMatchObject({ violations: ['component_inventory: required database routine'] });
+  });
 });

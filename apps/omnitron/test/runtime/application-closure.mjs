@@ -40,7 +40,7 @@ try {
   await materializeGraph(graph,locations);
   const ownerPkg=locations[0],options='--max-old-space-size=8192', cfg={name:'api',env:{NODE_OPTIONS:options}};
   // Execute the launch check from the package that the fixture owner actually serves.
-  for (const file of ['release/runtime-provenance.js', 'release/package-resolution.js', 'release/target-runtime.js', 'shared/shell-escape.js']) {
+  for (const file of ['release/runtime-provenance.js', 'release/installed-origin.js', 'release/package-resolution.js', 'release/target-runtime.js', 'shared/shell-escape.js']) {
     const out = path.join(ownerPkg, 'dist', file);
     await fs.mkdir(path.dirname(out), {recursive:true});
     await fs.copyFile(path.join(dist, file), out);
@@ -73,10 +73,10 @@ try {
   const loaded = (a) => {
     const file = { app: a.app, version: a.version, sha256: a.tarballSha256, bytes: a.size, path: a.path };
     return { root: directory, id: 'test-release', manifestSha256: sha(a.app), files: [file],
-      manifest: { project: { repo: 'fixture-project', commit: 'a'.repeat(40) }, omni: { repo: 'fixture-framework', commit: 'b'.repeat(40) },
+      manifest: { id: 'test-release', project: { repo: 'fixture-project', commit: 'a'.repeat(40) }, omni: { repo: 'fixture-framework', commit: 'b'.repeat(40) },
         builtWith: { target: localTarget }, artifacts: [{ ...file, launch: a.launch }] } };
   };
-  const first = loaded(classic), opts = { ownerPid: process.pid };
+  const first = loaded(classic), opts = { ownerPid: process.pid, ownerPackage: ownerPkg };
   await assert.rejects(inspect(first, 'dev', [classicEntry], opts), LocalReleaseNotPreparedError);
   assert.deepEqual(await fs.readdir(path.dirname(directory)), ['test-release']);
   const [[installed],[other]] = await Promise.all([1,2].map(() => inspect(first, 'dev', [classicEntry], { ...opts, prepare: true })));
@@ -90,7 +90,7 @@ try {
   const [again] = await inspect(first, 'dev', [classicEntry], opts);
   assert.equal(again.script, installed.script);
   await fs.appendFile(installed.script, '// changed');
-  await assert.rejects(inspect(first, 'dev', [classicEntry], opts), /files differ/);
+  await assert.rejects(inspect(first, 'dev', [classicEntry], opts), /Local installed origin changed/);
   const privateApi = await pkg('private-api', {'@omnitron-dev/titan': titan, '@omnitron-dev/omnitron': daemon});
   await fs.mkdir(path.join(daemon,'dist/orchestrator'),{recursive:true});
   await fs.writeFile(path.join(daemon,'dist/orchestrator/bootstrap-process.js'),'export default {};');
@@ -119,7 +119,11 @@ try {
   assert.equal(importedLaunch.name, 'imported-api');
   assert.equal(importedLaunch.releaseFrom, undefined);
   assert.equal(importedLaunch.cwd, importedLaunch.releaseRoot);
-  assert.equal((await verifyLaunchRelease(importedLaunch, 'fixture-import')).state, 'unreported');
+  assert.equal((await live.verifyLaunchRelease(importedLaunch, 'fixture-import')).state, 'confirmed');
+  const importedReceipt = JSON.parse(await fs.readFile(path.join(importedLaunch.releaseRoot, '.omnitron-release.json'), 'utf8'));
+  assert.equal(importedReceipt.origin.runtimeOrigin.producerApp, 'private-api');
+  assert.equal(importedReceipt.origin.runtimeOrigin.consumer.app, 'imported-api');
+  assert.equal(importedReceipt.origin.manifestSha256, producerDigest);
   assert.equal((await import(pathToFileURL(importedLaunch.bootstrap))).default,42);
   assert.ok(importedLaunch.bootstrap.startsWith(importedLaunch.releaseRoot + path.sep));
   assert.equal((await inspect(imported, 'dev', [importedEntry], opts))[0].bootstrap, importedLaunch.bootstrap);

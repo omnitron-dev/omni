@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
+import { isDeepStrictEqual } from 'node:util';
 import { extract, list } from 'tar';
 
 import type { IEcosystemAppEntry } from '../config/types.js';
@@ -15,6 +16,7 @@ import type { ReleaseLaunch } from './manifest.js';
 import { artifactReleaseContexts } from './origin.js';
 import { sha256File } from './portable-archive.js';
 import { RELEASE_RECEIPT, releaseTreeDigest } from './runtime-provenance.js';
+import { readInstalledReleaseReceipt, writeInstalledReleaseReceipt, type ReleaseArtifactOrigin } from './installed-origin.js';
 import { releaseOptionsForEnv, targetRuntime, type TargetRuntime } from './target-runtime.js';
 
 export class LocalReleaseNotPreparedError extends Error {}
@@ -52,7 +54,7 @@ async function extractFrozenArchive(archive: string, directory: string): Promise
   await list({ file: archive, strict: true, onReadEntry(entry) {
     if (invalid) return;
     const name = entry.path.replace(/\/$/, ''), key = name.normalize('NFC').toLowerCase();
-    if (!componentPath(name) || names.has(key) || [RELEASE_RECEIPT, '.artifact-sha256'].includes(key) ||
+    if (!componentPath(name) || names.has(key) || [RELEASE_RECEIPT, '.artifact-sha256'].includes(path.posix.basename(key)) ||
       !['File', 'Directory', 'SymbolicLink'].includes(entry.type) || names.size >= 200_000 ||
       !Number.isSafeInteger(entry.size) || entry.size < 0 || entry.size > 268_435_456 || (bytes += entry.size) > 2_147_483_648) {
       invalid = 'Invalid release archive member: ' + name; return;
@@ -88,7 +90,7 @@ async function assertDirectory(dir: string) {
     throw Error('Local installation requires a private physical directory: ' + dir);
 }
 
-async function verify(root: string, launch: ReleaseLaunch, entry: IEcosystemAppEntry, runtime: TargetRuntime): Promise<string> {
+async function verify(root: string, launch: ReleaseLaunch, entry: IEcosystemAppEntry, runtime: TargetRuntime, installed?: { origin: ReleaseArtifactOrigin; ownerPackage: string }): Promise<string> {
   await assertDirectory(root);
   const file = await member(root, launch.file);
   const handle = await fs.open(path.join(root, CLOSURE_FILE), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -102,8 +104,16 @@ async function verify(root: string, launch: ReleaseLaunch, entry: IEcosystemAppE
   const c = JSON.parse(raw.toString('utf8'));
   if (c.protocol !== 1 || !digest(c.payloadSha256) || Object.entries(runtime).some(([k,v]) => c.runtime?.[k] !== v) ||
     c.nodeOptions !== releaseOptionsForEnv(entry.env)) throw Error('Local release closure, execution target or Node options differ from the build');
-  // No remote delivery receipt may be injected into this new local path.
-  for (const name of [RELEASE_RECEIPT, '.artifact-sha256']) {
+  // Archives cannot inject operational evidence. A prepared installation must match its exact admitted origin.
+  if (installed) {
+    const receipt = await readInstalledReleaseReceipt(root);
+    if (receipt.version !== 2 || !isDeepStrictEqual(receipt.origin, installed.origin) ||
+        receipt.ownerPackage !== installed.ownerPackage || receipt.nodeOptions !== releaseOptionsForEnv(entry.env) ||
+        !isDeepStrictEqual(receipt.target, runtime) || receipt.artifactPayloadUnchanged !== true ||
+        receipt.frameworkContentUnchanged !== true || receipt.installedFrameworkCommit !== installed.origin.frameworkCommit ||
+        receipt.treeSha256 !== await releaseTreeDigest(root)) throw Error('Local installed origin changed');
+  }
+  for (const name of installed ? ['.artifact-sha256'] : [RELEASE_RECEIPT, '.artifact-sha256']) {
     if (await fs.lstat(path.join(root, name)).then(() => true, error => { if (absent(error)) return false; throw error; }))
       throw Error('Unexpected operational metadata in local release: ' + name);
   }
@@ -119,7 +129,7 @@ async function verify(root: string, launch: ReleaseLaunch, entry: IEcosystemAppE
 
 /** Selection is stored by the caller. This only materializes verified immutable inputs;
  * it never installs packages, mutates an owner, or rewrites a developer checkout. */
-export async function inspectLocalReleaseInstallation(release: LoadedRelease, stack: string, entries: readonly IEcosystemAppEntry[], options: { prepare?: boolean; ownerPid?: number } = {}): Promise<IEcosystemAppEntry[]> {
+export async function inspectLocalReleaseInstallation(release: LoadedRelease, stack: string, entries: readonly IEcosystemAppEntry[], options: { prepare?: boolean; ownerPid?: number; ownerPackage?: string } = {}): Promise<IEcosystemAppEntry[]> {
   if (!digest(release.manifestSha256)) throw Error('Invalid local release manifest digest');
   const runtime = await targetRuntime();
   const sources = new Map(artifactReleaseContexts(release.manifest).map(source => [source.app, source]));
@@ -144,9 +154,19 @@ export async function inspectLocalReleaseInstallation(release: LoadedRelease, st
     const builtFor = source.manifest.builtWith?.target;
     if (!builtFor || Object.entries(runtime).some(([k,v]) => builtFor[k as keyof TargetRuntime] !== v))
       throw Error('The local execution owner does not match the recorded release target for ' + entry.name);
-    return { launch, artifact, entry };
+    const origin: ReleaseArtifactOrigin = { releaseId: source.manifest.id,
+      manifestSha256: source.chain.at(-1)?.manifestSha256 ?? release.manifestSha256,
+      artifactSha256: artifact.sha256, artifactBytes: artifact.bytes, app: entry.name,
+      frameworkCommit: source.manifest.omni.commit,
+      runtimeOrigin: { projectCommit: source.manifest.project.commit, producerApp: source.artifact.app,
+        consumer: { releaseId: release.id, manifestSha256: release.manifestSha256, app: entry.name },
+        entry: { mode: launch.mode, relativeFile: launch.file } } };
+    return { launch, artifact, entry, origin };
   });
   if (!options.ownerPid) throw Error('An authenticated local execution owner PID is required');
+  if (!options.ownerPackage || !path.isAbsolute(options.ownerPackage) || await fs.realpath(options.ownerPackage) !== options.ownerPackage)
+    throw Error('Verified runtime origin requires a proven physical execution-owner package');
+  const ownerPackage = options.ownerPackage;
   const result: IEcosystemAppEntry[] = [];
   await assertOwnerExecutable(options.ownerPid, runtime.executableSha256);
   const releases = await fs.realpath(path.dirname(release.root));
@@ -156,8 +176,9 @@ export async function inspectLocalReleaseInstallation(release: LoadedRelease, st
     try { await assertDirectory(store); await assertDirectory(group); }
     catch (error) { if (!absent(error)) throw error; throw new LocalReleaseNotPreparedError('Local release has not been prepared: ' + release.id, { cause: error }); }
   }
-  for (const { launch, artifact, entry } of selected) {
-    const root = path.join(group, artifact.sha256);
+  for (const { launch, artifact, entry, origin } of selected) {
+    const binding = createHash('sha256').update(JSON.stringify({ origin, ownerPackage, nodeOptions: releaseOptionsForEnv(entry.env) })).digest('hex');
+    const root = path.join(group, artifact.sha256 + '-' + binding);
     const exists = await fs.lstat(root).then(() => true, error => { if (!absent(error)) throw error; return false; });
     if (!exists) {
       if (!options.prepare) throw new LocalReleaseNotPreparedError('Local release has not been prepared: ' + stack + '/' + entry.name);
@@ -172,7 +193,29 @@ export async function inspectLocalReleaseInstallation(release: LoadedRelease, st
         catch (race) { if (!['EEXIST','ENOTEMPTY'].includes((race as NodeJS.ErrnoException).code ?? '')) throw race; }
       } finally { await fs.rm(tmp, { recursive: true, force: true }); }
     }
-    const executable = await verify(root, launch, entry, runtime);
+    if (options.prepare && !await fs.lstat(path.join(root, RELEASE_RECEIPT)).then(() => true, error => {
+      if (absent(error)) return false; throw error;
+    })) {
+      let publishedByPeer = false;
+      try { await verify(root, launch, entry, runtime); }
+      catch (error) {
+        // A concurrent preparer can publish after our absence check. Accept only
+        // its complete, exact binding; every payload/runtime check still applies.
+        if (!await fs.lstat(path.join(root, RELEASE_RECEIPT)).then(() => true, e => {
+          if (absent(e)) return false; throw e;
+        })) throw error;
+        await verify(root, launch, entry, runtime, { origin, ownerPackage });
+        publishedByPeer = true;
+      }
+      if (!publishedByPeer) {
+        const receipt = { version: 2 as const, root, origin, ownerPackage, target: runtime,
+          nodeOptions: releaseOptionsForEnv(entry.env), treeSha256: await releaseTreeDigest(root),
+          installedFrameworkCommit: origin.frameworkCommit, frameworkContentUnchanged: true, artifactPayloadUnchanged: true };
+        try { await writeInstalledReleaseReceipt(root, receipt); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
+      }
+    }
+    const executable = await verify(root, launch, entry, runtime, { origin, ownerPackage });
     const { releaseFrom: _releaseFrom, ...runtimeEntry } = entry;
     result.push({ ...runtimeEntry, ...(entry.releaseFrom ? { cwd: entry.cwd ?? root } : {}),
       [launch.mode]: executable, releaseRoot: root, watch: false });

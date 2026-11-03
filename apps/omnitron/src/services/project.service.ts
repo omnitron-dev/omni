@@ -3795,9 +3795,10 @@ export class ProjectService extends EventEmitter {
       // Built in clean clones, gated, and checked against the manifest by
       // `loadRelease` — nothing is compiled here, from this machine's disk.
       const files = new Map(release.files.map((f) => [f.app, f]));
+      const launches = new Map(release.manifest.artifacts.map(a => [a.app, a.launch]));
       const sources = new Map(artifactReleaseContexts(release.manifest).map(source => [source.app, source.manifest.omni]));
       artifacts = appEntries.flatMap((entry) => {
-        const file = files.get(entry.name);
+        const file = files.get(entry.name), launch = launches.get(entry.name);
         return file
           ? [{
               app: file.app,
@@ -3814,6 +3815,11 @@ export class ProjectService extends EventEmitter {
                 artifactBytes: file.bytes,
                 app: file.app,
                 frameworkCommit: sources.get(file.app)!.commit,
+                ...(launch && { runtimeOrigin: {
+                  projectCommit: release.manifest.project.commit, producerApp: file.app,
+                  consumer: { releaseId: release.id, manifestSha256: release.manifestSha256, app: file.app },
+                  entry: { relativeFile: launch.file, mode: launch.mode },
+                } }),
               },
             }]
           : [];
@@ -5135,7 +5141,9 @@ export class ProjectService extends EventEmitter {
     }));
     const ownerPid = this.orchestrator.getExecutionOwnerPid?.();
     if (!ownerPid) throw new Error('A verified local release requires a connected independent execution owner');
-    return inspectLocalReleaseInstallation(release, stack, entries, { prepare, ownerPid });
+    const ownerPackage = await this.orchestrator.getExecutionOwnerPackage?.();
+    if (!ownerPackage) throw new Error('Verified runtime origin requires an independently verified execution-owner package');
+    return inspectLocalReleaseInstallation(release, stack, entries, { prepare, ownerPid, ownerPackage });
   }
 
   /** All consumers of executable declarations must see the same physical entry as the owner. */

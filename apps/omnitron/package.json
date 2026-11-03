@@ -70,6 +70,14 @@
     "./metrics-storage-reading": {
       "types": "./dist/shared/metrics-storage-reading.d.ts",
       "default": "./dist/shared/metrics-storage-reading.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "default": "./dist/runtime/index.js"
+    },
+    "./runtime/identity": {
+      "types": "./dist/runtime/identity.d.ts",
+      "default": "./dist/runtime/identity.js"
     }
   },
   "scripts": {

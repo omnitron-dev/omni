@@ -147,6 +147,59 @@ need producer-captured deployment declarations and a compatible execution
 owner; controller-side execution of a foreign bootstrap is not a substitute.
 Existing single-project remote deployments keep their normal declaration path.
 
+## Runtime identity inside an application
+
+Titan bootstrap applications receive `RUNTIME_CONTEXT` from
+`@omnitron-dev/omnitron/runtime` before module initialization. The bootstrap
+adapter verifies the actual compiled entry, its installed payload, Node binary
+and resource options against the private installation receipt. Applications
+must not register their own provider for this reserved token; a competing
+provider fails initialization. The returned context and its nested records are
+immutable.
+
+A verified context has `basis: 'verified-installed-runtime'`. Its `producer`
+identifies the original release, manifest, archive, application and project/framework
+commits; `consumer` identifies the stack's release and application alias.
+Importing a release preserves this distinction. The existing version 2
+installation receipt carries the additional origin binding; no parallel
+application-authored provenance file or environment claim is trusted.
+
+```ts
+import { RUNTIME_CONTEXT } from '@omnitron-dev/omnitron/runtime';
+
+const origin = container.resolve(RUNTIME_CONTEXT);
+if (origin.state !== 'verified') {
+  throw new Error(`Qualified capture requires installed origin: ${origin.reason}`);
+}
+// Persist a producer/session once, then reference it from observations.
+const producer = origin.producer;
+```
+
+For an independently launched compiled script, call
+`await verifyInstalledRuntime(new URL(import.meta.url))` at its real entry point.
+The URL must be the admitted executable itself. A sibling module, directory,
+symlink, extra loader, changed payload or malformed receipt is refused with
+`RuntimeOriginVerificationError` (`RUNTIME_ORIGIN_INVALID`). Only a development
+entry without an installation receipt, or a valid older receipt without the
+origin contract, returns `state: 'unavailable'`. Applications may explicitly
+record such development data as unknown; they must not silently attribute it to
+an admitted producer. Existing historical rows remain unknown unless their
+original source can independently be established.
+
+Browser-facing DTOs can import `ArtifactIdentity` and `parseArtifactIdentity`
+from `@omnitron-dev/omnitron/runtime/identity`. This subpath validates exactly the
+six immutable identity fields and does not load Node filesystem or process APIs.
+
+Installed identity proves the checked startup payload, not a process-owner
+launch receipt, continued in-memory integrity, or a boundary against a hostile
+host administrator. `ownerAttestation` is therefore explicitly `null`. An older
+owner's missing launch evidence or unsupported installed-start capability stays
+visible; updating a controller or application SDK does not manufacture either.
+Local preparation requires a connected independent owner whose physical package
+can be verified through its managed OS service. An unsupported or unverified
+owner refuses preparation with an actionable error. Working-tree development
+continues to use the explicit unavailable context.
+
 ## Host-owned public ingress
 
 See [host ingress setup, application publication and recovery](HOST-INGRESS.md) for independent multi-application HTTPS hosting through the native CLI and RPC API.

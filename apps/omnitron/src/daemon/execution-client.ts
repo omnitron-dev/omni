@@ -18,6 +18,7 @@ import { recoveryState } from './recovery-state.js';
 import { LONG_REQUEST_TIMEOUT } from '../shared/dto/services.js';
 import { readExecutionCapabilities, type ExecutionCapabilities } from './execution-capabilities.js';
 import type { BuildStamp } from '../shared/build-stamp.js';
+import { OMNITRON_HOME } from '../config/defaults.js';
 
 /** One controller's connection to a resident process owner. Disconnect never stops applications. */
 export class ExecutionClient {
@@ -364,6 +365,16 @@ export class ExecutionClient {
   private facade(): OrchestratorControl {
     const local: Record<string, unknown> = {
       getExecutionOwnerPid: () => this.view().status.owner.pid,
+      getExecutionOwnerPackage: async () => {
+        const before = await this.recoverySnapshot();
+        const { attestManagedOwnerRuntime } = await import('./managed-owner-build.js');
+        const proof = await attestManagedOwnerRuntime(OMNITRON_HOME, before.status.owner);
+        const after = await this.recoverySnapshot();
+        if (JSON.stringify(before.status.owner) !== JSON.stringify(after.status.owner) ||
+            before.status.controller.epoch !== after.status.controller.epoch)
+          throw Error('Execution owner changed during installed-origin admission');
+        return proof.packageRoot;
+      },
       refreshObservation: async () => { await withControlDeadline(this.recoverySnapshot(), 4000, 'Execution owner observation timed out'); },
       list: (filter?: { prefix?: string }) => this.view().apps.filter(app => !filter?.prefix || app.info.name.startsWith(filter.prefix)).map(app => app.info),
       getApp: (name: string) => this.view().apps.find(app => app.info.name === (this.resolve(name) ?? name))?.info ?? null,

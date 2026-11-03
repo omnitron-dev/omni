@@ -83,7 +83,7 @@ async function linux(config: ManagedRuntime, pid: number, argv: string[], boot: 
 }
 
 /** On explicit legacy release admission, prove what the physical owner actually launched. */
-export async function attestManagedOwnerBuild(instanceHome: string, expected: { id: string; pid: number; startedAt?: string }): Promise<BuildStamp> {
+export async function attestManagedOwnerRuntime(instanceHome: string, expected: { id: string; pid: number; startedAt?: string }): Promise<{ build: BuildStamp; packageRoot: string }> {
   requireProof(expected.id && Number.isSafeInteger(expected.pid) && expected.pid > 0, 'invalid owner identity');
   const observe = async () => {
     const config = await readManagedRuntime(instanceHome);
@@ -104,5 +104,10 @@ export async function attestManagedOwnerBuild(instanceHome: string, expected: { 
   const stamp = readBuildStamp(path.join(before.root, 'packages/0/dist'));
   requireProof(stamp && /^[a-f0-9]{40}$/.test(stamp.commit) && stamp.dirty === false, 'missing exact clean owner build');
   requireProof(JSON.stringify(await observe()) === JSON.stringify(before), 'owner or service binding changed during verification');
-  return stamp;
+  return { build: stamp, packageRoot: path.join(before.root, 'packages/0') };
+}
+
+/** Existing admission callers keep the original build-only contract. */
+export async function attestManagedOwnerBuild(instanceHome: string, expected: { id: string; pid: number; startedAt?: string }): Promise<BuildStamp> {
+  return (await attestManagedOwnerRuntime(instanceHome, expected)).build;
 }

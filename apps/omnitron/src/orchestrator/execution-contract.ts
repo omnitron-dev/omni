@@ -29,6 +29,8 @@ export interface OrchestratorControl extends Methods {
   refreshObservation?(): Promise<void>;
   /** PID from the authenticated resident owner; in-process supervisors do not implement this. */
   getExecutionOwnerPid?(): number;
+  /** Native service-manager proof; does not require a new owner protocol. */
+  getExecutionOwnerPackage?(): Promise<string>;
   startApp(...args: Parameters<OrchestratorService['startApp']>): Promise<AppExecutionView>;
   startKnownApp(name: string): Promise<AppExecutionView | undefined>;
   restartAfterChange(name: string): Promise<AppExecutionView | undefined>;

@@ -25,6 +25,7 @@ import { compileCustomRoutes } from './http-routes.js';
 import type { AppHealthAnswer, IAppDefinition, IProcessEntry } from '../config/types.js';
 import type { IProcessTraffic } from '@omnitron-dev/titan-pm';
 import { pathToFileURL } from 'node:url';
+import { RUNTIME_CONTEXT, verifyInstalledRuntime } from '../runtime/context.js';
 import { queryTopologyService } from './topology-query.js';
 
 /**
@@ -353,6 +354,7 @@ class BootstrapProcess {
 
     // Prefer bundled module path (esbuild pre-built) over tsx runtime
     const hasTsx = !bundledModulePath && (process.execArgv ?? []).some((a) => a.includes('tsx'));
+    const runtimeContext = await verifyInstalledRuntime(pathToFileURL(bootstrapPath));
     reportStage('config:loading', bootstrapPath);
     this.definition = await loadBootstrapConfig(bootstrapPath, { devMode: hasTsx || !!bundledModulePath });
     reportStage('config:loaded', this.definition.name);
@@ -424,10 +426,12 @@ class BootstrapProcess {
 
     // Create Titan Application
     reportStage('application:creating');
-    this.app = await Application.create(ModuleClass, {
+    const applicationOptions = {
       name: this.definition.name,
       version: this.definition.version,
-    });
+      providers: [[RUNTIME_CONTEXT, { useValue: runtimeContext }]],
+    };
+    this.app = await Application.create(ModuleClass, applicationOptions);
     reportStage('application:created');
 
     // afterCreate hook

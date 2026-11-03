@@ -46,6 +46,9 @@ export async function stubInventory(page, extraReadings = {}, healthStatus = 'on
     const reading = readings[key];
     const data = key === 'OmnitronAccess.describe' ? { userId: 'reader', role: 'viewer', capabilities, roles: [] }
       : typeof reading === 'function' ? await reading(...input) : reading;
+    if (data instanceof Error) {
+      return route.fulfill({ json: { id, success: false, error: { code: 'UNAVAILABLE', message: data.message } } });
+    }
     return route.fulfill({ json: { id, success: data !== undefined, data } });
   });
   await page.route('**/api/health', route => route.fulfill({ json: { status: healthStatus } }));

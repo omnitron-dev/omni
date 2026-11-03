@@ -3,7 +3,9 @@ import { test, expect, stubInventory } from './fixtures.mjs';
 const area = id => ({ id, label: id.toUpperCase(), readOnly: true });
 const node = (id, name) => ({ id, name, host: id + '.test', isLocal: false });
 
-async function fileInventory(page, beforeList = () => {}) {
+const availableNodes = [node('east', 'East region'), node('west', 'West region')];
+
+async function fileInventory(page, { beforeList = () => {}, listNodes = availableNodes } = {}) {
   const roots = { local: [area('home')], east: [area('logs')], west: [area('assets'), area('reports')] };
   const calls = [];
   page.on('request', request => {
@@ -12,7 +14,7 @@ async function fileInventory(page, beforeList = () => {}) {
     if (service === 'OmnitronFiles') calls.push({ method, ...input[0] });
   });
   await stubInventory(page, {
-    'OmnitronNodes.listNodes': [node('east', 'East region'), node('west', 'West region')],
+    'OmnitronNodes.listNodes': listNodes,
     'OmnitronFiles.transfers': [],
     'OmnitronFiles.roots': ({ nodeId }) => ({ protocol: 1, roots: roots[nodeId] }),
     'OmnitronFiles.list': async ({ nodeId, rootId }) => {
@@ -81,8 +83,14 @@ test('a tab binds its chosen area, and revocation never substitutes another area
   await expect(left.getByRole('button', { name: 'Open ASSETS' })).toBeVisible();
   const areaChoice = left.getByRole('button', { name: 'Open REPORTS' });
   await expect(areaChoice).toBeVisible();
+  await expect(left.getByRole('table')).toHaveCount(0);
   expect(calls.filter(call => call.nodeId === 'west' && call.method !== 'roots')).toEqual([]);
-  await areaChoice.press('Enter');
+  await row(pane(page, 'right'), 'local', 'home').click();
+  await page.keyboard.press('Tab');
+  await expect(left.getByRole('button', { name: 'Open ASSETS' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(areaChoice).toBeFocused();
+  await page.keyboard.press('Enter');
   await expect(row(left, 'west', 'reports')).toBeVisible();
   await expect(left.getByRole('combobox')).toHaveCount(0);
   const remoteTab = left.getByRole('tab', { selected: true });
@@ -95,6 +103,7 @@ test('a tab binds its chosen area, and revocation never substitutes another area
   await tabs.last().click();
   await expect.poll(() => calls.slice(beforeRevocation).some(call => call.method === 'roots' && call.nodeId === 'west')).toBe(true);
   await expect(left.getByRole('alert')).toContainText('This file area is no longer available');
+  await expect(left.getByRole('table')).toHaveCount(0);
   await expect(row(left, 'west', 'reports')).toHaveCount(0);
   await expect(left.getByRole('tab', { selected: true })).toHaveCount(1);
   expect((await remoteTab.getAttribute('aria-label') ?? await remoteTab.innerText())).toBe(tabName);
@@ -105,11 +114,11 @@ test('a tab binds its chosen area, and revocation never substitutes another area
 test('a late remote directory reply cannot replace the active local listing', async ({ page, url }) => {
   const pending = Promise.withResolvers();
   const started = Promise.withResolvers();
-  await fileInventory(page, nodeId => {
+  await fileInventory(page, { beforeList: nodeId => {
     if (nodeId !== 'east') return;
     started.resolve();
     return pending.promise;
-  });
+  } });
   await openFiles(page, url, 1440);
   const left = pane(page, 'left');
   try {
@@ -130,4 +139,27 @@ test('a late remote directory reply cannot replace the active local listing', as
   } finally {
     pending.resolve();
   }
+});
+
+test('local files remain available during failed remote discovery and retry', async ({ page, url }) => {
+  let unavailable = true;
+  const { calls } = await fileInventory(page, {
+    listNodes: () => unavailable ? new Error('Node catalog is unavailable') : availableNodes,
+  });
+  await openFiles(page, url, 390);
+  const left = pane(page, 'left');
+  await add(left).click();
+  const chooser = page.getByRole('menu', { name: 'Choose a node' });
+  await expect(chooser.getByRole('menuitem', { name: /Local/ })).toBeVisible();
+  await expect(chooser.getByRole('menuitem', { name: /East region/ })).toHaveCount(0);
+  const retry = chooser.getByRole('menuitem', { name: /Retry loading remote nodes/ });
+  await expect(retry).toBeVisible();
+  unavailable = false;
+  await retry.click();
+  await expect(chooser.getByRole('menuitem', { name: /Local/ })).toBeFocused();
+  await expect(chooser.getByRole('menuitem', { name: /East region/ })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(row(left, 'local', 'home')).toBeVisible();
+  await expect(left.getByRole('tab')).toHaveCount(1);
+  expect(calls.filter(call => call.nodeId && call.nodeId !== 'local')).toEqual([]);
 });

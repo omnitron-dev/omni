@@ -60,6 +60,10 @@ jobs:
           test/netron/transport/http/service-identity.spec.ts
           test/netron/auth/transport-declared-authority.test.ts
           test/netron/transport/http/configure-auth-enforcement.spec.ts
+          test/netron/method-transport-filter.spec.ts
+          test/netron/transport-confinement-http.test.ts
+          test/netron/transport-forwarding.test.ts
+          test/netron/remote-service-publication.spec.ts
       - name: Linked and npm framework builds and recipient admission
         working-directory: apps/omnitron
         run: >-
@@ -118,6 +122,12 @@ jobs:
           test/unit/a-secret-printed-by-the-command-that-masked.test.ts
           test/unit/a-master-could-tell-a-node-and-not-ask-it.test.ts
           test/unit/local-node-daemon-readers.test.ts
+          test/unit/secret-set-input.test.ts
+          test/unit/an-auth-method-with-no-way-to-supply-it.test.ts
+          test/unit/node-registration-input.test.ts
+          test/unit/remote-migration-input.test.ts
+          test/unit/deployment-preserves-running-files.test.ts
+          test/unit/an-audit-command-that-hid-what-the-trail-knew.test.ts
       - name: SQLite permissions preserve concurrent storage
         run: pnpm --filter @omnitron-dev/omnitron test:private-storage
       - name: Cluster takeover, installed application recovery and recipient authority
@@ -130,6 +140,7 @@ jobs:
           test/integration/daemon-session-authority.test.ts
           test/integration/mesh-source-authority.test.ts
           test/integration/replication-reconciliation.test.ts
+          test/integration/audit-pagination.test.ts
           test/unit/mesh-recovery.test.ts
           test/unit/a-mesh-that-connected-only-where-something-was-deployed.test.ts
           test/unit/ssh-host-trust.test.ts
@@ -144,7 +155,19 @@ jobs:
           test/unit/standalone-infrastructure.test.ts
           test/unit/workspace-migration-plan.test.ts
       - name: Stack startup and schema continuity
-        run: pnpm --filter @omnitron-dev/omnitron exec vitest run test/unit/a-master-that-stood-still-while-it-migrated.test.ts test/unit/project-service-internals.spec.ts test/unit/wait-for-postgres-errors.test.ts test/unit/schema-transition.test.ts test/unit/schema-compatibility.test.ts
+        working-directory: apps/omnitron
+        run: >-
+          pnpm exec vitest run --maxWorkers 2
+          test/unit/a-master-that-stood-still-while-it-migrated.test.ts
+          test/unit/project-service-internals.spec.ts
+          test/unit/wait-for-postgres-errors.test.ts
+          test/unit/schema-transition.test.ts
+          test/unit/schema-compatibility.test.ts
+          test/unit/local-release-migrations.test.ts
+          test/unit/stack-diagnosis-service.test.ts
+          test/unit/a-migration-that-spoke-to-nobody-on-the-node.test.ts
+          test/unit/a-migration-that-ran-and-changed.test.ts
+          test/unit/a-node-that-could-not-be-asked-had-no-migrations.test.ts
       - name: RPC role boundaries
         run: pnpm --filter @omnitron-dev/omnitron exec vitest run test/integration/trace-authorization.test.ts test/integration/daemon-health-authorization.test.ts test/unit/rpc-authorization.test.ts test/unit/daemon-role-policy.test.ts
       - name: Relay confirmation and persistent application logs
@@ -153,7 +176,7 @@ jobs:
           pnpm --filter @omnitron-dev/omnitron exec vitest run test/unit/logging-delivery.test.ts
       - name: Deployment progress across RPC, CLI and Console
         run: |
-          pnpm --filter @omnitron-dev/omnitron exec vitest run --maxWorkers 2 test/unit/remote-deployer-probe.test.ts test/unit/stack-progress-cli.test.ts test/webapp
+          pnpm --filter @omnitron-dev/omnitron exec vitest run --maxWorkers 2 test/unit/remote-deployer-probe.test.ts test/unit/stack-progress-cli.test.ts test/webapp webapp/src/utils/audit-actor.test.ts
           pnpm --filter @omnitron-dev/prism exec vitest run src/blocks/auth-block/role-guard-revocation.test.tsx src/theme/__tests__/component-style-composition.test.tsx src/components/admin-filters/filter-toolbar.test.tsx
       - name: Console chart loading and topology in Chromium
         working-directory: apps/omnitron/webapp

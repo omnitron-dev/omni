@@ -18,6 +18,8 @@ import '@testing-library/jest-dom/vitest';
 
 import { useProjectStore } from '../../webapp/src/stores/project.store.js';
 
+vi.mock('src/auth/access', () => ({ useAccess: () => ({ can: () => true }), Can: ({ children }: { children: import('react').ReactNode }) => children }));
+
 vi.mock('src/netron/client', () => ({
   infra: {
     listContainers: vi.fn(async () => [

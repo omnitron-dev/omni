@@ -1,5 +1,5 @@
 import { useId, useState, type ReactNode } from 'react';
-import { IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Tooltip } from '@mui/material';
+import { Divider, IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Tooltip } from '@mui/material';
 import { MoreVertIcon } from 'src/assets/icons';
 
 export interface RowAction {
@@ -15,6 +15,22 @@ export interface RowAction {
 export function RowActions({ label, actions }: { label: string; actions: RowAction[] }) {
   const id = useId();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const regular = actions.filter((action) => action.color !== 'error');
+  const destructive = actions.filter((action) => action.color === 'error');
+  const renderAction = (action: RowAction) => (
+    <MenuItem
+      key={action.id}
+      disabled={action.disabled}
+      sx={action.color ? { color: `${action.color}.main` } : undefined}
+      onClick={() => {
+        setAnchor(null);
+        action.onClick();
+      }}
+    >
+      {action.icon && <ListItemIcon sx={{ color: 'inherit' }}>{action.icon}</ListItemIcon>}
+      <ListItemText>{action.label}</ListItemText>
+    </MenuItem>
+  );
   return (
     <>
       <Tooltip title={label}>
@@ -41,20 +57,9 @@ export function RowActions({ label, actions }: { label: string; actions: RowActi
         onClick={(event) => event.stopPropagation()}
         slotProps={{ list: { 'aria-labelledby': `${id}-trigger` } }}
       >
-        {actions.map((action) => (
-          <MenuItem
-            key={action.id}
-            disabled={action.disabled}
-            sx={action.color ? { color: `${action.color}.main` } : undefined}
-            onClick={() => {
-              setAnchor(null);
-              action.onClick();
-            }}
-          >
-            {action.icon && <ListItemIcon sx={{ color: 'inherit' }}>{action.icon}</ListItemIcon>}
-            <ListItemText>{action.label}</ListItemText>
-          </MenuItem>
-        ))}
+        {regular.map(renderAction)}
+        {regular.length > 0 && destructive.length > 0 && <Divider />}
+        {destructive.map(renderAction)}
       </Menu>
     </>
   );

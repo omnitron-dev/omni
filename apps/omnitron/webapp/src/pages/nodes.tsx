@@ -1470,6 +1470,8 @@ function NodeCard({
           sx={{
             alignItems: "flex-start",
             justifyContent: "space-between",
+            flexWrap: 'wrap',
+            gap: 1,
             mb: 1.5
           }}>
           <Stack
@@ -1491,7 +1493,8 @@ function NodeCard({
               </Typography>
             </Box>
           </Stack>
-          <Stack direction="row" spacing={0}>
+          <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 0, maxWidth: '100%' }}>
+            {!node.isLocal && <Can permission="OmnitronNodes.removeNode"><Tooltip title="Remove"><IconButton size="small" aria-label={`Remove node ${node.name}`} onClick={() => onRemove(node.id)} color="error" sx={{ marginInlineEnd: 1 }}><DeleteIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip></Can>}
             {!node.isLocal && <Can permission="OmnitronTerminal.open"><Button component={RouterLink} to={`/terminal?${new URLSearchParams({ node: node.id })}`} size="small">SSH</Button></Can>}
             {!node.isLocal && (
               <Tooltip title={checking ? 'Checking...' : 'Check SSH connection'}>
@@ -1516,14 +1519,13 @@ function NodeCard({
                 machine you are standing on, and the reason is recorded the
                 same way. */}
             <Tooltip title="Diagnostics">
-              <IconButton size="small" onClick={() => onDiagnose(node)}>
+              <IconButton size="small" aria-label={`Diagnostics for ${node.name}`} onClick={() => onDiagnose(node)}>
                 <EyeIcon sx={{ fontSize: 18 }} />
               </IconButton>
             </Tooltip>
             {!node.isLocal && (
               <>
-                <Can permission="OmnitronNodes.updateNode"><Tooltip title="Edit"><IconButton size="small" onClick={() => onEdit(node)}><SettingsIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip></Can>
-                <Can permission="OmnitronNodes.removeNode"><Tooltip title="Remove"><IconButton size="small" onClick={() => onRemove(node.id)} color="error"><DeleteIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip></Can>
+                <Can permission="OmnitronNodes.updateNode"><Tooltip title="Edit"><IconButton size="small" aria-label={`Edit node ${node.name}`} onClick={() => onEdit(node)}><SettingsIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip></Can>
               </>
             )}
           </Stack>

@@ -1,5 +1,5 @@
-import { Can } from 'src/auth/access';
-import { useState } from 'react';
+import { Can, useAccess } from 'src/auth/access';
+import { useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import Card from '@mui/material/Card';
@@ -33,7 +33,7 @@ import { infra } from 'src/netron/client';
 import { Link as RouterLink } from 'react-router-dom';
 import Link from '@mui/material/Link';
 import { useStackContext } from 'src/hooks/use-stack-context';
-import { useActiveProjectStacks } from 'src/stores/project.store';
+import { useActiveProjectStacks, useProjectStore } from 'src/stores/project.store';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
 
 // ---------------------------------------------------------------------------
@@ -188,13 +188,23 @@ function LogModal({ open, containerName, logs, onClose }: LogModalProps) {
 
 export default function ContainersPage() {
   const { activeProject, activeStack } = useStackContext();
+  const { can } = useAccess();
+  const canReadStacks = can('OmnitronProject.listStacks');
+  const fetchStacks = useProjectStore((state) => state.fetchStacks);
+  const inventory = useProjectStore((state) => activeProject ? state.stacksByProject[activeProject] : undefined);
+  const inventoryError = useProjectStore((state) => activeProject ? state.stackReadErrors[activeProject] : null);
+  // The status bar owns ongoing refresh. Direct entry only fills an unknown
+  // scope, through the same store action that deduplicates concurrent readers.
+  useEffect(() => {
+    if (activeProject && canReadStacks && inventory === undefined) void fetchStacks(activeProject);
+  }, [activeProject, canReadStacks, inventory, fetchStacks]);
   // This page lists THIS machine's Docker. A remote stack's containers run on
   // its node: with «sample / test» selected the table held only omnitron's own
   // two, as though the stack had none, and with all stacks selected test's
   // five were simply not there. Its stack page shows them, as its node
   // reports them.
   const remoteStacks = useActiveProjectStacks().filter(
-    (s) => s.type !== 'local' && (!activeStack || s.name === activeStack),
+    (s) => canReadStacks && s.type !== 'local' && (!activeStack || s.name === activeStack),
   );
   // One shared polling loop (see `use-polled-resource`): no overlapping
   // requests when the daemon is slow, no polling from a hidden tab, and a
@@ -218,12 +228,31 @@ export default function ContainersPage() {
   );
 
   const [actionError, setActionError] = useState<string | null>(null);
+  type Operation = 'Starting' | 'Stopping' | 'Removing' | 'Loading logs';
+  const pendingRef = useRef(new Set<string>());
+  const [pending, setPending] = useState<Record<string, Operation>>({});
+  const refresh = async () => {
+    await Promise.all([fetchContainers(), activeProject && canReadStacks ? fetchStacks(activeProject) : null]);
+  };
+  const operate = async (name: string, operation: Operation, run: () => Promise<void>) => {
+    if (pendingRef.current.has(name)) return;
+    pendingRef.current.add(name);
+    setPending((current) => ({ ...current, [name]: operation }));
+    setActionError(null);
+    try { await run(); }
+    catch (err) { setActionError(`${operation} ${name} failed: ${err instanceof Error ? err.message : String(err)}`); }
+    finally {
+      pendingRef.current.delete(name);
+      setPending((current) => { const next = { ...current }; delete next[name]; return next; });
+    }
+  };
   // Removing a container used to happen on one click. These are the project's
   // Postgres, Redis and MinIO: the container goes, and with it anything not on
   // a named volume.
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
+  useEffect(() => setPage(0), [activeProject, activeStack]);
 
   // The selection's containers, by the labels a container carries about
   // itself (`omnitron.project`, `omnitron.stack`). The name only happens to
@@ -249,46 +278,32 @@ export default function ContainersPage() {
   const stoppedCount = containers.filter((c) => c.status === 'exited').length;
   const unhealthyCount = containers.filter((c) => c.health === 'unhealthy').length;
 
-  const handleStart = async (containerName: string) => {
-    try {
-      await infra.startContainer({ name: containerName });
-      fetchContainers();
-    } catch (err: any) {
-      setActionError(err?.message ?? 'Failed to start container');
-    }
-  };
+  const handleStart = (name: string) => operate(name, 'Starting', async () => {
+    await infra.startContainer({ name });
+    await fetchContainers();
+  });
 
-  const handleStop = async (containerName: string) => {
-    try {
-      await infra.stopContainer({ name: containerName });
-      fetchContainers();
-    } catch (err: any) {
-      setActionError(err?.message ?? 'Failed to stop container');
-    }
-  };
+  const handleStop = (name: string) => operate(name, 'Stopping', async () => {
+    await infra.stopContainer({ name });
+    await fetchContainers();
+  });
 
   const handleRemove = async () => {
-    const containerName = confirmRemove;
-    if (!containerName) return;
-    try {
-      await infra.removeContainer({ name: containerName });
+    if (!confirmRemove) return;
+    const name = confirmRemove;
+    await operate(name, 'Removing', async () => {
+      await infra.removeContainer({ name });
       setConfirmRemove(null);
       await fetchContainers();
-    } catch (err: any) {
-      setActionError(err?.message ?? 'Failed to remove container');
-    }
+    });
   };
 
-  const handleViewLogs = async (container: Container) => {
-    try {
-      const { logs } = await infra.getContainerLogs({ name: container.name, tail: 200 });
-      setLogModalContainer(container.name);
-      setLogModalLines(logs ? logs.split('\n') : []);
-      setLogModalOpen(true);
-    } catch (err: any) {
-      setActionError(err?.message ?? 'Failed to fetch container logs');
-    }
-  };
+  const handleViewLogs = (container: Container) => operate(container.name, 'Loading logs', async () => {
+    const { logs } = await infra.getContainerLogs({ name: container.name, tail: 200 });
+    setLogModalContainer(container.name);
+    setLogModalLines(logs ? logs.split('\n') : []);
+    setLogModalOpen(true);
+  });
 
   const pageRows = containers.slice(page * pageSize, page * pageSize + pageSize);
 
@@ -297,8 +312,21 @@ export default function ContainersPage() {
       key: 'name',
       header: 'Name',
       render: (container) => (
-        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-          {container.name}
+        <Box>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>{container.name}</Typography>
+          {pending[container.name] && <Typography variant="caption" role="status" sx={{ color: 'text.secondary' }}>
+            {pending[container.name]}…
+          </Typography>}
+        </Box>
+      ),
+    },
+    {
+      key: 'scope',
+      header: 'Scope',
+      render: (container) => (
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {container.project ? `${container.project}${container.stack ? ` / ${container.stack}` : ''}`
+            : container.lifecycleRestriction ? 'Control plane' : 'Unassigned'}
         </Typography>
       ),
     },
@@ -329,7 +357,7 @@ export default function ContainersPage() {
       header: 'Health',
       render: (container) => (
         <Chip
-          label={container.health ?? 'none'}
+          label={!container.health || container.health === 'none' ? 'Not reported' : container.health}
           size="small"
           color={HEALTH_COLORS[container.health ?? 'none'] ?? 'default'}
           variant="outlined"
@@ -357,25 +385,25 @@ export default function ContainersPage() {
               <Chip tabIndex={0} size="small" variant="outlined" label="Read only" aria-label={`Read only. ${container.lifecycleRestriction}`} />
             </Tooltip>
           ) : <Can permission="OmnitronInfra.removeContainer"><Tooltip title="Remove">
-            <IconButton size="small" color="error" onClick={() => setConfirmRemove(container.name)}>
+            <IconButton size="small" color="error" disabled={Boolean(pending[container.name])} loading={pending[container.name] === 'Removing'} aria-label={`Remove container ${container.name}`} onClick={() => setConfirmRemove(container.name)} sx={{ marginInlineEnd: 1 }}>
               <CloseIcon fontSize="small" />
             </IconButton>
           </Tooltip></Can>}
           <Tooltip title="Logs">
-            <IconButton size="small" aria-label={`Logs for ${container.name}`} onClick={() => handleViewLogs(container)}>
+            <IconButton size="small" disabled={Boolean(pending[container.name])} loading={pending[container.name] === 'Loading logs'} aria-label={`Logs for ${container.name}`} onClick={() => handleViewLogs(container)}>
               <LogsIcon fontSize="small" />
             </IconButton>
           </Tooltip>
           {!container.lifecycleRestriction && container.status !== 'running' && (
             <Can permission="OmnitronInfra.startContainer"><Tooltip title="Start">
-              <IconButton size="small" color="success" onClick={() => handleStart(container.name)}>
+              <IconButton size="small" color="success" disabled={Boolean(pending[container.name])} loading={pending[container.name] === 'Starting'} aria-label={`Start container ${container.name}`} onClick={() => handleStart(container.name)}>
                 <PlayIcon fontSize="small" />
               </IconButton>
             </Tooltip></Can>
           )}
           {!container.lifecycleRestriction && container.status === 'running' && (
             <Can permission="OmnitronInfra.stopContainer"><Tooltip title="Stop">
-              <IconButton size="small" color="warning" onClick={() => handleStop(container.name)}>
+              <IconButton size="small" color="warning" disabled={Boolean(pending[container.name])} loading={pending[container.name] === 'Stopping'} aria-label={`Stop container ${container.name}`} onClick={() => handleStop(container.name)}>
                 <StopIcon fontSize="small" />
               </IconButton>
             </Tooltip></Can>
@@ -405,11 +433,24 @@ export default function ContainersPage() {
       <Breadcrumbs
         links={[{ name: 'Containers' }]}
         action={
-          <IconButton data-console-command="refresh" size="small" onClick={fetchContainers} title="Refresh">
+          <IconButton data-console-command="refresh" size="small" onClick={refresh} title="Refresh" aria-label="Refresh local containers and stack locations">
             <RefreshIcon />
           </IconButton>
         }
       />
+      <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+        <Chip size="small" variant="outlined" label="Local node" />
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          This controller&apos;s Docker engine. Counts include the visible project, control-plane and unassigned containers, not remote nodes.
+        </Typography>
+      </Stack>
+      {activeProject && (!canReadStacks || inventory === undefined || inventoryError) && (
+        <Alert severity={inventoryError ? 'warning' : 'info'} variant="outlined">
+          {!canReadStacks ? 'Stack locations are unavailable with your current permissions.'
+            : inventoryError ? `Stack locations unavailable: ${inventoryError}` : 'Loading stack locations… Remote infrastructure is not included in this local inventory.'}
+          {canReadStacks && inventoryError && <Button size="small" onClick={() => void fetchStacks(activeProject)}>Retry stack locations</Button>}
+        </Alert>
+      )}
       {(error || actionError) && (
         <Alert closable severity="warning" variant="outlined" onClose={() => setActionError(null)}>
           {actionError ?? error}
@@ -434,7 +475,7 @@ export default function ContainersPage() {
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <StatCard
-            title="Total"
+            title="Local total"
             value={count(totalCount)}
             icon={<ContainersIcon />}
             color="primary"
@@ -472,13 +513,13 @@ export default function ContainersPage() {
       {/* Containers Table — prism owns the chrome, this page owns the columns. */}
       <AdminDataTable<Container>
         minWidth={640}
-        scrollLabel="Containers"
+        scrollLabel="Local containers"
         columns={columns}
         data={pageRows}
         total={containers.length}
         loading={loading}
         loadError={error ?? null}
-        emptyMessage="No containers found. Infrastructure containers will appear here when Docker is running."
+        emptyMessage="No local containers in this scope. Remote infrastructure is shown on its stack page."
         rowKey={(container) => container.name}
         page={page}
         pageSize={pageSize}

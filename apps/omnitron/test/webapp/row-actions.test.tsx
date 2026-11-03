@@ -7,6 +7,41 @@ import { RowActions } from '../../webapp/src/components/row-actions.js';
 afterEach(cleanup);
 
 describe('Console row commands', () => {
+  it('keeps destructive commands last and separated without making them the initial keyboard target', async () => {
+    const remove = vi.fn();
+    render(<RowActions label="Actions for worker" actions={[
+      { id: 'remove', label: 'Remove worker', color: 'error', onClick: remove },
+      { id: 'inspect', label: 'Inspect worker', onClick: vi.fn() },
+    ]} />);
+    const trigger = screen.getByRole('button', { name: 'Actions for worker' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const menu = screen.getByRole('menu');
+    const inspect = screen.getByRole('menuitem', { name: 'Inspect worker' });
+    const destructive = screen.getByRole('menuitem', { name: 'Remove worker' });
+    expect(screen.getAllByRole('menuitem')).toEqual([inspect, destructive]);
+    expect(screen.getByRole('separator')).toBeInTheDocument();
+    await waitFor(() => expect(inspect).toHaveFocus());
+    fireEvent.keyDown(menu, { key: 'End' });
+    expect(destructive).toHaveFocus();
+    fireEvent.keyDown(menu, { key: 'Escape' });
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it('does not add an empty group when only protected destructive commands are available', () => {
+    const remove = vi.fn();
+    render(<RowActions label="Worker operations" actions={[
+      { id: 'remove', label: 'Remove worker', color: 'error', disabled: true, onClick: remove },
+    ]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Worker operations' }));
+    expect(screen.queryByRole('separator')).not.toBeInTheDocument();
+    const item = screen.getByRole('menuitem', { name: 'Remove worker' });
+    expect(item).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(item);
+    expect(remove).not.toHaveBeenCalled();
+  });
+
   it('names its menu, keeps protected actions disabled, and does not activate the parent row', async () => {
     const parent = vi.fn();
     const inspect = vi.fn();

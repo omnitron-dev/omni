@@ -165,24 +165,28 @@ function ProjectCard({
           </Stack>
         )}
       </CardContent>
-      <CardActions sx={{ px: 2, pb: 1.5, justifyContent: 'space-between' }} onClick={(e) => e.stopPropagation()}>
-        <Can permission="OmnitronProject.importConfiguration">
-          <Button size="small" onClick={() => onImport(project)}>Import stacks</Button>
-        </Can>
+      <CardActions sx={{ px: 2, pb: 1.5, gap: 1, flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
         <Can permission="OmnitronProject.removeProject">
           <Tooltip title="Remove project">
-            <IconButton size="small" color="error" onClick={() => onRemove(project.name)} disabled={hasRunning}>
-              <DeleteIcon sx={{ fontSize: 18 }} />
-            </IconButton>
+            <span>
+              <IconButton size="small" color="error" aria-label={`Remove project ${project.name}`} onClick={() => onRemove(project.name)} disabled={hasRunning} sx={{ marginInlineEnd: 1 }}>
+                <DeleteIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </span>
           </Tooltip>
         </Can>
-        <Can permission="OmnitronProject.updateProject">
-          <Tooltip title="Settings">
-            <IconButton size="small" onClick={() => onEdit(project)}>
-              <SettingsIcon sx={{ fontSize: 18 }} />
-            </IconButton>
-          </Tooltip>
-        </Can>
+        <Box sx={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+          <Can permission="OmnitronProject.importConfiguration">
+            <Button size="small" onClick={() => onImport(project)}>Import stacks</Button>
+          </Can>
+          <Can permission="OmnitronProject.updateProject">
+            <Tooltip title="Settings">
+              <IconButton size="small" aria-label={`Settings for ${project.name}`} onClick={() => onEdit(project)}>
+                <SettingsIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+          </Can>
+        </Box>
       </CardActions>
     </Card>
   );

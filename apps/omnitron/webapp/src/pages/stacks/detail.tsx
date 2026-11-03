@@ -234,7 +234,12 @@ export default function StackDetailPage() {
           { name: stack.name },
         ]}
         action={
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+            {isStopped && !busy && (
+              <Can permission="OmnitronProject.deleteStack"><IconButton size="small" color="error" onClick={() => setDeleteOpen(true)} title="Delete stack" aria-label={`Delete stack ${stack.name}`} sx={{ marginInlineEnd: 1 }}>
+                <DeleteIcon />
+              </IconButton></Can>
+            )}
             <Chip
               label={stack.status.charAt(0).toUpperCase() + stack.status.slice(1)}
               size="small"
@@ -245,12 +250,7 @@ export default function StackDetailPage() {
               }}
             />
             <Can permission="OmnitronProject.diagnoseStack"><Button size="small" onClick={() => setDiagnoseOpen(true)}>Diagnose</Button></Can>
-            {isStopped && !busy && (
-              <Can permission="OmnitronProject.deleteStack"><IconButton size="small" color="error" onClick={() => setDeleteOpen(true)} title="Delete stack">
-                <DeleteIcon />
-              </IconButton></Can>
-            )}
-            <IconButton size="small" onClick={() => activeProject && fetchStacks(activeProject)}>
+            <IconButton size="small" aria-label="Refresh stack" title="Refresh stack" onClick={() => activeProject && fetchStacks(activeProject)}>
               <RefreshIcon />
             </IconButton>
             {isTransitioning ? (

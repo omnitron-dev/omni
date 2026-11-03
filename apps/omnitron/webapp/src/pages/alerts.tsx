@@ -417,14 +417,14 @@ export default function AlertsPage() {
       align: 'right',
       render: (rule) => (
         <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
-          <Can permission="OmnitronAlerts.updateRule"><Tooltip title="Edit rule">
-            <IconButton size="small" onClick={() => setEditing(rule)}>
-              <EditIcon sx={{ fontSize: 18 }} />
+          <Can permission="OmnitronAlerts.deleteRule"><Tooltip title="Delete rule">
+            <IconButton size="small" color="error" aria-label={`Delete rule ${rule.name}`} onClick={() => setConfirmDeleteRule(rule.id)} sx={{ marginInlineEnd: 1 }}>
+              <DeleteIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip></Can>
-          <Can permission="OmnitronAlerts.deleteRule"><Tooltip title="Delete rule">
-            <IconButton size="small" color="error" onClick={() => setConfirmDeleteRule(rule.id)}>
-              <DeleteIcon sx={{ fontSize: 18 }} />
+          <Can permission="OmnitronAlerts.updateRule"><Tooltip title="Edit rule">
+            <IconButton size="small" aria-label={`Edit rule ${rule.name}`} onClick={() => setEditing(rule)}>
+              <EditIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip></Can>
         </Stack>

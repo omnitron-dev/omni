@@ -340,15 +340,13 @@ function StackCard({
       </CardContent>
 
       <CardActions sx={{ px: 2, pb: 1.5, justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }} onClick={(e) => e.stopPropagation()}>
-        <Box>
+        {isStopped && !busy && (
+          <Can permission="OmnitronProject.deleteStack"><IconButton size="small" color="error" onClick={onDelete} title="Delete stack" aria-label={`Delete stack ${stack.name}`} sx={{ marginInlineEnd: 1 }}>
+            <DeleteIcon />
+          </IconButton></Can>
+        )}
+        <Box sx={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
           <Can permission="OmnitronProject.diagnoseStack"><Button size="small" onClick={onDiagnose}>Diagnose</Button></Can>
-          {isStopped && !busy && (
-            <Can permission="OmnitronProject.deleteStack"><IconButton size="small" color="error" onClick={onDelete} title="Delete stack">
-              <DeleteIcon />
-            </IconButton></Can>
-          )}
-        </Box>
-        <Box>
           {isTransitioning ? (
             <Button
               size="small"

@@ -30,6 +30,22 @@ Open **Nodes → Managed backend updates** to inspect the controller's latest re
 
 If a handoff loses its acknowledgement, **Reconcile node status** asks the controller to check the affected runtime. The receipt records the result. Source-bundle upgrades are under **Advanced**.
 
+## Consistent action placement
+
+Horizontal card and row controls put removal first at the leading edge, separated
+from ordinary commands by one extra theme spacing unit. Card footers keep ordinary
+commands together at the trailing edge; groups wrap at narrow widths. Use MUI `sx`
+for layout (`justifyContent`, `alignItems`, wrapping and gaps), and keep `direction`
+and `spacing` as Stack props. Icon-only controls have an explicit accessible name
+that identifies the resource.
+
+The shared `RowActions` overflow menu puts destructive (`color: 'error'`) commands
+last, separated from ordinary commands. Menu keyboard navigation and focus return
+remain MUI's responsibility. Confirmation dialogs retain Cancel before the explicit
+destructive confirmation; never move the confirmation into the initial/default
+focus position just to match a toolbar. Preserve each command's `Can` permission,
+disabled state and existing confirmation flow when changing its layout.
+
 ## Browser tests
 
 Run the workspace and topology checks from this directory. Playwright serves the Console components on a private loopback port with a fixed inventory.

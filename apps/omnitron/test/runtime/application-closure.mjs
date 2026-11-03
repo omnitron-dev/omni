@@ -11,6 +11,7 @@ const exec = promisify(execCb), execFile = promisify(execFileCb);
 const dist = path.resolve(process.argv[2] ?? 'dist');
 const load = name => import(pathToFileURL(path.join(dist, 'release', name + '.js')));
 const { installedGraph, materializeGraph } = await load('installed-graph');
+const { ArtifactBuilder } = await import(pathToFileURL(path.join(dist, 'project/artifact-builder.js')));
 const { stageApplicationClosure, bindApplicationCommand } = await load('application-closure');
 const { writePortableArchive } = await load('portable-archive');
 const { sealReleaseArtifactCommand, installedReleaseCheckCommand, verifyLaunchRelease } = await load('runtime-provenance');
@@ -45,7 +46,26 @@ try {
     await fs.copyFile(path.join(dist, file), out);
   }
   const live = await import(pathToFileURL(path.join(ownerPkg, 'dist/release/runtime-provenance.js')));
-  const staged=path.join(tmp,'stage'); await stageApplicationClosure(app,staged,cfg,[src]);
+  // A working checkout can supply imports from its workspace root that its release does not ship.
+  const missing = await pkg('undeclared-api');
+  await fs.writeFile(path.join(missing, 'dist/bootstrap.js'), "import '@omnitron-dev/titan';");
+  const ambientTitan = path.join(src, 'node_modules/@omnitron-dev/titan');
+  await fs.mkdir(path.dirname(ambientTitan), { recursive: true });
+  await fs.symlink(titan, ambientTitan, 'dir');
+  const builder = new ArtifactBuilder(src, path.join(tmp, 'archives'));
+  const pack = { skipBuild: true, releaseCheckouts: [src] };
+  await assert.rejects(builder.buildApp({ name: 'undeclared-api', cwd: missing, bootstrap: 'dist/bootstrap.js' }, pack),
+    /Bootstrap application undeclared-api must declare @omnitron-dev\/titan/);
+  const brokenTitan = await pkg('broken-titan');
+  await fs.writeFile(path.join(brokenTitan, 'package.json'), JSON.stringify({ name: '@omnitron-dev/titan', version: '1.0.0', exports: './dist/missing.js' }));
+  const broken = await pkg('broken-api', { '@omnitron-dev/titan': brokenTitan });
+  await fs.writeFile(path.join(broken, 'dist/bootstrap.js'), "import '@omnitron-dev/titan';");
+  await assert.rejects(builder.buildApp({ name: 'broken-api', cwd: broken, bootstrap: 'dist/bootstrap.js' }, pack), { code: 'MODULE_NOT_FOUND' });
+  assert.deepEqual(await fs.readdir(path.join(tmp, 'archives')), []);
+  // A classic Node script can have an empty production graph.
+  await builder.buildApp({ name: 'plain-script', cwd: missing, script: 'dist/index.js' }, pack);
+
+  const staged=path.join(tmp,'stage'); await stageApplicationClosure(app,staged,{...cfg, bootstrap: 'dist/index.js'},[src]);
   assert.equal(await fs.access(path.join(staged,'.env')).then(()=>true,()=>false),false);
   await assert.rejects(stageApplicationClosure(app,path.join(tmp,'inject'),{name:'api',env:{NODE_OPTIONS:'--require=/tmp/evil.cjs'}},[src]),/permits only/);
   await assert.rejects(stageApplicationClosure(app,path.join(tmp,'outside'),cfg,[app]),/escapes the frozen/);

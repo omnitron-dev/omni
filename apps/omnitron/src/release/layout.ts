@@ -86,6 +86,7 @@ function readGraph(lockfile: string) {
           throw Error('Framework dependency must resolve to an exact registry archive with SHA-512: ' + name);
         }
         if (resolution.tarball !== undefined) {
+          if (typeof resolution.tarball !== 'string') throw Error('Invalid locked framework archive URL: ' + name);
           let url: URL;
           try { url = new URL(resolution.tarball); } catch { throw Error('Invalid locked framework archive URL: ' + name); }
           // Credentials belong to pnpm's operator auth configuration, never to

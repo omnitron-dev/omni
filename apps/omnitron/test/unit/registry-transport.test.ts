@@ -3,7 +3,8 @@ import fs from 'node:fs/promises';
 import { createServer, type Server, type RequestListener } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ExecutionEngine } from '@xec-sh/core';
 import { readFrameworkLayout, type RegistryPackage } from '../../src/release/layout.js';
 import type { withRegistryArchive as downloadType } from '../../src/release/registry-transport.js';
 import { compileRegistryTransportFixture } from '../helpers/registry-transport-fixture.js';
@@ -26,6 +27,7 @@ beforeEach(async () => {
   await fs.writeFile(path.join(fixture, '.pnpmfile.cjs'), 'throw Error("pnpmfile must not execute during archive inspection")');
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const server of servers) { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
   servers = [];
   await fs.rm(fixture, { recursive: true, force: true });
@@ -39,7 +41,7 @@ async function server(handler: RequestListener): Promise<string> {
 }
 
 function options(signal?: AbortSignal) {
-  return { checkout: fixture, scratch: fixture, signal, env: {
+  return { checkout: fixture, scratch: fixture, ...(signal === undefined ? {} : { signal }), env: {
     PATH: process.env['PATH'], HOME: path.join(fixture, 'home'), XDG_CONFIG_HOME: path.join(fixture, 'home', '.config'),
     PNPM_CONFIG_NPMRC_AUTH_FILE: path.join(fixture, 'home', '.npmrc'),
     REGISTRY_FIXTURE_TOKEN: 'secret-never-reported',
@@ -63,7 +65,7 @@ const metadata = (tarball: string) => JSON.stringify({ name, versions: { [versio
 
 describe('native pnpm registry configuration and bounded transport', () => {
   it('uses scoped YAML over npmrc routing and interpolated auth; executes no lifecycle or project hooks', async () => {
-    const observed: Array<{ url: string; auth?: string }> = [];
+    const observed: Array<{ url: string; auth: string | undefined }> = [];
     let url: string;
     url = await server((req, res) => {
       observed.push({ url: req.url!, auth: req.headers.authorization });
@@ -152,15 +154,27 @@ describe('native pnpm registry configuration and bounded transport', () => {
     expect(process.env['REGISTRY_FIXTURE_TOKEN']).toBe(initial);
   });
 
-  it('cancels a hung trusted token helper through Xec without leaving its process behind', async () => {
+  it.each(['cancelled', 'timeout'] as const)('ends a hung trusted token helper and drains its worker on %s', async category => {
     const controller = new AbortController();
+    const timeoutSpy = category === 'timeout' ? vi.spyOn(AbortSignal, 'timeout').mockReturnValueOnce(controller.signal) : undefined;
+    let workerPid: number | undefined;
+    let stdoutClosed = false, stderrClosed = false;
+    const execute = ExecutionEngine.prototype.execute;
+    const spawnSpy = vi.spyOn(ExecutionEngine.prototype, 'execute').mockImplementation(function(this: ExecutionEngine, command) {
+      return execute.call(this, { ...command, onSpawn(handle) {
+        workerPid = handle.pid;
+        handle.stdout?.once('close', () => { stdoutClosed = true; });
+        handle.stderr?.once('close', () => { stderrClosed = true; });
+        command.onSpawn?.(handle);
+      } });
+    });
     const pidFile = path.join(fixture, 'helper-pid');
     const helper = path.join(fixture, 'hung-helper.mjs');
     await fs.writeFile(helper, `import fs from 'node:fs';fs.writeFileSync(${JSON.stringify(pidFile)},String(process.pid));setInterval(()=>{},1000);`);
     const url = await server((_req, res) => res.end(bytes));
     await configured(url);
     await fs.writeFile(path.join(fixture, 'home', '.npmrc'), `${url.slice('http:'.length)}:tokenHelper=${process.execPath} ${helper}\n`);
-    const result = read({ ...pin, tarball: url + 'blob' }, controller.signal).catch(error => error);
+    const result = read({ ...pin, tarball: url + 'blob' }, category === 'cancelled' ? controller.signal : undefined).catch(error => error);
     let pid: number | undefined;
     try {
       for (let attempt = 0; attempt < 100; attempt++) {
@@ -170,15 +184,21 @@ describe('native pnpm registry configuration and bounded transport', () => {
       }
       expect(pid).toBeGreaterThan(1);
     } finally { controller.abort(); }
-    expect(await result).toMatchObject({ category: 'cancelled' });
-    if (pid !== undefined) {
-      // Reaping a killed child may briefly follow the parent's completion.
-      for (let attempt = 0; attempt < 100; attempt++) {
-        try { process.kill(pid, 0); } catch { return; }
-        await new Promise(resolve => setTimeout(resolve, 10));
+    try {
+      expect(await result).toMatchObject({ category });
+      expect(stdoutClosed).toBe(true);
+      expect(stderrClosed).toBe(true);
+      expect(workerPid).toBeGreaterThan(1);
+      for (const target of [pid, workerPid]) if (target !== undefined) {
+        let alive = true;
+        // Reaping a killed descendant may briefly follow the worker's close.
+        for (let attempt = 0; attempt < 100; attempt++) {
+          try { process.kill(target, 0); } catch { alive = false; break; }
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        expect(alive).toBe(false);
       }
-      throw Error('The cancelled fixture token helper is still alive');
-    }
+    } finally { spawnSpy.mockRestore(); timeoutSpy?.mockRestore(); }
   });
 
   it('does not expose failed helper stderr or its credential text', async () => {
@@ -208,6 +228,22 @@ describe('native pnpm registry configuration and bounded transport', () => {
       if ('sha512-' + digest.digest('base64') !== 'sha512-wrong') throw Error('Committed SHA-512 mismatch');
     })).rejects.toThrow('Committed SHA-512 mismatch');
   });
+
+  it('preserves an early archive refusal when the cancelled executor rejects instead of returning an exit status', async () => {
+    const execute = ExecutionEngine.prototype.execute;
+    const spy = vi.spyOn(ExecutionEngine.prototype, 'execute').mockImplementation(async function(this: ExecutionEngine, command) {
+      const result = await execute.call(this, command);
+      if (command.signal?.aborted) throw Error('Executor cancelled');
+      return result;
+    });
+    try {
+      const url = await server((_req, res) => { res.write(bytes); });
+      await configured(url);
+      await expect(download({ ...pin, tarball: url + 'stream' }, options(), async input => {
+        for await (const _chunk of input) throw Error('Compressed archive refused before completion');
+      })).rejects.toThrow('Compressed archive refused before completion');
+    } finally { spy.mockRestore(); }
+  });
 });
 
 it('retains a credential-free custom locked archive and rejects URLs containing credentials', () => {
@@ -217,4 +253,6 @@ it('retains a credential-free custom locked archive and rejects URLs containing 
   for (const bad of ['https://user:secret@example.test/x', 'https://example.test/x?token=secret', 'file:///tmp/a.tgz']) {
     expect(() => readFrameworkLayout(lock(bad))).toThrow(/credential-free/);
   }
+  expect(() => readFrameworkLayout(lock(tarball).replace(`tarball: '${tarball}'`, `tarball: ['${tarball}']`)))
+    .toThrow(/Invalid locked framework archive URL/);
 });

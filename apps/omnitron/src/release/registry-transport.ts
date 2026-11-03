@@ -54,7 +54,9 @@ export async function withRegistryArchive<T>(
     args: [fileURLToPath(new URL('./registry-download.js', import.meta.url))],
     cwd: options.checkout,
     env: Object.fromEntries(Object.entries(options.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
-    adapter: 'local', shell: false, signal, timeout: 60_000, maxBuffer: 2048, nothrow: true,
+    // Xec's timeout races process completion. Its signal path waits for close;
+    // disable the default timer so our bounded signal is the sole deadline.
+    adapter: 'local', shell: false, signal, timeout: 0, maxBuffer: 2048, nothrow: true,
     stdin: JSON.stringify(pkg), stdout: output, stderr: 'pipe',
   }).finally(() => { if (!output.writableEnded) output.end(); });
   try {
@@ -68,7 +70,10 @@ export async function withRegistryArchive<T>(
       if (inspected.status === 'rejected' && stopped.signal.aborted) throw inspected.reason;
       throw new RegistryTransportError('worker');
     }
-    if (executed.status === 'rejected') throw new RegistryTransportError('worker');
+    if (executed.status === 'rejected') {
+      if (inspected.status === 'rejected' && stopped.signal.aborted) throw inspected.reason;
+      throw new RegistryTransportError('worker');
+    }
     if (inspected.status === 'rejected') throw inspected.reason;
     return inspected.value;
   } finally {

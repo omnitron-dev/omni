@@ -66,10 +66,16 @@ async function download(): Promise<void> {
   catch { throw new DownloadFailure('authentication'); }
   const timeout = Math.min(config.fetchTimeout && config.fetchTimeout > 0 ? config.fetchTimeout : 60_000, 60_000);
   const fetchArchive = createFetchFromRegistry({
-    ca: config.ca, cert: config.cert, key: config.key, configByUri: config.configByUri,
-    httpProxy: config.httpProxy, httpsProxy: config.httpsProxy, noProxy: config.noProxy,
-    localAddress: config.localAddress, strictSsl: config.strictSsl, maxSockets: 2, timeout,
-    userAgent: config.userAgent,
+    configByUri: config.configByUri, maxSockets: 2, timeout,
+    ...(config.ca === undefined ? {} : { ca: config.ca }),
+    ...(config.cert === undefined ? {} : { cert: config.cert }),
+    ...(config.key === undefined ? {} : { key: config.key }),
+    ...(config.httpProxy === undefined ? {} : { httpProxy: config.httpProxy }),
+    ...(config.httpsProxy === undefined ? {} : { httpsProxy: config.httpsProxy }),
+    ...(config.noProxy === undefined ? {} : { noProxy: config.noProxy }),
+    ...(config.localAddress === undefined ? {} : { localAddress: config.localAddress }),
+    ...(config.strictSsl === undefined ? {} : { strictSsl: config.strictSsl }),
+    ...(config.userAgent === undefined ? {} : { userAgent: config.userAgent }),
   });
   const read = async (address: string): Promise<Response> => {
     let authHeaderValue: string | undefined;
@@ -78,7 +84,7 @@ async function download(): Promise<void> {
     let response: Response;
     try {
       response = await fetchArchive(address, {
-        authHeaderValue, retry: { retries: 0 }, timeout,
+        ...(authHeaderValue === undefined ? {} : { authHeaderValue }), retry: { retries: 0 }, timeout,
         headers: { 'accept-encoding': 'identity' },
       });
     } catch (error) {

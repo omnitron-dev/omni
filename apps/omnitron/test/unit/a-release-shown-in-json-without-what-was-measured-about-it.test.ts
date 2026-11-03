@@ -115,6 +115,33 @@ afterEach(() => {
 });
 
 describe('show --json', () => {
+  it('identifies the original producer SDK for imported application bytes', async () => {
+    const file = path.join(ROOT, ID, 'manifest.json');
+    const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const artifact = { ...manifest.artifacts[0],
+      launch: { mode: 'bootstrap', file: 'dist/bootstrap.js', closureSha256: 'd'.repeat(64) },
+      packageSource: { directory: 'apps/worker', manifestBlob: 'e'.repeat(40), migrations: {} },
+    };
+    const producer = { ...manifest, id: 'producer', artifacts: [artifact],
+      project: { repo: 'upstream', commit: 'c'.repeat(40) }, omni: { repo: 'upstream-sdk', commit: 'f'.repeat(40) },
+      builtWith: { ...manifest.builtWith, target: {
+        platform: 'darwin', arch: 'arm64', node: 'v24.13.0', abi: '137', executableSha256: '1'.repeat(64), libc: null,
+      } },
+    };
+    const manifestJson = JSON.stringify(producer), sha256 = crypto.createHash('sha256').update(manifestJson).digest('hex');
+    manifest.artifacts[0] = { ...artifact, origin: { release: producer.id, app: artifact.app, manifestSha256: sha256 } };
+    manifest.imports = [{ sha256, manifestJson }];
+    fs.writeFileSync(file, JSON.stringify(manifest));
+    await releaseShowCommand(ID);
+    const data = JSON.parse(stdout.join('')).data;
+    expect(data.manifestSha256).toBe(crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'));
+    expect(data.artifactSources[0]).toMatchObject({
+      app: artifact.app, state: 'recorded', releaseId: 'producer', framework: producer.omni, project: producer.project,
+      via: [{ release: producer.id, app: artifact.app, manifestSha256: sha256 }],
+    });
+    expect(data.omni).toEqual(manifest.omni);
+    expect(data.verifiedFiles).toHaveLength(APPS.length);
+  });
   it('carries the files checked on this disk and every stack attestation, as the text does', async () => {
     await releaseShowCommand(ID);
     const data = JSON.parse(stdout.join('').trim()).data;

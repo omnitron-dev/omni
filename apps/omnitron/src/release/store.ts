@@ -16,11 +16,14 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 import { loadAttestations, type StoredAttestation } from './attest.js';
 import { readReleaseId } from '../shared/release-reading.js';
 import { releasesRoot } from './load.js';
 import type { GateOutcome, ReleaseManifest } from './manifest.js';
+import { artifactReleaseContexts, isReadableReleaseManifest, MAX_RELEASE_MANIFEST_BYTES } from './origin.js';
+import type { ArtifactSourceReading } from '../shared/dto/releases.js';
 
 export { releasesRoot };
 
@@ -81,6 +84,10 @@ export interface ReleaseSummary {
 /** A release in full, for one screen: the manifest, plus what is beside it. */
 export interface ReleaseDetail extends ReleaseSummary {
   readonly manifest: ReleaseManifest | null;
+  /** Digest of the exact bytes read for this detail; older daemons omit it. */
+  readonly manifestSha256?: string | null;
+  /** Optional when read from an older daemon; imported sources must never fall back to the consumer. */
+  readonly artifactSources?: readonly ArtifactSourceReading[];
   readonly logs: ReadonlyArray<{ name: string; bytes: number }>;
   readonly root: string;
   /** What each stack measured about this release after carrying it. */
@@ -210,14 +217,44 @@ function summarise(id: string, dir: string, manifest: ReleaseManifest | null): R
   };
 }
 
-function readManifest(dir: string): ReleaseManifest | null {
+function readManifestRecord(dir: string): { manifest: ReleaseManifest; sha256: string } | null {
   const file = path.join(dir, 'manifest.json');
+  let descriptor: number | undefined;
   try {
-    const manifest = JSON.parse(fs.readFileSync(file, 'utf8')) as ReleaseManifest;
-    return manifest && typeof manifest.id === 'string' ? manifest : null;
+    if (fs.realpathSync(file) !== path.join(fs.realpathSync(path.dirname(dir)), path.basename(dir), 'manifest.json')) return null;
+    descriptor = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+    const stat = fs.fstatSync(descriptor);
+    if (!stat.isFile() || stat.size > MAX_RELEASE_MANIFEST_BYTES) return null;
+    const raw = fs.readFileSync(descriptor);
+    if (raw.length > MAX_RELEASE_MANIFEST_BYTES) return null;
+    const manifest: unknown = JSON.parse(raw.toString('utf8'));
+    return isReadableReleaseManifest(manifest) && manifest.id === path.basename(dir)
+      ? { manifest, sha256: createHash('sha256').update(raw).digest('hex') } : null;
   } catch {
     // No manifest, or one nothing can parse: an unfinished build, listed as such.
     return null;
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+  }
+}
+
+function readManifest(dir: string): ReleaseManifest | null {
+  return readManifestRecord(dir)?.manifest ?? null;
+}
+
+/** One bounded interpretation shared by CLI JSON/text and Console detail. Archive verification
+ * remains part of loadRelease at admission; this view does not claim a process is running it. */
+export function readArtifactSources(manifest: ReleaseManifest): readonly ArtifactSourceReading[] {
+  try {
+    return artifactReleaseContexts(manifest).map(({ app, manifest: producer, artifact, chain }) => ({
+      app, state: 'recorded' as const, releaseId: producer.id, producerApp: artifact.app,
+      project: producer.project, framework: producer.omni, via: chain,
+      ...(producer.builtWith?.target && { target: producer.builtWith.target }),
+      ...(artifact.packageSource && { packageDirectory: artifact.packageSource.directory }),
+    }));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'Release provenance could not be resolved';
+    return manifest.artifacts.map(({ app }) => ({ app, state: 'invalid' as const, reason }));
   }
 }
 
@@ -256,7 +293,8 @@ export function readReleaseDetail(id: string, root: string = releasesRoot()): Re
   if (!isReleaseId(id)) throw new Error(`'${id}' is not a release id`);
   const dir = path.join(root, id);
   if (!fs.existsSync(dir)) throw new Error(`No release '${id}' on this machine — ${dir} does not exist`);
-  const manifest = readManifest(dir);
+  const record = readManifestRecord(dir);
+  const manifest = record?.manifest ?? null;
   let logs: Array<{ name: string; bytes: number }> = [];
   try {
     logs = fs
@@ -266,7 +304,7 @@ export function readReleaseDetail(id: string, root: string = releasesRoot()): Re
   } catch {
     // A build that never reached its first step wrote no logs.
   }
-  return { ...summarise(id, dir, manifest), manifest, logs, root: dir, attestations: loadAttestations(id, root) };
+  return { ...summarise(id, dir, manifest), manifest, manifestSha256: record?.sha256 ?? null, artifactSources: manifest ? readArtifactSources(manifest) : [], logs, root: dir, attestations: loadAttestations(id, root) };
 }
 
 /**

@@ -34,6 +34,7 @@ import {
   projectOfId,
   pruneReleases,
   readReleaseDetail,
+  readArtifactSources,
   readReleaseManifest,
   releasesRoot,
   type ReleaseDetail,
@@ -386,6 +387,7 @@ export async function releaseShowCommand(id: string): Promise<void> {
     return;
   }
   const m = release.manifest;
+  const artifactSources = readArtifactSources(m);
   // Everything read BEFORE anything is emitted. `--json` used to emit the
   // manifest and return here, so what the text printed after it was in no
   // JSON: measured on sample-202609230810, the text said «6 artifact file(s)
@@ -399,7 +401,9 @@ export async function releaseShowCommand(id: string): Promise<void> {
   if (
     emitJson({
       ...m,
+      manifestSha256: release.manifestSha256,
       verifiedFiles: release.files,
+      artifactSources,
       attestations,
       deploymentEvidence: 'audit-history',
       deployedOn: runsIt ? runsIt.map((d) => ({ stack: d.stack, at: d.at, source: d.source })) : null,
@@ -409,6 +413,7 @@ export async function releaseShowCommand(id: string): Promise<void> {
   )
     return;
   log.info(`Release ${m.id}`);
+  log.info(`  manifest SHA-256: ${release.manifestSha256}`);
   log.info(`  built ${m.builtAt} by ${m.builtBy} with omnitron ${m.builtWith.omnitron}`);
   log.info(`  ${releaseTargetLabel(m.builtWith?.target)}`);
   log.info(`  ${frameworkSourceLabel(m)}`);
@@ -437,6 +442,12 @@ export async function releaseShowCommand(id: string): Promise<void> {
       `  ${a.app}@${a.version}  ${size(a.bytes)}  sha256 ${a.sha256.slice(0, 12) || '(none)'}  inputs ${inputs}` +
         (marks.length > 0 ? ` (${marks.join('; ')})` : ''),
     );
+    const source = artifactSources.find(item => item.app === a.app);
+    if (source?.state === 'recorded') {
+      if (source.via.length) log.info(`    imported from ${source.releaseId}/${source.producerApp}`);
+      log.info(`    source ${source.project.commit.slice(0, 12)} · SDK ${source.framework.commit.slice(0, 12)} · ${releaseTargetLabel(source.target)}`);
+      for (const hop of source.via) log.info(`    ${hop.release}/${hop.app} · manifest ${hop.manifestSha256}`);
+    } else if (source) log.warn(`    source unavailable: ${source.reason}`);
   }
   for (const f of m.artifactFailures ?? []) log.warn(`  ${f.app} did not build — ${f.error.split('\n')[0]}`);
   if (m.statics) log.info(`  statics for ${m.statics.stack}: ${m.statics.files} files, ${size(m.statics.bytes)} from ${m.statics.dir}`);

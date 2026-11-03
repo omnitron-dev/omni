@@ -816,7 +816,7 @@ export type {
   PruneResult,
 } from '../../release/store.js';
 export type { ReleaseManifest, GateOutcome, ReleaseArtifact, StackReleaseRequirements } from '../../release/manifest.js';
-export type { BuildRecord, BuildRequest } from './releases.js';
+export type { BuildRecord, BuildRequest, ArtifactSourceReading } from './releases.js';
 export type { StoredAttestation } from '../../release/attest.js';
 
 /** Whether this master can build a release, and where they are kept. */

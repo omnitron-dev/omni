@@ -1,5 +1,20 @@
 /** Release execution contracts without the build runner or service graph. */
-import type { GateOutcome } from '../../release/manifest.js';
+import type { GateOutcome, ReleaseArtifactReference, ReleaseSource } from '../../release/manifest.js';
+
+/** Recorded build provenance. Neither a launch receipt nor a continuous file-integrity check. */
+export type ArtifactSourceReading = { readonly app: string } & (
+  | {
+      readonly state: 'recorded';
+      readonly releaseId: string;
+      readonly producerApp: string;
+      readonly project: ReleaseSource;
+      readonly framework: ReleaseSource;
+      readonly via: readonly ReleaseArtifactReference[];
+      readonly target?: import('../../release/target-runtime.js').TargetRuntime;
+      readonly packageDirectory?: string;
+    }
+  | { readonly state: 'invalid'; readonly reason: string }
+);
 
 export interface BuildPhase {
   readonly phase: string;

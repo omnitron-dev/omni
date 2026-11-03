@@ -28,6 +28,7 @@ import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
+import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Tooltip from '@mui/material/Tooltip';
@@ -43,6 +44,7 @@ import { DeployReleaseDialog } from 'src/components/deploy-release-dialog';
 import { ReleaseAttestations } from 'src/components/release-attestations';
 import { ReleaseBuildPanel } from 'src/components/release-build-panel';
 import { ReleaseDeploymentState } from 'src/components/release-deployment-state';
+import { ReleaseArtifactSource } from 'src/components/release-artifact-source';
 import { frameworkSourceLabel, readSourcePublication, releaseTargetLabel } from '@omnitron-dev/omnitron/release-reading';
 import { GATE_TONE, GateStrip, bytes, elapsed, loadWords, ranLoaded, when } from 'src/components/release-bits';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
@@ -191,6 +193,12 @@ function ReleaseDetails({ id }: { id: string }) {
                 Built with
               </Typography>
               <Stack spacing={0.75}>
+                {release.manifestSha256 && (
+                  <Box component="details" sx={{ overflowWrap: 'anywhere' }}>
+                    <Typography component="summary" variant="caption" sx={{ cursor: 'pointer', color: 'text.secondary' }}>Manifest SHA-256</Typography>
+                    <Typography component="code" variant="caption" sx={{ userSelect: 'all' }}>{release.manifestSha256}</Typography>
+                  </Box>
+                )}
                 <Typography variant="body2">
                   {when(release.builtAt)} · {release.builtBy ?? '—'}
                 </Typography>
@@ -237,7 +245,7 @@ function ReleaseDetails({ id }: { id: string }) {
             <GateStrip gates={release.gateList} />
           </Stack>
           {release.gateList.length > 0 && (
-            <Table size="small">
+            <TableContainer><Table size="small">
               <TableHead>
                 <TableRow>
                   <TableCell>Gate</TableCell>
@@ -275,7 +283,7 @@ function ReleaseDetails({ id }: { id: string }) {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+            </Table></TableContainer>
           )}
         </CardContent>
       </Card>
@@ -299,11 +307,11 @@ function ReleaseDetails({ id }: { id: string }) {
               None.
             </Typography>
           ) : (
-            <Table size="small">
+            <TableContainer><Table size="small" sx={{ minWidth: 540 }}>
               <TableHead>
                 <TableRow>
                   <TableCell>App</TableCell>
-                  <TableCell>Version</TableCell>
+                  <TableCell>Source</TableCell>
                   <TableCell align="right">Size</TableCell>
                   <TableCell>sha256</TableCell>
                 </TableRow>
@@ -311,8 +319,13 @@ function ReleaseDetails({ id }: { id: string }) {
               <TableBody>
                 {(manifest?.artifacts ?? []).map((a) => (
                   <TableRow key={`${a.app}-${a.version}`}>
-                    <TableCell sx={{ fontWeight: 600 }}>{a.app}</TableCell>
-                    <TableCell sx={{ fontFamily: 'monospace', fontSize: 13 }}>{a.version}</TableCell>
+                    <TableCell sx={{ verticalAlign: 'top', maxWidth: 200, overflowWrap: 'anywhere' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{a.app}</Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>{a.version}</Typography>
+                    </TableCell>
+                    <TableCell sx={{ verticalAlign: 'top', maxWidth: 360 }}>
+                      <ReleaseArtifactSource source={release.artifactSources?.find(source => source.app === a.app)} />
+                    </TableCell>
                     <TableCell align="right" sx={{ fontFamily: 'monospace', fontSize: 13 }}>
                       {bytes(a.bytes)}
                     </TableCell>
@@ -326,7 +339,7 @@ function ReleaseDetails({ id }: { id: string }) {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+            </Table></TableContainer>
           )}
           {(manifest?.artifactFailures ?? []).map((f) => (
             <Alert key={f.app} severity="error" variant="outlined" sx={{ mt: 1 }}>

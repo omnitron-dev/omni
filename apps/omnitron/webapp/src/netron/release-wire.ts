@@ -37,6 +37,8 @@ export type ReleaseSummaryView = ReleaseSummary;
 
 export interface ReleaseDetailView extends ReleaseSummaryView {
   readonly manifest: ReleaseDetail['manifest'];
+  readonly manifestSha256: string | null;
+  readonly artifactSources: NonNullable<ReleaseDetail['artifactSources']> | null;
   readonly logs: ReleaseDetail['logs'];
   readonly root: string;
   readonly attestations: readonly StoredAttestation[];
@@ -94,6 +96,8 @@ export const releaseApi = {
     return {
       ...summary(d),
       manifest: d.manifest ?? null,
+      manifestSha256: d.manifestSha256 ?? null,
+      artifactSources: d.artifactSources ?? null,
       logs: d.logs ?? [],
       root: d.root ?? '',
       attestations: d.attestations ?? [],

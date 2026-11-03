@@ -31,6 +31,7 @@ import { reproduceVendoredFramework, requireFrameworkCommit } from './vendored-f
 import { OWN_BUILD } from '../shared/build-stamp.js';
 import { importReleaseArtifacts } from './import-artifacts.js';
 import { MAX_RELEASE_MANIFEST_BYTES, validateReleaseOrigins } from './origin.js';
+import { assertRepositoryIdentity } from './repository-identity.js';
 import type { GateOutcome, ReleaseManifest, ReleaseSource } from './manifest.js';
 
 const exec = promisify(execFile);
@@ -196,8 +197,9 @@ async function must(what: string, run: Promise<StepResult>, logFile: string): Pr
   return r;
 }
 
-async function sourceOf(checkout: string, commit: string): Promise<ReleaseSource> {
+export async function readReleaseSource(checkout: string, commit: string): Promise<ReleaseSource> {
   const repo = await git(['remote', 'get-url', 'origin'], checkout).catch(() => '(no origin)');
+  assertRepositoryIdentity(repo);
   let onRemote: boolean | null;
   try {
     const remotes = await git(['branch', '-r', '--contains', commit], checkout);
@@ -524,6 +526,7 @@ async function buildRelease(
   env['SOURCE_DATE_EPOCH'] = await git(['show', '-s', '--format=%ct', projectSha], project.path);
   const projectPath = fs.realpathSync(project.path);
   const repositoryPath = fs.realpathSync(await git(['rev-parse', '--show-toplevel'], projectPath));
+  const projectSource = await readReleaseSource(repositoryPath, projectSha);
   const projectPrefix = path.relative(repositoryPath, projectPath).split(path.sep).join('/');
   const workspace = await releaseWorkspaceDirectory(repositoryPath, projectSha, projectPrefix);
   const workspacePath = path.join(repositoryPath, workspace);
@@ -537,7 +540,7 @@ async function buildRelease(
     if (!fs.existsSync(path.join(omniPath, '.git'))) throw Error('No linked omni checkout at ' + omniPath);
     const sha = await git(['rev-parse', '--verify', `${options.omniCommit ?? 'HEAD'}^{commit}`], omniPath);
     checkout = { path: omniPath, sha, layout: layout.layout };
-    omniSource = await sourceOf(omniPath, sha);
+    omniSource = await readReleaseSource(omniPath, sha);
   } else if (layout.kind === 'vendored') {
     // Reserve the release ID. The verified source replaces this before a manifest is written.
     omniSource = { repo: FRAMEWORK_REPOSITORY, commit: requireFrameworkCommit(options.omniCommit) };
@@ -799,7 +802,7 @@ async function buildRelease(
   const { migrations, packages } = await releaseMigrationSources(plan.projectDir, projectSha, packageDirectories);
   const manifest = assembleManifest({
     id,
-    project: { ...await sourceOf(repositoryPath, projectSha), ...(projectPrefix ? { directory: projectPrefix } : {}),
+    project: { ...projectSource, ...(projectPrefix ? { directory: projectPrefix } : {}),
       ...(workspace !== projectPrefix && { workspace }) },
     omni: omniSource,
     artifacts: packed.built.map((artifact, i) => ({ ...artifact, packageSource: packages.get(packageDirectories[i]!)! })),

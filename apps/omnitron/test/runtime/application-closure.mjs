@@ -73,7 +73,8 @@ try {
   const loaded = (a) => {
     const file = { app: a.app, version: a.version, sha256: a.tarballSha256, bytes: a.size, path: a.path };
     return { root: directory, id: 'test-release', manifestSha256: sha(a.app), files: [file],
-      manifest: { builtWith: { target: localTarget }, artifacts: [{ ...file, launch: a.launch }] } };
+      manifest: { project: { repo: 'fixture-project', commit: 'a'.repeat(40) }, omni: { repo: 'fixture-framework', commit: 'b'.repeat(40) },
+        builtWith: { target: localTarget }, artifacts: [{ ...file, launch: a.launch }] } };
   };
   const first = loaded(classic), opts = { ownerPid: process.pid };
   await assert.rejects(inspect(first, 'dev', [classicEntry], opts), LocalReleaseNotPreparedError);

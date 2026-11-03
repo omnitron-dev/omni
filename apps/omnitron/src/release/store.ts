@@ -22,7 +22,8 @@ import { loadAttestations, type StoredAttestation } from './attest.js';
 import { readReleaseId } from '../shared/release-reading.js';
 import { releasesRoot } from './load.js';
 import type { GateOutcome, ReleaseManifest } from './manifest.js';
-import { artifactReleaseContexts, isReadableReleaseManifest, MAX_RELEASE_MANIFEST_BYTES } from './origin.js';
+import { artifactReleaseContexts, isReadableReleaseManifest, MAX_RELEASE_MANIFEST_BYTES, validateReleaseOrigins } from './origin.js';
+import { assertReleaseRepositoryIdentities, RepositoryIdentityError } from './repository-identity.js';
 import type { ArtifactSourceReading } from '../shared/dto/releases.js';
 
 export { releasesRoot };
@@ -32,8 +33,10 @@ export interface ReleaseSummary {
   readonly id: string;
   /** The project it was built for, read back out of the id. */
   readonly project: string;
-  /** False when the directory holds no manifest: a build that did not finish. */
+  /** True only for readable recorded metadata; manifestError distinguishes refusal from absence. */
   readonly complete: boolean;
+  /** Present when recorded metadata was refused, rather than absent from an unfinished build. */
+  readonly manifestError?: string;
   readonly builtAt: string | null;
   readonly builtBy: string | null;
   /** The omnitron that packed it — version and the omni commit it ran from. */
@@ -167,13 +170,14 @@ export function dirBytes(dir: string): number {
   return bytes;
 }
 
-function summarise(id: string, dir: string, manifest: ReleaseManifest | null): ReleaseSummary {
+function summarise(id: string, dir: string, manifest: ReleaseManifest | null, manifestError?: string): ReleaseSummary {
   const gates = manifest?.gates ?? [];
   const weight = releaseBytes(dir);
   return {
     id,
     project: projectOfId(id),
     complete: manifest !== null,
+    ...(manifestError && { manifestError }),
     builtAt: manifest?.builtAt ?? null,
     builtBy: manifest?.builtBy ?? null,
     builtWith: manifest?.builtWith?.omnitron ?? null,
@@ -217,29 +221,39 @@ function summarise(id: string, dir: string, manifest: ReleaseManifest | null): R
   };
 }
 
-function readManifestRecord(dir: string): { manifest: ReleaseManifest; sha256: string } | null {
+type ManifestReading = { manifest: ReleaseManifest | null; sha256: string | null; manifestError?: string };
+const INVALID_MANIFEST = 'Release metadata is invalid or unsafe; admission is refused';
+
+function readManifestRecord(dir: string): ManifestReading {
   const file = path.join(dir, 'manifest.json');
   let descriptor: number | undefined;
   try {
-    if (fs.realpathSync(file) !== path.join(fs.realpathSync(path.dirname(dir)), path.basename(dir), 'manifest.json')) return null;
+    if (fs.realpathSync(file) !== path.join(fs.realpathSync(path.dirname(dir)), path.basename(dir), 'manifest.json')) throw Error(INVALID_MANIFEST);
     descriptor = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
     const stat = fs.fstatSync(descriptor);
-    if (!stat.isFile() || stat.size > MAX_RELEASE_MANIFEST_BYTES) return null;
+    if (!stat.isFile() || stat.size > MAX_RELEASE_MANIFEST_BYTES) throw Error(INVALID_MANIFEST);
     const raw = fs.readFileSync(descriptor);
-    if (raw.length > MAX_RELEASE_MANIFEST_BYTES) return null;
+    if (raw.length > MAX_RELEASE_MANIFEST_BYTES) throw Error(INVALID_MANIFEST);
     const manifest: unknown = JSON.parse(raw.toString('utf8'));
-    return isReadableReleaseManifest(manifest) && manifest.id === path.basename(dir)
-      ? { manifest, sha256: createHash('sha256').update(raw).digest('hex') } : null;
-  } catch {
-    // No manifest, or one nothing can parse: an unfinished build, listed as such.
-    return null;
+    assertReleaseRepositoryIdentities(manifest);
+    if (!isReadableReleaseManifest(manifest) || manifest.id !== path.basename(dir)) throw Error(INVALID_MANIFEST);
+    // Detail returns exact embedded JSON too. Check every producer before serializing any
+    // record, even one unused by the selected stack; per-artifact error handling is too late.
+    validateReleaseOrigins(manifest);
+    return { manifest, sha256: createHash('sha256').update(raw).digest('hex') };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      try { fs.lstatSync(file); } // A dangling manifest link is unsafe metadata, not an absent build result.
+      catch (missing) { if ((missing as NodeJS.ErrnoException).code === 'ENOENT') return { manifest: null, sha256: null }; }
+    }
+    return { manifest: null, sha256: null, manifestError: error instanceof RepositoryIdentityError ? error.message : INVALID_MANIFEST };
   } finally {
     if (descriptor !== undefined) fs.closeSync(descriptor);
   }
 }
 
 function readManifest(dir: string): ReleaseManifest | null {
-  return readManifestRecord(dir)?.manifest ?? null;
+  return readManifestRecord(dir).manifest;
 }
 
 /** One bounded interpretation shared by CLI JSON/text and Console detail. Archive verification
@@ -268,7 +282,10 @@ export function listReleases(root: string = releasesRoot()): ReleaseSummary[] {
   }
   return entries
     .filter((e) => e.isDirectory() && isReleaseId(e.name))
-    .map((e) => summarise(e.name, path.join(root, e.name), readManifest(path.join(root, e.name))))
+    .map((e) => {
+      const dir = path.join(root, e.name), record = readManifestRecord(dir);
+      return summarise(e.name, dir, record.manifest, record.manifestError);
+    })
     .sort((a, b) => (a.builtAt ?? '') < (b.builtAt ?? '') ? 1 : (a.builtAt ?? '') > (b.builtAt ?? '') ? -1 : a.id < b.id ? 1 : -1);
 }
 
@@ -278,8 +295,7 @@ function isReleaseId(id: string): boolean {
 }
 
 /**
- * One release's manifest, unchecked — or null when there is none: not built
- * here, pruned, or a build that did not finish.
+ * One release's manifest, structurally checked — or null when absent or unsafe.
  *
  * For comparing what a release says with what another one says, which needs
  * neither the sizes of the directory nor a sha256 of its tarballs.
@@ -294,7 +310,7 @@ export function readReleaseDetail(id: string, root: string = releasesRoot()): Re
   const dir = path.join(root, id);
   if (!fs.existsSync(dir)) throw new Error(`No release '${id}' on this machine — ${dir} does not exist`);
   const record = readManifestRecord(dir);
-  const manifest = record?.manifest ?? null;
+  const manifest = record.manifest;
   let logs: Array<{ name: string; bytes: number }> = [];
   try {
     logs = fs
@@ -304,7 +320,7 @@ export function readReleaseDetail(id: string, root: string = releasesRoot()): Re
   } catch {
     // A build that never reached its first step wrote no logs.
   }
-  return { ...summarise(id, dir, manifest), manifest, manifestSha256: record?.sha256 ?? null, artifactSources: manifest ? readArtifactSources(manifest) : [], logs, root: dir, attestations: loadAttestations(id, root) };
+  return { ...summarise(id, dir, manifest, record.manifestError), manifest, manifestSha256: record.sha256, artifactSources: manifest ? readArtifactSources(manifest) : [], logs, root: dir, attestations: loadAttestations(id, root) };
 }
 
 /**

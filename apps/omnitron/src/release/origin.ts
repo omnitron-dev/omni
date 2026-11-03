@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { ReleaseArtifact, ReleaseArtifactReference, ReleaseManifest } from './manifest.js';
+import { assertReleaseRepositoryIdentities, isSafeRepositoryIdentity } from './repository-identity.js';
 
 const SHA = /^[a-f0-9]{64}$/;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -20,7 +21,7 @@ const outcomes = ['passed', 'failed', 'not-run', 'timed-out', 'killed'];
  * readable so admission can explain their refusal; readability never grants admission. */
 export function isReadableReleaseManifest(value: unknown): value is ReleaseManifest {
   if (!object(value) || !identifier(value['id']) || !object(value['project']) || !object(value['omni']) ||
-      [value['project'], value['omni']].some(source => typeof source['repo'] !== 'string' || typeof source['commit'] !== 'string' ||
+      [value['project'], value['omni']].some(source => !isSafeRepositoryIdentity(source['repo']) || typeof source['commit'] !== 'string' ||
         (source['onRemote'] !== undefined && source['onRemote'] !== null && typeof source['onRemote'] !== 'boolean')) ||
       !Array.isArray(value['artifacts']) || value['artifacts'].length > 256 || !Array.isArray(value['gates']) || value['gates'].length > 256 ||
       !object(value['builtWith']) || typeof value['builtWith']['omnitron'] !== 'string' || !Array.isArray(value['builtWith']['packages']) ||
@@ -72,6 +73,7 @@ function evidence(root: ReleaseManifest): Map<ReleaseManifest, Map<string, Relea
   const parsed = new Map<string, { raw: string; manifest: ReleaseManifest }>();
   let total = 0;
   const visit = (manifest: ReleaseManifest, depth: number, ancestors: ReadonlySet<string>): void => {
+    assertReleaseRepositoryIdentities(manifest);
     if (depth > MAX_DEPTH) throw Error('Imported release chain exceeds eight levels');
     if (result.has(manifest)) return;
     const imports = manifest.imports ?? [];
@@ -90,7 +92,10 @@ function evidence(root: ReleaseManifest): Map<ReleaseManifest, Map<string, Relea
         if (total > MAX_BYTES || parsed.size >= MAX_IMPORTS) throw Error('Imported release evidence exceeds its size limit');
         if (createHash('sha256').update(record.manifestJson).digest('hex') !== record.sha256)
           throw Error('Imported release manifest does not match its pinned digest');
-        const value: unknown = JSON.parse(record.manifestJson);
+        let value: unknown;
+        try { value = JSON.parse(record.manifestJson); }
+        catch { throw Error('Imported release manifest is not valid JSON'); }
+        assertReleaseRepositoryIdentities(value);
         if (!isReadableReleaseManifest(value) || !commit(value.project.commit) || !value.project.repo ||
             !commit(value.omni.commit) || !value.omni.repo)
           throw Error('Imported release manifest lacks a complete producer identity');

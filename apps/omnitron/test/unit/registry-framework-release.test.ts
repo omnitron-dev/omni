@@ -24,7 +24,7 @@ afterAll(async () => { await fs.rm(compiled.directory, { recursive: true, force:
 beforeEach(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), 'registry-release-'));
   const execute = ExecutionEngine.prototype.execute;
-  vi.spyOn(ExecutionEngine.prototype, 'execute').mockImplementation(function(this: ExecutionEngine, command) {
+  vi.spyOn(ExecutionEngine.prototype, 'execute').mockImplementation(function useCompiledWorker(this: ExecutionEngine, command) {
     // Vitest transforms parent TS in memory. Only its subprocess entry is the
     // exact same source compiled to JS in this private fixture.
     return execute.call(this, command.command === process.execPath && command.args?.[0]?.endsWith('/registry-download.js')

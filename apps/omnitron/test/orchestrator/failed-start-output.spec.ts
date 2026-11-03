@@ -13,7 +13,7 @@
  * before its logger exists has already said everything it is ever going to
  * say, on these two streams, and then it is gone.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
 

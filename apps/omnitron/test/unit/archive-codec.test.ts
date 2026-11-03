@@ -113,7 +113,7 @@ describe('probed native archive codecs through Xec', () => {
   it('retains archive output when an encoder works but its decoder fails', async () => {
     vi.resetModules();
     const { probeArchiveFormats: probeFresh } = await import('../../src/files/archive-codec.js');
-    const execute = vi.spyOn(ExecutionEngine.prototype, 'execute').mockImplementation(function (command) {
+    const execute = vi.spyOn(ExecutionEngine.prototype, 'execute').mockImplementation(function encodeFixture(command) {
       if (command.command !== 'zip') return Promise.reject(new Error('Codec unavailable in this test'));
       (command.stdout as Writable).end(Buffer.from('encoded test fixture'));
       return Promise.resolve({}) as ReturnType<ExecutionEngine['execute']>;

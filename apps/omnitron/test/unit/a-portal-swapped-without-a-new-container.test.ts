@@ -80,7 +80,7 @@ function swapCommand(r: string, link: string, digest: string): string {
       return '';
     },
   });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   (deployer as any).pointStaticLinkAt({ host: 'node' }, r, link, digest);
   return sent;
 }

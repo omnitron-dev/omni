@@ -20,7 +20,6 @@ import {
   findRetryLoops,
   findDuplicatedLogs,
   describeFinding,
-  DOMINANCE_SHARE,
   DOMINANCE_MIN_COUNT,
   RETRY_LOOP_THRESHOLD,
 } from '../../src/commands/log-health.js';

@@ -55,7 +55,7 @@ const { RuntimeInstallation, selectedBackend } = await import(url('daemon/runtim
 const { PidManager } = await import(url('daemon/pid-manager.js'));
 const stamp = JSON.parse(await fs.readFile(path.join(dist, 'BUILD.json'), 'utf8'));
 const sourceHash = JSON.parse(await fs.readFile(path.join(runtimeRoot, 'RUNTIME.json'), 'utf8')).sha256;
-const { runtimeArtifactDigest } = await import(url('shared/runtime-artifact.js')); 
+const { runtimeArtifactDigest } = await import(url('shared/runtime-artifact.js'));
 const { httpPort: httpBase, release } = await reserveDaemonPorts();
 const boot = path.join(directory, 'boot.mjs');
 const script = path.join(directory, 'counter.mjs');
@@ -197,7 +197,7 @@ try {
   // second controller. The durable activation journal fences cold starts;
   // explicit recovery proves the live result and completes the selector.
   const originalSelect = RuntimeInstallation.prototype.select;
-  RuntimeInstallation.prototype.select = async function () { throw new Error('fixture: selector publication failed'); };
+  RuntimeInstallation.prototype.select = async function failSelectorPublication() { throw new Error('fixture: selector publication failed'); };
   try {
     await assert.rejects(() => replaceBackend(dist, { socket }), /selector publication failed/);
   } finally { RuntimeInstallation.prototype.select = originalSelect; }

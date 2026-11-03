@@ -234,7 +234,7 @@ describe('local stack migration admission', () => {
     svc.stackEnvFor = async () => ({});
     svc.loadAppDefinitions = async () => new Map([['main', { omnitronConfig: { database: true } }]]);
     vi.spyOn(InfrastructureService.prototype, 'provision').mockResolvedValue(undefined);
-    vi.spyOn(InfrastructureService.prototype, 'getState').mockImplementation(function (this: InfrastructureService) {
+    vi.spyOn(InfrastructureService.prototype, 'getState').mockImplementation(function healthyServices(this: InfrastructureService) {
       return { services: Object.fromEntries(this.getDesiredServices().map(service => [service.name, {
         name: service.name, status: 'running', health: 'healthy',
       }])) } as never;

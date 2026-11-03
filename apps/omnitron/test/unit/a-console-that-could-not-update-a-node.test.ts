@@ -22,7 +22,7 @@
  * build itself lives in `bundle-build-worker.ts`. This court moved with it.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -63,8 +63,8 @@ const service = (
   source: object = node(),
   deployer: Record<string, unknown> = {},
   audit?: { record: (e: unknown) => Promise<void> },
-) =>
-  new NodeUpgradeService(
+) => {
+  const svc = new NodeUpgradeService(
     logger,
     source as never,
     (async () => ({}) as never) as never,
@@ -72,6 +72,11 @@ const service = (
     audit as never,
     neverBuilds as never,
   );
+  // Admission tests own their source fixture. A clean exported source tree
+  // has no .git directory; its location must not change the decision under test.
+  (svc as unknown as { workspaceRoot(): string | null }).workspaceRoot = () => path.resolve(here, '../../../..');
+  return svc;
+};
 
 describe('what it refuses, and why', () => {
   it('refuses a node it does not have', async () => {

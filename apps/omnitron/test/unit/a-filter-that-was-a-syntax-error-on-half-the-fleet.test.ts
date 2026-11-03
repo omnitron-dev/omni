@@ -23,7 +23,7 @@
 
 import { describe, it, expect } from 'vitest';
 import Database from 'better-sqlite3';
-import { Kysely, SqliteDialect, PostgresDialect, DummyDriver, PostgresAdapter, PostgresIntrospector, PostgresQueryCompiler } from 'kysely';
+import { Kysely, SqliteDialect, DummyDriver, PostgresAdapter, PostgresIntrospector, PostgresQueryCompiler } from 'kysely';
 
 import { LogCollectorService } from '../../src/services/log-collector.service.js';
 import { dialectOf, jsonContains } from '../../src/database/dialect.js';

@@ -10,7 +10,7 @@
  * the name-resolution logic. This keeps the test fast and free of system
  * dependencies.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 

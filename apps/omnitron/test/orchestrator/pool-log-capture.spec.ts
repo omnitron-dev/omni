@@ -8,7 +8,7 @@
  * holding a child's output until someone asks for it, it was also a megabyte
  * per worker retained for a reader that never arrived.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
 

@@ -14,8 +14,6 @@ import { describe, it, expect } from 'vitest';
 import {
   planRetention,
   batchesPerPass,
-  RETENTION_BATCH,
-  RETENTION_MAX_PER_PASS,
 } from '../../src/services/log-retention.js';
 
 const NOW = new Date('2026-09-05T12:00:00.000Z');

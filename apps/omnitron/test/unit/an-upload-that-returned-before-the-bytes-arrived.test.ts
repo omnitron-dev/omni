@@ -1,9 +1,7 @@
 /** A canonical remote path is replaced only after complete bytes and SHA256 agree. */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  chmodSync,
   copyFileSync,
-  existsSync,
   mkdtempSync,
   readFileSync,
   readdirSync,

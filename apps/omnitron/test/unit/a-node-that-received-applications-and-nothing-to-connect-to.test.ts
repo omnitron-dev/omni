@@ -28,7 +28,7 @@ import { InfrastructureRpcService } from '../../src/services/infrastructure.rpc-
 function fakeInfra(services: Record<string, unknown>, desired: Array<{ name: string; image?: string }>) {
   return {
     provisions: 0,
-    provision: vi.fn(async function (this: any) {
+    provision: vi.fn(async function recordProvision(this: any) {
       (this as any).provisions += 1;
       return { services, ready: true };
     }),

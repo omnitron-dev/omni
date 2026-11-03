@@ -40,7 +40,7 @@ const noopLogger = {
   warn: () => {},
   error: () => {},
   fatal: () => {},
-  child: function () {
+  child () {
     return this;
   },
 } as unknown as Parameters<typeof MetricsServer['prototype']['constructor']>[0]['logger'];

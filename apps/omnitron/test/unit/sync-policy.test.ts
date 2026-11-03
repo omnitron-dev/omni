@@ -13,7 +13,6 @@ import {
   deliveredIds,
   sweepMadeProgress,
   planEviction,
-  SYNCED_RETENTION_MS,
   type IngestOutcome,
 } from '../../src/services/sync-policy.js';
 

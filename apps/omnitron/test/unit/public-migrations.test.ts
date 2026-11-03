@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Kysely, SqliteDialect, sql } from 'kysely';
+import { Kysely, SqliteDialect } from 'kysely';
 import Database from 'better-sqlite3';
 import { createMigrationRunner, createMigrationHistory, defineSqlMigration, defineMigrationConfig, executeMigrationOperation } from '../../src/migration/index.js';
 

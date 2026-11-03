@@ -11,26 +11,6 @@ function createMockOrchestrator(logsData: Array<{ app: string; lines: string[] }
   } as unknown as OrchestratorService;
 }
 
-/**
- * Reads a log file once the async write stream has flushed. appendToFile writes
- * via createWriteStream (flushed by dispose()), so a fixed sleep is flaky under
- * load — poll until the expected content lands instead.
- */
-async function readWhenReady(file: string, expected: string, timeoutMs = 2000): Promise<string> {
-  const start = Date.now();
-  let last = '';
-  while (Date.now() - start < timeoutMs) {
-    try {
-      last = fs.readFileSync(file, 'utf-8');
-      if (last === expected) return last;
-    } catch {
-      /* file not created yet */
-    }
-    await new Promise((r) => setTimeout(r, 15));
-  }
-  return last;
-}
-
 describe('LogManager', () => {
   let tmpDir: string;
   let config: LogManagerConfig;

@@ -153,7 +153,7 @@ describe('and the deployment refuses to unpack what did not arrive', () => {
         if (command.includes('sha256sum')) return { exitCode: 0, stdout: probeAnswer, stderr: '' };
         return { exitCode: 0, stdout: '', stderr: '' };
       },
-      uploadFile: async function (this: { uploaded: string[] }, _t: unknown, local: string) {
+      async uploadFile (this: { uploaded: string[] }, _t: unknown, local: string) {
         this.uploaded.push(local);
       },
     };

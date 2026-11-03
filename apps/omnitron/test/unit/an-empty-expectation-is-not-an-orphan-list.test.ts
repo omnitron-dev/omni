@@ -25,7 +25,7 @@
  * parent as if it were a dead one, `daemon kill` treating a live pid as its
  * own, and this. In each, a destructive path read absence as permission.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 const raw = readFileSync(new URL('../../src/daemon/daemon.ts', import.meta.url), 'utf8');

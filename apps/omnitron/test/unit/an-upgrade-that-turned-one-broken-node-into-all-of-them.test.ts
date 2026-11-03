@@ -13,7 +13,7 @@
  * that failed, and the ones never reached, each by name.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 import {
   planUpgrade,

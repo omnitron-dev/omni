@@ -77,7 +77,7 @@ describe('a project added again at its own path is read again', () => {
         list: () => [],
       },
       configRegistry: new Map([['sample', { config: { stale: true } }]]),
-      loadProjectConfig: vi.fn(async function (this: any) {
+      loadProjectConfig: vi.fn(async function loadFreshConfig(this: any) {
         // Fresh only if the cache was dropped first.
         return this.configRegistry.has('sample') ? { stale: true } : { stale: false };
       }),

@@ -81,7 +81,7 @@ describe('a slave binds where it can be reached', () => {
 // The settings have to reach the daemon at all
 // =============================================================================
 
-const { readSavedDaemonConfig, savedDaemonOverrides } = await import('../../src/config/saved.js');
+const { savedDaemonOverrides } = await import('../../src/config/saved.js');
 
 describe('the file the daemon actually boots from', () => {
   it('merges the transport settings into the running config', async () => {
@@ -102,7 +102,7 @@ describe('the file the daemon actually boots from', () => {
     // A type-level pin: `SavedDaemonConfig` is the shape of
     // `~/.omnitron/config.json`, and `daemon-entry` merges from it field by
     // field. A `host` that cannot be written here cannot reach a daemon.
-    const saved: NonNullable<ReturnType<typeof readSavedDaemonConfig>> = {
+    const saved: NonNullable<ReturnType<typeof import('../../src/config/saved.js').readSavedDaemonConfig>> = {
       role: 'slave',
       initialized: true,
       initializedAt: new Date().toISOString(),

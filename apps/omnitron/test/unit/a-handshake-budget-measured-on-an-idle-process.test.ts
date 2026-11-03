@@ -17,7 +17,7 @@
  * one of the three. These pin it as one thing.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { mkdtempSync, writeFileSync, statSync, rmSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';

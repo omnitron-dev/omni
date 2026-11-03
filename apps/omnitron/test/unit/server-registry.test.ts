@@ -6,16 +6,16 @@ import os from 'node:os';
 // We need to mock OMNITRON_HOME before importing ServerRegistry
 let tmpDir: string;
 
-vi.mock('../../src/config/defaults.js', async () => {
+vi.mock('../../src/config/defaults.js', async () =>
   // tmpDir must be set before this runs
-  return {
+   ({
     OMNITRON_HOME: tmpDir || '/tmp/omnitron-test-fallback',
     CLI_VERSION: '0.1.0',
     DAEMON_SERVICE_ID: 'OmnitronDaemon@1.0.0',
     DEFAULT_PORTS: {},
     DEFAULT_ECOSYSTEM: {},
-  };
-});
+  })
+);
 
 describe('ServerRegistry', () => {
   beforeEach(async () => {

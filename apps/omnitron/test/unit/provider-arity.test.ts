@@ -39,7 +39,7 @@ import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const REPO = path.resolve(ROOT, '../..');
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- TypeScript 6's API, typed by nothing TS 7 ships
+
 const ts: any = createRequire(path.join(REPO, 'tools/lint/package.json'))('typescript');
 
 interface FactoryProvider {

@@ -18,7 +18,7 @@
  * indistinguishable from a tidy machine. 990 clean sweeps, recorded.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 import { ProcessJanitor } from '../../src/orchestrator/process-janitor.js';
 

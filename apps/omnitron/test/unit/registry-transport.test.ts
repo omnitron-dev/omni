@@ -186,7 +186,7 @@ describe('native pnpm registry configuration and bounded transport', () => {
     let workerPid: number | undefined;
     let stdoutClosed = false, stderrClosed = false;
     const execute = ExecutionEngine.prototype.execute;
-    const spawnSpy = vi.spyOn(ExecutionEngine.prototype, 'execute').mockImplementation(function(this: ExecutionEngine, command) {
+    const spawnSpy = vi.spyOn(ExecutionEngine.prototype, 'execute').mockImplementation(function observeWorker(this: ExecutionEngine, command) {
       return execute.call(this, { ...command, onSpawn(handle) {
         workerPid = handle.pid;
         handle.stdout?.once('close', () => { stdoutClosed = true; });
@@ -257,7 +257,7 @@ describe('native pnpm registry configuration and bounded transport', () => {
 
   it('preserves an early archive refusal when the cancelled executor rejects instead of returning an exit status', async () => {
     const execute = ExecutionEngine.prototype.execute;
-    const spy = vi.spyOn(ExecutionEngine.prototype, 'execute').mockImplementation(async function(this: ExecutionEngine, command) {
+    const spy = vi.spyOn(ExecutionEngine.prototype, 'execute').mockImplementation(async function rejectCancellation(this: ExecutionEngine, command) {
       const result = await execute.call(this, command);
       if (command.signal?.aborted) throw Error('Executor cancelled');
       return result;

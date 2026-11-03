@@ -40,7 +40,7 @@ function createMockSupervisor(overrides: Partial<ProcessSupervisor> = {}): Proce
     }),
     getChildProxy: vi.fn().mockReturnValue(null),
     running: true,
-    on: vi.fn().mockImplementation(function (this: any, event: string, handler: (...args: any[]) => void) {
+    on: vi.fn().mockImplementation(function registerListener(this: any, event: string, handler: (...args: any[]) => void) {
       if (!listeners.has(event)) listeners.set(event, []);
       listeners.get(event)!.push(handler);
       return this;
@@ -244,7 +244,6 @@ describe('OrchestratorService', () => {
   describe('startApp — classic mode', () => {
     it('launches classic mode for script entries', async () => {
       const entry: IEcosystemAppEntry = { name: 'legacy', script: './apps/legacy/main.ts' };
-      const config = makeConfig({ apps: [entry] });
 
       // Classic launcher will try to fork, which we can't do in test
       // Just verify the mode detection

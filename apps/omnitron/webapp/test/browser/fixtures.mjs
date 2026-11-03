@@ -6,9 +6,11 @@ import { build, preview } from 'vite';
 
 export { expect };
 export const test = base.extend({
-  channel: [({ launchOptions }, use) => use(process.env.PLAYWRIGHT_CHANNEL ?? launchOptions.channel), { scope: 'worker', option: true }],
+  channel: [({ launchOptions }, provide) => provide(process.env.PLAYWRIGHT_CHANNEL ?? launchOptions.channel), { scope: 'worker', option: true }],
   reducedMotion: ['reduce', { option: true }],
-  url: [async ({}, use) => {
+  // Playwright requires an object pattern even when this worker fixture has no dependencies.
+  // eslint-disable-next-line no-empty-pattern
+  url: [async ({}, provide) => {
     const root = import.meta.dirname;
     const output = await mkdtemp(path.join(os.tmpdir(), 'omnitron-console-browser-'));
     const config = {
@@ -19,7 +21,7 @@ export const test = base.extend({
     try {
       await build(config);
       server = await preview({ ...config, preview: { host: '127.0.0.1', port: 0 } });
-      await use('http://127.0.0.1:' + server.httpServer.address().port);
+      await provide('http://127.0.0.1:' + server.httpServer.address().port);
     } finally {
       await server?.close();
       await rm(output, { recursive: true, force: true });

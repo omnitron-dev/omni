@@ -37,7 +37,6 @@ vi.mock('../../src/daemon/daemon-client.js', () => ({ createDaemonClient }));
 
 const { auditListCommand } = await import('../../src/commands/audit.js');
 
-// eslint-disable-next-line no-control-regex
 const ANSI = /\u001b\[[0-9;]*m/g;
 
 /** Run the command; what it wrote, and the exit code it set. */

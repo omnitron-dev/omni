@@ -219,13 +219,17 @@ module.exports = [
     files: [
       'packages/*/test/**/*.{js,mjs,cjs,ts,jsx,tsx,spec.ts}',
       'packages/*/__tests__/**/*.{js,mjs,cjs,ts,jsx,tsx}',
-      'packages/*/src/**/*.test.ts',
-      'packages/*/src/**/*.spec.ts'
+      'packages/*/src/**/*.{test,spec}.{ts,tsx}',
+      'apps/*/test/**/*.{js,mjs,cjs,ts,jsx,tsx}',
+      'apps/*/webapp/test/**/*.{js,mjs,cjs,ts,jsx,tsx}',
+      'apps/*/src/**/*.{test,spec}.{ts,tsx}',
+      'apps/*/webapp/src/**/*.{test,spec}.{ts,tsx}'
     ],
     languageOptions: {
       parser: eslintTs.parser,
       parserOptions: {
-        // Don't require TypeScript project for test files since they're often excluded from tsconfig
+        // App and package tests share one policy. Runtime/browser fixtures
+        // are intentionally outside the production TypeScript programs.
         project: false,
       },
       globals: { ...globals.browser, ...globals.node, ...globals.jest },

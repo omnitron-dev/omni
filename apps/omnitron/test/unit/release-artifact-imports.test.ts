@@ -97,6 +97,23 @@ describe('independent release artifact provenance', () => {
     const { launch: _launch, ...legacy } = upstream.artifacts[0]!;
     expect(() => validateReleaseOrigins(consumer({ ...upstream, artifacts: [legacy] }))).toThrow('frozen entry');
   });
+  it.each(['closureSha256', 'manifestBlob', 'migrationSha256', 'executableSha256'] as const)('refuses JSON values coerced to a valid %s digest', field => {
+    const upstream = producer(), artifact = upstream.artifacts[0]!;
+    if (field === 'closureSha256') Object.assign(artifact.launch!, { closureSha256: [artifact.launch!.closureSha256] });
+    if (field === 'manifestBlob') Object.assign(artifact.packageSource!, { manifestBlob: [artifact.packageSource!.manifestBlob] });
+    if (field === 'migrationSha256') Object.assign(artifact.packageSource!.migrations, { 'src/migrations/001.ts': ['f'.repeat(64)] });
+    if (field === 'executableSha256') Object.assign(upstream.builtWith.target!, { executableSha256: [upstream.builtWith.target!.executableSha256] });
+    const release = consumer(upstream);
+    // Recomputed manifest pins and identical consumer metadata cannot make malformed source evidence valid.
+    expect(() => validateReleaseOrigins(release)).toThrow('malformed source');
+    expect(decideStackRelease(release, undefined, ['collector']).action).toBe('refuse');
+  });
+  it.each(['launch', 'packageSource', 'target'] as const)('requires %s to be a JSON record', field => {
+    const upstream = producer();
+    if (field === 'target') Object.assign(upstream.builtWith, { target: [] });
+    else Object.assign(upstream.artifacts[0]!, { [field]: [] });
+    expect(() => validateReleaseOrigins(consumer(upstream))).toThrow('recorded package source');
+  });
   it.each(['failed', 'not-run', 'timed-out', 'killed'] as const)('does not let consumer gates hide producer status %s', status => {
     const release = consumer({ ...producer(), gates: [{ name: 'test', status }] });
     expect(decideStackRelease(release, undefined, ['collector'])).toEqual({ action: 'refuse', because: `imported release upstream: gate 'test' ${status}` });

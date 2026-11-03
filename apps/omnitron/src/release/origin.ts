@@ -5,6 +5,8 @@ import type { ReleaseArtifact, ReleaseArtifactReference, ReleaseManifest } from 
 const SHA = /^[a-f0-9]{64}$/;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const COMMIT = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
+const sha256 = (value: unknown): value is string => typeof value === 'string' && SHA.test(value);
+const commit = (value: unknown): value is string => typeof value === 'string' && COMMIT.test(value);
 /** The outer manifest includes JSON-escaped producer evidence, bounded separately below. */
 export const MAX_RELEASE_MANIFEST_BYTES = 8_388_608;
 const MAX_BYTES = 4_194_304, MAX_IMPORTS = 64, MAX_DEPTH = 8;
@@ -50,7 +52,7 @@ export function isReadableReleaseManifest(value: unknown): value is ReleaseManif
 export function assertReleaseArtifactReference(value: unknown): asserts value is ReleaseArtifactReference {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('Expected an exact release artifact reference');
   const ref = value as Partial<ReleaseArtifactReference>;
-  if (!identifier(ref.release) || !identifier(ref.app) || typeof ref.manifestSha256 !== 'string' || !SHA.test(ref.manifestSha256) ||
+  if (!identifier(ref.release) || !identifier(ref.app) || !sha256(ref.manifestSha256) ||
       Object.keys(ref).some(key => !['release', 'app', 'manifestSha256'].includes(key)))
     throw Error('Expected a release id, application name and full manifest SHA-256');
 }
@@ -77,7 +79,7 @@ function evidence(root: ReleaseManifest): Map<ReleaseManifest, Map<string, Relea
     const sources = new Map<string, ReleaseManifest>();
     result.set(manifest, sources);
     for (const record of imports) {
-      if (!record || typeof record.sha256 !== 'string' || !SHA.test(record.sha256) || typeof record.manifestJson !== 'string' ||
+      if (!record || !sha256(record.sha256) || typeof record.manifestJson !== 'string' ||
           Buffer.byteLength(record.manifestJson) > MAX_BYTES || sources.has(record.sha256)) throw Error('Invalid or duplicate imported release manifest');
       if (ancestors.has(record.sha256)) throw Error('Cyclic imported release manifests');
       let source = parsed.get(record.sha256);
@@ -89,8 +91,8 @@ function evidence(root: ReleaseManifest): Map<ReleaseManifest, Map<string, Relea
         if (createHash('sha256').update(record.manifestJson).digest('hex') !== record.sha256)
           throw Error('Imported release manifest does not match its pinned digest');
         const value: unknown = JSON.parse(record.manifestJson);
-        if (!isReadableReleaseManifest(value) || !COMMIT.test(value.project.commit) || !value.project.repo ||
-            !COMMIT.test(value.omni.commit) || !value.omni.repo)
+        if (!isReadableReleaseManifest(value) || !commit(value.project.commit) || !value.project.repo ||
+            !commit(value.omni.commit) || !value.omni.repo)
           throw Error('Imported release manifest lacks a complete producer identity');
         source = { raw: record.manifestJson, manifest: value };
         parsed.set(record.sha256, source);
@@ -117,13 +119,13 @@ function payload(artifact: ReleaseArtifact): Omit<ReleaseArtifact, 'app' | 'orig
 /** An import is an independently portable application, not a claim inferred from a legacy tar. */
 export function assertImportableArtifact(manifest: ReleaseManifest, artifact: ReleaseArtifact): void {
   const launch = artifact.launch, source = artifact.packageSource, target = manifest.builtWith?.target;
-  if (!launch || !source || !target) throw Error('Imported application needs a recorded package source, frozen entry and execution target: ' + artifact.app);
-  if (!['bootstrap', 'script'].includes(launch.mode) || !relative(launch.file) || !/\.[cm]?js$/.test(launch.file) || !SHA.test(launch.closureSha256) ||
-      (source.directory !== '.' && !relative(source.directory)) || !COMMIT.test(source.manifestBlob) ||
-      !source.migrations || typeof source.migrations !== 'object' || Array.isArray(source.migrations) ||
-      Object.entries(source.migrations).some(([file, sha]) => !relative(file) || !SHA.test(sha)) ||
+  if (!object(launch) || !object(source) || !object(target)) throw Error('Imported application needs a recorded package source, frozen entry and execution target: ' + artifact.app);
+  if (!['bootstrap', 'script'].includes(launch.mode) || !relative(launch.file) || !/\.[cm]?js$/.test(launch.file) || !sha256(launch.closureSha256) ||
+      (source.directory !== '.' && !relative(source.directory)) || !commit(source.manifestBlob) ||
+      !object(source.migrations) ||
+      Object.entries(source.migrations).some(([file, sha]) => !relative(file) || !sha256(sha)) ||
       !['platform', 'arch', 'node', 'abi'].every(key => typeof target[key as keyof typeof target] === 'string' && target[key as keyof typeof target]) ||
-      !SHA.test(target.executableSha256) || (target.libc !== null && typeof target.libc !== 'string'))
+      !sha256(target.executableSha256) || (target.libc !== null && typeof target.libc !== 'string'))
     throw Error('Imported application has malformed source, launch or execution target: ' + artifact.app);
 }
 

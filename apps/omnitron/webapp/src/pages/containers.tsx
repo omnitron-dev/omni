@@ -150,27 +150,20 @@ function LogModal({ open, containerName, logs, onClose }: LogModalProps) {
       <DialogTitle sx={{ fontFamily: 'monospace' }}>
         Logs: {containerName}
       </DialogTitle>
-      <DialogContent dividers>
+      <DialogContent dividers sx={{ minHeight: 0, maxHeight: 'min(60dvh, 560px)' }}>
         <Box
+          component="pre"
           sx={{
-            bgcolor: '#0d1117',
-            color: '#c9d1d9',
+            m: 0,
+            color: 'text.primary',
             fontFamily: 'monospace',
             fontSize: 12,
             lineHeight: 1.6,
-            p: 2,
-            borderRadius: 1,
-            maxHeight: 400,
-            overflow: 'auto',
             whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all',
+            overflowWrap: 'anywhere',
           }}
         >
-          {logs.length === 0
-            ? 'No logs available.'
-            : logs.map((line, i) => (
-                <div key={i}>{line}</div>
-              ))}
+          {logs.length === 0 ? 'No logs available.' : logs.join('\n')}
         </Box>
       </DialogContent>
       <DialogActions>

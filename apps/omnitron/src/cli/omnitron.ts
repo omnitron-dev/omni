@@ -1131,8 +1131,9 @@ infra
 
 infra
   .command('migrate [app]')
-  .description('Run declared workspace migration scripts in dependency order')
-  .option('--dry-run', 'List the packages and order without running their scripts')
+  .description('Run explicit database migration owners, or legacy workspace package scripts')
+  .option('--stack <name>', 'Select the local infrastructure-owning stack')
+  .option('--dry-run', 'Inspect migration ownership and programs without connecting to the database')
   .structuredAction(async (app, options) => {
     const { infraMigrateCommand } = await import('../commands/infra.js');
     await infraMigrateCommand(app, options);

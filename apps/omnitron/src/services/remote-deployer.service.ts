@@ -65,7 +65,7 @@ import { withNodeLeases, type LeaseRunner } from './node-deploy-lease.js';
 import { hostOperationBarrierCommand, type HostOperationAllowance } from './host-operation-barrier.js';
 import { migrationOutput } from './migration-output.js';
 import { prepareRemoteMigration } from './migration-process.js';
-import { COMPILED_MIGRATION_ENTRY, migrationDatabaseEnvironment } from './migration-target.js';
+import { migrationDatabaseEnvironment, validateMigrationDestinations, validateMigrationOwners, orderMigrationPlacements, type MigrationRequest } from './migration-target.js';
 import { prepareNodeConfigPublication, restoreNodeConfigCommand } from './node-registration.js';
 
 
@@ -726,6 +726,8 @@ export class RemoteDeployer {
        * master's away. See `NodeConfigInput.appEnv`.
        */
       appEnv?: Readonly<Record<string, Record<string, string>>> | undefined;
+      /** Explicit normalized ownership; absence never authorizes filesystem discovery. */
+      migrations?: readonly MigrationRequest[];
       /** The stack these apps belong to — names the docker network to open from. */
       stack?: string | undefined;
       /** Ship and restart every app past the node's record — `stack start --reinstall`. */
@@ -738,6 +740,22 @@ export class RemoteDeployer {
       if (!options.stack) throw new Error('Application deployment requires an explicit source stack before transferring artifacts');
       stackExecutionKey({ project, stack: options.stack });
     }
+    const migrations = options?.migrations ?? [];
+    validateMigrationOwners(migrations, options?.apps ?? []);
+    targets = orderMigrationPlacements(migrations, targets.map(target => ({ target,
+      apps: (options?.apps ?? []).filter(app => !target.apps || target.apps.includes(app.name)),
+    }))).map(placement => placement.target);
+    const destinations = migrations.map(request => {
+      if (!artifacts.some(artifact => artifact.app === request.app)) throw Error(`No artifact for migration owner ${request.app}`);
+      const app = options?.apps?.find(entry => entry.name === request.app);
+      if (!app) throw Error(`Missing migration owner ${request.app}`);
+      const env = { ...app.env, ...options?.appEnv?.[request.app] };
+      const database = migrationDatabaseEnvironment(request.app, env['DATABASE_URL'] ?? '', request.database, request.mode);
+      if (request.mode === 'config' && !artifacts.find(artifact => artifact.app === request.app)?.release)
+        throw Error(`Explicit migration config for ${request.app} requires a verified release artifact`);
+      return { app: request.app, database };
+    });
+    validateMigrationDestinations(destinations);
     const concurrency = options?.concurrency ?? 3;
     const results: DeployResult[] = [];
 
@@ -801,7 +819,7 @@ export class RemoteDeployer {
           continue;
         }
         // Do not publish a new boot configuration until every candidate is installed and migrated.
-        const migrationFailed = await this.migrateNodeApps(target, project, landed, options.appEnv);
+        const migrationFailed = await this.migrateNodeApps(target, project, landed, migrations.filter(request => landed.some(entry => entry.app === request.app)), artifacts, Object.fromEntries(options.apps.map(app => [app.name, { ...app.env, ...options.appEnv?.[app.name] }])));
         if (migrationFailed.size) {
           for (const result of results.filter(r => r.node === nodeKey && r.status === 'success')) {
             result.status = 'failed'; result.error = `database migrations failed; existing code retained: ${migrationFailed.get(result.app) ?? 'another application failed'}`;
@@ -1006,123 +1024,83 @@ export class RemoteDeployer {
     }
   }
 
-  /**
-   * Run each app's migrations, on the node, against the node's database.
-   *
-   * They had never run there. `ProjectService` migrates by executing
-   * `apps/<name>/src/database/migrate.ts` from the PROJECT PATH against
-   * `localhost` — both of which name the machine the master is on. A node has
-   * no project sources and a different localhost, so a remote stack's
-   * databases were created and left empty.
-   *
-   * Measured on the test node after six apps installed and five started:
-   * every one of the six databases existed and held ZERO tables. Five apps
-   * came up anyway, because they touch no table at boot; `payments` does, and
-   * said so —
-   *
-   *     Failed to call @PostConstruct 'bootstrap' on 'PlatformRevenueService':
-   *     relation "accounts" does not exist
-   *
-   * — which is the only reason anyone found out. A platform with no schema
-   * that reports five of six apps healthy is a worse state than one that
-   * refuses to start.
-   *
-   * The artifact already carries what is needed: `dist/database/migrate.js`
-   * beside `dist/database/migrations/` — 160 compiled files for payments. The
-   * same build the app itself runs from, so there is no second copy of the
-   * schema to drift.
-   *
-   * Returns the apps whose migrations failed, with the reason, and the
-   * caller does not start their new code.
-   *
-   * This used to say: «Failure is reported and does not stop the deployment:
-   * an app whose migrations fail will fail its own start with a message
-   * about the table it wanted, which is more specific than anything this
-   * step could say.» True for one of the two ways it goes. An app that
-   * fails to START is caught by `verifyHealth` and marked failed — that
-   * branch was covered, and the sentence is right about it. An app that
-   * starts fine and fails on the first REQUEST that touches the missing
-   * table passes `verifyHealth`, the stack reports `started`, and the only
-   * trace is one ERROR line in the master's log. The justification covered
-   * the branch that was already safe.
-   *
-   * Idempotence is what makes refusing cheap: the migrator records each
-   * migration it applied, in a transaction with the migration itself, so
-   * running the batch again after the cause is fixed applies exactly what
-   * is missing. That holds because `HardenedMigrationRunner` defaults
-   * `useTransactions` to true (`titan-database/src/migration/
-   * hardened-runner.ts:171`) and no sample `migrate.ts` overrides it — it is
-   * conditional in the runner (`:502`), so a migrator that turned it off
-   * would make a refused deployment leave a half-applied migration behind.
-   */
+  /** Explicit owners only. Preflight every program and destination before the first
+   * migration; recheck sealed origin immediately before execution. No discovery,
+   * source fallback or retry after an ambiguous database outcome. */
   private async migrateNodeApps(
     target: DeployTarget,
     project: string,
     landed: ReadonlyArray<{ app: string; version: string; directory?: string; migrationNode?: string }>,
-    appEnv?: Readonly<Record<string, Record<string, string>>> | undefined,
+    requests: readonly MigrationRequest[],
+    artifacts: readonly ArtifactInfo[],
+    appEnv: Readonly<Record<string, Record<string, string>>>,
   ): Promise<Map<string, string>> {
     const failed = new Map<string, string>();
-    for (const entry of landed) {
-      const databaseUrl = appEnv?.[entry.app]?.['DATABASE_URL'];
-      if (!databaseUrl) continue;
-
-      const dir =
-        `/opt/omnitron/artifacts/${assertRemotePathSegment('project name', project)}` +
-        `/${assertRemotePathSegment('app name', entry.app)}` +
-        `/${assertRemotePathSegment('version', entry.directory ?? entry.version)}`;
-      const script = `${dir}/${COMPILED_MIGRATION_ENTRY}`;
-
-      // A node that could not be asked is not an app without a migrator.
-      // This command exits 0 either way, so `sshExec` throws only when the
-      // question never arrived — and that was answered `'no'`: migrations
-      // skipped, new code started on the old schema. The worst case of the
-      // docblock above, reached through a dropped SSH connection instead of
-      // a failed migration, and refused the same way.
-      let present: string;
+    const planned: Array<{ request: MigrationRequest; directory: string; script: string;
+      node?: string; env: Record<string, string>; verify?: () => Promise<void> }> = [];
+    let runtime: InstalledBundle['applicationRuntime'];
+    for (const request of requests) {
       try {
-        present = await this.sshExec(target, `test -f ${shellEscape(script)} && echo yes || echo no`);
-      } catch (err) {
-        const message = `the node could not be asked whether there are any to apply — ${(err as Error).message}`;
-        this.logger.error(
-          { node: target.host, app: entry.app, error: message.slice(0, 400) },
-          'Could not ask the node for the app\'s migrations — its new code will not be started',
-        );
-        failed.set(entry.app, message.slice(0, 300));
-        continue;
-      }
-      if (present.trim() !== 'yes') continue;
-
-      this.emitProgress(
-        `${target.host}:${target.daemonPort ?? 9700}`,
-        entry.app,
-        'installing',
-        75,
-        'Applying database migrations...',
-      );
-      try {
-        const { env } = migrationDatabaseEnvironment(entry.app, databaseUrl);
-        const migration = prepareRemoteMigration({ cwd: dir, script, ...(entry.migrationNode && { node: entry.migrationNode }) }, env);
-        // What the migrations said, in order, before the verdict (see
-        // `migration-output.ts`). The masked channel on purpose: these lines
-        // are for reading, not parsing, and a migrator that ever printed a
-        // credential must not put it in the master's log.
-        const said = await this.sshExec(
-          target,
-          migration.command,
-          600_000,
-          migration.stdin,
-        );
-        for (const line of migrationOutput(said).map(redactDiagnosticText)) {
-          this.logger.info({ node: target.host, app: entry.app, line }, 'Migration said');
+        const entry = landed.find(candidate => candidate.app === request.app);
+        if (!entry) throw Error(`Migration owner ${request.app} did not install`);
+        const directory = artifactDirOnNode(project, entry.app, entry.directory ?? entry.version);
+        const script = `${directory}/${request.release}`;
+        const artifact = artifacts.find(candidate => candidate.app === entry.app);
+        let verify: (() => Promise<void>) | undefined;
+        let nodeOptions = '', environmentApp = request.app;
+        if (artifact?.release) {
+          runtime ??= (await this.inspectInstalledBundle(target)).applicationRuntime;
+          if (!runtime || runtime.executable !== entry.migrationNode) throw Error('Migration execution runtime changed');
+          const binding = runtime, origin = artifact.release;
+          nodeOptions = releaseOptionsForEnv(appEnv[request.app]);
+          environmentApp = origin.runtimeOrigin?.producerApp ?? request.app;
+          verify = async () => {
+            if ((await this.sshExec(target, installedReleaseCheckCommand(directory, origin, binding, nodeOptions), 120_000)).trim() !== 'verified')
+              throw Error(`Migration release origin changed for ${request.app}`);
+          };
+          await verify();
+        } else if (request.mode === 'config') throw Error('Explicit migration config requires a verified release artifact');
+        const database = migrationDatabaseEnvironment(environmentApp, appEnv[request.app]?.['DATABASE_URL'] ?? '', request.database, request.mode);
+        // test -f alone accepts escaping parent symlinks. Every path component must
+        // identify the physical program inside the selected artifact directory.
+        const check = `const fs=require('node:fs');if(fs.realpathSync(${JSON.stringify(directory)})!==${JSON.stringify(directory)}||fs.realpathSync(${JSON.stringify(script)})!==${JSON.stringify(script)})process.exit(1)`;
+        const executable = entry.migrationNode ? `env -u NODE_OPTIONS -u NODE_PATH ${shellEscape(entry.migrationNode)}` : 'node';
+        const present = await this.sshExec(target, `test -f ${shellEscape(script)} && ${executable} -e ${shellEscape(check)} && echo yes || echo no`);
+        if (present.trim() !== 'yes') throw Error(`Declared migration program is unavailable: ${request.app}/${request.release}`);
+        const env = { ...appEnv[request.app], ...database.env, ...(artifact?.release ? { NODE_OPTIONS: nodeOptions, NODE_PATH: '' } : {}) };
+        if (request.mode === 'config') {
+          const preflight = prepareRemoteMigration({ cwd: directory, script, mode: 'config', validate: true,
+            ...(entry.migrationNode ? { node: entry.migrationNode } : {}) }, env);
+          await this.sshExec(target, preflight.command, 60_000, preflight.stdin);
         }
-        this.logger.info({ node: target.host, app: entry.app }, 'Database migrations applied on the node');
-      } catch (err) {
-        const message = redactDiagnosticText((err as Error).message);
-        this.logger.error(
-          { node: target.host, app: entry.app, error: message.slice(0, 400) },
-          'Database migrations failed on the node — its new code will not be started',
-        );
-        failed.set(entry.app, message.slice(0, 300));
+        planned.push({ request, directory, script, ...(entry.migrationNode ? { node: entry.migrationNode } : {}),
+          env, ...(verify ? { verify } : {}) });
+      } catch (error) {
+        const message = redactDiagnosticText((error as Error).message);
+        failed.set(request.app, message);
+        this.logger.error({ node: target.host, app: request.app, database: request.database, error: message },
+          'Migration preparation failed — no database migrations were executed');
+      }
+    }
+    if (failed.size) return failed;
+    for (const item of planned) {
+      const { request } = item;
+      this.emitProgress(`${target.host}:${target.daemonPort ?? 9700}`, request.app, 'installing', 75,
+        `Applying ${request.service}/${request.database} migrations...`);
+      try {
+        await item.verify?.();
+        const migration = prepareRemoteMigration({ cwd: item.directory, script: item.script, mode: request.mode,
+          ...(item.node ? { node: item.node } : {}) }, item.env);
+        const said = await this.sshExec(target, migration.command, 600_000, migration.stdin);
+        for (const line of migrationOutput(said).map(redactDiagnosticText))
+          this.logger.info({ node: target.host, app: request.app, database: request.database, line }, 'Migration said');
+        this.logger.info({ node: target.host, app: request.app, database: request.database }, 'Database migrations applied on the node');
+      } catch (error) {
+        const message = redactDiagnosticText((error as Error).message);
+        failed.set(request.app, message);
+        this.logger.error({ node: target.host, app: request.app, database: request.database, error: message },
+          'Database migrations failed on the node — candidate applications will not be started');
+        break;
       }
     }
     return failed;

@@ -34,9 +34,9 @@ export interface PostgresDatabaseConfig {
   /** Override user/password for this specific database */
   user?: string;
   password?: string | SecretRef;
-  /** Run migrations on startup */
-  migrate?: boolean;
-  /** Migration directory relative to app root */
+  /** Explicit pre-start ownership. true retains the conventional application script. */
+  migrate?: boolean | MigrationBinding | MigrationBinding[];
+  /** @deprecated This field was never executed. Declare migrate.config/releaseConfig instead. */
   migrationDir?: string;
   /**
    * PostgreSQL extensions to create in this database, e.g. `['postgis']`.
@@ -49,6 +49,16 @@ export interface PostgresDatabaseConfig {
    * app to fail on its first query.
    */
   extensions?: string[];
+}
+
+/** One existing defineMigrationConfig module, owned by a declared application.
+ * Multiple bindings run in declaration order and retain their independent histories and locks. */
+export interface MigrationBinding {
+  app: string;
+  /** Module relative to the application's declared cwd in a source checkout. */
+  config: string;
+  /** Compiled module relative to that application's verified release package. */
+  releaseConfig: string;
 }
 
 export interface RedisServiceConfig {

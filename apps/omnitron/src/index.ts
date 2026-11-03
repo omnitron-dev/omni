@@ -7,6 +7,7 @@
 
 export { defineSystem } from './config/define-system.js';
 export { defineEcosystem } from './config/define-ecosystem.js';
+export type { MigrationBinding } from './infrastructure/types.js';
 
 export type {
   IAppDefinition,

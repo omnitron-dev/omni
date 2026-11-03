@@ -1,5 +1,6 @@
 import { describeError, type DiagnosticFinding } from '@omnitron-dev/titan/diagnostics';
 import { createMigrationRunner, type MigrationConfig, type MigrationInspection } from './index.js';
+import { prepareMigrationConfiguration } from './configuration.js';
 
 export type MigrationAction = 'status' | 'verify' | 'up' | 'down';
 export interface MigrationOperationOptions { action: MigrationAction; steps?: number; to?: string; dryRun?: boolean }
@@ -19,21 +20,20 @@ export function migrationIntegrity(report: MigrationInspection): 'verified' | 'u
 /** Reusable by CLI and other management clients; no daemon or terminal dependency. */
 export async function executeMigrationOperation<DB>(config: MigrationConfig<DB>, options: MigrationOperationOptions) {
   validateMigrationOperation(options);
-  if (typeof config.connect !== 'function') throw new Error('Migration configuration must provide connect()');
-  const migrations = typeof config.migrations === 'function' ? await config.migrations() : config.migrations;
-  if (!Array.isArray(migrations)) throw new Error('Migration configuration must provide a migration array');
-  const connection = await config.connect();
+  const prepared = await prepareMigrationConfiguration(config);
+  const migrations = prepared.migrations;
+  const connection = await prepared.connect();
   if (typeof connection.close !== 'function') throw new Error('Migration connection must provide close()');
   const run = async () => {
-    const runner = createMigrationRunner(connection.db, migrations, { ...config.options, dryRun: options.dryRun ?? false });
+    const runner = createMigrationRunner(connection.db, migrations, { ...prepared.options, dryRun: options.dryRun ?? false });
     const startedAt = performance.now();
     if (options.action === 'status' || options.action === 'verify') {
       const report = await runner.inspect();
-      return { name: config.name ?? 'application', operation: options.action, integrity: migrationIntegrity(report), report, durationMs: performance.now() - startedAt };
+      return { name: prepared.name ?? 'application', operation: options.action, integrity: migrationIntegrity(report), report, durationMs: performance.now() - startedAt };
     }
     const result = options.action === 'down' ? await runner.down(options.steps ?? 1)
       : options.to ? await runner.upTo(options.to) : await runner.up();
-    return { name: config.name ?? 'application', operation: options.action, result, durationMs: performance.now() - startedAt };
+    return { name: prepared.name ?? 'application', operation: options.action, result, durationMs: performance.now() - startedAt };
   };
   const outcome = await run().then(
     value => ({ ok: true as const, value }),

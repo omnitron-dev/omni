@@ -11,7 +11,7 @@ import { inspectLocalReleaseInstallation } from '../../src/release/local-install
 import { targetRuntime } from '../../src/release/target-runtime.js';
 import { releaseTreeDigest } from '../../src/release/runtime-provenance.js';
 import { sha256File } from '../../src/release/portable-archive.js';
-import { COMPILED_MIGRATION_ENTRY, localMigrationTargets, migrationDatabaseEnvironment } from '../../src/services/migration-target.js';
+import { COMPILED_MIGRATION_ENTRY, localMigrationTargets, migrationDatabaseEnvironment, requestedMigrations } from '../../src/services/migration-target.js';
 import { executeLocalMigration } from '../../src/services/migration-process.js';
 import type { ReleaseManifest } from '../../src/release/manifest.js';
 import type { IEcosystemAppEntry } from '../../src/config/types.js';
@@ -23,17 +23,18 @@ class MigrationHeartbeat {
 Public()(MigrationHeartbeat.prototype, 'ping', Object.getOwnPropertyDescriptor(MigrationHeartbeat.prototype, 'ping')!);
 Service({ name: 'MigrationHeartbeat' })(MigrationHeartbeat);
 
+const legacyPlan = () => requestedMigrations({ postgres: { _preset: 'postgres', _presetConfig: { databases: { main: { migrate: true } } } } } as never);
 const cleanup: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); for (const root of cleanup.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
 
-async function fixture(body?: string, imported = false) {
+async function fixture(body?: string, imported = false, migrationFile = COMPILED_MIGRATION_ENTRY) {
   const tmp = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'local-migration-'))); cleanup.push(tmp);
   const releaseRoot = path.join(tmp, 'release'), payload = path.join(tmp, 'payload'), dev = path.join(tmp, 'dev');
   await fs.mkdir(releaseRoot); await fs.mkdir(path.join(payload, 'dist/database'), { recursive: true });
   await fs.mkdir(path.join(dev, 'apps/main/src/database'), { recursive: true });
   await fs.writeFile(path.join(payload, 'package.json'), '{"type":"module"}');
   await fs.writeFile(path.join(payload, 'dist/main.js'), '');
-  if (body !== undefined) await fs.writeFile(path.join(payload, COMPILED_MIGRATION_ENTRY), body);
+  if (body !== undefined) { await fs.mkdir(path.dirname(path.join(payload, migrationFile)), { recursive: true }); await fs.writeFile(path.join(payload, migrationFile), body); }
   await fs.writeFile(path.join(dev, 'apps/main/src/database/migrate.ts'), "throw Error('primary source must not run');");
   const runtime = await targetRuntime();
   const closure = path.join(payload, '.omnitron-closure.json');
@@ -59,8 +60,8 @@ async function fixture(body?: string, imported = false) {
   const configured: IEcosystemAppEntry[] = [{ name: 'main', cwd: dev, ...(reference ? { releaseFrom: reference } : { script: 'src/main.ts' }) }];
   const options = { ownerPid: process.pid, ownerPackage: tmp };
   const entries = await inspectLocalReleaseInstallation(release, 'dev', configured, { ...options, prepare: true });
-  const verify = (apps: readonly string[]) => inspectLocalReleaseInstallation(release, 'dev', configured, {
-    ...options, requiredFiles: Object.fromEntries(apps.map(app => [app, [COMPILED_MIGRATION_ENTRY]])),
+  const verify = (apps: readonly string[], files?: Readonly<Record<string, readonly string[]>>) => inspectLocalReleaseInstallation(release, 'dev', configured, {
+    ...options, requiredFiles: files ?? Object.fromEntries(apps.map(app => [app, [COMPILED_MIGRATION_ENTRY]])),
   });
   return { tmp, release, entries, verify, dev, root: entries[0]!.releaseRoot! };
 }
@@ -70,7 +71,7 @@ it('runs the compiled member inside its admitted closure, without source tsx or 
     assert.equal(process.cwd(), new URL('../..', import.meta.url).pathname.replace(/[/]$/, ''));
     assert.equal(process.env.NODE_PATH, ''); assert.equal(process.env.NODE_OPTIONS, '');
     assert.equal(process.env.MAIN__DATABASE__DATABASE, 'main'); console.log('sealed migrator');`);
-  const [target] = await localMigrationTargets(['main'], f.entries, f.dev, f.verify);
+  const [target] = await localMigrationTargets(legacyPlan(), f.entries, f.dev, f.verify);
   const db = migrationDatabaseEnvironment('main', 'postgres://u:p@127.0.0.1:5432/main', 'main');
   const result = await executeLocalMigration(target!, { ...db.env, NODE_OPTIONS: '--import /does/not/exist.js', NODE_PATH: '/outside' });
   expect(result.stdout.trim()).toBe('sealed migrator');
@@ -80,7 +81,7 @@ it('executes an imported migration with its original producer prefix and consume
   const f = await fixture(`import assert from 'node:assert/strict';
     assert.equal(process.env.COLLECTOR__DATABASE__DATABASE, 'main');
     assert.equal(process.env.MAIN__DATABASE__DATABASE, undefined); console.log('producer preserved');`, true);
-  const [target] = await localMigrationTargets(['main'], f.entries, f.dev, f.verify);
+  const [target] = await localMigrationTargets(legacyPlan(), f.entries, f.dev, f.verify);
   expect(target!.environmentApp).toBe('collector');
   const database = migrationDatabaseEnvironment(target!.environmentApp, 'postgres://u:p@127.0.0.1/main', 'main');
   expect((await executeLocalMigration(target!, database.env)).stdout.trim()).toBe('producer preserved');
@@ -88,17 +89,17 @@ it('executes an imported migration with its original producer prefix and consume
 
 it('refuses a missing compiled member even when the developer checkout has a migrator', async () => {
   const f = await fixture();
-  await expect(localMigrationTargets(['main'], f.entries, f.dev, f.verify)).rejects.toThrow('Requested release file is unavailable');
+  await expect(localMigrationTargets(legacyPlan(), f.entries, f.dev, f.verify)).rejects.toThrow('Requested release file is unavailable');
 });
 
 it('refuses changed payload, receipt, escaping symlink and unverified releaseRoot', async () => {
   const f = await fixture('');
-  await expect(localMigrationTargets(['main'], f.entries, f.dev)).rejects.toThrow('canonical installation verification');
+  await expect(localMigrationTargets(legacyPlan(), f.entries, f.dev)).rejects.toThrow('canonical installation verification');
   await fs.writeFile(path.join(f.root, COMPILED_MIGRATION_ENTRY), 'changed');
-  await expect(localMigrationTargets(['main'], f.entries, f.dev, f.verify)).rejects.toThrow(/origin changed|admitted payload/);
+  await expect(localMigrationTargets(legacyPlan(), f.entries, f.dev, f.verify)).rejects.toThrow(/origin changed|admitted payload/);
   await fs.rm(path.join(f.root, COMPILED_MIGRATION_ENTRY));
   await fs.symlink(path.join(f.dev, 'apps/main/src/database/migrate.ts'), path.join(f.root, COMPILED_MIGRATION_ENTRY));
-  await expect(localMigrationTargets(['main'], f.entries, f.dev, f.verify)).rejects.toThrow();
+  await expect(localMigrationTargets(legacyPlan(), f.entries, f.dev, f.verify)).rejects.toThrow();
 });
 
 it.each(['timeout', 'abort'] as const)('waits for process exit after %s and never retries a migration', async mode => {
@@ -106,7 +107,7 @@ it.each(['timeout', 'abort'] as const)('waits for process exit after %s and neve
   const marker = path.join(tmp, 'pid');
   // A separately sealed fixture writes its PID outside its immutable payload, as a real migration writes its DB.
   const timed = await fixture(`import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(marker)}, String(process.pid)); process.on('SIGTERM',()=>{}); setInterval(()=>{},1000);`);
-  const [actual] = await localMigrationTargets(['main'], timed.entries, timed.dev, timed.verify);
+  const [actual] = await localMigrationTargets(legacyPlan(), timed.entries, timed.dev, timed.verify);
   expect(actual!.sealed).toBe(true);
   const abort = new AbortController();
   const running = executeLocalMigration(actual!, {}, { timeoutMs: mode === 'timeout' ? 800 : 5000, signal: abort.signal });
@@ -131,7 +132,7 @@ it('does not report success when cancellation races with a zero exit code', asyn
     controller.abort();
     return { exitCode: 0, stdout: 'applied', stderr: '' } as never;
   });
-  await expect(executeLocalMigration({ app: 'main', environmentApp: 'main', sealed: true,
+  await expect(executeLocalMigration({ app: 'main', environmentApp: 'main', service: 'postgres', database: 'main', mode: 'script', source: 'src/database/migrate.ts', release: COMPILED_MIGRATION_ENTRY, sealed: true,
     script: '/not-executed.js', cwd: '/', nodeOptions: '' }, {}, { signal: controller.signal })).rejects.toThrow('outcome may be unknown');
 });
 
@@ -145,7 +146,7 @@ it('continues serving actual Netron RPC while a sealed migration child is runnin
   await server.start(); await server.peer.exposeService(new MigrationHeartbeat());
   try {
     const f = await fixture("import fs from 'node:fs'; fs.writeFileSync(process.env.MIGRATION_STARTED, 'started'); await new Promise(resolve => setTimeout(resolve,2000));");
-    const [target] = await localMigrationTargets(['main'], f.entries, f.dev, f.verify);
+    const [target] = await localMigrationTargets(legacyPlan(), f.entries, f.dev, f.verify);
     const marker = path.join(f.tmp, 'started');
     let finished = false;
     const running = executeLocalMigration(target!, { MIGRATION_STARTED: marker }).finally(() => { finished = true; });
@@ -162,4 +163,25 @@ it('continues serving actual Netron RPC while a sealed migration child is runnin
       expect(finished).toBe(false);
     } finally { await running; }
   } finally { await server.stop(); }
+});
+
+
+it('requires the exact declared config member in the admitted producer package', async () => {
+  const file = 'dist/database/portal.mjs';
+  const f = await fixture('export default {};', true, file);
+  const request = { service: 'postgres', database: 'main', app: 'main', mode: 'config' as const,
+    source: 'src/database/portal.ts', release: file };
+  const verify = vi.fn(f.verify);
+  const [target] = await localMigrationTargets([request], f.entries, f.dev, verify);
+  expect(verify).toHaveBeenCalledWith(['main'], { main: [file] });
+  expect(target).toMatchObject({ script: path.join(f.root, file), mode: 'config', sealed: true, environmentApp: 'collector' });
+  await fs.writeFile(path.join(f.root, file), 'changed');
+  await expect(localMigrationTargets([request], f.entries, f.dev, verify)).rejects.toThrow(/origin changed|admitted payload/);
+});
+
+it('never substitutes a conventional script for a missing explicit release config', async () => {
+  const f = await fixture('console.log("legacy exists");');
+  const request = { service: 'postgres', database: 'main', app: 'main', mode: 'config' as const,
+    source: 'src/database/portal.ts', release: 'dist/database/portal.js' };
+  await expect(localMigrationTargets([request], f.entries, f.dev, f.verify)).rejects.toThrow('Requested release file is unavailable');
 });

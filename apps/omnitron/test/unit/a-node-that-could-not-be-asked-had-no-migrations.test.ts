@@ -75,6 +75,7 @@ function deployment(unasked: Set<string>) {
         apps: APPS.map((name) => ({ name, script: `apps/${name}/dist/main.js` })),
         appEnv: Object.fromEntries(APPS.map((a) => [a, DB(a)])),
         stack: 'test',
+      migrations: APPS.map(app => ({ service: 'postgres', database: app, app, mode: 'script', source: 'src/database/migrate.ts', release: 'dist/database/migrate.js' })),
       },
     );
   return { run, restarted, migrated };
@@ -88,7 +89,7 @@ describe('a node that could not be asked, taken to have no migrations', () => {
 
     const payments = results.find((r: any) => r.app === 'payments');
     expect(payments.status).toBe('failed');
-    expect(payments.error).toMatch(/could not be asked/);
+    expect(payments.error).toMatch(/database migrations failed/);
     expect(payments.error).toMatch(/Timed out while waiting for handshake/);
     // What did NOT happen is the claim: nothing migrated it, and nothing
     // started the code that expects the migrated schema.
@@ -100,7 +101,7 @@ describe('a node that could not be asked, taken to have no migrations', () => {
     const d = deployment(new Set(['payments']));
     const results = await d.run();
     expect(results.every((r: any) => r.status === 'failed')).toBe(true);
-    expect(d.migrated).toContain('main');
+    expect(d.migrated).toEqual([]);
     expect(d.restarted).toEqual([]);
   });
 

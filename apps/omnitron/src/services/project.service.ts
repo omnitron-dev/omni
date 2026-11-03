@@ -126,7 +126,7 @@ import { gatewayRedisDb } from '../infrastructure/gateway-redis-db.js';
 const MAINTENANCE_PROBE_PATHS = ['/', '/api/main/health'] as const;
 import { migrationOutput } from './migration-output.js';
 import { redactDiagnosticText } from '@omnitron-dev/titan/diagnostics';
-import { COMPILED_MIGRATION_ENTRY, localMigrationTargets, requestedMigrations, migrationDatabaseEnvironment, type VerifyMigrationEntries } from './migration-target.js';
+import { COMPILED_MIGRATION_ENTRY, localMigrationTargets, requestedMigrations, migrationDatabaseEnvironment, validateMigrationDestinations, validateMigrationOwners, orderMigrationPlacements, type MigrationRequiredFiles, type VerifyMigrationEntries } from './migration-target.js';
 import { executeLocalMigration } from './migration-process.js';
 import { normalizeInfraConfig } from '../infrastructure/config-normalizer.js';
 import { createDefaultRegistry } from '../infrastructure/presets/index.js';
@@ -1351,15 +1351,16 @@ export class ProjectService extends EventEmitter {
       if (migrations.length) {
         try {
           const targets = await localMigrationTargets(migrations, entries, project.path,
-            names => this.launchEntries(projectName, stackName, stack, config, names));
+            (names, files) => this.launchEntries(projectName, stackName, stack, config, names, files));
           if (migrationEnvironment) {
             const resolveMigration = this.stackEntryBuilder(projectName, stackName, stack, config, definitions, migrationEnvironment);
-            for (const target of targets) {
+            validateMigrationDestinations(targets.map(target => {
               const entry = entries.find(app => app.name === target.app)!;
-              migrationDatabaseEnvironment(target.environmentApp, resolveMigration(entry).env?.['DATABASE_URL'] ?? '', target.app);
-            }
+              return { app: target.app, database: migrationDatabaseEnvironment(target.environmentApp,
+                resolveMigration(entry).env?.['DATABASE_URL'] ?? '', target.database, target.mode) };
+            }));
           }
-          add('migrations.entries', 'Database migration programs', 'pass', 'Requested migration programs are available in the selected source or verified release. Database access and application of migrations remain unverified.');
+          add('migrations.entries', 'Database migration programs', 'pass', `Migration owners: ${targets.map(target => `${target.service}/${target.database} → ${target.app} (${target.mode === 'config' ? target.release : 'legacy script'})`).join('; ')}. Programs are available; database access, schema and execution remain unverified.`);
         } catch (error) {
           add('migrations.unavailable', 'Database migration programs', 'blocked', describeFailure(error),
             'Restore the requested migration program or prepare a complete verified release. No database or infrastructure was changed.');
@@ -1820,7 +1821,7 @@ export class ProjectService extends EventEmitter {
               else if (selector.read().revision !== prior.revision) throw new Error('Local release selection changed during admission');
             });
             await enable();
-          }, release ? names => this.installedEntries(projectName, stackName, stackConfig, config, release, false, names) : undefined);
+          }, release ? (names, files) => this.installedEntries(projectName, stackName, stackConfig, config, release, false, names, files) : undefined);
         } else {
           await this.startLocalStack(projectName, stackName, stackConfig, config, undefined, async () => { await enable(); });
         }
@@ -3438,7 +3439,7 @@ export class ProjectService extends EventEmitter {
         if (config.database) {
           const dbConfig = typeof config.database === 'object' ? config.database : {};
           databases[appName] = {
-            migrate: true,
+            // A discovered dependency is not authority to execute a migration.
             ...(dbConfig.extensions?.length ? { extensions: dbConfig.extensions } : {}),
           };
         }
@@ -3603,10 +3604,11 @@ export class ProjectService extends EventEmitter {
       const migrations = await localMigrationTargets(requestedMigrations(normalizeInfraConfig(effectiveInfra, createDefaultRegistry())),
         appEntries, project.path, verifyMigrations);
       const resolveMigration = this.stackEntryBuilder(projectName, stackName, stackConfig, ecosystemConfig, appDefinitions, stackEnv);
-      for (const target of migrations) {
+      validateMigrationDestinations(migrations.map(target => {
         const entry = appEntries.find(app => app.name === target.app)!;
-        migrationDatabaseEnvironment(target.environmentApp, resolveMigration(entry).env?.['DATABASE_URL'] ?? '', target.app);
-      }
+        return { app: target.app, database: migrationDatabaseEnvironment(target.environmentApp,
+          resolveMigration(entry).env?.['DATABASE_URL'] ?? '', target.database, target.mode) };
+      }));
     }
     if (effectiveInfra) {
       try {
@@ -3814,7 +3816,10 @@ export class ProjectService extends EventEmitter {
 
     // Build artifacts for apps in this stack
     const appEntries = this.resolveStackApps(stackConfig, ecosystemConfig);
-    const placements = resolveNodePlacements(stackConfig, appEntries);
+    const migrationRequests = requestedMigrations({ ...declaredServices,
+      ...normalizeInfraConfig(mergeInfrastructure(ecosystemConfig, stackConfig) ?? {}, createDefaultRegistry()) });
+    validateMigrationOwners(migrationRequests, appEntries);
+    const placements = orderMigrationPlacements(migrationRequests, resolveNodePlacements(stackConfig, appEntries));
     // What the stack gives its apps, vault references resolved — before any
     // node is touched: a key the vault does not hold refuses the deployment
     // here, not after a node was provisioned (project/stack-env.ts). A remote
@@ -4137,6 +4142,7 @@ export class ProjectService extends EventEmitter {
             const results = await this.deployer.deployToStack([target], nodeArtifacts, projectName, {
               apps: nodeApps,
               appEnv,
+              migrations: migrationRequests.filter(request => selectedNames.has(request.app)),
               stack: stackName,
               // Past the node's record of what each app runs: ship and restart all.
               ...(reinstall ? { force: true } : {}),
@@ -4802,12 +4808,11 @@ export class ProjectService extends EventEmitter {
   // ===========================================================================
 
   /**
-   * Run database migrations for apps that declare migrate: true in their
-   * stack infrastructure config. Migrations are executed after databases are
+   * Execute the explicit normalized migration owners in their declared order. Migrations are executed after databases are
    * created but before apps are started, so apps always see a current schema.
    *
-   * Convention: each app's migration script is at `apps/{appName}/src/database/migrate.ts`.
-   * The script receives the same resolved DATABASE_URL and environment as its app.
+   * Config bindings use declared cwd and verified release members. Legacy true
+   * retains the conventional script. Both receive the owner's resolved environment.
    * Normalized presets are the authority for opt-in, including legacy sugar.
    */
   private async runStackMigrations(
@@ -4824,27 +4829,37 @@ export class ProjectService extends EventEmitter {
     // Validate every resolved destination before the first DB probe. No missing source fallback.
     const targets = planned.map(target => {
       const env = resolveEntry(appEntries.find(entry => entry.name === target.app)!).env;
-      const database = migrationDatabaseEnvironment(target.environmentApp, env?.['DATABASE_URL'] ?? '', target.app);
+      const database = migrationDatabaseEnvironment(target.environmentApp, env?.['DATABASE_URL'] ?? '', target.database, target.mode);
       return { target, env, database };
     });
+    validateMigrationDestinations(targets.map(({ target, database }) => ({ app: target.app, database })));
+    // Import every config and resolve its definitions before the first connection.
+    // Runtime connect()/SQL are intentionally not executed by this preflight.
+    for (const { target, env, database } of targets) if (target.mode === 'config') {
+      try { await executeLocalMigration(target, { ...env, ...database.env }, { validate: true }); }
+      catch (error) {
+        const failed = error as Error & { stderr?: string };
+        throw new Error(`Migration config refused for ${target.service}/${target.database} (${target.app}); no migrations executed: ${describeFailure(failed.stderr?.trim() || failed)}`, { cause: error });
+      }
+    }
     for (const { target, env, database } of targets) {
       const { host, port, user, password, connectionString } = database;
-      this.logger.info({ project: projectName, stack: stackName, database: target.app, host, port }, 'Waiting for migration database');
+      this.logger.info({ project: projectName, stack: stackName, database: target.database, host, port }, 'Waiting for migration database');
       await waitForPostgres(host, port, user, password, 180_000, connectionString);
       // Database readiness may take minutes. Recheck the canonical payload and owner immediately before execution.
-      const [current] = await localMigrationTargets([target.app], appEntries, projectPath, verifyMigrations);
+      const [current] = await localMigrationTargets([target], appEntries, projectPath, verifyMigrations);
       if (!current || !isDeepStrictEqual(current, target)) throw Error('Migration target changed during database readiness');
-      this.logger.info({ project: projectName, stack: stackName, database: target.app }, 'Running database migrations');
+      this.logger.info({ project: projectName, stack: stackName, database: target.database }, 'Running database migrations');
       try {
         const { stdout } = await executeLocalMigration(target, { ...env, ...database.env });
-        for (const line of migrationOutput(stdout)) this.logger.info({ database: target.app, line: redactDiagnosticText(line) }, 'Migration said');
-        this.logger.info({ database: target.app, attempts: 1 }, 'Migrations applied');
+        for (const line of migrationOutput(stdout)) this.logger.info({ database: target.database, line: redactDiagnosticText(line) }, 'Migration said');
+        this.logger.info({ database: target.database, attempts: 1 }, 'Migrations applied');
       } catch (error) {
         const failed = error as Error & { stderr?: string };
-        this.logger.error({ database: target.app, error: redactDiagnosticText(failed.message), stderr: redactDiagnosticText(failed.stderr?.trim() ?? '') },
+        this.logger.error({ database: target.database, error: redactDiagnosticText(failed.message), stderr: redactDiagnosticText(failed.stderr?.trim() ?? '') },
           'Migration failed — stack startup refused');
         const reason = describeFailure(failed.stderr?.trim() || failed);
-        throw new Error(`Migration failed for ${projectName}/${stackName}/${target.app}; stack startup refused: ${reason}. Inspect the migration ledger before retrying.`, { cause: error });
+        throw new Error(`Migration failed for ${projectName}/${stackName}/${target.service}/${target.database} (${target.app}); stack startup refused: ${reason}. Inspect the migration ledger before retrying.`, { cause: error });
       }
     }
   }
@@ -5061,7 +5076,7 @@ export class ProjectService extends EventEmitter {
     return new LocalReleaseSelection(this.daemonStateStore, { project, stack }, registration.registeredAt);
   }
 
-  private async installedEntries(project: string, stack: string, definition: IStackConfig, config: IEcosystemConfig, release: LoadedRelease, prepare = false, requiredMigrations?: readonly string[]) {
+  private async installedEntries(project: string, stack: string, definition: IStackConfig, config: IEcosystemConfig, release: LoadedRelease, prepare = false, requiredMigrations?: readonly string[], migrationFiles?: MigrationRequiredFiles) {
     const root = this.registry.get(project)?.path;
     if (!root) throw new Error('Project is not registered');
     const { inspectLocalReleaseInstallation } = await import('../release/local-installation.js');
@@ -5077,18 +5092,18 @@ export class ProjectService extends EventEmitter {
     const ownerPackage = await this.orchestrator.getExecutionOwnerPackage?.();
     if (!ownerPackage) throw new Error('Verified runtime origin requires an independently verified execution-owner package');
     return inspectLocalReleaseInstallation(release, stack, entries, { prepare, ownerPid, ownerPackage,
-      ...(requiredMigrations && { requiredFiles: Object.fromEntries(requiredMigrations.map(app => [app, [COMPILED_MIGRATION_ENTRY]])) }),
+      ...(requiredMigrations && { requiredFiles: migrationFiles ?? Object.fromEntries(requiredMigrations.map(app => [app, [COMPILED_MIGRATION_ENTRY]])) }),
     });
   }
 
   /** All consumers of executable declarations must see the same physical entry as the owner. */
-  private async launchEntries(project: string, stack: string, definition: IStackConfig, config: IEcosystemConfig, requiredMigrations?: readonly string[]) {
+  private async launchEntries(project: string, stack: string, definition: IStackConfig, config: IEcosystemConfig, requiredMigrations?: readonly string[], migrationFiles?: MigrationRequiredFiles) {
     const selected = definition.type === 'local' && !definition.managedOrigin ? this.localSelection(project, stack).read().release : null;
     if (!selected) return this.resolveStackApps(definition, config);
     const { loadRelease } = await import('../release/load.js');
     const release = await loadRelease(selected.id, await this.releaseStore());
     if (release.manifestSha256 !== selected.manifestSha256) throw new Error('Selected release manifest changed on disk');
-    return this.installedEntries(project, stack, definition, config, release, false, requiredMigrations);
+    return this.installedEntries(project, stack, definition, config, release, false, requiredMigrations, migrationFiles);
   }
 
   private async checkLocalOwner(project: string, stack: string, entries: IEcosystemAppEntry[], changing: boolean) {

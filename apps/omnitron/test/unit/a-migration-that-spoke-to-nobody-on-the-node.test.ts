@@ -60,6 +60,7 @@ function deployment(output = MIGRATOR_SAID) {
       apps: [{ name: 'main', script: 'apps/main/dist/main.js' }],
       appEnv: { main: { DATABASE_URL: 'postgresql://u:p@127.0.0.1:5432/main' } },
       stack: 'test',
+      migrations: [{ service: 'postgres', database: 'main', app: 'main', mode: 'script', source: 'src/database/migrate.ts', release: 'dist/database/migrate.js' }],
     });
   return { run, said };
 }

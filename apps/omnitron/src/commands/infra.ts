@@ -585,10 +585,45 @@ export async function infraRedisCliCommand(): Promise<void> {
   await execInteractively('Redis', ['redis'], () => ['redis-cli']);
 }
 
-export async function infraMigrateCommand(app?: string, options: { dryRun?: boolean } = {}): Promise<void> {
+export async function infraMigrateCommand(app?: string, options: { dryRun?: boolean; stack?: string } = {}): Promise<void> {
   assertStandaloneInfrastructure();
-  const { planWorkspaceMigrations } = await import('../migration/workspace.js');
-  const plan = await planWorkspaceMigrations(process.cwd(), (await loadEcosystemConfig()).apps, app);
+  const { planWorkspaceMigrations, planDeclaredWorkspaceMigrations } = await import('../migration/workspace.js');
+  const config = await loadEcosystemConfig();
+  const declared = await planDeclaredWorkspaceMigrations(process.cwd(), config, { ...(app ? { app } : {}), ...(options.stack ? { stack: options.stack } : {}) });
+  if (declared !== null) {
+    const summary = declared.map(({ target }) => ({ app: target.app, service: target.service, database: target.database,
+      mode: target.mode, file: target.script, directory: target.cwd }));
+    if (options.dryRun) {
+      if (!emitJson({ migrations: summary })) for (const target of summary) log.info(`${target.service}/${target.database} · ${target.app} · ${target.file}`);
+      return;
+    }
+    const { executeLocalMigration } = await import('../services/migration-process.js');
+    const { waitForPostgres } = await import('../services/wait-for-postgres.js');
+    const { migrationOutput } = await import('../services/migration-output.js');
+    const { localMigrationTargets } = await import('../services/migration-target.js');
+    const { redactDiagnosticText } = await import('@omnitron-dev/titan/diagnostics');
+    for (const { target, env } of declared) if (target.mode === 'config') {
+      assertStandaloneInfrastructure();
+      try { await executeLocalMigration(target, env, { validate: true }); }
+      catch (error) {
+        const detail = error as { stderr?: string; message?: string };
+        throw Error(`Migration configuration preflight failed for ${target.app}: ${redactDiagnosticText(detail.stderr || detail.message || String(error))}. No migrations executed.`, { cause: error });
+      }
+    }
+    for (const { target, env, database } of declared) {
+      assertStandaloneInfrastructure();
+      await waitForPostgres(database.host, database.port, database.user, database.password, 180_000, database.connectionString);
+      assertStandaloneInfrastructure();
+      const [checked] = await localMigrationTargets([target], config.apps, process.cwd());
+      if (checked?.script !== target.script || checked.cwd !== target.cwd)
+        throw Error(`Migration source changed for ${target.app}; inspect the plan before retrying`);
+      const result = await executeLocalMigration(target, env);
+      if (!isJsonMode()) for (const line of migrationOutput(result.stdout)) log.info(redactDiagnosticText(line));
+    }
+    emitJson({ migrated: summary });
+    return;
+  }
+  const plan = await planWorkspaceMigrations(process.cwd(), config.apps, app);
   if (options.dryRun) {
     if (!emitJson({ applications: plan })) {
       for (const target of plan) log.info(`${target.app} · pnpm run migrate · ${target.directory}`);

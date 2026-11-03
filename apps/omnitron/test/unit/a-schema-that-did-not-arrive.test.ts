@@ -75,6 +75,7 @@ const run = (svc: any) =>
       apps: APPS.map((name) => ({ name, script: `apps/${name}/dist/main.js` })),
       appEnv: Object.fromEntries(APPS.map((a) => [a, DB(a)])),
       stack: 'test',
+      migrations: APPS.map(app => ({ service: 'postgres', database: app, app, mode: 'script', source: 'src/database/migrate.ts', release: 'dist/database/migrate.js' })),
     }
   );
 

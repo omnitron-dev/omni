@@ -33,7 +33,9 @@ function stampProjectRoot(config: IEcosystemConfig, projectRoot: string): IEcosy
   return config;
 }
 
-export async function loadEcosystemConfig(cwd: string = process.cwd()): Promise<IEcosystemConfig> {
+export type EcosystemPhase = 'runtime' | 'release';
+
+export async function loadEcosystemConfig(cwd: string = process.cwd(), phase: EcosystemPhase = 'runtime'): Promise<IEcosystemConfig> {
   for (const name of CONFIG_FILE_NAMES) {
     const configPath = path.resolve(cwd, name);
 
@@ -41,26 +43,7 @@ export async function loadEcosystemConfig(cwd: string = process.cwd()): Promise<
     if (!fs.existsSync(configPath)) continue;
 
     try {
-      const url = pathToFileURL(configPath).href;
-      // Cache-bust: Node.js ESM caches by URL; appending timestamp forces re-evaluation on reload
-      const mod = await import(`${url}?t=${Date.now()}`);
-      const raw = mod.default ?? mod;
-
-      if (!raw || !Array.isArray(raw.apps)) {
-        throw new Error(`Invalid config in ${name}: 'apps' must be an array`);
-      }
-
-      // Validate each app entry
-      for (const app of raw.apps) {
-        if (!app.name) throw new Error(`App entry missing 'name' in ${name}`);
-        if (!app.bootstrap && !app.script) {
-          throw new Error(`App '${app.name}' must have either 'bootstrap' or 'script' path`);
-        }
-      }
-
-      // Apply defaults — the config file doesn't need to import defineEcosystem
-      const config = defineEcosystem(raw);
-      return stampProjectRoot(config, path.dirname(configPath));
+      return await loadEcosystemConfigFile(configPath, phase);
     } catch (err: any) {
       throw new Error(`Failed to load ${name}: ${err.message}`, { cause: err });
     }
@@ -78,13 +61,14 @@ export async function loadEcosystemConfig(cwd: string = process.cwd()): Promise<
 /**
  * Load config from a specific file path (e.g., `omnitron up -c ./omnitron.config.ts`)
  */
-export async function loadEcosystemConfigFile(filePath: string): Promise<IEcosystemConfig> {
+export async function loadEcosystemConfigFile(filePath: string, phase: EcosystemPhase = 'runtime'): Promise<IEcosystemConfig> {
   if (!fs.existsSync(filePath)) {
     throw new Error(`Config file not found: ${filePath}`);
   }
   const url = pathToFileURL(filePath).href;
   const mod = await import(`${url}?t=${Date.now()}`);
-  const raw = mod.default ?? mod;
+  const exported = mod.default ?? mod;
+  const raw = typeof exported === 'function' ? await exported(Object.freeze({ phase })) : exported;
 
   if (!raw || !Array.isArray(raw.apps)) {
     throw new Error(`Invalid config in ${filePath}: 'apps' must be an array`);

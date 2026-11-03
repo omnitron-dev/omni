@@ -63,6 +63,19 @@ describe('ConfigLoader', () => {
       expect(config.apps[0]!.name).toBe('test');
     });
 
+    it('reads build inputs without opening runtime secrets; the normal loader still requires them', async () => {
+      fs.writeFileSync(path.join(tmpDir, 'omnitron.config.mjs'), `
+        import { readFileSync } from 'node:fs';
+        export default ({ phase }) => ({ apps: [{ name: 'api', bootstrap: './app.js',
+          ...(phase === 'runtime' && { env: { KEY: readFileSync(new URL('./key', import.meta.url), 'utf8') } }) }] });
+      `);
+      const build = await loadEcosystemConfig(tmpDir, 'release');
+      expect(build.apps[0]).not.toHaveProperty('env');
+      await expect(loadEcosystemConfig(tmpDir)).rejects.toThrow(/ENOENT/);
+      fs.writeFileSync(path.join(tmpDir, 'key'), 'runtime-only');
+      expect((await loadEcosystemConfig(tmpDir)).apps[0]?.env).toEqual({ KEY: 'runtime-only' });
+    });
+
     it('throws when no config file found', async () => {
       await expect(loadEcosystemConfig(tmpDir)).rejects.toThrow('No omnitron config found');
     });

@@ -707,7 +707,7 @@ async function buildRelease(
   const artifactsLog = path.join(logs, 'artifacts.log');
   const { loadEcosystemConfig } = await import('../config/loader.js');
   const { ArtifactBuilder } = await import('../project/artifact-builder.js');
-  const config = await loadEcosystemConfig(plan.projectDir);
+  const config = await loadEcosystemConfig(plan.projectDir, 'release');
   const apps = config.apps.filter((a) => a.enabled !== false);
   const builder = new ArtifactBuilder(plan.projectDir, path.join(releaseRoot, 'artifacts'), {
     info: (msg) => fs.appendFileSync(artifactsLog, `${msg}\n`),

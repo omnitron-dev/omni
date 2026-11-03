@@ -130,7 +130,7 @@ export class DaemonClient implements IDaemonService {
     return this.proxy!.startAll();
   }
 
-  async stopApp(data: { name: string; force?: boolean; timeout?: number }): Promise<{ success: boolean }> {
+  async stopApp(data: Parameters<IDaemonService['stopApp']>[0]): ReturnType<IDaemonService['stopApp']> {
     await this.ensureConnected();
     return this.proxy!.stopApp(data);
   }

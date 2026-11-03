@@ -110,12 +110,7 @@ function codeOf(relUrl: string, fnName: string): string {
 
 describe('the kill paths ask PidManager rather than the number', () => {
   it('daemonKill validates identity before SIGKILL', () => {
-    const src = fs.readFileSync(
-      new URL('../../src/commands/daemon-cmd.ts', import.meta.url),
-      'utf8',
-    );
-    const fn = src.slice(src.indexOf('export async function daemonKill'));
-    const body = fn.slice(0, fn.indexOf('\nexport '));
+    const body = codeOf('../../src/commands/daemon-cmd.ts', 'daemonKill');
 
     // The guard before the kill must be the identity one, not liveness.
     const killAt = body.indexOf("process.kill(rawPid, 'SIGKILL')");
@@ -124,33 +119,11 @@ describe('the kill paths ask PidManager rather than the number', () => {
   });
 
   it('daemonStop re-validates before escalating to SIGKILL', () => {
-    const src = fs.readFileSync(
-      new URL('../../src/commands/daemon-cmd.ts', import.meta.url),
-      'utf8',
-    );
-    const fn = src.slice(src.indexOf('export async function daemonStop'));
-    const body = fn.slice(0, fn.indexOf('\nexport '));
+    const body = codeOf('../../src/commands/daemon-cmd.ts', 'daemonStop');
 
     const killAt = body.lastIndexOf("process.kill(pid, 'SIGKILL')");
     expect(killAt).toBeGreaterThan(0);
     // The check immediately above it compares against the CURRENT answer.
     expect(body.slice(Math.max(0, killAt - 200), killAt)).toContain('pidManager.getPid() === pid');
-  });
-
-  it('`omnitron stop` escalates on identity too, not on liveness', () => {
-    // The command an operator actually types. It waits ten seconds for the
-    // SIGTERM to land and then force-kills; the wait may poll liveness, but
-    // the decision to send SIGKILL may not rest on it.
-    const body = codeOf('../../src/commands/stop.ts', 'stopCommand');
-
-    const killAt = body.indexOf("process.kill(pid, 'SIGKILL')");
-    expect(killAt, 'stopCommand no longer force-kills — re-point this test').toBeGreaterThan(0);
-
-    const guard = body.slice(Math.max(0, killAt - 300), killAt);
-    expect(guard).toContain('pidManager.getPid()');
-    expect(
-      /isProcessAlive\(pid\)\s*\)\s*\{[\s\S]{0,80}$/.test(guard),
-      'the branch that reaches SIGKILL must not be gated on liveness alone',
-    ).toBe(false);
   });
 });

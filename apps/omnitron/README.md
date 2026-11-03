@@ -21,6 +21,8 @@ Key responsibilities:
 The CLI and daemon require Node.js 22.14 or newer on 22.x, or Node.js 23.6
 or newer. Their embedded SQLite storage uses Node-API 10.
 
+Use `omnitron stop project/stack/app` to stop one application or `omnitron stop all` to stop all managed applications. Both require a responsive daemon. If RPC is unavailable or the stop cannot be confirmed, the CLI reports the reason and exits with a failure. Use `omnitron down` for an explicit daemon shutdown.
+
 ```bash
 # Link globally
 pnpm link:global

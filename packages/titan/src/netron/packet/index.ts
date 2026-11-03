@@ -208,6 +208,14 @@ export const MIN_PACKET_SIZE = 5;
 export const TYPE_MIN = 0x00;
 export const TYPE_MAX = 0x07;
 
+/** Read only the fixed-size header, before deserializing an untrusted payload. */
+export function readPacketHeader(data: Buffer | ArrayBuffer): Packet {
+  const bytes = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  const header = new Packet(bytes.readUInt32BE(0));
+  header.flags = bytes.readUInt8(4);
+  return header;
+}
+
 export const decodePacket = (buf: Buffer | ArrayBuffer, maxSize: number = DEFAULT_MAX_PACKET_SIZE) => {
   // Compute the byte length once; both Buffer and ArrayBuffer expose it.
   const byteLength = (buf as Buffer).length ?? (buf as ArrayBuffer).byteLength ?? 0;
@@ -243,8 +251,8 @@ export const decodePacket = (buf: Buffer | ArrayBuffer, maxSize: number = DEFAUL
   // SmartBuffer.read*. Previously the stream-info reads sat outside the try.
   let pkt: Packet;
   try {
-    pkt = new Packet(buffer.readUInt32BE());
-    pkt.flags = buffer.readUInt8()!;
+    pkt = readPacketHeader(buf);
+    buffer.roffset = MIN_PACKET_SIZE;
 
     // An undeclared type means the frame is not one of ours; decoding its
     // payload as if it were is work done on somebody else's say-so.

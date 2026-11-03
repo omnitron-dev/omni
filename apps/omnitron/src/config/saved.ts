@@ -27,11 +27,11 @@ export interface SavedDaemonConfig {
    */
   auth?: { jwtSecret: string };
   /**
-   * Transport-level rate limiting and proxy trust for the daemon's HTTP
-   * surface. Persisted because the daemon boots from THIS file, not from the
+   * Shared transport admission and proxy trust for HTTP and WebSocket. Persisted because the daemon boots from THIS file, not from the
    * project's ecosystem config — anything set only there is invisible to a
    * running daemon.
    */
+  requestRateLimit?: IDaemonConfig['requestRateLimit'];
   httpRateLimit?: IDaemonConfig['httpRateLimit'];
   /** Administrator file exports for this daemon, including an explicit disabled policy. */
   files?: IDaemonConfig['files'];
@@ -78,6 +78,7 @@ export function savedDaemonOverrides(saved: SavedDaemonConfig | null): Partial<I
     role: saved.role,
     ...(saved.cluster !== undefined ? { cluster: saved.cluster } : {}),
     ...(saved.master ? { master: saved.master } : {}),
+    ...(saved.requestRateLimit ? { requestRateLimit: saved.requestRateLimit } : {}),
     ...(saved.httpRateLimit ? { httpRateLimit: saved.httpRateLimit } : {}),
     ...(saved.files !== undefined ? { files: saved.files } : {}),
     ...(saved.applicationReadiness !== undefined ? { applicationReadiness: saved.applicationReadiness } : {}),

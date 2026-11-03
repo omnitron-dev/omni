@@ -3,8 +3,9 @@
  * @module @omnitron-dev/titan/netron/transport/websocket
  */
 
-import { WebSocket, WebSocketServer } from 'ws';
+import { WebSocket, WebSocketServer, type VerifyClientCallbackSync } from 'ws';
 import { IncomingMessage } from 'node:http';
+import { TransportRequestLimiter } from '../request-limiter.js';
 import { BaseServer } from '../base-transport.js';
 import { Errors } from '../../../errors/index.js';
 import { WebSocketAuthHandler, type WebSocketAuthOptions } from './auth.js';
@@ -18,6 +19,9 @@ export class WebSocketServerAdapter extends BaseServer {
   private wss: WebSocketServer;
   private httpServer?: any;
   private authHandler?: WebSocketAuthHandler;
+  private readonly answerClientPing: boolean;
+  private readonly requestLimiter: TransportRequestLimiter;
+  private readonly admittedClients = new WeakMap<IncomingMessage, string>();
 
   // Path prefix for WebSocket upgrade path matching (for reverse proxy support)
   private pathPrefix: string;
@@ -25,6 +29,13 @@ export class WebSocketServerAdapter extends BaseServer {
   constructor(wss: WebSocketServer, options: WebSocketOptions = {}) {
     super(options);
     this.wss = wss;
+    this.requestLimiter = options.requestLimiter ?? new TransportRequestLimiter(options.rateLimit);
+    this.answerClientPing = wss.options?.autoPong !== false;
+    if (this.requestLimiter.enabled) {
+      // ws normally sends a pong before any application listener sees the ping.
+      wss.options.autoPong = false;
+      this.limitUpgrades();
+    }
 
     // Initialize path prefix (normalize to canonical form without leading/trailing slashes)
     this.pathPrefix = this.normalizePathPrefix(options.pathPrefix);
@@ -32,6 +43,36 @@ export class WebSocketServerAdapter extends BaseServer {
     this.setupEventHandlers();
 
     // Don't emit listening in constructor - wait for listen() to be called
+  }
+
+  private limitUpgrades(): void {
+    const original = this.wss.options.verifyClient;
+    this.wss.options.verifyClient = (info, done) => {
+      let key: string;
+      try {
+        const headers = new Headers();
+        for (const [name, value] of Object.entries(info.req.headers)) {
+          if (value !== undefined) headers.set(name, Array.isArray(value) ? value.join(', ') : value);
+        }
+        const path = info.req.url || '/';
+        // Use a fixed origin for the request passed to a custom key generator.
+        // Host is controlled by the caller and cannot establish the client IP.
+        const request = new Request('http://localhost' + (path.startsWith('/') ? path : '/' + path), { headers });
+        key = this.requestLimiter.clientKey(request, info.req.socket.remoteAddress);
+      } catch {
+        done(false, 400, 'Invalid upgrade request');
+        return;
+      }
+      const result = this.requestLimiter.consume(key);
+      if (!result.allowed) {
+        done(false, 429, 'Too Many Requests', { 'Retry-After': String(result.retryAfter) });
+        return;
+      }
+      this.admittedClients.set(info.req, key);
+      if (!original) done(true);
+      else if (original.length === 2) original.call(this.wss.options, info, done);
+      else done((original as VerifyClientCallbackSync).call(this.wss.options, info));
+    };
   }
 
   /**
@@ -111,36 +152,21 @@ export class WebSocketServerAdapter extends BaseServer {
         return;
       }
 
-      // Authenticate connection if auth handler is configured
-      if (this.authHandler) {
-        const authResult = await this.authHandler.authenticateConnection(request);
-
-        if (!authResult.success) {
-          // Close with 4001 (Unauthorized) or 4003 (Forbidden)
-          socket.close(4001, authResult.error || 'Unauthorized');
-          return;
-        }
-
-        const connection = new WebSocketConnection(socket, this.options as WebSocketOptions, true);
-
-        // Store auth context on connection if available
-        if (authResult.context) {
-          connection.setAuthContext(authResult.context);
-        }
-
-        // Add request info to connection
-        (connection as any).request = request;
-
-        this.handleConnection(connection);
-      } else {
-        // No auth configured - allow all connections (existing behavior)
-        const connection = new WebSocketConnection(socket, this.options as WebSocketOptions, true);
-
-        // Add request info to connection
-        (connection as any).request = request;
-
-        this.handleConnection(connection);
+      const key = this.admittedClients.get(request);
+      if (this.requestLimiter.enabled && key === undefined) {
+        socket.close(1008, 'Upgrade admission required');
+        return;
       }
+      const auth = this.authHandler ? await this.authHandler.authenticateConnection(request) : undefined;
+      if (auth && !auth.success) {
+        socket.close(4001, auth.error || 'Unauthorized');
+        return;
+      }
+      const admit = key === undefined ? undefined : () => this.requestLimiter.consume(key);
+      const connection = new WebSocketConnection(socket, this.options as WebSocketOptions, true, undefined, admit, this.answerClientPing);
+      if (auth?.context) connection.setAuthContext(auth.context);
+      (connection as any).request = request;
+      this.handleConnection(connection);
     });
 
     // Handle server errors
@@ -150,6 +176,7 @@ export class WebSocketServerAdapter extends BaseServer {
 
     // Handle server close
     this.wss.on('close', () => {
+      if (!this.options.requestLimiter) this.requestLimiter.destroy();
       this.handleClose();
     });
 

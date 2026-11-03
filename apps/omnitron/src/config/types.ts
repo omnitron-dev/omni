@@ -794,25 +794,7 @@ export interface IDaemonConfig {
     jwtSecret?: string;
   };
 
-  /**
-   * Transport-level rate limiting for the daemon's HTTP RPC surface.
-   *
-   * Complements the per-account lockout in AuthService: the lockout stops
-   * password guessing against one account, this caps overall request volume
-   * so the control plane cannot be flooded.
-   *
-   * Note on deployment: the daemon binds loopback and nginx fronts it, so
-   * every request arrives from 127.0.0.1 unless `trustProxy` is enabled —
-   * meaning `maxRequests` behaves as a shared budget in that topology.
-   * `trustProxy` is off by default because the forwarded header is
-   * client-controlled unless the proxy is known to overwrite it.
-   */
-  /**
-   * Largest WebSocket frame the daemon will accept, in bytes. Default: 8 MB.
-   *
-   * The WebSocket transport takes no rate limit — this is the only bound it
-   * offers — and unset it inherits `ws`'s 100 MB default.
-   */
+  /** Largest accepted WebSocket message in bytes. Default: 8 MiB. */
   wsMaxPayload?: number;
   /**
    * Interface the console's nginx publishes on. Default: '127.0.0.1'.
@@ -825,7 +807,8 @@ export interface IDaemonConfig {
    * Set to '0.0.0.0' only where something else authenticates the traffic.
    */
   consoleBindHost?: string;
-  httpRateLimit?: {
+  /** Shared network admission budget for Console HTTP and WebSocket listeners. */
+  requestRateLimit?: {
     /** Default: true. */
     enabled?: boolean;
     /** Window length in ms. Default: 60_000. */
@@ -839,6 +822,9 @@ export interface IDaemonConfig {
     /** Client keys exempt from limiting. */
     whitelist?: string[];
   };
+
+  /** @deprecated Use requestRateLimit. The legacy setting now covers both transports. */
+  httpRateLimit?: IDaemonConfig['requestRateLimit'];
 
   /** Health monitor worker configuration */
   healthMonitor?: {

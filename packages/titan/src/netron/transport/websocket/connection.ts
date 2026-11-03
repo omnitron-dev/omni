@@ -6,8 +6,11 @@
 import { WebSocket, RawData } from 'ws';
 import { BaseConnection } from '../base-transport.js';
 import { ConnectionState } from '../types.js';
-import { NetronErrors, Errors } from '../../../errors/index.js';
+import { NetronErrors, Errors, RateLimitError } from '../../../errors/index.js';
 import type { AuthContext } from '../../auth/types.js';
+import { MIN_PACKET_SIZE, TYPE_MAX, TYPE_PING, TYPE_STREAM, TYPE_STREAM_ERROR, TYPE_STREAM_CLOSE, readPacketHeader } from '../../packet/index.js';
+import { MAX_GREETING_BYTES } from '../../peer-handshake.js';
+import { rateLimitDetails, type RateLimitResult } from '../request-limiter.js';
 import type { WebSocketOptions } from './types.js';
 import { KeepAliveManager } from './keep-alive-manager.js';
 
@@ -22,7 +25,14 @@ export class WebSocketConnection extends BaseConnection {
   private keepAliveManager?: KeepAliveManager;
   private usingSharedKeepAlive = false;
 
-  constructor(socket: WebSocket, options: WebSocketOptions = {}, isServer = false, url?: string) {
+  private receivedGreeting = false;
+  private refusalPending = false;
+  private expectsResponse?: (id: number) => boolean;
+
+  constructor(
+    socket: WebSocket, options: WebSocketOptions = {}, isServer = false, url?: string,
+    private readonly admit?: () => RateLimitResult, private readonly answerClientPing = true,
+  ) {
     super(options);
     this.socket = socket;
     this.url = url;
@@ -39,6 +49,69 @@ export class WebSocketConnection extends BaseConnection {
       // Use setImmediate to ensure event handlers are attached first
       setImmediate(() => this.handleConnect());
     }
+  }
+
+  setResponseMatcher(expects: (id: number) => boolean): void {
+    this.expectsResponse = expects;
+  }
+
+  protected override handleData(data: Buffer | ArrayBuffer): void {
+    if (!this.admit) {
+      super.handleData(data);
+      return;
+    }
+    if (this.socket.readyState !== WebSocket.OPEN) return;
+    if (this.expectsResponse && !this.receivedGreeting) {
+      // The upgrade already paid for the one greeting validated by Netron.
+      this.receivedGreeting = true;
+      if (data.byteLength > MAX_GREETING_BYTES) this.socket.close(1009, 'Peer greeting too large');
+      else {
+        this.emit('data', data);
+        this.binaryMode = true;
+      }
+      return;
+    }
+
+    const header = data.byteLength >= MIN_PACKET_SIZE ? readPacketHeader(data) : undefined;
+    if (!header || header.getType() > TYPE_MAX) {
+      if (this.expectsResponse || !this.admit().allowed) this.socket.close(1002, 'Invalid Netron packet');
+      else super.handleData(data);
+      return;
+    }
+    if (header.getImpulse() === 0 && this.expectsResponse) {
+      const expected = header.getType() === TYPE_PING ? this.pendingPings.has(header.id) : this.expectsResponse(header.id);
+      if (expected) super.handleData(data);
+      else this.admit(); // Late or unsolicited. Drop before decoding or logging the payload.
+      return;
+    }
+
+    const result = this.admit();
+    if (result.allowed) {
+      super.handleData(data);
+      return;
+    }
+    if (header.getImpulse() === 0) return;
+    // Limit outstanding refusals independently of TCP buffering. One denial is
+    // correlated. Continued excess before it flushes closes the abusive peer.
+    const type = header.getType();
+    // A stream sender has no pending RPC for its chunk ID. A correlated
+    // exception would be ignored and a missing chunk could look successful.
+    if (this.refusalPending || type === TYPE_STREAM || type === TYPE_STREAM_ERROR || type === TYPE_STREAM_CLOSE) {
+      this.socket.close(1013, 'Too many requests');
+      return;
+    }
+    header.setImpulse(0);
+    header.setError(1);
+    header.data = new RateLimitError(result.message, rateLimitDetails(result));
+    this.refusalPending = true;
+    void this.sendPacket(header)
+      .catch(error => this.logger?.debug({ error }, 'Rate-limit response could not be sent'))
+      .finally(() => { this.refusalPending = false; });
+  }
+
+  protected override handleInvalidPacket(data: Buffer | ArrayBuffer): void {
+    if (this.admit && this.expectsResponse) this.socket.close(1002, 'Invalid Netron packet');
+    else super.handleInvalidPacket(data);
   }
 
   get remoteAddress(): string | undefined {
@@ -97,9 +170,19 @@ export class WebSocketConnection extends BaseConnection {
       this.handleDisconnect(reason?.toString());
     });
 
-    // Handle pong for keep-alive
-    this.socket.on('pong', () => {
-      if (this.pongTimeout) {
+    if (this.admit) {
+      this.socket.on('ping', (payload: Buffer) => {
+        if (this.socket.readyState !== WebSocket.OPEN) return;
+        if (!this.admit!().allowed) this.socket.close(1013, 'Too many requests');
+        else if (this.answerClientPing) this.socket.pong(payload);
+      });
+    }
+    this.socket.on('pong', (payload?: Buffer) => {
+      const expected = !payload?.length && (this.pongTimeout || this.keepAliveManager?.awaitingPong(this.id));
+      if (!expected && this.admit && this.socket.readyState === WebSocket.OPEN && !this.admit().allowed) {
+        this.socket.close(1013, 'Too many requests');
+      }
+      if (!payload?.length && this.pongTimeout) {
         clearTimeout(this.pongTimeout);
         this.pongTimeout = undefined;
       }

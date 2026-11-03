@@ -251,3 +251,6 @@ export { Public } from '../decorators/core.js';
  * @since 0.6.0
  */
 export * from './multi-backend/index.js';
+
+export { TransportRequestLimiter, type RateLimitResult } from './transport/request-limiter.js';
+export type { RateLimitConfig as TransportRateLimitConfig } from './transport/types.js';

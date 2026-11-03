@@ -90,6 +90,14 @@ describe('the file the daemon actually boots from', () => {
     expect(savedDaemonOverrides({ ...transport, initialized: true, initializedAt: '2026-10-30' })).toEqual(transport);
   });
 
+  it('loads the shared request budget and retains legacy HTTP settings for older daemon configs', () => {
+    const base = { role: 'slave' as const, initialized: true, initializedAt: '2026-11-03' };
+    expect(savedDaemonOverrides({ ...base, requestRateLimit: { maxRequests: 17 } }).requestRateLimit)
+      .toEqual({ maxRequests: 17 });
+    expect(savedDaemonOverrides({ ...base, httpRateLimit: { maxRequests: 23 } }).httpRateLimit)
+      .toEqual({ maxRequests: 23 });
+  });
+
   it('can carry the transport settings', () => {
     // A type-level pin: `SavedDaemonConfig` is the shape of
     // `~/.omnitron/config.json`, and `daemon-entry` merges from it field by

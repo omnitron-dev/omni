@@ -1,7 +1,7 @@
 import { NetronErrors } from '../errors/index.js';
 import { CONNECT_TIMEOUT } from './constants.js';
 
-const MAX_GREETING_BYTES = 4096;
+export const MAX_GREETING_BYTES = 4096;
 
 export function resolveHandshakeTimeout(value: unknown): number {
   if (value === undefined) return CONNECT_TIMEOUT;

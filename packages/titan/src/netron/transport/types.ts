@@ -7,6 +7,7 @@
 
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import type { CorsOptions } from './http/middleware/types.js';
+import type { TransportRequestLimiter } from './request-limiter.js';
 import type { Packet } from '../packet/packet.js';
 
 // Re-export Packet for convenience
@@ -48,6 +49,10 @@ export interface TransportCapabilities {
  * Base transport options
  */
 export interface TransportOptions {
+  /** Ingress budget owned by this HTTP or WebSocket listener. */
+  rateLimit?: RateLimitConfig;
+  /** A caller-owned budget shared across HTTP and WebSocket listeners. Takes precedence over rateLimit. */
+  requestLimiter?: TransportRequestLimiter;
   /** Reconnection options */
   reconnect?: {
     enabled?: boolean;
@@ -244,6 +249,9 @@ export interface ITransportConnection extends EventEmitter {
   /** Local address (if available) */
   readonly localAddress?: string;
 
+  /** Identify replies to this peer’s pending RPCs before decoding network data. */
+  setResponseMatcher?(expects: (id: number) => boolean): void;
+
   /** Send raw data */
   send(data: Buffer | ArrayBuffer | Uint8Array): Promise<void>;
 
@@ -411,7 +419,7 @@ export interface RateLimitConfig {
   maxRequests?: number;
   /** Maximum global requests per window across all clients (default: 10000) */
   globalMaxRequests?: number;
-  /** Custom key generator function to identify clients (default: uses X-Forwarded-For or remote IP) */
+  /** Custom client identity. By default use the socket address or the explicitly trusted forwarding proxy. */
   keyGenerator?: (request: Request) => string;
   /** Skip rate limiting for successful requests (default: false) */
   skipSuccessfulRequests?: boolean;
@@ -419,7 +427,7 @@ export interface RateLimitConfig {
   skipFailedRequests?: boolean;
   /** Custom message for rate limit responses */
   message?: string;
-  /** List of IPs or patterns to skip rate limiting (e.g., ['127.0.0.1', '::1']) */
+  /** Exact client keys exempt from both budgets, e.g. ['127.0.0.1', '::1']. */
   whitelist?: string[];
   /**
    * Trust `X-Forwarded-For` / `X-Real-IP` for client identification.

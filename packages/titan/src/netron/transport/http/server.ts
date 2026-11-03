@@ -22,7 +22,6 @@ import {
 } from './middleware/index.js';
 import {
   HttpRequestMessage,
-  HttpBatchRequest,
   HttpBatchResponse,
   createSuccessResponse,
   createErrorResponse,
@@ -42,7 +41,9 @@ import { AuthenticationUnavailableError } from '../../auth/authentication-manage
 import { TOKEN_ISSUANCE_METADATA_KEYS, runWithTokenIssuanceContext } from '../../auth/token-issuance.js';
 import type { IssuedTokens, TokenIssueResponse } from '../../auth/token-transport.js';
 import { isAsyncGenerator } from '@omnitron-dev/common';
-import { SlidingWindowRateLimiter, createRateLimitHeaders, type RateLimitResult } from './rate-limiter.js';
+import { createRateLimitHeaders } from './rate-limiter.js';
+import { TransportRequestLimiter, rateLimitDetails, type RateLimitResult } from '../request-limiter.js';
+import { FetchBodyBoundary, oversizedRequest } from './request-body.js';
 import { LatencyWindow, type LatencySnapshot } from './latency-window.js';
 import { SHUTTING_DOWN, shuttingDownError } from '../../inbound-gate.js';
 import { METADATA_KEYS } from '../../../decorators/core.js';
@@ -348,7 +349,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   private drainPromise: Promise<void> | null = null;
 
   // SECURITY: Rate limiter for DoS protection
-  private rateLimiter: SlidingWindowRateLimiter;
+  private readonly rateLimiter: TransportRequestLimiter;
+  private readonly fetchBodyBoundary: FetchBodyBoundary;
 
   // Path prefix for all endpoints (for reverse proxy support)
   private pathPrefix: string;
@@ -420,7 +422,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     this.maxAsyncGeneratorItems = options?.maxAsyncGeneratorItems || this.DEFAULT_MAX_ASYNC_GENERATOR_ITEMS;
 
     // SECURITY: Initialize rate limiter for DoS protection
-    this.rateLimiter = new SlidingWindowRateLimiter((options as any)?.rateLimit);
+    this.rateLimiter = options?.requestLimiter ?? new TransportRequestLimiter(options?.rateLimit);
+    this.fetchBodyBoundary = new FetchBodyBoundary(resolveMaxBodyBytes(options));
 
     // Initialize path prefix (normalize to canonical form without leading/trailing slashes)
     this.pathPrefix = this.normalizePathPrefix(options?.pathPrefix);
@@ -919,16 +922,20 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         this.server = globalThis.Bun.serve({
           port,
           hostname: host,
-          fetch: this.handleRequest.bind(this),
+          fetch: (req: Request, server: { requestIP(req: Request): { address: string } | null }) =>
+            this.handleRequest(req, server.requestIP(req)?.address),
           maxRequestBodySize: resolveMaxBodyBytes(this.options),
         });
+        this.boundPort = this.server.port;
       } else {
         throw Errors.notImplemented('Bun runtime detected but Bun.serve not available');
       }
     } else if (runtime === 'deno') {
       // Use Deno's native server
-      const handler = (req: Request) => this.handleRequest(req);
+      const handler = (req: Request, info: { remoteAddr?: { hostname?: string } }) =>
+        this.handleRequest(req, info.remoteAddr?.hostname);
       this.server = (globalThis as any).Deno.serve({ port, hostname: host }, handler);
+      this.boundPort = this.server.addr.port;
     } else {
       // Node.js implementation
       // OPTIMIZATION: Configure keep-alive for connection reuse
@@ -985,7 +992,12 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   /**
    * Handle incoming HTTP request (Web API style)
    */
-  async handleRequest(request: Request): Promise<Response> {
+  async handleRequest(request: Request, remoteAddress?: string): Promise<Response> {
+    const key = this.rateLimiter.clientKey(request, remoteAddress);
+    return this.dispatchRequest(request, key, this.rateLimiter.consume(key), true);
+  }
+
+  private async dispatchRequest(request: Request, key: string, rateLimitResult: RateLimitResult, boundFetchBody = false): Promise<Response> {
     const startTime = performance.now();
     this.metrics.totalRequests++;
     this.metrics.activeRequests++;
@@ -996,7 +1008,6 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     const probe = request.method === 'GET' && (pathname === '/health' || pathname === '/metrics');
 
     // SECURITY: Check rate limits before processing
-    const rateLimitResult = this.rateLimiter.check(request);
     if (!rateLimitResult.allowed) {
       this.metrics.activeRequests--;
       const limited = this.createRateLimitResponse(rateLimitResult, request);
@@ -1014,11 +1025,15 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     // was recorded as 200.
     let status = 500;
     try {
-      const response = await this.route(request, pathname);
+      if (boundFetchBody) request = this.fetchBodyBoundary.bound(request, detectRuntime() === 'bun');
+      const response = await this.route(request, pathname, key);
       status = response.status;
       return response;
     } catch (error: any) {
-      const response = this.handleError(error, request);
+      const response = error instanceof TitanError && error.code === ErrorCode.PAYLOAD_TOO_LARGE
+        ? this.createErrorResponse(error, request.headers.get('X-Request-ID') || generateRequestId(), request)
+        : this.handleError(error, request);
+      if (boundFetchBody && response.status === 413 && detectRuntime() === 'bun') response.headers.set('Connection', 'close');
       status = response.status;
       return response;
     } finally {
@@ -1063,7 +1078,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   }
 
   /** Which handler answers this request — the dispatch `handleRequest` measures. */
-  private async route(request: Request, pathname: string): Promise<Response> {
+  private async route(request: Request, pathname: string, key: string): Promise<Response> {
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return this.handleCorsPreflightRequest(request);
@@ -1076,7 +1091,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     }
 
     if (pathname === '/netron/batch' && request.method === 'POST') {
-      return this.throughTheGate(request, () => this.handleBatchRequest(request));
+      return this.throughTheGate(request, () => this.handleBatchRequest(request, key));
     }
 
     if (pathname === '/netron/authenticate' && request.method === 'POST') {
@@ -1349,6 +1364,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     try {
       message = await request.json();
     } catch (error) {
+      if (error instanceof TitanError && error.code === ErrorCode.PAYLOAD_TOO_LARGE) throw error;
       // Log error if logger is available
       if (this.netronPeer?.logger) {
         this.netronPeer.logger.error({ error }, 'Failed to parse JSON request body');
@@ -1908,35 +1924,27 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     return context.output;
   }
 
-  private async handleBatchRequest(request: Request): Promise<Response> {
-    let batchRequest: HttpBatchRequest;
-
+  private async handleBatchRequest(request: Request, key: string): Promise<Response> {
+    let payload: unknown;
+    let invalid = 'Invalid batch request format';
     try {
-      batchRequest = await request.json();
-    } catch (_error) {
+      payload = await request.json();
+    } catch (error) {
+      if (error instanceof TitanError && error.code === ErrorCode.PAYLOAD_TOO_LARGE) throw error;
+      invalid = 'Invalid JSON';
+    }
+    const batchRequest = isHttpBatchRequest(payload) ? payload : undefined;
+    if (!batchRequest) {
       const requestId = request.headers.get('X-Request-ID') || generateRequestId();
-      return this.createErrorResponse(
-        new TitanError({
-          code: ErrorCode.BAD_REQUEST,
-          message: 'Invalid JSON',
-          requestId,
-        }),
-        requestId,
-        request
-      );
+      return this.createErrorResponse(new TitanError({ code: ErrorCode.BAD_REQUEST, message: invalid, requestId }), requestId, request);
     }
 
-    if (!isHttpBatchRequest(batchRequest)) {
-      const requestId = request.headers.get('X-Request-ID') || generateRequestId();
-      return this.createErrorResponse(
-        new TitanError({
-          code: ErrorCode.BAD_REQUEST,
-          message: 'Invalid batch request format',
-          requestId,
-        }),
-        requestId,
-        request
-      );
+    // One unit admitted the HTTP request before its body was read. Reserve
+    // all remaining items before the first handler, including sequential
+    // batches. A refused batch still paid for that single inbound request.
+    if (batchRequest.requests.length > 1) {
+      const admission = this.rateLimiter.consume(key, batchRequest.requests.length - 1);
+      if (!admission.allowed) return this.createRateLimitResponse(admission, request);
     }
 
     // Initialize hints object separately to ensure TypeScript knows it's defined
@@ -2408,14 +2416,29 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       }
       const url = `http://${req.headers.host || 'localhost'}${req.url}`;
       // Retain headers for a correlated refusal even when the body cannot be read.
-      request = new Request(url, { method: req.method, headers });
-      const body = await this.readNodeBody(req);
-      request = new Request(url, {
-        method: req.method,
-        headers,
-        body: body && ['POST', 'PUT', 'PATCH'].includes(req.method) ? body : undefined,
-      });
-      response = await this.handleRequest(request);
+      let malformed = false;
+      try {
+        request = new Request(url, { method: req.method, headers });
+      } catch {
+        // Invalid Host, target or method still spends ingress capacity.
+        malformed = true;
+        request = new Request('http://localhost/', { headers });
+      }
+      const key = this.rateLimiter.clientKey(request, req.socket.remoteAddress);
+      const admission = this.rateLimiter.consume(key);
+      if (admission.allowed) {
+        if (malformed) throw Errors.badRequest('Invalid HTTP request target or method');
+        const body = await this.readNodeBody(req);
+        request = new Request(url, {
+          method: req.method,
+          headers,
+          body: body && ['POST', 'PUT', 'PATCH'].includes(req.method) ? body : undefined,
+        });
+      } else {
+        // Release incoming chunks without buffering or parsing a refused upload.
+        req.resume();
+      }
+      response = await this.dispatchRequest(request, key, admission);
     } catch (error) {
       // Node's HTTP listener does not await an async callback. A rejected body
       // read must become a transport refusal, never an unhandled rejection that
@@ -2553,13 +2576,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         chunks.length = 0;
         reject(error);
       };
-      const tooLarge = () =>
-        fail(
-          new TitanError({
-            code: ErrorCode.PAYLOAD_TOO_LARGE,
-            message: `Request body too large (max: ${maxSize} bytes)`,
-          })
-        );
+      const tooLarge = () => fail(oversizedRequest(maxSize));
       // Keep error/aborted listeners until this request is collected: draining
       // an over-limit body can itself be interrupted by the sender.
       req.on('error', fail);
@@ -2676,13 +2693,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       success: false,
       error: {
         code: '429',
-        message: (this.options as any)?.rateLimit?.message || 'Too many requests, please try again later',
-        details: {
-          retryAfter: result.retryAfter,
-          limit: result.limit,
-          remaining: result.remaining,
-          resetAt: result.resetAt,
-        },
+        message: this.rateLimiter.message,
+        details: rateLimitDetails(result),
       },
     };
 
@@ -2875,7 +2887,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         // CRITICAL FIX: Add delay for Bun to release port (100ms)
         await new Promise((resolve) => setTimeout(resolve, 100));
       } else if (runtime === 'deno') {
-        await this.server.close();
+        await this.server.shutdown();
         // CRITICAL FIX: Add delay for Deno to release port (100ms)
         await new Promise((resolve) => setTimeout(resolve, 100));
       } else {
@@ -2906,7 +2918,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     this.status = 'offline';
 
     // SECURITY: Clean up rate limiter resources
-    this.rateLimiter.destroy();
+    if (!this.options.requestLimiter) this.rateLimiter.destroy();
 
     this.emit('close');
   }

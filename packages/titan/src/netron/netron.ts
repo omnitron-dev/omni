@@ -748,7 +748,7 @@ export class Netron extends EventEmitter implements INetron {
       // tokenTransport propagates from netron-level config so cookie /
       // composite modes apply identically to WS upgrade and HTTP RPC
       // (single source of truth for the deployment).
-      if (name === 'websocket' && this.authenticationManager && (server as any).configureAuth) {
+      if ((transport.name === 'websocket' || name === 'websocket') && this.authenticationManager && (server as any).configureAuth) {
         const { AuthorizationManager } = await import('./auth/authorization-manager.js');
         const authzManager = (this.authorizationManager as any) || new AuthorizationManager(this.logger);
         (server as any).configureAuth({
@@ -819,6 +819,7 @@ export class Netron extends EventEmitter implements INetron {
           peerId,
           serverRequestTimeout ?? transportOpts.requestTimeout,
         );
+        connection.setResponseMatcher?.(id => peer.expectsResponse(id));
         // Every socket transport shares RemotePeer's dispatcher, so handing the
         // wrapper to the peer closes WS, TCP and Unix at once. Until this, only
         // the HTTP server read `invocationWrapper`, and an application that

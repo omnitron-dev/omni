@@ -43,7 +43,7 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
   protected reconnectTimer?: NodeJS.Timeout;
   protected logger?: ILogger;
   protected binaryMode = false;
-  private pendingPings = new Map<
+  protected readonly pendingPings = new Map<
     number,
     { resolve: (rtt: number) => void; reject: (error: Error) => void; startTime: number }
   >();
@@ -104,8 +104,7 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
           this.emit('packet', packet);
         }
       } catch (_error: unknown) {
-        // Not a valid packet, emit as raw data (unlikely in binary mode)
-        this.emit('data', data);
+        this.handleInvalidPacket(data);
       }
       return;
     }
@@ -172,6 +171,10 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
     }
   }
 
+  protected handleInvalidPacket(data: Buffer | ArrayBuffer): void {
+    this.emit('data', data);
+  }
+
   /**
    * Handle PING packet
    */
@@ -191,6 +194,10 @@ export abstract class BaseConnection extends EventEmitter implements ITransportC
       const pending = this.pendingPings.get(packet.id);
       if (pending) {
         this.pendingPings.delete(packet.id);
+        if (packet.getError()) {
+          pending.reject(packet.data);
+          return;
+        }
         const rtt = performance.now() - pending.startTime;
         this.metrics.rtt = rtt;
         pending.resolve(rtt);

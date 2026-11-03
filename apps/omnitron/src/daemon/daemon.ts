@@ -26,6 +26,7 @@ import path from 'node:path';
 import { Application, ShutdownReason, ShutdownPriority, ApplicationEvent } from '@omnitron-dev/titan';
 import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';
 import { TcpTransport } from '@omnitron-dev/titan/netron/transport/tcp';
+import { TransportRequestLimiter } from '@omnitron-dev/titan/netron';
 import { HttpTransport } from '@omnitron-dev/titan/netron/transport/http';
 import { WebSocketTransport } from '@omnitron-dev/titan/netron/transport/websocket';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
@@ -868,8 +869,9 @@ export class OmnitronDaemon {
     // `trustProxy` is shared with the rate limiter deliberately: both answer
     // the same question — is there a proxy in front whose forwarded headers
     // we may believe? Two separate switches would eventually disagree.
+    const policy = dc.requestRateLimit ?? dc.httpRateLimit ?? {};
     const authContextWrapper = createAuthContextWrapper({
-      trustProxy: dc.httpRateLimit?.trustProxy === true,
+      trustProxy: policy.trustProxy === true,
       assertReady: () => this.assertBackendReady(),
     });
 
@@ -885,8 +887,7 @@ export class OmnitronDaemon {
     // same value then published the Netron HTTP RPC and the WebSocket
     // alongside it. A slave serves no console: the operator uses the
     // master's. So the two surfaces it gained are an authentication endpoint
-    // it does not need and a WebSocket one that, as the note below records,
-    // has no rate limit available to it.
+    // and a WebSocket endpoint it does not need.
     //
     // Rebound rather than warned about, which is the opposite of the choice
     // made for the TCP transport twenty lines up — and for the opposite
@@ -904,7 +905,12 @@ export class OmnitronDaemon {
     const internalHttpPort = (dc.httpPort ?? 9800) + 1;
     this.rpcHttpPort = internalHttpPort;
     this.app.netron.registerTransport('http', () => new HttpTransport());
-    const rl = dc.httpRateLimit ?? {};
+    const requestLimiter = new TransportRequestLimiter({
+      ...policy,
+      enabled: policy.enabled ?? true,
+      maxRequests: policy.maxRequests ?? 3_000,
+      globalMaxRequests: policy.globalMaxRequests ?? 6_000,
+    });
     this.app.netron.registerTransportServer('http', {
       name: 'daemon-http',
       options: {
@@ -912,24 +918,7 @@ export class OmnitronDaemon {
         host: localHost,
         cors: true,
         invocationWrapper: authContextWrapper,
-        // Volume cap on the HTTP RPC surface, and only that one. Password
-        // guessing is bounded by the per-account lockout in AuthService.
-        //
-        // The WebSocket surface below is NOT covered: netron's WebSocket
-        // transport has no rate-limit option — `maxPayload` is the only
-        // bound it accepts — and the console talks over WebSocket. This
-        // comment used to say the limit bounded "everything else, including
-        // attempts to flood the daemon into unresponsiveness", which
-        // describes a protection that covers one of the two transports an
-        // attacker can reach.
-        rateLimit: {
-          enabled: rl.enabled ?? true,
-          windowMs: rl.windowMs ?? 60_000,
-          maxRequests: rl.maxRequests ?? 3_000,
-          globalMaxRequests: rl.globalMaxRequests ?? 6_000,
-          trustProxy: rl.trustProxy ?? false,
-          ...(rl.whitelist ? { whitelist: rl.whitelist } : {}),
-        },
+        requestLimiter,
       },
     });
 
@@ -946,11 +935,7 @@ export class OmnitronDaemon {
         // HTTP calls do. Until recently only the HTTP server read this
         // option and this line did nothing.
         invocationWrapper: authContextWrapper,
-        // The only bound this transport accepts. Left unset it inherits
-        // `ws`'s 100 MB default, which is a lot of memory to hand a single
-        // frame on a control-plane socket that carries RPC arguments and
-        // event pushes. 8 MB is well above anything the console sends and
-        // well below anything worth allocating for a stranger.
+        requestLimiter,
         maxPayload: dc.wsMaxPayload ?? 8 * 1024 * 1024,
       },
     });

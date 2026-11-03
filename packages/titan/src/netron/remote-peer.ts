@@ -973,6 +973,10 @@ export class RemotePeer extends AbstractPeer {
     return this.sendPacket(createStreamPacket(Packet.nextId(), streamId, index, isLast, isLive, chunk));
   }
 
+  expectsResponse(id: number): boolean {
+    return this.responseHandlers.has(id);
+  }
+
   /**
    * Handles a response packet from the remote peer.
    * This method processes incoming response packets and invokes the appropriate handlers.

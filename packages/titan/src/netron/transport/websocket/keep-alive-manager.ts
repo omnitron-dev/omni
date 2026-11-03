@@ -113,7 +113,8 @@ export class KeepAliveManager {
     });
 
     // Setup pong handler for this connection
-    const pongHandler = () => {
+    const pongHandler = (payload?: Buffer) => {
+      if (payload?.length) return; // Our heartbeat ping has an empty payload.
       const entry = this.connections.get(connection.id);
       if (entry?.pongTimeout) {
         clearTimeout(entry.pongTimeout);
@@ -132,6 +133,10 @@ export class KeepAliveManager {
     if (this.connections.size === 1) {
       this.startTimer();
     }
+  }
+
+  awaitingPong(id: string): boolean {
+    return this.connections.get(id)?.pongTimeout !== undefined;
   }
 
   /**

@@ -4,11 +4,17 @@
  * Tests WebSocket transport implementation with real connections
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WebSocketTransport } from '../../../src/netron/transport/websocket/index.js';
 import { ConnectionState } from '../../../src/netron/transport/types.js';
 import { createServer } from 'node:http';
-import { WebSocketServer } from 'ws';
+import { WebSocket, WebSocketServer, type VerifyClientCallbackAsync } from 'ws';
+import type { IncomingMessage } from 'node:http';
+import { WebSocketServerAdapter } from '../../../src/netron/transport/websocket/server.js';
+import { EventEmitter } from 'node:events';
+import { WebSocketConnection } from '../../../src/netron/transport/websocket/connection.js';
+import { createPacket, createStreamPacket, encodePacket, TYPE_CALL } from '../../../src/netron/packet/index.js';
+import { TransportRequestLimiter } from '../../../src/netron/transport/request-limiter.js';
 import { promisify } from 'node:util';
 import { getFreeHttpPort as getFreePort, waitForEvent, delay } from '../../utils/index.js';
 
@@ -848,5 +854,77 @@ describe('WebSocketTransport', () => {
       customWsServer.close();
       await promisify(subprotocolHttpServer.close).bind(subprotocolHttpServer)();
     });
+  });
+});
+
+describe('WebSocket request admission at the packet boundary', () => {
+  function limited() {
+    const socket = Object.assign(new EventEmitter(), {
+      readyState: WebSocket.OPEN, send: vi.fn(), close: vi.fn(), pong: vi.fn(), bufferedAmount: 0,
+    });
+    const limiter = new TransportRequestLimiter({ enabled: true, maxRequests: 1 });
+    const connection = new WebSocketConnection(socket as unknown as WebSocket, {}, true, undefined, () => limiter.consume('client'));
+    connection.setResponseMatcher(id => id === 17);
+    socket.emit('message', Buffer.from('{"type":"client-id","id":"client"}'));
+    return { socket, limiter, connection };
+  }
+
+  it('preserves an external server’s upgrade refusal, manual pong setting and shared budget on close', async () => {
+    const external = vi.fn((_info: unknown, done: (ok: boolean, status: number) => void) => done(false, 403));
+    const server = new WebSocketServer({ noServer: true, autoPong: false, verifyClient: external as VerifyClientCallbackAsync });
+    const limiter = new TransportRequestLimiter({ enabled: true, maxRequests: 1 });
+    const adapter = new WebSocketServerAdapter(server, { requestLimiter: limiter });
+    const inspect = server.options.verifyClient as VerifyClientCallbackAsync;
+    const info = { origin: '', secure: false, req: { headers: {}, url: '/ws', socket: { remoteAddress: '127.0.0.1' } } as IncomingMessage };
+    const receive = vi.fn();
+    inspect(info, receive);
+    expect(receive).toHaveBeenCalledWith(false, 403);
+    inspect(info, receive);
+    expect(receive).toHaveBeenLastCalledWith(false, 429, 'Too Many Requests', expect.objectContaining({ 'Retry-After': expect.any(String) }));
+    expect(external).toHaveBeenCalledOnce();
+    expect(server.options.autoPong).toBe(false);
+    await adapter.close();
+    expect(limiter.consume('127.0.0.1').allowed).toBe(false);
+  });
+
+  it('drops an orphan response before decoding its invalid payload while a real response completes', () => {
+    const { socket, limiter, connection } = limited();
+    const received = vi.fn();
+    connection.on('packet', received);
+    const orphan = encodePacket(createPacket(8, 0, TYPE_CALL, null));
+    socket.emit('message', Buffer.concat([orphan, Buffer.from([0xc1])]));
+    expect(socket.close).not.toHaveBeenCalled();
+    expect(received).not.toHaveBeenCalled();
+    expect(limiter.getStats().globalCount).toBe(1);
+    socket.emit('message', encodePacket(createPacket(17, 0, TYPE_CALL, 'ready')));
+    expect(received).toHaveBeenCalledOnce();
+    expect(received.mock.calls[0]![0].data).toBe('ready');
+  });
+
+  it('bounds queued refusals for a peer that never reads its 429', () => {
+    const { socket, limiter } = limited();
+    limiter.consume('client');
+    const frame = encodePacket(createPacket(18, 1, TYPE_CALL, []));
+    for (let n = 0; n < 12; n++) socket.emit('message', frame);
+    expect(socket.send).toHaveBeenCalledTimes(1);
+    expect(socket.close).toHaveBeenCalledWith(1013, 'Too many requests');
+  });
+
+  it('signals transport loss when a stream exceeds its budget', () => {
+    const { socket, limiter } = limited();
+    limiter.consume('client');
+    socket.emit('message', encodePacket(createStreamPacket(18, 31, 1, false, true, 'chunk')));
+    expect(socket.close).toHaveBeenCalledWith(1013, 'Too many requests');
+    expect(socket.send).not.toHaveBeenCalled();
+  });
+
+  it('charges native peer pings and refuses to amplify a saturated client', () => {
+    const { socket } = limited();
+    const payload = Buffer.from('nonce');
+    socket.emit('ping', payload);
+    socket.emit('ping', payload);
+    expect(socket.pong).toHaveBeenCalledTimes(1);
+    expect(socket.pong).toHaveBeenCalledWith(payload);
+    expect(socket.close).toHaveBeenCalledWith(1013, 'Too many requests');
   });
 });

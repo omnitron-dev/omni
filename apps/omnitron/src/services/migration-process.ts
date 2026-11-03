@@ -1,5 +1,22 @@
 import { ExecutionEngine } from '@xec-sh/core';
+import { shellEscape } from '../shared/shell-escape.js';
 import type { LocalMigrationTarget } from './migration-target.js';
+
+/** SSH carries credentials on stdin; the remote process receives them only as its environment.
+ * The deployment execution fence owns the timeout and process group. Do not retry this command. */
+export function prepareRemoteMigration(target: { cwd: string; script: string; node?: string }, env: Record<string, string>) {
+  const source = `import {spawn} from 'node:child_process';
+    let size=0;const chunks=[];
+    for await(const chunk of process.stdin){size+=chunk.length;if(size>1024*1024)throw Error('Migration environment input exceeds 1 MiB');chunks.push(chunk)}
+    let env;try{env=JSON.parse(Buffer.concat(chunks).toString('utf8'))}catch{throw Error('Invalid migration environment input')}
+    if(!env||typeof env!=='object'||Array.isArray(env)||Object.entries(env).some(([key,value])=>!/^[_A-Za-z][_A-Za-z0-9]*$/.test(key)||typeof value!=='string'||value.includes('\\0')))throw Error('Invalid migration environment input');
+    const child=spawn(process.execPath,[${JSON.stringify(target.script)}],{
+      cwd:${JSON.stringify(target.cwd)},env:{...process.env,...env},stdio:['ignore','inherit','inherit']});
+    child.once('error',()=>{console.error('Migration process could not start');process.exitCode=1});
+    child.once('close',(code,signal)=>{process.exitCode=code??1;if(signal)console.error('Migration process terminated by '+signal)});`;
+  const runtime = target.node ? `env -u NODE_OPTIONS -u NODE_PATH ${shellEscape(target.node)}` : 'node';
+  return { command: `${runtime} --input-type=module -e ${shellEscape(source)}`, stdin: JSON.stringify(env) };
+}
 
 /** One execution only: a disconnected DB may have committed already. Readiness can retry before this call.
  * Xec's internal timeout returns before process close; the owned abort deadline instead waits for the

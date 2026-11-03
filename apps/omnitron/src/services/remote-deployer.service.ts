@@ -64,8 +64,9 @@ const UNREADABLE = -3;
 import { withNodeLeases, type LeaseRunner } from './node-deploy-lease.js';
 import { hostOperationBarrierCommand, type HostOperationAllowance } from './host-operation-barrier.js';
 import { migrationOutput } from './migration-output.js';
+import { prepareRemoteMigration } from './migration-process.js';
 import { COMPILED_MIGRATION_ENTRY, migrationDatabaseEnvironment } from './migration-target.js';
-import { publishNodeConfigCommand, restoreNodeConfigCommand } from './node-registration.js';
+import { prepareNodeConfigPublication, restoreNodeConfigCommand } from './node-registration.js';
 
 
 /**
@@ -1100,22 +1101,23 @@ export class RemoteDeployer {
       );
       try {
         const { env } = migrationDatabaseEnvironment(entry.app, databaseUrl);
-        const assignments = Object.entries(env).map(([key, value]) => `${key}=${shellEscape(value)}`).join(' ');
+        const migration = prepareRemoteMigration({ cwd: dir, script, ...(entry.migrationNode && { node: entry.migrationNode }) }, env);
         // What the migrations said, in order, before the verdict (see
         // `migration-output.ts`). The masked channel on purpose: these lines
         // are for reading, not parsing, and a migrator that ever printed a
         // credential must not put it in the master's log.
         const said = await this.sshExec(
           target,
-          `cd ${shellEscape(dir)} && ${assignments} ${entry.migrationNode ? 'env -u NODE_OPTIONS -u NODE_PATH ' + shellEscape(entry.migrationNode) : 'node'} ${shellEscape(script)}`,
+          migration.command,
           600_000,
+          migration.stdin,
         );
-        for (const line of migrationOutput(said)) {
+        for (const line of migrationOutput(redactDiagnosticText(said))) {
           this.logger.info({ node: target.host, app: entry.app, line }, 'Migration said');
         }
         this.logger.info({ node: target.host, app: entry.app }, 'Database migrations applied on the node');
       } catch (err) {
-        const message = (err as Error).message;
+        const message = redactDiagnosticText((err as Error).message);
         this.logger.error(
           { node: target.host, app: entry.app, error: message.slice(0, 400) },
           'Database migrations failed on the node — its new code will not be started',
@@ -1166,7 +1168,8 @@ export class RemoteDeployer {
     const operation = crypto.randomUUID();
     let published = false;
     try {
-      const result = await this.sshExec(target, publishNodeConfigCommand({ directory: dir, project, body, operation, artifacts: landed }));
+      const publication = prepareNodeConfigPublication({ directory: dir, project, body, operation, artifacts: landed });
+      const result = await this.sshExec(target, publication.command, 60_000, publication.stdin);
       published = true;
       const { changed } = JSON.parse(result.trim()) as { changed: boolean };
       const added = await this.sshExec(target, `omnitron project add ${shellEscape(project)} ${shellEscape(dir)} 2>&1`);
@@ -1881,10 +1884,10 @@ export class RemoteDeployer {
     return lease ? { command: lease.guard(command, timeout), timeout: timeout + 45_000 } : { command, timeout };
   }
 
-  private async sshExec(target: DeployTarget, command: string, timeout = 60_000): Promise<string> {
+  private async sshExec(target: DeployTarget, command: string, timeout = 60_000, stdin?: string): Promise<string> {
     await this.confirmLease(target, 'remote command');
     const guarded = this.guardedCommand(target, command, timeout);
-    const result = await this.execution.ssh(sshTargetOf(target), guarded.command, { timeout: guarded.timeout });
+    const result = await this.execution.ssh(sshTargetOf(target), guarded.command, { timeout: guarded.timeout, ...(stdin !== undefined && { stdin }) });
     if (result.exitCode !== 0) {
       const detail = result.stderr || result.stdout || `exit ${result.exitCode}`;
       throw new Error(`ssh ${target.username ?? 'root'}@${target.host}: ${detail}`);

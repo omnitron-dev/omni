@@ -6,7 +6,11 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { RemoteDeployer } from '../../src/services/remote-deployer.service.js';
 import { renderNodeAppConfig, selectNodeApps } from '../../src/project/node-app-config.js';
-import { publishNodeConfigCommand, restoreNodeConfigCommand } from '../../src/services/node-registration.js';
+import { prepareNodeConfigPublication, restoreNodeConfigCommand } from '../../src/services/node-registration.js';
+
+function runPublication(request: ReturnType<typeof prepareNodeConfigPublication>): string {
+  return execFileSync('/bin/sh', ['-c', request.command], { encoding: 'utf8', input: request.stdin, stdio: 'pipe' });
+}
 
 const cleanup: string[] = [];
 afterEach(async () => { for (const dir of cleanup.splice(0)) await rm(dir, { recursive: true, force: true }); });
@@ -15,9 +19,9 @@ describe('failed preparation preserves the running release', () => {
     const root = await mkdtemp(join(tmpdir(), 'omnitron-allocation-')); cleanup.push(root);
     const body = (sourceStack: string) => renderNodeAppConfig({ project: 'p', sourceStack, artifactRoot: '/artifacts',
       apps: [{ name: 'api' } as never], artifacts: [{ app: 'api', version: '1' }] });
-    const publish = (sourceStack: string, operation: string) => execFileSync('/bin/sh', ['-c', publishNodeConfigCommand({
+    const publish = (sourceStack: string, operation: string) => runPublication(prepareNodeConfigPublication({
       directory: root, project: 'p', operation, artifacts: [{ app: 'api', version: '1' }], body: body(sourceStack),
-    })], { encoding: 'utf8', stdio: 'pipe' });
+    }));
     publish('prod', 'first');
     const config = await readFile(join(root, 'omnitron.config.mjs'), 'utf8');
     expect(config).toContain('"managedOrigin"');
@@ -31,9 +35,9 @@ describe('failed preparation preserves the running release', () => {
     const root = await mkdtemp(join(tmpdir(), 'omnitron-unbound-')); cleanup.push(root);
     const original = 'export default { apps: [{name:"api"}], stacks: {deployed: {type:"local",apps:["api"]}} };';
     await writeFile(join(root, 'omnitron.config.mjs'), original);
-    const command = publishNodeConfigCommand({ directory: root, project: 'p', operation: 'candidate', artifacts: [],
+    const command = prepareNodeConfigPublication({ directory: root, project: 'p', operation: 'candidate', artifacts: [],
       body: renderNodeAppConfig({ project: 'p', sourceStack: 'prod', artifactRoot: '/artifacts', apps: [{ name: 'api' } as never], artifacts: [{ app: 'api', version: '1' }] }) });
-    expect(() => execFileSync('/bin/sh', ['-c', command], { stdio: 'pipe' })).toThrow('explicitly bound');
+    expect(() => runPublication(command)).toThrow('explicitly bound');
     expect(await readFile(join(root, 'omnitron.config.mjs'), 'utf8')).toBe(original);
   });
 
@@ -87,9 +91,9 @@ describe('failed preparation preserves the running release', () => {
     const contract = { schema: 1, apps: [{ name: 'p/deployed/api', cwd: '/old/api', version: '1', binding: { kind: 'independent' }, health: ['node', 'health.mjs'] }] };
     await writeFile(join(root, 'omnitron.config.mjs'), original);
     await writeFile(join(root, 'omnitron.host-upgrade.json'), JSON.stringify(contract));
-    const command = publishNodeConfigCommand({ directory: root, project: 'p', operation: 'test', artifacts: [{ app: 'api', version: '2' }],
+    const command = prepareNodeConfigPublication({ directory: root, project: 'p', operation: 'test', artifacts: [{ app: 'api', version: '2' }],
       body: 'export default '+JSON.stringify({ apps: [{ name: 'api', cwd: canonical }], stacks: { deployed: { type: 'local', apps: ['api'] } } }) });
-    expect(JSON.parse(execFileSync('/bin/sh', ['-c', command], { encoding: 'utf8' })).changed).toBe(true);
+    expect(JSON.parse(runPublication(command)).changed).toBe(true);
     const published = await readFile(join(root, 'omnitron.config.mjs'), 'utf8');
     expect(published).toContain('/old/worker'); expect(published).toContain(canonical);
     expect(JSON.parse(await readFile(join(root, 'omnitron.host-upgrade.json'), 'utf8')).apps[0]).toEqual({ ...contract.apps[0], cwd: canonical, version: '2' });

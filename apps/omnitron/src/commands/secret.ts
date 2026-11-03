@@ -5,7 +5,7 @@
  * 1. Daemon running: uses RPC to OmnitronSecrets service
  * 2. Daemon offline: direct file access via SecretsService
  *
- * Secrets are stored encrypted at ~/.omnitron/secrets.enc using AES-256-GCM.
+ * Secrets are encrypted with AES-256-GCM in the daemon SQLite state store.
  */
 
 import { log, prism } from '@xec-sh/kit';

@@ -1,12 +1,17 @@
 import { remoteNode } from './host-upgrade.js';
 
 /** Private on-node snapshots survive controller failure; application data is never copied or replaced. */
-export function publishNodeConfigCommand(input: {
+export function prepareNodeConfigPublication(input: {
   directory: string; project: string; body: string; operation: string;
   artifacts: ReadonlyArray<{ app: string; version: string; directory?: string }>;
-}): string {
-  return remoteNode(`import fs from 'node:fs'; import path from 'node:path'; import {pathToFileURL} from 'node:url'; import {createHash} from 'node:crypto';
-    const input=${JSON.stringify(input)};
+}): { command: string; stdin: string } {
+  const command = remoteNode(`import fs from 'node:fs'; import path from 'node:path'; import {pathToFileURL} from 'node:url'; import {createHash} from 'node:crypto';
+    class RegistrationError extends Error {}
+    try {
+    let size=0; const chunks=[];
+    for await(const chunk of process.stdin){size+=chunk.length;if(size>16*1024*1024)throw new RegistrationError('Node configuration input exceeds 16 MiB');chunks.push(chunk)}
+    let input;try{input=JSON.parse(Buffer.concat(chunks).toString('utf8'))}catch{throw new RegistrationError('Invalid node configuration input')}
+    if(!input||typeof input.body!=='string'||typeof input.directory!=='string'||typeof input.project!=='string'||typeof input.operation!=='string'||!Array.isArray(input.artifacts))throw new RegistrationError('Invalid node configuration input');
     const directory=input.directory;
     fs.mkdirSync(directory,{recursive:true,mode:0o700});
     const snapshot=path.join(directory,'.registration-'+input.operation);
@@ -24,9 +29,9 @@ export function publishNodeConfigCommand(input: {
     const priorOrigin=previous?.stacks?.deployed?.managedOrigin;
     const nextOrigin=candidate.stacks?.deployed?.managedOrigin;
     if(priorOrigin&&(!nextOrigin||priorOrigin.project!==nextOrigin.project||priorOrigin.stack!==nextOrigin.stack))
-      throw Error('Node allocation belongs to another source stack; configuration retained');
+      throw new RegistrationError('Node allocation belongs to another source stack; configuration retained');
     if(nextOrigin&&!priorOrigin&&(previous?.apps?.length??0)>0)
-      throw Error('Legacy node allocation must be explicitly bound to its source stack before deployment; configuration retained');
+      throw new RegistrationError('Legacy node allocation must be explicitly bound to its source stack before deployment; configuration retained');
     const merged=new Map((previous?.apps??[]).map(app=>[app.name,app]));
     for(const app of candidate.apps) merged.set(app.name,app);
     candidate.apps=[...merged.values()];
@@ -37,20 +42,26 @@ export function publishNodeConfigCommand(input: {
     const contractFile=path.join(directory,files[1]);
     if(fs.existsSync(contractFile)){
       const contract=JSON.parse(fs.readFileSync(contractFile,'utf8'));
-      if(contract.schema!==1||!Array.isArray(contract.apps)) throw Error('Unsupported host upgrade contract; configuration retained');
+      if(contract.schema!==1||!Array.isArray(contract.apps)) throw new RegistrationError('Unsupported host upgrade contract; configuration retained');
       for(const artifact of input.artifacts){
         const name=input.project+'/deployed/'+artifact.app;
         const binding=contract.apps.find(app=>app.name===name);
-        if(!binding) throw Error('Explicit host upgrade contract required for new app: '+name);
+        if(!binding) throw new RegistrationError('Explicit host upgrade contract required for new app: '+name);
         binding.cwd=candidate.apps.find(app=>app.name===artifact.app).cwd;
         binding.version=artifact.version;
-        if(fs.realpathSync(binding.cwd)!==binding.cwd) throw Error('Release directory must be canonical: '+name);
+        if(fs.realpathSync(binding.cwd)!==binding.cwd) throw new RegistrationError('Release directory must be canonical: '+name);
       }
       write(contractFile,JSON.stringify(contract,null,2)+'\\n');
     }
     write(configFile,body); write(path.join(directory,files[2]),hash);
     const fd=fs.openSync(directory,'r');try{fs.fsyncSync(fd)}finally{fs.closeSync(fd)}
-    console.log(JSON.stringify({changed}));`);
+    console.log(JSON.stringify({changed}));
+    }catch(error){
+      const safeCodes=new Set(['EACCES','ENOENT','ENOSPC','EEXIST','EROFS','EMFILE','ENFILE','ELOOP','EIO']);
+      console.error(error instanceof RegistrationError?error.message:'Node configuration publication failed'+(safeCodes.has(error?.code)?' ('+error.code+')':''));
+      process.exitCode=1;
+    }`);
+  return { command, stdin: JSON.stringify(input) };
 }
 
 export function restoreNodeConfigCommand(directory: string, operation: string): string {

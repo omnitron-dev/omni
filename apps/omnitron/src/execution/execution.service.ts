@@ -374,13 +374,15 @@ export class ExecutionService {
     };
   }
 
-  async ssh(target: SSHTarget, command: string, options?: ExecOptions): Promise<ExecResult> {
+  async ssh(target: SSHTarget, command: string, options?: ExecOptions & { stdin?: string | Buffer }): Promise<ExecResult> {
     const engine = await this.getEngine();
     const start = Date.now();
 
     if (!engine) return { stdout: '', stderr: 'SSH requires the Xec execution engine', exitCode: 1, duration: Date.now() - start };
     try {
-      const ssh = engine.ssh(sshConfig(target));
+      let ssh = engine.ssh(sshConfig(target));
+      // Input travels through the SSH channel, never through the command or its logs.
+      if (options?.stdin !== undefined) ssh = ssh.with({ stdin: options.stdin });
       // Use raw template literal to avoid options interpolation into command
       let proc = ssh.raw([command] as any);
       if (options?.timeout) proc = proc.timeout(options.timeout);

@@ -52,13 +52,10 @@ import { AuthorizationManager } from '../../../../src/netron/auth/authorization-
 import { METADATA_KEYS } from '../../../../src/decorators/core.js';
 import { createMockLogger } from '../../test-utils.js';
 import type { HttpRequestMessage } from '../../../../src/netron/transport/http/types.js';
-import { nextTestPort } from '../../../utils/index.js';
 
 describe('HTTP — T#100: configureAuth wires NetronAuthMiddleware', () => {
   let server: HttpServer;
   let mockPeer: LocalPeer;
-  let baseUrl: string;
-  let testPort: number;
 
   /**
    * Wire up a service stub whose `@Public` metadata is set directly on
@@ -93,10 +90,10 @@ describe('HTTP — T#100: configureAuth wires NetronAuthMiddleware', () => {
     configureAuthOnNetron?: boolean;
     optionsAuthorizationManager?: boolean;
   } = {}) {
-    testPort = nextTestPort();
-    baseUrl = `http://localhost:${testPort}`;
-
-    const constructorOptions: any = { port: testPort, host: 'localhost' };
+    // Exercise authorization on one concrete loopback family. On Linux the
+    // listener may resolve localhost to ::1 while fetch selects 127.0.0.1.
+    // The public bound port also avoids reserving an unrelated fixed port.
+    const constructorOptions: any = { port: 0, host: '127.0.0.1' };
     if (opts.optionsAuthorizationManager) {
       constructorOptions.authorizationManager = new AuthorizationManager(
         createMockLogger() as any,
@@ -159,7 +156,7 @@ describe('HTTP — T#100: configureAuth wires NetronAuthMiddleware', () => {
       input: {},
       timestamp: Date.now(),
     };
-    const r = await fetch(`${baseUrl}/netron/invoke`, {
+    const r = await fetch(`http://${server.address}:${server.port}/netron/invoke`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(req),

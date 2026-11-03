@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 import { extract, list } from 'tar';
 
 import type { IEcosystemAppEntry } from '../config/types.js';
+import { validateReadiness } from '../health/contracts.js';
 import { applicationBootstrapRuntime } from '../orchestrator/application-runtime.js';
 import { CLOSURE_FILE } from './application-closure.js';
 import type { LoadedRelease } from './load.js';
@@ -139,6 +140,7 @@ export async function inspectLocalReleaseInstallation(release: LoadedRelease, st
       throw Error('No unique verified local launch for ' + stack + '/' + entry.name + '; rebuild with a packaged entry');
     if (typeof launch.file !== 'string' || !componentPath(launch.file) || !/\.[cm]?js$/.test(launch.file))
       throw Error('Expected a package-relative compiled JavaScript entry');
+    if (entry.readiness !== undefined) validateReadiness(entry.readiness, launch.mode);
     const builtFor = source.manifest.builtWith?.target;
     if (!builtFor || Object.entries(runtime).some(([k,v]) => builtFor[k as keyof TargetRuntime] !== v))
       throw Error('The local execution owner does not match the recorded release target for ' + entry.name);

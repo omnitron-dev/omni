@@ -29,7 +29,7 @@ const text = (value: unknown, max: number): value is string =>
   !Array.from(value).some(character => character.charCodeAt(0) < 32);
 const only = (value: Record<string, unknown>, keys: string[]) => Object.keys(value).every((key) => keys.includes(key));
 
-export function validateReadiness(value: unknown): asserts value is AppReadinessConfig {
+export function validateReadiness(value: unknown, mode?: 'bootstrap' | 'script'): asserts value is AppReadinessConfig {
   if (!object(value) || !only(value, ['probes', 'intervalMs', 'timeoutMs']) ||
       (value['intervalMs'] !== undefined && !integer(value['intervalMs'], 1000, 300_000)) ||
       (value['timeoutMs'] !== undefined && !integer(value['timeoutMs'], 100, 10_000)) ||
@@ -51,6 +51,7 @@ export function validateReadiness(value: unknown): asserts value is AppReadiness
         Object.entries(probe['expect']).some(([key, v]) => !text(key, 100) || !['string', 'number', 'boolean'].includes(typeof v) && v !== null ||
           typeof v === 'number' && !Number.isFinite(v) || typeof v === 'string' && v.length > 1000))) throw new Error('readiness_invalid: expect must contain 1–16 JSON scalar fields.');
     } else if (probe['type'] === 'heartbeat') {
+      if (mode === 'bootstrap') throw new Error('readiness_invalid: bootstrap applications publish domain health through hooks.onHealthCheck; heartbeat files are for classic scripts.');
       if (heartbeat) throw new Error('readiness_invalid: declare one heartbeat channel per application; combine worker checks in its report.');
       heartbeat = true;
       if (!only(probe, ['name', 'type', 'file', 'maxAgeMs']) || !text(probe['file'], 2048) || !integer(probe['maxAgeMs'], 1000, 86_400_000)) throw new Error('readiness_invalid: heartbeat requires a file and maxAgeMs 1000–86400000.');

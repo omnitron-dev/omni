@@ -15,10 +15,7 @@ export function defineEcosystem(config: Partial<IEcosystemConfig> & Pick<IEcosys
         throw Error('An imported application cannot override its release entry, boundary or watcher: ' + app.name);
     }
     if (app.readiness !== undefined) {
-      validateReadiness(app.readiness);
-      if (app.bootstrap && app.readiness.probes.some(probe => probe.type === 'heartbeat')) {
-        throw new Error('readiness_invalid: bootstrap applications publish domain health through hooks.onHealthCheck; heartbeat files are for classic scripts.');
-      }
+      validateReadiness(app.readiness, app.bootstrap ? 'bootstrap' : app.script ? 'script' : undefined);
     }
   }
   return {

@@ -61,6 +61,11 @@ describe('declared HTTP readiness', () => {
     expect(() => validateReadiness(http('http://user:secret@localhost/health'))).toThrow();
     expect(() => validateReadiness({ probes: [...heartbeat().probes, { ...heartbeat().probes[0], name: 'second' }] })).toThrow();
   });
+  it('reserves file heartbeats for classic applications once the execution mode is known', () => {
+    expect(() => validateReadiness(heartbeat(), 'bootstrap')).toThrow(/hooks.onHealthCheck/);
+    expect(() => validateReadiness(heartbeat(), 'script')).not.toThrow();
+    expect(() => validateReadiness(http('http://localhost/health'), 'bootstrap')).not.toThrow();
+  });
 });
 
 describe('completed-cycle heartbeats', () => {

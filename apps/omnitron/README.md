@@ -132,6 +132,9 @@ to their installed package as the working directory; an explicit `cwd` selects
 a separate data directory. The actual owner's Node
 executable must match the producer's recorded target. Changes to imported
 migration history are checked against the previous producer package.
+Readiness declarations are checked against the resolved execution mode:
+bootstrap applications publish domain health through Titan hooks, while file
+heartbeats remain available to classic scripts.
 
 Read-only diagnosis and topology use captured launch declarations. If no
 release is selected, or an older owner has not supplied declaration evidence,

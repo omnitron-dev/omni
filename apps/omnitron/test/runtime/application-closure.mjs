@@ -122,6 +122,8 @@ try {
   assert.equal((await import(pathToFileURL(importedLaunch.bootstrap))).default,42);
   assert.ok(importedLaunch.bootstrap.startsWith(importedLaunch.releaseRoot + path.sep));
   assert.equal((await inspect(imported, 'dev', [importedEntry], opts))[0].bootstrap, importedLaunch.bootstrap);
+  await assert.rejects(inspect(imported, 'dev', [{ ...importedEntry,
+    readiness: { probes: [{ name: 'cycle', type: 'heartbeat', file: 'health.json', maxAgeMs: 1000 }] } }], opts), /hooks.onHealthCheck/);
   await assert.rejects(inspect(imported, 'dev', [{ ...importedEntry, releaseFrom: { ...importOrigin, app: 'another' } }], opts), /configured producer/);
   const changedTarget = structuredClone(imported), mismatchedProducer = { ...producer, builtWith: { ...producer.builtWith, target: { ...localTarget, abi: 'wrong-ABI' } } };
   const wrongJson = JSON.stringify(mismatchedProducer), wrongDigest = sha(wrongJson);

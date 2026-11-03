@@ -25,7 +25,7 @@ import { compileCustomRoutes } from './http-routes.js';
 import type { AppHealthAnswer, IAppDefinition, IProcessEntry } from '../config/types.js';
 import type { IProcessTraffic } from '@omnitron-dev/titan-pm';
 import { pathToFileURL } from 'node:url';
-import { RUNTIME_CONTEXT, verifyInstalledRuntime } from '../runtime/context.js';
+import { RUNTIME_CONTEXT, verifyInstalledRuntime, assertInstalledRuntimeModule } from '../runtime/context.js';
 import { queryTopologyService } from './topology-query.js';
 
 /**
@@ -386,6 +386,7 @@ class BootstrapProcess {
     // Import the module — prefer pre-bundled .mjs from BuildService,
     // fall back to resolving from bootstrap directory (tsx or dist/)
     const modulePath = bundledModulePath ?? path.resolve(path.dirname(bootstrapPath), this.entry.module);
+    await assertInstalledRuntimeModule(runtimeContext, pathToFileURL(bootstrapPath), pathToFileURL(modulePath));
     reportStage('module:importing', modulePath);
     const moduleFile = await import(modulePath);
     reportStage('module:imported');

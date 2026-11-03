@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { ReleaseArtifact, ReleaseArtifactReference, ReleaseManifest } from './manifest.js';
+import { validOrigin, type ReleaseArtifactOrigin } from './installed-origin.js';
 import { assertReleaseRepositoryIdentities, isSafeRepositoryIdentity } from './repository-identity.js';
 
 const SHA = /^[a-f0-9]{64}$/;
@@ -163,6 +164,32 @@ export function artifactReleaseContexts(manifest: ReleaseManifest): ReadonlyArra
     for (const artifact of source.artifacts) context(source, artifact.app, records);
   }
   return manifest.artifacts.map(artifact => ({ app: artifact.app, ...context(manifest, artifact.app, records) }));
+}
+
+/** One receipt mapping for local installation and remote delivery. Imported bytes
+ * always retain the original producer; only the launch alias belongs to the consumer. */
+export function releaseArtifactOrigins(manifest: ReleaseManifest, manifestSha256: string):
+  ReadonlyArray<ArtifactReleaseContext & { readonly app: string; readonly origin: ReleaseArtifactOrigin }> {
+  if (!sha256(manifestSha256)) throw Error('Invalid release manifest digest');
+  return artifactReleaseContexts(manifest).map(source => {
+    const launch = source.artifact.launch;
+    const origin: ReleaseArtifactOrigin = {
+      releaseId: source.manifest.id,
+      manifestSha256: source.chain.at(-1)?.manifestSha256 ?? manifestSha256,
+      artifactSha256: source.artifact.sha256,
+      artifactBytes: source.artifact.bytes,
+      app: source.app,
+      frameworkCommit: source.manifest.omni.commit,
+      ...(launch && { runtimeOrigin: {
+        projectCommit: source.manifest.project.commit,
+        producerApp: source.artifact.app,
+        consumer: { releaseId: manifest.id, manifestSha256, app: source.app },
+        entry: { relativeFile: launch.file, mode: launch.mode },
+      } }),
+    };
+    if (!validOrigin(origin)) throw Error('Invalid installed artifact origin for ' + source.app);
+    return { ...source, origin };
+  });
 }
 
 export function validateReleaseOrigins(manifest: ReleaseManifest): void {

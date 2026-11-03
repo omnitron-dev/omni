@@ -13,7 +13,7 @@ import { CLOSURE_FILE } from './application-closure.js';
 import type { LoadedRelease } from './load.js';
 import { assertOwnerExecutable } from './owner-executable.js';
 import type { ReleaseLaunch } from './manifest.js';
-import { artifactReleaseContexts } from './origin.js';
+import { releaseArtifactOrigins } from './origin.js';
 import { sha256File } from './portable-archive.js';
 import { RELEASE_RECEIPT, releaseTreeDigest } from './runtime-provenance.js';
 import { readInstalledReleaseReceipt, writeInstalledReleaseReceipt, type ReleaseArtifactOrigin } from './installed-origin.js';
@@ -132,7 +132,7 @@ async function verify(root: string, launch: ReleaseLaunch, entry: IEcosystemAppE
 export async function inspectLocalReleaseInstallation(release: LoadedRelease, stack: string, entries: readonly IEcosystemAppEntry[], options: { prepare?: boolean; ownerPid?: number; ownerPackage?: string } = {}): Promise<IEcosystemAppEntry[]> {
   if (!digest(release.manifestSha256)) throw Error('Invalid local release manifest digest');
   const runtime = await targetRuntime();
-  const sources = new Map(artifactReleaseContexts(release.manifest).map(source => [source.app, source]));
+  const sources = new Map(releaseArtifactOrigins(release.manifest, release.manifestSha256).map(source => [source.app, source]));
   const selected = entries.map(entry => {
     const unique = release.manifest.artifacts.filter(a => a.app === entry.name), files = release.files.filter(f => f.app === entry.name);
     const launch = unique[0]?.launch, artifact = files[0];
@@ -154,13 +154,7 @@ export async function inspectLocalReleaseInstallation(release: LoadedRelease, st
     const builtFor = source.manifest.builtWith?.target;
     if (!builtFor || Object.entries(runtime).some(([k,v]) => builtFor[k as keyof TargetRuntime] !== v))
       throw Error('The local execution owner does not match the recorded release target for ' + entry.name);
-    const origin: ReleaseArtifactOrigin = { releaseId: source.manifest.id,
-      manifestSha256: source.chain.at(-1)?.manifestSha256 ?? release.manifestSha256,
-      artifactSha256: artifact.sha256, artifactBytes: artifact.bytes, app: entry.name,
-      frameworkCommit: source.manifest.omni.commit,
-      runtimeOrigin: { projectCommit: source.manifest.project.commit, producerApp: source.artifact.app,
-        consumer: { releaseId: release.id, manifestSha256: release.manifestSha256, app: entry.name },
-        entry: { mode: launch.mode, relativeFile: launch.file } } };
+    const origin = source.origin;
     return { launch, artifact, entry, origin };
   });
   if (!options.ownerPid) throw Error('An authenticated local execution owner PID is required');

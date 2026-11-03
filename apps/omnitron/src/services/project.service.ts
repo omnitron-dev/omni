@@ -126,7 +126,7 @@ const MAINTENANCE_PROBE_PATHS = ['/', '/api/main/health'] as const;
 import { migrationOutput } from './migration-output.js';
 import type { LoadedRelease } from '../release/load.js';
 import { readArchiveInfrastructure } from '../release/infrastructure.js';
-import { artifactReleaseContexts } from '../release/origin.js';
+import { releaseArtifactOrigins } from '../release/origin.js';
 import type { DeclaredConfig } from '../project/declared-config.js';
 
 import type { SyncService } from './sync.service.js';
@@ -3795,10 +3795,9 @@ export class ProjectService extends EventEmitter {
       // Built in clean clones, gated, and checked against the manifest by
       // `loadRelease` — nothing is compiled here, from this machine's disk.
       const files = new Map(release.files.map((f) => [f.app, f]));
-      const launches = new Map(release.manifest.artifacts.map(a => [a.app, a.launch]));
-      const sources = new Map(artifactReleaseContexts(release.manifest).map(source => [source.app, source.manifest.omni]));
+      const sources = new Map(releaseArtifactOrigins(release.manifest, release.manifestSha256).map(source => [source.app, source.origin]));
       artifacts = appEntries.flatMap((entry) => {
-        const file = files.get(entry.name), launch = launches.get(entry.name);
+        const file = files.get(entry.name);
         return file
           ? [{
               app: file.app,
@@ -3808,19 +3807,7 @@ export class ProjectService extends EventEmitter {
               builtAt: release.manifest.builtAt,
               checksum: file.inputs,
               tarballSha256: file.sha256,
-              release: {
-                releaseId: release.id,
-                manifestSha256: release.manifestSha256,
-                artifactSha256: file.sha256,
-                artifactBytes: file.bytes,
-                app: file.app,
-                frameworkCommit: sources.get(file.app)!.commit,
-                ...(launch && { runtimeOrigin: {
-                  projectCommit: release.manifest.project.commit, producerApp: file.app,
-                  consumer: { releaseId: release.id, manifestSha256: release.manifestSha256, app: file.app },
-                  entry: { relativeFile: launch.file, mode: launch.mode },
-                } }),
-              },
+              release: sources.get(file.app)!,
             }]
           : [];
       });

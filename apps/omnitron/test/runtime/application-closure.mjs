@@ -135,11 +135,36 @@ try {
   changedTarget.manifest.imports = [{ sha256: wrongDigest, manifestJson: wrongJson }];
   changedTarget.manifest.artifacts[0].origin = { ...importOrigin, manifestSha256: wrongDigest };
   await assert.rejects(inspect(changedTarget, 'dev', [{ ...importedEntry, releaseFrom: changedTarget.manifest.artifacts[0].origin }], opts), /recorded release target for imported-api/);
+  // Nested aliases use the same producer mapping locally and at remote delivery.
+  const intermediateJson = JSON.stringify(imported.manifest), intermediateDigest = sha(intermediateJson);
+  const nestedReference = { release: imported.id, app: 'imported-api', manifestSha256: intermediateDigest };
+  const nested = { ...imported, id: 'nested-consumer', manifestSha256: sha('nested-consumer'),
+    files: imported.files.map(f => ({ ...f, app: 'nested-alias' })), manifest: { ...imported.manifest, id: 'nested-consumer',
+      artifacts: imported.manifest.artifacts.map(a => ({ ...a, app: 'nested-alias', origin: nestedReference })),
+      imports: [{ manifestJson: intermediateJson, sha256: intermediateDigest }] } };
+  const [nestedLaunch] = await inspect(nested, 'dev', [{ name: 'nested-alias', releaseFrom: nestedReference }], { ...opts, prepare: true });
+  const nestedReceipt = JSON.parse(await fs.readFile(path.join(nestedLaunch.releaseRoot, '.omnitron-release.json'), 'utf8'));
+  const { releaseArtifactOrigins } = await load('origin');
+  const delivery = releaseArtifactOrigins(nested.manifest, nested.manifestSha256)[0].origin;
+  assert.deepEqual(nestedReceipt.origin, delivery);
+  assert.equal(delivery.runtimeOrigin.consumer.app, 'nested-alias');
+  assert.equal(delivery.runtimeOrigin.producerApp, 'private-api');
+  assert.equal(delivery.manifestSha256, producerDigest);
+  assert.equal(delivery.runtimeOrigin.projectCommit, producer.project.commit);
+  const remoteNested = path.join(tmp, 'nested-delivery');
+  await fs.cp(nestedLaunch.releaseRoot, remoteNested, { recursive: true, verbatimSymlinks: true });
+  await fs.unlink(path.join(remoteNested, '.omnitron-release.json'));
+  await run(sealReleaseArtifactCommand(remoteNested, delivery, producer.omni.commit, true, true,
+    { nodeOptions: '', executable: process.execPath, ownerPackage: ownerPkg }));
+  assert.equal(await run(installedReleaseCheckCommand(remoteNested, delivery,
+    { root: ownerPkg, executable: process.execPath, commit: producer.omni.commit }, '')), 'verified');
+  const remoteOrigin = JSON.parse(await fs.readFile(path.join(remoteNested, '.omnitron-release.json'), 'utf8')).origin;
+  assert.deepEqual(remoteOrigin, nestedReceipt.origin);
   const alteredClosure = path.join(selected.releaseRoot,'.omnitron-closure.json');
   await fs.appendFile(alteredClosure,' ');
   await assert.rejects(inspect(portable,'dev',[privateEntry],opts),/closure differs/);
   const malformed = structuredClone(portable); malformed.manifest.artifacts[0].launch.file = '../outside.js';
-  await assert.rejects(inspect(malformed,'dev',[privateEntry],opts),/package-relative/);
+  await assert.rejects(inspect(malformed,'dev',[privateEntry],opts),/Invalid installed artifact origin/);
 
   const staged=path.join(tmp,'stage'); await stageApplicationClosure(app,staged,{...cfg, bootstrap: 'dist/index.js'},[src]);
   assert.equal(await fs.access(path.join(staged,'.env')).then(()=>true,()=>false),false);

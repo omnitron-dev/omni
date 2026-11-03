@@ -8,6 +8,7 @@ import {
   assertArtifactIdentity,
   RuntimeOriginVerificationError,
 } from '../../src/runtime/index.js';
+import { assertInstalledRuntimeModule } from '../../src/runtime/context.js';
 import { releaseTreeDigest } from '../../src/release/runtime-provenance.js';
 import { targetRuntime } from '../../src/release/target-runtime.js';
 import type { InstalledReleaseReceipt } from '../../src/release/installed-origin.js';
@@ -213,4 +214,17 @@ it('rejects arrays decorated to imitate the wire identity record', () => {
     frameworkCommit: 'd'.repeat(40),
   });
   expect(() => assertArtifactIdentity(decorated)).toThrow(RuntimeOriginVerificationError);
+});
+
+it('admits a compiled topology child in the closure and refuses an external bundle', async () => {
+  const context = await verifyInstalledRuntime(entry);
+  await expect(
+    assertInstalledRuntimeModule(context, entry, pathToFileURL(path.join(root, 'dist/other.js')))
+  ).resolves.toBeUndefined();
+  await expect(assertInstalledRuntimeModule(context, entry, new URL(import.meta.url))).rejects.toThrow(
+    'outside the installed compiled closure'
+  );
+  await expect(
+    assertInstalledRuntimeModule({ state: 'unavailable', reason: 'development' }, entry, new URL(import.meta.url))
+  ).resolves.toBeUndefined();
 });

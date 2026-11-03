@@ -108,3 +108,32 @@ export async function verifyInstalledRuntime(entry: URL): Promise<InstalledRunti
     );
   }
 }
+
+/** A bootstrap child may load only compiled code from the same checked closure. */
+export async function assertInstalledRuntimeModule(
+  context: InstalledRuntimeContext,
+  entry: URL,
+  module: URL
+): Promise<void> {
+  if (context.state !== 'verified') return;
+  try {
+    const entryPath = fileURLToPath(entry);
+    let root = entryPath;
+    for (const _ of context.entry.relativeFile.split('/')) root = path.dirname(root);
+    if (
+      path.join(root, context.entry.relativeFile) !== entryPath ||
+      module.protocol !== 'file:' ||
+      module.search ||
+      module.hash
+    )
+      throw Error('Runtime module does not belong to the admitted entry');
+    const file = await fs.realpath(fileURLToPath(module));
+    if (!file.startsWith(root + path.sep) || !/\.[cm]?js$/.test(file) || !(await fs.lstat(file)).isFile())
+      throw Error('Runtime module is outside the installed compiled closure');
+  } catch (error) {
+    throw new RuntimeOriginVerificationError(
+      error instanceof Error ? error.message : 'Runtime module verification failed',
+      { cause: error }
+    );
+  }
+}

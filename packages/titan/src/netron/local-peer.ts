@@ -161,10 +161,9 @@ export class LocalPeer extends AbstractPeer {
    * @throws {Error} If the remote peer is invalid or the service metadata is incomplete.
    */
   async exposeRemoteService(peer: RemotePeer, meta: ServiceMetadata) {
-    // Collision protection: reject if a different peer already exposed this service name
-    const existingStub = this.netron.services.get(meta.name) as ServiceStub | undefined;
-    if (existingStub && existingStub.definition?.peerId !== peer.id) {
-      throw Errors.conflict(`Service '${meta.name}' already exposed by a different peer`);
+    const serviceKey = getQualifiedName(meta.name, meta.version);
+    if (this.netron.services.has(serviceKey)) {
+      throw Errors.conflict(`Service already exposed: ${serviceKey}`);
     }
 
     const def = new Definition(Definition.nextId(), peer.id, meta);
@@ -172,12 +171,12 @@ export class LocalPeer extends AbstractPeer {
     const stub = new ServiceStub(this, iInstance, def);
 
     this.stubs.set(def.id, stub);
-    this.netron.services.set(meta.name, stub);
+    this.netron.services.set(serviceKey, stub);
     this.serviceInstances.set(iInstance, stub);
     peer.definitions.set(def.id, def);
     this.registerWithTransports(stub);
 
-    await this.netron.emitSpecial(NETRON_EVENT_SERVICE_EXPOSE, getServiceEventName(def.meta.name), {
+    await this.netron.emitSpecial(NETRON_EVENT_SERVICE_EXPOSE, getServiceEventName(serviceKey), {
       name: def.meta.name,
       version: def.meta.version,
       qualifiedName: getQualifiedName(def.meta.name, def.meta.version),
@@ -223,6 +222,20 @@ export class LocalPeer extends AbstractPeer {
       this.stubs.delete(defId);
     }
 
+    this.unregisterWithTransports(serviceName);
+
+    await this.netron.emitSpecial(NETRON_EVENT_SERVICE_UNEXPOSE, getServiceEventName(serviceName), {
+      name: def.meta.name,
+      version: def.meta.version,
+      qualifiedName: serviceName,
+      peerId: this.id,
+      defId,
+    });
+
+    this.logger.info({ serviceName }, 'Service unexposed successfully');
+  }
+
+  private unregisterWithTransports(serviceName: string): void {
     // Unregister service from all transport servers that support unregisterService
     // Type guard for transport servers with unregister capability
     const hasUnregisterService = (s: unknown): s is ITransportServerWithServices =>
@@ -237,15 +250,6 @@ export class LocalPeer extends AbstractPeer {
       }
     }
 
-    await this.netron.emitSpecial(NETRON_EVENT_SERVICE_UNEXPOSE, getServiceEventName(serviceName), {
-      name: def.meta.name,
-      version: def.meta.version,
-      qualifiedName: serviceName,
-      peerId: this.id,
-      defId,
-    });
-
-    this.logger.info({ serviceName }, 'Service unexposed successfully');
   }
 
   /**
@@ -276,6 +280,8 @@ export class LocalPeer extends AbstractPeer {
       this.serviceInstances.delete(stub.instance);
       this.stubs.delete(defId);
     }
+
+    this.unregisterWithTransports(serviceName);
 
     await this.netron.emitSpecial(NETRON_EVENT_SERVICE_UNEXPOSE, getServiceEventName(serviceName), {
       name: def.meta.name,

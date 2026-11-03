@@ -54,6 +54,11 @@ class Provider {
 @Service({ name: 'ForwardedPrivateProvider', transports: [new TcpTransport()] })
 class PrivateProvider { @Public() read() { return 'private-provider'; } }
 
+@Service({ name: 'ForwardedVersions', version: '1.0.0' })
+class VersionOne { @Public({ transports: ['tcp', 'http'] }) read() { return 'v1'; } }
+@Service({ name: 'ForwardedVersions', version: '2.0.0' })
+class VersionTwo { @Public({ transports: ['tcp', 'http'] }) read() { return 'v2'; } }
+
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
 
@@ -126,6 +131,32 @@ describe('transport confinement across an HTTP gateway and TCP provider', () => 
     await expect(f.providerPeer.runTask('expose_service', { name: 'MalformedPublisher', version: '',
       methods: { read: { type: 'string', arguments: [], transports: null } }, properties: {} })).rejects.toMatchObject({ code: 400 });
     expect(f.gateway.services.has('MalformedPublisher')).toBe(false);
+  });
+
+  it('preserves exact remote publication versions and unregisters only the selected version', async () => {
+    const f = await fixture(true);
+    const first = await f.providerPeer.exposeService(new VersionOne());
+    const second = await f.providerPeer.exposeService(new VersionTwo());
+    expect(f.gateway.services.has('ForwardedVersions')).toBe(false);
+    expect(f.gateway.services.get('ForwardedVersions@1.0.0')!.definition.id).toBe(first.id);
+    expect(f.gateway.services.get('ForwardedVersions@2.0.0')!.definition.id).toBe(second.id);
+    await expect(f.providerPeer.exposeService(new VersionOne())).rejects.toMatchObject({ code: 409 });
+    for (const [name, value] of [['ForwardedVersions@1.0.0', 'v1'], ['ForwardedVersions@2.0.0', 'v2'], ['ForwardedVersions', 'v2']]) {
+      expect(await f.invoke('read', name)).toMatchObject({ status: 200, body: { success: true, data: value } });
+    }
+    await f.providerPeer.unexposeService('ForwardedVersions@2.0.0');
+    expect(f.gateway.services.has('ForwardedVersions@2.0.0')).toBe(false);
+    expect(f.gateway.peer.stubs.has(second.id)).toBe(false);
+    expect(await f.invoke('read', 'ForwardedVersions@2.0.0')).toMatchObject({ status: 404, body: { success: false } });
+    expect(await f.invoke('read', 'ForwardedVersions@1.0.0')).toMatchObject({ status: 200, body: { success: true, data: 'v1' } });
+    expect(await f.invoke('read', 'ForwardedVersions')).toMatchObject({ status: 200, body: { success: true, data: 'v1' } });
+    // Ordinary persistent discovery makes the same version choice after removal.
+    const client = new Netron(createMockLogger()); cleanup.push(() => client.stop());
+    const tcp = await client.connect(`tcp://127.0.0.1:${f.gateway.transportServers.get('tcp')!.port}`) as RemotePeer;
+    await tcp.runTask('authenticate', { username: 'admin', password: 'fixture' });
+    const latest = await tcp.queryInterface<{ read(): Promise<string> }>('ForwardedVersions');
+    expect(await latest.read()).toBe('v1');
+    await expect(tcp.queryInterface('ForwardedVersions@2.0.0')).rejects.toMatchObject({ code: 404 });
   });
 
   it('requires explicit gateway authority instead of borrowing privileged upstream credentials', async () => {

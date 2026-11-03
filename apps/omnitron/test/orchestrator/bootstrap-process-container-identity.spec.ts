@@ -167,7 +167,7 @@ describe('BootstrapProcess.assertContainerIdentity', () => {
       // We must avoid the OS tmpdir's parent chain accidentally containing
       // a titan install (it doesn't on macOS, but we create a deeply nested
       // path to be safe).
-      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-no-titan-'));
+      const root = fs.mkdtempSync(path.join(TMP_ROOT, 'no-titan-'));
       // Create an empty node_modules at the root so resolution stops here
       // instead of walking up into our project tree (where titan might exist).
       fs.mkdirSync(path.join(root, 'node_modules'), { recursive: true });

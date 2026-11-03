@@ -21,7 +21,7 @@
  * longer does.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, onTestFinished } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -33,6 +33,7 @@ const { sourcesFor, findStale } = await import(path.join(root, 'scripts/prune-st
 /** A dist/src pair on disk, for the rules that need real files. */
 function tree(layout: Record<string, string>) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-prune-'));
+  onTestFinished(() => fs.rmSync(dir, { recursive: true, force: true }));
   for (const [rel, body] of Object.entries(layout)) {
     const full = path.join(dir, rel);
     fs.mkdirSync(path.dirname(full), { recursive: true });

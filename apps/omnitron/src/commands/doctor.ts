@@ -1429,33 +1429,27 @@ export async function checkAnonymousSurface(findings: Findings, dc: IDaemonConfi
   const host = dc.host ?? '127.0.0.1';
   const reachableFromNetwork = host !== '127.0.0.1' && host !== 'localhost' && host !== '::1';
 
-  /** Call a method with no Authorization header; true when it answers. */
-  const answersAnonymously = async (service: string, method: string): Promise<boolean> => {
-    try {
-      const res = await fetch(`http://127.0.0.1:${httpPort}/netron/invoke`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ service, method, input: [], id: 'doctor-anon' }),
-        signal: AbortSignal.timeout(3000),
-      });
-      const body = (await res.json()) as { success?: boolean };
-      return body?.success === true;
-    } catch {
-      // Unreachable is not "open" — say nothing rather than guess.
-      return false;
-    }
-  };
-
   const probes: Array<{ service: string; method: string; what: string }> = [
     { service: 'OmnitronMetrics', method: 'getSnapshot', what: 'every managed app by name, with CPU, memory and status' },
     { service: 'Health@1.0.0', method: 'listIndicators', what: 'the health indicators this daemon runs' },
   ];
 
   const open: string[] = [];
-  for (const probe of probes) {
-    if (await answersAnonymously(probe.service, probe.method)) {
+  const { HttpConnection } = await import('@omnitron-dev/titan/netron/transport/http');
+  const connection = new HttpConnection(`http://127.0.0.1:${httpPort}`, { timeout: 3000 });
+  try {
+    for (const probe of probes) {
+      try {
+        const service = await connection.queryInterface(probe.service);
+        await service[probe.method]();
+      } catch {
+        // Only a successful call establishes anonymous exposure.
+        continue;
+      }
       open.push(`${probe.service}.${probe.method}() → ${probe.what}`);
     }
+  } finally {
+    await connection.close();
   }
 
   if (open.length === 0) return;

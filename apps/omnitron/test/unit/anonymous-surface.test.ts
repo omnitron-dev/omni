@@ -14,9 +14,12 @@ const config = (host: string): IDaemonConfig => ({ host, httpPort: 9800 }) as ID
 
 /** Answer `success` to every /netron/invoke, or fail to connect. */
 function stubFetch(success: boolean | 'unreachable') {
-  const spy = vi.fn(async () => {
+  const spy = vi.fn(async (_url: string, init: RequestInit) => {
     if (success === 'unreachable') throw new Error('ECONNREFUSED');
-    return { json: async () => ({ success }) } as unknown as Response;
+    const { id } = JSON.parse(String(init.body));
+    return success
+      ? Response.json({ id, success, data: {} })
+      : Response.json({ id, success, error: { message: 'Unauthorized', code: 401 } }, { status: 401 });
   });
   vi.stubGlobal('fetch', spy);
   return spy;
@@ -46,7 +49,7 @@ describe('anonymous surface', () => {
   });
 
   it('reports it as a note when the daemon is on loopback', async () => {
-    stubFetch(true);
+    const requests = stubFetch(true);
     const findings = new Findings();
 
     await checkAnonymousSurface(findings, config('127.0.0.1'));
@@ -54,6 +57,8 @@ describe('anonymous surface', () => {
     const [finding] = findings.all();
     expect(finding?.id).toBe('auth.anonymous-surface');
     expect(finding?.severity).toBe('info');
+    expect(requests.mock.calls).toHaveLength(2);
+    for (const [, init] of requests.mock.calls) expect(new Headers(init.headers).has('authorization')).toBe(false);
     // No remedy: there is nothing for the operator to do about a local
     // process reading local metrics, and a remedy here would be noise.
     expect(finding?.remedy).toBeUndefined();

@@ -1,66 +1,46 @@
-/**
- * omnitron start [app|all]
- *
- * Starts app(s). Auto-starts daemon if not running.
- */
-
+/** Start one managed application, or start the fleet when explicitly requested. */
 import { log } from '@xec-sh/kit';
-import { spinner } from './spinner.js';
 import { createDaemonClient, LONG_REQUEST_TIMEOUT } from '../daemon/daemon-client.js';
 import { daemonStart } from './daemon-cmd.js';
+import { reportAbsence, requireDaemon } from './daemon-required.js';
+import { spinner } from './spinner.js';
 
-/**
- * These commands wait for a whole Titan application to come up.
- *
- * The daemon allows an app up to its own `startupTimeout` — configured at two
- * and five minutes for the applications on this host — while the CLI's default
- * ceiling is sixty seconds. So the client gave up first, on an operation the
- * daemon had four more minutes to finish, and reported
- * `RPC request timed out after 60000ms`. Observed: three consecutive
- * `omnitron restart` calls "failed" that way and one of the apps came up
- * anyway. `daemon-client.ts` says why that is the worst thing to report — the
- * daemon cancels nothing when the caller stops waiting, so the operation runs
- * on with its outcome unknown, and an operator acts on the word "failed".
- *
- * `LONG_REQUEST_TIMEOUT` already exists for exactly this and was wired into
- * the STACK commands only; the per-app ones kept the default.
- */
 export async function startCommand(appName?: string): Promise<void> {
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
-
-  // Auto-start daemon if not running
-  if (!(await client.isReachable())) {
-    log.info('Daemon not running — starting it first...');
-    await daemonStart();
-
-    // If no specific app requested, daemon already started all
-    if (!appName) {
-      await client.disconnect();
-      return;
-    }
-  }
-
-  const s = spinner();
-
+  const progress = spinner();
   try {
+    const absence = await client.whyUnreachable();
+    if (absence) {
+      // Starting a daemon can start every autostart stack. Only a fleet-wide
+      // request can authorize that, and only when the previous daemon is gone.
+      if ((appName && appName !== 'all') || (absence.kind !== 'stopped' && absence.kind !== 'stale')) {
+        reportAbsence(absence, 'application start was not sent');
+        process.exitCode = 1;
+        return;
+      }
+      log.info('Starting the daemon...');
+      await daemonStart();
+      if (!(await requireDaemon(client, 'daemon startup could not be confirmed'))) {
+        process.exitCode = 1;
+        return;
+      }
+      if (!appName) return;
+    }
 
     if (!appName || appName === 'all') {
-      s.start('Starting all apps...');
+      progress.start('Starting all apps...');
       const apps = await client.startAll();
-      s.stop(`Started ${apps.length} apps`);
-
-      for (const app of apps) {
-        log.success(`  ${app.name} — ${app.status} (PID: ${app.pid})`);
-      }
+      progress.stop(`Started ${apps.length} apps`);
+      for (const app of apps) log.success(`  ${app.name} — ${app.status} (PID: ${app.pid})`);
     } else {
-      s.start(`Starting ${appName}...`);
+      progress.start(`Starting ${appName}...`);
       const app = await client.startApp({ name: appName });
-      s.stop(`${app.name} — ${app.status} (PID: ${app.pid})`);
+      progress.stop(`${app.name} — ${app.status} (PID: ${app.pid})`);
     }
-  } catch (err) {
-    s.stop(`Failed: ${(err as Error).message}`);
-    log.error((err as Error).message);
+  } catch (error) {
+    progress.stop(`Start not confirmed: ${error instanceof Error ? error.message : String(error)}`, 1);
+    process.exitCode = 1;
+  } finally {
+    await client.disconnect();
   }
-
-  await client.disconnect();
 }

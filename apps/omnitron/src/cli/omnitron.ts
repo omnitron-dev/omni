@@ -448,7 +448,7 @@ stack
 
 program
   .command('start [app]')
-  .description('Start app(s), auto-starts daemon if needed')
+  .description('Start a named app via RPC, or start all apps (can start the daemon)')
   .action(async (app) => {
     const { startCommand } = await import('../commands/start.js');
     await startCommand(app);

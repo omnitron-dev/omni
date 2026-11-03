@@ -32,6 +32,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { externalizeNonRelativePlugin } from './runtime-package-resolution.js';
 // os import removed — cache dir is inside monorepo for package resolution
 
 // =============================================================================
@@ -116,22 +117,9 @@ export async function compileTypeScript(sourcePath: string): Promise<CompileResu
     platform: 'node',
     target: 'node22',
     sourcemap: false,
-    // External: all non-relative imports (workspace packages, npm deps)
-    // This prevents bundling the entire DI tree — we only need the
-    // static defineSystem() return value (name, requires, transports, processes)
-    // Mark ALL non-relative imports as external.
-    // We only need to transpile TS→JS and resolve relative imports
-    // within the app directory. Everything else (npm, workspace) stays as import().
-    plugins: [{
-      name: 'externalize-non-relative',
-      setup(build: any) {
-        // Mark all non-relative, non-absolute imports as external
-        build.onResolve({ filter: /^[^./]/ }, (args: any) => ({
-          path: args.path,
-          external: true,
-        }));
-      },
-    }],
+    // The definition reader must compile source workspace dependencies just as
+    // the worker builder does. Built SDK packages stay external in both paths.
+    plugins: [externalizeNonRelativePlugin()],
     tsconfigRaw: JSON.stringify({
       compilerOptions: {
         experimentalDecorators: true,

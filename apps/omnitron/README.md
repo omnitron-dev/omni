@@ -51,6 +51,13 @@ builder clones the selected commit and records the subdirectory in the release
 manifest. Declare `@omnitron-dev/omnitron` in a
 workspace importer and commit the lockfile. Install all `@omnitron-dev/*`
 dependencies from the same framework release.
+Development definition reads and application builds use the same package
+resolution policy: TypeScript workspace entries are compiled with their relative
+imports and decorators; built packages remain external to preserve shared module
+and DI identity. Source workspace dependencies participate in the incremental
+watch graph. Reading a definition never requires changing those package exports
+to built output or installing a second runtime loader in the application.
+
 Each application with a Titan bootstrap must declare `@omnitron-dev/titan`
 in its own runtime dependencies. Before packing, the builder verifies that
 the public Titan entry resolves inside the application’s staged package.

@@ -50,6 +50,7 @@ jobs:
         run: |
           node test/runtime/application-closure.mjs dist
           node test/runtime/release-provenance.mjs dist
+          pnpm exec vitest run --maxWorkers 2 test/integration/execution-connection.test.ts
           node test/runtime/execution-host.mjs dist
       - name: Linked and npm framework builds and recipient admission
         working-directory: apps/omnitron

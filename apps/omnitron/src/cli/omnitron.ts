@@ -908,11 +908,12 @@ cluster
 const secret = program.command('secret').description('Encrypted secrets management');
 
 secret
-  .command('set <key> <value>')
-  .description('Set a secret (encrypted at rest)')
-  .action(async (key: string, value: string) => {
+  .command('set <key> [value]')
+  .description('Set a secret using hidden terminal input or stdin (encrypted at rest)')
+  .option('--stdin', 'Read the value from stdin instead of a positional argument')
+  .action(async (key: string, value: string | undefined, opts: { stdin?: boolean }) => {
     const { secretSetCommand } = await import('../commands/secret.js');
-    await secretSetCommand(key, value);
+    await secretSetCommand(key, value, opts);
   });
 
 secret

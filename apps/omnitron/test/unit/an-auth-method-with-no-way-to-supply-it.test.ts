@@ -23,7 +23,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { readSecretFromStdin } from '../../src/commands/node.js';
+import { readSecretFromStdin } from '../../src/commands/secret-input.js';
 import { stripComments } from '../../../../scripts/lib/strip-comments.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));

@@ -10,6 +10,7 @@
 
 import { log, prism } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
+import { readSecretFromStdin } from './secret-input.js';
 import type { IOmnitronSecretsService } from '../shared/dto/services.js';
 
 /**
@@ -52,7 +53,19 @@ function refuseAWriteBehindTheDaemon(what: string, err: unknown): void {
   process.exitCode = 1;
 }
 
-export async function secretSetCommand(key: string, value: string): Promise<void> {
+export async function secretSetCommand(
+  key: string,
+  value?: string,
+  options: { stdin?: boolean } = {},
+): Promise<void> {
+  if (options.stdin && value !== undefined) {
+    throw new Error('Choose either stdin or a positional value, not both');
+  }
+  if (value === undefined) {
+    value = await readSecretFromStdin('value', 'Vault');
+  } else {
+    log.warn('A positional secret can appear in shell history and process arguments. Omit the value to use hidden terminal input or stdin.');
+  }
   // Try daemon RPC first, fall back to direct file access
   const client = createDaemonClient();
 

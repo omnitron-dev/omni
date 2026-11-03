@@ -1,7 +1,7 @@
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { IOmnitronAccessService, ConsoleRole } from '../shared/dto/services.js';
 import { isOmnitronRole } from '../shared/roles.js';
-import { readSecretFromStdin } from './node.js';
+import { readSecretFromStdin } from './secret-input.js';
 import { emitError, emitJson } from './output.js';
 
 export async function accessCommand(

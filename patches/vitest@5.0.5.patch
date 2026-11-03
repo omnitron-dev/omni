@@ -51,6 +51,28 @@ index 50dd001b7b24be2eac6f37eeb1929ad4645aa1a9..2863cb7a5961a352ba307b54d4609edf
  			// Interrupted signals don't set exit code automatically.
  			// Use same exit code as node: https://nodejs.org/api/process.html#signal-events
  			if (process.exitCode === void 0) process.exitCode = exitCode !== void 0 ? 128 + exitCode : Number(signal);
+@@ -8848,6 +8848,10 @@
+ 	}
+ 	if (resolved.standalone && !resolved.watch) throw new Error(`Vitest standalone mode requires --watch`);
+ 	if (resolved.mergeReports && resolved.watch) throw new Error(`Cannot merge reports with --watch enabled`);
++	if (process.env.VITEST_MAX_WORKERS) {
++		resolved.maxWorkers = Number.parseInt(process.env.VITEST_MAX_WORKERS);
++		resolved.providedOptions.maxWorkers = true;
++	}
+ 	resolved.maxWorkers = resolved.maxWorkers ? resolveMaxWorkers(resolved.maxWorkers) : getDefaultMaxWorkers(resolved.watch);
+ 	// `browser.fileParallelism` was replaced by the top-level `fileParallelism`. Map
+ 	// it (only when browser is enabled, since it was a browser-only option) so
+@@ -9006,10 +9010,6 @@
+ 	if (browserIsolate !== void 0) {
+ 		logger.deprecate("`browser.isolate` is deprecated. Use the top-level `isolate` option instead.");
+ 		if (options.isolate === void 0) resolved.isolate = browserIsolate;
+-	}
+-	if (process.env.VITEST_MAX_WORKERS) {
+-		resolved.maxWorkers = Number.parseInt(process.env.VITEST_MAX_WORKERS);
+-		resolved.providedOptions.maxWorkers = true;
+ 	}
+ 	if (typeof resolved.diff === "string") resolved.diff = resolvePath(resolved.diff, resolved.root);
+ 	if (options.related) resolved.related = toArray(options.related).map((file) => resolve(resolved.root, file));
 diff --git a/dist/chunks/tmp-copies.js b/dist/chunks/tmp-copies.js
 new file mode 100644
 index 0000000000000000000000000000000000000000..14eb937a78c23e9247b1e86bd9a00fdbd8755c5c

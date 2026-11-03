@@ -185,3 +185,15 @@ test.describe('Dialog Loading State', () => {
     await expect(dialog).toBeVisible();
   });
 });
+
+
+test('modal confirmation retains its dimming backdrop', async ({ page }) => {
+  await page.goto('/test/dialog');
+  await page.getByRole('button', { name: /open dialog/i }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  const backdrop = page.locator('.MuiBackdrop-root');
+  await expect(backdrop).not.toHaveClass(/MuiBackdrop-invisible/);
+  await expect(backdrop).toHaveCSS('background-color', 'rgba(17, 20, 23, 0.5)');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toBeHidden();
+});

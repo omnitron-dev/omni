@@ -67,9 +67,7 @@ export function MenuTestPage() {
             anchorEl={anchorEl}
             open={open}
             onClose={handleClose}
-            MenuListProps={{
-              'aria-labelledby': 'options-button',
-            }}
+            slotProps={{ list: { 'aria-labelledby': 'options-button' } }}
           >
             <MenuItem onClick={handleClose}>
               <ListItemIcon>
@@ -112,9 +110,7 @@ export function MenuTestPage() {
             anchorEl={iconAnchorEl}
             open={iconOpen}
             onClose={handleIconClose}
-            MenuListProps={{
-              'aria-labelledby': 'more-button',
-            }}
+            slotProps={{ list: { 'aria-labelledby': 'more-button' } }}
           >
             <MenuItem onClick={handleIconClose}>Option 1</MenuItem>
             <MenuItem onClick={handleIconClose}>Option 2</MenuItem>

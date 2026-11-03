@@ -9,14 +9,14 @@ import path from 'node:path';
  */
 export default defineConfig({
   plugins: [react()],
-  root: __dirname,
+  root: import.meta.dirname,
   server: {
     port: 5173,
     strictPort: true,
   },
   resolve: {
     alias: {
-      '@prism': path.resolve(__dirname, '../../src'),
+      '@prism': path.resolve(import.meta.dirname, '../../src'),
     },
   },
 });

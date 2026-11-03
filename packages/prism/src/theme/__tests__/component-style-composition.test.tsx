@@ -1,6 +1,7 @@
 import { render, fireEvent } from '@testing-library/react';
 import { ThemeProvider, type ThemeOptions } from '@mui/material/styles';
 import Box from '@mui/material/Box';
+import Backdrop from '@mui/material/Backdrop';
 import Table from '@mui/material/Table';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
@@ -165,5 +166,23 @@ describe('disclosure outlines are independent of neighboring content', () => {
       fireEvent.click(summary);
       outline();
     }
+  });
+});
+
+
+describe('backdrop visibility belongs to the MUI interaction', () => {
+  it.each(['light', 'dark'] as const)('keeps %s menu backdrops transparent and modal backdrops dimmed', (mode) => {
+    const theme = createPrismTheme({ mode, cssVariables: { enabled: false } });
+    const view = (invisible: boolean) => <ThemeProvider theme={theme}>
+      <Backdrop open invisible={invisible} data-testid="backdrop" />
+    </ThemeProvider>;
+    const { getByTestId, rerender } = render(view(false));
+    const color = () => getComputedStyle(getByTestId('backdrop')).backgroundColor;
+    const modal = color();
+    expect(modal).toMatch(/0\.5\)$/);
+    rerender(view(true));
+    expect(['transparent', 'rgba(0, 0, 0, 0)']).toContain(color());
+    rerender(view(false));
+    expect(color()).toBe(modal);
   });
 });

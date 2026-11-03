@@ -188,3 +188,15 @@ test.describe('Menu with Icons', () => {
     await expect(editIcon).toBeVisible();
   });
 });
+
+
+test('menu click-away backdrop stays visually transparent', async ({ page }) => {
+  await page.goto('/test/menu');
+  await page.getByRole('button', { name: 'Options', exact: true }).click();
+  await expect(page.getByRole('menu')).toBeVisible();
+  const backdrop = page.locator('.MuiBackdrop-root');
+  await expect(backdrop).toHaveClass(/MuiBackdrop-invisible/);
+  await expect(backdrop).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await backdrop.click({ position: { x: 5, y: 5 } });
+  await expect(page.getByRole('menu')).toBeHidden();
+});

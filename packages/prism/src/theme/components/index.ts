@@ -902,8 +902,9 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
     },
     MuiBackdrop: {
       styleOverrides: {
-        root: ({ theme }) => ({
-          backgroundColor: `rgba(${getGreyChannel(theme, '900')} / 0.5)`,
+        root: ({ theme, ownerState }) => ({
+          // Menus/popovers use an invisible click-away layer; only modals dim the page.
+          backgroundColor: ownerState.invisible ? 'transparent' : `rgba(${getGreyChannel(theme, '900')} / 0.5)`,
         }),
       },
     },

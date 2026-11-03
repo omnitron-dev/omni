@@ -15,10 +15,11 @@ export async function reserveDaemonPorts(additional = 0) {
     const release = () => Promise.all(listeners.map(server => new Promise(resolve => server.close(resolve))));
     try {
       const httpPort = await listen();
-      // The daemon derives internal HTTP and WebSocket listeners from the Console port.
-      if (httpPort <= 65533) {
+      // Netron HTTP, WebSocket and the metrics listener occupy the next three ports.
+      if (httpPort <= 65532) {
         await listen(httpPort + 1);
         await listen(httpPort + 2);
+        await listen(httpPort + 3);
         const ports = [];
         for (let i = 0; i < additional; i++) ports.push(await listen());
         return { httpPort, ports, release };
@@ -28,5 +29,5 @@ export async function reserveDaemonPorts(additional = 0) {
     }
     await release();
   }
-  throw Error('Could not reserve a contiguous daemon HTTP/WebSocket range and separate fixture listeners');
+  throw Error('Could not reserve a contiguous daemon HTTP/WebSocket/metrics range and separate fixture listeners');
 }

@@ -5,9 +5,15 @@
 import type { IEcosystemConfig } from './types.js';
 import { DEFAULT_ECOSYSTEM } from './defaults.js';
 import { validateReadiness } from '../health/contracts.js';
+import { assertReleaseArtifactReference } from '../release/origin.js';
 
 export function defineEcosystem(config: Partial<IEcosystemConfig> & Pick<IEcosystemConfig, 'apps'>): IEcosystemConfig {
   for (const app of config.apps) {
+    if (app.releaseFrom !== undefined) {
+      assertReleaseArtifactReference(app.releaseFrom);
+      if (app.bootstrap || app.script || app.releaseEntry || app.releaseRoot || (app.watch !== undefined && app.watch !== false))
+        throw Error('An imported application cannot override its release entry, boundary or watcher: ' + app.name);
+    }
     if (app.readiness !== undefined) {
       validateReadiness(app.readiness);
       if (app.bootstrap && app.readiness.probes.some(probe => probe.type === 'heartbeat')) {

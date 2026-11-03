@@ -632,6 +632,8 @@ export interface IWebSocketTransportConfig {
 
 export interface IEcosystemAppEntry {
   name: string;
+  /** Import one independently built application; cannot be combined with a source entry path. */
+  releaseFrom?: import('../release/manifest.js').ReleaseArtifactReference;
   /** Explicit installed artifact boundary; never inferred from the process cwd or a release-like directory name. */
   releaseRoot?: string;
   /** Optional package-relative compiled entry in a frozen release (for example dist/server.js). */

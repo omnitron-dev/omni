@@ -29,6 +29,8 @@ import { readPackageGates, runPackageGates } from './package-gates.js';
 import { FRAMEWORK_REPOSITORY, resolveRegistryFramework } from './registry-framework.js';
 import { reproduceVendoredFramework, requireFrameworkCommit } from './vendored-framework.js';
 import { OWN_BUILD } from '../shared/build-stamp.js';
+import { importReleaseArtifacts } from './import-artifacts.js';
+import { MAX_RELEASE_MANIFEST_BYTES, validateReleaseOrigins } from './origin.js';
 import type { GateOutcome, ReleaseManifest, ReleaseSource } from './manifest.js';
 
 const exec = promisify(execFile);
@@ -752,7 +754,8 @@ async function buildRelease(
     info: (msg) => fs.appendFileSync(artifactsLog, `${msg}\n`),
   });
   let integrityFailure: unknown;
-  const packed = await builder.buildAll(apps, { releaseCheckouts: clones.map(([, , directory]) => directory), env,
+  const imported = await importReleaseArtifacts(apps.filter(app => app.releaseFrom), path.join(releaseRoot, 'artifacts'));
+  const packed = await builder.buildAll(apps.filter(app => !app.releaseFrom), { releaseCheckouts: clones.map(([, , directory]) => directory), env,
     ...(registry && { verifyFrameworkPackage: async (name, directory) => {
       try { await registry.verifyPackage(name, directory); }
       catch (error) { integrityFailure = error; throw error; }
@@ -802,6 +805,8 @@ async function buildRelease(
     artifacts: packed.built.map((artifact, i) => ({ ...artifact, packageSource: packages.get(packageDirectories[i]!)! })),
     target: await (await import('./target-runtime.js')).targetRuntime(),
     artifactFailures: packed.failed,
+    importedArtifacts: imported.artifacts,
+    imports: imported.imports,
     gates,
     omnitron,
     packages: builtPackages,
@@ -811,12 +816,15 @@ async function buildRelease(
     ...(statics ? { statics } : {}),
     migrations,
   });
+  validateReleaseOrigins(manifest);
   const manifestPath = path.join(releaseRoot, 'manifest.json');
-  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  const manifestJson = `${JSON.stringify(manifest, null, 2)}\n`;
+  if (Buffer.byteLength(manifestJson) > MAX_RELEASE_MANIFEST_BYTES) throw Error('Release manifest exceeds 8 MiB');
+  fs.writeFileSync(manifestPath, manifestJson);
 
   if (!options.keepSource) fs.rmSync(path.join(releaseRoot, 'src'), { recursive: true, force: true });
 
   const passed = gates.filter((g) => g.status === 'passed').length;
-  say(`release ${id} — ${passed} of ${gates.length} gates passed, ${packed.built.length} artifact(s)`, 100, { gates });
+  say(`release ${id} — ${passed} of ${gates.length} gates passed, ${manifest.artifacts.length} artifact(s)`, 100, { gates });
   return { id, root: releaseRoot, manifestPath, manifest, durationMs: Date.now() - started };
 }

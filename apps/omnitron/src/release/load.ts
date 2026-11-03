@@ -18,6 +18,7 @@ import { promisify } from 'node:util';
 
 import { OMNITRON_HOME } from '../config/defaults.js';
 import type { ReleaseManifest } from './manifest.js';
+import { MAX_RELEASE_MANIFEST_BYTES, isReadableReleaseManifest, validateReleaseOrigins } from './origin.js';
 
 const exec = promisify(execFile);
 
@@ -63,8 +64,11 @@ export async function loadRelease(id: string, root: string = releasesRoot()): Pr
   }
   if (fs.realpathSync(manifestPath) !== path.join(fs.realpathSync(root), id, 'manifest.json') ||
       !fs.lstatSync(manifestPath).isFile()) throw Error('Release manifest must be a physical file in its store');
+  if (fs.statSync(manifestPath).size > MAX_RELEASE_MANIFEST_BYTES) throw Error('Release manifest exceeds 8 MiB');
   const manifestBytes = fs.readFileSync(manifestPath);
-  const manifest = JSON.parse(manifestBytes.toString('utf8')) as ReleaseManifest;
+  if (manifestBytes.length > MAX_RELEASE_MANIFEST_BYTES) throw Error('Release manifest exceeds 8 MiB');
+  const manifest: unknown = JSON.parse(manifestBytes.toString('utf8'));
+  if (!isReadableReleaseManifest(manifest)) throw Error('Invalid or duplicate release artifact or manifest fields');
   const manifestSha256 = crypto.createHash('sha256').update(manifestBytes).digest('hex');
   if (manifest.id !== id) throw new Error(`${manifestPath} names release '${manifest.id}', not '${id}'`);
 
@@ -95,6 +99,7 @@ export async function loadRelease(id: string, root: string = releasesRoot()): Pr
     files.push({ app: a.app, version: a.version, path: file, sha256: sum, bytes, inputs: a.inputs ?? sum });
   }
 
+  validateReleaseOrigins(manifest);
   const staticsDir = manifest.statics ? path.join(dir, 'statics') : null;
   if (staticsDir && !fs.existsSync(staticsDir)) {
     throw new Error(`Release ${id} records a static bundle for ${manifest.statics!.stack}, and ${staticsDir} is not there`);

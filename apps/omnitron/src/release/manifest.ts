@@ -34,6 +34,8 @@
  * satisfied by none of those.
  */
 
+import { importedReleaseRefusal } from './origin.js';
+
 /** A local owner can launch this exact member without resolving anything in a developer checkout. */
 export interface ReleaseLaunch {
   readonly mode: 'bootstrap' | 'script';
@@ -50,6 +52,19 @@ export interface ReleasePackageSource {
   readonly manifestBlob: string;
   /** Package-relative tracked migration source files and SHA-256 of their contents. */
   readonly migrations: Readonly<Record<string, string>>;
+}
+
+/** A named application from an exact, independently admitted release. */
+export interface ReleaseArtifactReference {
+  readonly release: string;
+  readonly manifestSha256: string;
+  readonly app: string;
+}
+
+/** Exact manifest bytes retain their producer's digest across storage and publication. */
+export interface ReleaseManifestImport {
+  readonly sha256: string;
+  readonly manifestJson: string;
 }
 
 /** One packed application, identified by content rather than by name. */
@@ -77,6 +92,8 @@ export interface ReleaseArtifact {
   readonly launch?: ReleaseLaunch;
   /** Older releases did not attribute migration files to individual packages. */
   readonly packageSource?: ReleasePackageSource;
+  /** Consumer alias; all other metadata and archive bytes remain those of this producer. */
+  readonly origin?: ReleaseArtifactReference;
 }
 
 /**
@@ -176,7 +193,8 @@ export interface ReleaseManifest {
   /** The project's repository and the commit this was built from. */
   readonly project: ReleaseSource;
   /**
-   * And omni's, because its packages are vendored into every artifact.
+   * The framework used for this project's own artifacts. Imported artifacts
+   * retain their producer's separate framework through their pinned origin.
    *
    * The two live in different systems — omni on GitHub, the project on a
    * self-hosted GitLab — which is why neither forge's CI can produce this
@@ -184,6 +202,8 @@ export interface ReleaseManifest {
    */
   readonly omni: ReleaseSource;
   readonly artifacts: readonly ReleaseArtifact[];
+  /** Self-contained source evidence; imported archives do not depend on the producer store remaining present. */
+  readonly imports?: readonly ReleaseManifestImport[];
   /**
    * Applications whose artifact did not build, with the builder's words. A
    * release carrying them is still written — it is evidence — and a stack
@@ -306,6 +326,19 @@ export function decideRelease(
     return { action: 'refuse', because: 'the release does not name the omni commit its packages came from' };
   }
 
+  try {
+    const refusal = importedReleaseRefusal(manifest, policy.requiredApps);
+    if (refusal) return { action: 'refuse', because: refusal };
+  } catch (error) {
+    return { action: 'refuse', because: 'invalid imported release: ' + (error instanceof Error ? error.message : String(error)) };
+  }
+
+  const names = new Set<string>();
+  if (!Array.isArray(manifest.gates) || manifest.gates.some(gate => {
+    if (!gate || typeof gate.name !== 'string' || !gate.name || names.has(gate.name) || !Object.hasOwn(OUTCOME_WORDS, gate.status)) return true;
+    names.add(gate.name);
+    return false;
+  })) return { action: 'refuse', because: 'the release carries invalid or duplicate gate outcomes' };
   const byName = new Map(manifest.gates.map((g) => [g.name, g]));
   for (const required of policy.requiredGates) {
     const gate = byName.get(required);
@@ -437,6 +470,12 @@ export function decideStackRelease(
   stackApps: readonly string[],
   attestations: readonly StackAttestation[] = [],
 ): ReleaseDecision {
+  try {
+    const refusal = requirements?.requireOnRemote ? importedReleaseRefusal(manifest, stackApps, true) : null;
+    if (refusal) return { action: 'refuse', because: refusal };
+  } catch (error) {
+    return { action: 'refuse', because: 'invalid imported release: ' + (error instanceof Error ? error.message : String(error)) };
+  }
   if (requirements?.requireOnRemote) {
     const local = [
       manifest.project.onRemote !== true ? `the project commit ${manifest.project.commit.slice(0, 8)}` : null,
@@ -449,7 +488,8 @@ export function decideStackRelease(
       };
     }
   }
-  const recorded = manifest.gates.map((g) => g.name);
+  if (!Array.isArray(manifest.gates)) return { action: 'refuse', because: 'the release carries invalid gate outcomes' };
+  const recorded = manifest.gates.map((g) => g?.name);
   if (recorded.length === 0) {
     return { action: 'refuse', because: 'the release recorded no gates at all' };
   }

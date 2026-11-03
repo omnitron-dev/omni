@@ -76,8 +76,8 @@ export async function loadEcosystemConfigFile(filePath: string, phase: Ecosystem
 
   for (const app of raw.apps) {
     if (!app.name) throw new Error(`App entry missing 'name' in ${filePath}`);
-    if (!app.bootstrap && !app.script) {
-      throw new Error(`App '${app.name}' must have either 'bootstrap' or 'script' path`);
+    if (!app.bootstrap && !app.script && !app.releaseFrom) {
+      throw new Error(`App '${app.name}' must have a 'bootstrap' or 'script' path, or an exact 'releaseFrom' reference`);
     }
   }
 

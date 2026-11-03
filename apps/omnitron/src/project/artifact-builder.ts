@@ -224,6 +224,7 @@ export class ArtifactBuilder {
   }
 
   private async buildWithSession(entry: IEcosystemAppEntry, options?: BuildOptions, session?: PackSession): Promise<ArtifactInfo> {
+    if (entry.releaseFrom) throw Error('Imported applications must be materialized through a checked release build: ' + entry.name);
     const appDir = this.resolveAppDir(entry, Boolean(options?.releaseCheckouts));
     if (!appDir) throw new Error(`Cannot resolve app directory for ${entry.name}`);
 

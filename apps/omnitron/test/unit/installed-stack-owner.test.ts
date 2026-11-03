@@ -78,6 +78,23 @@ async function fixture(bootstrapWorker = false) {
 }
 
 describe('installed stack process owner', () => {
+  it('refuses unverified sealed code before bootstrap introspection or a classic spawn', async () => {
+    const { owner, dir } = await fixture();
+    await owner.setWatchMode(true);
+    const root = path.join(dir, 'unverified');
+    await fs.mkdir(root);
+    const marker = path.join(dir, 'executed');
+    await fs.writeFile(path.join(root, 'bootstrap.mjs'),
+      `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(marker)},'executed'); export default {name:'unverified',processes:[]};`);
+    await fs.writeFile(path.join(root, 'main.cjs'),
+      `require('node:fs').writeFileSync(${JSON.stringify(marker)},'executed'); process.send?.({type:'ready'});`);
+    for (const launch of [{ bootstrap: 'bootstrap.mjs' }, { script: 'main.cjs' }]) {
+      await expect(owner.startApp({ name: 'unverified', cwd: root, releaseRoot: root,
+        env: { NODE_OPTIONS: '', NODE_PATH: '' }, ...launch })).rejects.toThrow(/receipt|release|verified/i);
+      await expect(fs.stat(marker)).rejects.toMatchObject({ code: 'ENOENT' });
+    }
+  });
+
   it('forks only the sealed retained entries, closes the fence after every IPC ready signal and refuses replay', async () => {
     const { owner, handles, state } = await fixture();
     await owner.setWatchMode(true);

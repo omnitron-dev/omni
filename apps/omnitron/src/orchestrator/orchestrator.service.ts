@@ -994,6 +994,12 @@ export class OrchestratorService extends EventEmitter {
     this.logger.info({ app: entry.name, mode }, 'Starting app');
 
     try {
+      if (entry.releaseRoot) {
+        // Bootstrap metadata executes application code. Authenticate the sealed
+        // tree before introspection on initial launches as well as resumes.
+        handle.release = await verifyLaunchRelease(entry, handle.generation, [installedExecutable(entry, this.cwd)]);
+        requireInstalledBinding(handle.release, installedEntryRevision(entry, cfg, this.cwd), installed);
+      }
       const launch = mode === 'classic' ? await this.launchClassicMode(entry, handle, cfg, installed)
         : await this.launchBootstrapMode(entry, handle, cfg, installed);
       // «App started» only for an app that is. It was logged in the same
@@ -2176,7 +2182,7 @@ export class OrchestratorService extends EventEmitter {
     installed?: InstalledAppBinding,
   ): Promise<InstalledAppBinding | undefined> {
     handle.release = await verifyLaunchRelease(entry, handle.generation, [installedExecutable(entry, this.cwd)]);
-    const launch = installed || handle.release.state === 'confirmed'
+    const launch = entry.releaseRoot || installed || handle.release.state === 'confirmed'
       ? requireInstalledBinding(handle.release, installedEntryRevision(entry, config, this.cwd), installed) : undefined;
     const child = await launchClassic(entry, handle, this.cwd, this.logger, this.appLogHandlers, Boolean(installed));
 
@@ -2322,7 +2328,7 @@ export class OrchestratorService extends EventEmitter {
       ? { state: 'unreported', reason: 'This launch uses a generated build; an installed release receipt cannot identify that executable.' }
       : await verifyLaunchRelease(entry, handle.generation,
         [bootstrapAbsPath, ...(topology ?? []).map(process => path.resolve(path.dirname(bootstrapAbsPath), process.module))]);
-    const launch = installed || handle.release.state === 'confirmed'
+    const launch = entry.releaseRoot || installed || handle.release.state === 'confirmed'
       ? requireInstalledBinding(handle.release, installedEntryRevision(entry, config, this.cwd), installed) : undefined;
 
     if (topology && topology.length > 0) {

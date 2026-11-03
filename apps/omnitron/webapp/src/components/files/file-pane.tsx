@@ -90,6 +90,7 @@ export function FilePane({
   const [tabId, setTabId] = useState(tabs[0]!.id);
   const tab = tabs.find((t) => t.id === tabId) ?? tabs[0]!;
   const [chooser, setChooser] = useState<HTMLElement | null>(null);
+  const localChoice = useRef<HTMLLIElement>(null);
   const [notice, setNotice] = useState('');
   const [reload, setReload] = useState(0);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -484,6 +485,7 @@ export function FilePane({
         {hosts.map((host) => (
           <MenuItem
             key={host.id}
+            ref={host.isLocal ? localChoice : undefined}
             onClick={() => {
               const added = newLocation(host.id);
               setTabs((all) => [...all, added]);
@@ -500,7 +502,13 @@ export function FilePane({
         ))}
         {discovery.pending && <MenuItem disabled>Loading registered nodes…</MenuItem>}
         {discovery.error && (
-          <MenuItem onClick={retryDiscovery}>
+          <MenuItem
+            onClick={() => {
+              // Retry disappears during discovery. Keep focus in the open menu, on a stable choice.
+              localChoice.current?.focus({ preventScroll: true });
+              retryDiscovery();
+            }}
+          >
             <ListItemText
               primary="Retry loading remote nodes"
               secondary={discovery.error}

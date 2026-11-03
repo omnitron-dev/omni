@@ -175,12 +175,12 @@ describe('Auth Middleware', () => {
       expect(next).toHaveBeenCalled();
     });
 
-    it('should skip auth when no service instance in context', async () => {
+    it('refuses auth when no service instance is available', async () => {
       mockContext.metadata?.delete('serviceInstance');
 
-      await middleware(mockContext, next);
+      await expect(middleware(mockContext, next)).rejects.toThrow('Service authorization metadata is unavailable');
 
-      expect(next).toHaveBeenCalled();
+      expect(next).not.toHaveBeenCalled();
     });
 
     it('should skip auth when no auth metadata on method', async () => {

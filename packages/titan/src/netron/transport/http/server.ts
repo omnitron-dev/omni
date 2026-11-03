@@ -602,6 +602,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    * Set the Netron peer for service invocation
    */
   setPeer(peer: LocalPeer): void {
+    if (!peer.logger) throw new Error('HTTP service authorization requires the peer logger');
     this.netronPeer = peer;
     this.middlewareAdapter = new HttpMiddlewareAdapter({
       // `cors: true` is shorthand for "reflect any origin"; the adapter takes
@@ -671,22 +672,21 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       (netron?.authorizationManager as AuthorizationManager | undefined) ||
       (canAutoInstantiate ? new AuthorizationManager(peer.logger) : undefined);
     // Declarations and default-deny apply even when authentication is not configured.
-    if (peer.logger) {
-      this.globalPipeline.use(
-        NetronAuthMiddleware.create({
-          // policyEngine is optional — methods that declare `policies`
-          // and have no engine wired fail closed inside the middleware.
-          ...(optsPolicyEngine ? { policyEngine: optsPolicyEngine } : {}),
-          authorizationManager: resolvedAuthorizationManager,
-          logger: peer.logger,
-          // SEC-2: mirror the wire path's opt-in default-deny on HTTP so the two
-          // transports share one fail-closed posture.
-          defaultDeny: netron?.options?.authDefaultDeny ?? false,
-        }),
-        { name: 'netron-auth', priority: 20 },
-        MiddlewareStage.PRE_INVOKE
-      );
-    }
+    this.globalPipeline.use(
+      NetronAuthMiddleware.create({
+        // policyEngine is optional — methods that declare `policies`
+        // and have no engine wired fail closed inside the middleware.
+        ...(optsPolicyEngine ? { policyEngine: optsPolicyEngine } : {}),
+        authorizationManager: resolvedAuthorizationManager,
+        logger: peer.logger,
+        // SEC-2: mirror the wire path's opt-in default-deny on HTTP so the two
+        // transports share one fail-closed posture.
+        defaultDeny: netron?.options?.authDefaultDeny ?? false,
+      }),
+      { name: 'netron-auth', priority: 20 },
+      MiddlewareStage.PRE_INVOKE
+    );
+
 
     // Register services from peer
     this.registerPeerServices();

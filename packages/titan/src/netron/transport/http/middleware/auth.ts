@@ -11,6 +11,7 @@ import type { AuthorizationManager } from '../../../auth/authorization-manager.j
 import type { ILogger } from '../../../../modules/logger/logger.types.js';
 import { METADATA_KEYS } from '../../../../decorators/core.js';
 import { enforceInvocationAuthorization } from '../../../auth/method-authorization.js';
+import { TitanError, ErrorCode } from '../../../../errors/index.js';
 import type { RemotePeer } from '../../../remote-peer.js';
 
 /**
@@ -179,8 +180,8 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions): Middleware
     // Get service instance from metadata
     const serviceInstance = ctx.metadata?.get('serviceInstance');
     if (!serviceInstance || typeof serviceInstance !== 'object') {
-      logger.debug('No service instance in context, skipping auth');
-      return next();
+      throw new TitanError({ code: ErrorCode.SERVICE_UNAVAILABLE,
+        message: 'Service authorization metadata is unavailable' });
     }
 
     // Get auth context from peer

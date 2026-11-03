@@ -5,6 +5,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { getFreeHttpPort as getFreePort } from '../../../utils/index.js';
 import { HttpServer } from '../../../../src/netron/transport/http/server.js';
+import { createMockLogger } from '../../test-utils.js';
 import { LocalPeer } from '../../../../src/netron/local-peer.js';
 import { Definition } from '../../../../src/netron/definition.js';
 import { contract } from '../../../../src/validation/contract.js';
@@ -34,6 +35,7 @@ describe('HttpServer (Legacy Tests)', () => {
     // /metrics and /openapi.json endpoint tests. Pre-T#50 the server
     // accepted any Authorization header value; post-T#50 it validates.
     mockPeer = {
+      logger: createMockLogger(),
       stubs: new Map(),
       on: vi.fn(),
       off: vi.fn(),
@@ -90,6 +92,11 @@ describe('HttpServer (Legacy Tests)', () => {
   });
 
   describe('Service Registration', () => {
+    it('refuses a peer whose missing logger would disable authorization middleware', () => {
+      expect(() => server.setPeer({ ...mockPeer, logger: undefined } as unknown as LocalPeer))
+        .toThrow('HTTP service authorization requires the peer logger');
+    });
+
     it('should register services from Netron peer', () => {
       const testDefinition = new Definition('test-service-id', 'test-peer-id', {
         name: 'TestService',
@@ -102,6 +109,7 @@ describe('HttpServer (Legacy Tests)', () => {
       });
 
       const stub = {
+        instance: {},
         definition: testDefinition,
         call: vi.fn().mockResolvedValue({ result: 'test' }),
       };
@@ -143,6 +151,7 @@ describe('HttpServer (Legacy Tests)', () => {
       });
 
       const stub = {
+        instance: {},
         definition,
         call: vi.fn(),
       };
@@ -176,6 +185,7 @@ describe('HttpServer (Legacy Tests)', () => {
       });
 
       const stub = {
+        instance: {},
         definition,
         call: vi.fn().mockImplementation((method, args) => {
           if (method === 'add') {
@@ -306,6 +316,7 @@ describe('HttpServer (Legacy Tests)', () => {
       });
 
       const stub = {
+        instance: {},
         definition,
         call: vi.fn(),
       };
@@ -365,6 +376,7 @@ describe('HttpServer (Legacy Tests)', () => {
       });
 
       const stub = {
+        instance: {},
         definition: errorDefinition,
         call: vi.fn().mockRejectedValue(new Error('Test error')),
       };

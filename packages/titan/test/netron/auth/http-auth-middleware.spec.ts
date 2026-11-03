@@ -265,7 +265,7 @@ describe('HTTP Auth Middleware Integration', () => {
       expect(next).toHaveBeenCalled();
     });
 
-    it('should skip when no service instance in metadata', async () => {
+    it('refuses when no service instance in metadata', async () => {
       const middleware = createAuthMiddleware({
         policyEngine,
         authorizationManager,
@@ -280,9 +280,9 @@ describe('HTTP Auth Middleware Integration', () => {
 
       const next = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 
-      await middleware(ctx, next);
+      await expect(middleware(ctx, next)).rejects.toThrow('Service authorization metadata is unavailable');
 
-      expect(next).toHaveBeenCalled();
+      expect(next).not.toHaveBeenCalled();
     });
 
     it('should skip when method has no auth metadata', async () => {
@@ -1592,7 +1592,7 @@ describe('HTTP Auth Middleware Integration', () => {
       expect(next).toHaveBeenCalled();
     });
 
-    it('should handle non-object service instance in metadata', async () => {
+    it('refuses non-object service instance in metadata', async () => {
       const middleware = createAuthMiddleware({
         policyEngine,
         authorizationManager,
@@ -1607,10 +1607,10 @@ describe('HTTP Auth Middleware Integration', () => {
 
       const next = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 
-      await middleware(ctx, next);
+      await expect(middleware(ctx, next)).rejects.toThrow('Service authorization metadata is unavailable');
 
-      // Should skip when service instance is not an object
-      expect(next).toHaveBeenCalled();
+      // Missing evidence must never disable the access check.
+      expect(next).not.toHaveBeenCalled();
     });
   });
 });

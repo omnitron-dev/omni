@@ -42,6 +42,7 @@ async function server(handler: RequestListener): Promise<string> {
 
 function options(signal?: AbortSignal) {
   return { checkout: fixture, scratch: fixture, ...(signal === undefined ? {} : { signal }), env: {
+    ...process.env,
     PATH: process.env['PATH'], HOME: path.join(fixture, 'home'), XDG_CONFIG_HOME: path.join(fixture, 'home', '.config'),
     PNPM_CONFIG_NPMRC_AUTH_FILE: path.join(fixture, 'home', '.npmrc'),
     REGISTRY_FIXTURE_TOKEN: 'secret-never-reported',
@@ -64,6 +65,31 @@ async function configured(url: string, extra = '') {
 const metadata = (tarball: string) => JSON.stringify({ name, versions: { [version]: { name, version, dist: { tarball } } } });
 
 describe('native pnpm registry configuration and bounded transport', () => {
+  it('refuses omitted ambient loader options before starting a worker or token helper', async () => {
+    const marker = path.join(fixture, 'ambient-loader-ran');
+    const preload = path.join(fixture, 'ambient-loader.mjs');
+    await fs.writeFile(preload, `import fs from 'node:fs';fs.writeFileSync(${JSON.stringify(marker)}, 'unsafe');`);
+    const original = process.env['NODE_OPTIONS'];
+    const injected = `--import=${preload}`;
+    process.env['NODE_OPTIONS'] = injected;
+    const execute = vi.spyOn(ExecutionEngine.prototype, 'execute');
+    try {
+      const env: NodeJS.ProcessEnv = { ...options().env };
+      delete env['NODE_OPTIONS'];
+      const error = await download(pin, { ...options(), env }, async () => bytes).catch(value => value);
+      expect(error).toMatchObject({ code: 'REGISTRY_ARCHIVE_UNAVAILABLE', category: 'environment' });
+      expect(String(error)).toContain('Use a clean build-controller environment');
+      expect(String(error)).not.toContain(injected);
+      expect(execute).not.toHaveBeenCalled();
+      expect(process.env['NODE_OPTIONS']).toBe(injected);
+      await expect(fs.access(marker)).rejects.toThrow();
+    } finally {
+      if (original === undefined) delete process.env['NODE_OPTIONS'];
+      else process.env['NODE_OPTIONS'] = original;
+      execute.mockRestore();
+    }
+  });
+
   it('uses scoped YAML over npmrc routing and interpolated auth; executes no lifecycle or project hooks', async () => {
     const observed: Array<{ url: string; auth: string | undefined }> = [];
     let url: string;

@@ -11,14 +11,16 @@ export interface RegistryTransportOptions {
   signal?: AbortSignal;
 }
 
-export type RegistryFailure = 'configuration' | 'authentication' | 'metadata' | 'http' | 'network' | 'worker' | 'timeout' | 'cancelled';
-const failures: readonly RegistryFailure[] = ['configuration', 'authentication', 'metadata', 'http', 'network', 'worker', 'timeout', 'cancelled'];
+export type RegistryFailure = 'environment' | 'configuration' | 'authentication' | 'metadata' | 'http' | 'network' | 'worker' | 'timeout' | 'cancelled';
+const failures: readonly RegistryFailure[] = ['environment', 'configuration', 'authentication', 'metadata', 'http', 'network', 'worker', 'timeout', 'cancelled'];
 
 /** Deliberately excludes URLs, configuration, helper output and raw causes. */
 export class RegistryTransportError extends Error {
   readonly code = 'REGISTRY_ARCHIVE_UNAVAILABLE';
   constructor(readonly category: RegistryFailure, readonly status?: number) {
-    super(`Framework registry download failed: ${category}${status === undefined ? '' : ` (HTTP ${status})`}`);
+    super(category === 'environment'
+      ? 'Framework registry download refused: the requested environment omits inherited keys, but Xec 0.11.2 cannot replace the environment. Use a clean build-controller environment.'
+      : `Framework registry download failed: ${category}${status === undefined ? '' : ` (HTTP ${status})`}`);
   }
 }
 
@@ -35,12 +37,20 @@ function reportedFailure(stderr: string): RegistryTransportError | undefined {
 /** pnpm's configuration reader and token helpers run in the build environment,
  * never by changing the daemon's cwd/env. Xec owns cancellation and the process
  * tree. Only archive bytes leave stdout; the caller remains the SHA-512 and
- * archive-layout authority. No package or pnpmfile hooks are executed. */
+ * archive-layout authority. No package or pnpmfile hooks are executed.
+ * Xec 0.11.2 merges ambient environment keys rather than replacing them. Until
+ * it exposes replacement semantics, refuse an environment that needs to remove
+ * a key: otherwise a rejected loader/configuration variable would be restored.
+ * As elsewhere in the daemon, concurrent mutation of process.env is unsupported. */
 export async function withRegistryArchive<T>(
   pkg: RegistryPackage, options: RegistryTransportOptions,
   consume: (stream: Readable, signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
   if (options.signal?.aborted) throw new RegistryTransportError('cancelled');
+  if (Object.entries(process.env).some(([key, value]) => typeof value === 'string' &&
+    (!Object.hasOwn(options.env, key) || typeof options.env[key] !== 'string'))) {
+    throw new RegistryTransportError('environment');
+  }
   const stopped = new AbortController();
   const timeout = AbortSignal.timeout(60_000);
   const signal = AbortSignal.any([stopped.signal, timeout, ...(options.signal ? [options.signal] : [])]);

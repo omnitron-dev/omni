@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -9,6 +9,8 @@ import {
   IconButton,
   LinearProgress,
   Link,
+  ListItemText,
+  ListSubheader,
   Menu,
   MenuItem,
   Paper,
@@ -27,9 +29,9 @@ import { Tabs } from '@omnitron-dev/prism/components/tabs';
 import { TableViewport } from '@omnitron-dev/prism/components/table';
 import { AddIcon, MoreIcon, ArrowLeftIcon, ArrowRightIcon } from '@omnitron-dev/prism/icons';
 import { FolderIcon, EditIcon, RefreshIcon, ParentFolderIcon } from 'src/assets/icons';
-import { files } from 'src/netron/client';
+import { useFileDirectory } from './use-file-directory';
 import { useConsoleActions } from 'src/components/console-keyboard';
-import type { FileEntry, FileLocation, FileRoot } from '@omnitron-dev/omnitron/dto/services';
+import type { FileEntry, FileLocation } from '@omnitron-dev/omnitron/dto/services';
 import { fileStructureError } from '@omnitron-dev/omnitron/dto/services';
 import {
   describeFileError,
@@ -43,17 +45,23 @@ import {
 
 interface Tab {
   id: string;
-  nodeId: string;
+  readonly nodeId: string;
   rootId: string;
+  rootLabel?: string;
   path: string;
   history: string[];
   cursor: number;
+}
+function newLocation(nodeId: string): Tab {
+  return { id: crypto.randomUUID(), nodeId, rootId: '', path: '', history: [''], cursor: 0 };
 }
 type ParentRow = { name: '..'; path: string; kind: 'parent' };
 export type FileAction = 'copy' | 'rename' | 'trash' | 'mkdir' | 'create' | 'upload' | 'download' | 'trashList';
 export function FilePane({
   side,
   hosts,
+  discovery,
+  retryDiscovery,
   active,
   hidden,
   refreshKey,
@@ -66,6 +74,8 @@ export function FilePane({
 }: {
   side: 'left' | 'right';
   hosts: FileHost[];
+  discovery: { pending: boolean; error?: string };
+  retryDiscovery: () => void;
   active: boolean;
   hidden: boolean;
   refreshKey: number;
@@ -76,26 +86,12 @@ export function FilePane({
   onSwitchPanel: () => void;
   visible?: boolean;
 }) {
-  const initial = useRef<Tab>({
-    id: crypto.randomUUID(),
-    nodeId: side === 'right' ? (hosts.find((h) => !h.isLocal)?.id ?? 'local') : 'local',
-    rootId: '',
-    path: '',
-    history: [''],
-    cursor: 0,
-  });
-  const [tabs, setTabs] = useState([initial.current]),
-    [tabId, setTabId] = useState(initial.current.id);
+  const [tabs, setTabs] = useState(() => [newLocation('local')]);
+  const [tabId, setTabId] = useState(tabs[0]!.id);
   const tab = tabs.find((t) => t.id === tabId) ?? tabs[0]!;
-  const [roots, setRoots] = useState<FileRoot[]>([]),
-    [entries, setEntries] = useState<FileEntry[]>([]);
-  const [loading, setLoading] = useState(false),
-    [error, setError] = useState('');
-  const [rootsLoading, setRootsLoading] = useState(true),
-    [rootsError, setRootsError] = useState('');
-  const [next, setNext] = useState<string | null>(null),
-    [revision, setRevision] = useState(''),
-    [reload, setReload] = useState(0);
+  const [chooser, setChooser] = useState<HTMLElement | null>(null);
+  const [notice, setNotice] = useState('');
+  const [reload, setReload] = useState(0);
   const [cursor, setCursor] = useState<string | null>(null);
   const [toolsMode, setToolsMode] = useState(false);
   const pointerEntry = useRef(false);
@@ -108,21 +104,52 @@ export function FilePane({
   const [menu, setMenu] = useState<HTMLElement | null>(null),
     [editingPath, setEditingPath] = useState(false),
     [pathInput, setPathInput] = useState('');
-  const generation = useRef(0),
-    anchor = useRef<string | null>(null),
+  const anchor = useRef<string | null>(null),
     region = useRef<HTMLDivElement>(null);
-  const root = roots.find((r) => r.id === tab.rootId);
   const location = useMemo(
     () => ({ nodeId: tab.nodeId, rootId: tab.rootId, path: tab.path }),
     [tab.nodeId, tab.rootId, tab.path]
   );
+  const {
+    policy,
+    root,
+    entries,
+    next,
+    more,
+    ready,
+    loading,
+    error: readError,
+  } = useFileDirectory(tab.id, location, reload, refreshKey);
+  const error = readError || notice;
+  const single = policy?.roots.length === 1 ? policy.roots[0] : undefined;
+  useEffect(() => {
+    if (tab.rootId || !single) return;
+    setTabs((all) =>
+      all.map((t) => (t.id === tab.id && !t.rootId ? { ...t, rootId: single.id, rootLabel: single.label } : t))
+    );
+  }, [single, tab.id, tab.rootId]);
+  const switchTab = (id: string) => {
+    setTabId(id);
+    setSelected([]);
+    setCursor(null);
+    anchor.current = null;
+    setQuery('');
+    setEditingPath(false);
+    setNotice('');
+  };
+  const hostName = (nodeId: string) => hosts.find((host) => host.id === nodeId)?.name ?? nodeId;
+  const tabLabel = (t: Tab) =>
+    [hostName(t.nodeId), t.path.split('/').at(-1) || (t.rootLabel !== 'Filesystem' ? t.rootLabel : '')]
+      .filter(Boolean)
+      .join(' · ');
   const selectionCallback = useRef(onSelection);
   selectionCallback.current = onSelection;
   const rows = useMemo(
     () => visibleEntries(entries, query, showHidden, sort, descending),
     [entries, query, showHidden, sort, descending]
   );
-  const navigationRows: Array<FileEntry | ParentRow> = tab.path ? [{ name: '..', path: parentPath(tab.path), kind: 'parent' }, ...rows] : rows;
+  const navigationRows: Array<FileEntry | ParentRow> =
+    ready && tab.path ? [{ name: '..', path: parentPath(tab.path), kind: 'parent' }, ...rows] : rows;
   const currentPath = navigationRows.some((row) => row.path === cursor) ? cursor : (navigationRows[0]?.path ?? null);
   const marked = useMemo(() => rows.filter((e) => selected.includes(e.path)), [rows, selected]);
   const selection = useMemo(
@@ -136,15 +163,23 @@ export function FilePane({
       anchor.current ??= currentPath;
       const start = navigationRows.findIndex((entry) => entry.path === anchor.current),
         end = navigationRows.indexOf(row);
-      setSelected(navigationRows.slice(Math.min(Math.max(0, start), end), Math.max(start, end) + 1).filter(entry => entry.kind !== 'parent').map((entry) => entry.path));
+      setSelected(
+        navigationRows
+          .slice(Math.min(Math.max(0, start), end), Math.max(start, end) + 1)
+          .filter((entry) => entry.kind !== 'parent')
+          .map((entry) => entry.path)
+      );
     } else anchor.current = row.path;
     setCursor(row.path);
     const element = listing.current?.querySelectorAll<HTMLElement>('tbody > tr')[navigationRows.indexOf(row)];
     element?.focus({ preventScroll: true });
     element?.scrollIntoView?.({ block: 'nearest' });
   };
-  const patch = (change: Partial<Tab>) => setTabs((all) => all.map((t) => (t.id === tab.id ? { ...t, ...change } : t)));
+  const patch = (change: Partial<Omit<Tab, 'id' | 'nodeId'>>) =>
+    setTabs((all) => all.map((t) => (t.id === tab.id ? { ...t, ...change } : t)));
   const navigate = (path: string) => {
+    if (!root) return;
+    setNotice('');
     patch({
       path,
       history: [...tab.history.slice(0, tab.cursor + 1), path].slice(-100),
@@ -157,8 +192,10 @@ export function FilePane({
     requestAnimationFrame(() => listing.current?.focus({ preventScroll: true }));
   };
   const travel = (offset: number) => {
+    if (!root) return;
     const historyIndex = tab.cursor + offset;
     if (historyIndex >= 0 && historyIndex < tab.history.length) {
+      setNotice('');
       patch({ cursor: historyIndex, path: tab.history[historyIndex]! });
       setSelected([]);
       setCursor(null);
@@ -166,90 +203,15 @@ export function FilePane({
     }
   };
   useEffect(() => {
-    const keyboard = () => { pointerEntry.current = false; };
+    const keyboard = () => {
+      pointerEntry.current = false;
+    };
     window.addEventListener('keydown', keyboard, true);
     return () => window.removeEventListener('keydown', keyboard, true);
   }, []);
-  useEffect(() => {
-    let current = true;
-    setRoots([]);
-    setEntries([]);
-    setRootsLoading(true);
-    setRootsError('');
-    setSelected([]);
-    void files
-      .roots({ nodeId: tab.nodeId })
-      .then((result) => {
-        if (!current) return;
-        if (result.protocol !== 1) throw new Error('Node requires a compatible file protocol');
-        setRoots(result.roots);
-        setTabs((all) =>
-          all.map((t) =>
-            t.id === tab.id && !result.roots.some((r) => r.id === t.rootId)
-              ? { ...t, rootId: result.roots[0]?.id ?? '', path: '', history: [''], cursor: 0 }
-              : t
-          )
-        );
-      })
-      .catch((e) => {
-        if (current) setRootsError(describeFileError(e));
-      })
-      .finally(() => {
-        if (current) setRootsLoading(false);
-      });
-    return () => {
-      current = false;
-    };
-  }, [tab.id, tab.nodeId, reload]);
-  useEffect(() => {
-    const run = ++generation.current;
-    setSelected([]);
-    setEntries([]);
-    setNext(null);
-    setError('');
-    if (!tab.rootId || !root) {
-      setLoading(false);
-      return undefined;
-    }
-    setLoading(true);
-    void files
-      .list(location)
-      .then((data) => {
-        if (run === generation.current) {
-          setEntries(data.entries);
-          setNext(data.next);
-          setRevision(data.revision);
-        }
-      })
-      .catch((e) => {
-        if (run === generation.current) setError(describeFileError(e));
-      })
-      .finally(() => {
-        if (run === generation.current) setLoading(false);
-      });
-    return () => {
-      generation.current = run + 1;
-    };
-  }, [tab.id, tab.rootId, location, root, reload, refreshKey]);
-  const more = async () => {
-    if (!next || loading) return;
-    const run = generation.current;
-    setLoading(true);
-    try {
-      const data = await files.list({ ...location, after: next, revision });
-      if (run === generation.current) {
-        setEntries((all) => [...all, ...data.entries]);
-        setNext(data.next);
-      }
-    } catch (e) {
-      if (run === generation.current) setError(describeFileError(e));
-    } finally {
-      if (run === generation.current) setLoading(false);
-    }
-  };
-  useEffect(() => {
-    selectionCallback.current(root && !loading && !error ? { location, root, entries: selection } : null);
-  }, [location, root, loading, error, selection]);
+  useLayoutEffect(() => {
+    selectionCallback.current(root && ready && !error ? { location, root, entries: selection } : null);
+  }, [location, root, ready, error, selection]);
   const choose = (entry: FileEntry, range: boolean) => {
     setCursor(entry.path);
     if (range && anchor.current) {
@@ -264,16 +226,17 @@ export function FilePane({
     setSelected((all) => (all.includes(entry.path) ? all.filter((p) => p !== entry.path) : [...all, entry.path]));
   };
   const open = (entry: FileEntry | ParentRow) => {
+    if (!root || !ready) return;
     if (entry.kind === 'directory' || entry.kind === 'parent') navigate(entry.path);
     else if (entry.kind === 'file') onOpen(entry, { ...location, path: entry.path }, Boolean(root?.readOnly));
     else
-      setError(
+      setNotice(
         entry.kind === 'symlink'
           ? 'Symbolic links are visible but cannot be followed'
           : 'Special files cannot be opened'
       );
   };
-  const protectedSelection = selection.some(entry => fileStructureError(entry.path, root?.protectedPaths));
+  const protectedSelection = selection.some((entry) => fileStructureError(entry.path, root?.protectedPaths));
   const actions: Array<[FileAction, string, boolean]> = [
     ['create', 'New file', !root || Boolean(root.readOnly)],
     ['mkdir', 'New folder', !root || Boolean(root.readOnly)],
@@ -340,15 +303,26 @@ export function FilePane({
         onFocus();
         // The same composite entry point for sidebar Tab, F6, restoration and programmatic focus.
         // A pointer intentionally selecting a field keeps native field behavior.
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null) && !pointerEntry.current && !toolsMode &&
-          event.target !== listing.current && !(event.target as HTMLElement).closest('tbody')) {
-          listing.current?.focus({ preventScroll: true });
+        if (
+          !event.currentTarget.contains(event.relatedTarget as Node | null) &&
+          !pointerEntry.current &&
+          !toolsMode &&
+          event.target !== listing.current &&
+          !(event.target as HTMLElement).closest('tbody')
+        ) {
+          (listing.current ?? region.current?.querySelector<HTMLElement>('[data-file-start]'))?.focus({
+            preventScroll: true,
+          });
         }
         if (event.target === listing.current || (event.target as HTMLElement).closest('tbody')) setToolsMode(false);
       }}
       onBlurCapture={(event) => {
         const nextFocus = event.relatedTarget as HTMLElement | null;
-        if (!event.currentTarget.contains(nextFocus) && !nextFocus?.closest('[role="dialog"],[role="menu"],[role="listbox"]')) setToolsMode(false);
+        if (
+          !event.currentTarget.contains(nextFocus) &&
+          !nextFocus?.closest('[role="dialog"],[role="menu"],[role="listbox"]')
+        )
+          setToolsMode(false);
       }}
       onPointerDownCapture={(event) => {
         if (!event.currentTarget.contains(event.target as Node)) return;
@@ -356,7 +330,8 @@ export function FilePane({
         const inList = Boolean((event.target as HTMLElement).closest('[data-file-list]'));
         setToolsMode(!inList);
         onFocus();
-        if (!(event.target as HTMLElement).closest('input,button,a,[role="combobox"],tbody tr')) listing.current?.focus({ preventScroll: true });
+        if (!(event.target as HTMLElement).closest('input,button,a,[role="combobox"],tbody tr'))
+          listing.current?.focus({ preventScroll: true });
       }}
       onKeyDown={(e) => {
         if (e.defaultPrevented || e.nativeEvent.isComposing || !visible || hidden) return;
@@ -375,11 +350,10 @@ export function FilePane({
           setSelected([]);
           if (inList && !toolsMode) {
             setToolsMode(true);
-            region.current
-            ?.querySelector<HTMLElement>(
-              '[data-file-tools] [role="combobox"],[data-file-tools] input,[data-file-tools] button'
-            )
-            ?.focus();
+            (
+              region.current?.querySelector<HTMLElement>('[data-file-add]:not(:disabled)') ??
+              region.current?.querySelector<HTMLElement>('[data-file-tools] button:not(:disabled)')
+            )?.focus();
           } else {
             setToolsMode(false);
             listing.current?.focus({ preventScroll: true });
@@ -422,7 +396,7 @@ export function FilePane({
             return;
           }
         }
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') {
+        if (root && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') {
           e.preventDefault();
           setPathInput('/' + tab.path);
           setEditingPath(true);
@@ -452,33 +426,42 @@ export function FilePane({
     >
       <Tabs
         value={tab.id}
-        onChange={setTabId}
+        onChange={switchTab}
         variant="scrollable"
         scrollButtons="auto"
         aria-label={`${side} panel locations`}
         tabs={tabs.map((t) => ({
           value: t.id,
-          label: t.path.split('/').at(-1) || hosts.find((h) => h.id === t.nodeId)?.name || 'Files',
+          label: tabLabel(t),
           closable: tabs.length > 1,
-          closeLabel: `Close ${side} location ${t.path || 'root'}`,
+          closeLabel: `Close ${side} location ${tabLabel(t)}`,
         }))}
         onClose={(id) => {
           const rest = tabs.filter((t) => t.id !== id);
+          if (!rest.length) return;
           setTabs(rest);
-          if (tabId === id) setTabId(rest[0]!.id);
+          if (tabId === id)
+            switchTab(
+              rest[
+                Math.min(
+                  tabs.findIndex((t) => t.id === id),
+                  rest.length - 1
+                )
+              ]!.id
+            );
         }}
         action={
-          <Tooltip title="New location tab">
+          <Tooltip title={tabs.length >= 8 ? 'Close a tab to open another (8 per panel)' : 'Open a node in a new tab'}>
             <span>
               <IconButton
                 aria-label={`New ${side} location tab`}
                 size="small"
                 disabled={tabs.length >= 8}
-                onClick={() => {
-                  const copy = { ...tab, id: crypto.randomUUID() };
-                  setTabs((all) => [...all, copy]);
-                  setTabId(copy.id);
-                }}
+                data-file-add
+                aria-haspopup="menu"
+                aria-expanded={Boolean(chooser)}
+                aria-controls={chooser ? `choose-${side}-file-node` : undefined}
+                onClick={(event) => setChooser(event.currentTarget)}
               >
                 <AddIcon />
               </IconButton>
@@ -487,49 +470,57 @@ export function FilePane({
         }
         sx={{ px: 1, minHeight: 40, '& .MuiTab-root': { minHeight: 40, minWidth: 72, maxWidth: 180, fontSize: 12 } }}
       />
-      <Stack data-file-tools direction="row" spacing={1} sx={{ p: 1, minWidth: 0 }}>
-        <TextField
-          select
-          size="small"
-          label="Node"
-          value={tab.nodeId}
-          onChange={(e) => patch({ nodeId: e.target.value, rootId: '', path: '', history: [''], cursor: 0 })}
-          sx={{ flex: 1, minWidth: 0 }}
-        >
-          {hosts.map((h) => (
-            <MenuItem key={h.id} value={h.id}>
-              {h.name}
-              {h.isLocal ? ' · daemon' : ''}
-            </MenuItem>
-          ))}
-        </TextField>
-        <TextField
-          select
-          size="small"
-          label="Root"
-          value={root?.id ?? ''}
-          onChange={(e) => patch({ rootId: e.target.value, path: '', history: [''], cursor: 0 })}
-          sx={{ flex: 1, minWidth: 0 }}
-          disabled={!roots.length}
-        >
-          {roots.map((r) => (
-            <MenuItem key={r.id} value={r.id}>
-              {r.label}
-              {r.readOnly ? ' · read only' : ''}
-            </MenuItem>
-          ))}
-        </TextField>
-        <IconButton aria-label={`${side} panel actions`} onClick={(e) => setMenu(e.currentTarget)}>
-          <MoreIcon />
-        </IconButton>
-      </Stack>
-      <Stack direction="row" spacing={0.25} sx={{ px: 1, alignItems: 'center', minHeight: 36, minWidth: 0 }}>
+      <Menu
+        id={`choose-${side}-file-node`}
+        anchorEl={chooser}
+        open={Boolean(chooser)}
+        onClose={() => setChooser(null)}
+        slotProps={{
+          list: { 'aria-label': 'Choose a node' },
+          paper: { sx: { minWidth: 208, maxWidth: 'min(360px, 92vw)' } },
+        }}
+      >
+        <ListSubheader>Choose a node</ListSubheader>
+        {hosts.map((host) => (
+          <MenuItem
+            key={host.id}
+            onClick={() => {
+              const added = newLocation(host.id);
+              setTabs((all) => [...all, added]);
+              switchTab(added.id);
+              setChooser(null);
+            }}
+          >
+            <ListItemText
+              primary={host.name}
+              secondary={host.isLocal ? 'This daemon' : host.host}
+              sx={{ overflowWrap: 'anywhere' }}
+            />
+          </MenuItem>
+        ))}
+        {discovery.pending && <MenuItem disabled>Loading registered nodes…</MenuItem>}
+        {discovery.error && (
+          <MenuItem onClick={retryDiscovery}>
+            <ListItemText
+              primary="Retry loading remote nodes"
+              secondary={discovery.error}
+              sx={{ overflowWrap: 'anywhere' }}
+            />
+          </MenuItem>
+        )}
+      </Menu>
+      <Stack
+        data-file-tools
+        direction="row"
+        spacing={0.25}
+        sx={{ px: 1, alignItems: 'center', minHeight: 36, minWidth: 0 }}
+      >
         <Tooltip title="Back · Alt+←">
           <span>
             <IconButton
               size="small"
               aria-label={`Back in ${side} panel`}
-              disabled={tab.cursor === 0}
+              disabled={!root || tab.cursor === 0}
               onClick={() => travel(-1)}
             >
               <ArrowLeftIcon fontSize="small" />
@@ -541,7 +532,7 @@ export function FilePane({
             <IconButton
               size="small"
               aria-label={`Forward in ${side} panel`}
-              disabled={tab.cursor >= tab.history.length - 1}
+              disabled={!root || tab.cursor >= tab.history.length - 1}
               onClick={() => travel(1)}
             >
               <ArrowRightIcon fontSize="small" />
@@ -553,7 +544,7 @@ export function FilePane({
             <IconButton
               size="small"
               aria-label={`Parent of ${side} panel`}
-              disabled={!tab.path}
+              disabled={!root || !tab.path}
               onClick={() => navigate(parentPath(tab.path))}
             >
               <ParentFolderIcon fontSize="small" />
@@ -571,19 +562,21 @@ export function FilePane({
               onChange={(e) => setPathInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') {
-                  e.preventDefault(); e.stopPropagation(); setEditingPath(false);
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setEditingPath(false);
                   requestAnimationFrame(() => listing.current?.focus({ preventScroll: true }));
                 }
                 if (e.key === 'Enter') {
                   try {
                     navigate(relativePath(pathInput));
                   } catch (err) {
-                    setError(describeFileError(err));
+                    setNotice(describeFileError(err));
                   }
                 }
               }}
             />
-          ) : (
+          ) : root ? (
             <Breadcrumbs
               aria-label={`${side} path`}
               maxItems={3}
@@ -601,7 +594,7 @@ export function FilePane({
               }}
             >
               <Link component="button" underline="hover" onClick={() => navigate('')}>
-                /
+                {root.id === 'system' && root.label === 'Filesystem' ? '/' : root.label}
               </Link>
               {tab.path
                 .split('/')
@@ -624,233 +617,299 @@ export function FilePane({
                   </Link>
                 ))}
             </Breadcrumbs>
-          )}
+          ) : null}
         </Box>
-        <Tooltip title="Edit path · Ctrl/⌘+L">
+        {root && (
+          <Tooltip title="Edit path · Ctrl/⌘+L">
+            <IconButton
+              size="small"
+              aria-label={`Edit ${side} path`}
+              onClick={() => {
+                setPathInput('/' + tab.path);
+                setEditingPath(true);
+              }}
+            >
+              <EditIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+        )}
+        <Tooltip title="Refresh">
           <IconButton
+            data-file-retry
             size="small"
-            aria-label={`Edit ${side} path`}
+            aria-label={`Refresh ${side} panel`}
             onClick={() => {
-              setPathInput('/' + tab.path);
-              setEditingPath(true);
+              setNotice('');
+              setReload((n) => n + 1);
             }}
           >
-            <EditIcon sx={{ fontSize: 18 }} />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Refresh">
-          <IconButton size="small" aria-label={`Refresh ${side} panel`} onClick={() => setReload((n) => n + 1)}>
             <RefreshIcon sx={{ fontSize: 18 }} />
           </IconButton>
         </Tooltip>
+        <Tooltip title="Panel actions">
+          <IconButton size="small" aria-label={`${side} panel actions`} onClick={(e) => setMenu(e.currentTarget)}>
+            <MoreIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
       </Stack>
-      <TextField
-        size="small"
-        placeholder="Filter loaded entries…"
-        data-console-command="search"
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setSelected([]);
-        }}
-        slotProps={{ htmlInput: { 'aria-label': `Filter ${side} files` } }}
-        sx={{ mx: 1, my: 0.75 }}
-      />
-      <Box sx={{ height: 2, flexShrink: 0 }}>
-        {(loading || rootsLoading) && <LinearProgress aria-label={`Loading ${side} files`} />}
-      </Box>
-      {(rootsError || error) && (
-        <Alert severity="error" sx={{ mx: 1, my: 0.5, overflowWrap: 'anywhere' }}>
-          {rootsError || error}
+      {root && (
+        <TextField
+          size="small"
+          placeholder="Filter loaded entries…"
+          data-console-command="search"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setSelected([]);
+          }}
+          slotProps={{ htmlInput: { 'aria-label': `Filter ${side} files` } }}
+          sx={{ mx: 1, my: 0.75 }}
+        />
+      )}
+      <Box sx={{ height: 2, flexShrink: 0 }}>{loading && <LinearProgress aria-label={`Loading ${side} files`} />}</Box>
+      {error && (
+        <Alert severity="error" sx={{ m: 1, overflowWrap: 'anywhere' }}>
+          {error}
         </Alert>
       )}
-      {!roots.length && !rootsLoading && !rootsError && !error && (
-        <Box sx={{ p: 2 }}>
-          <Typography variant="body2" color="text.secondary">
-            No file roots are available. Check the files policy in this node’s ~/.omnitron/config.json.
-          </Typography>
-        </Box>
-      )}
-      <TableViewport
-        keyboardNavigation={false}
-        tabIndex={-1}
-        label={`${side} directory entries`}
-        sx={{ flex: 1, minHeight: 100 }}
-      >
-        <Table
-          ref={listing}
-          tabIndex={active && !toolsMode ? 0 : -1}
-          data-keyboard-focus
-          data-file-list
-          size="small"
-          stickyHeader
-          aria-label={`${side} files`}
-          sx={{
-            tableLayout: 'fixed',
-            '& td, & th': { px: 1, py: 0.6 },
-            '& td:first-of-type, & th:first-of-type': { px: 0 },
-            '& .MuiCheckbox-root': { p: 0.75 },
-            '& .MuiTableRow-root[data-cursor="true"]': { bgcolor: 'action.hover' },
-            '&:focus-visible': {
-              outline: currentPath === null ? '2px solid' : 'none',
-              outlineColor: 'primary.main',
-              outlineOffset: -2,
-            },
-            '& .MuiTableRow-root:focus-visible, &:focus-visible .MuiTableRow-root[data-cursor="true"]': {
-              outline: '2px solid',
-              outlineColor: 'primary.main',
-              outlineOffset: -2,
-            },
-          }}
-        >
-          <TableHead>
-            <TableRow>
-              <TableCell padding="checkbox" sx={{ width: 40 }}>
-                <Checkbox
-                  size="small"
-                  slotProps={{ input: { 'aria-label': `Select loaded ${side} entries` } }}
-                  checked={rows.length > 0 && marked.length === rows.length}
-                  indeterminate={marked.length > 0 && marked.length < rows.length}
-                  onChange={(_, checked) => setSelected(checked ? rows.map((e) => e.path) : [])}
-                />
-              </TableCell>
-              {(['name', 'size', 'modifiedAt'] as const).map((key) => (
-                <TableCell
-                  key={key}
-                  sx={
-                    key === 'name'
-                      ? {}
-                      : key === 'size'
-                        ? { width: 80 }
-                        : { width: 110, display: { xs: 'none', lg: 'table-cell' } }
-                  }
-                >
-                  <TableSortLabel
-                    active={sort === key}
-                    direction={descending ? 'desc' : 'asc'}
-                    onClick={() => {
-                      if (sort === key) setDescending((v) => !v);
-                      else {
-                        setSort(key);
-                        setDescending(false);
-                      }
-                    }}
+      {!root && (
+        <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          {policy &&
+            !policy.error &&
+            (tab.rootId ? (
+              <Alert severity="warning" sx={{ m: 1 }}>
+                This file area is no longer available. Refresh or open a new tab.
+              </Alert>
+            ) : !policy.roots.length ? (
+              <Alert severity="info" sx={{ m: 1 }}>
+                No file areas are available on this node. Check its file access policy.
+              </Alert>
+            ) : policy.roots.length > 1 ? (
+              <Stack role="group" aria-label="Choose a file area" spacing={0.5} sx={{ p: 1.5 }}>
+                <Typography variant="subtitle2">Choose a file area</Typography>
+                {policy.roots.map((area, index) => (
+                  <Button
+                    data-file-start={index === 0 ? true : undefined}
+                    key={area.id}
+                    variant="text"
+                    aria-label={`Open ${area.label}`}
+                    onClick={() => patch({ rootId: area.id, rootLabel: area.label })}
+                    sx={{ justifyContent: 'flex-start', gap: 1 }}
                   >
-                    {key === 'modifiedAt' ? 'Modified' : key === 'name' ? 'Name' : 'Size'}
-                  </TableSortLabel>
-                </TableCell>
-              ))}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {tab.path && <TableRow
-              tabIndex={-1}
-              data-cursor={active && currentPath === parentPath(tab.path) || undefined}
-              aria-label="Parent directory"
-              onFocus={() => setCursor(parentPath(tab.path))}
-              onClick={(event) => { setCursor(parentPath(tab.path)); event.currentTarget.focus(); }}
-              onDoubleClick={() => navigate(parentPath(tab.path))}
-            >
-              <TableCell />
-              <TableCell>
-                <Button color="inherit" size="small" tabIndex={-1} aria-label="Open parent directory" onClick={(event) => { event.stopPropagation(); navigate(parentPath(tab.path)); }}
-                  startIcon={<ParentFolderIcon fontSize="small" />} sx={{ minWidth: 0, p: 0, fontFamily: 'monospace' }}>..</Button>
-              </TableCell>
-              <TableCell />
-              <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }} />
-            </TableRow>}
-            {rows.map((entry) => (
-              <TableRow
-                key={entry.path}
-                hover
-                selected={selected.includes(entry.path)}
-                tabIndex={-1}
-                data-cursor={active && entry.path === currentPath || undefined}
-                onFocus={() => setCursor(entry.path)}
-                aria-current={active && entry.path === currentPath ? 'true' : undefined}
-                aria-label={`${entry.kind} ${entry.name}`}
-                onClick={(e) => { choose(entry, e.shiftKey); e.currentTarget.focus({ preventScroll: true }); }}
-                onDoubleClick={() => open(entry)}
-              >
-                <TableCell>
-                  <Checkbox
-                    size="small"
-                    checked={selected.includes(entry.path)}
-                    slotProps={{ input: { 'aria-label': `Select ${entry.name}`, tabIndex: -1 } }}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={() => choose(entry, false)}
-                  />
-                </TableCell>
-                <TableCell>
-                  <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0 }}>
-                    {entry.kind === 'directory' ? (
-                      <FolderIcon sx={{ fontSize: 18, color: 'primary.main', flexShrink: 0 }} />
-                    ) : (
-                      <Typography
-                        component="span"
-                        aria-hidden
-                        sx={{ fontFamily: 'monospace', fontSize: 11, color: 'text.disabled', flexShrink: 0 }}
-                      >
-                        {entry.kind === 'file' ? '┄' : '↗'}
+                    <FolderIcon fontSize="small" /> {area.label}
+                    {area.readOnly && (
+                      <Typography variant="caption" color="text.secondary">
+                        Read only
                       </Typography>
                     )}
-                    <Tooltip title={entry.name}>
-                      <Button
-                        size="small"
-                        color="inherit"
-                        tabIndex={-1}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          e.currentTarget.closest<HTMLElement>('tr')?.focus({ preventScroll: true });
-                          open(entry);
-                        }}
-                        sx={{
-                          minWidth: 0,
-                          justifyContent: 'flex-start',
-                          textTransform: 'none',
-                          fontWeight: entry.kind === 'directory' ? 600 : 400,
-                          overflow: 'hidden',
-                          p: 0,
-                          fontSize: 13,
-                        }}
-                      >
-                        <Box
-                          component="span"
-                          sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                        >
-                          {entry.name}
-                        </Box>
-                      </Button>
-                    </Tooltip>
-                  </Stack>
+                  </Button>
+                ))}
+              </Stack>
+            ) : null)}
+        </Box>
+      )}
+      {root && (
+        <TableViewport
+          keyboardNavigation={false}
+          tabIndex={-1}
+          label={`${side} directory entries`}
+          sx={{ flex: 1, minHeight: 100 }}
+        >
+          <Table
+            ref={listing}
+            tabIndex={active && !toolsMode ? 0 : -1}
+            data-keyboard-focus
+            data-file-list
+            size="small"
+            stickyHeader
+            aria-label={`${side} files`}
+            sx={{
+              tableLayout: 'fixed',
+              '& td, & th': { px: 1, py: 0.6 },
+              '& td:first-of-type, & th:first-of-type': { px: 0 },
+              '& .MuiCheckbox-root': { p: 0.75 },
+              '& .MuiTableRow-root[data-cursor="true"]': { bgcolor: 'action.hover' },
+              '&:focus-visible': {
+                outline: currentPath === null ? '2px solid' : 'none',
+                outlineColor: 'primary.main',
+                outlineOffset: -2,
+              },
+              '& .MuiTableRow-root:focus-visible, &:focus-visible .MuiTableRow-root[data-cursor="true"]': {
+                outline: '2px solid',
+                outlineColor: 'primary.main',
+                outlineOffset: -2,
+              },
+            }}
+          >
+            <TableHead>
+              <TableRow>
+                <TableCell padding="checkbox" sx={{ width: 40 }}>
+                  <Checkbox
+                    size="small"
+                    slotProps={{ input: { 'aria-label': `Select loaded ${side} entries` } }}
+                    checked={rows.length > 0 && marked.length === rows.length}
+                    indeterminate={marked.length > 0 && marked.length < rows.length}
+                    onChange={(_, checked) => setSelected(checked ? rows.map((e) => e.path) : [])}
+                  />
                 </TableCell>
-                <TableCell
-                  sx={{ color: 'text.secondary', fontFamily: 'monospace', fontSize: 11, whiteSpace: 'nowrap' }}
-                >
-                  {entry.kind === 'file' ? fileBytes(entry.size) : entry.kind === 'directory' ? '—' : entry.kind}
-                </TableCell>
-                <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' }, color: 'text.secondary', fontSize: 11 }}>
-                  <Tooltip title={new Date(entry.modifiedAt).toLocaleString()}>
-                    <span>
-                      {new Date(entry.modifiedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                    </span>
-                  </Tooltip>
-                </TableCell>
+                {(['name', 'size', 'modifiedAt'] as const).map((key) => (
+                  <TableCell
+                    key={key}
+                    sx={
+                      key === 'name'
+                        ? {}
+                        : key === 'size'
+                          ? { width: 80 }
+                          : { width: 110, display: { xs: 'none', lg: 'table-cell' } }
+                    }
+                  >
+                    <TableSortLabel
+                      active={sort === key}
+                      direction={descending ? 'desc' : 'asc'}
+                      onClick={() => {
+                        if (sort === key) setDescending((v) => !v);
+                        else {
+                          setSort(key);
+                          setDescending(false);
+                        }
+                      }}
+                    >
+                      {key === 'modifiedAt' ? 'Modified' : key === 'name' ? 'Name' : 'Size'}
+                    </TableSortLabel>
+                  </TableCell>
+                ))}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {!loading && root && !rows.length && !error && (
-          <Typography variant="body2" color="text.secondary" sx={{ p: 3, textAlign: 'center' }}>
-            {query ? 'No matches in loaded entries' : 'Empty folder'}
-          </Typography>
-        )}
-        {next && (
-          <Button fullWidth onClick={() => void more()} disabled={loading}>
-            Load next 200 entries
-          </Button>
-        )}
-      </TableViewport>
+            </TableHead>
+            <TableBody>
+              {ready && tab.path && (
+                <TableRow
+                  tabIndex={-1}
+                  data-cursor={(active && currentPath === parentPath(tab.path)) || undefined}
+                  aria-label="Parent directory"
+                  onFocus={() => setCursor(parentPath(tab.path))}
+                  onClick={(event) => {
+                    setCursor(parentPath(tab.path));
+                    event.currentTarget.focus();
+                  }}
+                  onDoubleClick={() => navigate(parentPath(tab.path))}
+                >
+                  <TableCell />
+                  <TableCell>
+                    <Button
+                      color="inherit"
+                      size="small"
+                      tabIndex={-1}
+                      aria-label="Open parent directory"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        navigate(parentPath(tab.path));
+                      }}
+                      startIcon={<ParentFolderIcon fontSize="small" />}
+                      sx={{ minWidth: 0, p: 0, fontFamily: 'monospace' }}
+                    >
+                      ..
+                    </Button>
+                  </TableCell>
+                  <TableCell />
+                  <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }} />
+                </TableRow>
+              )}
+              {rows.map((entry) => (
+                <TableRow
+                  key={entry.path}
+                  hover
+                  selected={selected.includes(entry.path)}
+                  tabIndex={-1}
+                  data-cursor={(active && entry.path === currentPath) || undefined}
+                  onFocus={() => setCursor(entry.path)}
+                  aria-current={active && entry.path === currentPath ? 'true' : undefined}
+                  aria-label={`${entry.kind} ${entry.name}`}
+                  onClick={(e) => {
+                    choose(entry, e.shiftKey);
+                    e.currentTarget.focus({ preventScroll: true });
+                  }}
+                  onDoubleClick={() => open(entry)}
+                >
+                  <TableCell>
+                    <Checkbox
+                      size="small"
+                      checked={selected.includes(entry.path)}
+                      slotProps={{ input: { 'aria-label': `Select ${entry.name}`, tabIndex: -1 } }}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => choose(entry, false)}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0 }}>
+                      {entry.kind === 'directory' ? (
+                        <FolderIcon sx={{ fontSize: 18, color: 'primary.main', flexShrink: 0 }} />
+                      ) : (
+                        <Typography
+                          component="span"
+                          aria-hidden
+                          sx={{ fontFamily: 'monospace', fontSize: 11, color: 'text.disabled', flexShrink: 0 }}
+                        >
+                          {entry.kind === 'file' ? '┄' : '↗'}
+                        </Typography>
+                      )}
+                      <Tooltip title={entry.name}>
+                        <Button
+                          size="small"
+                          color="inherit"
+                          tabIndex={-1}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.currentTarget.closest<HTMLElement>('tr')?.focus({ preventScroll: true });
+                            open(entry);
+                          }}
+                          sx={{
+                            minWidth: 0,
+                            justifyContent: 'flex-start',
+                            textTransform: 'none',
+                            fontWeight: entry.kind === 'directory' ? 600 : 400,
+                            overflow: 'hidden',
+                            p: 0,
+                            fontSize: 13,
+                          }}
+                        >
+                          <Box
+                            component="span"
+                            sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          >
+                            {entry.name}
+                          </Box>
+                        </Button>
+                      </Tooltip>
+                    </Stack>
+                  </TableCell>
+                  <TableCell
+                    sx={{ color: 'text.secondary', fontFamily: 'monospace', fontSize: 11, whiteSpace: 'nowrap' }}
+                  >
+                    {entry.kind === 'file' ? fileBytes(entry.size) : entry.kind === 'directory' ? '—' : entry.kind}
+                  </TableCell>
+                  <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' }, color: 'text.secondary', fontSize: 11 }}>
+                    <Tooltip title={new Date(entry.modifiedAt).toLocaleString()}>
+                      <span>
+                        {new Date(entry.modifiedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </span>
+                    </Tooltip>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {ready && !loading && !rows.length && !error && (
+            <Typography variant="body2" color="text.secondary" sx={{ p: 3, textAlign: 'center' }}>
+              {query ? 'No matches in loaded entries' : 'Empty folder'}
+            </Typography>
+          )}
+          {next && (
+            <Button fullWidth onClick={() => void more()} disabled={loading}>
+              Load next 200 entries
+            </Button>
+          )}
+        </TableViewport>
+      )}
       <Stack
         direction="row"
         spacing={1}
@@ -859,10 +918,16 @@ export function FilePane({
         <Typography variant="caption" color="text.secondary" aria-live="polite" sx={{ flex: 1 }}>
           {marked.length
             ? `${marked.length} selected${marked.every((entry) => entry.kind === 'file') ? ` · ${fileBytes(marked.reduce((n, e) => n + e.size, 0))}` : ''}`
-            : `${rows.length}${next ? '+' : ''} ${rows.length === 1 && !next ? 'entry' : 'entries'}`}
+            : !ready
+              ? '—'
+              : `${rows.length}${next ? '+' : ''} ${rows.length === 1 && !next ? 'entry' : 'entries'}`}
         </Typography>
         {root?.readOnly && <Chip size="small" variant="outlined" label="Read only" />}
-        {protectedSelection && <Tooltip title="This structural entry cannot be renamed or moved to trash; its ordinary children remain usable"><Chip size="small" variant="outlined" label="Protected" /></Tooltip>}
+        {protectedSelection && (
+          <Tooltip title="This structural entry cannot be renamed or moved to trash; its ordinary children remain usable">
+            <Chip size="small" variant="outlined" label="Protected" />
+          </Tooltip>
+        )}
         <Typography
           variant="caption"
           color={active ? 'primary.main' : 'text.disabled'}
@@ -875,7 +940,7 @@ export function FilePane({
         {actions.map(([key, label, disabled]) => (
           <MenuItem
             key={key}
-            disabled={disabled || loading}
+            disabled={disabled || !ready || loading}
             onClick={() => {
               setMenu(null);
               onAction(key);

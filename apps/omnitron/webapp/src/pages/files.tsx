@@ -50,6 +50,7 @@ import {
 } from 'src/components/files/model';
 import { files, nodes } from 'src/netron/client';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
+const localHost: FileHost = { id: 'local', name: 'Local', host: 'daemon', isLocal: true };
 const CodeEditor = lazy(() => import('src/components/files/code-editor'));
 type BufferState = {
   id: string;
@@ -70,11 +71,11 @@ type Pending = {
 export default function FilesPage({ visible = true }: { visible?: boolean }) {
   const theme = useTheme(),
     compact = useMediaQuery(theme.breakpoints.down('md'));
-  const [hosts, setHosts] = useState<FileHost[]>([]),
+  const [hosts, setHosts] = useState<FileHost[]>([localHost]),
     [error, setError] = useState(''),
     [operation, setOperation] = useState<string | null>(null);
   const busy = operation !== null;
-  const [preparing, setPreparing] = useState(true);
+  const [discovery, setDiscovery] = useState<{ pending: boolean; error?: string }>({ pending: true });
   const [active, setActive] = useState<'left' | 'right'>('left'),
     [split, setSplit] = useState(50),
     [refreshKey, setRefreshKey] = useState(0);
@@ -117,19 +118,20 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
   const mounted = useRef(true),
     acting = useRef(false);
   const loadHosts = useCallback(async () => {
-    setPreparing(true);
-    setError('');
+    setDiscovery({ pending: true });
     try {
       const list = await nodes.listNodes();
-      if (mounted.current)
+      if (mounted.current) {
         setHosts([
-          { id: 'local', name: 'Local', host: 'daemon', isLocal: true },
-          ...list.filter((n) => !n.isLocal).map((n) => ({ id: n.id, name: n.name, host: n.host, isLocal: false })),
+          localHost,
+          ...list
+            .filter((n) => !n.isLocal && n.id !== localHost.id)
+            .map((n) => ({ id: n.id, name: n.name, host: n.host, isLocal: false })),
         ]);
+        setDiscovery({ pending: false });
+      }
     } catch (e) {
-      if (mounted.current) setError(describeFileError(e));
-    } finally {
-      if (mounted.current) setPreparing(false);
+      if (mounted.current) setDiscovery({ pending: false, error: describeFileError(e) });
     }
   }, []);
   useEffect(() => {
@@ -174,7 +176,8 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
       const region = workspace.current?.querySelector<HTMLElement>(`[data-file-side="${side}"]`);
       (
         region?.querySelector<HTMLElement>('tr[data-cursor="true"]') ??
-        region?.querySelector<HTMLElement>('[data-keyboard-focus]')
+        region?.querySelector<HTMLElement>('[data-keyboard-focus], [data-file-start]') ??
+        region?.querySelector<HTMLElement>('[data-file-add]:not(:disabled), [data-file-retry]')
       )?.focus({ preventScroll: true });
     });
   };
@@ -527,84 +530,78 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
         </Box>
       )}
       <Box ref={workspace} sx={{ display: 'flex', flex: 1, minWidth: 0, minHeight: 240, overflow: 'hidden' }}>
-        {hosts.length > 0 ? (
-          <>
-            <Box
-              sx={{
-                display: compact && active !== 'left' ? 'none' : 'flex',
-                flex: compact ? 1 : `0 0 ${split}%`,
-                minWidth: 0,
-                minHeight: 0,
-              }}
-            >
-              <FilePane
-                side="left"
-                visible={visible}
-                hosts={hosts}
-                active={active === 'left'}
-                hidden={false}
-                refreshKey={refreshKey}
-                onFocus={() => setActive('left')}
-                onSwitchPanel={() => focusPane('right')}
-                onSelection={(value) => setPanes((p) => ({ ...p, left: value }))}
-                onOpen={(...args) => void open(...args)}
-                onAction={(key) => action('left', key)}
-              />
-            </Box>
-            {!compact && (
-              <Box
-                role="separator"
-                aria-label="Panel width"
-                aria-orientation="vertical"
-                aria-valuemin={30}
-                aria-valuemax={70}
-                aria-valuenow={split}
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                    e.preventDefault();
-                    setSplit((v) => Math.max(30, Math.min(70, v + (e.key === 'ArrowLeft' ? -2 : 2))));
-                  }
-                }}
-                onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
-                onPointerMove={(e) => {
-                  if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-                  const rect = workspace.current!.getBoundingClientRect();
-                  setSplit(Math.max(30, Math.min(70, ((e.clientX - rect.left) / rect.width) * 100)));
-                }}
-                onPointerUp={(e) => {
-                  if (e.currentTarget.hasPointerCapture(e.pointerId))
-                    e.currentTarget.releasePointerCapture(e.pointerId);
-                }}
-                sx={{
-                  width: 8,
-                  flexShrink: 0,
-                  cursor: 'col-resize',
-                  touchAction: 'none',
-                  '&:hover, &:focus-visible': { bgcolor: 'action.hover', outlineColor: 'primary.main' },
-                }}
-              />
-            )}
-            <FilePane
-              side="right"
-              visible={visible}
-              hosts={hosts}
-              active={active === 'right'}
-              hidden={compact && active !== 'right'}
-              refreshKey={refreshKey}
-              onFocus={() => setActive('right')}
-              onSwitchPanel={() => focusPane('left')}
-              onSelection={(value) => setPanes((p) => ({ ...p, right: value }))}
-              onOpen={(...args) => void open(...args)}
-              onAction={(key) => action('right', key)}
-            />
-          </>
-        ) : (
-          <Box sx={{ p: 2 }}>
-            <OperationStatus active={preparing} label="Loading file workspace" detail="Reading registered nodes" />
-            {!preparing && <Button onClick={() => void loadHosts()}>Retry loading file workspace</Button>}
-          </Box>
+        <Box
+          sx={{
+            display: compact && active !== 'left' ? 'none' : 'flex',
+            flex: compact ? 1 : `0 0 ${split}%`,
+            minWidth: 0,
+            minHeight: 0,
+          }}
+        >
+          <FilePane
+            side="left"
+            visible={visible}
+            hosts={hosts}
+            discovery={discovery}
+            retryDiscovery={loadHosts}
+            active={active === 'left'}
+            hidden={false}
+            refreshKey={refreshKey}
+            onFocus={() => setActive('left')}
+            onSwitchPanel={() => focusPane('right')}
+            onSelection={(value) => setPanes((p) => ({ ...p, left: value }))}
+            onOpen={(...args) => void open(...args)}
+            onAction={(key) => action('left', key)}
+          />
+        </Box>
+        {!compact && (
+          <Box
+            role="separator"
+            aria-label="Panel width"
+            aria-orientation="vertical"
+            aria-valuemin={30}
+            aria-valuemax={70}
+            aria-valuenow={split}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                e.preventDefault();
+                setSplit((v) => Math.max(30, Math.min(70, v + (e.key === 'ArrowLeft' ? -2 : 2))));
+              }
+            }}
+            onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+            onPointerMove={(e) => {
+              if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+              const rect = workspace.current!.getBoundingClientRect();
+              setSplit(Math.max(30, Math.min(70, ((e.clientX - rect.left) / rect.width) * 100)));
+            }}
+            onPointerUp={(e) => {
+              if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+            }}
+            sx={{
+              width: 8,
+              flexShrink: 0,
+              cursor: 'col-resize',
+              touchAction: 'none',
+              '&:hover, &:focus-visible': { bgcolor: 'action.hover', outlineColor: 'primary.main' },
+            }}
+          />
         )}
+        <FilePane
+          side="right"
+          visible={visible}
+          hosts={hosts}
+          discovery={discovery}
+          retryDiscovery={loadHosts}
+          active={active === 'right'}
+          hidden={compact && active !== 'right'}
+          refreshKey={refreshKey}
+          onFocus={() => setActive('right')}
+          onSwitchPanel={() => focusPane('left')}
+          onSelection={(value) => setPanes((p) => ({ ...p, right: value }))}
+          onOpen={(...args) => void open(...args)}
+          onAction={(key) => action('right', key)}
+        />
       </Box>
       {running.length > 0 && (
         <Button size="small" onClick={() => setQueueOpen(true)} sx={{ justifyContent: 'flex-start' }}>
@@ -708,7 +705,10 @@ export default function FilesPage({ visible = true }: { visible?: boolean }) {
             {dialogPending?.action === 'copy' ? (
               <>
                 <Typography variant="body2" sx={{ overflowWrap: 'anywhere', fontWeight: 600 }}>
-                  → {dialogPending.destination ? label(dialogPending.destination.location) : 'Select the other panel destination'}
+                  →{' '}
+                  {dialogPending.destination
+                    ? label(dialogPending.destination.location)
+                    : 'Select the other panel destination'}
                 </Typography>
                 {dialogPending.destination &&
                   dialogPending.pane.entries.length === 1 &&

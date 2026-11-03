@@ -5,7 +5,7 @@
 import { resolveAppPath } from './app-path.js';
 import path from 'node:path';
 import fs from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { readInFreshProcess, moduleReaderEntry } from '../shared/fresh-module-reader.js';
 import type { IEcosystemConfig } from './types.js';
 import { defineEcosystem } from './define-ecosystem.js';
 
@@ -37,8 +37,10 @@ function stampProjectRoot(config: IEcosystemConfig, projectRoot: string): IEcosy
 }
 
 export type EcosystemPhase = 'runtime' | 'release';
+/** One read gets a fresh native module graph. Default: 60 seconds, maximum: 10 minutes. */
+export interface EcosystemLoadOptions { timeoutMs?: number }
 
-export async function loadEcosystemConfig(cwd: string = process.cwd(), phase: EcosystemPhase = 'runtime'): Promise<IEcosystemConfig> {
+export async function loadEcosystemConfig(cwd: string = process.cwd(), phase: EcosystemPhase = 'runtime', options: EcosystemLoadOptions = {}): Promise<IEcosystemConfig> {
   for (const name of CONFIG_FILE_NAMES) {
     const configPath = path.resolve(cwd, name);
 
@@ -46,7 +48,7 @@ export async function loadEcosystemConfig(cwd: string = process.cwd(), phase: Ec
     if (!fs.existsSync(configPath)) continue;
 
     try {
-      return await loadEcosystemConfigFile(configPath, phase);
+      return await loadEcosystemConfigFile(configPath, phase, options);
     } catch (err: any) {
       throw new Error(`Failed to load ${name}: ${err.message}`, { cause: err });
     }
@@ -64,14 +66,13 @@ export async function loadEcosystemConfig(cwd: string = process.cwd(), phase: Ec
 /**
  * Load config from a specific file path (e.g., `omnitron up -c ./omnitron.config.ts`)
  */
-export async function loadEcosystemConfigFile(filePath: string, phase: EcosystemPhase = 'runtime'): Promise<IEcosystemConfig> {
+export async function loadEcosystemConfigFile(filePath: string, phase: EcosystemPhase = 'runtime', options: EcosystemLoadOptions = {}): Promise<IEcosystemConfig> {
   if (!fs.existsSync(filePath)) {
     throw new Error(`Config file not found: ${filePath}`);
   }
-  const url = pathToFileURL(filePath).href;
-  const mod = await import(`${url}?t=${Date.now()}`);
-  const exported = mod.default ?? mod;
-  const raw = typeof exported === 'function' ? await exported(Object.freeze({ phase })) : exported;
+  const raw = await readInFreshProcess({ entryPath: moduleReaderEntry(import.meta.url, 'loader-child'),
+    args: [path.resolve(filePath), phase], timeoutMs: options.timeoutMs ?? 60_000,
+    label: 'the ecosystem configuration', typescript: true }) as IEcosystemConfig;
 
   if (!raw || !Array.isArray(raw.apps)) {
     throw new Error(`Invalid config in ${filePath}: 'apps' must be an array`);

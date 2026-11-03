@@ -95,7 +95,7 @@ describe('ConfigLoader', () => {
 
     it('throws for app entry missing both bootstrap and script', async () => {
       fs.writeFileSync(path.join(tmpDir, 'omnitron.config.js'), 'module.exports = { apps: [{ name: "test" }] };');
-      await expect(loadEcosystemConfig(tmpDir)).rejects.toThrow("must have either 'bootstrap' or 'script'");
+      await expect(loadEcosystemConfig(tmpDir)).rejects.toThrow("must have a 'bootstrap' or 'script'");
     });
   });
 

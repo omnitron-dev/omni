@@ -30,6 +30,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { loadBootstrapConfig } from '../../src/orchestrator/bootstrap-loader.js';
+import { FRESH_MODULE_MARK } from '../../src/shared/fresh-module-reader.js';
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
 import { scanRequirements } from '../../src/project/requirements-scanner.js';
 
@@ -325,9 +326,12 @@ describe('a definition that does not load', () => {
     p.writeKit(KIT_BEFORE);
     p.writeDefinition(definitionNaming('a, b', "a + '+' + b"));
 
-    await expect(freshRead(p.definition)).rejects.toThrow(
-      "The requested module '@probe/kit' does not provide an export named 'b'",
-    );
+    // The common compiler now bundles source-entry workspace packages. Its
+    // linker reports a missing source export before Node imports the bundle.
+    const failure = await freshRead(p.definition).catch(error => error as Error);
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain('kit');
+    expect((failure as Error).message).toMatch(/No matching export .+ for import "b"/);
   }, 60_000);
 });
 
@@ -382,11 +386,11 @@ export default { name: 'probe', version: '1.0.0', processes: [{ name: a, module:
     const p = project();
     p.writeKit(KIT_BEFORE);
     p.writeDefinition(DEFINITION_BEFORE);
-    process.env['OMNITRON_BOOTSTRAP_LOADER_CHILD'] = '1';
+    process.env[FRESH_MODULE_MARK] = '1';
     try {
-      await expect(freshRead(p.definition)).rejects.toThrow('a process reading a definition does not start another');
+      await expect(freshRead(p.definition)).rejects.toThrow('a process reading a module does not start another');
     } finally {
-      delete process.env['OMNITRON_BOOTSTRAP_LOADER_CHILD'];
+      delete process.env[FRESH_MODULE_MARK];
     }
   });
 });

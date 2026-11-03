@@ -16,24 +16,10 @@
  * a client, a timer — since nothing here will ever use it.
  */
 
-import {
-  FRESH_GRAPH_ANSWER,
-  definitionAsData,
-  loadBootstrapConfig,
-  type FreshGraphAnswer,
-} from './bootstrap-loader.js';
+import { definitionAsData, loadBootstrapConfig } from './bootstrap-loader.js';
+import { initializeModuleReader, answerModuleRead } from '../shared/fresh-module-reader.js';
 
-// The parent is the only one this answer is for. Gone, it leaves nothing to do.
-process.once('disconnect', () => process.exit(3));
-
-function answer(message: FreshGraphAnswer): void {
-  const code = message.ok ? 0 : 1;
-  if (!process.send) {
-    process.stderr.write('bootstrap-loader-child: started without an IPC channel, so there is no one to answer\n');
-    process.exit(2);
-  }
-  process.send(message, undefined, {}, () => process.exit(code));
-}
+initializeModuleReader();
 
 const bootstrapPath = process.argv[2];
 try {
@@ -41,8 +27,7 @@ try {
   const definition = await loadBootstrapConfig(bootstrapPath, { devMode: process.argv[3] !== 'production' });
   const data = definitionAsData(definition);
   if (data === undefined) throw new Error('the definition loaded, but could not be read as data');
-  answer({ type: FRESH_GRAPH_ANSWER, ok: true, definition: data });
+  answerModuleRead({ ok: true, value: data });
 } catch (err) {
-  const error = err instanceof Error ? err : new Error(String(err));
-  answer({ type: FRESH_GRAPH_ANSWER, ok: false, message: error.message, name: error.name, stack: error.stack });
+  answerModuleRead({ ok: false, error: err });
 }

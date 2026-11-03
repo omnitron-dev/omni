@@ -22,6 +22,10 @@ beforeAll(async () => {
   // The child is a compiled reader with no TypeScript preload or Vitest.
   const require = createRequire(import.meta.url);
   fs.symlinkSync(path.dirname(require.resolve('esbuild/package.json')), path.join(root, 'node_modules/esbuild'), 'dir');
+  fs.mkdirSync(path.join(root, 'node_modules/@omnitron-dev'));
+  fs.symlinkSync(path.resolve(path.dirname(require.resolve('@omnitron-dev/titan')), '..'), path.join(root, 'node_modules/@omnitron-dev/titan'), 'dir');
+  await build({ entryPoints: [path.join(source, '../shared/fresh-module-reader.ts')], outdir: path.join(root, 'shared'),
+    platform: 'node', target: 'node22', format: 'esm', bundle: false });
   await build({
     entryPoints: ['bootstrap-loader', 'bootstrap-loader-child', 'ts-compiler', 'runtime-package-resolution'].map(name => path.join(source, name + '.ts')),
     outdir: runtime, platform: 'node', target: 'node22', format: 'esm', bundle: false,

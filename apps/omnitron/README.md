@@ -41,6 +41,31 @@ omnitron logs --status
 
 Ranked levels in the CLI are minimum severities. Use `--level unknown` for records without a recognized level, or specify the exact stored spelling of a custom level. In Console, the level chips and the custom-level selector match exact values in both live and historical logs. Share the main log view with one `level` URL parameter per selected level.
 
+## Configuration reads
+
+An ecosystem file exports data or an async factory receiving `{ phase: 'runtime' | 'release' }`.
+Each read evaluates the real file and its complete import graph in a fresh, short-lived
+process. Editing a selected registration or another transitive import therefore takes
+effect on the next reload. Native `import.meta.url`, `createRequire`, TypeScript,
+ESM/CommonJS, the invoking working directory and environment keep their normal meanings.
+App-relative paths are then anchored to the configuration's directory.
+
+Return plain declarative objects, arrays and finite primitives; optional `undefined`
+values are preserved. Functions inside the result, accessors, class instances, cycles,
+symbols and bigint values are refused explicitly. Lifecycle hooks belong in the app's
+bootstrap definition. A configuration factory must not start services or rely on
+mutating the controller's process environment: it exits after returning its data.
+Configuration is trusted executable code; graph isolation controls freshness and
+lifetime, and does not restrict filesystem or network access.
+
+Definition and ecosystem reads share one process lifecycle. The default deadline is
+60 seconds; `loadEcosystemConfig` / `loadEcosystemConfigFile` from
+`@omnitron-dev/omnitron/config` may
+pass `{ timeoutMs }` as the third argument, up to ten minutes. Reader output is private
+and limited to 1 MiB; results are limited to 16 MiB. A failure includes a bounded,
+credential-redacted reason. A read completes only after its child exits; a timeout
+kills that reader, and a disconnected parent ends a pending asynchronous read.
+
 ## Building an application release
 
 `omnitron release build <project> --for <stack>` uses the selected project

@@ -123,6 +123,7 @@ describe('a remote stack', () => {
     files: ['main', 'payments'].map((app) => ({ app, version: '0.0.1', path: `/nowhere/${app}.tgz`, bytes: 1, inputs: 'i', sha256: 'a'.repeat(64) })),
     manifest: { builtAt: '2026-09-23T20:00:00Z', omni: { commit: 'c'.repeat(40) } },
     staticsDir: null,
+    remoteDefinitions: new Map(), // Script entries have no Titan bootstrap declarations.
   } as never;
 
   function deployment(vault: Record<string, string>) {

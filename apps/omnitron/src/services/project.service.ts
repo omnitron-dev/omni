@@ -125,12 +125,15 @@ import { gatewayRedisDb } from '../infrastructure/gateway-redis-db.js';
 const MAINTENANCE_PROBE_PATHS = ['/', '/api/main/health'] as const;
 import { migrationOutput } from './migration-output.js';
 import type { LoadedRelease } from '../release/load.js';
+import { readArchiveInfrastructure } from '../release/infrastructure.js';
+import type { DeclaredConfig } from '../project/declared-config.js';
+
 import type { SyncService } from './sync.service.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import type { InfrastructureHealthContext } from '../monitoring/infrastructure-health.js';
 import { ExecutionService, type SSHTarget } from '../execution/execution.service.js';
 
-
+type AdmittedRelease = LoadedRelease & { readonly remoteDefinitions?: Map<string, IAppDefinition> };
 
 class LocalReleaseStopRequired extends Error {}
 
@@ -1601,7 +1604,7 @@ export class ProjectService extends EventEmitter {
     const selector = local ? this.localSelection(projectName, stackName) : null;
     const prior = selector?.read();
     const requested = releaseId ?? (workingTree ? undefined : prior?.release?.id);
-    let release: LoadedRelease | null = null;
+    let release: AdmittedRelease | null = null;
     if (requested) {
       known.release = requested;
       release = await this.admitRelease(projectName, stackName, stackConfig, config, requested);
@@ -2834,12 +2837,13 @@ export class ProjectService extends EventEmitter {
     stackConfig: IStackConfig,
     config: IEcosystemConfig,
     root: string,
+    definitions?: Map<string, IAppDefinition>,
   ): Promise<string[]> {
     const { definitionInputs } = await import('../release/definition-inputs.js');
     const { shippedDirsOf } = await import('../infrastructure/shipped-config.js');
     const shipped = shippedDirsOf(
       mergeInfrastructure(config, stackConfig),
-      await this.collectDeclaredServices(projectName, stackConfig, config),
+      await this.collectDeclaredServices(projectName, stackConfig, config, { definitions }),
     );
     return definitionInputs(
       root,
@@ -2855,7 +2859,7 @@ export class ProjectService extends EventEmitter {
     config: IEcosystemConfig,
     releaseId: string,
     purpose: 'deploy' | 'check' = 'deploy',
-  ): Promise<LoadedRelease> {
+  ): Promise<AdmittedRelease> {
     if (stackConfig.type === 'local' && stackConfig.managedOrigin)
       throw new Error('A node allocation takes its release from its owning controller');
     const { loadRelease, treeEqualsCommit } = await import('../release/load.js');
@@ -2929,6 +2933,18 @@ export class ProjectService extends EventEmitter {
     // people's work in progress, which no deployment reads. When the files
     // cannot be named, the whole tree is compared, as before.
     const root = fs.realpathSync(project.path);
+    // Local admission materializes the verified package itself. On remote deployments
+    // the old single-project bootstrap still supplies its code declarations; its data
+    // file must come from the admitted archive, including when that file is absent.
+    let remoteDefinitions: Map<string, IAppDefinition> | undefined;
+    if (stackConfig.type !== 'local') {
+      const entries = this.resolveStackApps(stackConfig, config);
+      const archived = new Map<string, DeclaredConfig>();
+      for (const entry of entries) {
+        if (entry.bootstrap) archived.set(entry.name, await readArchiveInfrastructure(release, entry.name));
+      }
+      remoteDefinitions = await this.loadAppDefinitions(projectName, stackConfig, config, entries, archived);
+    }
     let inputs: string[] | undefined;
     try {
       // Local launches read executable app declarations from the verified installation. Only
@@ -2938,7 +2954,7 @@ export class ProjectService extends EventEmitter {
         const { shippedDirsOf } = await import('../infrastructure/shipped-config.js');
         inputs = await definitionInputs(root, [], shippedDirsOf(mergeInfrastructure(config, stackConfig), {}).map(([, dir]) => dir));
         if (!inputs.length) throw new Error('No registered configuration inputs are available');
-      } else inputs = await this.deploymentReads(projectName, stackConfig, config, root);
+      } else inputs = await this.deploymentReads(projectName, stackConfig, config, root, remoteDefinitions);
     } catch (err) {
       this.logger.warn(
         { project: projectName, stack: stackName, error: (err as Error).message },
@@ -2989,7 +3005,7 @@ export class ProjectService extends EventEmitter {
       },
       purpose === 'check' ? 'Release would be admitted — asked, not deployed' : 'Release admitted',
     );
-    return release;
+    return remoteDefinitions ? { ...release, remoteDefinitions } : release;
   }
 
   /** Ask each authenticated node for the build loaded by its application owner. */
@@ -3677,7 +3693,7 @@ export class ProjectService extends EventEmitter {
     stackName: string,
     stackConfig: IStackConfig,
     ecosystemConfig: IEcosystemConfig,
-    release: LoadedRelease | null = null,
+    release: AdmittedRelease | null = null,
     reinstall = false,
   ): Promise<NodeReach> {
     const phases = reportPhases(this.logger, { project: projectName, stack: stackName });
@@ -3699,7 +3715,7 @@ export class ProjectService extends EventEmitter {
     stackConfig: IStackConfig,
     ecosystemConfig: IEcosystemConfig,
     phases: DeployPhases,
-    release: LoadedRelease | null = null,
+    release: AdmittedRelease | null = null,
     reinstall = false,
   ): Promise<NodeReach> {
     const nodes = stackConfig.nodes ?? [];
@@ -3737,7 +3753,8 @@ export class ProjectService extends EventEmitter {
     // variant selection and override merging, on the side with less
     // information.
     phases.enter('reading what the applications declare');
-    const declaredServices = await this.collectDeclaredServices(projectName, stackConfig, ecosystemConfig);
+    if (release && !release.remoteDefinitions) throw Error('Checked remote release has no admitted infrastructure definitions');
+    const declaredServices = await this.collectDeclaredServices(projectName, stackConfig, ecosystemConfig, { definitions: release?.remoteDefinitions });
 
     // Build artifacts for apps in this stack
     const appEntries = this.resolveStackApps(stackConfig, ecosystemConfig);
@@ -4053,6 +4070,7 @@ export class ProjectService extends EventEmitter {
             stackConfig,
             nodeApps,
             deployedInfra as import('../infrastructure/types.js').InfrastructureConfig | undefined,
+            release?.remoteDefinitions,
           );
           // The stack's own, over the computed — as on a local stack, where
           // `settings.env` wins over both.
@@ -4232,6 +4250,7 @@ export class ProjectService extends EventEmitter {
     stackConfig: IStackConfig,
     appEntries: readonly IEcosystemAppEntry[],
     infrastructure: import('../infrastructure/types.js').InfrastructureConfig | undefined,
+    admitted?: Map<string, IAppDefinition>,
   ): Promise<Record<string, Record<string, string>>> {
     if (!infrastructure) return {};
     try {
@@ -4244,7 +4263,7 @@ export class ProjectService extends EventEmitter {
       // Measured: the node's config carried five environment variables per
       // app and not the one the apps were failing for. An empty map is not a
       // map of nothing declared; it is a map nobody filled.
-      const definitions = await this.loadAppDefinitions(projectName, stackConfig, ecosystemConfig);
+      const definitions = admitted ?? await this.loadAppDefinitions(projectName, stackConfig, ecosystemConfig);
 
       // The stack's answers about services it does not provision.
       //
@@ -5001,6 +5020,7 @@ export class ProjectService extends EventEmitter {
     stackConfig: IStackConfig,
     ecosystemConfig: IEcosystemConfig,
     appEntries = this.resolveStackApps(stackConfig, ecosystemConfig),
+    archived?: ReadonlyMap<string, DeclaredConfig>,
   ): Promise<Map<string, IAppDefinition>> {
     const appDefinitions = new Map<string, IAppDefinition>();
     const project = this.registry.get(projectName);
@@ -5018,7 +5038,8 @@ export class ProjectService extends EventEmitter {
           // the definition: the loaded one is the loader's cache entry, and
           // writing to it made the first read the only one until the daemon
           // restarted (`project/declared-config.ts`).
-          const declared = readDeclaredConfig(bootstrapAbsPath);
+          const declared = archived ? archived.get(entry.name) : readDeclaredConfig(bootstrapAbsPath);
+          if (!declared) throw Error('Missing admitted app declaration');
           if (declared.malformed) throw new Error(`Application configuration is invalid or unreadable: ${entry.name}`);
           const definition = withDeclaredConfig(loaded, declared);
 
@@ -5048,10 +5069,10 @@ export class ProjectService extends EventEmitter {
     stackConfig: IStackConfig,
     ecosystemConfig: IEcosystemConfig,
     /** Keep the ones reached elsewhere too — to ask whether they answer, not to provision them. */
-    options: { external?: boolean } = {},
+    options: { external?: boolean; definitions?: Map<string, IAppDefinition> | undefined } = {},
   ): Promise<Record<string, import('../infrastructure/types.js').IServiceRequirement>> {
     const merged: Record<string, import('../infrastructure/types.js').IServiceRequirement> = {};
-    const definitions = await this.loadAppDefinitions(projectName, stackConfig, ecosystemConfig);
+    const definitions = options.definitions ?? await this.loadAppDefinitions(projectName, stackConfig, ecosystemConfig);
 
     for (const [appName, definition] of definitions) {
       const declared = definition.omnitronConfig?.infrastructure;

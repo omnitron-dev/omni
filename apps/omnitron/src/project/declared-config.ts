@@ -48,6 +48,11 @@ export function readDeclaredConfig(bootstrapAbsPath: string): DeclaredConfig {
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === 'ENOENT' ? { configPath } : { configPath, malformed: 'Configuration file could not be read' };
   }
+  return parseDeclaredConfig(content, configPath);
+}
+
+/** The same declarative section for a working file or a checked release archive. */
+export function parseDeclaredConfig(content: string, configPath: string): DeclaredConfig {
   try {
     const json = JSON.parse(content) as { omnitron?: OmnitronAppConfig; logger?: { level?: unknown } };
     return {

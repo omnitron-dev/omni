@@ -68,6 +68,7 @@ const RELEASE = {
   files: [{ app: 'main', version: '0.0.1', path: '/nowhere/main.tgz', bytes: 1, inputs: 'i', sha256: 's' }],
   manifest: { omni: { commit: '1'.repeat(40) }, builtAt: '2026-09-22T21:10:00Z' },
   staticsDir: null,
+  remoteDefinitions: new Map(), // Script entries have no Titan bootstrap declarations.
 } as never;
 
 type Said = { level: string; msg: string; fields: Record<string, unknown> };

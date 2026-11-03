@@ -64,6 +64,13 @@ manifest whose bytes differ from the selected commit. An empty map records a
 checked package with no matching source files. Older artifacts lack this
 inventory. The runtime database journal records which migrations actually ran.
 
+For a checked remote release, the controller reads the application's
+`config/default.json` infrastructure declaration from the verified archive.
+The same declaration is used to check the release, provision services and
+resolve application connections. An absent section stays absent. Bootstrap
+code declarations retain their existing precedence and come from the
+registered project. Local releases read the installed, verified package.
+
 For registry dependencies the builder downloads the exact public npm archives
 and compares each SHA-512 digest with the lockfile. Each package must carry the
 same full `gitHead`. Omnitron's own `dist/BUILD.json` must confirm that clean

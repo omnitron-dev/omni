@@ -38,8 +38,9 @@ const ECOSYSTEM = { apps: [{ name: 'main', script: 'apps/main/dist/main.js' }] }
 const RELEASE = {
   id: 'sample-202609241258-00000000',
   files: [{ app: 'main', version: '0.0.1', path: '/nowhere/main.tgz', bytes: 1, inputs: 'i', sha256: 's' }],
-  manifest: { builtAt: '2026-09-24T12:58:00Z' },
+  manifest: { builtAt: '2026-09-24T12:58:00Z', omni: { commit: 'b'.repeat(40) } },
   staticsDir: null,
+  remoteDefinitions: new Map(), // Script entries have no Titan bootstrap declarations.
 } as never;
 
 /** A remote start, with every node-facing step answered — what reaches the deployer is the question. */

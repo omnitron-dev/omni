@@ -27,7 +27,7 @@ import { promisify } from 'node:util';
 
 import { resolvePnpm } from '../shared/pnpm.js';
 import { readBuildStamp } from '../shared/build-stamp.js';
-import { copyBundleOverride, readBundleOverrides } from './bundle-overrides.js';
+import { copyBundleOverride, readBundleOverrides, readWorkspaceOverrideInputs } from './bundle-overrides.js';
 import { normalizePackedWorkspace, writePortableArchive } from '../release/portable-archive.js';
 
 import {
@@ -1073,8 +1073,13 @@ export async function buildInputsChecksum(
   const parts = [`app ${manifest.name} ${await readOnce(sourcesKey(appDir), appDir, withoutBuildOutput)}`];
   // Resolution inputs live above the app. An archive replaced in place must
   // invalidate the build just like a source edit, even when its version stays.
-  const inherited = await readBundleOverrides(roots);
-  for (const [name, range] of Object.entries(inherited.overrides)) parts.push(`override ${name} ${range}`);
+  const inherited = await readWorkspaceOverrideInputs(roots);
+  // Package-manager resolution inputs remain native. Npm compatibility is a
+  // property of an npm-installable output, not a prerequisite for hashing a
+  // checked application built from pnpm's frozen installed graph.
+  parts.push(`overrides ${JSON.stringify(Object.entries(inherited.overrides))}`);
+  for (const archive of inherited.archives)
+    parts.push(`override-archive ${JSON.stringify([archive.selector, archive.name, archive.version, archive.sha256])}`);
   const { createHash } = await import('node:crypto');
   for (const [index, root] of roots.entries()) {
     for (const file of ['package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml', '.npmrc']) {

@@ -95,6 +95,20 @@ the builder clones the official repository.
 
 The builder compares the installed framework with those archives and checks
 the framework files again inside each application's staged dependency graph.
+Build reuse hashes pnpm's effective override rules and the bytes of local override
+archives, including version-qualified selectors, parent-specific aliases and
+dependency removals. These rules retain pnpm's semantics: a checked release ships
+the verified installed graph for its target rather than resolving it again with
+another package manager. Local override archives must remain inside their source
+workspace and must not change during verification or copying.
+
+An npm-installable source bundle has a narrower contract. It refuses selectors
+that cannot be represented without changing their scope, such as pnpm's immediate
+`parent>child` rule, and version-qualified local archive overrides. Npm's nested
+overrides also affect deeper descendants and are not an equivalent translation.
+Use `omnitron release build <project>` for these projects. This limitation does
+not invalidate a checked release or its build-input checksum.
+
 Admission checks the target execution owner's source commit. On a supervised
 node with an older owner that cannot report its build, an updated target
 backend verifies the live OS service, process, owner identity and sealed

@@ -15,10 +15,13 @@
  * Requires the test infrastructure: `pnpm test:up` (postgres on :15432).
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import { decodeJwt } from 'jose';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { Kysely } from 'kysely';
 
-import { setEnvOverride, resetEnvCache } from '../../src/shared/env-config.js';
+import { sql } from 'kysely';
+import { databaseOfItsOwn, type OwnDatabase } from './a-database-of-its-own.js';
 import { AuthService } from '../../src/services/auth.service.js';
 import type { OmnitronDatabase } from '../../src/database/schema.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
@@ -31,6 +34,7 @@ const TEST_PG_URL = process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@
 const testPg = await requiresTestPostgres(TEST_PG_URL);
 const PASSWORD = 'correct-horse-battery-staple';
 
+let own: OwnDatabase;
 let db: Kysely<OmnitronDatabase>;
 let auth: AuthService;
 
@@ -52,33 +56,32 @@ async function attemptsFor(userId: string) {
     .executeTakeFirstOrThrow();
 }
 
+// Hold completed password checks at the boundary before their database effects.
+function holdChecks(service: AuthService, count = 1) {
+  const reached = Promise.withResolvers<void>();
+  const released = Promise.withResolvers<void>();
+  const verify = service.verifyPassword.bind(service);
+  let completed = 0;
+  const spy = vi.spyOn(service, 'verifyPassword').mockImplementation(async (password, hash) => {
+    const valid = await verify(password, hash);
+    if (++completed === count) reached.resolve();
+    await released.promise;
+    return valid;
+  });
+  return {
+    reached: reached.promise,
+    release() { spy.mockRestore(); released.resolve(); },
+  };
+}
+
 describe.skipIf(!testPg.ok)('sign-in throttling (integration)', () => {
   beforeAll(async () => {
-    resetEnvCache();
-    setEnvOverride({ OMNITRON_DATABASE_URL: TEST_PG_URL });
-
-    const { createOmnitronDb } = await import('../../src/database/connection.js');
-    db = await createOmnitronDb({ max: 2 });
-
-
+    own = await databaseOfItsOwn(TEST_PG_URL, `auth_throttle_${randomUUID().replaceAll('-', '')}`);
+    db = own.db;
     auth = new AuthService(db, 'test-secret-for-throttle-suite');
   });
 
-  afterAll(async () => {
-    if (db) await db.destroy();
-    resetEnvCache();
-  });
-
-  beforeEach(async () => {
-    const { sql } = await import('kysely');
-    await sql`DROP SCHEMA public CASCADE`.execute(db);
-    await sql`CREATE SCHEMA public`.execute(db);
-
-    const { migrateOmnitronDb } = await import('../../src/database/migration-runner.js');
-    await migrateOmnitronDb(db as unknown as Kysely<unknown>);
-    // 001 seeds a default admin; the suite works with its own users.
-    await db.deleteFrom('omnitron_users').execute();
-  });
+  afterAll(async () => { await own?.drop(); });
 
   it('counts consecutive failures', async () => {
     const userId = await createUser('counter');
@@ -174,6 +177,95 @@ describe.skipIf(!testPg.ok)('sign-in throttling (integration)', () => {
     expect(state.lockedUntil).toBeNull();
   });
 
+  it('counts every independently admitted failure exactly once', async () => {
+    const username = 'parallel';
+    const userId = await createUser(username);
+    const attempts = 7;
+    const checks = holdChecks(auth, attempts);
+    const pending = Promise.all(Array.from({ length: attempts }, () =>
+      expect(auth.signIn({ username, password: 'wrong' })).rejects.toThrow('Invalid credentials')));
+    try { await checks.reached; } finally { checks.release(); }
+    await pending;
+    const state = await attemptsFor(userId);
+    expect(state.failedLoginAttempts).toBe(attempts);
+    expect(state.lockedUntil!.getTime()).toBeGreaterThan(Date.now());
+    await expect(auth.signIn({ username, password: 'wrong again' })).rejects.toThrow('temporarily locked');
+    expect(await attemptsFor(userId)).toEqual(state);
+  });
+
+  it('refuses an in-flight correct password when another client reaches the lockout threshold', async () => {
+    const username = 'parallel-lockout';
+    const userId = await createUser(username);
+    const second = new AuthService(db, 'test-secret-for-throttle-suite');
+    const checks = holdChecks(auth);
+    const pending = expect(auth.signIn({ username, password: PASSWORD })).rejects.toThrow('temporarily locked');
+    try {
+      await checks.reached;
+      for (let attempt = 0; attempt < 5; attempt++)
+        await expect(second.signIn({ username, password: 'wrong' })).rejects.toThrow('Invalid credentials');
+    } finally { checks.release(); }
+    await pending;
+    expect((await attemptsFor(userId)).failedLoginAttempts).toBe(5);
+    expect(await auth.getActiveSessions(userId)).toHaveLength(0);
+  });
+
+  it('issues the current role after a change during verification', async () => {
+    const username = 'revalidate-role';
+    const userId = await createUser(username);
+    const role = holdChecks(auth);
+    const pendingRole = auth.signIn({ username, password: PASSWORD });
+    try {
+      await role.reached;
+      await db.updateTable('omnitron_users').set({ role: 'viewer' }).where('id', '=', userId).execute();
+    } finally { role.release(); }
+    const result = await pendingRole;
+    expect(result.user.role).toBe('viewer');
+    expect(await auth.validateToken(result.accessToken)).toMatchObject({ role: 'viewer' });
+    expect(decodeJwt(result.accessToken).role).toBe('viewer');
+  });
+
+  it('refuses the previous password after a rotation during verification', async () => {
+    const username = 'revalidate-password';
+    const userId = await createUser(username);
+    const second = new AuthService(db, 'test-secret-for-throttle-suite');
+    const password = holdChecks(auth);
+    const stale = expect(auth.signIn({ username, password: PASSWORD })).rejects.toThrow('Invalid credentials');
+    try {
+      await password.reached;
+      await second.changePassword(userId, PASSWORD, 'a-new-secret-for-auth-regression');
+    } finally { password.release(); }
+    await stale;
+    expect(await auth.getActiveSessions(userId)).toHaveLength(0);
+  });
+
+  it('only accepts one concurrent rotation verified against the previous password', async () => {
+    const userId = await createUser('rotate');
+    const checks = holdChecks(auth, 2);
+    const passwords = ['a-first-replacement-for-the-test', 'another-replacement-for-the-test'];
+    const pending = Promise.allSettled(passwords.map(password => auth.changePassword(userId, PASSWORD, password)));
+    try { await checks.reached; } finally { checks.release(); }
+    const results = await pending;
+    expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.find(r => r.status === 'rejected')?.reason).toHaveProperty('message', 'Invalid current password');
+    const password = passwords[results.findIndex(r => r.status === 'fulfilled')]!;
+    expect((await auth.signIn({ username: 'rotate', password })).user.id).toBe(userId);
+  });
+
+  it('rolls back the session if persisting successful sign-in fails', async () => {
+    const username = 'rollback';
+    const userId = await createUser(username);
+    await expect(auth.signIn({ username, password: 'wrong' })).rejects.toThrow('Invalid credentials');
+    await sql`ALTER TABLE omnitron_users ADD CONSTRAINT reject_test_login
+      CHECK (username <> 'rollback' OR "lastLoginAt" IS NULL)`.execute(db);
+    try {
+      await expect(auth.signIn({ username, password: PASSWORD })).rejects.toThrow('reject_test_login');
+      expect(await auth.getActiveSessions(userId)).toHaveLength(0);
+      expect((await attemptsFor(userId)).failedLoginAttempts).toBe(1);
+    } finally {
+      await sql`ALTER TABLE omnitron_users DROP CONSTRAINT reject_test_login`.execute(db);
+    }
+  });
+
   it('takes comparable time for an unknown username as for a wrong password', async () => {
     await createUser('known-user');
 
@@ -185,10 +277,10 @@ describe.skipIf(!testPg.ok)('sign-in throttling (integration)', () => {
 
     // Warm up so first-call costs (decoy hash, query plans) don't skew it.
     await timeOf('no-such-user');
-    await db.updateTable('omnitron_users').set({ failedLoginAttempts: 0, lockedUntil: null }).execute();
+    await db.updateTable('omnitron_users').set({ failedLoginAttempts: 0, lockedUntil: null }).where('username', '=', 'known-user').execute();
 
     const unknown = await timeOf('no-such-user');
-    await db.updateTable('omnitron_users').set({ failedLoginAttempts: 0, lockedUntil: null }).execute();
+    await db.updateTable('omnitron_users').set({ failedLoginAttempts: 0, lockedUntil: null }).where('username', '=', 'known-user').execute();
     const known = await timeOf('known-user');
 
     // Both paths pay a scrypt. Asserting a RATIO rather than an absolute

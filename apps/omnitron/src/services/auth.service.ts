@@ -55,6 +55,11 @@ const SEEDED_ADMIN_PASSWORD = 'admin';
 const SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 const JWT_EXPIRY = '1h';
 
+function assertSignInUnlocked(until: Date | null | undefined): void {
+  const remaining = until ? until.getTime() - Date.now() : 0;
+  if (remaining > 0) throw new Error(`Account temporarily locked — try again in ${Math.ceil(remaining / 1000)}s`);
+}
+
 
 // =============================================================================
 // Auth Service
@@ -105,94 +110,76 @@ export class AuthService {
   ): Promise<OmnitronSignInResult> {
     const { username, password, userAgent } = request;
 
-    // 1. Find user
-    const user = await this.db
-      .selectFrom('omnitron_users')
-      .selectAll()
+    const candidate = await this.db.selectFrom('omnitron_users')
+      .select(['id', 'passwordHash', 'lockedUntil'])
       .where('username', '=', username)
       .executeTakeFirst();
+    assertSignInUnlocked(candidate?.lockedUntil);
 
-    // 2. Reject while locked out, before spending a scrypt on it.
-    if (user?.lockedUntil && new Date(user.lockedUntil) > new Date()) {
-      const seconds = Math.ceil((new Date(user.lockedUntil).getTime() - Date.now()) / 1000);
-      throw new Error(`Account temporarily locked — try again in ${seconds}s`);
-    }
+    // Hash outside the transaction so slow password checks never hold a row
+    // lock or pool connection. Unknown usernames pay the same verification cost.
+    const valid = await this.verifyPassword(password, candidate?.passwordHash ?? (await this.decoyHash()));
+    if (!candidate) throw new Error('Invalid credentials');
 
-    // 3. Verify password.
-    //
-    // An unknown username still costs a full scrypt against a throwaway hash.
-    // Returning early on "no such user" made sign-in measurably faster for
-    // absent accounts than for present ones, which is a username oracle on
-    // the infrastructure control plane: scrypt here takes ~100ms, so the
-    // difference was trivially observable over the network.
-    const valid = user
-      ? await this.verifyPassword(password, user.passwordHash)
-      : await this.verifyPassword(password, await this.decoyHash());
+    const result = await this.db.transaction().execute(async (trx) => {
+      // Serialize account transitions across every client and daemon. Re-read the
+      // credential and role in case either changed while scrypt was running.
+      const user = await trx.selectFrom('omnitron_users')
+        .select(['id', 'username', 'passwordHash', 'displayName', 'role', 'totpEnabled', 'pgpEnabled',
+          'failedLoginAttempts', 'lockedUntil'])
+        .where('id', '=', candidate.id)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!user || user.passwordHash !== candidate.passwordHash || user.username !== username) return null;
 
-    if (!user || !valid) {
-      if (user) await this.registerFailedAttempt(user.id, user.failedLoginAttempts);
-      throw new Error('Invalid credentials');
-    }
+      if (!valid) {
+        // Every check admitted before the lock counts once. New arrivals
+        // during the lock are refused before hashing and cannot extend it.
+        const attempts = user.failedLoginAttempts + 1;
+        await trx.updateTable('omnitron_users')
+          .set({ failedLoginAttempts: attempts, lockedUntil: computeLockout(attempts) })
+          .where('id', '=', user.id)
+          .execute();
+        return null;
+      }
+      assertSignInUnlocked(user.lockedUntil);
 
-    // 4. Create session (include role in JWT for RBAC enforcement)
-    const sessionId = randomUUID();
-    const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
-    const accessToken = await this.issueToken(user.id, sessionId, user.role);
+      const sessionId = randomUUID();
+      const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
+      const accessToken = await this.issueToken(user.id, sessionId, user.role);
 
-    await this.db
-      .insertInto('omnitron_sessions')
-      .values({
-        id: sessionId,
-        userId: user.id,
-        token: accessToken,
-        expiresAt,
-        ipAddress: origin.ipAddress ?? null,
-        userAgent: userAgent ?? null,
-      })
-      .execute();
+      await trx.insertInto('omnitron_sessions')
+        .values({
+          id: sessionId,
+          userId: user.id,
+          token: accessToken,
+          expiresAt,
+          ipAddress: origin.ipAddress ?? null,
+          userAgent: userAgent ?? null,
+        })
+        .execute();
+      await trx.updateTable('omnitron_users')
+        .set({ lastLoginAt: new Date(), failedLoginAttempts: 0, lockedUntil: null })
+        .where('id', '=', user.id)
+        .execute();
 
-    // 5. Update last login and clear the failure streak
-    await this.db
-      .updateTable('omnitron_users')
-      .set({ lastLoginAt: new Date(), failedLoginAttempts: 0, lockedUntil: null })
-      .where('id', '=', user.id)
-      .execute();
+      return {
+        user: {
+          id: user.id,
+          username: user.username,
+          displayName: user.displayName,
+          role: user.role,
+          totpEnabled: user.totpEnabled,
+          pgpEnabled: user.pgpEnabled,
+        },
+        session: { id: sessionId, expiresAt },
+        accessToken,
+      };
+    });
 
-    return {
-      user: {
-        id: user.id,
-        username: user.username,
-        displayName: user.displayName,
-        role: user.role,
-        totpEnabled: user.totpEnabled,
-        pgpEnabled: user.pgpEnabled,
-      },
-      session: { id: sessionId, expiresAt },
-      accessToken,
-    };
-  }
-
-  // ===========================================================================
-  // Brute-force throttling
-  // ===========================================================================
-
-  /**
-   * Record a failed sign-in and lock the account once the streak crosses the
-   * threshold. The lockout grows exponentially with each additional failure
-   * past the threshold, capped at LOCKOUT_MAX_MS.
-   *
-   * State is persisted rather than held in memory: a daemon restart — which
-   * an attacker may be able to provoke — must not hand back a clean slate.
-   */
-  private async registerFailedAttempt(userId: string, currentAttempts: number): Promise<void> {
-    const attempts = currentAttempts + 1;
-    const lockedUntil = computeLockout(attempts);
-
-    await this.db
-      .updateTable('omnitron_users')
-      .set({ failedLoginAttempts: attempts, lockedUntil })
-      .where('id', '=', userId)
-      .execute();
+    // Returning from the transaction first commits a recorded failed attempt.
+    if (!result) throw new Error('Invalid credentials');
+    return result;
   }
 
   /**
@@ -413,11 +400,13 @@ export class AuthService {
     const newHash = await this.hashPassword(newPassword);
 
     await this.db.transaction().execute(async (trx) => {
-      await trx
+      const changed = await trx
         .updateTable('omnitron_users')
         .set({ passwordHash: newHash, updatedAt: new Date() })
         .where('id', '=', userId)
-        .execute();
+        .where('passwordHash', '=', user.passwordHash)
+        .executeTakeFirst();
+      if (!changed.numUpdatedRows) throw new Error('Invalid current password');
 
       // Revoke all sessions except the caller's current session
       let query = trx.deleteFrom('omnitron_sessions').where('userId', '=', userId);

@@ -33,6 +33,7 @@ import {
 } from '../release/store.js';
 
 import type { BuildRequest, BuildRecord } from '../shared/dto/releases.js';
+import { parseFrameworkSource } from '../shared/framework-source.js';
 export type { BuildRequest, BuildRecord } from '../shared/dto/releases.js';
 
 /** How many finished builds are kept for looking back at. */
@@ -100,6 +101,8 @@ export class ReleaseService {
     request: BuildRequest & { env?: Record<string, string> },
     requestedBy: string | null,
   ): BuildRecord {
+    // Validate before a request reaches records, audit output or an asynchronous build.
+    const frameworkSource = request.frameworkSource === undefined ? undefined : parseFrameworkSource(request.frameworkSource);
     const busy = [...this.records.values()].find((r) => r.state === 'running');
     if (busy) {
       throw new Error(
@@ -116,6 +119,7 @@ export class ReleaseService {
         project: request.project,
         ...(request.projectCommit ? { projectCommit: request.projectCommit } : {}),
         ...(request.omniCommit ? { omniCommit: request.omniCommit } : {}),
+        ...(frameworkSource ? { frameworkSource } : {}),
         ...(request.forStack ? { forStack: request.forStack } : {}),
         ...(request.skipGates ? { skipGates: true } : {}),
         ...(request.keepSource ? { keepSource: true } : {}),
@@ -141,6 +145,7 @@ export class ReleaseService {
     const options: ReleaseBuildOptions = {
       ...(request.projectCommit ? { projectCommit: request.projectCommit } : {}),
       ...(request.omniCommit ? { omniCommit: request.omniCommit } : {}),
+      ...(frameworkSource ? { frameworkSource } : {}),
       ...(request.forStack ? { forStack: request.forStack } : {}),
       ...(request.skipGates ? { skipGates: true } : {}),
       ...(request.keepSource ? { keepSource: true } : {}),

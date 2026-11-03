@@ -14,11 +14,8 @@
  *     `@omnitron-dev/omnitron`, which the trail does not record at all, so
  *     «what is running there» cannot be answered from the row that says a
  *     deployment happened;
- *   - `sample` carries a 310-line GitHub Actions workflow and lives on a
- *     GitLab server, with no runner and no `.gitlab-ci.yml`, so the guard
- *     rail its own docblock describes — typecheck, lint, unit and
- *     integration — has never run anywhere but on somebody's laptop, when
- *     they remembered.
+ *   - a project carries checks for a CI provider it does not use, so the
+ *     expected typecheck, lint and tests never run on its release path.
  *
  * A release is the answer to all three: one object, built from a named
  * commit of BOTH repositories in a clean clone, carrying the artifacts by
@@ -171,9 +168,11 @@ export interface ReleaseSource {
   readonly workspace?: string;
   readonly repo: string;
   readonly commit: string;
-  /** Public npm archives whose verified manifests named this exact source commit. */
+  /** Explicit source constraint, when configured; no provider or branch is implied by its absence. */
+  readonly ref?: string;
+  /** Registry archives whose verified manifests named this exact source commit. */
   readonly registry?: {
-    readonly packages: ReadonlyArray<{ readonly name: string; readonly version: string; readonly integrity: string }>;
+    readonly packages: ReadonlyArray<{ readonly name: string; readonly version: string; readonly integrity: string; readonly tarball?: string }>;
   };
   /** The project committed these archives; each was reproduced byte for byte from this upstream Git tree. */
   readonly reproduced?: {
@@ -181,9 +180,11 @@ export interface ReleaseSource {
     readonly packages: ReadonlyArray<{ readonly name: string; readonly version: string; readonly file: string; readonly integrity: string }>;
   };
   /**
-   * Whether a remote-tracking branch contains the commit — null when the
-   * checkout has no remote refs to ask. A release built from a commit that
-   * exists on one laptop cannot be rebuilt by anyone else.
+   * Publication observed when building: true only when an origin ref
+   * advertises this commit or a provable descendant; false when unpublished,
+   * null when the remote or its ancestry cannot be verified. Historical
+   * manifests may have recorded cached tracking refs instead of an online
+   * observation. This field never establishes a deployment location.
    */
   readonly onRemote?: boolean | null;
 }
@@ -196,9 +197,8 @@ export interface ReleaseManifest {
    * The framework used for this project's own artifacts. Imported artifacts
    * retain their producer's separate framework through their pinned origin.
    *
-   * The two live in different systems — omni on GitHub, the project on a
-   * self-hosted GitLab — which is why neither forge's CI can produce this
-   * object and the master can.
+   * Project and framework repositories may use different Git hosts. Their
+   * recorded identities and configured checks do not depend on a CI provider.
    */
   readonly omni: ReleaseSource;
   readonly artifacts: readonly ReleaseArtifact[];
@@ -484,7 +484,7 @@ export function decideStackRelease(
     if (local.length > 0) {
       return {
         action: 'refuse',
-        because: `${local.join(' and ')} ${local.length > 1 ? 'are' : 'is'} on no remote branch — nobody else could rebuild this release`,
+        because: `Source publication is not confirmed in this release for ${local.join(' and ')} — publish the commits and rebuild with a reachable origin`,
       };
     }
   }

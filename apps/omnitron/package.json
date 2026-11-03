@@ -35,6 +35,10 @@
       "types": "./dist/shared/release-reading.d.ts",
       "default": "./dist/shared/release-reading.js"
     },
+    "./release-source": {
+      "types": "./dist/shared/framework-source.d.ts",
+      "default": "./dist/shared/framework-source.js"
+    },
     "./source-layout": {
       "types": "./dist/release/layout.d.ts",
       "default": "./dist/release/layout.js"

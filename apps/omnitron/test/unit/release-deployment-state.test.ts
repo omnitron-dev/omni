@@ -41,9 +41,12 @@ it('preserves inventory when history fails, and never treats a failed inventory 
 
 it('describes Git publication as build-time evidence, never a localhost deployment', () => {
   const reading = readSourcePublication({ project: false, omni: true }, 'sample');
-  expect(reading.label).toBe('Git: no remote branch');
-  expect(reading.detail).toContain('At build time');
-  expect(readSourcePublication({ project: null, omni: true }, 'sample').state).toBe('unknown');
+  expect(reading.label).toBe('Git: unpublished source');
+  expect(reading.detail).toContain('separate from where applications are deployed');
+  const unknown = readSourcePublication({ project: null, omni: true }, 'sample');
+  expect(unknown.state).toBe('unknown');
+  expect(unknown.detail).toContain('does not establish that the source is unpublished');
+  expect(readSourcePublication({ project: true, omni: true }, 'sample').detail).toContain('does not check current availability');
 });
 
 it('scopes history to logical and retained namespaces and preserves unknown process state', async () => {

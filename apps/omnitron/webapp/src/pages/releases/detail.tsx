@@ -168,15 +168,20 @@ function ReleaseDetails({ id }: { id: string }) {
                           {commit?.slice(0, 12) ?? '—'}
                         </Typography>
                         {onRemote === false && (
-                          <Tooltip title={readSourcePublication({ project: onRemote, omni: true }, what === 'project' ? release.project : 'omni').detail}><Chip label="Git: no remote branch" size="small" color="warning" variant="outlined" /></Tooltip>
+                          <Tooltip title={readSourcePublication({ project: onRemote, omni: true }, what === 'project' ? release.project : 'omni').detail}><Chip label="Git: unpublished source" size="small" color="warning" variant="outlined" /></Tooltip>
                         )}
                         {onRemote === null && (
-                          <Chip label="Git: not checked" size="small" variant="outlined" />
+                          <Tooltip title={readSourcePublication({ project: onRemote, omni: true }, what === 'project' ? release.project : 'omni').detail}><Chip label="Git: unverified" size="small" variant="outlined" /></Tooltip>
                         )}
                       </Stack>
                       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                         {repo ?? '—'}
                       </Typography>
+                      {release.manifest?.[what]?.ref && (
+                        <Typography component="div" variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
+                          Required ref: {release.manifest[what].ref}
+                        </Typography>
+                      )}
                     </Box>
                   ),
                 )}

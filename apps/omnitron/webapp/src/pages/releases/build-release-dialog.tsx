@@ -1,11 +1,9 @@
 /**
  * Asking for a release.
  *
- * Six fields, and every one of them is a fact about what will be built
- * rather than a preference: which project, which two commits, which stack's
- * static bundle, and what environment the gates need. The defaults are the
- * ones that are right nearly always — both HEADs, gates on — so the common
- * case is a stack and a press.
+ * Project configuration supplies the SDK source; an explicit override belongs
+ * only to this build. Source commits, the stack's static bundle and gate results
+ * remain visible in the resulting release.
  *
  * The build takes about a quarter of an hour, and this dialog does not wait
  * for it: the daemon starts it, answers with its id, and the page behind
@@ -14,6 +12,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Alert from '@mui/material/Alert';
+import Accordion from '@mui/material/Accordion';
+import AccordionDetails from '@mui/material/AccordionDetails';
+import AccordionSummary from '@mui/material/AccordionSummary';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
@@ -30,9 +31,11 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
 import type { BuildRecord, IStackInfo } from '@omnitron-dev/omnitron/dto/services';
+import { parseFrameworkSource } from '@omnitron-dev/omnitron/release-source';
 import type { ReleasePreflightView } from 'src/netron/release-wire';
 import { releases as releaseRpc } from 'src/netron/client';
 import { useProjectStore } from 'src/stores/project.store';
+import { ChevronRightIcon } from 'src/assets/icons';
 
 /**
  * `NAME=value` per line, as the operator types it.
@@ -81,6 +84,8 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
   const [forStack, setForStack] = useState('');
   const [projectCommit, setProjectCommit] = useState('');
   const [omniCommit, setOmniCommit] = useState('');
+  const [frameworkRepository, setFrameworkRepository] = useState('');
+  const [frameworkRef, setFrameworkRef] = useState('');
   const [envText, setEnvText] = useState('');
   const [skipGates, setSkipGates] = useState(false);
   const [keepSource, setKeepSource] = useState(false);
@@ -95,6 +100,8 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
     if (open) {
       setProject(defaultProject ?? '');
       setFailure(null);
+      setFrameworkRepository('');
+      setFrameworkRef('');
     }
   }, [open, defaultProject]);
 
@@ -112,8 +119,25 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
   }, [open, stacks, forStack]);
 
   const { env, bad } = useMemo(() => parseEnv(envText), [envText]);
+  const canOverrideSource = preflight?.frameworkSource === 1;
+  const framework = useMemo(() => {
+    if (!frameworkRepository.trim() && !frameworkRef.trim()) return { source: undefined, error: null };
+    try {
+      return { source: parseFrameworkSource({ repository: frameworkRepository.trim(), ...(frameworkRef.trim() ? { ref: frameworkRef.trim() } : {}) }), error: null };
+    } catch (error) {
+      return { source: undefined, error: (error as Error).message };
+    }
+  }, [frameworkRepository, frameworkRef]);
 
   const handleBuild = async () => {
+    if (framework.error) {
+      setFailure(framework.error);
+      return;
+    }
+    if (framework.source && !canOverrideSource) {
+      setFailure('This controller does not support SDK source overrides. Update it before using an override.');
+      return;
+    }
     setStarting(true);
     setFailure(null);
     try {
@@ -121,6 +145,7 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
         project,
         ...(projectCommit.trim() ? { projectCommit: projectCommit.trim() } : {}),
         ...(omniCommit.trim() ? { omniCommit: omniCommit.trim() } : {}),
+        ...(framework.source ? { frameworkSource: framework.source } : {}),
         ...(forStack ? { forStack } : {}),
         ...(skipGates ? { skipGates: true } : {}),
         ...(keepSource ? { keepSource: true } : {}),
@@ -168,6 +193,8 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
             onChange={(e) => {
               setProject(e.target.value);
               setForStack('');
+              setFrameworkRepository('');
+              setFrameworkRef('');
             }}
             size="small"
             fullWidth
@@ -210,7 +237,7 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
             ))}
           </TextField>
 
-          <Stack direction="row" spacing={1.5}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
             <TextField
               label="Project commit"
               placeholder="HEAD"
@@ -230,6 +257,28 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
               disabled={starting}
             />
           </Stack>
+
+          <Accordion disableGutters variant="outlined" disabled={starting}>
+            <AccordionSummary expandIcon={<ChevronRightIcon sx={{ transform: 'rotate(90deg)' }} />} aria-controls="release-source-options" id="release-source-toggle">
+              <Typography variant="body2">SDK source{framework.source ? ' · overridden for this build' : canOverrideSource ? ' · project defaults' : ' · controller defaults'}</Typography>
+            </AccordionSummary>
+            <AccordionDetails id="release-source-options">
+              <Stack spacing={1.5}>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  {canOverrideSource
+                    ? 'Project settings and package metadata choose the source. Override it here for this build, or save defaults in package.json under omnitron.framework.'
+                    : 'This controller has not reported support for SDK source configuration. Update it to use committed omnitron.framework settings or a build override. Ordinary builds use its existing source selection.'}
+                </Typography>
+                <TextField label="SDK repository" value={frameworkRepository} onChange={(event) => setFrameworkRepository(event.target.value)}
+                  placeholder="https://git.example.org/platform/omni.git" size="small" fullWidth disabled={starting || !canOverrideSource}
+                  helperText="HTTPS, SSH or a local path on the build controller. Keep credentials in its Git configuration." />
+                <TextField label="Required source ref (optional)" value={frameworkRef} onChange={(event) => setFrameworkRef(event.target.value)}
+                  placeholder="refs/heads/stable or refs/tags/v1.0.0" size="small" fullWidth disabled={starting || !canOverrideSource}
+                  helperText="The exact framework commit must belong to this branch or match this tag." />
+                {framework.error && <Alert severity="error">{framework.error}</Alert>}
+              </Stack>
+            </AccordionDetails>
+          </Accordion>
 
           <TextField
             label="Environment for the gates"
@@ -282,7 +331,7 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
         <Button
           variant="contained"
           size="small"
-          disabled={!project || starting || bad.length > 0}
+          disabled={!project || starting || bad.length > 0 || framework.error !== null || (!!framework.source && !canOverrideSource)}
           startIcon={starting ? <CircularProgress size={14} color="inherit" /> : undefined}
           onClick={handleBuild}
         >

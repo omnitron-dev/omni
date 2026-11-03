@@ -791,16 +791,22 @@ release
   .description('Build a clean project revision with its locked framework, run gates and package the artifacts')
   .option('--project-commit <sha>', "The project commit to build (default: the project checkout's HEAD)")
   .option('--omni-commit <sha>', "Linked checkout revision, or the exact full commit to require from registry packages")
+  .option('--framework-repository <repository>', 'Override the committed SDK source repository for this build')
+  .option('--framework-ref <ref>', 'Require a full refs/heads/... or refs/tags/... in the selected SDK repository')
   .option('--keep-source', 'Keep the clones after a successful build')
   .option('--skip-gates', 'Record every gate as not-run instead of running them — a look, never a release for a stack')
   .option('--for <stack>', "Also build the static bundle this stack's gateway serves, with its environment")
   .action(
     async (
       projectName: string,
-      options: { projectCommit?: string; omniCommit?: string; keepSource?: boolean; skipGates?: boolean; for?: string },
+      options: { projectCommit?: string; omniCommit?: string; frameworkRepository?: string; frameworkRef?: string; keepSource?: boolean; skipGates?: boolean; for?: string },
     ) => {
       const { releaseBuildCommand } = await import('../commands/release.js');
-      await releaseBuildCommand(projectName, { ...options, ...(options.for ? { forStack: options.for } : {}) });
+      const { parseFrameworkSource } = await import('../shared/framework-source.js');
+      const { frameworkRepository, frameworkRef, ...buildOptions } = options;
+      if (frameworkRef && !frameworkRepository) throw new Error('--framework-ref requires --framework-repository; use omnitron.framework in package.json for project defaults');
+      const frameworkSource = frameworkRepository ? parseFrameworkSource({ repository: frameworkRepository, ...(frameworkRef ? { ref: frameworkRef } : {}) }) : undefined;
+      await releaseBuildCommand(projectName, { ...buildOptions, ...(frameworkSource ? { frameworkSource } : {}), ...(options.for ? { forStack: options.for } : {}) });
     },
   );
 

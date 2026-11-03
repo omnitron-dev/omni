@@ -35,7 +35,7 @@ it('does not display a failed inventory request as an empty project', async () =
 
 it('labels the source control warning explicitly as Git', () => {
   render(<CommitPair project="sample" projectCommit="aabbccdd" omniCommit="11223344" onRemote={{ project: false, omni: true }} />);
-  expect(screen.getByText('Git: no remote branch')).toBeTruthy();
+  expect(screen.getByText('Git: unpublished source')).toBeTruthy();
   expect(screen.queryByText('local only')).toBeNull();
 });
 

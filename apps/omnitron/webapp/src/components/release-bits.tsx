@@ -189,7 +189,7 @@ export function GateCount({ release, variant = 'body2' }: { release: ReleaseSumm
 // Commits
 // ---------------------------------------------------------------------------
 
-/** Source commits and their build-time remote-tracking branch evidence.
+/** Source commits and their recorded build-time publication evidence.
  * Git publication says nothing about where an application is executing.
  */
 export function CommitPair({

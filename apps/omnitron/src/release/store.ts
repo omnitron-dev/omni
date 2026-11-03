@@ -45,7 +45,7 @@ export interface ReleaseSummary {
   readonly omniCommit: string | null;
   readonly projectRepo: string | null;
   readonly omniRepo: string | null;
-  /** Whether each commit is on a remote branch: `null` — there was no remote to ask. */
+  /** Recorded source publication; null means it could not be verified, not that it is unpublished. */
   readonly onRemote: { project: boolean | null; omni: boolean | null };
   /**
    * One count per outcome word. `timedOut` and `killed` are optional in the

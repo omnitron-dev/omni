@@ -821,6 +821,8 @@ export type { StoredAttestation } from '../../release/attest.js';
 
 /** Whether this master can build a release, and where they are kept. */
 export interface ReleasePreflightDto {
+  /** Absent on controllers predating configurable SDK sources. */
+  readonly frameworkSource?: 1;
   readonly root: string;
   readonly canBuild: boolean;
   /** `git`, `pnpm`, `node` — those not on the daemon's PATH. */
@@ -893,13 +895,7 @@ export interface IOmnitronReleaseService {
   getLog(data: { id: string; name: string; lines?: number }): Promise<{ name: string; bytes: number; tail: string }>;
   builds(): Promise<import('./releases.js').BuildRecord[]>;
   getBuild(data: { buildId: string }): Promise<import('./releases.js').BuildRecord | null>;
-  build(data: {
-    project: string;
-    projectCommit?: string;
-    omniCommit?: string;
-    forStack?: string;
-    skipGates?: boolean;
-    keepSource?: boolean;
+  build(data: Omit<import('./releases.js').BuildRequest, 'envKeys'> & {
     env?: Record<string, string>;
   }): Promise<import('./releases.js').BuildRecord>;
   stopBuild(data: { buildId: string }): Promise<import('./releases.js').BuildRecord>;

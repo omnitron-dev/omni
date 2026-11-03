@@ -31,6 +31,8 @@ export interface BuildRequest {
   readonly project: string;
   readonly projectCommit?: string | undefined;
   readonly omniCommit?: string | undefined;
+  /** Explicit source override; omission uses the committed project configuration or package metadata. */
+  readonly frameworkSource?: import('../framework-source.js').FrameworkSource | undefined;
   readonly forStack?: string | undefined;
   readonly skipGates?: boolean | undefined;
   readonly keepSource?: boolean | undefined;

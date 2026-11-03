@@ -25,6 +25,7 @@
       "@omnitron-dev/prism/*": ["../../../packages/prism/src/*"],
       "@omnitron-dev/omnitron/dto/services": ["../src/shared/dto/services.ts"],
       "@omnitron-dev/omnitron/release-reading": ["../src/shared/release-reading.ts"],
+      "@omnitron-dev/omnitron/release-source": ["../src/shared/framework-source.ts"],
       "@omnitron-dev/titan-metrics/types": ["../../../packages/titan-metrics/src/types.ts"],
       "@omnitron-dev/omnitron/metrics-storage-reading": ["../src/shared/metrics-storage-reading.ts"],
       "@omnitron-dev/omnitron/sync-reading": ["../src/shared/sync-reading.ts"]

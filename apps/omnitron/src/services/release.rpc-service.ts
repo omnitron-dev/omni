@@ -49,6 +49,7 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
     const os = await import('node:os');
     return {
       root: this.releases.root(),
+      frameworkSource: 1,
       canBuild: missing.length === 0,
       missingTools: missing,
       path: (env['PATH'] ?? '').split(':').filter(Boolean),
@@ -103,15 +104,7 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
    * to see when a gate fails for want of one.
    */
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async build(data: {
-    project: string;
-    projectCommit?: string;
-    omniCommit?: string;
-    forStack?: string;
-    skipGates?: boolean;
-    keepSource?: boolean;
-    env?: Record<string, string>;
-  }): Promise<BuildRecord> {
+  async build(data: Parameters<IOmnitronReleaseService['build']>[0]): Promise<BuildRecord> {
     if (!data?.project || typeof data.project !== 'string') throw new Error('A build needs a project name');
     const { currentActor } = await import('./audit.service.js');
     const actor = currentActor();
@@ -124,6 +117,7 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
         project: data.project,
         ...(data.projectCommit ? { projectCommit: data.projectCommit } : {}),
         ...(data.omniCommit ? { omniCommit: data.omniCommit } : {}),
+        ...(record.request.frameworkSource ? { frameworkSource: record.request.frameworkSource } : {}),
         ...(data.forStack ? { forStack: data.forStack } : {}),
         ...(data.skipGates ? { skipGates: true } : {}),
         envKeys: Object.keys(data.env ?? {}).sort().join(',') || '(none)',

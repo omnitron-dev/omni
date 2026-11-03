@@ -112,6 +112,7 @@ export const releaseApi = {
   async preflight(): Promise<ReleasePreflightView> {
     const p = await releases.preflight();
     return {
+      ...(p.frameworkSource === 1 ? { frameworkSource: 1 as const } : {}),
       root: p.root,
       canBuild: p.canBuild,
       missingTools: p.missingTools ?? [],

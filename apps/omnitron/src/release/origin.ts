@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import type { ReleaseArtifact, ReleaseArtifactReference, ReleaseManifest } from './manifest.js';
 import { validOrigin, type ReleaseArtifactOrigin } from './installed-origin.js';
 import { assertReleaseRepositoryIdentities, isSafeRepositoryIdentity } from './repository-identity.js';
+import { isFrameworkRef } from '../shared/framework-source.js';
 
 const SHA = /^[a-f0-9]{64}$/;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -23,6 +24,7 @@ const outcomes = ['passed', 'failed', 'not-run', 'timed-out', 'killed'];
 export function isReadableReleaseManifest(value: unknown): value is ReleaseManifest {
   if (!object(value) || !identifier(value['id']) || !object(value['project']) || !object(value['omni']) ||
       [value['project'], value['omni']].some(source => !isSafeRepositoryIdentity(source['repo']) || typeof source['commit'] !== 'string' ||
+        (source['ref'] !== undefined && !isFrameworkRef(source['ref'])) ||
         (source['onRemote'] !== undefined && source['onRemote'] !== null && typeof source['onRemote'] !== 'boolean')) ||
       !Array.isArray(value['artifacts']) || value['artifacts'].length > 256 || !Array.isArray(value['gates']) || value['gates'].length > 256 ||
       !object(value['builtWith']) || typeof value['builtWith']['omnitron'] !== 'string' || !Array.isArray(value['builtWith']['packages']) ||
@@ -210,7 +212,7 @@ export function importedReleaseRefusal(manifest: ReleaseManifest, apps: readonly
       const failed = producer.gates.find(gate => gate.status !== 'passed');
       if (failed) return `imported release ${producer.id}: gate '${failed.name}' ${failed.status}`;
       if (requireOnRemote && (producer.project.onRemote !== true || producer.omni.onRemote !== true))
-        return 'imported release ' + producer.id + ' has a source commit on no remote branch';
+        return 'imported release ' + producer.id + ' has unconfirmed source publication; publish its commits and rebuild with a reachable origin';
     }
     return visit(producer, artifact.origin.app);
   };

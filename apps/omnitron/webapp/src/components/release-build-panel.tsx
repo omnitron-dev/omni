@@ -83,7 +83,7 @@ export function ReleaseBuildPanel({
         <BuildBar percent={record.percent} state={record.state} />
 
         <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline', flexWrap: 'wrap', mt: 1 }}>
-          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+          <Typography variant="body2" sx={{ fontWeight: 500, minWidth: 0, overflowWrap: 'anywhere' }}>
             {record.phase}
           </Typography>
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
@@ -100,6 +100,12 @@ export function ReleaseBuildPanel({
             <Chip key={key} size="small" variant="outlined" label={key} sx={{ height: 20, fontSize: 11, fontFamily: 'monospace' }} />
           ))}
         </Stack>
+
+        {request.frameworkSource && (
+          <Typography variant="caption" component="div" sx={{ mt: 0.75, color: 'text.secondary', overflowWrap: 'anywhere' }}>
+            SDK source: {request.frameworkSource.repository}{request.frameworkSource.ref ? ` · ${request.frameworkSource.ref}` : ''}
+          </Typography>
+        )}
 
         {record.gates.length > 0 && (
           <Box sx={{ mt: 1.5 }}>
@@ -121,7 +127,7 @@ export function ReleaseBuildPanel({
               bgcolor: (theme: any) => alpha(theme.palette.error.main, 0.08),
             }}
           >
-            <Typography variant="caption" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace', color: 'error.main' }}>
+            <Typography variant="caption" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: 'monospace', color: 'error.main' }}>
               {record.error}
             </Typography>
           </Box>
@@ -141,13 +147,13 @@ export function ReleaseBuildPanel({
             >
               {lines.map((line, i) => (
                 <Box key={`${line.at}-${i}`} sx={{ display: 'flex', gap: 1.5 }}>
-                  <Typography component="span" variant="caption" sx={{ color: 'text.disabled', fontFamily: 'monospace' }}>
+                  <Typography component="span" variant="caption" sx={{ color: 'text.disabled', fontFamily: 'monospace', flexShrink: 0 }}>
                     {line.at.slice(11, 19)}
                   </Typography>
-                  <Typography component="span" variant="caption" sx={{ color: 'text.disabled', fontFamily: 'monospace', width: 34, textAlign: 'right' }}>
+                  <Typography component="span" variant="caption" sx={{ color: 'text.disabled', fontFamily: 'monospace', width: 34, flexShrink: 0, textAlign: 'right' }}>
                     {line.percent}%
                   </Typography>
-                  <Typography component="span" variant="caption" sx={{ fontFamily: 'monospace' }}>
+                  <Typography component="span" variant="caption" sx={{ fontFamily: 'monospace', minWidth: 0, overflowWrap: 'anywhere' }}>
                     {line.phase}
                   </Typography>
                 </Box>

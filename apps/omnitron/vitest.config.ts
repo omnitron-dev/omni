@@ -23,6 +23,7 @@ export default defineConfig({
       '@omnitron-dev/omnitron/alerts': path.resolve(import.meta.dirname, 'src/shared/alert-expression.ts'),
       '@omnitron-dev/omnitron/dto/events': path.resolve(import.meta.dirname, 'src/shared/events.ts'),
       '@omnitron-dev/omnitron/release-reading': path.resolve(import.meta.dirname, 'src/shared/release-reading.ts'),
+      '@omnitron-dev/omnitron/release-source': path.resolve(import.meta.dirname, 'src/shared/framework-source.ts'),
       '@omnitron-dev/omnitron/node-check': path.resolve(import.meta.dirname, 'src/shared/node-check.ts'),
       '@omnitron-dev/omnitron/audit-outcome': path.resolve(import.meta.dirname, 'src/shared/audit-outcome.ts'),
       '@omnitron-dev/omnitron/metrics-storage-reading': path.resolve(

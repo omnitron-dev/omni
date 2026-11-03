@@ -74,11 +74,11 @@ describe('what a stack demands of a release', () => {
     });
   });
 
-  it('refuses one built from a commit on no remote, when the stack says so', () => {
-    const m = manifest({ omni: { repo: 'github', commit: 'b'.repeat(40), onRemote: false } });
+  it.each([false, null])('requires confirmed publication only when the stack asks for it (publication: %s)', (onRemote) => {
+    const m = manifest({ omni: { repo: 'github', commit: 'b'.repeat(40), onRemote } });
     expect(decideStackRelease(m, { mode: 'required', requireOnRemote: true }, ['main'])).toEqual({
       action: 'refuse',
-      because: 'the omni commit bbbbbbbb is on no remote branch — nobody else could rebuild this release',
+      because: 'Source publication is not confirmed in this release for the omni commit bbbbbbbb — publish the commits and rebuild with a reachable origin',
     });
     // …and does not ask it of a stack that did not.
     expect(decideStackRelease(m, { mode: 'required' }, ['main']).action).toBe('promote');

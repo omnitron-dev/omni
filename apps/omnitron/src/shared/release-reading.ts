@@ -156,11 +156,11 @@ export function readSourcePublication(onRemote: { project: boolean | null; omni:
   const unknown = [onRemote.project == null ? project : null, onRemote.omni == null ? 'omni' : null].filter(Boolean);
   return {
     state: missing.length ? 'missing' as const : unknown.length ? 'unknown' as const : 'recorded' as const,
-    label: missing.length ? 'Git: no remote branch' : unknown.length ? 'Git: not checked' : 'Git: remote branch recorded',
+    label: missing.length ? 'Git: unpublished source' : unknown.length ? 'Git: unverified' : 'Git: publication recorded',
     detail: missing.length
-      ? `At build time, no remote-tracking branch contained the ${missing.join(' and ')} commit. This is a Git snapshot, not a deployment location or a live remote check.`
-      : unknown.length ? `Git publication was not verified for ${unknown.join(' and ')} when this release was built.`
-        : 'Both commits were present in remote-tracking branches at build time. Current remote availability is not checked here.',
+      ? `This release records unpublished source for ${missing.join(' and ')}. Source publication is separate from where applications are deployed or running.`
+      : unknown.length ? `Git publication could not be verified for ${unknown.join(' and ')} when this release was built. This does not establish that the source is unpublished.`
+        : 'This release records both source commits as published at build time. This saved observation does not check current availability or identify running deployments.',
   };
 }
 

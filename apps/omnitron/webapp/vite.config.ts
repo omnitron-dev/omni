@@ -127,6 +127,7 @@ export default defineConfig({
       // How a release reads — its gates and which stacks run it — in the
       // same words as the CLI.
       '@omnitron-dev/omnitron/release-reading': path.resolve(here, '../src/shared/release-reading.ts'),
+      '@omnitron-dev/omnitron/release-source': path.resolve(here, '../src/shared/framework-source.ts'),
       // What one omnitron check found — the node dot and the uptime strip
       // read it alike.
       '@omnitron-dev/omnitron/node-check': path.resolve(here, '../src/shared/node-check.ts'),

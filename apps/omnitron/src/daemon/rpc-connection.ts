@@ -5,7 +5,7 @@ import { createNullLogger, type ILogger } from '@omnitron-dev/titan/module/logge
 const CONNECT_TIMEOUT = 15_000;
 const CLOSE_TIMEOUT = 1_000;
 
-function deadline<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+export function withRpcDeadline<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(message)), ms);
     timer.unref?.();
@@ -49,7 +49,7 @@ export class RpcConnection {
   private async close(session: Session): Promise<void> {
     // A session owns its own Netron. Late completion/teardown can never close
     // a newer connection, even when disconnect's deadline has already expired.
-    session.closing ??= deadline(session.netron.stop(), CLOSE_TIMEOUT, 'the transport did not close in time')
+    session.closing ??= withRpcDeadline(session.netron.stop(), CLOSE_TIMEOUT, 'the transport did not close in time')
       .catch(() => undefined);
     await session.closing;
   }
@@ -72,7 +72,7 @@ export class RpcConnection {
       if (this.session === session) this.session = undefined;
       void this.close(session);
     });
-    session.ready = deadline(
+    session.ready = withRpcDeadline(
       Promise.resolve().then(async () => {
         await this.options.beforeConnect?.();
         if (this.session !== session) throw new Error('RPC connection was closed before admission');
@@ -146,7 +146,7 @@ export class RpcConnection {
     if (!session) return;
     // Fence first, then wait a bounded time for the handshake and teardown.
     // Retained handles remain usable for a later, explicit call.
-    await deadline(session.ready, CLOSE_TIMEOUT, 'connection did not settle').catch(() => undefined);
+    await withRpcDeadline(session.ready, CLOSE_TIMEOUT, 'connection did not settle').catch(() => undefined);
     await this.close(session);
   }
 }

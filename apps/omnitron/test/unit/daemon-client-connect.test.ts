@@ -18,7 +18,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const netron = {
   connects: 0,
   stops: 0,
-  release: null as null | ((peer: unknown) => void),
   registerTransport: vi.fn(),
   setTransportOptions: vi.fn(),
   connect: vi.fn(),
@@ -53,7 +52,16 @@ const peer = {
   })),
 };
 
+let handshake = Promise.withResolvers<() => void>();
+
+async function nextHandshake(): Promise<() => void> {
+  const complete = await handshake.promise;
+  handshake = Promise.withResolvers<() => void>();
+  return complete;
+}
+
 beforeEach(() => {
+  handshake = Promise.withResolvers<() => void>();
   netron.connects = 0;
   netron.stops = 0;
   netron.connect.mockReset();
@@ -64,7 +72,7 @@ beforeEach(() => {
     () =>
       new Promise((resolve) => {
         netron.connects += 1;
-        netron.release = () => resolve(peer);
+        handshake.resolve(() => resolve(peer));
       })
   );
   netron.stop.mockImplementation(async () => {
@@ -84,13 +92,13 @@ describe('DaemonClient.ensureConnected', () => {
 
     const a = client.service('A');
     const b = client.service('B');
-    await Promise.resolve();
+    const complete = await nextHandshake();
 
     // Both callers arrived before the first connect settled. Before the fix
     // this was 2, and the first socket had nothing left pointing at it.
     expect(netron.connects).toBe(1);
 
-    netron.release!(peer);
+    complete();
     await Promise.all([a, b]);
 
     expect(netron.connects).toBe(1);
@@ -101,8 +109,7 @@ describe('DaemonClient.ensureConnected', () => {
     const client = new DaemonClient('/tmp/does-not-matter.sock');
 
     const first = client.service('A');
-    await Promise.resolve();
-    netron.release!(peer);
+    (await nextHandshake())();
     await first;
 
     await client.service('B');
@@ -126,8 +133,7 @@ describe('DaemonClient.ensureConnected', () => {
     await expect(client.service('A')).rejects.toThrow('ECONNREFUSED');
 
     const retry = client.service('A');
-    await Promise.resolve();
-    netron.release!(peer);
+    (await nextHandshake())();
     await retry;
 
     expect(netron.connects).toBe(2);
@@ -143,10 +149,10 @@ describe('DaemonClient.ensureConnected', () => {
     const client = new DaemonClient('/tmp/does-not-matter.sock');
 
     const inFlight = client.service('A');
-    await Promise.resolve();
+    const complete = await nextHandshake();
 
     const closing = client.disconnect();
-    netron.release!(peer);
+    complete();
     await inFlight.catch(() => undefined);
     await closing;
 
@@ -155,8 +161,7 @@ describe('DaemonClient.ensureConnected', () => {
     // And the next call reconnects rather than reusing a peer that was
     // supposed to be gone.
     const after = client.service('A');
-    await Promise.resolve();
-    netron.release!(peer);
+    (await nextHandshake())();
     await after;
 
     expect(netron.connects).toBe(2);
@@ -167,16 +172,14 @@ describe('DaemonClient.ensureConnected', () => {
     const client = new DaemonClient('/tmp/does-not-matter.sock');
 
     const first = client.service('A');
-    await Promise.resolve();
-    netron.release!(peer);
+    (await nextHandshake())();
     await first;
 
     await client.disconnect();
     expect(netron.stops).toBe(1);
 
     const second = client.service('A');
-    await Promise.resolve();
-    netron.release!(peer);
+    (await nextHandshake())();
     await second;
 
     expect(netron.connects).toBe(2);
@@ -192,11 +195,11 @@ describe('RemoteDaemonClient.ensureConnected', () => {
 
     const a = client.service('A');
     const b = client.service('B');
-    await Promise.resolve();
+    const complete = await nextHandshake();
 
     expect(netron.connects).toBe(1);
 
-    netron.release!(peer);
+    complete();
     await Promise.all([a, b]);
 
     expect(netron.connects).toBe(1);
@@ -209,14 +212,14 @@ it('fences a handshake that completes after bounded disconnect and a new connect
     const { DaemonClient } = await freshClients();
     const client = new DaemonClient('/tmp/does-not-matter.sock');
     const old = client.service('A').catch(error => error as Error);
-    const completeOld = netron.release!;
+    const completeOld = await nextHandshake();
     const closing = client.disconnect();
     await vi.advanceTimersByTimeAsync(1001);
     await closing;
     const next = client.service<{ ping(): Promise<unknown> }>('A');
-    netron.release!(peer);
+    (await nextHandshake())();
     const handle = await next;
-    completeOld(peer);
+    completeOld();
     expect(await old).toBeInstanceOf(Error);
     expect(peer.disconnect).toHaveBeenCalled();
     await handle.ping();

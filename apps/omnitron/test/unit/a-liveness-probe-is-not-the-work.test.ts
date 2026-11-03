@@ -1,20 +1,4 @@
-/**
- * "Is the daemon alive" and "do the work" take different amounts of time.
- *
- * Every command that touches an application asks `isReachable()` first, to
- * decide whether to auto-start the daemon or fall back to signalling its pid.
- * That probe used to run on the command's REQUEST timeout — so widening the
- * timeout for commands that legitimately wait minutes (starting a Titan
- * application connecting to a database, Redis and its siblings) would have
- * widened the probe with it, and `omnitron stop` against a wedged daemon
- * would sit for ten minutes before reaching the fallback written for exactly
- * that case.
- *
- * The failure this guards against was measured, not imagined: on 2026-09-14
- * the daemon accepted connections on its socket and answered nothing for
- * thirteen minutes. A probe that waits for an answer from a process in that
- * state never returns.
- */
+/** A silent daemon must not hold the reachability probe open for the application request timeout. */
 
 import { describe, it, expect, afterEach } from 'vitest';
 import net from 'node:net';

@@ -22,7 +22,7 @@
 
 import { UnixSocketTransport } from '@omnitron-dev/titan/netron/transport/unix';
 import { TcpTransport } from '@omnitron-dev/titan/netron/transport/tcp';
-import { RpcConnection } from './rpc-connection.js';
+import { RpcConnection, withRpcDeadline } from './rpc-connection.js';
 import { getEnv } from '../shared/env-config.js';
 import type {
   IDaemonService,
@@ -267,21 +267,7 @@ export class DaemonClient implements IDaemonService {
   // Connection management
   // ---------------------------------------------------------------------------
 
-  /**
-   * Whether the daemon answers, decided quickly.
-   *
-   * This is a LIVENESS PROBE, and it must not inherit the request timeout.
-   * Commands that start or restart an application legitimately wait minutes
-   * for the operation — and every one of them calls this first, to decide
-   * whether to auto-start the daemon or fall back to signalling its pid. With
-   * a shared ceiling, `omnitron stop` against a WEDGED daemon would sit on
-   * the probe for ten minutes before reaching the fallback written for
-   * exactly that case. Measured 2026-09-14: a daemon that accepted
-   * connections and answered nothing, for thirteen minutes.
-   *
-   * "Is it alive" and "do the work" are different questions and take
-   * different amounts of time to answer.
-   */
+  /** Delegate to the diagnostic probe so callers can also distinguish a stopped daemon from a silent one. */
   async isReachable(): Promise<boolean> {
     return (await this.whyUnreachable()) === null;
   }
@@ -302,12 +288,7 @@ export class DaemonClient implements IDaemonService {
    */
   async whyUnreachable(): Promise<DaemonAbsence | null> {
     try {
-      await Promise.race([
-        this.ping(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('daemon did not answer')), REACHABILITY_TIMEOUT).unref?.(),
-        ),
-      ]);
+      await withRpcDeadline(this.ping(), REACHABILITY_TIMEOUT, 'daemon did not answer');
       return null;
     } catch (err) {
       return this.diagnoseAbsence(err as Error);
@@ -372,29 +353,10 @@ export class RemoteDaemonClient {
     return daemon.ping();
   }
 
-  /**
-   * Whether the daemon answers, decided quickly.
-   *
-   * This is a LIVENESS PROBE, and it must not inherit the request timeout.
-   * Commands that start or restart an application legitimately wait minutes
-   * for the operation — and every one of them calls this first, to decide
-   * whether to auto-start the daemon or fall back to signalling its pid. With
-   * a shared ceiling, `omnitron stop` against a WEDGED daemon would sit on
-   * the probe for ten minutes before reaching the fallback written for
-   * exactly that case. Measured 2026-09-14: a daemon that accepted
-   * connections and answered nothing, for thirteen minutes.
-   *
-   * "Is it alive" and "do the work" are different questions and take
-   * different amounts of time to answer.
-   */
+  /** Probe the remote daemon independently of the timeout for application operations. */
   async isReachable(): Promise<boolean> {
     try {
-      await Promise.race([
-        this.ping(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('daemon did not answer')), REACHABILITY_TIMEOUT).unref?.(),
-        ),
-      ]);
+      await withRpcDeadline(this.ping(), REACHABILITY_TIMEOUT, 'daemon did not answer');
       return true;
     } catch {
       return false;

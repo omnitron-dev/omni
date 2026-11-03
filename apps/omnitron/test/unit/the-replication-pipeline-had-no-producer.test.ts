@@ -18,112 +18,66 @@
  * to get wrong.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { MetricsRegistry } from '@omnitron-dev/titan-metrics';
+import { afterEach, describe, it, expect, beforeEach } from 'vitest';
 
 import { LogCollectorService } from '../../src/services/log-collector.service.js';
 import type { LogEntry } from '../../src/shared/dto/logs.js';
-
-/** A Kysely stand-in whose insert can be made to fail. */
-function makeDb(opts: { failInsert?: boolean } = {}) {
-  const inserted: unknown[][] = [];
-  return {
-    inserted,
-    insertInto: (_table: string) => ({
-      values: (rows: unknown[]) => ({
-        execute: async () => {
-          if (opts.failInsert) throw new Error('database is down');
-          inserted.push(rows);
-        },
-      }),
-    }),
-  } as never;
-}
+import type { OmnitronDatabase } from '../../src/database/schema.js';
+import Database from 'better-sqlite3';
+import { Kysely, SqliteDialect } from 'kysely';
+import { withDateBinding } from '../../src/database/sqlite-date-binding.js';
 
 const entry = (message: string): LogEntry => ({
-  app: 'payments',
-  level: 'info',
-  message,
-  labels: { env: 'prod', region: 'eu' },
-  metadata: { attempt: 1 },
+  app: 'payments', level: 'info', message, labels: { env: 'prod' }, metadata: { attempt: 1 },
 });
 
 describe('a persisted batch reaches the replication buffer', () => {
-  let sunk: LogEntry[][];
-
+  let db: Kysely<OmnitronDatabase>;
+  let collector: LogCollectorService;
   beforeEach(() => {
-    sunk = [];
+    const sqlite = new Database(':memory:');
+    sqlite.exec(`CREATE TABLE logs(id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, nodeId TEXT, app TEXT NOT NULL,
+      level TEXT NOT NULL, message TEXT NOT NULL, labels TEXT, traceId TEXT, spanId TEXT, metadata TEXT)`);
+    db = new Kysely({ dialect: new SqliteDialect({ database: withDateBinding(sqlite) }) });
+    collector = new LogCollectorService(db);
   });
+  afterEach(async () => { await collector.dispose(); await db.destroy(); });
 
-  it('hands the sink what was written', async () => {
-    const collector = new LogCollectorService(makeDb(), undefined as never);
-    collector.setSyncSink((entries) => sunk.push(entries));
-
+  it('hands the outbox original records in the same transaction as the local rows', async () => {
+    const observed: LogEntry[] = [];
+    collector.setSyncSink(async (entries, tx) => {
+      expect(await tx.selectFrom('logs').select('id').execute()).toHaveLength(2);
+      observed.push(...entries);
+    });
     collector.ingestBatch([entry('one'), entry('two')]);
     await collector.flush();
-
-    expect(sunk).toHaveLength(1);
-    expect(sunk[0]!.map((e) => e.message)).toEqual(['one', 'two']);
+    expect(observed.map(e => e.message)).toEqual(['one', 'two']);
+    expect(observed[0]).toMatchObject({ labels: { env: 'prod' }, metadata: { attempt: 1 } });
   });
 
-  it('hands over the UNENCODED shape', async () => {
-    const collector = new LogCollectorService(makeDb(), undefined as never);
-    collector.setSyncSink((entries) => sunk.push(entries));
-
+  it('rolls failed outbox work back and can retry the same log', async () => {
+    collector.setSyncSink(async () => { throw Error('outbox unavailable'); });
     collector.ingestBatch([entry('one')]);
     await collector.flush();
-
-    // The rows written to the local table carry `labels` and `metadata`
-    // already serialised for that column. The master's `logRow`
-    // serialises whatever it is handed — so shipping the ROWS would store
-    // the string `{"env":"prod"}` as the label object on the other side,
-    // and every remote log would arrive with its labels wrapped in quotes.
-    expect(sunk[0]![0]!.labels).toEqual({ env: 'prod', region: 'eu' });
-    expect(typeof sunk[0]![0]!.labels).toBe('object');
-    expect(sunk[0]![0]!.metadata).toEqual({ attempt: 1 });
-  });
-
-  it('does not replicate a batch the database refused', async () => {
-    const collector = new LogCollectorService(makeDb({ failInsert: true }), undefined as never);
-    collector.setSyncSink((entries) => sunk.push(entries));
-
-    collector.ingestBatch([entry('one')]);
+    expect(await db.selectFrom('logs').select('id').execute()).toEqual([]);
+    // A standalone collector can commit the retained record without replication.
+    collector.setSyncSink(null);
     await collector.flush();
-
-    // A failed flush puts its batch back at the front of the buffer and
-    // retries. Queueing on the ATTEMPT rather than on the write would send
-    // every retried line again for each attempt, and the master's dedup
-    // ledger keys on the entry id it is given — which would be a new one
-    // each time.
-    expect(sunk).toEqual([]);
+    expect(await db.selectFrom('logs').select('message').execute()).toEqual([{ message: 'one' }]);
   });
 
-  it('survives a sink that throws', async () => {
-    const db = makeDb();
-    const collector = new LogCollectorService(db, undefined as never);
-    const failures: unknown[] = [];
-    collector.on('sync_error', (err) => failures.push(err));
-    collector.setSyncSink(() => {
-      throw new Error('buffer is wedged');
-    });
-
+  it('does not call the outbox on a failed local insert', async () => {
+    let calls = 0;
+    collector.setSyncSink(async () => { calls++; });
+    await db.schema.alterTable('logs').renameTo('saved_logs').execute();
     collector.ingestBatch([entry('one')]);
+    try {
+      await collector.flush();
+      expect(calls).toBe(0);
+    } finally { await db.schema.alterTable('saved_logs').renameTo('logs').execute(); }
     await collector.flush();
-
-    // The lines are already in the local table. Letting the sink's failure
-    // reach the flush's catch would re-queue rows that were written, and
-    // duplicate them on the next attempt — losing the replica copy must not
-    // cost the write that succeeded.
-    expect((db as unknown as { inserted: unknown[][] }).inserted).toHaveLength(1);
-    expect(failures).toHaveLength(1);
-  });
-
-  it('replicates nothing when no sink is set', async () => {
-    // A master has no master to ship to. The sink is wired only for the
-    // slave role, and the collector must be silent without it.
-    const collector = new LogCollectorService(makeDb(), undefined as never);
-
-    collector.ingestBatch([entry('one')]);
-    await expect(collector.flush()).resolves.not.toThrow();
+    expect(calls).toBe(1);
   });
 });
 
@@ -138,45 +92,34 @@ const silentLogger: any = {
   child: () => silentLogger,
 };
 
-describe('an ingested remote metric carries the node it came from', () => {
-  function master() {
-    const sunk: Array<{ node: string; name: string; labels: Record<string, string>; value: number }> = [];
+describe('committed remote metric exposition', () => {
+  it('applies raw observations to their defined families and binds authenticated node labels', () => {
+    const registry = new MetricsRegistry([1, 5]);
+    registry.define({ name: 'duration', type: 'histogram', help: 'Seconds' });
+    registry.define({ name: 'calls', type: 'counter', help: 'Calls' });
     const svc = new SyncService({} as never, silentLogger, 'master-1', 'master', undefined as never);
-    svc.setMetricsSink((s) => sunk.push(s));
-    return { svc, sunk };
-  }
-
-  it('records through the sink with the node as a separate field', async () => {
-    const { svc, sunk } = master();
-
-    // `recordMetrics` is the one door to the sink, called by both ingest
-    // paths once the rows are committed.
-    (svc as unknown as {
-      recordMetrics(nodeId: string, entries: unknown[]): void;
-    }).recordMetrics('edge-7', [
-      {
-        id: 'e1',
-        category: 'metrics',
-        payload: { name: 'cpu_percent', app: 'payments', labels: { region: 'eu' }, value: 42 },
-        createdAt: '2026-09-14T00:00:00Z',
-      },
-    ]);
-
-    // `node` is its own argument, not a key in `labels`, precisely so a
-    // caller cannot omit it. A sample recorded without it merges with the
-    // master's own readings and the chart shows two machines as one.
-    expect(sunk).toHaveLength(1);
-    expect(sunk[0]).toMatchObject({ node: 'edge-7', name: 'cpu_percent', app: 'payments', value: 42 });
-    expect(sunk[0]!.labels).toEqual({ region: 'eu', node: 'edge-7', app: 'payments' });
+    svc.setMetricsRegistry(registry);
+    const ingest = (svc as unknown as { recordMetrics(nodeId: string, entries: unknown[]): void });
+    const observations = [['duration', 2], ['duration', 4], ['calls', 2], ['calls', 3], ['cpu_percent', 42]] as const;
+    ingest.recordMetrics('edge-7', observations.map(([name, value], index) => ({
+      id: String(index), category: 'metrics', createdAt: '2026-09-14T00:00:00Z',
+      payload: { name, value, app: 'payments', labels: { node: 'spoofed', region: 'eu' } },
+    })));
+    const labels = 'app="payments",node="edge-7",region="eu"';
+    const scrape = registry.toPrometheusText();
+    expect(scrape).toContain(`duration_bucket{${labels},le="1"} 0`);
+    expect(scrape).toContain(`duration_bucket{${labels},le="5"} 2`);
+    expect(scrape).toContain(`duration_sum{${labels}} 6`);
+    expect(scrape).toContain(`duration_count{${labels}} 2`);
+    expect(scrape).toContain(`calls{${labels}} 5`);
+    expect(scrape).toContain(`cpu_percent{${labels}} 42`);
+    expect(scrape).not.toContain('spoofed');
   });
 
   it('refuses a batch that does not say which node it came from', async () => {
-    const { svc } = master();
-
+    const svc = new SyncService({} as never, silentLogger, 'master-1', 'master', undefined as never);
     for (const nodeId of ['', '   ', undefined as unknown as string]) {
-      await expect(
-        svc.receiveBatch({ nodeId, batchId: 'b1', entries: [], checksum: 'x' } as never),
-      ).rejects.toThrow(/nodeId/);
+      await expect(svc.receiveBatch({ nodeId, batchId: 'b1', entries: [], checksum: 'x' } as never)).rejects.toThrow(/nodeId/);
     }
   });
 });

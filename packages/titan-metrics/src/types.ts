@@ -266,6 +266,8 @@ export interface IMetricsService {
 
 /** Subset of MetricsRegistry that consumers depend on. */
 export interface IMetricsRegistry {
+  /** Project a raw observation into the registered family. Unknown families default to gauges. */
+  record(sample: MetricSample): void;
   define(def: MetricDefinition): void;
   counter(name: string, labels?: Record<string, string>, delta?: number): void;
   gauge(name: string, labels: Record<string, string>, value: number): void;

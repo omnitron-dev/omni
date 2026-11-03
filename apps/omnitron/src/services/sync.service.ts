@@ -15,7 +15,7 @@ import { assertLogDurability } from '../database/log-durability.js';
  */
 
 import type { Insertable, Kysely, Transaction } from 'kysely';
-import { type MetricSample, type PostgresMetricsStorage } from '@omnitron-dev/titan-metrics';
+import { type IMetricsRegistry, type MetricSample, type PostgresMetricsStorage } from '@omnitron-dev/titan-metrics';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import type { OmnitronDatabase } from '../database/schema.js';
 import type { ISyncConfig, DaemonRole } from '../config/types.js';
@@ -44,22 +44,6 @@ import { historyCoverage } from './replication-history.js';
 // =============================================================================
 
 export type SyncCategory = 'metrics' | 'logs' | 'events' | 'alerts' | 'traces' | 'state';
-
-/**
- * Records one ingested remote metric into the store the console reads.
- *
- * `node` is separate from `labels` in the signature so it cannot be left out
- * by a caller building the label map — which is the failure this exists to
- * prevent.
- */
-export type MetricsSink = (sample: {
-  node: string;
-  name: string;
-  app: string;
-  labels: Record<string, string>;
-  value: number;
-  timestamp: number;
-}) => void;
 
 export interface SyncEntry {
   category: SyncCategory;
@@ -232,8 +216,7 @@ interface ResolvedSyncConfig {
 export class SyncService {
   private metricsStorage: PostgresMetricsStorage<OmnitronDatabase> | null = null;
   private metricsHistoryMaxAgeMs = 7 * 86400_000;
-  /** Set on a master; see `setMetricsSink`. */
-  private metricsSink: MetricsSink | null = null;
+  private metricsRegistry: Pick<IMetricsRegistry, 'record'> | null = null;
 
   private readonly config: ResolvedSyncConfig;
   private syncTimer: NodeJS.Timeout | null = null;
@@ -336,8 +319,8 @@ export class SyncService {
   }
 
   /** Optional post-commit exposition observer. It is never the durable destination. */
-  setMetricsSink(sink: MetricsSink | null): void {
-    this.metricsSink = sink;
+  setMetricsRegistry(registry: Pick<IMetricsRegistry, 'record'>): void {
+    this.metricsRegistry = registry;
   }
 
   /** Required for metric ingestion. The adapter writes inside the receipt transaction. */
@@ -1047,21 +1030,15 @@ export class SyncService {
 
   /** Update live exposition after the payload and receipt commit atomically. */
   private recordMetrics(nodeId: string, entries: SyncBatch['entries']): void {
-    if (!this.metricsSink) return;
-    try {
-      for (const entry of entries) {
-        if (entry.category !== 'metrics') continue;
-        const sample = this.metricSample(nodeId, entry);
-        this.metricsSink({
-          node: nodeId,
-          ...sample,
-          app: sample.labels['app']!,
-        });
+    if (!this.metricsRegistry) return;
+    for (const entry of entries) {
+      if (entry.category !== 'metrics') continue;
+      try {
+        this.metricsRegistry.record(this.metricSample(nodeId, entry));
+      } catch (err) {
+        // The sample and receipt have already committed. Projection cannot undo that or skip later samples.
+        this.logger.warn({ nodeId, entryId: entry.id, error: describeError(err) }, 'Failed to expose a committed remote metric');
       }
-    } catch (err) {
-      // The entries are stored and will be acknowledged; a sink that throws
-      // must not turn that into a retry the ledger then calls a duplicate.
-      this.logger.warn({ nodeId, error: describeError(err) }, 'Stored remote metrics could not be recorded for the console');
     }
   }
 

@@ -87,10 +87,10 @@ function batch(entries: Entry[]): SyncBatch {
   };
 }
 
-function master(sink?: (sample: { node: string; name: string; value: number }) => void) {
+function master(sink?: (sample: import('@omnitron-dev/titan-metrics').MetricSample) => void) {
   const svc = new SyncService(db, createNullLogger(), 'MacBook-Pro-9700', 'master', {});
   svc.setMetricsStorage(new PostgresMetricsStorage(db));
-  if (sink) svc.setMetricsSink(sink as never);
+  if (sink) svc.setMetricsRegistry({ record: sink });
   return svc;
 }
 
@@ -129,7 +129,7 @@ describe.skipIf(!testPg.ok)('a batch received one entry at a time', () => {
     const entries = mixed(1_000);
     const recorded: string[] = [];
 
-    const result = await master((s) => recorded.push(s.node)).receiveBatch(batch(entries));
+    const result = await master((s) => recorded.push(s.labels.node!)).receiveBatch(batch(entries));
 
     expect(result.accepted).toBe(1_000);
     expect(result.failedIds).toEqual([]);

@@ -1133,17 +1133,7 @@ export class OmnitronDaemon {
       const storage = await container.resolveAsync(METRICS_STORAGE_TOKEN);
       if (!(storage instanceof PostgresMetricsStorage)) throw new Error('Master replication requires PostgreSQL metrics storage');
       this.syncService.setMetricsStorage(storage, parseMaxAge(config.monitoring.metrics.historyMaxAge ?? '7d'));
-      this.syncService.setMetricsSink((sample) => {
-        try {
-          // The transaction already persisted this sample; update exposition only.
-          syncMetrics.getRegistry().gauge(sample.name, { ...sample.labels, app: sample.app, node: sample.node }, sample.value);
-        } catch (err) {
-          loggerModule.logger.warn(
-            { node: sample.node, name: sample.name, error: (err as Error).message },
-            'Failed to record a replicated metric',
-          );
-        }
-      });
+      this.syncService.setMetricsRegistry(syncMetrics.getRegistry());
     }
 
     // The producer the replication pipeline never had.

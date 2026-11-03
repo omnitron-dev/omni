@@ -27,6 +27,8 @@ interface GaugeState {
 }
 
 interface MetricEntry {
+  /** Untyped observations expose only the latest value until the producer declares its family. */
+  inferred?: boolean;
   definition: MetricDefinition;
   /** Map from serialised label key → metric state */
   series: Map<string, CounterState | GaugeState | HistogramState>;
@@ -125,8 +127,7 @@ export class MetricsRegistry {
 
   /** Register (or retrieve) a metric definition */
   define(def: MetricDefinition): void {
-    if (this.metrics.has(def.name)) return;
-    this.metrics.set(def.name, { definition: def, series: new Map() });
+    this.ensureMetric(def.name, def.type, def.help, def.labelNames);
   }
 
   // -------------------------------------------------------------------------
@@ -198,7 +199,13 @@ export class MetricsRegistry {
   /** Record a generic MetricSample (auto-routes to counter/gauge/histogram) */
   record(sample: MetricSample): void {
     const entry = this.metrics.get(sample.name);
-    const type = entry?.definition.type ?? 'gauge';
+    if (!entry || entry.inferred) {
+      const provisional = entry ?? this.ensureMetric(sample.name, 'gauge', 'Latest untyped observation');
+      provisional.inferred = true;
+      provisional.series.set(labelKey(sample.labels), { value: sample.value });
+      return;
+    }
+    const type = entry.definition.type;
     switch (type) {
       case 'counter':
         this.counter(sample.name, sample.labels, sample.value);
@@ -309,11 +316,15 @@ export class MetricsRegistry {
   // Internals
   // -------------------------------------------------------------------------
 
-  private ensureMetric(name: string, type: MetricType, help: string): MetricEntry {
+  private ensureMetric(name: string, type: MetricType, help: string, labelNames?: string[]): MetricEntry {
     let entry = this.metrics.get(name);
-    if (!entry) {
-      entry = { definition: { name, type, help }, series: new Map() };
+    if (!entry || entry.inferred) {
+      // A last value can seed a gauge. It cannot reconstruct counter deltas or histogram buckets.
+      const series = entry?.definition.type === type ? entry.series : new Map();
+      entry = { definition: { name, type, help, ...(labelNames && { labelNames: [...labelNames] }) }, series };
       this.metrics.set(name, entry);
+    } else if (entry.definition.type !== type) {
+      throw new TypeError(`Metric "${name}" is registered as ${entry.definition.type} and cannot be recorded as ${type}`);
     }
     return entry;
   }

@@ -19,6 +19,18 @@ metrics.recordTyped('gauge', 'active_connections', {}, 42);
 metrics.recordTyped('histogram', 'request_duration_ms', {}, 23.5);
 ```
 
+A counter observation is an increment, a histogram observation is one measured
+value, and a gauge observation replaces its previous value. Every label set of
+a metric name belongs to the same family. A conflicting typed write or
+declaration throws before changing a series.
+
+For a sample that is already durable, `metrics.getRegistry().record(sample)`
+updates only the in-memory exposition. It uses the registered family and keeps
+the sample's labels. Unknown names initially expose their latest value as a
+gauge. A later explicit gauge declaration retains those values. A later counter
+or histogram declaration starts a new aggregate with typed observations.
+Historical raw samples remain available in storage.
+
 ## Decorator
 ```typescript
 @Metrics('users.get')

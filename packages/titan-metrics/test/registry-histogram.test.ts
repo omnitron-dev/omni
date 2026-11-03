@@ -110,3 +110,37 @@ describe('MetricsRegistry.histogram — cumulative semantics (T#62)', () => {
     expect(buckets.map((b) => b.le)).toEqual(['1', '2', '+Inf']);
   });
 });
+
+describe('metric family identity', () => {
+  it('refuses conflicting registration and writes before either label series can change', () => {
+    const registry = new MetricsRegistry([1]);
+    const definition = { name: 'seconds', type: 'histogram', help: 'Seconds' } as const;
+    registry.define(definition);
+    registry.histogram('seconds', { node: 'local' }, 0.5);
+    const before = registry.toPrometheusText();
+    expect(() => registry.gauge('seconds', { node: 'remote' }, 3)).toThrow(/histogram.*gauge/);
+    expect(() => registry.counter('seconds', { node: 'local' })).toThrow(/histogram.*counter/);
+    expect(() => registry.define({ ...definition, type: 'gauge' })).toThrow(/histogram.*gauge/);
+    registry.define(definition);
+    expect(registry.toPrometheusText()).toBe(before);
+    registry.histogram('seconds', { node: 'remote' }, 4);
+    expect(registry.toPrometheusText()).toContain('seconds_count{node="remote"} 1');
+  });
+
+  it('admits a declared type after provisional untyped samples without inventing deltas or buckets', () => {
+    const registry = new MetricsRegistry([1]);
+    for (const name of ['calls', 'seconds', 'temperature']) {
+      for (const value of [30, 31]) registry.record({ name, value, labels: {}, timestamp: 1000 });
+    }
+    expect(registry.toPrometheusText()).toContain('calls 31');
+    registry.define({ name: 'calls', type: 'counter', help: 'Calls' });
+    registry.record({ name: 'calls', value: 2, labels: {}, timestamp: 2000 });
+    registry.histogram('seconds', {}, 0.5);
+    registry.define({ name: 'temperature', type: 'gauge', help: 'Current temperature' });
+    const scrape = registry.toPrometheusText();
+    expect(scrape).toContain('calls 2');
+    expect(scrape).toContain('seconds_sum 0.5');
+    expect(scrape).toContain('seconds_count 1');
+    expect(scrape).toContain('temperature 31');
+  });
+});

@@ -12,10 +12,14 @@
  */
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
+import { Errors } from '@omnitron-dev/titan/errors';
 
 import { buildEnv, missingTools } from '../release/build-run.js';
 import type { ReleaseDetail, ReleaseSummary } from '../release/store.js';
 import { ADMIN_ROLES, OPERATOR_ROLES, VIEWER_ROLES } from '../shared/roles.js';
+import { parseFrameworkSource } from '../shared/framework-source.js';
+import { daemonPrincipal } from './daemon-principal.js';
+import type { AuthService } from './auth.service.js';
 import type { AuditService } from './audit.service.js';
 import type { BuildRecord, ReleaseService } from './release.service.js';
 import type { IOmnitronReleaseService, ReleaseDeploymentDto, ReleasePreflightDto, ReleasePruneAnswer } from '../shared/dto/services.js';
@@ -30,6 +34,7 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
     private readonly audit?: AuditService | undefined,
     /** The transport to a stack's node, for attestations run there. */
     private readonly projects?: import('./project.service.js').ProjectService | undefined,
+    private readonly auth?: Pick<AuthService, 'validateSession'> | undefined,
   ) {}
 
   /**
@@ -107,6 +112,25 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
   async build(data: Parameters<IOmnitronReleaseService['build']>[0]): Promise<BuildRecord> {
     if (!data?.project || typeof data.project !== 'string') throw new Error('A build needs a project name');
     const { currentActor } = await import('./audit.service.js');
+    // An operator may build registered project code. Selecting another SDK
+    // repository admits its install/build scripts as the daemon's OS user.
+    // Normalize before audit, then revalidate the administrator before any build
+    // record or asynchronous execution exists. Transport role caches are not authority.
+    if (data.frameworkSource !== undefined) {
+      const frameworkSource = parseFrameworkSource(data.frameworkSource);
+      if (!this.auth) throw Errors.forbidden('SDK source overrides require authenticated administrator access');
+      await daemonPrincipal(this.auth, 'admin');
+      if (!this.audit) throw new Error('Audit storage is unavailable; SDK source override refused');
+      await this.audit.record({
+        action: 'release.build.requested',
+        resourceType: 'release',
+        details: { project: data.project, frameworkSource },
+      }, true);
+      // The required audit write can await storage; revocation while it is in
+      // flight must not turn an admitted intent into executable authority.
+      await daemonPrincipal(this.auth, 'admin');
+      data = { ...data, frameworkSource };
+    }
     const actor = currentActor();
     const record = this.releases.start(data, actor.actorId);
     await this.audit?.record({

@@ -36,6 +36,7 @@ import type { ReleasePreflightView } from 'src/netron/release-wire';
 import { releases as releaseRpc } from 'src/netron/client';
 import { useProjectStore } from 'src/stores/project.store';
 import { ChevronRightIcon } from 'src/assets/icons';
+import { useAccess } from 'src/auth/access';
 
 /**
  * `NAME=value` per line, as the operator types it.
@@ -76,6 +77,7 @@ export interface BuildReleaseDialogProps {
 }
 
 export default function BuildReleaseDialog({ open, onClose, defaultProject, onStarted, preflight }: BuildReleaseDialogProps) {
+  const { snapshot } = useAccess();
   const projects = useProjectStore((s) => s.projects);
   const stacksByProject = useProjectStore((s) => s.stacksByProject);
   const fetchStacks = useProjectStore((s) => s.fetchStacks);
@@ -119,7 +121,8 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
   }, [open, stacks, forStack]);
 
   const { env, bad } = useMemo(() => parseEnv(envText), [envText]);
-  const canOverrideSource = preflight?.frameworkSource === 1;
+  const supportsSourceOverride = preflight?.frameworkSource === 1;
+  const canOverrideSource = supportsSourceOverride && snapshot?.role === 'admin';
   const framework = useMemo(() => {
     if (!frameworkRepository.trim() && !frameworkRef.trim()) return { source: undefined, error: null };
     try {
@@ -135,7 +138,9 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
       return;
     }
     if (framework.source && !canOverrideSource) {
-      setFailure('This controller does not support SDK source overrides. Update it before using an override.');
+      setFailure(supportsSourceOverride
+        ? 'An administrator must select an SDK source override. Build with project defaults or sign in with administrator access.'
+        : 'This controller does not support SDK source overrides. Update it before using an override.');
       return;
     }
     setStarting(true);
@@ -260,14 +265,16 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
 
           <Accordion disableGutters variant="outlined" disabled={starting}>
             <AccordionSummary expandIcon={<ChevronRightIcon sx={{ transform: 'rotate(90deg)' }} />} aria-controls="release-source-options" id="release-source-toggle">
-              <Typography variant="body2">SDK source{framework.source ? ' · overridden for this build' : canOverrideSource ? ' · project defaults' : ' · controller defaults'}</Typography>
+              <Typography variant="body2">SDK source{framework.source ? ' · overridden for this build' : supportsSourceOverride ? ' · project defaults' : ' · controller defaults'}</Typography>
             </AccordionSummary>
             <AccordionDetails id="release-source-options">
               <Stack spacing={1.5}>
                 <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  {canOverrideSource
-                    ? 'Project settings and package metadata choose the source. Override it here for this build, or save defaults in package.json under omnitron.framework.'
-                    : 'This controller has not reported support for SDK source configuration. Update it to use committed omnitron.framework settings or a build override. Ordinary builds use its existing source selection.'}
+                  {!supportsSourceOverride
+                    ? 'This controller has not reported support for SDK source configuration. Update it to use committed omnitron.framework settings or a build override. Ordinary builds use its existing source selection.'
+                    : canOverrideSource
+                      ? 'Project settings and package metadata choose the source. An override runs code from another SDK repository and requires administrator access.'
+                      : 'Builds use project settings and package metadata. Selecting another SDK source requires administrator access.'}
                 </Typography>
                 <TextField label="SDK repository" value={frameworkRepository} onChange={(event) => setFrameworkRepository(event.target.value)}
                   placeholder="https://git.example.org/platform/omni.git" size="small" fullWidth disabled={starting || !canOverrideSource}

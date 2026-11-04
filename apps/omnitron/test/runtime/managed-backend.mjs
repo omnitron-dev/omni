@@ -139,7 +139,49 @@ try {
   const cli = (...args) => run(artifact.execPath, [path.join(artifact.directory, 'cli/omnitron.js'), ...args, '--json'], {
     env: { ...process.env, OMNITRON_HOME: instance }, cwd: root, timeout: 600_000, maxBuffer: 1024 * 1024,
   });
-  if (backendOnly) {
+  // Upgrade the independent guardian first: a backend replacement cannot change
+  // the guardian code already supervising it. Keep the baseline owner throughout.
+  const guardianTransition = managementDist && !backendOnly ? await (async () => {
+    await waitCertificate();
+    const settled = await status();
+    const { prepareSupervisorTransition, applySupervisorTransition } = await import(pathToFileURL(path.join(managementDist, 'daemon/supervisor-transition.js')).href);
+    const { RuntimeInstallation: candidateInstallation } = await import(pathToFileURL(path.join(managementDist, 'daemon/runtime-installation.js')).href);
+    // Historical candidates predate --check. Never give their apply command a forward plan as a dry run.
+    const supportsCheck = typeof candidateInstallation.openReadOnly === 'function';
+    const runner = path.resolve(managementDist, '../../../node');
+    const checkPlan = async (file, expected, backendPid) => {
+      if (!supportsCheck) return;
+      const before = await fs.readFile(file);
+      const { stdout } = await run(runner, [path.join(managementDist, 'cli/omnitron.js'), 'backend', 'guardian', 'apply', file, '--check', '--json'], {
+        env: { ...process.env, OMNITRON_HOME: instance }, cwd: root, timeout: 90_000, maxBuffer: 1024 * 1024,
+      });
+      assert.equal(JSON.parse(stdout).data.checked, expected);
+      assert.deepEqual(await fs.readFile(file), before, 'Readiness check changed the saved plan');
+      assert.equal((await status()).pid, backendPid, 'Readiness check changed the backend');
+    };
+    const plan = await prepareSupervisorTransition(path.resolve(managementDist, '../../..'), socket);
+    assert.equal((await status()).pid, settled.pid, 'Preparation changed the backend');
+    await checkPlan(plan.file, true, settled.pid);
+    const prepared = JSON.parse(await fs.readFile(plan.file, 'utf8'));
+    // Refuse edited native units BEFORE draining a backend.
+    await fs.appendFile(prepared.unit.file, '\n<!-- changed after preparation -->\n');
+    if (supportsCheck) await assert.rejects(applySupervisorTransition(plan.file, { checkOnly: true }), /unit changed since preparation|changed system guardian unit/);
+    await assert.rejects(applySupervisorTransition(plan.file), /unit changed since preparation|changed system guardian unit/);
+    assert.equal((await status()).pid, settled.pid);
+    await fs.writeFile(prepared.unit.file, prepared.unit.before);
+    if (linux) await native(['daemon-reload']);
+    const transitioned = await applySupervisorTransition(plan.file);
+    assert.equal(transitioned.phase, 'complete');
+    assert.equal(transitioned.result.ownerPid, ownerPid);
+    assert.notEqual(transitioned.result.backendPid, settled.pid);
+    assert.notEqual(transitioned.result.guardianPid, prepared.guardianPid);
+    await checkPlan(plan.file, false, transitioned.result.backendPid);
+    assert.equal((await applySupervisorTransition(plan.file)).result.backendPid, transitioned.result.backendPid, 'A repeated apply started another backend');
+    console.log(JSON.stringify({ stage: 'guardian-transition-complete', result: transitioned.result }));
+    await waitCertificate();
+    return { prepareSupervisorTransition, applySupervisorTransition, checkPlan, runner };
+  })() : null;
+  if (managementDist) {
     const supervisor = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor');
     try {
       const initialGuardian = await supervisor.service.status();
@@ -196,7 +238,7 @@ try {
       return value.state === 'ready' && value.backendPid === afterGuardian.pid;
     }, 'Guardian has not committed its recovered backend selection');
   } finally { await committedGuardian.close(); }
-  if (managementDist && !backendOnly) {
+  if (guardianTransition) {
     const settledGuardian = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor');
     try {
       await until(async () => {
@@ -204,41 +246,7 @@ try {
         return state.state === 'ready' && state.backendPid === afterGuardian.pid;
       }, 'Guardian has not finished publishing the recovered selection');
     } finally { await settledGuardian.close(); }
-    const { prepareSupervisorTransition, applySupervisorTransition } = await import(pathToFileURL(path.join(managementDist, 'daemon/supervisor-transition.js')).href);
-    const { RuntimeInstallation: candidateInstallation } = await import(pathToFileURL(path.join(managementDist, 'daemon/runtime-installation.js')).href);
-    // Historical candidates predate --check. Never give their apply command a forward plan as a dry run.
-    const supportsCheck = typeof candidateInstallation.openReadOnly === 'function';
-    const runner = path.resolve(managementDist, '../../../node');
-    const checkPlan = async (file, expected, backendPid) => {
-      if (!supportsCheck) return;
-      const before = await fs.readFile(file);
-      const { stdout } = await run(runner, [path.join(managementDist, 'cli/omnitron.js'), 'backend', 'guardian', 'apply', file, '--check', '--json'], {
-        env: { ...process.env, OMNITRON_HOME: instance }, cwd: root, timeout: 90_000, maxBuffer: 1024 * 1024,
-      });
-      assert.equal(JSON.parse(stdout).data.checked, expected);
-      assert.deepEqual(await fs.readFile(file), before, 'Readiness check changed the saved plan');
-      assert.equal((await status()).pid, backendPid, 'Readiness check changed the backend');
-    };
-    const plan = await prepareSupervisorTransition(path.resolve(managementDist, '../../..'), socket);
-    assert.equal((await status()).pid, afterGuardian.pid, 'Preparation changed the backend');
-    await checkPlan(plan.file, true, afterGuardian.pid);
-    const prepared = JSON.parse(await fs.readFile(plan.file, 'utf8'));
-    // Refuse edited native units BEFORE draining a backend.
-    await fs.appendFile(prepared.unit.file, '\n<!-- changed after preparation -->\n');
-    if (supportsCheck) await assert.rejects(applySupervisorTransition(plan.file, { checkOnly: true }), /unit changed since preparation|changed system guardian unit/);
-    await assert.rejects(applySupervisorTransition(plan.file), /unit changed since preparation|changed system guardian unit/);
-    assert.equal((await status()).pid, afterGuardian.pid);
-    await fs.writeFile(prepared.unit.file, prepared.unit.before);
-    if (linux) await native(['daemon-reload']);
-    const transitioned = await applySupervisorTransition(plan.file);
-    assert.equal(transitioned.phase, 'complete');
-    assert.equal(transitioned.result.ownerPid, ownerPid);
-    assert.notEqual(transitioned.result.backendPid, afterGuardian.pid);
-    assert.notEqual(transitioned.result.guardianPid, prepared.guardianPid);
-    await checkPlan(plan.file, false, transitioned.result.backendPid);
-    assert.equal((await applySupervisorTransition(plan.file)).result.backendPid, transitioned.result.backendPid, 'A repeated apply started another backend');
-    console.log(JSON.stringify({ stage: 'guardian-transition-complete', result: transitioned.result }));
-    await waitCertificate();
+    const { prepareSupervisorTransition, applySupervisorTransition, checkPlan, runner } = guardianTransition;
     if (linux) {
       const { activateManagedTarget, managedHostCommand, planManagedRollout, reconcileManagedTarget } = await import(
         pathToFileURL(path.join(managementDist, 'services/managed-rollout.js')).href);

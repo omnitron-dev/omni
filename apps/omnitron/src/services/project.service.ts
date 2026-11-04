@@ -766,12 +766,13 @@ export class ProjectService extends EventEmitter {
     const occupied = new Set(Object.keys(this.resolveStacks(owner, input.project)));
     for (const name of Object.values(input.stacks))
       if (occupied.has(name)) throw new Error(`Stack '${name}' already exists in the project default configuration`);
-    if (input.registration) {
-      for (const name of this.registry.get(input.registration)?.enabledStacks ?? [])
+    const existing = this.registry.get(candidate.name);
+    if (existing) {
+      for (const name of existing.enabledStacks ?? [])
         if (!input.stacks[name]) throw new Error(`Auto-start source stack '${name}' is missing from the mapping`);
-      for (const name of this.getRunningStacks(input.registration, true))
+      for (const name of this.getRunningStacks(existing.name, true))
         if (!input.stacks[name]) throw new Error(`Running source stack '${name}' is missing from the mapping`);
-      for (const name of Object.keys(this.loadUserStacks(input.registration)))
+      for (const name of Object.keys(this.loadUserStacks(existing.name)))
         if (!input.stacks[name]) throw new Error(`User-defined source stack '${name}' is missing from the mapping`);
     }
     const record = this.registry.importConfiguration(input);

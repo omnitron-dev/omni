@@ -16,6 +16,7 @@ vi.mock('../../src/config/defaults.js', async original => ({ ...await original<t
 import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
 import { ProjectRegistry } from '../../src/project/registry.js';
 import { ProjectService } from '../../src/services/project.service.js';
+import { ProjectRpcService } from '../../src/services/project.rpc-service.js';
 
 let db: DaemonStateStore; let registry: ProjectRegistry; let root: string; let counter = 0;
 const registeredAt = '2026-01-01T00:00:00.000Z';
@@ -94,5 +95,56 @@ describe('one repository owns many stacks', () => {
     }) as ProjectService;
     await expect(service.resolveProjectStack({ project: 'sample', stack: 'research' })).rejects.toThrow(/Ambiguous/);
     await expect(service.resolveProjectStack({ project: 'sample-research', stack: 'local' })).resolves.toEqual({ project: 'sample-research', stack: 'local' });
+  });
+});
+
+
+describe('public configuration import admission', () => {
+  const rpc = () => new ProjectRpcService(Object.assign(Object.create(ProjectService.prototype), {
+    registry, configRegistry: new Map(), stackStates: new Map(), logger: createNullLogger(),
+    ensureConfig: async () => ({ apps: [], stacks: { default: { type: 'local' } } }),
+    emit: vi.fn(), getProject: () => ({ name: 'sample' }),
+  }) as ProjectService);
+  const source = (name: string) => {
+    const location = path.join(root, 'repo', name);
+    fs.mkdirSync(location, { recursive: true });
+    fs.writeFileSync(path.join(location, 'omnitron.config.mjs'),
+      'export default { apps: [], stacks: { local: { type: "local" } } };');
+    return location;
+  };
+  it('creates a new explicit runtime namespace without reading nonexistent retained state', async () => {
+    const request = { ...input(), name: 'atlas', registration: 'sample-atlas-successor', path: source('atlas'), stacks: { local: 'atlas' } };
+    await rpc().importConfiguration(request);
+    expect(registry.resolveStack({ project: 'sample', stack: 'atlas' })).toEqual({ project: request.registration, stack: 'local' });
+    const reopened = new ProjectRegistry(db);
+    expect(reopened.get(request.registration)).toMatchObject({ path: request.path, configuration: { project: 'sample', name: 'atlas' } });
+    expect(reopened.get('sample-research')?.enabledStacks).toEqual(['local']);
+  });
+  it('retains an existing namespace and its enabled stack history', async () => {
+    await rpc().importConfiguration(input());
+    expect(registry.get('sample-research')).toMatchObject({ registeredAt, enabledStacks: ['local'] });
+    expect(db.kvGetSync('retained-history')).toEqual({ checkpoint: 17 });
+  });
+  it('checks retained intent even when the existing runtime namespace is generated', async () => {
+    const location = source('generated');
+    registry.importConfiguration({ project: 'sample', name: 'generated', path: location,
+      stacks: { local: 'generated' }, expectedRevision: registry.catalogRevision() });
+    registry.setStackEnabled('sample--generated', 'missing', true);
+    const before = registry.catalogRevision();
+    await expect(rpc().importConfiguration({ project: 'sample', name: 'generated', path: location,
+      stacks: { local: 'generated' }, expectedRevision: before })).rejects.toThrow(/Auto-start source stack 'missing'/);
+    expect(registry.catalogRevision()).toBe(before);
+  });
+  it('refuses a foreign existing registration and stale catalogue revisions without mutation', async () => {
+    const initial = registry.catalogRevision(), location = source('new');
+    await expect(rpc().importConfiguration({ ...input(), name: 'new', registration: 'another', path: location }))
+      .rejects.toThrow(/another configuration path/);
+    expect(registry.catalogRevision()).toBe(initial);
+    await rpc().importConfiguration(input());
+    const after = registry.catalogRevision();
+    await expect(rpc().importConfiguration({ ...input(), name: 'new', registration: 'sample-new', path: location, expectedRevision: initial }))
+      .rejects.toThrow(/changed/);
+    expect(registry.catalogRevision()).toBe(after);
+    expect(registry.get('sample-new')).toBeNull();
   });
 });

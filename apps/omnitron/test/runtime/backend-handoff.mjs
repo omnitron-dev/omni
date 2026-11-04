@@ -63,10 +63,13 @@ const boot = path.join(directory, 'boot.mjs');
 const script = path.join(directory, 'counter.mjs');
 const applicationSdkArg = process.argv.indexOf('--application-sdk');
 const applicationPackage = applicationSdkArg === -1 ? path.resolve(dist, '..') : await fs.realpath(process.argv[applicationSdkArg + 1]);
+const { resolveInstalledDependency } = await import(url('release/package-resolution.js'));
+const applicationTitan = await resolveInstalledDependency(applicationPackage, '@omnitron-dev/titan');
+assert.ok(applicationTitan, 'The application SDK must resolve its own Titan installation');
 const appModules = path.join(directory, 'node_modules/@omnitron-dev');
 await fs.mkdir(appModules, {recursive:true});
 await fs.symlink(applicationPackage, path.join(appModules,'omnitron'));
-await fs.symlink(await fs.realpath(path.join(applicationPackage,'node_modules/@omnitron-dev/titan')),path.join(appModules,'titan'));
+await fs.symlink(applicationTitan,path.join(appModules,'titan'));
 const topology = path.join(directory, 'bootstrap.mjs');
 for (const name of ['Pool', 'Single']) await fs.writeFile(path.join(directory,`${name}.mjs`), `
 import {Module,Service,Public,Inject} from '@omnitron-dev/titan/decorators';

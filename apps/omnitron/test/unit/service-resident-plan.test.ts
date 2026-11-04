@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({ home: '', directory: '', artifact: '', pid: 123 as number | null,
-  hash: 'a'.repeat(64), certified: true, oldArtifact: '', oldHash: 'b'.repeat(64),
+  hash: 'a'.repeat(64), certificateHash: '', certified: true, oldArtifact: '', oldHash: 'b'.repeat(64),
   leaseHeld: false, ownerError: '', artifactCalls: [] as string[], requirements: { stackControl: 1 } as Record<string, number> }));
 vi.mock('node:child_process', async importOriginal => ({
   ...await importOriginal<typeof import('node:child_process')>(),
@@ -40,9 +40,9 @@ vi.mock('../../src/daemon/pid-manager.js', () => ({ PidManager: class {
   getPid() { return state.pid; } isRunning() { return state.pid !== null; }
 } }));
 vi.mock('../../src/daemon/backend-recovery-journal.js', () => ({ BackendRecoveryJournal: class {
-  read() { return state.certified ? { status: 'ready', record: { previousPid: 123,
+  read() { return state.certified ? { status: 'ready', record: { previousPid: 123, runtimeHash: state.certificateHash || state.hash,
     environment: { OMNITRON_HOME: state.home, OMNITRON_DATABASE_URL: 'fixture-daemon-database', PATH: '/fixture/bin' },
-  } } : { status: 'invalid' }; }
+  } } : { status: 'invalid', reason: 'Application ownership is changing' }; }
   async close() {}
 } }));
 
@@ -58,7 +58,7 @@ beforeEach(async () => {
   state.home = path.join(root, 'instance'); state.directory = path.join(root, 'execution');
   state.artifact = path.join(root, 'artifact/dist'); state.hash = 'a'.repeat(64); state.pid = 123; state.certified = true;
   state.oldArtifact = path.join(root, 'old-artifact/dist'); state.ownerError = ''; state.leaseHeld = false;
-  state.artifactCalls = []; state.requirements = { stackControl: 1 };
+  state.artifactCalls = []; state.requirements = { stackControl: 1 }; state.certificateHash = '';
   await fs.mkdir(state.home, { mode: 0o700 });
   for (const artifact of [state.artifact, state.oldArtifact]) {
     await fs.mkdir(path.join(artifact, 'daemon'), { recursive: true });
@@ -71,7 +71,7 @@ beforeEach(async () => {
   vi.stubEnv('OMNITRON_DATABASE_URL', 'fixture-shell-database');
 });
 afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await fs.rm(root, { recursive: true, force: true }); });
-const inputs = () => ({ scope: 'user' as const, execPath: '/fixture/node', entryPath: '/fixture/entry',
+const inputs = () => ({ recoveryWaitMs: 0, scope: 'user' as const, execPath: '/fixture/node', entryPath: '/fixture/entry',
   workdir: root, path: '/usr/bin:/bin', stderrLog: path.join(root, 'stderr.log') });
 
 it('preserves the certified daemon environment across the controlled initial pause', async () => {
@@ -333,4 +333,30 @@ it('passes explicit owner selection through the public prepare command without a
   await expect(fs.access(path.join(state.home, 'runtime/supervision.json'))).rejects.toMatchObject({ code: 'ENOENT' });
   expect(vi.mocked(execFileSync).mock.calls.filter(call =>
     String(call[0]).endsWith('launchctl') || String(call[0]).endsWith('systemctl'))).toEqual([]);
+});
+
+it('waits for checkpoint publication outside the installation lease and revalidates before writing', async () => {
+  const { prepareResidentService } = await import('../../src/commands/service-resident.js');
+  state.certified = false;
+  let heldWhileWaiting: boolean | undefined;
+  const timer = setTimeout(() => { heldWhileWaiting = state.leaseHeld; state.certified = true; }, 25);
+  try {
+    const plan = await prepareResidentService({ ...inputs(), recoveryWaitMs: 1000 });
+    expect(heldWhileWaiting).toBe(false);
+    expect(plan.config.environment.OMNITRON_DATABASE_URL).toBe('fixture-daemon-database');
+  } finally { clearTimeout(timer); }
+});
+
+it('explains checkpoint refusal and writes no partial service plan', async () => {
+  const { prepareResidentService } = await import('../../src/commands/service-resident.js');
+  state.certified = false;
+  await expect(prepareResidentService(inputs())).rejects.toThrow('Application ownership is changing');
+  await expect(fs.access(path.join(state.home, 'runtime/supervision-plan/supervision.json'))).rejects.toThrow();
+});
+
+it('rejects a checkpoint from a different runtime even when its process ID matches', async () => {
+  const { prepareResidentService } = await import('../../src/commands/service-resident.js');
+  state.certificateHash = state.oldHash;
+  await expect(prepareResidentService(inputs())).rejects.toThrow('does not match the selected runtime');
+  await expect(fs.access(path.join(state.home, 'runtime/supervision-plan/supervision.json'))).rejects.toThrow();
 });

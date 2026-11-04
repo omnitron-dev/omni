@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
 import { OMNITRON_HOME, DEFAULT_DAEMON_CONFIG } from '../config/defaults.js';
 import { RuntimeInstallation } from '../daemon/runtime-installation.js';
 import { assertExecutionCapabilities } from '../daemon/execution-capabilities.js';
@@ -19,7 +20,11 @@ import { LAUNCHD_LABEL, SYSTEMD_UNIT, OWNER_LAUNCHD_LABEL, OWNER_SYSTEMD_UNIT,
 export interface ResidentServiceInputs extends UnitInputs {
   /** Installed sealed owner artifact; the guardian/backend remains the selected runtime. */
   readonly ownerRuntime?: string;
+  /** Bounded wait for the live backend's durable recovery checkpoint. Zero means inspect once. */
+  readonly recoveryWaitMs?: number;
 }
+
+class RecoveryCheckpointPending extends Error {}
 
 interface PreparedResidentService {
   config: ManagedRuntime;
@@ -45,7 +50,13 @@ async function withPreparedService<T>(inputs: ResidentServiceInputs, mode: 'prep
   }
   const installation = await RuntimeInstallation.open(undefined, { existing: true });
   if (!installation) throw new Error('Install and select a sealed runtime before independent supervision');
-  try { return await installation.exclusive(async () => {
+  const waitMs = inputs.recoveryWaitMs ?? 15_000;
+  if (!Number.isFinite(waitMs) || waitMs < 0 || waitMs > 60_000) {
+    await installation.close();
+    throw new Error('Recovery checkpoint wait must be between 0 and 60000 milliseconds');
+  }
+  const deadline = performance.now() + waitMs;
+  const prepare = () => installation.exclusive(async () => {
     if (installation.activation()) throw new Error('Finish the pending backend activation before preparing services');
     const selection = installation.selection();
     if (!selection) throw new Error('No runtime has been selected');
@@ -73,8 +84,11 @@ async function withPreparedService<T>(inputs: ResidentServiceInputs, mode: 'prep
       try {
         const certificate = recovery.read();
         if (certificate?.status !== 'ready' || certificate.record.previousPid !== backendPid) {
-          throw new Error('Wait for a current backend recovery certificate before preparing its service environment');
+          const reason = !certificate ? 'no checkpoint has been published' : certificate.status === 'invalid'
+            ? certificate.reason : `checkpoint belongs to backend ${certificate.record.previousPid}, current backend is ${backendPid}`;
+          throw new RecoveryCheckpointPending(`A current backend recovery certificate is required: ${reason}. No service files were changed.`);
         }
+        if (certificate.record.runtimeHash !== selection.current) throw new Error('Backend recovery certificate does not match the selected runtime; reconcile runtime selection before preparing services');
         environment = certificate.record.environment;
       } finally { await recovery.close(); }
     } else {
@@ -129,7 +143,18 @@ async function withPreparedService<T>(inputs: ResidentServiceInputs, mode: 'prep
       backendRunning: new PidManager(expandPath(dc.pidFile)).isRunning(),
       ownerRunning: new PidManager(path.join(directory, 'owner.pid')).isRunning(),
     });
-  }); } finally { await installation.close(); }
+  });
+  try {
+    for (;;) {
+      try { return await prepare(); }
+      catch (error) {
+        if (!(error instanceof RecoveryCheckpointPending) || performance.now() >= deadline) throw error;
+        // The publisher may need this installation lease. Never wait while holding
+        // it, and rerun every admission check before writing the eventual plan.
+        await delay(Math.min(250, Math.max(0, deadline - performance.now())));
+      }
+    }
+  } finally { await installation.close(); }
 }
 
 /** PID absence does not mean an OS supervisor has relinquished a restartable job. */

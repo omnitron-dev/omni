@@ -37,6 +37,7 @@ export interface NodeArtifact {
   version: string;
   /** Installation identity selected by the deployer, independent of package version. */
   directory?: string;
+  launch?: import('../release/manifest.js').ReleaseLaunch;
 }
 
 export interface NodeConfigInput {
@@ -98,7 +99,7 @@ export interface NodeConfigInput {
  * follow a path that does not exist — or, worse, one that does and belongs to
  * something else.
  */
-const DROPPED = new Set(['watch', 'cwd', 'script', 'releaseRoot']);
+const DROPPED = new Set(['watch', 'cwd', 'script', 'bootstrap', 'releaseRoot', 'releaseFrom', 'releaseEntry']);
 
 /**
  * The app definitions a node should be given.
@@ -110,13 +111,14 @@ const DROPPED = new Set(['watch', 'cwd', 'script', 'releaseRoot']);
  * by not listing it.
  */
 export function selectNodeApps(input: Omit<NodeConfigInput, 'sourceStack'> & { sourceStack?: string }): Array<Record<string, unknown>> {
-  const versions = new Map(input.artifacts.map((a) => [a.app, a.directory ?? a.version]));
+  const versions = new Map(input.artifacts.map((a) => [a.app, a]));
   const present = new Set(versions.keys());
   const out: Array<Record<string, unknown>> = [];
 
   for (const app of input.apps) {
-    const version = versions.get(app.name);
-    if (!version) continue;
+    const artifact = versions.get(app.name);
+    if (!artifact) continue;
+    const version = artifact.directory ?? artifact.version;
 
     const entry: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(app)) {
@@ -124,10 +126,11 @@ export function selectNodeApps(input: Omit<NodeConfigInput, 'sourceStack'> & { s
       entry[key] = value;
     }
 
-    // The artifact's compiled entry point. `bootstrap.js`, because the
-    // artifact is `pnpm deploy` output: `dist/` beside a real `node_modules`,
-    // both under the version directory the deployer created.
-    entry['bootstrap'] = `${input.artifactRoot}/${input.project}/${app.name}/${version}/dist/bootstrap.js`;
+    // Checked artifacts carry their admitted compiled entry and mode. The
+    // bootstrap convention remains only for the explicit legacy development
+    // path, which has no release manifest.
+    const launch = artifact.launch ?? { mode: 'bootstrap', file: 'dist/bootstrap.js' };
+    entry[launch.mode] = `${input.artifactRoot}/${input.project}/${app.name}/${version}/${launch.file}`;
     entry['cwd'] = `${input.artifactRoot}/${input.project}/${app.name}/${version}`;
     entry['releaseRoot'] = entry['cwd'];
 

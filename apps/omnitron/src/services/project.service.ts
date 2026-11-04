@@ -3839,7 +3839,7 @@ export class ProjectService extends EventEmitter {
       // Built in clean clones, gated, and checked against the manifest by
       // `loadRelease` — nothing is compiled here, from this machine's disk.
       const files = new Map(release.files.map((f) => [f.app, f]));
-      const sources = new Map(releaseArtifactOrigins(release.manifest, release.manifestSha256).map(source => [source.app, source.origin]));
+      const sources = new Map(releaseArtifactOrigins(release.manifest, release.manifestSha256).map(source => [source.app, source]));
       artifacts = appEntries.flatMap((entry) => {
         const file = files.get(entry.name);
         return file
@@ -3851,7 +3851,8 @@ export class ProjectService extends EventEmitter {
               builtAt: release.manifest.builtAt,
               checksum: file.inputs,
               tarballSha256: file.sha256,
-              release: sources.get(file.app)!,
+              release: sources.get(file.app)!.origin,
+              ...(sources.get(file.app)!.artifact.launch && { launch: sources.get(file.app)!.artifact.launch! }),
             }]
           : [];
       });

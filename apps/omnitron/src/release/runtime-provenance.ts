@@ -121,7 +121,7 @@ export function sealReleaseArtifactCommand(directory: string, origin: ReleaseArt
     throw new Error('Invalid release origin');
   if (launch && (!path.isAbsolute(launch.executable) || !path.isAbsolute(launch.ownerPackage) ||
     releaseNodeOptions(launch.nodeOptions) !== launch.nodeOptions || !frameworkContentUnchanged || !artifactPayloadUnchanged ||
-    installedFrameworkCommit !== origin.frameworkCommit)) throw new Error('A verified release requires an unchanged payload and owner');
+    installedFrameworkCommit !== origin.frameworkCommit)) throw new Error('A verified release requires unchanged application SDK and payload');
   const source = `import fs from 'node:fs/promises';
 const root=await fs.realpath(${JSON.stringify(directory)}), origin=${JSON.stringify(origin)};
 const treeSha256=await (${releaseTreeDigest.toString()})(root);
@@ -138,7 +138,7 @@ export function installedReleaseCheckCommand(directory: string, origin: ReleaseA
 const root=await fs.realpath(${JSON.stringify(directory)}),file=root+'/${RELEASE_RECEIPT}',stat=await fs.lstat(file);
 if(!stat.isFile()||stat.size>16384||(stat.mode&63)!==0||(process.getuid&&stat.uid!==process.getuid()))throw Error();
 const r=JSON.parse(await fs.readFile(file,'utf8')), expected=${JSON.stringify(origin)};
-if(r.version!==2||r.root!==root||r.nodeOptions!==${JSON.stringify(releaseNodeOptions(nodeOptions))}||r.ownerPackage!==await fs.realpath(${JSON.stringify(owner.root)})||r.installedFrameworkCommit!==${JSON.stringify(owner.commit)}||
+if(r.version!==2||r.root!==root||r.nodeOptions!==${JSON.stringify(releaseNodeOptions(nodeOptions))}||r.ownerPackage!==await fs.realpath(${JSON.stringify(owner.root)})||
 r.installedFrameworkCommit!==expected.frameworkCommit||r.frameworkContentUnchanged!==true||r.artifactPayloadUnchanged!==true||
 !isDeepStrictEqual(r.origin,expected))throw Error();
 const target=await (${targetRuntime.toString()})();if(Object.keys(target).some(key=>target[key]!==r.target?.[key]))throw Error();

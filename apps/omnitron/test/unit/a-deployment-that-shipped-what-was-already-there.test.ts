@@ -22,6 +22,8 @@
 
 import { describe, it, expect, afterAll } from 'vitest';
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
+import { ArtifactBuilder } from '../../src/project/artifact-builder.js';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -318,16 +320,24 @@ describe('an artifact is identified by what it ships, not when it was packed', (
     expect(await bundleChecksum(dir)).not.toBe(before);
   });
 
-  it('is what the artifact carries', () => {
-    // The wiring: whatever `buildApp` reports as the artifact's checksum has
-    // to be this number, or the skip is comparing something else again.
-    const builder = stripComments(
-      fs.readFileSync(path.join(here, '../../src/project/artifact-builder.ts'), 'utf8'),
-    );
-
-    expect(builder).toMatch(/const checksum = options\?\.releaseCheckouts\s*\? await this\.createFrozenTarball\([^;]+:\s*await this\.createTarball\(/);
-    expect(builder).toMatch(/bundleChecksum/);
-    expect(builder).not.toMatch(/computeChecksum\(artifactPath\)/);
+  it('identifies a checked artifact by its delivered bytes and records its compiled launch', async () => {
+    const app = tree({
+      'package.json': JSON.stringify({ name: 'checksum-fixture', version: '1.0.0', type: 'module', files: ['dist'] }),
+      'dist/main.js': 'export const value = 1;\n',
+    });
+    const output = scratch('omnitron-checksum-artifacts-');
+    const builder = new ArtifactBuilder(app, output);
+    const entry = { name: 'fixture', script: 'dist/main.js' };
+    const first = await builder.buildApp(entry, { skipBuild: true, releaseCheckouts: [app] });
+    const firstBytes = fs.readFileSync(first.path);
+    expect(first.checksum).toBe(createHash('sha256').update(firstBytes).digest('hex'));
+    expect(first.tarballSha256).toBe(first.checksum);
+    expect(first.size).toBe(firstBytes.length);
+    expect(first.launch).toMatchObject({ mode: 'script', file: 'dist/main.js' });
+    fs.writeFileSync(path.join(app, 'dist/main.js'), 'export const value = 2;\n');
+    const second = await builder.buildApp(entry, { skipBuild: true, releaseCheckouts: [app] });
+    expect(second.checksum).not.toBe(first.checksum);
+    expect(second.tarballSha256).toBe(createHash('sha256').update(fs.readFileSync(second.path)).digest('hex'));
   });
 });
 

@@ -90,7 +90,7 @@ it('refuses changed payload even when a complete exact receipt was published', a
     await writeInstalledReleaseReceipt(root, receipt);
     await fs.writeFile(path.join(root, 'main.js'), 'export default 2;');
   });
-  await expect(inspectLocalReleaseInstallation(release, 'local', entries, preparation)).rejects.toThrow('Local installed origin changed');
+  await expect(inspectLocalReleaseInstallation(release, 'local', entries, preparation)).rejects.toThrow('Frozen release files differ from the admitted payload');
   occurred();
 });
 
@@ -108,6 +108,6 @@ it('still compares the admitted payload when a peer seals modified bytes', async
     receipt.treeSha256 = await releaseTreeDigest(root);
     await writeInstalledReleaseReceipt(root, receipt);
   });
-  await expect(inspectLocalReleaseInstallation(release, 'local', entries, preparation)).rejects.toThrow('Local release files differ from the admitted payload');
+  await expect(inspectLocalReleaseInstallation(release, 'local', entries, preparation)).rejects.toThrow('Frozen release files differ from the admitted payload');
   occurred();
 });

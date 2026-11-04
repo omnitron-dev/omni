@@ -121,7 +121,13 @@ describe('a remote stack', () => {
     id: 'sample-202609232000-00000000',
     manifestSha256: 'b'.repeat(64),
     files: ['main', 'payments'].map((app) => ({ app, version: '0.0.1', path: `/nowhere/${app}.tgz`, bytes: 1, inputs: 'i', sha256: 'a'.repeat(64) })),
-    manifest: { builtAt: '2026-09-23T20:00:00Z', omni: { commit: 'c'.repeat(40) } },
+    manifest: {
+      id: 'sample-202609232000-00000000', builtAt: '2026-09-23T20:00:00Z',
+      project: { repo: 'https://example.test/project.git', commit: 'd'.repeat(40) },
+      omni: { repo: 'https://example.test/framework.git', commit: 'c'.repeat(40) },
+      artifacts: ['main', 'payments'].map((app) => ({ app, version: '0.0.1', bytes: 1, sha256: 'a'.repeat(64),
+        launch: { mode: 'script', file: 'dist/main.js', closureSha256: 'e'.repeat(64) } })),
+    },
     staticsDir: null,
     remoteDefinitions: new Map(), // Script entries have no Titan bootstrap declarations.
   } as never;

@@ -15,7 +15,7 @@ function fixture(options: { missing?: string; failure?: string; sealed?: boolean
   let checks = 0;
   Object.assign(service, {
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }, emitProgress: vi.fn(),
-    inspectInstalledBundle: async () => ({ applicationRuntime: { root: '/verified/framework', executable: '/verified/node', commit: 'c'.repeat(40) } }),
+    inspectInstalledBundle: async () => ({ applicationRuntime: { root: '/verified/framework', executable: '/verified/node', commit: 'c'.repeat(40), execution: { mode: 'resident', protocol: 1, ownerId: 'fixture', pid: 42, epoch: 1 } } }),
     deployToNode: vi.fn(async (_target: unknown, artifact: { app: string; version: string }) => ({ app: artifact.app, version: artifact.version,
       status: 'success', node: '127.0.0.2:9700', unchanged: false, ...(options.sealed ? { migrationNode: '/verified/node' } : {}) })),
     sshExec: async (_target: unknown, command: string, _timeout: unknown, stdin: string) => {

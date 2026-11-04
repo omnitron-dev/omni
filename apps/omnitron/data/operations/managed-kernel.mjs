@@ -104,6 +104,22 @@ try {
     if (now.current !== selection.current || now.revision !== selection.revision)
       throw Error('Runtime selection changed during inspection');
   };
+  const channel = await privateControlClient(path.join(config.directory, 'owner.sock'), 'OmnitronExecution');
+  let snap;
+  try {
+    snap = await channel.service.snapshot();
+  } finally {
+    await channel.close();
+  }
+  if (
+    snap.protocol !== 1 ||
+    snap.status.owner.id !== live.owner.id ||
+    snap.status.owner.pid !== ownerPid ||
+    snap.status.phase !== 'active' ||
+    snap.status.controller.epoch !== live.epoch ||
+    !hash.test(snap.inventoryDigest)
+  )
+    throw Error('Unsettled owner inventory');
   const bundle = {
     root: path.dirname(current.directory),
     commit: current.build.commit,
@@ -118,7 +134,8 @@ try {
       ownerId: live.owner.id,
       ownerPid,
     },
-    applicationRuntime: { root: path.dirname(owner.directory), executable: owner.execPath, commit: owner.build.commit },
+    applicationRuntime: { root: path.dirname(owner.directory), executable: owner.execPath, commit: owner.build.commit,
+      execution: { mode: 'resident', protocol: snap.protocol, ownerId: snap.status.owner.id, pid: ownerPid, epoch: snap.status.controller.epoch } },
   };
   if (wanted.operation === 'inspect') {
     assertSelection();
@@ -126,21 +143,6 @@ try {
   } else {
     if (!live.blockers || !wanted.requiredCounters.every(key => Object.hasOwn(live.blockers, key)) ||
         Object.values(live.blockers).some(count => count !== 0)) throw Error('Active or unknown backend operations block kernel qualification');
-    const channel = await privateControlClient(path.join(config.directory, 'owner.sock'), 'OmnitronExecution');
-    let snap;
-    try {
-      snap = await channel.service.snapshot();
-    } finally {
-      await channel.close();
-    }
-    if (
-      snap.status.owner.id !== live.owner.id ||
-      snap.status.owner.pid !== ownerPid ||
-      snap.status.phase !== 'active' ||
-      snap.status.controller.epoch !== live.epoch ||
-      !hash.test(snap.inventoryDigest)
-    )
-      throw Error('Unsettled owner inventory');
     const health = await client.getHealth({});
     const unhealthy = status.apps
       .filter(

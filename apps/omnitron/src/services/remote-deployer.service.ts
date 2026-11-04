@@ -9,9 +9,9 @@ import { deploymentProgressKey } from '../shared/release-reading.js';
 
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { redactDiagnosticText } from '@omnitron-dev/titan/diagnostics';
-import { bindApplicationCommand } from '../release/application-closure.js';
+import { assertFrozenLaunch, installFrozenApplicationCommand } from '../release/frozen-installation.js';
 import { releaseOptionsForEnv } from '../release/target-runtime.js';
-import { sealReleaseArtifactCommand, installedReleaseCheckCommand, validOrigin } from '../release/runtime-provenance.js';
+import { installedReleaseCheckCommand, validOrigin } from '../release/runtime-provenance.js';
 import type { StaticAssetPublication, StaticAssetReceipt } from './static-carry-forward.js';
 import type { MaintenanceLock as HeldLock } from './maintenance-lock.js';
 import type { IStackNode } from '../config/types.js';
@@ -50,7 +50,7 @@ import {
   updateContractBindingsCommand, runtimeProbeCommand, runtimeStartCommand, runtimeStopCommand,
   appHealthCommand, pendingReceiptsCommand, recoverHostUpgrade, stoppedDaemonCommand,
   bootstrapPreflightCommand, HOST_BOOTSTRAP_PREFLIGHT_TIMEOUT_MS,
-  type InstalledBundle, type HostInventory, type HostRuntime, type HostUpgradePlan, type HostUpgradeActions, type HostUpgradeReceipt,
+  assertResidentApplicationRuntime, assertSameApplicationRuntime, type ApplicationRuntime, type InstalledBundle, type HostInventory, type HostRuntime, type HostUpgradePlan, type HostUpgradeActions, type HostUpgradeReceipt,
 } from './host-upgrade.js';
 import { gunzipSync } from 'node:zlib';
 import { shellEscape } from '../shared/shell-escape.js';
@@ -399,6 +399,12 @@ export class RemoteDeployer {
       this.emitProgress(nodeKey, artifact.app, 'pending', 0, 'Connecting via SSH...');
       await this.verifySSH(target);
 
+      if (artifact.release) {
+        assertFrozenLaunch(artifact.launch, artifact.release);
+        inspected = await this.inspectInstalledBundle(target);
+        assertResidentApplicationRuntime(inspected.applicationRuntime);
+      }
+
       // 2. Ensure remote directory structure
       let directory = `${artifact.version}-${artifact.tarballSha256 ?? crypto.randomUUID()}`;
       let remotePath = artifactDirOnNode(project, artifact.app, directory);
@@ -421,7 +427,6 @@ export class RemoteDeployer {
           await this.sshExec(target, readChecksumCommand(shellEscape(remotePath))),
         );
         const sameInputs = artifactChanged(recorded, artifact.checksum) === false;
-        if (sameInputs && artifact.release) inspected = await this.inspectInstalledBundle(target);
         const binding = inspected?.applicationRuntime;
         if (sameInputs && (!artifact.release || (binding &&
             (await this.sshExec(target, installedReleaseCheckCommand(remotePath, artifact.release, binding, nodeOptions), 120_000)).trim() === 'verified'))) {
@@ -452,7 +457,7 @@ export class RemoteDeployer {
         remotePath = artifactDirOnNode(project, artifact.app, directory);
       }
       const parent = artifactDirOnNode(project, artifact.app, artifact.version).replace(/\/[^/]+$/, '');
-      await this.sshExec(target, `mkdir -p ${shellEscape(parent)} && mkdir ${shellEscape(remotePath)}`);
+      await this.sshExec(target, `umask 077; mkdir -p ${shellEscape(parent)} && mkdir ${shellEscape(remotePath)}`);
 
       // 3. Transfer artifact
       this.emitProgress(nodeKey, artifact.app, 'transferring', 20, 'Transferring artifact...');
@@ -506,17 +511,17 @@ export class RemoteDeployer {
       // This newly reserved directory is not referenced by any registered application.
       this.emitProgress(nodeKey, artifact.app, 'extracting', 50, 'Extracting candidate artifact...');
       const archiveName = `${artifact.app}-${artifact.version}.tar.gz`;
-      await this.sshExec(target, `cd ${shellEscape(remotePath)} && tar -xzf ${shellEscape(archiveName)}`);
+      if (!artifact.release) await this.sshExec(target, `cd ${shellEscape(remotePath)} && tar -xzf ${shellEscape(archiveName)}`);
       const daemonBundle = inspected ?? await this.inspectInstalledBundle(target);
       const runtime = daemonBundle.applicationRuntime;
       if (artifact.release) {
-        if (artifact.release.artifactSha256 !== artifact.tarballSha256 || artifact.release.artifactBytes !== artifact.size ||
-            artifact.release.app !== artifact.app || !runtime || runtime.commit !== artifact.release.frameworkCommit)
-          throw new Error('Release identity does not match the verified delivery or the actual execution owner');
-        this.emitProgress(nodeKey, artifact.app, 'installing', 60, 'Verifying the shipped dependency graph against the execution owner...');
-        const result = await this.sshExec(target, bindApplicationCommand(remotePath, runtime.root, runtime.executable, archiveName), 240_000);
-        const value: unknown = JSON.parse(result.trim());
-        if (value !== nodeOptions) throw new Error('Stack Node settings differ from the verified application build; rebuild for this configuration');
+        assertResidentApplicationRuntime(runtime);
+        assertFrozenLaunch(artifact.launch, artifact.release);
+        assertSameApplicationRuntime(runtime, (await this.inspectInstalledBundle(target)).applicationRuntime);
+        this.emitProgress(nodeKey, artifact.app, 'extracting', 65, 'Verifying the unchanged application SDK and execution target');
+        const result = await this.sshExec(target, installFrozenApplicationCommand(remotePath, archiveName,
+          artifact.launch, artifact.release, runtime, nodeOptions, daemonBundle.root), 240_000);
+        if (JSON.parse(result.trim()) !== nodeOptions) throw new Error('Release Node options differ from the effective application definition');
       } else {
         // 5. Install the dependencies ON THE NODE.
         //
@@ -626,25 +631,21 @@ export class RemoteDeployer {
       // map publishes what it lists and nothing else. A probe that fails on
       // a healthy tree is worse than none — it would have failed every
       // deployment from here on, for the one reason that is not a fault.
-      this.emitProgress(nodeKey, artifact.app, 'extracting', 70, 'Checking dependencies...');
-      const resolved = await this.sshExec(
-        target,
-        `cd ${shellEscape(remotePath)} && ${artifact.release && runtime ? 'env -u NODE_OPTIONS -u NODE_PATH ' + shellEscape(runtime.executable) : 'node'} -e ${shellEscape(
-          artifact.release
-            ? "const fs=require('node:fs'),path=require('node:path'),root=fs.realpathSync('.');" +
-              "const file=fs.realpathSync('dist/bootstrap.js');if(!file.startsWith(root+path.sep)||!fs.statSync(file).isFile())process.exit(1)"
-            : "const r=require('module').createRequire(process.cwd()+'/package.json');" +
-              "r.resolve('@omnitron-dev/omnitron');r.resolve('@omnitron-dev/titan')",
-        )} >/dev/null 2>&1 && echo resolves || echo broken`,
-      ).catch(() => 'broken');
-      if (resolved.trim() !== 'resolves') {
-        const duration = Date.now() - startTime;
-        const detail = artifact.release ? 'The packed application bootstrap is missing or outside its verified directory' :
-          'the installed tree cannot resolve @omnitron-dev/omnitron or @omnitron-dev/titan, ' +
-          'so the app will fail at its first import';
-        this.emitProgress(nodeKey, artifact.app, 'failed', 70, detail);
-        this.logger.error({ node: nodeKey, app: artifact.app, path: remotePath }, detail);
-        return { node: nodeKey, app: artifact.app, version: artifact.version, status: 'failed', duration, error: detail };
+      if (!artifact.release) {
+        this.emitProgress(nodeKey, artifact.app, 'extracting', 70, 'Checking dependencies...');
+        const resolved = await this.sshExec(target,
+          `cd ${shellEscape(remotePath)} && node -e ${shellEscape(
+            "const r=require('module').createRequire(process.cwd()+'/package.json');" +
+            "r.resolve('@omnitron-dev/omnitron');r.resolve('@omnitron-dev/titan')",
+          )} >/dev/null 2>&1 && echo resolves || echo broken`,
+        ).catch(() => 'broken');
+        if (resolved.trim() !== 'resolves') {
+          const duration = Date.now() - startTime;
+          const detail = 'The installed tree cannot resolve @omnitron-dev/omnitron or @omnitron-dev/titan';
+          this.emitProgress(nodeKey, artifact.app, 'failed', 70, detail);
+          this.logger.error({ node: nodeKey, app: artifact.app, path: remotePath }, detail);
+          return { node: nodeKey, app: artifact.app, version: artifact.version, status: 'failed', duration, error: detail };
+        }
       }
 
       // 5b. No record yet. The next deployment reads `.artifact-sha256` as
@@ -655,13 +656,6 @@ export class RemoteDeployer {
       // the retry read «installed, running» and left all three on the code
       // they had started with an hour earlier. It is written once the app
       // has come up healthy on these files — `recordRunningArtifact`.
-
-      // A delivery receipt is not running-state evidence. The owner verifies
-      // this exact installed tree before capturing it for a fresh launch.
-      if (artifact.release && runtime) {
-        await this.sshExec(target, sealReleaseArtifactCommand(remotePath, artifact.release, runtime.commit, true, true,
-          { nodeOptions, executable: runtime.executable, ownerPackage: runtime.root }), 120_000);
-      }
 
       // 6. Installed. Starting is a SEPARATE phase, and the order matters:
       // a node cannot start an app it has no definition for, and the
@@ -769,6 +763,13 @@ export class RemoteDeployer {
       }
     }
 
+    const owners = new Map<DeployTarget, ApplicationRuntime>();
+    for (const { target, artifact } of tasks) if (artifact.release && !owners.has(target)) {
+      const runtime = (await this.inspectInstalledBundle(target)).applicationRuntime;
+      assertResidentApplicationRuntime(runtime);
+      owners.set(target, runtime);
+    }
+
     // Execute with concurrency limit
     const executing = new Set<Promise<void>>();
     for (const task of tasks) {
@@ -809,7 +810,7 @@ export class RemoteDeployer {
         const nodeKey = `${target.host}:${target.daemonPort ?? 9700}`;
         const landed = results
           .filter((r) => r.node === nodeKey && r.status === 'success')
-          .map((r) => ({ app: r.app, version: r.version, ...(r.migrationNode ? { migrationNode: r.migrationNode } : {}), ...(r.directory ? { directory: r.directory } : {}) }));
+          .map((r) => ({ app: r.app, version: r.version, ...(artifacts.find(a => a.app === r.app)?.launch ? { launch: artifacts.find(a => a.app === r.app)!.launch } : {}), ...(r.migrationNode ? { migrationNode: r.migrationNode } : {}), ...(r.directory ? { directory: r.directory } : {}) }));
         const expected = tasks.filter(task => task.target === target).length;
         if (landed.length !== expected) {
           for (const result of results.filter(r => r.node === nodeKey && r.status === 'success')) {
@@ -828,7 +829,7 @@ export class RemoteDeployer {
           continue;
         }
         let registration: { changed: boolean };
-        try { registration = await this.registerNodeApps(target, project, options.apps, landed, options.appEnv, options.alertSink, options.stack); }
+        try { registration = await this.registerNodeApps(target, project, options.apps, landed, options.appEnv, options.alertSink, options.stack, owners.get(target)); }
         catch (error) {
           for (const result of results.filter(r => r.node === nodeKey && r.status === 'success')) {
             result.status = 'failed'; result.error = `Node registration failed: ${(error as Error).message}`;
@@ -885,6 +886,15 @@ export class RemoteDeployer {
             continue;
           }
 
+          const expectedOwner = owners.get(target);
+          if (expectedOwner) {
+            try { assertSameApplicationRuntime(expectedOwner, (await this.inspectInstalledBundle(target)).applicationRuntime); }
+            catch (error) {
+              result.status = 'failed'; result.error = (error as Error).message;
+              this.emitProgress(result.node, entry.app, 'failed', 90, result.error);
+              continue;
+            }
+          }
           const started = await this.signalRemoteDaemon(target, entry.app);
           const health = started.ok
             ? await this.verifyHealth(target, entry.app, project)
@@ -1120,10 +1130,11 @@ export class RemoteDeployer {
     target: DeployTarget,
     project: string,
     apps: readonly import('../config/types.js').IEcosystemAppEntry[],
-    landed: ReadonlyArray<{ app: string; version: string; directory?: string }>,
+    landed: ReadonlyArray<{ app: string; version: string; directory?: string; launch?: import('../release/manifest.js').ReleaseLaunch }>,
     appEnv?: Readonly<Record<string, Record<string, string>>> | undefined,
     alertSink?: import('../config/types.js').IAlertSink | undefined,
     sourceStack?: string,
+    expectedOwner?: ApplicationRuntime,
   ): Promise<{ changed: boolean }> {
     if (landed.length === 0) {
       this.logger.warn({ host: target.host, project }, 'No artifact reached this node — nothing to register');
@@ -1144,9 +1155,11 @@ export class RemoteDeployer {
     });
 
     const operation = crypto.randomUUID();
-    let published = false;
+    let published = false, publicationAttempted = false;
     try {
+      if (expectedOwner) assertSameApplicationRuntime(expectedOwner, (await this.inspectInstalledBundle(target)).applicationRuntime);
       const publication = prepareNodeConfigPublication({ directory: dir, project, body, operation, artifacts: landed });
+      publicationAttempted = true;
       const result = await this.sshExec(target, publication.command, 60_000, publication.stdin);
       published = true;
       const { changed } = JSON.parse(result.trim()) as { changed: boolean };
@@ -1171,6 +1184,7 @@ export class RemoteDeployer {
         apps: landed.map((l) => l.app),
         online: await this.appsOnline(target, project),
       });
+      if (expectedOwner) assertSameApplicationRuntime(expectedOwner, (await this.inspectInstalledBundle(target)).applicationRuntime);
       const out =
         start.action === 'start'
           ? await this.sshExec(
@@ -1219,7 +1233,7 @@ export class RemoteDeployer {
       // Restore durable boot definitions if publication or registration was interrupted.
       // Do not claim process rollback: some applications may already have started.
       try {
-        await this.sshExec(target, restoreNodeConfigCommand(dir, operation));
+        if (publicationAttempted) await this.sshExec(target, restoreNodeConfigCommand(dir, operation));
         if (published) await this.sshExec(target, `omnitron project add ${shellEscape(project)} ${shellEscape(dir)} 2>&1`);
       } catch (restoreError) {
         throw new Error(`Registration and configuration recovery failed; inspect ${dir}/.registration-${operation}`, { cause: restoreError });

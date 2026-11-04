@@ -1,8 +1,22 @@
 /** Controlled host upgrades. App deployments pin an installed bundle and never call this lifecycle. */
+import path from 'node:path';
 import { shellEscape } from '../shared/shell-escape.js';
 
 export const HOST_UPGRADE_CONTRACT = 'omnitron.host-upgrade.json';
-export interface ApplicationRuntime { root: string; executable: string; commit: string }
+export interface ApplicationRuntime {
+  root: string; executable: string; commit: string;
+  /** Authenticated resident execution protocol, not a claim inferred from a build version. */
+  execution?: { mode: 'resident'; protocol: 1; ownerId: string; pid: number; epoch: number };
+}
+
+export function assertResidentApplicationRuntime(value: ApplicationRuntime | undefined): asserts value is ApplicationRuntime {
+  if (!value || typeof value.root !== 'string' || !path.isAbsolute(value.root) ||
+      typeof value.executable !== 'string' || !path.isAbsolute(value.executable) || !/^[a-f0-9]{40}$/.test(value.commit) ||
+      value.execution?.mode !== 'resident' || value.execution.protocol !== 1 ||
+      typeof value.execution.ownerId !== 'string' || !/^[a-zA-Z0-9-]{1,128}$/.test(value.execution.ownerId) || !Number.isSafeInteger(value.execution.pid) || value.execution.pid < 1 ||
+      !Number.isSafeInteger(value.execution.epoch) || value.execution.epoch < 1)
+    throw Error('Verified application deployment requires an authenticated independent execution owner (protocol 1). Prepare an owner transition and rollback before installing this release; no SDK rebinding or dependency installation will be attempted.');
+}
 export interface InstalledBundle {
   root: string; version: string; commit: string; applicationRuntime?: ApplicationRuntime;
   managed?: { platform: string; arch: string; nodeVersion: string; backendArtifact: string; backendPid: number; ownerArtifact: string; ownerId: string; ownerPid: number };
@@ -478,4 +492,14 @@ export function stoppedDaemonCommand(bundle: InstalledBundle): string {
     const {expandPath}=await import(pathToFileURL(base+'/dist/shared/paths.js').href);
     const pid=new PidManager(expandPath(DEFAULT_DAEMON_CONFIG.pidFile)).getPid();
     if(pid && PidManager.isProcessAlive(pid)) throw Error('Daemon still owns a live PID after stop; refusing to change bindings');`);
+}
+
+/** A build commit identifies code, while this observation binds the live process and grant. */
+export function assertSameApplicationRuntime(expected: ApplicationRuntime, actual: ApplicationRuntime | undefined): void {
+  assertResidentApplicationRuntime(expected);
+  assertResidentApplicationRuntime(actual);
+  if (expected.root !== actual.root || expected.executable !== actual.executable || expected.commit !== actual.commit ||
+      expected.execution!.ownerId !== actual.execution!.ownerId || expected.execution!.pid !== actual.execution!.pid ||
+      expected.execution!.epoch !== actual.execution!.epoch)
+    throw Error('Execution owner or controller grant changed during application delivery; inspect the settled owner and retry before starting this release');
 }

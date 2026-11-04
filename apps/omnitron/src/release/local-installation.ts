@@ -2,14 +2,12 @@ import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { createRequire } from 'node:module';
 import { isDeepStrictEqual } from 'node:util';
-import { extract, list } from 'tar';
 
 import type { IEcosystemAppEntry } from '../config/types.js';
 import { validateReadiness } from '../health/contracts.js';
-import { applicationBootstrapRuntime } from '../orchestrator/application-runtime.js';
 import { CLOSURE_FILE } from './application-closure.js';
+import { assertFrozenDirectory as assertDirectory, frozenMember as member, extractFrozenArchive, verifyFrozenApplication } from './frozen-installation.js';
 import type { LoadedRelease } from './load.js';
 import { assertOwnerExecutable } from './owner-executable.js';
 import type { ReleaseLaunch } from './manifest.js';
@@ -24,15 +22,7 @@ export class LocalReleaseNotPreparedError extends Error {}
 const digest = (s: string) => /^[a-f0-9]{64}$/.test(s);
 const componentPath = (s: string) => s.length <= 4096 && !s.includes('\\') && !s.includes(':') &&
   !s.includes('\0') && s.split('/').every(part => part && part !== '.' && part !== '..');
-const inside = (root: string, name: string) => name.startsWith(root + path.sep);
 const absent = (e: unknown) => (e as NodeJS.ErrnoException).code === 'ENOENT';
-
-async function member(root: string, relative: string): Promise<string> {
-  if (!componentPath(relative) || !/\.[cm]?js$/.test(relative)) throw Error('Expected a package-relative compiled JavaScript entry: ' + relative);
-  const file = path.join(root, relative);
-  if (file !== await fs.realpath(file) || !(await fs.lstat(file)).isFile()) throw Error('Release entry must be a physical file: ' + relative);
-  return file;
-}
 
 /** Preserve the existing remote bootstrap convention. Classic programs must actually publish their entry. */
 export async function describeReleaseLaunch(staged: string, entry: IEcosystemAppEntry, relativeScript?: string): Promise<ReleaseLaunch | undefined> {
@@ -47,35 +37,6 @@ export async function describeReleaseLaunch(staged: string, entry: IEcosystemApp
   return { mode: entry.bootstrap ? 'bootstrap' : 'script', file, closureSha256: await sha256File(path.join(root, CLOSURE_FILE)) };
 }
 
-/** A fresh directory, no special files, hardlinks, path aliases or writes through a symlink. */
-async function extractFrozenArchive(archive: string, directory: string): Promise<void> {
-  let invalid: string | undefined, bytes = 0;
-  const names = new Map<string, string>();
-  await list({ file: archive, strict: true, onReadEntry(entry) {
-    if (invalid) return;
-    const name = entry.path.replace(/\/$/, ''), key = name.normalize('NFC').toLowerCase();
-    if (!componentPath(name) || names.has(key) || [RELEASE_RECEIPT, '.artifact-sha256'].includes(path.posix.basename(key)) ||
-      !['File', 'Directory', 'SymbolicLink'].includes(entry.type) || names.size >= 200_000 ||
-      !Number.isSafeInteger(entry.size) || entry.size < 0 || entry.size > 268_435_456 || (bytes += entry.size) > 2_147_483_648) {
-      invalid = 'Invalid release archive member: ' + name; return;
-    }
-    names.set(key, entry.type);
-    if (entry.type === 'SymbolicLink') {
-      const link = entry.linkpath ?? '', resolved = path.posix.normalize(path.posix.join(path.posix.dirname(name), link));
-      if (!link || /[\\:\0]/.test(link) || path.posix.isAbsolute(link) || resolved === '..' || resolved.startsWith('../'))
-        invalid = 'Release archive link leaves its root: ' + name;
-    }
-  } });
-  if (invalid) throw Error(invalid);
-  // Entries may occur in any order. A link to an in-tree directory is fine, writing through that link is not.
-  for (const name of names.keys()) {
-    for (let p = path.posix.dirname(name); p !== '.'; p = path.posix.dirname(p)) {
-      if (names.get(p) !== 'Directory') throw Error('Invalid release archive parent: ' + p);
-    }
-  }
-  await extract({ file: archive, cwd: directory, strict: true, preserveOwner: false, noChmod: false });
-}
-
 async function privateDirectory(parent: string, name: string): Promise<string> {
   const dir = path.join(parent, name);
   try { await fs.mkdir(dir, { mode: 0o700 }); }
@@ -84,26 +45,8 @@ async function privateDirectory(parent: string, name: string): Promise<string> {
   return dir;
 }
 
-async function assertDirectory(dir: string) {
-  const s = await fs.lstat(dir);
-  if (!s.isDirectory() || await fs.realpath(dir) !== dir || (s.mode & 0o077) || (process.getuid && s.uid !== process.getuid()))
-    throw Error('Local installation requires a private physical directory: ' + dir);
-}
-
 async function verify(root: string, launch: ReleaseLaunch, entry: IEcosystemAppEntry, runtime: TargetRuntime, installed?: { origin: ReleaseArtifactOrigin; ownerPackage: string }): Promise<string> {
-  await assertDirectory(root);
-  const file = await member(root, launch.file);
-  const handle = await fs.open(path.join(root, CLOSURE_FILE), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-  let raw: Buffer;
-  try {
-    const s = await handle.stat();
-    if (!s.isFile() || s.size > 2_000_000) throw Error('Invalid frozen closure record');
-    raw = await handle.readFile();
-  } finally { await handle.close(); }
-  if (createHash('sha256').update(raw).digest('hex') !== launch.closureSha256) throw Error('Local closure differs from the admitted manifest');
-  const c = JSON.parse(raw.toString('utf8'));
-  if (c.protocol !== 1 || !digest(c.payloadSha256) || Object.entries(runtime).some(([k,v]) => c.runtime?.[k] !== v) ||
-    c.nodeOptions !== releaseOptionsForEnv(entry.env)) throw Error('Local release closure, execution target or Node options differ from the build');
+  const file = await verifyFrozenApplication(root, launch, runtime, releaseOptionsForEnv(entry.env));
   // Archives cannot inject operational evidence. A prepared installation must match its exact admitted origin.
   if (installed) {
     const receipt = await readInstalledReleaseReceipt(root);
@@ -116,13 +59,6 @@ async function verify(root: string, launch: ReleaseLaunch, entry: IEcosystemAppE
   for (const name of installed ? ['.artifact-sha256'] : [RELEASE_RECEIPT, '.artifact-sha256']) {
     if (await fs.lstat(path.join(root, name)).then(() => true, error => { if (absent(error)) return false; throw error; }))
       throw Error('Unexpected operational metadata in local release: ' + name);
-  }
-  if (await releaseTreeDigest(root, true, false, [CLOSURE_FILE]) !== c.payloadSha256) throw Error('Local release files differ from the admitted payload');
-  if (launch.mode === 'bootstrap') {
-    // Boot via the same adapter resolution as the supervisor, without a fallback to its SDK.
-    const adapter = await fs.realpath(createRequire(file).resolve('@omnitron-dev/omnitron'));
-    if (!inside(root, adapter) || !inside(root, await fs.realpath(applicationBootstrapRuntime(file, adapter))))
-      throw Error('Local release must supply its own aligned Omnitron adapter');
   }
   return file;
 }

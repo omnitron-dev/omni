@@ -35,12 +35,17 @@ import { RemoteDeployer } from '../../src/services/remote-deployer.service.js';
 
 const NODE = { host: '10.0.0.9', port: 9700 };
 const ECOSYSTEM = { apps: [{ name: 'main', script: 'apps/main/dist/main.js' }] } as never;
+// A declared release must pass the real origin validator before the tested node operation.
 const RELEASE = {
-  id: 'sample-202609241258-00000000',
-  files: [{ app: 'main', version: '0.0.1', path: '/nowhere/main.tgz', bytes: 1, inputs: 'i', sha256: 's' }],
-  manifest: { builtAt: '2026-09-24T12:58:00Z', omni: { commit: 'b'.repeat(40) } },
-  staticsDir: null,
-  remoteDefinitions: new Map(), // Script entries have no Titan bootstrap declarations.
+  id: 'sample-202609241258-00000000', manifestSha256: 'a'.repeat(64),
+  files: [{ app: 'main', version: '0.0.1', path: '/nowhere/main.tgz', bytes: 1, inputs: 'i', sha256: 'c'.repeat(64) }],
+  manifest: { id: 'sample-202609241258-00000000', builtAt: '2026-09-24T12:58:00Z',
+    project: { repo: 'https://example.test/project.git', commit: 'd'.repeat(40) },
+    omni: { repo: 'https://example.test/framework.git', commit: 'b'.repeat(40) },
+    artifacts: [{ app: 'main', version: '0.0.1', bytes: 1, sha256: 'c'.repeat(64),
+      launch: { mode: 'script', file: 'dist/main.js', closureSha256: 'e'.repeat(64) } }],
+  },
+  staticsDir: null, remoteDefinitions: new Map(),
 } as never;
 
 /** A remote start, with every node-facing step answered — what reaches the deployer is the question. */

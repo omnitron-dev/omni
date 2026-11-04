@@ -1,4 +1,4 @@
-/** Build, transfer, bind and launch a sealed application with no package manager on the target. */
+/** Build, transfer, verify and launch a sealed application with no package manager on the target. */
 import assert from 'node:assert/strict';
 import { exec as execCb, execFile as execFileCb } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -6,14 +6,16 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
 import { promisify } from 'node:util';
 const exec = promisify(execCb), execFile = promisify(execFileCb);
 const dist = path.resolve(process.argv[2] ?? 'dist');
 const load = name => import(pathToFileURL(path.join(dist, 'release', name + '.js')));
 const { installedGraph, materializeGraph } = await load('installed-graph');
 const { ArtifactBuilder } = await import(pathToFileURL(path.join(dist, 'project/artifact-builder.js')));
-const { stageApplicationClosure, bindApplicationCommand } = await load('application-closure');
+const { stageApplicationClosure } = await load('application-closure');
 const { writePortableArchive } = await load('portable-archive');
+const { installFrozenApplicationCommand, verifyFrozenApplication } = await load('frozen-installation');
 const { sealReleaseArtifactCommand, installedReleaseCheckCommand, verifyLaunchRelease } = await load('runtime-provenance');
 const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-closure-test-'));
 const src = path.join(tmp,'clean'), root = path.join(tmp,'incoming'), owner = path.join(tmp,'owner');
@@ -90,7 +92,7 @@ try {
   const [again] = await inspect(first, 'dev', [classicEntry], opts);
   assert.equal(again.script, installed.script);
   await fs.appendFile(installed.script, '// changed');
-  await assert.rejects(inspect(first, 'dev', [classicEntry], opts), /Local installed origin changed/);
+  await assert.rejects(inspect(first, 'dev', [classicEntry], opts), /Frozen release files differ|Local installed origin changed/);
   const privateApi = await pkg('private-api', {'@omnitron-dev/titan': titan, '@omnitron-dev/omnitron': daemon});
   await fs.mkdir(path.join(daemon,'dist/orchestrator'),{recursive:true});
   await fs.writeFile(path.join(daemon,'dist/orchestrator/bootstrap-process.js'),'export default {};');
@@ -177,44 +179,53 @@ try {
     'if(await resolveInstalledDependency(process.argv[2],"mock-native"))process.exitCode=1;';
   await execFile(process.execPath, ['--input-type=module','-e',probe,resolution,tmp], {env:{...process.env,NODE_PATH:globalModules}});
   const archive=path.join(tmp,'sample.tar.gz');await writePortableArchive(staged,archive);
-  await fs.mkdir(root);await execFile('tar',['-xzf',archive,'-C',root]);
-  const content=await fs.readFile(archive),bootstrap=path.join(root,'dist/index.js'),closure=path.join(root,'.omnitron-closure.json');
-  const record=await fs.readFile(closure,'utf8'), spec=JSON.parse(record);
-  const transferred = 'api-1.0.0.tar.gz';
-  await fs.copyFile(archive,path.join(root,transferred));
-  const binding=bindApplicationCommand(root,ownerPkg,process.execPath,transferred);
-  const send=async edit=>fs.writeFile(closure,JSON.stringify(edit));
-  await send({...spec,runtime:{...spec.runtime,arch:'wrong-arch'}});await assert.rejects(run(binding),/runtime mismatch \(arch\)/);await fs.writeFile(closure,record);
-  const payload=await fs.readFile(bootstrap);await fs.appendFile(bootstrap,'changed');await assert.rejects(run(binding),/unpacked release payload/);await fs.writeFile(bootstrap,payload);
-  const remoteLeaf=path.join(locations[graph.findIndex(p=>p.metadata.name==='mock-native')],'dist/native.bin');
-  const native=await fs.readFile(remoteLeaf);await fs.writeFile(remoteLeaf,Buffer.from([42]));await assert.rejects(run(binding),/owner dependencies differ/);await fs.writeFile(remoteLeaf,native);
-  const eventLeaf = path.join(await fs.realpath(path.join(ownerPkg, 'node_modules/@omnitron-dev/events')), 'node_modules/mock-native');
-  const originalLink = await fs.readlink(eventLeaf), duplicate = path.join(owner, 'duplicate');
-  await fs.cp(await fs.realpath(eventLeaf), duplicate, {recursive:true});
-  await fs.unlink(eventLeaf); await fs.symlink(duplicate, eventLeaf, 'dir');
-  await assert.rejects(run(binding), /shared package identity differs/);
-  await fs.unlink(eventLeaf); await fs.symlink(originalLink, eventLeaf, 'dir');
-  assert.equal(JSON.parse(await run(binding)),options);assert.equal(await fs.realpath(path.join(root,'node_modules/@omnitron-dev/titan')),await fs.realpath(path.join(ownerPkg,'node_modules/@omnitron-dev/titan')));
-  const expectedLeaf = await fs.realpath(path.dirname(path.dirname(remoteLeaf)));
-  for (const installed of ['node_modules/mock-native', 'node_modules/@omnitron-dev/extension/node_modules/mock-native',
-    'node_modules/@omnitron-dev/titan/node_modules/mock-native']) {
-    assert.equal(await fs.realpath(path.join(root, installed)), expectedLeaf, installed);
-  }
-  assert.ok((await fs.realpath(path.join(root, 'node_modules/@omnitron-dev/extension'))).startsWith(root + path.sep));
-  assert.equal(await fs.access(path.join(root,'node_modules/@omnitron-dev/unused')).then(()=>true,()=>false),false);
+  const content=await fs.readFile(archive),bootstrap=path.join(root,'dist/index.js');
+  const launch={mode:'script',file:'dist/index.js',closureSha256:sha(await fs.readFile(path.join(staged,'.omnitron-closure.json')))};
+  const origin={releaseId:'sample-1',app:'api',manifestSha256:'a'.repeat(64),artifactSha256:sha(content),artifactBytes:content.length,
+    frameworkCommit:'c'.repeat(40),runtimeOrigin:{projectCommit:'d'.repeat(40),producerApp:'api',
+      consumer:{releaseId:'sample-1',manifestSha256:'a'.repeat(64),app:'api'},entry:{mode:'script',relativeFile:launch.file}}};
+  // The test owner's bounded extractor is physically inside its own runtime.
+  let tarRoot=path.dirname(createRequire(import.meta.url).resolve('tar'));
+  while(await fs.readFile(path.join(tarRoot,'package.json'),'utf8').then(raw=>JSON.parse(raw).name!=='tar',()=>true))tarRoot=path.dirname(tarRoot);
+  const extractorGraph=await installedGraph(tarRoot),extractorLocations=extractorGraph.map((_,i)=>path.join(owner,'extractor',String(i)));
+  await materializeGraph(extractorGraph,extractorLocations);
+  await fs.symlink(extractorLocations[0],path.join(ownerPkg,'node_modules/tar'),'dir');
+  const runtime={root:ownerPkg,executable:process.execPath,commit:'e'.repeat(40)};
+  assert.notEqual(runtime.commit,origin.frameworkCommit,'the execution owner does not select the application SDK');
+  await fs.mkdir(root,{mode:0o700});
+  const transferred='api-1.0.0.tar.gz';await fs.copyFile(archive,path.join(root,transferred));
+  const install=installFrozenApplicationCommand(root,transferred,launch,origin,runtime,options,ownerPkg);
+  assert.equal(JSON.parse(await run(install)),options);
+  const target=await(await load('target-runtime')).targetRuntime();
+  assert.equal(await verifyFrozenApplication(root,launch,target,options),bootstrap);
+  await assert.rejects(verifyFrozenApplication(root,launch,{...target,arch:'other'},options),/execution target/);
+  await assert.rejects(verifyFrozenApplication(root,launch,target,''),/Node options/);
+  const shippedTitan=await fs.realpath(path.join(root,'node_modules/@omnitron-dev/titan'));
+  assert.ok(shippedTitan.startsWith(root+path.sep));
+  assert.notEqual(shippedTitan,await fs.realpath(path.join(ownerPkg,'node_modules/@omnitron-dev/titan')));
+  const privateLeaf=await fs.realpath(path.join(root,'node_modules/mock-native'));
+  for(const installed of ['node_modules/@omnitron-dev/extension/node_modules/mock-native',
+    'node_modules/@omnitron-dev/titan/node_modules/mock-native'])assert.equal(await fs.realpath(path.join(root,installed)),privateLeaf);
+  const nativeFile=path.join(privateLeaf,'dist/native.bin'),native=await fs.readFile(nativeFile);
+  await fs.writeFile(nativeFile,Buffer.from([42]));
+  await assert.rejects(verifyFrozenApplication(root,launch,target,options),/files differ/);
+  await fs.writeFile(nativeFile,native);
+  // Changes in an owner's unused SDK package cannot alter the application's graph.
+  const ownerLeaf=path.join(locations[graph.findIndex(p=>p.metadata.name==='mock-native')],'dist/native.bin');
+  await fs.writeFile(ownerLeaf,Buffer.from([42]));
+  assert.equal(await verifyFrozenApplication(root,launch,target,options),bootstrap);
   assert.equal((await execFile(process.execPath,[bootstrap],{env:{NODE_OPTIONS:options}})).stdout.trim(),'42');
   assert.equal(await fs.access(path.join(root,transferred)).then(()=>true,()=>false),false);
-  const origin={releaseId:'sample-1',app:'api',manifestSha256:'a'.repeat(64),artifactSha256:sha(content),artifactBytes:content.length,frameworkCommit:'c'.repeat(40)};
-  const runtime={root:ownerPkg,executable:process.execPath,commit:origin.frameworkCommit};
-  await run(sealReleaseArtifactCommand(root,origin,origin.frameworkCommit,true,true,{nodeOptions:options,executable:runtime.executable,ownerPackage:runtime.root}));
-  const check=(e, verifier = live.verifyLaunchRelease)=>verifier({name:'project/test/api',cwd:root,releaseRoot:root,bootstrap,env:e},'launch-1',[bootstrap]);
+  const check=(e,verifier=live.verifyLaunchRelease)=>verifier({name:'project/test/api',cwd:root,releaseRoot:root,script:bootstrap,env:e},'launch-1',[bootstrap]);
   assert.equal((await check({NODE_OPTIONS:options})).state,'confirmed');
   for(const env of [{NODE_OPTIONS:'--max-old-space-size=4096'},{NODE_OPTIONS:'--require=/tmp/payload'},{NODE_OPTIONS:options,NODE_PATH:'/tmp'},{NODE_OPTIONS:''}])assert.equal((await check(env)).state,'unreported');
-  assert.equal((await check({NODE_OPTIONS:options}, verifyLaunchRelease)).state, 'modified');
+  assert.equal((await check({NODE_OPTIONS:options},verifyLaunchRelease)).state,'modified');
   const reuse=installedReleaseCheckCommand(root,origin,runtime,options);
   assert.equal(await run(installedReleaseCheckCommand(root,origin,runtime,'')),'stale');
-  assert.equal(await run(reuse),'verified');assert.equal(await run(installedReleaseCheckCommand(root,{...origin,releaseId:'another'},runtime,options)),'stale');
+  assert.equal(await run(reuse),'verified');
+  assert.equal(await run(installedReleaseCheckCommand(root,{...origin,releaseId:'another'},runtime,options)),'stale');
   assert.equal(await run(installedReleaseCheckCommand(root,origin,{...runtime,root:path.join(tmp,'different-owner')},options)),'stale');
   await fs.appendFile(bootstrap,'\n// changed');assert.equal(await run(reuse),'stale');assert.equal((await check({NODE_OPTIONS:options})).state,'modified');
-  console.log(JSON.stringify({test:'frozen-application',offlineLaunch:true,matchingSharedIdentity:true,alteredNativeBytesRefused:true,resourcePolicyVerified:true,reuseChecks:true}));
+  console.log(JSON.stringify({test:'frozen-application',offlineLaunch:true,privateGraphPreserved:true,alteredNativeBytesRefused:true,
+    differingOwnerSdkSupported:true,resourcePolicyVerified:true,reuseChecks:true}));
 } finally {await fs.rm(tmp,{recursive:true,force:true});}

@@ -63,12 +63,17 @@ const STACK = {
   infrastructure: { postgres: { port: 5432, user: 'postgres', password: DECLARED } },
 } as never;
 const ECOSYSTEM = { apps: [{ name: 'main', script: 'apps/main/dist/main.js' }] } as never;
+// A declared release must pass the real origin validator before the tested node operation.
 const RELEASE = {
-  id: 'sample-202609222110-2c9fc913',
-  files: [{ app: 'main', version: '0.0.1', path: '/nowhere/main.tgz', bytes: 1, inputs: 'i', sha256: 's' }],
-  manifest: { omni: { commit: '1'.repeat(40) }, builtAt: '2026-09-22T21:10:00Z' },
-  staticsDir: null,
-  remoteDefinitions: new Map(), // Script entries have no Titan bootstrap declarations.
+  id: 'sample-202609222110-2c9fc913', manifestSha256: 'a'.repeat(64),
+  files: [{ app: 'main', version: '0.0.1', path: '/nowhere/main.tgz', bytes: 1, inputs: 'i', sha256: 'c'.repeat(64) }],
+  manifest: { id: 'sample-202609222110-2c9fc913', builtAt: '2026-09-22T21:10:00Z',
+    project: { repo: 'https://example.test/project.git', commit: 'd'.repeat(40) },
+    omni: { repo: 'https://example.test/framework.git', commit: '1'.repeat(40) },
+    artifacts: [{ app: 'main', version: '0.0.1', bytes: 1, sha256: 'c'.repeat(64),
+      launch: { mode: 'script', file: 'dist/main.js', closureSha256: 'e'.repeat(64) } }],
+  },
+  staticsDir: null, remoteDefinitions: new Map(),
 } as never;
 
 type Said = { level: string; msg: string; fields: Record<string, unknown> };

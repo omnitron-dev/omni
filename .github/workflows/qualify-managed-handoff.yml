@@ -29,6 +29,8 @@ jobs:
       TARGET_NODE: ${{ inputs.node }}
       TZ: UTC
       TURBO_TELEMETRY_DISABLED: '1'
+      TURBO_FORCE: 'true'
+      TURBO_CONCURRENCY: '2'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -57,7 +59,7 @@ jobs:
               SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
               export SOURCE_DATE_EPOCH
               pnpm install --frozen-lockfile
-              pnpm exec turbo run build --force --concurrency=2
+              pnpm run build
               node apps/omnitron/scripts/freeze-backend.mjs apps/omnitron "$runtime"
               node --input-type=module - "$runtime" "$rev" <<'JS'
           import assert from 'node:assert/strict';

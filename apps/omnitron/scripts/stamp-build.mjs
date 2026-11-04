@@ -45,7 +45,9 @@ if (flag === '--commit') {
     commit = git('rev-parse', 'HEAD');
     // The whole repository, as the bundle builder reads it: a change in a
     // package this app compiles against is as much a change as one in `src`.
-    dirty = git('status', '--porcelain').length > 0;
+    const changes = git('status', '--porcelain');
+    dirty = changes.length > 0;
+    if (dirty) process.stderr.write(`stamp-build: uncommitted inputs:\n${changes}\n`);
     if (!dirty) sourceEpoch = git('show', '-s', '--format=%ct', commit);
   } catch {
     process.stderr.write(`stamp-build: ${dir} is not inside a git repository — the build is left unstamped\n`);

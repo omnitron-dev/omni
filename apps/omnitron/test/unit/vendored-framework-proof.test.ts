@@ -38,32 +38,41 @@ it('reads a regular Git blob under the registered directory and rejects symlinks
   expect(() => requireFrameworkCommit('main')).toThrow(/full upstream Git commit/);
 });
 
-// The tiny fixture uses its own deterministic compile step. Git checkout, pnpm pack,
-// canonicalization, Git blob/SRI verification and installed tree checks are real.
+// Git checkout, the source's multi-step build, pnpm pack, canonicalization and
+// Git blob/SRI verification are real; only dependency installation is unnecessary.
 it('refuses a forged archive and matching consumer lock even when its clean build stamp names the upstream commit', async () => {
   const upstream = path.join(root, 'origin'), pkg = path.join(upstream, 'apps/omnitron');
   await fs.mkdir(pkg, { recursive: true });
   await command(upstream, 'git', 'init', '-q', '-b', 'main');
   await fs.writeFile(path.join(upstream, '.gitignore'), 'dist/\n');
   await fs.writeFile(path.join(upstream, 'pnpm-workspace.yaml'), "packages: ['apps/*']\n");
-  await fs.writeFile(path.join(upstream, 'package.json'), JSON.stringify({ name: 'fixture', private: true }));
+  await fs.writeFile(path.join(upstream, 'package.json'), JSON.stringify({ name: 'fixture', private: true,
+    scripts: { build: 'node compile.cjs && node declarations.cjs' } }));
+  await fs.writeFile(path.join(upstream, 'compile.cjs'), `
+    const fs = require('node:fs'), cp = require('node:child_process');
+    const base = 'apps/omnitron/';
+    fs.mkdirSync(base + 'dist', { recursive: true });
+    fs.copyFileSync(base + 'code.txt', base + 'dist/index.js');
+    const commit = cp.execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    fs.writeFileSync(base + 'dist/BUILD.json', JSON.stringify({ commit, dirty: false, builtAt: '2026-01-01T00:00:00Z', timeBasis: 'source' }));
+  `);
+  await fs.writeFile(path.join(upstream, 'declarations.cjs'), `
+    require('node:fs').writeFileSync('apps/omnitron/dist/index.d.ts', 'declare const value: 1; export default value;');
+  `);
   await fs.writeFile(path.join(pkg, 'package.json'), JSON.stringify({ name, version, files: ['dist'], repository: { type: 'git', url: upstream } }));
   await fs.writeFile(path.join(pkg, 'code.txt'), 'export default 1;\n');
   const sha = await commit(upstream);
   const tree = await command(upstream, 'git', 'rev-parse', 'HEAD^{tree}');
-  const compile = async (dir: string) => {
-    const workspace = path.join(dir, 'apps/omnitron'), dist = path.join(workspace, 'dist');
-    await fs.mkdir(dist, { recursive: true });
-    await fs.copyFile(path.join(workspace, 'code.txt'), path.join(dist, 'index.js'));
-    await fs.writeFile(path.join(dist, 'BUILD.json'), JSON.stringify({ commit: sha, dirty: false, builtAt: '2026-01-01T00:00:00Z', timeBasis: 'source' }));
-  };
-  await compile(upstream);
+  await command(upstream, 'pnpm', 'run', 'build');
   const project = path.join(root, 'project'), archive = path.join(project, file);
   await fs.mkdir(path.dirname(archive), { recursive: true });
   await command(project, 'git', 'init', '-q', '-b', 'main');
-  const run = async (tool: string, args: string[], cwd: string) => {
-    if (tool === 'pnpm' && args[0] === 'exec') await compile(cwd);
-    else if (tool !== 'pnpm' || args[0] !== 'install') await command(cwd, tool, ...args);
+  const run = async (tool: string, args: string[], cwd: string, env: NodeJS.ProcessEnv) => {
+    if (tool === 'pnpm' && args[0] === 'run') {
+      expect(args).toEqual(['run', 'build']);
+      expect(env).toMatchObject({ TURBO_FORCE: 'true', TURBO_CONCURRENCY: '3' });
+    }
+    if (tool !== 'pnpm' || args[0] !== 'install') await command(cwd, tool, ...args);
   };
   const check = async (stage: string) => {
     await command(pkg, 'pnpm', 'pack', '--out', archive);

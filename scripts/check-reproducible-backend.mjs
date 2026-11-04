@@ -18,7 +18,7 @@ const git = (...args) => execFileSync('git', args, { cwd: source, encoding: 'utf
 const revision = git('rev-parse', 'HEAD');
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'omnitron-reproduce-'));
 const env = { ...process.env, TZ: 'UTC', SOURCE_DATE_EPOCH: git('show', '-s', '--format=%ct', revision),
-  npm_config_side_effects_cache: 'false', TURBO_TELEMETRY_DISABLED: '1' };
+  npm_config_side_effects_cache: 'false', TURBO_TELEMETRY_DISABLED: '1', TURBO_FORCE: 'true', TURBO_CONCURRENCY: '3' };
 delete env.TURBO_TOKEN;
 delete env.TURBO_TEAM;
 async function build(round, retained) {
@@ -29,7 +29,7 @@ async function build(round, retained) {
   const run = (command, args) => execFileSync(command, args, { cwd, env: buildEnv, stdio: 'inherit' });
   run('git', ['checkout', '--quiet', '--detach', revision]);
   run('pnpm', ['install', '--frozen-lockfile']);
-  run('pnpm', ['exec', 'turbo', 'run', 'build', '--force', '--concurrency=3']);
+  run('pnpm', ['run', 'build']);
   run(process.execPath, ['apps/omnitron/scripts/freeze-backend.mjs', 'apps/omnitron', output]);
   const read = async filename => JSON.parse(await fs.readFile(path.join(output, filename), 'utf8'));
   const stamp = await read('packages/0/dist/BUILD.json');

@@ -71,13 +71,17 @@ export async function reproduceVendoredFramework(packages: readonly VendoredPack
 
   const source = path.join(scratch, 'upstream');
   await fs.mkdir(scratch, { recursive: true });
-  const env = { ...options.env, GIT_NO_REPLACE_OBJECTS: '1', GIT_TERMINAL_PROMPT: '0', TZ: 'UTC', CI: '1', TURBO_TELEMETRY_DISABLED: '1' };
+  const env: NodeJS.ProcessEnv = { ...options.env, GIT_NO_REPLACE_OBJECTS: '1', GIT_TERMINAL_PROMPT: '0', TZ: 'UTC', CI: '1', TURBO_TELEMETRY_DISABLED: '1' };
+  delete env.TURBO_TOKEN;
+  delete env.TURBO_TEAM;
   const identity = await checkoutFrameworkSource(source, { source: options.frameworkSource, commit, sourceBase: options.sourceBase,
     env, run, ...(signal && { signal }) });
   const epoch = (await git(source, ['show', '-s', '--format=%ct', 'HEAD'], signal)).stdout.trim();
-  const buildEnv = { ...env, SOURCE_DATE_EPOCH: epoch };
+  const buildEnv = { ...env, SOURCE_DATE_EPOCH: epoch, TURBO_FORCE: 'true', TURBO_CONCURRENCY: '3' };
   await run('pnpm', ['install', '--frozen-lockfile'], source, buildEnv);
-  await run('pnpm', ['exec', 'turbo', 'run', 'build', '--force', '--concurrency=3'], source, buildEnv);
+  // The selected source owns its complete build contract, including auxiliary
+  // declaration passes. Reimplementing only its Turbo "build" task changes SDK bytes.
+  await run('pnpm', ['run', 'build'], source, buildEnv);
   return verifyReproducedFramework(packages, source, identity, scratch, run, buildEnv, signal);
 }
 

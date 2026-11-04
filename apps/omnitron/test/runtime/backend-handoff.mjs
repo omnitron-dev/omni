@@ -244,6 +244,32 @@ try {
     isolatedApplication: otherBefore, sameNameServicesIsolated: true, siblingCallsVerified: true,
     declarationRestoredAfterRestart: true, unrelatedPid: counterBeforeLifecycle };
   if (lifecycleOnly) {
+    // Exercise the real recycling timer, not a mocked membership operation.
+    // A long handoff run may finish just below the default request threshold.
+    // This explicit workload makes retirement continuity a required gate.
+    const connection = await privateControlClient(await topologySocket('topology'), 'FixturePool');
+    const initialPids = restarted.pool, observedPids = new Set(initialPids);
+    let retirementSamples = 0;
+    const deadline = Date.now() + 90_000;
+    try {
+      const sample = async () => {
+        assert.ok(Date.now() < deadline, 'Request-count recycling deadline');
+        const response = await connection.service.snapshot();
+        assert.equal(response.parent, ownerPid); assert.equal(response.deployment, 'topology');
+        observedPids.add(response.pid); retirementSamples++;
+      };
+      for (let i = 0; i < 24_000; i++) await sample();
+      while (initialPids.some(pid => PidManager.isProcessAlive(pid))) {
+        await sample();
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      const continued = await observeTopology();
+      assert(continued.pool.every(pid => !initialPids.includes(pid)));
+      assert.equal(continued.single, restarted.single);
+      assert.deepEqual(await observeTopology(2, 'other-topology'), otherBefore);
+      lifecycleProof.recycling = { initialPids, finalPids: continued.pool, samples: retirementSamples,
+        observedPids: [...observedPids], failures: 0, unrelatedApplicationPreserved: true };
+    } finally { await connection.close(); }
     await client.disconnect();
     console.log(JSON.stringify({ test: 'orchestrator-native-lifecycle', directory, ownerPid, lifecycle: lifecycleProof }));
   } else {

@@ -390,6 +390,12 @@ checks; the owner's declared capabilities must satisfy the selected backend.
 The owner unit uses its own pinned Node and managed entry point. The guardian and
 backend retain the selected runtime.
 
+After stopping the instance, repeat `service install --prepare` to review a
+different owner or backend binding. Preparation validates the saved plan's
+instance, execution directory, scope and native role identities and retains its
+private environment, even when the preparing shell has no runtime secrets.
+An invalid saved record is refused; it is never replaced with shell defaults.
+
 Review the private supervision plan, then use the same scope and owner hash for
 `service install` during an approved controlled shutdown. Installation refuses
 running resident processes or loaded/queued native jobs, overlapping service scopes and a saved plan whose

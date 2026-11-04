@@ -86,19 +86,19 @@ it('preserves the certified daemon environment across the controlled initial pau
   expect(paused.ownerUnit).not.toContain('--import');
 });
 
-it('refuses an uncertified live environment and a stale prepared release', async () => {
-  const { prepareResidentService } = await import('../../src/commands/service-resident.js');
+it('refuses an uncertified live environment and installation against a stale prepared release', async () => {
+  const { prepareResidentService, installResidentService } = await import('../../src/commands/service-resident.js');
   state.certified = false;
   await expect(prepareResidentService(inputs())).rejects.toThrow('current backend recovery certificate');
   state.certified = true;
   await prepareResidentService(inputs());
   state.pid = null; state.hash = 'b'.repeat(64);
-  await expect(prepareResidentService(inputs())).rejects.toThrow('no longer matches');
+  await expect(installResidentService(inputs())).rejects.toThrow('no longer matches');
 });
 
 
 it('prepares distinct installed owner and guardian identities with their own native executables', async () => {
-  const { prepareResidentService } = await import('../../src/commands/service-resident.js');
+  const { prepareResidentService, installResidentService } = await import('../../src/commands/service-resident.js');
   const selected = { ...inputs(), ownerRuntime: state.oldHash };
   const active = await prepareResidentService(selected);
   expect(state.artifactCalls).toEqual([state.hash, state.oldHash]);
@@ -114,9 +114,112 @@ it('prepares distinct installed owner and guardian identities with their own nat
   vi.stubEnv('OMNITRON_DATABASE_URL', 'unrelated-install-shell');
   const paused = await prepareResidentService(selected);
   expect(paused.config.environment).toEqual(active.config.environment);
-  await expect(prepareResidentService(inputs())).rejects.toThrow('no longer matches');
+  await expect(installResidentService(inputs())).rejects.toThrow('no longer matches');
   const saved = JSON.parse(await fs.readFile(path.join(active.planDirectory, 'supervision.json'), 'utf8'));
   expect(saved.owner.artifact).toBe(state.oldHash);
+});
+
+it('explicitly prepares a new owner after the pause without losing the reviewed private environment', async () => {
+  const { prepareResidentService, installResidentService } = await import('../../src/commands/service-resident.js');
+  const previous = await prepareResidentService({ ...inputs(), ownerRuntime: state.oldHash });
+  // The reviewed private record can contain a secret absent from the shell and
+  // outside the initial process-environment capture whitelist.
+  previous.config.environment['APPLICATION_CREDENTIAL'] = 'fixture-reviewed-private-value';
+  await fs.writeFile(path.join(previous.planDirectory, 'supervision.json'), JSON.stringify(previous.config), { mode: 0o600 });
+  state.pid = null;
+  vi.mocked(execFileSync).mockClear();
+  const shell = process.env;
+  process.env = {};
+  let next: Awaited<ReturnType<typeof prepareResidentService>>;
+  try {
+    next = await prepareResidentService(inputs());
+    await installResidentService(inputs());
+  } finally { process.env = shell; }
+  expect(next.config.owner.artifact).toBe(state.hash);
+  expect(next.config.backend.artifact).toBe(state.hash);
+  expect(next.config.environment).toEqual(previous.config.environment);
+  expect(next.ownerUnit).toContain('/fixture/node-current');
+  expect(next.ownerUnit).not.toContain('/fixture/node-owner');
+  const active = JSON.parse(await fs.readFile(path.join(state.home, 'runtime/supervision.json'), 'utf8'));
+  expect(active).toEqual(next.config);
+});
+
+it('explicitly prepares a newly selected backend while retaining the paused plan environment', async () => {
+  const { prepareResidentService } = await import('../../src/commands/service-resident.js');
+  const previous = await prepareResidentService(inputs());
+  state.pid = null;
+  state.hash = 'c'.repeat(64);
+  vi.stubEnv('OMNITRON_DATABASE_URL', 'unrelated-paused-shell');
+  const next = await prepareResidentService({ ...inputs(), ownerRuntime: state.oldHash });
+  expect(next.config.backend.artifact).toBe(state.hash);
+  expect(next.config.owner.artifact).toBe(state.oldHash);
+  expect(next.config.environment).toEqual(previous.config.environment);
+});
+
+it('does not rewrite a reviewed plan or active files when installation requests another owner', async () => {
+  const { prepareResidentService, installResidentService } = await import('../../src/commands/service-resident.js');
+  const previous = await prepareResidentService({ ...inputs(), ownerRuntime: state.oldHash });
+  state.pid = null;
+  const file = path.join(previous.planDirectory, 'supervision.json');
+  const before = await fs.readFile(file, 'utf8');
+  vi.mocked(execFileSync).mockClear();
+  await expect(installResidentService(inputs())).rejects.toThrow('no longer matches');
+  expect(await fs.readFile(file, 'utf8')).toBe(before);
+  expect(vi.mocked(execFileSync)).not.toHaveBeenCalled();
+  await expect(fs.access(path.join(state.home, 'runtime/supervision.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(fs.access(path.join(state.home, 'native'))).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+it.each([
+  ['protocol', (plan: Record<string, any>) => { plan.protocol = 2; }],
+  ['instance', (plan: Record<string, any>) => { plan.instanceHome = '/another-instance'; }],
+  ['directory', (plan: Record<string, any>) => { plan.directory = '/another-execution'; }],
+  ['scope', (plan: Record<string, any>) => { plan.scope = 'system'; }],
+  ['cwd', (plan: Record<string, any>) => { plan.cwd = 'relative'; }],
+  ['owner hash', (plan: Record<string, any>) => { plan.owner.artifact = '../runtime'; }],
+  ['owner label', (plan: Record<string, any>) => { plan.owner.label = 'dev.omnitron.other'; }],
+  ['backend unit', (plan: Record<string, any>) => { plan.backend.unit = 'omnitron-other.service'; }],
+  ['environment array', (plan: Record<string, any>) => { plan.environment = []; }],
+  ['environment null', (plan: Record<string, any>) => { plan.environment = null; }],
+  ['environment value', (plan: Record<string, any>) => { plan.environment.PATH = 1; }],
+  ['environment home', (plan: Record<string, any>) => { plan.environment.OMNITRON_HOME = '/another-instance'; }],
+  ['environment NUL', (plan: Record<string, any>) => { plan.environment.OMNITRON_TOKEN = 'bad\0value'; }],
+])('refuses reuse of an invalid paused plan %s before overwriting it', async (_label, change) => {
+  const { prepareResidentService, installResidentService } = await import('../../src/commands/service-resident.js');
+  const previous = await prepareResidentService({ ...inputs(), ownerRuntime: state.oldHash });
+  state.pid = null;
+  const file = path.join(previous.planDirectory, 'supervision.json');
+  const plan = JSON.parse(await fs.readFile(file, 'utf8')); change(plan);
+  const invalid = JSON.stringify(plan); await fs.writeFile(file, invalid, { mode: 0o600 });
+  for (const action of [prepareResidentService, installResidentService]) {
+    await expect(action(inputs())).rejects.toThrow('Invalid saved service plan');
+    expect(await fs.readFile(file, 'utf8')).toBe(invalid);
+  }
+  await expect(fs.access(path.join(state.home, 'runtime/supervision.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(fs.access(path.join(state.home, 'native'))).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+it.each([null, [], 'invalid'])('refuses an existing malformed plan %j instead of replacing its environment', async value => {
+  const { prepareResidentService, installResidentService } = await import('../../src/commands/service-resident.js');
+  const previous = await prepareResidentService(inputs());
+  state.pid = null;
+  const file = path.join(previous.planDirectory, 'supervision.json');
+  const invalid = JSON.stringify(value); await fs.writeFile(file, invalid, { mode: 0o600 });
+  for (const action of [prepareResidentService, installResidentService]) {
+    await expect(action(inputs())).rejects.toThrow('Invalid saved service plan');
+    expect(await fs.readFile(file, 'utf8')).toBe(invalid);
+  }
+  await expect(fs.access(path.join(state.home, 'runtime/supervision.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+it('distinguishes missing active supervision from an existing JSON null record', async () => {
+  const { readManagedRuntime } = await import('../../src/daemon/managed-runtime.js');
+  await expect(readManagedRuntime(state.home)).resolves.toBeNull();
+  const file = path.join(state.home, 'runtime/supervision.json');
+  await fs.mkdir(path.dirname(file), { mode: 0o700 });
+  await fs.writeFile(file, 'null', { mode: 0o600 });
+  await expect(readManagedRuntime(state.home)).rejects.toThrow('Invalid independent supervision configuration');
+  expect(await fs.readFile(file, 'utf8')).toBe('null');
 });
 
 it.each(['../owner', 'c'.repeat(64)])('refuses unknown or uninstalled owner %s before publishing a plan', async ownerRuntime => {

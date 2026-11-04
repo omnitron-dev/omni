@@ -8,8 +8,8 @@ import { RuntimeInstallation } from '../daemon/runtime-installation.js';
 import { assertExecutionCapabilities } from '../daemon/execution-capabilities.js';
 import { PidManager } from '../daemon/pid-manager.js';
 import { executionDirectory } from '../daemon/execution-launcher.js';
-import { readPrivateRecord, writePrivateRecord, writePrivateFile } from '../daemon/execution-journal.js';
-import { managedRuntimeFile, type ManagedRuntime } from '../daemon/managed-runtime.js';
+import { writePrivateRecord, writePrivateFile } from '../daemon/execution-journal.js';
+import { assertManagedRuntime, readManagedRuntimeRecord, managedRuntimeFile, type ManagedRuntime } from '../daemon/managed-runtime.js';
 import { BackendRecoveryJournal } from '../daemon/backend-recovery-journal.js';
 import { expandPath } from '../shared/paths.js';
 import { readSavedDaemonConfig, savedDaemonOverrides } from '../config/saved.js';
@@ -34,12 +34,12 @@ interface PreparedResidentService {
 
 /** Preparation never stops a backend, replaces an owner, or loads OS jobs. */
 export async function prepareResidentService(inputs: ResidentServiceInputs): Promise<PreparedResidentService> {
-  return withPreparedService(inputs, async plan => plan);
+  return withPreparedService(inputs, 'prepare', async plan => plan);
 }
 
 // Keep the same installation lease across validation, plan publication and the
 // optional active writes. Another runtime selection cannot invalidate this plan.
-async function withPreparedService<T>(inputs: ResidentServiceInputs, finish: (plan: PreparedResidentService) => Promise<T>): Promise<T> {
+async function withPreparedService<T>(inputs: ResidentServiceInputs, mode: 'prepare' | 'install', finish: (plan: PreparedResidentService) => Promise<T>): Promise<T> {
   if (inputs.scope === 'system' && (!inputs.identity || inputs.identity.user === 'root')) {
     throw new Error('Prepare system supervision as the non-root instance owner with service install --scope system --prepare, then install the reviewed unit files with administrative privileges.');
   }
@@ -67,6 +67,7 @@ async function withPreparedService<T>(inputs: ResidentServiceInputs, finish: (pl
     const planDirectory = path.join(installation.directory, 'supervision-plan');
     const backendPid = new PidManager(expandPath(dc.pidFile)).getPid();
     let environment = process.env;
+    let preparedEnvironment: Record<string, string> | undefined;
     if (backendPid) {
       const recovery = new BackendRecoveryJournal(directory);
       try {
@@ -79,27 +80,37 @@ async function withPreparedService<T>(inputs: ResidentServiceInputs, finish: (pl
     } else {
       // The prepared environment must survive the initial controlled pause;
       // the shell executing installation may not carry the daemon's secrets.
-      const prepared = await readPrivateRecord<ManagedRuntime>(path.join(planDirectory, 'supervision.json'));
+      const planFile = path.join(planDirectory, 'supervision.json');
+      let prepared: ManagedRuntime | null;
+      try { prepared = await readManagedRuntimeRecord(planFile, OMNITRON_HOME); }
+      catch { throw new Error('Invalid saved service plan; inspect its private record before preparing or installing services'); }
       if (prepared) {
-        if (prepared.instanceHome !== OMNITRON_HOME || prepared.scope !== inputs.scope ||
-            prepared.owner?.artifact !== ownerHash || prepared.backend?.artifact !== selection.current ||
-            !prepared.environment || prepared.environment['OMNITRON_HOME'] !== OMNITRON_HOME ||
-            Object.values(prepared.environment).some(value => typeof value !== 'string')) {
+        if (prepared.instanceHome !== OMNITRON_HOME || prepared.directory !== directory || prepared.scope !== inputs.scope ||
+            prepared.owner.label !== OWNER_LAUNCHD_LABEL || prepared.owner.unit !== OWNER_SYSTEMD_UNIT ||
+            prepared.backend.label !== LAUNCHD_LABEL || prepared.backend.unit !== SYSTEMD_UNIT) {
+          throw new Error('Invalid saved service plan instance, directory, scope or native role identity');
+        }
+        // Explicit preparation can review new sealed role bindings while retaining
+        // the paused instance's secrets. Installation must use that reviewed plan.
+        if (mode === 'install' && (prepared.owner.artifact !== ownerHash || prepared.backend.artifact !== selection.current)) {
           throw new Error('The saved service plan no longer matches this instance and selected runtime; prepare a matching plan before installation');
         }
-        environment = prepared.environment;
+        preparedEnvironment = prepared.environment;
       }
     }
     const config: ManagedRuntime = { protocol: 1, instanceHome: OMNITRON_HOME, directory,
       scope: inputs.scope, cwd: path.dirname(artifact.directory),
       // Unit files carry only the instance path. Runtime secrets stay in this
       // private record; transient supervisor and child IPC variables stay out.
-      environment: Object.fromEntries(Object.entries(environment).filter((pair): pair is [string, string] =>
+      // An already reviewed private environment is copied exactly. Filtering it
+      // again could silently discard a previously configured application secret.
+      environment: preparedEnvironment ? { ...preparedEnvironment } : Object.fromEntries(Object.entries(environment).filter((pair): pair is [string, string] =>
         pair[1] !== undefined && /^(OMNITRON_|LANG$|LC_|PATH$|HOME$|TMPDIR$)/.test(pair[0]))),
       owner: { label: OWNER_LAUNCHD_LABEL, unit: OWNER_SYSTEMD_UNIT, artifact: ownerHash },
       backend: { label: LAUNCHD_LABEL, unit: SYSTEMD_UNIT, artifact: selection.current },
     };
     config.environment['OMNITRON_HOME'] = OMNITRON_HOME;
+    assertManagedRuntime(config, OMNITRON_HOME);
     const base: UnitInputs = { ...inputs, execPath: artifact.execPath, entryPath: entry,
       workdir: path.dirname(artifact.directory), environment: { OMNITRON_HOME }, nodeArgs: [],
     };
@@ -164,7 +175,7 @@ export function assertResidentServicesStopped(scope: UnitInputs['scope'], platfo
 }
 
 export async function installResidentService(inputs: ResidentServiceInputs): Promise<string> {
-  return withPreparedService(inputs, async plan => {
+  return withPreparedService(inputs, 'install', async plan => {
     if (plan.backendRunning || plan.ownerRunning) throw new Error(`Independent owner supervision requires a controlled initial shutdown. Review ${plan.planDirectory}; running applications were not stopped.`);
     // Refuse scope overlap before writing anything active.
     const other = inputs.scope === 'user' ? 'system' : 'user';

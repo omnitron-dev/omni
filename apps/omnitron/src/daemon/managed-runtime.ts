@@ -23,21 +23,43 @@ export interface ManagedRuntime {
 export const managedRuntimeFile = (instanceHome = OMNITRON_HOME) => path.join(instanceHome, 'runtime', 'supervision.json');
 export const managedSupervisorSocket = (config: ManagedRuntime) => path.join(config.directory, 'supervisor.sock');
 
-export async function readManagedRuntime(instanceHome = OMNITRON_HOME): Promise<ManagedRuntime | null> {
+/** The same record schema is used by inactive service plans and active supervision. */
+export function assertManagedRuntime(value: unknown, instanceHome = OMNITRON_HOME): asserts value is ManagedRuntime {
   if (typeof instanceHome !== 'string' || !path.isAbsolute(instanceHome)) throw new Error('An absolute instance home is required');
-  const config = await readPrivateRecord<ManagedRuntime>(managedRuntimeFile(instanceHome));
-  if (!config) return null;
-  if (config.protocol !== 1 || typeof config.instanceHome !== 'string' || path.resolve(config.instanceHome) !== path.resolve(instanceHome) ||
-      !path.isAbsolute(config.directory) || !path.isAbsolute(config.cwd) ||
-      !['user', 'system'].includes(config.scope) || !config.environment ||
+  const config = value as ManagedRuntime;
+  if (!config || typeof config !== 'object' || Array.isArray(config) ||
+      config.protocol !== 1 || typeof config.instanceHome !== 'string' || config.instanceHome.includes('\0') || path.resolve(config.instanceHome) !== path.resolve(instanceHome) ||
+      typeof config.directory !== 'string' || config.directory.includes('\0') || !path.isAbsolute(config.directory) ||
+      typeof config.cwd !== 'string' || config.cwd.includes('\0') || !path.isAbsolute(config.cwd) ||
+      !['user', 'system'].includes(config.scope) || !config.environment || typeof config.environment !== 'object' || Array.isArray(config.environment) ||
       config.environment['OMNITRON_HOME'] !== config.instanceHome ||
-      Object.values(config.environment).some(value => typeof value !== 'string') ||
-      [config.owner, config.backend].some(job => !job || !/^[a-f0-9]{64}$/.test(job.artifact) ||
-        !/^dev\.omnitron\.[a-z0-9.-]+$/.test(job.label) || !/^omnitron-[a-z0-9-]+\.service$/.test(job.unit)) ||
+      Object.entries(config.environment).some(([key, entry]) => !key || key.includes('\0') || key.includes('=') || typeof entry !== 'string' || entry.includes('\0')) ||
+      [config.owner, config.backend].some(job => !job || typeof job !== 'object' || Array.isArray(job) ||
+        typeof job.artifact !== 'string' || !/^[a-f0-9]{64}$/.test(job.artifact) ||
+        typeof job.label !== 'string' || !/^dev\.omnitron\.[a-z0-9.-]+$/.test(job.label) ||
+        typeof job.unit !== 'string' || !/^omnitron-[a-z0-9-]+\.service$/.test(job.unit)) ||
       config.owner.label === config.backend.label || config.owner.unit === config.backend.unit ||
       Buffer.byteLength(managedSupervisorSocket(config)) > 100) {
     throw new Error('Invalid independent supervision configuration');
   }
+}
+
+/** Only a missing file denotes absence; a malformed existing record never does. */
+export async function readManagedRuntimeRecord(file: string, instanceHome = OMNITRON_HOME): Promise<ManagedRuntime | null> {
+  if (typeof instanceHome !== 'string' || !path.isAbsolute(instanceHome)) throw new Error('An absolute instance home is required');
+  const saved = await fs.lstat(file).catch(error => {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  });
+  if (!saved) return null;
+  const config = await readPrivateRecord<unknown>(file);
+  assertManagedRuntime(config, instanceHome);
+  return config;
+}
+
+export async function readManagedRuntime(instanceHome = OMNITRON_HOME): Promise<ManagedRuntime | null> {
+  const config = await readManagedRuntimeRecord(managedRuntimeFile(instanceHome), instanceHome);
+  if (!config) return null;
   const directory = await fs.lstat(config.directory);
   if (!directory.isDirectory() || directory.isSymbolicLink() || (directory.mode & 0o077) !== 0 ||
       (process.getuid && directory.uid !== process.getuid())) throw new Error('Supervision sockets require a private directory owned by the instance user');

@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 
 assert.ok(['darwin', 'linux'].includes(process.platform), 'This fixture requires native service supervision');
 const linux = process.platform === 'linux';
@@ -59,7 +60,9 @@ await fs.writeFile(path.join(instance, 'runtime/supervision.json'), JSON.stringi
 await fs.writeFile(path.join(root, 'counter.mjs'), `import http from 'node:http';import fs from 'node:fs';
  let value=0,sequence=0,paused=false;setInterval(()=>value++,5);
  setInterval(()=>{if(paused)return;const record={level:30,time:new Date().toISOString(),msg:'fixture:${id}:'+sequence+++'\\n  first continuation\\n  second continuation'};
- fs.appendFileSync(${JSON.stringify(path.join(root, 'expected.jsonl'))},JSON.stringify(record)+'\\n');process.stdout.write(JSON.stringify(record)+'\\n');},50);
+ const began=performance.now();fs.appendFileSync(${JSON.stringify(path.join(root, 'expected.jsonl'))},JSON.stringify(record)+'\\n');
+ const evidenceWriteMs=performance.now()-began;if(evidenceWriteMs>=500)process.stderr.write(JSON.stringify({level:40,time:new Date().toISOString(),msg:'fixture evidence write blocked',evidenceWriteMs})+'\\n');
+ process.stdout.write(JSON.stringify(record)+'\\n');},50);
  const server=http.createServer((q,r)=>{if(q.url==='/pause')paused=true;r.end(JSON.stringify({pid:process.pid,parent:process.ppid,value,fixture:${JSON.stringify(id)},ready:true,timestamp:new Date().toISOString()}));});
  server.listen(${counterPort},'127.0.0.1',()=>{fs.writeFileSync(${JSON.stringify(path.join(root, 'address.json'))},JSON.stringify(server.address()));process.send?.({type:'ready'});});
  process.on('SIGTERM',()=>server.close(()=>process.exit(0)));`);
@@ -94,6 +97,14 @@ const until = async (work, message, ms = 150_000) => {
 };
 const waitCertificate = () => until(async () => (await status()).execution?.recovery?.status === 'ready', 'No recovery certificate');
 let sampler, inFlight = false, samples = 0, failures = 0, ownerPid, applicationPid, ownerClient;
+let samplingStage = 'cold-start';
+const eventLoop = monitorEventLoopDelay({ resolution: 20 });
+const mark = event => {
+  samplingStage = event.stage ?? samplingStage;
+  console.log(JSON.stringify(event));
+};
+const failureDetails = error => ({ name: error?.name, message: error?.message ?? String(error),
+  ...(error?.code !== undefined && { code: error.code }), ...(error?.cause && { cause: String(error.cause) }) });
 try {
   if (linux) await native(['daemon-reload']);
   // Linux btime is rounded to seconds. Keep sealed file timestamps strictly before
@@ -102,7 +113,7 @@ try {
   await release();
   for (const unit of units) await native(linux ? ['start', unit.job] : ['bootstrap', domain, unit.file]);
   let first = await until(status, 'Initial managed backend did not start');
-  console.log(JSON.stringify({ stage: 'cold-start', root, backend: first.pid, owner: first.execution.owner.pid }));
+  mark({ stage: 'cold-start', root, backend: first.pid, owner: first.execution.owner.pid });
   ownerPid = first.execution.owner.pid;
   const client = createDaemonClient(socket, 30_000);
   try { await client.startApp({ name: 'counter' }); } finally { await client.disconnect(); }
@@ -124,17 +135,48 @@ try {
       return true;
     }, 'Counter HTTP readiness did not pass');
   } finally { await healthClient.disconnect(); }
-  console.log(JSON.stringify({ stage: 'application-ready', applicationPid, unknownReadiness: unknown.status }));
+  mark({ stage: 'application-ready', applicationPid, unknownReadiness: unknown.status });
   assert.equal(before.parent, ownerPid);
   ownerClient = await privateControlClient(path.join(execution, 'owner.sock'), 'OmnitronExecution', 3000);
+  eventLoop.enable();
   sampler = setInterval(async () => {
     if (inFlight) return; inFlight = true;
+    const started = performance.now(), at = new Date().toISOString(), stage = samplingStage;
+    const evidence = {};
+    const measured = async (name, work, describe) => {
+      const began = performance.now();
+      try {
+        const result = await work();
+        evidence[name] = { elapsedMs: performance.now() - began, result: describe(result) };
+        return result;
+      } catch (error) {
+        evidence[name] = { elapsedMs: performance.now() - began, error: failureDetails(error) };
+        throw error;
+      }
+    };
     try {
-      const [now, snapshot] = await Promise.all([probe(), ownerClient.service.snapshot()]);
+      const [http, rpc] = await Promise.allSettled([
+        measured('http', probe, result => ({ pid: result.pid, parent: result.parent, value: result.value, timestamp: result.timestamp })),
+        measured('rpc', () => ownerClient.service.snapshot(), result => ({ owner: result.status.owner, phase: result.status.phase, inventoryDigest: result.inventoryDigest })),
+      ]);
+      if (http.status === 'rejected') throw http.reason;
+      if (rpc.status === 'rejected') throw rpc.reason;
+      const now = http.value, snapshot = rpc.value;
       assert.equal(now.pid, applicationPid); assert.equal(now.parent, ownerPid);
       assert.equal(snapshot.status.owner.pid, ownerPid); samples++;
     }
-    catch { failures++; } finally { inFlight = false; }
+    catch (error) {
+      failures++;
+      // A failed native qualification must identify the transport/identity and
+      // timing involved. Preserve the strict zero-failure acceptance criterion.
+      if (failures <= 20) {
+        const report = { stage: 'availability-probe-failed', during: stage, at, elapsedMs: performance.now() - started,
+          eventLoopMaxMs: eventLoop.max / 1e6, error: failureDetails(error), probes: evidence };
+        console.error(JSON.stringify(report));
+        try { await fs.appendFile(path.join(root, 'probe-failures.jsonl'), JSON.stringify(report) + '\n'); }
+        catch (writeError) { console.error(JSON.stringify({ stage: 'availability-evidence-write-failed', error: failureDetails(writeError) })); }
+      }
+    } finally { inFlight = false; }
   }, 20);
   const cli = (...args) => run(artifact.execPath, [path.join(artifact.directory, 'cli/omnitron.js'), ...args, '--json'], {
     env: { ...process.env, OMNITRON_HOME: instance }, cwd: root, timeout: 600_000, maxBuffer: 1024 * 1024,
@@ -142,6 +184,7 @@ try {
   // Upgrade the independent guardian first: a backend replacement cannot change
   // the guardian code already supervising it. Keep the baseline owner throughout.
   const guardianTransition = managementDist && !backendOnly ? await (async () => {
+    samplingStage = 'guardian-prepare';
     await waitCertificate();
     const settled = await status();
     const { prepareSupervisorTransition, applySupervisorTransition } = await import(pathToFileURL(path.join(managementDist, 'daemon/supervisor-transition.js')).href);
@@ -170,6 +213,7 @@ try {
     assert.equal((await status()).pid, settled.pid);
     await fs.writeFile(prepared.unit.file, prepared.unit.before);
     if (linux) await native(['daemon-reload']);
+    samplingStage = 'guardian-transition';
     const transitioned = await applySupervisorTransition(plan.file);
     assert.equal(transitioned.phase, 'complete');
     assert.equal(transitioned.result.ownerPid, ownerPid);
@@ -177,7 +221,7 @@ try {
     assert.notEqual(transitioned.result.guardianPid, prepared.guardianPid);
     await checkPlan(plan.file, false, transitioned.result.backendPid);
     assert.equal((await applySupervisorTransition(plan.file)).result.backendPid, transitioned.result.backendPid, 'A repeated apply started another backend');
-    console.log(JSON.stringify({ stage: 'guardian-transition-complete', result: transitioned.result }));
+    mark({ stage: 'guardian-transition-complete', result: transitioned.result });
     await waitCertificate();
     return { prepareSupervisorTransition, applySupervisorTransition, checkPlan, runner };
   })() : null;
@@ -189,6 +233,7 @@ try {
       const invoke = async (...args) => JSON.parse((await run(runner, [path.join(managementDist, 'cli/omnitron.js'),
         '--json', 'backend', 'upgrade', ...args], { cwd: root, env: process.env, timeout: 300_000, maxBuffer: 1024 * 1024 })).stdout).data;
       for (const [stage, target] of [['backend-forward', managementDist], ['backend-rollback', artifact.directory]]) {
+        samplingStage = stage + '-check';
         const before = await until(async () => {
           const current = await status(), guardian = await supervisor.service.status();
           return current.execution.recovery.status === 'ready' && guardian.state === 'ready' &&
@@ -198,6 +243,7 @@ try {
         const checked = await invoke(target, '--check');
         assert.equal(checked.checked, true); assert.equal(checked.build.commit, stamp.commit);
         assert.equal((await status()).pid, before.pid, 'Qualification check changed the backend');
+        samplingStage = stage;
         const changed = await invoke(target);
         const current = await until(async () => {
           const current = await status(), guardian = await supervisor.service.status();
@@ -207,19 +253,20 @@ try {
         assert.equal(current.build.commit, stamp.commit); assert.equal(current.execution.owner.pid, ownerPid);
         assert.equal((await supervisor.service.status()).pid, initialGuardian.pid, 'Backend update replaced its guardian');
         assert.equal((await probe()).pid, applicationPid);
-        console.log(JSON.stringify({ stage, commit: stamp.commit, backendPid: current.pid, ownerPid, applicationPid, guardianPid: initialGuardian.pid }));
+        mark({ stage, commit: stamp.commit, backendPid: current.pid, ownerPid, applicationPid, guardianPid: initialGuardian.pid });
       }
     } finally { await supervisor.close(); }
   }
   // A regular CLI must delegate, so a replacement remains a child of the OS job.
   const upgraded = JSON.parse((await cli('backend', 'upgrade', dist)).stdout).data;
-  console.log(JSON.stringify({ stage: 'upgraded', pid: upgraded.pid }));
+  mark({ stage: 'upgraded', pid: upgraded.pid });
   assert.notEqual(upgraded.pid, first.pid); assert.equal(upgraded.ownerPid, ownerPid);
   await waitCertificate();
+  samplingStage = 'backend-crash-recovery';
   process.kill(upgraded.pid, 'SIGKILL');
   const recovered = await until(async () => { const value = await status(); return value.pid !== upgraded.pid ? value : null; }, 'Killed backend was not recovered');
   assert.equal(recovered.execution.owner.pid, ownerPid);
-  console.log(JSON.stringify({ stage: 'backend-crash-recovered', pid: recovered.pid }));
+  mark({ stage: 'backend-crash-recovered', pid: recovered.pid });
   await waitCertificate();
   const supervisor = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor');
   const guardian = await until(async () => {
@@ -227,6 +274,7 @@ try {
     return value.state === 'ready' && value.backendPid === recovered.pid ? value : null;
   }, 'Supervisor did not commit the recovered backend');
   await supervisor.close();
+  samplingStage = 'guardian-crash-recovery';
   process.kill(guardian.pid, 'SIGKILL');
   const afterGuardian = await until(async () => { const value = await status(); return value.pid !== recovered.pid ? value : null; }, 'OS did not recover the killed guardian');
   assert.equal(afterGuardian.execution.owner.pid, ownerPid);
@@ -282,9 +330,10 @@ try {
       assert.equal(previous.previous, next.candidate); assert.equal(previous.candidate, next.previous);
       await activateManagedTarget(invoke, previous);
       assert.equal(await reconcileManagedTarget(invoke, previous), 'candidate');
-      console.log(JSON.stringify({ stage: 'fenced-managed-kernel-returned', ownerPid, applicationPid, candidate: next.candidate }));
+      mark({ stage: 'fenced-managed-kernel-returned', ownerPid, applicationPid, candidate: next.candidate });
       await waitCertificate();
     }
+    samplingStage = 'guardian-rollback';
     const rollback = await prepareSupervisorTransition(path.resolve(dist, '../../..'), socket);
     await checkPlan(rollback.file, true, (await status()).pid);
     const script = `import { applySupervisorTransition } from ${JSON.stringify(pathToFileURL(path.join(managementDist, 'daemon/supervisor-transition.js')).href)};await applySupervisorTransition(${JSON.stringify(rollback.file)});`;
@@ -301,13 +350,15 @@ try {
       }, 'Coordinator never reached a recoverable transition phase', 60_000);
       coordinator.kill('SIGKILL');
       await until(() => completed, 'Fixture coordinator did not exit', 5000);
-      console.log(JSON.stringify({ stage: 'guardian-coordinator-killed', phase: interrupted.phase }));
+      mark({ stage: 'guardian-coordinator-killed', phase: interrupted.phase });
       const resumed = await applySupervisorTransition(rollback.file);
       assert.equal(resumed.phase, 'complete'); assert.equal(resumed.result.ownerPid, ownerPid);
-      console.log(JSON.stringify({ stage: 'guardian-transition-resumed', result: resumed.result }));
+      mark({ stage: 'guardian-transition-resumed', result: resumed.result });
     } finally { if (!completed) coordinator.kill('SIGKILL'); }
   }
-  const after = await probe(); assert.ok(after.value > before.value); assert.equal(failures, 0);
+  const after = await probe();
+  console.log(JSON.stringify({ stage: 'availability-summary', samples, failures, eventLoopMaxMs: eventLoop.max / 1e6 }));
+  assert.ok(after.value > before.value); assert.equal(failures, 0);
   if (linux && process.env.OMNITRON_RUNTIME_PROBE) {
     const { runtimeProbeCommand } = await import(pathToFileURL(process.env.OMNITRON_RUNTIME_PROBE).href);
     const bundle = { root: path.dirname(dist), version: first.version, commit: first.build.commit };
@@ -339,6 +390,7 @@ try {
 } finally {
   if (sampler) clearInterval(sampler);
   while (inFlight) await new Promise(resolve => setTimeout(resolve, 10));
+  eventLoop.disable();
   await ownerClient?.close();
   for (const unit of units.toReversed()) await native(linux ? ['stop', unit.job] : ['bootout', unit.job]).catch(() => {});
   if (ownerPid) await until(() => !PidManager.isProcessAlive(ownerPid), 'Fixture owner did not stop', 35_000);

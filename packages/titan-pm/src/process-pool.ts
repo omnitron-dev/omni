@@ -47,6 +47,8 @@ interface WorkerInfo<T> {
   health: 'healthy' | 'unhealthy' | 'degraded';
   currentLoad: number;
   processing: Set<string>;
+  /** Retirement fences admission before draining or destroying the proxy. */
+  retiring: boolean;
   errors: number;
   restarts: number;
   metrics?: IProcessMetrics;
@@ -647,7 +649,7 @@ export class ProcessPool<T> {
     }
 
     // Check if draining
-    if (this.isDraining) {
+    if (this.isDraining || this.isShuttingDown) {
       throw Errors.conflict('Pool is draining, not accepting new requests');
     }
 
@@ -668,7 +670,10 @@ export class ProcessPool<T> {
       return this.queueRequest(method, args);
     }
 
-    const worker = await this.selectWorker();
+    // Selection and admission share one synchronous turn: retirement cannot
+    // destroy the selected proxy between selection and processing.add().
+    const worker = this.selectWorker();
+    if (!worker) return this.queueRequest(method, args);
     return this.executeOnWorker(worker, method, args);
   }
 
@@ -754,6 +759,7 @@ export class ProcessPool<T> {
         health: 'healthy',
         currentLoad: 0,
         processing: new Set(),
+        retiring: false,
         errors: 0,
         restarts: 0,
         memoryUsage: 0,
@@ -778,6 +784,7 @@ export class ProcessPool<T> {
       );
 
       this.emit('worker:spawned', { workerId, class: this.processName });
+      this.resumeQueuedRequests();
     } catch (error) {
       this.logger.error({ err: error instanceof Error ? error : new Error(String(error)) }, 'Failed to spawn worker');
       throw error;
@@ -791,23 +798,29 @@ export class ProcessPool<T> {
     const worker = this.workers.get(workerId);
     if (!worker) return;
 
+    // Keep ownership if termination fails, but never admit another request to
+    // a proxy whose destruction may already have begun.
+    worker.retiring = true;
+    this.invalidateHealthyWorkersCache();
+
     try {
-      // T#59: actually WAIT for active requests to drain — but no
-      // longer than 5s. The pre-T#59 path unconditionally slept 5
-      // seconds whenever `processing.size > 0`, which made every
-      // shutdown of a worker mid-call needlessly slow even when the
-      // active call finished in 100ms. Polling every 50ms exits
-      // as soon as the worker is idle.
+      // Planned recycling and resizing must not kill an admitted call after
+      // an unrelated five-second grace period. Use the declared RPC budget;
+      // an unconfirmed drain stays owned and can be retried. Explicit pool
+      // destruction retains its bounded shutdown/escalation policy.
       if (worker.processing.size > 0) {
         this.logger.debug(
           { workerId, activeRequests: worker.processing.size },
           'Waiting for worker to finish active requests'
         );
-        const deadline = Date.now() + 5_000;
+        const deadline = Date.now() + (this.poolOptions.requestTimeout || 30_000);
         while (worker.processing.size > 0 && Date.now() < deadline) {
           await new Promise((resolve) => setTimeout(resolve, 50));
         }
         if (worker.processing.size > 0) {
+          if (!this.isShuttingDown) {
+            throw Errors.conflict(`Worker ${workerId} still has ${worker.processing.size} active requests; retirement is incomplete`);
+          }
           this.logger.warn(
             { workerId, activeRequests: worker.processing.size },
             'Worker still has active requests after grace period; killing anyway',
@@ -844,7 +857,7 @@ export class ProcessPool<T> {
    */
   private getHealthyWorkers(): WorkerInfo<T>[] {
     if (!this.healthyWorkersCacheValid) {
-      this.healthyWorkersCache = Array.from(this.workers.values()).filter((w) => w.health === 'healthy');
+      this.healthyWorkersCache = Array.from(this.workers.values()).filter((w) => w.health === 'healthy' && !w.retiring);
       this.healthyWorkersCacheValid = true;
     }
     return this.healthyWorkersCache;
@@ -853,20 +866,10 @@ export class ProcessPool<T> {
   /**
    * Private: Select a worker based on the strategy
    */
-  private async selectWorker(): Promise<WorkerInfo<T>> {
-    const healthyWorkers = this.getHealthyWorkers();
+  private selectWorker(): WorkerInfo<T> | undefined {
+    const healthyWorkers = this.getHealthyWorkers().filter(worker => worker.currentLoad === 0);
 
-    if (healthyWorkers.length === 0) {
-      // Fallback to any worker if no healthy ones
-      if (this.workers.size === 0) {
-        throw Errors.conflict('No workers available in pool');
-      }
-      const firstWorker = this.workers.values().next().value;
-      if (!firstWorker) {
-        throw Errors.conflict('No workers available in pool');
-      }
-      return firstWorker;
-    }
+    if (healthyWorkers.length === 0) return undefined;
 
     const strategy = this.poolOptions.strategy || PoolStrategy.ROUND_ROBIN;
 
@@ -1218,6 +1221,7 @@ export class ProcessPool<T> {
       // can't produce a negative value.
       worker.currentLoad = Math.max(0, worker.currentLoad - 1);
       worker.lastUsed = Date.now();
+      this.resumeQueuedRequests();
     }
   }
 
@@ -1269,9 +1273,13 @@ export class ProcessPool<T> {
       // Dropped, that is an unhandled rejection, which ends the process — a
       // pool that dies when it cannot find a worker is worse than one that
       // logs and waits for the next enqueue.
-      void this.processQueue().catch((err: unknown) => {
-        this.logger.error({ err, class: this.processName }, 'Process pool queue processing failed');
-      });
+      this.resumeQueuedRequests();
+    });
+  }
+
+  private resumeQueuedRequests(): void {
+    void this.processQueue().catch((err: unknown) => {
+      this.logger.error({ err, class: this.processName }, 'Process pool queue processing failed');
     });
   }
 
@@ -1281,7 +1289,7 @@ export class ProcessPool<T> {
    * Expected improvement: 15-25% higher throughput under load
    */
   private async processQueue(): Promise<void> {
-    if (this.queue.length === 0 || this.isDraining) return;
+    if (this.queue.length === 0 || this.isDraining || this.isShuttingDown) return;
 
     // Avoid multiple concurrent queue processing
     if (this.queueProcessingScheduled) return;
@@ -1299,11 +1307,11 @@ export class ProcessPool<T> {
    * Processes up to queueBatchSize requests per batch for better throughput
    */
   private processQueueBatch(): void {
-    if (this.queue.length === 0 || this.isDraining) return;
+    if (this.queue.length === 0 || this.isDraining || this.isShuttingDown) return;
 
     // Find available workers with capacity
     const availableWorkers = Array.from(this.workers.values()).filter(
-      (w) => w.health === 'healthy' && w.currentLoad < 2
+      (w) => w.health === 'healthy' && !w.retiring && w.currentLoad === 0
     );
 
     if (availableWorkers.length === 0) return;
@@ -1329,10 +1337,8 @@ export class ProcessPool<T> {
 
       const worker = availableWorkers[workerIdx]!;
 
-      // Remove worker if at capacity after this request
-      if (worker.currentLoad >= 1) {
-        availableWorkers.splice(workerIdx, 1);
-      }
+      // Reserve the worker in this turn; completion wakes the next batch.
+      availableWorkers.splice(workerIdx, 1);
 
       // Execute request (fire and forget, Promise handles resolution)
       this.executeOnWorker(worker, request.method, request.args).then(request.resolve).catch(request.reject);
@@ -1343,9 +1349,7 @@ export class ProcessPool<T> {
     // Schedule next batch if there are more requests — same handler, same
     // reason as the enqueue path above.
     if (this.queue.length > 0) {
-      void this.processQueue().catch((err: unknown) => {
-        this.logger.error({ err, class: this.processName }, 'Process pool queue processing failed');
-      });
+      this.resumeQueuedRequests();
     }
   }
 
@@ -1530,6 +1534,7 @@ export class ProcessPool<T> {
       // Invalidate cache if any health status changed
       if (healthChanged) {
         this.invalidateHealthyWorkersCache();
+        this.resumeQueuedRequests();
       }
 
       // Replace unhealthy workers with restart policy

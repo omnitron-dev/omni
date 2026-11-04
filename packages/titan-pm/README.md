@@ -36,6 +36,8 @@ Observe `child:start-failed` for the original exception, `child:restart` for eac
 
 Initialization, explicit and automatic resizing, worker replacement, and destruction use the same lifecycle queue. A resize acknowledges only the observed target count after every admitted spawn or termination has settled. `pool:scaled` and scaling history describe completed changes. On partial failure, the call rejects with the cause and the remaining worker count; surviving workers remain owned. Inspect `pool.size` and `pool.getWorkerIds()` before retrying. Destruction fences new admissions, joins in-flight membership changes, and retains unconfirmed survivors for a subsequent stop attempt.
 
+Retirement removes a worker from request admission before draining or destroying its proxy. Replacement starts a ready worker first, so new requests can continue while previously admitted requests finish. Planned retirement waits within `requestTimeout` (30 seconds when the timeout is disabled); an unfinished drain rejects and retains the retiring worker for retry. A failed termination never makes that proxy eligible again. Requests are not automatically replayed: an unknown outcome must be reconciled by the caller. Worker PIDs may change during normal request-count or lifetime recycling without replacing the pool or its application.
+
 Retrying partial initialization fills only the missing workers. If recovery starts a replacement but cannot confirm the previous worker's exit, it keeps and reuses that replacement on the next attempt. A repeated termination failure therefore cannot create an unbounded stream of replacement processes. The health monitor records recovery failures and observes lifecycle preemption without leaking an unhandled timer rejection.
 
 ## Output capture

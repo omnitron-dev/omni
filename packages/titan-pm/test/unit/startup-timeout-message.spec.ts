@@ -32,7 +32,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { ProcessSpawner } from '../../src/process-spawner.js';
+import { startupProbe } from '../helpers/startup-probe.js';
 
 const silent = {
   info: () => {},
@@ -61,11 +61,7 @@ function forkChattyChild(): ChildProcess {
 }
 
 const waitForReady = (child: ChildProcess, timeout: number): Promise<unknown> =>
-  (
-    new ProcessSpawner(silent as never) as unknown as {
-      waitForReady: (w: ChildProcess, isThread: boolean, t: number) => Promise<unknown>;
-    }
-  ).waitForReady(child, false, timeout);
+  startupProbe(child, timeout, silent as never).result;
 
 describe('the message a startup timeout produces', () => {
   let child: ChildProcess | undefined;

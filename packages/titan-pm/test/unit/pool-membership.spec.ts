@@ -34,6 +34,97 @@ afterEach(async () => {
 });
 
 describe('pool membership acknowledgments', () => {
+  it('fences a retiring proxy before its asynchronous termination starts', async () => {
+    const { pool, manager } = await fixture();
+    const old = await manager.spawn.mock.results[0]!.value;
+    const oldCall = vi.fn(async () => 'old');
+    Object.assign(old, { work: oldCall });
+    manager.spawn.mockResolvedValueOnce(Object.assign({ __processId: 'replacement' }, { work: async () => 'new' }));
+    const entered = deferred<void>(), exited = deferred<boolean>();
+    manager.kill.mockImplementationOnce(async () => { entered.resolve(); return exited.promise; });
+    const replacing = (pool as unknown as { replaceWorker(id: string): Promise<void> }).replaceWorker('worker-1');
+    await entered.promise;
+    expect(pool.getWorkerIds()).toEqual(['worker-1', 'replacement']);
+    await expect(pool.execute('work')).resolves.toBe('new');
+    await expect(pool.execute('work')).resolves.toBe('new');
+    expect(oldCall).not.toHaveBeenCalled();
+    exited.resolve(true);
+    await replacing;
+  });
+
+  it('finishes an admitted long call before planned retirement and admits new calls only to the replacement', async () => {
+    vi.useFakeTimers();
+    const { pool, manager } = await fixture(1, { requestTimeout: 10_000 });
+    const response = deferred<string>(), draining = deferred<void>();
+    const old = await manager.spawn.mock.results[0]!.value;
+    Object.assign(old, { work: vi.fn(() => response.promise) });
+    manager.spawn.mockResolvedValueOnce(Object.assign({ __processId: 'replacement' }, { work: async () => 'new' }));
+    vi.spyOn(logger, 'debug').mockImplementation((_data, message) => {
+      if (message === 'Waiting for worker to finish active requests') draining.resolve();
+    });
+    try {
+      const admitted = pool.execute('work');
+      const replacing = (pool as unknown as { replaceWorker(id: string): Promise<void> }).replaceWorker('worker-1');
+      await draining.promise;
+      await vi.advanceTimersByTimeAsync(5_100);
+      expect(manager.kill).not.toHaveBeenCalled();
+      await expect(pool.execute('work')).resolves.toBe('new');
+      response.resolve('finished once');
+      await expect(admitted).resolves.toBe('finished once');
+      await vi.advanceTimersByTimeAsync(50);
+      await replacing;
+      expect(manager.kill).toHaveBeenCalledExactlyOnceWith('worker-1');
+    } finally { response.resolve('cleanup'); vi.useRealTimers(); }
+  });
+
+  it('resumes queued requests when a fully retired pool gains a new worker', async () => {
+    const { pool, manager } = await fixture();
+    const entered = deferred<void>(), exited = deferred<boolean>();
+    manager.kill.mockImplementationOnce(async () => { entered.resolve(); return exited.promise; });
+    const shrinking = pool.scale(0);
+    await entered.promise;
+    const request = pool.execute('work');
+    expect(pool.pending).toBe(1);
+    manager.spawn.mockResolvedValueOnce(Object.assign({ __processId: 'replacement' }, { work: async () => 'new' }));
+    const growing = pool.scale(1);
+    exited.resolve(true);
+    await shrinking;
+    await growing;
+    await expect(request).resolves.toBe('new');
+    expect(pool.pending).toBe(0);
+  });
+
+  it('reserves capacity synchronously and wakes the next queued request on completion', async () => {
+    const { pool, manager } = await fixture(1, { maxQueueSize: 1 });
+    const response = deferred<string>();
+    const old = await manager.spawn.mock.results[0]!.value;
+    const work = vi.fn().mockImplementationOnce(() => response.promise).mockResolvedValue('next');
+    Object.assign(old, { work });
+    const first = pool.execute('work'), second = pool.execute('work');
+    await expect(pool.execute('work')).rejects.toThrow('Pool queue is full');
+    expect(work).toHaveBeenCalledTimes(1);
+    response.resolve('first');
+    await expect(first).resolves.toBe('first');
+    await expect(second).resolves.toBe('next');
+    expect(work).toHaveBeenCalledTimes(2);
+  });
+
+  it('queues instead of invoking an unhealthy worker and resumes after confirmed health recovery', async () => {
+    const intervals = vi.spyOn(globalThis, 'setInterval');
+    const { pool, manager } = await fixture(1, { healthCheck: { enabled: true, interval: 600_000, unhealthyThreshold: 0 } });
+    const old = await manager.spawn.mock.results[0]!.value;
+    const work = vi.fn().mockRejectedValueOnce(new Error('unhealthy')).mockResolvedValue('recovered');
+    Object.assign(old, { work });
+    await expect(pool.execute('work')).rejects.toThrow('unhealthy');
+    const queued = pool.execute('work');
+    expect(pool.pending).toBe(1);
+    expect(work).toHaveBeenCalledTimes(1);
+    const tick = intervals.mock.calls.find(([, delay]) => delay === 600_000)![0] as () => Promise<void>;
+    await tick();
+    await expect(queued).resolves.toBe('recovered');
+    expect(work).toHaveBeenCalledTimes(2);
+  });
+
   it('rejects invalid initial sizes before initialization can spawn workers', () => {
     for (const size of [-1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
       expect(() => new ProcessPool({} as IProcessManager, './worker.js', { size }, logger))
@@ -237,21 +328,13 @@ describe('pool membership acknowledgments', () => {
 
   it('creates a fresh replacement only if the retained replacement has since been removed', async () => {
     const { pool, manager } = await fixture();
-    const recovery = pool as unknown as { replaceWorker(id: string): Promise<void> };
+    const recovery = pool as unknown as { replaceWorker(id: string): Promise<void>; shutdownWorker(id: string): Promise<void> };
     manager.kill.mockRejectedValueOnce(new Error('still alive'));
     await expect(recovery.replaceWorker('worker-1')).rejects.toThrow('still alive');
-    // Keep the unconfirmed old worker busy so scale-down selects its idle replacement.
-    const started = deferred<void>();
-    const completed = deferred<void>();
-    Object.assign(await manager.spawn.mock.results[0]!.value, {
-      hold: () => { started.resolve(); return completed.promise; },
-    });
-    const active = pool.execute('hold');
-    await started.promise;
-    await pool.scale(1);
+    // Retire the replacement through the same per-worker shutdown used by
+    // resizing. The unconfirmed old proxy must never accept a blocking call.
+    await recovery.shutdownWorker('worker-2');
     expect(pool.getWorkerIds()).toEqual(['worker-1']);
-    completed.resolve();
-    await active;
     await recovery.replaceWorker('worker-1');
     expect(pool.getWorkerIds()).toEqual(['worker-3']);
     expect(manager.spawn).toHaveBeenCalledTimes(3);

@@ -38,7 +38,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { ProcessSpawner } from '../../src/process-spawner.js';
+import { startupProbe } from '../helpers/startup-probe.js';
 
 const silent = {
   info: () => {},
@@ -69,11 +69,7 @@ function forkSilentChild(): ChildProcess {
 }
 
 const waitForReady = (child: ChildProcess, timeout: number): Promise<unknown> =>
-  (
-    new ProcessSpawner(silent as never) as unknown as {
-      waitForReady: (w: ChildProcess, isThread: boolean, t: number) => Promise<unknown>;
-    }
-  ).waitForReady(child, false, timeout);
+  startupProbe(child, timeout, silent as never).result;
 
 /** Hold the event loop the way memory pressure does — without yielding. */
 function stallEventLoop(ms: number): void {
@@ -91,10 +87,11 @@ afterAll(() => {
 describe('a startup timeout taken while the supervisor itself was not running', () => {
   it('says the deadline was missed on our side, and by how much', async () => {
     const child = forkSilentChild();
-    const pending = waitForReady(child, 6_000);
+    const probe = startupProbe(child, 6_000, silent as never);
+    const pending = probe.result;
+    await probe.armed;
 
-    // Armed inside waitForReady, which ran synchronously above — so the probe
-    // is already scheduled and this stall is exactly what it measures.
+    // The ordinary capture pipeline has armed waitForReady before this stall.
     stallEventLoop(3_500);
 
     const err = await pending.then(

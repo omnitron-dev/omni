@@ -121,6 +121,7 @@ await output.close();
 const ownedBackends = new Set();
 if (initial.pid) ownedBackends.add(initial.pid);
 let ownerPid, topologyConnection, sampler, primaryFailure, inProbe = false, failures = 0, samples = 0;
+const probeFailures = [];
 const waitDead = async (pid, timeoutMs = 20_000) => {
   for (let attempt = 0; attempt < timeoutMs / 50 && PidManager.isProcessAlive(pid); attempt++) await new Promise(resolve => setTimeout(resolve, 50));
   assert.equal(PidManager.isProcessAlive(pid), false, `Own fixture process ${pid} did not exit`);
@@ -250,6 +251,7 @@ try {
   const poolPids = new Set();
   for(let i=0;i<10;i++)poolPids.add((await topologyConnection.service.snapshot()).pid);
   assert.equal(poolPids.size,2,'Both real pool workers must answer');
+  const initialPoolPids = [...poolPids], poolCounters = new Map();
 
   await client.disconnect();
   const { port } = JSON.parse(await fs.readFile(path.join(directory, 'address.json'), 'utf8'));
@@ -262,8 +264,17 @@ try {
       const current = await probe();
       assert.equal(current.pid, before.pid); assert.equal(current.started, before.started);
       assert.equal(current.parent, ownerPid);
-      const pooled=await topologyConnection.service.snapshot();assert.ok(poolPids.has(pooled.pid));assert.equal(pooled.parent,ownerPid);samples++;
-    } catch { failures++; }
+      const pooled = await topologyConnection.service.snapshot();
+      assert.equal(pooled.parent, ownerPid); assert.equal(pooled.deployment, 'topology');
+      // Request-count recycling is ordinary pool behavior during a long run.
+      // Every response must still come from this owner's application and no
+      // admitted call may fail or replay when the worker membership changes.
+      assert.ok(pooled.count > (poolCounters.get(pooled.pid) ?? 0));
+      poolCounters.set(pooled.pid, pooled.count); poolPids.add(pooled.pid); samples++;
+    } catch (error) {
+      failures++;
+      if (probeFailures.length < 10) probeFailures.push({ at: new Date().toISOString(), error: String(error.stack ?? error) });
+    }
     finally { inProbe = false; }
   }, 15);
   const result = await replaceBackend(dist, { socket, progress: message => console.log(message) });
@@ -433,9 +444,11 @@ try {
   }
   clearInterval(sampler);
   while (inProbe) await new Promise(resolve => setTimeout(resolve, 5));
-  assert.equal(failures, 0);
+  await fs.writeFile(path.join(directory, 'continuity.json'), JSON.stringify({ samples, failures, probeFailures, delivery, initialPoolPids, poolPids: [...poolPids] }, null, 2));
+  assert.equal(failures, 0, JSON.stringify(probeFailures));
+  assert.deepEqual(await observeTopology(2, 'other-topology'), otherBefore);
   console.log(JSON.stringify({ test: 'backend-replacement-and-rollback', role:master?'master':'slave', verifiedRoles:[...sessions.keys()], directory, ownerPid,
-    applicationPid: before.pid, poolPids:[...poolPids], backendPids: [...ownedBackends], epoch: recovered.execution.epoch,
+    applicationPid: before.pid, initialPoolPids, poolPids:[...poolPids], backendPids: [...ownedBackends], epoch: recovered.execution.epoch,
     samples, failures, selectorReconciliationPreservedPid: true, actualBackendCrashRecovered: true, schemaTransition,
     counterBefore: before.counter, counterAfter: after.counter, delivery, lifecycle: lifecycleProof }));
   }

@@ -4,16 +4,15 @@
  *  - Attaches full stderr/stdout to thrown error's `details`.
  *  - Includes a meaningful tail in the error message (15-20 lines).
  *
- * `waitForReady` is private, so we invoke it directly via reflection,
- * passing a real `child_process.fork()` child of a synthetic worker script.
- * This isolates the diagnostic logic from the rest of the spawn pipeline.
+ * A synthetic fork enters the ordinary spawn/capture pipeline, so diagnostics
+ * are tested against captured output rather than a caller-supplied tail.
  */
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fork } from 'node:child_process';
-import { ProcessSpawner } from '../../src/process-spawner.js';
+import { startupProbe } from '../helpers/startup-probe.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'titan-pm-stderr-'));
@@ -39,16 +38,15 @@ function makeWorker(name: string, body: string): string {
 }
 
 /**
- * Invoke ProcessSpawner['waitForReady'] directly with a child we control.
+ * Observe startup through ProcessSpawner with a child we control.
  * Returns either { ok: true, value } or { ok: false, error }.
  */
 async function probe(
   child: ReturnType<typeof fork>,
   timeout: number,
 ): Promise<{ ok: true; value: unknown } | { ok: false; error: any }> {
-  const spawner = new ProcessSpawner(noopLogger, {});
   try {
-    const value = await (spawner as any).waitForReady(child, /* isWorkerThread */ false, timeout);
+    const value = await startupProbe(child, timeout, noopLogger).result;
     return { ok: true, value };
   } catch (e: any) {
     return { ok: false, error: e };

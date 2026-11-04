@@ -388,7 +388,7 @@ class BootstrapProcess {
     const modulePath = bundledModulePath ?? path.resolve(path.dirname(bootstrapPath), this.entry.module);
     await assertInstalledRuntimeModule(runtimeContext, pathToFileURL(bootstrapPath), pathToFileURL(modulePath));
     reportStage('module:importing', modulePath);
-    const moduleFile = await import(modulePath);
+    const moduleFile = await import(pathToFileURL(modulePath).href);
     reportStage('module:imported');
 
     // ────────────────────────────────────────────────────────────────────

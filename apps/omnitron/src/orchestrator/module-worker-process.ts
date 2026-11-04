@@ -17,6 +17,7 @@
 
 import 'reflect-metadata';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { Application } from '@omnitron-dev/titan';
 import { loadBootstrapConfig } from './bootstrap-loader.js';
 
@@ -124,7 +125,7 @@ class ModuleWorkerProcess {
 
     // Import the module from the entry's file path (relative to bootstrap dir)
     const modulePath = path.resolve(path.dirname(bootstrapPath), topologyEntry.module);
-    const moduleFile = await import(modulePath);
+    const moduleFile = await import(pathToFileURL(modulePath).href);
     const ModuleClass = moduleFile.default ?? moduleFile;
 
     // Create Titan Application with the worker module

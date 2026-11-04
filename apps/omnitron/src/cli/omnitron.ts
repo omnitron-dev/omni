@@ -155,7 +155,8 @@ service
     'user (stops at logout) or system (starts at boot, needs root). Default: system for a slave, user otherwise',
   )
   .option('--prepare', 'Write an independent supervision plan without stopping processes or loading OS services')
-  .action(async (options: { scope?: string; prepare?: boolean }) => {
+  .option('--owner-runtime <sha256>', 'Use an already installed sealed owner runtime; defaults to the selected runtime')
+  .action(async (options: { scope?: string; prepare?: boolean; ownerRuntime?: string }) => {
     if (options.scope && options.scope !== 'user' && options.scope !== 'system') {
       const { log } = await import('@xec-sh/kit');
       log.error(`Unknown scope ${JSON.stringify(options.scope)}. Use 'user' or 'system'.`);
@@ -163,7 +164,7 @@ service
       return;
     }
     const { serviceInstall } = await import('../commands/service.js');
-    await serviceInstall({ ...(options.scope ? { scope: options.scope as 'user' | 'system' } : {}), ...(options.prepare ? { prepare: true } : {}) });
+    await serviceInstall({ ...(options.scope ? { scope: options.scope as 'user' | 'system' } : {}), ...(options.prepare ? { prepare: true } : {}), ...(options.ownerRuntime !== undefined ? { ownerRuntime: options.ownerRuntime } : {}) });
   });
 
 service

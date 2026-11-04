@@ -380,6 +380,25 @@ A failed stack retains its concrete error and retries with its own exponential
 backoff (one to fifteen minutes). Healthy or degraded stacks remain under
 application supervision; they are not restarted as a side effect of that retry.
 
+## Independent service preparation
+
+`omnitron service install --prepare` records the selected sealed runtime for both
+native guardian and execution owner without stopping processes or loading services.
+`--owner-runtime <sha256>` explicitly selects a different **already installed**
+sealed owner. Both artifacts pass the ordinary integrity and native compatibility
+checks; the owner's declared capabilities must satisfy the selected backend.
+The owner unit uses its own pinned Node and managed entry point. The guardian and
+backend retain the selected runtime.
+
+Review the private supervision plan, then use the same scope and owner hash for
+`service install` during an approved controlled shutdown. Installation refuses
+running resident processes or loaded/queued native jobs, overlapping service scopes and a saved plan whose
+owner or backend selection changed. The installation lease covers plan validation
+and active unit writes; unload launchd jobs or stop systemd units before installing.
+An unavailable OS status query refuses installation. This option does not install a runtime,
+stop applications, supply missing owner capabilities or automatically fall back.
+An older owner's unsupported application operations remain unavailable.
+
 ## Standalone infrastructure
 
 `omnitron infra up`, `down` and `reset --yes` operate on containers declared

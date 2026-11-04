@@ -285,7 +285,7 @@ export function serviceKickstart(scope: ServiceScope = currentScope()): void {
   }
 }
 
-export async function serviceInstall(options: { scope?: ServiceScope; prepare?: boolean } = {}): Promise<void> {
+export async function serviceInstall(options: { scope?: ServiceScope; prepare?: boolean; ownerRuntime?: string } = {}): Promise<void> {
   if (process.platform !== 'darwin' && process.platform !== 'linux') {
     log.error(`Unsupported platform for service install: ${process.platform}`);
     process.exitCode = 1;
@@ -316,7 +316,7 @@ export async function serviceInstall(options: { scope?: ServiceScope; prepare?: 
   const scope = decision.scope;
   if (readSavedDaemonConfig()?.executionHost?.enabled) {
     const { prepareResidentService, installResidentService } = await import('./service-resident.js');
-    const inputs = unitInputs(scope);
+    const inputs = { ...unitInputs(scope), ...(options.ownerRuntime !== undefined ? { ownerRuntime: options.ownerRuntime } : {}) };
     if (options.prepare) {
       const plan = await prepareResidentService(inputs);
       log.info(`Independent supervision plan: ${plan.planDirectory}`);
@@ -328,6 +328,7 @@ export async function serviceInstall(options: { scope?: ServiceScope; prepare?: 
     log.success(`Independent owner and backend services installed (${scope}). Plan: ${plan}`);
     return;
   }
+  if (options.ownerRuntime !== undefined) throw new Error('Owner runtime selection requires independent resident execution');
   if (options.prepare) throw new Error('Service preparation is available for independent resident execution');
 
   // Stop a manually-started daemon first so the supervised one can bind

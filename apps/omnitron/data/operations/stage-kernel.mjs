@@ -82,16 +82,17 @@ try {
         const name = entry.path.replace(/\/$/, '');
         if (!name || name.includes('\0') || name.startsWith('/') || name.split('/').some(s => !s || s === '.' || s === '..') ||
             !['File','Directory','SymbolicLink'].includes(entry.type) || entries.has(name) || entries.size >= 200_000) { invalid = true; return; }
+        if (entry.type !== 'SymbolicLink' && (!Number.isInteger(entry.mode) || entry.mode & 0o7022)) invalid = true;
         if (entry.type === 'SymbolicLink') {
           const destination = path.join(path.dirname(name), entry.linkpath);
           if (!entry.linkpath || path.isAbsolute(entry.linkpath) || destination === '..' || destination.startsWith('../')) invalid = true;
         }
         expanded += entry.size;
-        entries.set(name, entry.type);
+        entries.set(name, { type: entry.type, mode: entry.mode });
       } });
       for (const name of entries.keys()) {
         const parent = path.dirname(name);
-        if (parent !== '.' && entries.get(parent) !== 'Directory') invalid = true;
+        if (parent !== '.' && entries.get(parent)?.type !== 'Directory') invalid = true;
       }
       if (invalid || expanded > 8 * 1024 ** 3) throw Error('Kernel archive exceeds limits or contains an unsafe entry');
       await capacity(2 * expanded);
@@ -99,6 +100,17 @@ try {
       await fs.mkdir(payload, { mode: 0o700 });
       await tar.extract({ file: archive, cwd: payload, strict: true, preserveOwner: false, preservePaths: false,
         chmod: true, umask: 0o022, dmode: 0o700, fmode: 0o600 });
+      // tar's chmod option does not restore modes of newly created regular files.
+      // A receiver running with umask 077 must retain the sealed executable bits.
+      // Restore only validated regular entries inside the private transfer directory;
+      // never relax the receiver's process-wide umask or follow an archive link here.
+      for (const [name, entry] of entries) {
+        if (entry.type !== 'File') continue;
+        const file = path.join(payload, name), stat = await fs.lstat(file);
+        if (!stat.isFile() || stat.nlink !== 1 || stat.uid !== process.getuid() || await fs.realpath(file) !== file)
+          throw Error('Unsafe extracted kernel file: ' + name);
+        await fs.chmod(file, entry.mode & 0o777);
+      }
       const manifest = await verifyRuntimeArtifact(payload, build.artifact);
       const stamp = readBuildStamp(path.join(payload, 'packages/0/dist'));
       if (manifest.nodeVersion !== build.nodeVersion || stamp?.commit !== build.commit || stamp.dirty !== false) throw Error('Received runtime identity differs from catalog receipt');

@@ -27,6 +27,10 @@ async function fixture(name, commit) {
   await fs.writeFile(path.join(compiled, 'BUILD.json'), JSON.stringify(build));
   await fs.writeFile(path.join(compiled, 'daemon/daemon-entry.js'), 'console.log(' +
     JSON.stringify(JSON.stringify({ protocol: 1, build })) + ')');
+  // Real dependency closures contain executable helpers with group/other bits.
+  // Their exact bits participate in the sealed digest even inside a private inbox.
+  await fs.writeFile(path.join(compiled, 'helper.sh'), '#!/bin/sh\nexit 0\n');
+  await fs.chmod(path.join(compiled, 'helper.sh'), 0o751);
   for (const module of ['daemon/runtime-installation', 'shared/runtime-artifact', 'shared/build-stamp']) {
     await fs.writeFile(path.join(compiled, module + '.js'), 'export * from ' +
       JSON.stringify(pathToFileURL(path.join(dist, module + '.js')).href));
@@ -68,7 +72,7 @@ try {
   }
   const remoteFile = path.join(registry, '.incoming-' + entry.artifact, 'runtime.tgz');
   const call = async (phase, capability = 1) => {
-    const result = await shell(selected.execPath, ['--input-type=module', '-e', receiver, phase, registry, selected.runtimeHash, JSON.stringify(entry)], {
+    const result = await shell(selected.execPath, ['--input-type=module', '-e', 'process.umask(0o077);\n' + receiver, phase, registry, selected.runtimeHash, JSON.stringify(entry)], {
       env: { ...process.env, NODE_PATH: path.resolve(dist, '../node_modules'), OMNITRON_HOME: home, FIXTURE_HANDOFF: String(capability) },
     });
     return JSON.parse(result.stdout);
@@ -87,6 +91,7 @@ try {
   assert.deepEqual(installation.selection(), before);
   assert.equal(installation.activation(), null);
   assert.equal((await installation.artifact(entry.artifact)).build.commit, next.commit);
+  assert.equal((await fs.stat(path.join(installation.releasePath(entry.artifact), 'packages/0/dist/helper.sh'))).mode & 0o111, 0o111);
   console.log('Verified native installation, unchanged selection, transfer corruption, repeat staging and guardian capability.');
 } finally {
   await installation?.close();

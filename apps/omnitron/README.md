@@ -283,6 +283,8 @@ not authorize graph rewriting or adoption of unverified installations.
 
 See [host ingress setup, application publication and recovery](HOST-INGRESS.md) for independent multi-application HTTPS hosting through the native CLI and RPC API.
 
+Development definitions and watched builds preserve the registered project path, including directory symlinks used by workspaces. Compiled external dependency imports are relative to the physical output directory used by Node, so opening a project through an alias does not change package selection or runtime module identity.
+
 ## Application migrations and diagnostics
 
 Release migration admission validates `settings.env` and `settings.appEnv` against the complete stack, then verifies only the declared migration owners and files. Each migrator receives its own resolved application environment; variables declared for another running application are valid but are never copied into the migrator. Unknown application names and missing vault values still refuse admission before database changes.

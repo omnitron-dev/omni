@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { realpath } from 'node:fs/promises';
 import type { Plugin } from 'esbuild';
 
 /** One package policy for definition reads, process builds and watched rebuilds.
@@ -32,7 +33,12 @@ export function externalizeNonRelativePlugin(): Plugin {
           const outfile = build.initialOptions.outfile;
           if (!outfile) throw new Error('Runtime package resolution requires one output file');
           const output = path.resolve(build.initialOptions.absWorkingDir ?? process.cwd(), outfile);
-          const relative = path.relative(path.dirname(output), resolved.path);
+          // Node resolves an imported output file through directory symlinks.
+          // esbuild already resolves package files physically: computing from a
+          // lexical project alias would therefore add the wrong number of '..'.
+          // Both callers create the output directory before building.
+          const outputDirectory = await realpath(path.dirname(output));
+          const relative = path.relative(outputDirectory, resolved.path);
           if (path.isAbsolute(relative)) throw new Error('Runtime dependencies and output must share a filesystem volume');
           // ESM specifiers are URLs; require() paths are filesystem names.
           const urlImport = args.kind === 'import-statement' || args.kind === 'dynamic-import';

@@ -112,6 +112,27 @@ describe('one workspace source policy for definitions and worker builds', () => 
     expect(plainRead(f.bootstrap, true).name).toBe('watched-prebuilt-runtime-value');
   }, 45_000);
 
+  it('reads, builds and watches a project registered through a deeper directory symlink', async () => {
+    const f = fixture(true);
+    const linked = path.join(root, 'operator/deep/internal/project #1%');
+    fs.mkdirSync(path.dirname(linked), { recursive: true });
+    fs.symlinkSync(f.project, linked, 'dir');
+    const bootstrap = path.join(linked, path.relative(f.project, f.bootstrap));
+    const definition = plainRead(bootstrap, true);
+    expect(definition.name).toBe('first-prebuilt-runtime-value');
+    const builder = new BuildService(true); builders.push(builder);
+    const result = await builder.buildApp('linked', bootstrap, definition);
+    expect(plainRead(result.bootstrapPath, false).name).toBe(definition.name);
+    expect(plainRead(fs.realpathSync(result.bootstrapPath), false).name).toBe(definition.name);
+    let changes = 0;
+    await builder.watchApp('linked', bootstrap, definition, () => { changes++; });
+    f.change('linked-watch');
+    await expect.poll(() => changes, { timeout: 10_000 }).toBeGreaterThan(0);
+    expect(plainRead(result.bootstrapPath, false).name).toBe('linked-watch-prebuilt-runtime-value');
+    expect(plainRead(bootstrap, true).name).toBe('linked-watch-prebuilt-runtime-value');
+    expect(fs.readlinkSync(linked)).toBe(f.project);
+  }, 45_000);
+
   it('keeps library-owned compiled dependencies and import conditions after relocating the workspace', async () => {
     const libraryDirectory = 'kit #1%';
     const f = fixture(true, libraryDirectory);

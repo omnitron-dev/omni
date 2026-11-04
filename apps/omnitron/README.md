@@ -285,6 +285,8 @@ See [host ingress setup, application publication and recovery](HOST-INGRESS.md) 
 
 ## Application migrations and diagnostics
 
+Release migration admission validates `settings.env` and `settings.appEnv` against the complete stack, then verifies only the declared migration owners and files. Each migrator receives its own resolved application environment; variables declared for another running application are valid but are never copied into the migrator. Unknown application names and missing vault values still refuse admission before database changes.
+
 `@omnitron-dev/omnitron/migration` provides migration definitions, the shared
 Kysera-backed runner, PostgreSQL pool adapters and configuration helpers. It can
 be imported without starting the daemon. Applications need no direct Kysera

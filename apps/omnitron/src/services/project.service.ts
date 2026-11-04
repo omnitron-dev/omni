@@ -5091,8 +5091,11 @@ export class ProjectService extends EventEmitter {
     const root = this.registry.get(project)?.path;
     if (!root) throw new Error('Project is not registered');
     const { inspectLocalReleaseInstallation } = await import('../release/local-installation.js');
-    const configured = this.resolveStackApps(definition, config).filter(entry => !requiredMigrations || requiredMigrations.includes(entry.name));
-    const env = await this.stackEnvFor(project, stack, definition, configured.map(entry => entry.name));
+    const stackEntries = this.resolveStackApps(definition, config);
+    // Validate the complete stack before narrowing executable verification to
+    // migration owners. Other applications still own their declared environment.
+    const env = await this.stackEnvFor(project, stack, definition, stackEntries.map(entry => entry.name));
+    const configured = stackEntries.filter(entry => !requiredMigrations || requiredMigrations.includes(entry.name));
     const entries = configured.map(entry => ({
       ...entry, env: { ...entry.env, ...env[entry.name] },
       ...(!entry.releaseFrom || entry.cwd !== undefined ? { cwd: resolveAppPath(root, entry) } : {}),

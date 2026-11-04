@@ -371,7 +371,6 @@ export class ProjectService extends EventEmitter {
   // Enabled-stacks reconciler state (see startEnabledStacksReconciler)
   private resumeTimer: NodeJS.Timeout | null = null;
   private readonly resumeBackoff = new Map<string, { nextAt: number; delayMs: number }>();
-  private dockerWasAvailable: boolean | null = null;
   private reconcilingStacks = false;
   private handoffReconciling = false;
   private ownershipFrozen = false;
@@ -3237,21 +3236,9 @@ export class ProjectService extends EventEmitter {
     }
     if (pending.length === 0) return;
 
-    // One cheap probe gates the whole round: without Docker every start is
-    // guaranteed to fail, so don't burn backoff budget on it.
-    const { isDockerAvailable } = await import('../infrastructure/container-runtime.js');
-    if (!(await isDockerAvailable())) {
-      if (this.dockerWasAvailable !== false) {
-        this.logger.warn(
-          { pending: pending.map((p) => `${p.project}/${p.stack}`) },
-          'Reconciler: Docker unavailable — deferring enabled-stack resume',
-        );
-      }
-      this.dockerWasAvailable = false;
-      return;
-    }
-    this.dockerWasAvailable = true;
-
+    // Infrastructure admission belongs to startStack, including ownership and
+    // inferred requirements. A global Docker probe would strand remote and
+    // externally provisioned stacks behind an unrelated local dependency.
     const now = Date.now();
     for (const { project, stack } of pending) {
       const key = `${project}/${stack}`;

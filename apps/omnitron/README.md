@@ -373,6 +373,13 @@ than a new startup test: editing a dependency does not prove a successful retry.
 Successful declaration refresh replaces its previous failure; diagnosis itself
 does not execute application code, provision services or run migrations.
 
+Boot and automatic recovery admit each enabled stack independently. Docker is
+required only by the stack's actual provisioning path: an unavailable local
+daemon does not delay remote attachment or externally provisioned applications.
+A failed stack retains its concrete error and retries with its own exponential
+backoff (one to fifteen minutes). Healthy or degraded stacks remain under
+application supervision; they are not restarted as a side effect of that retry.
+
 ## Standalone infrastructure
 
 `omnitron infra up`, `down` and `reset --yes` operate on containers declared

@@ -3,7 +3,7 @@ import { OrchestratorService } from '../../src/orchestrator/orchestrator.service
 
 const logger: any = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => logger };
 function orchestrator() {
-  const service = new OrchestratorService(logger, {} as any, { getStackIntent: () => ({ revision: 0, phase: 'running' }) } as any);
+  const service = new OrchestratorService(logger, {} as any, { getExecutionIntent: () => ({ phase: 'running', revision: 0 }), getStackIntent: () => ({ revision: 0, phase: 'running' }) } as any);
   const native = service as any;
   native.ensureMetricsPolling = vi.fn(); native.persistState = vi.fn();
   native.launchClassicMode = vi.fn(async (_entry: unknown, handle: any) => { handle.status = 'online'; });

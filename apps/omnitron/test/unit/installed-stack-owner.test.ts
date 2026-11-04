@@ -78,6 +78,16 @@ async function fixture(bootstrapWorker = false) {
 }
 
 describe('installed stack process owner', () => {
+  it('refuses a separately fenced application before opening an installed stack', async () => {
+    const { owner, state, handles } = await fixture();
+    const plan = await owner.inspectInstalledStack(scope);
+    await owner.stopExecution({ operationId: randomUUID(), plan: await owner.inspectExecution({ ...scope, application: 'api' }) });
+    await expect(owner.inspectInstalledStack(scope)).rejects.toThrow('fenced');
+    await expect(owner.openInstalledStack({ operationId: randomUUID(), plan })).rejects.toThrow('fenced');
+    expect(state.getStackIntent(scope).phase).toBe('stopped');
+    expect([...handles.values()].every(handle => handle.status === 'stopped')).toBe(true);
+  });
+
   it('refuses unverified sealed code before bootstrap introspection or a classic spawn', async () => {
     const { owner, dir } = await fixture();
     await owner.setWatchMode(true);

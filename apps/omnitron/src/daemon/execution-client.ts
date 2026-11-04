@@ -304,6 +304,7 @@ export class ExecutionClient {
   }
 
   private async submit(method: ExecutionMutation, args: unknown[]): Promise<unknown> {
+    if (method === 'stopExecution' || method === 'enableExecution') this.requireExecutionScopes();
     if (method === 'openInstalledStack' || method === 'resumeInstalledApp') this.requireInstalledStart();
     if (method === 'scaleApp' && this.view().capabilities?.['processPoolResize'] !== 1)
       throw new Error('Execution owner does not support declared process pool resizing; prepare an owner upgrade with an application restart plan. Backend updates remain available.');
@@ -329,7 +330,14 @@ export class ExecutionClient {
     }
   }
 
+  private requireExecutionScopes(): void {
+    if (this.view().capabilities?.['executionScopes'] !== 1) {
+      throw new Error('Execution owner does not support durable application scopes; an owner upgrade is required');
+    }
+  }
+
   private async read(method: ExecutionRead, args: unknown[]): Promise<unknown> {
+    if (method === 'inspectExecution') this.requireExecutionScopes();
     if (method === 'inspectInstalledStack') {
       this.requireInstalledStart();
       return this.rpc().read({ method, args });

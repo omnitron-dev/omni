@@ -5,7 +5,7 @@ import { AppHandle } from '../../src/orchestrator/app-handle.js';
 function fixture() {
   const logger: any = { info: vi.fn(), debug: vi.fn(), error: vi.fn(), warn: vi.fn() };
   logger.child = () => logger;
-  const orchestrator = new OrchestratorService(logger, {} as never, { getStackIntent: () => ({ phase: 'running', revision: 0 }) } as never, process.cwd());
+  const orchestrator = new OrchestratorService(logger, {} as never, { getExecutionIntent: () => ({ phase: 'running', revision: 0 }), getStackIntent: () => ({ phase: 'running', revision: 0 }) } as never, process.cwd());
   const daemon = new OmnitronDaemon() as any;
   daemon.app = { container: { resolveAsync: vi.fn(async () => orchestrator) } };
   return { daemon, orchestrator, logger };

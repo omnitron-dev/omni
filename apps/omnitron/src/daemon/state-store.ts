@@ -1,4 +1,4 @@
-import { stackExecutionKey, validateStackExecutionIntent } from '../shared/dto/stack-execution.js';
+import { executionScopeKey, validateStackExecutionIntent, type ExecutionScope, type StackExecutionIntent } from '../shared/dto/stack-execution.js';
 /**
  * State Store — Persist/recover process state across daemon restarts.
  *
@@ -53,13 +53,23 @@ const STATE_KV_KEY = 'orchestrator:persisted-state';
 
 export class StateStore {
   getStackIntent(scope: import('../shared/dto/stack-execution.js').StackExecutionScope): import('../shared/dto/stack-execution.js').StackExecutionIntent {
-    return validateStackExecutionIntent(this.store.kvGetSync(`execution:stack:${stackExecutionKey(scope)}`, { strict: true }));
+    return this.getExecutionIntent({ project: scope.project, stack: scope.stack });
   }
 
   updateStackIntent(scope: import('../shared/dto/stack-execution.js').StackExecutionScope,
     update: (current: import('../shared/dto/stack-execution.js').StackExecutionIntent) => import('../shared/dto/stack-execution.js').StackExecutionIntent,
   ): import('../shared/dto/stack-execution.js').StackExecutionIntent {
-    return this.store.kvUpdateSync(`execution:stack:${stackExecutionKey(scope)}`,
+    return this.updateExecutionIntent({ project: scope.project, stack: scope.stack }, update);
+  }
+
+  getExecutionIntent(scope: ExecutionScope): StackExecutionIntent {
+    const key = `execution:${scope.application === undefined ? 'stack' : 'application'}:${executionScopeKey(scope)}`;
+    return validateStackExecutionIntent(this.store.kvGetSync(key, { strict: true }));
+  }
+
+  updateExecutionIntent(scope: ExecutionScope, update: (current: StackExecutionIntent) => StackExecutionIntent): StackExecutionIntent {
+    const key = `execution:${scope.application === undefined ? 'stack' : 'application'}:${executionScopeKey(scope)}`;
+    return this.store.kvUpdateSync(key,
       current => validateStackExecutionIntent(update(validateStackExecutionIntent(current))));
   }
   /** Cached snapshot for synchronous `load()` after `init()` ran. */

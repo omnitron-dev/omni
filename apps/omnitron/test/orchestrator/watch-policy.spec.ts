@@ -15,7 +15,7 @@ const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function harness() {
   const logger: any = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
   logger.child = () => logger;
-  const service = new OrchestratorService(logger, {} as never, { getStackIntent: () => ({ phase: 'running', revision: 0 }) } as never, process.cwd());
+  const service = new OrchestratorService(logger, {} as never, { getExecutionIntent: () => ({ phase: 'running', revision: 0 }), getStackIntent: () => ({ phase: 'running', revision: 0 }) } as never, process.cwd());
   service.devMode = true;
   const internals = service as any;
   cleanups.push(async () => { await internals.buildService?.dispose(); });

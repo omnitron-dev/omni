@@ -3,7 +3,7 @@ import { parsePoolScaleRequest, assertPoolScaleTarget } from '../shared/pool-sca
 import { installedEntryRevision, installedExecutable, requireInstalledBinding } from './installed-execution.js';
 import { topologyRevision } from '../project/topology-plan.js';
 import { createHash } from 'node:crypto';
-import { stackExecutionKey, type StackExecutionScope, type StackExecutionPlan, type StackExecutionStop, type StackExecutionReceipt, type InstalledAppBinding, type InstalledStackExecutionPlan } from '../shared/dto/stack-execution.js';
+import { stackExecutionKey, executionScopeKey, executionScopeOwns, type ExecutionScope, type ExecutionPlan, type ExecutionStop, type ExecutionReceipt, type StackExecutionScope, type StackExecutionPlan, type StackExecutionStop, type StackExecutionReceipt, type InstalledAppBinding, type InstalledStackExecutionPlan } from '../shared/dto/stack-execution.js';
 import type { ProcessOutputContext } from '@omnitron-dev/titan-pm';
 /**
  * OrchestratorService — Core orchestration logic
@@ -843,6 +843,7 @@ export class OrchestratorService extends EventEmitter {
 
   private async startAppInternal(entry: IEcosystemAppEntry, config?: IEcosystemConfig, installed?: InstalledAppBinding): Promise<AppHandle> {
     if (!installed) this.assertAppStartAllowed(entry.name);
+    else this.assertApplicationFence(entry.name);
     // Persist ecosystem config for restartApp — stack mode passes config per-app,
     // but restartApp calls startApp without it.
     if (config && !this.config) {
@@ -1085,7 +1086,7 @@ export class OrchestratorService extends EventEmitter {
 
   /** Historical launch identity stays private to the handle; membership changes can invalidate its live release observation. */
   private readonly installedLaunches = new WeakMap<AppHandle, { binding: InstalledAppBinding; config: IEcosystemConfig }>();
-  private readonly stackStops = new Map<string, { id: string; fingerprint: string; promise: Promise<StackExecutionReceipt> }>();
+  private readonly stackStops = new Map<string, { id: string; fingerprint: string; promise: Promise<ExecutionReceipt> }>();
 
   /** The owner supplies generations; backend caches cannot establish stop authority. */
   async inspectStackExecution(scope: StackExecutionScope): Promise<StackExecutionPlan> {
@@ -1093,14 +1094,26 @@ export class OrchestratorService extends EventEmitter {
   }
 
   private stackExecutionPlan(scope: StackExecutionScope): StackExecutionPlan {
-    const key = stackExecutionKey(scope);
-    const names = this.listHandleNames(`${key}/`).sort();
+    return this.executionPlan({ project: scope.project, stack: scope.stack });
+  }
+
+  async inspectExecution(scope: ExecutionScope): Promise<ExecutionPlan> {
+    return this.executionPlan(scope);
+  }
+
+  private executionPlan(scope: ExecutionScope): ExecutionPlan {
+    const key = executionScopeKey(scope);
+    const names = this.listHandleNames().filter(name => executionScopeOwns(scope, name)).sort();
+    if (scope.application !== undefined && names.length !== 1) throw new Error(`Application '${key}' is not retained by this owner`);
     if (names.some(name => this.lifecycleQueue.isBusy(name)) ||
-        [...this.startingApps.keys()].some(name => name.startsWith(`${key}/`))) {
-      throw new Error(`Stack '${key}' has active application operations; retry after they finish`);
+        [...this.startingApps.keys()].some(name => executionScopeOwns(scope, name))) {
+      throw new Error(`Execution scope '${key}' has active application operations; retry after they finish`);
     }
-    const { revision, phase } = this.stateStore.getStackIntent(scope);
+    const { revision, phase } = this.stateStore.getExecutionIntent(scope);
+    const parent = scope.application !== undefined ? this.stateStore.getStackIntent(scope) : undefined;
+    if (parent?.phase === 'stopping' || parent?.phase === 'starting') throw new Error('Parent stack has an unfinished operation');
     return { project: scope.project, stack: scope.stack, revision, phase,
+      ...(scope.application !== undefined && { application: scope.application, parentRevision: parent!.revision }),
       apps: names.map(name => ({ name, generation: this.handles.get(name)!.generation })) };
   }
 
@@ -1128,6 +1141,7 @@ export class OrchestratorService extends EventEmitter {
   async inspectInstalledStack(scope: StackExecutionScope): Promise<InstalledStackExecutionPlan> {
     const plan = this.stackExecutionPlan(scope);
     if (plan.phase !== 'stopped' || !plan.apps.length) throw new Error('Installed stack start requires a completed stop with retained applications');
+    for (const item of plan.apps) this.assertApplicationFence(item.name);
     const apps: InstalledStackExecutionPlan['apps'] = [];
     for (const item of plan.apps) {
       const { handle, binding } = this.retainedApp(item.name, item.generation);
@@ -1155,6 +1169,7 @@ export class OrchestratorService extends EventEmitter {
           if (!expected?.installed || expected.name !== item.name || expected.generation !== item.generation) return true;
           return topologyRevision(this.retainedApp(item.name, item.generation).binding) !== topologyRevision(expected.installed);
         })) throw new Error('Installed stack changed; prepare a new start');
+    for (const item of plan.apps) this.assertApplicationFence(item.name);
     const fingerprint = topologyRevision(plan);
     this.stateStore.updateStackIntent(plan, current => {
       if (current.phase !== 'stopped' || current.revision !== plan.revision || current.revision === Number.MAX_SAFE_INTEGER) {
@@ -1214,9 +1229,19 @@ export class OrchestratorService extends EventEmitter {
   }
 
   async enableStackExecution(scope: StackExecutionScope, options: { automatic?: boolean } = {}): Promise<void> {
-    const key = stackExecutionKey(scope);
+    return this.enableExecution({ project: scope.project, stack: scope.stack }, options);
+  }
+
+  async enableExecution(scope: ExecutionScope, options: { automatic?: boolean; expectedRevision?: number } = {}): Promise<void> {
+    const key = executionScopeKey(scope);
     if (this.stackStops.has(key)) throw new Error(`Stack '${key}' is still stopping`);
-    this.stateStore.updateStackIntent(scope, current => {
+    if (scope.application !== undefined && this.stateStore.getStackIntent(scope).phase !== 'running') {
+      throw new Error('Parent stack must be running before admitting an application start');
+    }
+    this.stateStore.updateExecutionIntent(scope, current => {
+      if (scope.application !== undefined && (!Number.isSafeInteger(options.expectedRevision) || options.expectedRevision !== current.revision)) {
+        throw new Error('Application execution intent changed; inspect it before admitting a start');
+      }
       if (current.phase === 'starting') throw new Error(`Stack '${key}' has an unfinished installed start; inspect and stop it before starting again`);
       if (current.phase === 'stopping') throw new Error(`Stack '${key}' has an unconfirmed stop; complete it before starting`);
       if (current.phase === 'running') return current;
@@ -1227,7 +1252,12 @@ export class OrchestratorService extends EventEmitter {
   }
 
   stopStackExecution(request: StackExecutionStop): Promise<StackExecutionReceipt> {
-    const key = stackExecutionKey(request?.plan);
+    if ((request.plan as ExecutionPlan).application !== undefined) throw new Error('Use the scoped execution contract for an application stop');
+    return this.stopExecution(request);
+  }
+
+  stopExecution(request: ExecutionStop): Promise<ExecutionReceipt> {
+    const key = executionScopeKey(request?.plan);
     if (typeof request.operationId !== 'string' || !/^[a-f0-9-]{36}$/.test(request.operationId)) throw new Error('Invalid stop operation identity');
     const fingerprint = createHash('sha256').update(JSON.stringify(request.plan)).digest('hex');
     const running = this.stackStops.get(key);
@@ -1235,24 +1265,32 @@ export class OrchestratorService extends EventEmitter {
       if (running.id !== request.operationId || running.fingerprint !== fingerprint) throw new Error(`Stack '${key}' already has a stop in progress`);
       return running.promise;
     }
-    const promise = this.stopStackExecutionNow(request).finally(() => this.stackStops.delete(key));
+    const promise = this.stopExecutionNow(request).finally(() => this.stackStops.delete(key));
     this.stackStops.set(key, { id: request.operationId, fingerprint, promise });
     return promise;
   }
 
-  private async stopStackExecutionNow({ operationId, plan }: StackExecutionStop): Promise<StackExecutionReceipt> {
-    const key = stackExecutionKey(plan);
+  private async stopExecutionNow({ operationId, plan }: ExecutionStop): Promise<ExecutionReceipt> {
+    const key = executionScopeKey(plan);
     const fingerprint = createHash('sha256').update(JSON.stringify(plan)).digest('hex');
-    const prior = this.stateStore.getStackIntent(plan);
+    const prior = this.stateStore.getExecutionIntent(plan);
     const retry = prior.operationId === operationId && prior.fingerprint === fingerprint;
     if (prior.operationId === operationId && !retry) throw new Error('Stop operation identity was reused with different arguments');
     if (!retry) {
-      const observed = this.stackExecutionPlan(plan);
+      const observed = this.executionPlan(plan);
       if (JSON.stringify(observed) !== JSON.stringify(plan)) throw new Error(`Stack '${key}' changed; prepare a new stop`);
     }
     // A durable stop fence also covers crash recovery and file-watch restarts.
     // No newly admitted start may pass it while this operation awaits exits.
-    const intent = this.stateStore.updateStackIntent(plan, current => {
+    const assertParent = () => {
+      if (plan.application === undefined) return;
+      const parent = this.stateStore.getStackIntent(plan);
+      if (parent.revision !== plan.parentRevision || parent.phase === 'starting' || parent.phase === 'stopping') {
+        throw new Error('Parent stack intent changed; inspect before retrying the application operation');
+      }
+    };
+    assertParent();
+    const intent = this.stateStore.updateExecutionIntent(plan, current => {
       if (current.operationId === operationId && current.fingerprint === fingerprint) return current;
       if (current.revision !== plan.revision) throw new Error(`Stack '${key}' intent changed; prepare a new stop`);
       if (current.revision === Number.MAX_SAFE_INTEGER) throw new Error('Stack execution revision exhausted');
@@ -1260,21 +1298,24 @@ export class OrchestratorService extends EventEmitter {
     });
     const failures: unknown[] = [];
     for (const expected of [...plan.apps].reverse()) {
+      assertParent();
       const handle = this.handles.get(expected.name);
-      if (!expected.name.startsWith(`${key}/`) || !handle || handle.generation !== expected.generation) {
+      if (!executionScopeOwns(plan, expected.name) || !handle || handle.generation !== expected.generation) {
         failures.push(new Error(`Application '${expected.name}' changed generation; inspect before retrying`));
         continue;
       }
       try { await this.stopApp(expected.name); } catch (error) { failures.push(error); }
     }
-    const survivors = this.listHandleNames(`${key}/`).filter(name => this.handles.get(name)?.status !== 'stopped');
+    const survivors = this.listHandleNames().filter(name => executionScopeOwns(plan, name) && this.handles.get(name)?.status !== 'stopped');
     if (survivors.length) failures.push(new Error(`Exit unconfirmed for: ${survivors.join(', ')}`));
     if (failures.length) throw new AggregateError(failures, `Stack '${key}' stop incomplete: ${failures.map(String).join('; ')}`);
-    this.stateStore.updateStackIntent(plan, current => {
+    assertParent();
+    this.stateStore.updateExecutionIntent(plan, current => {
       if (current.revision !== intent.revision || current.operationId !== operationId) throw new Error('Stack stop authority changed');
       return { ...current, phase: 'stopped' };
     });
     return { project: plan.project, stack: plan.stack, operationId, revision: intent.revision,
+      ...(plan.application !== undefined && { application: plan.application }),
       stopped: plan.apps.map(app => app.name), observedAt: new Date().toISOString() };
   }
 
@@ -1286,6 +1327,16 @@ export class OrchestratorService extends EventEmitter {
     if (phase === 'starting') throw new Error(`Stack '${stackExecutionKey(scope)}' has an unfinished installed stack start; inspect its receipt and stop before retrying`);
     if (phase !== 'running') {
       throw new Error(`Stack '${stackExecutionKey(scope)}' is stopped or stopping; use stack start after confirming its stop`);
+    }
+    this.assertApplicationFence(name);
+  }
+
+  private assertApplicationFence(name: string): void {
+    const parts = name.split('/');
+    if (parts.length !== 3) return;
+    const scope = { project: parts[0]!, stack: parts[1]!, application: parts[2]! };
+    if (this.stateStore.getExecutionIntent(scope).phase !== 'running') {
+      throw new Error(`Application '${name}' is fenced; inspect and explicitly admit its start`);
     }
   }
 

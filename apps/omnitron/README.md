@@ -25,6 +25,22 @@ Use `omnitron start project/stack/app` to start one application through a runnin
 
 Use `omnitron stop project/stack/app` to stop one application or `omnitron stop all` to stop all managed applications. Both require a responsive daemon. If RPC is unavailable or the stop cannot be confirmed, the CLI reports the reason and exits with a failure. Use `omnitron down` for an explicit daemon shutdown.
 
+The resident owner's `executionScopes@1` contract provides one durable stop mechanism
+for a stack or one application. `inspectExecution`, `stopExecution` and `enableExecution`
+use `{ project, stack, application? }`; application plans bind both the launch generation
+and the parent stack revision. SQLite acknowledges a stop fence before any process is
+stopped. Retrying a lost reply uses the same operation and plan; a different generation
+or parent intent requires a new inspection. An application start requires the observed
+intent revision, and enabling the parent never clears a child fence. Installed-stack
+recovery also refuses a separately fenced child before starting anything.
+
+This private Netron contract is the owner primitive for independent application source
+selection; it does not yet add a CLI or Console switch between dev sources and a release.
+Older owners are rejected before scoped RPC or recovery-state changes. Backend handoff
+can retain an older owner, but enabling scoped execution requires a separately qualified
+owner upgrade. An owner downgrade must reconcile outstanding child fences first: legacy
+owners do not understand those records.
+
 ```bash
 # Link globally
 pnpm link:global

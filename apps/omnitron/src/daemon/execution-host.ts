@@ -19,9 +19,9 @@ import { OWN_BUILD, type BuildStamp } from '../shared/build-stamp.js';
 // backend authenticates end users with Omnitron RBAC before entering it.
 const OWNER_ROLES = ['execution-controller'];
 
-export const EXECUTION_READS = ['inspectInstalledStack', 'inspectStackExecution', 'getDependencyGraph', 'getMetrics', 'getHealth', 'explainPortConflict'] as const;
+export const EXECUTION_READS = ['inspectExecution', 'inspectInstalledStack', 'inspectStackExecution', 'getDependencyGraph', 'getMetrics', 'getHealth', 'explainPortConflict'] as const;
 export const EXECUTION_MUTATIONS = [
-  'openInstalledStack', 'resumeInstalledApp', 'stopStackExecution', 'enableStackExecution', 'startAll', 'startApp', 'stopApp', 'stopAll', 'redefineApp', 'restartApp', 'startKnownApp',
+  'stopExecution', 'enableExecution', 'openInstalledStack', 'resumeInstalledApp', 'stopStackExecution', 'enableStackExecution', 'startAll', 'startApp', 'stopApp', 'stopAll', 'redefineApp', 'restartApp', 'startKnownApp',
   'restartAfterChange', 'reloadApp', 'scaleApp', 'setWatchMode', 'setConfig',
   'configureReadiness', 'drainChildSamples', 'setMetricsEnabled',
 ] as const;

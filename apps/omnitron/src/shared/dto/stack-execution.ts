@@ -1,5 +1,7 @@
 /** Scope on the process owner; a deployed allocation may have a different public stack name. */
 export interface StackExecutionScope { project: string; stack: string }
+/** A child scope never grants authority over the other applications of its stack. */
+export interface ExecutionScope extends StackExecutionScope { application?: string }
 export interface StackExecutionIntent {
   revision: number;
   phase: 'running' | 'stopping' | 'stopped' | 'starting';
@@ -33,11 +35,29 @@ export interface StackExecutionReceipt extends StackExecutionScope {
   stopped: string[];
   observedAt: string;
 }
+export interface ExecutionPlan extends StackExecutionPlan, ExecutionScope {
+  /** Bind a child operation to the reviewed parent intent, including deliberate stops. */
+  parentRevision?: number;
+}
+export interface ExecutionStop { operationId: string; plan: ExecutionPlan }
+export interface ExecutionReceipt extends StackExecutionReceipt, ExecutionScope {}
 export function stackExecutionKey(scope: StackExecutionScope): string {
   if (!scope || ![scope.project, scope.stack].every(value => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(value))) {
     throw new Error('A canonical project and stack identity is required');
   }
   return `${scope.project}/${scope.stack}`;
+}
+export function executionScopeKey(scope: ExecutionScope): string {
+  const stack = stackExecutionKey(scope);
+  if (scope.application === undefined) return stack;
+  if (typeof scope.application !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(scope.application)) {
+    throw new Error('A canonical application identity is required');
+  }
+  return `${stack}/${scope.application}`;
+}
+export function executionScopeOwns(scope: ExecutionScope, name: string): boolean {
+  const key = executionScopeKey(scope);
+  return scope.application === undefined ? name.startsWith(`${key}/`) : name === key;
 }
 export function validateStackExecutionIntent(value: StackExecutionIntent | null): StackExecutionIntent {
   if (value === null) return { revision: 0, phase: 'running' };

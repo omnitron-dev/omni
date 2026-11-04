@@ -43,7 +43,7 @@ function orchestrator() {
   const log: string[] = [];
   const self = Object.create(OrchestratorService.prototype) as Record<string, any>;
   Object.assign(self, {
-    stateStore: { getStackIntent: () => ({ revision: 0, phase: 'running' }) },
+    stateStore: { getExecutionIntent: () => ({ phase: 'running', revision: 0 }), getStackIntent: () => ({ revision: 0, phase: 'running' }) },
     handles: new Map<string, AppHandle>(),
     coolDownTimers: new Map(),
     appStopIntents: new Map(),

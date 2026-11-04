@@ -393,8 +393,8 @@ export class ExecutionClient {
         .map(app => ({ app: app.info.name, lines: app.logs.slice(-lines) })),
       hasDeclaredReadiness: (name: string) => this.view().apps.find(app => app.info.name === this.resolve(name))?.declaredReadiness ?? false,
       onAppLog: (handler: (name: string, line: string, context?: ProcessOutputContext) => void) => { this.logHandlers.push(handler); },
-      // Child-to-parent routing terminates at the stable owner's socket.
-      setDaemonNetron: () => {},
+      // The resident owner owns application listeners; backend handoff cannot replace them.
+      setTopologyDirectory: () => {},
       setMetricsBridge: (bridge: Parameters<OrchestratorService['setMetricsBridge']>[0]) => {
         this.metrics = bridge;
         bridge.attachOrchestrator(this.orchestrator);

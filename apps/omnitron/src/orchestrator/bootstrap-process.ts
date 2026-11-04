@@ -9,7 +9,7 @@
  *   1. PM worker-runtime's Netron — management plane (health, metrics, shutdown)
  *   2. Application's own Netron — data plane (HTTP API serving)
  *
- * Topology: Children connect to the daemon's Netron Unix socket and use
+ * Topology: Children connect to the application's private Netron Unix socket and use
  * queryInterface() to get transparent proxies to sibling services.
  */
 
@@ -182,7 +182,7 @@ function reportStage(stage: string, detail?: string): void {
 export function createDeferredTopologyProxy(
   netron: { connect(url: string): Promise<{ queryInterface(name: string): Promise<unknown> }> },
   serviceName: string,
-  daemonSocketUrl: string,
+  topologySocketUrl: string,
 ): unknown {
   let live: Record<string, unknown> | null = null;
   let resolving: Promise<void> | null = null;
@@ -190,12 +190,12 @@ export function createDeferredTopologyProxy(
   const resolve = async (): Promise<void> => {
     resolving ??= (async () => {
       try {
-        const peer = await netron.connect(daemonSocketUrl);
+        const peer = await netron.connect(topologySocketUrl);
         const handle = await peer.queryInterface(serviceName);
         live = createReconnectingTopologyProxy(
           netron,
           serviceName,
-          daemonSocketUrl,
+          topologySocketUrl,
           handle,
         ) as Record<string, unknown>;
       } finally {
@@ -253,7 +253,7 @@ export function createDeferredTopologyProxy(
 export function createReconnectingTopologyProxy(
   netron: { connect(url: string): Promise<{ queryInterface(name: string): Promise<unknown> }> },
   serviceName: string,
-  daemonSocketUrl: string,
+  topologySocketUrl: string,
   initial: unknown
 ): unknown {
   let current = initial as Record<string, unknown>;
@@ -286,7 +286,7 @@ export function createReconnectingTopologyProxy(
   const reconnect = async (): Promise<void> => {
     reconnecting ??= (async () => {
       try {
-        const peer = await netron.connect(daemonSocketUrl);
+        const peer = await netron.connect(topologySocketUrl);
         current = (await peer.queryInterface(serviceName)) as Record<string, unknown>;
       } finally {
         reconnecting = null;
@@ -348,7 +348,7 @@ class BootstrapProcess {
       processName: resolvedProcessName,
       portOffset: resolvedPortOffset,
       bundledModulePath,
-      __daemonSocketUrl: daemonSocketUrl,
+      __daemonSocketUrl: topologySocketUrl,
       __topologyConnects: topologyAccess,
     } = deps;
 
@@ -444,9 +444,9 @@ class BootstrapProcess {
 
     // Inject topology proxies via Netron-native connection to daemon.
     // topology.access contains Netron service names (e.g., 'OhlcvAggregatorWorker')
-    // that this process is permitted to query from the daemon's Netron.
-    if (daemonSocketUrl && topologyAccess && topologyAccess.length > 0) {
-      await this.injectTopologyProxies(topologyAccess, daemonSocketUrl);
+    // that this process is permitted to query from the application's private Netron.
+    if (topologySocketUrl && topologyAccess && topologyAccess.length > 0) {
+      await this.injectTopologyProxies(topologyAccess, topologySocketUrl);
     }
 
     // Resolve auth: process-level overrides app-level (false = explicitly disabled)
@@ -717,15 +717,15 @@ class BootstrapProcess {
   }
 
   /**
-   * Connect to daemon's Netron and queryInterface() for sibling services.
+   * Connect to application's private Netron and queryInterface() for sibling services.
    *
    * Uses the Application's own Netron instance (this.app.netron) to connect
-   * to the daemon's Unix socket — no separate Netron instance needed.
+   * to the application's private Unix socket — no separate Netron instance needed.
    * Application.stop() handles disconnection automatically.
    */
   private async injectTopologyProxies(
     serviceNames: string[],
-    daemonSocketUrl: string
+    topologySocketUrl: string
   ): Promise<void> {
     if (!this.app?.netron) return;
 
@@ -735,12 +735,12 @@ class BootstrapProcess {
     this.app.netron.registerTransport('unix', () => new UnixSocketTransport());
     this.app.netron.setTransportOptions('unix', { requestTimeout: TOPOLOGY_REQUEST_TIMEOUT });
 
-    // Connect with timeout — fail fast if daemon socket is unavailable
+    // Connect with timeout — fail fast if application topology socket is unavailable
     const connectTimeout = 10_000;
-    const daemonPeer = await Promise.race([
-      this.app.netron.connect(daemonSocketUrl),
+    const topologyPeer = await Promise.race([
+      this.app.netron.connect(topologySocketUrl),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`Daemon socket connection timeout (${connectTimeout}ms): ${daemonSocketUrl}`)), connectTimeout)
+        setTimeout(() => reject(new Error(`Application topology connection timeout (${connectTimeout}ms): ${topologySocketUrl}`)), connectTimeout)
       ),
     ]);
 
@@ -751,7 +751,7 @@ class BootstrapProcess {
       // day on the stand, none of them an outcome. `queryTopologyService`
       // covers the window; a service that is genuinely absent still lands in
       // the catch below, where the warning means what it says.
-      const queried = await queryTopologyService(daemonPeer, serviceName);
+      const queried = await queryTopologyService(topologyPeer, serviceName);
       try {
         if (!queried.ok) throw queried.error;
         const proxy = queried.proxy;
@@ -762,7 +762,7 @@ class BootstrapProcess {
           useValue: createReconnectingTopologyProxy(
             this.app.netron as never,
             serviceName,
-            daemonSocketUrl,
+            topologySocketUrl,
             proxy
           ),
         } as any);
@@ -771,7 +771,7 @@ class BootstrapProcess {
           level: 40,
           time: new Date().toISOString(),
           pid: process.pid,
-          msg: `[topology] Failed to query service '${serviceName}' from daemon: ${(err as Error).message}`,
+          msg: `[topology] Failed to query service '${serviceName}' from application topology: ${(err as Error).message}`,
         });
         process.stderr.write(entry + '\n');
 
@@ -785,7 +785,7 @@ class BootstrapProcess {
           useValue: createDeferredTopologyProxy(
             this.app!.netron as never,
             serviceName,
-            daemonSocketUrl,
+            topologySocketUrl,
           ),
         } as any);
       }

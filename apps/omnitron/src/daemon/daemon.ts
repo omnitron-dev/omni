@@ -581,13 +581,10 @@ export class OmnitronDaemon {
     // 8. File watching (dev mode)
     if (!options?.backendHandoff) await this.startFileWatcher(config, options, logger);
 
-    // 8.5. Wire daemon Netron to orchestrator for native topology routing
+    // 8.5. Configure application-owned topology listeners for in-process ownership.
     {
       const orchestrator = await this.app.container.resolveAsync<OrchestratorService>(ORCHESTRATOR_TOKEN);
-      if (this.app.netron) {
-        const socketPath = expandPath(this.dc.socketPath);
-        orchestrator.setDaemonNetron(this.app.netron, socketPath);
-      }
+      orchestrator.setTopologyDirectory(path.join(path.dirname(expandPath(this.dc.socketPath)), 'topology'));
 
       // 8.6. Wire metrics bridge + start /metrics HTTP endpoint.
       // Bridge subscribes to orchestrator events (restart/crash/escalation),

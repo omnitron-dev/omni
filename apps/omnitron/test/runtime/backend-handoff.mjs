@@ -61,15 +61,24 @@ const { runtimeArtifactDigest } = await import(url('shared/runtime-artifact.js')
 const { httpPort: httpBase, release } = await reserveDaemonPorts();
 const boot = path.join(directory, 'boot.mjs');
 const script = path.join(directory, 'counter.mjs');
-const applicationPackage = path.resolve(dist, '..');
+const applicationSdkArg = process.argv.indexOf('--application-sdk');
+const applicationPackage = applicationSdkArg === -1 ? path.resolve(dist, '..') : await fs.realpath(process.argv[applicationSdkArg + 1]);
 const appModules = path.join(directory, 'node_modules/@omnitron-dev');
 await fs.mkdir(appModules, {recursive:true});
 await fs.symlink(applicationPackage, path.join(appModules,'omnitron'));
 await fs.symlink(await fs.realpath(path.join(applicationPackage,'node_modules/@omnitron-dev/titan')),path.join(appModules,'titan'));
 const topology = path.join(directory, 'bootstrap.mjs');
 for (const name of ['Pool', 'Single']) await fs.writeFile(path.join(directory,`${name}.mjs`), `
-import {Module,Service,Public} from '@omnitron-dev/titan/decorators';
-class Counter { count=0; snapshot(){return {pid:process.pid,parent:process.ppid,count:++this.count};} }
+import {Module,Service,Public,Inject} from '@omnitron-dev/titan/decorators';
+import {Container,createToken} from '@omnitron-dev/titan/nexus';
+class Counter {
+ constructor(container){this.container=container;}
+ count=0;
+ async snapshot(){return {pid:process.pid,parent:process.ppid,count:++this.count,deployment:process.env.FIXTURE_TOPOLOGY,
+  ${name === 'Single' ? "sibling:await this.container.resolve(createToken('topology:FixturePool')).snapshot()," : ''}
+ };}
+}
+Inject(Container)(Counter,undefined,0);
 Public()(Counter.prototype,'snapshot',Object.getOwnPropertyDescriptor(Counter.prototype,'snapshot'));
 Service({name:'Fixture${name}'})(Counter);
 class FixtureModule {};
@@ -78,7 +87,7 @@ export default FixtureModule;
 `);
 await fs.writeFile(topology, JSON.stringify({name:'topology',processes:[
  {name:'pool',module:'./Pool.mjs',instances:2,scaling:{strategy:'fixed',maxInstances:3},topology:{expose:true}},
- {name:'single',module:'./Single.mjs',topology:{expose:true}}
+ {name:'single',module:'./Single.mjs',topology:{expose:true,access:['FixturePool']}}
 ]}).replace(/^/,'export default ')+';');
 
 const logPrefix = `handoff-continuity/${randomUUID()}/`;
@@ -96,7 +105,8 @@ const daemon=new OmnitronDaemon();
 // Console initialization must not mutate the sealed runtime dependency tree.
 new (await import(${JSON.stringify(url('webapp/webapp.service.js'))})).WebappService({});
 ${master ? `await (await import(${JSON.stringify(url('database/migration-runner.js'))})).runOmnitronMigrations();` : ''}
-const config={...DEFAULT_ECOSYSTEM,apps:[{name:'counter',script:${JSON.stringify(script)},cwd:${JSON.stringify(directory)},enabled:true},{name:'topology',bootstrap:${JSON.stringify(topology)},cwd:${JSON.stringify(directory)},enabled:true}]};
+const config={...DEFAULT_ECOSYSTEM,apps:[{name:'counter',script:${JSON.stringify(script)},cwd:${JSON.stringify(directory)},enabled:true},
+ ...['topology','other-topology'].map(name=>({name,bootstrap:${JSON.stringify(topology)},cwd:${JSON.stringify(directory)},enabled:true,env:{FIXTURE_TOPOLOGY:name}}))]};
 await daemon.start(config,{noInfra:true,noWatch:true},{...DEFAULT_DAEMON_CONFIG,role:${JSON.stringify(master ? 'master' : 'slave')},port:0,httpPort:${httpBase},executionHost:{enabled:true,directory:${JSON.stringify(path.join(directory, 'e'))}},auth:{jwtSecret:'isolated-test-secret-not-for-production'}});
 process.send({type:'ready',execution:daemon.backendRuntimeStatus()}); process.disconnect();
 `);
@@ -123,6 +133,7 @@ try {
   let client = createDaemonClient(socket, 30_000);
   await client.startApp({ name: 'counter' });
   await client.startApp({ name: 'topology' });
+  await client.startApp({ name: 'other-topology' });
   const sessions = new Map();
   if (master) {
     const accounts = await client.service('OmnitronAccess');
@@ -150,25 +161,45 @@ try {
   };
   await verifyAuthority();
   const { privateControlClient } = await import(url('daemon/private-control-client.js'));
+  // The fixture examines only its own listener directory. No application
+  // service may be published on the execution-management socket anymore.
+  await assert.rejects(() => privateControlClient(path.join(directory, 'e/owner.sock'), 'FixturePool'));
+  const topologySocket = async deployment => {
+    const root = path.join(directory, 'e/topology');
+    for (const entry of await fs.readdir(root)) {
+      const socket = path.join(root, entry, 'rpc.sock');
+      const connection = await privateControlClient(socket, 'FixtureSingle');
+      try { if ((await connection.service.snapshot()).deployment === deployment) return socket; }
+      finally { await connection.close(); }
+    }
+    throw new Error(`No private topology listener for ${deployment}`);
+  };
   // Same private owner and public lifecycle API in both modes. The shorter
   // mode selects these tests only; full handoff qualification also runs them.
-  const observeTopology = async (expectedSize = 2) => {
-    const pool = await privateControlClient(path.join(directory, 'e/owner.sock'), 'FixturePool');
-    const single = await privateControlClient(path.join(directory, 'e/owner.sock'), 'FixtureSingle');
+  const observeTopology = async (expectedSize = 2, deployment = 'topology') => {
+    const socket = await topologySocket(deployment);
+    const pool = await privateControlClient(socket, 'FixturePool');
+    const single = await privateControlClient(socket, 'FixtureSingle');
     try {
       const poolPids = new Set();
       for (let attempt = 0; attempt < 64; attempt++) {
         const worker = await pool.service.snapshot();
+        assert.equal(worker.deployment, deployment);
         assert.equal(worker.parent, ownerPid); poolPids.add(worker.pid);
       }
       assert.equal(poolPids.size, expectedSize, 'Every observed pool instance must answer');
       const worker = await single.service.snapshot();
+      assert.equal(worker.deployment, deployment);
+      assert.equal(worker.sibling.deployment, deployment, 'topology.access must resolve within its own application');
+      assert.ok(poolPids.has(worker.sibling.pid));
       assert.equal(worker.parent, ownerPid); assert.ok(!poolPids.has(worker.pid));
       return { pool: [...poolPids].sort((a, b) => a - b), single: worker.pid };
     } finally { await Promise.all([pool.close(), single.close()]); }
   };
   const counterBeforeLifecycle = (await client.getApp({ name: 'counter' })).pid;
   const beforeLifecycle = await observeTopology();
+  const otherBefore = await observeTopology(2, 'other-topology');
+  assert.ok(!otherBefore.pool.some(pid => beforeLifecycle.pool.includes(pid)));
   await client.startApp({ name: 'topology' });
   assert.deepEqual(await observeTopology(), beforeLifecycle, 'Repeated start must retain all worker identities');
   for (const request of [
@@ -190,6 +221,7 @@ try {
   assert.equal(shrunk.single, beforeLifecycle.single);
   for (const pid of grown.pool.filter(pid => !shrunk.pool.includes(pid))) await waitDead(pid);
   await client.stopApp({ name: 'topology' });
+  assert.deepEqual(await observeTopology(2, 'other-topology'), otherBefore);
   for (const pid of [...grown.pool, grown.single]) await waitDead(pid);
   assert.equal((await client.getApp({ name: 'topology' })).status, 'stopped');
   await client.startApp({ name: 'topology' });
@@ -203,12 +235,15 @@ try {
     assert.ok(![...startedAgain.pool, startedAgain.single].includes(pid));
   assert.equal((await client.getApp({ name: 'counter' })).pid, counterBeforeLifecycle, 'Unrelated application must retain its process');
   assert.ok(PidManager.isProcessAlive(counterBeforeLifecycle));
-  const lifecycleProof = { before: beforeLifecycle, afterStopStart: startedAgain, afterRestart: restarted, grown, shrunk, declarationRestoredAfterRestart: true, unrelatedPid: counterBeforeLifecycle };
+  assert.deepEqual(await observeTopology(2, 'other-topology'), otherBefore);
+  const lifecycleProof = { before: beforeLifecycle, afterStopStart: startedAgain, afterRestart: restarted, grown, shrunk,
+    isolatedApplication: otherBefore, sameNameServicesIsolated: true, siblingCallsVerified: true,
+    declarationRestoredAfterRestart: true, unrelatedPid: counterBeforeLifecycle };
   if (lifecycleOnly) {
     await client.disconnect();
     console.log(JSON.stringify({ test: 'orchestrator-native-lifecycle', directory, ownerPid, lifecycle: lifecycleProof }));
   } else {
-  topologyConnection = await privateControlClient(path.join(directory,'e/owner.sock'),'FixturePool');
+  topologyConnection = await privateControlClient(await topologySocket('topology'),'FixturePool');
   const poolPids = new Set();
   for(let i=0;i<10;i++)poolPids.add((await topologyConnection.service.snapshot()).pid);
   assert.equal(poolPids.size,2,'Both real pool workers must answer');

@@ -102,6 +102,7 @@ function qualifyChildName(appName: string, childName: string): string {
 const TOPOLOGY_EXPOSE_TIMEOUT_MS = 30_000;
 const TOPOLOGY_EXPOSE_POLL_MS = 250;
 import { ServiceRouter } from './service-router.js';
+import { ApplicationTopology } from './application-topology.js';
 import { clearCacheFor } from './bootstrap-loader.js';
 import { readBootstrapMetadata } from '../project/bootstrap-metadata.js';
 
@@ -127,7 +128,6 @@ import { combineProcessHealth, notRunningHealth, poolHealth } from './app-health
 import { combineProcessTraffic } from './app-traffic.js';
 import type { StateStore } from '../daemon/state-store.js';
 import { CLI_VERSION } from '../config/defaults.js';
-import type { Netron } from '@omnitron-dev/titan/netron';
 import { applicationBootstrapRuntime } from './application-runtime.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -406,21 +406,9 @@ export class OrchestratorService extends EventEmitter {
   private bootReconciled = false;
   private bootReconcilePromise: Promise<void> | null = null;
 
-  /** Daemon's Netron instance for native service routing */
-  private daemonNetron: Netron | null = null;
-
-  /** Daemon Unix socket path for child-to-daemon Netron connections */
-  private daemonSocketPath: string | null = null;
-
-  /**
-   * Promise that resolves once the daemon's Netron is wired up. Apps that
-   * declare topology cannot launch until this is ready — instead of failing
-   * with "daemon Netron not available" the launcher awaits this promise
-   * (with a generous timeout) so transient startup-order interleavings
-   * resolve themselves instead of becoming user-visible errors.
-   */
-  private daemonNetronReady: Promise<void>;
-  private resolveDaemonNetronReady: () => void = () => undefined;
+  private topologyDirectory: string | null = null;
+  private topologyReady: Promise<void>;
+  private resolveTopologyReady: () => void = () => undefined;
 
   /**
    * Optional metrics sink. Set by the daemon at boot via
@@ -446,20 +434,15 @@ export class OrchestratorService extends EventEmitter {
       const handle = app ? this.handles.get(app) : undefined;
       if (app && handle) this.childLogForwarder(app, handle)(line, stream, context);
     });
-    this.daemonNetronReady = new Promise<void>((resolve) => {
-      this.resolveDaemonNetronReady = resolve;
+    this.topologyReady = new Promise<void>((resolve) => {
+      this.resolveTopologyReady = resolve;
     });
   }
 
-  /**
-   * Set the daemon Netron instance and socket path for native topology routing.
-   * Called by the daemon after start when Netron is available.
-   */
-  setDaemonNetron(netron: Netron, socketPath: string): void {
-    this.daemonNetron = netron;
-    this.daemonSocketPath = socketPath;
-    this.resolveDaemonNetronReady();
-    this.logger.info({ socketPath }, 'Daemon Netron set for native topology routing');
+  /** Application RPC listeners never share the owner's management namespace. */
+  setTopologyDirectory(directory: string): void {
+    this.topologyDirectory = path.resolve(directory);
+    this.resolveTopologyReady();
   }
 
   private bootstrapRuntime(bootstrap: string): string {
@@ -497,20 +480,18 @@ export class OrchestratorService extends EventEmitter {
     });
   }
 
-  /**
-   * Wait until the daemon Netron is available, with a hard ceiling so we
-   * never hang forever if `setDaemonNetron()` was never wired in.
-   */
-  private async ensureDaemonNetronReady(timeoutMs = 30_000): Promise<void> {
-    if (this.daemonNetron && this.daemonSocketPath) return;
+  private async ensureTopologyReady(timeoutMs = 30_000): Promise<void> {
+    if (this.topologyDirectory) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error(`Daemon Netron not initialized within ${timeoutMs}ms — wiring bug?`)),
+      timer = setTimeout(
+        () => reject(new Error(`Application topology directory not configured within ${timeoutMs}ms`)),
         timeoutMs,
       );
       timer.unref?.();
     });
-    await Promise.race([this.daemonNetronReady, timeout]);
+    try { await Promise.race([this.topologyReady, timeout]); }
+    finally { clearTimeout(timer); }
   }
 
   // ============================================================================
@@ -1032,11 +1013,19 @@ export class OrchestratorService extends EventEmitter {
       // The counter is bumped by hand because `markErrored()` deliberately
       // does not (an app that never ran has not "restarted"), and without it
       // the budget below can never trip and the retry would be unbounded.
+      // A rejected topology is not a partially running application. Keep
+      // resource ownership if cleanup fails so a later stop can retry it.
+      handle.markStopping();
+      let failure = err;
+      try { await this.tearDownApp(handle); handle.markStopped(); }
+      catch (cleanupError) { failure = new AggregateError([err, cleanupError],
+        `Application '${entry.name}' startup failed and cleanup is incomplete: ${String(err)}; ${String(cleanupError)}`); }
       handle.markErrored();
+      handle.recordExit({ code: null, signal: null, expected: false, message: String(failure) });
       handle.restarts++;
       this.persistState();
       if (!installed) this.scheduleRecovery(entry, handle, cfg);
-      throw err;
+      throw failure;
     }
   }
 
@@ -1079,18 +1068,11 @@ export class OrchestratorService extends EventEmitter {
     }
   }
 
-  /**
-   * Give back every service an app exposed on the daemon's Netron.
-   *
-   * A registration outlives the process behind it: the daemon keeps answering
-   * `queryInterface` with the full method list and every call through the name
-   * fails at the socket. `takeOverExisting` rescues a name the next launch
-   * re-exposes; one it does not stays advertised for the life of the daemon.
-   */
+  /** Close only the listener and registrations owned by this launch. */
   private async releaseExposedServices(handle: AppHandle): Promise<void> {
-    if (!handle.serviceRouter) return;
-    await handle.serviceRouter.releaseAll();
-    handle.serviceRouter = null;
+    if (!handle.topology) return;
+    await handle.topology.close();
+    handle.topology = null;
   }
 
   private async tearDownApp(handle: AppHandle, force = false, timeout = 10_000): Promise<void> {
@@ -1125,7 +1107,7 @@ export class OrchestratorService extends EventEmitter {
   private retainedApp(name: string, generation: string) {
     const handle = this.handles.get(name);
     if (!handle || handle.generation !== generation || handle.status !== 'stopped' || handle.pid !== null ||
-        handle.childProcess || handle.supervisor || handle.serviceRouter || handle.topologyPools.size) {
+        handle.childProcess || handle.supervisor || handle.topology || handle.topologyPools.size) {
       throw new Error(`Application '${name}' is not the retained stopped generation`);
     }
     const bare = effectiveAppName(name);
@@ -1328,7 +1310,7 @@ export class OrchestratorService extends EventEmitter {
     }
     return this.lifecycleQueue.enqueue(canonical, 'stop', async () => {
       const handle = this.handles.get(canonical);
-      if (!handle || (handle.status === 'stopped' && !handle.serviceRouter && !handle.supervisor && !handle.childProcess && handle.topologyPools.size === 0)) return;
+      if (!handle || (handle.status === 'stopped' && !handle.topology && !handle.supervisor && !handle.childProcess && handle.topologyPools.size === 0)) return;
 
       handle.markStopping();
 
@@ -2393,8 +2375,8 @@ export class OrchestratorService extends EventEmitter {
    * The BootstrapProcess finds its own entry, imports the module, and wires transports.
    *
    * Processes with `instances > 1` are launched as PM pools with load balancing.
-   * Processes with `topology.access` get Netron-native proxies via daemon socket.
-   * Processes with `topology.expose` auto-expose their @Service on daemon Netron.
+   * Processes with `topology.access` get native Netron proxies within this application.
+   * Processes with `topology.expose` publish their @Service on its private listener.
    *
    * Service metadata is auto-discovered from pool workers — no manual `exports`
    * config needed. The @Service decorator on the worker IS the source of truth.
@@ -2409,25 +2391,23 @@ export class OrchestratorService extends EventEmitter {
   ): Promise<void> {
     const policy = buildRestartPolicy(entry, config);
 
-    // Wait for daemon Netron to be wired up. Cheap no-op if already ready;
-    // otherwise blocks (with timeout) instead of immediately failing — the
-    // race between daemon startup and stack auto-resume is benign and just
-    // needs a single rendezvous.
-    await this.ensureDaemonNetronReady();
-
-    const serviceRouter = new ServiceRouter(this.daemonNetron!, this.logger);
-    const daemonSocketUrl = `unix://${this.daemonSocketPath!}`;
+    const needsRouting = topology.some(proc => proc.topology?.expose === true || proc.topology?.access?.length);
+    if (needsRouting) {
+      await this.ensureTopologyReady();
+      handle.topology = await ApplicationTopology.allocate(this.topologyDirectory!, entry.name, this.logger);
+      await handle.topology.start();
+    }
+    const serviceRouter = handle.topology?.router;
+    const topologySocketUrl = handle.topology?.url;
 
     // Topology startup order: providers (topology.expose) before consumers (topology.access).
-    // Providers register their @Service on daemon Netron via ServiceRouter.
-    // Consumers connect to daemon and queryInterface() for those services.
-    // Currently only pool processes support topology.expose (ServiceRouter wraps pool.execute).
+    // Each application's private namespace contains both pool and single providers.
     const poolEntries = topology.filter((p) => (p.instances ?? 1) > 1);
     const singleEntries = topology.filter((p) => (p.instances ?? 1) <= 1);
 
     // Step 1: Create PM pools — must complete before Step 2 so services are available
     // Pools with topology.expose auto-discover @Service metadata from the first
-    // worker via getExposedServices() and register on daemon Netron via ServiceRouter.
+    // worker via getExposedServices() and publish within this application's namespace.
     const poolNames: string[] = [];
 
     for (const procEntry of poolEntries) {
@@ -2460,7 +2440,8 @@ export class OrchestratorService extends EventEmitter {
             processName: procEntry.name,
             ...(bundledModulePath && { bundledModulePath }),
             ...(topologyAccess.length > 0 && {
-              __daemonSocketUrl: daemonSocketUrl,
+              // Retain the bootstrap wire key for previously sealed SDKs.
+              __daemonSocketUrl: topologySocketUrl,
               __topologyConnects: topologyAccess,
             }),
           },
@@ -2531,75 +2512,10 @@ export class OrchestratorService extends EventEmitter {
       // No manual `exports` needed — @Service decorator IS the source of truth.
       // Requires explicit `topology: { expose: true }` — opt-in for security.
       if (procEntry.topology?.expose === true) {
-        try {
-          // A pool worker reports ready before its Application has started, and
-          // `@Service` classes are exposed to Netron during start — so asking
-          // once, or once more 500ms later, asks a worker that is still booting.
-          // What it answers then is an empty list, or a service whose method
-          // list has not been filled in yet, and both used to end the same way:
-          // nothing registered on the daemon, the consumer process starting
-          // seconds later, querying, and being told the service does not exist.
-          // The consumer resolves its topology proxy exactly once, so that
-          // answer disabled the feature for the life of the process — in the
-          // case that surfaced this, every OHLCV candle aggregation.
-          //
-          // Poll instead, and treat "a service with no methods" as not ready
-          // rather than as a service, because an empty method list produces a
-          // proxy that can do nothing.
-          const usable = (list: Array<{ methods: string[] }> | undefined) =>
-            Array.isArray(list) && list.length > 0 && list.some((svc) => svc.methods?.length > 0);
-
-          let services = await pool.execute('getExposedServices') as
-            Array<{ name: string; version?: string; methods: string[] }>;
-
-          const deadline = Date.now() + TOPOLOGY_EXPOSE_TIMEOUT_MS;
-          while (!usable(services) && Date.now() < deadline) {
-            await new Promise((r) => setTimeout(r, TOPOLOGY_EXPOSE_POLL_MS));
-            services = await pool.execute('getExposedServices') as
-              Array<{ name: string; version?: string; methods: string[] }>;
-          }
-
-          if (!usable(services)) {
-            this.logger.warn(
-              {
-                app: entry.name,
-                process: procEntry.name,
-                waitedMs: TOPOLOGY_EXPOSE_TIMEOUT_MS,
-                reported: services?.map((svc) => `${svc.name}(${svc.methods?.length ?? 0})`) ?? [],
-              },
-              'No usable @Service found on pool worker — topology.expose has no effect, and any ' +
-                'process declaring topology.access on it will start without a proxy'
-            );
-          }
-
-          for (const svc of services ?? []) {
-            if (svc.methods.length === 0) {
-              // Silently skipped before. A consumer then failed to find a
-              // service its own declaration named, with nothing anywhere
-              // connecting the two facts.
-              this.logger.warn(
-                { app: entry.name, process: procEntry.name, service: svc.name },
-                'Pool service exposes no methods — not registered on the daemon'
-              );
-              continue;
-            }
-            await serviceRouter.exposePoolService(
-              procEntry.name,
-              svc.name,
-              svc.version ?? '1.0.0',
-              pool as any,
-              svc.methods
-            );
-            this.logger.info(
-              { app: entry.name, process: procEntry.name, service: svc.name, methods: svc.methods.length },
-              'Auto-discovered and exposed pool service on daemon Netron'
-            );
-          }
-        } catch (err) {
-          this.logger.error(
-            { app: entry.name, process: procEntry.name, error: (err as Error).message },
-            'Failed to auto-discover/expose pool services'
-          );
+        const services = await this.discoverTopologyServices(entry.name, procEntry.name,
+          () => pool.execute('getExposedServices'));
+        for (const svc of services) {
+          await serviceRouter!.exposePoolService(procEntry.name, svc.name, svc.version ?? '1.0.0', pool, svc.methods);
         }
       }
     }
@@ -2626,7 +2542,7 @@ export class OrchestratorService extends EventEmitter {
           processName: procEntry.name,
           ...(bundledModulePath && { bundledModulePath }),
           ...(topologyAccess.length > 0 && {
-            __daemonSocketUrl: daemonSocketUrl,
+            __daemonSocketUrl: topologySocketUrl,
             __topologyConnects: topologyAccess,
           }),
         },
@@ -2677,7 +2593,6 @@ export class OrchestratorService extends EventEmitter {
 
     // Set supervisor on handle BEFORE start so attachLogCapture can access it
     handle.supervisor = supervisor;
-    handle.serviceRouter = serviceRouter;
     handle.instanceCount = entry.instances ?? 1;
     handle.topologyProcesses = topology;
 
@@ -2700,17 +2615,37 @@ export class OrchestratorService extends EventEmitter {
     // A consumer among these children may therefore start before the service
     // is registered; consumers re-resolve their proxy on use for exactly that
     // reason (see quotes's `OhlcvSchedulerService`).
-    await this.exposeChildTopologyServices(entry, supervisor, serviceRouter, singleEntries);
+    if (serviceRouter) await this.exposeChildTopologyServices(entry, supervisor, serviceRouter, singleEntries);
   }
 
-  /**
-   * Register each single process's `@Service` classes on the daemon.
-   *
-   * Mirrors the pool path above, including its poll: a child reports ready
-   * before its Application has started, and `@Service` classes are exposed to
-   * Netron during start, so asking once asks a process that is still booting
-   * and gets an empty list back.
-   */
+  /** Shared discovery contract for pools and supervisor children. */
+  private async discoverTopologyServices(
+    application: string, provider: string, ask: () => Promise<unknown>,
+  ): Promise<Array<{ name: string; version?: string; methods: string[] }>> {
+    const deadline = Date.now() + TOPOLOGY_EXPOSE_TIMEOUT_MS;
+    let reported: unknown;
+    while (true) {
+      try { reported = await ask(); }
+      catch (error) {
+        throw new Error(`Application '${application}' topology provider '${provider}' discovery failed: ${String(error)}`, { cause: error });
+      }
+      if (Array.isArray(reported) && reported.length) {
+        if (reported.some(service => !service || typeof service.name !== 'string' || !service.name ||
+            (service.version !== undefined && typeof service.version !== 'string') ||
+            !Array.isArray(service.methods) || service.methods.some((method: unknown) => typeof method !== 'string' || !method))) {
+          throw new Error(`Application '${application}' topology provider '${provider}' returned invalid service metadata`);
+        }
+        const services = reported.filter(service => service.methods.length > 0);
+        if (services.length) return services;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`Application '${application}' topology provider '${provider}' exposed no callable services within ${TOPOLOGY_EXPOSE_TIMEOUT_MS}ms`);
+      }
+      await new Promise(resolve => setTimeout(resolve, TOPOLOGY_EXPOSE_POLL_MS));
+    }
+  }
+
+  /** Publish each single provider after its supervisor has started. */
   private async exposeChildTopologyServices(
     entry: IEcosystemAppEntry,
     supervisor: { getChildProxy(name: string): any },
@@ -2719,70 +2654,11 @@ export class OrchestratorService extends EventEmitter {
   ): Promise<void> {
     for (const procEntry of singleEntries) {
       if (procEntry.topology?.expose !== true) continue;
-
-      const childName = `${entry.name}/${procEntry.name}`;
-      const getProxy = () => supervisor.getChildProxy(childName);
-
-      try {
-        const usable = (list: Array<{ methods: string[] }> | undefined) =>
-          Array.isArray(list) && list.length > 0 && list.some((svc) => svc.methods?.length > 0);
-
-        const ask = async () => {
-          const child = getProxy();
-          if (!child?.getExposedServices) return undefined;
-          return (await child.getExposedServices()) as Array<{
-            name: string;
-            version?: string;
-            methods: string[];
-          }>;
-        };
-
-        let services = await ask();
-        const deadline = Date.now() + TOPOLOGY_EXPOSE_TIMEOUT_MS;
-        while (!usable(services) && Date.now() < deadline) {
-          await new Promise((r) => setTimeout(r, TOPOLOGY_EXPOSE_POLL_MS));
-          services = await ask();
-        }
-
-        if (!usable(services)) {
-          this.logger.warn(
-            {
-              app: entry.name,
-              process: procEntry.name,
-              waitedMs: TOPOLOGY_EXPOSE_TIMEOUT_MS,
-              reported: services?.map((svc) => `${svc.name}(${svc.methods?.length ?? 0})`) ?? [],
-            },
-            'No usable @Service found on this process — topology.expose has no effect, and any ' +
-              'process declaring topology.access on it will start without a proxy',
-          );
-          continue;
-        }
-
-        for (const svc of services ?? []) {
-          if (svc.methods.length === 0) {
-            this.logger.warn(
-              { app: entry.name, process: procEntry.name, service: svc.name },
-              'Process service exposes no methods — not registered on the daemon',
-            );
-            continue;
-          }
-          await serviceRouter.exposeChildService(
-            procEntry.name,
-            svc.name,
-            svc.version ?? '1.0.0',
-            getProxy,
-            svc.methods,
-          );
-          this.logger.info(
-            { app: entry.name, process: procEntry.name, service: svc.name, methods: svc.methods.length },
-            'Auto-discovered and exposed process service on daemon Netron',
-          );
-        }
-      } catch (err) {
-        this.logger.error(
-          { app: entry.name, process: procEntry.name, error: (err as Error).message },
-          "Failed to auto-discover/expose this process's services",
-        );
+      const getProxy = () => supervisor.getChildProxy(`${entry.name}/${procEntry.name}`);
+      const services = await this.discoverTopologyServices(entry.name, procEntry.name,
+        async () => getProxy()?.getExposedServices?.());
+      for (const svc of services) {
+        await serviceRouter.exposeChildService(procEntry.name, svc.name, svc.version ?? '1.0.0', getProxy, svc.methods);
       }
     }
   }

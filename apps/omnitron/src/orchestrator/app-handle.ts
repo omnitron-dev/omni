@@ -11,7 +11,7 @@ import type { ChildProcess } from 'node:child_process';
 import type { IProcessMetrics, IHealthStatus, IProcessPool } from '@omnitron-dev/titan-pm';
 import type { ProcessSupervisor } from '@omnitron-dev/titan-pm';
 import type { AppStatus, IEcosystemAppEntry, IProcessEntry, RuntimeReleaseEvidence } from '../config/types.js';
-import type { ServiceRouter } from './service-router.js';
+import type { ApplicationTopology } from './application-topology.js';
 import type { BootstrapMetadata } from '../project/bootstrap-metadata.js';
 
 /**
@@ -101,8 +101,8 @@ export class AppHandle {
   /** Instance count for scaling */
   public instanceCount: number = 1;
 
-  /** Netron-native service router for topology */
-  public serviceRouter: ServiceRouter | null = null;
+  /** Native Netron listener and services owned by this application launch. */
+  public topology: ApplicationTopology | null = null;
 
   /**
    * The app's own `logger.level`, read from its `config/default.json`.

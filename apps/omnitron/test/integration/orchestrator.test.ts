@@ -3,7 +3,6 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProcessManager, type ISupervisorConfig } from '@omnitron-dev/titan-pm';
-import { Netron } from '@omnitron-dev/titan/netron';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
 import type { StateStore } from '../../src/daemon/state-store.js';
@@ -16,7 +15,6 @@ import type { IEcosystemConfig, IEcosystemAppEntry, IProcessEntry } from '../../
 // Classic tests below fork real private children through public startApp.
 let directory: string;
 let pm: ProcessManager;
-let netron: Netron;
 let service: OrchestratorService;
 const save = vi.fn<StateStore['save']>();
 const logger = createNullLogger();
@@ -26,19 +24,16 @@ const owned = new Set<number>();
 beforeEach(async () => {
   directory = await fs.mkdtemp('/tmp/omni-orchestrator-');
   pm = new ProcessManager(logger, { testing: { useMockSpawner: false }, isolation: 'child' });
-  netron = new Netron(logger);
-  await netron.start();
   save.mockClear();
   service = new OrchestratorService(logger, pm, { save } as unknown as StateStore, directory,
     { reapForeignOrphans: false });
-  service.setDaemonNetron(netron, path.join(directory, 'owner.sock'));
+  service.setTopologyDirectory(path.join(directory, 'topology'));
 });
 afterEach(async () => {
   try { await service?.stopAll(true); }
   finally {
     try { await pm?.shutdown({ force: true, timeout: 5000 }); }
     finally {
-      await netron?.stop();
       for (const pid of owned) expect(alive(pid), `private child ${pid} leaked`).toBe(false);
       owned.clear();
       await fs.rm(directory, { recursive: true, force: true });
@@ -156,6 +151,52 @@ describe('public orchestrator lifecycle with real classic children', () => {
 });
 
 describe('bootstrap admission at the current PM boundary', () => {
+  it('owns and closes the private listener when the first pool fails admission', async () => {
+    const entry = { ...await bootstrap([
+      { name: 'workers', module: './module.mjs', instances: 2, topology: { expose: true } },
+    ]), restartPolicy: { enabled: false } };
+    let ownedBeforePool = false;
+    vi.spyOn(pm, 'pool').mockImplementationOnce(async () => {
+      const handle = service.getHandle(entry.name)!;
+      ownedBeforePool = Boolean(handle.topology?.url);
+      expect((await fs.stat(handle.topology!.url.slice('unix://'.length))).isSocket()).toBe(true);
+      throw new Error('private pool admission failed');
+    });
+    await expect(start(entry)).rejects.toThrow('private pool admission failed');
+    expect(ownedBeforePool).toBe(true);
+    expect(service.getHandle(entry.name)?.topology).toBeNull();
+    expect(service.getHandle(entry.name)?.lastExit?.message).toContain('private pool admission failed');
+    expect(await fs.readdir(path.join(directory, 'topology'))).toEqual([]);
+  });
+
+  it('closes only the failed generation when provider discovery rejects after supervisor startup', async () => {
+    const create = holdSupervisor();
+    const entry = { ...await bootstrap([
+      { name: 'worker', module: './module.mjs', topology: { expose: true } },
+      { name: 'consumer', module: './module.mjs', topology: { access: ['Worker'] } },
+    ]), restartPolicy: { enabled: false } };
+    const implementation = create.getMockImplementation()!;
+    create.mockImplementation((...args) => {
+      const supervisor = implementation(...args);
+      vi.spyOn(supervisor, 'getChildProxy').mockReturnValue({ getExposedServices: async () => {
+        throw new Error('provider discovery disconnected');
+      } } as never);
+      vi.spyOn(supervisor, 'stop').mockResolvedValue(undefined);
+      return supervisor;
+    });
+    await expect(start(entry)).rejects.toThrow('provider discovery disconnected');
+    const handle = service.getHandle(entry.name)!;
+    expect(create.mock.results[0]!.value.stop).toHaveBeenCalledOnce();
+    expect(handle.supervisor).toBeNull();
+    expect(handle.topology).toBeNull();
+    expect(handle.lastExit?.message).toContain('provider discovery disconnected');
+    expect(await fs.readdir(path.join(directory, 'topology'))).toEqual([]);
+    const definition = create.mock.calls[0]![0] as ISupervisorConfig;
+    const dependencies = definition.children![1]!.spawnOptions!.dependencies as Record<string, unknown>;
+    expect(dependencies.__topologyConnects).toEqual(['Worker']);
+    expect(dependencies.__daemonSocketUrl).toMatch(/\/topology\/t-[^/]+\/rpc\.sock$/);
+  });
+
   it('refuses a missing definition before creating a supervisor', async () => {
     const create = vi.spyOn(pm, 'createSupervisor');
     await expect(start({ name: 'missing', bootstrap: path.join(directory, 'absent.mjs') })).rejects.toThrow('Could not load');

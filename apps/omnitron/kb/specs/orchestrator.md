@@ -147,87 +147,69 @@ if (topology && topology.length > 0) {
 
 ### Multi-Process Topology
 
-`launchTopology()` handles multi-process apps:
+`launchTopology()` creates an `ApplicationTopology` only when a process declares
+`topology.expose` or `topology.access`. The application handle owns this context
+before any provider starts. Each launch has a separate native Netron instance and
+Unix listener in a private directory; the execution owner's management socket is
+never used for sibling service lookup.
 
-1. Creates a `ServiceRouter` for the app (connected to daemon's Netron)
-2. Sorts processes: providers (`topology.expose`) start before consumers (`topology.access`)
-3. For each process:
-   - Builds a `ISupervisorChildConfig` with:
-     - `process`: path to `bootstrap-process.js`
-     - `dependencies`: `{ bootstrapPath, processName, daemonSocketUrl, ... }`
-     - `instances`: from process entry (>1 creates a PM pool)
-   - Spawns via `pm.supervisor(config)` or `pm.pool()`
-4. For pool processes with `topology.expose`:
-   - Auto-discovers `@Service` metadata from worker
-   - Registers a load-balanced proxy on daemon Netron via `ServiceRouter`
-5. Attaches log capture handlers to each child
+Pool providers are discovered first, followed by supervisor children. Both use
+one bounded discovery contract. Providers publish stable proxies through
+`ServiceRouter`; a pool delegates to PM's dispatch and a singleton resolves its
+current child on each call. A duplicate service name/version within one application
+is an error, including a second registration by the same provider. No router takes
+over another registration.
 
 ```
-daemon Netron
-  |
-  +-- ServiceRouter
-        |
-        +-- "ServiceA" proxy -> Pool[worker1, worker2, worker3]
-        +-- "ServiceB" proxy -> Single process
+execution owner
+  +-- management Netron: OmnitronExecution
+  +-- application A / launch 1: private Netron
+  |     +-- ServiceA -> pool workers
+  |     +-- ServiceB -> singleton
+  +-- application B / launch 1: private Netron
+        +-- ServiceA -> independent pool workers
+        +-- ServiceB -> independent singleton
 ```
-
-### Service Routing
-
-`ServiceRouter` (`src/orchestrator/service-router.ts`) manages service exposure on daemon Netron:
-
-- Auto-discovers `@Service` names from worker processes
-- Creates load-balanced Netron proxies for pool workers
-- Exposes proxies on daemon's Netron peer (accessible via Unix socket)
-- Supports unexpose for clean shutdown
-
-This enables cross-process communication: Process A can call Process B's services through the daemon's Netron, transparent to both sides.
 
 ### Process Dependencies Injection
 
-Each child process receives dependencies via PM's `dependencies` field:
+The existing bootstrap contract remains compatible with sealed application SDKs:
 
 ```typescript
 {
-  bootstrapPath: '/abs/path/to/module.ts',
+  bootstrapPath: '/abs/path/to/bootstrap.ts',
   processName: 'api',
-  daemonSocketUrl: 'unix:///home/user/.omnitron/daemon.sock',
-  topologyAccess: ['ServiceA', 'ServiceB'],
-  // ... more
+  // Historical wire key; the value now identifies this application's listener.
+  __daemonSocketUrl: 'unix:///private/execution/topology/t-ABC123/rpc.sock',
+  __topologyConnects: ['ServiceA', 'ServiceB'],
 }
 ```
 
-Inside the child, `bootstrap-process.js`:
-1. Reads `bootstrapPath` and `processName`
-2. Imports the module
-3. Creates `Application.create(module)`
-4. If `topologyAccess`: connects to daemon Netron and injects service proxies into DI
+The child's own Netron connects to that listener and registers DI proxies under
+`createToken('topology:ServiceA')`. Bare service names are local to this application
+launch. Another project or stack cannot accidentally satisfy a sibling lookup;
+intentional external services need their explicit Netron connection.
+
+These contexts isolate routing, not operating-system principals. Socket directories
+are owner-only (`0700`) and sockets are `0600`; workloads running as the same OS user
+are not security sandboxes.
 
 ## App Lifecycle Operations
 
 ### stopApp()
 
-```typescript
-async stopApp(name: string, force = false, timeout = 10_000): Promise<void> {
-  const handle = this.handles.get(name);
+An application stop closes its topology context and stops its supervisor and pools.
+Every resource is attempted even if another fails. A failed listener/service/pool
+cleanup remains attached to the handle for retry; the stop does not report success
+while termination is unconfirmed. Unexpected files in the private topology directory
+are retained rather than removed recursively.
 
-  // 1. Unexpose topology services from daemon Netron
-  if (handle.serviceRouter) {
-    for (const svcName of handle.serviceRouter.getServiceNames()) {
-      await handle.serviceRouter.unexposeService(svcName);
-    }
-  }
-
-  // 2. Stop child process(es)
-  if (handle.mode === 'bootstrap' && handle.supervisor) {
-    await handle.supervisor.stop();
-  } else if (handle.childProcess) {
-    await this.stopChildProcess(handle, force, timeout);
-  }
-
-  handle.markStopped();
-  this.persistState();
-}
-```
+A rejected startup also cleans up its own resources and records the original failure
+in `lastExit`, which CLI and Console inspect through the same process DTO. Restarting
+one application creates a fresh namespace without touching another application's
+service definitions or processes. Backend handoff leaves all owner-held contexts
+intact. The owner reports the semantic capability `applicationTopology@1`; activating
+this implementation on an older owner requires an explicitly planned owner restart.
 
 ### stopAll()
 

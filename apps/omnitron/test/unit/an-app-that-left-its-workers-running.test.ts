@@ -83,16 +83,16 @@ describe('stopping an app', () => {
     const handle = generation('sample/prod/api', log);
     handle.status = 'online';
     const release = vi.fn().mockRejectedValueOnce(new Error('RPC registration still advertised')).mockResolvedValue(undefined);
-    handle.serviceRouter = { releaseAll: release } as never;
+    handle.topology = { close: release } as never;
     self.handles.set(handle.name, handle);
     await expect(self.stopApp(handle.name)).rejects.toThrow('still advertised');
     expect(handle.topologyPools.size).toBe(0);
     expect(handle.supervisor!.stop).toHaveBeenCalledOnce();
-    expect(handle.serviceRouter).not.toBeNull();
+    expect(handle.topology).not.toBeNull();
     expect(handle.status).toBe('stopping');
     await self.stopApp(handle.name);
     expect(release).toHaveBeenCalledTimes(2);
-    expect(handle.serviceRouter).toBeNull();
+    expect(handle.topology).toBeNull();
     expect(handle.status).toBe('stopped');
   });
 

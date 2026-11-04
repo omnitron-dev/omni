@@ -84,7 +84,7 @@ export async function startExecutionOwner(options: {
   });
   await netron.peer.exposeService(service);
   await netron.start();
-  orchestrator.setDaemonNetron(netron, socket);
+  orchestrator.setTopologyDirectory(path.join(directory, 'topology'));
   let stopping: Promise<void> | null = null;
   return { service, stop() {
     stopping ??= Promise.resolve().then(() => shutdownExecutionOwner({

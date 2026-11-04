@@ -5,8 +5,8 @@ import type { StackExecutionPlan, StackExecutionReceipt, StackExecutionScope } f
 import { stackExecutionKey } from '../shared/dto/stack-execution.js';
 import type { StopAudience, StopPermit, StopRecipient } from '../cluster/stop-authority.js';
 
-export interface NodeStackStopRequest extends StackExecutionScope { applications: boolean; audience?: StopAudience }
-export interface NodeStackStopExecution extends StackExecutionScope { operationId: string; permit?: StopPermit }
+export interface NodeStackStopRequest extends StackExecutionScope { applications: boolean; audience?: StopAudience; keepInfrastructure?: boolean }
+export interface NodeStackStopExecution extends StackExecutionScope { operationId: string; permit?: StopPermit; keepInfrastructure?: boolean }
 export interface NodeStackStopReceipt extends StackExecutionScope {
   protocol: 1;
   operationId: string;
@@ -14,6 +14,8 @@ export interface NodeStackStopReceipt extends StackExecutionScope {
   observedAt: string;
   applications: StackExecutionReceipt | null;
   removedContainers: string[];
+  keepInfrastructure?: true;
+  keptContainers?: string[];
   authority?: { clusterId: string; nodeId: string; epoch: string };
 }
 export interface NodeStackStopPlan extends NodeStackStopRequest {
@@ -46,7 +48,7 @@ type Records = Record<string, StopRecord>;
 
 /** Durable node-side receipt. The controller never infers a stop from a lost connection. */
 export class NodeStackStop {
-  private readonly active = new Map<string, { id: string; signature: string | undefined; promise: Promise<NodeStackStopReceipt> }>();
+  private readonly active = new Map<string, { id: string; signature: string | undefined; keepInfrastructure: boolean; promise: Promise<NodeStackStopReceipt> }>();
   private recipient?: StopRecipient;
   private preparing = 0;
   constructor(private readonly store: Pick<DaemonStateStore, 'kvGetSync' | 'kvUpdateSync'>, private readonly ports: StackStopPorts) {}
@@ -57,7 +59,8 @@ export class NodeStackStop {
     const records = this.store.kvGetSync<Records>(RECORDS, { strict: true }) ?? {};
     for (const [key, record] of Object.entries(records)) {
       if (!record?.plan || record.plan.protocol !== 1 || stackExecutionKey(record.plan) !== key ||
-          !['prepared', 'applying', 'failed', 'stopped'].includes(record.phase)) throw new Error('Corrupt node stack-stop journal');
+          !['prepared', 'applying', 'failed', 'stopped'].includes(record.phase) ||
+          (record.plan.keepInfrastructure !== undefined && typeof record.plan.keepInfrastructure !== 'boolean')) throw new Error('Corrupt node stack-stop journal');
     }
     return records;
   }
@@ -95,6 +98,7 @@ export class NodeStackStop {
   async inspect(scope: NodeStackStopRequest, cached = true): Promise<NodeStackStopInventory> {
     const key = stackExecutionKey(scope);
     if (typeof scope.applications !== 'boolean') throw new Error('Application placement must be explicit');
+    if (scope.keepInfrastructure !== undefined && typeof scope.keepInfrastructure !== 'boolean') throw new Error('Invalid infrastructure retention mode');
     if (scope.audience?.clusterId !== this.recipient?.audience.clusterId || scope.audience?.nodeId !== this.recipient?.audience.nodeId) {
       throw new Error('Stack stop requires matching controller and recipient cluster enrollment');
     }
@@ -105,6 +109,7 @@ export class NodeStackStop {
     if (this.active.has(key)) throw new Error(`Stack '${key}' changed while preparing its stop`);
     return { protocol: 1, project: scope.project, stack: scope.stack,
       applications: scope.applications,
+      ...(scope.keepInfrastructure && { keepInfrastructure: true }),
       definition: definition.fingerprint, execution, containers,
       ...(this.recipient && { audience: { ...this.recipient.audience } }) };
   }
@@ -116,6 +121,7 @@ export class NodeStackStop {
       // Repeated preflights cannot invalidate a still-usable signed challenge.
       if (plan.audience && prior?.phase === 'prepared' && prior.plan.expiresAt > Date.now() &&
           prior.plan.definition === plan.definition && prior.plan.applications === plan.applications &&
+          (prior.plan.keepInfrastructure === true) === (plan.keepInfrastructure === true) &&
           prior.plan.audience?.clusterId === plan.audience.clusterId && prior.plan.audience.nodeId === plan.audience.nodeId &&
           stackDefinitionFingerprint([prior.plan.execution, prior.plan.containers]) === stackDefinitionFingerprint([plan.execution, plan.containers])) return prior;
       return { plan, phase: 'prepared', suspended: !!prior && (prior.suspended === true || prior.phase === 'applying' || prior.phase === 'failed') };
@@ -123,13 +129,15 @@ export class NodeStackStop {
   }
   execute(scope: NodeStackStopExecution): Promise<NodeStackStopReceipt> {
     const key = stackExecutionKey(scope);
+    if (scope.keepInfrastructure !== undefined && typeof scope.keepInfrastructure !== 'boolean') throw new Error('Invalid infrastructure retention mode');
     const active = this.active.get(key);
     if (active) {
-      if (active.id !== scope.operationId || active.signature !== scope.permit?.signature) throw new Error(`Stack '${key}' already has another stop in progress`);
+      if (active.id !== scope.operationId || active.signature !== scope.permit?.signature ||
+          active.keepInfrastructure !== (scope.keepInfrastructure === true)) throw new Error(`Stack '${key}' already has another stop in progress`);
       return active.promise;
     }
     const promise = this.executeNow(scope).finally(() => this.active.delete(key));
-    this.active.set(key, { id: scope.operationId, signature: scope.permit?.signature, promise });
+    this.active.set(key, { id: scope.operationId, signature: scope.permit?.signature, keepInfrastructure: scope.keepInfrastructure === true, promise });
     return promise;
   }
   private async executeNow(scope: NodeStackStopExecution): Promise<NodeStackStopReceipt> {
@@ -137,6 +145,7 @@ export class NodeStackStop {
     const record = this.records()[key];
     if (!record || record.plan.operationId !== scope.operationId) throw new Error('Stop plan is missing or superseded; prepare again');
     const { plan } = record;
+    if ((scope.keepInfrastructure === true) !== (plan.keepInfrastructure === true)) throw new Error('Infrastructure retention mode changed; prepare a new stop');
     if (Boolean(this.recipient) !== Boolean(plan.audience) || Boolean(this.recipient) !== Boolean(scope.permit)) {
       throw new Error('Stack stop authority changed; prepare a new plan for the enrolled node');
     }
@@ -145,6 +154,7 @@ export class NodeStackStop {
     if (definition.fingerprint !== plan.definition) throw new Error('Node allocation changed; prepare a new stop');
     if (record.phase === 'stopped' && record.receipt) {
       await admit();
+      if ((record.receipt.keepInfrastructure === true) !== (plan.keepInfrastructure === true)) throw new Error('Stop receipt infrastructure mode differs from its plan');
       await this.verifyStopped(record.receipt);
       return record.receipt;
     }
@@ -159,7 +169,11 @@ export class NodeStackStop {
       const planned = new Set(plan.containers.map(container => container.id));
       const checkInventory = async () => {
         const containers = await this.ports.containers(plan);
-        if (containers.some(container => !planned.has(container.id))) throw new Error('Container ownership changed during stop; inspect and prepare again');
+        if (containers.some(container => !planned.has(container.id)) ||
+            (plan.keepInfrastructure && (containers.length !== planned.size ||
+              containers.some(container => !plan.containers.some(expected => expected.id === container.id && expected.name === container.name))))) {
+          throw new Error('Container ownership changed during stop; inspect and prepare again');
+        }
         return containers;
       };
       await checkInventory();
@@ -170,16 +184,17 @@ export class NodeStackStop {
       // Drain existing reconciliation and remove the desired state before
       // deleting containers. Other stacks keep their monitors and resources.
       await admit();
-      await this.ports.retireInfrastructure(plan);
+      if (!plan.keepInfrastructure) await this.ports.retireInfrastructure(plan);
       const current = await checkInventory();
       await admit();
-      const outcomes = await Promise.allSettled(current.map(container => this.ports.removeContainer(container.id)));
+      const outcomes = await Promise.allSettled(plan.keepInfrastructure ? [] : current.map(container => this.ports.removeContainer(container.id)));
       const failures = outcomes.flatMap((outcome, index) => outcome.status === 'rejected'
         ? [`${current[index]!.name}: ${String(outcome.reason)}`] : []);
       if (failures.length) throw new Error(`Container stop incomplete: ${failures.join('; ')}`);
       const receipt: NodeStackStopReceipt = { protocol: 1, project: scope.project, stack: scope.stack,
         operationId: plan.operationId, outcome: 'stopped', observedAt: new Date().toISOString(), applications,
-        removedContainers: plan.containers.map(container => container.id),
+        removedContainers: plan.keepInfrastructure ? [] : plan.containers.map(container => container.id),
+        ...(plan.keepInfrastructure && { keepInfrastructure: true, keptContainers: plan.containers.map(container => container.id) }),
         ...(plan.audience && scope.permit && { authority: { ...plan.audience, epoch: scope.permit.epoch } }) };
       await this.verifyStopped(receipt);
       this.write(scope, currentRecord => {
@@ -202,7 +217,14 @@ export class NodeStackStop {
         throw new Error('The application allocation changed after its stop receipt');
       }
     }
-    if ((await this.ports.containers(receipt)).length) throw new Error('Stack containers are still present; stop is not confirmed');
+    const containers = await this.ports.containers(receipt);
+    if (receipt.keepInfrastructure) {
+      if (receipt.removedContainers.length || !Array.isArray(receipt.keptContainers) ||
+          receipt.keptContainers.length !== new Set(receipt.keptContainers).size ||
+          containers.length !== receipt.keptContainers.length || containers.some(container => !receipt.keptContainers!.includes(container.id))) {
+        throw new Error('Retained stack infrastructure changed; application stop receipt requires reconciliation');
+      }
+    } else if (containers.length) throw new Error('Stack containers are still present; stop is not confirmed');
   }
 }
 

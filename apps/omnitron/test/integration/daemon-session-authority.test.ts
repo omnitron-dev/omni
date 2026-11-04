@@ -29,6 +29,10 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
   const secret = new TextEncoder().encode('isolated-session-authority-fixture-secret');
   const fixture = new SessionFixture();
   const heartbeat = vi.fn(), receive = vi.fn();
+  const reviewStackStop = vi.fn((_project: string, _stack: string, keepInfrastructure = false) => ({
+    digest: null, targets: [], ...(keepInfrastructure && { keepInfrastructure: true }),
+  }));
+  const stopStack = vi.fn(() => ({ status: 'stopped', config: {}, apps: [], nodes: [] }));
   let role: string | null = 'admin', unavailable = false;
   const store = { validateSessionAuthority: async (userId: string, sessionId: string) => {
     if (unavailable) throw Object.assign(new Error('Session store is unavailable'), { code: 'SESSION_STORE_UNAVAILABLE', statusCode: 503 });
@@ -54,8 +58,7 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
     await netron.peer.exposeService(new TelemetryRpcService({ receive, stats: () => ({ totalReceived: 0 }) } as never));
     await netron.peer.exposeService(new ClusterRpcService({ isLeader: false, getClusterState: () => ({ state: 'follower' }) } as never));
     await netron.peer.exposeService(new ProjectRpcService({
-      resolveProjectStack: (scope: unknown) => scope, reviewStackStop: () => ({ digest: null, targets: [] }),
-      stopStack: () => ({ status: 'stopped', config: {}, apps: [], nodes: [] }),
+      resolveProjectStack: (scope: unknown) => scope, reviewStackStop, stopStack,
       inspectNodeStackStop: () => 'observed', prepareNodeStackStop: () => 'prepared', executeNodeStackStop: () => 'executed',
       resumeInstalledStack: () => ({ outcome: 'running' }), prepareNodeInstalledResume: () => 'prepared',
       executeNodeInstalledResume: () => 'executed', getNodeInstalledResumeReceipt: () => 'observed',
@@ -67,7 +70,7 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
     client = new Netron(logger); client.registerTransport('ws', () => new WebSocketTransport()); await client.start();
     token = await mint({ sid: 'active', role: 'admin' });
   });
-  beforeEach(() => { role = 'admin'; unavailable = false; fixture.effects = 0; });
+  beforeEach(() => { role = 'admin'; unavailable = false; fixture.effects = 0; reviewStackStop.mockClear(); stopStack.mockClear(); });
   afterAll(async () => { await client?.stop(); await http?.close(); await netron?.stop(); });
   async function mint(claims: Record<string, unknown>) {
     return new SignJWT(claims).setProtectedHeader({ alg: 'HS256' }).setIssuer('omnitron').setSubject('human')
@@ -129,6 +132,67 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
         'prepareNodeInstalledResume', 'executeNodeInstalledResume', 'getNodeInstalledResumeReceipt']) {
         expect((await request(credential, method, { service: 'OmnitronProject', input: [{}] })).status).toBe(principal === 'service_role' ? 200 : 403);
       }
+    }
+  });
+  it('keeps infrastructure retention within the existing viewer/operator authority over HTTP', async () => {
+    for (const principal of ['viewer', 'operator']) {
+      role = principal;
+      const credential = await mint({ role: principal, sid: 'active' });
+      for (const keepInfrastructure of [false, true]) {
+        const input = { project: 'sample', stack: 'prod', keepInfrastructure, review: 'a'.repeat(64) };
+        const envelope = { service: 'OmnitronProject', input: [input],
+          metadata: { authContext: { userId: 'omnitron-local', roles: ['admin'], metadata: { source: 'local-unix-socket' } } } };
+        expect((await request(credential, 'reviewStackStop', envelope)).status).toBe(200);
+        expect(reviewStackStop).toHaveBeenLastCalledWith('sample', 'prod', keepInfrastructure);
+        const calls = stopStack.mock.calls.length;
+        expect((await request(credential, 'stopStack', envelope)).status).toBe(principal === 'operator' ? 200 : 403);
+        expect(stopStack.mock.calls.length).toBe(calls + (principal === 'operator' ? 1 : 0));
+        if (principal === 'operator') expect(stopStack).toHaveBeenLastCalledWith('sample', 'prod', input.review, keepInfrastructure);
+      }
+    }
+  });
+  it('rejects malformed retention values at HTTP ingress before a stop or review effect', async () => {
+    role = 'operator';
+    const credential = await mint({ role: 'operator', sid: 'active' });
+    for (const keepInfrastructure of [null, 0, 1, 'true', 'false', {}, []]) {
+      for (const method of ['reviewStackStop', 'stopStack']) {
+        const response = await request(credential, method, { service: 'OmnitronProject',
+          input: [{ project: 'sample', stack: 'prod', keepInfrastructure }] });
+        expect(response.status).toBe(400);
+        expect(response.body).toContain('keepInfrastructure must be a boolean');
+      }
+    }
+    expect(reviewStackStop).not.toHaveBeenCalled();
+    expect(stopStack).not.toHaveBeenCalled();
+  });
+  it('uses the same retention authorization and strict arguments on persistent Netron WebSocket', async () => {
+    for (const principal of ['viewer', 'operator']) {
+      role = principal;
+      const peer = await client.connect(ws);
+      try {
+        const credential = await mint({ role: principal, sid: 'active' });
+        expect((await peer.runTask('authenticate', { token: credential })).success).toBe(true);
+        const service = await peer.queryInterface<ProjectRpcService>('OmnitronProject');
+        const input = { project: 'sample', stack: 'prod', keepInfrastructure: true, review: 'b'.repeat(64) };
+        await service.reviewStackStop(input);
+        expect(reviewStackStop).toHaveBeenLastCalledWith('sample', 'prod', true);
+        const calls = stopStack.mock.calls.length;
+        if (principal === 'viewer') await expect(service.stopStack(input)).rejects.toThrow();
+        else {
+          await service.stopStack(input);
+          expect(stopStack).toHaveBeenLastCalledWith('sample', 'prod', input.review, true);
+        }
+        expect(stopStack.mock.calls.length).toBe(calls + (principal === 'operator' ? 1 : 0));
+        if (principal === 'operator') {
+          const malformed = { ...input, keepInfrastructure: 'true' } as unknown as typeof input;
+          await expect(service.reviewStackStop(malformed)).rejects.toThrow('keepInfrastructure must be a boolean');
+          await expect(service.stopStack(malformed)).rejects.toThrow('keepInfrastructure must be a boolean');
+          expect(stopStack.mock.calls.length).toBe(calls + 1);
+          role = 'viewer';
+          await expect(service.stopStack(input)).rejects.toThrow(/role changed/);
+          expect(stopStack.mock.calls.length).toBe(calls + 1);
+        }
+      } finally { await peer.disconnect(); }
     }
   });
   it('refuses cached admin tokens immediately after demotion and cannot be tricked by caller metadata', async () => {

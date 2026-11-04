@@ -35,6 +35,63 @@ function fixture(remote = true) {
   return { service, calls, invoke, data };
 }
 describe('stack stop coordinator', () => {
+  it('keeps local containers and their reconciliation while disabling application resume', async () => {
+    const { service } = fixture(false);
+    service.infraManager.inspectStopContainers = vi.fn(async () => [{ id: 'a'.repeat(64), name: 'database' }]);
+    const ordinary = await service.reviewStackStop(project, stack);
+    const kept = await service.reviewStackStop(project, stack, true);
+    expect(kept).toMatchObject({ keepInfrastructure: true, targets: [{ containers: ['database'] }] });
+    expect(kept.digest).not.toEqual(ordinary.digest);
+    await expect(service.stopStack(project, stack, ordinary.digest, true)).rejects.toThrow('changed since review');
+    expect(service.registry.setStackEnabled).not.toHaveBeenCalled();
+    const result = await service.stopStack(project, stack, kept.digest, true);
+    expect(result.stopOperation).toMatchObject({ phase: 'stopped', keepInfrastructure: true, intentCommitted: true });
+    expect(service.registry.setStackEnabled).toHaveBeenCalledWith(project, stack, false);
+    expect(service.orchestrator.stopStackExecution).toHaveBeenCalledOnce();
+    expect(service.infraManager.teardownStack).not.toHaveBeenCalled();
+  });
+  it('refuses older recipients that do not explicitly acknowledge keeping infrastructure', async () => {
+    const { service, invoke } = fixture();
+    const review = await service.reviewStackStop(project, stack, true);
+    expect(review.keepInfrastructure).toBe(true);
+    expect(review.digest).toBeNull();
+    expect(review.targets.every((target: { reason?: string }) => target.reason?.includes('retention mode'))).toBe(true);
+    await expect(service.stopStack(project, stack, undefined, true)).rejects.toThrow('retention mode');
+    expect(service.registry.setStackEnabled).not.toHaveBeenCalled();
+    expect(invoke.mock.calls.some(call => call[3] === 'executeNodeStackStop')).toBe(false);
+  });
+  it('retains historical node obligations when their containers are kept', async () => {
+    const { service, invoke } = fixture();
+    const targets = new StackTargets(service.daemonStateStore);
+    targets.remember({ project, stack }, [{ host: 'previous.test', port: 9700, applications: true }]);
+    invoke.mockImplementation(async (host, _port, _service, method, args) => {
+      expect(args[0].keepInfrastructure).toBe(true);
+      if (method === 'prepareNodeStackStop' || method === 'inspectNodeStackStop') return { ...inventory(host), keepInfrastructure: true };
+      return { protocol: 1, project, stack, operationId: args[0].operationId, outcome: 'stopped', observedAt: new Date().toISOString(),
+        keepInfrastructure: true, removedContainers: [], keptContainers: ['a'.repeat(64)] };
+    });
+    const review = await service.reviewStackStop(project, stack, true);
+    await service.stopStack(project, stack, review.digest, true);
+    expect(targets.inspect({ project, stack }).nodes.map(node => node.host)).toEqual(['one.test', 'previous.test', 'two.test']);
+  });
+  it.each([true, false])('does not join an in-flight stop under a different retention mode (active: %s)', async activeMode => {
+    const { service } = fixture(false);
+    let resolve!: () => void;
+    service.orchestrator.stopStackExecution.mockImplementation(() => new Promise<void>(done => { resolve = done; }));
+    const pending = service.stopStack(project, stack, undefined, activeMode);
+    await vi.waitFor(() => expect(resolve).toBeTypeOf('function'));
+    await expect(service.stopStack(project, stack, undefined, !activeMode)).rejects.toThrow('already running');
+    resolve();
+    await pending;
+    expect(service.infraManager.teardownStack).toHaveBeenCalledTimes(activeMode ? 0 : 1);
+  });
+  it('reports a changed local retained container instead of a successful application stop', async () => {
+    const { service } = fixture(false);
+    service.infraManager.inspectStopContainers = vi.fn().mockResolvedValueOnce([{ id: 'a'.repeat(64), name: 'database' }]).mockResolvedValue([]);
+    await expect(service.stopStack(project, stack, undefined, true)).rejects.toThrow('Retained stack infrastructure changed');
+    expect(service.stackStates.get('sample/prod').status).toBe('error');
+    expect(service.infraManager.teardownStack).not.toHaveBeenCalled();
+  });
   it('reviews every target without journaling, disabling resume or executing any stop', async () => {
     const { service, calls, data } = fixture();
     const review = await service.reviewStackStop(project, stack);

@@ -34,6 +34,44 @@ function fixture() {
 }
 
 describe('node-confirmed stack stop', () => {
+  it('stops applications and disables resume while retaining infrastructure and a durable receipt', async () => {
+    const { service, ports, store } = fixture();
+    const plan = await service.prepare({ ...scope, keepInfrastructure: true });
+    expect(plan.keepInfrastructure).toBe(true);
+    const receipt = await service.execute(plan);
+    expect(receipt).toMatchObject({ outcome: 'stopped', keepInfrastructure: true, removedContainers: [], keptContainers: [id] });
+    expect(ports.disableResume).toHaveBeenCalledWith(runtime);
+    expect(ports.execution.stopStackExecution).toHaveBeenCalledOnce();
+    expect(ports.retireInfrastructure).not.toHaveBeenCalled();
+    expect(ports.removeContainer).not.toHaveBeenCalled();
+    expect(await new NodeStackStop(store, ports).execute(plan)).toEqual(receipt);
+    expect(ports.execution.stopStackExecution).toHaveBeenCalledOnce();
+  });
+  it('refuses a changed retention mode before any stop or intent mutation', async () => {
+    const { service, ports } = fixture();
+    const plan = await service.prepare({ ...scope, keepInfrastructure: true });
+    await expect(service.execute({ ...plan, keepInfrastructure: false })).rejects.toThrow('retention mode changed');
+    await expect(service.execute({ ...plan, keepInfrastructure: undefined })).rejects.toThrow('retention mode changed');
+    expect(ports.disableResume).not.toHaveBeenCalled();
+    expect(ports.execution.stopStackExecution).not.toHaveBeenCalled();
+  });
+  it('does not claim retained infrastructure after a container disappears before the stop', async () => {
+    const { service, ports, replaceContainers } = fixture();
+    const plan = await service.prepare({ ...scope, keepInfrastructure: true });
+    replaceContainers([]);
+    await expect(service.execute(plan)).rejects.toThrow('ownership changed');
+    expect(ports.execution.stopStackExecution).not.toHaveBeenCalled();
+    expect(ports.retireInfrastructure).not.toHaveBeenCalled();
+  });
+  it('reconciles changed retained infrastructure instead of replaying a completed stop', async () => {
+    const { service, ports, replaceContainers } = fixture();
+    const plan = await service.prepare({ ...scope, keepInfrastructure: true });
+    await service.execute(plan);
+    replaceContainers([{ id: 'b'.repeat(64), name: 'replacement' }]);
+    await expect(service.execute(plan)).rejects.toThrow('Retained stack infrastructure changed');
+    expect(ports.execution.stopStackExecution).toHaveBeenCalledOnce();
+    expect(ports.removeContainer).not.toHaveBeenCalled();
+  });
   it('observes a node without replacing a challenge or writing its journal', async () => {
     const { service, store } = fixture();
     const plan = await service.prepare(scope);

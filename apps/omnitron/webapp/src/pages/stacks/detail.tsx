@@ -295,8 +295,8 @@ export default function StackDetailPage() {
       />
 
       {stopOpen && activeProject && name && <StackStopDialog key={`${activeProject}/${name}`} project={activeProject} stack={name}
-        onClose={() => setStopOpen(false)} onConfirm={digest => {
-          setStopOpen(false); void stopStack(activeProject, name, digest);
+        onClose={() => setStopOpen(false)} onConfirm={(digest, keepInfrastructure) => {
+          setStopOpen(false); void stopStack(activeProject, name, digest, keepInfrastructure);
         }} />}
       {diagnoseOpen && activeProject && name && <StackDiagnosisDialog key={`${activeProject}/${name}`} project={activeProject} stack={name} onClose={() => setDiagnoseOpen(false)} />}
       <StackStopNotice operation={stack.stopOperation} />

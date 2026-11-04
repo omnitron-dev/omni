@@ -216,8 +216,8 @@ export default function StacksPage() {
       /></Can>
 
       {stopTarget && stopTarget.project === activeProject && <StackStopDialog key={`${stopTarget.project}/${stopTarget.stack}`} {...stopTarget}
-        onClose={() => setStopTarget(null)} onConfirm={digest => {
-          setStopTarget(null); void stopStack(stopTarget.project, stopTarget.stack, digest);
+        onClose={() => setStopTarget(null)} onConfirm={(digest, keepInfrastructure) => {
+          setStopTarget(null); void stopStack(stopTarget.project, stopTarget.stack, digest, keepInfrastructure);
         }} />}
       {diagnoseTarget && activeProject && <StackDiagnosisDialog key={`${activeProject}/${diagnoseTarget}`} project={activeProject} stack={diagnoseTarget} onClose={() => setDiagnoseTarget(null)} />}
 

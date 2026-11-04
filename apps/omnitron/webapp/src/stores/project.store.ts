@@ -76,7 +76,7 @@ interface ProjectState {
    */
   startStack: (project: string, stack: string, opts?: { release?: string; allowDirty?: boolean; workingTree?: boolean }) => Promise<StackActionResult>;
   resumeInstalledStack: (project: string, stack: string) => Promise<void>;
-  stopStack: (project: string, stack: string, review: string) => Promise<void>;
+  stopStack: (project: string, stack: string, review: string, keepInfrastructure?: boolean) => Promise<void>;
   createStack: (project: string, data: { name: string; type: 'local' | 'remote' | 'cluster'; apps: string[] | 'all'; nodeIds?: string[] }) => Promise<IStackInfo>;
   deleteStack: (project: string, stack: string) => Promise<void>;
   /** Check if a stack has a pending operation */
@@ -434,7 +434,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     }
   },
 
-  stopStack: async (projectName: string, stackName: string, review: string) => {
+  stopStack: async (projectName: string, stackName: string, review: string, keepInfrastructure = false) => {
     const opKey = `${projectName}/${stackName}`;
     if (get().pendingOps[opKey]) return;
 
@@ -445,8 +445,11 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     }));
 
     try {
-      const result = await invokeStackLifecycle('stopStack', { project: projectName, stack: stackName, review });
+      const result = await invokeStackLifecycle('stopStack', { project: projectName, stack: stackName, review,
+        ...(keepInfrastructure && { keepInfrastructure: true }) });
       if (result.status !== 'stopped' || result.stopOperation?.phase !== 'stopped') throw new Error('Daemon did not confirm the complete stack stop');
+      if (keepInfrastructure && result.stopOperation.keepInfrastructure !== true)
+        throw new Error('Daemon did not confirm infrastructure preservation. Inspect the stop operation before retrying.');
     } catch (err) {
       notice(opKey, isRpcTimeout(err) || isLostRpcAcknowledgement(err)
         ? 'Stop acknowledgement has not arrived. Check the stack operation before retrying; applications may still be running.'

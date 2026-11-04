@@ -390,28 +390,36 @@ export async function stackResumeCommand(project: string, stack: string): Promis
   }
 }
 
-export async function stackStopCommand(projectName: string, stackName: string, options: { dryRun?: boolean; review?: string } = {}): Promise<void> {
+export async function stackStopCommand(projectName: string, stackName: string, options: { dryRun?: boolean; review?: string; keepInfrastructure?: boolean } = {}): Promise<void> {
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
-    if (options.dryRun) {
-      if (options.review !== undefined) throw new Error('Use --review when executing a previously inspected stop');
-      const report = await svc.reviewStackStop({ project: projectName, stack: stackName });
+    if (options.dryRun && options.review !== undefined) throw new Error('Use --review when executing a previously inspected stop');
+    const scope = { project: projectName, stack: stackName, ...(options.keepInfrastructure && { keepInfrastructure: true }) };
+    const report = options.dryRun || options.keepInfrastructure ? await svc.reviewStackStop(scope) : null;
+    if (options.keepInfrastructure && report?.keepInfrastructure !== true)
+      throw new Error('The controller did not confirm infrastructure preservation; no stop was requested. Update the controller before using --keep-infrastructure.');
+    if (options.dryRun && report) {
       if (!report.digest) process.exitCode = 1;
       if (emitJson(report)) return;
       for (const target of report.targets) {
         emitInfo(target.reason ? `${target.node} · ${target.reason}` :
-          `${target.node} · ${target.runtime ? `${target.runtime.project}/${target.runtime.stack}` : 'infrastructure only'} · applications: ${target.applications?.join(', ') || 'none'} · containers: ${target.containers?.join(', ') || 'none'}`);
+          `${target.node} · ${target.runtime ? `${target.runtime.project}/${target.runtime.stack}` : 'infrastructure only'} · applications: ${target.applications?.join(', ') || 'none'} · containers ${options.keepInfrastructure ? 'kept' : 'removed'}: ${target.containers?.join(', ') || 'none'}`);
       }
       if (report.digest) emitInfo(`Review digest: ${report.digest}`);
       return;
     }
-    emitStep(`Stopping stack ${projectName}/${stackName}...`);
-    const result = await svc.stopStack({ project: projectName, stack: stackName, ...(options.review !== undefined && { review: options.review }) });
+    if (options.keepInfrastructure && (!report?.digest || (options.review !== undefined && options.review !== report.digest)))
+      throw new Error('The current application-only stop could not be confirmed against the reviewed footprint; no stop was requested. Inspect the stack again.');
+    const review = options.review ?? report?.digest;
+    emitStep(`Stopping ${options.keepInfrastructure ? 'applications in' : 'stack'} ${projectName}/${stackName}...`);
+    const result = await svc.stopStack({ ...scope, ...(review !== undefined && review !== null && { review }) });
     if (result.status !== 'stopped' || result.stopOperation?.phase !== 'stopped') throw new Error('Daemon did not confirm the complete stack stop');
+    if (options.keepInfrastructure && result.stopOperation.keepInfrastructure !== true)
+      throw new Error('Daemon did not confirm infrastructure preservation. Inspect the stop operation before retrying.');
     if (emitJson({ project: projectName, stack: stackName, action: 'stopped', operation: result.stopOperation })) return;
     for (const node of result.stopOperation.nodes) emitInfo(`${node.node}: ${node.outcome}${node.authority ? ` · ${node.authority.clusterId} epoch ${node.authority.epoch} (${node.authority.nodeId})` : ''}${node.observedAt ? ` at ${node.observedAt}` : ''}`);
-    emitSuccess(`Stack ${projectName}/${stackName} stopped`);
+    emitSuccess(options.keepInfrastructure ? `Applications in ${projectName}/${stackName} stopped; infrastructure retained` : `Stack ${projectName}/${stackName} stopped`);
   } catch (err) {
     reportLifecycleError(err, `stack ${projectName}/${stackName} to stop`, {
       project: projectName,

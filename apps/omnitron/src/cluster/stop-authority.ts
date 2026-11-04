@@ -33,11 +33,12 @@ function termMatches(left: Term, right: Term): boolean {
   return left.epoch === right.epoch && left.owner === right.owner && left.incarnation === right.incarnation;
 }
 
-/** This byte order is the stack.stop/v1 protocol, including when the peer runs an older daemon. */
+/** Destructive v1 bytes stay compatible. The separate domain binds retained-infrastructure intent. */
 function stopMessage(plan: NodeStackStopPlan, term: Term): Buffer {
   if (!plan.audience || !Number.isSafeInteger(plan.expiresAt)) throw new Error('A recipient-bound stop plan is required');
+  if (plan.keepInfrastructure !== undefined && typeof plan.keepInfrastructure !== 'boolean') throw new Error('Invalid infrastructure retention mode');
   const e = plan.execution;
-  return Buffer.from(JSON.stringify(['omnitron/stack.stop/v1', plan.audience.clusterId, plan.audience.nodeId,
+  return Buffer.from(JSON.stringify([plan.keepInfrastructure ? 'omnitron/stack.stop.keep-infrastructure/v1' : 'omnitron/stack.stop/v1', plan.audience.clusterId, plan.audience.nodeId,
     term.owner, term.incarnation, term.epoch, plan.project, plan.stack, plan.applications, plan.operationId,
     plan.expiresAt, plan.definition, e ? [e.project, e.stack, e.revision, e.phase, e.apps.map(a => [a.name, a.generation])] : null,
     plan.containers.map(c => [c.id, c.name])]));

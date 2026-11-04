@@ -129,6 +129,8 @@ export type StackStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'deg
 export interface StackStopReview {
   project: string;
   stack: string;
+  /** Explicit acknowledgement: applications stop while infrastructure keeps running. */
+  keepInfrastructure?: true;
   checkedAt: string;
   /** Present only when every target was inspected. Changes invalidate this review. */
   digest: string | null;
@@ -156,6 +158,7 @@ export interface InstalledStackResumeResult {
 }
 
 export interface StackStopProgress {
+  keepInfrastructure?: true;
   intentCommitted?: boolean;
   supersededAt?: string;
   id: string;

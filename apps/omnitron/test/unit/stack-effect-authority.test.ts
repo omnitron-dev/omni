@@ -32,6 +32,17 @@ function plans() {
 }
 
 describe('recipient-bound stack effect authority', () => {
+  it('cannot change a signed stop between keeping and removing infrastructure', async () => {
+    const signer = new ClusterSigner(), grant = lease(signer);
+    const node = new ClusterRecipient(audience, { read: async () => grant }, recipientState());
+    const { stop } = plans();
+    const keep = { ...stop, keepInfrastructure: true };
+    const preservePermit = signer.issue(keep, grant), removePermit = signer.issue(stop, grant);
+    await node.admit(keep, preservePermit);
+    await expect(node.admit(stop, preservePermit)).rejects.toThrow('signature');
+    await expect(node.admit(keep, removePermit)).rejects.toThrow('signature');
+    await expect(node.admit({ ...keep, keepInfrastructure: false }, preservePermit)).rejects.toThrow('signature');
+  });
   it('preserves the original stop protocol and separates its signature from installed recovery at the same scope', async () => {
     const signer = new ClusterSigner(), grant = lease(signer);
     const node = new ClusterRecipient(audience, { read: async () => grant }, recipientState());

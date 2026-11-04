@@ -6,7 +6,7 @@ export type StopReviewTarget = { node: string; inventory: NodeStackStopInventory
 
 /** Bind a human review to the same generations, definition and resources used by execution.
  * Node-issued nonces and their deadlines belong to execution and change on a fresh preparation. */
-export function stackStopReview(scope: StackExecutionScope, targets: StopReviewTarget[]): StackStopReview {
+export function stackStopReview(scope: StackExecutionScope, targets: StopReviewTarget[], keepInfrastructure = false): StackStopReview {
   const evidence: unknown[] = [];
   const observations = targets.map(target => {
     if ('reason' in target) return target;
@@ -20,6 +20,6 @@ export function stackStopReview(scope: StackExecutionScope, targets: StopReviewT
       applications: execution?.apps.map(app => app.name) ?? [], containers: containers.map(container => container.name) };
   });
   const digest = targets.length && evidence.length === targets.length
-    ? stackDefinitionFingerprint(['omnitron/stack.stop.review/v1', scope.project, scope.stack, evidence]) : null;
-  return { ...scope, checkedAt: new Date().toISOString(), digest, targets: observations };
+    ? stackDefinitionFingerprint([keepInfrastructure ? 'omnitron/stack.stop.keep-infrastructure.review/v1' : 'omnitron/stack.stop.review/v1', scope.project, scope.stack, evidence]) : null;
+  return { ...scope, ...(keepInfrastructure && { keepInfrastructure: true }), checkedAt: new Date().toISOString(), digest, targets: observations };
 }

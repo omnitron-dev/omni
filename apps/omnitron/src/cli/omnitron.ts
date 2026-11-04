@@ -387,6 +387,7 @@ stack
 stack
   .command('stop <project> <stack>')
   .description('Stop a stack and verify each target')
+  .option('--keep-infrastructure', 'Stop applications and disable automatic resume while preserving infrastructure')
   .option('--dry-run', 'Inspect applications, containers and unresolved targets without creating a stop operation')
   .option('--review <digest>', 'Stop only if the inventory matches the inspected digest')
   .structuredAction(async (projectName, stackName, options) => {

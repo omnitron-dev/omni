@@ -14,6 +14,7 @@ import { publicStackName, type ConfigurationImport } from '../project/configurat
  */
 
 import { Service, Public } from '@omnitron-dev/titan/decorators';
+import { Errors } from '@omnitron-dev/titan/errors';
 import { VIEWER_ROLES, OPERATOR_ROLES, ADMIN_ROLES } from '../shared/roles.js';
 import type { ProjectService } from './project.service.js';
 import type { DeployProgressRecord } from './remote-deployer.service.js';
@@ -334,27 +335,32 @@ export class ProjectRpcService {
   }
 
   @Public({ auth: { roles: VIEWER_ROLES } })
-  async reviewStackStop(data: { project: string; stack: string }) {
+  async reviewStackStop(data: { project: string; stack: string; keepInfrastructure?: boolean }) {
+    if (data.keepInfrastructure !== undefined && typeof data.keepInfrastructure !== 'boolean')
+      throw Errors.badRequest('keepInfrastructure must be a boolean');
     const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
-    const report = await this.projectService.reviewStackStop(scope.project, scope.stack);
+    const report = await this.projectService.reviewStackStop(scope.project, scope.stack, data.keepInfrastructure === true);
     return { ...report, project: data.project, stack: data.stack };
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async stopStack(data: { project: string; stack: string; review?: string }): Promise<IStackInfo> {
+  async stopStack(data: { project: string; stack: string; review?: string; keepInfrastructure?: boolean }): Promise<IStackInfo> {
+    if (data.keepInfrastructure !== undefined && typeof data.keepInfrastructure !== 'boolean')
+      throw Errors.badRequest('keepInfrastructure must be a boolean');
     const logicalName = data.stack;
     data = await this.projectService.resolveProjectStack(data);
     try {
-      const info = await this.projectService.stopStack(data.project, data.stack, data.review);
+      const info = await this.projectService.stopStack(data.project, data.stack, data.review, data.keepInfrastructure === true);
       await this.audit?.record({
         action: 'stack.stop', resourceType: 'stack', resourceId: `${data.project}/${data.stack}`, outcome: 'ok',
-        details: { type: info.type, operationId: info.stopOperation?.id, nodes: info.stopOperation?.nodes },
+        details: { type: info.type, operationId: info.stopOperation?.id, nodes: info.stopOperation?.nodes,
+          keepInfrastructure: data.keepInfrastructure === true },
       });
       return { ...publicStack(info), name: logicalName, runtimeScope: { project: data.project, stack: data.stack } };
     } catch (error) {
       await this.audit?.record({
         action: 'stack.stop.failed', resourceType: 'stack', resourceId: `${data.project}/${data.stack}`,
-        outcome: 'failed', error,
+        outcome: 'failed', error, details: { keepInfrastructure: data.keepInfrastructure === true },
       });
       throw error;
     }

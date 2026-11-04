@@ -16,6 +16,10 @@ const dist = path.resolve(process.argv[2]);
 assert.ok(dist.includes('omnitron-handoff-'), 'Use a disposable sealed test artifact');
 const managementDist = process.argv[3] ? path.resolve(process.argv[3]) : undefined;
 if (managementDist) assert.ok(managementDist.includes('omnitron-handoff-'), 'Use a disposable management artifact');
+// Qualify an exact baseline -> candidate -> baseline with the baseline owner and
+// guardian retained. This is the same CLI path used by a backend-only rollout.
+const backendOnly = process.argv.includes('--backend-only');
+if (backendOnly) assert.ok(managementDist, 'Provide the candidate artifact before --backend-only');
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-managed-'));
 const instance = path.join(root, 'i'), execution = path.join(root, 'e');
 for (const directory of [instance, execution]) await fs.mkdir(directory, { mode: 0o700 });
@@ -135,6 +139,36 @@ try {
   const cli = (...args) => run(artifact.execPath, [path.join(artifact.directory, 'cli/omnitron.js'), ...args, '--json'], {
     env: { ...process.env, OMNITRON_HOME: instance }, cwd: root, timeout: 600_000, maxBuffer: 1024 * 1024,
   });
+  if (backendOnly) {
+    const supervisor = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor');
+    try {
+      const initialGuardian = await supervisor.service.status();
+      const runner = path.resolve(managementDist, '../../../node');
+      const invoke = async (...args) => JSON.parse((await run(runner, [path.join(managementDist, 'cli/omnitron.js'),
+        '--json', 'backend', 'upgrade', ...args], { cwd: root, env: process.env, timeout: 300_000, maxBuffer: 1024 * 1024 })).stdout).data;
+      for (const [stage, target] of [['backend-forward', managementDist], ['backend-rollback', artifact.directory]]) {
+        const before = await until(async () => {
+          const current = await status(), guardian = await supervisor.service.status();
+          return current.execution.recovery.status === 'ready' && guardian.state === 'ready' &&
+            !guardian.operationPending && guardian.backendPid === current.pid ? current : null;
+        }, 'Backend did not settle before qualification');
+        const stamp = JSON.parse(await fs.readFile(path.join(target, 'BUILD.json'), 'utf8'));
+        const checked = await invoke(target, '--check');
+        assert.equal(checked.checked, true); assert.equal(checked.build.commit, stamp.commit);
+        assert.equal((await status()).pid, before.pid, 'Qualification check changed the backend');
+        const changed = await invoke(target);
+        const current = await until(async () => {
+          const current = await status(), guardian = await supervisor.service.status();
+          return current.pid === changed.pid && current.execution.recovery.status === 'ready' &&
+            guardian.state === 'ready' && !guardian.operationPending && guardian.backendPid === current.pid ? current : null;
+        }, 'Qualified backend did not settle');
+        assert.equal(current.build.commit, stamp.commit); assert.equal(current.execution.owner.pid, ownerPid);
+        assert.equal((await supervisor.service.status()).pid, initialGuardian.pid, 'Backend update replaced its guardian');
+        assert.equal((await probe()).pid, applicationPid);
+        console.log(JSON.stringify({ stage, commit: stamp.commit, backendPid: current.pid, ownerPid, applicationPid, guardianPid: initialGuardian.pid }));
+      }
+    } finally { await supervisor.close(); }
+  }
   // A regular CLI must delegate, so a replacement remains a child of the OS job.
   const upgraded = JSON.parse((await cli('backend', 'upgrade', dist)).stdout).data;
   console.log(JSON.stringify({ stage: 'upgraded', pid: upgraded.pid }));
@@ -162,7 +196,7 @@ try {
       return value.state === 'ready' && value.backendPid === afterGuardian.pid;
     }, 'Guardian has not committed its recovered backend selection');
   } finally { await committedGuardian.close(); }
-  if (managementDist) {
+  if (managementDist && !backendOnly) {
     const settledGuardian = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor');
     try {
       await until(async () => {

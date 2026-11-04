@@ -171,6 +171,13 @@ export class AppHandle {
     return this.definition;
   }
 
+  /** Redefinition revokes lifecycle work admitted against an earlier definition,
+   * even when an operator later restores the same entry object. */
+  private nextDefinitionRevision = 0;
+  get definitionRevision(): number {
+    return this.nextDefinitionRevision;
+  }
+
   /**
    * Take a new definition for the next start.
    *
@@ -188,6 +195,7 @@ export class AppHandle {
       throw new Error(`A definition for '${entry.name}' cannot redefine '${this.definition.name}'`);
     }
     this.definition = entry;
+    this.nextDefinitionRevision++;
   }
 
   get name(): string {

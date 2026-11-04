@@ -80,6 +80,82 @@ describe('watch policy at execution time', () => {
   });
 });
 
+describe('definition ownership during an in-flight restart', () => {
+  function pendingStop() {
+    const { service, internals, add } = harness();
+    const entry = { name: 'lab/local/worker', bootstrap: '/fixture/source/bootstrap.ts' };
+    const handle = add(entry);
+    let signalStopping!: () => void;
+    const stopping = new Promise<void>(resolve => { signalStopping = resolve; });
+    let finishStop!: () => void;
+    // Keep the real coalescer, stop intent, lifecycle queue and redefine path.
+    // Only process teardown and the final spawn are replaced with probes.
+    internals.tearDownApp = vi.fn(async () => {
+      signalStopping();
+      await new Promise<void>(resolve => { finishStop = resolve; });
+    });
+    const start = vi.spyOn(service, 'startApp').mockImplementation(async next => add(next));
+    const restarted = service.restartAfterChange(entry.name);
+    // Attach rejection handling before the test releases the paused stop.
+    const outcome = restarted.then(value => ({ value }), error => ({ error }));
+    return { service, entry, handle, start, stopping, finish: () => finishStop(), outcome };
+  }
+
+  it('refuses the captured source restart after promotion to a sealed classic entry', async () => {
+    const run = pendingStop();
+    await run.stopping;
+    const installed = { name: run.entry.name, script: 'dist/main.js', cwd: '/fixture/release',
+      releaseRoot: '/fixture/release', watch: false as const };
+    await run.service.redefineApp(run.entry.name, installed);
+    run.finish();
+    expect(await run.outcome).toMatchObject({ error: { message: expect.stringMatching(/definition changed while stopping/) } });
+    expect(run.start).not.toHaveBeenCalled();
+    expect(run.handle.status).toBe('stopped');
+    expect(run.handle.entry).toBe(installed);
+    await run.service.startKnownApp(run.entry.name);
+    expect(run.start).toHaveBeenCalledExactlyOnceWith(installed);
+  });
+
+  it('revokes a source restart when its own watch policy changes during stop', async () => {
+    const run = pendingStop();
+    await run.stopping;
+    await run.service.redefineApp(run.entry.name, { ...run.entry, watch: false });
+    run.finish();
+    expect(await run.outcome).toHaveProperty('error');
+    expect(run.start).not.toHaveBeenCalled();
+  });
+
+  it('does not revive a revoked request when the same entry object is restored', async () => {
+    const run = pendingStop();
+    await run.stopping;
+    await run.service.redefineApp(run.entry.name, { ...run.entry, watch: false });
+    await run.service.redefineApp(run.entry.name, run.entry);
+    run.finish();
+    expect(await run.outcome).toHaveProperty('error');
+    expect(run.start).not.toHaveBeenCalled();
+  });
+
+  it('treats an explicit identical redefinition as revocation, without respawning the captured entry', async () => {
+    const run = pendingStop();
+    await run.stopping;
+    await run.service.redefineApp(run.entry.name, run.entry);
+    run.finish();
+    expect(await run.outcome).toHaveProperty('error');
+    expect(run.start).not.toHaveBeenCalled();
+    expect(run.handle.entry).toBe(run.entry);
+  });
+
+  it('finishes an admitted restart of an unchanged entry when global watching is disabled', async () => {
+    const run = pendingStop();
+    await run.stopping;
+    await run.service.setWatchMode(false);
+    run.finish();
+    expect(await run.outcome).toHaveProperty('value');
+    expect(run.start).toHaveBeenCalledExactlyOnceWith(run.entry);
+    expect(run.service.devMode).toBe(false);
+  });
+});
+
 describe('shared source edits, real esbuild and real child processes', () => {
   it('keeps watch:false PIDs and artifacts stable, reconfigures watching and permits manual rebuilds', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'omnitron-watch-policy-'));

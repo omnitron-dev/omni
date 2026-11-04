@@ -406,8 +406,15 @@ artifact integrity still determine whether an installed executable is trusted;
 setting `releaseRoot` does not grant that trust.
 
 Enabling watch reconciles edits made while watch was disabled. Disabling watch
-awaits disposal and cancels queued automatic restarts. `watch: false` leaves a
-source application available for an explicit restart, which rebuilds its current
+awaits disposal and cancels queued automatic restarts. A restart already stopping an
+application may finish when only global watching is disabled. Explicitly
+redefining that application revokes its pending restart, including an identical
+redefinition: the old request cannot relaunch a previous source entry or select
+a different release. The stopped application retains its current definition;
+inspect it and start it explicitly. This revision belongs to the supported
+redefinition API, not to arbitrary in-place mutation of configuration objects.
+
+`watch: false` leaves a source application available for an explicit restart, which rebuilds its current
 TypeScript sources. Stopping and resuming an installed stack reuses its verified
 release and retained launch configuration, independently of other applications'
 watch policy. CLI and Console report both file and source build watchers through

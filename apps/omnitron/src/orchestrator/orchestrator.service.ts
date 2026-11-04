@@ -1659,6 +1659,7 @@ export class OrchestratorService extends EventEmitter {
     if (!handle) throw new Error(`Unknown app: ${name}`);
     this.assertAppStartAllowed(name);
     const entry = handle.entry;
+    const definitionRevision = handle.definitionRevision;
 
     if (this.devMode && entry.bootstrap) {
       clearCacheFor(path.resolve(entry.cwd ?? this.cwd, entry.bootstrap));
@@ -1670,6 +1671,9 @@ export class OrchestratorService extends EventEmitter {
     await stopped;
     if (this.stoppingApps || generation !== this.stopGeneration || intent !== this.appStopIntents.get(name)) {
       throw new Error('Application stop interrupted restart');
+    }
+    if (this.handles.get(name) !== handle || handle.definitionRevision !== definitionRevision || handle.entry !== entry) {
+      throw new Error(`Application '${name}' definition changed while stopping; restart was cancelled. Inspect the current definition and start it explicitly.`);
     }
     return this.startApp(entry);
   }

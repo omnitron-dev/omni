@@ -45,6 +45,7 @@ import {
   noGateRan,
   pruneBlindness,
   readGates,
+  readBuildChecks,
   frameworkSourceLabel, releaseTargetLabel, readSourcePublication,
   readReleaseDeploymentState,
   runningReleaseLabel,
@@ -205,7 +206,14 @@ export async function releaseBuildCommand(projectName: string, options: ReleaseB
     const m = outcome.manifest;
     const failedGates = m.gates.filter((g) => g.status !== 'passed');
     const bytes = m.artifacts.reduce((sum, a) => sum + a.bytes, 0);
-    log.success(`Release ${outcome.id} — ${Math.round(outcome.durationMs / MINUTE)} min`);
+    const checks = readBuildChecks(m);
+    const summary = `Release ${outcome.id} — ${Math.round(outcome.durationMs / MINUTE)} min`;
+    if (checks.exitCode === 0) log.success(summary);
+    else {
+      log.warn(`${summary} — checks did not pass; retained for diagnosis`);
+      log.warn(`  ${checks.reason}`);
+      process.exitCode = checks.exitCode;
+    }
     log.info(
       `  gates: ${m.gates.length - failedGates.length} of ${m.gates.length} passed` +
         (failedGates.length ? ` — ${failedGates.map((g) => `${g.name} ${g.status}`).join(', ')}` : ''),

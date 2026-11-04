@@ -34,6 +34,7 @@ import {
 
 import type { BuildRequest, BuildRecord } from '../shared/dto/releases.js';
 import { parseFrameworkSource } from '../shared/framework-source.js';
+import { readBuildChecks } from '../shared/release-reading.js';
 export type { BuildRequest, BuildRecord } from '../shared/dto/releases.js';
 
 /** How many finished builds are kept for looking back at. */
@@ -159,7 +160,9 @@ export class ReleaseService {
     void runReleaseBuild(request.project, options, (phase) => this.onPhase(buildId, phase))
       .then((outcome) => {
         const r = this.records.get(buildId)!;
-        r.state = 'done';
+        const checks = readBuildChecks(outcome.manifest);
+        r.state = checks.exitCode === 0 ? 'done' : 'failed';
+        r.error = checks.reason;
         r.releaseId = outcome.id;
         r.gates = [...outcome.manifest.gates];
         r.percent = 100;
@@ -167,8 +170,8 @@ export class ReleaseService {
         r.finishedAt = new Date().toISOString();
         const passed = r.gates.filter((g) => g.status === 'passed').length;
         this.logger.info(
-          { release: outcome.id, gates: `${passed}/${r.gates.length}`, minutes: Math.round(outcome.durationMs / 60_000) },
-          'Release built',
+          { release: outcome.id, gates: `${passed}/${r.gates.length}`, minutes: Math.round(outcome.durationMs / 60_000), state: r.state, error: r.error },
+          checks.exitCode === 0 ? 'Release built' : 'Release checks did not pass; artifacts retained for diagnosis',
         );
       })
       .catch((err: Error) => {

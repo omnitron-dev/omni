@@ -97,6 +97,22 @@ export function readGates(release: ReleaseGates): GatesReading {
   return { text: `${passed}/${total}`, tone: failed > 0 ? 'failed' : passed < total ? 'unfinished' : 'passed' };
 }
 
+/** Finishing the archive step does not imply successful checks or deployment admission. */
+export function readBuildChecks(manifest: Pick<ReleaseManifest, 'gates' | 'artifactFailures'>): {
+  exitCode: 0 | 1 | 2;
+  reason: string | null;
+} {
+  const incomplete = manifest.gates.filter(gate => gate.status !== 'passed');
+  const artifacts = manifest.artifactFailures ?? [];
+  const failed = artifacts.length > 0 || incomplete.some(gate => gate.status === 'failed');
+  const reasons = [
+    ...(manifest.gates.length === 0 ? ['No release checks were recorded'] : []),
+    ...incomplete.map(gate => `${gate.name}: ${gate.status}${gate.detail ? ` (${gate.detail})` : ''}`),
+    ...artifacts.map(artifact => `${artifact.app}: ${artifact.error}`),
+  ];
+  return { exitCode: failed ? 1 : reasons.length > 0 ? 2 : 0, reason: reasons.length > 0 ? reasons.join('; ') : null };
+}
+
 // ---------------------------------------------------------------------------
 // Recorded deployments
 // ---------------------------------------------------------------------------

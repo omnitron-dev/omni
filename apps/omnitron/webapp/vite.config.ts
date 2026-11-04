@@ -135,6 +135,8 @@ export default defineConfig({
       '@omnitron-dev/omnitron/audit-outcome': path.resolve(here, '../src/shared/audit-outcome.ts'),
       // Whether a node's replication keeps up — the stack pages and `stack status` alike.
       '@omnitron-dev/omnitron/metrics-storage-reading': path.resolve(here, '../src/shared/metrics-storage-reading.ts'),
+      '@omnitron-dev/omnitron/relay-reading': path.resolve(here, '../src/shared/relay-reading.ts'),
+      '@omnitron-dev/omnitron/stack-reading': path.resolve(here, '../src/shared/stack-reading.ts'),
       '@omnitron-dev/omnitron/sync-reading': path.resolve(here, '../src/shared/sync-reading.ts'),
       // Config types (imported by DTO)
       '@omnitron-dev/omnitron/config': path.resolve(here, '../src/config/index.ts'),

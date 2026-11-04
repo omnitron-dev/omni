@@ -28,6 +28,8 @@
       "@omnitron-dev/omnitron/release-source": ["../src/shared/framework-source.ts"],
       "@omnitron-dev/titan-metrics/types": ["../../../packages/titan-metrics/src/types.ts"],
       "@omnitron-dev/omnitron/metrics-storage-reading": ["../src/shared/metrics-storage-reading.ts"],
+      "@omnitron-dev/omnitron/relay-reading": ["../src/shared/relay-reading.ts"],
+      "@omnitron-dev/omnitron/stack-reading": ["../src/shared/stack-reading.ts"],
       "@omnitron-dev/omnitron/sync-reading": ["../src/shared/sync-reading.ts"]
     }
   },

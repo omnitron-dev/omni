@@ -223,6 +223,8 @@ export class TelemetryRelayService extends EventEmitter {
     totalReceived: number;
     lastError: string | null;
     transportConnected: boolean;
+    started: boolean;
+    destination: 'transport' | 'aggregator' | 'none';
   } {
     return {
       nodeId: this.nodeId,
@@ -235,6 +237,8 @@ export class TelemetryRelayService extends EventEmitter {
       totalReceived: this.totalReceived,
       lastError: this.lastError,
       transportConnected: this.transport?.isConnected() ?? false,
+      started: this.started && !this.disposed,
+      destination: this.transport ? 'transport' : this.aggregator ? 'aggregator' : 'none',
     };
   }
 

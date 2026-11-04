@@ -1,3 +1,4 @@
+import { StackHealthStatus, ApplicationHealthStatus } from 'src/components/stack-health-status';
 import { hasInstalledRecovery, StackRecoveryAction, StackResumeNotice } from 'src/components/stack-recovery';
 import { StackStopDialog } from 'src/components/stack-stop-dialog';
 import { StackDiagnosisDialog } from 'src/components/stack-diagnosis-dialog';
@@ -122,7 +123,7 @@ export default function StackDetailPage() {
     { id: 'name', label: 'App', render: (app) => <Box sx={{ fontWeight: 600 }}>{app.name}</Box> },
     {
       id: 'status',
-      label: 'Status',
+      label: 'Process',
       render: (app) => (
         <Chip
           label={app.status}
@@ -137,6 +138,9 @@ export default function StackDetailPage() {
           sx={{ height: 18, fontSize: '0.6rem' }}
         />
       ),
+    },
+    {
+      id: 'health', label: 'Health', render: (app) => <ApplicationHealthStatus status={app.health} />,
     },
     {
       id: 'pid',
@@ -302,6 +306,7 @@ export default function StackDetailPage() {
       <StackStopNotice operation={stack.stopOperation} />
       <StackResumeNotice stack={stack} />
       <StackStartNotice stack={stack} />
+        <StackHealthStatus stack={stack} />
 
       {/* Start, stop and delete put their reason in the store's `error` and
           never reject. This page did not read it, so a stack that refused to

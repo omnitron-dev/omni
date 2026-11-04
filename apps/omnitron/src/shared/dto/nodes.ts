@@ -251,22 +251,17 @@ export interface INodeSyncStatus {
   sync: import('./project.js').ISyncStatus | null;
 }
 
-/**
- * A node's telemetry relay, as it reports itself.
- *
- * The companion to `INodeSyncStatus`: that one is the log/metric replication,
- * this one the telemetry relay. It carries the only counter in the fleet that
- * reports LOSS — `relay.buffer.totalDropped`, entries the buffer threw away
- * because it was full. A gap in a chart is otherwise discovered from the chart.
- *
- * `reachable: false` means the node was not asked, and carries why.
- */
+/** A node reports its configured local relay separately from durable fleet replication. */
+export type TelemetryRelayObservation =
+  | { state: 'active'; stats: ReturnType<import('@omnitron-dev/titan-telemetry-relay').TelemetryRelayService['stats']> }
+  | { state: 'not-applicable'; reason: 'worker-uses-durable-replication' };
+
+/** `reachable` describes this read, not the node's general connectivity. */
 export interface INodeRelayStats {
   nodeId: string;
   reachable: boolean;
   error: string | null;
-  /** As `TelemetryRelayService.stats()` returns it; shape owned by that package. */
-  relay: Record<string, unknown> | null;
+  relay: TelemetryRelayObservation | null;
 }
 
 /** Latest cluster participation or legacy election observation reported by the selected node. */

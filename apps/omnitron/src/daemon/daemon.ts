@@ -1327,6 +1327,14 @@ export class OmnitronDaemon {
     const fileNode = this.fileNode = new FileNode(configuredFileRoots(dc.files), fileState);
     await this.app.netron.peer.exposeService(new FileNodeRpcService(fileNode));
 
+    // Every node answers the same diagnostic contract. Workers use the durable
+    // Sync outbox; absence of the controller's local relay is not a broken RPC.
+    const { TelemetryRpcService: TelemetryRpc } = await import('../services/telemetry.rpc-service.js');
+    const telemetryRpcService = new TelemetryRpc(isSlave ? null
+      : await container.resolveAsync<TelemetryRelayService>(TELEMETRY_RELAY_TOKEN));
+    this.nodeManagerRpcService?.setTelemetryRelay(telemetryRpcService);
+    await this.app.netron.peer.exposeService(telemetryRpcService);
+
     // =====================================================================
     // Master-only RPC services (require PostgreSQL)
     // =====================================================================
@@ -1356,15 +1364,6 @@ export class OmnitronDaemon {
       const alertService = await container.resolveAsync<AlertService>(ALERT_SERVICE_TOKEN);
       const alertRpcService = new AlertRpc(alertService);
       await this.app.netron.peer.exposeService(alertRpcService);
-
-      // Telemetry relay RPC service
-      const { TelemetryRpcService: TelemetryRpc } = await import('../services/telemetry.rpc-service.js');
-      const telemetryRelay = await container.resolveAsync<TelemetryRelayService>(TELEMETRY_RELAY_TOKEN);
-      const telemetryRpcService = new TelemetryRpc(telemetryRelay);
-      // The console asks every node for its relay, and a daemon has no mesh
-      // connection to itself, so the local node's answer comes from here.
-      this.nodeManagerRpcService?.setTelemetryRelay(telemetryRelay);
-      await this.app.netron.peer.exposeService(telemetryRpcService);
 
       // Fleet management RPC service
       const { FleetRpcService: FleetRpc } = await import('../services/fleet.rpc-service.js');

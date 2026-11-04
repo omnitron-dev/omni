@@ -1,3 +1,4 @@
+import { observeStackHealth, type HealthAnswers } from '../project/stack-health.js';
 import { LocalReleaseSelection } from '../project/local-release-selection.js';
 import { resolveAppPath } from '../config/app-path.js';
 import { infrastructureOwnership, ownsStackInfrastructure } from '../project/infrastructure-ownership.js';
@@ -2188,13 +2189,14 @@ export class ProjectService extends EventEmitter {
     if (!stackConfig) throw new Error(`Stack '${stackName}' not found`);
 
     const observed = stackConfig.type === 'local'
-      ? { info: this.toStackInfo(projectName, stackName, stackConfig), answered: 1 }
+      ? { info: await this.withRemoteAppStatuses(projectName, this.toStackInfo(projectName, stackName, stackConfig)), answered: 1 }
       : await this.askNodes(projectName, this.getStack(projectName, stackName));
     const { info, answered } = observed;
     return {
       name: stackName,
       type: stackConfig.type,
       status: info.status,
+      ...(info.health && { health: info.health }),
       ...(info.notUp?.length && { notUp: info.notUp }),
       totalApps: info.apps.length,
       onlineApps: info.apps.filter(app => app.status === 'online').length,
@@ -5215,8 +5217,21 @@ export class ProjectService extends EventEmitter {
    * Each node retains its own observation. An unavailable source is unknown;
    * a replica on another node cannot turn that missing observation into online.
    */
+  private localHealthRead: Promise<HealthAnswers | null> | null = null;
+
   async withRemoteAppStatuses(projectName: string, info: IStackInfo): Promise<IStackInfo> {
-    return (await this.askNodes(projectName, info)).info;
+    if (info.type !== 'local') return (await this.askNodes(projectName, info)).info;
+    // Concurrent inventory consumers share one owner read; no stale health cache
+    // survives an application restart or silently becomes a green default.
+    const read: Promise<HealthAnswers | null> = this.localHealthRead ??= Promise.resolve().then(() => this.orchestrator.getHealth())
+      .catch(() => null).finally(() => { if (this.localHealthRead === read) this.localHealthRead = null; });
+    const health = await read;
+    // Re-read lifecycle after the asynchronous health observation.
+    const current = this.getStack(projectName, info.name);
+    const unchanged = new Set(info.apps.filter(a => current.apps.some(b => b.handleKey === a.handleKey &&
+      b.pid === a.pid && b.status === a.status && b.restarts === a.restarts)).map(a => a.handleKey));
+    const bound = health && Object.fromEntries(Object.entries(health).filter(([name]) => unchanged.has(name)));
+    return observeStackHealth(current, new Map([['local', bound]]), new Date().toISOString());
   }
 
   /**
@@ -5238,29 +5253,34 @@ export class ProjectService extends EventEmitter {
     // Unadmitted target plans are never evidence that a workload ran on a node.
     for (const old of this.stackStates.get(`${projectName}/${info.name}`)?.config.nodes ?? [])
       if (!nodes.some(node => node.host === old.host && (node.port ?? 9700) === (old.port ?? 9700))) nodes.push({ ...old, apps: [] });
-    if (nodes.length === 0) return { info, answered: 0 };
+    if (nodes.length === 0) return { info: observeStackHealth(info, new Map(), new Date().toISOString()), answered: 0 };
     if (!this.slaveConnector) return {
-      info: observeStack(info, nodes.map(node => nodePlacement(projectName, info, node, null, null, new Date().toISOString()))),
+      info: observeStackHealth(observeStack(info, nodes.map(node => nodePlacement(projectName, info, node, null, null, new Date().toISOString()))),
+        new Map(), new Date().toISOString()),
       answered: 0,
     };
 
+    const health = new Map<string, HealthAnswers | null>();
     const placements: import('../shared/dto/project.js').IStackPlacement[] = [];
     // Bounded fan-out: one failed peer must not hide the other peers' inventory.
     for (let offset = 0; offset < nodes.length; offset += 4) {
       placements.push(...await Promise.all(nodes.slice(offset, offset + 4).map(async node => {
-        const [processAnswer, infrastructureAnswer] = await Promise.allSettled([
+        const [processAnswer, infrastructureAnswer, healthAnswer] = await Promise.allSettled([
           this.slaveConnector!.invokeOnSlave(node.host, node.port ?? 9700, 'OmnitronDaemon', 'status', []),
           this.remoteInfraStatus(projectName, info.name, node),
+          this.slaveConnector!.invokeOnSlave(node.host, node.port ?? 9700, 'OmnitronDaemon', 'getHealth', [{}]),
         ]);
         const status = processAnswer.status === 'fulfilled'
           ? processAnswer.value as import('../config/types.js').DaemonStatusDto : null;
         const processes = status && Array.isArray(status.apps) ? status.apps : null;
+        const reading = healthAnswer.status === 'fulfilled' ? healthAnswer.value as { apps?: HealthAnswers } : null;
+        health.set(stackNodeKey(node.host, node.port), reading?.apps ?? null);
         return nodePlacement(projectName, info, node, processes,
           infrastructureAnswer.status === 'fulfilled' ? infrastructureAnswer.value : null,
           new Date().toISOString());
       })));
     }
-    return { info: observeStack(info, placements), answered: placements.filter(node => node.appsObserved).length };
+    return { info: observeStackHealth(observeStack(info, placements), health, new Date().toISOString()), answered: placements.filter(node => node.appsObserved).length };
   }
 
 

@@ -1,3 +1,4 @@
+import { ApplicationHealthStatus } from 'src/components/stack-health-status';
 import { Can } from 'src/auth/access';
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
@@ -178,11 +179,12 @@ export default function AppsListPage() {
         ]),
     {
       id: 'status',
-      label: 'Status',
+      label: 'Process',
       render: (app) => (
         <Chip label={app.status} size="small" color={STATUS_COLORS[app.status] || 'default'} variant="outlined" />
       ),
     },
+    { id: 'health', label: 'Health', render: (app) => <ApplicationHealthStatus status={app.health} /> },
     { id: 'instances', label: 'Instances', align: 'right' },
     {
       id: 'pid',

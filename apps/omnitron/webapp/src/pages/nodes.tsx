@@ -1,3 +1,4 @@
+import { relayReading } from '@omnitron-dev/omnitron/relay-reading';
 import { OperationStatus } from 'src/components/operation-status';
 import { Can, useAccess } from 'src/auth/access';
 /**
@@ -1033,74 +1034,19 @@ function ClusterAgreement({ states }: { states: Record<string, INodeClusterState
   );
 }
 
-/**
- * The telemetry relay, and the one counter in the fleet that reports LOSS.
- *
- * `NodeSyncStatus` above is the log/metric replication; this is the other
- * pipe. `totalDropped` is what the relay's buffer threw away because it was
- * full — a number that only ever goes up, and which nothing has ever
- * displayed, so a gap in a chart is discovered from the chart.
- *
- * `OmnitronTelemetry.getRelayStats` has answered this since it was written;
- * the file's own header says "Webapp → Leader telemetry stats (relay
- * health)", and the console never called it.
- */
+/** Local relay status is independent of fleet replication. */
 export function NodeRelay({ data }: { data: INodeRelayStats | null }) {
-  // Not read at all — the dialog has not asked yet. Nothing to say.
   if (!data) return null;
-
-  // Asked and refused. This was `return null` alongside the other two
-  // branches, so a node that could not answer looked exactly like a node
-  // with a healthy relay: the row simply was not there. `NodeIndicators` and
-  // `NodeSyncStatus` beside it both say «not asked» and print the reason,
-  // and this is the third copy of that decision, written the other way.
-  //
-  // It mattered more than it looks: until `getRelayStats` was moved to
-  // CONTROL_PLANE_READ_ROLES today, every node refused this read with
-  // «Missing required role», so the empty space WAS the permanent state and
-  // nothing anywhere said why.
-  if (!data.reachable || !data.relay) {
-    const notExposed = data.error === "Service 'OmnitronTelemetry' not found";
-    return (
-      <Stack direction="row" spacing={1} sx={{ py: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
-        <Typography variant="caption" sx={{ minWidth: 96, color: 'text.secondary' }}>telemetry</Typography>
-        <Chip size="small" label={notExposed ? 'not exposed' : 'unavailable'} variant="outlined" sx={{ height: 18, fontSize: 10 }} />
-        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
-          {notExposed
-            ? 'The separate telemetry relay is not exposed on this node. Slave daemons replicate logs and metrics through the channel above. If this should be a master, inspect its startup logs.'
-            : data.error ?? 'No relay measurement was returned; check node connectivity and access.'}
-        </Typography>
-      </Stack>
-    );
-  }
-
-  const r = data.relay as {
-    buffer?: { size?: number; totalPushed?: number; totalDropped?: number; totalFlushed?: number };
-    wal?: { size?: number } | null;
-    totalSent?: number;
-    totalFailed?: number;
-    totalReceived?: number;
-    transportConnected?: boolean;
-  };
-  const dropped = r.buffer?.totalDropped ?? 0;
-
+  const reading = relayReading(data);
   return (
     <Stack direction="row" spacing={1} sx={{ py: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
       <Typography variant="caption" sx={{ minWidth: 96, color: 'text.secondary' }}>telemetry</Typography>
-      <Chip
-        size="small"
-        label={r.transportConnected ? 'transport up' : 'transport down'}
-        color={r.transportConnected ? 'success' : 'default'}
-        variant={r.transportConnected ? 'filled' : 'outlined'}
-        sx={{ height: 18, fontSize: 10 }}
-      />
-      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-        {r.buffer?.size ?? 0} buffered · {r.totalSent ?? 0} sent · {r.totalFailed ?? 0} failed
-      </Typography>
-      {dropped > 0 && (
-        // Loud, and only when it has happened: a zero here is the normal case
-        // and a chip that is always present stops being read.
-        <Chip size="small" color="error" label={`${dropped} DROPPED`} sx={{ height: 18, fontSize: 10 }} />
+      <Chip size="small" label={reading.label}
+        color={reading.state === 'healthy' ? 'success' : reading.state === 'degraded' ? 'warning' : 'default'}
+        variant="outlined" sx={{ height: 18, fontSize: 10 }} />
+      <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>{reading.detail}</Typography>
+      {'dropped' in reading && reading.dropped! > 0 && (
+        <Chip size="small" color="error" label={`${reading.dropped} DROPPED`} sx={{ height: 18, fontSize: 10 }} />
       )}
     </Stack>
   );

@@ -21,7 +21,7 @@
  * line saying why: "we could not ask" is not "they are down".
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 import { ProjectService } from '../../src/services/project.service.js';
 
@@ -271,12 +271,13 @@ describe('a remote stack is read from the machines it runs on', () => {
       return nodeStatus([]);
     });
 
+    vi.spyOn(svc as unknown as ProjectService, 'getStack').mockReturnValue(info('local'));
     await svc.withRemoteAppStatuses('sample', info('local'));
 
     expect(asked).toBe(0);
   });
 
-  it('asks the node two questions, and a third only when it has to', async () => {
+  it('reads process, infrastructure and health independently, listing containers only when needed', async () => {
     const calls: string[] = [];
     const answering = async (host: string, port: number, service_: string, method: string) => {
       calls.push(`${host}:${port} ${service_}.${method}`);
@@ -289,6 +290,7 @@ describe('a remote stack is read from the machines it runs on', () => {
     expect(calls).toEqual([
       '37.27.130.185:9700 OmnitronDaemon.status',
       '37.27.130.185:9700 OmnitronInfra.getState',
+      '37.27.130.185:9700 OmnitronDaemon.getHealth',
     ]);
 
     calls.length = 0;
@@ -300,6 +302,6 @@ describe('a remote stack is read from the machines it runs on', () => {
 
     await service(emptyState).withRemoteAppStatuses('sample', info('remote'));
 
-    expect(calls[2]).toBe('37.27.130.185:9700 OmnitronInfra.listContainers');
+    expect(calls[3]).toBe('37.27.130.185:9700 OmnitronInfra.listContainers');
   });
 });

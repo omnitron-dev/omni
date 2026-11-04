@@ -90,7 +90,7 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
 
   private syncService: (Pick<SyncService, 'getStatus'> & Partial<Pick<SyncService, 'reconcileMetrics' | 'getReconciliationSummaries' | 'getHistoryCoverage'>>) | null = null;
 
-  private telemetryRelay: { stats(): unknown } | null = null;
+  private telemetryRelay: { getRelayStats(): Promise<NonNullable<INodeRelayStats['relay']>> } | null = null;
 
   private clusterReader: Pick<import('../cluster/cluster.rpc-service.js').ClusterRpcService, 'getClusterState'> | null = null;
 
@@ -604,7 +604,7 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
   }
 
   /** This daemon's own telemetry relay, for the local node. */
-  setTelemetryRelay(relay: { stats(): unknown } | null): void {
+  setTelemetryRelay(relay: NonNullable<NodeManagerRpcService['telemetryRelay']> | null): void {
     this.telemetryRelay = relay;
   }
 
@@ -788,29 +788,19 @@ export class NodeManagerRpcService implements IOmnitronNodesService {
     return { nodeId: data.nodeId, reachable: true, error: null, sync };
   }
 
-/**
-   * The node's telemetry relay: what it buffered, sent, failed and DROPPED.
-   *
-   * `getNodeSyncStatus` answers whether the log/metric replication is moving.
-   * This answers the other pipe — the telemetry relay — and it carries the one
-   * counter in the fleet that reports LOSS. `totalDropped` is what the buffer
-   * threw away because it was full, and a number that only ever goes up while
-   * nobody looks is how a gap in the metrics is discovered months later from
-   * the chart rather than from the daemon that made it.
-   *
-   * `OmnitronTelemetry.getRelayStats` has answered this since it was written —
-   * the file's own header says "Webapp → Leader telemetry stats (relay
-   * health)" — and the console has never called it.
-   */
+  /** Read relay configuration and measurements; fleet receipts are reported by Sync. */
   @Public({ auth: { roles: VIEWER_ROLES } })
   async getNodeRelayStats(data: { nodeId: string }): Promise<INodeRelayStats> {
-    const r = await this.askNode<Record<string, unknown>>(
+    const r = await this.askNode<NonNullable<INodeRelayStats['relay']>>(
       data.nodeId,
       'OmnitronTelemetry',
       'getRelayStats',
       [],
-      this.telemetryRelay ? () => Promise.resolve(this.telemetryRelay!.stats() as Record<string, unknown>) : null,
+      this.telemetryRelay ? () => this.telemetryRelay!.getRelayStats() : null,
     );
+    if (r.ok && r.value?.state !== 'active' && r.value?.state !== 'not-applicable') {
+      return { nodeId: data.nodeId, reachable: true, error: 'The node returned an unsupported relay observation; update its backend to report relay configuration.', relay: null };
+    }
     return r.ok
       ? { nodeId: data.nodeId, reachable: true, error: null, relay: r.value ?? null }
       : { nodeId: data.nodeId, reachable: false, error: r.error, relay: null };

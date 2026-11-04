@@ -33,7 +33,7 @@ export function StackDiagnosisDialog({ project, stack, onClose }: { project: str
   useEffect(() => { const requestState = generation.current; void inspect(); return () => { requestState.value++; }; }, [inspect]);
   return <>
     <Dialog open fullWidth maxWidth="md" onClose={onClose} aria-labelledby="stack-diagnosis-title">
-      <DialogTitle id="stack-diagnosis-title">{project} / {stack} · Readiness</DialogTitle>
+      <DialogTitle id="stack-diagnosis-title">{project} / {stack} · Start prerequisites</DialogTitle>
       <DialogContent dividers sx={{ minWidth: 0 }}>
         <Stack spacing={2}>
           <Typography variant="body2" color="text.secondary">Inspect configuration and host prerequisites without starting applications, provisioning services or applying migrations.</Typography>

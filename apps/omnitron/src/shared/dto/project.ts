@@ -181,7 +181,20 @@ export interface SelectedRelease {
   manifestSha256: string;
 }
 
+/** Application health is an observation, separate from process lifecycle and start prerequisites. */
+export interface StackHealthObservation {
+  status: 'healthy' | 'degraded' | 'unhealthy' | 'unknown' | 'not-running';
+  observedAt: string | null;
+  apps: Array<{
+    name: string;
+    node: string;
+    status: StackHealthObservation['status'];
+    checks: Array<{ name: string; status: string; message?: string }>;
+  }>;
+}
+
 export interface IStackInfo {
+  health?: StackHealthObservation;
   /** Desired release for the next local launch. Runtime evidence is reported separately. */
   selectedRelease?: SelectedRelease;
   /** Last explicit recovery of the applications retained by their process owners. */
@@ -337,6 +350,8 @@ export interface ISyncStatus {
 }
 
 export interface IStackAppStatus {
+  /** Observed health of all physical replicas, independent of process status. */
+  health?: StackHealthObservation['status'];
   release?: import('../../config/types.js').RuntimeReleaseEvidence;
   /** App name */
   name: string;
@@ -417,6 +432,7 @@ export interface IStackPlacement {
 // =============================================================================
 
 export interface StackRuntime {
+  health?: StackHealthObservation;
   /** Stack name */
   name: string;
   /** Stack type */

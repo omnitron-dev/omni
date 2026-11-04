@@ -1,3 +1,4 @@
+import { StackHealthStatus } from 'src/components/stack-health-status';
 import { hasInstalledRecovery, StackRecoveryAction } from 'src/components/stack-recovery';
 import { StackStopDialog } from 'src/components/stack-stop-dialog';
 import { StackDiagnosisDialog } from 'src/components/stack-diagnosis-dialog';
@@ -330,6 +331,7 @@ function StackCard({
         </Box>
 
         <StackStartNotice stack={stack} compact />
+        <StackHealthStatus stack={stack} compact />
 
         {/* Port range */}
         {stack.portRange && (

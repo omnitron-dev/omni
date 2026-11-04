@@ -86,6 +86,14 @@
     "./readiness": {
       "types": "./dist/readiness.d.ts",
       "default": "./dist/readiness.js"
+    },
+    "./relay-reading": {
+      "types": "./dist/shared/relay-reading.d.ts",
+      "default": "./dist/shared/relay-reading.js"
+    },
+    "./stack-reading": {
+      "types": "./dist/shared/stack-reading.d.ts",
+      "default": "./dist/shared/stack-reading.js"
     }
   },
   "scripts": {

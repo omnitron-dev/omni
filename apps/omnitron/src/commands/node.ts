@@ -1,3 +1,4 @@
+import { relayReading } from '../shared/relay-reading.js';
 /**
  * omnitron node — Node management commands
  *
@@ -122,6 +123,7 @@ interface NodesService {
   checkNodeStatus(data: { id: string }): Promise<INodeStatus>;
   checkAllNodes(): Promise<INodeStatus[]>;
   getMeshStatus(): Promise<IMeshNodeStatus[]>;
+  getNodeRelayStats(data: { nodeId: string }): Promise<import('../shared/dto/nodes.js').INodeRelayStats>;
   listSshKeys(): Promise<Array<{ name: string; type: string; path: string }>>;
 }
 
@@ -344,6 +346,10 @@ export async function nodeCheckCommand(id?: string): Promise<void> {
         log.warn(`Omnitron error: ${status.omnitronError}`);
       }
       log.info(`Checked ${formatCheckedAt(status.checkedAt)}`);
+      try {
+        const relay = relayReading(await nodes.getNodeRelayStats({ nodeId: node.id }));
+        log.info(`Telemetry: ${relay.label} — ${relay.detail}${'dropped' in relay && relay.dropped ? ` · ${relay.dropped} DROPPED` : ''}`);
+      } catch (error) { log.warn(`Telemetry diagnostics unavailable: ${(error as Error).message}`); }
       if (!node.isLocal) {
         try {
           const mesh = (await nodes.getMeshStatus()).find(n => n.nodeId === node.id);

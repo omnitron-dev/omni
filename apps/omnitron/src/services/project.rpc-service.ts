@@ -213,14 +213,18 @@ export class ProjectRpcService {
     // nodes are asked here, where the call can be awaited. And the config is
     // loaded if the daemon has not got to it yet: `listStacks` answers [] for
     // a project not loaded, which read as «this project has no stacks».
-    const result: IStackInfo[] = [];
+    const observations: Array<() => Promise<IStackInfo>> = [];
     for (const source of this.projectService.projectConfigurations(data.project)) {
       await this.projectService.ensureConfig(source.name);
       for (const info of this.projectService.listStacks(source.name)) {
-        const observed = await this.projectService.withRemoteAppStatuses(source.name, info);
-        result.push(this.projectService.publicStackInfo(data.project, source, observed));
+        observations.push(async () => this.projectService.publicStackInfo(data.project, source,
+          await this.projectService.withRemoteAppStatuses(source.name, info)));
       }
     }
+    const result: IStackInfo[] = [];
+    // Bound peer reads while allowing local stacks to share the same owner health observation.
+    for (let offset = 0; offset < observations.length; offset += 4)
+      result.push(...await Promise.all(observations.slice(offset, offset + 4).map(read => read())));
     if (new Set(result.map(stack => stack.name)).size !== result.length) throw new Error('Conflicting stack names in project configurations');
     return result;
   }

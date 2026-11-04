@@ -1,3 +1,4 @@
+import { stackHealthReading, healthLabel } from '../shared/stack-reading.js';
 /**
  * Stack CLI Commands — manage stacks on the running daemon
  *
@@ -91,6 +92,7 @@ export async function stackListCommand(options?: { project?: string }): Promise<
         width: 'auto',
         data: stacks.map((s) => ({
           status: `${statusIcon(s.status)} ${s.status}`,
+          health: stackHealthReading(s.health).label,
           name: s.name,
           type: s.type === 'local' ? 'local' : s.type === 'remote' ? 'remote(ssh)' : 'cluster',
           apps: `${s.apps.filter((a) => a.status === 'online').length}/${s.apps.length}`,
@@ -99,6 +101,7 @@ export async function stackListCommand(options?: { project?: string }): Promise<
         })),
         columns: [
           { key: 'status', header: 'Status', width: 14 },
+          { key: 'health', header: 'Health', width: 16 },
           { key: 'name', header: 'Stack', width: 12 },
           { key: 'type', header: 'Type', width: 14 },
           { key: 'apps', header: 'Apps', width: 8 },
@@ -152,6 +155,11 @@ export async function stackStatusCommand(projectName: string, stackName: string)
       ].join('\n'),
       'Stack'
     );
+
+    const health = stackHealthReading(stack.health);
+    log.info(`Health: ${health.label} — ${health.detail}`);
+    for (const app of health.findings) for (const check of app.checks.filter(c => c.status !== 'pass'))
+      log.warn(`${app.node}/${app.name}: ${check.message || check.name}`);
 
     for (const issue of stack.notUp ?? []) log.warn(`Not up: ${issue}`);
 
@@ -240,6 +248,7 @@ export async function stackStatusCommand(projectName: string, stackName: string)
         width: 'auto',
         data: stack.apps.map((a) => ({
           status: a.status === 'online' ? prism.green('●') : a.status === 'crashed' || a.status === 'errored' ? prism.red('●') : prism.dim('○'),
+          health: healthLabel(a.health),
           name: a.name,
           state: a.status,
           pid: a.pid ? String(a.pid) : '--',
@@ -247,6 +256,7 @@ export async function stackStatusCommand(projectName: string, stackName: string)
         })),
         columns: [
           { key: 'status', header: '', width: 3 },
+          { key: 'health', header: 'Health', width: 16 },
           { key: 'name', header: 'App', width: 24 },
           { key: 'state', header: 'Status', width: 10 },
           { key: 'pid', header: 'PID', width: 8 },

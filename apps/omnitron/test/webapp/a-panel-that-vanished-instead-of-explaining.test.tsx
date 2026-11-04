@@ -41,13 +41,13 @@ const relay = (over: Record<string, unknown> = {}) => ({
   nodeId: 'n1',
   reachable: true,
   error: null,
-  relay: {
+  relay: { state: 'active', stats: { started: true, destination: 'transport',
     buffer: { size: 3, totalPushed: 100, totalDropped: 0, totalFlushed: 97 },
     totalSent: 97,
     totalFailed: 0,
     transportConnected: true,
     ...over,
-  },
+  } },
 });
 
 describe('a panel that vanished instead of explaining', () => {

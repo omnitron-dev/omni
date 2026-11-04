@@ -154,6 +154,7 @@ jobs:
           test/unit/node-registry-writes.test.ts
           test/unit/sync-delivery.test.ts
           test/integration/installed-stack-recovery.test.ts
+          test/unit/independent-stack-recovery.test.ts
           test/unit/stack-effect-authority.test.ts
           test/unit/installed-stack-owner.test.ts
           test/unit/project-configurations.test.ts

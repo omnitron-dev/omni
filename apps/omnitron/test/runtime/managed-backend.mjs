@@ -337,24 +337,35 @@ try {
     const rollback = await prepareSupervisorTransition(path.resolve(dist, '../../..'), socket);
     await checkPlan(rollback.file, true, (await status()).pid);
     const script = `import { applySupervisorTransition } from ${JSON.stringify(pathToFileURL(path.join(managementDist, 'daemon/supervisor-transition.js')).href)};await applySupervisorTransition(${JSON.stringify(rollback.file)});`;
-    let completed = false;
+    let completed;
+    const interruptionBudgetMs = 180_000;
     const coordinator = execFile(runner, ['--input-type=module', '--eval', script], {
-      env: { ...process.env, OMNITRON_HOME: instance }, cwd: root, timeout: 180_000, maxBuffer: 1024 * 1024,
-    }, () => { completed = true; });
+      env: { ...process.env, OMNITRON_HOME: instance }, cwd: root, timeout: interruptionBudgetMs + 5000, maxBuffer: 1024 * 1024,
+    }, (error, stdout, stderr) => { completed = { ...(error && { error: failureDetails(error) }), stdout, stderr }; });
     try {
-      const interrupted = await until(async () => {
-        const saved = JSON.parse(await fs.readFile(rollback.file, 'utf8'));
-        if (['retired', 'stopped', 'configured', 'started'].includes(saved.phase)) return saved;
-        if (completed || saved.phase === 'complete') throw new Error('Coordinator finished before interruption');
-        return null;
-      }, 'Coordinator never reached a recoverable transition phase', 60_000);
+      // Include full sealed-artifact verification in the coordinator's budget.
+      // A terminal child failure must not be swallowed by the retrying readiness helper.
+      const deadline = Date.now() + interruptionBudgetMs;
+      let interrupted, saved;
+      while (Date.now() < deadline) {
+        saved = JSON.parse(await fs.readFile(rollback.file, 'utf8'));
+        if (completed) throw new Error('Coordinator exited before interruption: ' + JSON.stringify(completed));
+        if (['retired', 'stopped', 'configured', 'started'].includes(saved.phase)) { interrupted = saved; break; }
+        if (saved.phase === 'complete') throw new Error('Coordinator finished before interruption');
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      assert.ok(interrupted, `Coordinator did not reach a recoverable phase within ${interruptionBudgetMs} ms; last phase=${saved?.phase}; inspect ${root}`);
       coordinator.kill('SIGKILL');
       await until(() => completed, 'Fixture coordinator did not exit', 5000);
       mark({ stage: 'guardian-coordinator-killed', phase: interrupted.phase });
       const resumed = await applySupervisorTransition(rollback.file);
       assert.equal(resumed.phase, 'complete'); assert.equal(resumed.result.ownerPid, ownerPid);
       mark({ stage: 'guardian-transition-resumed', result: resumed.result });
-    } finally { if (!completed) coordinator.kill('SIGKILL'); }
+    } finally {
+      if (!completed) coordinator.kill('SIGKILL');
+      await until(() => completed, 'Fixture coordinator did not exit after cleanup', 5000);
+      await fs.writeFile(path.join(root, 'coordinator-result.json'), JSON.stringify(completed, null, 2) + '\n');
+    }
   }
   const after = await probe();
   console.log(JSON.stringify({ stage: 'availability-summary', samples, failures, eventLoopMaxMs: eventLoop.max / 1e6 }));
@@ -390,6 +401,11 @@ try {
 } finally {
   if (sampler) clearInterval(sampler);
   while (inFlight) await new Promise(resolve => setTimeout(resolve, 10));
+  if (sampler) {
+    const summary = { stage: 'availability-final', during: samplingStage, samples, failures, eventLoopMaxMs: eventLoop.max / 1e6 };
+    console.log(JSON.stringify(summary));
+    await fs.writeFile(path.join(root, 'availability-summary.json'), JSON.stringify(summary, null, 2) + '\n');
+  }
   eventLoop.disable();
   await ownerClient?.close();
   for (const unit of units.toReversed()) await native(linux ? ['stop', unit.job] : ['bootout', unit.job]).catch(() => {});

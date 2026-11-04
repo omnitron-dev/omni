@@ -876,6 +876,11 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
     },
     MuiPopover: {
       styleOverrides: {
+        root: ({ ownerState }) => ({
+          // MUI keeps the modal root mounted during Grow's exit. Once closed,
+          // it must stop swallowing the next click on the surrounding UI.
+          pointerEvents: ownerState.open ? undefined : 'none',
+        }),
         paper: ({ theme }) => ({
           borderRadius,
           boxShadow: `0 0 2px 0 rgba(${getGreyChannel(theme)} / 0.24), -20px 20px 40px -4px rgba(${getGreyChannel(theme)} / 0.24)`,

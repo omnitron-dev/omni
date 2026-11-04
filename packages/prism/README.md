@@ -97,6 +97,14 @@ stack. Do not apply global `button`, `input` or `:focus-visible` appearance rule
 to either provider's controls: configure state styles through the shared theme.
 Keep a visible keyboard-focus indication when integrating legacy stylesheets.
 
+Menus, Select dropdowns and popovers stop intercepting pointer input as soon as
+their controlled `open` state becomes `false`, while the exit animation finishes.
+The next click on an adjacent control works immediately. Open overlays retain
+MUI's click-away behavior, keyboard navigation and focus restoration; closing a
+menu inside a dialog does not dismiss or bypass that dialog. Use the public MUI
+`transitionDuration` prop when a particular interaction requires a different
+animation duration. Keep native focus restoration enabled.
+
 `ResearchDocument` also accepts `sourceProfile="docusaurus"` for explicit
 `{#heading-id}` anchors and namespaced local fragment links. The default research
 profile leaves that syntax literal. This is an inert rendering profile, not an MDX

@@ -17,6 +17,7 @@ import { DashboardBlockTestPage } from './pages/dashboard-block';
 import { FormTestPage } from './pages/form';
 import { NavigationTestPage } from './pages/navigation';
 import { MenuTestPage } from './pages/menu';
+import { PopoverInteractionTestPage } from './pages/popover-interaction';
 import { TabsTestPage } from './pages/tabs';
 import { SnackbarTestPage } from './pages/snackbar';
 import { ColorsTestPage } from './pages/colors';
@@ -34,6 +35,7 @@ function App() {
         <Route path="/test/form" element={<FormTestPage />} />
         <Route path="/test/navigation" element={<NavigationTestPage />} />
         <Route path="/test/menu" element={<MenuTestPage />} />
+        <Route path="/test/popover-interaction" element={<PopoverInteractionTestPage />} />
         <Route path="/test/tabs" element={<TabsTestPage />} />
         <Route path="/test/snackbar" element={<SnackbarTestPage />} />
         <Route path="/test/colors" element={<ColorsTestPage />} />

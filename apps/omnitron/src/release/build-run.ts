@@ -795,13 +795,15 @@ async function buildRelease(
   const configDirectory = path.join(plan.repositoryDir, projectPrefix);
   const config = await loadEcosystemConfig(configDirectory, 'release');
   const apps = config.apps.filter((a) => a.enabled !== false);
+  const { declaredMigrationPrograms } = await import('./migration-programs.js');
+  const migrationPrograms = declaredMigrationPrograms(config, options.forStack);
   const builder = new ArtifactBuilder(plan.projectDir, path.join(releaseRoot, 'artifacts'), {
     info: (msg) => fs.appendFileSync(artifactsLog, `${msg}\n`),
   });
   let integrityFailure: unknown;
   const imported = await importReleaseArtifacts(apps.filter(app => app.releaseFrom), path.join(releaseRoot, 'artifacts'));
   const releaseCheckouts = [plan.repositoryDir, ...(plan.omniDir ? [plan.omniDir] : [])];
-  const packed = await builder.buildAll(apps.filter(app => !app.releaseFrom), { releaseCheckouts, env,
+  const packed = await builder.buildAll(apps.filter(app => !app.releaseFrom), { releaseCheckouts, env, migrationPrograms,
     ...(registry && { verifyFrameworkPackage: async (name, directory) => {
       try { await registry.verifyPackage(name, directory); }
       catch (error) { integrityFailure = error; throw error; }
@@ -842,7 +844,9 @@ async function buildRelease(
     if (artifact.sourceDirectory === undefined) throw Error('Missing checked package directory for ' + artifact.app);
     return artifact.sourceDirectory;
   });
-  const { migrations, packages } = await releaseMigrationSources(plan.projectDir, projectSha, packageDirectories);
+  const programs = packed.built.flatMap((artifact, i) => (artifact.migrationPrograms ?? [])
+    .map(program => ({ ...program, directory: packageDirectories[i]! })));
+  const { migrations, packages } = await releaseMigrationSources(plan.projectDir, projectSha, packageDirectories, programs);
   const manifest = assembleManifest({
     id,
     project: { ...projectSource, ...(projectPrefix ? { directory: projectPrefix } : {}),

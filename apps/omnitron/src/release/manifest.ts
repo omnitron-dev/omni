@@ -49,6 +49,20 @@ export interface ReleasePackageSource {
   readonly manifestBlob: string;
   /** Package-relative tracked migration source files and SHA-256 of their contents. */
   readonly migrations: Readonly<Record<string, string>>;
+  /** Declared entry provenance. Registry/configuration modules may evolve when
+   * migrations are added; these records are not an applied-migration ledger. */
+  readonly migrationPrograms?: readonly ReleaseMigrationProgram[];
+}
+
+export interface ReleaseMigrationProgram {
+  readonly mode: 'script' | 'config';
+  /** Physical package-relative source entry at project.commit. */
+  readonly source: string;
+  readonly sourceBlob: string;
+  readonly sourceSha256: string;
+  /** Physical compiled entry inside this artifact's verified closure. */
+  readonly release: string;
+  readonly releaseSha256: string;
 }
 
 /** A named application from an exact, independently admitted release. */

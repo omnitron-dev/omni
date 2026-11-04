@@ -124,13 +124,27 @@ function payload(artifact: ReleaseArtifact): Omit<ReleaseArtifact, 'app' | 'orig
   return record;
 }
 
+function validMigrationPrograms(value: unknown): boolean {
+  if (value === undefined) return true; // Older producers did not capture declared entries.
+  if (!Array.isArray(value) || value.length > 256) return false;
+  const entries = new Set<string>();
+  return value.every(program => {
+    if (!object(program) || !['script', 'config'].includes(program['mode'] as string) ||
+        !relative(program['source']) || !commit(program['sourceBlob']) || !sha256(program['sourceSha256']) ||
+        !relative(program['release']) || !/\.[cm]?js$/.test(program['release'] as string) || !sha256(program['releaseSha256']) ||
+        entries.has(program['release'] as string)) return false;
+    entries.add(program['release'] as string);
+    return true;
+  });
+}
+
 /** An import is an independently portable application, not a claim inferred from a legacy tar. */
 export function assertImportableArtifact(manifest: ReleaseManifest, artifact: ReleaseArtifact): void {
   const launch = artifact.launch, source = artifact.packageSource, target = manifest.builtWith?.target;
   if (!object(launch) || !object(source) || !object(target)) throw Error('Imported application needs a recorded package source, frozen entry and execution target: ' + artifact.app);
   if (!['bootstrap', 'script'].includes(launch.mode) || !relative(launch.file) || !/\.[cm]?js$/.test(launch.file) || !sha256(launch.closureSha256) ||
       (source.directory !== '.' && !relative(source.directory)) || !commit(source.manifestBlob) ||
-      !object(source.migrations) ||
+      !object(source.migrations) || !validMigrationPrograms(source.migrationPrograms) ||
       Object.entries(source.migrations).some(([file, sha]) => !relative(file) || !sha256(sha)) ||
       !['platform', 'arch', 'node', 'abi'].every(key => typeof target[key as keyof typeof target] === 'string' && target[key as keyof typeof target]) ||
       !sha256(target.executableSha256) || (target.libc !== null && typeof target.libc !== 'string'))
@@ -141,6 +155,7 @@ function context(
   manifest: ReleaseManifest, app: string, records: ReturnType<typeof evidence>, chain: ReleaseArtifactReference[] = [],
 ): ArtifactReleaseContext {
   const artifact = oneArtifact(manifest, app);
+  if (!validMigrationPrograms(artifact.packageSource?.migrationPrograms)) throw Error('Invalid declared migration provenance for ' + app);
   if (!artifact.origin) return { manifest, artifact, chain };
   assertReleaseArtifactReference(artifact.origin);
   const source = records.get(manifest)?.get(artifact.origin.manifestSha256);

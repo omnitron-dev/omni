@@ -52,7 +52,7 @@ describe('explicit migration ownership', () => {
     const plan = requestedMigrations({ first: first['primary']!, second: second['primary']! });
     expect(plan.map(item => [item.service, item.database, item.app])).toEqual([['first', 'api', 'owner-api'], ['second', 'api', 'second-api']]);
   });
-  it.each(['../outside.ts', '/absolute.ts', 'src/../outside.ts', 'C:/file.ts', 'src\\file.ts'])('rejects escaping config member %s', config => {
+  it.each(['../outside.ts', '/absolute.ts', 'src/../outside.ts', 'C:/file.ts', 'src\\file.ts', 'src/registry.ts:stream'])('rejects escaping config member %s', config => {
     expect(() => requestedMigrations(services({ ...binding(), config }))).toThrow('package-relative');
   });
   it('refuses missing owner, missing config, and a source symlink escaping its cwd', async () => {

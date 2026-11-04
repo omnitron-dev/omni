@@ -19,10 +19,10 @@ export interface MigrationRequest {
 export type MigrationRequiredFiles = Readonly<Record<string, readonly string[]>>;
 export type VerifyMigrationEntries = (apps: readonly string[], files: MigrationRequiredFiles) => Promise<IEcosystemAppEntry[]>;
 
-function member(value: unknown, field: string): string {
-  if (typeof value !== 'string' || !value || value.includes('\\') || value.includes('\0') ||
-      path.posix.isAbsolute(value) || value.split('/').some(part => !part || part === '.' || part === '..') ||
-      /^[A-Za-z]:/.test(value)) throw Error(`Migration ${field} must be a package-relative physical file`);
+export function migrationEntryPath(value: unknown, field: string): string {
+  if (typeof value !== 'string' || !value || value.length > 4096 || /[\\:\0]/.test(value) ||
+      path.posix.isAbsolute(value) || value.split('/').some(part => !part || part === '.' || part === '..'))
+    throw Error(`Migration ${field} must be a package-relative physical file`);
   return value;
 }
 
@@ -66,7 +66,7 @@ export function requestedMigrations(services: Readonly<Record<string, IServiceRe
             Object.keys(input).some(key => !['app', 'config', 'releaseConfig'].includes(key))) throw Error(`Invalid migration binding for ${identity}`);
         const binding = input as MigrationBinding;
         if (typeof binding.app !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(binding.app)) throw Error(`Invalid migration owner for ${identity}`);
-        const source = member(binding.config, 'config'), release = member(binding.releaseConfig, 'releaseConfig');
+        const source = migrationEntryPath(binding.config, 'config'), release = migrationEntryPath(binding.releaseConfig, 'releaseConfig');
         if (!/\.[cm]?js$/.test(release)) throw Error(`Migration releaseConfig for ${identity} must name a compiled JavaScript module`);
         return { service, database, app: binding.app, mode: 'config' as const, source, release };
       });
@@ -89,7 +89,7 @@ export function validateMigrationOwners(requests: readonly MigrationRequest[], e
   for (const request of requests) {
     if (!request || !['script', 'config'].includes(request.mode) || typeof request.database !== 'string' || !request.database ||
         typeof request.service !== 'string' || !request.service) throw Error('Invalid normalized migration request');
-    member(request.source, 'source'); member(request.release, 'release');
+    migrationEntryPath(request.source, 'source'); migrationEntryPath(request.release, 'release');
     if (!/\.[cm]?js$/.test(request.release)) throw Error('A released migration must name a compiled JavaScript module');
     const owners = entries.filter(entry => entry.name === request.app);
     if (owners.length !== 1 || owners[0]!.enabled === false)

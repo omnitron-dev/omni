@@ -117,6 +117,22 @@ manifest whose bytes differ from the selected commit. An empty map records a
 checked package with no matching source files. Older artifacts lack this
 inventory. The runtime database journal records which migrations actually ran.
 
+Declared migration entries also appear in `packageSource.migrationPrograms`,
+independently of their filename. Each record binds the package-relative source
+path, Git blob and SHA-256 to the compiled entry and its SHA-256 inside the packed
+closure. Capture uses the same database ownership and stack overrides as migration
+execution. `--for <stack>` selects that stack's declarations; without it, the
+builder combines the declared stacks and refuses conflicting bindings. Neither
+source nor compiled migration code runs during this inspection.
+
+These records describe the migration program, not an applied database version or
+every file it imports. A registry may change when adding a migration. Its digest
+is therefore separate from the immutable `migrations` map; the shared Kysera
+runner still checks executed migration bodies against database history. Imported
+applications retain their producer's evidence. Older artifacts without
+`migrationPrograms` have unknown declaration provenance; an empty source
+inventory does not prove that they have no migrations.
+
 For a checked remote release, the controller reads the application's
 `config/default.json` infrastructure declaration from the verified archive.
 The same declaration is used to check the release, provision services and

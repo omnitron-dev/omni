@@ -71,6 +71,23 @@ describe('independent release artifact provenance', () => {
     expect(context.manifest.id).toBe('upstream');
     expect(context.chain.map(ref => ref.release)).toEqual(['consumer', 'upstream']);
   });
+  it('preserves declared migration program provenance through aliases without inventing it for older packages', () => {
+    const upstream = producer();
+    const programs = [{ mode:'config' as const, source:'src/database/registry.ts', sourceBlob:'a'.repeat(40),
+      sourceSha256:'b'.repeat(64), release:'dist/database/registry.js', releaseSha256:'c'.repeat(64) }];
+    Object.assign(upstream.artifacts[0]!.packageSource!, { migrationPrograms:programs });
+    expect(artifactReleaseContext(consumer(upstream),'collector').artifact.packageSource?.migrationPrograms).toEqual(programs);
+    expect(artifactReleaseContext(consumer(),'collector').artifact.packageSource?.migrationPrograms).toBeUndefined();
+  });
+  it.each(['source','sourceBlob','sourceSha256','release','releaseSha256','mode','duplicate'] as const)(
+    'refuses malformed declared migration provenance: %s', field => {
+      const upstream = producer();
+      const program: Record<string, unknown> = { mode:'config', source:'src/database/registry.ts', sourceBlob:'a'.repeat(40),
+        sourceSha256:'b'.repeat(64), release:'dist/database/registry.js', releaseSha256:'c'.repeat(64) };
+      if (field !== 'duplicate') program[field] = field === 'source' || field === 'release' ? '../outside.js' : [program[field]];
+      Object.assign(upstream.artifacts[0]!.packageSource!, { migrationPrograms:field === 'duplicate' ? [program,program] : [program] });
+      expect(() => validateReleaseOrigins(consumer(upstream))).toThrow('Invalid declared migration provenance');
+    });
   it.each(['version', 'sha256', 'bytes', 'inputs', 'launch', 'packageSource'] as const)('refuses a consumer override of %s', field => {
     const release = structuredClone(consumer());
     Object.assign(release.artifacts[0]!, { [field]: 'consumer override' });

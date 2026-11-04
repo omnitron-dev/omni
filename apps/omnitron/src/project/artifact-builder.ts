@@ -65,6 +65,7 @@ export interface ArtifactInfo {
   launch?: import('../release/manifest.js').ReleaseLaunch;
   /** Workspace-relative physical package whose build and closure produced this checked archive. */
   sourceDirectory?: string;
+  migrationPrograms?: readonly import('../release/migration-programs.js').PackedMigrationProgram[];
 }
 
 export interface BuildOptions {
@@ -77,6 +78,8 @@ export interface BuildOptions {
   readonly verifyFrameworkPackage?: import('../release/registry-framework.js').RegistryFramework['verifyPackage'];
   /** Environment shared with the release dependency installation and gates. */
   readonly env?: NodeJS.ProcessEnv;
+  /** Declared compiled migration entries, verified inside the staged closure. */
+  readonly migrationPrograms?: ReadonlyMap<string, readonly import('../release/migration-programs.js').MigrationProgramInput[]>;
   /** Output directory for artifacts */
   outputDir?: string;
 }
@@ -260,7 +263,7 @@ export class ArtifactBuilder {
     // The checked release is identified by delivered bytes. Development builds
     // keep their input checksum for the existing redeployment decision.
     const frozen = options?.releaseCheckouts
-      ? await this.createFrozenTarball(appDir, artifactPath, entry, options.releaseCheckouts, options.verifyFrameworkPackage)
+      ? await this.createFrozenTarball(appDir, artifactPath, entry, options.releaseCheckouts, options.verifyFrameworkPackage, options.migrationPrograms?.get(entry.name))
       : undefined;
     const checksum = frozen?.sha256 ?? await this.createTarball(appDir, artifactPath, entry.name, session);
 
@@ -302,6 +305,7 @@ export class ArtifactBuilder {
       tarballSha256,
       ...(frozen && { sourceDirectory: path.relative(fs.realpathSync(this.projectRoot), fs.realpathSync(appDir)) || '.' }),
       ...(frozen?.launch && { launch: frozen.launch }),
+      ...(frozen?.migrationPrograms.length && { migrationPrograms: frozen.migrationPrograms }),
     };
   }
 
@@ -545,7 +549,8 @@ export class ArtifactBuilder {
 
   /** A checked release ships all production packages from its clean, target-specific install. */
   private async createFrozenTarball(appDir: string, artifactPath: string, entry: IEcosystemAppEntry, roots: readonly string[],
-    verifyPackage?: import('../release/registry-framework.js').RegistryFramework['verifyPackage']) {
+    verifyPackage?: import('../release/registry-framework.js').RegistryFramework['verifyPackage'],
+    programs: readonly import('../release/migration-programs.js').MigrationProgramInput[] = []) {
     const io = await import('node:fs/promises');
     const { stageApplicationClosure } = await import('../release/application-closure.js');
     const { archiveBundle } = await import('../services/bundle-builder.js');
@@ -555,8 +560,10 @@ export class ArtifactBuilder {
       const { describeReleaseLaunch } = await import('../release/local-installation.js');
       const relativeScript = entry.script && path.relative(appDir, resolveAppPath(this.projectRoot, entry, entry.script));
       const launch = await describeReleaseLaunch(staging, entry, relativeScript);
+      const { packedMigrationPrograms } = await import('../release/migration-programs.js');
+      const migrationPrograms = await packedMigrationPrograms(staging, programs);
       await archiveBundle(staging, artifactPath);
-      return { sha256: await sha256File(artifactPath), launch };
+      return { sha256: await sha256File(artifactPath), launch, migrationPrograms };
     } finally { await io.rm(staging, { recursive: true, force: true }); }
   }
 

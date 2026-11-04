@@ -72,8 +72,8 @@ export async function reproduceVendoredFramework(packages: readonly VendoredPack
   const source = path.join(scratch, 'upstream');
   await fs.mkdir(scratch, { recursive: true });
   const env: NodeJS.ProcessEnv = { ...options.env, GIT_NO_REPLACE_OBJECTS: '1', GIT_TERMINAL_PROMPT: '0', TZ: 'UTC', CI: '1', TURBO_TELEMETRY_DISABLED: '1' };
-  delete env.TURBO_TOKEN;
-  delete env.TURBO_TEAM;
+  delete env['TURBO_TOKEN'];
+  delete env['TURBO_TEAM'];
   const identity = await checkoutFrameworkSource(source, { source: options.frameworkSource, commit, sourceBase: options.sourceBase,
     env, run, ...(signal && { signal }) });
   const epoch = (await git(source, ['show', '-s', '--format=%ct', 'HEAD'], signal)).stdout.trim();

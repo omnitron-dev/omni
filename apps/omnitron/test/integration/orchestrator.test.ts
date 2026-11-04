@@ -151,6 +151,31 @@ describe('public orchestrator lifecycle with real classic children', () => {
 });
 
 describe('bootstrap admission at the current PM boundary', () => {
+  it('stays starting until providers are published, even when every child reports ready', async () => {
+    const create = holdSupervisor();
+    const entry = { ...await bootstrap([
+      { name: 'worker', module: './module.mjs', topology: { expose: true } },
+    ]), restartPolicy: { enabled: false } };
+    const online = vi.fn(); service.on('app:online', online);
+    const implementation = create.getMockImplementation()!;
+    create.mockImplementation((...args) => {
+      const supervisor = implementation(...args);
+      vi.spyOn(supervisor, 'start').mockImplementation(async () => { supervisor.emit('child:started', 'fixture/worker'); });
+      vi.spyOn(supervisor, 'getChildProxy').mockReturnValue({
+        getExposedServices: async () => {
+          expect(service.getHandle(entry.name)?.status).toBe('starting');
+          expect(online).not.toHaveBeenCalled();
+          return [{ name: 'Worker', methods: ['run'] }];
+        }, callExposedService: async () => 'ready',
+      } as never);
+      return supervisor;
+    });
+    const handle = await start(entry);
+    expect(handle.status).toBe('online');
+    expect(online).toHaveBeenCalledExactlyOnceWith(entry.name);
+    expect(handle.topology?.router.getServiceNames()).toEqual(['Worker@1.0.0']);
+  });
+
   it('owns and closes the private listener when the first pool fails admission', async () => {
     const entry = { ...await bootstrap([
       { name: 'workers', module: './module.mjs', instances: 2, topology: { expose: true } },

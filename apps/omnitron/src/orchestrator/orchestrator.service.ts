@@ -2392,6 +2392,7 @@ export class OrchestratorService extends EventEmitter {
     const policy = buildRestartPolicy(entry, config);
 
     const needsRouting = topology.some(proc => proc.topology?.expose === true || proc.topology?.access?.length);
+    handle.deferStartup();
     if (needsRouting) {
       await this.ensureTopologyReady();
       handle.topology = await ApplicationTopology.allocate(this.topologyDirectory!, entry.name, this.logger);
@@ -2616,6 +2617,7 @@ export class OrchestratorService extends EventEmitter {
     // is registered; consumers re-resolve their proxy on use for exactly that
     // reason (see quotes's `OhlcvSchedulerService`).
     if (serviceRouter) await this.exposeChildTopologyServices(entry, supervisor, serviceRouter, singleEntries);
+    if (handle.finishStartup()) this.announceOnline(entry.name, handle);
   }
 
   /** Shared discovery contract for pools and supervisor children. */
@@ -2807,9 +2809,15 @@ export class OrchestratorService extends EventEmitter {
       const whole = handle.childStarted(childName, pid);
       this.persistState();
       if (!whole) return;
-      this.startPostOnlineCooldown(entry.name);
-      this.emit('app:online', entry.name);
+      this.announceOnline(entry.name, handle);
     });
+  }
+
+  private announceOnline(name: string, handle: AppHandle): void {
+    handle.clearLastExit();
+    this.startPostOnlineCooldown(name);
+    this.persistState();
+    this.emit('app:online', name);
   }
 
   /**

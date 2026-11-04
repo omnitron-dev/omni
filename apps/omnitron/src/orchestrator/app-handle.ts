@@ -299,6 +299,15 @@ export class AppHandle {
   private declaredChildren: readonly string[] = [];
   private serverChild: string | null = null;
   private readonly startedChildren = new Set<string>();
+  private startupPending = false;
+
+  /** Process readiness alone cannot admit an unfinished topology. */
+  deferStartup(): void { this.startupPending = true; }
+
+  finishStartup(): boolean {
+    this.startupPending = false;
+    return this.updateOnline();
+  }
 
   declareChildren(children: readonly string[], serverChild: string | null): void {
     this.declaredChildren = [...children];
@@ -319,6 +328,11 @@ export class AppHandle {
     if (this.startedChildren.has(child)) this.invalidateRelease();
     this.startedChildren.add(child);
     if (child === this.serverChild) this.pid = pid;
+    return this.updateOnline();
+  }
+
+  private updateOnline(): boolean {
+    if (this.startupPending || this.status === 'stopping' || this.status === 'stopped') return false;
     if (!this.declaredChildren.every((name) => this.startedChildren.has(name))) return false;
     this.status = 'online';
     return true;

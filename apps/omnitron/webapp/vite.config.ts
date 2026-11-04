@@ -2,6 +2,7 @@ import path from 'path';
 import type { ClientRequest, IncomingMessage } from 'node:http';
 import { defineConfig, type Plugin, type ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react-swc';
+import { withPrismSourceAliases } from '../scripts/console-source-aliases.js';
 
 /**
  * This directory, not the caller's.
@@ -69,44 +70,11 @@ export default defineConfig({
   },
   resolve: {
     dedupe: ['react', 'react-dom', 'react/jsx-runtime', '@emotion/react', '@emotion/styled'],
-    alias: {
+    alias: withPrismSourceAliases({
       src: path.resolve(here, 'src'),
       // react-apexcharts imports /client. Register the renderers and accessible
       // interactions this Console uses, while keeping chart loading lazy.
       'apexcharts/client': path.resolve(here, 'src/charts.ts'),
-      // Prism subpath aliases BEFORE the root alias (Vite uses prefix matching)
-      '@omnitron-dev/prism/auth': path.resolve(here, '../../../packages/prism/src/auth/index.ts'),
-      '@omnitron-dev/prism/blocks': path.resolve(here, '../../../packages/prism/src/blocks/index.ts'),
-      '@omnitron-dev/prism/hooks': path.resolve(here, '../../../packages/prism/src/hooks/index.ts'),
-      '@omnitron-dev/prism/netron': path.resolve(here, '../../../packages/prism/src/netron/index.ts'),
-      '@omnitron-dev/prism/components/admin-filters': path.resolve(here, '../../../packages/prism/src/components/admin-filters/index.ts'),
-      '@omnitron-dev/prism/components/alert': path.resolve(here, '../../../packages/prism/src/components/alert/index.ts'),
-      '@omnitron-dev/prism/components/animate': path.resolve(here, '../../../packages/prism/src/components/animate/index.ts'),
-      '@omnitron-dev/prism/components/breadcrumbs': path.resolve(here, '../../../packages/prism/src/components/breadcrumbs/index.ts'),
-      '@omnitron-dev/prism/components/card': path.resolve(here, '../../../packages/prism/src/components/card/index.ts'),
-      '@omnitron-dev/prism/components/chart': path.resolve(here, '../../../packages/prism/src/components/chart/index.ts'),
-      '@omnitron-dev/prism/components/command-palette': path.resolve(here, '../../../packages/prism/src/components/command-palette/index.ts'),
-      '@omnitron-dev/prism/components/confirm-dialog': path.resolve(here, '../../../packages/prism/src/components/confirm-dialog/index.ts'),
-      '@omnitron-dev/prism/components/empty-content': path.resolve(here, '../../../packages/prism/src/components/empty-content/index.ts'),
-      '@omnitron-dev/prism/components/error-boundary': path.resolve(here, '../../../packages/prism/src/components/error-boundary/index.ts'),
-      '@omnitron-dev/prism/components/label': path.resolve(here, '../../../packages/prism/src/components/label/index.ts'),
-      '@omnitron-dev/prism/components/loading-screen': path.resolve(here, '../../../packages/prism/src/components/loading-screen/index.ts'),
-      '@omnitron-dev/prism/components/navigation-progress': path.resolve(here, '../../../packages/prism/src/components/navigation-progress/index.ts'),
-      '@omnitron-dev/prism/components/page-content': path.resolve(here, '../../../packages/prism/src/components/page-content/index.ts'),
-      '@omnitron-dev/prism/components/popover': path.resolve(here, '../../../packages/prism/src/components/popover/index.ts'),
-      '@omnitron-dev/prism/components/search-input': path.resolve(here, '../../../packages/prism/src/components/search-input/index.ts'),
-      '@omnitron-dev/prism/components/scroll-to-top': path.resolve(here, '../../../packages/prism/src/components/scroll-to-top/index.ts'),
-      '@omnitron-dev/prism/components/skeleton': path.resolve(here, '../../../packages/prism/src/components/skeleton/index.ts'),
-      '@omnitron-dev/prism/components/snackbar': path.resolve(here, '../../../packages/prism/src/components/snackbar/index.ts'),
-      '@omnitron-dev/prism/components/stepper': path.resolve(here, '../../../packages/prism/src/components/stepper/index.ts'),
-      '@omnitron-dev/prism/components/table': path.resolve(here, '../../../packages/prism/src/components/table/index.ts'),
-      '@omnitron-dev/prism/components/tabs': path.resolve(here, '../../../packages/prism/src/components/tabs/index.ts'),
-      '@omnitron-dev/prism/icons': path.resolve(here, '../../../packages/prism/src/icons/index.ts'),
-      '@omnitron-dev/prism/core': path.resolve(here, '../../../packages/prism/src/core/index.ts'),
-      '@omnitron-dev/prism/layouts': path.resolve(here, '../../../packages/prism/src/layouts/index.ts'),
-      '@omnitron-dev/prism/state': path.resolve(here, '../../../packages/prism/src/state/index.ts'),
-      '@omnitron-dev/prism/theme': path.resolve(here, '../../../packages/prism/src/theme/index.ts'),
-      '@omnitron-dev/prism': path.resolve(here, '../../../packages/prism/src/index.ts'),
       // Netron browser — resolve from dist (compiled, no Node.js deps).
       // Subpath first: Vite matches aliases by prefix, so the bare entry would
       // otherwise swallow `/middleware` and try to load
@@ -140,7 +108,7 @@ export default defineConfig({
       '@omnitron-dev/omnitron/sync-reading': path.resolve(here, '../src/shared/sync-reading.ts'),
       // Config types (imported by DTO)
       '@omnitron-dev/omnitron/config': path.resolve(here, '../src/config/index.ts'),
-    },
+    }),
   },
   server: {
     // NOT 9802. The daemon's Netron WebSocket transport binds that port

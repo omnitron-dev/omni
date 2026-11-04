@@ -1,10 +1,11 @@
 import path from 'node:path';
 
 import { defineConfig } from 'vitest/config';
+import { withPrismSourceAliases } from './scripts/console-source-aliases.js';
 
 export default defineConfig({
   resolve: {
-    alias: {
+    alias: withPrismSourceAliases({
       '@omnitron-dev/titan-database/coordination': path.resolve(import.meta.dirname, '../../packages/titan-database/src/exports/coordination.ts'),
       // Exercise current source contracts without rebuilding packages used by live applications.
       '@omnitron-dev/titan-pm': path.resolve(import.meta.dirname, '../../packages/titan-pm/src/index.ts'),
@@ -16,9 +17,6 @@ export default defineConfig({
       // cannot shadow the daemon's own imports.
       src: path.resolve(import.meta.dirname, 'webapp/src'),
       '@xyflow/react': path.resolve(import.meta.dirname, 'webapp/node_modules/@xyflow/react'),
-      // Prism from source, as `webapp/vite.config.ts` does — and with the
-      // subpath first, because vite matches aliases by prefix and the bare
-      // entry would otherwise swallow `/netron`.
       '@omnitron-dev/omnitron/dto/services': path.resolve(import.meta.dirname, 'src/shared/dto/services.ts'),
       '@omnitron-dev/omnitron/alerts': path.resolve(import.meta.dirname, 'src/shared/alert-expression.ts'),
       '@omnitron-dev/omnitron/dto/events': path.resolve(import.meta.dirname, 'src/shared/events.ts'),
@@ -39,106 +37,8 @@ export default defineConfig({
       '@omnitron-dev/omnitron/relay-reading': path.resolve(import.meta.dirname, 'src/shared/relay-reading.ts'),
       '@omnitron-dev/omnitron/stack-reading': path.resolve(import.meta.dirname, 'src/shared/stack-reading.ts'),
       '@omnitron-dev/omnitron/sync-reading': path.resolve(import.meta.dirname, 'src/shared/sync-reading.ts'),
-      '@omnitron-dev/prism/ui': path.resolve(import.meta.dirname, '../../packages/prism/src/ui/index.ts'),
-      '@omnitron-dev/prism/auth': path.resolve(import.meta.dirname, '../../packages/prism/src/auth/index.ts'),
-      '@omnitron-dev/prism/blocks': path.resolve(import.meta.dirname, '../../packages/prism/src/blocks/index.ts'),
-      '@omnitron-dev/prism/hooks': path.resolve(import.meta.dirname, '../../packages/prism/src/hooks/index.ts'),
-      '@omnitron-dev/prism/netron': path.resolve(import.meta.dirname, '../../packages/prism/src/netron/index.ts'),
-      '@omnitron-dev/prism/components/admin-filters': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/admin-filters/index.ts'
-      ),
-      '@omnitron-dev/prism/components/alert': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/alert/index.ts'
-      ),
-      '@omnitron-dev/prism/components/animate': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/animate/index.ts'
-      ),
-      '@omnitron-dev/prism/components/breadcrumbs': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/breadcrumbs/index.ts'
-      ),
-      '@omnitron-dev/prism/components/card': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/card/index.ts'
-      ),
-      '@omnitron-dev/prism/components/chart': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/chart/index.ts'
-      ),
-      '@omnitron-dev/prism/components/command-palette': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/command-palette/index.ts'
-      ),
-      '@omnitron-dev/prism/components/confirm-dialog': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/confirm-dialog/index.ts'
-      ),
-      '@omnitron-dev/prism/components/empty-content': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/empty-content/index.ts'
-      ),
-      '@omnitron-dev/prism/components/error-boundary': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/error-boundary/index.ts'
-      ),
-      '@omnitron-dev/prism/components/label': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/label/index.ts'
-      ),
-      '@omnitron-dev/prism/components/loading-screen': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/loading-screen/index.ts'
-      ),
-      '@omnitron-dev/prism/components/navigation-progress': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/navigation-progress/index.ts'
-      ),
-      '@omnitron-dev/prism/components/page-content': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/page-content/index.ts'
-      ),
-      '@omnitron-dev/prism/components/popover': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/popover/index.ts'
-      ),
-      '@omnitron-dev/prism/components/search-input': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/search-input/index.ts'
-      ),
-      '@omnitron-dev/prism/components/scroll-to-top': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/scroll-to-top/index.ts'
-      ),
-      '@omnitron-dev/prism/components/skeleton': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/skeleton/index.ts'
-      ),
-      '@omnitron-dev/prism/components/snackbar': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/snackbar/index.ts'
-      ),
-      '@omnitron-dev/prism/components/stepper': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/stepper/index.ts'
-      ),
-      '@omnitron-dev/prism/components/table': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/table/index.ts'
-      ),
-      '@omnitron-dev/prism/components/tabs': path.resolve(
-        import.meta.dirname,
-        '../../packages/prism/src/components/tabs/index.ts'
-      ),
-      '@omnitron-dev/prism/icons': path.resolve(import.meta.dirname, '../../packages/prism/src/icons/index.ts'),
-      '@omnitron-dev/prism/core': path.resolve(import.meta.dirname, '../../packages/prism/src/core/index.ts'),
-      '@omnitron-dev/prism/layouts': path.resolve(import.meta.dirname, '../../packages/prism/src/layouts/index.ts'),
-      '@omnitron-dev/prism/state': path.resolve(import.meta.dirname, '../../packages/prism/src/state/index.ts'),
-      '@omnitron-dev/prism/theme': path.resolve(import.meta.dirname, '../../packages/prism/src/theme/index.ts'),
-      '@omnitron-dev/prism': path.resolve(import.meta.dirname, '../../packages/prism/src/index.ts'),
-    },
+
+    }),
   },
   test: {
     globals: true,

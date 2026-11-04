@@ -108,7 +108,7 @@ jobs:
             test/unit/process-events.spec.ts
           pnpm --filter @omnitron-dev/omnitron exec vitest run --maxWorkers 2 \
             test/unit/classic-restart-window.test.ts test/unit/crashed-app-stays-reachable.test.ts test/unit/restart-policy.test.ts \
-            test/orchestrator/process-pool-resize.spec.ts test/integration/pool-resize-http.test.ts \
+            test/orchestrator/process-pool-resize.spec.ts test/orchestrator/watch-policy.spec.ts test/integration/pool-resize-http.test.ts \
             test/unit/scale-command.test.ts test/integration/orchestrator.test.ts test/integration/execution-connection.test.ts
       - name: Verify package archive exports and install the packed CLI
         run: node scripts/check-package-exports.mjs --install-consumer "$RUNNER_TEMP/omnitron-npm-consumer"
@@ -156,6 +156,7 @@ jobs:
           test/integration/installed-stack-recovery.test.ts
           test/unit/stack-effect-authority.test.ts
           test/unit/installed-stack-owner.test.ts
+          test/unit/project-configurations.test.ts
           test/unit/installed-stack-resume.test.ts
           test/unit/installed-stack-resume-cli.test.ts
           test/unit/infra-mutation-authority.test.ts

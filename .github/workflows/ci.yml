@@ -98,7 +98,8 @@ jobs:
           pnpm exec vitest run --maxWorkers 2 \
             test/unit/kernel-catalog.test.ts test/unit/kernel-rollout.test.ts test/unit/managed-rollout-driver.test.ts \
             test/unit/managed-fleet-rollout-cli.test.ts test/unit/supervisor-transition.test.ts \
-            test/unit/runtime-installation.test.ts test/unit/system-guardian-cgroup.test.ts test/unit/execution-identity.test.ts
+            test/unit/runtime-installation.test.ts test/unit/service-resident-plan.test.ts test/unit/independent-service-units.test.ts \
+            test/unit/system-guardian-cgroup.test.ts test/unit/execution-identity.test.ts
       - name: Supervision restart budgets and operator stop precedence
         run: |
           pnpm --filter @omnitron-dev/titan-pm exec vitest run --maxWorkers 2 \

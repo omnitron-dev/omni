@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -12,6 +13,7 @@ import { ManagedRolloutFailure, type ManagedRolloutObservation, type ManagedSele
 import { NodeManagerRpcService } from '../../src/services/node-manager.rpc-service.js';
 import { RemoteDeployer, type DeployTarget } from '../../src/services/remote-deployer.service.js';
 import { commandFailure } from '../../src/execution/command-failure.js';
+import { readProcessLifetime } from '../../src/monitoring/process-lifetime.js';
 
 const commit = 'f'.repeat(40), previous = '0'.repeat(64), candidate = '1'.repeat(64);
 const recordKey = (id: string) => 'fleet:kernel:v1:plan:' + id;
@@ -95,13 +97,20 @@ describe('durable managed fleet kernel controller', () => {
   });
 
   it('returns a durable ID before any remote preflight reply and supports idempotent retries', async () => {
-    const { service, observer, driver, proof } = fixture();
+    const { service, observer, driver, proof, store } = fixture();
     const requestId = 'ac711f78-6899-471f-a25a-81899586847e';
     const gate = Promise.withResolvers<ManagedRolloutObservation>();
     driver.inspectManagedRollout.mockImplementationOnce(() => gate.promise);
     const pending = await service.plan(commit, ['b','a'], requestId);
     expect(pending.id).toBe(requestId);
     expect(pending.state).toBe('planning');
+    const writer = store.kvGetSync<{ writer: { birth: string | null; lifetime: string | null } }>(recordKey(requestId))!.writer;
+    // A previous backend must keep this writer fenced during a rollback; its
+    // legacy reader treats null birth as unknown rather than a reused PID.
+    expect(writer.birth).toBeNull();
+    const life = readProcessLifetime(process.pid);
+    expect(life.state).toBe('alive');
+    expect(writer.lifetime).toBe(life.state === 'alive' ? life.identity : null);
     expect(observer.get()?.targets.map(t => t.state)).toEqual(['pending','pending']);
     expect(await observer.plan(commit, ['b','a'], requestId)).toEqual(pending);
     await expect(observer.plan(commit, ['a','b'], requestId)).rejects.toThrow('different rollout');
@@ -331,6 +340,32 @@ describe('durable managed fleet kernel controller', () => {
     expect(driver.activateManagedRollout).not.toHaveBeenCalled();
     store.kvSetSync(key, { ...original, writer: { ...writer, pid: 0 } });
     expect(() => observer.get(plan.id)).toThrow('Corrupt');
+  });
+
+  it('keeps a live legacy rollout writer fenced until native death is established', async () => {
+    const { service, observer, driver, store } = fixture();
+    const worker = spawn(process.execPath, ['-e', 'console.log("ready");setInterval(()=>{},1000)'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const closed = once(worker, 'close');
+    cleanups.push(async () => { if (worker.exitCode === null && worker.signalCode === null) worker.kill('SIGTERM'); await closed; });
+    await once(worker.stdout!, 'data');
+    const life = readProcessLifetime(worker.pid!);
+    expect(life.state).toBe('alive');
+    if (life.state !== 'alive') throw Error('Private worker identity unavailable');
+    const plan = await ready(service, commit, ['b']);
+    const key = recordKey(plan.id);
+    const record = store.kvGetSync<{ rollout: typeof plan }>(key)!;
+    record.rollout.state = 'running'; record.rollout.targets[0]!.state = 'running';
+    for (const birth of [life.identity, 'Mon Nov 2 01:00:00 2026', null, 'unverified']) {
+      store.kvSetSync(key, { ...record, writer: { token: 'f7c8e9c4-0d96-4bf9-ab32-42d44d824981', pid: worker.pid, started: 1, birth } });
+      store.kvSetSync('fleet:kernel:v1:index', { latest: plan.id, active: plan.id });
+      expect(observer.get(plan.id)?.state).toBe('running');
+      await expect(observer.plan(commit)).rejects.toThrow(plan.id);
+      await expect(observer.reconcile(plan.id)).rejects.toThrow();
+    }
+    worker.kill('SIGTERM'); await closed;
+    expect(observer.get(plan.id)?.state).toBe('uncertain');
+    expect(driver.activateManagedRollout).not.toHaveBeenCalled();
+    expect(driver.reconcileManagedRollout).not.toHaveBeenCalled();
   });
 
   it('never plans or dispatches outside controller authority, including authority lost after review', async () => {

@@ -1,6 +1,6 @@
-import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import { readProcessLifetime } from '../monitoring/process-lifetime.js';
+import { compareProcessLifetimes } from '../shared/host-boot-identity.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import type { KernelRollout, KernelRolloutTarget } from '../shared/dto/nodes.js';
 import type { DeployTarget } from './remote-deployer.service.js';
@@ -29,7 +29,7 @@ function validObservation(p: ManagedRolloutObservation, commit: string) {
     typeof p.ownerId === 'string' && p.ownerId.length > 0 && positive(p.ownerPid) && positive(p.backendPid) && positive(p.selectionRevision);
 }
 type Index = { latest: string; active: string | null };
-type Writer = { token: string; pid: number; started: number; birth: string | null };
+type Writer = { token: string; pid: number; started: number; birth: string | null; lifetime?: string | null };
 type Record = {
   rollout: KernelRollout;
   requestNodes: string[] | null;
@@ -51,25 +51,17 @@ function checkIndex(index: Index | null) {
 // Distinguish a reused PID from the original controller. When an OS cannot
 // identify a live PID, its journal stays fenced until that PID exits.
 function processBirth(pid: number): string | null {
-  try {
-    if (process.platform === 'linux') {
-      const stat = readFileSync('/proc/' + pid + '/stat', 'utf8');
-      const ticks = stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19];
-      if (ticks && /^\d+$/.test(ticks)) return readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim() + '/' + ticks;
-    }
-    if (process.platform === 'darwin') {
-      return execFileSync('/bin/ps', ['-o', 'lstart=', '-p', String(pid)], {
-        encoding: 'utf8', env: { LC_ALL: 'C', TZ: 'UTC' }, timeout: 1000, stdio: ['ignore', 'pipe', 'ignore'],
-      }).trim() || null;
-    }
-  } catch { /* Platform cannot positively attest the process birth. */ }
-  return null;
+  const life = readProcessLifetime(pid);
+  return life.state === 'alive' ? life.identity : null;
 }
 
 /** One durable intent is committed before dispatch. The node driver checks the
  * pinned host and retains the remote deployment lease through handoff/rollback. */
 export class KernelRolloutService {
-  private readonly writer: Writer = { token: randomUUID(), pid: process.pid, started: performance.timeOrigin, birth: processBirth(process.pid) };
+  // Older readers compare `birth` as an opaque string. Keep that legacy field
+  // null so rollback cannot mistake our canonical identity for PID reuse.
+  private readonly writer: Writer = { token: randomUUID(), pid: process.pid, started: performance.timeOrigin,
+    birth: null, lifetime: processBirth(process.pid) };
   private readonly jobs = new Map<string, symbol>();
   constructor(private readonly store: Store, private readonly nodes: NodeSource, private readonly driver: Driver,
     private readonly onError: (error: unknown) => void, private readonly assertController: () => void,
@@ -80,10 +72,10 @@ export class KernelRolloutService {
   private mayStillRun(id: string, writer: Writer) {
     if (writer.token === this.writer.token) return this.jobs.has(id);
     if (writer.pid === process.pid) return writer.started === performance.timeOrigin;
-    try { process.kill(writer.pid, 0); }
-    catch (err) { return (err as NodeJS.ErrnoException).code !== 'ESRCH'; }
-    const birth = writer.birth && processBirth(writer.pid);
-    return !birth || birth === writer.birth;
+    const life = readProcessLifetime(writer.pid);
+    if (life.state === 'dead') return false;
+    const lifetime = writer.lifetime ?? writer.birth;
+    return life.state === 'unknown' || !lifetime || compareProcessLifetimes(lifetime, life.identity) !== 'different';
   }
 
   private read(id: string): Record | null {
@@ -97,7 +89,8 @@ export class KernelRolloutService {
           !Array.isArray(observations) || observations.length !== rollout.targets.length ||
           (['planning','running','uncertain'].includes(rollout.state) && !writer) ||
           (writer !== null && (!uuid(writer?.token) || !positive(writer.pid) || !Number.isFinite(writer.started) ||
-            (writer.birth !== null && typeof writer.birth !== 'string'))) ||
+            (writer.birth !== null && typeof writer.birth !== 'string') ||
+            (writer.lifetime !== undefined && writer.lifetime !== null && typeof writer.lifetime !== 'string'))) ||
           rollout.targets.some((node, i) => {
             if (!node || typeof node.nodeId !== 'string' || !['pending','ready','blocked','current','running','succeeded','failed','rolled-back','uncertain'].includes(node.state)) return true;
             const pin = observations[i];

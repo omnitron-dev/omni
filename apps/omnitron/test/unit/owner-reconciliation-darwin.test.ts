@@ -42,6 +42,7 @@ it.skipIf(process.platform !== 'darwin').each(['stable', 'legacy'])('requires a 
     await expect(prepareOwnerReconciliation(config, [worker.pid!])).rejects.toThrow('unsupported boot evidence');
     await writePrivateRecord(path.join(root, 'managed-owner.json'), receipt);
     const plan = await prepareOwnerReconciliation(config, [worker.pid!]);
+    expect(plan.protocol).toBe(2);
     expect(plan.bootId).toBe(bootId); expect(plan.crashReceipt).toEqual(receipt);
     expect(plan.processes.map(p => p.pid)).toEqual(expect.arrayContaining([oldPid, worker.pid, childPid]));
     expect(plan.native?.processGroups).toContain(worker.pid);

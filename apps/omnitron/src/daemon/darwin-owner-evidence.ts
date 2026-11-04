@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { compareProcessLifetimes, formatDarwinProcessLifetime } from '../shared/host-boot-identity.js';
 import type { ManagedRuntime } from './managed-runtime.js';
 
 export interface DarwinProcessIdentity {
@@ -10,7 +11,7 @@ export interface DarwinReconciliationScope {
 interface CommandAnswer { stdout: string; stderr: string; code: number; pid: number }
 async function command(file: string, args: string[]): Promise<CommandAnswer> {
   return new Promise((resolve, reject) => {
-    const child = execFile(file, args, { encoding: 'utf8', timeout: 5000, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, LC_ALL: 'C' } }, (error, stdout, stderr) => {
+    const child = execFile(file, args, { encoding: 'utf8', timeout: 5000, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' } }, (error, stdout, stderr) => {
       if (error && (typeof error.code !== 'number' || error.killed || error.signal)) { reject(new Error(`Native recovery observation failed: ${file}`, { cause: error })); return; }
       resolve({ stdout, stderr, code: (error?.code as number | undefined) ?? 0, pid: child.pid ?? -1 });
     });
@@ -29,7 +30,7 @@ export function parseDarwinProcesses(output: string, boot: string): DarwinProces
     if ([pid, ppid, pgid, uid].some(n => !Number.isSafeInteger(n)) || pid! < 1 || ppid! < 0 || pgid! < 0 ||
       uid! < -2147483648 || uid! > 4294967295 || seen.has(pid!)) throw new Error('Invalid or duplicate macOS process identity');
     seen.add(pid!);
-    return { pid: pid!, ppid: ppid!, pgid: pgid!, uid: uid!, lifetime: `${boot}:${match[5]!}`, executable: match[6]! };
+    return { pid: pid!, ppid: ppid!, pgid: pgid!, uid: uid!, lifetime: formatDarwinProcessLifetime(boot, match[5]!), executable: match[6]! };
   });
 }
 
@@ -92,7 +93,7 @@ export async function readDarwinOwnerEvidence(config: ManagedRuntime, expected: 
   const rows = inventory.filter(row => row.pid !== snapshot.pid);
   const roots = expected.filter(identity => {
     const row = rows.find(item => item.pid === identity.pid);
-    return row && (!identity.lifetime || identity.lifetime === row.lifetime);
+    return row && (!identity.lifetime || compareProcessLifetimes(identity.lifetime, row.lifetime) !== 'different');
   }).map(identity => identity.pid);
   const cohort = darwinProcessCohort(rows, [...roots, ...units.map(unit => unit.mainPid).filter(Boolean)], scope?.processGroups ?? []);
   const processGroups = [...new Set([...(scope?.processGroups ?? []), ...cohort.map(row => row.pgid).filter(id => id > 0)])].sort((a, b) => a - b);

@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { darwinProcessCohort, parseDarwinJob, parseDarwinProcesses, parseDarwinSockets, type DarwinProcessIdentity } from '../../src/daemon/darwin-owner-evidence.js';
 
+const boot = 'darwin:119bd1eb-252d-4be8-ad83-69e325fbd927';
+
 const row = (pid: number, ppid: number, pgid: number, executable = '/usr/bin/node'): DarwinProcessIdentity =>
   ({ pid, ppid, pgid, uid: 501, lifetime: `boot:${pid}`, executable });
 
 describe('Darwin owner recovery native observations', () => {
   it('preserves process ancestry, native groups and stable birth identity without reading arguments', () => {
-    expect(parseDarwinProcesses('  70  1 70 501 Mon Nov  2 01:22:03 2026 /opt/project path/app\n', 'boot'))
-      .toEqual([{ pid: 70, ppid: 1, pgid: 70, uid: 501, lifetime: 'boot:Mon Nov  2 01:22:03 2026', executable: '/opt/project path/app' }]);
+    expect(parseDarwinProcesses('  70  1 70 501 Mon Nov  2 01:22:03 2026 /opt/project path/app\n', boot))
+      .toEqual([{ pid: 70, ppid: 1, pgid: 70, uid: 501, lifetime: boot + ':utc:Mon Nov 2 01:22:03 2026', executable: '/opt/project path/app' }]);
   });
   it.each(['', '70 unknown', '70 1 70 501 unknown /bin/node', '70 1 70 501 Mon Nov 2 01:22:03 2026 /a\n70 1 70 501 Mon Nov 2 01:22:03 2026 /a'])('refuses incomplete or ambiguous process output', output => {
-    expect(() => parseDarwinProcesses(output, 'boot')).toThrow();
+    expect(() => parseDarwinProcesses(output, boot)).toThrow();
   });
   it('includes non-Node descendants, detached descendant groups, and reparented members of retained groups', () => {
     const rows = [row(10, 1, 10), row(11, 10, 10, '/usr/bin/python3'), row(12, 11, 12, '/opt/worker-rust'),
@@ -21,7 +23,11 @@ describe('Darwin owner recovery native observations', () => {
     expect(darwinProcessCohort([row(11, 1, 10), row(90, 1, 90)], [], [10]).map(item => item.pid)).toEqual([11]);
   });
   it('accepts the signed reserved UID used by macOS system processes', () => {
-    expect(parseDarwinProcesses('70 1 70 -2 Mon Nov  2 01:22:03 2026 /usr/libexec/dhcp6d', 'boot')[0]!.uid).toBe(-2);
+    expect(parseDarwinProcesses('70 1 70 -2 Mon Nov  2 01:22:03 2026 /usr/libexec/dhcp6d', boot)[0]!.uid).toBe(-2);
+  });
+  it('refuses a malformed native birth or unverified host boot before forming an identity', () => {
+    expect(() => parseDarwinProcesses('70 1 70 501 Tue Nov 2 01:22:03 2026 /a', boot)).toThrow('process birth');
+    expect(() => parseDarwinProcesses('70 1 70 501 Mon Nov 2 01:22:03 2026 /a', 'unknown')).toThrow('process birth');
   });
   it('requires the exact launchd domain and distinguishes waiting from quiescence', () => {
     const target = 'gui/501/dev.omnitron.fixture.owner';

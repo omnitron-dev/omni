@@ -15,6 +15,13 @@ function isNativeBirthDate(value: string): boolean {
 }
 export const isStableDarwinBootIdentity = (value: unknown): value is string =>
   typeof value === 'string' && value.startsWith('darwin:') && uuid.test(value.slice(7));
+
+/** Callers must collect native lstart with LC_ALL=C and TZ=UTC. */
+export function formatDarwinProcessLifetime(boot: string, start: string): string {
+  if (!isStableDarwinBootIdentity(boot) || !isNativeBirthDate(start))
+    throw new Error('Cannot verify the macOS process birth');
+  return `${boot.toLowerCase()}:utc:${start.replace(/ +/g, ' ')}`;
+}
 export function isLegacyDarwinBootIdentity(value: unknown): value is string {
   if (typeof value !== 'string') return false;
   const match = /^\{ *sec *= *(\d+), *usec *= *(\d+) *\} (.+)$/.exec(value);
@@ -48,18 +55,31 @@ export function provesDifferentHostBoot(previous: string, current: string): bool
     isStableDarwinBootIdentity(previous) === isStableDarwinBootIdentity(current) && previous.toLowerCase() !== current.toLowerCase();
 }
 
-/** Legacy Darwin writer identity differences are uncertainty, not PID reuse. */
+/** A different wall-clock rendering is not proof that a Darwin writer died. */
 export function compareProcessLifetimes(previous: string, current: string): 'same' | 'different' | 'unknown' {
-  const format = (value: string): 'linux' | 'darwin' | null => {
-    if (value.startsWith('darwin:')) return isStableDarwinBootIdentity(value.slice(0, 43)) && value[43] === ':' && isNativeBirthDate(value.slice(44)) ? 'darwin' : null;
-    const split = value.indexOf(':');
-    const ticks = value.slice(split + 1);
-    return uuid.test(value.slice(0, split)) && /^\d{1,20}$/.test(ticks) && BigInt(ticks) <= 18446744073709551615n ? 'linux' : null;
+  const format = (value: string): 'linux' | 'darwin' | 'darwin-utc' | null => {
+    if (value.startsWith('darwin:')) {
+      if (!isStableDarwinBootIdentity(value.slice(0, 43)) || value[43] !== ':') return null;
+      const utc = value.slice(44).startsWith('utc:');
+      if (!isNativeBirthDate(value.slice(utc ? 48 : 44))) return null;
+      return utc ? 'darwin-utc' : 'darwin';
+    }
+    // The former rollout reader used '/' between the same Linux boot UUID and ticks.
+    const ticks = value.slice(37);
+    return uuid.test(value.slice(0, 36)) && [':', '/'].includes(value[36]!) &&
+      /^\d{1,20}$/.test(ticks) && BigInt(ticks) <= 18446744073709551615n ? 'linux' : null;
   };
   const before = format(previous), after = format(current);
-  if (!before || !after || before !== after) return 'unknown';
-  const normalize = (value: string) => before === 'darwin'
-    ? value.slice(0, 43).toLowerCase() + ':' + value.slice(44).replace(/ +/g, ' ')
-    : value.slice(0, 36).toLowerCase() + ':' + BigInt(value.slice(37)).toString();
+  if (!before || !after || (before === 'linux') !== (after === 'linux')) return 'unknown';
+  if (before !== 'linux') {
+    if (previous.slice(0, 43).toLowerCase() !== current.slice(0, 43).toLowerCase()) return 'different';
+    if (before !== after) return 'unknown';
+    const offset = before === 'darwin-utc' ? 48 : 44;
+    if (previous.slice(offset).replace(/ +/g, ' ') === current.slice(offset).replace(/ +/g, ' ')) return 'same';
+    // Legacy records did not retain TZ. Even two valid native dates can describe
+    // one live process, so keep its unfinished messages until death is observed.
+    return before === 'darwin-utc' ? 'different' : 'unknown';
+  }
+  const normalize = (value: string) => value.slice(0, 36).toLowerCase() + ':' + BigInt(value.slice(37)).toString();
   return normalize(previous) === normalize(current) ? 'same' : 'different';
 }

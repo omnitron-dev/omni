@@ -23,6 +23,18 @@ function fixture(identity: string | null = '11111111-1111-4111-8111-111111111111
   return { journal, advance: () => { now += 5001; } };
 }
 describe('abandoned log assembly', () => {
+  it('does not publish a live Darwin writer assembly because an observer uses another timezone', () => {
+    const boot = 'darwin:119bd1eb-252d-4be8-ad83-69e325fbd927:';
+    const { journal, advance } = fixture(boot + 'Wed Nov  4 22:20:40 2026');
+    for (const birth of ['Wed Nov  4 17:20:40 2026', 'utc:Wed Nov  4 22:20:40 2026']) {
+      probe.mockReturnValue({ state: 'alive', identity: boot + birth }); advance();
+      expect(journal.peek()).toEqual([]);
+      expect(journal.stats()).toMatchObject({ pending: 1, assembling: 1 });
+      expect(journal.stats().error).toContain('cannot verify');
+    }
+    probe.mockReturnValue({ state: 'dead' }); advance();
+    expect(journal.peek()).toMatchObject([{ id: 'record', value: { message: 'original bytes\n  stack', timestamp: '2026-10-31T10:00:00.123456Z' } }]);
+  });
   it('recovers the same bytes when the PID now belongs to another process', () => {
     const { journal, advance } = fixture(); advance();
     expect(journal.peek()).toMatchObject([{ id: 'record', value: { message: 'original bytes\n  stack', timestamp: '2026-10-31T10:00:00.123456Z' } }]);

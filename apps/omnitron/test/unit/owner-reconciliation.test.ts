@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { assertOwnerReconciliationEvidence, type OwnerReconciliationPlan } from '../../src/daemon/owner-reconciliation.js';
 
-const plan = { bootId: 'boot-a', processes: [{ pid: 10, lifetime: null }, { pid: 20, lifetime: 'boot-a:200' }] } as OwnerReconciliationPlan;
+const linuxBoot = '119bd1eb-252d-4be8-ad83-69e325fbd927';
+const plan = { bootId: 'boot-a', processes: [{ pid: 10, lifetime: null }, { pid: 20, lifetime: linuxBoot + ':200' }] } as OwnerReconciliationPlan;
 const stopped = () => ({ bootId: 'boot-a', units: [{ mainPid: 0, state: 'failed' }, { mainPid: 0, state: 'inactive' }],
   groups: [[], []] as number[][], processes: [{ pid: 10, lifetime: null }, { pid: 20, lifetime: null }] as Array<{ pid: number; lifetime: string | null; unknown?: boolean }>, sockets: [] as string[] });
 
@@ -22,11 +23,11 @@ describe('explicit execution-owner crash reconciliation', () => {
     expect(() => assertOwnerReconciliationEvidence(plan, evidence)).toThrow('cgroup');
   });
   it('refuses a process moved outside the expected cgroup', () => {
-    const evidence = stopped(); evidence.processes[1]!.lifetime = 'boot-a:200';
+    const evidence = stopped(); evidence.processes[1]!.lifetime = linuxBoot + ':200';
     expect(() => assertOwnerReconciliationEvidence(plan, evidence)).toThrow('20');
   });
   it('distinguishes PID reuse from the old process lifetime', () => {
-    const evidence = stopped(); evidence.processes[1]!.lifetime = 'boot-a:999';
+    const evidence = stopped(); evidence.processes[1]!.lifetime = linuxBoot + ':999';
     expect(() => assertOwnerReconciliationEvidence(plan, evidence)).not.toThrow();
   });
   it('does not infer death when lifetime inspection fails or an identity was never captured', () => {
@@ -36,6 +37,17 @@ describe('explicit execution-owner crash reconciliation', () => {
     expect(() => assertOwnerReconciliationEvidence(plan, missing)).toThrow('20');
     const ambiguous = stopped(); ambiguous.processes[0]!.lifetime = 'boot-a:123';
     expect(() => assertOwnerReconciliationEvidence(plan, ambiguous)).toThrow('10');
+  });
+  it('retains ambiguous legacy macOS identities rather than declaring a live writer gone', () => {
+    const boot = 'darwin:' + linuxBoot;
+    const legacy = { ...plan, processes: [{ pid: 20, lifetime: boot + ':Mon Nov 2 01:00:00 2026' }] };
+    for (const lifetime of [boot + ':Mon Nov 2 04:00:00 2026', boot + ':utc:Mon Nov 2 01:00:00 2026', 'unverified']) {
+      const evidence = stopped(); evidence.processes[1]!.lifetime = lifetime;
+      expect(() => assertOwnerReconciliationEvidence(legacy, evidence)).toThrow('20');
+    }
+    const canonical = { ...legacy, processes: [{ pid: 20, lifetime: boot + ':utc:Mon Nov 2 01:00:00 2026' }] };
+    const reused = stopped(); reused.processes[1]!.lifetime = boot + ':utc:Mon Nov 2 01:00:01 2026';
+    expect(() => assertOwnerReconciliationEvidence(canonical, reused)).not.toThrow();
   });
   it('refuses boot changes and a still-registered owner socket', () => {
     expect(() => assertOwnerReconciliationEvidence(plan, { ...stopped(), bootId: 'boot-b' })).toThrow('Host boot');

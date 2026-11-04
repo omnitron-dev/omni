@@ -8,12 +8,12 @@ import { ExecutionJournal, readPrivateRecord, writePrivateRecord } from './execu
 import { readProcessLifetime } from '../monitoring/process-lifetime.js';
 import { withKernelFileLock } from '../shared/kernel-file-lock.js';
 import { readDarwinOwnerEvidence, type DarwinReconciliationScope } from './darwin-owner-evidence.js';
-import { isLegacyDarwinBootIdentity, isStableDarwinBootIdentity, isStableHostBootIdentity } from '../shared/host-boot-identity.js';
+import { compareProcessLifetimes, isLegacyDarwinBootIdentity, isStableDarwinBootIdentity, isStableHostBootIdentity } from '../shared/host-boot-identity.js';
 
 interface ProcessIdentity { pid: number; lifetime: string | null }
 interface CrashReceipt { bootId: string; clean: false; pid: number }
 export interface OwnerReconciliationPlan {
-  protocol: 1; id: string; createdAt: string; bootId: string;
+  protocol: 1 | 2; id: string; createdAt: string; bootId: string;
   instanceHome: string; directory: string; binding: string;
   ownerId: string; ownerPid: number; journalOwnerPid: number; crashReceipt: CrashReceipt; receiptDigest: string; journalDigest: string;
   processes: ProcessIdentity[];
@@ -99,7 +99,8 @@ export function assertOwnerReconciliationEvidence(plan: OwnerReconciliationPlan,
   }
   for (const expected of plan.processes) {
     const actual = observed.processes.find(item => item.pid === expected.pid);
-    if (!actual || actual.unknown || (actual.lifetime && (!expected.lifetime || actual.lifetime === expected.lifetime)))
+    if (!actual || actual.unknown || (actual.lifetime && (!expected.lifetime ||
+      compareProcessLifetimes(expected.lifetime, actual.lifetime) !== 'different')))
       throw new Error(`Recorded process ${expected.pid} has not been proven gone`);
   }
 }
@@ -131,7 +132,9 @@ export async function prepareOwnerReconciliation(config: ManagedRuntime, recorde
     const pids = [...new Set([...previousOwners, ...recordedWorkerPids, ...first.groups.flat(), ...first.units.map(unit => unit.mainPid).filter(Boolean)])];
     const observed = await nativeEvidence(config, pids.map(pid => ({ pid, lifetime: null })));
     if (observed.processes.some(item => item.unknown)) throw new Error('A recorded process identity could not be inspected');
-    const plan: OwnerReconciliationPlan = { protocol: 1, id: randomUUID(), createdAt: new Date().toISOString(), bootId: observed.bootId,
+    // A pre-UTC reader uses string inequality as proof of PID reuse. It must
+    // refuse this new Darwin plan, including when starting a rollback owner.
+    const plan: OwnerReconciliationPlan = { protocol: process.platform === 'darwin' ? 2 : 1, id: randomUUID(), createdAt: new Date().toISOString(), bootId: observed.bootId,
       instanceHome: config.instanceHome, directory: config.directory, binding: binding(config),
       ownerId: journal.owner.id, ownerPid: receipt.pid, journalOwnerPid: journal.owner.pid, crashReceipt: receipt, receiptDigest: digest(receipt), journalDigest: digest(journal),
       processes: observed.processes.map(({ pid, lifetime }) => ({ pid, lifetime })), ...(observed.native && { native: observed.native }) };
@@ -142,7 +145,7 @@ export async function prepareOwnerReconciliation(config: ManagedRuntime, recorde
 }
 
 function validatePlan(plan: OwnerReconciliationPlan, config: ManagedRuntime): void {
-  if (plan?.protocol !== 1 || !/^[a-f0-9-]{36}$/.test(plan.id) || !Number.isFinite(Date.parse(plan.createdAt)) || plan.instanceHome !== config.instanceHome ||
+  if ((plan?.protocol !== 1 && plan?.protocol !== 2) || !/^[a-f0-9-]{36}$/.test(plan.id) || !Number.isFinite(Date.parse(plan.createdAt)) || plan.instanceHome !== config.instanceHome ||
     plan.directory !== config.directory || plan.binding !== binding(config) || !plan.ownerId || !isStableHostBootIdentity(plan.bootId) ||
     !Number.isSafeInteger(plan.ownerPid) || plan.ownerPid < 1 || !Number.isSafeInteger(plan.journalOwnerPid) || plan.journalOwnerPid < 1 ||
     !Array.isArray(plan.processes) || !plan.processes.length ||

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { readHostBootIdentity } from '../shared/host-boot-identity.js';
+import { formatDarwinProcessLifetime, readHostBootIdentity } from '../shared/host-boot-identity.js';
 
 export type ProcessLifetime = { state: 'alive'; identity: string } | { state: 'dead' } | { state: 'unknown' };
 let bootIdentity: string | undefined;
@@ -20,11 +20,13 @@ export function readProcessLifetime(pid: number): ProcessLifetime {
       return { state: 'alive', identity: `${bootIdentity}:${start}` };
     }
     if (process.platform === 'darwin') {
-      const options = { encoding: 'utf8' as const, timeout: 1000, stdio: ['ignore', 'pipe', 'pipe'] as ['ignore', 'pipe', 'pipe'], env: { ...process.env, LC_ALL: 'C' } };
+      const options = { encoding: 'utf8' as const, timeout: 1000, stdio: ['ignore', 'pipe', 'pipe'] as ['ignore', 'pipe', 'pipe'], env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' } };
       bootIdentity ??= readHostBootIdentity();
       const start = execFileSync('/bin/ps', ['-p', String(pid), '-o', 'lstart='], options).trim();
       if (!bootIdentity || !start) return { state: 'unknown' };
-      return { state: 'alive', identity: `${bootIdentity}:${start}` };
+      // Explicitly distinguish this observation from persisted local-time births.
+      // A legacy reader treats the new format as unknown, never as a dead writer.
+      return { state: 'alive', identity: formatDarwinProcessLifetime(bootIdentity, start) };
     }
   } catch {
     // A permission error or failed probe does not prove that a writer died.

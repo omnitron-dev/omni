@@ -51,7 +51,7 @@ async function darwin(config: ManagedRuntime, pid: number, argv: string[], boot:
   const texts = opened.split('\n').map(line => line.split('\0'));
   requireProof(texts.some(fields => fields.includes('ftxt') && fields.includes('i' + inode) && fields.includes('n' + argv[0])),
     'the executable mapped by the process differs from the sealed file');
-  const born = Date.parse(row.lifetime.slice(boot.length + 1) + ' UTC');
+  const born = Date.parse(row.lifetime.slice((boot + ':utc:').length) + ' UTC');
   requireProof(Number.isFinite(born), 'unknown macOS process birth');
   return { token: row.lifetime, born, file, unitInode: stat.ino, unitCtime: stat.ctimeMs };
 }

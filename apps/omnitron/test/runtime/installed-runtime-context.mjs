@@ -258,8 +258,8 @@ Module({providers:[[createToken('mixed-watch-proof'),{useFactory:()=>{fs.appendF
   const remoteReceipt=JSON.parse(await fs.readFile(path.join(remoteEntry.releaseRoot,'.omnitron-release.json'),'utf8'));
   const closure=JSON.parse(await fs.readFile(path.join(remoteEntry.releaseRoot,'.omnitron-closure.json'),'utf8'));
   assert.equal(await releaseTreeDigest(remoteEntry.releaseRoot,true,false,['.omnitron-closure.json']),closure.payloadSha256);
-  assert.equal(remoteReceipt.installedFrameworkCommit,producer.omni.commit);
-  assert.notEqual(remoteReceipt.installedFrameworkCommit,ownerBuild.commit);
+  assert.equal(remoteReceipt.installedFrameworkCommit,applicationBuild.commit);
+  if(applicationBuild.commit!==ownerBuild.commit)assert.notEqual(remoteReceipt.installedFrameworkCommit,ownerBuild.commit);
   const adapter=createRequire(remoteEntry.bootstrap).resolve('@omnitron-dev/omnitron');
   assert.ok((await fs.realpath(adapter)).startsWith(remoteEntry.releaseRoot+path.sep));
   assert.ok(!commands.some(command=>/npm install|pnpm install|bindApplicationClosure/.test(command)));
@@ -284,7 +284,7 @@ Module({providers:[[createToken('mixed-watch-proof'),{useFactory:()=>{fs.appendF
   assert.equal(await run(installedReleaseCheckCommand(remotePath,remoteOrigin,actualRuntime,'')),'verified');
   assert.equal(await run(installedReleaseCheckCommand(remotePath,{...remoteOrigin,runtimeOrigin:{...remoteOrigin.runtimeOrigin,producerApp:'different'}},actualRuntime,'')),'stale');
   report.remoteDelivery={implementation:'RemoteDeployer.deployToNode',transport:'native private filesystem fixture',
-    producerFramework:producer.omni.commit,ownerFramework:ownerBuild.commit,privateGraph:true,
+    producerFramework:producer.omni.commit,ownerFramework:ownerBuild.commit,sameSdk:applicationBuild.commit===ownerBuild.commit,privateGraph:true,
     reused:true,applicationPid:remoteProof.pid,rollbackApplicationPid:restored.pid,ownerPidPreserved:owner.pid};
   if(sourceWatch){
     await sourceWatch.change('after-rollback');

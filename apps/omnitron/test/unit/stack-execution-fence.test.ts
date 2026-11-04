@@ -120,6 +120,10 @@ describe('durable application execution scope', () => {
     await owner.stopStackExecution({ operationId: randomUUID(), plan: parent });
     expect(handle.status).toBe('stopped');
     expect(handles.get('other/prod/api')!.status).toBe('online');
+    expect(() => owner.assertAppStartAllowed(nested)).toThrow('stack start');
+    await expect(owner.startAppInternal(handle.entry)).rejects.toThrow('stack start');
+    await owner.enableStackExecution(scope);
+    expect(() => owner.assertAppStartAllowed(nested)).not.toThrow();
   });
 
   it('stops only its reviewed application and preserves sibling generations and parent intent', async () => {

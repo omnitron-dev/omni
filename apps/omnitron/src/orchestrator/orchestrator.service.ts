@@ -1321,7 +1321,9 @@ export class OrchestratorService extends EventEmitter {
 
   assertAppStartAllowed(name: string): void {
     const parts = name.split('/');
-    if (parts.length !== 3) return;
+    // Stack stops own the whole prefix, including retained legacy nested names.
+    // Admission must enforce the same boundary before recovery or watch can restart them.
+    if (parts.length < 3) return;
     const scope = { project: parts[0]!, stack: parts[1]! };
     const phase = this.stateStore.getStackIntent(scope).phase;
     if (phase === 'starting') throw new Error(`Stack '${stackExecutionKey(scope)}' has an unfinished installed stack start; inspect its receipt and stop before retrying`);

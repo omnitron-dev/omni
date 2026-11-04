@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fork, type ChildProcess } from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { ADMIN_ROLES } from '../shared/roles.js';
@@ -35,6 +36,8 @@ export interface SupervisorStatus {
 @Service({ name: 'OmnitronSupervisor' })
 export class BackendSupervisorService {
   private busy = false;
+  private operationClaimed = false;
+  private inspection: Promise<void> | null = null;
   private stopping = false;
   private timer: NodeJS.Timeout | null = null;
   private readonly children = new Map<number, ChildProcess>();
@@ -59,7 +62,9 @@ export class BackendSupervisorService {
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
-  async status(): Promise<SupervisorStatus> { return { ...this.state, kernelHandoff: 1, operationPending: this.busy }; }
+  async status(): Promise<SupervisorStatus> {
+    return { ...this.state, kernelHandoff: 1, operationPending: this.operationClaimed || (this.busy && !this.inspection) };
+  }
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async upgrade(data: { directory: string; checkOnly?: boolean; schemaPlan?: string }): Promise<BackendReplacementResult | { checked: true; build: BackendArtifact['build'] }> {
@@ -98,10 +103,25 @@ export class BackendSupervisorService {
   }
 
   private async exclusive<T>(work: () => Promise<T>): Promise<T> {
-    if (this.stopping || this.busy) throw new Error('The backend supervisor is busy; inspect its current state');
-    this.busy = true;
-    try { return await work(); }
-    finally { this.busy = false; }
+    const inspection = this.inspection;
+    if (this.stopping || this.operationClaimed || (this.busy && !inspection)) throw new Error('The backend supervisor is busy; inspect its current state');
+    // Reserve exactly one command before yielding. A periodic health observation
+    // may finish, but another command or a recovery operation is never queued.
+    this.operationClaimed = true;
+    try {
+      if (inspection) {
+        const timer = new AbortController();
+        try {
+          await Promise.race([inspection, delay(10_000, undefined, { signal: timer.signal, ref: false }).then(() => {
+            throw new Error('Supervisor health inspection did not finish within 10 seconds; the requested operation was not started');
+          })]);
+        } finally { timer.abort(); }
+      }
+      if (this.stopping || this.busy) throw new Error('The backend supervisor is busy; inspect its current state');
+      this.busy = true;
+      try { return await work(); }
+      finally { this.busy = false; }
+    } finally { this.operationClaimed = false; }
   }
 
   private async publish(state: SupervisorStatus['state'], reason: string | null): Promise<void> {
@@ -172,13 +192,15 @@ export class BackendSupervisorService {
   }
 
   private async tick(): Promise<void> {
-    if (this.stopping || this.busy || Date.now() < this.nextAttempt) return;
+    if (this.stopping || this.busy || this.operationClaimed || Date.now() < this.nextAttempt) return;
     this.busy = true;
+    let finishInspection: (() => void) | undefined;
     try {
       const marker = new PidManager(expandPath(this.daemonConfig.pidFile));
       const pid = marker.getPid();
       const live = pid && marker.isRunning();
       if (live && this.children.has(pid)) {
+        this.inspection = new Promise<void>(resolve => { finishInspection = resolve; });
         await this.isolation();
         if (this.state.state !== 'ready' || this.state.backendPid !== pid) await this.ready(pid);
         return;
@@ -222,7 +244,11 @@ export class BackendSupervisorService {
         this.state.persistenceError = String(failure).slice(0, 512);
         this.reportFailure(`Cannot persist supervisor state: ${this.state.persistenceError}`);
       });
-    } finally { this.busy = false; }
+    } finally {
+      this.busy = false;
+      this.inspection = null;
+      finishInspection?.();
+    }
   }
 
   async stop(): Promise<void> {

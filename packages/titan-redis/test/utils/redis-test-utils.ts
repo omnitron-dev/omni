@@ -1,11 +1,9 @@
 import { Redis, Cluster } from 'ioredis';
-import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
 
 import { RedisManager } from '../../src/redis.manager.js';
 import { RedisService } from '../../src/redis.service.js';
 import { RedisModuleOptions } from '../../src/redis.types.js';
-import { createMockLogger } from '@omnitron-dev/testing/titan';
+import { createMockLogger, resolveTestRedisEndpoint } from '@omnitron-dev/testing/titan';
 import {
   RedisTestManager,
   type DockerContainer,
@@ -37,28 +35,9 @@ interface RedisTestConfig {
   isMock?: boolean;
 }
 
-/**
- * Get raw Redis info from global setup
- */
-function getRedisInfo(): { port?: number; isMock?: boolean; url?: string } | null {
-  try {
-    const infoPath = (process.env['TITAN_TEST_REDIS_INFO'] ?? join(process.cwd(), '.redis-test-info.json'));
-    if (existsSync(infoPath)) {
-      const content = readFileSync(infoPath, 'utf-8');
-      return JSON.parse(content);
-    }
-  } catch {
-    // Continue
-  }
-  return null;
-}
-
-/**
- * Check if we're in mock mode (no real Redis available)
- */
+/** Check the same endpoint selection used by the shared fixture. */
 export function isRedisInMockMode(): boolean {
-  const info = getRedisInfo();
-  return info?.isMock === true || process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true';
+  return resolveTestRedisEndpoint().isMock;
 }
 
 /**
@@ -67,63 +46,14 @@ export function isRedisInMockMode(): boolean {
  */
 export { isDockerAvailable } from '@omnitron-dev/testing/titan';
 
-/**
- * Get centralized Redis test configuration
- * Reads from .redis-test-info.json (set by Jest globalSetup.ts)
- */
+/** Add this suite's scratch database to the shared endpoint. */
 export function getTestRedisConfig(db = 15): RedisTestConfig {
-  // Strategy 1: Check Jest global setup (reads from .redis-test-info.json)
-  const info = getRedisInfo();
-
-  if (info) {
-    // Check for mock mode
-    if (info.isMock) {
-      return {
-        url: 'mock://localhost',
-        host: 'localhost',
-        port: 0,
-        db,
-        isMock: true,
-      };
-    }
-
-    if (info.port) {
-      const host = 'localhost';
-      const port = info.port;
-      const url = `redis://${host}:${port}/${db}`;
-
-      return { url, host, port, db, isMock: false };
-    }
-  }
-
-  // Strategy 2: Check Vitest global setup
-  const globalRedis = (globalThis as any).globalRedis;
-
-  if (globalRedis?.host && globalRedis?.port) {
-    const host = globalRedis.host;
-    const port = globalRedis.port;
-    const url = `redis://${host}:${port}/${db}`;
-
-    return { url, host, port, db, isMock: false };
-  }
-
-  // Check if USE_MOCK_REDIS is set
-  if (process.env.USE_MOCK_REDIS === 'true' || process.env.SKIP_DOCKER_TESTS === 'true') {
-    return {
-      url: 'mock://localhost',
-      host: 'localhost',
-      port: 0,
-      db,
-      isMock: true,
-    };
-  }
-
-  // Fallback to docker-compose.test.yml port if global config is not available
-  const host = process.env.TEST_REDIS_HOST ?? 'localhost';
-  const port = Number(process.env.TEST_REDIS_PORT ?? 16379);
-  const url = `redis://${host}:${port}/${db}`;
-
-  return { url, host, port, db, isMock: false };
+  const endpoint = resolveTestRedisEndpoint();
+  return {
+    ...endpoint,
+    db,
+    url: endpoint.isMock ? 'mock://localhost' : `redis://${endpoint.host}:${endpoint.port}/${db}`,
+  };
 }
 
 /**

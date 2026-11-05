@@ -131,12 +131,16 @@ export interface RedisTestFixture {
  * Create a Redis test fixture with proper cleanup
  */
 export async function createRedisTestFixture(options: RedisTestFixtureOptions = {}): Promise<RedisTestFixture> {
+  const endpoint = resolveTestRedisEndpoint();
+  if (endpoint.isMock && options.port === undefined) {
+    throw new Error('A real Redis fixture requires a test endpoint; Redis setup selected mock mode.');
+  }
   const {
     withManager = false,
     withService = false,
     db = 15, // Use test database
-    host = 'localhost',
-    port = 6379,
+    host = endpoint.host,
+    port = endpoint.port,
     namespace = 'test',
     lazyConnect = false,
     enableReadyCheck = true,
@@ -157,66 +161,83 @@ export async function createRedisTestFixture(options: RedisTestFixtureOptions = 
 
   // Create primary client
   const client = new Redis(redisOptions);
-
-  // Wait for connection if not lazy
-  if (!lazyConnect) {
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        client.removeAllListeners();
-        reject(Errors.timeout('Redis connection in test fixture', 10000));
-      }, 10000); // 10 second timeout
-
-      client.once('ready', () => {
-        clearTimeout(timeout);
-        resolve();
-      });
-      client.once('error', (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-
-      // Ensure connection starts
-      if (client.status === 'wait') {
-        client.connect().catch(reject);
-      }
-    });
-  }
-
   let manager: RedisManager | undefined;
   let service: RedisService | undefined;
 
-  // Create manager if requested
-  if (withManager) {
-    // Use type assertion to avoid ioredis version compatibility issues
-    const clientConfigs = [
-      {
-        namespace: 'default',
-        ...redisOptions,
-        db: redisOptions.db, // Use the test DB
-      },
-      {
-        namespace,
-        ...redisOptions,
-        db: redisOptions.db, // Use the test DB
-      },
-      ...(namespace !== 'cache'
-        ? [
-            {
-              namespace: 'cache',
-              ...redisOptions,
-              db: 14, // Use different DB for cache namespace
-            },
-          ]
-        : []),
-    ] as any;
+  try {
+    // Wait for connection if not lazy
+    if (!lazyConnect) {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          removeListeners();
+          reject(Errors.timeout('Redis connection in test fixture', 10000));
+        }, 10000); // 10 second timeout
 
-    manager = new RedisManager({ clients: clientConfigs }, createTestNullLogger());
-    await manager.onModuleInit();
-  }
+        const removeListeners = () => {
+          clearTimeout(timeout);
+          client.off('ready', onReady);
+          client.off('error', onError);
+        };
+        const onReady = () => {
+          removeListeners();
+          resolve();
+        };
+        const onError = (error: Error) => {
+          removeListeners();
+          reject(error);
+        };
+        client.once('ready', onReady);
+        client.once('error', onError);
 
-  // Create service if requested
-  if (withService && manager) {
-    service = new RedisService(manager);
+        // Ensure connection starts
+        if (client.status === 'wait') {
+          client.connect().catch(onError);
+        }
+      });
+    }
+
+    // Create manager if requested
+    if (withManager) {
+      // Use type assertion to avoid ioredis version compatibility issues
+      const clientConfigs = [
+        {
+          namespace: 'default',
+          ...redisOptions,
+          db: redisOptions.db, // Use the test DB
+        },
+        {
+          namespace,
+          ...redisOptions,
+          db: redisOptions.db, // Use the test DB
+        },
+        ...(namespace !== 'cache'
+          ? [
+              {
+                namespace: 'cache',
+                ...redisOptions,
+                db: 14, // Use different DB for cache namespace
+              },
+            ]
+          : []),
+      ] as any;
+
+      manager = new RedisManager({ clients: clientConfigs }, createTestNullLogger());
+      await manager.onModuleInit();
+    }
+
+    // Create service if requested
+    if (withService && manager) {
+      service = new RedisService(manager);
+    }
+  } catch (error) {
+    try {
+      await manager?.onModuleDestroy();
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], 'Redis fixture initialization and cleanup failed', { cause: cleanupError });
+    } finally {
+      client.disconnect();
+    }
+    throw error;
   }
 
   // Cleanup function
@@ -224,19 +245,13 @@ export async function createRedisTestFixture(options: RedisTestFixtureOptions = 
     try {
       // Clear all data in test database
       await client.flushdb();
-
-      // Cleanup manager
-      if (manager) {
-        await manager.onModuleDestroy();
+    } finally {
+      try {
+        await manager?.onModuleDestroy();
+      } finally {
+        client.disconnect();
+        client.removeAllListeners();
       }
-
-      // Close client
-      client.disconnect();
-
-      // Remove all listeners
-      client.removeAllListeners();
-    } catch (error) {
-      console.error('Cleanup error:', error);
     }
   };
 

@@ -57,12 +57,13 @@ describe('TitanRedisModule closes its clients on stop', () => {
     app = await Application.create({
       disableGracefulShutdown: true,
       disableCoreModules: false,
-      imports: [RedisModule.forRoot({ host: HOST, port: PORT })],
-    } as any);
+      imports: [RedisModule.forRoot({ config: { host: HOST, port: PORT, db: 15 } })],
+    });
     await app.start();
 
     const manager = app.container.resolve(REDIS_MANAGER) as RedisManager;
     const client = manager.getClient();
+    expect(client.options).toMatchObject({ host: HOST, port: PORT, db: 15 });
     await client.ping();
     expect(client.status, 'the fixture never connected — nothing is being tested').toBe('ready');
 
@@ -82,14 +83,15 @@ describe('TitanRedisModule closes its clients on stop', () => {
       disableCoreModules: false,
       imports: [
         RedisModule.forRootAsync({
-          useFactory: () => ({ host: HOST, port: PORT }),
+          useFactory: () => ({ config: { host: HOST, port: PORT, db: 15 } }),
         }),
       ],
-    } as any);
+    });
     await app.start();
 
     const manager = app.container.resolve(REDIS_MANAGER) as RedisManager;
     const client = manager.getClient();
+    expect(client.options).toMatchObject({ host: HOST, port: PORT, db: 15 });
     await client.ping();
 
     await app.stop();

@@ -195,8 +195,16 @@ Module({providers:[[createToken('mixed-watch-proof'),{useFactory:()=>{fs.appendF
   const observed = client.orchestrator.list().find(app => app.name === runtimeEntry.name);
   assert.equal(observed?.release?.state, legacy ? 'unreported' : 'confirmed');
   if (!legacy) {
-    assert.deepEqual(observed.release.consumer, { releaseId: loaded.id, manifestSha256: loaded.manifestSha256, app: 'collector' });
     assert.equal(observed.release.releaseId, producer.id, 'the producer remains distinct from its selected consumer');
+    assert.equal(observed.release.manifestSha256, producerHash);
+    assert.equal(observed.release.artifactSha256, built.tarballSha256);
+    // RuntimeReleaseEvidence.consumer is optional: older owners attest the
+    // producer, while the application's own verified context above carries
+    // both identities. Never claim consumer attestation from such an owner.
+    if (observed.release.consumer !== undefined) {
+      assert.deepEqual(observed.release.consumer, { releaseId: loaded.id, manifestSha256: loaded.manifestSha256, app: 'collector' });
+    }
+    report.ownerReceiptScope = observed.release.consumer === undefined ? 'producer-only' : 'producer-and-consumer';
   }
   report.applicationPid = proof.pid; report.ownerReceiptState = observed.release.state; report.eagerRuntimeContext = proof.context;
   assert.equal(client.state().owner.pid, owner.pid);

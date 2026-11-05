@@ -814,11 +814,15 @@ export class InfrastructureService {
       }
       case 'minio': {
         const minio = this.config.minio;
-        if (!minio) return null;
+        const name = this.getResolvedContainerName('minio');
+        const resolved = this.desiredContainers.find(container => container.name === name);
+        if (!resolved && !minio) return null;
+        // Use the provisioner's resolved specification for both declaration forms.
+        // Reading only legacy `minio` loses credentials when `services.minio` overrides it.
         return {
-          endpoint: `http://${LOCAL_INFRA_HOST}:${minio.ports?.api ?? 9000}`,
-          accessKey: minio.accessKey ?? 'minioadmin',
-          secretKey: typeof minio.secretKey === 'string' ? minio.secretKey : 'minioadmin',
+          endpoint: `http://${LOCAL_INFRA_HOST}:${resolved?.ports.find(port => port.container === 9000)?.host ?? minio?.ports?.api ?? 9000}`,
+          accessKey: resolved?.environment['MINIO_ROOT_USER'] ?? minio?.accessKey ?? 'minioadmin',
+          secretKey: resolved?.environment['MINIO_ROOT_PASSWORD'] ?? (typeof minio?.secretKey === 'string' ? minio.secretKey : 'minioadmin'),
           forcePathStyle: true,
         };
       }

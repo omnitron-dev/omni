@@ -57,6 +57,17 @@ try {
         encoding: 'utf8', maxBuffer: 1024 * 1024,
       }));
       const files = new Set(packed.files.map(file => file.path));
+      if (manifest.name === '@omnitron-dev/prism') {
+        const unpacked = path.join(temporary, 'prism-consumer');
+        fs.mkdirSync(unpacked);
+        execFileSync('tar', ['-xf', packed.filename, '-C', unpacked]);
+        // CSS @imports need the package's declared peers. Reuse the frozen CI
+        // installation; all Prism code and styles still come from the archive.
+        fs.symlinkSync(path.join(directory, 'node_modules'), path.join(unpacked, 'package/node_modules'), 'dir');
+        execFileSync(process.execPath, [
+          path.join(directory, 'test/runtime/bundle-consumer.mjs'), path.join(unpacked, 'package'),
+        ], { stdio: 'inherit' });
+      }
       if (['@omnitron-dev/netron-react', '@omnitron-dev/prism'].includes(manifest.name)) {
         for (const [subpath, conditions] of Object.entries(manifest.exports)) {
           const client = manifest.name === '@omnitron-dev/netron-react'

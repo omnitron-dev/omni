@@ -9,6 +9,17 @@ files. In React Server Component applications, render these components with
 serializable props and configure providers inside a client component.
 `@omnitron-dev/prism/http` also works in server code.
 
+Named imports from the root and `@omnitron-dev/prism/components` discard unused
+component modules in production bundles. A `Card` does not require the editor,
+map or chart engines. Public component subpaths provide the same behavior and
+can be used as explicit lazy-loading boundaries. Import the documented CSS entry
+for components that require styles; CSS is preserved during tree shaking.
+Calendar locale registration stays with the calendar component.
+
+`pnpm check:packages` verifies actual packed archives with a Vite consumer: small
+named imports retain only their peers, while selected calendar, map and stylesheet
+entries retain their required dependencies. Run it after building the workspace.
+
 ## Installation
 
 ```bash

@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+// Keep registration with the component that needs it, rather than its re-export
+// barrel: production bundlers can skip barrels when following named exports.
+import 'dayjs/locale/ru.js';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { TimePicker } from '@mui/x-date-pickers/TimePicker';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';

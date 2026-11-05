@@ -114,7 +114,7 @@ describe('HttpServer (Legacy Tests)', () => {
         call: vi.fn().mockResolvedValue({ result: 'test' }),
       };
 
-      mockPeer.stubs.set('test-service', stub);
+      mockPeer.stubs.set(stub.definition.id, stub);
 
       server.setPeer(mockPeer);
 
@@ -156,7 +156,7 @@ describe('HttpServer (Legacy Tests)', () => {
         call: vi.fn(),
       };
 
-      mockPeer.stubs.set('user-service', stub);
+      mockPeer.stubs.set(stub.definition.id, stub);
       server.setPeer(mockPeer);
 
       const services = (server as any).services;
@@ -200,7 +200,7 @@ describe('HttpServer (Legacy Tests)', () => {
         }),
       };
 
-      mockPeer.stubs.set('math-service', stub);
+      mockPeer.stubs.set(stub.definition.id, stub);
       server.setPeer(mockPeer);
       await server.listen();
     });
@@ -321,7 +321,7 @@ describe('HttpServer (Legacy Tests)', () => {
         call: vi.fn(),
       };
 
-      mockPeer.stubs.set('user-service', stub);
+      mockPeer.stubs.set(stub.definition.id, stub);
       server.setPeer(mockPeer);
       await server.listen();
     });
@@ -381,7 +381,7 @@ describe('HttpServer (Legacy Tests)', () => {
         call: vi.fn().mockRejectedValue(new Error('Test error')),
       };
 
-      mockPeer.stubs.set('error-service', stub);
+      mockPeer.stubs.set(stub.definition.id, stub);
       server.setPeer(mockPeer);
       await server.listen();
     });

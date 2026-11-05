@@ -380,14 +380,17 @@ describeOrSkip('RemotePeer - Comprehensive Tests', () => {
   });
 
   describe('Packet Handling', () => {
+    @Service({ name: 'PacketFixture', version: '1.0.0' })
+    class PacketFixture {
+      @Public() property = 'property-value';
+      @Public() method() { return 'call-result'; }
+    }
+
     it('should handle GET packet', async () => {
-      const packet = createPacket(1, 1, TYPE_GET, ['550e8400-e29b-41d4-a716-446655440000', 'property']);
-
-      const mockStub = {
-        get: vi.fn().mockResolvedValue('property-value'),
-      };
-
-      netron.peer.getStubByDefinitionId = vi.fn().mockReturnValue(mockStub);
+      const definition = await netron.peer.exposeService(new PacketFixture());
+      const packet = createPacket(1, 1, TYPE_GET, [definition.id, 'property']);
+      const mockStub = netron.peer.getStubByDefinitionId(definition.id);
+      vi.spyOn(mockStub, 'get');
       remotePeer['sendResponse'] = vi.fn();
 
       await remotePeer.handlePacket(packet);
@@ -400,29 +403,25 @@ describeOrSkip('RemotePeer - Comprehensive Tests', () => {
     });
 
     it('should handle SET packet', async () => {
-      const packet = createPacket(2, 1, TYPE_SET, ['550e8400-e29b-41d4-a716-446655440000', 'property', 'new-value']);
-
-      const mockStub = {
-        set: vi.fn().mockResolvedValue(undefined),
-      };
-
-      netron.peer.getStubByDefinitionId = vi.fn().mockReturnValue(mockStub);
+      const instance = new PacketFixture();
+      const definition = await netron.peer.exposeService(instance);
+      const packet = createPacket(2, 1, TYPE_SET, [definition.id, 'property', 'new-value']);
+      const mockStub = netron.peer.getStubByDefinitionId(definition.id);
+      vi.spyOn(mockStub, 'set');
       remotePeer['sendResponse'] = vi.fn();
 
       await remotePeer.handlePacket(packet);
 
       expect(mockStub.set).toHaveBeenCalledWith('property', 'new-value');
+      expect(instance.property).toBe('new-value');
       expect(remotePeer['sendResponse']).toHaveBeenCalledWith(packet, undefined);
     });
 
     it('should handle CALL packet', async () => {
-      const packet = createPacket(3, 1, TYPE_CALL, ['550e8400-e29b-41d4-a716-446655440000', 'method', 'arg1', 'arg2']);
-
-      const mockStub = {
-        call: vi.fn().mockResolvedValue('call-result'),
-      };
-
-      netron.peer.getStubByDefinitionId = vi.fn().mockReturnValue(mockStub);
+      const definition = await netron.peer.exposeService(new PacketFixture());
+      const packet = createPacket(3, 1, TYPE_CALL, [definition.id, 'method', 'arg1', 'arg2']);
+      const mockStub = netron.peer.getStubByDefinitionId(definition.id);
+      vi.spyOn(mockStub, 'call');
       remotePeer['sendResponse'] = vi.fn();
 
       await remotePeer.handlePacket(packet);

@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { createMockLogger } from '../../test-utils.js';
 import { HttpServer, MethodHandlerContext } from '../../../../src/netron/transport/http/server.js';
 import type { MethodContract } from '../../../../src/validation/contract.js';
 import { TitanError, ErrorCode } from '../../../../src/errors/index.js';
@@ -18,8 +19,9 @@ describe('HttpServer Type Safety (Phase 2)', () => {
     // Create mock peer with typed service
     const typedStub = {
       definition: {
+        id: 'stub-typed', peerId: 'http-fixture',
         meta: {
-          name: 'TypedService@1.0.0',
+          name: 'TypedService',
           version: '1.0.0',
           methods: {
             echo: { name: 'echo' },
@@ -38,10 +40,12 @@ describe('HttpServer Type Safety (Phase 2)', () => {
           },
         },
       },
+      instance: {},
       call: vi.fn(),
     };
 
     mockPeer = {
+      logger: createMockLogger(),
       stubs: new Map([['stub-typed', typedStub]]),
     };
 

@@ -63,6 +63,7 @@ describeOrSkip('HttpTransportClient - Comprehensive Coverage', () => {
     // Add test service
     const testStub = {
       definition: {
+        id: 'test-stub', peerId: 'http-fixture',
         meta: {
           name: 'TestService',
           version: '1.0.0',

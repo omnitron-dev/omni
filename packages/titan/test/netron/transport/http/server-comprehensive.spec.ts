@@ -184,7 +184,7 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
         }),
       };
 
-      mockPeer.stubs.set('test-stub', stub);
+      mockPeer.stubs.set(stub.definition.id, stub);
     });
 
     it('should register services from peer on setPeer', () => {
@@ -224,7 +224,7 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
       };
 
       // Use definition ID as key, not arbitrary string
-      mockPeer.stubs.set('new-def-id', newStub);
+      mockPeer.stubs.set(newStub.definition.id, newStub);
 
       server.registerService('NewService', newDefinition, newContract);
 
@@ -450,7 +450,7 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
         call: vi.fn(),
       };
 
-      mockPeer.stubs.set('api-stub', stub);
+      mockPeer.stubs.set(stub.definition.id, stub);
       server.setPeer(mockPeer);
     });
 
@@ -568,7 +568,7 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
         call: vi.fn(async (method, args) => ({ success: true, input: args[0] })),
       };
 
-      mockPeer.stubs.set('validation-stub', stub);
+      mockPeer.stubs.set(stub.definition.id, stub);
       server.setPeer(mockPeer);
     });
 
@@ -622,7 +622,7 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
     it('should apply default values from schema', async () => {
       await server.listen();
 
-      const stub = mockPeer.stubs.get('validation-stub');
+      const stub = mockPeer.stubs.get('validation-def-id');
 
       const response = await fetch(`http://localhost:${testPort}/netron/invoke`, {
         method: 'POST',
@@ -681,7 +681,7 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
         }),
       };
 
-      mockPeer.stubs.set('stream-stub', stub);
+      mockPeer.stubs.set(stub.definition.id, stub);
       server.setPeer(mockPeer);
     });
 
@@ -775,7 +775,7 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
       };
 
       // Use definition ID as key
-      mockPeer.stubs.set('cors-def-id', stub);
+      mockPeer.stubs.set(stub.definition.id, stub);
 
       try {
         server.unregisterService('CorsService@1.0.0'); // Clear if exists
@@ -894,7 +894,7 @@ describeOrSkip('HttpServer - Comprehensive Coverage', () => {
         }),
       };
 
-      mockPeer.stubs.set('batch-stub', stub);
+      mockPeer.stubs.set(stub.definition.id, stub);
       server.setPeer(mockPeer);
     });
 

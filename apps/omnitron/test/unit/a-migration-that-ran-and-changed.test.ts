@@ -19,6 +19,7 @@ import path from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 
 import type { ReleaseManifest } from '../../src/release/manifest.js';
+import type { ApplicationRuntime } from '../../src/services/host-upgrade.js';
 import { changedReleasedMigrations, migrationDigests, releaseMigrationSources } from '../../src/release/migrations.js';
 import { ProjectService } from '../../src/services/project.service.js';
 
@@ -109,6 +110,11 @@ describe('what a release records of its migrations', () => {
 describe('admission, against the release running on the stack', () => {
   function stand(ran: Record<string, string> | undefined, candidate: Record<string, string> | undefined) {
     const { dir, commit } = repo();
+    const target = { platform: 'linux', arch: 'x64', node: 'v22.23.4', abi: '127', executableSha256: 'c'.repeat(64), libc: '2.39' };
+    const applicationRuntime: ApplicationRuntime = {
+      root: '/runtime/packages/0', executable: '/runtime/node', commit: 'd'.repeat(40), target,
+      execution: { mode: 'resident', protocol: 1, ownerId: 'owner', pid: 42, epoch: 9 },
+    };
     const store = path.join(scratch, `store-${crypto.randomBytes(4).toString('hex')}`);
     const put = (id: string, migrations: Record<string, string> | undefined) => {
       fs.mkdirSync(path.join(store, id, 'artifacts'), { recursive: true });
@@ -118,9 +124,10 @@ describe('admission, against the release running on the stack', () => {
         id,
         project: { repo: 'gitlab', commit, onRemote: true },
         omni: { repo: 'github', commit: 'b'.repeat(40), onRemote: true },
-        artifacts: [{ app: 'main', version: '0.0.1', sha256: sha(body), bytes: body.length }],
+        artifacts: [{ app: 'main', version: '0.0.1', sha256: sha(body), bytes: body.length,
+          launch: { mode: 'script', file: 'dist/main.js', closureSha256: 'e'.repeat(64) } }],
         gates: [{ name: 'build', status: 'passed' }],
-        builtWith: { omnitron: '0.2.0', packages: [] },
+        builtWith: { omnitron: '0.3.1', packages: [], target },
         builtAt: '2026-09-24T20:00:00.000Z',
         builtBy: 'test',
         ...(migrations ? { migrations } : {}),
@@ -155,9 +162,8 @@ describe('admission, against the release running on the stack', () => {
       toStackInfo: () => ({ name: 'test', type: 'remote', apps: [{ name: 'main', status: 'online' }] }),
       emit: vi.fn(),
       releaseStore: async () => store,
-      // The node's daemon, built from the omni the release was gated on — see
-      // `a-release-the-node-never-ran.test.ts`.
-      slaveConnector: { invokeOnSlave: vi.fn(async () => ({ version: `0.2.0+local.${'b'.repeat(12)}.202609251029` })) },
+      // Admission and delivery inspect the same resident owner and exact Node target.
+      deployer: { inspectInstalledBundle: vi.fn(async () => ({ applicationRuntime })) },
     });
     return { svc, next, running };
   }

@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createMockLogger } from '../../test-utils.js';
 import { HttpServer } from '../../../../src/netron/transport/http/server.js';
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 
@@ -17,8 +18,9 @@ describe('HttpServer (v1.0 Native Protocol)', () => {
     // Create mock peer with service stubs
     const calculatorStub = {
       definition: {
+        id: 'stub-1', peerId: 'http-fixture',
         meta: {
-          name: 'Calculator@1.0.0',
+          name: 'Calculator',
           version: '1.0.0',
           methods: {
             add: { name: 'add' },
@@ -26,13 +28,15 @@ describe('HttpServer (v1.0 Native Protocol)', () => {
           },
         },
       },
+      instance: {},
       call: vi.fn(),
     };
 
     const userStub = {
       definition: {
+        id: 'stub-2', peerId: 'http-fixture',
         meta: {
-          name: 'UserService@1.0.0',
+          name: 'UserService',
           version: '1.0.0',
           methods: {
             getUser: { name: 'getUser' },
@@ -40,10 +44,12 @@ describe('HttpServer (v1.0 Native Protocol)', () => {
           },
         },
       },
+      instance: {},
       call: vi.fn(),
     };
 
     mockPeer = {
+      logger: createMockLogger(),
       stubs: new Map([
         ['stub-1', calculatorStub],
         ['stub-2', userStub],
@@ -140,8 +146,12 @@ describe('HttpServer (v1.0 Native Protocol)', () => {
       const response = await server.handleRequest(request);
 
       expect(response.status).toBe(200);
-      // CRITICAL FIX: HTTP server passes null as callerPeer to prevent async generator wrapping
-      expect(calculatorStub.call).toHaveBeenCalledWith('add', [{ a: 2, b: 3 }], null);
+      // Stateless HTTP callers preserve the admitted transport and authority
+      // for nested services without wrapping generators in a persistent peer.
+      expect(calculatorStub.call).toHaveBeenCalledWith('add', [{ a: 2, b: 3 }], {
+        transportName: 'http', getAuthContext: expect.any(Function),
+      });
+      expect(calculatorStub.call.mock.calls[0][2].getAuthContext()).toBeUndefined();
 
       const data = (await response.json()) as any;
       expect(data.success).toBe(true);

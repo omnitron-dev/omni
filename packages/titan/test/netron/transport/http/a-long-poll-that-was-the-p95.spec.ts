@@ -13,6 +13,7 @@
  */
 import 'reflect-metadata';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createMockLogger } from '../../test-utils.js';
 import { HttpServer } from '../../../../src/netron/transport/http/server.js';
 import { Public } from '../../../../src/decorators/core.js';
 
@@ -52,13 +53,14 @@ describe('a method that holds its caller is counted, not timed', () => {
     const instance = new Notifications();
     const stub = {
       definition: {
-        meta: { name: 'Notifications@1.0.0', version: '1.0.0', methods: { poll: {}, pollBroken: {}, list: {} } },
+        id: 'stub-1', peerId: 'http-fixture',
+        meta: { name: 'Notifications', version: '1.0.0', methods: { poll: {}, pollBroken: {}, list: {} } },
       },
       instance,
       call: vi.fn(async (method: string) => (instance as unknown as Record<string, () => Promise<unknown>>)[method]!()),
     };
     server = new HttpServer({ port: 3458, host: 'localhost' });
-    (server as any).setPeer({ stubs: new Map([['stub-1', stub]]) });
+    (server as any).setPeer({ logger: createMockLogger(), stubs: new Map([['stub-1', stub]]) });
   });
 
   afterEach(async () => {

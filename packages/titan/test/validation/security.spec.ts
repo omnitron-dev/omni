@@ -283,22 +283,9 @@ describe('Security Validation Tests', () => {
       expect(result).toEqual(deepObject);
     });
 
-    it('rejects an oversized array, having validated every element of it', () => {
-      // This test used to assert `duration < 100ms` under the comment "Should
-      // fail quickly without processing all items". The bound passed, and the
-      // property it described is false: `.max(1000)` bounds what the array is
-      // ALLOWED to contain, not what gets parsed. Counted here rather than
-      // timed — 10 000 of 10 000 elements are validated before the length
-      // issue is reported, so a wall-clock bound was only ever measuring how
-      // fast the machine could do all the work the bound was claiming to skip.
-      //
-      // Recorded as a finding rather than fixed here: making the engine reject
-      // on length before parsing elements changes which issues a caller gets
-      // back (a length issue alone, instead of a length issue plus every
-      // element's), and that is a contract decision, not a test change. What
-      // matters for a DoS-prevention suite is that the cost of a rejected
-      // input currently scales with the input, and that this is now stated
-      // where it can be read.
+    it('rejects an oversized array before validating its elements', () => {
+      // Count work instead of timing it: the declared bound must reject an
+      // oversized payload without evaluating its potentially costly elements.
       let elementsValidated = 0;
       const schema = z.object({
         items: z
@@ -333,8 +320,8 @@ describe('Security Validation Tests', () => {
 
       expect(
         elementsValidated,
-        'a `.max()` bound does not stop the elements from being parsed'
-      ).toBe(largeArray.length);
+        'an oversized array must be refused before parsing its elements'
+      ).toBe(0);
     });
 
     it('should prevent ReDoS with complex regex patterns', () => {

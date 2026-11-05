@@ -39,18 +39,18 @@ describe('PM query_interface integration', () => {
     } catch {}
   });
 
-  describe('BUG REPRODUCTION: minimal metadata causes meta.methods to be undefined', () => {
-    it('should crash with "Cannot read properties of undefined" when service has only { name, version } metadata', async () => {
+  describe('minimal metadata publishes an empty surface', () => {
+    it('returns a usable empty interface without publishing undeclared helpers', async () => {
       const port = basePort;
 
-      // Setup server exactly like worker-runtime.ts does
+      // Exercise a service published with identity metadata only.
       server = new Netron(logger, { id: 'server' });
       server.registerTransportServer('websocket', {
         name: 'websocket',
         options: { host: '127.0.0.1', port },
       });
 
-      // Create a ServiceWrapperClass with minimal metadata — exactly like worker-runtime.ts line 366-378
+      // Internal helpers are not remote methods until declared in metadata.
       class ServiceWrapperClass {}
       const serviceWrapper: any = {};
       serviceWrapper.__getProcessHealth = async () => ({
@@ -64,16 +64,14 @@ describe('PM query_interface integration', () => {
       const wrapperInstance = Object.create(ServiceWrapperClass.prototype);
       Object.assign(wrapperInstance, serviceWrapper);
 
-      // BUG: worker-runtime only sets { name, version } — missing methods & properties
       Reflect.defineMetadata(SERVICE_ANNOTATION, { name: 'BootstrapApp', version: '1.0.0' }, ServiceWrapperClass);
 
       await server.start();
       await server.peer.exposeService(wrapperInstance);
 
-      // Verify the service was exposed with the incomplete metadata
+      // Publication preserves the minimal declaration; discovery safely projects it.
       const stub = server.services.get('BootstrapApp@1.0.0');
       expect(stub).toBeDefined();
-      // The definition's meta has no methods field — this is the root cause
       expect(stub!.definition.meta.methods).toBeUndefined();
 
       // Connect client
@@ -81,16 +79,15 @@ describe('PM query_interface integration', () => {
       await client.start();
       const remotePeer = await client.connect(`ws://127.0.0.1:${port}`);
 
-      // Query the interface — this sends a query_interface task over the wire
-      // The Interface proxy intercepts property access including 'then' (for Promise detection).
-      // It tries target.$def.meta.methods['then'] but meta.methods is undefined → TypeError
-      await expect(remotePeer.queryInterface('BootstrapApp@1.0.0')).rejects.toThrow(
-        'Cannot read properties of undefined'
-      );
+      const iface = await remotePeer.queryInterface('BootstrapApp@1.0.0');
+      expect(iface).toBeDefined();
+      expect(iface.$def.meta.methods).toEqual({});
+      expect(() => iface.__getProcessHealth).toThrow('Unknown member');
+      expect(() => iface.__shutdown).toThrow('Unknown member');
     });
   });
 
-  describe('FIX VERIFICATION: proper metadata with methods and properties', () => {
+  describe('declared methods and properties', () => {
     it('should work when service is exposed with complete metadata including methods', async () => {
       const port = basePort + 1;
 

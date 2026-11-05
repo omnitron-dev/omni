@@ -73,7 +73,7 @@ describe('a validator that throws is not a pass', () => {
     });
 
     const peer = {
-      stubs: new Map([['svc-id', { definition: def, call }]]),
+      stubs: new Map([['svc-id', { definition: def, instance: {}, call }]]),
       netron: {},
       logger: {
         warn: (o: unknown, m: string) => logged.push([o, m]),

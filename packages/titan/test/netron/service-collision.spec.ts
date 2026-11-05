@@ -2,8 +2,8 @@
  * Tests for Bug Fix 1.2: Service Name Collision Protection in exposeRemoteService()
  *
  * Verifies that LocalPeer.exposeRemoteService() rejects attempts to expose a service
- * name that is already exposed by a different peer, while still allowing the same peer
- * to re-expose (update) its own service.
+ * qualified name that is already exposed. A publisher must withdraw its previous
+ * definition before replacing it, so existing proxies cannot silently change identity.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -54,11 +54,11 @@ describe('Service Name Collision Protection (exposeRemoteService)', () => {
 
     // Second exposure by a different peer should throw a conflict error
     await expect(netron.peer.exposeRemoteService(peer2, meta)).rejects.toThrow(
-      "Service 'SameName' already exposed by a different peer",
+      'Service already exposed: SameName@1.0.0',
     );
   });
 
-  it('should allow the same peer to re-expose its own service (update)', async () => {
+  it('requires withdrawal before the same peer replaces its publication', async () => {
     const peer1 = new RemotePeer(createMockSocket(), netron, 'peer-1');
     const meta = createServiceMeta('TestService');
 
@@ -66,7 +66,10 @@ describe('Service Name Collision Protection (exposeRemoteService)', () => {
     const def1 = await netron.peer.exposeRemoteService(peer1, meta);
     expect(def1).toBeDefined();
 
-    // Same peer re-exposes the same service -- should succeed (not throw)
+    // Replacing a live definition is an explicit withdrawal and publication.
+    await expect(netron.peer.exposeRemoteService(peer1, meta)).rejects.toThrow('Service already exposed');
+    expect(netron.services.get('TestService@1.0.0')?.definition.id).toBe(def1.id);
+    await netron.peer.unexposeRemoteService(peer1, 'TestService@1.0.0');
     const def2 = await netron.peer.exposeRemoteService(peer1, meta);
     expect(def2).toBeDefined();
   });
@@ -79,8 +82,8 @@ describe('Service Name Collision Protection (exposeRemoteService)', () => {
     await netron.peer.exposeRemoteService(peer2, createServiceMeta('ServiceB'));
 
     // Both services should be registered in the services map
-    expect(netron.services.has('ServiceA')).toBe(true);
-    expect(netron.services.has('ServiceB')).toBe(true);
+    expect(netron.services.has('ServiceA@1.0.0')).toBe(true);
+    expect(netron.services.has('ServiceB@1.0.0')).toBe(true);
   });
 
   it('should allow another peer to expose a service name after the original peer unexposes it', async () => {
@@ -90,15 +93,15 @@ describe('Service Name Collision Protection (exposeRemoteService)', () => {
 
     // peer1 exposes the service
     await netron.peer.exposeRemoteService(peer1, meta);
-    expect(netron.services.has('TestService')).toBe(true);
+    expect(netron.services.has('TestService@1.0.0')).toBe(true);
 
     // peer1 unexposes the service
-    await netron.peer.unexposeRemoteService(peer1, 'TestService');
-    expect(netron.services.has('TestService')).toBe(false);
+    await netron.peer.unexposeRemoteService(peer1, 'TestService@1.0.0');
+    expect(netron.services.has('TestService@1.0.0')).toBe(false);
 
     // peer2 should now be able to expose the same service name
     const def = await netron.peer.exposeRemoteService(peer2, meta);
     expect(def).toBeDefined();
-    expect(netron.services.has('TestService')).toBe(true);
+    expect(netron.services.has('TestService@1.0.0')).toBe(true);
   });
 });

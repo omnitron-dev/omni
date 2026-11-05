@@ -101,7 +101,11 @@ export async function query_interface(peer: RemotePeer, serviceName: string): Pr
 
   // Get definition from stub
   const definition = projectTransportDefinition(serviceStub, peer.transportName);
-  if (!definition) throw serviceNotFound(serviceName);
+  if (!definition) {
+    peer.logger.warn({ serviceName, peerId: peer.id, transport: peer.transportName },
+      'query_interface: service unavailable on this transport');
+    throw serviceNotFound(serviceName);
+  }
 
   // Get AuthorizationManager from Netron
   const authzManager = peer.netron.authorizationManager;

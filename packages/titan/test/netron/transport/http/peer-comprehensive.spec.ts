@@ -28,6 +28,7 @@ describe('HttpRemotePeer - Comprehensive Coverage', () => {
   let server: HttpServer;
   let connection: HttpConnection;
   let peer: HttpRemotePeer;
+  let mockPeer: { stubs: Map<string, unknown>; logger: typeof mockNetron.logger };
   // Worker-partitioned, the way the other server-binding specs in this
   // directory already do it. A bare `base + random(500)` can hand the same port
   // to two vitest workers running different files at the same moment: the
@@ -54,7 +55,7 @@ describe('HttpRemotePeer - Comprehensive Coverage', () => {
     // Create and start server
     server = new HttpServer({ port: testPort, host: 'localhost' });
 
-    const mockPeer = {
+    mockPeer = {
       stubs: new Map(),
       logger: mockNetron.logger,
     };
@@ -62,6 +63,7 @@ describe('HttpRemotePeer - Comprehensive Coverage', () => {
     // Add test service
     const testStub = {
       definition: {
+        id: 'test-stub', peerId: 'http-fixture',
         meta: {
           name: 'TestService',
           version: '1.0.0',
@@ -619,8 +621,9 @@ describe('HttpRemotePeer - Comprehensive Coverage', () => {
   describe('Task Execution', () => {
     it('should execute system tasks', async () => {
       // Add system service to server
-      const _systemStub = {
+      const systemStub = {
         definition: {
+          id: 'system-stub', peerId: 'http-fixture',
           meta: {
             name: '__system',
             version: '1.0.0',
@@ -633,19 +636,8 @@ describe('HttpRemotePeer - Comprehensive Coverage', () => {
         call: vi.fn(async () => ({ pong: true })),
       };
 
-      (server as any).services.set('__system', {
-        name: '__system',
-        version: '1.0.0',
-        methods: new Map([
-          [
-            'ping',
-            {
-              name: 'ping',
-              handler: async () => ({ pong: true }),
-            },
-          ],
-        ]),
-      });
+      mockPeer.stubs.set(systemStub.definition.id, systemStub);
+      server.registerService('__system', systemStub.definition);
 
       const result = await peer.executeTask('ping', {});
       expect(result.pong).toBe(true);

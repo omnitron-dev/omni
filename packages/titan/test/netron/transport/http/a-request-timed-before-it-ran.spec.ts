@@ -14,6 +14,7 @@
  * monitor's `/health` poll kept out of the traffic.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createMockLogger } from '../../test-utils.js';
 import { HttpServer } from '../../../../src/netron/transport/http/server.js';
 import { LatencyWindow } from '../../../../src/netron/transport/http/latency-window.js';
 
@@ -26,13 +27,15 @@ const invoke = (method: string, id = 'r1') =>
 
 describe('what the server measured', () => {
   let server: HttpServer;
-  let stub: { definition: unknown; call: ReturnType<typeof vi.fn> };
+  let stub: { instance: object; definition: unknown; call: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     stub = {
       definition: {
-        meta: { name: 'Clock@1.0.0', version: '1.0.0', methods: { slow: { name: 'slow' }, broken: { name: 'broken' } } },
+        id: 'stub-1', peerId: 'http-fixture',
+        meta: { name: 'Clock', version: '1.0.0', methods: { slow: { name: 'slow' }, broken: { name: 'broken' } } },
       },
+      instance: {},
       call: vi.fn(async (method: string) => {
         if (method === 'slow') {
           await new Promise((r) => setTimeout(r, 60));
@@ -42,7 +45,7 @@ describe('what the server measured', () => {
       }),
     };
     server = new HttpServer({ port: 3457, host: 'localhost' });
-    (server as any).setPeer({ stubs: new Map([['stub-1', stub]]) });
+    (server as any).setPeer({ logger: createMockLogger(), stubs: new Map([['stub-1', stub]]) });
   });
 
   afterEach(async () => {

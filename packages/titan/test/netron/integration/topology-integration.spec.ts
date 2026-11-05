@@ -15,6 +15,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Netron } from '../../../src/netron/netron.js';
 import { WebSocketTransport } from '../../../src/netron/transport/websocket/index.js';
+import { AuthorizationManager } from '../../../src/netron/auth/authorization-manager.js';
 import { Service1 } from '../fixtures/service1.js';
 import { Service2 } from '../fixtures/service2.js';
 import { createMockLogger } from '../test-utils.js';
@@ -70,6 +71,14 @@ async function createServer(id: string): Promise<{ netron: Netron; port: number 
   // in to remote-peer-initiated exposure. Production deployments
   // should pair this flag with a wired AuthorizationManager.
   const netron = new Netron(createMockLogger(), { id, allowRemoteServiceExposure: true });
+  // This loopback fixture explicitly grants its admitted clients the two
+  // forwarded services under test. Publication alone is not a gateway grant.
+  netron.authorizationManager = new AuthorizationManager(createMockLogger());
+  for (const service of ['service1', 'sharedService'])
+    netron.authorizationManager.registerACL({ service, allowedRoles: ['topology-fixture'] });
+  netron.setTransportAuthContext('ws', {
+    userId: 'topology-client', roles: ['topology-fixture'], permissions: [],
+  });
 
   netron.registerTransport('ws', () => new WebSocketTransport());
   netron.registerTransportServer('ws', {

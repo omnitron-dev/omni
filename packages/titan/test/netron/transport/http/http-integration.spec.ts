@@ -5,6 +5,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { HttpTransport } from '../../../../src/netron/transport/http/http-transport.js';
+import { createMockLogger } from '../../test-utils.js';
 import { HttpServer } from '../../../../src/netron/transport/http/server.js';
 import { HttpConnection } from '../../../../src/netron/transport/http/connection.js';
 
@@ -104,18 +105,21 @@ describe('HTTP Transport Integration (v1.0)', () => {
       // Setup mock peer with service
       const mockStub = {
         definition: {
+        id: 'stub-1', peerId: 'http-fixture',
           meta: {
-            name: 'Test@1.0.0',
+            name: 'Test',
             version: '1.0.0',
             methods: {
               test: { name: 'test' },
             },
           },
         },
+        instance: {},
         call: vi.fn().mockResolvedValue({ success: true }),
       };
 
       const mockPeer = {
+      logger: createMockLogger(),
         stubs: new Map([['stub-1', mockStub]]),
       };
 
@@ -158,7 +162,7 @@ describe('HTTP Transport Integration (v1.0)', () => {
           },
           services: {
             'Calculator@1.0.0': {
-              name: 'Calculator@1.0.0',
+              name: 'Calculator',
               version: '1.0.0',
               methods: ['add', 'subtract'],
             },
@@ -221,18 +225,21 @@ describe('HTTP Transport Integration (v1.0)', () => {
     it('should handle batch requests', async () => {
       const mockStub = {
         definition: {
+        id: 'stub-1', peerId: 'http-fixture',
           meta: {
-            name: 'Calculator@1.0.0',
+            name: 'Calculator',
             version: '1.0.0',
             methods: {
               add: { name: 'add' },
             },
           },
         },
+        instance: {},
         call: vi.fn().mockResolvedValueOnce(3).mockResolvedValueOnce(7),
       };
 
       (server as any).setPeer({
+        logger: createMockLogger(),
         stubs: new Map([['stub-1', mockStub]]),
       });
 

@@ -32,6 +32,7 @@ import { getFreeHttpPort } from '../utils/index.js';
 import { HttpServer } from '../../src/netron/transport/http/server.js';
 import { Uid } from '../../src/netron/uid.js';
 import { MAX_UID_VALUE } from '../../src/netron/constants.js';
+import { createMockLogger } from './test-utils.js';
 
 const TEST_TOKEN = 'unit-test-token';
 
@@ -103,6 +104,7 @@ describe('T#50 — Netron polish security & cleanup', () => {
 
       // Wire a minimal peer + AuthenticationManager that accepts TEST_TOKEN.
       const mockPeer: any = {
+        logger: createMockLogger(),
         stubs: new Map(),
         on: vi.fn(),
         off: vi.fn(),

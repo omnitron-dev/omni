@@ -54,14 +54,14 @@ describe('Bug Fix 1.1: Stale Services After Peer Disconnect', () => {
     const meta = { name: 'TestService', version: '1.0.0' };
     await netron.peer.exposeRemoteService(remotePeer, meta);
 
-    expect(netron.services.has('TestService')).toBe(true);
+    expect(netron.services.has('TestService@1.0.0')).toBe(true);
 
     // Disconnect the peer -- this triggers cleanupPeerServices
     netron.disconnect(remotePeer.id);
 
     // Allow any pending async cleanup to complete
     await vi.waitFor(() => {
-      expect(netron.services.has('TestService')).toBe(false);
+      expect(netron.services.has('TestService@1.0.0')).toBe(false);
     });
   });
 
@@ -77,18 +77,18 @@ describe('Bug Fix 1.1: Stale Services After Peer Disconnect', () => {
     await netron.peer.exposeRemoteService(peer1, { name: 'ServiceA', version: '1.0.0' });
     await netron.peer.exposeRemoteService(peer2, { name: 'ServiceB', version: '1.0.0' });
 
-    expect(netron.services.has('ServiceA')).toBe(true);
-    expect(netron.services.has('ServiceB')).toBe(true);
+    expect(netron.services.has('ServiceA@1.0.0')).toBe(true);
+    expect(netron.services.has('ServiceB@1.0.0')).toBe(true);
 
     // Disconnect only peer1
     netron.disconnect(peer1.id);
 
     await vi.waitFor(() => {
-      expect(netron.services.has('ServiceA')).toBe(false);
+      expect(netron.services.has('ServiceA@1.0.0')).toBe(false);
     });
 
     // ServiceB from peer2 must still be present
-    expect(netron.services.has('ServiceB')).toBe(true);
+    expect(netron.services.has('ServiceB@1.0.0')).toBe(true);
   });
 
   it('should remove all services when a peer with multiple services disconnects', async () => {
@@ -100,14 +100,14 @@ describe('Bug Fix 1.1: Stale Services After Peer Disconnect', () => {
     await netron.peer.exposeRemoteService(remotePeer, { name: 'ServiceX', version: '1.0.0' });
     await netron.peer.exposeRemoteService(remotePeer, { name: 'ServiceY', version: '2.0.0' });
 
-    expect(netron.services.has('ServiceX')).toBe(true);
-    expect(netron.services.has('ServiceY')).toBe(true);
+    expect(netron.services.has('ServiceX@1.0.0')).toBe(true);
+    expect(netron.services.has('ServiceY@2.0.0')).toBe(true);
 
     netron.disconnect(remotePeer.id);
 
     await vi.waitFor(() => {
-      expect(netron.services.has('ServiceX')).toBe(false);
-      expect(netron.services.has('ServiceY')).toBe(false);
+      expect(netron.services.has('ServiceX@1.0.0')).toBe(false);
+      expect(netron.services.has('ServiceY@2.0.0')).toBe(false);
     });
   });
 
@@ -131,11 +131,11 @@ describe('Bug Fix 1.1: Stale Services After Peer Disconnect', () => {
     netron.peers.set(remotePeer.id, remotePeer);
 
     await netron.peer.exposeRemoteService(remotePeer, { name: 'EphemeralService', version: '1.0.0' });
-    expect(netron.services.has('EphemeralService')).toBe(true);
+    expect(netron.services.has('EphemeralService@1.0.0')).toBe(true);
 
     // Manually unexpose the service before disconnect
-    await netron.peer.unexposeRemoteService(remotePeer, 'EphemeralService');
-    expect(netron.services.has('EphemeralService')).toBe(false);
+    await netron.peer.unexposeRemoteService(remotePeer, 'EphemeralService@1.0.0');
+    expect(netron.services.has('EphemeralService@1.0.0')).toBe(false);
 
     // Disconnect should not throw even though service is already gone
     expect(() => netron.disconnect(remotePeer.id)).not.toThrow();

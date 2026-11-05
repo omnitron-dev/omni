@@ -20,7 +20,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { sql } from 'kysely';
 
-import { createOmnitronDb } from '../../src/database/connection.js';
+import { databaseOfItsOwn, type OwnDatabase } from './a-database-of-its-own.js';
+import { requiresTestPostgres } from './requires-test-postgres.js';
 import { LogCollectorService } from '../../src/services/log-collector.service.js';
 
 const NODE_A = '11111111-1111-4111-8111-111111111111';
@@ -28,48 +29,19 @@ const NODE_B = '22222222-2222-4222-8222-222222222222';
 const APP = `log-filter-probe-${process.pid}`;
 const namespaceApps = [`${APP}/local/api`, `${APP}_research/local/api`, `${APP}Xresearch/local/api`];
 
-/**
- * Whether the omnitron Postgres answered, decided before any test is
- * collected.
- *
- * This file asserts about SQL and needs the real database. The first attempt
- * at guarding it checked a flag inside each test and returned early — which
- * reported four PASSES on a host where the database was down, the exact
- * shape of vacuous green this repository keeps finding. A skip has to be
- * declared at collection time to be reported as a skip.
- */
-/**
- * Only a database named for this file. It WRITES probe rows and deletes them
- * afterwards, and the default connection is the master's own omnitron-pg —
- * the `logs` table the console reads — so a run that died between the insert
- * and the delete left its probes in the live table. Pointed at nothing, it
- * skips and says why.
- */
-const TEST_URL = process.env['OMNITRON_TEST_DATABASE_URL'];
-const connect = () => createOmnitronDb({ connectionString: TEST_URL, max: 1, connectionTimeoutMillis: 5_000 });
-
-const reachable = TEST_URL
-  ? await (async () => {
-      const probe = await connect();
-      const ok = await sql`SELECT 1`
-        .execute(probe)
-        .then(() => true)
-        .catch((err) => {
-          console.warn(`[log-filters] no database at OMNITRON_TEST_DATABASE_URL: ${(err as Error).message}`);
-          return false;
-        });
-      await probe.destroy().catch(() => undefined);
-      return ok;
-    })()
-  : (console.warn('[log-filters] OMNITRON_TEST_DATABASE_URL is not set — not writing probe rows into the live database'),
-    false);
-
-let db: Awaited<ReturnType<typeof connect>>;
+// Use the ordinary test server, but own a migrated database for this file.
+// Never insert probes into the daemon's database or a shared test schema.
+const TEST_URL = process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test';
+const available = await requiresTestPostgres(TEST_URL);
+let own: OwnDatabase | undefined;
+let db: OwnDatabase['db'];
 let collector: LogCollectorService;
 
 beforeAll(async () => {
-  db = await connect();
-  collector = new LogCollectorService(db as never);
+  if (!available.ok) return;
+  own = await databaseOfItsOwn(TEST_URL, `omnitron_log_filters_${process.pid}`);
+  db = own.db;
+  collector = new LogCollectorService(db);
 
   await sql`
     INSERT INTO logs (id, timestamp, "nodeId", app, level, message, labels)
@@ -84,12 +56,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await collector.dispose();
-  await db.deleteFrom('logs').where('app', 'in', [APP, ...namespaceApps]).execute();
-  await db.destroy();
+  await collector?.dispose();
+  await own?.drop();
 });
 
-describe.skipIf(!reachable)('queryLogs', () => {
+describe.skipIf(!available.ok)('queryLogs', () => {
   it('reads project namespaces identically in pages, totals and live tail without LIKE wildcard leakage', async () => {
     const filter = { appPrefixes: [`${APP}/`, `${APP}_research/`] };
     const result = await collector.queryLogs(filter);
@@ -125,7 +96,7 @@ describe.skipIf(!reachable)('queryLogs', () => {
   });
 });
 
-describe.skipIf(!reachable)('getRecentLogs — the live tail', () => {
+describe.skipIf(!available.ok)('getRecentLogs — the live tail', () => {
   it('applies the same node filter as the paginated query', async () => {
     // A filter honoured by one path and not the other is how a viewer
     // changes its answer when you press Live.

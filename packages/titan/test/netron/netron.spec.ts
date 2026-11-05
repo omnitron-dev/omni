@@ -6,6 +6,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Netron } from '../../src/netron/netron.js';
 import { LocalPeer } from '../../src/netron/local-peer.js';
 import { RemotePeer } from '../../src/netron/remote-peer.js';
+import { HttpTransport } from '../../src/netron/transport/http/http-transport.js';
+import { WebSocketTransport } from '../../src/netron/transport/websocket/index.js';
 import { Service, Public } from '../../src/decorators/index.js';
 import { createLogger } from '../utils/test-logger.js';
 
@@ -195,7 +197,7 @@ describeOrSkip('Netron - Comprehensive Tests', () => {
       @Service({
         name: 'TransportService',
         version: '1.0.0',
-        transports: ['http', 'ws'],
+        transports: [new HttpTransport(), new WebSocketTransport()],
       })
       class TransportService {
         @Public()

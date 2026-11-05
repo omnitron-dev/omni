@@ -13,6 +13,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { getFreeHttpPort as getFreePort } from '../../../utils/index.js';
+import { createMockLogger } from '../../test-utils.js';
 import { HttpServer } from '../../../../src/netron/transport/http/server.js';
 import { LocalPeer } from '../../../../src/netron/local-peer.js';
 import { Definition } from '../../../../src/netron/definition.js';
@@ -42,6 +43,7 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
 
     // Create mock peer
     mockPeer = {
+      logger: createMockLogger(),
       stubs: new Map(),
       on: vi.fn(),
       off: vi.fn(),
@@ -99,6 +101,7 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
 
     const stub = {
       definition: testDefinition,
+      instance: {},
       call: vi.fn(async (methodName: string, args: any[], peer: any) => {
         const input = args[0]; // First argument is the input
         if (methodName === 'simpleMethod') {
@@ -117,12 +120,12 @@ describe('HttpServer - Edge Cases & Error Paths', () => {
       }),
     };
 
-    mockPeer.stubs.set('test-service', stub);
+    mockPeer.stubs.set(stub.definition.id, stub);
 
     server.setPeer(mockPeer);
 
     // Add cacheable configuration (not part of contract)
-    const service = (server as any).services.get('TestService');
+    const service = (server as any).services.get('TestService@1.0.0');
     if (service) {
       const cacheableMethod = service.methods.get('cacheableMethod');
       cacheableMethod.cacheable = true;

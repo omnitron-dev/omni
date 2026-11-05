@@ -153,6 +153,17 @@ describe('every refusal a core task makes says why, at warn, before it throws', 
     return new Map([['Svc@1.0.0', stub]]);
   };
 
+  it('query_interface: service is confined to another transport', async () => {
+    const services = new Map([['Svc@1.0.0', {
+      definition: { id: 'd1', meta: { name: 'Svc', version: '1.0.0', methods: {} } },
+      transports: ['tcp'],
+    }]]);
+    const { peer, lines } = taskPeer({}, { services });
+    Object.defineProperty(peer, 'transportName', { value: 'http' });
+    const { warned } = await refusal(() => query_interface(peer, 'Svc@1.0.0'), lines);
+    expect(warned.map(line => line.msg)).toEqual(['query_interface: service unavailable on this transport']);
+  });
+
   it('query_interface: denied', async () => {
     const { peer, lines } = taskPeer({}, {
       services: exposed(),
@@ -211,7 +222,7 @@ describe('every refusal a core task makes says why, at warn, before it throws', 
   });
 
   it('covers every refusal the core tasks can throw — a new one extends this court', () => {
-    // The eight cases above are the refusal sites that exist. A 4xx thrown
+    // The nine cases above are the refusal sites that exist. A 4xx thrown
     // from a core task that this file does not exercise would be logged by
     // nobody once the peer's line is at debug, so the count is the court.
     const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../src/netron/core-tasks');
@@ -220,6 +231,6 @@ describe('every refusal a core task makes says why, at warn, before it throws', 
       const source = readFileSync(path.join(dir, file), 'utf8');
       sites += (source.match(/throw (Errors\.(forbidden|notFound|tooManyRequests|badRequest|unauthorized)\b|serviceNotFound\()/g) ?? []).length;
     }
-    expect(sites).toBe(8);
+    expect(sites).toBe(9);
   });
 });

@@ -56,9 +56,10 @@ describe('Auth Middleware', () => {
       } as any,
       serviceName: 'testService',
       methodName: 'testMethod',
+      transport: 'ws',
       metadata: new Map([
         ['serviceInstance', {}],
-        ['transport', 'ws'],
+        ['transport', 'untrusted-metadata'],
         ['clientIp', '192.168.1.1'],
       ]),
       timing: {

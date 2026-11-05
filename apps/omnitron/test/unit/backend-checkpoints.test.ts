@@ -22,6 +22,8 @@ it('persists grants in a private atomic record and refuses an unrelated owner', 
 it('rejects public and symlink checkpoints instead of silently tightening their permissions', async () => {
   const directory = await root(), file = path.join(directory, 'record');
   await fs.writeFile(file, '{}', { mode: 0o644 });
+  // A private operator umask must not silently turn this invalid fixture private.
+  await fs.chmod(file, 0o644);
   await expect(readPrivateRecord(file)).rejects.toThrow('private regular file');
   await fs.chmod(file, 0o600);
   const link = path.join(directory, 'link'); await fs.symlink(file, link);

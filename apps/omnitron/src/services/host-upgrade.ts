@@ -476,10 +476,24 @@ export function runtimeStartCommand(runtime: HostRuntime, previous: InstalledBun
     const render=root=>original.split('\\n').map(l=>(l.startsWith('ExecStart=')||l.startsWith('WorkingDirectory=')||/^Environment="?OMNITRON_CWD=/.test(l))?l.split(${JSON.stringify(previous.root)}).join(root):l).join('\\n');
     const content=render(${JSON.stringify(bundle.root)});
     const file=${JSON.stringify(runtime.file)};
-    if(!${JSON.stringify(allowedCurrentRoots)}.map(render).includes(fs.readFileSync(file,'utf8'))) throw Error('Supervisor unit changed outside the captured host operation');
-    const mode=fs.statSync(file).mode & 0o777;
-    const temporary=file+'.upgrade-part'; const fd=fs.openSync(temporary,'w',mode);
-    try{fs.writeFileSync(fd,content);fs.fsyncSync(fd)}finally{fs.closeSync(fd)} fs.renameSync(temporary,file);
+    const originalStat=fs.lstatSync(file);
+    if(!originalStat.isFile()) throw Error('Supervisor unit must be a regular file');
+    const current=fs.readFileSync(file,'utf8');
+    if(!${JSON.stringify(allowedCurrentRoots)}.map(render).includes(current)) throw Error('Supervisor unit changed outside the captured host operation');
+    const temporary=file+'.upgrade-part'; const fd=fs.openSync(temporary,'wx',0o600);
+    try {
+      try {
+        fs.writeFileSync(fd,content);
+        const created=fs.fstatSync(fd);
+        if(created.uid!==originalStat.uid||created.gid!==originalStat.gid)fs.fchownSync(fd,originalStat.uid,originalStat.gid);
+        fs.fchmodSync(fd,originalStat.mode & 0o777);fs.fsyncSync(fd);
+      } finally {fs.closeSync(fd)}
+      const now=fs.lstatSync(file);
+      if(!now.isFile()||now.dev!==originalStat.dev||now.ino!==originalStat.ino||now.mode!==originalStat.mode||now.uid!==originalStat.uid||now.gid!==originalStat.gid||fs.readFileSync(file,'utf8')!==current)
+        throw Error('Supervisor unit changed while preparing replacement');
+      fs.renameSync(temporary,file);
+      const directory=fs.openSync(path.dirname(file),'r');try{fs.fsyncSync(directory)}finally{fs.closeSync(directory)}
+    } finally {if(fs.existsSync(temporary))fs.unlinkSync(temporary)}
     const scope=${JSON.stringify(runtime.scope === 'user' ? ['--user'] : [])};
     execFileSync('systemctl',[...scope,'daemon-reload'],{stdio:'inherit'});
     execFileSync('systemctl',[...scope,${JSON.stringify(runtime.enabled ? 'enable' : 'disable')},'omnitron-daemon.service'],{stdio:'inherit'});

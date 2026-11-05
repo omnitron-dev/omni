@@ -138,12 +138,13 @@ describe('host upgrade recovery order', () => {
   });
 });
 
+function temporary(run: (directory: string) => void) {
+  const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'host-upgrade-')));
+  try { run(directory); } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+}
+const execute = (command: string) => execSync(command, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+
 describe('generated remote commands on a real filesystem', () => {
-  function temporary(run: (directory: string) => void) {
-    const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'host-upgrade-')));
-    try { run(directory); } finally { fs.rmSync(directory, { recursive: true, force: true }); }
-  }
-  const execute = (command: string) => execSync(command, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   it('rejects disk configuration that has lost a serving app before the daemon is stopped', () => temporary(dir => {
     fs.mkdirSync(path.join(dir, 'dist/daemon'), { recursive: true }); fs.mkdirSync(path.join(dir, 'dist/config'), { recursive: true });
     fs.writeFileSync(path.join(dir, 'package.json'), '{"type":"module"}');
@@ -214,15 +215,16 @@ describe('generated remote commands on a real filesystem', () => {
 });
 
 describe('captured systemd binding recovery', () => {
-  it('changes only framework paths and restores original unit bytes and enablement', () => {
+  it.each(['022', '077'])('preserves original unit bytes, mode and enablement under umask %s', umask => {
     const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'host-unit-')));
     try {
       const log = path.join(dir, 'calls.jsonl'); const file = path.join(dir, 'omnitron-daemon.service');
       const contents = `[Service]\nExecStart=/usr/bin/node --import tsx/esm ${old.root}/dist/daemon/daemon-entry.js\nWorkingDirectory=${old.root}\nEnvironment=OMNITRON_CWD=${old.root}\nUser=appowner\nEnvironment=HOME=/home/appowner\nEnvironment=UNCHANGED=business-data\n`;
       fs.writeFileSync(file, contents, { mode: 0o640 });
+      fs.chmodSync(file, 0o640);
       fs.writeFileSync(path.join(dir, 'systemctl'), `#!/usr/bin/env node\nrequire('node:fs').appendFileSync(${JSON.stringify(log)},JSON.stringify(process.argv.slice(2))+'\\n');`, { mode: 0o755 });
       const runtime = { kind: 'systemd' as const, cwd: old.root, scope: 'system' as const, file, contents, enabled: false };
-      const run = (command: string) => execSync(command, { env: { ...process.env, PATH: `${dir}:${process.env['PATH']}` }, stdio: ['ignore', 'pipe', 'pipe'] });
+      const run = (command: string) => execSync(`umask ${umask}; ${command}`, { env: { ...process.env, PATH: `${dir}:${process.env['PATH']}` }, stdio: ['ignore', 'pipe', 'pipe'] });
       run(runtimeStopCommand(runtime, old)); run(runtimeStartCommand(runtime, old, next));
       expect(fs.readFileSync(file, 'utf8')).toBe(contents.replaceAll(old.root, next.root));
       run(runtimeStartCommand(runtime, old, old, [old.root, next.root]));
@@ -241,4 +243,15 @@ describe('captured systemd binding recovery', () => {
       expect(fs.readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(7);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
+  it.each(['unit', 'temporary'])('refuses a %s symlink without changing its target or starting systemd', link => temporary(dir => {
+    const file = path.join(dir, 'omnitron-daemon.service'), target = path.join(dir, 'unrelated');
+    const contents = `[Service]\nExecStart=/usr/bin/node ${old.root}/dist/daemon/daemon-entry.js\nWorkingDirectory=${old.root}\n`;
+    fs.writeFileSync(target, contents);
+    if (link === 'unit') fs.symlinkSync(target, file);
+    else { fs.writeFileSync(file, contents); fs.symlinkSync(target, file + '.upgrade-part'); }
+    const runtime = { kind: 'systemd' as const, cwd: old.root, scope: 'system' as const, file, contents, enabled: false };
+    expect(() => execute(runtimeStartCommand(runtime, old, next))).toThrow(link === 'unit' ? 'regular file' : 'EEXIST');
+    expect(fs.readFileSync(target, 'utf8')).toBe(contents);
+    expect(fs.lstatSync(link === 'unit' ? file : file + '.upgrade-part').isSymbolicLink()).toBe(true);
+  }));
 });

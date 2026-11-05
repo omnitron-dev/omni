@@ -38,19 +38,25 @@ export function redactDiagnosticText(value: string): string {
 }
 
 /** Bounded, cycle-safe cause formatting shared by frameworks and applications. */
-export function describeError(error: unknown, depth = 0): string {
+export function describeError(error: unknown, depth = 0, sensitiveValues: readonly string[] = []): string {
+  const secrets = [...new Set(sensitiveValues)].filter(Boolean).sort((a, b) => b.length - a.length);
+  const redact = (value: string) => {
+    // Redact complete known values before bounding text; truncation first can leak a prefix.
+    for (const secret of secrets) value = value.replaceAll(secret, '[redacted]');
+    return redactDiagnosticText(value);
+  };
   const seen = new Set<object>();
   let remaining = 32;
   const visit = (value: unknown, level: number): string => {
     if (--remaining < 0) return 'further causes omitted';
     if (value === null || value === undefined) return 'unknown error';
-    if (typeof value === 'string') return redactDiagnosticText(value.trim()) || 'unknown error';
+    if (typeof value === 'string') return redact(value.trim()) || 'unknown error';
     if (typeof value !== 'object') return String(value);
     if (seen.has(value) || level > 3) return 'unknown error';
     seen.add(value);
     try {
       const item = value as { message?: unknown; code?: unknown; cause?: unknown; errors?: unknown; name?: unknown };
-      const message = typeof item.message === 'string' ? redactDiagnosticText(item.message.trim()) : '';
+      const message = typeof item.message === 'string' ? redact(item.message.trim()) : '';
       const code = typeof item.code === 'string' || typeof item.code === 'number' ? String(item.code) : '';
       const reasons: string[] = [];
       if (message) reasons.push(code && !message.includes(code) ? `${message} (${code})` : message);
@@ -62,7 +68,7 @@ export function describeError(error: unknown, depth = 0): string {
       return meaningful.length ? meaningful.join('; ') : code || (typeof item.name === 'string' ? item.name : 'unknown error');
     } catch { return 'unreadable error'; }
   };
-  return redactDiagnosticText(visit(error, depth)).trim() || 'unknown error';
+  return redact(visit(error, depth)).trim() || 'unknown error';
 }
 
 /** Allowlist fields for delivery; never forward raw errors, stacks, headers or arbitrary metadata. */

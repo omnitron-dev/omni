@@ -45,3 +45,12 @@ describe('operational diagnostic boundaries', () => {
     expect(() => sanitizeDiagnostic({ ...clean, state: 'surprise' } as unknown as DiagnosticEvent)).toThrow('state');
   });
 });
+
+ it('redacts known credentials before truncating messages, including nested causes and codes', () => {
+  const secret = 'credential-' + 's'.repeat(2048);
+  const error = new Error('x'.repeat(2030) + secret, { cause: { message: 'failed ' + secret, code: secret } });
+  const text = describeError(error, 0, [secret]);
+  expect(text).not.toContain('credential-');
+  expect(text).toContain('[redacted]');
+  expect(text.length).toBeLessThanOrEqual(2048);
+});

@@ -231,7 +231,7 @@ describe('EventValidationService', () => {
         tags: z.array(z.string()).min(1).max(5),
       });
 
-      validationService.registerSchema('user.zod', zodSchema as any);
+      validationService.registerSchema('user.zod', zodSchema);
 
       expect(
         validationService.validateData('user.zod', {

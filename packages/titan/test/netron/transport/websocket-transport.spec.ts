@@ -134,13 +134,14 @@ describe('WebSocketTransport', () => {
       await promisify(external.listen).bind(external)(externalPort);
 
       try {
-        const server = await transport.createServer({ server: external } as never);
+        const server = new WebSocketServerAdapter(new WebSocketServer({ server: external }));
 
         let count = 0;
         server.on('listening', () => {
           count++;
         });
 
+        await server.listen();
         await server.listen();
         await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -149,6 +150,43 @@ describe('WebSocketTransport', () => {
       } finally {
         await promisify(external.close).bind(external)();
       }
+    });
+
+    it('waits for the actual external listener instead of reporting configured as ready', async () => {
+      const external = createServer();
+      const wss = new WebSocketServer({ server: external });
+      const server = new WebSocketServerAdapter(wss);
+      const listening = vi.fn();
+      server.on('listening', listening);
+      let ready = false;
+      const pending = server.listen().then(() => { ready = true; });
+      try {
+        await new Promise(resolve => setImmediate(resolve));
+        expect(ready).toBe(false);
+        expect(listening).not.toHaveBeenCalled();
+        await promisify(external.listen).bind(external)(await getFreePort(), '127.0.0.1');
+        await pending;
+        expect(server.port).toBe((external.address() as { port: number }).port);
+        expect(listening).toHaveBeenCalledOnce();
+      } finally {
+        await server.close();
+        if (external.listening) await promisify(external.close).bind(external)();
+      }
+    });
+
+    it('rejects a failed bind instead of returning a ready adapter', async () => {
+      await expect(transport.createServer({ host: httpServer.address().address, port: testPort }))
+        .rejects.toMatchObject({ code: 'EADDRINUSE' });
+    });
+
+    it('rejects when the external server closes before becoming ready', async () => {
+      const external = createServer();
+      const wss = new WebSocketServer({ server: external });
+      const server = new WebSocketServerAdapter(wss);
+      const pending = expect(server.listen()).rejects.toThrow('closed before listening');
+      await server.close();
+      await pending;
+      await expect(server.listen()).rejects.toThrow('server is closed');
     });
 
     it('should handle multiple WebSocket connections', async () => {

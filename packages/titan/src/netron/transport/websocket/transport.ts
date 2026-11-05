@@ -12,7 +12,7 @@ import { BaseTransport } from '../base-transport.js';
 import type { TransportCapabilities, ITransportConnection, ITransportServer } from '../types.js';
 import { NetronErrors, Errors } from '../../../errors/index.js';
 import { WebSocketConnection } from './connection.js';
-import { WebSocketServerAdapter } from './server.js';
+import { WebSocketServerAdapter, waitForWebSocketListening } from './server.js';
 import type { WebSocketOptions } from './types.js';
 
 /**
@@ -180,9 +180,12 @@ export class WebSocketTransport extends BaseTransport {
 
     const server = new WebSocketServerAdapter(wss, options);
 
-    // The WebSocketServer automatically starts listening when created with a port
-    // Wait a bit to ensure it's ready
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    try {
+      await waitForWebSocketListening(wss);
+    } catch (error) {
+      await server.close().catch(() => undefined);
+      throw error;
+    }
 
     return server;
   }
@@ -194,7 +197,7 @@ export class WebSocketTransport extends BaseTransport {
     const parsed = super.parseAddress(address);
 
     // Add default ports for ws and wss protocols
-    if (!parsed.port) {
+    if (parsed.port === undefined) {
       if (parsed.protocol === 'ws') {
         parsed.port = 80;
       } else if (parsed.protocol === 'wss') {

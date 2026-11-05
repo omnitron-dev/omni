@@ -12,6 +12,27 @@ import { WebSocketAuthHandler, type WebSocketAuthOptions } from './auth.js';
 import { WebSocketConnection } from './connection.js';
 import type { WebSocketOptions } from './types.js';
 
+/** Wait for the native listener, including asynchronous host resolution. */
+export function waitForWebSocketListening(wss: WebSocketServer): Promise<void> {
+  if (wss.options.noServer || (wss.options.port == null && !wss.options.server)) {
+    return Promise.reject(Errors.badRequest('WebSocketServer is not configured to listen. Provide port or server option.'));
+  }
+  if (wss.address()) return Promise.resolve();
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      wss.off('listening', ready);
+      wss.off('error', failed);
+      wss.off('close', closed);
+    };
+    const ready = () => { cleanup(); resolve(); };
+    const failed = (error: Error) => { cleanup(); reject(error); };
+    const closed = () => failed(new Error('WebSocket server closed before listening'));
+    wss.once('listening', ready);
+    wss.once('error', failed);
+    wss.once('close', closed);
+  });
+}
+
 /**
  * WebSocket server implementation
  */
@@ -22,6 +43,9 @@ export class WebSocketServerAdapter extends BaseServer {
   private readonly answerClientPing: boolean;
   private readonly requestLimiter: TransportRequestLimiter;
   private readonly admittedClients = new WeakMap<IncomingMessage, string>();
+  private listenPromise?: Promise<void>;
+  private startupError?: Error;
+  private closed = false;
 
   // Path prefix for WebSocket upgrade path matching (for reverse proxy support)
   private pathPrefix: string;
@@ -171,11 +195,13 @@ export class WebSocketServerAdapter extends BaseServer {
 
     // Handle server errors
     this.wss.on('error', (error: Error) => {
+      if (this.serverStartTime === undefined) this.startupError = error;
       this.emit('error', error);
     });
 
     // Handle server close
     this.wss.on('close', () => {
+      this.closed = true;
       if (!this.options.requestLimiter) this.requestLimiter.destroy();
       this.handleClose();
     });
@@ -200,27 +226,10 @@ export class WebSocketServerAdapter extends BaseServer {
    * Start listening (WebSocketServer might already be listening)
    */
   async listen(): Promise<void> {
-    // No-op if WebSocketServer was created with port option - it's automatically listening
-    // Otherwise, WebSocketServer must have been provided with a server option
-    //
-    // `listening` is asked FIRST and `port` is compared against `undefined`,
-    // because the same `0`-is-falsy reading that sent «any free port» to 8080
-    // in the transport lands here too, one layer down: a server created with
-    // `port: 0` IS listening, on a port the OS chose, and this refused it as
-    // «not configured to listen». Two halves of one mistake, and fixing only
-    // the first turned a silent wrong port into a loud false refusal.
-    if (
-      (this.wss as any).listening ||
-      (this.wss as any).options?.port !== undefined ||
-      (this.wss as any).options?.server
-    ) {
-      // Emit listening event on next tick to ensure listeners are attached
-      process.nextTick(() => this.handleListening());
-      // Also return a promise that resolves after the event is emitted
-      await new Promise((resolve) => setImmediate(resolve));
-    } else {
-      throw Errors.badRequest('WebSocketServer is not configured to listen. Provide port or server option.');
-    }
+    if (this.startupError) throw this.startupError;
+    if (this.closed) throw new Error('WebSocket server is closed');
+    this.listenPromise ??= waitForWebSocketListening(this.wss).then(() => this.handleListening());
+    return this.listenPromise;
   }
 
   /**

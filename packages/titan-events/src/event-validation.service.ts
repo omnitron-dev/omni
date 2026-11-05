@@ -474,17 +474,8 @@ export class EventValidationService {
    * Supports: ISchemaValidator, Zod schema, or JSON Schema
    */
   private createValidator(schema: unknown): ISchemaValidator {
-    // Already a validator
-    if (
-      schema &&
-      typeof schema === 'object' &&
-      'validate' in schema &&
-      typeof (schema as any).validate === 'function'
-    ) {
-      return schema as ISchemaValidator;
-    }
-
-    // Check if it's a Zod schema
+    // Zod also exposes validate(); its result is not our ISchemaValidator contract.
+    // Recognize it before the structural custom-validator branch.
     if (schema && typeof schema === 'object' && '_def' in schema) {
       const zodSchema = schema as ZodSchema;
       return {
@@ -508,6 +499,16 @@ export class EventValidationService {
           }
         },
       };
+    }
+
+    // Already a validator
+    if (
+      schema &&
+      typeof schema === 'object' &&
+      'validate' in schema &&
+      typeof (schema as any).validate === 'function'
+    ) {
+      return schema as ISchemaValidator;
     }
 
     // Assume it's a JSON Schema, convert to Zod

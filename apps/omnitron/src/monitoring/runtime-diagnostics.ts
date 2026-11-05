@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { HealthIndicator, type HealthIndicatorResult } from '@omnitron-dev/titan-health';
 import { describeError, sanitizeDiagnostic, type DiagnosticEvent, type DiagnosticFinding } from '@omnitron-dev/titan/diagnostics';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import { writeEmergencyStderr } from '../shared/emergency-output.js';
 
 /** Bounded health projection. The existing daemon log remains the persistent record. */
 export class RuntimeDiagnostics extends HealthIndicator {
@@ -10,6 +11,7 @@ export class RuntimeDiagnostics extends HealthIndicator {
   private readonly active = new Map<string, { event: DiagnosticEvent; occurrences: number; lastLoggedAt: number }>();
   private total = 0;
   private dropped = 0;
+  private readonly output = { failedWrites: 0, lastError: null as string | null, lastFailedAt: null as number | null };
 
   constructor(private readonly limit = 100) {
     super();
@@ -48,24 +50,37 @@ export class RuntimeDiagnostics extends HealthIndicator {
   }
 
   snapshot() {
-    return { total: this.total, dropped: this.dropped, active: [...this.active.values()].map(({ event, occurrences }) => ({ occurrences, event: { ...event, evidence: [...event.evidence] } })) };
+    return { total: this.total, dropped: this.dropped, output: { ...this.output }, active: [...this.active.values()].map(({ event, occurrences }) => ({ occurrences, event: { ...event, evidence: [...event.evidence] } })) };
   }
 
   async check(): Promise<HealthIndicatorResult> {
     const state = this.snapshot();
-    if (!state.active.length && !state.dropped) return this.healthy('No unresolved runtime diagnostics', state);
+    if (!state.active.length && !state.dropped && !state.output.lastError) return this.healthy('No unresolved runtime diagnostics', state);
     const title = state.active.slice(0, 3).map(({ event }) => `${event.id}: ${event.title}`).join('; ');
-    return this.degraded(`${state.active.length} unresolved runtime diagnostic(s)${state.dropped ? `; ${state.dropped} older records available in logs` : ''}. ${title}`, state);
+    const outputFailure = state.output.lastError ? ` Diagnostic output failed: ${state.output.lastError}.` : '';
+    return this.degraded(`${state.active.length} unresolved runtime diagnostic(s)${state.dropped ? `; ${state.dropped} older records evicted from memory` : ''}. ${title}${outputFailure}`, state);
   }
 
   private write(event: DiagnosticEvent, occurrences: number): void {
+    let loggerFailure: unknown;
+    const level = event.state === 'resolved' || event.severity === 'info' ? 'info' : event.severity === 'warning' ? 'warn' : 'error';
+    if (this.logger) {
+      try {
+        this.logger[level]({ diagnostic: event, occurrences }, event.title);
+        this.output.lastError = null;
+        return;
+      } catch (error) { loggerFailure = error; }
+    }
     try {
-      const level = event.state === 'resolved' || event.severity === 'info' ? 'info' : event.severity === 'warning' ? 'warn' : 'error';
-      if (this.logger) this.logger[level]({ diagnostic: event, occurrences }, event.title);
-      else process.stderr.write(JSON.stringify({ level, time: event.timestamp, msg: event.title, diagnostic: event, occurrences }) + '\n');
-    } catch {
-      // A failing logger must not recurse into the promise rejection handler.
-      try { process.stderr.write(JSON.stringify({ level: 50, time: event.timestamp, msg: event.title, diagnostic: event, loggingFailed: true }) + '\n'); } catch { /* no remaining writable output */ }
+      writeEmergencyStderr(Buffer.from(JSON.stringify({ level, time: event.timestamp, msg: event.title, diagnostic: event, occurrences,
+        ...(loggerFailure !== undefined && { loggingFailed: true, loggerError: describeError(loggerFailure) }) }) + '\n'));
+      this.output.lastError = null;
+    } catch (error) {
+      // No recursive logging, stream error event or unbounded queue when the
+      // final destination is unavailable. Memory health remains truthful.
+      this.output.failedWrites++;
+      this.output.lastFailedAt = event.timestamp;
+      this.output.lastError = describeError(error);
     }
   }
 }

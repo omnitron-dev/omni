@@ -470,6 +470,16 @@ An unavailable OS status query refuses installation. This option does not instal
 stop applications, supply missing owner capabilities or automatically fall back.
 An older owner's unsupported application operations remain unavailable.
 
+On Linux, guardian replacement checks the full systemd cgroup before stopping
+the unit. Its only permitted processes are the recorded guardian and backend;
+occupied descendants, additional processes, frozen or ambiguous group state
+refuse the transition. The refusal identifies the group and expected/observed
+PIDs or state. A short-lived native inspection child may require waiting for
+the observation to finish and preparing again. Do not kill an unidentified
+process or bypass this check. PID ordering and repeated entries in the kernel's
+`cgroup.procs` record do not change its process set; process lifetimes, executable
+identities and group membership are independently verified twice.
+
 ## Standalone infrastructure
 
 `omnitron infra up`, `down` and `reset --yes` operate on containers declared

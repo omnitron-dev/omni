@@ -51,11 +51,25 @@ export function guardianGroupIdentity(directory: string, permitted: number[]): s
     };
     if (read('cgroup.type') !== 'domain') throw Error('Expected a domain cgroup for the guardian');
     const pids = read('cgroup.procs').split(/\s+/).filter(Boolean);
+    if (pids.some(pid => !/^[1-9]\d*$/.test(pid) || !Number.isSafeInteger(Number(pid))))
+      throw Error('Malformed PID record in the guardian cgroup');
+    // cgroup.procs is an unordered process set; the kernel may repeat a PID
+    // while membership changes during a read. The enclosing fence separately
+    // verifies the process lifetimes and cgroup membership twice.
+    // https://docs.kernel.org/admin-guide/cgroup-v2.html#core-interface-files
+    const observed = [...new Set(pids.map(Number))].sort((a, b) => a - b);
+    const wanted = depth === 0 ? expected : '';
+    if (observed.join(' ') !== wanted) {
+      const scope = JSON.stringify(path.relative(directory, dir) || '.');
+      const shown = observed.slice(0, 16).join(' ') + (observed.length > 16 ? ` … (${observed.length} total)` : '');
+      throw Error(`Unknown, missing or nested process in the guardian cgroup ${scope}: expected PIDs [${wanted}], observed [${shown}]. Inspect the processes and wait for unrelated work to settle before preparing again.`);
+    }
     const events = read('cgroup.events').split('\n');
-    if (!events.includes('frozen 0') || !events.includes('populated ' + (depth === 0 && permitted.length ? '1' : '0')) ||
-        pids.some(pid => !/^[1-9]\d*$/.test(pid)) ||
-        pids.map(Number).sort((a, b) => a - b).join(' ') !== (depth === 0 ? expected : '')) {
-      throw Error('Unknown, missing or nested process in the guardian cgroup');
+    const populated = events.filter(event => event.startsWith('populated'));
+    const frozen = events.filter(event => event.startsWith('frozen'));
+    const expectedPopulation = depth === 0 && permitted.length ? 'populated 1' : 'populated 0';
+    if (frozen.length !== 1 || frozen[0] !== 'frozen 0' || populated.length !== 1 || populated[0] !== expectedPopulation) {
+      throw Error(`Unsafe guardian cgroup state ${JSON.stringify(path.relative(directory, dir) || '.')}: expected ${expectedPopulation}, frozen 0; observed populated=${populated.length === 1 ? populated[0]!.slice(-1) : 'unknown'}, frozen=${frozen.length === 1 ? frozen[0]!.slice(-1) : 'unknown'}. Guardian transition was refused.`);
     }
     const index = entries.length;
     entries.push(JSON.stringify([dir, String(stat.dev), String(stat.ino)]));

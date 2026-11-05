@@ -32,6 +32,23 @@ it('accepts empty descendants but refuses occupied descendants or any extra PID,
   domain(leaf, [345]); expect(() => guardianGroupIdentity(root, [guardian, backend])).toThrow(/nested process/);
   domain(leaf, []); write(root, 'cgroup.procs', '101\n102\n999'); expect(() => guardianGroupIdentity(root, [guardian, backend])).toThrow(/process/);
 });
+it('reads the documented unordered PID set without mistaking repeated entries for another process', () => {
+  const identity = guardianGroupIdentity(root, [guardian, backend]);
+  write(root, 'cgroup.procs', '102\n101\n102\n101');
+  expect(guardianGroupIdentity(root, [guardian, backend])).toBe(identity);
+  write(root, 'cgroup.procs', '102\n101\n999\n999');
+  expect(() => guardianGroupIdentity(root, [guardian, backend])).toThrow('expected PIDs [101 102], observed [101 102 999]');
+  write(root, 'cgroup.procs', '102\n102');
+  expect(() => guardianGroupIdentity(root, [guardian, backend])).toThrow('expected PIDs [101 102], observed [102]');
+});
+it('distinguishes unsafe cgroup state from process membership and refuses ambiguous event records', () => {
+  write(root, 'cgroup.events', 'populated 1\nfrozen 1');
+  expect(() => guardianGroupIdentity(root, [guardian, backend])).toThrow('observed populated=1, frozen=1');
+  write(root, 'cgroup.events', 'populated 0\npopulated 1\nfrozen 0');
+  expect(() => guardianGroupIdentity(root, [guardian, backend])).toThrow('observed populated=unknown, frozen=0');
+  write(root, 'cgroup.procs', '101\n1e2');
+  expect(() => guardianGroupIdentity(root, [guardian, backend])).toThrow('Malformed PID record');
+});
 it('rejects disappearing, dying, unreadable, symlinked and non-domain cgroups', () => {
   write(root, 'cgroup.stat', 'nr_descendants 1\nnr_dying_descendants 0');
   expect(() => guardianGroupIdentity(root, [guardian, backend])).toThrow(/changed/);

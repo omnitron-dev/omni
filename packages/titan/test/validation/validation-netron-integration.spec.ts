@@ -5,7 +5,7 @@
  * using REAL HTTP transport (no mocks for transport layer)
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { z } from 'zod';
 import { Netron } from '../../src/netron/netron.js';
 import { HttpTransport } from '../../src/netron/transport/http/http-transport.js';
@@ -913,47 +913,21 @@ describe('Netron-Validation Integration (Real HTTP)', () => {
       expect(avgGrowth).toBeLessThan(5 * 1024 * 1024); // Less than 5MB per batch
     });
 
-    it('should cache validators for performance', async () => {
-      // CRITICAL FIX: Add warmup phase before measurements to stabilize performance
-      // Warmup ensures JIT compilation, cache warming, and network connection reuse
-      for (let i = 0; i < 10; i++) {
-        await perfService.echo({ message: `warmup-${i}` });
+    it('reuses the declared schema and validates every HTTP request', async () => {
+      // HTTP dispatch uses the declared Zod schema directly. A latency ratio
+      // cannot prove caching; ValidationEngine's own suite checks cache identity.
+      const schema = PerfContract.definition.echo.input;
+      const parse = vi.spyOn(schema, 'safeParse');
+      try {
+        for (let i = 0; i < 30; i++) {
+          await expect(perfService.echo({ message: `request-${i}` })).resolves.toBe(`request-${i}`);
+        }
+        await expect(perfService.echo({ message: '' })).rejects.toThrow();
+        expect(parse).toHaveBeenCalledTimes(31);
+        expect(parse.mock.contexts.every(context => context === schema)).toBe(true);
+      } finally {
+        parse.mockRestore();
       }
-
-      // Additional warmup delay for connection stabilization
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      // Measure first "cold" call (after warmup, but for comparison)
-      const times1: number[] = [];
-      for (let i = 0; i < 10; i++) {
-        const start = performance.now();
-        await perfService.echo({ message: `first-${i}` });
-        times1.push(performance.now() - start);
-      }
-
-      // Measure cached calls
-      const times2: number[] = [];
-      for (let i = 0; i < 30; i++) {
-        const start = performance.now();
-        await perfService.echo({ message: `cached-${i}` });
-        times2.push(performance.now() - start);
-      }
-
-      // CRITICAL FIX: Use median instead of average to avoid outliers
-      const median = (arr: number[]) => {
-        const sorted = [...arr].sort((a, b) => a - b);
-        const mid = Math.floor(sorted.length / 2);
-        return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-      };
-
-      const medianFirst = median(times1);
-      const medianCached = median(times2);
-
-      // CRITICAL FIX: Allow 50% margin of error for parallel test execution
-      // Performance can vary significantly due to system load, GC, network conditions,
-      // and resource contention in parallel test execution
-      // Cached should be at most 150% of first call time (allowing for high variance)
-      expect(medianCached).toBeLessThan(medianFirst * 1.5);
     });
 
     it('should handle validation errors efficiently', async () => {

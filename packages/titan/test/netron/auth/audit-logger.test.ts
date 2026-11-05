@@ -24,7 +24,7 @@ import type { ILogger, LogLevel } from '../../../src/types/logger.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { budget } from '../../utils/index.js';
+import { createDeferred } from '../../utils/index.js';
 
 /**
  * Shared call tracking for mock logger and all its children
@@ -1327,71 +1327,59 @@ describe('AuditLogger Integration Tests', () => {
   });
 
   describe('Async vs Sync Modes', () => {
-    it('should operate in async mode (non-blocking)', async () => {
-      const slowAdapter: MemoryAuditAdapter & { saveDelay: number } = new MemoryAuditAdapter(100) as any;
-      slowAdapter.saveDelay = 100;
-      const originalSave = slowAdapter.save.bind(slowAdapter);
-      slowAdapter.save = async (event: AuditEvent) => {
-        await new Promise((resolve) => setTimeout(resolve, slowAdapter.saveDelay));
-        return originalSave(event);
+    it.each([
+      { mode: 'async (non-blocking)', async: true },
+      { mode: 'sync (blocking)', async: false },
+    ])('should respect storage completion in $mode mode', async ({ async }) => {
+      const adapter = new MemoryAuditAdapter(100);
+      const saveStarted = createDeferred();
+      const allowSave = createDeferred();
+      const saveCompleted = createDeferred();
+      const originalSave = adapter.save.bind(adapter);
+      adapter.save = async (event: AuditEvent) => {
+        saveStarted.resolve();
+        await allowSave.promise;
+        try {
+          await originalSave(event);
+        } finally {
+          saveCompleted.resolve();
+        }
       };
 
       const auditLogger = new AuditLogger(logger, {
-        storage: slowAdapter,
-        async: true, // Non-blocking
+        storage: adapter,
+        async,
       });
 
-      const start = Date.now();
-
-      await auditLogger.logAuth({
+      let logCompleted = false;
+      const logging = auditLogger.logAuth({
         timestamp: new Date(),
         service: 'testService',
         method: 'testMethod',
         success: true,
+      }).then(() => {
+        logCompleted = true;
       });
 
-      const elapsed = Date.now() - start;
+      try {
+        await saveStarted.promise;
+        // Let logAuth's continuations run while storage is explicitly blocked.
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(logCompleted).toBe(async);
+        expect(await auditLogger.query()).toEqual([]);
+      } finally {
+        allowSave.resolve();
+        await Promise.all([logging, saveCompleted.promise]);
+      }
 
-      // Should return quickly in async mode (not wait for slow save)
-      expect(elapsed).toBeLessThan(budget(50));
-
-      // Wait for save to complete
-      await new Promise((resolve) => setTimeout(resolve, 150));
-
+      expect(logCompleted).toBe(true);
       const events = await auditLogger.query();
       expect(events).toHaveLength(1);
-    });
-
-    it('should operate in sync mode (blocking)', async () => {
-      const slowAdapter: MemoryAuditAdapter & { saveDelay: number } = new MemoryAuditAdapter(100) as any;
-      slowAdapter.saveDelay = 50;
-      const originalSave = slowAdapter.save.bind(slowAdapter);
-      slowAdapter.save = async (event: AuditEvent) => {
-        await new Promise((resolve) => setTimeout(resolve, slowAdapter.saveDelay));
-        return originalSave(event);
-      };
-
-      const auditLogger = new AuditLogger(logger, {
-        storage: slowAdapter,
-        async: false, // Blocking
-      });
-
-      const start = Date.now();
-
-      await auditLogger.logAuth({
-        timestamp: new Date(),
+      expect(events[0]).toMatchObject({
         service: 'testService',
         method: 'testMethod',
         success: true,
       });
-
-      const elapsed = Date.now() - start;
-
-      // Should wait for save in sync mode
-      expect(elapsed).toBeGreaterThanOrEqual(50);
-
-      const events = await auditLogger.query();
-      expect(events).toHaveLength(1);
     });
 
     it('should handle async save errors gracefully', async () => {

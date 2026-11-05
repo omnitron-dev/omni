@@ -1018,14 +1018,22 @@ describe('Titan Application', () => {
   describe('Performance and Resource Management', () => {
     it('should track uptime correctly', async () => {
       app = createApp();
+      const startedAt = 1_700_000_000_000;
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(startedAt);
 
-      expect(app.uptime).toBe(0);
+      try {
+        expect(app.uptime).toBe(0);
+        await app.start();
+        expect(app.uptime).toBe(0);
 
-      await app.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
+        clock.mockReturnValue(startedAt + 137);
+        expect(app.uptime).toBe(137);
 
-      expect(app.uptime).toBeGreaterThanOrEqual(100);
-      expect(app.uptime).toBeLessThan(200);
+        clock.mockReturnValue(startedAt + 1_024);
+        expect(app.uptime).toBe(1_024);
+      } finally {
+        clock.mockRestore();
+      }
     });
 
     it('should handle many modules efficiently', async () => {

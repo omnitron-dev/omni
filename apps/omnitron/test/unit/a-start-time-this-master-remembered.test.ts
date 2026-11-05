@@ -65,7 +65,8 @@ function service(opts: {
     ),
     getLoadedConfig: () => ({ apps: SIX.map((name) => ({ name })) }),
     resolveStackApps: () => SIX.map((name) => ({ name })),
-    orchestrator: { list: () => [] },
+    orchestrator: { list: () => [], getHealth: async () => ({}) },
+    getStack: () => svc.toStackInfo('sample', 'test', stackConfig),
     infraManager: { getInstance: () => null },
     slaveConnector: {
       getConnections: () => [],

@@ -13,10 +13,11 @@ it('bundles the public UI entry and keeps the root alias off undeclared subpaths
     const aliases = withPrismSourceAliases({});
     const { build } = await import(createRequire(new URL('../../webapp/package.json', import.meta.url)).resolve('vite'));
     const result = await build({ configFile: false, logLevel: 'silent', resolve: { alias: aliases },
-      build: { write: false, rolldownOptions: { input: entry, external: [/^@mui\//] } } });
-    expect('output' in result).toBe(true);
-    if ('output' in result)
-      expect(result.output.some((chunk: { type: string; code?: string }) => chunk.type === 'chunk' && chunk.code?.includes('@mui/material'))).toBe(true);
+      build: { write: false, lib: { entry, formats: ['es'] }, rolldownOptions: { external: [/^@mui\//] } } });
+    const builds = Array.isArray(result) ? result : [result];
+    expect(builds.every(build => 'output' in build)).toBe(true);
+    const chunks = builds.flatMap(build => 'output' in build ? build.output : []);
+    expect(chunks.some((chunk: { type: string; code?: string }) => chunk.type === 'chunk' && chunk.code?.includes('@mui/material'))).toBe(true);
     for (const specifier of ['@omnitron-dev/prism/ui/private', '@omnitron-dev/prism/components/map/styles.css'])
       expect(aliases.some(alias => alias.find instanceof RegExp && alias.find.test(specifier))).toBe(false);
   } finally { await fs.rm(directory, { recursive: true, force: true }); }

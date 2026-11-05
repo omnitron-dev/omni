@@ -44,6 +44,7 @@ import type { IDaemonConfig } from '../config/types.js';
 import { emitJson, isJsonMode } from './output.js';
 import { resolveOmnitronPgConfig } from '../database/connection.js';
 import { OMNITRON_MIGRATIONS } from '../database/migrations/index.js';
+import type { OmnitronDatabase } from '../database/schema.js';
 import type { ProcessInfoDto } from '../config/types.js';
 import { compareTrees, listTree, processPredatesBuild } from '../shared/build-freshness.js';
 import { describeError } from '../shared/describe-error.js';
@@ -176,15 +177,16 @@ export class Findings {
  * Kept as a literal rather than derived, because the point is to notice a
  * table that is GONE — deriving it from the live database would make the
  * comparison vacuous. `doctor-required-tables.test.ts` keeps it honest from
- * the other side, reading `OmnitronDatabase` out of `schema.ts` and failing
- * when the two disagree, so adding a table to the schema and forgetting this
- * list is a red test rather than a silent gap.
+ * the other side, comparing the complete `OmnitronDatabase` type, including
+ * inherited module tables. Adding a table without extending this check fails
+ * the normal test typecheck.
  */
 export const REQUIRED_TABLES = [
   'nodes',
   'omnitron_users',
   'omnitron_sessions',
   'logs',
+  'metrics_samples',
   'alert_rules',
   'alert_events',
   'deployments',
@@ -195,7 +197,7 @@ export const REQUIRED_TABLES = [
   'sync_buffer',
   'sync_ingested',
   'node_health_checks',
-] as const satisfies readonly string[];
+] as const satisfies readonly (keyof OmnitronDatabase)[];
 
 /**
  * What a dead or empty database takes down with it.

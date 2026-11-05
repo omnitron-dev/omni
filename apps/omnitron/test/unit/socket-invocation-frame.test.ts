@@ -23,6 +23,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { RemotePeer } from '@omnitron-dev/titan/netron';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../../../..');
@@ -64,24 +65,15 @@ describe('the ALS frame around a socket call', () => {
     expect(frame).toContain("'methodName'");
   });
 
-  it('still calls through when no wrapper is configured', () => {
-    // Inventing a frame where none was asked for would change behaviour for
-    // every transport that never had one — and, as it turned out, timing
-    // too: an `async` wrapper adds a microtask hop before `sendResponse`,
-    // which let a streaming method's STREAM packets overtake the response
-    // carrying the stream reference. The no-wrapper path must return `fn()`
-    // directly.
-    //
-    // This assertion used to anchor on `private async withInvocationFrame`
-    // and broke the moment that `async` was correctly removed — a test
-    // watching a signature rather than the property. It now looks for the
-    // early return regardless of how the method is declared.
-    const src = read(remotePeer);
-    const start = src.indexOf('withInvocationFrame<T>');
-    const frame = src.slice(start, start + 1400);
-
-    expect(start, 'withInvocationFrame not found').toBeGreaterThan(0);
-    expect(frame).toMatch(/if \(!this\.invocationWrapper\)[\s\S]{0,40}return fn\(\)/);
+  it('preserves the original promise and does not read a service definition without a wrapper', async () => {
+    const peer = Object.create(RemotePeer.prototype) as {
+      withInvocationFrame<T>(service: () => string, method: string, call: () => Promise<T>, auth: undefined): Promise<T>;
+    };
+    const original = Promise.resolve('delivered');
+    const answer = peer.withInvocationFrame(() => { throw new Error('No service definition'); }, 'read', () => original, undefined);
+    // An additional async hop lets STREAM packets overtake their reference.
+    expect(answer).toBe(original);
+    await expect(answer).resolves.toBe('delivered');
   });
 
   it('is passed to the socket transports by both Omnitron call sites', () => {

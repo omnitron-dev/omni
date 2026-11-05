@@ -11,7 +11,10 @@ it('distinguishes the control plane package from an application merely named omn
     fs.writeFileSync(path.join(directory, 'package.json'), JSON.stringify({ name: '@omnitron-dev/omnitron' }));
     expect(isControlPlaneWorkspace(directory)).toBe(true);
     expect(ProjectRegistry.prototype.autoDetect.call({} as ProjectRegistry, directory)).toBeNull();
-    expect(() => ProjectRegistry.prototype.add.call({} as ProjectRegistry, 'control', directory)).toThrow(
+    const registry = Object.assign(Object.create(ProjectRegistry.prototype), {
+      cachedRevision: 'fixture', catalogRevision: () => 'fixture',
+    }) as ProjectRegistry;
+    expect(() => registry.add('control', directory)).toThrow(
       'system workspace'
     );
     fs.writeFileSync(path.join(directory, 'package.json'), JSON.stringify({ name: 'omnitron' }));

@@ -11,8 +11,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 describe('Defaults', () => {
-  it('OMNITRON_HOME is in user home directory', () => {
-    expect(OMNITRON_HOME).toBe(path.join(os.homedir(), '.omnitron'));
+  it('OMNITRON_HOME respects the explicit instance directory or defaults to the user home', () => {
+    expect(OMNITRON_HOME).toBe(process.env['OMNITRON_HOME'] ?? path.join(os.homedir(), '.omnitron'));
   });
 
   it('CLI_VERSION is a semver string', () => {
@@ -71,7 +71,7 @@ describe('Defaults', () => {
     // as the two disagreed — see daemon-bind-address.test.ts for the
     // behaviour this one cannot see.
     expect(DEFAULT_DAEMON_CONFIG.host).toBe('127.0.0.1');
-    expect(DEFAULT_DAEMON_CONFIG.pidFile).toContain('.omnitron');
-    expect(DEFAULT_DAEMON_CONFIG.stateFile).toContain('.omnitron');
+    expect(DEFAULT_DAEMON_CONFIG.pidFile).toBe(path.join(OMNITRON_HOME, 'daemon.pid'));
+    expect(DEFAULT_DAEMON_CONFIG.stateFile).toBe(path.join(OMNITRON_HOME, 'state.json'));
   });
 });

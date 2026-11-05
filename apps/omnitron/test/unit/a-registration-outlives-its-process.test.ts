@@ -31,10 +31,11 @@ import { ServiceRouter } from '../../src/orchestrator/service-router.js';
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as never;
 
 function fakeNetron() {
-  const exposed = new Map<string, unknown>();
+  const exposed = new Map<string, { instance: object }>();
   return {
     exposed,
     netron: {
+      services: exposed,
       peer: {
         exposeService: vi.fn(async (instance: object) => {
           const meta = Reflect.getMetadata?.(SERVICE_ANNOTATION, instance.constructor) as
@@ -42,7 +43,7 @@ function fakeNetron() {
             | undefined;
           const name = meta ? `${meta.name}@${meta.version}` : instance.constructor.name;
           if (exposed.has(name)) throw new Error(`Service already exposed: ${name}`);
-          exposed.set(name, instance);
+          exposed.set(name, { instance });
         }),
         unexposeService: vi.fn(async (qualifiedName: string) => {
           if (!exposed.has(qualifiedName)) throw new Error(`Unknown service: ${qualifiedName}`);
@@ -111,34 +112,4 @@ describe('the router gives back what it registered', () => {
   });
 });
 
-describe('both orchestrator paths release before dropping the handle', () => {
-  /** Comments are stripped: the prose explaining the call contains the call. */
-  function bodyOf(fnName: string): string {
-    const src = require('node:fs').readFileSync(
-      new URL('../../src/orchestrator/orchestrator.service.ts', import.meta.url),
-      'utf8',
-    ) as string;
-    const bare = src
-      .replace(/\/\*[\s\S]*?\*\//g, ' ')
-      .replace(/(^|[^:])\/\/[^\n]*/g, (_m: string, p1: string) => p1);
-    const at = bare.indexOf(fnName);
-    return at === -1 ? '' : bare.slice(at, at + 4000);
-  }
-
-  it('stopApp releases through the router rather than looping itself', () => {
-    const body = bodyOf('async stopApp(');
-    expect(body).toContain('releaseExposedServices');
-    expect(
-      /for \(const svcName of [\s\S]{0,60}getServiceNames\(\)\)/.test(body),
-      'the teardown loop is inline again — it belongs on the router',
-    ).toBe(false);
-  });
-
-  it('the stale-duplicate branch releases before deleting the handle', () => {
-    const body = bodyOf('Replacing stale duplicate handle');
-    const releaseAt = body.indexOf('releaseExposedServices');
-    const deleteAt = body.indexOf('this.handles.delete(key)');
-    expect(releaseAt, 'the handle is dropped with its services still registered').toBeGreaterThan(0);
-    expect(deleteAt).toBeGreaterThan(releaseAt);
-  });
-});
+// Real stop/replacement ordering is exercised in an-app-that-left-its-workers-running.test.ts.

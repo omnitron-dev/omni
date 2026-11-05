@@ -100,16 +100,19 @@ describe('stopping an app', () => {
     const { self, log } = orchestrator();
     const handle = generation('sample/deployed/quotes', log);
     handle.status = 'online';
+    handle.topology = { close: async () => { log.push('topology closed'); } } as never;
     self['handles'].set(handle.name, handle);
 
     await self['stopApp']('sample/deployed/quotes');
 
     expect(log).toEqual([
+      'topology closed',
       'sample/deployed/quotes: supervisor stopped',
       'sample/deployed/quotes: ohlcv-aggregator destroyed',
       'sample/deployed/quotes: transform destroyed',
     ]);
     expect(handle.topologyPools.size).toBe(0);
+    expect(handle.topology).toBeNull();
     expect(handle.status).toBe('stopped');
   });
 
@@ -189,11 +192,15 @@ describe('starting over a handle that is not online', () => {
     const { self, log } = orchestrator();
     const bare = generation('storage', log);
     bare.status = 'errored';
+    bare.topology = { close: async () => {
+      expect(self['handles'].get('storage')).toBe(bare);
+      log.push('topology closed');
+    } } as never;
     self['handles'].set('storage', bare);
 
     await self['startAppInternal']({ name: 'sample/deployed/storage', bootstrap: './bootstrap.ts' }, config);
 
-    expect(log.slice(0, 3)).toEqual(['storage: supervisor stopped', 'storage: ohlcv-aggregator destroyed', 'storage: transform destroyed']);
+    expect(log.slice(0, 4)).toEqual(['topology closed', 'storage: supervisor stopped', 'storage: ohlcv-aggregator destroyed', 'storage: transform destroyed']);
     expect(log.at(-1)).toBe('launch');
     expect(self['handles'].has('storage')).toBe(false);
   });

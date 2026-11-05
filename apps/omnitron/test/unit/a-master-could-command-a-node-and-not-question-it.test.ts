@@ -40,6 +40,7 @@ import {
   CONTROL_PLANE_READ_ROLES,
 } from '../../src/shared/roles.js';
 import { stripComments } from '../../../../scripts/lib/strip-comments.mjs';
+import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const rpc = stripComments(
@@ -101,20 +102,16 @@ describe('a credential is not a reading', () => {
     expect(guard).toContain('CONTROL_PLANE_ROLES');
   });
 
-  it('still returns what the master needs, for the services it asks about', async () => {
-    // The method itself is unchanged — only who may call it. This pins that
-    // the fields the deployment depends on are the ones it returns.
-    const src = fs.readFileSync(
-      path.join(here, '../../src/infrastructure/infrastructure.service.ts'),
-      'utf8',
-    );
-    const at = src.indexOf('getConnectionInfo(service: string)');
-    const body = src.slice(at, at + 1400);
-
-    expect(body).toContain("case 'postgres'");
-    expect(body).toContain("case 'redis'");
-    expect(body).toContain("case 'minio'");
-    expect(body).toMatch(/password/);
-    expect(body).toMatch(/secretKey/);
+  it('returns the configured credentials through the actual infrastructure API', () => {
+    const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } };
+    const infra = new InfrastructureService(logger as never, {
+      postgres: { password: 'database-fixture', databases: { sample: {} } },
+      redis: { password: 'cache-fixture' },
+      minio: { accessKey: 'objects-fixture', secretKey: 'objects-secret-fixture' },
+    });
+    expect(infra.getConnectionInfo('postgres')).toMatchObject({ password: 'database-fixture' });
+    expect(infra.getConnectionInfo('redis')).toMatchObject({ password: 'cache-fixture' });
+    expect(infra.getConnectionInfo('minio')).toMatchObject({ accessKey: 'objects-fixture', secretKey: 'objects-secret-fixture' });
+    expect(infra.getConnectionInfo('undeclared')).toBeNull();
   });
 });

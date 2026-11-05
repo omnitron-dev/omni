@@ -30,12 +30,12 @@ import { stripComments } from '../../../../scripts/lib/strip-comments.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const entry = stripComments(
-  fs.readFileSync(path.join(here, '../../src/daemon/daemon-entry.ts'), 'utf8'),
+  fs.readFileSync(path.join(here, '../../src/daemon/daemon-main.ts'), 'utf8'),
 );
 
 /** The options the daemon is started with, as the source writes them. */
 function startOptions(): string {
-  const at = entry.indexOf('await daemon.start(');
+  const at = entry.indexOf('await daemon.start(config,');
   expect(at, 'the daemon is started where this test thinks it is').toBeGreaterThan(-1);
   return entry.slice(at, entry.indexOf('}, dc);', at));
 }

@@ -20,7 +20,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 describe('the daemon status', () => {
   it('answers the daemon\'s own memory apart from the apps\'', async () => {
     const apps = [{ cpu: 1, memory: 1_000_000_000 }, { cpu: 2, memory: 555_019_264 }];
-    const rpc = new DaemonRpcService({ list: () => apps } as never, {} as never, {} as never, {} as never, {} as never);
+    const rpc = new DaemonRpcService({ list: () => apps } as never, {} as never, {} as never, {} as never,
+      { backendRuntimeStatus: () => ({ mode: 'direct', handoffSupported: false }) } as never);
 
     const status = await rpc.status();
 

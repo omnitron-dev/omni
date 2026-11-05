@@ -8,9 +8,8 @@ import { syncFinding, syncSeverity, syncWords } from '../../src/shared/sync-read
 describe('historical replication repair access and diagnostics', () => {
   it('limits the coordinator to administrators and source repair to the trusted control plane', () => {
     expect(Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, NodeManagerRpcService.prototype, 'reconcileNodeMetrics')).toEqual({ roles: ['admin'] });
-    for (const method of ['readUnverifiedMetrics', 'acknowledgeReconciliation']) {
-      expect(Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, SyncRpcService.prototype, method)).toEqual({ roles: ['admin', 'service_role'] });
-    }
+    expect(Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, SyncRpcService.prototype, 'readUnverifiedMetrics')).toEqual({ roles: ['admin', 'service_role'] });
+    expect(Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, SyncRpcService.prototype, 'acknowledgeReconciliation')).toEqual({ roles: ['service_role'] });
   });
 
   it('does not show a failed history read as a healthy empty queue', () => {

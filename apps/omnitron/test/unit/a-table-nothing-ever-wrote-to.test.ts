@@ -73,11 +73,10 @@ describe('a credential never reaches the audit trail', () => {
   });
 
   it('does not let a nested object smuggle one in', () => {
-    // One level of facts. A payload belongs in a log, not in a table that
-    // outlives every rotation.
-    const out = scrubDetails({ node: { sshPassword: 'hunter2' }, count: 3 })!;
+    const out = scrubDetails({ node: { sshPassword: 'hunter2', name: 'worker' }, count: 3 })!;
 
-    expect(out['node']).toBe('[object]');
+    expect(out['node']).toEqual({ sshPassword: '[redacted]', name: 'worker' });
+    expect(JSON.stringify(out)).not.toContain('hunter2');
     expect(out['count']).toBe(3);
   });
 

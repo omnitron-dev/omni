@@ -113,7 +113,7 @@ describe('what a stack runs', () => {
     await releasePruneCommand({ keep: 5, yes: true });
     expect(onDisk(DEPLOYED)).toBe(true);
     expect(onDisk(NEXT_OLDEST)).toBe(false);
-    expect(said.some((s) => s.text.includes(`keeping ${DEPLOYED}`) && s.text.includes('sample/test runs it'))).toBe(true);
+    expect(said.some((s) => s.text.includes(`keeping ${DEPLOYED}`) && s.text.includes('protected by deployment history for sample/test'))).toBe(true);
     expect(process.exitCode).toBeUndefined();
   });
 });
@@ -136,7 +136,7 @@ describe('a daemon that cannot say what runs', () => {
     await releasePruneCommand({ keep: 5, yes: true });
     expect(onDisk(DEPLOYED)).toBe(true);
     expect(process.exitCode).toBe(1);
-    expect(said.find((s) => s.level === 'error')?.text).toContain('no audit trail');
+    expect(said.find((s) => s.level === 'error')?.text).toContain('cannot read the deployment audit history');
   });
 
   it('refuses when a stack took a release whose name the trail did not record', async () => {

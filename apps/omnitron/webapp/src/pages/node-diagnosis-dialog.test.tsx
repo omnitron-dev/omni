@@ -57,14 +57,18 @@ it('does not overwrite a newer manual check with an older in-flight response', a
   expect(screen.queryByText('obsolete measurement')).toBeNull();
 });
 
-it('explains the separate master relay without treating access failures as unsupported features', () => {
-  const rendered = render(<NodeRelay data={{ nodeId: 'remote', reachable: false, relay: null, error: "Service 'OmnitronTelemetry' not found" }} />);
-  expect(screen.getByText('not exposed')).toBeTruthy();
-  expect(screen.getByText(/Slave daemons replicate logs and metrics/)).toBeTruthy();
+it('requires an explicit relay capability and keeps missing services distinct from a supported replication path', () => {
+  const rendered = render(<NodeRelay data={{ nodeId: 'remote', reachable: true, relay: { state: 'not-applicable', reason: 'worker-uses-durable-replication' }, error: null }} />);
+  expect(screen.getByText('not applicable')).toBeTruthy();
+  expect(screen.getByText(/durable replication outbox/)).toBeTruthy();
+  rendered.rerender(<NodeRelay data={{ nodeId: 'remote', reachable: false, relay: null, error: "Service 'OmnitronTelemetry' not found" }} />);
+  expect(screen.getByText('unavailable')).toBeTruthy();
+  expect(screen.getByText("Service 'OmnitronTelemetry' not found")).toBeTruthy();
+  expect(screen.queryByText(/durable replication outbox/)).toBeNull();
   rendered.rerender(<NodeRelay data={{ nodeId: 'remote', reachable: false, relay: null, error: 'Missing required role' }} />);
   expect(screen.getByText('Missing required role')).toBeTruthy();
   expect(screen.getByText('unavailable')).toBeTruthy();
-  expect(screen.queryByText(/Slave daemons replicate logs and metrics/)).toBeNull();
+  expect(screen.queryByText(/durable replication outbox/)).toBeNull();
 });
 
 it('uses delivery acknowledgements instead of the unused push-connection flag', () => {

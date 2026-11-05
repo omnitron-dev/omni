@@ -115,6 +115,9 @@ describe('the commands', () => {
     await secretDeleteCommand('k');
 
     expect(direct).toEqual(['set k', 'delete k']);
-    expect(said).toEqual(["Secret 'k' set (direct mode)", "Secret 'k' deleted (direct mode)"]);
+    expect(said).toEqual([
+      expect.stringContaining('A positional secret can appear in shell history'),
+      "Secret 'k' set (direct mode)", "Secret 'k' deleted (direct mode)",
+    ]);
   });
 });

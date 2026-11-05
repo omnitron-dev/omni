@@ -112,13 +112,18 @@ describe('a refusal repeated without its reason', () => {
     // Control: silence on the happy path is the reason the warning means
     // anything at all.
     const logger = recordingLogger();
-    const svc: any = new SyncService({} as never, logger, 'master-1', 'master', undefined as never);
+    const receipts = {
+      select: () => receipts, where: () => receipts,
+      execute: async () => ENTRIES.map(entry => ({ entryId: entry.id, outcome: 'committed' })),
+    };
+    const svc: any = new SyncService({ selectFrom: () => receipts } as never, logger, 'master-1', 'master', undefined as never);
     svc.checkRateLimit = () => true;
     svc.computeChecksum = async () => 'sum';
     svc.claimAndIngest = async () => 'accepted';
 
-    await svc.receiveBatch({ nodeId: 'edge-1', batchId: 'batch-2', checksum: 'sum', entries: ENTRIES });
+    const answer = await svc.receiveBatch({ nodeId: 'edge-1', batchId: 'batch-2', checksum: 'sum', entries: ENTRIES });
 
     expect(said(logger.warn)).toHaveLength(0);
+    expect(answer.committedIds).toEqual(ENTRIES.map(entry => entry.id));
   });
 });

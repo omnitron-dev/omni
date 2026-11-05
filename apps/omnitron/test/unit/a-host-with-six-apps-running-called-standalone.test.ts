@@ -96,7 +96,7 @@ describe('a host with no reconciler in its daemon', () => {
     const result = await indicator().check();
 
     expect(result.status).toBe('unhealthy');
-    expect(result.message).toBe('Docker did not answer: docker listed 2 container(s) and then described none of them');
+    expect(result.message).toBe('Docker did not answer: Error response from daemon: context deadline exceeded');
   });
 
   it('calls a host with nothing managed healthy, in those words', async () => {

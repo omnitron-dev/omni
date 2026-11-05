@@ -13,9 +13,12 @@
  * — and both returned the identical process with the same fully-qualified name
  * and managed flag, so this is a cost change and not a behaviour change.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const execSyncMock = vi.fn();
+const readFileMock = vi.fn();
+
+vi.mock('node:fs', () => ({ readFileSync: (...args: unknown[]) => readFileMock(...args) }));
 
 vi.mock('node:child_process', () => ({
   execSync: (...args: unknown[]) => execSyncMock(...args),
@@ -45,7 +48,12 @@ function psBatchEnv(): string {
 describe('discoverManagedProcesses — batched env read', () => {
   beforeEach(() => {
     execSyncMock.mockReset();
+    readFileMock.mockReset();
+    // Exercise the BSD algorithm on every runner; Linux has a distinct /proc path.
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
   });
+
+  afterEach(() => vi.restoreAllMocks());
 
   it('reads every environment in one ps call, not one per pid', () => {
     // The per-pid command is served too, so the old code path would also
@@ -100,5 +108,22 @@ describe('discoverManagedProcesses — batched env read', () => {
     expect(execSyncMock.mock.calls.filter((c) => (c[0] as string).startsWith('ps -p ')).length).toBe(
       HOST_PIDS.length
     );
+  });
+
+  it('reads Linux environments from proc without forking ps per process', () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
+    execSyncMock.mockImplementation((cmd: string) => {
+      if (cmd.startsWith('ps -eo')) return psTable();
+      throw new Error(`unexpected command: ${cmd}`);
+    });
+    readFileMock.mockImplementation((file: string) => file === `/proc/${TAGGED}/environ`
+      ? 'OMNITRON_APP_NAME=api\0OMNITRON_PROJECT=proj\0OMNITRON_STACK=stack\0OMNITRON_MANAGED=1\0'
+      : 'PATH=/usr/bin\0');
+
+    expect(discoverManagedProcesses()).toEqual([expect.objectContaining({
+      pid: TAGGED, appName: 'api', fullyQualifiedName: 'proj/stack/api', managed: true,
+    })]);
+    expect(execSyncMock).toHaveBeenCalledTimes(1);
+    expect(readFileMock).toHaveBeenCalledTimes(HOST_PIDS.length);
   });
 });

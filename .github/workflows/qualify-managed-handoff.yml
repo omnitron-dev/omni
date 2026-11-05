@@ -76,7 +76,8 @@ jobs:
           node apps/omnitron/test/runtime/installed-runtime-context.mjs \
             "$RUNNER_TEMP/omnitron-handoff-$CANDIDATE/packages/0/dist" \
             "$RUNNER_TEMP/omnitron-handoff-$PREVIOUS/packages/0/dist" \
-            "$RUNNER_TEMP/source-$CANDIDATE"
+            "$RUNNER_TEMP/source-$CANDIDATE" \
+            "--application-dist=$RUNNER_TEMP/source-$CANDIDATE/apps/omnitron/dist"
       - name: Recover, update and roll back while a supervised application serves requests
         run: |
           stage=/opt/omnitron-handoff-qualification

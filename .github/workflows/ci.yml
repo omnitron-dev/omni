@@ -212,7 +212,6 @@ jobs:
       TURBO_FORCE: 'true'
       TURBO_ENV_MODE: loose
       TURBO_TELEMETRY_DISABLED: '1'
-      OMNITRON_HOME: ${{ runner.temp }}/omnitron-test-home
       TEST_DATABASE_URL: postgresql://test:test@127.0.0.1:15432/test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -226,6 +225,8 @@ jobs:
       # Owns a unique Compose project and tears it down on success or failure.
       # Run every package's normal suite, in addition to the focused gates above.
       - run: pnpm test:ci
+        env:
+          OMNITRON_HOME: ${{ runner.temp }}/omnitron-test-home
 
   lint:
     name: Workspace lint

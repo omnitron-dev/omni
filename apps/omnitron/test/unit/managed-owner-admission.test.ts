@@ -3,8 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { METADATA_KEYS } from '@omnitron-dev/titan/decorators';
 import { OmnitronDaemon } from '../../src/daemon/daemon.js';
 import { DaemonRpcService } from '../../src/daemon/daemon.rpc-service.js';
-import { ProjectService } from '../../src/services/project.service.js';
-import { refuseForeignOmni } from '../../src/release/daemon-omni.js';
 import { attestManagedOwnerBuild } from '../../src/daemon/managed-owner-build.js';
 import type { BuildStamp } from '../../src/shared/build-stamp.js';
 
@@ -19,27 +17,15 @@ beforeEach(() => native.mockReset().mockResolvedValue(stamp));
 
 function fixture() {
   const execution = { controllerId: 'controller', state: vi.fn(() => ({ phase:'active', connection:{status:'connected'}, ...expected })), recoverySnapshot: vi.fn(async (): Promise<ReturnType<typeof snapshot> & { ownerBuild?: BuildStamp | null }> => snapshot()) };
-  const daemon = Object.assign(Object.create(OmnitronDaemon.prototype) as OmnitronDaemon, { execution, supervision: { type: 'independent' } });
+  const daemon = Object.create(OmnitronDaemon.prototype) as OmnitronDaemon;
+  Object.assign(daemon, { execution, supervision: { type: 'independent' } });
   return { daemon, execution };
 }
 
 describe('application release admission using a supervised legacy owner', () => {
-  it('bridges the authenticated release check to the execution owner and preserves an independent backend build', async () => {
-    const { daemon } = fixture();
-    const invoke = vi.fn(async (_host: string, _port: number, _service: string, method: string, args: unknown[]) =>
-      method === 'status' ? { version: '0.3.2', build: different, execution: {
-        mode: 'resident', phase: 'active', connection: { status: 'connected' }, ...expected,
-      } } : daemon.attestApplicationOwner(args[0] as typeof expected));
-    const project = Object.assign(Object.create(ProjectService.prototype) as ProjectService, { getSlaveConnector: () => ({ invokeOnSlave: invoke }) });
-    const evidence = await project['askDaemonBuilds']({ nodes: [{ host: 'node.test' }] } as never);
-    expect(refuseForeignOmni(stamp.commit, evidence, true)).toBeNull();
-    expect(refuseForeignOmni(stamp.commit, evidence, false)).toBeNull();
-    expect(refuseForeignOmni(different.commit, evidence, true)).toMatch(/execution owner runs/);
-    expect(refuseForeignOmni(stamp.commit, [{ ...evidence[0]!, execution: { ...evidence[0]!.execution!, phase:'draining' } }], true)).toMatch(/draining/);
-    expect(invoke).toHaveBeenCalledWith('node.test',9700,'OmnitronDaemon','status',[],{ requireCredential:true });
-    expect(invoke).toHaveBeenCalledWith('node.test',9700,'OmnitronDaemon','attestApplicationOwner',[expected],{ requireCredential:true });
+  it('keeps native owner attestation scoped to authenticated operators', () => {
     expect(Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, DaemonRpcService.prototype, 'attestApplicationOwner')?.roles)
-      .toEqual(['admin','operator','service_role']);
+      .toEqual(['admin', 'operator', 'service_role']);
   });
 
   it('coalesces overlapping native verification, takes a new proof for each later admission and never retains a completed proof', async () => {
@@ -87,20 +73,4 @@ describe('application release admission using a supervised legacy owner', () => 
     await expect(daemon.attestApplicationOwner(expected)).rejects.toThrow('independent OS supervision');
   });
 
-  it('retains a readable refusal on pre-verifier backends and avoids a proof call for already stamped owners', async () => {
-    const status = { version: '0.3.2', build: stamp, execution: { mode:'resident', connection:{status:'connected'}, ...expected } };
-    const invoke = vi.fn(async (_host: string, _port: number, _service: string, method: string) => {
-      if (method === 'status') return status;
-      throw Error('Method not found');
-    });
-    const project = Object.assign(Object.create(ProjectService.prototype) as ProjectService, { getSlaveConnector: () => ({ invokeOnSlave: invoke }) });
-    const stack = { nodes:[{host:'node.test'}] } as never;
-    expect(refuseForeignOmni(stamp.commit, await project['askDaemonBuilds'](stack), true)).toContain('authenticated native build verification');
-    Object.assign(status.execution,{ownerBuild: null});invoke.mockClear();
-    expect(refuseForeignOmni(stamp.commit, await project['askDaemonBuilds'](stack), true)).toContain('did not report');
-    expect(invoke).toHaveBeenCalledTimes(1);
-    Object.assign(status.execution,{ownerBuild: different});invoke.mockClear();
-    expect(refuseForeignOmni(stamp.commit, await project['askDaemonBuilds'](stack), true)).toContain(different.commit);
-    expect(invoke).toHaveBeenCalledTimes(1);
-  });
 });

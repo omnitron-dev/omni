@@ -1,5 +1,5 @@
 // Executed with the verified Node binary of the OS-managed guardian over the pinned SSH connection.
-/* global commandFailure -- shared failed-process reader supplied by managedHostCommand */
+/* global commandFailure, targetRuntime -- shared readers supplied by managedHostCommand */
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -120,6 +120,12 @@ try {
     !hash.test(snap.inventoryDigest)
   )
     throw Error('Unsettled owner inventory');
+  // A guardian and its resident may use different Node images. Run the shared
+  // target reader with the actual owner executable, without inherited loaders.
+  const target = JSON.parse(execFileSync(owner.execPath, ['--input-type=module', '-e',
+    'const read=' + targetRuntime.toString() + ';console.log(JSON.stringify(await read()));'],
+  { cwd: owner.runtimeRoot, env: { ...process.env, NODE_OPTIONS: '', NODE_PATH: '' },
+    encoding: 'utf8', timeout: 30000, maxBuffer: 1048576 }));
   const bundle = {
     root: path.dirname(current.directory),
     commit: current.build.commit,
@@ -134,10 +140,20 @@ try {
       ownerId: live.owner.id,
       ownerPid,
     },
-    applicationRuntime: { root: path.dirname(owner.directory), executable: owner.execPath, commit: owner.build.commit,
+    applicationRuntime: { root: path.dirname(owner.directory), executable: owner.execPath, commit: owner.build.commit, target,
       execution: { mode: 'resident', protocol: snap.protocol, ownerId: snap.status.owner.id, pid: ownerPid, epoch: snap.status.controller.epoch } },
   };
   if (wanted.operation === 'inspect') {
+    const finalChannel = await privateControlClient(path.join(config.directory, 'owner.sock'), 'OmnitronExecution');
+    try {
+      const final = await finalChannel.service.snapshot();
+      if (final.protocol !== snap.protocol || final.status.phase !== 'active' ||
+          JSON.stringify(final.status.owner) !== JSON.stringify(snap.status.owner) ||
+          final.status.controller.epoch !== snap.status.controller.epoch ||
+          final.status.controller.controllerId !== snap.status.controller.controllerId ||
+          await managedJobPid(config, 'owner') !== ownerPid || executable(ownerPid) !== owner.execPath)
+        throw Error('Execution owner or controller grant changed during runtime inspection');
+    } finally { await finalChannel.close(); }
     assertSelection();
     console.log(JSON.stringify({ bundle }));
   } else {

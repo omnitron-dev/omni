@@ -77,7 +77,6 @@ import type {
   IStackConfig,
   ISeedProject,
   DaemonRole,
-  DaemonStatusDto,
   IAppDefinition,
   AppStatus,
   OmnitronAppConfig,
@@ -3045,11 +3044,13 @@ export class ProjectService extends EventEmitter {
       );
     }
 
-    // Admission and installation must agree on the framework the application owner actually loads.
-    const { refuseReleaseOwners } = await import('../release/daemon-omni.js');
-    const foreign = stackConfig.type === 'local' ? null : refuseReleaseOwners(release.manifest, stackConfig, configuredApps, await this.askDaemonBuilds(stackConfig));
-    if (foreign) {
-      throw new Error(`Refusing release ${release.id} for ${projectName}/${stackName}: ${foreign}.`);
+    // Admission and installation use the same native resident/runtime proof.
+    // A frozen application supplies its own SDK; a controller build is not its runtime.
+    const { refuseReleaseOwners } = await import('../release/owner-admission.js');
+    const incompatible = stackConfig.type === 'local' ? null : refuseReleaseOwners(release.manifest, stackConfig, configuredApps,
+      await this.askReleaseOwners(stackConfig, configuredApps));
+    if (incompatible) {
+      throw new Error(`Refusing release ${release.id} for ${projectName}/${stackName}: ${incompatible}.`);
     }
 
     const infra = mergeInfrastructure(config, stackConfig) as
@@ -3080,31 +3081,19 @@ export class ProjectService extends EventEmitter {
     return remoteDefinitions ? { ...release, remoteDefinitions } : release;
   }
 
-  /** Ask each authenticated node for the build loaded by its application owner. */
-  private async askDaemonBuilds(
-    stackConfig: IStackConfig,
-  ): Promise<Array<import('../release/daemon-omni.js').DaemonAnswer>> {
-    const connector = this.getSlaveConnector();
+  /** Inspect exactly the nodes that will execute applications. Delivery repeats
+   * this OS/private-Netron proof; version suffixes never substitute for it. */
+  private async askReleaseOwners(
+    stackConfig: IStackConfig, apps: readonly IEcosystemAppEntry[],
+  ): Promise<Array<import('../release/owner-admission.js').ReleaseOwnerAnswer>> {
     return Promise.all(
-      (stackConfig.nodes ?? []).map(async (node) => {
+      resolveNodePlacements(stackConfig, apps).filter(placement => placement.apps.length).map(async ({ node }) => {
         try {
-          const status = await connector.invokeOnSlave(node.host, node.port ?? 9700, 'OmnitronDaemon', 'status', [], { requireCredential: true }) as DaemonStatusDto | undefined;
-          let execution = status?.execution;
-          // An omitted field identifies owners predating self-reporting. A null or
-          // dirty self-report is authoritative and must never be replaced.
-          if (execution?.mode === 'resident' && execution.ownerBuild === undefined && execution.connection?.status === 'connected') {
-            if (!execution.owner || !execution.epoch) throw new Error('Resident owner identity or lease epoch is missing');
-            try {
-              const ownerBuild = await connector.invokeOnSlave(node.host, node.port ?? 9700, 'OmnitronDaemon', 'attestApplicationOwner',
-                [{ owner: execution.owner, epoch: execution.epoch }], { requireCredential: true }) as import('../shared/build-stamp.js').BuildStamp;
-              execution = { ...execution, ownerBuild };
-            } catch (err) {
-              throw new Error('The resident owner needs authenticated native build verification on the target backend: ' + describeFailure(err), { cause: err });
-            }
-          }
-          return { host: node.host, port: node.port ?? 9700, version: status?.version ?? null, build: status?.build, execution };
+          const bundle = await this.deployer.inspectInstalledBundle(await this.targetForStackNode(node));
+          return { host: node.host, port: node.port ?? 9700,
+            ...(bundle.applicationRuntime && { runtime: bundle.applicationRuntime }) };
         } catch (err) {
-          return { host: node.host, port: node.port ?? 9700, version: null, error: (err as Error).message };
+          return { host: node.host, port: node.port ?? 9700, error: describeFailure(err) };
         }
       }),
     );

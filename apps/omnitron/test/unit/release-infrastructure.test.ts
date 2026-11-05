@@ -12,6 +12,7 @@ import { ProjectService } from '../../src/services/project.service.js';
 import * as metadata from '../../src/project/bootstrap-metadata.js';
 
 const cleanup: string[] = [];
+const target = { platform: 'linux', arch: 'x64', node: 'v22.23.4', abi: '127', libc: '2.39', executableSha256: 'a'.repeat(64) };
 afterEach(async () => {
   vi.restoreAllMocks();
   for (const root of cleanup.splice(0)) await rm(root, { recursive: true, force: true });
@@ -63,8 +64,9 @@ async function fixture(archived?: object | string) {
       project: { commit, repo: 'fixture' },
       omni: { commit, repo: 'framework' },
       gates: [{ name: 'test', status: 'passed' }],
-      artifacts: [{ app: 'api', version: '1', bytes: bytes.length, sha256: hash }],
-      builtWith: { packages: [], omnitron: '1' },
+      artifacts: [{ app: 'api', version: '1', bytes: bytes.length, sha256: hash,
+        launch: { mode: 'bootstrap', file: 'dist/bootstrap.js', closureSha256: 'b'.repeat(64) } }],
+      builtWith: { packages: [], omnitron: '1', target },
     })
   );
   return { repo, store: path.dirname(releaseRoot), archive, commit };
@@ -82,7 +84,8 @@ it('uses archived static infrastructure through actual remote admission, even wi
     logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
     bootstrapTopology: new Map(),
     bootstrapMetadata: { save: vi.fn(), fail: vi.fn() },
-    askDaemonBuilds: () => [{ host: 'node', version: '1.0.0+local.' + f.commit.slice(0, 8) + '.1' }],
+    askReleaseOwners: () => [{ host: 'node', runtime: { root: '/runtime/packages/0', executable: '/runtime/node', commit: f.commit, target,
+      execution: { mode: 'resident', protocol: 1, ownerId: 'owner', pid: 42, epoch: 1 } } }],
   });
   const definition = { name: 'api', version: '1', processes: [] };
   vi.spyOn(metadata, 'readBootstrapMetadata').mockResolvedValue({ definition, metadata: {} as never });

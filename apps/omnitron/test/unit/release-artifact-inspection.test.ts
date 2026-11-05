@@ -193,7 +193,7 @@ describe('public read-only release artifact inspection', () => {
   it('refuses closure target mismatch and unsafe Node preloads', async () => {
     const f = await fixture();
     await f.reseal({ runtime: { ...target, arch: 'arm64' } });
-    await expect(f.inspect()).rejects.toThrow('execution target or Node options differ');
+    await expect(f.inspect()).rejects.toThrow('recorded release target: arch');
     await f.reseal({ nodeOptions: '--import=./dist/main.js' });
     await expect(f.inspect()).rejects.toThrow('NODE_OPTIONS permits only');
     await missing(f.marker);

@@ -1,10 +1,13 @@
 /** Controlled host upgrades. App deployments pin an installed bundle and never call this lifecycle. */
 import path from 'node:path';
 import { shellEscape } from '../shared/shell-escape.js';
+import type { TargetRuntime } from '../release/target-runtime.js';
 
 export const HOST_UPGRADE_CONTRACT = 'omnitron.host-upgrade.json';
 export interface ApplicationRuntime {
   root: string; executable: string; commit: string;
+  /** Measured using this owner's verified executable, never the controller's Node. */
+  target?: TargetRuntime;
   /** Authenticated resident execution protocol, not a claim inferred from a build version. */
   execution?: { mode: 'resident'; protocol: 1; ownerId: string; pid: number; epoch: number };
 }

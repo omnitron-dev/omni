@@ -198,7 +198,7 @@ try {
   assert.equal(JSON.parse(await run(install)),options);
   const target=await(await load('target-runtime')).targetRuntime();
   assert.equal(await verifyFrozenApplication(root,launch,target,options),bootstrap);
-  await assert.rejects(verifyFrozenApplication(root,launch,{...target,arch:'other'},options),/execution target/);
+  await assert.rejects(verifyFrozenApplication(root,launch,{...target,arch:'other'},options),/recorded release target/);
   await assert.rejects(verifyFrozenApplication(root,launch,target,''),/Node options/);
   const shippedTitan=await fs.realpath(path.join(root,'node_modules/@omnitron-dev/titan'));
   assert.ok(shippedTitan.startsWith(root+path.sep));

@@ -76,7 +76,8 @@ try {
   const application = path.join(directory, 'source');
   await fs.mkdir(path.join(application, 'dist'), { recursive: true });
   const request = createRequire(path.join(applicationDist, 'index.js'));
-  const titan = await fs.realpath(path.join(adapterPackage, 'node_modules/@omnitron-dev/titan'));
+  const { resolveInstalledDependency } = await load('release/package-resolution');
+  const titan = await fs.realpath(await resolveInstalledDependency(adapterPackage, '@omnitron-dev/titan'));
   for (const [name, target] of [['@omnitron-dev/titan', titan], ['@omnitron-dev/omnitron', adapterPackage]]) {
     const link = path.join(application, 'node_modules', name);
     await fs.mkdir(path.dirname(link), { recursive: true }); await fs.symlink(target, link, 'dir');
@@ -242,7 +243,7 @@ Module({providers:[[createToken('mixed-watch-proof'),{useFactory:()=>{fs.appendF
       assert.equal(snap.protocol,1);assert.equal(snap.status.owner.pid,owner.pid);
       assert.equal(snap.status.phase,'active');
       return {root:path.dirname(dist),commit:JSON.parse(await fs.readFile(path.join(dist,'BUILD.json'),'utf8')).commit,version:'fixture',applicationRuntime:{
-        root:ownerPackage,executable:process.execPath,commit:ownerBuild.commit,
+        root:ownerPackage,executable:process.execPath,commit:ownerBuild.commit,target:await targetRuntime(),
         execution:{mode:'resident',protocol:snap.protocol,ownerId:snap.status.owner.id,pid:owner.pid,epoch:snap.status.controller.epoch}}};
     },
     scpTransfer:async(_target,from,to)=>fs.copyFile(from,translate(to)),
@@ -250,6 +251,13 @@ Module({providers:[[createToken('mixed-watch-proof'),{useFactory:()=>{fs.appendF
   });
   const remoteOrigin=releaseArtifactOrigins(producer,producerHash)[0].origin;
   const remoteArtifact={...built,release:remoteOrigin};
+  const { refuseReleaseOwners } = await load('release/owner-admission');
+  const ownerAnswer = { host: targetNode.host, runtime: (await deployer.inspectInstalledBundle(targetNode)).applicationRuntime };
+  const remoteStack = { type: 'remote', nodes: [{ host: targetNode.host }] };
+  const remoteApps = [{ name: 'original', bootstrap: 'source/not-used.ts' }];
+  assert.equal(refuseReleaseOwners(producer, remoteStack, remoteApps, [ownerAnswer]), null);
+  assert.match(refuseReleaseOwners(producer, remoteStack, remoteApps,
+    [{ ...ownerAnswer, runtime: { ...ownerAnswer.runtime, target: { ...target, abi: 'wrong-ABI' } } }]), /release target: abi/);
   const delivered=await deployer.deployToNode(targetNode,remoteArtifact,'delivery',{startAfterInstall:false});
   assert.equal(delivered.status,'success',delivered.error);
   const [nodeEntry]=selectNodeApps({project:'delivery',sourceStack:'test',artifactRoot:remoteRoot,
@@ -284,6 +292,7 @@ Module({providers:[[createToken('mixed-watch-proof'),{useFactory:()=>{fs.appendF
   assert.equal(await run(installedReleaseCheckCommand(remotePath,remoteOrigin,actualRuntime,'')),'verified');
   assert.equal(await run(installedReleaseCheckCommand(remotePath,{...remoteOrigin,runtimeOrigin:{...remoteOrigin.runtimeOrigin,producerApp:'different'}},actualRuntime,'')),'stale');
   report.remoteDelivery={implementation:'RemoteDeployer.deployToNode',transport:'native private filesystem fixture',
+    admission:'native resident protocol and exact execution target',
     producerFramework:producer.omni.commit,ownerFramework:ownerBuild.commit,sameSdk:applicationBuild.commit===ownerBuild.commit,privateGraph:true,
     reused:true,applicationPid:remoteProof.pid,rollbackApplicationPid:restored.pid,ownerPidPreserved:owner.pid};
   if(sourceWatch){

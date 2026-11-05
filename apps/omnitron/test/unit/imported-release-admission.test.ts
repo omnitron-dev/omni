@@ -12,7 +12,7 @@ describe('imported application remote boundary', () => {
     const nodes = vi.fn(), readDefinitions = vi.fn();
     const service = Object.assign(Object.create(ProjectService.prototype) as ProjectService, {
       releaseStore: async () => '/unused', resolveStackApps: () => entries,
-      askDaemonBuilds: nodes, loadAppDefinitions: readDefinitions,
+      askReleaseOwners: nodes, loadAppDefinitions: readDefinitions,
     });
     await expect(service['admitRelease']('consumer', 'test', { type: 'remote' }, { apps: entries }, 'consumer-1', 'check'))
       .rejects.toThrow('producer-captured deployment declarations');

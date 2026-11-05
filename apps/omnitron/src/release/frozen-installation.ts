@@ -8,7 +8,7 @@ import { applicationBootstrapRuntime } from '../orchestrator/application-runtime
 import { shellEscape } from '../shared/shell-escape.js';
 import { CLOSURE_FILE } from './application-closure.js';
 import { RELEASE_RECEIPT, releaseTreeDigest } from './runtime-provenance.js';
-import { targetRuntime, releaseNodeOptions, type TargetRuntime } from './target-runtime.js';
+import { assertReleaseTarget, targetRuntime, releaseNodeOptions, type TargetRuntime } from './target-runtime.js';
 import { writeInstalledReleaseReceipt, validOrigin, type ReleaseArtifactOrigin } from './installed-origin.js';
 import type { ReleaseLaunch } from './manifest.js';
 
@@ -83,8 +83,9 @@ export async function verifyFrozenApplication(root: string, launch: ReleaseLaunc
   } finally { await handle.close(); }
   if (createHash('sha256').update(raw).digest('hex') !== launch.closureSha256) throw Error('Frozen closure differs from the admitted manifest');
   const c = JSON.parse(raw.toString('utf8'));
-  if (c.protocol !== 1 || !digest(c.payloadSha256) || Object.entries(runtime).some(([k,v]) => c.runtime?.[k] !== v) ||
+  if (c.protocol !== 1 || !digest(c.payloadSha256) ||
     c.nodeOptions !== nodeOptions) throw Error('Frozen release closure, execution target or Node options differ from the build');
+  assertReleaseTarget(c.runtime, runtime);
   if (await releaseTreeDigest(root, true, false, [CLOSURE_FILE]) !== c.payloadSha256) throw Error('Frozen release files differ from the admitted payload');
   if (launch.mode === 'bootstrap') {
     // Boot via the same adapter resolution as the supervisor, without a fallback to its SDK.
@@ -127,7 +128,7 @@ const assertFrozenLaunch=${assertFrozenLaunch.toString()};
 const assertFrozenDirectory=${assertFrozenDirectory.toString()},frozenMember=${frozenMember.toString()};
 const extractFrozenArchive=${extractFrozenArchive.toString()},releaseTreeDigest=${releaseTreeDigest.toString()};
 const applicationBootstrapRuntime=((fs)=>(${applicationBootstrapRuntime.toString()}))(fsSync);
-const targetRuntime=${targetRuntime.toString()},verifyFrozenApplication=${verifyFrozenApplication.toString()};
+const targetRuntime=${targetRuntime.toString()},assertReleaseTarget=${assertReleaseTarget.toString()},verifyFrozenApplication=${verifyFrozenApplication.toString()};
 const assertNoReleaseMetadata=${assertNoReleaseMetadata.toString()},writeInstalledReleaseReceipt=${writeInstalledReleaseReceipt.toString()};
 const root=${JSON.stringify(directory)},archive=path.join(root,${JSON.stringify(archiveName)}),origin=${JSON.stringify(origin)};
 await assertFrozenDirectory(root);await assertNoReleaseMetadata(root);

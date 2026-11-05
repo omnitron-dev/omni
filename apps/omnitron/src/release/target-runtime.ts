@@ -8,6 +8,20 @@ export interface TargetRuntime {
   libc: string | null;
 }
 
+/** Compare all fields, including the actual executable; a version string alone
+ * cannot establish native-addon or sealed-runtime compatibility. */
+export function assertReleaseTarget(expected: TargetRuntime | undefined, actual: TargetRuntime | undefined): void {
+  const keys = ['platform', 'arch', 'node', 'abi', 'executableSha256', 'libc'] as const;
+  for (const [label, value] of [['release', expected], ['execution owner', actual]] as const) {
+    if (!value || typeof value !== 'object' || Array.isArray(value) ||
+        keys.some(key => key === 'libc' && value[key] === null ? false : typeof value[key] !== 'string' || !value[key]) ||
+        !/^[a-f0-9]{64}$/.test(value.executableSha256))
+      throw Error('The ' + label + ' has no complete verified execution target');
+  }
+  const changed = keys.filter(key => expected![key] !== actual![key]);
+  if (changed.length) throw Error('Execution owner does not match the recorded release target: ' + changed.join(', ') + '. Build for this owner\'s Node image or prepare an owner transition and rollback.');
+}
+
 /** Only explicitly recorded resource settings can be inherited by a release.
  * Node preloads, loaders, arbitrary V8 options and module search paths cannot. */
 export function releaseNodeOptions(value: unknown): string {

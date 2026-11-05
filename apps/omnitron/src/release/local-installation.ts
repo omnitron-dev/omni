@@ -15,7 +15,7 @@ import { releaseArtifactOrigins } from './origin.js';
 import { sha256File } from './portable-archive.js';
 import { RELEASE_RECEIPT, releaseTreeDigest } from './runtime-provenance.js';
 import { readInstalledReleaseReceipt, writeInstalledReleaseReceipt, type ReleaseArtifactOrigin } from './installed-origin.js';
-import { releaseOptionsForEnv, targetRuntime, type TargetRuntime } from './target-runtime.js';
+import { assertReleaseTarget, releaseOptionsForEnv, targetRuntime, type TargetRuntime } from './target-runtime.js';
 
 export class LocalReleaseNotPreparedError extends Error {}
 
@@ -88,8 +88,8 @@ export async function inspectLocalReleaseInstallation(release: LoadedRelease, st
       throw Error('Expected a package-relative compiled JavaScript entry');
     if (entry.readiness !== undefined) validateReadiness(entry.readiness, launch.mode);
     const builtFor = source.manifest.builtWith?.target;
-    if (!builtFor || Object.entries(runtime).some(([k,v]) => builtFor[k as keyof TargetRuntime] !== v))
-      throw Error('The local execution owner does not match the recorded release target for ' + entry.name);
+    try { assertReleaseTarget(builtFor, runtime); }
+    catch (error) { throw Error('The local execution owner does not match the recorded release target for ' + entry.name, { cause: error }); }
     const origin = source.origin;
     return { launch, artifact, entry, origin };
   });

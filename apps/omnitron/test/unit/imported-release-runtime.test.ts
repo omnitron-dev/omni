@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { refuseReleaseOwners, type DaemonAnswer } from '../../src/release/daemon-omni.js';
+import { refuseReleaseOwners, type ReleaseOwnerAnswer } from '../../src/release/owner-admission.js';
 import { changedImportedMigrations } from '../../src/release/migrations.js';
 import { installedReleaseCandidates } from '../../src/release/installed-release.js';
 import type { ReleaseManifest, ReleaseArtifact } from '../../src/release/manifest.js';
@@ -15,29 +15,33 @@ const producer = (commit = sdk): ReleaseManifest => ({ id: 'producer-1',
   omni: { repo: 'https://example.test/framework', commit, registry: { packages: [] } },
   artifacts: [artifact('api')], gates: [{ name: 'unit', status: 'passed' }],
   builtWith: { omnitron: '0.3.1', packages: [], target: { platform: 'darwin', arch: 'arm64', node: 'v24.13.0', abi: '137', executableSha256: '2'.repeat(64), libc: null } },
-  builtAt: '2026-11-03T00:00:00Z',
+  builtAt: '2026-11-03T00:00:00Z', builtBy: 'test',
 });
 function consumer(source = producer()): ReleaseManifest {
   const manifestJson = JSON.stringify(source), sha256 = createHash('sha256').update(manifestJson).digest('hex');
   return { ...producer(otherSdk), id: 'consumer-1', artifacts: [{ ...source.artifacts[0]!, app: 'imported', origin: { release: source.id, manifestSha256: sha256, app: 'api' } }], imports: [{ sha256, manifestJson }] };
 }
-const node = (host: string, commit: string, port = 9700): DaemonAnswer => ({ host, port, version: '0.3.1',
-  execution: { mode: 'resident', phase: 'active', connection: { status: 'connected' }, ownerBuild: { commit, dirty: false } } as DaemonAnswer['execution'] });
+const node = (host: string, commit: string, port = 9700): ReleaseOwnerAnswer => ({ host, port,
+  runtime: { root: '/runtime/packages/0', executable: '/runtime/node', commit, target: producer().builtWith.target!,
+    execution: { mode: 'resident', protocol: 1, ownerId: 'owner', pid: 42, epoch: 9 } } });
 
 describe('runtime identity of imported artifacts', () => {
-  it('admits only the actual producer on its exact placement, independent of controller and cache nodes', () => {
+  it('checks the producer target on its exact placement, independent of all SDK commits and cache nodes', () => {
     const imported = consumer(); const release = { ...imported, artifacts: [...imported.artifacts, artifact('own')] };
     const stack = { type: 'cluster', nodes: [{ host: 'same.test', port: 9700, apps: ['imported'] }, { host: 'same.test', port: 9701, apps: ['own'] }, { host: 'cache.test', role: 'cache' }] } as IStackConfig;
     const entries = [{ name: 'imported' }, { name: 'own' }];
     expect(refuseReleaseOwners(release, stack, entries, [node('same.test', sdk), node('same.test', otherSdk, 9701)])).toBeNull();
-    expect(refuseReleaseOwners(release, stack, entries, [node('same.test', otherSdk), node('same.test', sdk, 9701)])).toContain('imported on same.test:9700');
+    expect(refuseReleaseOwners(release, stack, entries, [node('same.test', otherSdk), node('same.test', sdk, 9701)])).toBeNull();
+    const wrong = node('same.test', sdk);
+    wrong.runtime!.target = { ...wrong.runtime!.target!, abi: 'unsupported' };
+    expect(refuseReleaseOwners(release, stack, entries, [wrong, node('same.test', sdk, 9701)])).toContain('imported on same.test:9700');
     expect(refuseReleaseOwners(release, stack, entries, [node('same.test', sdk)])).toContain('same.test:9701 has no unique');
     expect(refuseReleaseOwners(release, stack, entries, [node('same.test', sdk), node('same.test', sdk), node('same.test', otherSdk, 9701)])).toContain('no unique');
   });
 
   it('compares a retained archive to the producer SDK and never infers live-process confirmation', () => {
     const release = consumer(), file = release.artifacts[0]!;
-    const observed = { app: 'consumer/dev/imported', state: 'observed' as const, observedAt: '2026-11-03T00:00:00Z', pid: 10,
+    const observed = { app: 'consumer/dev/imported', state: 'observed' as const, observedAt: '2026-11-03T00:00:00Z', pid: 10, startedAt: '2026-11-03T00:00:00Z',
       entrySha256: 'f'.repeat(64), frameworkCommit: sdk,
       archives: [{ sha256: file.sha256, bytes: file.bytes, entrySha256: 'f'.repeat(64) }], reasons: [] };
     const catalog = { complete: true, reasons: [], releases: [{ manifest: release, sha256: '3'.repeat(64) }] };

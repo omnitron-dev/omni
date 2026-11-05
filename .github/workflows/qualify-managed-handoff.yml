@@ -71,6 +71,12 @@ jobs:
           JS
             )
           done
+      - name: Deliver an application on its own SDK through the previous execution owner
+        run: |
+          node apps/omnitron/test/runtime/installed-runtime-context.mjs \
+            "$RUNNER_TEMP/omnitron-handoff-$CANDIDATE/packages/0/dist" \
+            "$RUNNER_TEMP/omnitron-handoff-$PREVIOUS/packages/0/dist" \
+            "$RUNNER_TEMP/source-$CANDIDATE"
       - name: Recover, update and roll back while a supervised application serves requests
         run: |
           stage=/opt/omnitron-handoff-qualification

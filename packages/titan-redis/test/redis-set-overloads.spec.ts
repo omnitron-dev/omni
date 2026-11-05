@@ -16,23 +16,24 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Redis } from 'ioredis';
 
 import type { IRedisClient } from '../src/redis.interfaces.js';
-import { getTestRedisConfig } from './utils/redis-test-utils.js';
+import { getTestRedisConfig, isRedisInMockMode } from './utils/redis-test-utils.js';
 
-describe('IRedisClient.set expiry + condition', () => {
+describe.skipIf(isRedisInMockMode())('IRedisClient.set expiry + condition', () => {
   let raw: Redis;
   let client: IRedisClient;
   const key = 'set-overload:dedup';
 
   beforeAll(async () => {
     const { host, port, db } = getTestRedisConfig(15);
-    raw = new Redis({ host, port, db, maxRetriesPerRequest: null });
+    raw = new Redis({ host, port, db, lazyConnect: true, connectTimeout: 5_000, maxRetriesPerRequest: 1, retryStrategy: () => null });
+    await raw.connect();
     // The interface is structural over the real client; this is the type the
     // documented dedup recipe uses.
     client = raw as unknown as IRedisClient;
   });
 
   afterAll(async () => {
-    await raw.quit().catch(() => undefined);
+    raw?.disconnect();
   });
 
   beforeEach(async () => {

@@ -92,17 +92,19 @@ describe('Scheduler Executor', () => {
     });
 
     it('should execute async job successfully', async () => {
-      const handler = vi.fn(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        return 'async result';
-      });
+      let finish!: (value: string) => void;
+      const handler = vi.fn(() => new Promise<string>(resolve => { finish = resolve; }));
       const job = createMockJob('asyncJob', handler);
-
-      const result = await executor.executeJob(job);
+      let settled = false;
+      const pending = executor.executeJob(job).then(result => { settled = true; return result; });
+      await vi.waitFor(() => expect(handler).toHaveBeenCalledOnce());
+      expect(settled).toBe(false);
+      finish('async result');
+      const result = await pending;
 
       expect(result.status).toBe('success');
       expect(result.result).toBe('async result');
-      expect(result.duration).toBeGreaterThanOrEqual(50);
+      expect(Number.isFinite(result.duration)).toBe(true);
     });
 
     it('should pass execution context to handler', async () => {

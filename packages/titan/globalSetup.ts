@@ -3,11 +3,11 @@
  * Runs once before all test suites
  *
  * Redis connection strategies (in order of priority):
- * 1. USE_MOCK_REDIS=true - Use in-memory MockRedis (CI environments)
+ * 1. USE_MOCK_REDIS=true - Explicit in-memory unit-test mode
  * 2. Explicitly selected external Redis
  * 3. Native redis-server, when installed
  * 4. Isolated Docker Redis on a loopback port
- * 5. Mock mode - If all else fails
+ * Missing infrastructure fails setup; CI does not select a different test mode.
  */
 
 import { execFileSync, execSync, spawn, type ChildProcess } from 'node:child_process';
@@ -253,8 +253,8 @@ export async function setup(): Promise<void> {
   console.log('[Global Setup] Initializing Redis for tests...');
 
   // Strategy 1: Mock Redis
-  if (process.env.USE_MOCK_REDIS === 'true' || process.env.CI === 'true') {
-    console.log('[Global Setup] Using MockRedis (USE_MOCK_REDIS or CI mode)');
+  if (process.env.USE_MOCK_REDIS === 'true') {
+    console.log('[Global Setup] Using explicitly requested MockRedis');
     writeRedisInfo({ url: 'mock://localhost', port: 0, isMock: true, isDocker: false });
     return;
   }
@@ -331,9 +331,8 @@ export async function setup(): Promise<void> {
     console.warn(`[Global Setup] Failed to start Docker Redis: ${error.message}`);
   }
 
-  // Strategy 5: Mock mode fallback
-  console.log('[Global Setup] No Redis available, falling back to MockRedis');
-  writeRedisInfo({ url: 'mock://localhost', port: 0, isMock: true, isDocker: false });
+  await teardown();
+  throw new Error('Test Redis unavailable. Run pnpm test:up, or explicitly select USE_MOCK_REDIS=true for unit-only checks.');
 }
 
 export async function teardown(): Promise<void> {

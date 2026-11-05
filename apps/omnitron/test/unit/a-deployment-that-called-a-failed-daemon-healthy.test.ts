@@ -47,7 +47,7 @@ describe('the node\'s verdict counts a host service that failed', () => {
       { ...containersUp, ready: false, failed: [{ name: 'sample-test-redis', image: 'x', status: 'exited', error: undefined }] },
       { settled: [], failed: [{ name: 'bitcoin', status: 'refused', error: 'the chain is on another filesystem' }] },
     );
-    expect(v.detail).toMatch(/NOT ready — 1 not running \(sample-test-redis\); host services NOT up — bitcoin refused/);
+    expect(v.detail).toMatch(/NOT ready — 1 not ready \(sample-test-redis\); host services NOT up — bitcoin refused/);
   });
 
   it('is ready when everything is up — the control', () => {

@@ -206,30 +206,28 @@ describe('the principal a master presents', () => {
 });
 
 describe('what runs inside the containers', () => {
-  it('a missing preset registry is reported, not crashed on', async () => {
+  it('runs built-in setup for normalized declarations without an explicit registry', async () => {
     const { InfrastructureService } = await import('../../src/infrastructure/infrastructure.service.js');
-    const errors: Array<{ services?: string[] }> = [];
-    const noisy: any = {
-      info: () => {}, warn: () => {}, debug: () => {}, trace: () => {}, fatal: () => {},
-      error: (o: { services?: string[] }) => errors.push(o),
-      child: () => noisy,
-    };
-
-    // The constructor declares the registry OPTIONAL and the hook asserted
-    // it with `!`, so a caller the type permits got `Cannot read properties
-    // of undefined (reading 'get')` from a line that reads as internal —
-    // after every container was already up. Measured on a node provisioning
-    // a stack: the containers stayed and the databases were never made.
-    const service = new InfrastructureService(noisy, {}, { postgres: { _preset: 'postgres' } as never });
-
-    await expect(
-      (service as unknown as { runPresetPostProvisionHooks(): Promise<void> }).runPresetPostProvisionHooks(),
-    ).resolves.toBeUndefined();
-
-    // A preset hook is what creates the databases inside Postgres and the
-    // buckets inside MinIO. Skipping it is invisible until an application
-    // cannot find its database, so it is said at error level with the names.
-    expect(errors[0]?.services).toEqual(['postgres']);
+    const runtime = await import('../../src/infrastructure/container-runtime.js');
+    const { postgresPreset } = await import('../../src/infrastructure/presets/postgres.js');
+    const errors: unknown[] = [];
+    const logger: any = { info() {}, warn() {}, debug() {}, trace() {}, fatal() {}, error: (error: unknown) => errors.push(error) };
+    const config = { services: { postgres: { preset: 'postgres', config: { databases: { main: {} } } } } };
+    const declared = new InfrastructureService(logger, config, undefined, undefined, undefined, false);
+    const service = new InfrastructureService(logger, config, declared.getNormalizedServices(), undefined, undefined, false);
+    const desired = service.getDesiredContainers()[0]!;
+    const hook = vi.spyOn(postgresPreset, 'postProvision').mockResolvedValue(undefined);
+    const get = vi.spyOn(runtime, 'getContainerState').mockResolvedValue({ name: desired.name, image: desired.image,
+      containerId: 'a'.repeat(64), status: 'running', health: 'healthy', startedAt: '2026-01-01', labels: desired.labels });
+    const health = vi.spyOn(runtime, 'waitForHealthy').mockResolvedValue(true);
+    try {
+      await (service as unknown as { runPresetPostProvisionHooks(): Promise<void> }).runPresetPostProvisionHooks();
+      expect(hook).toHaveBeenCalledWith(expect.objectContaining({ userConfig: { databases: { main: {} } } }));
+      expect(service.getState().services[desired.name]).toMatchObject({ provisioning: 'ready' });
+      expect(errors).toEqual([]);
+    } finally {
+      hook.mockRestore(); get.mockRestore(); health.mockRestore(); declared.dispose(); service.dispose();
+    }
   });
 
   it('says nothing when there was nothing to run', async () => {

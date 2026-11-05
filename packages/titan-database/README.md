@@ -58,6 +58,14 @@ an exact PostgreSQL `pg_get_expr` expression when the default's meaning matters;
 `default` checks only its presence. `schema` selects an explicit schema, otherwise
 the connection's `current_schema()` applies. These are PostgreSQL guarantees.
 
+`unique` declares ordered whole-table keys. Readiness checks the enforcing
+PostgreSQL index, so an immediate primary/unique constraint and a standalone
+`UNIQUE INDEX` satisfy the same contract. `INCLUDE` columns are payload, not key
+columns. Partial, expression, invalid, unfinished, dropping and deferred indexes
+do not establish this guarantee. Foreign keys are checked independently, including
+their target schema, ordered columns and update/delete actions. The inspection
+does not create constraints or rewrite an application's migrations.
+
 `typeSchema` supports named enum/domain types outside `pg_catalog`.
 `formattedType` optionally binds PostgreSQL's `format_type` spelling, including
 precision and length. An insert table requires writable, non-generated columns

@@ -27,6 +27,7 @@ export interface PostgresTableRequirement {
   columns: Readonly<Record<string, PostgresColumnRequirement>>;
   /** Additional NOT NULL columns must supply their own value. */
   insert?: boolean;
+  /** Ordered whole-table unique keys, enforced immediately by a valid unique index. INCLUDE columns do not belong to the key. */
   unique?: readonly (readonly string[])[];
   foreignKeys?: readonly PostgresForeignKeyRequirement[];
   immutable?: { function: string; bodySha256: string; configuration?: readonly string[]; schemaSearchPath?: boolean };
@@ -101,9 +102,18 @@ export async function requirePostgresSchema(pool: PostgresPool, contract: Postgr
           throw new SchemaReadinessError(contract.name, ['schema: unavailable']);
         const tables = await tx.introspection.getTables();
         const names = Object.keys(contract.tables);
-        const { rows: constraints } = await sql<{
+        const { rows: uniqueKeys } = await sql<{ table: string; columns: string[] }>`
+        SELECT c.relname AS table,
+        ARRAY(SELECT a.attname::text FROM unnest(i.indkey) WITH ORDINALITY x(n,position)
+          JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum=x.n
+          WHERE x.position<=i.indnkeyatts ORDER BY x.position) AS columns
+        FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indrelid
+        JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname=${namespace.schema} AND c.relname=ANY(${names}::text[])
+          AND i.indisunique AND i.indisvalid AND i.indisready AND i.indislive AND i.indimmediate
+          AND i.indpred IS NULL AND i.indexprs IS NULL`.execute(tx);
+        const { rows: foreignKeys } = await sql<{
           table: string;
-          type: string;
           valid: boolean;
           columns: string[];
           target_schema: string | null;
@@ -111,15 +121,14 @@ export async function requirePostgresSchema(pool: PostgresPool, contract: Postgr
           targets: string[] | null;
           delete_action: string;
           update_action: string;
-          deferred: boolean;
-        }>`SELECT c.relname AS table, k.contype AS type, k.convalidated AS valid,
-        ARRAY(SELECT a.attname::text FROM unnest(k.conkey) WITH ORDINALITY x(n,i) JOIN pg_attribute a ON a.attrelid=c.oid AND a.attnum=x.n ORDER BY x.i) AS columns,
+        }>`SELECT c.relname AS table, k.convalidated AS valid,
+        ARRAY(SELECT a.attname::text FROM unnest(k.conkey) WITH ORDINALITY x(n,i) JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum=x.n ORDER BY x.i) AS columns,
         tn.nspname AS target_schema, tc.relname AS target_table,
-        ARRAY(SELECT a.attname::text FROM unnest(k.confkey) WITH ORDINALITY x(n,i) JOIN pg_attribute a ON a.attrelid=tc.oid AND a.attnum=x.n ORDER BY x.i) AS targets,
-        k.confdeltype AS delete_action,k.confupdtype AS update_action,k.condeferrable AS deferred
-        FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
-        LEFT JOIN pg_class tc ON tc.oid=k.confrelid LEFT JOIN pg_namespace tn ON tn.oid=tc.relnamespace
-        WHERE n.nspname=${namespace.schema} AND c.relname=ANY(${names}::text[])`.execute(tx);
+        ARRAY(SELECT a.attname::text FROM unnest(k.confkey) WITH ORDINALITY x(n,i) JOIN pg_catalog.pg_attribute a ON a.attrelid=tc.oid AND a.attnum=x.n ORDER BY x.i) AS targets,
+        k.confdeltype AS delete_action,k.confupdtype AS update_action
+        FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_class c ON c.oid=k.conrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+        LEFT JOIN pg_catalog.pg_class tc ON tc.oid=k.confrelid LEFT JOIN pg_catalog.pg_namespace tn ON tn.oid=tc.relnamespace
+        WHERE k.contype='f' AND n.nspname=${namespace.schema} AND c.relname=ANY(${names}::text[])`.execute(tx);
         const { rows: triggers } = await sql<{
           table: string;
           enabled: string;
@@ -253,25 +262,15 @@ export async function requirePostgresSchema(pool: PostgresPool, contract: Postgr
               }
             }
           for (const key of expected.unique ?? []) {
-            if (
-              !constraints.some(
-                (c) =>
-                  c.table === name &&
-                  c.valid &&
-                  !c.deferred &&
-                  (c.type === 'p' || c.type === 'u') &&
-                  same(c.columns, key),
-              )
-            ) {
+            if (!uniqueKeys.some((index) => index.table === name && same(index.columns, key))) {
               violations.push(`${name}: unique key (${key.join(',')}) required`);
             }
           }
           for (const key of expected.foreignKeys ?? []) {
             if (
-              !constraints.some(
+              !foreignKeys.some(
                 (c) =>
                   c.table === name &&
-                  c.type === 'f' &&
                   c.valid &&
                   same(c.columns, key.columns) &&
                   c.target_schema === namespace.schema &&

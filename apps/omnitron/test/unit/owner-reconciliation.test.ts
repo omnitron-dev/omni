@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertOwnerReconciliationEvidence, type OwnerReconciliationPlan } from '../../src/daemon/owner-reconciliation.js';
+import { assertOwnerReconciliationEvidence, assertPreviousOwnersGone, type OwnerReconciliationPlan } from '../../src/daemon/owner-reconciliation.js';
 
 const linuxBoot = '119bd1eb-252d-4be8-ad83-69e325fbd927';
 const plan = { bootId: 'boot-a', processes: [{ pid: 10, lifetime: null }, { pid: 20, lifetime: linuxBoot + ':200' }] } as OwnerReconciliationPlan;
@@ -7,6 +7,22 @@ const stopped = () => ({ bootId: 'boot-a', units: [{ mainPid: 0, state: 'failed'
   groups: [[], []] as number[][], processes: [{ pid: 10, lifetime: null }, { pid: 20, lifetime: null }] as Array<{ pid: number; lifetime: string | null; unknown?: boolean }>, sockets: [] as string[] });
 
 describe('explicit execution-owner crash reconciliation', () => {
+  it('can plan before pausing a surviving guardian, but cannot acknowledge that state', () => {
+    const evidence = stopped();
+    evidence.units[1] = { mainPid: 30, state: 'active' };
+    evidence.groups[1] = [30];
+    evidence.processes.push({ pid: 30, lifetime: linuxBoot + ':300' });
+    evidence.sockets.push('/fixture/supervisor.sock');
+    expect(() => assertPreviousOwnersGone([10], evidence, '/fixture/owner.sock')).not.toThrow();
+    expect(() => assertOwnerReconciliationEvidence(plan, evidence)).toThrow();
+  });
+  it('refuses planning for a live, missing or unknown owner, or an open owner socket', () => {
+    for (const process of [{ pid: 10, lifetime: linuxBoot + ':100' }, { pid: 10, lifetime: null, unknown: true }]) {
+      expect(() => assertPreviousOwnersGone([10], { processes: [process], sockets: [] }, '/fixture/owner.sock')).toThrow('previous owner');
+    }
+    expect(() => assertPreviousOwnersGone([10], { processes: [], sockets: [] }, '/fixture/owner.sock')).toThrow('previous owner');
+    expect(() => assertPreviousOwnersGone([10], { processes: [{ pid: 10, lifetime: null }], sockets: ['/fixture/owner.sock'] }, '/fixture/owner.sock')).toThrow('previous owner');
+  });
   it('accepts only empty stopped ownership domains with all recorded identities gone', () => {
     expect(() => assertOwnerReconciliationEvidence(plan, stopped())).not.toThrow();
   });

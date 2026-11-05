@@ -80,8 +80,18 @@ async function nativeEvidence(config: ManagedRuntime, identities: readonly Proce
     return { pid, lifetime: life.state === 'alive' ? life.identity : null, ...(life.state === 'unknown' && { unknown: true }) };
   });
   const socket = path.join(config.directory, 'owner.sock');
-  const sockets = (await fs.readFile('/proc/net/unix', 'utf8')).split('\n').filter(line => line.trim().split(/\s+/).at(-1) === socket);
+  const sockets = (await fs.readFile('/proc/net/unix', 'utf8')).split('\n')
+    .filter(line => line.trim().split(/\s+/).at(-1) === socket).map(() => socket);
   return { bootId: await hostBootIdentity(), units, groups, processes, sockets };
+}
+
+/** Planning may observe a living guardian; only previous owners must already be gone. */
+export function assertPreviousOwnersGone(pids: readonly number[], observed: Pick<NativeEvidence, 'processes' | 'sockets'>, ownerSocket: string): void {
+  if (pids.some(pid => {
+    const process = observed.processes.find(item => item.pid === pid);
+    return !process || process.lifetime || process.unknown;
+  }) || observed.sockets.includes(ownerSocket))
+    throw new Error('Every previous owner identity must be proven dead on this boot before planning recovery');
 }
 
 /** Pure safety decision; unknown observations always refuse reconciliation. */
@@ -127,8 +137,7 @@ export async function prepareOwnerReconciliation(config: ManagedRuntime, recorde
     const first = await nativeEvidence(config, previousOwners.map(pid => ({ pid, lifetime: null })));
     if (!receiptBootMatches(receipt.bootId, first.bootId))
       throw new Error('Owner crash receipt has unsupported boot evidence; recovery requires the current stable boot or a recognized legacy Darwin receipt');
-    if (first.processes.some(item => item.lifetime || item.unknown) || first.sockets.length)
-      throw new Error('Every previous owner identity must be proven dead on this boot before planning recovery');
+    assertPreviousOwnersGone(previousOwners, first, path.join(config.directory, 'owner.sock'));
     const pids = [...new Set([...previousOwners, ...recordedWorkerPids, ...first.groups.flat(), ...first.units.map(unit => unit.mainPid).filter(Boolean)])];
     const observed = await nativeEvidence(config, pids.map(pid => ({ pid, lifetime: null })));
     if (observed.processes.some(item => item.unknown)) throw new Error('A recorded process identity could not be inspected');

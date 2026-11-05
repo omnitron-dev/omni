@@ -21,8 +21,9 @@ import { HealthIndicator, type HealthIndicatorResult } from '@omnitron-dev/titan
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import type { ContainerState } from '../infrastructure/types.js';
 import type { InfrastructureHealthContext } from './infrastructure-health.js';
+import { observeProvisioning } from '../infrastructure/provisioning-outcome.js';
 
-type Seen = Pick<ContainerState, 'name' | 'status' | 'health' | 'project' | 'stack'>;
+type Seen = Pick<ContainerState, 'name' | 'status' | 'health' | 'project' | 'stack' | 'containerId' | 'startedAt' | 'specHash' | 'error' | 'provisioning'>;
 
 export class DockerHealthIndicator extends HealthIndicator {
   readonly name = 'docker';
@@ -53,6 +54,9 @@ export class DockerHealthIndicator extends HealthIndicator {
     let context: InfrastructureHealthContext;
     try { context = this.getContext(); }
     catch { return this.degraded('Docker answered, but local stack intent could not be read. Check project configuration and daemon logs.'); }
+    seen = observeProvisioning(seen.map(service => ({ image: '', ...service })), [
+      ...Object.values(infra?.getState().services ?? {}), ...(context.observedServices ?? []),
+    ]);
     const required = new Set([...context.requiredContainers, ...(infra?.getDesiredServices().map(s => s.name) ?? [])]);
     const scopes = new Map(context.stacks.map(s => [`${s.project}/${s.stack}`, s.intent]));
     const inventories = new Map(context.stacks.filter(s => s.containers !== undefined).map(s => [`${s.project}/${s.stack}`, new Set(s.containers)]));
@@ -78,6 +82,8 @@ export class DockerHealthIndicator extends HealthIndicator {
         }
       } else if (service.health === 'unhealthy' || service.health === 'starting') {
         warnings.push(`${service.name}: healthcheck ${service.health}; inspect its probe output`);
+      } else if (service.error || (service.provisioning && service.provisioning !== 'ready')) {
+        (intent === 'running' ? failures : warnings).push(`${service.name}: ${service.error ?? `declared service setup ${service.provisioning}`}`);
       } else if (noLongerDeclared) {
         warnings.push(`${service.name}: running outside the stack's current reconciler inventory; review the retired service before cleanup`);
       }
@@ -96,7 +102,7 @@ export class DockerHealthIndicator extends HealthIndicator {
     }
 
     const running = services.filter((s) => s.status === 'running');
-    const unhealthy = services.filter((s) => s.health === 'unhealthy');
+    const unhealthy = services.filter((s) => s.health === 'unhealthy' || s.health === 'starting' || s.error || (s.provisioning && s.provisioning !== 'ready'));
     const down = services.filter((s) => s.status !== 'running');
 
     const details = {
@@ -109,6 +115,8 @@ export class DockerHealthIndicator extends HealthIndicator {
         name: s.name,
         status: s.status,
         health: s.health ?? 'unknown',
+        provisioning: s.provisioning,
+        error: s.error,
       })),
     };
 
@@ -126,7 +134,7 @@ export class DockerHealthIndicator extends HealthIndicator {
 
     if (unhealthy.length > 0) {
       return this.degraded(
-        `${unhealthy.length} container(s) unhealthy: ${unhealthy.map((s) => s.name).join(', ')}`,
+        `${unhealthy.length} container(s) not ready: ${unhealthy.map((s) => `${s.name}: ${s.error ?? s.health ?? s.provisioning}`).join(', ')}`,
         details
       );
     }

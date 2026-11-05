@@ -61,7 +61,7 @@ describe('deciding whether infrastructure is ready', () => {
 
     expect(outcome.ready).toBe(false);
     expect(outcome.failed[0]).toMatchObject({ name: 'pg', status: 'exited', error: 'no such image' });
-    expect(describeProvisioning(outcome)).toMatch(/NOT ready.*not running.*pg/i);
+    expect(describeProvisioning(outcome)).toMatch(/NOT ready.*not ready.*pg/i);
   });
 
   it('counts a running container that reports unhealthy as failed', () => {
@@ -75,15 +75,14 @@ describe('deciding whether infrastructure is ready', () => {
     expect(outcome.failed[0]!.error).toMatch(/unhealthy/);
   });
 
-  it('does not fail a container still inside its first probe window', () => {
-    // `starting` is not yet a failure; treating it as one would make every
-    // provisioning run report failure for the seconds before the first check.
+  it('keeps a container in its first probe window not ready', () => {
+    // A probe that has not completed cannot yet establish readiness.
     const outcome = summariseProvisioning(
       [{ name: 'pg', image: 'pg:1' }],
       { pg: { name: 'pg', image: 'pg:1', status: 'running', health: 'starting' } },
     );
 
-    expect(outcome.ready).toBe(true);
+    expect(outcome.ready).toBe(false);
   });
 
   it('separates "nothing declared" from "everything fine"', () => {

@@ -117,10 +117,8 @@ describe('the provisioner creates them', () => {
       { failOn: 'postgis' }
     );
 
-    await postgresPreset.postProvision!(ctx);
-
+    await expect(postgresPreset.postProvision!(ctx)).rejects.toThrow("requires extension 'postgis'");
     expect(sqlOf(commands).join('\n')).toContain('"pg_trgm"');
-    expect(silentLogger.error).toHaveBeenCalled();
   });
 
   it('refuses a name that is not an identifier', async () => {
@@ -128,8 +126,13 @@ describe('the provisioner creates them', () => {
     // interpolated into SQL either way.
     const { ctx, commands } = recordingContext({ main: { extensions: ['x"; DROP DATABASE main; --'] } });
 
-    await postgresPreset.postProvision!(ctx);
-
+    await expect(postgresPreset.postProvision!(ctx)).rejects.toThrow('Invalid extension');
     expect(sqlOf(commands).some((s) => s.includes('DROP DATABASE'))).toBe(false);
+  });
+  it('quotes database names in both existence checks and CREATE DATABASE', async () => {
+    const { ctx, commands } = recordingContext({ 'team\'"data': {} });
+    await postgresPreset.postProvision!(ctx);
+    expect(sqlOf(commands)).toEqual(["SELECT 1 FROM pg_database WHERE datname='team''\"data'", 'CREATE DATABASE "team\'""data"']);
+    for (const argv of commands) { expect(argv).toContain('-X'); expect(argv).toContain('ON_ERROR_STOP=1'); }
   });
 });

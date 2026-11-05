@@ -94,3 +94,13 @@ it('shows pending container work, prevents duplicate start and recovers from ref
   await waitFor(() => expect(rpc.start).toHaveBeenCalledTimes(2));
   await waitFor(() => expect(start).toBeEnabled());
 });
+
+it('separates native health from failed setup and shows its actionable reason', async () => {
+  rpc.list.mockResolvedValue([{ ...containers[0], status: 'running', health: 'healthy', provisioning: 'failed', error: 'Required bucket policy denied' }]);
+  render(view());
+  const row = within((await screen.findByText('project-db')).closest('tr')!);
+  expect(row.getByText('healthy')).toBeInTheDocument();
+  expect(row.getByText('failed')).toBeInTheDocument();
+  expect(row.getByText('Required bucket policy denied')).toBeInTheDocument();
+  expect(screen.getByText('Not ready')).toBeInTheDocument();
+});

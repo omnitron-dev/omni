@@ -13,7 +13,7 @@ import { Errors } from '@omnitron-dev/titan/errors';
 import { VIEWER_ROLES, OPERATOR_ROLES, CONTROL_PLANE_ROLES, CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
 import type { InfrastructureConfig, IServiceRequirement } from '../infrastructure/types.js';
-import { summariseProvisioning, provisioningVerdict } from '../infrastructure/provisioning-outcome.js';
+import { summariseProvisioning, provisioningVerdict, observeProvisioning } from '../infrastructure/provisioning-outcome.js';
 import { withGeneratedCredentials } from '../infrastructure/service-credentials.js';
 import { duringPhase } from '../project/deploy-phases.js';
 import { containerEndpoint, REDIS_CONTAINER_PORT, withInfrastructureScope } from '../infrastructure/service-resolver.js';
@@ -133,6 +133,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
       info?(obj: object, msg?: string, ...args: any[]): void;
     } | undefined,
     private readonly hostIngress: HostIngressService = new HostIngressService(),
+    private readonly getStackObservations: () => ContainerState[] = () => [],
   ) {}
 
   @Public({ auth: { roles: ['admin', 'service_role'] } })
@@ -665,7 +666,9 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
    */
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async listContainers(): Promise<ContainerState[]> {
-    const containers = await listManagedContainers({ orThrow: true });
+    const containers = observeProvisioning(await listManagedContainers({ orThrow: true }), [
+      ...Object.values(this.getInfra()?.getState().services ?? {}), ...this.getStackObservations(),
+    ]);
     const restrictions = new Map<string | undefined, string | undefined>();
     return containers.map(container => {
       try {

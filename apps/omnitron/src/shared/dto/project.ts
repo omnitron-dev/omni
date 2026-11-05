@@ -403,6 +403,8 @@ export interface IStackInfraStatus {
       containerId?: string;
       image?: string;
       health?: 'healthy' | 'unhealthy' | 'starting' | 'none';
+      provisioning?: 'pending' | 'ready' | 'failed';
+      error?: string;
       ports?: Record<string, number>;
       app?: string;
     }

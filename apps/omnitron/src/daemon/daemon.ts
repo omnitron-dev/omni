@@ -1088,6 +1088,8 @@ export class OmnitronDaemon {
       // a deployment is running on a default credential — is said at error
       // level and reaches nobody without it.
       loggerModule.logger.child({ component: 'infra' }),
+      undefined,
+      () => projectService.getInfraManager().listInstances().flatMap(({ infra }) => Object.values(infra.getState().services)),
     );
     // Project + Stack management RPC service
     const stateStore = await container.resolveAsync<import('./daemon-state-store.service.js').DaemonStateStore>(DAEMON_STATE_STORE_TOKEN);

@@ -180,7 +180,17 @@ async function askStack(project: string, stack: string): Promise<IStackInfo | st
  * status` does: by asking its node.
  */
 export async function infraStatusCommand(opts: { stack?: string } = {}): Promise<void> {
-  const containers = await listManagedContainers();
+  const client = createDaemonClient();
+  let containers: ContainerState[];
+  try {
+    if (await client.isReachable()) {
+      const service = await client.service<import('../shared/dto/services.js').IOmnitronInfraService>('OmnitronInfra');
+      containers = await service.listContainers();
+    } else {
+      log.warn('Daemon unavailable: native container health only; declared service setup is not verified.');
+      containers = await listManagedContainers({ orThrow: true });
+    }
+  } finally { await client.disconnect(); }
   const machine = os.hostname();
 
   if (opts.stack) {
@@ -226,12 +236,16 @@ export async function infraStatusCommand(opts: { stack?: string } = {}): Promise
         container: svc.containerName,
         status: colourStatus(svc.status),
         port: svc.port ?? '-',
+        setup: svc.provisioning ?? 'Not reported',
+        reason: svc.error ?? '-',
       })),
       columns: [
         { key: 'service', header: 'Service' },
         { key: 'container', header: 'Container' },
         { key: 'status', header: 'Status' },
         { key: 'port', header: 'Port' },
+        { key: 'setup', header: 'Setup' },
+        { key: 'reason', header: 'Reason' },
       ],
     });
     return;
@@ -409,6 +423,8 @@ function printContainers(containers: readonly ContainerState[]): void {
       stack: stackLabel(c),
       image: c.image,
       status: colourStatus(c.status),
+      setup: c.provisioning ?? 'Not reported',
+      reason: c.error ?? '-',
       health: c.health === 'healthy' ? prism.green(c.health) : c.health === 'unhealthy' ? prism.red(c.health) : prism.dim(c.health ?? 'n/a'),
     })),
     // No fixed widths: with `width: 'auto'` the table sizes to its content,
@@ -421,6 +437,8 @@ function printContainers(containers: readonly ContainerState[]): void {
       { key: 'image', header: 'Image' },
       { key: 'status', header: 'Status' },
       { key: 'health', header: 'Health' },
+      { key: 'setup', header: 'Setup' },
+      { key: 'reason', header: 'Reason' },
     ],
   });
 }

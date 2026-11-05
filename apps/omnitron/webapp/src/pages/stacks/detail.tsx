@@ -18,6 +18,7 @@ import { Can } from 'src/auth/access';
 import { useState, useCallback } from 'react';
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
 import Box from '@mui/material/Box';
+import Stack from '@mui/material/Stack';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Typography from '@mui/material/Typography';
@@ -729,11 +730,10 @@ function RuntimeChip({ name, runtime }: { name: string; runtime: Record<string, 
   const svc = runtime[name];
   if (!svc) return <Chip label="Stopped" size="small" sx={{ height: 18, fontSize: '0.6rem' }} />;
   return (
-    <Chip
-      label={svc.status}
-      size="small"
-      color={svc.status === 'running' ? 'success' : svc.status === 'error' ? 'error' : 'default'}
-      sx={{ height: 18, fontSize: '0.6rem' }}
-    />
+    <Stack spacing={0.5} sx={{ alignItems: 'flex-end', minWidth: 0, maxWidth: 320 }}>
+      <Chip label={svc.provisioning === 'pending' ? 'Setup pending' : svc.status}
+        size="small" color={svc.status === 'error' ? 'error' : svc.provisioning === 'pending' ? 'warning' : svc.status === 'running' ? 'success' : 'default'} />
+      {svc.error && <Typography variant="caption" color="error.main" sx={{ overflowWrap: 'anywhere' }}>{svc.error}</Typography>}
+    </Stack>
   );
 }

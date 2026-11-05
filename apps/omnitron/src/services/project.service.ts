@@ -95,7 +95,7 @@ import type {
 } from '../shared/dto/project.js';
 import { summariseSync } from './sync-summary.js';
 import { StackInfrastructureManager } from '../infrastructure/stack-infra-manager.js';
-import { describeProvisioning, summariseProvisioning } from '../infrastructure/provisioning-outcome.js';
+import { describeProvisioning, summariseProvisioning, stackServiceObservation } from '../infrastructure/provisioning-outcome.js';
 import { waitForPostgres } from './wait-for-postgres.js';
 import { resolveStack, resolvedConfigToEnv } from '../project/config-resolver.js';
 import { resolveStartupOrder } from '../orchestrator/dependency-resolver.js';
@@ -3178,7 +3178,8 @@ export class ProjectService extends EventEmitter {
 
   /** Cached declarations plus persisted intent; this query never starts infrastructure. */
   getInfrastructureHealthContext(): InfrastructureHealthContext {
-    const context: InfrastructureHealthContext = { stacks: [], requiredContainers: [], unresolvedStacks: [] };
+    const context: InfrastructureHealthContext = { stacks: [], requiredContainers: [], unresolvedStacks: [],
+      observedServices: this.infraManager.listInstances().flatMap(({ infra }) => Object.values(infra.getState().services)) };
     const apps = this.orchestrator.list();
     for (const project of this.registry.listRegistrations()) {
       const config = this.getLoadedConfig(project.name);
@@ -5343,22 +5344,12 @@ export class ProjectService extends EventEmitter {
 
       for (const [containerName, svc] of owned) {
         const name = containerName.startsWith(prefix) ? containerName.slice(prefix.length) : containerName;
-        services[name] = {
-          status: svc.status === 'running' ? 'running' : svc.error ? 'error' : 'stopped',
-          containerName: svc.name,
-          port: svc.ports ? Object.values(svc.ports)[0] ?? null : null,
-          service: svc.service ?? name,
-          ...(svc.containerId ? { containerId: svc.containerId } : {}),
-          ...(svc.image ? { image: svc.image } : {}),
-          ...(svc.ports ? { ports: svc.ports } : {}),
-          ...(svc.app ? { app: svc.app } : {}),
-          health: svc.status === 'running' ? svc.health ?? 'none' : 'none',
-        };
+        services[name] = stackServiceObservation({ ...svc, service: svc.service ?? name });
       }
 
       // Without the node's own verdict, "ready" is what the containers say:
       // every one of them running.
-      const ready = Object.values(services).every(svc => svc.status === 'running' && svc.health !== 'unhealthy' && svc.health !== 'starting');
+      const ready = Object.values(services).every(svc => svc.status === 'running' && svc.health !== 'unhealthy' && svc.health !== 'starting' && !svc.error && (!svc.provisioning || svc.provisioning === 'ready'));
       return { ready, services };
     } catch (err) {
       this.logger.warn(
@@ -5490,11 +5481,7 @@ export class ProjectService extends EventEmitter {
         const serviceName = containerName.startsWith(stackPrefix)
           ? containerName.slice(stackPrefix.length)
           : containerName;
-        infraServices[serviceName] = {
-          status: svcState.status === 'running' ? 'running' : svcState.error ? 'error' : 'stopped',
-          containerName: svcState.name,
-          port: svcState.ports ? Object.values(svcState.ports)[0] ?? null : null,
-        };
+        infraServices[serviceName] = stackServiceObservation(svcState);
       }
     }
 

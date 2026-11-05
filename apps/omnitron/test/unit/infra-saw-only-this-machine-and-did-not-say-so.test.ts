@@ -54,7 +54,7 @@ const getStack = vi.fn(async ({ project, stack }: { project: string; stack: stri
 vi.mock('../../src/daemon/daemon-client.js', () => ({
   createDaemonClient: () => ({
     isReachable: async () => true,
-    service: async () => ({ getStack }),
+    service: async () => ({ getStack, listContainers: async () => containers }),
     disconnect: async () => {},
   }),
 }));
@@ -157,4 +157,10 @@ describe('infra logs', () => {
 
     expect(process.exitCode).toBe(1);
   });
+});
+
+it('prints the same failed setup and reason that Console receives from RPC', async () => {
+  containers = [dev('minio', { provisioning: 'failed', error: 'Required bucket policy denied' })];
+  await infraStatusCommand();
+  expect(tables[0]?.[0]).toMatchObject({ health: 'healthy', setup: 'failed', reason: 'Required bucket policy denied' });
 });

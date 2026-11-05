@@ -6,6 +6,7 @@
  * via stack serviceOverrides with `external` config.
  */
 
+import { describeError } from '@omnitron-dev/titan/diagnostics';
 import type { IServicePreset, IPostProvisionContext } from './types.js';
 
 export const minioPreset: IServicePreset = {
@@ -52,43 +53,28 @@ export const minioPreset: IServicePreset = {
 
   async postProvision(ctx: IPostProvisionContext): Promise<void> {
     const buckets = ctx.userConfig['buckets'] as string[] | undefined;
-    if (!buckets?.length) return;
+    if (buckets === undefined) return;
 
     const accessKey = ctx.secrets['accessKey'] ?? 'minioadmin';
     const secretKey = ctx.secrets['secretKey'] ?? 'minioadmin';
 
-    for (const bucket of buckets) {
+    if (!Array.isArray(buckets) || buckets.some(bucket => typeof bucket !== 'string' ||
+        !/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket) || bucket.includes('..') || /^[0-9.]+$/.test(bucket)))
+      throw new Error('MinIO buckets must be valid S3 bucket names');
+    if (buckets.length === 0) return;
+    await ctx.execInContainer(['mc', 'alias', 'set', 'local', 'http://localhost:9000', accessKey, secretKey]);
+    const failures: Error[] = [];
+    for (const bucket of new Set(buckets)) {
       try {
-        await ctx.execInContainer([
-          'mc', 'alias', 'set', 'local',
-          'http://localhost:9000', accessKey, secretKey,
-        ]);
         await ctx.execInContainer(['mc', 'mb', '--ignore-existing', `local/${bucket}`]);
-      } catch (err) {
-        ctx.logger.warn({ bucket, error: (err as Error).message }, 'Failed to create bucket');
-        continue;
-      }
-      // No anonymous access — `none`, set on every provisioning, so a bucket
-      // an earlier omnitron made `public` is closed on the next one.
-      //
-      // `public` was set here on every bucket: anonymous read AND write, to
-      // anything that could reach :9000 — every container on the stack's
-      // network — past the storage service's moderation, metadata scrubbing
-      // and safe delivery. Nothing reads MinIO anonymously: the storage
-      // service signs every request with the credentials above, the gateway
-      // has no route to MinIO, and the port is published on loopback
-      // (`portArg`). Measured on sample, 2026-09-23, before ad creatives made
-      // "whose bytes are these" a question with money on it.
-      try {
+        // Required on every provisioning, including buckets left public by older versions.
         await ctx.execInContainer(['mc', 'anonymous', 'set', 'none', `local/${bucket}`]);
         ctx.logger.info({ bucket, anonymous: 'none' }, 'MinIO bucket ready — no anonymous access');
-      } catch (err) {
-        ctx.logger.error(
-          { bucket, error: (err as Error).message },
-          'Could not close anonymous access to this MinIO bucket — it keeps whatever policy it had, which an earlier omnitron set to public',
-        );
+      } catch (error) {
+        failures.push(new Error(`Bucket '${bucket}' could not be prepared with anonymous access disabled: ${describeError(error)}`));
       }
     }
+    if (failures.length) throw new AggregateError(failures, failures.map(error => error.message).join('; '));
   },
 
   generateEnvTemplates(): Record<string, string> {

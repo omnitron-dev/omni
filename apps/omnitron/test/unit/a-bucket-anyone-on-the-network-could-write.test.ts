@@ -44,21 +44,29 @@ describe('a MinIO bucket', () => {
     expect(p.logger.error).not.toHaveBeenCalled();
   });
 
-  it('says it at error level when the policy could not be closed', async () => {
+  it('refuses readiness when the policy could not be closed', async () => {
     const p = provisioning((argv) => argv[1] === 'anonymous');
-    await minioPreset.postProvision!(p.ctx);
-
-    expect(p.logger.error).toHaveBeenCalledWith(
-      expect.objectContaining({ bucket: 'storage' }),
-      expect.stringMatching(/Could not close anonymous access/),
-    );
+    await expect(minioPreset.postProvision!(p.ctx)).rejects.toThrow("Bucket 'storage'");
+    expect(p.logger.info).not.toHaveBeenCalled();
   });
 
   it('does not set a policy on a bucket it could not create', async () => {
     const p = provisioning((argv) => argv[1] === 'mb');
-    await minioPreset.postProvision!(p.ctx);
+    await expect(minioPreset.postProvision!(p.ctx)).rejects.toThrow("Bucket 'storage'");
 
     expect(p.ran.some((argv) => argv[1] === 'anonymous')).toBe(false);
-    expect(p.logger.warn).toHaveBeenCalledWith(expect.objectContaining({ bucket: 'storage' }), 'Failed to create bucket');
+    expect(p.logger.info).not.toHaveBeenCalled();
+  });
+  it.each([['../outside'], ['x'], ['a/b'], ['192.168.1.1'], 'storage'].map(buckets => ({ buckets })))('refuses invalid bucket declarations $buckets before any command', async ({ buckets }) => {
+    const p = provisioning(); p.ctx.userConfig.buckets = buckets;
+    await expect(minioPreset.postProvision!(p.ctx)).rejects.toThrow('bucket names');
+    expect(p.ran).toEqual([]);
+  });
+  it('still closes other buckets while reporting every failed declaration', async () => {
+    const p = provisioning(argv => argv.includes('local/failed'));
+    p.ctx.userConfig.buckets = ['failed', 'storage', 'storage'];
+    await expect(minioPreset.postProvision!(p.ctx)).rejects.toThrow("Bucket 'failed'");
+    expect(p.ran.filter(argv => argv[1] === 'alias')).toHaveLength(1);
+    expect(p.ran.filter(argv => argv[1] === 'anonymous')).toEqual([['mc', 'anonymous', 'set', 'none', 'local/storage']]);
   });
 });

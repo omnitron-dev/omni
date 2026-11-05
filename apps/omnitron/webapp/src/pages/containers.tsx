@@ -269,7 +269,7 @@ export default function ContainersPage() {
   const totalCount = containers.length;
   const runningCount = containers.filter((c) => c.status === 'running').length;
   const stoppedCount = containers.filter((c) => c.status === 'exited').length;
-  const unhealthyCount = containers.filter((c) => c.health === 'unhealthy').length;
+  const unhealthyCount = containers.filter((c) => c.health === 'unhealthy' || c.health === 'starting' || c.error || (c.provisioning && c.provisioning !== 'ready')).length;
 
   const handleStart = (name: string) => operate(name, 'Starting', async () => {
     await infra.startContainer({ name });
@@ -356,6 +356,18 @@ export default function ContainersPage() {
           variant="outlined"
           sx={{ textTransform: 'capitalize' }}
         />
+      ),
+    },
+    {
+      key: 'provisioning',
+      header: 'Setup',
+      render: (container) => (
+        <Stack spacing={0.5} sx={{ minWidth: 120, maxWidth: 320 }}>
+          <Chip label={container.provisioning ?? 'Not verified'} size="small" variant="outlined"
+            color={container.provisioning === 'ready' ? 'success' : container.provisioning === 'failed' ? 'error' : container.provisioning === 'pending' ? 'warning' : 'default'}
+            sx={{ alignSelf: 'flex-start', textTransform: 'capitalize' }} />
+          {container.error && <Typography variant="caption" color="error.main" sx={{ overflowWrap: 'anywhere' }}>{container.error}</Typography>}
+        </Stack>
       ),
     },
     {
@@ -493,7 +505,7 @@ export default function ContainersPage() {
         </Grid>
         <Grid size={{ xs: 6, md: 3 }}>
           <StatCard
-            title="Unhealthy"
+            title="Not ready"
             value={count(unhealthyCount)}
             icon={<ContainersIcon />}
             color={unhealthyCount > 0 ? 'error' : 'success'}

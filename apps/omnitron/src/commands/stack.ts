@@ -178,7 +178,7 @@ export async function stackStatusCommand(projectName: string, stackName: string)
     }
     for (const [name, svcInfo] of Object.entries(stack.infrastructure.services)) {
       const sym = svcInfo.status === 'running' ? prism.green('●') : svcInfo.status === 'error' ? prism.red('●') : prism.dim('○');
-      log.info(`  ${sym} ${name}${svcInfo.port ? ` :${svcInfo.port}` : ''} ${prism.dim(`(${svcInfo.containerName})`)}`);
+      log.info(`  ${sym} ${name}${svcInfo.port ? ` :${svcInfo.port}` : ''} ${prism.dim(`(${svcInfo.containerName})`)}${svcInfo.error ? ` — ${svcInfo.error}` : ''}`);
     }
 
     // Nodes

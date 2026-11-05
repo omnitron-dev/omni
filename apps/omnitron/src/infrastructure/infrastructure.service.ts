@@ -19,6 +19,8 @@ import { RecoveryMutation, RecoveryBusyError } from '../daemon/recovery-state.js
 
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 import { computeBackoff } from '@omnitron-dev/titan/utils';
+import { describeError } from '@omnitron-dev/titan/diagnostics';
+import { isDeepStrictEqual } from 'node:util';
 import type {
   InfrastructureConfig,
   InfrastructureState,
@@ -43,7 +45,7 @@ import {
   createVolume,
   containerSpecHash,
 } from './container-runtime.js';
-import { summariseProvisioning, describeProvisioning } from './provisioning-outcome.js';
+import { summariseProvisioning, describeProvisioning, retainProvisioningObservation } from './provisioning-outcome.js';
 import {
   OMNITRON_PG_PORT,
   OMNITRON_PG_USER,
@@ -202,8 +204,8 @@ export class InfrastructureService {
      */
     private readonly needsControlPlaneDatabase = true,
   ) {
+    this.presetRegistry ??= createDefaultRegistry();
     if (!normalizedServices) {
-      this.presetRegistry ??= createDefaultRegistry();
       normalizedServices = normalizeInfraConfig(config, this.presetRegistry);
     }
     this.normalizedServices = normalizedServices;
@@ -480,10 +482,12 @@ export class InfrastructureService {
         adopted.push(name);
       }
       const released = [...current.keys()].filter(name => !next.has(name));
+      const previousServices = this.normalizedServices;
       this.desiredContainers = [...candidate.desiredContainers];
       this.config = candidate.config;
       this.normalizedServices = candidate.normalizedServices;
       this.serviceOverrides = candidate.serviceOverrides;
+      this.invalidateChangedSetup(previousServices);
       for (const name of released) {
         delete this.state.services[name];
         this.unhealthyTicks.delete(name);
@@ -575,7 +579,7 @@ export class InfrastructureService {
         desiredContainers.some(desired => !expected.has(desired.name)))) throw new Error('Incomplete infrastructure native observations');
     const observations: Array<{ name: string; containerId: string | null }> = [];
     for (const desired of desiredContainers) {
-      const actual = await getContainerState(desired.name, { orThrow: true });
+      const actual = await getContainerState(desired.name, { orThrow: true, fullId: true });
       const previous = state.services[desired.name];
       // A failed creation owns no native container. Preserve that failure and
       // its desired declaration; it must not make every backend upgrade fail.
@@ -589,13 +593,17 @@ export class InfrastructureService {
         observations.push({ name: desired.name, containerId: null });
         continue;
       }
+      // Protocol 1 exported Docker's 12-character display ID. Keep its wire
+      // shape for rollback, while comparing a full prior state ID when present.
+      const matches = (id: string | null | undefined) => id?.length === 12
+        ? actual.containerId?.startsWith(id) : id === actual.containerId;
       if (!actual.containerId || actual.specHash !== containerSpecHash(desired) ||
-          (expected && expected.get(desired.name) !== actual.containerId) ||
-          (!expected && previous?.containerId && previous.containerId !== actual.containerId) ||
+          (expected && !matches(expected.get(desired.name))) ||
+          (previous?.containerId && !matches(previous.containerId)) ||
           Object.entries(desired.labels).some(([key, value]) => actual.labels?.[key] !== value)) {
         throw new Error(`Infrastructure identity or specification changed during handoff: ${desired.name}`);
       }
-      observations.push({ name: desired.name, containerId: actual.containerId });
+      observations.push({ name: desired.name, containerId: actual.containerId.slice(0, 12) });
     }
     return observations;
   }
@@ -740,10 +748,12 @@ export class InfrastructureService {
     serviceOverrides?: Record<string, import('./types.js').IServiceOverride>,
   ): void {
     if (this.ownershipFrozen) throw new Error('Infrastructure ownership refresh in progress');
+    const previousServices = this.normalizedServices;
     this.config = config;
     this.normalizedServices = normalizedServices;
     this.serviceOverrides = serviceOverrides;
     this.desiredContainers = resolveInfrastructure(config, normalizedServices, serviceOverrides);
+    this.invalidateChangedSetup(previousServices);
   }
 
   /**
@@ -970,9 +980,9 @@ export class InfrastructureService {
     }
 
     // Update state
-    const newState = await getContainerState(desired.name);
+    const newState = await getContainerState(desired.name, { orThrow: true, fullId: true });
     if (newState) {
-      this.state.services[desired.name] = newState;
+      this.recordContainerObservation(desired, newState);
     }
   }
 
@@ -1128,48 +1138,40 @@ export class InfrastructureService {
    * Generic post-provision: iterate all services, call preset hooks.
    * Replaces hardcoded createPostgresDatabases() / createMinioBuckets().
    */
-  private async runPresetPostProvisionHooks(): Promise<void> {
+  private requiresPostProvision(desired: ResolvedContainer): boolean {
+    const requirement = this.normalizedServices[desired.labels['omnitron.service'] ?? ''];
+    if (!requirement?._preset) return false;
+    const preset = this.presetRegistry?.get(requirement._preset);
+    return !preset || Boolean(preset.postProvision);
+  }
+
+  private recordContainerObservation(desired: ResolvedContainer, actual: ContainerState): void {
+    this.state.services[desired.name] = retainProvisioningObservation(actual, this.state.services[desired.name], this.requiresPostProvision(desired));
+  }
+
+  private invalidateChangedSetup(previous: typeof this.normalizedServices): void {
+    for (const container of this.desiredContainers) {
+      const name = container.labels['omnitron.service'] ?? '';
+      const state = this.state.services[container.name];
+      if (state && this.requiresPostProvision(container) && !isDeepStrictEqual(previous[name], this.normalizedServices[name])) {
+        state.provisioning = 'pending';
+        state.error = 'Declared service setup changed and must be verified';
+        this.state.ready = false;
+      }
+    }
+  }
+
+  private async runPresetPostProvisionHooks(only?: ResolvedContainer): Promise<void> {
     const { execFile } = await import('node:child_process');
     const { promisify } = await import('node:util');
     const execFileAsync = promisify(execFile);
 
-    // A preset hook is what creates the databases inside Postgres and the
-    // buckets inside MinIO — the containers are running either way, so a
-    // failure here is invisible until an application cannot find its
-    // database.
-    //
-    // `this.presetRegistry!` asserted a dependency the constructor declares
-    // OPTIONAL, so a caller that did not pass one — which the type permits —
-    // got `Cannot read properties of undefined (reading 'get')` from a line
-    // that reads as internal, after every container was already up.
-    // Measured on a node provisioning a stack, where the containers stayed
-    // and the databases were never made.
-    if (!this.presetRegistry) {
-      const withPresets = Object.entries(this.normalizedServices)
-        .filter(([, r]) => r._preset)
-        .map(([name]) => name);
-      if (withPresets.length > 0) {
-        this.logger.error(
-          { services: withPresets },
-          'No preset registry, so post-provision steps were skipped — these services are running but their databases and buckets were not created',
-        );
-      }
-      return;
-    }
-
     for (const [serviceName, requirement] of Object.entries(this.normalizedServices)) {
       if (!requirement._preset) continue;
-
-      const preset = this.presetRegistry.get(requirement._preset);
-      if (!preset?.postProvision) continue;
-
-      const container = this.desiredContainers.find((c) => c.name.endsWith(`-${serviceName}`));
-      if (!container) continue;
-
-      const actual = await getContainerState(container.name, { orThrow: true, fullId: true });
-      if (!actual || this.state.services[container.name]?.error) continue;
-      const cName = ownedContainerId(container, actual);
-      await waitForHealthy(cName, 30_000);
+      const preset = this.presetRegistry?.get(requirement._preset);
+      if (preset && !preset.postProvision) continue;
+      const container = this.desiredContainers.find((c) => c.labels['omnitron.service'] === serviceName);
+      if (!container || (only && container.name !== only.name)) continue;
 
       // Resolve secrets from requirement
       const secrets: Record<string, string> = {};
@@ -1179,25 +1181,44 @@ export class InfrastructureService {
         }
       }
 
-      const execInCont = async (command: string[]): Promise<string> => {
-        const { stdout } = await execFileAsync('docker', ['exec', cName, ...command], {
-          encoding: 'utf-8',
-          timeout: 10_000,
-        });
-        return (stdout ?? '').trim();
-      };
+      const safeError = (error: unknown): string => describeError(error, 0, Object.values(secrets));
 
       try {
-        await preset.postProvision({
+        const actual = await getContainerState(container.name, { orThrow: true, fullId: true });
+        if (!actual) throw new Error('Declared service container is absent');
+        const cName = ownedContainerId(container, actual);
+        this.state.services[container.name] = { ...actual, provisioning: 'pending', error: 'Declared service setup is in progress' };
+        if (!preset) throw new Error(`Preset '${requirement._preset}' is unavailable; declared service setup cannot be verified`);
+        if (!await waitForHealthy(cName, 30_000)) throw new Error('Container did not become healthy before declared service setup');
+        await preset.postProvision!({
           containerName: container.name,
           userConfig: requirement._presetConfig ?? {},
           secrets,
-          execInContainer: execInCont,
+          execInContainer: async command => {
+            try {
+              const { stdout } = await execFileAsync('docker', ['exec', cName, ...command], { encoding: 'utf-8', timeout: 10_000 });
+              return (stdout ?? '').trim();
+            } catch (error) {
+              // Raw subprocess causes include credential arguments. Preserve only the sanitized cause.
+              // eslint-disable-next-line preserve-caught-error
+              throw new Error('Declared service setup command failed', { cause: safeError(error) });
+            }
+          },
           logger: this.logger,
         });
+        const confirmed = await getContainerState(container.name, { orThrow: true, fullId: true });
+        if (!confirmed || confirmed.status !== 'running' || confirmed.health === 'unhealthy' ||
+            confirmed.containerId !== actual.containerId || confirmed.startedAt !== actual.startedAt)
+          throw new Error('Container generation changed during declared service setup');
+        this.state.services[container.name] = { ...confirmed, provisioning: 'ready' };
       } catch (err) {
+        const error = `Post-provisioning '${serviceName}': ${safeError(err)}`;
+        this.state.services[container.name] = {
+          ...(this.state.services[container.name] ?? { name: container.name, image: container.image, status: 'not_found' }),
+          provisioning: 'failed', error,
+        };
         this.logger.error(
-          { service: serviceName, preset: requirement._preset, error: (err as Error).message },
+          { service: serviceName, preset: requirement._preset, error },
           'Post-provision hook failed'
         );
       }
@@ -1281,7 +1302,7 @@ export class InfrastructureService {
   }
 
   private async healthSweep(): Promise<void> {
-    if (this.ownershipFrozen) return;
+    if (this.ownershipFrozen || this.provisioning || this.activeSweeps.size) return;
     const task = this.healthSweepOwned();
     this.activeSweeps.add(task);
     try { await task; } finally { this.activeSweeps.delete(task); }
@@ -1372,16 +1393,28 @@ export class InfrastructureService {
         // reset the restart circuit-breaker (it may have recovered on its own
         // via Docker's restart policy).
         this.unhealthyTicks.delete(desired.name);
-        this.restartBackoff.delete(desired.name);
+        if (this.state.services[desired.name]?.provisioning !== 'failed') this.restartBackoff.delete(desired.name);
       }
 
       // Update state
-      const newState = await getContainerState(desired.name);
+      const newState = await getContainerState(desired.name, { orThrow: true, fullId: true });
       if (newState) {
-        this.state.services[desired.name] = newState;
+        this.recordContainerObservation(desired, newState);
+        const state = this.state.services[desired.name]!;
+        if (state.status === 'running' && state.health !== 'unhealthy' &&
+            (state.provisioning === 'pending' || state.provisioning === 'failed') &&
+            Date.now() >= (this.restartBackoff.get(desired.name)?.nextAttemptAt ?? 0)) {
+          await this.runPresetPostProvisionHooks(desired);
+          if (this.state.services[desired.name]?.provisioning === 'ready') this.restartBackoff.delete(desired.name);
+          else {
+            const failures = (this.restartBackoff.get(desired.name)?.failures ?? 0) + 1;
+            this.restartBackoff.set(desired.name, { failures, nextAttemptAt: Date.now() + restartBackoffMs(failures) });
+          }
+        }
       }
     }
 
+    this.state.ready = summariseProvisioning(this.desiredContainers, this.state.services).ready;
     this.state.lastReconciled = new Date().toISOString();
   }
 }

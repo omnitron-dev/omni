@@ -36,6 +36,7 @@
  */
 
 import type { ContainerState, ContainerStatus } from './types.js';
+import type { IStackInfraStatus } from '../shared/dto/project.js';
 
 export interface ServiceOutcome {
   name: string;
@@ -59,13 +60,48 @@ export interface ProvisioningOutcome {
 /**
  * A container that is running is not necessarily working.
  *
- * Docker's own health probe is the only thing here that has looked inside,
- * so `unhealthy` outranks `running`. `starting` does not: a container in its
- * first probe window is not yet a failure, and calling it one would make
- * every provisioning run fail for the seconds before the first check.
+ * Native health and declared service setup must both be ready. A container
+ * still in its first probe window is not ready yet either.
  */
 function isUp(state: ContainerState): boolean {
-  return state.status === 'running' && state.health !== 'unhealthy';
+  return state.status === 'running' && state.health !== 'unhealthy' && state.health !== 'starting' && !state.error &&
+    (state.provisioning === undefined || state.provisioning === 'ready');
+}
+
+/** Native polling cannot prove a preset's setup succeeded or erase its failure. */
+export function retainProvisioningObservation(actual: ContainerState, previous: ContainerState | undefined, required?: boolean): ContainerState {
+  const same = actual.containerId && actual.startedAt && actual.containerId === previous?.containerId &&
+    actual.startedAt === previous.startedAt && actual.specHash === previous.specHash;
+  if (same && previous.provisioning && required !== false) return {
+    ...actual, provisioning: previous.provisioning,
+    ...(previous.provisioning !== 'ready' && { error: [...new Set([actual.error, previous.error ?? 'Declared service setup is not verified'].filter(Boolean))].join('; ') }),
+  };
+  return required ? { ...actual, provisioning: 'pending', error: [actual.error, 'Declared service setup is not verified for this container generation'].filter(Boolean).join('; ') } : actual;
+}
+
+/** Join native inventory to the reconciler's generation-bound setup observation. */
+export function observeProvisioning(actual: readonly ContainerState[], observations: readonly ContainerState[]): ContainerState[] {
+  const previous = new Map(observations.map(service => [service.name, service]));
+  return actual.map(service => {
+    const setup = previous.get(service.name);
+    return retainProvisioningObservation(service, setup, setup?.provisioning ? true : undefined);
+  });
+}
+
+/** Local and remote stack views use the same readiness and evidence. */
+export function stackServiceObservation(state: ContainerState): IStackInfraStatus['services'][string] {
+  return {
+    status: state.error || state.provisioning === 'failed' ? 'error' : state.status === 'running' ? 'running' : 'stopped',
+    containerName: state.name, port: Object.values(state.ports ?? {})[0] ?? null,
+    ...(state.service !== undefined && { service: state.service }),
+    ...(state.containerId !== undefined && { containerId: state.containerId }),
+    image: state.image,
+    ...(state.ports !== undefined && { ports: state.ports }),
+    ...(state.app !== undefined && { app: state.app }),
+    health: state.status === 'running' ? state.health ?? 'none' : 'none',
+    ...(state.provisioning !== undefined && { provisioning: state.provisioning }),
+    ...(state.error !== undefined && { error: state.error }),
+  };
 }
 
 export function summariseProvisioning(
@@ -91,7 +127,7 @@ export function summariseProvisioning(
       name: state.name,
       image: state.image,
       status: state.status,
-      error: state.error ?? (state.health === 'unhealthy' ? 'container reports unhealthy' : undefined),
+      error: state.error ?? (state.health === 'unhealthy' || state.health === 'starting' ? `container health probe is ${state.health}` : undefined),
     });
   }
 
@@ -105,7 +141,7 @@ export function summariseProvisioning(
       name: state.name ?? name,
       image: state.image,
       status: state.status,
-      error: state.error ?? (state.health === 'unhealthy' ? 'container reports unhealthy' : undefined),
+      error: state.error ?? (state.health === 'unhealthy' || state.health === 'starting' ? `container health probe is ${state.health}` : undefined),
     });
   }
 
@@ -127,7 +163,7 @@ export function describeProvisioning(outcome: ProvisioningOutcome): string {
 
   const parts: string[] = [];
   if (outcome.missing.length > 0) parts.push(`${outcome.missing.length} missing (${outcome.missing.map((s) => s.name).join(', ')})`);
-  if (outcome.failed.length > 0) parts.push(`${outcome.failed.length} not running (${outcome.failed.map((s) => s.name).join(', ')})`);
+  if (outcome.failed.length > 0) parts.push(`${outcome.failed.length} not ready (${outcome.failed.map((s) => s.name).join(', ')})`);
   return `Infrastructure is NOT ready — ${parts.join('; ')}`;
 }
 

@@ -204,6 +204,7 @@ export async function listManagedContainers(options: { orThrow?: boolean; checkN
         image: info.Config?.Image ?? '',
         status: mapInspectStatus(info.State?.Status),
         containerId: info.Id,
+        specHash: info.Config?.Labels?.[SPEC_HASH_LABEL],
         labels: info.Config?.Labels,
         health: mapInspectHealth(info.State?.Health?.Status, info.State?.Status),
         startedAt: info.State?.StartedAt,

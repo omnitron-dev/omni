@@ -98,7 +98,7 @@ describe('native monitoring ownership refresh', () => {
     expect(restored.getState().services['redis']?.error).toBe('Image unavailable');
     expect(restored.getState().ready).toBe(false);
     expect(restored.getDesiredServices()).toEqual([{ name: 'redis', image: redis.image }]);
-    expect(runtime.get).toHaveBeenCalledWith('redis', { orThrow: true });
+    expect(runtime.get).toHaveBeenCalledWith('redis', { orThrow: true, fullId: true });
     expect(runtime.create).not.toHaveBeenCalled(); expect(runtime.start).not.toHaveBeenCalled(); expect(runtime.remove).not.toHaveBeenCalled();
     original.dispose(); restored.dispose();
   });

@@ -5,6 +5,8 @@
  * postProvision hook creates databases declared in config.
  */
 
+import { escapeIdentifier, escapeLiteral } from 'pg';
+import { describeError } from '@omnitron-dev/titan/diagnostics';
 import type { IServicePreset, IPostProvisionContext } from './types.js';
 
 export const postgresPreset: IServicePreset = {
@@ -91,23 +93,28 @@ export const postgresPreset: IServicePreset = {
     const databases = ctx.userConfig['databases'] as
       | Record<string, { extensions?: string[] } | undefined>
       | undefined;
-    if (!databases) return;
+    if (databases === undefined) return;
 
     const user = ctx.secrets['user'] ?? 'postgres';
+    if (typeof databases !== 'object' || databases === null || Array.isArray(databases)) throw new Error('PostgreSQL databases must be a declaration map');
+    const failures: Error[] = [];
     const maxRetries = 5;
     const retryDelay = 2000;
 
     for (const [dbName, dbConfig] of Object.entries(databases)) {
+      if (!dbName || dbName.includes('\0') || Buffer.byteLength(dbName) > 63) {
+        failures.push(new Error('Invalid PostgreSQL database name')); continue;
+      }
       let created = false;
       for (let attempt = 0; attempt < maxRetries && !created; attempt++) {
         try {
           const result = await ctx.execInContainer([
-            'psql', '-U', user, '-tAc',
-            `SELECT 1 FROM pg_database WHERE datname='${dbName}'`,
+            'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', 'postgres', '-tAc',
+            `SELECT 1 FROM pg_database WHERE datname=${escapeLiteral(dbName)}`,
           ]);
           if (!result.trim()) {
             await ctx.execInContainer([
-              'psql', '-U', user, '-c', `CREATE DATABASE "${dbName}"`,
+              'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', 'postgres', '-c', `CREATE DATABASE ${escapeIdentifier(dbName)}`,
             ]);
             ctx.logger.info({ database: dbName }, 'Created PostgreSQL database');
           }
@@ -117,13 +124,17 @@ export const postgresPreset: IServicePreset = {
             ctx.logger.debug({ database: dbName, attempt: attempt + 1 }, 'Postgres not ready — retrying');
             await new Promise((r) => setTimeout(r, retryDelay));
           } else {
-            ctx.logger.warn({ database: dbName, error: (err as Error).message }, 'Failed to create database');
+            failures.push(new Error(`Database '${dbName}' could not be prepared: ${describeError(err)}`));
           }
         }
       }
 
-      if (created) await createExtensions(ctx, user, dbName, dbConfig?.extensions ?? []);
+      if (created) {
+        try { await createExtensions(ctx, user, dbName, dbConfig?.extensions ?? []); }
+        catch (error) { failures.push(new Error(describeError(error))); }
+      }
     }
+    if (failures.length) throw new AggregateError(failures, failures.map(error => error.message).join('; '));
   },
 
   generateEnvTemplates(_userConfig: Record<string, unknown>): Record<string, string> {
@@ -133,46 +144,28 @@ export const postgresPreset: IServicePreset = {
   },
 };
 
-/**
- * Create the extensions a database declared, inside that database.
- *
- * `omnitronConfig.database.extensions` was declared in the type and in the
- * zod schema and read by nothing: the resolver took `dialect` and `pool` and
- * dropped the rest. An app asking for postgis got a plain container and
- * failed on its first spatial query with `$libdir/postgis-3: No such file` —
- * a message about a shared library, three layers away from the setting that
- * was ignored. The workaround was to override the image by hand in the stack
- * config, which is why the gap survived: it looked like an image problem.
- *
- * A missing extension is reported here, at provisioning time, naming the
- * extension and the fact that the image has to carry it. Failing to create
- * one does not abort the rest — the other databases and the other extensions
- * are still worth having, and the app's own startup will fail loudly enough
- * if it truly cannot run without it.
- */
+/** Complete independent declarations, then refuse readiness if any required extension failed. */
 async function createExtensions(
   ctx: IPostProvisionContext,
   user: string,
   dbName: string,
   extensions: string[],
 ): Promise<void> {
-  for (const ext of extensions) {
-    // Extension names come from a config file, not from a request, but they
-    // are interpolated into SQL — so keep them to what an identifier can be.
+  if (!Array.isArray(extensions) || extensions.some(ext => typeof ext !== 'string'))
+    throw new Error(`Database '${dbName}' extensions must be a list of names`);
+  const failures: Error[] = [];
+  for (const ext of new Set(extensions)) {
     if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(ext)) {
-      ctx.logger.warn({ database: dbName, extension: ext }, 'Skipped extension: not a valid identifier');
-      continue;
+      failures.push(new Error(`Invalid extension identifier for database '${dbName}'`)); continue;
     }
     try {
       await ctx.execInContainer([
-        'psql', '-U', user, '-d', dbName, '-c', `CREATE EXTENSION IF NOT EXISTS "${ext}"`,
+        'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', dbName, '-c', `CREATE EXTENSION IF NOT EXISTS ${escapeIdentifier(ext)}`,
       ]);
       ctx.logger.info({ database: dbName, extension: ext }, 'Ensured PostgreSQL extension');
-    } catch (err) {
-      ctx.logger.error(
-        { database: dbName, extension: ext, error: (err as Error).message },
-        `Could not create extension "${ext}" — the image must ship it (postgres:17-alpine has the contrib set, not postgis; use an image override for those)`
-      );
+    } catch (error) {
+      failures.push(new Error(`Database '${dbName}' requires extension '${ext}'; ensure the image ships it: ${describeError(error)}`));
     }
   }
+  if (failures.length) throw new AggregateError(failures, failures.map(error => error.message).join('; '));
 }

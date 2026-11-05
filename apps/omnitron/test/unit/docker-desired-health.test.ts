@@ -41,7 +41,7 @@ describe('Docker observation combined with local desired state', () => {
     expect((await check([up, { ...down, status: 'running' }])).status).toBe('degraded');
   });
   it('asks Docker even when reconciler state claims everything is fine', async () => {
-    const indicator = new DockerHealthIndicator(() => ({ getDesiredServices: () => [] }) as never,
+    const indicator = new DockerHealthIndicator(() => ({ getState: () => ({ services: {} }), getDesiredServices: () => [] }) as never,
       async () => { throw Error('offline'); }, () => context);
     expect((await indicator.check()).status).toBe('unhealthy');
   });
@@ -56,7 +56,7 @@ describe('stack intent is derived without changing infrastructure', () => {
       resolveStacks: (config: { stacks: unknown }) => config.stacks,
       getRunningStacks: () => [],
       orchestrator: { list: () => [] },
-      infraManager: { getInstance: () => ({ getDesiredServices: () => [{ name: 'database' }] }) },
+      infraManager: { listInstances: () => [], getInstance: () => ({ getDesiredServices: () => [{ name: 'database' }] }) },
     };
     const out = ProjectService.prototype.getInfrastructureHealthContext.call(self as never);
     expect(out.stacks).toContainEqual({ project: 'sample', stack: 'dev', intent: 'inactive' });

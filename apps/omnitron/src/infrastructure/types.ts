@@ -235,6 +235,8 @@ export interface ContainerState {
   health?: 'healthy' | 'unhealthy' | 'starting' | 'none' | undefined;
   startedAt?: string | undefined;
   error?: string | undefined;
+  /** Declared databases, extensions and buckets are separate from container liveness. */
+  provisioning?: 'pending' | 'ready' | 'failed';
   /** Desired-spec fingerprint from the omnitron.spec-hash label (config-drift detection). */
   specHash?: string | undefined;
   /**

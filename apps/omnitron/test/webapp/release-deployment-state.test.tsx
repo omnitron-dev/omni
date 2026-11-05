@@ -39,11 +39,11 @@ it('labels the source control warning explicitly as Git', () => {
   expect(screen.queryByText('local only')).toBeNull();
 });
 
-it('shows verified launch identity separately from the previous deployment record', async () => {
+it.each([123, null])('shows verified launch identity for PID %s separately from the previous deployment record', async pid => {
   mocks.stacks.mockResolvedValue([{ name: 'test', type: 'remote', status: 'running',
     apps: [{ name: 'main', status: 'online' }], nodes: [],
     placements: [{ nodeKey: 'test.example:9700', appsObserved: true, apps: [{ name: 'main', expected: true,
-      process: { name: 'sample/deployed/main', status: 'online', pid: 123, release: { state: 'confirmed',
+      process: { name: 'sample/deployed/main', status: 'online', pid, generation: 'launch-1', release: { state: 'confirmed',
         releaseId: 'sample-current', manifestSha256: 'a'.repeat(64), artifactSha256: 'b'.repeat(64),
         observedAt: '2026-11-02T00:00:00Z', launchId: 'launch-1', basis: 'verified-launch' } } }] }],
   }]);
@@ -54,6 +54,20 @@ it('shows verified launch identity separately from the previous deployment recor
   expect(screen.getByRole('link', { name: 'sample-old' })).toBeTruthy();
   expect(screen.getByText('1/1 launch identities verified')).toBeTruthy();
   expect(screen.queryByText('Current release not reported')).toBeNull();
+});
+
+it('explains a mismatched owner generation without showing a verified launch', async () => {
+  mocks.stacks.mockResolvedValue([{ name: 'test', type: 'local', status: 'running', nodes: [],
+    apps: [{ name: 'mail', status: 'online', pid: null, generation: 'launch-2', release: { state: 'confirmed',
+      releaseId: 'sample-current', manifestSha256: 'a'.repeat(64), artifactSha256: 'b'.repeat(64),
+      observedAt: '2026-11-02T00:00:00Z', launchId: 'launch-1', basis: 'verified-launch' } }],
+  }]);
+  mocks.deployments.mockResolvedValue({ known: true, deployments: [] });
+  render(<MemoryRouter><ReleaseDeploymentState project="sample" /></MemoryRouter>);
+  await screen.findByText('Current release not reported');
+  expect(screen.getByText(/Application generation is invalid or differs/)).toBeTruthy();
+  expect(screen.queryByText('Launch release verified')).toBeNull();
+  expect(screen.getByText('0/1 launch identities verified')).toBeTruthy();
 });
 
 it('keeps the concrete node reason visible without confirming missing launch evidence', async () => {

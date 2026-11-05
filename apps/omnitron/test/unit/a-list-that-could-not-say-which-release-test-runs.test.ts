@@ -200,6 +200,20 @@ describe('the JSON', () => {
 
 
 describe('current status', () => {
+  it.each([['launch-1', 0], ['stale-launch', 2]] as const)('uses owner generation %s for a worker-only launch and exits %s', async (generation, exitCode) => {
+    setEnvOverride({ OMNITRON_OUTPUT: 'json' });
+    daemon.stacks = [{ name: 'test', type: 'local', status: 'running', nodes: [], apps: [{
+      name: 'mail', status: 'online', pid: null, generation, release: { state: 'confirmed', releaseId: 'sample-current',
+        manifestSha256: 'a'.repeat(64), artifactSha256: 'b'.repeat(64), launchId: 'launch-1',
+        observedAt: '2026-11-05T00:00:00Z', basis: 'verified-launch' },
+    }] }];
+    await releaseStatusCommand('sample');
+    const state = JSON.parse(stdout.join('').trim()).data.stacks[0];
+    expect(state.runningRelease).toBe(exitCode === 0 ? 'confirmed' : 'unreported');
+    expect(state.releaseEvidence.observations[0]).toMatchObject({ app: 'mail', pid: null, generation });
+    expect(process.exitCode).toBe(exitCode);
+  });
+
   it('keeps historical deployment separate from current processes in JSON and closes one shared client', async () => {
     setEnvOverride({ OMNITRON_OUTPUT: 'json' });
     daemon.stacks = [

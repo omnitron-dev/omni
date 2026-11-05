@@ -58,6 +58,23 @@ const node = (index: number, processes: ProcessInfoDto[] | null) =>
   nodePlacement('sample', base, base.config.nodes![index]!, processes, infra, at);
 
 describe('node-qualified stack observations', () => {
+  it('keeps launch identity on physical replicas and never carries a stale aggregate receipt', () => {
+    const release = { state: 'confirmed' as const, releaseId: 'sample-release', manifestSha256: 'a'.repeat(64),
+      artifactSha256: 'b'.repeat(64), launchId: 'launch-1', observedAt: at, basis: 'verified-launch' as const };
+    const worker = { ...process(), pid: null, generation: 'launch-1', release };
+    const single = observeStack(base, [node(0, [worker])]);
+    expect(single.apps[0]).toMatchObject({ generation: 'launch-1', release });
+    const multiple = observeStack(single, [node(0, [worker]), node(1, [
+      { ...worker, generation: 'launch-2', release: { ...release, launchId: 'launch-2' } },
+    ])]);
+    expect(multiple.apps[0]!.generation).toBeUndefined();
+    expect(multiple.apps[0]!.release).toBeUndefined();
+    expect(multiple.placements!.map(p => p.apps[0]!.process!.generation)).toEqual(['launch-1', 'launch-2']);
+    const missing = observeStack(single, [node(0, null)]);
+    expect(missing.apps[0]!.generation).toBeUndefined();
+    expect(missing.apps[0]!.release).toBeUndefined();
+  });
+
   it('retains two replicas with identical names and independent infrastructure on both nodes', () => {
     const result = observeStack(base, [node(0, [process()]), node(1, [process(undefined, 20)])]);
     expect(result.apps[0]).toMatchObject({ status: 'online', instances: 2, cpu: 6, memory: 200, pid: null });

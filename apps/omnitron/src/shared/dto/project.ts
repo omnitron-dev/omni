@@ -353,13 +353,15 @@ export interface IStackAppStatus {
   /** Observed health of all physical replicas, independent of process status. */
   health?: StackHealthObservation['status'];
   release?: import('../../config/types.js').RuntimeReleaseEvidence;
+  /** Owner's launch generation for a single observed replica; absent on older owners. */
+  generation?: string;
   /** App name */
   name: string;
   /** Namespaced handle key: project/stack/app */
   handleKey: string;
   /** Current status */
   status: AppStatus | 'degraded' | 'unknown';
-  /** PID (null if not running) */
+  /** Main PID, or null when stopped or no single process represents the application. */
   pid: number | null;
   /** Number of instances */
   instances: number;

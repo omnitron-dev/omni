@@ -5385,6 +5385,7 @@ export class ProjectService extends EventEmitter {
           cpu: running.cpu,
           memory: running.memory,
           port: running.port ?? null,
+          ...(running.generation !== undefined && { generation: running.generation }),
           ...(running.release && { release: running.release }),
         };
       }
@@ -5416,6 +5417,7 @@ export class ProjectService extends EventEmitter {
         cpu: running.cpu,
         memory: running.memory,
         port: running.port ?? null,
+        ...(running.generation !== undefined && { generation: running.generation }),
         ...(running.release && { release: running.release }),
       });
     }

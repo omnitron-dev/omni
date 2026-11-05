@@ -32,6 +32,7 @@ const { inspectLocalReleaseInstallation: inspect } = await load('release/local-i
 const { targetRuntime } = await load('release/target-runtime');
 const { installedReleaseCheckCommand } = await load('release/runtime-provenance');
 const { loadRelease } = await load('release/load');
+const { readStackRelease } = await load('shared/release-reading');
 const exec = promisify(execCallback);
 const hash = value => createHash('sha256').update(value).digest('hex');
 const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'omni-installed-origin-')));
@@ -194,6 +195,20 @@ Module({providers:[[createToken('mixed-watch-proof'),{useFactory:()=>{fs.appendF
   await client.refresh();
   const observed = client.orchestrator.list().find(app => app.name === runtimeEntry.name);
   assert.equal(observed?.release?.state, legacy ? 'unreported' : 'confirmed');
+  const readWorkerLaunch = async name => {
+    await client.refresh();
+    const app = client.orchestrator.getApp(name);
+    assert.equal(app.status, 'online');
+    assert.equal(app.pid, null, 'Worker-only topology has no single main process');
+    if (ownerDist === dist) assert.match(app.generation, /^[a-f0-9-]{36}$/, 'Current owner must supply its actual launch generation');
+    const reading = readStackRelease({ name: 'fixture', type: 'local', status: 'running', apps: [app], nodes: [] });
+    const expected = !legacy && app.generation !== undefined ? 'confirmed' : 'unreported';
+    assert.equal(reading.runningRelease, expected);
+    assert.equal(reading.releaseEvidence.verified, expected === 'confirmed' ? 1 : 0);
+    if (expected === 'confirmed') assert.equal(app.generation, app.release.launchId);
+    return { generation: app.generation, runningRelease: reading.runningRelease };
+  };
+  report.launchReading = await readWorkerLaunch(runtimeEntry.name);
   if (!legacy) {
     assert.equal(observed.release.releaseId, producer.id, 'the producer remains distinct from its selected consumer');
     assert.equal(observed.release.manifestSha256, producerHash);
@@ -233,6 +248,9 @@ Module({providers:[[createToken('mixed-watch-proof'),{useFactory:()=>{fs.appendF
     assert.notEqual(restarted.pid, proof.pid); assert.deepEqual(restarted.context.producer, proof.context.producer);
     report.installedStackStart = 'confirmed'; report.restartedApplicationPid = restarted.pid;
   }
+  report.restartedLaunchReading = await readWorkerLaunch(runtimeEntry.name);
+  if (report.launchReading.generation !== undefined)
+    assert.notEqual(report.restartedLaunchReading.generation, report.launchReading.generation);
 
   // Exercise the actual delivery implementation. Only its transport/OS adapter is
   // local to this fixture; extraction, verification, receipt and owner execution are real.
@@ -295,6 +313,9 @@ Module({providers:[[createToken('mixed-watch-proof'),{useFactory:()=>{fs.appendF
   const [restored]=await waitFor(readProofs,'rollback to the retained local installation');
   assert.deepEqual(restored.context.producer,proof.context.producer);
   assert.deepEqual(restored.context.consumer,proof.context.consumer);assert.equal(client.state().owner.pid,owner.pid);
+  report.restoredLaunchReading = await readWorkerLaunch(runtimeEntry.name);
+  if (report.restartedLaunchReading.generation !== undefined)
+    assert.notEqual(report.restoredLaunchReading.generation, report.restartedLaunchReading.generation);
   assert.equal(await releaseTreeDigest(remoteEntry.releaseRoot,true,false,['.omnitron-closure.json']),closure.payloadSha256);
   const actualRuntime=(await deployer.inspectInstalledBundle(targetNode)).applicationRuntime;
   assert.equal(await run(installedReleaseCheckCommand(remotePath,remoteOrigin,actualRuntime,'')),'verified');

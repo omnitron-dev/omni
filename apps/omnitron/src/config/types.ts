@@ -986,9 +986,11 @@ export type RuntimeReleaseEvidence = {
 
 export interface ProcessInfoDto {
   release?: RuntimeReleaseEvidence;
+  /** Owner's application launch generation; absent on older owners. Not an OS PID. */
+  generation?: string;
   /** App name (e.g., 'main', 'storage') */
   name: string;
-  /** Main PID (or null if stopped) */
+  /** Main PID, or null when stopped or no single process represents the application. */
   pid: number | null;
   status: AppStatus;
   cpu: number;

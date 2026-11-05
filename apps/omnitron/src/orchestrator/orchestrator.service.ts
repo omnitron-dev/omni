@@ -3610,6 +3610,7 @@ export class OrchestratorService extends EventEmitter {
 
     const info: ProcessInfoDto = {
       name: handle.name,
+      generation: handle.generation,
       pid: handle.pid,
       status,
       cpu: handle.cpu,

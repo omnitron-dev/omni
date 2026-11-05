@@ -137,7 +137,7 @@ it('rejects conflicting manifests under one release name and preserves modified 
     observations: [{ reason: 'Artifact digest changed', state: 'modified' }] } });
 });
 
-it('requires a live PID and complete launch proof, without calling a stopped receipt current', () => {
+it('requires a live PID for legacy owners and complete launch proof, without calling a stopped receipt current', () => {
   const current = stack('dev', 'running');
   current.apps[0] = { ...current.apps[0]!, pid: 123, release: receipt() };
   expect(readStackRelease(current).runningRelease).toBe('confirmed');
@@ -148,4 +148,55 @@ it('requires a live PID and complete launch proof, without calling a stopped rec
   expect(readStackRelease(current).runningRelease).toBe('unreported');
   current.status = 'stopped'; current.apps[0].status = 'stopped';
   expect(readStackRelease(current)).toMatchObject({ runningRelease: 'not-running', releaseEvidence: { total: 0, releases: [] } });
+});
+
+it('binds PID-less worker applications to their owner generation on every physical replica', () => {
+  const current = stack('test', 'running');
+  current.placements = ['node-a:9700', 'node-b:9700'].map((nodeKey, i) => ({
+    ...placement(nodeKey),
+    apps: [{ name: 'main', expected: true, process: { name: 'sample/test/main', status: 'online', pid: null,
+      generation: `launch-${i + 1}`, release: { ...receipt(), launchId: `launch-${i + 1}` } } }],
+  })) as NonNullable<IStackInfo['placements']>;
+  expect(readStackRelease(current)).toMatchObject({ runningRelease: 'confirmed', releaseEvidence: {
+    verified: 2, total: 2, observations: [
+      { node: 'node-a:9700', pid: null, generation: 'launch-1', state: 'confirmed' },
+      { node: 'node-b:9700', pid: null, generation: 'launch-2', state: 'confirmed' },
+    ],
+  } });
+  current.placements![1]!.apps[0]!.process!.generation = 'restarted';
+  expect(readStackRelease(current)).toMatchObject({ runningRelease: 'unreported', releaseEvidence: { verified: 1, total: 2 } });
+  current.placements![1]!.appsObserved = false;
+  expect(readStackRelease(current).releaseEvidence.observations[1]!.state).toBe('unavailable');
+});
+
+it.each([null, 123])('rejects malformed or stale generations even with PID %s', pid => {
+  const current = stack('dev', 'running');
+  for (const generation of ['', null, 123, 'older-launch']) {
+    current.apps = [stackAppFixture('main', { status: 'online', pid, release: receipt(), generation: generation as string })];
+    expect(readStackRelease(current)).toMatchObject({ runningRelease: 'unreported', releaseEvidence: {
+      verified: 0, releases: [], observations: [{ state: 'unreported', reason: expect.stringContaining('generation') }],
+    } });
+  }
+});
+
+it('does not turn a generation into launch proof for missing receipts, invalid PIDs or inactive applications', () => {
+  const current = stack('dev', 'running');
+  current.apps = [stackAppFixture('main', { status: 'online', pid: null, generation: 'launch-1', release: receipt() })];
+  expect(readStackRelease(current).runningRelease).toBe('confirmed');
+  delete current.apps[0]!.release;
+  expect(readStackRelease(current).runningRelease).toBe('unreported');
+  current.apps[0]!.release = receipt();
+  for (const pid of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    current.apps[0]!.pid = pid;
+    expect(readStackRelease(current).runningRelease).toBe('unreported');
+  }
+  current.apps[0]!.pid = null;
+  for (const status of ['starting', 'stopping', 'crashed', 'unknown'] as const) {
+    current.apps[0]!.status = status;
+    expect(readStackRelease(current).runningRelease).toBe('unreported');
+  }
+  current.apps[0]!.status = 'stopped';
+  expect(readStackRelease(current).runningRelease).toBe('unreported');
+  current.status = 'stopped';
+  expect(readStackRelease(current).runningRelease).toBe('not-running');
 });

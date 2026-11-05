@@ -4,6 +4,9 @@ import path from 'node:path';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { releaseTreeDigest, frameworkDependencyDigest, RELEASE_RECEIPT, verifyLaunchRelease, type ReleaseArtifactOrigin } from '../../src/release/runtime-provenance.js';
 import { AppHandle } from '../../src/orchestrator/app-handle.js';
+import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
+import { readStackRelease } from '../../src/shared/release-reading.js';
+import { stackFixture, stackAppFixture } from '../helpers/stack-fixture.js';
 import { selectNodeApps } from '../../src/project/node-app-config.js';
 
 const directories: string[] = [];
@@ -27,6 +30,29 @@ async function fixture(framework = origin.frameworkCommit) {
 }
 
 describe('launch-bound release evidence', () => {
+  it('carries a verified worker-only launch through owner inventory without inventing a PID', async () => {
+    const f = await fixture();
+    const handle = new AppHandle(f.entry, 'bootstrap');
+    handle.release = await verifyLaunchRelease(f.entry, handle.generation);
+    handle.declareChildren(['worker'], null);
+    handle.markStarting();
+    handle.childStarted('worker', null);
+    const owner = Object.create(OrchestratorService.prototype) as OrchestratorService;
+    Object.assign(owner, {
+      handles: new Map([[handle.name, handle]]),
+    });
+    const read = () => readStackRelease(stackFixture('deployed', {
+      status: 'running', apps: owner.list().map(app => stackAppFixture(app.name, app)),
+    }));
+    expect(owner.list()[0]).toMatchObject({ pid: null, status: 'online', generation: handle.generation });
+    expect(read().runningRelease).toBe('confirmed');
+    handle.redefine({ ...f.entry, bootstrap: '/next-start/bootstrap.js' });
+    expect(read().runningRelease).toBe('confirmed');
+    handle.childGone('worker');
+    handle.childStarted('worker', null);
+    expect(read()).toMatchObject({ runningRelease: 'unreported', releaseEvidence: { verified: 0 } });
+  });
+
   it('verifies the explicit artifact boundary even when the process cwd is the project directory', async () => {
     const f = await fixture();
     expect(await verifyLaunchRelease(f.entry, 'launch-1')).toEqual(expect.objectContaining({

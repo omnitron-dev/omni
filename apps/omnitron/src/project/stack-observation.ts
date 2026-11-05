@@ -74,11 +74,15 @@ export function observeStack(info: IStackInfo, placements: IStackPlacement[], no
     else status = 'degraded';
     // Unexpected replicas are drift, even when every desired replica is online.
     if (replicas.some((a) => !a.expected && a.process)) status = 'degraded';
+    const { generation: _previousGeneration, release: _previousRelease, ...logicalApp } = app;
+    const single = reported.length === 1 ? reported[0] : undefined;
     return {
-      ...app,
+      ...logicalApp,
       status,
       handleKey: reported.length === 1 ? reported[0]!.name : app.handleKey,
       pid: reported.length === 1 ? reported[0]!.pid : null,
+      ...(single?.generation !== undefined && { generation: single.generation }),
+      ...(single?.release && { release: single.release }),
       instances: reported.reduce((sum, p) => sum + p.instances, 0),
       cpu: reported.reduce((sum, p) => sum + p.cpu, 0),
       memory: reported.reduce((sum, p) => sum + p.memory, 0),

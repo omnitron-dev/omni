@@ -304,6 +304,8 @@ export class ExecutionClient {
   }
 
   private async submit(method: ExecutionMutation, args: unknown[]): Promise<unknown> {
+    if (method === 'reconcileStoppedStack' && this.view().capabilities?.['stoppedStackReconciliation'] !== 1)
+      throw new Error('Execution owner does not support stopped stack reconciliation; prepare an owner upgrade with an application restart plan. Backend updates remain available.');
     if (method === 'stopExecution' || method === 'enableExecution') this.requireExecutionScopes();
     if (method === 'openInstalledStack' || method === 'resumeInstalledApp') this.requireInstalledStart();
     if (method === 'scaleApp' && this.view().capabilities?.['processPoolResize'] !== 1)
@@ -376,6 +378,7 @@ export class ExecutionClient {
 
   private facade(): OrchestratorControl {
     const local: Record<string, unknown> = {
+      getExecutionCapabilities: () => this.view().capabilities ?? {},
       getExecutionOwnerPid: () => this.view().status.owner.pid,
       getExecutionOwnerPackage: async () => {
         const before = await this.recoverySnapshot();

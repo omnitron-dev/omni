@@ -21,7 +21,7 @@ const OWNER_ROLES = ['execution-controller'];
 
 export const EXECUTION_READS = ['inspectExecution', 'inspectInstalledStack', 'inspectStackExecution', 'getDependencyGraph', 'getMetrics', 'getHealth', 'explainPortConflict'] as const;
 export const EXECUTION_MUTATIONS = [
-  'stopExecution', 'enableExecution', 'openInstalledStack', 'resumeInstalledApp', 'stopStackExecution', 'enableStackExecution', 'startAll', 'startApp', 'stopApp', 'stopAll', 'redefineApp', 'restartApp', 'startKnownApp',
+  'reconcileStoppedStack', 'stopExecution', 'enableExecution', 'openInstalledStack', 'resumeInstalledApp', 'stopStackExecution', 'enableStackExecution', 'startAll', 'startApp', 'stopApp', 'stopAll', 'redefineApp', 'restartApp', 'startKnownApp',
   'restartAfterChange', 'reloadApp', 'scaleApp', 'setWatchMode', 'setConfig',
   'configureReadiness', 'drainChildSamples', 'setMetricsEnabled',
 ] as const;
@@ -76,12 +76,14 @@ export class ExecutionHostService {
       statePersistence?: () => StatePersistenceStatus;
       loggerHealth?: () => LogSinkHealth[];
       watch?: (enabled: boolean, apps?: string[]) => void;
+      retireWatches?: (apps: string[]) => void;
       watchConfig?: (config: Parameters<OrchestratorService['setConfig']>[0]) => void;
       watchedApps?: () => Array<{ name: string; directory: string }>;
       shutdown?: () => void;
     } = {},
   ) {
     if (!hooks.logs?.journal) orchestrator.onAppLog((app, line) => this.record('log', app, line));
+    orchestrator.on('app:retired', (app: string) => this.hooks.retireWatches?.([app]));
     orchestrator.on('app:online', (app: string) => this.record('online', app, null));
     orchestrator.on('app:crash', (app: string, error: Error) => this.record('crash', app, error.message));
     orchestrator.on('app:restart', (app: string, attempt: number) => this.record('restart', app, attempt));

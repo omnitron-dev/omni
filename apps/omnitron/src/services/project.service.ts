@@ -1735,8 +1735,12 @@ export class ProjectService extends EventEmitter {
     const selected = release ? { id: release.id, manifestSha256: release.manifestSha256 } : null;
     const changing = !!selector && !isDeepStrictEqual(prior?.release, selected);
     const entries = local && release ? await this.installedEntries(projectName, stackName, stackConfig, config, release, true) : undefined;
-    if (local && (release || changing)) {
-      const plan = await this.checkLocalOwner(projectName, stackName, entries ?? this.resolveStackApps(stackConfig, config), changing);
+    let localMembershipChanged = false;
+    if (local) {
+      const target = entries ?? this.resolveStackApps(stackConfig, config);
+      const plan = await this.checkLocalOwner(projectName, stackName, target, changing, source === 'boot' || source === 'auto-resume');
+      const names = new Set(target.map(entry => ProjectService.handleKey(projectName, stackName, entry.name)));
+      localMembershipChanged = plan.apps.some(app => !names.has(app.name));
       if ((source === 'boot' || source === 'auto-resume') && plan.phase !== 'running')
         throw new Error('The selected local stack is fenced; an explicit start must recover or roll back the selection');
     }
@@ -1745,7 +1749,7 @@ export class ProjectService extends EventEmitter {
     // Not for a release: putting a release onto a running stack is the point.
     const completedLocalStart = stackConfig.type === 'local' && existing?.startedAt != null &&
       (existing.status === 'degraded' || existing.status === 'error');
-    if ((existing?.status === 'running' || completedLocalStart) && !changing && (!release || local)) {
+    if ((existing?.status === 'running' || completedLocalStart) && !changing && !localMembershipChanged && (!release || local)) {
       // `running` is a claim about the past, and nothing revises it when the
       // apps underneath fall over — so this short-circuit used to hand the
       // operator a stack it had not touched. `toStackInfo` reads live
@@ -1813,7 +1817,7 @@ export class ProjectService extends EventEmitter {
       if (stackConfig.type === 'local') {
         const scope = { project: projectName, stack: stackName };
         const enable = () => this.orchestrator.enableStackExecution(scope, { automatic: source === 'boot' || source === 'auto-resume' });
-        if (selector && prior && (changing || prior.revision > 0)) {
+        if (selector && prior) {
           const target = entries ?? this.resolveStackApps(stackConfig, config);
           await this.startLocalStack(projectName, stackName, stackConfig, config, target, async build => {
             await this.prepareLocalOwner(projectName, stackName, target, changing, build, () => {
@@ -2310,11 +2314,14 @@ export class ProjectService extends EventEmitter {
       this.assertStartAuthority({ project: projectName, stack: stackName }, stackConfig);
       if (prepare && stackConfig.type !== 'local') throw new Error('Preparing a local release requires a local stack');
       const release = await this.admitRelease(projectName, stackName, stackConfig, config, releaseId, 'check');
+      let retiring: string[] = [];
       if (stackConfig.type === 'local') {
         const entries = await this.installedEntries(projectName, stackName, stackConfig, config, release, prepare);
         const prior = this.localSelection(projectName, stackName).read().release;
         if (prior?.id === release.id && prior.manifestSha256 !== release.manifestSha256) throw new Error('Selected manifest changed on disk');
-        await this.checkLocalOwner(projectName, stackName, entries, prior?.id !== release.id);
+        const plan = await this.checkLocalOwner(projectName, stackName, entries, prior?.id !== release.id);
+        const target = new Set(entries.map(entry => ProjectService.handleKey(projectName, stackName, entry.name)));
+        retiring = plan.apps.filter(app => !target.has(app.name)).map(app => app.name);
       }
       const gates = release.manifest.gates;
       const passed = gates.filter((g) => g.status === 'passed').length;
@@ -2323,7 +2330,8 @@ export class ProjectService extends EventEmitter {
         because:
           `${projectName}/${stackName} would take ${release.id}: ${passed} of ${gates.length} gates passed, ` +
           `${release.files.length} artifact(s) match the manifest` +
-          `${release.staticsDir ? `, static bundle built for ${release.manifest.statics?.stack}` : ''}.`,
+          `${release.staticsDir ? `, static bundle built for ${release.manifest.statics?.stack}` : ''}.` +
+          (retiring.length ? ` After a confirmed whole-stack stop, reconciliation will retire these application registrations: ${retiring.join(', ')}. Logs, artifacts and infrastructure are preserved.` : ''),
       };
     } catch (err) {
       const { LocalReleaseNotPreparedError } = await import('../release/local-installation.js');
@@ -5111,36 +5119,50 @@ export class ProjectService extends EventEmitter {
     return this.installedEntries(project, stack, definition, config, release, false, requiredMigrations, migrationFiles);
   }
 
-  private async checkLocalOwner(project: string, stack: string, entries: IEcosystemAppEntry[], changing: boolean) {
+  private async checkLocalOwner(project: string, stack: string, entries: IEcosystemAppEntry[], changing: boolean, automatic = false) {
     const plan = await this.orchestrator.inspectStackExecution({ project, stack });
     await this.orchestrator.refreshObservation?.();
+    if (plan.phase === 'stopping' || plan.phase === 'starting')
+      throw new Error('Stack has an unfinished owner operation; inspect it before selecting a release');
     const expected = new Map(entries.map(entry => [ProjectService.handleKey(project, stack, entry.name), entry]));
+    const retiring = plan.apps.filter(app => !expected.has(app.name));
+    if (retiring.length) {
+      if (this.orchestrator.getExecutionCapabilities?.()['stoppedStackReconciliation'] !== 1)
+        throw new Error('Execution owner does not support stopped stack reconciliation; prepare an owner upgrade with an application restart plan before changing stack membership.');
+      if (automatic) throw new Error('Automatic resume cannot remove retained applications; explicitly stop and start the selected stack to reconcile its membership');
+    }
     for (const app of plan.apps) {
       const handle = this.orchestrator.getHandle(app.name);
       const entry = expected.get(app.name);
-      if (!handle || !entry) throw new Error('Cannot reconcile a retained application outside the selected local release: ' + app.name);
+      if (!handle) throw new Error('Owner observation changed; inspect the local stack before selecting a release: ' + app.name);
       if (handle.status === 'stopped' && handle.pid === null) continue;
-      if (changing || !sameLaunchCode(handle.entry, entry))
-        throw new LocalReleaseStopRequired('Stop the applications of this local stack before changing launch code: ' + app.name);
+      if (retiring.length || changing || plan.phase === 'stopped' || !entry || !sameLaunchCode(handle.entry, entry))
+        throw new LocalReleaseStopRequired('Stop the applications of this local stack before changing launch code or membership: ' + app.name);
     }
-    if (plan.phase === 'stopping' || plan.phase === 'starting')
-      throw new Error('Stack has an unfinished owner operation; inspect it before selecting a release');
     return plan;
   }
 
-  /** The owner's durable stop fence covers the gap between the SQLite commit and the last redefinition. */
+  /** The owner's durable stop fence covers the gap between the SQLite commit and the complete graph reconciliation. */
   private async prepareLocalOwner(project: string, stack: string, entries: IEcosystemAppEntry[], changing: boolean,
     build: (entry: IEcosystemAppEntry) => IEcosystemAppEntry, commit: () => void) {
-    const plan = await this.checkLocalOwner(project, stack, entries, changing);
-    if (changing && plan.phase !== 'stopped') {
+    let plan = await this.checkLocalOwner(project, stack, entries, changing);
+    const next = new Map(entries.map(entry => { const built = build(entry); return [built.name, built]; }));
+    const retiring = plan.apps.some(app => !next.has(app.name));
+    if ((changing || retiring) && plan.phase !== 'stopped') {
       await this.orchestrator.stopStackExecution({ operationId: randomUUID(), plan });
+      plan = await this.orchestrator.inspectStackExecution({ project, stack });
     }
     commit();
     if (changing || plan.phase === 'stopped') {
-      const next = new Map(entries.map(entry => { const built = build(entry); return [built.name, built]; }));
-      for (const { name } of plan.apps) {
-        if (!await this.orchestrator.redefineApp(name, next.get(name)!))
-          throw new Error('Owner could not confirm the selected entry for ' + name + '; the stack remains fenced');
+      if (this.orchestrator.getExecutionCapabilities?.()['stoppedStackReconciliation'] === 1) {
+        await this.orchestrator.reconcileStoppedStack({ operationId: randomUUID(), plan, entries: [...next.values()] });
+      } else {
+        // Existing owners can replace entries of an unchanged inventory only.
+        // checkLocalOwner refuses membership changes before committing a selection.
+        for (const { name } of plan.apps) {
+          if (!await this.orchestrator.redefineApp(name, next.get(name)!))
+            throw new Error('Owner could not confirm the selected entry for ' + name + '; the stack remains fenced');
+        }
       }
     }
   }

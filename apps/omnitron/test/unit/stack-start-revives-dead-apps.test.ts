@@ -44,6 +44,15 @@ function service(appStatus: 'online' | 'crashed') {
     stopApp: async () => {},
     enableStackExecution: async () => {},
   };
+  orchestrator.inspectStackExecution = async (scope: { project: string; stack: string }) => ({
+    ...scope, revision: 0, phase: 'running', apps: orchestrator.list()
+      .filter((app: { name: string }) => app.name.startsWith(`${scope.project}/${scope.stack}/`))
+      .map((app: { name: string }) => ({ name: app.name, generation: `fixture-${app.name}` })),
+  });
+  orchestrator.getHandle = (name: string) => {
+    const app = orchestrator.list().find((app: { name: string }) => app.name === name);
+    return app ? { ...app, pid: app.pid ?? null, entry: { name, script: './main.js' } } : undefined;
+  };
   const stateStore: any = { selectProjectsSync: () => [], kvGetSync: () => null, save() {}, load: () => null, get: () => null, set() {} };
   const svc: any = new ProjectService(logger, orchestrator, stateStore);
   svc.registry.get = () => ({ name: 'demo', path: '/project', registeredAt: '2026-11-03T20:00:00.000Z' });

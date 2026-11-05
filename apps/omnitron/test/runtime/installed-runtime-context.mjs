@@ -18,6 +18,7 @@ const ownerDist = await fs.realpath(path.resolve(process.argv[3] ?? dist));
 const dependencyCheckout = await fs.realpath(path.resolve(process.argv[4] ?? path.join(dist, '../../..')));
 const legacy = process.argv.includes('--legacy-owner');
 const mixedWatch = process.argv.includes('--mixed-watch');
+const reconcileStack = process.argv.includes('--reconcile-stack');
 if(mixedWatch && legacy)throw Error('Mixed source/installed watching requires the corrected owner; historical support is not claimed');
 const applicationDistArg = process.argv.find(value => value.startsWith('--application-dist='));
 const applicationDist = await fs.realpath(applicationDistArg ? applicationDistArg.slice('--application-dist='.length) : dist);
@@ -38,7 +39,7 @@ const hash = value => createHash('sha256').update(value).digest('hex');
 const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'omni-installed-origin-')));
 const config = { ...DEFAULT_ECOSYSTEM, apps: [] };
 const logger = { trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {}, child() { return this; } };
-const client = new ExecutionClient(path.join(directory, 'owner.sock'), logger);
+let client = new ExecutionClient(path.join(directory, 'owner.sock'), logger);
 let owner, ownerExit;
 const report = { applicationDist, applicationSdkCommit: applicationBuild.commit, test: 'installed-runtime-origin', node: process.version, dist, ownerDist, directory, legacy };
 const waitFor = async (read, label) => {
@@ -54,25 +55,31 @@ try {
   const boot = path.join(directory, 'boot.json');
   await fs.writeFile(boot, JSON.stringify({ directory, cwd: directory, config,
     daemonConfig: { ...DEFAULT_DAEMON_CONFIG, logDir: path.join(directory, 'logs') } }), { mode: 0o600 });
-  const log = await fs.open(path.join(directory, 'owner.log'), 'a', 0o600);
-  owner = fork(path.join(ownerDist, 'daemon/execution-entry.js'), [boot], {
-    cwd: directory, execArgv: [], detached: true,
-    env: { ...process.env, OMNITRON_HOME: directory, NODE_OPTIONS: '', NODE_PATH: '' },
-    stdio: ['ignore', log.fd, log.fd, 'ipc'],
-  });
-  await log.close(); ownerExit = once(owner, 'exit');
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(Error('Private owner startup timed out')), 30_000);
-    owner.once('error', reject);
-    owner.once('exit', code => { clearTimeout(timer); reject(Error('Private owner exited ' + code)); });
-    owner.once('message', value => { clearTimeout(timer); assert.equal(value.type, 'execution-ready'); resolve(); });
-  });
-  const connected = await client.connect(); await client.acquire();
+  const startOwner = async () => {
+    const log = await fs.open(path.join(directory, 'owner.log'), 'a', 0o600);
+    owner = fork(path.join(ownerDist, 'daemon/execution-entry.js'), [boot], {
+      cwd: directory, execArgv: [], detached: true,
+      env: { ...process.env, OMNITRON_HOME: directory, NODE_OPTIONS: '', NODE_PATH: '' },
+      stdio: ['ignore', log.fd, log.fd, 'ipc'],
+    });
+    await log.close(); ownerExit = once(owner, 'exit');
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(Error('Private owner startup timed out')), 30_000);
+      owner.once('error', reject);
+      owner.once('exit', code => { clearTimeout(timer); reject(Error('Private owner exited ' + code)); });
+      owner.once('message', value => { clearTimeout(timer); assert.equal(value.type, 'execution-ready'); resolve(); });
+    });
+    const connected = await client.connect(); await client.acquire();
+    return connected;
+  };
+  const connected = await startOwner();
   const ownerBuild = JSON.parse(await fs.readFile(path.join(ownerDist,'BUILD.json'),'utf8'));
   if(connected.ownerBuild)assert.deepEqual(connected.ownerBuild,ownerBuild);
   report.ownerBuild = ownerBuild; report.ownerPid = owner.pid;
   assert.equal(connected.capabilities?.installedStackStart === 1, !legacy,
     'The requested owner contract must be explicit; do not silently weaken this test');
+
+  if (reconcileStack) assert.equal(connected.capabilities?.stoppedStackReconciliation, 1, 'The reconciliation scenario requires the explicit owner contract');
 
   const application = path.join(directory, 'source');
   await fs.mkdir(path.join(application, 'dist'), { recursive: true });
@@ -99,6 +106,7 @@ const proof = createToken('fixture.runtime-proof');
 class RuntimeProbe {}
 Module({providers:[[proof,{inject:[RUNTIME_CONTEXT],useFactory:context=>{
   fs.writeFileSync(process.env.ORIGIN_REPORT + '.${child}',JSON.stringify({pid:process.pid,context}));
+  console.log('runtime-origin-fixture ${child} ready');
   return context;
 }}]]})(RuntimeProbe);
 export default RuntimeProbe;
@@ -328,6 +336,29 @@ Module({providers:[[createToken('mixed-watch-proof'),{useFactory:()=>{fs.appendF
     await sourceWatch.change('after-rollback');
     const last=await waitFor(async()=>(await sourceWatch.rows()).find(row=>row.value==='after-rollback'),'source HMR after installed rollback');
     report.mixedWatch.afterRollback=last;await client.orchestrator.setWatchMode(false);
+  }
+  if (connected.capabilities?.stoppedStackReconciliation !== 1) {
+    const identities = () => client.orchestrator.list().map(({ name, generation, pid, status }) => ({ name, generation, pid, status }));
+    const before = identities();
+    await assert.rejects(client.orchestrator.reconcileStoppedStack({ operationId: randomUUID(),
+      plan: await client.orchestrator.inspectStackExecution(scope), entries: [] }), /owner upgrade/);
+    assert.deepEqual(identities(), before);
+    report.stoppedStackReconciliation = 'unsupported by historical owner; refused before RPC mutation';
+  }
+  if (reconcileStack) {
+    const { checkStoppedStackReconciliation } = await import('./stopped-stack-reconciliation.mjs');
+    report.stoppedStackReconciliation = await checkStoppedStackReconciliation({
+      load, directory, config, scope, entries, installed, loaded, store, manifest, built,
+      producer: proof.context.producer, ownerPackage, waitFor,
+      getClient: () => client, getOwnerPid: () => owner.pid,
+      restartOwner: async () => {
+        await client.orchestrator.stopAll(false); await client.shutdownOwner();
+        assert.equal((await ownerExit)[0], 0); await client.close();
+        client = new ExecutionClient(path.join(directory, 'owner.sock'), logger);
+        await startOwner();
+      },
+      outside: remoteEntry,
+    });
   }
   await client.orchestrator.stopAll(false); await client.shutdownOwner();
   assert.equal((await ownerExit)[0], 0); report.success = true;

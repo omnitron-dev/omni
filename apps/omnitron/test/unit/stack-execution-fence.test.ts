@@ -25,7 +25,7 @@ function fixture() {
     handle.status = 'online'; handles.set(name, handle);
   }
   const owner: any = Object.assign(Object.create(OrchestratorService.prototype), {
-    stateStore: state, handles, startingApps: new Map(), stackStops: new Map(),
+    stateStore: state, handles, startingApps: new Map(), executionOperations: new Map(),
     lifecycleQueue: { isBusy: vi.fn(() => false) },
     stopApp: vi.fn(async (name: string) => handles.get(name)!.markStopped()),
   });

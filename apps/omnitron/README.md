@@ -259,6 +259,29 @@ they report the missing information. A retained archive match proves installed
 bytes; it does not confirm which release an already-running process loaded.
 Updating the controller cannot manufacture that missing owner evidence.
 
+### Changing the applications of a stopped local stack
+
+An explicit local stack start can reconcile the target graph with retained
+applications when the owner supports `stoppedStackReconciliation@1`. Prepare the
+release, review and complete a whole-stack stop, then start the selected release.
+An unpinned development stack uses the same contract with its registered configuration.
+Admission in CLI and Console identifies registrations that will be retired. An
+older owner refuses the change before the release selection changes.
+
+The existing SQLite selection and durable stack fence cover the operation.
+The owner verifies the complete inventory, launch generations and confirmed exits,
+revokes source watches, updates retained definitions and retires only applications
+absent from the selected graph. It preserves logs, archives and infrastructure.
+Concurrent starts, stale plans and unconfirmed processes are refused. Automatic
+boot or resume never retires a retained application. After an interrupted operation,
+inspect the stopped stack and explicitly finish its selected start or restore the
+previous configuration and release. Cold recovery keeps the selected manifest;
+rollback can recreate a retired registration from its original sealed artifact.
+
+This supports a sealed shared-services stack alongside a separate development
+stack. Imported producers keep their complete pinned SDK. It does not implement
+a persistent public stop or source selector for an individual application.
+
 Remote imports are currently refused before provisioning or transfer. They
 need producer-captured deployment declarations and a compatible execution
 owner; controller-side execution of a foreign bootstrap is not a substitute.

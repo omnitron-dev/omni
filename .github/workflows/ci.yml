@@ -50,7 +50,7 @@ jobs:
         run: |
           node test/runtime/application-closure.mjs dist
           node test/runtime/release-provenance.mjs dist
-          node test/runtime/installed-runtime-context.mjs dist dist ../..
+          node test/runtime/installed-runtime-context.mjs dist dist ../.. --reconcile-stack
           pnpm exec vitest run --maxWorkers 2 test/integration/execution-connection.test.ts
           node test/runtime/execution-host.mjs dist
       - name: Enforce one service identity and authorization decision across Netron transports

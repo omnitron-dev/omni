@@ -144,13 +144,16 @@ describe('a remote stack will not start from a tree that is not its commit', () 
       audit: { record: vi.fn(async () => {}) },
       localSelection: () => ({ read: () => ({ revision: 0, release: null }) }),
       stackStates: new Map(),
-      orchestrator: { enableStackExecution: vi.fn(async () => {}) },
+      orchestrator: {
+        inspectStackExecution: vi.fn(async (scope: { project: string; stack: string }) => ({ ...scope, revision: 0, phase: 'running', apps: [] })),
+        enableStackExecution: vi.fn(async () => {}),
+      },
     startsInFlight: new Map(),
     stopsInFlight: new Map(),
     assertStackMutable: vi.fn(),
     markPriorStopSuperseded: vi.fn(),
     rememberStackTargets: vi.fn(),
-      loadProjectConfig: vi.fn(async () => ({})),
+      loadProjectConfig: vi.fn(async () => ({ apps: [{ name: 'main', script: 'main.js' }] })),
       resolveStacks: () => ({ test: { type, apps: 'all' } }),
       startLocalStack: vi.fn(async () => started.push('local')),
       // Returns what the real one returns: a deployment reports which nodes

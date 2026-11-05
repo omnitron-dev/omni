@@ -78,6 +78,7 @@ export async function startExecutionOwner(options: {
         watcher.start(apps);
       }
     },
+    retireWatches(apps) { for (const name of apps) watcher?.removeApp(name); },
     watchConfig(next) { config = next; watcher?.applyConfig(next); },
     watchedApps: () => watcher?.getWatchedApps() ?? [],
     ...(options.onShutdownRequested && { shutdown: options.onShutdownRequested }),

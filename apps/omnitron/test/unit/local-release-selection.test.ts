@@ -25,7 +25,7 @@ function fixture() {
   const working = { name: 'api', script: 'dev.mjs', cwd: '.', env: { DATA_DIR: repo } };
   const config = { apps: [working], stacks: { lab: { type: 'local', infrastructureOwnership: 'external' } } };
   const selected = { id: 'release-1', manifestSha256: 'a'.repeat(64) };
-  const installed = { ...working, script: path.join(root, 'installed/run.mjs'), cwd: repo, releaseRoot: path.join(root, 'installed'), watch: false };
+  const installed = { ...working, script: path.join(root, 'installed/run.mjs'), cwd: repo, releaseRoot: path.join(root, 'installed'), watch: false as const };
   const fqn = 'research/lab/api';
   const handle = { name: fqn, entry: { ...working, name: fqn } as IEcosystemAppEntry, status: 'stopped', pid: null as number | null };
   let phase: 'running' | 'stopped' = 'running';
@@ -127,4 +127,103 @@ it('refuses a different manifest under a previously selected release id before i
   await expect(f.make().startStack('research', 'lab', { source: 'boot' })).rejects.toThrow(/manifest changed/);
   expect(f.owner.inspectStackExecution).not.toHaveBeenCalled();
   expect(f.owner.startApp).not.toHaveBeenCalled();
+});
+
+function changedMembership(f: ReturnType<typeof fixture>, supported = true, selected: typeof f.selected | null = f.selected) {
+  const removed = { ...f.handle, name: 'research/lab/web', entry: { ...f.handle.entry, name: 'research/lab/web' } };
+  let retained = true;
+  f.owner.inspectStackExecution.mockImplementation(async () => ({ ...f.scope, revision: 1, phase: f.phase(),
+    apps: [f.handle, ...(retained ? [removed] : [])].map(handle => ({ name: handle.name, generation: 'one' })) }));
+  f.owner.getHandle = (name?: string) => name === removed.name ? removed : f.handle;
+  const reconcile = vi.fn(async () => {
+    expect(f.phase()).toBe('stopped');
+    expect(f.selector().read().release).toEqual(selected);
+    retained = false;
+    f.handle.entry = { ...f.installed, name: f.handle.name };
+  });
+  Object.assign(f.owner, { getExecutionCapabilities: () => supported ? { stoppedStackReconciliation: 1 } : {}, reconcileStoppedStack: reconcile });
+  return { removed, reconcile, hasRemoved: () => retained };
+}
+
+it('commits the selected graph behind a completed stop before retiring removed applications', async () => {
+  const f = fixture();
+  const change = changedMembership(f);
+  await f.make().startStack('research', 'lab', { release: f.selected.id });
+  expect(f.owner.stopStackExecution).toHaveBeenCalledOnce();
+  expect(change.reconcile).toHaveBeenCalledWith(expect.objectContaining({
+    plan: expect.objectContaining({ phase: 'stopped', apps: expect.arrayContaining([{ name: 'research/lab/web', generation: 'one' }]) }),
+    entries: [expect.objectContaining({ name: f.handle.name, releaseRoot: f.installed.releaseRoot })],
+  }));
+  expect(change.hasRemoved()).toBe(false);
+  expect(f.owner.redefineApp).not.toHaveBeenCalled();
+  expect(f.owner.startApp).toHaveBeenCalledTimes(1);
+});
+
+it('uses the same stopped-graph contract for an ordinary unpinned development stack', async () => {
+  const f = fixture();
+  const change = changedMembership(f, true, null);
+  await f.make().startStack('research', 'lab');
+  expect(change.reconcile).toHaveBeenCalledWith(expect.objectContaining({ entries: [expect.objectContaining({
+    name: f.handle.name, script: 'dev.mjs',
+  })] }));
+  expect(f.owner.stopStackExecution).toHaveBeenCalledOnce();
+  expect(f.handle.entry.script).toBe('dev.mjs');
+  expect(f.selector().read()).toEqual({ revision: 0, release: null });
+});
+
+it('refuses an older owner before changing selection, stopping or starting applications', async () => {
+  const f = fixture();
+  changedMembership(f, false);
+  await expect(f.make().startStack('research', 'lab', { release: f.selected.id })).rejects.toThrow('owner upgrade');
+  expect(f.selector().read().revision).toBe(0);
+  expect(f.owner.stopStackExecution).not.toHaveBeenCalled();
+  expect(f.owner.redefineApp).not.toHaveBeenCalled();
+  expect(f.owner.startApp).not.toHaveBeenCalled();
+});
+
+it('reports retired registrations through the admission result shared by CLI and Console', async () => {
+  const f = fixture();
+  changedMembership(f);
+  const service = f.make();
+  Object.assign(service, { admitRelease: async () => ({ ...f.selected, manifest: { gates: [] }, files: [] }) });
+  const result = await service.checkRelease('research', 'lab', f.selected.id);
+  expect(result).toMatchObject({ ok: true, because: expect.stringContaining('research/lab/web') });
+  expect(result.because).toContain('whole-stack stop');
+  expect(f.selector().read().revision).toBe(0);
+  expect(f.owner.startApp).not.toHaveBeenCalled();
+});
+
+it('requires all applications to stop before shrinking a stack, including a worker without a representative PID', async () => {
+  const f = fixture();
+  const change = changedMembership(f);
+  f.handle.status = 'online';
+  await expect(f.make().startStack('research', 'lab', { release: f.selected.id })).rejects.toThrow('Stop the applications');
+  expect(f.selector().read().revision).toBe(0);
+  expect(change.reconcile).not.toHaveBeenCalled();
+});
+
+it.each(['boot', 'auto-resume'] as const)('never removes retained applications during %s', async source => {
+  const f = fixture();
+  const change = changedMembership(f);
+  f.selector().select(0, f.selected);
+  await expect(f.make().startStack('research', 'lab', { source })).rejects.toThrow('Automatic resume cannot remove');
+  expect(change.reconcile).not.toHaveBeenCalled();
+  expect(f.owner.stopStackExecution).not.toHaveBeenCalled();
+  expect(f.selector().read().revision).toBe(1);
+});
+
+it('recovers the committed target after reconciliation completed but its reply was lost', async () => {
+  const f = fixture();
+  const change = changedMembership(f);
+  const reconcile = change.reconcile.getMockImplementation()!;
+  change.reconcile.mockImplementationOnce(async () => { await reconcile(); throw new Error('reply lost'); });
+  await expect(f.make().startStack('research', 'lab', { release: f.selected.id })).rejects.toThrow('reply lost');
+  expect(change.hasRemoved()).toBe(false);
+  expect(f.phase()).toBe('stopped');
+  expect(f.owner.startApp).not.toHaveBeenCalled();
+  const recovered = await f.reboot();
+  await recovered.startStack('research', 'lab', { source: 'operator' });
+  expect(change.reconcile).toHaveBeenCalledTimes(2);
+  expect(f.owner.startApp).toHaveBeenCalledOnce();
+  expect(f.selector().read()).toEqual({ revision: 1, release: f.selected });
 });

@@ -375,6 +375,9 @@ export class BuildService {
 
   private async buildEntry(esbuild: any, entryPath: string, outPath: string, sourceMaps: boolean): Promise<void> {
     const result = await esbuild.build({
+      // Source labels and diagnostics belong to the application, not the
+      // controller's working directory (which differs between hosts).
+      absWorkingDir: path.dirname(entryPath),
       entryPoints: [entryPath],
       outfile: outPath,
       bundle: true,
@@ -436,6 +439,7 @@ export class BuildService {
     let lastBundleHash = hashFileSafe(outPath);
 
     const buildOptions = (): unknown => ({
+      absWorkingDir: path.dirname(entryPath),
       entryPoints: [entryPath],
       outfile: outPath,
       bundle: true,

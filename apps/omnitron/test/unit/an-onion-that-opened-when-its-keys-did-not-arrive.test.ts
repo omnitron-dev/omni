@@ -87,7 +87,10 @@ function run(json: string | undefined, options: { jq: boolean }) {
   // a file named `null` wherever the script stands — the old block did that,
   // and a run of it from here put one in the checkout.
   const cwd = scratch();
-  const r = spawnSync('/bin/sh', ['-c', script], { cwd, env, encoding: 'utf8' });
+  // Alpine ships BusyBox ash with pipefail; Ubuntu's /bin/sh is dash and
+  // rejects the option before reaching any authorization check. Bash runs
+  // this same shell block with the required options on both test hosts.
+  const r = spawnSync('/bin/bash', ['-c', script], { cwd, env, encoding: 'utf8' });
   return { started: r.stdout.includes('TOR-STARTED'), status: r.status, stderr: r.stderr, cwd };
 }
 

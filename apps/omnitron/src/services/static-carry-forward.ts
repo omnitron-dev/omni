@@ -132,8 +132,8 @@ export function gatewayStaticLinkName(project: string, stack: string): string {
  *
  * So it resolves the link instead. `readlink -f`, not `readlink`: the link is
  * relative (it must be — it is resolved inside the container), and the reader
- * below wants an absolute path. A gateway with no link yet — the first
- * deployment — prints nothing, and there is nothing to carry.
+ * below wants an absolute path. Without a live directory at the link, retain
+ * the mount itself: older gateways still mount their build directly.
  */
 export const GATEWAY_MOUNTS_COMMAND = [
   'for c in $(docker ps -aq --filter label=omnitron.service=gateway 2>/dev/null); do',
@@ -150,7 +150,10 @@ export const GATEWAY_MOUNTS_COMMAND = [
   // The link's name comes from `gatewayStaticLinkName` even here: given the
   // shell's own variables it yields the shell's own string, so there is one
   // spelling and not two that drift.
-  `  [ -n "$proj" ] && [ -n "$stk" ] && tgt=$(readlink -f "$src/${gatewayStaticLinkName('$proj', '$stk')}" 2>/dev/null)`,
+  // GNU readlink -f succeeds even when the last component is absent. Such a
+  // synthetic target must never replace the actually mounted build in the
+  // retention set, or a later deployment can prune a live legacy gateway.
+  `  [ -n "$proj" ] && [ -n "$stk" ] && [ -d "$src/${gatewayStaticLinkName('$proj', '$stk')}" ] && tgt=$(readlink -f "$src/${gatewayStaticLinkName('$proj', '$stk')}" 2>/dev/null)`,
   '  [ -n "$tgt" ] || tgt="$src"',
   '  echo "$state $tgt"',
   'done',

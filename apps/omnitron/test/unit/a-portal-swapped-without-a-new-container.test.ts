@@ -16,7 +16,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readlinkSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readlinkSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -179,7 +179,7 @@ fi
     execFileSync('bash', ['-c', GATEWAY_MOUNTS_COMMAND], {
       encoding: 'utf8',
       cwd,
-      env: { ...process.env, PATH: `${dir}:${process.env['PATH'] ?? ''}` },
+      env: { ...process.env, PATH: [dir, GNU, process.env['PATH']].filter(Boolean).join(':') },
     });
 
   it('answers with each gateway’s own link target, not the mount they share', () => {
@@ -211,6 +211,20 @@ fi
     // The first deployment, and every gateway still mounting a build
     // directory: the source IS the build, and the answer is unchanged.
     expect(serving).toEqual([only]);
+  });
+
+  it('retains an older directly mounted build when a new deployment prunes releases', () => {
+    const r = root();
+    const legacy = build(r, 1, ['still-needed.js']);
+    utimesSync(legacy, 1, 1);
+    const fresh = build(r, 2, ['new.js']);
+    const docker = fakeDocker([{ id: 'c1', running: true, src: legacy, project: 'sample', stack: 'test' }]);
+    const mounts = readGatewayMounts(ask(docker, r));
+
+    run(carryForwardScript({ root: r, fresh, ...mounts, keep: 1 }));
+
+    expect(existsSync(join(legacy, 'index.html')), 'pruned the directory still mounted by nginx').toBe(true);
+    expect(existsSync(join(fresh, 'assets/still-needed.js'))).toBe(true);
   });
 
   it('spells the link with the one function that spells it anywhere', () => {

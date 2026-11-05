@@ -110,6 +110,7 @@ export async function compileTypeScript(sourcePath: string): Promise<CompileResu
   const outputPath = path.join(sourceDir, `${baseName}.${randomUUID()}.omnitron-compiled.mjs`);
 
   const result = await esbuild.build({
+    absWorkingDir: sourceDir,
     entryPoints: [absSource],
     outfile: outputPath,
     bundle: true, // Bundle to resolve relative imports

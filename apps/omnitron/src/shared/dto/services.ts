@@ -581,6 +581,7 @@ export interface IOmnitronSystemInfoService {
 /** Database and volume backups, plus their schedules. */
 export interface IOmnitronBackupsService {
   createBackup(data: { database: string; compress?: boolean }): Promise<BackupInfo>;
+  createArtifactBackup(data: import('./backups.js').BackupArtifactRequest): Promise<import('./backups.js').BackupRecord>;
   createAllBackups(): Promise<Array<{ database: string; ok: boolean; id?: string; size?: number; error?: string }>>;
   createFullBackup(): Promise<Array<{ target: string; ok: boolean; id?: string; size?: number; error?: string }>>;
   listBackups(data?: { database?: string }): Promise<BackupInfo[]>;

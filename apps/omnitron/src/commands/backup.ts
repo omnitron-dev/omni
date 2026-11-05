@@ -12,6 +12,8 @@ import {
   uniqueIdPrefixLength,
 } from '../services/backup-pipeline.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
+import { emitJson, isJsonMode } from './output.js';
+import type { BackupArtifactRequest, BackupRecord } from '../shared/dto/backups.js';
 
 async function invokeRpc(method: string, data?: any): Promise<any> {
   const client = createDaemonClient();
@@ -101,6 +103,18 @@ export async function backupCreateCommand(database?: string): Promise<void> {
   }
 }
 
+export async function backupArtifactCommand(kind: string, options: { project: string; stack: string; bucket?: string }): Promise<void> {
+  let request: BackupArtifactRequest;
+  if (kind === 'storage-objects' && options.bucket)
+    request = { kind, project: options.project, stack: options.stack, bucket: options.bucket };
+  else if (kind === 'tor-keys' && options.bucket === undefined)
+    request = { kind, project: options.project, stack: options.stack };
+  else throw new Error('Use storage-objects with --bucket, or tor-keys without --bucket');
+  const backup = await invokeRpc('createArtifactBackup', request) as BackupRecord;
+  if (isJsonMode()) emitJson(backup);
+  else log.success(`${backup.project}/${backup.stack}/${kind}${backup.bucket ? '/' + backup.bucket : ''}: ${backup.id} (${formatBackupSize(backup.size)})`);
+}
+
 export async function backupListCommand(): Promise<void> {
   try {
     const backups: any[] = await invokeRpc('listBackups');
@@ -120,13 +134,13 @@ export async function backupListCommand(): Promise<void> {
       String(b.id).slice(0, idLength),
       // Whose database this is: two stacks can both have a `main`.
       stackLabel(b),
-      b.database,
+      b.bucket ? `${b.database}/${b.bucket}` : b.database,
       formatBackupSize(b.size),
       // UTC, as the filenames are — see `formatUtc`.
       formatUtc(b.createdAt),
       b.filename,
     ]);
-    for (const line of renderTable(['ID', 'Stack', 'Database', 'Size', 'Created (UTC)', 'File'], rows)) log.info(line);
+    for (const line of renderTable(['ID', 'Stack', 'Target', 'Size', 'Created (UTC)', 'File'], rows)) log.info(line);
     if (backups.some((b) => stackLabel(b) === '—')) {
       log.info('(Stack — : taken before backups recorded their stack)');
     }

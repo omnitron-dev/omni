@@ -9,6 +9,7 @@ import { VIEWER_ROLES, ADMIN_ROLES } from '../shared/roles.js';
 import type { BackupService, BackupInfo, BackupStatus } from './backup.service.js';
 
 import type { IOmnitronBackupsService } from '../shared/dto/services.js';
+import type { BackupArtifactRequest, BackupRecord } from '../shared/dto/backups.js';
 
 @Service({ name: 'OmnitronBackups' })
 export class BackupRpcService implements IOmnitronBackupsService {
@@ -17,6 +18,11 @@ export class BackupRpcService implements IOmnitronBackupsService {
   @Public({ auth: { roles: ADMIN_ROLES } })
   async createBackup(data: { database: string; compress?: boolean }): Promise<BackupInfo> {
     return this.backups.createBackup(data.database, data.compress != null ? { compress: data.compress } : undefined);
+  }
+
+  @Public({ auth: { roles: ADMIN_ROLES } })
+  async createArtifactBackup(data: BackupArtifactRequest): Promise<BackupRecord> {
+    return this.backups.createArtifactBackup(data);
   }
 
   /** Back up every database of every running stack. */

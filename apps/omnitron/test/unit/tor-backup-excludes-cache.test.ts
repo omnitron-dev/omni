@@ -24,7 +24,7 @@ const source = readFileSync(
 
 describe('the tor-keys backup command', () => {
   it('excludes the directory cache', () => {
-    expect(source).toMatch(/--exclude='\$\{?/);
+    expect(source).toContain('`--exclude=${g}`');
     for (const glob of ['./cached-*', './diff-cache', './unverified-*']) {
       expect(source, `${glob} must be excluded`).toContain(`'${glob}'`);
     }
@@ -33,7 +33,7 @@ describe('the tor-keys backup command', () => {
   it('excludes by name rather than listing what to keep', () => {
     // A hidden-service directory added later must still be captured without
     // anyone remembering to update a list, which an allowlist would not do.
-    expect(source).toContain('-C /var/lib/tor .');
+    expect(source).toContain("'-C', '/var/lib/tor', '.'");
   });
 
   it('does not exclude the hidden-service material', () => {

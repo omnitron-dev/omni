@@ -1201,6 +1201,16 @@ pipeline.command('cancel <runId>').description('Cancel a run and wait for its ex
 
 const backup = program.command('backup').description('Database backup and restore');
 
+backup.command('artifact <kind>')
+  .description('Back up storage-objects or tor-keys of an explicit provisioned stack')
+  .requiredOption('--project <name>', 'Project registration')
+  .requiredOption('--stack <name>', 'Stack owning this infrastructure')
+  .option('--bucket <name>', 'Required for storage-objects')
+  .structuredAction(async (kind, options) => {
+    const { backupArtifactCommand } = await import('../commands/backup.js');
+    await backupArtifactCommand(kind, options);
+  });
+
 backup
   .command('create [database]')
   .description('Create a database backup')

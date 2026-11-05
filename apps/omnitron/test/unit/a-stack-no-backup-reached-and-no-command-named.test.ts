@@ -28,6 +28,9 @@ import os from 'node:os';
 import path from 'node:path';
 
 const env = vi.hoisted(() => ({ home: '' }));
+vi.mock('../../src/config/defaults.js', async importOriginal => ({
+  ...await importOriginal<Record<string, unknown>>(), get OMNITRON_HOME() { return path.join(env.home, '.omnitron'); },
+}));
 vi.mock('../../src/shared/paths.js', () => ({
   expandPath: (p: string) => (p === '~' || p.startsWith('~/') ? env.home + p.slice(1) : p),
 }));
@@ -84,7 +87,7 @@ vi.mock('../../src/daemon/daemon-client.js', () => ({
 const { BackupService } = await import('../../src/services/backup.service.js');
 const { DaemonStateStore } = await import('../../src/daemon/daemon-state-store.service.js');
 const { resetEnvCache } = await import('../../src/shared/env-config.js');
-const { backupListCommand, backupSchedulesCommand, backupCreateCommand } = await import('../../src/commands/backup.js');
+const { backupListCommand, backupSchedulesCommand, backupCreateCommand, backupArtifactCommand } = await import('../../src/commands/backup.js');
 
 type Line = { level: string; obj: Record<string, unknown>; msg: string };
 function fakeLogger(): { module: never; logger: never; lines: Line[] } {
@@ -112,6 +115,7 @@ function fakeProjects(specs: StackSpec[]): never {
     listProjectRegistrations: () => [...new Set(specs.map((s) => s.project))].map((name) => ({ name })),
     getRunningStacks: (p: string) => specs.filter((s) => s.project === p).map((s) => s.stack),
     getInfraManager: () => ({
+      listInstances: () => [], // This fixture provisions PostgreSQL only, no object or Tor backups.
       getInstance: (p: string, s: string) => {
         const spec = find(p, s);
         if (!spec || spec.type !== 'local') return null;
@@ -332,6 +336,16 @@ const STATUS = {
 };
 
 describe('the commands say which stacks are not backed up', () => {
+  it('passes an explicit artifact scope through the common RPC and shows its bucket', async () => {
+    const request = { kind: 'storage-objects', project: 'sample', stack: 'dev', bucket: 'uploads' };
+    const invoke = vi.fn(async () => ({ id: 'backup-1', size: 512, ...request }));
+    rpc['createArtifactBackup'] = invoke;
+    await backupArtifactCommand('storage-objects', request);
+    expect(invoke).toHaveBeenCalledWith(request);
+    expect(printed.some(item => item.text.includes('sample/dev/storage-objects/uploads'))).toBe(true);
+    await expect(backupArtifactCommand('storage-objects', { project: 'sample', stack: 'dev' })).rejects.toThrow('--bucket');
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
   it('backup list shows each backup\'s stack, and names sample/test as not backed up', async () => {
     rpc['getBackupStatus'] = async () => STATUS;
     rpc['listBackups'] = async () => [

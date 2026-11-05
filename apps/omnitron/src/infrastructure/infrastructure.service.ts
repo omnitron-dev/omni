@@ -766,6 +766,15 @@ export class InfrastructureService {
     return Object.keys(pg.databases);
   }
 
+  /** The bucket inventory declared to the same MinIO provisioner. */
+  getMinioBuckets(): string[] {
+    const buckets = this.normalizedServices['minio']?._presetConfig?.['buckets'] ?? this.config.minio?.buckets;
+    if (buckets === undefined) return [];
+    if (!Array.isArray(buckets) || buckets.some(bucket => typeof bucket !== 'string'))
+      throw new Error('Invalid declared MinIO bucket inventory');
+    return [...new Set(buckets as string[])];
+  }
+
   /**
    * Resolved container name for an infra service (e.g. 'postgres' →
    * 'acme-dev-postgres'). Taken from the already-resolved desired containers

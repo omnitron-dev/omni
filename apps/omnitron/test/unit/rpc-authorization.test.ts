@@ -106,6 +106,18 @@ describe('RPC authorization metadata', () => {
     }
   });
 
+  it('restricts artifact backup creation and restore to administrators through transport authorization', async () => {
+    const { BackupRpcService } = await import('../../src/services/backup.rpc-service.js');
+    const { validateAccessRequirements } = await import('@omnitron-dev/titan/netron/auth');
+    for (const method of ['createArtifactBackup', 'restoreBackup']) {
+      const requirement = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, BackupRpcService.prototype, method);
+      expect(requirement).toEqual({ roles: ['admin'] });
+      for (const role of ['viewer', 'operator', 'service_role'])
+        expect(validateAccessRequirements({ userId: role, roles: [role], permissions: [] }, requirement).allowed).toBe(false);
+      expect(validateAccessRequirements({ userId: 'admin', roles: ['admin'], permissions: [] }, requirement).allowed).toBe(true);
+    }
+  });
+
   it('allows an authenticated mesh credential to read its host but not to relay that read to another node', async () => {
     const { SystemInfoRpcService } = await import('../../src/services/system-info.rpc-service.js');
     const { NodeManagerRpcService } = await import('../../src/services/node-manager.rpc-service.js');

@@ -57,6 +57,35 @@ omnitron logs --status
 
 Ranked levels in the CLI are minimum severities. Use `--level unknown` for records without a recognized level, or specify the exact stored spelling of a custom level. In Console, the level chips and the custom-level selector match exact values in both live and historical logs. Share the main log view with one `level` URL parameter per selected level.
 
+## Scoped backups
+
+`omnitron backup artifact storage-objects --project acme --stack prod --bucket uploads`
+captures one declared stack's current object contents. Use `tor-keys` without
+`--bucket` to capture its onion identity. These administrator-only operations use
+the same Netron service as other backups. The index and CLI retain the project,
+stack and bucket; restore refuses to redirect an unavailable origin to another
+stack. Infrastructure retained after stopping application writers remains eligible.
+
+`backup full` visits every provisioned stack on this daemon and every declared
+MinIO bucket, alongside database, Tor and daemon-state backups. Missing inventory
+and per-target failures remain explicit. Object snapshots reject unsupported or
+changing keyspaces and publish an archive only after transfer and validation.
+They preserve current bytes, not object version history or S3 metadata; a full
+pass is not an atomic transaction across services. Restore overwrites archived
+keys without deleting other keys or creating a missing bucket. Quiesce writers
+before an application-consistent snapshot or restore. An interrupted restore
+requires reconciliation before writers resume.
+
+Active backup, restore and scheduled retention block backend handoff. A prepared
+handoff pauses backup admission and schedules; an abort re-arms persisted schedules.
+The native storage integration test uses a disposable, resource-limited MinIO
+container without network or application mounts:
+
+```sh
+cd apps/omnitron
+OMNITRON_TEST_MINIO_IMAGE=<cached-image-digest> pnpm exec vitest run test/integration/backup-storage.test.ts --maxWorkers=1
+```
+
 ## Configuration reads
 
 An ecosystem file exports data or an async factory receiving `{ phase: 'runtime' | 'release' }`.

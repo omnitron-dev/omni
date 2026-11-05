@@ -34,6 +34,9 @@ import os from 'node:os';
 import path from 'node:path';
 
 const env = vi.hoisted(() => ({ home: '' }));
+vi.mock('../../src/config/defaults.js', async importOriginal => ({
+  ...await importOriginal<Record<string, unknown>>(), get OMNITRON_HOME() { return path.join(env.home, '.omnitron'); },
+}));
 vi.mock('../../src/shared/paths.js', () => ({
   expandPath: (p: string) => (p === '~' || p.startsWith('~/') ? env.home + p.slice(1) : p),
 }));

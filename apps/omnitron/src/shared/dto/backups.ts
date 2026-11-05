@@ -13,7 +13,14 @@ export interface BackupInfo {
   size: number;
   createdAt: string;
   compressed: boolean;
+  /** Explicit object bucket; absent on legacy storage backups (the `storage` bucket). */
+  bucket?: string;
 }
+
+export type BackupArtifactRequest = { project: string; stack: string } & (
+  | { kind: 'storage-objects'; bucket: string }
+  | { kind: 'tor-keys' }
+);
 
 /**
  * How one pass ended. `empty` is its own word: a pass that found nothing to

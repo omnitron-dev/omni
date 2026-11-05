@@ -22,7 +22,7 @@ export interface BackendRuntimeStatus {
   };
   recovery?: { status: 'pending' | 'ready' | 'unavailable'; at: string | null; reason: string | null };
   supervision?: { type: 'independent'; guardianPid: number; ownerUnit: string; backendUnit: string };
-  blockers: Record<typeof BACKEND_ACTIVITY_COUNTERS[number], number> & { kernelRollouts?: number };
+  blockers: Record<typeof BACKEND_ACTIVITY_COUNTERS[number], number> & { kernelRollouts?: number; backupOperations?: number };
 }
 
 /** Binds admission to the resident observed by authenticated daemon status. */

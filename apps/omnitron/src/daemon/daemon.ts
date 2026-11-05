@@ -292,6 +292,7 @@ export class OmnitronDaemon {
    * directory with no manifest, and that — not this — is the durable trace.
    */
   private releaseService: import('../services/release.service.js').ReleaseService | null = null;
+  private backupService: BackupService | null = null;
   private systemWorkerManager: import('../workers/system-worker-manager.js').SystemWorkerManager | null = null;
   /** Everything the health-monitor worker needs to be spawned again. */
   private healthWorkerSpawn: (() => Promise<void>) | null = null;
@@ -345,6 +346,7 @@ export class OmnitronDaemon {
         fileTransfers: (this.filesRpcService?.activeTransferCount() ?? 0) + (this.fileNode?.activeOperationCount() ?? 0),
         pipelineRuns: this.pipelineService?.activeRunCount() ?? 0,
         releaseBuilds: this.releaseService?.builds().filter(build => build.state === 'running').length ?? 0,
+        backupOperations: this.backupService?.activeOperationCount() ?? 0,
       },
     };
   }
@@ -410,6 +412,7 @@ export class OmnitronDaemon {
     const gate = this.app.netron.inbound;
     let projects: ProjectService | undefined;
     try {
+      this.backupService?.prepareHandoff();
       projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
       const drained = await gate.drain(30_000);
       if (!drained.drained) throw new Error(`${drained.left} inbound request(s) have not drained; backend transfer was refused`);
@@ -426,6 +429,7 @@ export class OmnitronDaemon {
       await this.execution.abortCandidate(candidateId);
       this.metricSampling?.resume();
       projects?.resumeAfterHandoff();
+      await this.backupService?.resumeAfterHandoff();
       this.infraService?.resumeAfterHandoff();
       gate.reopen();
       this.preparingBackend = false;
@@ -438,6 +442,7 @@ export class OmnitronDaemon {
     if (!this.execution || !this.app || this.handingOffBackend) throw new Error('The old backend can no longer resume; restore a controller through the resident owner');
     await this.execution.abort(state.ticket);
     this.metricSampling?.resume();
+    await this.backupService?.resumeAfterHandoff();
     const projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
     projects.resumeAfterHandoff();
     this.infraService?.resumeAfterHandoff();
@@ -1030,6 +1035,7 @@ export class OmnitronDaemon {
     // Backup RPC service (no DB dependency)
     const { BackupRpcService: BackupRpc } = await import('../services/backup.rpc-service.js');
     const backupService = await container.resolveAsync<BackupService>(BACKUP_SERVICE_TOKEN);
+    this.backupService = backupService;
     const backupRpcService = new BackupRpc(backupService);
     await this.app.netron.peer.exposeService(backupRpcService);
     // Re-arm any persisted backup schedules so they survive daemon restarts.

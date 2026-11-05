@@ -1,7 +1,7 @@
 /**
  * Tests for NotificationsHealthIndicator
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { NotificationsHealthIndicator } from '../src/notifications.health.js';
 import type {
   MessagingTransport,
@@ -86,20 +86,19 @@ describe('NotificationsHealthIndicator', () => {
     });
 
     it('should measure health check latency', async () => {
-      const mockTransport = createMockTransport(
-        {
-          status: 'healthy',
-          connected: true,
-          timestamp: Date.now(),
-        },
-        50 // Simulate 50ms delay
-      );
-      const health = new NotificationsHealthIndicator(mockTransport);
-
-      const result = await health.check();
-
-      expect(result.latency).toBeGreaterThanOrEqual(50);
-      expect(result.latency).toBeLessThan(100); // Some tolerance
+      vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] });
+      try {
+        const health = new NotificationsHealthIndicator(createMockTransport({
+          status: 'healthy', connected: true, timestamp: Date.now(),
+        }, 50));
+        const pending = health.check();
+        await vi.advanceTimersByTimeAsync(50);
+        const result = await pending;
+        expect(result.status).toBe('healthy');
+        expect(result.latency).toBe(50);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('should handle transport healthCheck errors gracefully', async () => {

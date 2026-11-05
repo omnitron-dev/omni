@@ -15,6 +15,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { LogJournal } from '../monitoring/log-journal.js';
 import { logEntryOf } from '../monitoring/log-entry.js';
+import { describeError } from '../shared/describe-error.js';
 import { assertLogDurability } from '../database/log-durability.js';
 import type { LogIngestionStats } from '../shared/dto/logs.js';
 import type { ProcessOutputContext } from '@omnitron-dev/titan-pm';
@@ -158,7 +159,7 @@ export class LogCollectorService extends EventEmitter {
   /** Lines become records here exactly as they do for the files — `log-line.ts`. */
   private readonly assembler = new LineAssembler((app, record) => this.ingestRecord(app, record), {
     onPending: (app, record) => this.journal.put(record.id!, logEntryOf(app, record), false),
-    onError: error => { this.lastError = String(error); },
+    onError: error => { this.lastError = describeError(error); },
   });
 
   private dialect: SqlDialect | null = null;
@@ -598,7 +599,7 @@ export class LogCollectorService extends EventEmitter {
         if (this.syncSink && ids.size) await this.syncSink(part.filter(entry => ids.has(entry.id)), trx);
         written += ids.size;
       }
-    }).catch(error => { this.lastError = error instanceof Error ? error.message : String(error); throw error; });
+    }).catch(error => { this.lastError = describeError(error); throw error; });
     this.ingestedTotal += written;
     this.lastCommitAt = new Date().toISOString();
     this.lastError = null;
@@ -648,7 +649,7 @@ export class LogCollectorService extends EventEmitter {
     this.flushing = true;
     try {
       try { this.recoverStartupFailures(); this.startupError = null; }
-      catch (error) { this.startupError = error instanceof Error ? error.message : String(error); }
+      catch (error) { this.startupError = describeError(error); }
       if (this.sourceJournal) {
         const source = this.sourceJournal.peek();
         const stats = this.sourceStats?.() ?? this.sourceJournal.stats();
@@ -664,7 +665,7 @@ export class LogCollectorService extends EventEmitter {
       await this.persistCaptured(batch.map(item => item.value), this.journal.filename !== ':memory:');
       this.journal.acknowledge(batch);
     } catch (error) {
-      this.lastError = error instanceof Error ? error.message : String(error);
+      this.lastError = describeError(error);
       try { this.emit('flush_error', error); } catch { /* journal still retains the batch */ }
     } finally { this.flushing = false; }
   }
@@ -675,7 +676,9 @@ export class LogCollectorService extends EventEmitter {
     while (this.flushing) await new Promise(resolve => setTimeout(resolve, 10));
     while (this.journal.peek(1).length || this.sourceJournal?.peek(1).length) {
       await this.flush();
-      if (this.lastError) throw new Error(this.lastError);
+      // An empty message is still a failed write, never permission to retry
+      // forever while shutdown or an owner cursor waits for confirmation.
+      if (this.lastError !== null) throw new Error(this.lastError);
     }
   }
 

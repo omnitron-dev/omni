@@ -56,12 +56,13 @@ export function describeError(error: unknown, depth = 0): string {
       if (message) reasons.push(code && !message.includes(code) ? `${message} (${code})` : message);
       if (Array.isArray(item.errors)) {
         for (const cause of item.errors.slice(0, 8)) reasons.push(visit(cause, level + 1));
-      } else if (item.cause !== undefined) reasons.push(visit(item.cause, level + 1));
+      }
+      if (item.cause !== undefined) reasons.push(visit(item.cause, level + 1));
       const meaningful = [...new Set(reasons.filter(reason => reason !== 'unknown error'))];
       return meaningful.length ? meaningful.join('; ') : code || (typeof item.name === 'string' ? item.name : 'unknown error');
     } catch { return 'unreadable error'; }
   };
-  return redactDiagnosticText(visit(error, depth));
+  return redactDiagnosticText(visit(error, depth)).trim() || 'unknown error';
 }
 
 /** Allowlist fields for delivery; never forward raw errors, stacks, headers or arbitrary metadata. */

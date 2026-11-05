@@ -208,6 +208,66 @@ describe('durable log delivery', () => {
     expect((await db.selectFrom('logs').selectAll().execute())[0]).toMatchObject(entry);
   });
 
+  it.each(['backend', 'owner'] as const)('rejects %s acknowledgment once on an empty AggregateError, then replays exactly once', async origin => {
+    const dir = directory(), db = database(dir), service = collector(db, path.join(dir, 'queue.sqlite'));
+    const entry = { id: randomUUID(), app: 'probe', level: 'error', message: 'before outage', timestamp: '2026-10-31T01:02:03.004Z' };
+    const source = new LogJournal<{ app: string; record: LogRecord }>(path.join(dir, 'source.sqlite'));
+    if (origin === 'owner') {
+      service.setSourceJournal(source);
+      source.put(entry.id, { app: entry.app, record: { id: entry.id, time: Date.parse(entry.timestamp), timestamp: entry.timestamp,
+        level: entry.level, message: entry.message, lines: 1 } });
+    } else service.ingestLog(entry);
+    const failure = new AggregateError([
+      Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:5432'), { code: 'ECONNREFUSED' }),
+      Object.assign(new Error('connect ECONNREFUSED ::1:5432'), { code: 'ECONNREFUSED' }),
+    ]);
+    let attempts = 0;
+    service.setSyncSink(async () => {
+      // Bound the regression: the old empty-message loop must fail this
+      // assertion rather than spin indefinitely inside the test worker.
+      if (++attempts > 1) throw new Error('unexpected immediate retry');
+      throw failure;
+    });
+    try {
+      await expect(service.confirmPending()).rejects.toThrow('ECONNREFUSED');
+      expect(attempts).toBe(1);
+      const stats = service.getIngestionStats();
+      expect(stats.lastError).toContain('127.0.0.1:5432');
+      expect(stats.lastError).toContain('::1:5432');
+      expect(stats.droppedTotal).toBe(0);
+      expect(origin === 'owner' ? source.stats().pending : stats.bufferSize).toBe(1);
+      expect(readLogIngestion(stats)).toMatchObject({ severity: 'error', detail: expect.stringContaining('ECONNREFUSED') });
+      expect(await db.selectFrom('logs').selectAll().execute()).toHaveLength(0);
+      service.setSyncSink(null);
+      await service.confirmPending();
+      await service.confirmPending();
+      expect(await db.selectFrom('logs').select(['id', 'message']).execute()).toEqual([{ id: entry.id, message: entry.message }]);
+      expect(service.getIngestionStats()).toMatchObject({ lastError: null, ingestedTotal: 1, droppedTotal: 0, bufferSize: 0 });
+      expect(source.stats().pending).toBe(0);
+    } finally {
+      service.setSyncSink(null);
+      await service.dispose();
+      source.close();
+    }
+  });
+
+  it('shows empty legacy errors as failures and retains the other journal causes in CLI and Console', () => {
+    const dir = directory(), db = database(dir), service = collector(db, path.join(dir, 'queue.sqlite'));
+    const stats = service.getIngestionStats();
+    for (const error of ['', '   ']) {
+      for (const reading of [
+        readLogIngestion({ ...stats, lastError: error }),
+        readLogIngestion({ ...stats, journal: { ...stats.journal, error } }),
+        readLogIngestion({ ...stats, ownerError: error }),
+      ]) {
+        expect(reading).toMatchObject({ severity: 'error', detail: expect.stringContaining('backend supplied no details') });
+      }
+    }
+    const reading = readLogIngestion({ ...stats, lastError: '', journal: { ...stats.journal, error: 'disk full' }, ownerError: 'capture failed' });
+    expect(reading.detail).toContain('Local journal: disk full');
+    expect(reading.detail).toContain('Owner journal: capture failed');
+  });
+
   it('keeps supplied fractional precision instead of inventing microseconds for ordering', () => {
     const records: LogRecord[] = [];
     const assembler = new LineAssembler((_app, record) => records.push(record));

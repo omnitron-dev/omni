@@ -3,8 +3,15 @@ import type { LogIngestionStats } from './dto/logs.js';
 /** One operational verdict for Console and CLI; absence is never a healthy zero. */
 export function readLogIngestion(stats: LogIngestionStats | null): { severity: 'success' | 'warning' | 'error'; title: string; detail: string } {
   if (!stats?.journal) return { severity: 'warning', title: 'Log persistence unverified', detail: 'This backend does not expose durable capture diagnostics.' };
-  if (stats.lastError || stats.journal.error || stats.ownerError) return { severity: 'error', title: 'Log persistence delayed',
-    detail: `${stats.lastError ?? stats.journal.error ?? stats.ownerError}. ${stats.journal.pending} local records await confirmation; unacknowledged records are retained.` };
+  // Older backends may expose an empty AggregateError.message. Only null or
+  // an absent field means no failure; retain every reported source's cause.
+  const errors = [
+    ['Log ingestion', stats.lastError],
+    ['Local journal', stats.journal.error],
+    ['Owner journal', stats.ownerError],
+  ].flatMap(([source, error]) => error == null ? [] : [`${source}: ${error.trim() || 'operation failed; backend supplied no details'}`]);
+  if (errors.length) return { severity: 'error', title: 'Log persistence delayed',
+    detail: `${errors.join('; ')}. ${stats.journal.pending} local records await confirmation; unacknowledged records are retained.` };
   if (stats.capture === 'legacy-owner') return { severity: 'warning', title: 'Legacy log capture',
     detail: 'Database delivery is checked; the running owner cannot prove original capture time or durable replay. An owner update is required.' };
   const pending = stats.journal.pending + (stats.ownerPending ?? 0);

@@ -20,6 +20,21 @@ describe('operational diagnostic boundaries', () => {
     expect(describeError({ message: 'write failed', code: '40001' })).toContain('40001');
   });
 
+  it('describes both aggregate members and their enclosing cause without exposing credentials', () => {
+    const error = new AggregateError([new Error('connect refused')], '', {
+      cause: new Error('pool unavailable at postgres://user:secret@db/app'),
+    });
+    const text = describeError(error);
+    expect(text).toContain('connect refused');
+    expect(text).toContain('pool unavailable at postgres://***@db/app');
+    expect(text).not.toContain('secret');
+    expect(describeError(new AggregateError([], '', { cause: new Error('pool exhausted') }))).toBe('pool exhausted');
+  });
+
+  it('never reports a blank failure from an empty cross-realm error name', () => {
+    for (const name of ['', '   ']) expect(describeError({ name, message: '' })).toBe('unknown error');
+  });
+
   it('forwards only the contract, validates it, and limits evidence', () => {
     const event = { eventId: 'e1', id: 'database.failure', source: 'test', timestamp: 1, state: 'raised', severity: 'error', title: 'Database',
       evidence: Array.from({ length: 30 }, () => 'password=private'), headers: { secret: 'private' } };

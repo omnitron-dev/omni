@@ -64,7 +64,7 @@ const reachable = TEST_URL
   : (console.warn('[log-filters] OMNITRON_TEST_DATABASE_URL is not set — not writing probe rows into the live database'),
     false);
 
-let db: Awaited<ReturnType<typeof createOmnitronDb>>;
+let db: Awaited<ReturnType<typeof connect>>;
 let collector: LogCollectorService;
 
 beforeAll(async () => {

@@ -41,7 +41,7 @@ const silentLogger: any = {
 
 /** An execution service that records what it was asked to do. */
 function recordingExecution(opts: { fail?: (cmd: string) => boolean } = {}) {
-  const ssh = vi.fn(async (target: any, command: string) => ({
+  const ssh = vi.fn(async (_target: any, command: string) => ({
     stdout: opts.fail?.(command) ? '' : 'ok',
     stderr: opts.fail?.(command) ? 'boom' : '',
     exitCode: opts.fail?.(command) ? 1 : 0,

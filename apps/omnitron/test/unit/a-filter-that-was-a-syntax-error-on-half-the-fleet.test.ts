@@ -66,7 +66,7 @@ const postgresDb = () =>
 
 describe('a label filter on a slave', () => {
   it('runs at all', async () => {
-    const collector = new LogCollectorService(sqliteDb(), undefined as never);
+    const collector = new LogCollectorService(sqliteDb());
 
     // Before: "unrecognized token" out of the driver, for every label filter
     // on every slave in the fleet.
@@ -76,7 +76,7 @@ describe('a label filter on a slave', () => {
   });
 
   it('ands the pairs, as containment does', async () => {
-    const collector = new LogCollectorService(sqliteDb(), undefined as never);
+    const collector = new LogCollectorService(sqliteDb());
 
     const both = await collector.queryLogs({ labels: { env: 'prod', region: 'eu' } });
     const neither = await collector.queryLogs({ labels: { env: 'prod', region: 'ap' } });
@@ -86,7 +86,7 @@ describe('a label filter on a slave', () => {
   });
 
   it('narrows the live tail the same way', async () => {
-    const collector = new LogCollectorService(sqliteDb(), undefined as never);
+    const collector = new LogCollectorService(sqliteDb());
 
     // A filter honoured by the paginated query and not by the live tail is
     // how a viewer changes its answer when you press Live.
@@ -98,7 +98,7 @@ describe('a label filter on a slave', () => {
 
 describe('the total counts the rows it returned', () => {
   it('counts through a label filter', async () => {
-    const collector = new LogCollectorService(sqliteDb(), undefined as never);
+    const collector = new LogCollectorService(sqliteDb());
 
     const result = await collector.queryLogs({ labels: { env: 'prod' } });
 
@@ -108,7 +108,7 @@ describe('the total counts the rows it returned', () => {
   });
 
   it('returns the node on every row, so a viewer can say which machine spoke', async () => {
-    const collector = new LogCollectorService(sqliteDb(), undefined as never);
+    const collector = new LogCollectorService(sqliteDb());
 
     const result = await collector.queryLogs({});
 
@@ -119,7 +119,7 @@ describe('the total counts the rows it returned', () => {
   });
 
   it('counts through a node filter', async () => {
-    const collector = new LogCollectorService(sqliteDb(), undefined as never);
+    const collector = new LogCollectorService(sqliteDb());
 
     const result = await collector.queryLogs({ nodeId: 'edge-8' });
 
@@ -128,7 +128,7 @@ describe('the total counts the rows it returned', () => {
   });
 
   it('still counts everything when nothing is filtered', async () => {
-    const collector = new LogCollectorService(sqliteDb(), undefined as never);
+    const collector = new LogCollectorService(sqliteDb());
 
     // An empty filter must not become "match nothing" — the unfiltered view
     // is the default one.
@@ -195,7 +195,7 @@ it('recovers the last local failure without mixing a remote app with the same na
   try {
     await db.insertInto('logs').values({ id: 'local', timestamp: '2026-09-16T00:00:00.000Z',
       app: 'payments', level: 'error', message: 'database unavailable', nodeId: null }).execute();
-    const collector = new LogCollectorService(db, undefined as never);
+    const collector = new LogCollectorService(db);
     const local = await collector.storedEntries('payments', 10, true);
     expect(local.map(entry => entry.message)).toEqual(['database unavailable']);
     expect(local[0]!.data?.['sourceNode']).toBeNull();

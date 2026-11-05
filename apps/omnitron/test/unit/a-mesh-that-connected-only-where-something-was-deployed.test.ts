@@ -280,7 +280,7 @@ describe('reaching a node', () => {
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
     const port = (server.address() as net.AddressInfo).port;
 
-    const ssh = vi.fn(async () => ({ stdout: 'a-secret', stderr: '', exitCode: 0, duration: 1 }));
+    const ssh = vi.fn(async (_target: unknown, _command: string) => ({ stdout: 'a-secret', stderr: '', exitCode: 0, duration: 1 }));
     const dial = createMeshDialer({
       logger, execution: { ssh, tunnel: vi.fn(async () => loopbackTunnel()) } as never, subject: 'mesh:test',
       sshTargetFor: async () => ({ host: '127.0.0.1', username: 'root', password: 'x' }),
@@ -302,7 +302,7 @@ describe('reaching a node', () => {
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
     const port = (server.address() as net.AddressInfo).port;
 
-    const ssh = vi.fn(async () => ({ stdout: 'a-secret', stderr: '', exitCode: 0, duration: 1 }));
+    const ssh = vi.fn(async (_target: unknown, _command: string) => ({ stdout: 'a-secret', stderr: '', exitCode: 0, duration: 1 }));
     const dial = createMeshDialer({
       logger, execution: { ssh, tunnel: vi.fn(async () => loopbackTunnel()) } as never, subject: 'mesh:test',
       sshTargetFor: async () => ({ host: '127.0.0.1', username: 'root', password: 'x' }),
@@ -491,7 +491,7 @@ describe('the credential a node accepts', () => {
     const token = await mintServiceToken('a'.repeat(64), 'mesh:master-1', '5m');
     const { payload } = await jwtVerify(token, secret, { issuer: 'omnitron' });
 
-    expect(payload.role).toBe('service_role');
+    expect(payload['role']).toBe('service_role');
     expect(payload.sub).toBe('mesh:master-1');
     // No `sid`: a master validates one against its session table and a slave
     // has no session store to validate it against, so a session id that

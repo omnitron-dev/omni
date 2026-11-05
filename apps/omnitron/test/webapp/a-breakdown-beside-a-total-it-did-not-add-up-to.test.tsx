@@ -92,7 +92,7 @@ async function renderPage(initial = '/') {
   // Logs now opens in live mode. These assertions concern the explicit
   // paginated hour view and its total, not the live tail's retained rows.
   fireEvent.click(screen.getByRole('button', { name: /^Filters/ }));
-  fireEvent.click(screen.getByRole('button', { name: '1h', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: '1h' }));
   await screen.findByText('Showing 2 of 48,991');
 }
 
@@ -117,7 +117,7 @@ describe('a breakdown beside a total it did not add up to', () => {
 
   it('uses unknown and observed writer levels as exact shareable filters', async () => {
     await renderPage('/logs?level=unknown');
-    const unknown = screen.getByRole('button', { name: 'unknown', exact: true });
+    const unknown = screen.getByRole('button', { name: 'unknown' });
     expect(unknown).toHaveAttribute('aria-pressed', 'true');
     await waitFor(() => expect(queryLogs).toHaveBeenCalledWith(expect.objectContaining({ level: ['unknown'] })));
     const keyboard = userEvent.setup();
@@ -140,9 +140,9 @@ describe('a breakdown beside a total it did not add up to', () => {
     await screen.findByText('Showing 1 of 149');
     await waitFor(() => expect(breakdown()).toEqual(['error: 149']));
     expect(getLogStats.mock.calls.length).toBe(asked);
-    fireEvent.click(screen.getByRole('button', { name: 'Filters · 2', exact: true }));
-    await waitFor(() => expect(screen.queryByRole('button', { name: '1h', exact: true })).toBeNull());
-    expect(screen.getByRole('button', { name: 'Filters · 2', exact: true })).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(screen.getByRole('button', { name: 'Filters · 2' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: '1h' })).toBeNull());
+    expect(screen.getByRole('button', { name: 'Filters · 2' })).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByText('Showing 1 of 149')).toBeInTheDocument();
   });
 });

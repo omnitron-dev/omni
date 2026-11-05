@@ -39,8 +39,8 @@ const getUptimeBar = vi.fn(async () => []);
 vi.mock('src/netron/client', () => ({
   nodes: {
     listNodes: (...a: unknown[]) => listNodes(...a),
-    listSshKeys: (...a: unknown[]) => listSshKeys(...a),
-    getUptimeBar: (...a: unknown[]) => getUptimeBar(...a),
+    listSshKeys: () => listSshKeys(),
+    getUptimeBar: () => getUptimeBar(),
     checkSsh: vi.fn(),
     addNode: vi.fn(),
     updateNode: vi.fn(),

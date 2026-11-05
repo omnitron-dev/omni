@@ -10,7 +10,7 @@ it('finishes short writes and fsyncs the flush barrier before acknowledging it',
   const stream = new ReopenableFileStream(file);
   const original = fs.write.bind(fs);
   vi.spyOn(fs, 'write').mockImplementation(((fd, buffer, offset, length, position, callback) => {
-    original(fd, buffer, offset, Math.min(length, 3), position, callback);
+    original(fd, buffer, offset, Math.min(length ?? buffer.byteLength, 3), position, callback);
   }) as typeof fs.write);
   const synced = vi.spyOn(fs, 'fsync');
   try {

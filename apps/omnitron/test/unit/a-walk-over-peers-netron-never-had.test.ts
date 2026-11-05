@@ -35,7 +35,7 @@ import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 
 import { PipelineRpcService } from '../../src/services/pipeline.rpc-service.js';
-import { runWithAuth } from '../../src/services/auth-context.js';
+import { createAuthContextWrapper } from '../../src/services/auth-context.js';
 import { KubernetesRpcService } from '../../src/services/kubernetes.rpc-service.js';
 import { FleetRpcService } from '../../src/services/fleet.rpc-service.js';
 import { ClusterRpcService } from '../../src/cluster/cluster.rpc-service.js';
@@ -154,7 +154,14 @@ async function daemonWith(...exposed: object[]): Promise<void> {
   stand.socketPath = path.join(scratchDir(), 'daemon.sock');
   server = new Netron(createNullLogger(), { id: 'court-daemon' });
   server.registerTransport('unix', () => new UnixSocketTransport());
-  server.registerTransportServer('unix', { name: 'unix', options: { path: stand.socketPath, force: true, invocationWrapper: async (_metadata, fn) => runWithAuth({ userId: 'omnitron-local', roles: ['admin'], permissions: [], metadata: { source: 'local-unix-socket' } }, fn) } });
+  server.registerTransportServer('unix', { name: 'unix', options: {
+    path: stand.socketPath, force: true, invocationWrapper: createAuthContextWrapper(),
+  } });
+  // Authenticate at the transport boundary, just like the daemon's private
+  // Unix socket. The invocation wrapper only carries the admitted identity.
+  server.setTransportAuthContext('unix', {
+    userId: 'omnitron-local', roles: ['admin'], permissions: [], metadata: { source: 'local-unix-socket' },
+  });
   await server.start();
   for (const svc of [new Daemon(), ...exposed]) await server.peer.exposeService(svc);
 }

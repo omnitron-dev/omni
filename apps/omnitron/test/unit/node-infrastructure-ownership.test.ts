@@ -89,8 +89,8 @@ describe('node allocations do not acquire infrastructure ownership from bootstra
     expect(() =>
       infrastructureOwnership({ type: 'local', managedOrigin: { project: 'sample', stack: 'test' } })
     ).toThrow(/migrate/);
-    expect(() => ownsStackInfrastructure({ ...delegated(), infrastructure: { postgres: {} } })).toThrow(/non-owning/);
-    expect(() => ownsStackInfrastructure({ ...delegated(), serviceOverrides: { monero: { enabled: false } } })).toThrow(
+    expect(() => ownsStackInfrastructure({ ...delegated(), infrastructure: { postgres: { databases: {} } } })).toThrow(/non-owning/);
+    expect(() => ownsStackInfrastructure({ ...delegated(), serviceOverrides: { monero: { provisioning: 'docker' } } })).toThrow(
       /non-owning/
     );
     expect(() => ownsStackInfrastructure({ type: 'remote', infrastructureOwnership: 'external' })).toThrow(

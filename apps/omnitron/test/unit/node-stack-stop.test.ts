@@ -51,7 +51,8 @@ describe('node-confirmed stack stop', () => {
     const { service, ports } = fixture();
     const plan = await service.prepare({ ...scope, keepInfrastructure: true });
     await expect(service.execute({ ...plan, keepInfrastructure: false })).rejects.toThrow('retention mode changed');
-    await expect(service.execute({ ...plan, keepInfrastructure: undefined })).rejects.toThrow('retention mode changed');
+    const { keepInfrastructure: _retention, ...withoutRetention } = plan;
+    await expect(service.execute(withoutRetention)).rejects.toThrow('retention mode changed');
     expect(ports.disableResume).not.toHaveBeenCalled();
     expect(ports.execution.stopStackExecution).not.toHaveBeenCalled();
   });

@@ -340,12 +340,12 @@ function UptimeStrip<T extends Record<string, any>>({
     }
     for (const entry of tail) {
       const val = entry[metric] as number;
-      const time = entry.t ? new Date(entry.t as string).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+      const time = entry['t'] ? new Date(entry['t'] as string).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
       segments.push({
         val,
         time,
-        ...(entry.t ? { iso: entry.t as string } : {}),
-        checks: entry.checks as number | undefined,
+        ...(entry['t'] ? { iso: entry['t'] as string } : {}),
+        checks: entry['checks'] as number | undefined,
         // Only the omnitron metric has a reason to give; ping either ran or
         // it did not.
         unmeasured: entry['omnitronUnmeasured'] as 'absent' | 'unreachable' | 'unread' | undefined,

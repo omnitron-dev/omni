@@ -43,7 +43,6 @@ function heartbeatJob(fleetService: Record<string, unknown>) {
     fleetService: fleetService as never,
     logManager: { checkRotation: vi.fn() } as never,
     infraService: null,
-    syncService: null,
     metricsInterval: 1000,
     healthCheckInterval: 1000,
   });

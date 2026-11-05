@@ -68,7 +68,7 @@ it('compiles the complete source topology in production and does not arm a watch
     });
     internal.launchTopology = launch;
     service.devMode = false;
-    const entry = { name: 'proof', cwd: root, bootstrap: './bootstrap.ts', watch: false };
+    const entry = { name: 'proof', cwd: root, bootstrap: './bootstrap.ts', watch: false as const };
     await internal.launchBootstrapMode(entry, new AppHandle(entry, 'bootstrap'), {});
     expect(launch).toHaveBeenCalledOnce();
     expect(internal.buildService.isWatching('proof')).toBe(false);

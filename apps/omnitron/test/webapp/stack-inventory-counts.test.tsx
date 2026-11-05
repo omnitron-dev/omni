@@ -1,3 +1,4 @@
+import { stackFixture, stackAppFixture } from '../helpers/stack-fixture.js';
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,9 +14,10 @@ vi.mock('src/stores/realtime.store', () => ({ useRealtimeStore: (select: (state:
 import { StackSelector } from '../../webapp/src/components/stack-selector.js';
 import { StatusBar } from '../../webapp/src/components/status-bar.js';
 import { useProjectStore } from '../../webapp/src/stores/project.store.js';
-const stack = (name: string, running: boolean): IStackInfo => ({ name, type: name === 'dev' ? 'local' : 'remote', status: running ? 'running' : 'stopped',
-  apps: Array.from({ length: 6 }, (_, n) => ({ name: `app${n}`, status: running ? 'online' : 'stopped' })), config: {}, nodes: [], infrastructure: { ready: false, services: {} },
-} as IStackInfo);
+const stack = (name: string, running: boolean): IStackInfo => stackFixture(name, {
+  type: name === 'dev' ? 'local' : 'remote', status: running ? 'running' : 'stopped',
+  apps: Array.from({ length: 6 }, (_, n) => stackAppFixture(`app${n}`, { status: running ? 'online' : 'stopped' })),
+});
 beforeEach(() => {
   rpc.stacks.mockReset();
   useProjectStore.getState().setInventoryReaders('reader', 'reader');

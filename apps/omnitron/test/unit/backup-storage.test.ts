@@ -19,8 +19,8 @@ vi.mock('node:child_process', async importOriginal => {
     // The actual shell and mc status propagate; only Docker's filesystem boundary is simulated.
     const remotePath = (name: string) => path.join(fixture.root, 'container', name);
     if (args[0] === 'exec' && args.includes('sh')) {
-      const env = { ...options.env, PATH: path.join(fixture.root, 'bin') + ':' + process.env.PATH,
-        OMNI_BACKUP_STAGE: remotePath(options.env.OMNI_BACKUP_STAGE!), FAKE_OBJECTS: path.join(fixture.root, 'objects'),
+      const env = { ...options.env, PATH: path.join(fixture.root, 'bin') + ':' + process.env['PATH'],
+        OMNI_BACKUP_STAGE: remotePath(options.env['OMNI_BACKUP_STAGE']!), FAKE_OBJECTS: path.join(fixture.root, 'objects'),
         FAKE_MC_FAIL: fixture.fail, FAKE_INVENTORY: fixture.inventory, FAKE_NODE: process.execPath };
       return real.execFile('/bin/sh', ['-c', args[args.length - 1]!], { ...options, env }, callback);
     }
@@ -28,6 +28,7 @@ vi.mock('node:child_process', async importOriginal => {
       if (args[0] === 'exec' && args[2] === 'rm') await fs.rm(remotePath(args[4]!), { recursive: true, force: true });
       else throw new Error('Unexpected Docker operation');
     })().then(() => callback(null), error => callback(error));
+    return undefined;
   } };
 });
 
@@ -83,7 +84,7 @@ describe('storage backup transfer', () => {
   });
   it('concurrent copies never share staging or credential directories', async () => {
     await Promise.all([backupStorageObjects(target, destination()), backupStorageObjects(target, destination() + '-second.tar.gz')]);
-    const stages = fixture.calls.filter(call => call.env.OMNI_BACKUP_STAGE).map(call => call.env.OMNI_BACKUP_STAGE);
+    const stages = fixture.calls.filter(call => call.env['OMNI_BACKUP_STAGE']).map(call => call.env['OMNI_BACKUP_STAGE']);
     expect(new Set(stages).size).toBe(2);
     expect(await leftovers()).toEqual({ host: [], container: [] });
   });

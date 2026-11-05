@@ -30,6 +30,9 @@ import { ProjectService } from '../../src/services/project.service.js';
 const scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'releases-only-')));
 afterAll(() => fs.rmSync(scratch, { recursive: true, force: true }));
 
+const target = { platform: 'linux', arch: 'x64', node: 'v22.23.4', abi: '127', executableSha256: 'f'.repeat(64), libc: '2.39' };
+const launch = { mode: 'script' as const, file: 'dist/main.js', closureSha256: 'e'.repeat(64) };
+
 function manifest(over: Partial<ReleaseManifest> = {}): ReleaseManifest {
   return {
     id: 'sample-202609221500-aaaaaaaa-bbbbbbbb',
@@ -40,7 +43,7 @@ function manifest(over: Partial<ReleaseManifest> = {}): ReleaseManifest {
       { name: 'build', status: 'passed' },
       { name: 'unit:main', status: 'passed' },
     ],
-    builtWith: { omnitron: '0.2.0', packages: [] },
+    builtWith: { omnitron: '0.3.1', packages: [], target },
     builtAt: '2026-09-22T15:00:00.000Z',
     builtBy: 'test',
     ...over,
@@ -258,7 +261,7 @@ describe('a release is admitted only onto its own commit', () => {
         manifest({
           id,
           project: { repo: 'gitlab', commit, onRemote: true },
-          artifacts: [{ app: 'main', version: '0.0.1', sha256: crypto.createHash('sha256').update(body).digest('hex'), bytes: body.length }],
+          artifacts: [{ app: 'main', version: '0.0.1', sha256: crypto.createHash('sha256').update(body).digest('hex'), bytes: body.length, launch }],
           gates,
         }),
       ),
@@ -284,9 +287,11 @@ describe('a release is admitted only onto its own commit', () => {
       toStackInfo: () => ({ name: 'test', type: 'remote', apps: [{ name: 'main', status: 'online' }] }),
       emit: vi.fn(),
       releaseStore: async () => store,
-      // The node's daemon, built from the omni the release was gated on — see
-      // `a-release-the-node-never-ran.test.ts` for the other answers.
-      slaveConnector: { invokeOnSlave: vi.fn(async () => ({ version: `0.2.0+local.${'b'.repeat(12)}.202609251029` })) },
+      // The independently verified owner can differ from the application's frozen SDK.
+      deployer: { inspectInstalledBundle: vi.fn(async () => ({ applicationRuntime: {
+        root: '/runtime/packages/0', executable: '/runtime/node', commit: 'd'.repeat(40), target,
+        execution: { mode: 'resident', protocol: 1, ownerId: 'owner', pid: 42, epoch: 9 },
+      } })) },
     });
     return { dir, id, svc, commit };
   }

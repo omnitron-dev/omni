@@ -101,8 +101,8 @@ describe('RPC authorization metadata', () => {
     const { validateAccessRequirements } = await import('@omnitron-dev/titan/netron/auth');
     for (const method of ['drainBuffer', 'ackDrained', 'acknowledgeReconciliation']) {
       const requirement = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, SyncRpcService.prototype, method);
-      expect(validateAccessRequirements({ userId: 'operator', roles: ['operator', 'viewer'], permissions: [] }, requirement).allowed).toBe(false);
-      expect(validateAccessRequirements({ userId: 'node', roles: ['service_role'], permissions: [] }, requirement).allowed).toBe(true);
+      expect(validateAccessRequirements({ roles: ['operator', 'viewer'], permissions: [] }, requirement).allowed).toBe(false);
+      expect(validateAccessRequirements({ roles: ['service_role'], permissions: [] }, requirement).allowed).toBe(true);
     }
   });
 
@@ -113,8 +113,8 @@ describe('RPC authorization metadata', () => {
       const requirement = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, BackupRpcService.prototype, method);
       expect(requirement).toEqual({ roles: ['admin'] });
       for (const role of ['viewer', 'operator', 'service_role'])
-        expect(validateAccessRequirements({ userId: role, roles: [role], permissions: [] }, requirement).allowed).toBe(false);
-      expect(validateAccessRequirements({ userId: 'admin', roles: ['admin'], permissions: [] }, requirement).allowed).toBe(true);
+        expect(validateAccessRequirements({ roles: [role], permissions: [] }, requirement).allowed).toBe(false);
+      expect(validateAccessRequirements({ roles: ['admin'], permissions: [] }, requirement).allowed).toBe(true);
     }
   });
 
@@ -131,7 +131,7 @@ describe('RPC authorization metadata', () => {
     expect(validateAccessRequirements(peer, local).allowed).toBe(true);
     expect(validateAccessRequirements(peer, relay).allowed).toBe(false);
     expect(validateAccessRequirements(viewer, relay).allowed).toBe(true);
-    expect(validateAccessRequirements({ userId: 'unknown', roles: [], permissions: [] }, local).allowed).toBe(false);
+    expect(validateAccessRequirements({ roles: [], permissions: [] }, local).allowed).toBe(false);
   });
 
   it('declares an auth block on every exposed method', async () => {

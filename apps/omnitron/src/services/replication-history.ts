@@ -89,9 +89,9 @@ async function prepareHistoryStore(db: Kysely<unknown>): Promise<void> {
   await work;
 }
 
-export async function historyCoverage(db: Kysely<unknown>): Promise<Array<HistoryCoverage & { nodeId: string }>> {
+export async function historyCoverage<DB>(db: Kysely<DB>): Promise<Array<HistoryCoverage & { nodeId: string }>> {
   let rows: HistoryDatabase['sync_history_sources'][];
-  try { rows = await (db as Kysely<HistoryDatabase>).selectFrom('sync_history_sources').selectAll().execute(); }
+  try { rows = (await sql<HistoryDatabase['sync_history_sources']>`SELECT * FROM sync_history_sources`.execute(db)).rows; }
   catch (error) { if (/no such table: sync_history_sources|relation ["']?sync_history_sources["']? does not exist/i.test(String(error))) return []; throw error; }
   const resolutions = new Map<string, NonNullable<HistoryCoverage['gaps'][number]['resolution']>>();
   for (const row of rows) {

@@ -70,7 +70,7 @@ describe('failed preparation preserves the running release', () => {
   it('renders the selected installation identity rather than the reusable package version', () => {
     const entries = selectNodeApps({ project: 'p', artifactRoot: '/artifacts', apps: [{ name: 'api' } as never],
       artifacts: [{ app: 'api', version: '1.0.0', directory: '1.0.0-verified-content' }] });
-    expect(entries[0]?.cwd).toBe('/artifacts/p/api/1.0.0-verified-content');
+    expect(entries[0]?.['cwd']).toBe('/artifacts/p/api/1.0.0-verified-content');
   });
   it('does not replace the boot configuration when any artifact fails', async () => {
     const target = { host: 'example.invalid' }, svc: any = Object.create(RemoteDeployer.prototype);

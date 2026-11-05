@@ -61,7 +61,7 @@ describe('dashboard with a half-failed refresh', () => {
     const { default: Dashboard } = await import('../../webapp/src/pages/dashboard.js');
     render(<Dashboard />);
 
-    await waitFor(() => expect(screen.getByRole('link', { name: 'main', exact: true })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('link', { name: 'main' })).toBeInTheDocument());
 
     // The second poll fails on the app list only.
     await waitFor(() => expect(screen.getByText(/could not refresh the app list/i)).toBeInTheDocument(), {
@@ -69,7 +69,7 @@ describe('dashboard with a half-failed refresh', () => {
     });
     // And the last good data is still shown — blanking it would be the
     // other half of this defect.
-    expect(screen.getByRole('link', { name: 'main', exact: true })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'main' })).toBeInTheDocument();
   }, 15_000);
 
   it('names metrics when metrics is the half that failed', async () => {
@@ -91,7 +91,7 @@ describe('dashboard with a half-failed refresh', () => {
     const { default: Dashboard } = await import('../../webapp/src/pages/dashboard.js');
     render(<Dashboard />);
 
-    await waitFor(() => expect(screen.getByRole('link', { name: 'main', exact: true })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('link', { name: 'main' })).toBeInTheDocument());
     expect(screen.queryByText(/could not refresh/i)).not.toBeInTheDocument();
   });
   it('uses the same current readings in the summary and application cards', async () => {
@@ -99,7 +99,7 @@ describe('dashboard with a half-failed refresh', () => {
     getSnapshot.mockResolvedValue({ apps: { main: { cpu: 4, memory: 1024 } } });
     const { default: Dashboard } = await import('../../webapp/src/pages/dashboard.js');
     render(<Dashboard />);
-    await screen.findByRole('link', { name: 'main', exact: true });
+    await screen.findByRole('link', { name: 'main' });
     expect(screen.getAllByText('4.0%')).toHaveLength(2);
     expect(screen.getAllByText('1 KiB')).toHaveLength(3);
     const ranking = screen.getByRole('list', { name: 'Resident memory by application' });

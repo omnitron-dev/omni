@@ -108,7 +108,8 @@ describe('a refused deployment names who holds the node', () => {
     const answer = parseAcquire('37.27.130.185:22', await deployer.leaseRunner({ host: '37.27.130.185' })('the lease script'));
 
     expect(answer).toMatchObject({ kind: 'held', idleSec: 12, holder: { holder: 'omnitron@laptop pid 4242', stack: 'sample/test' } });
-    const refusal = new LeaseHeldError('37.27.130.185:22', (answer as { holder: never }).holder, 12, 300);
+    if (answer.kind !== 'held') throw new Error('Expected a held deployment lease');
+    const refusal = new LeaseHeldError('37.27.130.185:22', answer.holder, 12, 300);
     expect(refusal.message).toMatch(/being deployed by omnitron@laptop pid 4242 \(deploying sample\/test, since 2026-09-23T18:04:13Z\)/);
   });
 });

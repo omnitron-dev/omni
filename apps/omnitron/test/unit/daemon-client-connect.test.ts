@@ -243,7 +243,7 @@ it('bounds a silent handshake and teardown independently of the reachability pro
     expect(settled).toBe(false);
     netron.stop.mockImplementation(() => new Promise(() => {}));
     await vi.advanceTimersByTimeAsync(10000);
-    expect((await call).message).toContain('did not complete a connection within 15s');
+    expect(await call).toMatchObject({ message: expect.stringContaining('did not complete a connection within 15s') });
     await vi.advanceTimersByTimeAsync(1001);
     await client.disconnect();
     expect(netron.connects).toBe(1);

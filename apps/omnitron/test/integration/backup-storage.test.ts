@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { backupStorageObjects, restoreStorageObjects } from '../../src/services/backup-storage.js';
 
 // Explicit opt-in to a cached image. No host ports, network, application volumes or registry downloads.
-const image = process.env.OMNITRON_TEST_MINIO_IMAGE;
+const image = process.env['OMNITRON_TEST_MINIO_IMAGE'];
 const exec = promisify(execFile);
 describe.skipIf(!image)('storage backup through a real MinIO with tmpfs', () => {
   const name = `omnitron-backup-test-${randomUUID()}`;

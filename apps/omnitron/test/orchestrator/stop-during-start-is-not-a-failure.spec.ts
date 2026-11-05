@@ -29,7 +29,7 @@ function harness() {
   service.onAppLog((_app, line) => lines.push(line));
 
   const supervisor = new EventEmitter();
-  const handle = new AppHandle('acme/dev/main', 'bootstrap' as never);
+  const handle = new AppHandle({ name: 'acme/dev/main' }, 'bootstrap');
   (service as any).wireSupervisorEvents({ name: 'acme/dev/main' }, handle, supervisor);
 
   const killedDuringStartup = Object.assign(

@@ -211,7 +211,7 @@ describe('updating an SSH secret', () => {
     const original = Object.getOwnPropertyDescriptor(process, 'stdin')!;
     Object.defineProperty(process, 'stdin', { value: Readable.from(['test secret\n']), configurable: true });
     try {
-      await nodeUpdateCommand(SAMPLE_TEST, { sshAuthMethod: override, secretFromStdin: true });
+      await nodeUpdateCommand(SAMPLE_TEST, { ...(override && { sshAuthMethod: override }), secretFromStdin: true });
       expect(nodes.updateNode).toHaveBeenCalledExactlyOnceWith({
         id: SAMPLE_TEST, sshAuthMethod: override, [field]: 'test secret',
       });

@@ -1,3 +1,4 @@
+import type { INodeHealthSummary } from '../../src/workers/types.js';
 /**
  * One call the worker refused detached it for the life of the daemon.
  *
@@ -23,7 +24,7 @@ import { NodeManagerRpcService } from '../../src/services/node-manager.rpc-servi
 
 const REGISTERED = '16f3dd5a-2727-49e5-90a2-d762b57073f6';
 
-const summary = {
+const summary: INodeHealthSummary = {
   nodeId: REGISTERED,
   status: 'online',
   lastSeenOnline: '2026-09-23T08:49:00.000Z',

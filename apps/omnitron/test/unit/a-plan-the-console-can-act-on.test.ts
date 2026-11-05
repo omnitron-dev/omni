@@ -63,7 +63,7 @@ describe('a plan the console can act on', () => {
       (async () => ({})) as never,
       (() => ({})) as never,
     );
-    vi.spyOn(service as never, 'workspaceRoot' as never).mockReturnValue(null as never);
+    vi.spyOn(service as unknown as { workspaceRoot(): string | null }, 'workspaceRoot').mockReturnValue(null as never);
 
     const plan = await service.plan();
 
@@ -85,7 +85,7 @@ describe('a plan the console can act on', () => {
       (async () => ({})) as never,
       (() => ({})) as never,
     );
-    vi.spyOn(service as never, 'workspaceRoot' as never).mockReturnValue('/w' as never);
+    vi.spyOn(service as unknown as { workspaceRoot(): string | null }, 'workspaceRoot').mockReturnValue('/w' as never);
 
     const started = Date.now();
     const plan = await service.plan();
@@ -117,7 +117,7 @@ describe('a plan the console can act on', () => {
       (async () => ({})) as never,
       (() => ({})) as never,
     );
-    vi.spyOn(service as never, 'workspaceRoot' as never).mockReturnValue('/w' as never);
+    vi.spyOn(service as unknown as { workspaceRoot(): string | null }, 'workspaceRoot').mockReturnValue('/w' as never);
 
     const plan = await service.plan();
 
@@ -141,7 +141,7 @@ describe('a plan the console can act on', () => {
       undefined,
       async () => ({ version: '0.2.0', archive: '/tmp/x.tar.gz', cleanup }),
     );
-    vi.spyOn(service as never, 'workspaceRoot' as never).mockReturnValue('/w' as never);
+    vi.spyOn(service as unknown as { workspaceRoot(): string | null }, 'workspaceRoot').mockReturnValue('/w' as never);
 
     await service.plan(undefined, { build: true });
 

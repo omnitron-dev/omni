@@ -11,8 +11,8 @@ describe('defineEcosystem', () => {
     expect(result.supervision).toEqual(DEFAULT_ECOSYSTEM.supervision);
     expect(result.monitoring).toEqual(DEFAULT_ECOSYSTEM.monitoring);
     expect(result.logging).toEqual(DEFAULT_ECOSYSTEM.logging);
-    expect(result.daemon).toEqual(DEFAULT_ECOSYSTEM.daemon);
-    expect(result.env).toBe(DEFAULT_ECOSYSTEM.env);
+    expect(result).not.toHaveProperty('daemon');
+    expect(result).not.toHaveProperty('env');
   });
 
   it('overrides supervision partially', () => {
@@ -29,6 +29,7 @@ describe('defineEcosystem', () => {
     const result = defineEcosystem({
       apps: minApps,
       monitoring: {
+        ...DEFAULT_ECOSYSTEM.monitoring,
         healthCheck: { interval: 30_000, timeout: 10_000 },
       },
     });
@@ -38,27 +39,13 @@ describe('defineEcosystem', () => {
     expect(result.monitoring.metrics).toEqual(DEFAULT_ECOSYSTEM.monitoring.metrics);
   });
 
-  it('overrides daemon config', () => {
-    const result = defineEcosystem({
-      apps: minApps,
-      daemon: { ...DEFAULT_ECOSYSTEM.daemon, port: 9800, host: '0.0.0.0' },
-    });
-    expect(result.daemon.port).toBe(9800);
-    expect(result.daemon.host).toBe('0.0.0.0');
-  });
-
   it('overrides logging config', () => {
     const result = defineEcosystem({
       apps: minApps,
-      logging: { ...DEFAULT_ECOSYSTEM.logging, compress: false, format: 'text' },
+      logging: { ...DEFAULT_ECOSYSTEM.logging, compress: false, level: 'debug' },
     });
     expect(result.logging.compress).toBe(false);
-    expect(result.logging.format).toBe('text');
-  });
-
-  it('overrides env', () => {
-    const result = defineEcosystem({ apps: minApps, env: 'production' });
-    expect(result.env).toBe('production');
+    expect(result.logging.level).toBe('debug');
   });
 
   it('preserves multiple apps with dependencies', () => {

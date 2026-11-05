@@ -15,7 +15,7 @@ const preflight: ReleasePreflightView = { root: '/private/releases', canBuild: t
 const props = () => ({ open: true, onClose: vi.fn(), onStarted: vi.fn(), defaultProject: 'sample', preflight });
 beforeEach(() => { mocks.snapshot = { role: 'admin' }; mocks.build.mockResolvedValue({ buildId: 'private-build' }); });
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
-const submit = () => screen.getByRole('button', { name: 'Build', exact: true });
+const submit = () => screen.getByRole('button', { name: 'Build' });
 function sourceOptions() { fireEvent.click(screen.getByRole('button', { name: /SDK source/ })); }
 
 it('leaves source selection to the committed project when no override was requested', async () => {

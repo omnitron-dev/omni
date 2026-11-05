@@ -1,3 +1,4 @@
+import { DEFAULT_ECOSYSTEM } from '../../src/config/defaults.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -179,7 +180,7 @@ describe('one placement contract for planner and deployment', () => {
   it('never uses the daemon RPC port as the database, Redis or gateway service port', () => {
     const result = resolveStack(
       {
-        apps: [],
+        ...DEFAULT_ECOSYSTEM, apps: [],
         infrastructure: { postgres: { port: 15432, databases: {} }, redis: { port: 16379 }, gateway: { port: 18080 } },
       },
       'sample',
@@ -216,7 +217,7 @@ describe('target intent is separate from executable configuration', () => {
   it('survives reopening without admitting a target for deployment or auto-resume', async () => {
     const { db, topology } = database();
     const stack = applyTopologySpec({ type: 'cluster' }, spec);
-    const config = { apps: entries, stacks: { prod: stack } };
+    const config = { ...DEFAULT_ECOSYSTEM, apps: entries, stacks: { prod: stack } };
     const source = {
       configuration: async () => ({ config, stack, apps: entries, userStacks: {} }),
       observation: async () => ({ config: stack, placements: [] }) as never,

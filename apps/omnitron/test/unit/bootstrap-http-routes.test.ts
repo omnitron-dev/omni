@@ -57,7 +57,7 @@ it('matches literal path prefixes and only the declared method', async () => {
     ['/readyz/extra', 'GET'],
     ['/READYZ', 'GET'],
     ['/account-media%2Fimage', 'GET'],
-  ]) {
+  ] as const) {
     expect((await fetch(endpoint + path, { method })).status).toBe(404);
   }
   expect(hits.media).toBe(before + 1);

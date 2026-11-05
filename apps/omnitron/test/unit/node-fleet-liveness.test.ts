@@ -273,8 +273,8 @@ describe('NodeManagerRpcService — the worker is an optimisation', () => {
   });
 
   it('caps what one call may ask the database for', async () => {
-    const getHistory = vi.fn(async () => []);
-    const getUptimeBar = vi.fn(async () => []);
+    const getHistory = vi.fn(async (_node: string, _limit: number) => []);
+    const getUptimeBar = vi.fn(async (_node: string, _limit: number) => []);
     rpc.setHealthRepository({ getHistory, getUptimeBar, deleteHistory: vi.fn() } as any);
 
     await rpc.getCheckHistory({ nodeId: 'n', limit: 10_000_000 });
@@ -367,7 +367,7 @@ describe('normalizeCheckConfig', () => {
   it('rejects NaN rather than storing it', () => {
     // `NaN > max` is false and `NaN < min` is false, so an unclamped NaN
     // passes every bound and becomes a timeout no process can honour.
-    const cfg = normalizeCheckConfig({ pingTimeout: Number.NaN, omnitronCheckTimeout: undefined });
+    const cfg = normalizeCheckConfig({ pingTimeout: Number.NaN });
     expect(cfg.pingTimeout).toBe(DEFAULT_CHECK_CONFIG.pingTimeout);
     expect(cfg.omnitronCheckTimeout).toBe(DEFAULT_CHECK_CONFIG.omnitronCheckTimeout);
   });

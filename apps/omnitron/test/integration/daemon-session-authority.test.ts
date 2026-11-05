@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SignJWT, jwtVerify } from 'jose';
-import { Netron } from '@omnitron-dev/titan/netron';
+import { Netron, RemotePeer } from '@omnitron-dev/titan/netron';
 import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { HttpNativeServer } from '@omnitron-dev/titan/netron/transport/http';
 import { WebSocketTransport } from '@omnitron-dev/titan/netron/transport/websocket';
@@ -83,6 +83,7 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
   }
   async function connect() {
     const peer = await client.connect(ws);
+    if (!(peer instanceof RemotePeer)) throw new Error('Expected the native Netron peer');
     expect((await peer.runTask('authenticate', { token })).success).toBe(true);
     return { peer, service: await peer.queryInterface<SessionFixture>('SessionFixture') };
   }
@@ -169,6 +170,7 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
     for (const principal of ['viewer', 'operator']) {
       role = principal;
       const peer = await client.connect(ws);
+    if (!(peer instanceof RemotePeer)) throw new Error('Expected the native Netron peer');
       try {
         const credential = await mint({ role: principal, sid: 'active' });
         expect((await peer.runTask('authenticate', { token: credential })).success).toBe(true);
@@ -225,6 +227,7 @@ describe('live session authority across HTTP cache and persistent WebSocket', ()
   });
   it('checks the expiry of an admitted service peer and accepts fresh authentication on that same peer', async () => {
     const peer = await client.connect(ws);
+    if (!(peer instanceof RemotePeer)) throw new Error('Expected the native Netron peer');
     const credential = await mint({ role: 'service_role' });
     try {
       expect((await peer.runTask('authenticate', { token: credential })).success).toBe(true);

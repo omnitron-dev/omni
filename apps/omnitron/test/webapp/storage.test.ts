@@ -109,7 +109,7 @@ describe('storage — when it does not', () => {
     withStorage(store);
 
     const circular: Record<string, unknown> = {};
-    circular.self = circular;
+    circular['self'] = circular;
 
     expect(() => writeStoredJson('k', circular)).not.toThrow();
     expect(store.map.has('k')).toBe(false);

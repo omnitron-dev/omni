@@ -116,10 +116,10 @@ describe('a node’s own alarms, on its SQLite', () => {
     ]);
     const [event] = await db.selectFrom('alert_events').selectAll().execute();
     expect(event).toMatchObject({ status: 'firing', deliveryError: null });
-    expect(event!.deliveredAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-    expect(raised[0]!.eventId).toBe(event!.id);
+    expect(event!['deliveredAt']).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(raised[0]!.eventId).toBe(event!['id']);
     // The event keeps the rule's annotations as JSON, not a JSON string of it.
-    expect(JSON.parse(event!.annotations as string)).toEqual({ summary: 'An app crashed' });
+    expect(JSON.parse(event!['annotations'] as string)).toEqual({ summary: 'An app crashed' });
   });
 
   it('and its end', async () => {
@@ -129,7 +129,7 @@ describe('a node’s own alarms, on its SQLite', () => {
     expect(raised).toMatchObject([{ status: 'resolved', ruleName: 'App crashed' }]);
     const [event] = await db.selectFrom('alert_events').selectAll().execute();
     expect(event).toMatchObject({ status: 'resolved' });
-    expect(event!.resolveDeliveredAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(event!['resolveDeliveredAt']).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it('keeps an operator’s change to a default across a restart, and a rule’s events go with it', async () => {

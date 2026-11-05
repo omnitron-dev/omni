@@ -94,6 +94,6 @@ describe('verified application execution authority', () => {
   it('keeps a nonstandard admitted bootstrap entry without substituting dist/bootstrap.js', () => {
     const [entry] = selectNodeApps({ project: 'project', artifactRoot: '/artifacts', apps: [{ name: 'worker', bootstrap: 'src/main.ts' }],
       artifacts: [{ app: 'worker', version: '1', launch: { ...launch, mode: 'bootstrap', file: 'dist/bootstrap.mjs' } }] });
-    expect(entry?.bootstrap).toBe('/artifacts/project/worker/1/dist/bootstrap.mjs'); expect(entry).not.toHaveProperty('script');
+    expect(entry?.['bootstrap']).toBe('/artifacts/project/worker/1/dist/bootstrap.mjs'); expect(entry).not.toHaveProperty('script');
   });
 });

@@ -32,7 +32,6 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-// @ts-expect-error — a plain .mjs helper shared with the repository's scanners
 import { stripComments } from '../../../../scripts/lib/strip-comments.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));

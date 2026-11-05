@@ -37,6 +37,7 @@ describe('Docker network admission', () => {
     const calls = commandBoundary((args) => {
       if (args[1] === 'create') return new Error('network private already exists');
       if (!inspected) { inspected = true; return new Error('No such network: private'); }
+      return undefined;
     });
     await ensureNetwork('private');
     expect(calls.map((args) => args[1])).toEqual(['inspect', 'create', 'inspect']);

@@ -1,3 +1,4 @@
+import { DEFAULT_ECOSYSTEM } from '../../src/config/defaults.js';
 /**
  * A signing key the resolver invented.
  *
@@ -45,7 +46,7 @@ const LOCAL: IStackConfig = { type: 'local', apps: 'all' };
 
 describe('the resolver', () => {
   it('computes where an app connects and no key it signs with', () => {
-    const config: IEcosystemConfig = { project: 'p', apps: [{ name: 'main' }] };
+    const config: IEcosystemConfig = { ...DEFAULT_ECOSYSTEM, project: 'p', apps: [{ name: 'main' }] };
     const env = resolvedConfigToEnv(resolveStack(config, 'p', 'dev', LOCAL, new Map([['main', declared('main')]])).appConfigs.get('main')!, 'main', 'dev');
 
     expect(env['DATABASE_URL']).toMatch(/^postgres(ql)?:\/\//);
@@ -53,7 +54,7 @@ describe('the resolver', () => {
   });
 
   it('says nothing about a key for an app that declares JWT auth either', () => {
-    const config: IEcosystemConfig = { project: 'p', apps: [{ name: 'main' }] };
+    const config: IEcosystemConfig = { ...DEFAULT_ECOSYSTEM, project: 'p', apps: [{ name: 'main' }] };
     const resolved = resolveStack(config, 'p', 'dev', LOCAL, new Map([['main', legacy('main')]])).appConfigs.get('main')!;
 
     expect(resolved).not.toHaveProperty('auth');
@@ -68,7 +69,7 @@ describe('what a node is given', () => {
     // The inputs, not the code under test: what the project declares, and no overrides.
     svc.loadAppDefinitions = async () => new Map([['main', declared('main')]]);
     svc.resolveOverrideSecrets = async () => undefined;
-    const ecosystem: IEcosystemConfig = { project: 'sample', apps: [{ name: 'main' }] };
+    const ecosystem: IEcosystemConfig = { ...DEFAULT_ECOSYSTEM, project: 'sample', apps: [{ name: 'main' }] };
     return svc.resolveNodeAppEnv(ecosystem, 'sample', { type: 'remote', apps: 'all' }, [{ name: 'main' }], {});
   }
 

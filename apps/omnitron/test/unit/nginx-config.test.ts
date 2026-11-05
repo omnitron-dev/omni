@@ -131,7 +131,7 @@ describe('generateNginxConfig — proxying', () => {
 
   it('overwrites untrusted client addresses on every upstream, including WS upgrades', () => {
     const upstreams = [...config.matchAll(/location [^{}]+ \{([^{}]+)\}/g)]
-      .map(match => match[1]).filter(location => location.includes('proxy_pass '));
+      .map(match => match[1]).filter(location => location?.includes('proxy_pass '));
     expect(upstreams).toHaveLength(4);
     for (const location of upstreams) {
       expect(location).toContain('proxy_set_header X-Forwarded-For $remote_addr;');

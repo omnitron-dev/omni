@@ -186,10 +186,10 @@ describe('shared source edits, real esbuild and real child processes', () => {
     for (const name of ['frozen', 'live', 'switchable']) {
       const dir = path.join(root, name); fs.mkdirSync(dir);
       fs.writeFileSync(path.join(dir, 'package.json'), '{"type":"module"}');
-      const definition = { name, processes: [{ name: 'worker', module: './worker.ts' }] };
+      const definition = { name, version: '1.0.0', processes: [{ name: 'worker', module: './worker.ts' }] };
       fs.writeFileSync(path.join(dir, 'bootstrap.ts'), 'export default ' + JSON.stringify(definition));
       fs.writeFileSync(path.join(dir, 'worker.ts'), "import {value} from '../source.ts'; process.send?.({value}); setInterval(() => {}, 1000);");
-      const entry = { name, bootstrap: path.join(dir, 'bootstrap.ts'), watch: name === 'frozen' ? false as const : undefined };
+      const entry = { name, bootstrap: path.join(dir, 'bootstrap.ts'), ...(name === 'frozen' && { watch: false as const }) };
       definitions.set(name, definition); entries.push(entry); add(entry); await launch(entry);
     }
     const frozenPid = workers.get('frozen')!.child.pid;
@@ -276,7 +276,7 @@ describe('shared source edits, real esbuild and real child processes', () => {
     fs.writeFileSync(path.join(root, 'package.json'), '{"type":"module"}');
     const source = path.join(root, 'bootstrap.ts');
     fs.writeFileSync(source, 'export default 1;');
-    const definition = { name: 'probe', processes: [] };
+    const definition = { name: 'probe', version: '1.0.0', processes: [] };
     const service = new BuildService(true), callback = vi.fn();
     cleanups.push(() => service.dispose());
     await service.watchApp('probe', source, definition, callback);

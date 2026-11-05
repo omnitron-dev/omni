@@ -136,7 +136,7 @@ it('does not show the previous account page when pagination races an outstanding
     .mockResolvedValue({ users: [account('second')], next: null });
   mount(<AccessPage />);
   await screen.findByText('first@example.test');
-  fireEvent.click(screen.getByRole('button', { name: 'Refresh', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   await waitFor(() => expect(listUsers).toHaveBeenCalledTimes(2));
   fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
   expect(screen.queryByText('first@example.test')).not.toBeInTheDocument();

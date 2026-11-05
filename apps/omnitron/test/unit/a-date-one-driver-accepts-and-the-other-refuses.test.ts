@@ -100,7 +100,7 @@ describe('wrapping the database', () => {
       all: (...p: unknown[]) => { bound.push(p); return []; },
       iterate: (...p: unknown[]) => { bound.push(p); return [][Symbol.iterator](); },
     };
-    return { bound, statement, prepare: vi.fn(() => statement) };
+    return { bound, statement, prepare: vi.fn((_query: string) => statement) };
   }
 
   it('serialises for the calling convention Kysely uses', () => {

@@ -31,7 +31,8 @@ describe('launch-bound release evidence', () => {
     const f = await fixture();
     expect(await verifyLaunchRelease(f.entry, 'launch-1')).toEqual(expect.objectContaining({
       state: 'confirmed', releaseId: origin.releaseId, launchId: 'launch-1', basis: 'verified-launch' }));
-    expect(await verifyLaunchRelease({ ...f.entry, releaseRoot: undefined }, 'launch-1')).toEqual(expect.objectContaining({ state: 'unreported' }));
+    const { releaseRoot: _boundary, ...withoutBoundary } = f.entry;
+    expect(await verifyLaunchRelease(withoutBoundary, 'launch-1')).toEqual(expect.objectContaining({ state: 'unreported' }));
   });
 
   it('detects changed application bytes and externally rebound framework bytes', async () => {
@@ -111,6 +112,6 @@ describe('launch-bound release evidence', () => {
   it('node registration replaces a developer-supplied boundary with the selected installed artifact', () => {
     const [app] = selectNodeApps({ project: 'sample', artifactRoot: '/artifacts',
       apps: [{ name: 'api', releaseRoot: '/developer/other' }], artifacts: [{ app: 'api', version: '1', directory: '1-hash' }] });
-    expect(app!.releaseRoot).toBe('/artifacts/sample/api/1-hash');
+    expect(app!['releaseRoot']).toBe('/artifacts/sample/api/1-hash');
   });
 });

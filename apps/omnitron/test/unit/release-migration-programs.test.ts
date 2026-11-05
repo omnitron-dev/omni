@@ -1,3 +1,4 @@
+import { DEFAULT_ECOSYSTEM } from '../../src/config/defaults.js';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -31,7 +32,7 @@ function fixture() {
 }
 const program = { mode:'config' as const, source:'src/database/registry.ts', release:'dist/database/registry.js' };
 function config(): IEcosystemConfig {
-  return { apps:[{ name:'api', script:'apps/api/dist/main.mjs' }], infrastructure:{ services:{ pg:{ preset:'postgres', config:{ databases:{ data:{ migrate:{ app:'api', config:program.source, releaseConfig:program.release } } } } } } },
+  return { ...DEFAULT_ECOSYSTEM, apps:[{ name:'api', script:'apps/api/dist/main.mjs' }], infrastructure:{ services:{ pg:{ preset:'postgres', config:{ databases:{ data:{ migrate:{ app:'api', config:program.source, releaseConfig:program.release } } } } } } },
     stacks:{ test:{ type:'local', apps:'all' }, production:{ type:'local', apps:'all' } } };
 }
 
@@ -39,17 +40,17 @@ describe('declared migration program provenance', () => {
   it('uses the same named database ownership and stack overrides as deployment', () => {
     const input = config();
     expect(declaredMigrationPrograms(input).get('api')).toEqual([program]);
-    input.stacks!.production!.infrastructure = { services:{ pg:{ preset:'postgres', config:{ databases:{ data:{ migrate:false } } } } } };
+    input.stacks!['production']!.infrastructure = { services:{ pg:{ preset:'postgres', config:{ databases:{ data:{ migrate:false } } } } } };
     expect(declaredMigrationPrograms(input, 'production').size).toBe(0);
     expect(declaredMigrationPrograms(input, 'test').get('api')).toEqual([program]);
     expect(() => declaredMigrationPrograms(input,'absent')).toThrow('Unknown release migration stack');
-    input.stacks!.test!.apps = [];
+    input.stacks!['test']!.apps = [];
     expect(() => declaredMigrationPrograms(input,'test')).toThrow('no unique application');
   });
 
   it('refuses different sources claiming the same packed migration entry', () => {
     const input = config();
-    input.stacks!.production!.infrastructure = { services:{ pg:{ preset:'postgres', config:{ databases:{ data:{ migrate:{ app:'api', config:'other.ts', releaseConfig:program.release } } } } } } };
+    input.stacks!['production']!.infrastructure = { services:{ pg:{ preset:'postgres', config:{ databases:{ data:{ migrate:{ app:'api', config:'other.ts', releaseConfig:program.release } } } } } } };
     expect(() => declaredMigrationPrograms(input)).toThrow('Conflicting declared migration source');
   });
 

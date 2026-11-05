@@ -8,7 +8,7 @@ import { databaseOfItsOwn, type OwnDatabase } from './a-database-of-its-own.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
 
 const postgres = await requiresTestPostgres(
-  process.env.TEST_DATABASE_URL ?? 'postgresql://test:test@localhost:15432/test'
+  process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test'
 );
 const logger = { info() {}, error() {}, warn() {}, debug() {} } as never;
 describe.skipIf(!postgres.ok)('durable Xec automation lifecycle', () => {

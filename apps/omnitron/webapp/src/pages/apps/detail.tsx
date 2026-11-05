@@ -535,8 +535,8 @@ function LogsTab({ appName }: { appName: string }) {
 
   const streamFilter = useMemo(() => {
     const f: Record<string, unknown> = { tail: 200, app: appName };
-    if (selectedLevels.length > 0) f.level = selectedLevels;
-    if (debouncedSearch.trim()) f.search = debouncedSearch.trim();
+    if (selectedLevels.length > 0) f['level'] = selectedLevels;
+    if (debouncedSearch.trim()) f['search'] = debouncedSearch.trim();
     return f;
   }, [appName, selectedLevels, debouncedSearch]);
 

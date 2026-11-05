@@ -171,19 +171,19 @@ it('does not rewrite a reviewed plan or active files when installation requests 
 });
 
 it.each([
-  ['protocol', (plan: Record<string, any>) => { plan.protocol = 2; }],
-  ['instance', (plan: Record<string, any>) => { plan.instanceHome = '/another-instance'; }],
-  ['directory', (plan: Record<string, any>) => { plan.directory = '/another-execution'; }],
-  ['scope', (plan: Record<string, any>) => { plan.scope = 'system'; }],
-  ['cwd', (plan: Record<string, any>) => { plan.cwd = 'relative'; }],
-  ['owner hash', (plan: Record<string, any>) => { plan.owner.artifact = '../runtime'; }],
-  ['owner label', (plan: Record<string, any>) => { plan.owner.label = 'dev.omnitron.other'; }],
-  ['backend unit', (plan: Record<string, any>) => { plan.backend.unit = 'omnitron-other.service'; }],
-  ['environment array', (plan: Record<string, any>) => { plan.environment = []; }],
-  ['environment null', (plan: Record<string, any>) => { plan.environment = null; }],
-  ['environment value', (plan: Record<string, any>) => { plan.environment.PATH = 1; }],
-  ['environment home', (plan: Record<string, any>) => { plan.environment.OMNITRON_HOME = '/another-instance'; }],
-  ['environment NUL', (plan: Record<string, any>) => { plan.environment.OMNITRON_TOKEN = 'bad\0value'; }],
+  ['protocol', (plan: Record<string, any>) => { plan['protocol'] = 2; }],
+  ['instance', (plan: Record<string, any>) => { plan['instanceHome'] = '/another-instance'; }],
+  ['directory', (plan: Record<string, any>) => { plan['directory'] = '/another-execution'; }],
+  ['scope', (plan: Record<string, any>) => { plan['scope'] = 'system'; }],
+  ['cwd', (plan: Record<string, any>) => { plan['cwd'] = 'relative'; }],
+  ['owner hash', (plan: Record<string, any>) => { plan['owner'].artifact = '../runtime'; }],
+  ['owner label', (plan: Record<string, any>) => { plan['owner'].label = 'dev.omnitron.other'; }],
+  ['backend unit', (plan: Record<string, any>) => { plan['backend'].unit = 'omnitron-other.service'; }],
+  ['environment array', (plan: Record<string, any>) => { plan['environment'] = []; }],
+  ['environment null', (plan: Record<string, any>) => { plan['environment'] = null; }],
+  ['environment value', (plan: Record<string, any>) => { plan['environment'].PATH = 1; }],
+  ['environment home', (plan: Record<string, any>) => { plan['environment'].OMNITRON_HOME = '/another-instance'; }],
+  ['environment NUL', (plan: Record<string, any>) => { plan['environment'].OMNITRON_TOKEN = 'bad\0value'; }],
 ])('refuses reuse of an invalid paused plan %s before overwriting it', async (_label, change) => {
   const { prepareResidentService, installResidentService } = await import('../../src/commands/service-resident.js');
   const previous = await prepareResidentService({ ...inputs(), ownerRuntime: state.oldHash });
@@ -343,7 +343,7 @@ it('waits for checkpoint publication outside the installation lease and revalida
   try {
     const plan = await prepareResidentService({ ...inputs(), recoveryWaitMs: 1000 });
     expect(heldWhileWaiting).toBe(false);
-    expect(plan.config.environment.OMNITRON_DATABASE_URL).toBe('fixture-daemon-database');
+    expect(plan.config.environment['OMNITRON_DATABASE_URL']).toBe('fixture-daemon-database');
   } finally { clearTimeout(timer); }
 });
 

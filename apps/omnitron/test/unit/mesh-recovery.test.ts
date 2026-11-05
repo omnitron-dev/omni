@@ -165,7 +165,7 @@ describe('mesh recovery and resource ownership', () => {
     network.instances[0].handlers.get('peer:disconnect')(); await settle();
     await vi.advanceTimersByTimeAsync(5000);
     finish({ token: 'late-old-token', expiresAt: Date.now() + 300_000 }); await settle();
-    expect((await result).message).toContain('connection changed');
+    expect(await result).toMatchObject({ message: expect.stringContaining('connection changed') });
     expect(c.getConnections()[0]).toMatchObject({ status: 'connected', authenticated: true, lastCredentialError: null });
     expect(remote.runTask).toHaveBeenCalledTimes(1);
     expect(next.runTask).toHaveBeenCalledWith('authenticate', { token: 'replacement' });
@@ -195,7 +195,7 @@ describe('mesh recovery and resource ownership', () => {
     await c.addSlave(config); await settle(); vi.setSystemTime(Date.now() + 275_000);
     const result = c.invokeOnSlave(config.host, 9700, 'OmnitronDaemon', 'ping', []).catch(error => error);
     await settle(); await vi.advanceTimersByTimeAsync(10_000);
-    expect((await result).message).toContain('renewal timed out');
+    expect(await result).toMatchObject({ message: expect.stringContaining('renewal timed out') });
     accept(serviceAuth()); await settle();
     expect(link.token).toBe('initial');
     expect(c.getConnections()[0]).toMatchObject({ authenticated: false, lastCredentialError: 'Service credential renewal timed out' });

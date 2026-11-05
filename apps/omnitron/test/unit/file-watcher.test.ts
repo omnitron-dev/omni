@@ -1,3 +1,4 @@
+import { DEFAULT_ECOSYSTEM } from '../../src/config/defaults.js';
 /**
  * FileWatcher behaviour.
  *
@@ -53,7 +54,7 @@ function createMockOrchestrator(overrides: Record<string, unknown> = {}) {
   const restart = vi.fn().mockResolvedValue(undefined);
   return {
     restartApp: restart,
-    restartAfterChange: overrides.restartApp ?? restart,
+    restartAfterChange: overrides['restartApp'] ?? restart,
     // The real orchestrator has this, and `triggerRestart` calls it from
     // inside its own catch — a double without it made the failure path
     // throw rather than log. See «survives a diagnostic that throws».
@@ -63,34 +64,7 @@ function createMockOrchestrator(overrides: Record<string, unknown> = {}) {
 }
 
 function createTestConfig(apps: IEcosystemAppEntry[]): IEcosystemConfig {
-  return {
-    apps,
-    supervision: {
-      strategy: 'one_for_one',
-      maxRestarts: 5,
-      window: 60_000,
-      backoff: { type: 'exponential', initial: 1000, max: 30_000, factor: 2 },
-    },
-    monitoring: {
-      healthCheck: { interval: 15_000, timeout: 5_000 },
-      metrics: { interval: 5_000, retention: 3600 },
-    },
-    logging: {
-      directory: '/tmp/omnitron-test-logs',
-      maxSize: '50mb',
-      maxFiles: 10,
-      compress: true,
-      format: 'json',
-    },
-    daemon: {
-      socketPath: '/tmp/test-daemon.sock',
-      port: 9700,
-      host: '127.0.0.1',
-      pidFile: '/tmp/test-daemon.pid',
-      stateFile: '/tmp/test-daemon-state.json',
-    },
-    env: 'test',
-  };
+  return { ...DEFAULT_ECOSYSTEM, apps };
 }
 
 /**
@@ -265,7 +239,7 @@ describe('FileWatcher', () => {
 
   it('never watches declared installed entries even with an explicit watch request', () => {
     const script = path.join(appDir, 'src', 'bootstrap.ts');
-    const w = startWatcher(50, [{ name: 'test-app', script, releaseRoot: appDir, watch: true }]);
+    const w = startWatcher(50, [{ name: 'test-app', script, releaseRoot: appDir, watch: srcDir }]);
     expect(w.getWatchedApps()).toEqual([]);
     expect(w.watchedDirs).toEqual([]);
     w.addApp({ name: 'another-installed-app', script, releaseRoot: appDir, watch: srcDir });
@@ -591,7 +565,7 @@ describe('FileWatcher', () => {
       const [dir, options] = watchSpy.mock.calls[0]!;
       expect(dir).toBe(appDir);
       expect(options).toMatchObject({ recursive: true });
-      expect(typeof watchSpy.mock.calls[0]![2]).toBe('function');
+      expect(watchSpy).toHaveBeenCalledWith(appDir, expect.objectContaining({ recursive: true }), expect.any(Function));
     } finally {
       watchSpy.mockRestore();
     }

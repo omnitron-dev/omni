@@ -31,7 +31,7 @@ function fixture(policy = {}) {
       return pty;
     }),
   };
-  const audit = { record: vi.fn(async () => {}) };
+  const audit = { record: vi.fn<AuditService['record']>(async () => {}) };
   const auth = {
     validateSession: vi.fn(async (id: string) => (role ? { id: id === 'session-b' ? 'bob' : 'alice', role } : null)),
   };

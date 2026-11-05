@@ -41,7 +41,7 @@ vi.mock('../../src/infrastructure/server-registry.js', () => ({
       return servers;
     }
     get(alias: string) {
-      return servers.find((s) => s.alias === alias) ?? null;
+      return servers.find((s) => s['alias'] === alias) ?? null;
     }
     add(server: unknown) {
       writes.push(server);

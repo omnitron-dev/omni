@@ -18,7 +18,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
-import type { ProcessManager } from '../../src/orchestrator/process-manager.js';
+import type { ProcessManager } from '@omnitron-dev/titan-pm';
 import type { StateStore } from '../../src/daemon/state-store.js';
 import type { IEcosystemAppEntry } from '../../src/config/types.js';
 

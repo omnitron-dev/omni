@@ -159,7 +159,7 @@ describe('the table keeps a record as one row, at its level, in capture order', 
     c.ingestPinoLine('sample/deployed/payments', '    at GetAddrInfoReqWrap.onlookup');
     c.ingestPinoLine('sample/deployed/payments', '{"level":40,"msg":"retrying"}');
 
-    expect(rows().map((r) => `${r['level']}:${String(r['message']).split('\n').length}`)).toEqual(['unknown:2', 'warn:1']);
+    expect(rows().map((r: Record<string, unknown>) => `${r['level']}:${String(r['message']).split('\n').length}`)).toEqual(['unknown:2', 'warn:1']);
     await expect(c.dispose()).rejects.toThrow();
   });
 

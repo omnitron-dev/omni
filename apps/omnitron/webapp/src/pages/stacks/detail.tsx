@@ -249,7 +249,7 @@ export default function StackDetailPage() {
               label={stack.status.charAt(0).toUpperCase() + stack.status.slice(1)}
               size="small"
               sx={{
-                bgcolor: STATUS_COLORS[stack.status] ?? STATUS_COLORS.stopped,
+                bgcolor: STATUS_COLORS[stack.status] ?? STATUS_COLORS['stopped'],
                 color: 'white',
                 fontWeight: 600,
               }}

@@ -7,8 +7,8 @@ let originalEnv: string | undefined;
 let exitListeners: Function[];
 let stdout: string[], stderr: string[];
 beforeEach(() => {
-  originalEnv = process.env.OMNITRON_OUTPUT;
-  delete process.env.OMNITRON_OUTPUT;
+  originalEnv = process.env['OMNITRON_OUTPUT'];
+  delete process.env['OMNITRON_OUTPUT'];
   resetEnvCache();
   process.exitCode = undefined;
   exitListeners = process.listeners('exit');
@@ -26,8 +26,8 @@ beforeEach(() => {
 afterEach(() => {
   for (const listener of process.listeners('exit'))
     if (!exitListeners.includes(listener)) process.removeListener('exit', listener);
-  if (originalEnv === undefined) delete process.env.OMNITRON_OUTPUT;
-  else process.env.OMNITRON_OUTPUT = originalEnv;
+  if (originalEnv === undefined) delete process.env['OMNITRON_OUTPUT'];
+  else process.env['OMNITRON_OUTPUT'] = originalEnv;
   resetEnvCache();
   process.exitCode = undefined;
   vi.restoreAllMocks();
@@ -44,7 +44,7 @@ describe('machine output admission precedes action execution', () => {
       const root = program(),
         mutation = vi.fn();
       root.command('system').command('remove').alias('rm').action(mutation);
-      if (mode === 'environment') process.env.OMNITRON_OUTPUT = 'json';
+      if (mode === 'environment') process.env['OMNITRON_OUTPUT'] = 'json';
       await expect(
         root.parseAsync([...(mode === 'flag' ? ['--json'] : []), 'system', 'rm'], { from: 'user' })
       ).rejects.toMatchObject({ code: 'omnitron.jsonUnsupported', exitCode: 2 });

@@ -36,7 +36,7 @@ function store(seed: Record<string, unknown> = {}) {
     rows,
     kvGet: async (key: string) => rows.get(key) ?? null,
     kvSet: async (key: string, value: unknown) => void rows.set(key, value),
-  } as never;
+  };
 }
 
 /**
@@ -44,7 +44,7 @@ function store(seed: Record<string, unknown> = {}) {
  * Returns the probe spy so a test can count how often the OS was asked.
  */
 function service(kv: ReturnType<typeof store>, answers: string[], passphrase = DEFAULT_SECRETS_PASSPHRASE) {
-  const svc = new SecretsService(kv, passphrase, null);
+  const svc = new SecretsService(kv as never, passphrase, null);
   let i = 0;
   const probe = vi.fn(async () => answers[Math.min(i++, answers.length - 1)]!);
   (svc as unknown as { probeMachineId: () => Promise<string> }).probeMachineId = probe;

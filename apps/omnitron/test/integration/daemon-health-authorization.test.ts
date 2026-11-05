@@ -8,7 +8,7 @@ import { Application } from '@omnitron-dev/titan';
 import { AuthenticationManager, AuthorizationManager } from '@omnitron-dev/titan/netron/auth';
 import { HttpNativeServer } from '@omnitron-dev/titan/netron/transport/http';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
-import { TitanHealthModule, HealthService } from '@omnitron-dev/titan-health';
+import { TitanHealthModule, HEALTH_SERVICE_TOKEN } from '@omnitron-dev/titan-health';
 import { DEFAULT_DAEMON_CONFIG, DEFAULT_ECOSYSTEM } from '../../src/config/defaults.js';
 import { createDaemonModule, getDaemonLogStream, getDaemonErrorStream } from '../../src/daemon/daemon.module.js';
 
@@ -23,7 +23,7 @@ describe('daemon health RPC access', () => {
     expect(health).toBeDefined();
     app = await Application.create({ imports: [health], disableGracefulShutdown: true });
     await app.start();
-    const service = await app.resolveAsync(HealthService);
+    const service = await app.resolveAsync(HEALTH_SERVICE_TOKEN);
     service.registerIndicator({ name: 'fixture', check: async () => ({ status: 'unhealthy', message: marker }) });
     const logger = createNullLogger();
     app.netron!.configureAuth(new AuthenticationManager(logger, {

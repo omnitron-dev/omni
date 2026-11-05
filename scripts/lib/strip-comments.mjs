@@ -54,6 +54,7 @@ function regexCanStartHere(out) {
   return true;
 }
 
+/** @param {string} source */
 export function stripComments(source) {
   let out = '';
   let i = 0;

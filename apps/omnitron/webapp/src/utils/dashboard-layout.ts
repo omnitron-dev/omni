@@ -96,35 +96,35 @@ function unique(items: { id: string }[]): void {
 /** Reads existing v2 boards and validates portable layouts before they're admitted to the editor. */
 export function parseBoard(input: unknown): DashboardConfig {
   const board = record(input);
-  if (!Array.isArray(board.panels) || board.panels.length > 64)
+  if (!Array.isArray(board['panels']) || board['panels'].length > 64)
     throw new Error('A dashboard supports up to 64 panels.');
-  const panels = board.panels.map((entry: unknown): DashboardPanel => {
+  const panels = board['panels'].map((entry: unknown): DashboardPanel => {
     const p = record(entry);
-    const legacyUptime = p.type === 'uptime-chart';
-    const type = legacyUptime ? 'stat' : choice(PANEL_TYPES, p.type, 'panel type');
-    const config = record(p.config ?? {});
+    const legacyUptime = p['type'] === 'uptime-chart';
+    const type = legacyUptime ? 'stat' : choice(PANEL_TYPES, p['type'], 'panel type');
+    const config = record(p['config'] ?? {});
     return {
-      id: label(p.id, 'panel id'),
-      title: label(p.title, 'panel title'),
+      id: label(p['id'], 'panel id'),
+      title: label(p['title'], 'panel title'),
       type,
-      size: choice(PANEL_SIZES, p.size, 'panel size'),
+      size: choice(PANEL_SIZES, p['size'], 'panel size'),
       config: {
         ...(type === 'stat' && {
-          metric: legacyUptime ? 'uptime' : choice(STAT_METRICS, config.metric ?? 'online_apps', 'statistic'),
+          metric: legacyUptime ? 'uptime' : choice(STAT_METRICS, config['metric'] ?? 'online_apps', 'statistic'),
         }),
-        ...(config.app && typeof config.app === 'string' ? { app: label(config.app, 'application', 256) } : {}),
+        ...(config['app'] && typeof config['app'] === 'string' ? { app: label(config['app'], 'application', 256) } : {}),
       },
     };
   });
   unique(panels);
-  const refreshInterval = Number(board.refreshInterval ?? 5000);
+  const refreshInterval = Number(board['refreshInterval'] ?? 5000);
   if (!REFRESH_INTERVALS.some((value) => value === refreshInterval)) throw new Error('Unsupported refresh interval.');
   return {
-    id: label(board.id, 'dashboard id'),
-    name: label(board.name, 'dashboard name'),
+    id: label(board['id'], 'dashboard id'),
+    name: label(board['name'], 'dashboard name'),
     panels,
     refreshInterval,
-    window: choice(METRIC_WINDOWS, board.window ?? '15m', 'history window'),
+    window: choice(METRIC_WINDOWS, board['window'] ?? '15m', 'history window'),
   };
 }
 export function parseBoards(raw: string): DashboardConfig[] {
@@ -140,7 +140,7 @@ export function exportBoard(board: DashboardConfig): string {
 export function importBoard(raw: string): DashboardConfig {
   if (raw.length > 128 * 1024) throw new Error('Layout exceeds 128 KiB.');
   const file = record(JSON.parse(raw));
-  if (file.format !== 'omnitron.dashboard' || file.version !== 1)
+  if (file['format'] !== 'omnitron.dashboard' || file['version'] !== 1)
     throw new Error('Unsupported dashboard layout format or version.');
-  return { ...parseBoard(file.board), id: dashboardId() };
+  return { ...parseBoard(file['board']), id: dashboardId() };
 }

@@ -27,7 +27,7 @@ export function metricScope(
 }
 
 export function seriesInScope(series: Pick<MetricsTimeSeries, 'app' | 'labels'>, scope: MetricScope): boolean {
-  const node = series.labels?.node;
+  const node = series.labels?.['node'];
   return node
     ? scope.remote.some(
         (item) =>
@@ -59,7 +59,7 @@ export function seriesLabel(
 ): string {
   const parts = series.app.split('/');
   const app = parts.length >= 4 ? parts.slice(2).join('/') : parts[parts.length - 1]!;
-  const node = series.labels?.node;
+  const node = series.labels?.['node'];
   return node ? `${app} · ${nodeNames[node] ?? node}` : app;
 }
 
@@ -118,7 +118,7 @@ export function metricLines(
         {
           id: seriesKey(s),
           name: duplicate
-            ? `${s.app}${s.labels?.node ? ` · ${nodeNames[s.labels.node] ?? s.labels.node}` : ''}${labels.length ? ` · ${labels.map(([k, v]) => `${k}=${v}`).join(', ')}` : ''}`
+            ? `${s.app}${s.labels?.['node'] ? ` · ${nodeNames[s.labels['node']] ?? s.labels['node']}` : ''}${labels.length ? ` · ${labels.map(([k, v]) => `${k}=${v}`).join(', ')}` : ''}`
             : baseName,
           data,
           latest: points.at(-1)!.value,

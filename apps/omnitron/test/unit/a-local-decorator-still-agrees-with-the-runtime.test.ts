@@ -73,6 +73,7 @@ describe.each(ENTRY_POINTS)('%s', (entry) => {
     const writes = [...code.matchAll(/Reflect\.defineMetadata\(\s*PROCESS_METHOD_METADATA_KEY\s*,([\s\S]{0,120}?)\)/g)];
     expect(writes.length, 'no metadata write found — has this file been restructured?').toBeGreaterThan(0);
     for (const [, args] of writes) {
+      if (args === undefined) throw new Error('Metadata argument group was not captured');
       expect(args.split(',').length, `metadata written without a propertyKey: ${args.trim()}`).toBeGreaterThanOrEqual(3);
     }
   });

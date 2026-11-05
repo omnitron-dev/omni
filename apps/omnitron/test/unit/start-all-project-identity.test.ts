@@ -1,3 +1,4 @@
+import { DEFAULT_ECOSYSTEM } from '../../src/config/defaults.js';
 import 'reflect-metadata';
 import { describe, expect, it, vi } from 'vitest';
 import { DaemonRpcService } from '../../src/daemon/daemon.rpc-service.js';
@@ -19,10 +20,10 @@ function fixture(config: IEcosystemConfig, fail?: string) {
 }
 
 describe('bulk startup preserves project identity', () => {
-  const config = (): IEcosystemConfig => ({ project: 'sample', stacks: { deployed: {} }, apps: [
+  const config = (): IEcosystemConfig => ({ ...DEFAULT_ECOSYSTEM, project: 'sample', stacks: { deployed: { type: 'local' } }, apps: [
     { name: 'database', bootstrap: '/artifacts/database/bootstrap.js' },
     { name: 'api', bootstrap: '/artifacts/api/bootstrap.js', dependsOn: ['database'] },
-  ] }) as IEcosystemConfig;
+  ] });
 
   it('returns the canonical stack identities while retaining dependency ordering and source configuration', async () => {
     const source = config(), before = structuredClone(source), f = fixture(source);

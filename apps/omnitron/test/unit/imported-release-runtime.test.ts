@@ -41,7 +41,7 @@ describe('runtime identity of imported artifacts', () => {
 
   it('compares a retained archive to the producer SDK and never infers live-process confirmation', () => {
     const release = consumer(), file = release.artifacts[0]!;
-    const observed = { app: 'consumer/dev/imported', state: 'observed' as const, observedAt: '2026-11-03T00:00:00Z', pid: 10, startedAt: '2026-11-03T00:00:00Z',
+    const observed = { app: 'consumer/dev/imported', state: 'observed' as const, observedAt: '2026-11-03T00:00:00Z', pid: 10, startedAt: Date.parse('2026-11-03T00:00:00Z'),
       entrySha256: 'f'.repeat(64), frameworkCommit: sdk,
       archives: [{ sha256: file.sha256, bytes: file.bytes, entrySha256: 'f'.repeat(64) }], reasons: [] };
     const catalog = { complete: true, reasons: [], releases: [{ manifest: release, sha256: '3'.repeat(64) }] };

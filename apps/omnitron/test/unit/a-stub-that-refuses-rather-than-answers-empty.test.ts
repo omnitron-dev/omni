@@ -34,7 +34,7 @@ import { describe, it, expect } from 'vitest';
 import { NodeManagerRpcService } from '../../src/services/node-manager.rpc-service.js';
 
 /** Constructed with nothing: the stubs must refuse before touching a dependency. */
-const service = () => new NodeManagerRpcService(...([] as never[]));
+const service = () => new NodeManagerRpcService(undefined as never, undefined as never, undefined as never);
 
 describe('a stub that refuses rather than answers empty', () => {
   it('planUpgrade, now built, still refuses rather than answering emptily', async () => {

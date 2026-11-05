@@ -266,7 +266,7 @@ describe('the installed bundle remains an importable package', () => {
         { cwd: dir, encoding: 'utf8' }
       );
       expect(output.trim()).toBe('84');
-      expect(manifest.bin).toEqual(root.bin);
+      expect(manifest['bin']).toEqual(root.bin);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

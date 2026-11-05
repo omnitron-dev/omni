@@ -42,7 +42,7 @@ async function createUser(username: string): Promise<string> {
   const hash = await auth.hashPassword(PASSWORD);
   const row = await db
     .insertInto('omnitron_users')
-    .values({ username, passwordHash: hash, role: 'admin', displayName: username })
+    .values({ username, passwordHash: hash, role: 'admin', displayName: username, totpEnabled: false, pgpEnabled: false })
     .returning('id')
     .executeTakeFirstOrThrow();
   return row.id;
@@ -221,7 +221,7 @@ describe.skipIf(!testPg.ok)('sign-in throttling (integration)', () => {
     const result = await pendingRole;
     expect(result.user.role).toBe('viewer');
     expect(await auth.validateToken(result.accessToken)).toMatchObject({ role: 'viewer' });
-    expect(decodeJwt(result.accessToken).role).toBe('viewer');
+    expect(decodeJwt(result.accessToken)['role']).toBe('viewer');
   });
 
   it('refuses the previous password after a rotation during verification', async () => {

@@ -336,26 +336,26 @@ export default function LogsPage() {
         limit: PAGE_SIZE,
         offset,
       };
-      if (app) filter.app = app;
-      if (activeProject) filter.appPrefixes = namespacePrefixes;
-      if (selectedLevels.length > 0) filter.level = selectedLevels;
-      if (debouncedSearch.trim()) filter.search = debouncedSearch.trim();
+      if (app) filter['app'] = app;
+      if (activeProject) filter['appPrefixes'] = namespacePrefixes;
+      if (selectedLevels.length > 0) filter['level'] = selectedLevels;
+      if (debouncedSearch.trim()) filter['search'] = debouncedSearch.trim();
 
       // The node filter is a COLUMN, not a label. It used to be folded into
       // `labels` — where the daemon ignored the whole field, so choosing a
       // node narrowed nothing while its chip stayed lit.
-      if (nodeFilter) filter.nodeId = nodeFilter;
+      if (nodeFilter) filter['nodeId'] = nodeFilter;
 
       const labels = parseLabelInput(labelInput);
-      if (labels && Object.keys(labels).length > 0) filter.labels = labels;
+      if (labels && Object.keys(labels).length > 0) filter['labels'] = labels;
 
       if (timeRangeKey === 'custom') {
-        if (customFrom) filter.from = new Date(customFrom).toISOString();
-        if (customTo) filter.to = new Date(customTo).toISOString();
+        if (customFrom) filter['from'] = new Date(customFrom).toISOString();
+        if (customTo) filter['to'] = new Date(customTo).toISOString();
       } else if (timeRangeKey !== 'live') {
         const range = TIME_RANGES.find((r) => r.key === timeRangeKey);
         if (range && range.minutes > 0) {
-          filter.from = new Date(Date.now() - range.minutes * 60 * 1000).toISOString();
+          filter['from'] = new Date(Date.now() - range.minutes * 60 * 1000).toISOString();
         }
       }
 
@@ -422,14 +422,14 @@ export default function LogsPage() {
     // while their chips stayed on screen, and the viewer answered a
     // different question than the one it was showing.
     const f: Record<string, unknown> = { tail: 100 };
-    if (app) f.app = app;
-    if (activeProject) f.appPrefixes = namespacePrefixes;
-    if (selectedLevels.length > 0) f.level = selectedLevels;
-    if (debouncedSearch.trim()) f.search = debouncedSearch.trim();
-    if (nodeFilter) f.nodeId = nodeFilter;
+    if (app) f['app'] = app;
+    if (activeProject) f['appPrefixes'] = namespacePrefixes;
+    if (selectedLevels.length > 0) f['level'] = selectedLevels;
+    if (debouncedSearch.trim()) f['search'] = debouncedSearch.trim();
+    if (nodeFilter) f['nodeId'] = nodeFilter;
 
     const labels = parseLabelInput(labelInput);
-    if (labels && Object.keys(labels).length > 0) f.labels = labels;
+    if (labels && Object.keys(labels).length > 0) f['labels'] = labels;
 
     return f;
   }, [app, activeProject, namespacePrefixes, selectedLevels, debouncedSearch, nodeFilter, labelInput]);

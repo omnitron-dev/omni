@@ -1,3 +1,4 @@
+import { DEFAULT_ECOSYSTEM } from '../../src/config/defaults.js';
 /**
  * Every app was handed a hostname whose first address refuses connections.
  *
@@ -42,7 +43,7 @@ const definition = (name: string): IAppDefinition => ({
 });
 
 function envOf(stackConfig: IStackConfig) {
-  const config: IEcosystemConfig = { project: 'hosts', apps: [{ name: 'alpha' }] };
+  const config: IEcosystemConfig = { ...DEFAULT_ECOSYSTEM, project: 'hosts', apps: [{ name: 'alpha' }] };
   const resolved = resolveStack(
     config,
     'hosts',
@@ -74,7 +75,7 @@ describe('a name that resolved to a closed door', () => {
     const env = envOf({
       type: 'remote',
       apps: 'all',
-      nodes: [{ name: 'node-1', host: 'db.internal' }],
+      nodes: [{ label: 'node-1', host: 'db.internal' }],
     } as IStackConfig);
 
     expect(env['DATABASE_URL'], 'a configured hostname must survive').toMatch(/db\.internal/);

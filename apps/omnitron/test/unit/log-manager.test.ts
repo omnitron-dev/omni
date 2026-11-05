@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { LogManager, type LogManagerConfig } from '../../src/monitoring/log-manager.js';
+import { LogManager, type LegacyLogManagerConfig } from '../../src/monitoring/log-manager.js';
 import type { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
 
 function createMockOrchestrator(logsData: Array<{ app: string; lines: string[] }> = []): OrchestratorService {
@@ -13,7 +13,7 @@ function createMockOrchestrator(logsData: Array<{ app: string; lines: string[] }
 
 describe('LogManager', () => {
   let tmpDir: string;
-  let config: LogManagerConfig;
+  let config: LegacyLogManagerConfig;
   const managers: LogManager[] = [];
   const makeManager = (...args: ConstructorParameters<typeof LogManager>): LogManager => {
     const result = new LogManager(...args); managers.push(result); return result;
@@ -26,7 +26,6 @@ describe('LogManager', () => {
       maxSize: '1kb',
       maxFiles: 3,
       compress: false,
-      format: 'json',
     };
   });
 

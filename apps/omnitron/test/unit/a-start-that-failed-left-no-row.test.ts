@@ -129,11 +129,11 @@ describe('a start that failed is in the trail, as a failure', () => {
     await expect(svc.startStack('sample', 'test', { source: 'operator' })).rejects.toThrow(/provisioning failed/);
 
     expect(rows, 'one row for the one attempt').toHaveLength(1);
-    expect(rows[0]!.action).toBe('stack.start.failed');
-    expect(rows[0]!.resourceId).toBe('sample/test');
-    expect(rows[0]!.details).toMatchObject({ outcome: 'failed', source: 'operator', type: 'local' });
+    expect(rows[0]!['action']).toBe('stack.start.failed');
+    expect(rows[0]!['resourceId']).toBe('sample/test');
+    expect(rows[0]!['details']).toMatchObject({ outcome: 'failed', source: 'operator', type: 'local' });
     // The first line, and never the password a connection string carried.
-    expect(rows[0]!.details.error).toBe(
+    expect(rows[0]!['details'].error).toBe(
       "Stack 'sample/test' infrastructure provisioning failed: redis://omni:«redacted»@127.0.0.1:6379 refused the connection",
     );
     expect(outcomeOf(rows[0] as unknown as AuditRow)).toBe('failed');
@@ -147,11 +147,11 @@ describe('a start that failed is in the trail, as a failure', () => {
 
     expect(svc.startRemoteStack, 'refused before anything moved').not.toHaveBeenCalled();
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.action).toBe('stack.start.failed');
-    expect(rows[0]!.details.error).toMatch(/^Refusing to deploy sample\/test: 1 file\(s\) differ from the commit \(HEAD [0-9a-f]+\)/);
+    expect(rows[0]!['action']).toBe('stack.start.failed');
+    expect(rows[0]!['details'].error).toMatch(/^Refusing to deploy sample\/test: 1 file\(s\) differ from the commit \(HEAD [0-9a-f]+\)/);
     // The refusal goes on to list the files, which is for the terminal.
-    expect(rows[0]!.details.error).not.toContain('omnitron.config.ts');
-    expect(rows[0]!.details.commit, 'the commit the refused tree was on').toBe(head);
+    expect(rows[0]!['details'].error).not.toContain('omnitron.config.ts');
+    expect(rows[0]!['details'].commit, 'the commit the refused tree was on').toBe(head);
   });
 
   it('records «takes releases only»', async () => {
@@ -164,7 +164,7 @@ describe('a start that failed is in the trail, as a failure', () => {
       action: 'stack.start.failed',
       details: { outcome: 'failed', source: 'operator', type: 'remote' },
     });
-    expect(rows[0]!.details.error).toMatch(/^sample\/test takes releases only/);
+    expect(rows[0]!['details'].error).toMatch(/^sample\/test takes releases only/);
   });
 
   it('records a refused release under the id it was asked for', async () => {
@@ -176,8 +176,8 @@ describe('a start that failed is in the trail, as a failure', () => {
     ).rejects.toThrow(/No release 'sample-202609221455-ae9d7a6f-7f4d1a01'/);
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.details.release).toBe('sample-202609221455-ae9d7a6f-7f4d1a01');
-    expect(rows[0]!.details.outcome).toBe('failed');
+    expect(rows[0]!['details'].release).toBe('sample-202609221455-ae9d7a6f-7f4d1a01');
+    expect(rows[0]!['details'].outcome).toBe('failed');
   });
 
   it("records the daemon's own failed start, as the daemon's", async () => {
@@ -192,9 +192,9 @@ describe('a start that failed is in the trail, as a failure', () => {
     await expect(svc.startStack('sample', 'test', { source: 'boot' })).rejects.toThrow(/Docker/);
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.actorType).toBe('system');
-    expect(rows[0]!.details.source).toBe('boot');
-    expect(rows[0]!.details.outcome).toBe('failed');
+    expect(rows[0]!['actorType']).toBe('system');
+    expect(rows[0]!['details'].source).toBe('boot');
+    expect(rows[0]!['details'].outcome).toBe('failed');
   });
 
   it('says `ok` on the start that worked — the control', async () => {
@@ -203,9 +203,9 @@ describe('a start that failed is in the trail, as a failure', () => {
     await svc.startStack('sample', 'test', { source: 'operator' });
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.action).toBe('stack.start');
-    expect(rows[0]!.details.outcome).toBe('ok');
-    expect(rows[0]!.details).not.toHaveProperty('error');
+    expect(rows[0]!['action']).toBe('stack.start');
+    expect(rows[0]!['details'].outcome).toBe('ok');
+    expect(rows[0]!['details']).not.toHaveProperty('error');
   });
 
   it('writes nothing for a restart re-attaching a remote stack, even when no node answers', async () => {
@@ -232,9 +232,9 @@ describe('a failure does not become the last deployment', () => {
   function readerOver(rows: Array<Record<string, any>>) {
     const newestFirst = (action?: string) =>
       rows
-        .filter((r) => !action || r.action === action)
+        .filter((r) => !action || r['action'] === action)
         .reverse()
-        .map((r) => ({ ...r, id: r.createdAt, ipAddress: null }));
+        .map((r) => ({ ...r, resourceId: String(r['resourceId']), id: r['createdAt'], ipAddress: null }));
     return {
       available: true,
       list: async (q: { action?: string }) => newestFirst(q.action),
@@ -248,7 +248,7 @@ describe('a failure does not become the last deployment', () => {
   it("is not what the console reports as the stack's last deployment, nor what an attestation is dated against", async () => {
     const { svc, rows } = service(REMOTE);
     await svc.startStack('sample', 'test', { source: 'operator' });
-    const deployed = rows[0]!.createdAt as string;
+    const deployed = rows[0]!['createdAt'] as string;
 
     // Then an operator asks for a release this machine does not have.
     svc.releaseStore = async () => fs.mkdtempSync(path.join(scratch, 'store-'));
@@ -291,14 +291,14 @@ describe('a stack start that brought up some of its apps', () => {
     await svc.startStack('sample', 'test', { source: 'boot' });
 
     const row = rows.at(-1)!;
-    expect(row.action).toBe('stack.start');
-    expect(outcomeOf({ action: row.action, details: row.details })).toBe('partial');
-    expect(row.details.notUp).toBe('payments (errored), messaging (errored)');
+    expect(row['action']).toBe('stack.start');
+    expect(outcomeOf({ action: row['action'], details: row['details'] })).toBe('partial');
+    expect(row['details'].notUp).toBe('payments (errored), messaging (errored)');
   });
 
   it('is ok when every app is online', async () => {
     const { svc, rows } = service(LOCAL);
     await svc.startStack('sample', 'test', { source: 'boot' });
-    expect(outcomeOf({ action: rows.at(-1)!.action, details: rows.at(-1)!.details })).toBe('ok');
+    expect(outcomeOf({ action: rows.at(-1)!['action'], details: rows.at(-1)!['details'] })).toBe('ok');
   });
 });

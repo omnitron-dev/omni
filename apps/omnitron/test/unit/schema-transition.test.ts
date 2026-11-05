@@ -16,14 +16,14 @@ const plan = (): SchemaTransitionPlan => ({
   protocol: 1, phase: 'approved', baseline: [base],
   receipt: { protocol: 1, id: '00000000-0000-4000-8000-000000000001', kind: 'master-expand', phase: 'approved',
     instanceHome: '/private/instance', fromRuntime: 'e'.repeat(64), toRuntime: 'f'.repeat(64), database: 'd'.repeat(64),
-    baseFiles: oldFiles, additions: [{ ...next, fileHash: newFiles[next.name] }], approvedAt: '2026-01-01T00:00:00Z' },
+    baseFiles: oldFiles, additions: [{ ...next, fileHash: newFiles[next.name]! }], approvedAt: '2026-01-01T00:00:00Z' },
   backend: { pid: 12, control: '/private/instance/control.sock', socket: '/private/instance/daemon.sock' },
   owner: { id: 'owner', pid: 11, inventory: 'a'.repeat(64) }, descriptions: ['Reviewed additive definition'],
 });
 
 describe('exact online schema transition', () => {
   it('prepares only an ordered, reviewed append with unchanged deployed definitions', () => {
-    expect(planSchemaAdditions(snapshot(), snapshot(true), oldFiles, newFiles)).toEqual([{ ...next, fileHash: newFiles[next.name], summary: 'Reviewed additive definition' }]);
+    expect(planSchemaAdditions(snapshot(), snapshot(true), oldFiles, newFiles)).toEqual([{ ...next, fileHash: newFiles[next.name]!, summary: 'Reviewed additive definition' }]);
     expect(() => planSchemaAdditions(snapshot(), snapshot(true), oldFiles, { ...newFiles, [base.name]: '0'.repeat(64) })).toThrow('bodies');
     const reordered = snapshot(true); reordered.registry.reverse();
     expect(() => planSchemaAdditions(snapshot(), reordered, oldFiles, newFiles)).toThrow('registry order');
@@ -84,7 +84,7 @@ describe('continuing an applied expansion after rollback', () => {
   }
   it('carries the original baseline without replaying or changing historical integrity', () => {
     const { prior, before, after } = applied();
-    expect(planSchemaContinuation(prior, before, after, oldFiles, newFiles)).toEqual([{ ...next, fileHash: newFiles[next.name], summary: 'Reviewed additive definition' }]);
+    expect(planSchemaContinuation(prior, before, after, oldFiles, newFiles)).toEqual([{ ...next, fileHash: newFiles[next.name]!, summary: 'Reviewed additive definition' }]);
     expect(prior.baseline).toEqual([base]); expect(before.inspection.unknownChecksums).toEqual([base.name]);
   });
   it.each(['unfinished', 'foreign', 'pending', 'drift', 'checksum', 'timestamp', 'unknown', 'order', 'policy-checksum', 'unreviewed-policy'])('refuses %s evidence', kind => {

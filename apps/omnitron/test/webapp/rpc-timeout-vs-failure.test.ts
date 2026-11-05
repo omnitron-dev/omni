@@ -120,7 +120,7 @@ describe('stopStack', () => {
     const useProjectStore = await freshStore();
     stopStack.mockRejectedValue(new Error('Step timed out after 60000ms'));
 
-    await useProjectStore.getState().stopStack('demo', 'web');
+    await useProjectStore.getState().stopStack('demo', 'web', 'review-fixture');
 
     expect(useProjectStore.getState().stackNotices['demo/web']).toBe('Step timed out after 60000ms');
   });
@@ -129,7 +129,7 @@ describe('stopStack', () => {
     const useProjectStore = await freshStore();
     stopStack.mockRejectedValue(transportTimeout('code-only-string'));
 
-    await useProjectStore.getState().stopStack('demo', 'web');
+    await useProjectStore.getState().stopStack('demo', 'web', 'review-fixture');
 
     expect(useProjectStore.getState().stackNotices['demo/web']).toContain('Stop acknowledgement has not arrived');
   });

@@ -1,3 +1,4 @@
+import { stackFixture, stackAppFixture } from '../helpers/stack-fixture.js';
 import { expect, it } from 'vitest';
 import { readReleaseDeploymentState, readSourcePublication, stackDeploymentHistory, readStackRelease } from '../../src/shared/release-reading.js';
 import type { IStackInfo } from '../../src/shared/dto/project.js';
@@ -5,11 +6,11 @@ import type { ReleaseDeploymentDto } from '../../src/shared/dto/services.js';
 
 const deployment: ReleaseDeploymentDto = { project: 'sample', stack: 'test', at: '2026-09-30T00:00:00Z',
   release: 'sample-old', releaseUnnamed: false, source: 'operator', actorId: null, projectCommit: null, omniCommit: null };
-const stack = (name: string, status: 'running' | 'stopped', runtimeScope?: IStackInfo['runtimeScope']): IStackInfo => ({
-  name, type: name === 'dev' ? 'local' : 'remote', status, runtimeScope,
-  apps: [{ name: 'main', status: status === 'running' ? 'online' : 'stopped' }],
-  nodes: name === 'dev' ? [] : [{ host: 'node.example', port: 9700, label: 'Test node', connected: true }],
-} as IStackInfo);
+const stack = (name: string, status: 'running' | 'stopped', runtimeScope?: IStackInfo['runtimeScope']): IStackInfo => stackFixture(name, {
+  type: name === 'dev' ? 'local' : 'remote', status, ...(runtimeScope && { runtimeScope }),
+  apps: [stackAppFixture('main', { status: status === 'running' ? 'online' : 'stopped' })],
+  nodes: [{ host: 'node', port: 9700, role: 'worker', label: null, daemonRole: 'slave', connected: true, lastSeen: null, syncStatus: null }],
+});
 
 it('keeps stopped local execution and running remote execution separate from recorded releases', async () => {
   const report = await readReleaseDeploymentState('sample', {
@@ -73,8 +74,8 @@ it('groups separately produced applications by their verified consumer selection
   const current = stack('dev', 'running');
   const consumer = { releaseId: 'consumer', manifestSha256: 'c'.repeat(64), app: 'main' };
   current.apps = [
-    { name: 'sample/dev/main', pid: 123, status: 'online', release: { ...receipt('producer-a'), consumer } },
-    { name: 'sample/dev/worker', pid: 124, status: 'online', release: { ...receipt('producer-b'), consumer: { ...consumer, app: 'worker' } } },
+    stackAppFixture('sample/dev/main', { pid: 123, status: 'online', release: { ...receipt('producer-a'), consumer } }),
+    stackAppFixture('sample/dev/worker', { pid: 124, status: 'online', release: { ...receipt('producer-b'), consumer: { ...consumer, app: 'worker' } } }),
   ];
   expect(readStackRelease(current)).toMatchObject({ runningRelease: 'confirmed', releaseEvidence: {
     releases: [{ releaseId: 'consumer', manifestSha256: 'c'.repeat(64) }], verified: 2,
@@ -91,20 +92,20 @@ it('never uses a malformed consumer claim or deployment history to manufacture l
     current.apps = [{ name: 'main', pid: 123, status: 'online', release: { ...receipt('producer'), consumer } }] as IStackInfo['apps'];
     expect(readStackRelease(current)).toMatchObject({ runningRelease: 'unreported', releaseEvidence: { verified: 0, releases: [] } });
   }
-  current.apps = [{ name: 'main', pid: 123, status: 'online', release: { state: 'unreported', reason: 'legacy owner' } }];
+  current.apps = [stackAppFixture('main', { pid: 123, status: 'online', release: { state: 'unreported', reason: 'legacy owner' } })];
   expect(readStackRelease(current).runningRelease).toBe('unreported');
 });
 
 it('retains different selected consumers as mixed even when their producer archive is identical', () => {
   const current = stack('test', 'running');
   current.placements = [placement('a', { ...receipt(), consumer: { releaseId: 'consumer-a', manifestSha256: 'c'.repeat(64), app: 'main' } }),
-    placement('b', { ...receipt(), consumer: { releaseId: 'consumer-b', manifestSha256: 'd'.repeat(64), app: 'main' } })] as IStackInfo['placements'];
+    placement('b', { ...receipt(), consumer: { releaseId: 'consumer-b', manifestSha256: 'd'.repeat(64), app: 'main' } })] as NonNullable<IStackInfo['placements']>;
   expect(readStackRelease(current).runningRelease).toBe('mixed');
 });
 
 it('reads verified current launch provenance independently from an older deployment audit', async () => {
   const current = stack('test', 'running');
-  current.placements = [placement('node-a:9700')] as IStackInfo['placements'];
+  current.placements = [placement('node-a:9700')] as NonNullable<IStackInfo['placements']>;
   const report = await readReleaseDeploymentState('sample', { stacks: async () => [current], deployments: async () => ({ known: true, deployments: [deployment] }) });
   expect(report.stacks[0]).toMatchObject({ runningRelease: 'confirmed', releaseEvidence: { verified: 1, total: 1,
     releases: [{ releaseId: 'sample-current', manifestSha256: 'a'.repeat(64) }] }, history: { known: true, last: deployment } });
@@ -112,26 +113,26 @@ it('reads verified current launch provenance independently from an older deploym
 
 it('retains mixed release replicas instead of trusting one aggregate application row', () => {
   const current = stack('test', 'running');
-  current.placements = [placement('node-a:9700'), placement('node-b:9700', receipt('sample-next'))] as IStackInfo['placements'];
+  current.placements = [placement('node-a:9700'), placement('node-b:9700', receipt('sample-next'))] as NonNullable<IStackInfo['placements']>;
   expect(readStackRelease(current)).toMatchObject({ runningRelease: 'mixed', releaseEvidence: { verified: 2, total: 2 } });
 });
 
 it('does not let a known replica cover an unavailable node or missing launch receipt', () => {
   const current = stack('test', 'running');
   current.placements = [placement('node-a:9700'), { nodeKey: 'node-b:9700', appsObserved: false,
-    apps: [{ name: 'main', expected: true, process: null }] }] as IStackInfo['placements'];
+    apps: [{ name: 'main', expected: true, process: null }] }] as NonNullable<IStackInfo['placements']>;
   expect(readStackRelease(current)).toMatchObject({ runningRelease: 'unreported', releaseEvidence: { verified: 1, total: 2,
     observations: [{ state: 'confirmed' }, { state: 'unavailable', node: 'node-b:9700' }] } });
-  current.placements = [placement('node-a:9700'), placement('node-b:9700', undefined)] as IStackInfo['placements'];
-  current.placements![1]!.apps[0]!.process!.release = undefined;
+  current.placements = [placement('node-a:9700'), placement('node-b:9700', undefined)] as NonNullable<IStackInfo['placements']>;
+  delete current.placements![1]!.apps[0]!.process!.release;
   expect(readStackRelease(current).runningRelease).toBe('unreported');
 });
 
 it('rejects conflicting manifests under one release name and preserves modified evidence', () => {
   const current = stack('test', 'running');
-  current.placements = [placement('node-a:9700'), placement('node-b:9700', { ...receipt(), manifestSha256: 'c'.repeat(64) })] as IStackInfo['placements'];
+  current.placements = [placement('node-a:9700'), placement('node-b:9700', { ...receipt(), manifestSha256: 'c'.repeat(64) })] as NonNullable<IStackInfo['placements']>;
   expect(readStackRelease(current).runningRelease).toBe('modified');
-  current.placements = [placement('node-a:9700', { state: 'modified', releaseId: 'sample-current', reason: 'Artifact digest changed' })] as IStackInfo['placements'];
+  current.placements = [placement('node-a:9700', { state: 'modified', releaseId: 'sample-current', reason: 'Artifact digest changed' })] as NonNullable<IStackInfo['placements']>;
   expect(readStackRelease(current)).toMatchObject({ runningRelease: 'modified', releaseEvidence: {
     observations: [{ reason: 'Artifact digest changed', state: 'modified' }] } });
 });

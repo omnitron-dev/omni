@@ -222,7 +222,7 @@ describe('captured systemd binding recovery', () => {
       fs.writeFileSync(file, contents, { mode: 0o640 });
       fs.writeFileSync(path.join(dir, 'systemctl'), `#!/usr/bin/env node\nrequire('node:fs').appendFileSync(${JSON.stringify(log)},JSON.stringify(process.argv.slice(2))+'\\n');`, { mode: 0o755 });
       const runtime = { kind: 'systemd' as const, cwd: old.root, scope: 'system' as const, file, contents, enabled: false };
-      const run = (command: string) => execSync(command, { env: { ...process.env, PATH: `${dir}:${process.env.PATH}` }, stdio: ['ignore', 'pipe', 'pipe'] });
+      const run = (command: string) => execSync(command, { env: { ...process.env, PATH: `${dir}:${process.env['PATH']}` }, stdio: ['ignore', 'pipe', 'pipe'] });
       run(runtimeStopCommand(runtime, old)); run(runtimeStartCommand(runtime, old, next));
       expect(fs.readFileSync(file, 'utf8')).toBe(contents.replaceAll(old.root, next.root));
       run(runtimeStartCommand(runtime, old, old, [old.root, next.root]));

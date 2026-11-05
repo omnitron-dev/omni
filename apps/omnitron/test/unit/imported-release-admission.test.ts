@@ -1,3 +1,4 @@
+import { DEFAULT_ECOSYSTEM } from '../../src/config/defaults.js';
 import 'reflect-metadata';
 import { describe, expect, it, vi } from 'vitest';
 import { ProjectService } from '../../src/services/project.service.js';
@@ -10,11 +11,12 @@ describe('imported application remote boundary', () => {
     loaded.manifest.artifacts = [{ app: 'api', origin: ref }];
     const entries = [{ name: 'api', ...(configured ? { releaseFrom: ref } : { bootstrap: '/must-not-execute.js' }) }];
     const nodes = vi.fn(), readDefinitions = vi.fn();
-    const service = Object.assign(Object.create(ProjectService.prototype) as ProjectService, {
+    const service = Object.create(ProjectService.prototype) as ProjectService;
+    Object.assign(service, {
       releaseStore: async () => '/unused', resolveStackApps: () => entries,
       askReleaseOwners: nodes, loadAppDefinitions: readDefinitions,
     });
-    await expect(service['admitRelease']('consumer', 'test', { type: 'remote' }, { apps: entries }, 'consumer-1', 'check'))
+    await expect(service['admitRelease']('consumer', 'test', { type: 'remote' }, { ...DEFAULT_ECOSYSTEM, apps: entries }, 'consumer-1', 'check'))
       .rejects.toThrow('producer-captured deployment declarations');
     expect(nodes).not.toHaveBeenCalled();
     expect(readDefinitions).not.toHaveBeenCalled();

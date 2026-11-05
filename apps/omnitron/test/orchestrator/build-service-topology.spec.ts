@@ -62,7 +62,8 @@ describe('entry graph validity across watched restarts', () => {
   it('rejects a missing bootstrap and legacy caches without an entry identity', async () => {
     const f = fixture(),
       result = await f.service.buildApp('probe', f.bootstrap, f.definition);
-    expect(f.service.canReuseBuild({ ...result, sourceSignature: undefined }, f.bootstrap, f.definition)).toBe(false);
+    const { sourceSignature: _signature, ...legacyResult } = result;
+    expect(f.service.canReuseBuild(legacyResult, f.bootstrap, f.definition)).toBe(false);
     fs.unlinkSync(result.bootstrapPath);
     expect(f.service.canReuseBuild(result, f.bootstrap, f.definition)).toBe(false);
   });

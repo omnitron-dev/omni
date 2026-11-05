@@ -20,8 +20,8 @@ export function arrangeTopologyNodes<T extends Node<TopologyNodeData>>(nodes: T[
   const groups = new Map<string | null, T[]>();
   for (const node of nodes) {
     const key =
-      typeof node.data.deploymentKey === 'string'
-        ? node.data.deploymentKey
+      typeof node.data['deploymentKey'] === 'string'
+        ? node.data['deploymentKey']
         : node.data.nodeType === 'server'
           ? (node.data.stacks[0] ?? null)
           : node.data.stack;
@@ -146,7 +146,7 @@ export function arrangeDependencyTopology<T extends Node<TopologyNodeData>>(
   const groups = new Map<string, T[]>();
   for (const node of nodes) {
     const key = String(
-      node.data.deploymentKey ?? (node.data.nodeType === 'server' ? node.data.stacks[0] : node.data.stack) ?? ''
+      node.data['deploymentKey'] ?? (node.data.nodeType === 'server' ? node.data.stacks[0] : node.data.stack) ?? ''
     );
     const group = groups.get(key) ?? [];
     group.push(node);

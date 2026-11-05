@@ -7,7 +7,7 @@ function createMockPm() {
   let spawnCounter = 0;
 
   return {
-    spawn: vi.fn(async (_path: string, opts: any) => {
+    spawn: vi.fn(async (_path: string, _opts: any) => {
       const id = `proc-${++spawnCounter}`;
       const proxy = {
         __processId: id,

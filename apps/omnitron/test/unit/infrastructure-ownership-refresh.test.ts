@@ -95,7 +95,7 @@ describe('native monitoring ownership refresh', () => {
     const checkpoint = await original.prepareHandoff();
     expect(checkpoint.nativeState).toEqual({ protocol: 1, observations: [{ name: 'redis', containerId: null }] });
     const restored = await InfrastructureService.adoptHandoff(logger, checkpoint);
-    expect(restored.getState().services.redis?.error).toBe('Image unavailable');
+    expect(restored.getState().services['redis']?.error).toBe('Image unavailable');
     expect(restored.getState().ready).toBe(false);
     expect(restored.getDesiredServices()).toEqual([{ name: 'redis', image: redis.image }]);
     expect(runtime.get).toHaveBeenCalledWith('redis', { orThrow: true });

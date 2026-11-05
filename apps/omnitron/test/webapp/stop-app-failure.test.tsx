@@ -63,7 +63,7 @@ vi.mock('src/netron/client', () => ({
   project: {
     listProjects: vi.fn(async () => []),
     listStacks: vi.fn(async () => []),
-    getProjectApps: (...a: unknown[]) => list(...a),
+    getProjectApps: () => list(),
   },
 }));
 

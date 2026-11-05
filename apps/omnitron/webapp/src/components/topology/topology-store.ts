@@ -276,9 +276,9 @@ function withGateway(stack: string | null, services: InfraNodeData[]): Pick<Topo
       health: gateway.health,
       status: gateway.status,
       hasTor: tor?.status === 'running',
-      nodeKey: gateway.nodeKey,
-      host: gateway.host,
-      project: gateway.project,
+      nodeKey: gateway['nodeKey'],
+      host: gateway['host'],
+      project: gateway['project'],
     },
   };
 }
@@ -482,7 +482,7 @@ export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeDa
 
     for (const service of band.services) {
       resources.push({
-        id: `infra-${key}-${service.identity ?? service.service}`,
+        id: `infra-${key}-${service['identity'] ?? service.service}`,
         type: 'infraNode',
         position: { x: 0, y: 0 },
         data: { ...service, deploymentKey },
@@ -498,8 +498,8 @@ export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeDa
       for (const service of band.services) {
         if (!service.app || service.app !== lastSegment(app.name)) continue;
         const edge: BuiltInEdge = {
-          id: `edge-${key}-${service.identity ?? service.service}-${app.name}`,
-          source: `infra-${key}-${service.identity ?? service.service}`,
+          id: `edge-${key}-${service['identity'] ?? service.service}-${app.name}`,
+          source: `infra-${key}-${service['identity'] ?? service.service}`,
           target: id,
           type: 'smoothstep',
           pathOptions: { offset: 8, borderRadius: 4 },
@@ -534,10 +534,10 @@ export function layoutBands(bands: TopologyBand[]): { nodes: Node<TopologyNodeDa
           source: server.id,
           target: resource.id,
           type: 'smoothstep',
-          label: resource.data.present === false ? 'expected on' : 'hosts',
+          label: resource.data['present'] === false ? 'expected on' : 'hosts',
           data: {
-            evidence: resource.data.present === false ? 'declaration' : 'placement',
-            via: [resource.data.present === false ? 'stack configuration' : 'node inventory'],
+            evidence: resource.data['present'] === false ? 'declaration' : 'placement',
+            via: [resource.data['present'] === false ? 'stack configuration' : 'node inventory'],
           },
           style: { strokeWidth: 1, opacity: 0.45 },
         });
@@ -630,8 +630,8 @@ export const useTopologyStore = create<TopologyState>((set, get) => {
               if (identity) { app.project = identity.project; app.stack = identity.stack; }
             }
             for (const service of [...band.services, ...(band.gateway ? [band.gateway] : [])]) {
-              const identity = scopes.get(`${service.project}/${service.stack}`);
-              if (identity) { service.project = identity.project; service.stack = identity.stack; }
+              const identity = scopes.get(`${service['project']}/${service.stack}`);
+              if (identity) { service['project'] = identity.project; service.stack = identity.stack; }
             }
           }
         }

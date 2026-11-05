@@ -3,7 +3,7 @@ import { resolveStartupOrder, resolveShutdownOrder } from '../../src/orchestrato
 import type { IEcosystemAppEntry } from '../../src/config/types.js';
 
 function entry(name: string, dependsOn?: string[]): IEcosystemAppEntry {
-  return { name, bootstrap: `./apps/${name}/src/bootstrap.ts`, dependsOn };
+  return { name, bootstrap: `./apps/${name}/src/bootstrap.ts`, ...(dependsOn && { dependsOn }) };
 }
 
 describe('DependencyResolver', () => {

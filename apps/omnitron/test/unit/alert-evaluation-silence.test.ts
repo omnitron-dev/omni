@@ -99,8 +99,7 @@ describe('the evaluation loop', () => {
       fleetService: null,
       logManager: { checkRotation: vi.fn() } as never,
       infraService: null,
-      syncService: null,
-      metricsInterval: 1000,
+        metricsInterval: 1000,
       healthCheckInterval: 1000,
     });
     for (let i = 0; i < times; i++) await job!();

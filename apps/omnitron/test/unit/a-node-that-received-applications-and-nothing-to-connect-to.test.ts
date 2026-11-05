@@ -45,7 +45,7 @@ const CONFIG = { postgres: { image: 'postgres:16', port: 5432 } } as never;
 describe('asking a node to host a stack s infrastructure', () => {
   it('brings up what the stack declares and reports it', async () => {
     const infra = fakeInfra({ pg: up('pg'), redis: up('redis') }, [{ name: 'pg' }, { name: 'redis' }]);
-    const host = vi.fn(() => infra);
+    const host = vi.fn((_config: unknown, _services: Record<string, unknown>) => infra);
     const service = new InfrastructureRpcService(() => null, host as never);
 
     const report = await service.provisionStack({ config: CONFIG });
@@ -113,7 +113,7 @@ describe('what the applications in a stack declare', () => {
   it('reaches the node, because the node cannot know it', async () => {
     const infra = fakeInfra({ pg: up('pg') }, [{ name: 'pg' }]);
     (infra as any).addAppContainers = vi.fn();
-    const host = vi.fn(() => infra);
+    const host = vi.fn((_config: unknown, _services: Record<string, unknown>) => infra);
     const service = new InfrastructureRpcService(() => null, host as never);
 
     const declared = { bitcoin: { ports: { rpc: 8332 }, docker: { image: 'bitcoin:1' } } } as never;
@@ -139,7 +139,7 @@ describe('what the applications in a stack declare', () => {
 describe('the stack s own services reach the node', () => {
   it('expands the config sugar before provisioning it', async () => {
     const infra = fakeInfra({}, []);
-    const host = vi.fn(() => infra);
+    const host = vi.fn((_config: unknown, _services: Record<string, unknown>) => infra);
     const service = new InfrastructureRpcService(() => null, host as never);
 
     await service.provisionStack({ config: { postgres: { image: 'postgres:17', port: 5432 } } as never });
@@ -156,7 +156,7 @@ describe('the stack s own services reach the node', () => {
   it('lets an application s declaration win over the stack s sugar', async () => {
     const infra = fakeInfra({}, []);
     (infra as any).addAppContainers = vi.fn();
-    const host = vi.fn(() => infra);
+    const host = vi.fn((_config: unknown, _services: Record<string, unknown>) => infra);
     const service = new InfrastructureRpcService(() => null, host as never);
 
     const appVersion = { ports: { main: 6380 }, env: {}, docker: { image: 'redis:7.4' } } as never;

@@ -1,3 +1,4 @@
+import type { ContainerState } from '../../src/infrastructure/types.js';
 import { describe, expect, it } from 'vitest';
 import { DockerHealthIndicator } from '../../src/monitoring/docker-health.indicator.js';
 import type { InfrastructureHealthContext } from '../../src/monitoring/infrastructure-health.js';
@@ -7,7 +8,7 @@ const context: InfrastructureHealthContext = {
 };
 const up = { name: 'database', status: 'running' as const, health: 'healthy' as const, project: 'sample', stack: 'live' };
 const down = { name: 'old-worker', status: 'exited' as const, health: 'unhealthy' as const, project: 'sample', stack: 'dev' };
-const check = (seen = [up, down], desired = context) => new DockerHealthIndicator(() => null, async () => seen, () => desired).check();
+const check = (seen: Array<Pick<ContainerState, 'name' | 'status' | 'health' | 'project' | 'stack'>> = [up, down], desired = context) => new DockerHealthIndicator(() => null, async () => seen, () => desired).check();
 
 describe('Docker observation combined with local desired state', () => {
   it('explains an intentionally stopped container without treating its stale healthcheck as a current failure', async () => {

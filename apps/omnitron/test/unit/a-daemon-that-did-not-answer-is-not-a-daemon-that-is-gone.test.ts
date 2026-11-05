@@ -94,7 +94,7 @@ describe('a silent socket is diagnosed by asking the OS, not by guessing', () =>
     tmp.push(dir);
     vi.spyOn(
       DaemonClient.prototype as unknown as { resolvePidFile: () => string },
-      'resolvePidFile' as never,
+      'resolvePidFile',
     ).mockReturnValue(pidFile as never);
     const absence = await client.whyUnreachable();
     expect(absence, 'a ping that rejected must not read as reachable').not.toBeNull();

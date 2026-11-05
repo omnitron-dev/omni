@@ -107,14 +107,14 @@ describe('the precedence in one object, spelled out', () => {
       {},
     );
 
-    expect(out.DATABASE_URL).toBe('postgres://postgres:GENERATED@localhost:5432/geo');
+    expect(out['DATABASE_URL']).toBe('postgres://postgres:GENERATED@localhost:5432/geo');
   });
 
   it('keeps the computed value when nothing states one', () => {
     const out = assemble({ DATABASE_URL: 'postgres://u:p@localhost:5432/geo', REDIS_URL: 'redis://localhost:6379/5' }, {}, {});
 
-    expect(out.DATABASE_URL).toBe('postgres://u:p@localhost:5432/geo');
-    expect(out.REDIS_URL).toBe('redis://localhost:6379/5');
+    expect(out['DATABASE_URL']).toBe('postgres://u:p@localhost:5432/geo');
+    expect(out['REDIS_URL']).toBe('redis://localhost:6379/5');
   });
 
   it('lets a stack override both', () => {
@@ -124,6 +124,6 @@ describe('the precedence in one object, spelled out', () => {
       { DATABASE_URL: 'the stack says so' },
     );
 
-    expect(out.DATABASE_URL).toBe('the stack says so');
+    expect(out['DATABASE_URL']).toBe('the stack says so');
   });
 });

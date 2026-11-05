@@ -64,7 +64,7 @@ export function focusRegions(scope: ParentNode = document): HTMLElement[] {
     element => isVisible(element) && (element.hasAttribute('data-keyboard-region') || !element.parentElement?.closest('[data-keyboard-region]'))
   );
   const main = scope === document ? document.getElementById('main-content') : scope instanceof HTMLElement ? scope : null;
-  if (main && isVisible(main) && !explicit.some((element) => main.contains(element) && element.dataset.keyboardRegion !== 'Page tools')) explicit.push(main);
+  if (main && isVisible(main) && !explicit.some((element) => main.contains(element) && element.dataset['keyboardRegion'] !== 'Page tools')) explicit.push(main);
   return explicit;
 }
 

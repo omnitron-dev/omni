@@ -9,9 +9,7 @@ function makeConfig(overrides?: Partial<IEcosystemConfig['supervision']>): IEcos
     supervision: { ...DEFAULT_ECOSYSTEM.supervision, ...overrides },
     monitoring: DEFAULT_ECOSYSTEM.monitoring,
     logging: DEFAULT_ECOSYSTEM.logging,
-    daemon: DEFAULT_ECOSYSTEM.daemon,
-    env: 'test',
-  } as IEcosystemConfig;
+  };
 }
 
 function makeEntry(overrides?: Partial<IEcosystemAppEntry>): IEcosystemAppEntry {

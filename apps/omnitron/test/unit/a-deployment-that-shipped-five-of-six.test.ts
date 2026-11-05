@@ -1,3 +1,5 @@
+import type { RemoteDeployer } from '../../src/services/remote-deployer.service.js';
+import type { AuditService } from '../../src/services/audit.service.js';
 /**
  * A deployment that shipped five of six and called it started.
  *
@@ -50,7 +52,7 @@ const grantingLease = async (script: string) =>
   script.includes("echo 'ACQUIRED'") ? 'ACQUIRED\n' : script.includes("echo 'RENEWED'") ? 'RENEWED\n' : 'RELEASED\n';
 
 /** A service with just the collaborators `startRemoteStack` reaches. */
-function remoteStackService(deployToStack = vi.fn(async () => [])) {
+function remoteStackService(deployToStack: RemoteDeployer['deployToStack'] = vi.fn(async () => [])) {
   const svc: any = Object.create(ProjectService.prototype);
   Object.assign(svc, {
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -89,7 +91,7 @@ describe('a build that failed stops the deployment', () => {
       built: built(APPS.filter((a) => a !== 'main')),
       failed: [{ app: 'main', error: 'exit 2: TS2416 …' }],
     });
-    const deployToStack = vi.fn(async () => []);
+    const deployToStack = vi.fn<RemoteDeployer['deployToStack']>(async () => []);
     const svc = remoteStackService(deployToStack);
 
     await expect(svc.startRemoteStack('sample', 'test', REMOTE, {})).rejects.toThrow(/main/);
@@ -113,7 +115,7 @@ describe('a build that failed stops the deployment', () => {
     // The control. Without it a method that threw unconditionally would pass
     // both tests above.
     buildAll.mockResolvedValue({ built: built(APPS), failed: [] });
-    const deployToStack = vi.fn(async () => APPS.map((app) => ({ app, status: 'success' })));
+    const deployToStack = vi.fn<RemoteDeployer['deployToStack']>(async () => APPS.map((app) => ({ app, node: 'node', version: '0.0.1', duration: 0, status: 'success' })));
     const svc = remoteStackService(deployToStack);
 
     await svc.startRemoteStack('sample', 'test', REMOTE, {});
@@ -126,8 +128,8 @@ describe('a build that failed stops the deployment', () => {
     // exactly the split state the refusal above exists to prevent, and it
     // was a WARN under a `Stack started` that followed regardless.
     buildAll.mockResolvedValue({ built: built(APPS), failed: [] });
-    const deployToStack = vi.fn(async () =>
-      APPS.map((app) => ({ app, status: app === 'main' || app === 'geo' ? 'failed' : 'success' }))
+    const deployToStack = vi.fn<RemoteDeployer['deployToStack']>(async () =>
+      APPS.map((app) => ({ app, node: 'node', version: '0.0.1', duration: 0, status: app === 'main' || app === 'geo' ? 'failed' : 'success' }))
     );
     const svc = remoteStackService(deployToStack);
 
@@ -138,7 +140,7 @@ describe('a build that failed stops the deployment', () => {
 });
 
 describe('every start is recorded, and says who asked', () => {
-  const record = vi.fn(async () => {});
+  const record = vi.fn<AuditService['record']>(async () => {});
 
   function startableService() {
     const svc: any = Object.create(ProjectService.prototype);
@@ -251,7 +253,7 @@ describe('a deployment that reached no node at all', () => {
 });
 
 describe('the row says what the deployment reached', () => {
-  const record = vi.fn(async () => {});
+  const record = vi.fn<AuditService['record']>(async () => {});
 
   function remoteStartable(reach: { nodes: number; reached: number; skipped: string[] } | null) {
     const svc: any = Object.create(ProjectService.prototype);
@@ -348,9 +350,9 @@ describe('one writer per node', () => {
     buildAll.mockResolvedValue({ built: built(APPS), failed: [] });
     const order: string[] = [];
     const svc = remoteStackService(
-      vi.fn(async () => {
+      vi.fn<RemoteDeployer['deployToStack']>(async () => {
         order.push('deliver');
-        return APPS.map((app) => ({ app, status: 'success' }));
+        return APPS.map((app) => ({ app, node: 'node', version: '0.0.1', duration: 0, status: 'success' }));
       }),
     );
     svc.deployer.leaseRunner = () => async (script: string) => {

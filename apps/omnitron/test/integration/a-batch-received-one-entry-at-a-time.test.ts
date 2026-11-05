@@ -129,7 +129,7 @@ describe.skipIf(!testPg.ok)('a batch received one entry at a time', () => {
     const entries = mixed(1_000);
     const recorded: string[] = [];
 
-    const result = await master((s) => recorded.push(s.labels.node!)).receiveBatch(batch(entries));
+    const result = await master((s) => recorded.push(s.labels['node']!)).receiveBatch(batch(entries));
 
     expect(result.accepted).toBe(1_000);
     expect(result.failedIds).toEqual([]);

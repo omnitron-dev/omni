@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createServer } from 'node:http';
+import { createServer, type RequestListener } from 'node:http';
 import { mkdtemp, rm, writeFile, symlink, stat, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -15,7 +15,7 @@ const directory = async () => {
   cleanups.push(() => rm(dir, { force: true, recursive: true }));
   return dir;
 };
-const server = async (handler: Parameters<typeof createServer>[0]) => {
+const server = async (handler: RequestListener) => {
   const s = createServer(handler);
   await new Promise<void>(resolve => s.listen(0, '127.0.0.1', resolve));
   cleanups.push(() => new Promise<void>(resolve => { s.closeAllConnections(); s.close(() => resolve()); }));
@@ -59,7 +59,7 @@ describe('declared HTTP readiness', () => {
     expect((await checkReadiness(undefined, '/')).status).toBe('degraded');
     expect((await checkReadiness({ probes: [] }, '/')).status).toBe('unhealthy');
     expect(() => validateReadiness(http('http://user:secret@localhost/health'))).toThrow();
-    expect(() => validateReadiness({ probes: [...heartbeat().probes, { ...heartbeat().probes[0], name: 'second' }] })).toThrow();
+    expect(() => validateReadiness({ probes: [...heartbeat().probes, { ...heartbeat().probes[0]!, name: 'second' }] })).toThrow();
   });
   it('reserves file heartbeats for classic applications once the execution mode is known', () => {
     expect(() => validateReadiness(heartbeat(), 'bootstrap')).toThrow(/hooks.onHealthCheck/);

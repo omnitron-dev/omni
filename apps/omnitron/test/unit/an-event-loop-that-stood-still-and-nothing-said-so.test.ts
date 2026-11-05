@@ -32,7 +32,7 @@ const busy = (ms: number) => {
     // the loop stands still here
   }
 };
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** The longest gap an independent 10 ms timer saw while `run` ran. */
 async function independentGap(run: () => Promise<void>): Promise<number> {

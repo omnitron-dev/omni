@@ -125,7 +125,7 @@ describe('durable log delivery', () => {
     const service = new LogCollectorService(db);
     service.useJournal(shared, false); service.setSourceJournal(source);
     for (let i = 0; i < 501; i++) {
-      const record: LogRecord = { id: randomUUID(), time: 1793408523004, timestamp: '2026-10-31T01:02:03.004Z',
+      const record: LogRecord = { kind: 'json', timeFromLine: true, id: randomUUID(), time: 1793408523004, timestamp: '2026-10-31T01:02:03.004Z',
         level: 'info', message: String(i), lines: 1 };
       source.put(record.id!, { app: 'probe', record });
     }
@@ -214,7 +214,7 @@ describe('durable log delivery', () => {
     const source = new LogJournal<{ app: string; record: LogRecord }>(path.join(dir, 'source.sqlite'));
     if (origin === 'owner') {
       service.setSourceJournal(source);
-      source.put(entry.id, { app: entry.app, record: { id: entry.id, time: Date.parse(entry.timestamp), timestamp: entry.timestamp,
+      source.put(entry.id, { app: entry.app, record: { kind: 'json', timeFromLine: true, id: entry.id, time: Date.parse(entry.timestamp), timestamp: entry.timestamp,
         level: entry.level, message: entry.message, lines: 1 } });
     } else service.ingestLog(entry);
     const failure = new AggregateError([

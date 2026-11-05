@@ -76,7 +76,7 @@ const bounds = (svc: SyncService) =>
 
 afterEach(async () => {
   warnings.length = 0;
-  for (const s of services.splice(0)) await s.dispose?.().catch(() => {});
+  for (const s of services.splice(0)) await s.stop();
 });
 
 describe('the retention pass, against the engine a slave actually has', () => {

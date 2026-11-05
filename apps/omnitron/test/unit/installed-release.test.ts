@@ -166,7 +166,7 @@ it('admits human viewers and cluster readers through the actual RPC authorizatio
   const { DaemonRpcService } = await import('../../src/daemon/daemon.rpc-service.js');
   for (const [prototype, roles] of [[ProjectRpcService.prototype, ['viewer', 'operator', 'admin']], [DaemonRpcService.prototype, ['viewer', 'operator', 'admin', 'service_role']]] as const) {
     const requirement = Reflect.getMetadata(METADATA_KEYS.METHOD_AUTH, prototype, 'inspectInstalledArtifacts');
-    for (const role of roles) expect(validateAccessRequirements({ userId: role, roles: [role], permissions: [] }, requirement).allowed).toBe(true);
-    expect(validateAccessRequirements({ userId: '', roles: [], permissions: [] }, requirement).allowed).toBe(false);
+    for (const role of roles) expect(validateAccessRequirements({ roles: [role], permissions: [] }, requirement).allowed).toBe(true);
+    expect(validateAccessRequirements({ roles: [], permissions: [] }, requirement).allowed).toBe(false);
   }
 });

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { TelemetryRelayService } from '../../../../packages/titan-telemetry-relay/src/telemetry-relay.service.js';
+import { TelemetryRelayService } from '@omnitron-dev/titan-telemetry-relay';
 import { TelemetryRpcService } from '../../src/services/telemetry.rpc-service.js';
 import { relayReading } from '../../src/shared/relay-reading.js';
 

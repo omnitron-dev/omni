@@ -26,7 +26,7 @@ function fixture() {
   const run = (env = {}) => {
     const hash = createHash('sha256').update(fs.readFileSync(archive)).digest('hex');
     return execFileSync('sh', ['-c', installSteps(layout, archive, hash)[0]!.command], {
-      env: { ...process.env, PATH: bin+':'+process.env.PATH, INSTALL_COUNTER: counter, ...env },
+      env: { ...process.env, PATH: bin+':'+process.env['PATH'], INSTALL_COUNTER: counter, ...env },
       encoding: 'utf8', timeout: 15000, stdio: ['ignore','pipe','pipe'],
     });
   };

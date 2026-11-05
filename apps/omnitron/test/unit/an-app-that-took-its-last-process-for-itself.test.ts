@@ -90,7 +90,7 @@ function orchestratorWith(workers: Record<string, number>) {
 
 const mainEntry: IEcosystemAppEntry = { name: 'sample/dev/main', bootstrap: './bootstrap.ts', critical: true };
 const mainTopology: IProcessEntry[] = [
-  { name: 'http', module: './http.module.js', transports: { http: { port: 3001 } } as IProcessEntry['transports'] },
+  { name: 'http', module: './http.module.js', transports: { http: { port: 3001 } } as NonNullable<IProcessEntry['transports']> },
   { name: 'captcha-generator', module: './captcha.module.js' },
   { name: 'notification-worker', module: './notification.module.js' },
 ];

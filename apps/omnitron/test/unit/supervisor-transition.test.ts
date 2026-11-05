@@ -233,6 +233,7 @@ it.each(['prepared', 'retired', 'started'])('names stale worker pools before any
   fake.snapshot.workers = [{ info: { id: 'new-worker', startTime: 3 }, pid: 3002 }];
   const error = await applySupervisorTransition(file).catch(cause => cause as Error);
   expect(error).toBeInstanceOf(Error);
+  if (!(error instanceof Error)) throw new Error('Expected supervisor transition refusal');
   expect(error.message).toContain('worker pools: "files/transform"');
   expect(error.message).toContain(phase === 'prepared' ? 'prepare a new guardian transition plan' : 'Reconcile this transition checkpoint');
   if (phase !== 'prepared') expect(error.message).not.toContain('prepare a new guardian transition plan');

@@ -101,7 +101,7 @@ describe('an empty topology', () => {
     expect(state.nodes.filter(node => node.type === 'appNode')).toHaveLength(2);
     expect(state.nodes.filter(node => node.type === 'infraNode')).toHaveLength(2);
     expect(new Set(state.nodes.map(node => node.id)).size).toBe(state.nodes.length);
-    expect(state.edges.filter(edge => edge.data?.evidence === 'placement')).toHaveLength(4);
+    expect(state.edges.filter(edge => edge.data?.['evidence'] === 'placement')).toHaveLength(4);
     expect(state.coverageWarnings).toHaveLength(1);
   });
   it('limits app coverage warnings to the apps displayed in the daemon view', async () => {

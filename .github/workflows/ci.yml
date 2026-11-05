@@ -72,7 +72,7 @@ jobs:
           test/unit/managed-owner-admission.test.ts
           test/unit/runtime-owner-birth.test.ts
           test/unit/a-release-built-against-the-developers-omni.test.ts
-          test/unit/a-release-the-node-never-ran.test.ts
+          test/unit/release-owner-admission.test.ts
           test/unit/installed-release.test.ts
           test/unit/local-installation-publication.test.ts
           test/unit/vitest-worker-budget.test.ts

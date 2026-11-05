@@ -78,15 +78,6 @@ function service(opts: {
     },
     infraManager: { getInstance: () => undefined },
     remoteInfraStatus: vi.fn(async () => null),
-    getStack: () => ({
-      name: 'test',
-      type: opts.type,
-      status: 'stopped',
-      config: stackConfig,
-      nodes: stackConfig.nodes.map(node => ({ ...node, connected: false })),
-      infrastructure: null,
-      apps: SIX.map((name) => ({ name, status: 'stopped', pid: null, cpu: 0, memory: 0 })),
-    }),
   });
   return svc;
 }
@@ -205,8 +196,7 @@ describe('«this stack is already running» is asked of the machine that runs it
     const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
     const svc: any = Object.create(ProjectService.prototype);
     Object.assign(svc, {
-    registry: { get: () => ({ registeredAt: '2026-01-01T00:00:00.000Z' }) },
-    daemonStateStore: { kvGetSync: () => null },
+      daemonStateStore: { kvGetSync: () => null },
       nodeStackStop: { assertMutable() {} },
       logger,
       // Unknown to the registry, so the working-tree check has no path to

@@ -19,6 +19,8 @@ import type { OrchestratorService } from '../../src/orchestrator/orchestrator.se
 
 function makeMetricsService(registry: MetricsRegistry): IMetricsService {
   return {
+    recordDurable: async () => { throw new Error('Unexpected durable write in registry fixture'); },
+    getStorageStatus: () => { throw new Error('Unexpected storage query in registry fixture'); },
     record: () => {},
     recordBatch: () => {},
     // T#74: the bridge writes via recordTyped — delegate to the registry
@@ -85,6 +87,7 @@ describe('MetricsBridge', () => {
 
   it('recordJanitorSweep gauges current orphan/owned counts and bumps the total', () => {
     bridge.recordJanitorSweep({
+      swept: true,
       scannedAt: new Date(),
       forkWorkersAlive: 12,
       ownedPids: 10,
@@ -162,6 +165,7 @@ describe('MetricsBridge', () => {
     const b = new MetricsBridge(broken, stub);
 
     expect(() => b.recordJanitorSweep({
+      swept: true,
       scannedAt: new Date(),
       forkWorkersAlive: 1,
       ownedPids: 1,

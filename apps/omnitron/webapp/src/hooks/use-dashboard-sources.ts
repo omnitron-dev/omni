@@ -76,7 +76,7 @@ export function useDashboardSources(board: DashboardConfig, live: boolean) {
         activeProject ? nodes.listNodes() : [],
       ]);
       return {
-        series: activeProject ? series : series.filter((row) => !row.labels?.node),
+        series: activeProject ? series : series.filter((row) => !row.labels?.['node']),
         names: Object.fromEntries(registry.map((node) => [node.id, node.name])),
         scope: activeProject ? metricScope(activeProject, activeStack, stacks, registry) : undefined,
         from,

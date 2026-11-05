@@ -1,3 +1,4 @@
+import { DEFAULT_DAEMON_CONFIG, DEFAULT_ECOSYSTEM } from '../../src/config/defaults.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -51,11 +52,17 @@ async function fixture(managed = false) {
   });
   mocks.candidate.mockResolvedValue({ build: { commit: 'fixture' } });
   mocks.installation.mockResolvedValue(null);
-  const record = { protocol: 1, state: { protocol: 1, ticket: { id: 'ticket' }, executionInventory: 'c'.repeat(64) },
-    daemonConfig: { pidFile: path.join(home, 'daemon.pid'), socketPath: socket, executionHost: { enabled: true, directory: execution } },
+  const record: BackendBootRecord = { protocol: 1, state: { protocol: 1,
+    ticket: { id: 'ticket', ownerId: 'fixture-owner',
+      from: { ownerId: 'fixture-owner', controllerId: 'previous', epoch: 1 },
+      to: { ownerId: 'fixture-owner', controllerId: 'next', epoch: 2 } },
+    watchConfig: { ...DEFAULT_ECOSYSTEM, apps: [] },
+    projects: { projects: [], stacks: [], infrastructure: [], resumeBackoff: [], reconciling: false },
+    infrastructure: null, executionInventory: 'c'.repeat(64) },
+    daemonConfig: { ...DEFAULT_DAEMON_CONFIG, pidFile: path.join(home, 'daemon.pid'), socketPath: socket, executionHost: { enabled: true, directory: execution } },
     previousEntry: status.entry, previousPid: 999999, createdAt: new Date().toISOString(), cwd: home,
     environment: { OMNITRON_HOME: home },
-  } as BackendBootRecord;
+  };
   return { root, home, execution, socket, control, config, record, upgrade, recover, status, snapshot, observe, prepare };
 }
 

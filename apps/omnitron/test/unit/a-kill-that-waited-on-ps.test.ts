@@ -90,7 +90,7 @@ describe('a kill that waited on ps', () => {
     const child = spawn('/bin/sleep', ['30'], { stdio: 'ignore', detached: true });
     const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
     const warnings: Array<{ code?: string; message: string }> = [];
-    const onWarning = (w: Error & { code?: string }) => void warnings.push({ code: w.code, message: w.message });
+    const onWarning = (w: Error & { code?: string }) => void warnings.push({ ...(w.code !== undefined && { code: w.code }), message: w.message });
     process.on('warning', onWarning);
     try {
       standInPs('exec /bin/sleep 8');

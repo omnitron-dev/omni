@@ -10,7 +10,7 @@ function fixture(maxRestarts: number, window = 3600000) {
     logging: { level: 'info', maxSize: '50mb', maxFiles: 10, compress: true, databaseRetentionDays: 14 } } as unknown as IEcosystemConfig;
   const pm: any = { getWorkerHandle: () => undefined, getProcess: () => undefined };
   const owner = new OrchestratorService(logger, pm, { save() {}, load: () => null } as never, process.cwd());
-  const launch = vi.fn(async () => { throw Error('fixture failed'); });
+  const launch = vi.fn(async (_entry?: unknown, _handle?: unknown): Promise<void> => { throw Error('fixture failed'); });
   (owner as any).launchClassicMode = launch;
   return { owner, config, launch, handle: () => (owner as any).handles.get(entry.name) };
 }

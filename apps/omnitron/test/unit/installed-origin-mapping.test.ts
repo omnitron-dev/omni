@@ -88,7 +88,7 @@ it('refuses missing or altered producer evidence before creating any receipt', (
   expect(() => releaseArtifactOrigins({ ...consumer, imports: [] }, hash('consumer'))).toThrow(
     'Missing pinned producer'
   );
-  const changed = structuredClone(consumer);
-  changed.artifacts[0]!.sha256 = '9'.repeat(64);
+  const changed = { ...consumer, artifacts: consumer.artifacts.map((artifact, index) =>
+    index === 0 ? { ...artifact, sha256: '9'.repeat(64) } : artifact) };
   expect(() => releaseArtifactOrigins(changed, hash('consumer'))).toThrow('differs from its producer');
 });

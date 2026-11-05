@@ -51,7 +51,7 @@ describe('configured dependency graph', () => {
     expect(nodes).toHaveLength(3);
     expect(edges).toHaveLength(2);
     expect(edges.every((edge) => edge.target === service.id && !edge.animated)).toBe(true);
-    expect(edges[0]!.data!.via).toEqual(['REDIS_URL', 'DISCOVERY_REDIS_URL']);
+    expect(edges[0]!.data!['via']).toEqual(['REDIS_URL', 'DISCOVERY_REDIS_URL']);
   });
   it('never borrows local container health for an external endpoint or another deployment', () => {
     const nodes = [app('api'), structuredClone(service)],

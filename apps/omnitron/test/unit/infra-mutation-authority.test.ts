@@ -76,7 +76,7 @@ describe('infrastructure mutation admission', () => {
   });
 
   it('owns protected container labels even when an override supplies Docker metadata', () => {
-    const spec = { docker: { image: 'redis' } };
+    const spec = { ports: {}, env: {}, docker: { image: 'redis' } };
     withInfrastructureScope('example', 'test', () => {
       const resolve = (labels: Record<string, string>) => resolveServiceRequirement('cache', spec, { docker: { labels } });
       expect(resolve({ 'deployment.note': 'reviewed' })?.labels).toMatchObject({
@@ -86,7 +86,7 @@ describe('infrastructure mutation admission', () => {
       expect(() => resolve({ 'omnitron.internal': 'true' })).toThrow('reserved');
     });
     expect(() => withInfrastructureScope(undefined, undefined, () => resolveServiceRequirement('cache', {
-      docker: { labels: { 'omnitron.project': 'invented' } },
+      ports: {}, env: {}, docker: { labels: { 'omnitron.project': 'invented' } },
     }))).toThrow('reserved');
   });
 });

@@ -51,8 +51,8 @@ describe('ServerRegistry', () => {
     const registry = new ServerRegistry();
     (registry as any).registryFile = registryFile;
 
-    registry.add({ alias: 'prod-1', host: '10.0.1.1', port: 9700, tags: ['production'] });
-    registry.add({ alias: 'prod-2', host: '10.0.1.2', port: 9700, tags: ['production'] });
+    registry.add({ status: 'unknown', lastSeen: 0, alias: 'prod-1', host: '10.0.1.1', port: 9700, tags: ['production'] });
+    registry.add({ status: 'unknown', lastSeen: 0, alias: 'prod-2', host: '10.0.1.2', port: 9700, tags: ['production'] });
 
     const servers = registry.list();
     expect(servers).toHaveLength(2);
@@ -66,8 +66,8 @@ describe('ServerRegistry', () => {
     const registry = new ServerRegistry();
     (registry as any).registryFile = registryFile;
 
-    registry.add({ alias: 'prod-1', host: '10.0.1.1', port: 9700, tags: [] });
-    registry.add({ alias: 'prod-1', host: '10.0.1.99', port: 9800, tags: ['updated'] });
+    registry.add({ status: 'unknown', lastSeen: 0, alias: 'prod-1', host: '10.0.1.1', port: 9700, tags: [] });
+    registry.add({ status: 'unknown', lastSeen: 0, alias: 'prod-1', host: '10.0.1.99', port: 9800, tags: ['updated'] });
 
     const servers = registry.list();
     expect(servers).toHaveLength(1);
@@ -81,7 +81,7 @@ describe('ServerRegistry', () => {
     const registry = new ServerRegistry();
     (registry as any).registryFile = registryFile;
 
-    registry.add({ alias: 'prod-1', host: '10.0.1.1', port: 9700, tags: [] });
+    registry.add({ status: 'unknown', lastSeen: 0, alias: 'prod-1', host: '10.0.1.1', port: 9700, tags: [] });
     expect(registry.remove('prod-1')).toBe(true);
     expect(registry.list()).toHaveLength(0);
   });
@@ -101,7 +101,7 @@ describe('ServerRegistry', () => {
     const registry = new ServerRegistry();
     (registry as any).registryFile = registryFile;
 
-    registry.add({ alias: 'staging', host: '10.0.2.1', port: 9700, tags: ['staging'] });
+    registry.add({ status: 'unknown', lastSeen: 0, alias: 'staging', host: '10.0.2.1', port: 9700, tags: ['staging'] });
     const server = registry.get('staging');
     expect(server).toBeDefined();
     expect(server!.host).toBe('10.0.2.1');

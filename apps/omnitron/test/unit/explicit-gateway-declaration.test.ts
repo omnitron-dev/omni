@@ -66,10 +66,7 @@ describe('an explicit gateway container is not an OpenResty template', () => {
   });
 
   it('keeps names, volumes and labels isolated across concurrent stack preparation', async () => {
-    vi.spyOn(InfrastructureService.prototype, 'provision').mockImplementation(async () => {
-      await Promise.resolve();
-      return undefined;
-    });
+    vi.spyOn(InfrastructureService.prototype, 'provision').mockImplementation(async function provisionFixture(this: InfrastructureService) { return this.getState(); });
     const manager = new StackInfrastructureManager(createNullLogger());
     const storage: IServiceRequirement = {
       type: 'daemon',
@@ -102,7 +99,7 @@ describe('an explicit gateway container is not an OpenResty template', () => {
   });
 
   it('preserves the declared image, private network and limits on local stack provisioning', async () => {
-    vi.spyOn(InfrastructureService.prototype, 'provision').mockResolvedValue(undefined);
+    vi.spyOn(InfrastructureService.prototype, 'provision').mockImplementation(async function provisionFixture(this: InfrastructureService) { return this.getState(); });
     const manager = new StackInfrastructureManager(createNullLogger());
     const infra = await manager.provisionStack(
       'owner-a',
@@ -137,7 +134,7 @@ describe('an explicit gateway container is not an OpenResty template', () => {
       { gateway: { port: 8080, configDir: 'gateway' } },
     ]) {
       const services = normalizeInfraConfig(input as InfrastructureConfig, registry);
-      expect(usesGatewayTemplate(services.gateway)).toBe(true);
+      expect(usesGatewayTemplate(services['gateway'])).toBe(true);
     }
     expect(usesGatewayTemplate(explicit)).toBe(false);
   });

@@ -1,10 +1,16 @@
 {
   "extends": "../tsconfig.json",
+  // Vitest transforms server fixtures with Vite; production still checks NodeNext.
+  // Browser fixtures belong to webapp/tsconfig.json and its browser contracts.
   "compilerOptions": {
     "noEmit": true,
-    "rootDir": "..",
-    "jsx": "react-jsx"
+    "allowJs": true,
+    "rootDir": "../../..",
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2024", "DOM"]
   },
   "include": ["./**/*.ts", "./**/*.tsx", "../src/**/*.ts"],
-  "exclude": ["../node_modules", "../dist"]
+  "exclude": ["./webapp", "../node_modules", "../dist"]
 }

@@ -46,7 +46,7 @@ describe('automation review', () => {
         <PipelinesPage />
       </MemoryRouter>
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Run', exact: true }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Run' }));
     await waitFor(() => expect(screen.getByText(/check · shell · edge-a/)).toBeInTheDocument());
     const settings = screen.getByLabelText('check execution settings');
     expect(settings).toHaveTextContent('/srv/app');
@@ -54,7 +54,7 @@ describe('automation review', () => {
     expect(settings).toHaveTextContent('"retries": 2');
     expect(settings).toHaveTextContent('params.enabled');
     expect(settings).toHaveTextContent('"MODE": "inspect"');
-    fireEvent.click(screen.getByRole('button', { name: 'Run automation', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Run automation' }));
     await waitFor(() =>
       expect(execute).toHaveBeenCalledWith({ id: definition.id, expectedRevision: definition.revision, params: {} })
     );

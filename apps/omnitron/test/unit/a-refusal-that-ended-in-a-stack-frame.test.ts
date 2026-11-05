@@ -23,7 +23,6 @@ const thrown = (): unknown => {
   } catch (err) {
     return err;
   }
-  return null;
 };
 
 describe('the reason a bundle build failed is its sentence, not its frames', () => {

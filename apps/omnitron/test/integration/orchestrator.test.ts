@@ -218,8 +218,8 @@ describe('bootstrap admission at the current PM boundary', () => {
     expect(await fs.readdir(path.join(directory, 'topology'))).toEqual([]);
     const definition = create.mock.calls[0]![0] as ISupervisorConfig;
     const dependencies = definition.children![1]!.spawnOptions!.dependencies as Record<string, unknown>;
-    expect(dependencies.__topologyConnects).toEqual(['Worker']);
-    expect(dependencies.__daemonSocketUrl).toMatch(/\/topology\/t-[^/]+\/rpc\.sock$/);
+    expect(dependencies['__topologyConnects']).toEqual(['Worker']);
+    expect(dependencies['__daemonSocketUrl']).toMatch(/\/topology\/t-[^/]+\/rpc\.sock$/);
   });
 
   it('refuses a missing definition before creating a supervisor', async () => {

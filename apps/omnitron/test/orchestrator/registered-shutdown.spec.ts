@@ -93,7 +93,7 @@ describe('shutdown owns all registered projects', () => {
     const { service, state } = harness(); let release!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; });
     const handle = new AppHandle({ name: 'worker' }, 'bootstrap'); handle.status = 'online';
-    const stop = vi.fn(async () => { await gate; throw new Error('still alive'); });
+    const stop = vi.fn(async (): Promise<void> => { await gate; throw new Error('still alive'); });
     handle.supervisor = { stop } as never; state.handles.set(handle.name, handle);
     const first = service.stopAll(); const observed = first.catch(error => error);
     expect(service.stopAll(true)).toBe(first);
@@ -117,7 +117,7 @@ describe('shutdown owns all registered projects', () => {
   it('does not leak owned processes if a redefinition introduces a dependency cycle', async () => {
     const { service, state, logger } = harness();
     const stopped: string[] = [];
-    for (const [name, dependency] of [['a', 'b'], ['b', 'a']]) {
+    for (const [name, dependency] of [['a', 'b'], ['b', 'a']] as const) {
       const handle = new AppHandle({ name, dependsOn: [dependency] }, 'bootstrap'); handle.status = 'online';
       handle.supervisor = { stop: async () => { stopped.push(name); } } as never;
       state.handles.set(name, handle);

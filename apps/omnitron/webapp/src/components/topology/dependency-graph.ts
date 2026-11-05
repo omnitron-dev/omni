@@ -25,7 +25,7 @@ export function connectDependencies(
           (node) =>
             node.type === 'appNode' &&
             ((node.data.project === project && node.data.stack === stack) || node.id.startsWith(`app-${band}-`)) &&
-            (!source.data.nodeKey || node.data.nodeKey === source.data.nodeKey) &&
+            (!source.data['nodeKey'] || node.data['nodeKey'] === source.data['nodeKey']) &&
             (node.data.name === targetApp || String(node.data.name).split('/').at(-1) === targetApp)
         );
       else if (host && port && service) {
@@ -34,15 +34,15 @@ export function connectDependencies(
         const matches = nodes.filter((node) => {
           if (node.data.nodeType !== 'infra' || !names.includes(node.data.service) || node.data.port !== port)
             return false;
-          if (source.data.nodeKey) {
+          if (source.data['nodeKey']) {
             // Loopback is scoped to the consumer's host, never to the whole stack.
-            return loopback ? node.data.nodeKey === source.data.nodeKey : node.data.host === host;
+            return loopback ? node.data['nodeKey'] === source.data['nodeKey'] : node.data['host'] === host;
           }
           // Legacy single-host snapshots remain readable; ambiguous providers never inherit health.
           if (loopback)
             return (
               node.id.startsWith(`infra-${band}-`) ||
-              (source.data.remote === false && Boolean(node.data.containerId) && !node.data.nodeKey)
+              (source.data.remote === false && Boolean(node.data.containerId) && !node.data['nodeKey'])
             );
           return (
             node.id.startsWith(`infra-${band}-`) &&
@@ -56,7 +56,7 @@ export function connectDependencies(
         });
         if (matches.length === 1) target = matches[0];
         if (!target) {
-          const id = `infra-${band}-endpoint-${encodeURIComponent(`${source.data.nodeKey ?? ''}:${service}:${host}:${port}`)}`;
+          const id = `infra-${band}-endpoint-${encodeURIComponent(`${source.data['nodeKey'] ?? ''}:${service}:${host}:${port}`)}`;
           target = nodes.find((node) => node.id === id);
           if (!target) {
             target = {
@@ -68,8 +68,8 @@ export function connectDependencies(
                 label: `${service} · ${host}`,
                 service,
                 stack: source.data.stack as string | null,
-                deploymentKey: source.data.deploymentKey ?? band,
-                nodeKey: source.data.nodeKey,
+                deploymentKey: source.data['deploymentKey'] ?? band,
+                nodeKey: source.data['nodeKey'],
                 project,
                 port,
                 host,
@@ -85,7 +85,7 @@ export function connectDependencies(
       const id = `dependency:${source.id}:${target.id}`;
       const existing = edges.find((edge) => edge.id === id);
       if (existing) {
-        const keys = existing.data!.via as string[];
+        const keys = existing.data!['via'] as string[];
         if (!keys.includes(via)) keys.push(via);
       } else
         edges.push({

@@ -31,10 +31,10 @@ describe('remote execution fencing', () => {
     const timing = { dir: '/tmp/fence', leaseSec: 2, renewEveryMs: 500 };
     for (const timeout of [0, -1, Infinity, 0.5, 86_400_001]) expect(() => guardScript(timing, 'A', 'true', timeout)).toThrow('timeout');
   });
-  it.skipIf(!process.env.OMNITRON_LEASE_DOCKER_TEST_IMAGE)('proves real Linux exclusion, stale writer refusal, timeout and SIGKILL behavior', () => {
+  it.skipIf(!process.env['OMNITRON_LEASE_DOCKER_TEST_IMAGE'])('proves real Linux exclusion, stale writer refusal, timeout and SIGKILL behavior', () => {
     const fixture = fileURLToPath(new URL('../fixtures/node-deploy-execution-fence.mjs', import.meta.url));
     const scenarios = Object.fromEntries(['raw', 'race', 'failure', 'killedLock', 'killedWorker', 'killedTimeout', 'background'].map(name => [name, make(name)]));
-    const output = execFileSync('docker', ['run', '--rm', '-i', '--network', 'none', '-v', `${path.resolve(fixture)}:/test.mjs:ro`, process.env.OMNITRON_LEASE_DOCKER_TEST_IMAGE!, 'node', '/test.mjs'], { input: JSON.stringify(scenarios), encoding: 'utf8', timeout: 30_000 });
+    const output = execFileSync('docker', ['run', '--rm', '-i', '--network', 'none', '-v', `${path.resolve(fixture)}:/test.mjs:ro`, process.env['OMNITRON_LEASE_DOCKER_TEST_IMAGE']!, 'node', '/test.mjs'], { input: JSON.stringify(scenarios), encoding: 'utf8', timeout: 30_000 });
     expect(output).toContain('baseline: stale in-flight writer overwrote new writer');
     expect(output).toContain('fenced: execution excludes replacement/release');
     expect(output).toContain('SIGKILL of kernel lock holder cannot admit takeover');

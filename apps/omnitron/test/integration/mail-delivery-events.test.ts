@@ -9,7 +9,7 @@ import {
 } from '../../../../packages/titan-mailer/src/postgres.js';
 
 // Only an explicitly supplied test database. Every object belongs to a unique schema.
-const url = process.env.OMNITRON_TEST_DATABASE_URL;
+const url = process.env['OMNITRON_TEST_DATABASE_URL'];
 const schema = `mail_events_${randomUUID().replaceAll('-', '')}`;
 let pool: Pool;
 const events: MailDeliveryEvent[] = [];

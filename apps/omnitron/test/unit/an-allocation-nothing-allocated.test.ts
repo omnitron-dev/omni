@@ -1,3 +1,4 @@
+import { DEFAULT_ECOSYSTEM } from '../../src/config/defaults.js';
 /**
  * The stack's Redis allocation was a report, not an order.
  *
@@ -67,7 +68,7 @@ const appDefinition = (name: string): IAppDefinition => ({
 const DECLARED = { alpha: 5, beta: 3 } as const;
 
 function resolve(databases?: Record<string, number>) {
-  const config: IEcosystemConfig = {
+  const config: IEcosystemConfig = { ...DEFAULT_ECOSYSTEM,
     project: 'alloc',
     apps: [{ name: 'alpha' }, { name: 'beta' }],
   };

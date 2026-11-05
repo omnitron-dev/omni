@@ -108,7 +108,7 @@ export class TelemetryRelayService extends EventEmitter {
       type: 'log',
       app,
       data: { level, message },
-      labels,
+      ...(labels && { labels }),
     });
   }
 
@@ -118,9 +118,9 @@ export class TelemetryRelayService extends EventEmitter {
   emitMetric(name: string, value: number, labels?: Record<string, string>, app?: string): void {
     this.record({
       type: 'metric',
-      app,
+      ...(app !== undefined && { app }),
       data: { name, value },
-      labels,
+      ...(labels && { labels }),
     });
   }
 

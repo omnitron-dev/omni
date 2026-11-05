@@ -22,7 +22,9 @@
     "tsBuildInfoFile": "node_modules/.cache/tsconfig.tsbuildinfo",
     "paths": {
       "src/*": ["./src/*"],
+      "@omnitron-dev/prism": ["../../../packages/prism/src/index.ts"],
       "@omnitron-dev/prism/*": ["../../../packages/prism/src/*"],
+      "@xyflow/react": ["./node_modules/@xyflow/react"],
       "@omnitron-dev/omnitron/dto/services": ["../src/shared/dto/services.ts"],
       "@omnitron-dev/omnitron/release-reading": ["../src/shared/release-reading.ts"],
       "@omnitron-dev/omnitron/release-source": ["../src/shared/framework-source.ts"],
@@ -33,7 +35,7 @@
       "@omnitron-dev/omnitron/sync-reading": ["../src/shared/sync-reading.ts"]
     }
   },
-  // Keep the keyboard workspace fixture on the same typed component contract.
+  // Console tests use the same browser environment and source contracts as the app.
   // noEmit ensures test modules never become part of the published bundle.
-  "include": ["src", "test/browser/**/*.tsx", "../test/webapp/files-keyboard.test.tsx"]
+  "include": ["src", "test/browser/**/*.tsx", "../test/webapp/**/*.ts", "../test/webapp/**/*.tsx"]
 }

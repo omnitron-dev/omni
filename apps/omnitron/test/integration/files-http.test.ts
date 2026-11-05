@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { Netron } from '@omnitron-dev/titan/netron';
+import { Netron, RemotePeer } from '@omnitron-dev/titan/netron';
 import { HttpNativeServer } from '@omnitron-dev/titan/netron/transport/http';
 import { AuthenticationManager, AuthorizationManager } from '@omnitron-dev/titan/netron/auth';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
@@ -126,6 +126,7 @@ beforeAll(async () => {
   netrons.push(meshClient);
   const remotePort = (netrons[0]!.transportServers.get('tcp') as unknown as { port: number }).port;
   const peer = await meshClient.connect(`tcp://127.0.0.1:${remotePort}`);
+    if (!(peer instanceof RemotePeer)) throw new Error('Expected the native Netron peer');
   expect((await peer.runTask('authenticate', { token: 'mesh' })).success).toBe(true);
   const filePeer = await peer.queryInterface<IOmnitronFileNodeService>('OmnitronFileNode');
   service = new FilesRpcService(

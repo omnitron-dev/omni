@@ -13,6 +13,8 @@ import { MetricsBridge } from '../../src/observability/metrics-bridge.js';
 
 function makeMetricsService(registry: MetricsRegistry): IMetricsService {
   return {
+    recordDurable: async () => { throw new Error('Unexpected durable write in registry fixture'); },
+    getStorageStatus: () => { throw new Error('Unexpected storage query in registry fixture'); },
     record: () => {},
     recordBatch: () => {},
     // T#74: bridge writes via recordTyped — delegate to the registry like the real service.
@@ -43,7 +45,7 @@ const noopLogger = {
   child () {
     return this;
   },
-} as unknown as Parameters<typeof MetricsServer['prototype']['constructor']>[0]['logger'];
+} as unknown as ConstructorParameters<typeof MetricsServer>[0]['logger'];
 
 async function fetchText(url: string): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
@@ -68,6 +70,7 @@ describe('MetricsServer', () => {
     const metrics = makeMetricsService(registry);
     const bridge = new MetricsBridge(metrics);
     bridge.recordJanitorSweep({
+      swept: true,
       scannedAt: new Date(),
       forkWorkersAlive: 7,
       ownedPids: 7,

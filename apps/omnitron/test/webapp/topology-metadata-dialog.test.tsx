@@ -11,7 +11,7 @@ it('keeps partial discovery failures visible and reloads evidence without report
   api.invoke.mockResolvedValue({ refreshed: 1, failures: [{ project: 'sample', app: 'worker', reason: 'Declarations unavailable' }] });
   render(<ThemeProvider theme={createTheme()}><TopologyMetadataDialog project="sample" stack="prod" onClose={onClose} onUpdated={onUpdated} /></ThemeProvider>);
   expect(api.invoke).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Update declarations', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Update declarations' }));
   await screen.findByText('worker: Declarations unavailable');
   expect(api.invoke).toHaveBeenCalledWith('daemon', 'OmnitronProject', 'refreshTopologyMetadata', [{ project: 'sample', stack: 'prod' }], { timeout: 120_000 });
   expect(onUpdated).toHaveBeenCalledOnce();
@@ -21,7 +21,7 @@ it('updates all stacks of a project and closes only after fresh observations hav
   const onClose = vi.fn(), onUpdated = vi.fn(async () => {});
   api.invoke.mockResolvedValue({ refreshed: 2, failures: [] });
   render(<ThemeProvider theme={createTheme()}><TopologyMetadataDialog project="sample" stack={null} onClose={onClose} onUpdated={onUpdated} /></ThemeProvider>);
-  fireEvent.click(screen.getByRole('button', { name: 'Update declarations', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Update declarations' }));
   await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
   expect(api.invoke).toHaveBeenCalledWith('daemon', 'OmnitronProject', 'refreshTopologyMetadata', [{ project: 'sample' }], { timeout: 120_000 });
   expect(onUpdated).toHaveBeenCalledOnce();

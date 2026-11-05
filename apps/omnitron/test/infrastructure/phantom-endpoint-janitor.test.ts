@@ -204,7 +204,7 @@ describe('PhantomEndpointJanitor — T#75', () => {
     // Stall the first runDocker so a second sweep can arrive
     // mid-flight. The second must early-return without issuing its
     // own commands.
-    j['runDocker'] = function holdDockerRead(args: string[]) {
+    j['runDocker'] = function holdDockerRead(this: { commands: string[][] }, args: string[]) {
       this.commands.push(args);
       return new Promise((r) => {
         resolveFirst = () => r({ ok: true, stdout: JSON.stringify([{ Containers: {} }]), stderr: '' });

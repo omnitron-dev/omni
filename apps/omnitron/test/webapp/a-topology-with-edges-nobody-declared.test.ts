@@ -303,18 +303,18 @@ describe('physical placements in the infrastructure map', () => {
     const { nodes, edges } = layoutBands(stackBands([observeStack(base, placements)], scope('test'), [], []));
     const main = nodes.filter((n) => n.data.logicalApp === 'main');
     expect(main).toHaveLength(2);
-    expect(main.map((n) => [n.data.nodeKey, n.data.status])).toEqual([
+    expect(main.map((n) => [n.data['nodeKey'], n.data.status])).toEqual([
       ['a:9700', 'online'],
       ['b:9700', 'unknown'],
     ]);
     expect(new Set(nodes.map((n) => n.id)).size).toBe(nodes.length);
-    expect(edges.find((e) => e.target === main[0]!.id)?.data?.evidence).toBe('placement');
-    expect(edges.find((e) => e.target === main[1]!.id)?.data?.evidence).toBe('declaration');
+    expect(edges.find((e) => e.target === main[0]!.id)?.data?.['evidence']).toBe('placement');
+    expect(edges.find((e) => e.target === main[1]!.id)?.data?.['evidence']).toBe('declaration');
     expect(nodes.filter((n) => n.type === 'serverNode').map((n) => n.data.status)).toEqual(['online', 'unknown']);
     for (const host of nodes.filter((n) => n.type === 'serverNode')) {
-      const replica = main.find((n) => n.data.nodeKey === host.data.address);
-      expect(host.data.deploymentKey).toBeTruthy();
-      expect(host.data.deploymentKey).toBe(replica?.data.deploymentKey);
+      const replica = main.find((n) => n.data['nodeKey'] === host.data.address);
+      expect(host.data['deploymentKey']).toBeTruthy();
+      expect(host.data['deploymentKey']).toBe(replica?.data['deploymentKey']);
     }
   });
 });

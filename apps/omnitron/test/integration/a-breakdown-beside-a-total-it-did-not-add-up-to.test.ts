@@ -106,7 +106,7 @@ describe('on a slave (SQLite)', () => {
     const insert = database.prepare('INSERT INTO logs (id, timestamp, app, level, message) VALUES (?,?,?,?,?)');
     ROWS.forEach(([app, level, ago], i) => insert.run(`l${i}`, minutesAgo(ago), app, level, `line ${i}`));
     const db = new Kysely<any>({ dialect: new SqliteDialect({ database: withDateBinding(database) }) });
-    collector = new LogCollectorService(db, undefined as never);
+    collector = new LogCollectorService(db);
   });
 
   courtOf(() => collector);
@@ -131,7 +131,7 @@ describe.skipIf(!testPg.ok)('on the master (Postgres)', () => {
         VALUES (gen_random_uuid(), ${minutesAgo(ago)}::timestamptz, ${app}, ${level}, 'line')
       `.execute(db);
     }
-    collector = new LogCollectorService(db as never, undefined as never);
+    collector = new LogCollectorService(db as never);
   });
 
   afterAll(async () => {

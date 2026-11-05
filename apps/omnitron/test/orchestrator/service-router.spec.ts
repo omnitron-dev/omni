@@ -18,25 +18,25 @@ describe('application service ownership', () => {
     const workers = pool();
     await router.exposePoolService('workers', 'Worker', '2.0.0', workers as never, ['run', 'stats']);
     expect(router.getService('Worker@2.0.0')).toMatchObject({ type: 'pool', processName: 'workers' });
-    await expect(instance('Worker@2.0.0').run!('input', 42)).resolves.toBe('first');
+    await expect(instance('Worker@2.0.0')['run']!('input', 42)).resolves.toBe('first');
     expect(workers.execute).toHaveBeenLastCalledWith('callExposedService', 'Worker', 'run', ['input', 42]);
     workers.execute.mockRejectedValueOnce(new Error('worker unavailable'));
-    await expect(instance('Worker@2.0.0').stats!()).rejects.toThrow('worker unavailable');
+    await expect(instance('Worker@2.0.0')['stats']!()).rejects.toThrow('worker unavailable');
     const metadata = Reflect.getMetadata('netron:service', instance('Worker@2.0.0').constructor);
     expect(metadata).toMatchObject({ name: 'Worker', version: '2.0.0', properties: {},
       methods: { run: { type: 'Promise', arguments: [] }, stats: { type: 'Promise', arguments: [] } } });
   });
 
   it('routes to the current child after its restart without replacing the service definition', async () => {
-    let child: { callExposedService: ReturnType<typeof vi.fn> } | null = { callExposedService: vi.fn(async () => 'first') };
+    let child: { callExposedService: ReturnType<typeof vi.fn<(...args: unknown[]) => Promise<unknown>>> } | null = { callExposedService: vi.fn(async () => 'first') };
     await router.exposeChildService('collector', 'Collector', '1.0.0', () => child, ['status']);
     const stub = netron.services.get('Collector@1.0.0');
     const proxy = instance('Collector@1.0.0');
-    await expect(proxy.status!()).resolves.toBe('first');
+    await expect(proxy['status']!()).resolves.toBe('first');
     child = null;
-    await expect(proxy.status!()).rejects.toThrow('is not running');
+    await expect(proxy['status']!()).rejects.toThrow('is not running');
     child = { callExposedService: vi.fn(async () => 'restarted') };
-    await expect(proxy.status!('argument')).resolves.toBe('restarted');
+    await expect(proxy['status']!('argument')).resolves.toBe('restarted');
     expect(child.callExposedService).toHaveBeenCalledWith('Collector', 'status', ['argument']);
     expect(netron.services.get('Collector@1.0.0')).toBe(stub);
     expect(router.getService('Collector@1.0.0')?.type).toBe('single');
@@ -48,7 +48,7 @@ describe('application service ownership', () => {
     await expect(router.exposePoolService(provider, 'Worker', '1.0.0', pool('other') as never, ['run']))
       .rejects.toThrow("conflicts with provider 'original'");
     expect(netron.services.get('Worker@1.0.0')).toBe(before);
-    await expect(instance('Worker@1.0.0').run!()).resolves.toBe('first');
+    await expect(instance('Worker@1.0.0')['run']!()).resolves.toBe('first');
   });
 
   it('does not take over or remove a registration owned by another router', async () => {
@@ -58,7 +58,7 @@ describe('application service ownership', () => {
       .rejects.toThrow('already exposed');
     await other.releaseAll();
     expect(other.getServiceNames()).toEqual([]);
-    await expect(instance('Worker@1.0.0').run!()).resolves.toBe('first');
+    await expect(instance('Worker@1.0.0')['run']!()).resolves.toBe('first');
   });
 
   it('retains partially published services when an expose notification fails', async () => {
@@ -100,7 +100,7 @@ describe('application service ownership', () => {
     const other = new ServiceRouter(netron, logger);
     await other.exposePoolService('other', 'Worker', '', pool('other') as never, ['run']);
     await expect(router.releaseAll()).rejects.toThrow('remain registered');
-    await expect(instance('Worker').run!()).resolves.toBe('other');
+    await expect(instance('Worker')['run']!()).resolves.toBe('other');
     await other.releaseAll();
     await router.releaseAll();
   });

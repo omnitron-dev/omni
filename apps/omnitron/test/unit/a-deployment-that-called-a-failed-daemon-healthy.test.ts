@@ -1,3 +1,4 @@
+import type { AuditService } from '../../src/services/audit.service.js';
 /**
  * A deployment that called a failed daemon healthy.
  *
@@ -58,7 +59,7 @@ describe('the node\'s verdict counts a host service that failed', () => {
 });
 
 describe('the master carries «not ready» to the start\'s answer and its row', () => {
-  const record = vi.fn(async () => {});
+  const record = vi.fn<AuditService['record']>(async () => {});
   const APPS = ['main', 'storage', 'quotes', 'payments', 'messaging', 'geo'];
 
   function startable(reach: { nodes: number; reached: number; skipped: string[]; notReady: string[] }) {

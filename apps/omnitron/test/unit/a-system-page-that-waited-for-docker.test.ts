@@ -44,9 +44,15 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 describe('a system page that waited for Docker', () => {
   it('coalesces fresh requests and distinguishes an unmeasured rate from measured zero', async () => {
     let reads = 0;
-    const network = async () => ({ interfaces: [{ iface: 'en0', operstate: 'up' }, { iface: 'lo', internal: true }], stats: [
-      { iface: 'en0', rx_sec: ++reads === 1 ? -1 : 0, tx_sec: 0 }, { iface: 'lo', rx_sec: 50, tx_sec: 100 },
-    ] }) as Awaited<ReturnType<SectionReaders['network']>>;
+    const network: SectionReaders['network'] = async () => ({
+      interfaces: ['en0', 'lo'].map(iface => ({ iface, ifaceName: iface, internal: iface === 'lo',
+        default: iface === 'en0', ip4: '', ip4subnet: '', ip6: '', ip6subnet: '', mac: '', virtual: false,
+        operstate: 'up', type: 'wired', duplex: 'full', mtu: 1500, speed: 1000, dhcp: false,
+        dnsSuffix: '', ieee8021xAuth: '', ieee8021xState: '', carrierChanges: 0 })),
+      stats: [{ iface: 'en0', rx_sec: ++reads === 1 ? -1 : 0, tx_sec: 0 },
+        { iface: 'lo', rx_sec: 50, tx_sec: 100 }].map(rate => ({ operstate: 'up', rx_bytes: 0,
+          rx_dropped: 0, rx_errors: 0, tx_bytes: 0, tx_dropped: 0, tx_errors: 0, ms: 1000, ...rate })),
+    });
     const service = new SystemInfoService(logger, 'master', { readers: { ...quiet, network }, refreshAfterMs: 0 });
     expect((await service.getSnapshot()).network.rateAvailable).toBe(false);
     const [first,second] = await Promise.all([service.getSnapshot({ fresh: true }),service.getSnapshot({ fresh: true })]);

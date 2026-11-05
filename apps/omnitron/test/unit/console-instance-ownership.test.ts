@@ -21,7 +21,7 @@ import { OmnitronDaemon } from '../../src/daemon/daemon.js';
 
 const state = (changes: Partial<ContainerState> = {}): ContainerState => ({
   name: consoleContainerName(), containerId: 'original-container', image: 'nginx:alpine', status: 'running',
-  health: 'healthy', ports: [], labels: { [CONSOLE_INSTANCE_LABEL]: path.resolve(OMNITRON_HOME) }, ...changes,
+  health: 'healthy', ports: {}, labels: { [CONSOLE_INSTANCE_LABEL]: path.resolve(OMNITRON_HOME) }, ...changes,
 });
 beforeEach(() => { vi.clearAllMocks(); runtime.state = null; });
 

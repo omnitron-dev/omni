@@ -60,7 +60,7 @@ describe('fetchStacks arriving late', () => {
     expect(store.getState().stacksByProject).toEqual({});
     deliverNew([stack('new')]);
     await next;
-    expect(store.getState().stacksByProject.alpha?.[0]?.name).toBe('new');
+    expect(store.getState().stacksByProject['alpha']?.[0]?.name).toBe('new');
     store.getState().setInventoryReaders(null, null);
     expect(store.getState().stacksByProject).toEqual({});
     expect(await store.getState().fetchStacks('alpha')).toBeNull();
@@ -196,6 +196,6 @@ describe('explicit stack filters', () => {
     vi.mocked(project.listStacks).mockRejectedValueOnce(new Error('Inventory unavailable'));
     expect(await store.getState().fetchStacks('alpha')).toBeNull();
     expect(store.getState().activeStack).toBe('chosen');
-    expect(store.getState().stackReadErrors.alpha).toBe('Inventory unavailable');
+    expect(store.getState().stackReadErrors['alpha']).toBe('Inventory unavailable');
   });
 });

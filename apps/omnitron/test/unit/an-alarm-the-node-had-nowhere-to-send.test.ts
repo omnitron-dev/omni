@@ -128,8 +128,8 @@ describe('the node’s engine, with the sink and without it', () => {
       { status: 'firing', ruleName: 'App crashed', host: 'sample/test', value: 'sample/deployed/storage=crashed' },
     ]);
     const [event] = await db.selectFrom('alert_events').selectAll().execute();
-    expect(event!.deliveredAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-    expect(event!.deliveryError).toBeNull();
+    expect(event!['deliveredAt']).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(event!['deliveryError']).toBeNull();
     await sql`DELETE FROM alert_events`.execute(db);
   });
 });

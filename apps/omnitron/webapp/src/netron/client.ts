@@ -347,7 +347,7 @@ export function getSessionId(): string | null {
   const token = sessionStorage.getItem(ACCESS_TOKEN_KEY);
   if (!token) return null;
   const payload = decodeJwtPayload(token);
-  return (payload?.sid as string) ?? null;
+  return (payload?.['sid'] as string) ?? null;
 }
 
 export function setStorageToken(token: string): void {

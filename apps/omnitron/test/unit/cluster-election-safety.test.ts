@@ -81,7 +81,7 @@ describe('durable cluster authority', () => {
   it('does not revive leadership from an acquire completing after stop', async () => {
     let complete!: (value: LeaseGrant) => void;
     let claimed: Partial<LeaseGrant> = {};
-    const { election, result, store } = fixture({ acquire: vi.fn(value => new Promise(resolve => { claimed = value; complete = resolve; })) });
+    const { election, result, store } = fixture({ acquire: vi.fn(value => new Promise<LeaseGrant>(resolve => { claimed = value; complete = resolve; })) });
     const starting = election.start();
     await vi.waitFor(() => expect(store.acquire).toHaveBeenCalledOnce());
     const stopping = election.stop();

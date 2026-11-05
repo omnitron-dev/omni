@@ -10,7 +10,7 @@ import { generateNginxConfig } from '../../src/webapp/webapp.service.js';
 
 // Explicit opt-in, using an already installed image. No application containers,
 // data volumes, registry downloads or fixed host ports participate in this test.
-const image = process.env.OMNITRON_TEST_NGINX_IMAGE;
+const image = process.env['OMNITRON_TEST_NGINX_IMAGE'];
 const exec = promisify(execFile);
 
 describe.skipIf(!image)('Console asset caching through nginx', () => {
@@ -51,6 +51,7 @@ describe.skipIf(!image)('Console asset caching through nginx', () => {
       const response = await fetch(origin + url, { headers });
       expect(response.status).toBe(200);
       const [forwarded, real] = (await response.text()).split('|');
+      if (!forwarded || !real) throw new Error('Upstream did not receive both address headers');
       expect(isIP(forwarded)).toBeGreaterThan(0);
       expect(forwarded).toBe(real);
       expect([headers['X-Real-IP'], ...headers['X-Forwarded-For'].split(', ')]).not.toContain(real);

@@ -54,7 +54,7 @@ describe('what a stack runs', () => {
       infrastructure: { services: { tor: { preset: 'tor', config: { hiddenServices: [] } } } },
     } as never);
 
-    expect((merged?.services?.['tor'] as { config: { hiddenServices: unknown[] } }).config.hiddenServices).toEqual([]);
+    expect(merged?.services?.['tor']).toMatchObject({ config: { hiddenServices: [] } });
     expect(merged?.services?.['gateway']).toBeTruthy();
   });
 

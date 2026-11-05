@@ -56,7 +56,7 @@ afterAll(() => {
 });
 
 const definition: IAppDefinition = {
-  name: 'rebuild-loop-fixture',
+  name: 'rebuild-loop-fixture', version: '1.0.0',
   processes: [{ name: 'http', module: './app.module.js' }],
 };
 

@@ -41,7 +41,7 @@ function Workspace({ disabled = false }: { disabled?: boolean }) {
 function mount(disabled = false) {
   return render(
     <MemoryRouter>
-      <ConsoleKeyboard navigation={[{ subheader: 'Allowed', items: [{ title: 'Nodes', path: '/nodes' }] }]}>
+      <ConsoleKeyboard navigation={[{ id: 'allowed', subheader: 'Allowed', items: [{ id: 'nodes', title: 'Nodes', path: '/nodes' }] }]}>
         <Workspace disabled={disabled} />
       </ConsoleKeyboard>
     </MemoryRouter>

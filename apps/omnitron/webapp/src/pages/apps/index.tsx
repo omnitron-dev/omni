@@ -60,7 +60,7 @@ export default function AppsListPage() {
   const visibleApps = apps.filter(
     (app) =>
       `${app.name} ${app.stack}`.toLowerCase().includes(String(filters.search ?? '').toLowerCase()) &&
-      (!filters.status || app.status === filters.status)
+      (!filters['status'] || app.status === filters['status'])
   );
 
   // Subscribe to the realtime WS — same pattern as Dashboard. The

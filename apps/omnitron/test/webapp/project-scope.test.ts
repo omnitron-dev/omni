@@ -1,7 +1,8 @@
+import { stackFixture } from '../helpers/stack-fixture.js';
 import { describe, expect, it } from 'vitest';
 import { projectPrefixes, projectStackName, restoredProjectScope } from '../../webapp/src/utils/project-scope';
 import { metricScope, seriesInScope } from '../../webapp/src/utils/metric-series';
-import type { IProjectInfo, IStackInfo } from '../../src/shared/dto/project';
+import type { IProjectInfo } from '../../src/shared/dto/project';
 
 const project = { name: 'sample', configurations: [
   { name: 'default', path: '/repo', runtimeProject: 'sample', stacks: {} },
@@ -21,10 +22,10 @@ describe('project ownership across historical namespaces', () => {
     expect(restoredProjectScope([project], 'missing', null)).toBeNull();
   });
   it('keeps historical metric series attached to their public stack and excludes unrelated nodes', () => {
-    const stacks = [{ name: 'research', type: 'local', runtimeScope: { project: 'sample-research', stack: 'local' }, apps: [], nodes: [] }] as IStackInfo[];
+    const stacks = [stackFixture('research', { runtimeScope: { project: 'sample-research', stack: 'local' } })];
     const scope = metricScope('sample', 'research', stacks, []);
-    expect(seriesInScope({ app: 'sample-research/local/api' }, scope)).toBe(true);
+    expect(seriesInScope({ app: 'sample-research/local/api', labels: {} }, scope)).toBe(true);
     expect(seriesInScope({ app: 'sample-research/local/api', labels: { node: 'unrelated' } }, scope)).toBe(false);
-    expect(seriesInScope({ app: 'sample-other/local/api' }, scope)).toBe(false);
+    expect(seriesInScope({ app: 'sample-other/local/api', labels: {} }, scope)).toBe(false);
   });
 });

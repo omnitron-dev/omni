@@ -211,6 +211,7 @@ describe('a master that stood still while it migrated', () => {
     for (const env of [{}, { DATABASE_URL: 'postgres://user:secret@localhost:5432/other' }]) {
       const error = await service().migrate(root, undefined, env).catch((error: Error) => error);
       expect(error).toBeInstanceOf(Error);
+      if (!(error instanceof Error)) throw new Error('Expected migration refusal');
       expect(error.message).toContain('requires its resolved PostgreSQL DATABASE_URL');
       expect(error.message).not.toContain('secret');
     }
@@ -233,7 +234,7 @@ describe('local stack migration admission', () => {
     svc.orchestrator = { startApp };
     svc.stackEnvFor = async () => ({});
     svc.loadAppDefinitions = async () => new Map([['main', { omnitronConfig: { database: true } }]]);
-    vi.spyOn(InfrastructureService.prototype, 'provision').mockResolvedValue(undefined);
+    vi.spyOn(InfrastructureService.prototype, 'provision').mockImplementation(async function provisionFixture(this: InfrastructureService) { return this.getState(); });
     vi.spyOn(InfrastructureService.prototype, 'getState').mockImplementation(function healthyServices(this: InfrastructureService) {
       return { services: Object.fromEntries(this.getDesiredServices().map(service => [service.name, {
         name: service.name, status: 'running', health: 'healthy',
@@ -256,7 +257,7 @@ describe('local stack migration admission', () => {
       expect(probe).not.toHaveBeenCalled();
       expect(fixture.startApp).toHaveBeenCalledTimes(1);
       const entry = fixture.startApp.mock.calls[0]![0] as unknown as { env: Record<string, string> };
-      const connection = new URL(entry.env.DATABASE_URL!);
+      const connection = new URL(entry.env['DATABASE_URL']!);
       expect(connection.port).toBe('5544');
       expect(connection.pathname).toBe('/main');
     } finally { fixture.manager.dispose(); }

@@ -36,7 +36,7 @@ export class MailDeliveryWorker {
   private starting?: Promise<void>;
   private stopping?: Promise<void>;
   private timer?: ReturnType<typeof setTimeout>;
-  private relay?: Promise<void>;
+  private relay: Promise<void> | undefined;
   private active = new Set<Promise<void>>();
   private closed = false;
   private failure = false;
@@ -74,7 +74,7 @@ export class MailDeliveryWorker {
   private async subscribe(): Promise<void> {
     this.subscription = await this.bus.subscribe(this.options.channel, (msg) => this.accept(msg), {
       groupName: this.options.group,
-      consumerName: this.options.consumer,
+      ...(this.options.consumer !== undefined && { consumerName: this.options.consumer }),
       startFrom: '0',
     });
     const tick = async () => {
@@ -210,12 +210,12 @@ export class MailerEmailChannel extends AbstractEmailChannel {
       to,
       subject: content.subject,
       text: content.text ?? '',
-      html: content.html,
-      attachments: content.attachments?.map((f) => ({
+      ...(content.html !== undefined && { html: content.html }),
+      ...(content.attachments && { attachments: content.attachments.map((f) => ({
         filename: f.filename,
         content: Buffer.isBuffer(f.content) ? f.content : Buffer.from(f.content),
-        contentType: f.contentType,
-      })),
+        ...(f.contentType !== undefined && { contentType: f.contentType }),
+      })) }),
       ...(content.from ? { from: content.from } : {}),
       ...(content.replyTo ? { replyTo: content.replyTo } : {}),
     });

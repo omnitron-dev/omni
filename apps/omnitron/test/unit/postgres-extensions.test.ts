@@ -24,7 +24,7 @@ import type { IPostProvisionContext } from '../../src/infrastructure/presets/typ
 const silentLogger = {
   info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn(), fatal: vi.fn(),
   child: () => silentLogger,
-} as never;
+};
 
 /** A post-provision context that records the psql commands it is asked to run. */
 function recordingContext(

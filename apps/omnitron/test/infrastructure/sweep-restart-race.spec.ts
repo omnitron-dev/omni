@@ -24,10 +24,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock the entire container-runtime module so the Docker shell-out
-// path never runs in this test. Every export becomes a vi.fn() we
-// can program per-case.
-vi.mock('../../src/infrastructure/container-runtime.js', () => ({
+// Keep pure resource/spec validation; replace only Docker operations so
+// reconciliation exercises the production policy without contacting Docker.
+vi.mock('../../src/infrastructure/container-runtime.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../src/infrastructure/container-runtime.js')>(),
   getContainerState: vi.fn(),
   removeContainer: vi.fn().mockResolvedValue(undefined),
   startContainer: vi.fn().mockResolvedValue(undefined),
@@ -132,7 +132,7 @@ describe('InfrastructureService — health sweep (T#58)', () => {
         status: 'exited',
         health: 'none',
         containerId: '1'.repeat(64),
-      labels: { 'omnitron.managed': 'true', 'omnitron.service': 'sample' },
+        labels: { 'omnitron.managed': 'true', 'omnitron.service': 'sample' },
         image: 'busybox:latest',
       });
     });
@@ -160,5 +160,7 @@ describe('InfrastructureService — health sweep (T#58)', () => {
       image: 'busybox:latest',
     });
     await Promise.all([a, b]);
+    expect(runtime.removeContainer).not.toHaveBeenCalled();
+    expect(runtime.createContainer).not.toHaveBeenCalled();
   });
 });

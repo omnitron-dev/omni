@@ -1,9 +1,12 @@
 import 'reflect-metadata';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ProjectService } from '../../src/services/project.service.js';
-import { inspectLocalReleaseInstallation } from '../../src/release/local-installation.js';
+import { inspectLocalReleaseInstallation, inspectLocalReleasePayloads } from '../../src/release/local-installation.js';
 
-vi.mock('../../src/release/local-installation.js', () => ({ inspectLocalReleaseInstallation: vi.fn(async (_release, _stack, entries) => entries) }));
+vi.mock('../../src/release/local-installation.js', () => ({
+  inspectLocalReleaseInstallation: vi.fn(async (_release, _stack, entries) => entries),
+  inspectLocalReleasePayloads: vi.fn(async () => new Map()),
+}));
 afterEach(() => vi.clearAllMocks());
 
 function fixture(appEnv: Record<string, Record<string, string>>) {
@@ -21,6 +24,7 @@ it('validates the full stack but admits only the requested migration owner and i
   expect(entries).toHaveLength(1);
   expect(entries[0]).toMatchObject({ name: 'api', env: { API_ONLY: 'api-value' } });
   expect(entries[0].env).not.toHaveProperty('MAIL_ONLY');
+  expect(inspectLocalReleasePayloads).toHaveBeenCalledWith({}, [], false);
   expect(inspectLocalReleaseInstallation).toHaveBeenCalledWith({}, 'local', entries, {
     prepare: false, ownerPid: 123, ownerPackage: '/fixture/owner', requiredFiles: { api: ['dist/database/config.js'] },
   });
@@ -28,5 +32,6 @@ it('validates the full stack but admits only the requested migration owner and i
 
 it('still refuses environment declarations for an application absent from the stack before admission', async () => {
   await expect(fixture({ absent: { TOKEN: 'fixture' } })()).rejects.toThrow("settings.appEnv names 'absent'");
+  expect(inspectLocalReleasePayloads).not.toHaveBeenCalled();
   expect(inspectLocalReleaseInstallation).not.toHaveBeenCalled();
 });

@@ -12,15 +12,21 @@ import { pathToFileURL } from 'node:url';
 
 const run = promisify(execFile);
 const dist = path.resolve(process.argv[2] || 'dist');
-const { getContainerState } = await import(pathToFileURL(path.join(dist, 'infrastructure/container-runtime.js')));
+const { getContainerState, startContainer } = await import(pathToFileURL(path.join(dist, 'infrastructure/container-runtime.js')));
 const { observeUnhealthy, UNHEALTHY_GRACE_MS } = await import(pathToFileURL(path.join(dist, 'infrastructure/health-recovery.js')));
 const nonce = randomBytes(12).toString('hex');
 const name = `omnitron-health-qa-${nonce}`;
-const exec = async args => (await run('docker', args, { timeout: 15_000, maxBuffer: 1024 * 1024 })).stdout.trim();
+const exec = async args => {
+  const started = Date.now();
+  const child = run('docker', args, { timeout: 15_000, maxBuffer: 1024 * 1024 });
+  child.child.stdin.end(); // These non-interactive commands never consume input.
+  try { return (await child).stdout.trim(); }
+  finally { console.log(JSON.stringify({ operation: args[0], durationMs: Date.now() - started })); }
+};
 const provider = await exec(['info', '--format', '{{.ID}}']);
 const image = await exec(['image', 'inspect', 'alpine:3.24', '--format', '{{.Id}}']);
 const report = { test: 'native-health-recovery', nonce, passed: false, liveActivation: false, checks: [] };
-let id;
+let id, failure;
 const inspect = async () => {
   assert.equal(await exec(['info', '--format', '{{.ID}}']), provider);
   const [value] = JSON.parse(await exec(['inspect', id]));
@@ -45,8 +51,13 @@ try {
   id = await exec(['create', '--pull=never', '--name', name, '--label', `omnitron.test=${nonce}`,
     '--network=none', '--cpus=0.25', '--memory=32m', '--memory-swap=32m', '--pids-limit=32',
     '--restart=no', '--health-cmd=test -f /healthy', '--health-interval=1s', '--health-timeout=1s',
-    '--health-retries=1', image, 'sh', '-c', 'while :; do sleep 1; done']);
-  await inspect(); await exec(['start', id]);
+    '--health-retries=1', image, 'sh', '-c', 'touch /healthy; while :; do sleep 1; done']);
+  await inspect();
+  const starting = Date.now();
+  await startContainer(id);
+  report.startMs = Date.now() - starting;
+  await wait(async () => (await read())?.health === 'healthy');
+  await exec(['exec', id, 'rm', '/healthy']);
   const initial = await wait(async () => { const state = await read(); return state?.health === 'unhealthy' && state.healthCheck ? state : null; });
   assert.equal(initial.containerId, id); assert.equal(initial.healthCheck.exitCode, 1);
   let observation = observeUnhealthy(undefined, initial, Date.now());
@@ -74,14 +85,23 @@ try {
   assert.equal((await inspect()).RestartCount, 0);
   report.checks.push('Real native recovery cancels the pending decision without restarting the container');
   report.passed = true;
+} catch (error) {
+  failure = error; report.failure = { message: error.message, code: error.code };
 } finally {
-  if (id) {
-    const current = await inspect();
-    if (current.State.Running) await exec(['stop', '--time', '5', id]);
-    await exec(['rm', id]);
-    assert.equal(await exec(['ps', '-aq', '--filter', `name=^/${name}$`]), '');
+  try {
+    if (id) {
+      const current = await inspect();
+      if (current.State.Running) await exec(['stop', '--time', '5', id]);
+      await exec(['rm', id]);
+      assert.equal(await exec(['ps', '-aq', '--filter', `name=^/${name}$`]), '');
+    }
+    report.cleanup = { passed: true, container: id, volumes: false };
+  } catch (error) {
+    report.cleanup = { passed: false, container: id, message: error.message };
+    failure = failure ? new AggregateError([failure, error], 'Native check and fixture cleanup failed') : error;
   }
-  report.cleanup = { passed: true, container: id, volumes: false };
   if (process.argv[3]) await fs.writeFile(path.resolve(process.argv[3]), JSON.stringify(report, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
   console.log(JSON.stringify(report));
 }
+
+if (failure) throw failure;

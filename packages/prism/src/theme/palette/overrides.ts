@@ -37,7 +37,7 @@ function staticChannel(value: string): string | undefined {
   }
 }
 
-function channelFor(value: string): string {
+export function channelFor(value: string): string {
   return staticChannel(value) ?? `from ${value} r g b`;
 }
 

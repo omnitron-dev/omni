@@ -17,6 +17,7 @@ import { scrollbarStyles } from '../mixins.js';
 
 import type { Components, Theme } from '@mui/material/styles';
 import type { ComponentsConfig } from '../../types/theme.js';
+import { semanticSurfaceStyles } from '../semantic-surface.js';
 
 import { iconButtonClasses } from '@mui/material/IconButton';
 import { accordionClasses } from '@mui/material/Accordion';
@@ -610,11 +611,11 @@ export function componentOverrides(config: ComponentsConfig): Components<Theme> 
       styleOverrides: {
         root: ({ theme }) => ({
           borderRadius,
-          variants: (['success', 'error', 'warning', 'info'] as const).map((severity) => ({
-            props: { severity, variant: 'standard' },
+          variants: (['success', 'error', 'warning', 'info'] as const).map((color) => ({
+            props: (props) => props.variant === 'standard' && (props.color || props.severity) === color,
             style: {
-              backgroundColor: `rgba(${getColorChannel(theme, severity)} / 0.08)`,
-              color: theme.vars?.palette[severity].dark || theme.palette[severity].dark,
+              ...semanticSurfaceStyles(theme, color, 0.08),
+              '& .MuiAlert-icon': { color: 'inherit' },
             },
           })),
         }),

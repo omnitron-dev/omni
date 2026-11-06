@@ -11,9 +11,9 @@
 import { useEffect, useRef, type ReactNode, type Ref } from 'react';
 import MuiAlert, { type AlertProps as MuiAlertProps } from '@mui/material/Alert';
 import AlertTitle from '@mui/material/AlertTitle';
-import { alpha } from '@mui/material/styles';
 import type { SxProps, Theme } from '@mui/material/styles';
 import { useForkRef } from '@mui/material/utils';
+import { semanticSurfaceStyles } from '../../theme/semantic-surface.js';
 
 /**
  * Every alert here takes `ref` and passes whatever else it is given to the
@@ -112,15 +112,12 @@ export function Alert({
       action={action}
       sx={mergeSx(
         variant === 'soft'
-          ? {
-              backgroundColor: (theme) =>
-                alpha(theme.palette[severity].main, theme.palette.mode === 'light' ? 0.12 : 0.16),
-              color: (theme) =>
-                theme.palette.mode === 'light' ? theme.palette[severity].dark : theme.palette[severity].light,
+          ? (theme) => ({
+              ...semanticSurfaceStyles(theme, other.color ?? severity, 0.12, 0.16),
               '& .MuiAlert-icon': {
                 color: 'inherit',
               },
-            }
+            })
           : {},
         sx,
       )}

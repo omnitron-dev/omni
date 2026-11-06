@@ -9,23 +9,21 @@
 
 import type { Theme } from '@mui/material/styles';
 import type { ComponentsConfig } from '../../types/theme.js';
+import { channelFor } from '../palette/overrides.js';
 
 // =============================================================================
 // COLOR CHANNEL HELPERS
 // =============================================================================
 
 /**
- * Safely get a grey color channel from theme.vars or return fallback.
+ * Resolve a grey channel from the active theme, including themes without CSS variables.
  * MUI's Color type doesn't include channel properties, so we access dynamically.
  */
 export function getGreyChannel(theme: Theme, shade: '500' | '900' = '500'): string {
   const channelKey = `${shade}Channel` as const;
   const vars = theme.vars?.palette.grey as Record<string, string> | undefined;
-  const fallbacks: Record<string, string> = {
-    '500': '145 158 171',
-    '900': '0 0 0',
-  };
-  return vars?.[channelKey] ?? fallbacks[shade];
+  const palette = theme.palette.grey as unknown as Record<string, string>;
+  return vars?.[channelKey] ?? palette[channelKey] ?? channelFor(palette[shade]!);
 }
 
 /**
@@ -62,18 +60,12 @@ export function paletteVar(theme: Theme, path: string): string {
 }
 
 /**
- * Safely get a semantic color channel from theme.vars.
+ * Resolve a semantic channel without substituting a hard-coded preset colour.
  */
 export function getColorChannel(theme: Theme, color: 'primary' | 'success' | 'error' | 'warning' | 'info'): string {
   const vars = theme.vars?.palette[color] as { mainChannel?: string } | undefined;
-  const fallbacks: Record<string, string> = {
-    primary: '51 133 240',
-    success: '9 159 105',
-    error: '208 34 65',
-    warning: '246 141 42',
-    info: '13 166 214',
-  };
-  return vars?.mainChannel ?? fallbacks[color];
+  const palette = theme.palette[color] as { main: string; mainChannel?: string };
+  return vars?.mainChannel ?? palette.mainChannel ?? channelFor(palette.main);
 }
 
 // =============================================================================

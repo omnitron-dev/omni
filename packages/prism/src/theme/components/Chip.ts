@@ -14,6 +14,7 @@ import type { ComponentsConfig } from '../../types/theme.js';
 import { chipClasses } from '@mui/material/Chip';
 
 import { getDensityMultiplier } from './theme-utils.js';
+import { semanticSurfaceStyles } from '../semantic-surface.js';
 
 // =============================================================================
 // MODULE AUGMENTATION
@@ -54,10 +55,7 @@ type ChipVariants = ComponentsVariants<Theme>['MuiChip'];
 const softVariants = [
   ...chipColors.map((color) => ({
     props: (props: ChipProps) => props.variant === 'soft' && props.color === color,
-    style: ({ theme }: { theme: Theme }) => ({
-      backgroundColor: `rgba(var(--prism-${color}-main-channel, 51 133 240) / 0.16)`,
-      color: theme.vars?.palette[color]?.dark || theme.palette[color].dark,
-    }),
+    style: ({ theme }: { theme: Theme }) => semanticSurfaceStyles(theme, color),
   })),
   // Neutral soft variant
   {

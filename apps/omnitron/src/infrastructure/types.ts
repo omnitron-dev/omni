@@ -235,6 +235,8 @@ export interface InfrastructureConfig {
 export type ContainerStatus = 'not_found' | 'created' | 'running' | 'paused' | 'restarting' | 'exited' | 'dead';
 
 export interface ContainerState {
+  /** Actual Docker HostConfig values, not the desired-spec label. Missing means unverified. */
+  resources?: { memoryBytes: number; memoryReservationBytes: number; nanoCpus: number; shmBytes: number; cpuQuota: number; cpuPeriod: number } | undefined;
   /** Read-only reason returned by the recipient for direct container lifecycle operations. */
   lifecycleRestriction?: string;
   /** Actual mounts from Docker inspection, used to verify legacy instance ownership. */
@@ -306,9 +308,13 @@ export interface SecretRef {
 }
 
 export interface ResourceLimits {
-  memory?: string; // e.g., '2gb'
+  /** Binary Docker units (e.g. '2gb'); zero removes the hard RAM limit, not swap. */
+  memory?: string;
+  /** Soft reservation, not a hard cap. */
   memoryReservation?: string;
+  /** Non-negative decimal CPUs, at nanocpu precision; zero is unlimited. */
   cpus?: number;
+  /** Zero uses the daemon default. Top-level docker.shmSize takes precedence. */
   shmSize?: string;
 }
 

@@ -13,6 +13,86 @@ import { CONFIG_ROOT_PREFIX } from './shipped-config.js';
 import { nativeHealthCheck } from './health-recovery.js';
 import type { ContainerState, ContainerStatus, ResolvedContainer } from './types.js';
 
+type NativeResources = NonNullable<ContainerState['resources']>;
+
+// Docker RAMInBytes units are binary, case insensitive, with optional b/ib.
+// Normalize once so argv, desired identity and native inspection agree.
+function memoryBytes(value: unknown, field: string): number {
+  if (typeof value !== 'string') throw new Error(`${field} must be a Docker memory size`);
+  const match = /^(\d+(?:\.\d*)?|\.\d+) ?(b|[kmgtp](?:i?b)?)?$/i.exec(value);
+  if (!match) throw new Error(`${field} must be a non-negative Docker memory size`);
+  const unit = match[2]?.[0]?.toLowerCase();
+  const power = unit && unit !== 'b' ? 'kmgtp'.indexOf(unit) + 1 : 0;
+  const bytes = Math.trunc(Number(match[1]) * (power > 0 ? 1024 ** power : 1));
+  if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Error(`${field} exceeds exact byte representation`);
+  return bytes;
+}
+
+/** Pure validation: called before network, volume, image or container mutations. */
+export function containerResources(config: ResolvedContainer): Partial<NativeResources> {
+  const limits = config.resources;
+  if (limits !== undefined && (limits === null || typeof limits !== 'object' || Array.isArray(limits)))
+    throw new Error('resources must be an object');
+  const out: Partial<NativeResources> = {};
+  if (limits?.memory !== undefined) out.memoryBytes = memoryBytes(limits.memory, 'resources.memory');
+  if (limits?.memoryReservation !== undefined) out.memoryReservationBytes = memoryBytes(limits.memoryReservation, 'resources.memoryReservation');
+  if (limits?.cpus !== undefined) {
+    if (typeof limits.cpus !== 'number' || !Number.isFinite(limits.cpus) || limits.cpus < 0)
+      throw new Error('resources.cpus must be finite and non-negative');
+    // Docker parses the decimal spelling as an exact rational, not float * 1e9.
+    const [coefficient, exponent = '0'] = String(limits.cpus).toLowerCase().split('e');
+    const [whole, fraction = ''] = coefficient!.split('.');
+    const digits = BigInt(whole! + fraction), scale = 9 + Number(exponent) - fraction.length;
+    const divisor = scale < 0 ? 10n ** BigInt(-scale) : 1n;
+    const nano = scale < 0 ? digits / divisor : digits * 10n ** BigInt(scale);
+    if (digits % divisor !== 0n || nano > BigInt(Number.MAX_SAFE_INTEGER))
+      throw new Error('resources.cpus must be exactly representable in nano CPUs');
+    out.nanoCpus = Number(nano);
+  }
+  // Validate both declarations, preserving the existing top-level override.
+  const nested = limits?.shmSize === undefined ? undefined : memoryBytes(limits.shmSize, 'resources.shmSize');
+  const shm = config.shmSize === undefined ? nested : memoryBytes(config.shmSize, 'shmSize');
+  if (shm !== undefined) {
+    out.shmBytes = shm;
+  }
+  for (const value of [out.memoryBytes, out.memoryReservationBytes]) {
+    if (value !== undefined && value > 0 && value < 6 * 1024 ** 2) throw new Error('Positive memory limits require at least 6 MiB');
+  }
+  if (out.memoryBytes && out.memoryReservationBytes !== undefined && out.memoryReservationBytes > out.memoryBytes)
+    throw new Error('resources.memoryReservation cannot exceed resources.memory');
+  return out;
+}
+
+function resourceArgs(resources: Partial<NativeResources>): string[] {
+  const args: string[] = [];
+  if (resources.memoryBytes !== undefined) args.push('--memory', String(resources.memoryBytes));
+  if (resources.memoryReservationBytes !== undefined) args.push('--memory-reservation', String(resources.memoryReservationBytes));
+  if (resources.nanoCpus !== undefined) {
+    const nano = BigInt(resources.nanoCpus);
+    args.push('--cpus', `${nano / 1_000_000_000n}.${String(nano % 1_000_000_000n).padStart(9, '0')}`);
+  }
+  if (resources.shmBytes !== undefined) args.push('--shm-size', String(resources.shmBytes));
+  return args;
+}
+
+function observedResources(info: { HostConfig?: Record<string, unknown> }): NativeResources | undefined {
+  const h = info.HostConfig;
+  if (!h || ![h['Memory'], h['MemoryReservation'], h['NanoCpus'], h['ShmSize'], h['CpuPeriod']].every(n => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0) ||
+      typeof h['CpuQuota'] !== 'number' || !Number.isSafeInteger(h['CpuQuota'])) return undefined;
+  return { memoryBytes: h['Memory'] as number, memoryReservationBytes: h['MemoryReservation'] as number,
+    nanoCpus: h['NanoCpus'] as number, shmBytes: h['ShmSize'] as number, cpuQuota: h['CpuQuota'], cpuPeriod: h['CpuPeriod'] as number };
+}
+
+/** Labels record intent; Docker HostConfig records the actual enforced limits. */
+export function containerResourcesMatch(config: ResolvedContainer, actual: ContainerState): boolean {
+  return Object.entries(containerResources(config)).every(([key, value]) => {
+    // Zero shm asks Docker for its daemon-configurable default, not a zero-byte mount.
+    if (key === 'shmBytes' && value === 0) return actual.resources !== undefined;
+    if (key === 'nanoCpus' && (actual.resources?.cpuQuota === undefined || actual.resources.cpuQuota > 0)) return false;
+    return actual.resources?.[key as keyof NativeResources] === value;
+  });
+}
+
 /** Label carrying the desired-spec fingerprint, used for config-drift detection. */
 export const SPEC_HASH_LABEL = 'omnitron.spec-hash';
 
@@ -28,6 +108,7 @@ export const SPEC_HASH_LABEL = 'omnitron.spec-hash';
  * being silently ignored because the image is unchanged.
  */
 export function containerSpecHash(config: ResolvedContainer): string {
+  const resources = containerResources(config);
   const sortedEnv = Object.keys(config.environment)
     .sort()
     .map((k) => [k, config.environment[k]]);
@@ -62,6 +143,7 @@ export function containerSpecHash(config: ResolvedContainer): string {
     // is on the old one, and its name resolves for nobody.
     network: config.network ?? null,
     restart: config.restart,
+    ...(Object.keys(resources).length ? { resources } : {}),
     // What the mounted config files SAY, which the volume paths above cannot:
     // an nginx.conf rewritten in place has the same path. Only when present,
     // so a container with no config files keeps the hash it was created
@@ -211,6 +293,7 @@ export async function listManagedContainers(options: { orThrow?: boolean; checkN
         healthCheck: nativeHealthCheck(info.State?.Health),
         startedAt: info.State?.StartedAt,
         ports: publishedPorts(info),
+        resources: observedResources(info),
         service: info.Config?.Labels?.['omnitron.service'],
         project: info.Config?.Labels?.['omnitron.project'],
         stack: info.Config?.Labels?.['omnitron.stack'],
@@ -339,6 +422,7 @@ export async function getContainerState(name: string, options: { orThrow?: boole
         healthCheck: nativeHealthCheck(info.State?.Health),
         startedAt: info.State?.StartedAt,
         ports: publishedPorts(info),
+        resources: observedResources(info),
         specHash: info.Config?.Labels?.[SPEC_HASH_LABEL],
         labels: info.Config?.Labels,
         mounts: (info.Mounts ?? []).map((mount: { Source: string; Destination: string }) => ({
@@ -481,6 +565,7 @@ export async function describeBindFailure(
  * Create and start a container from a resolved config.
  */
 export async function createContainer(config: ResolvedContainer): Promise<string> {
+  const resources = containerResources(config);
   // Ensure the managed network exists before we try to attach to it.
   // Idempotent — `docker network create` errors with "already exists"
   // when present, which we treat as success. Doing this here (rather
@@ -564,10 +649,7 @@ export async function createContainer(config: ResolvedContainer): Promise<string
     }
   }
 
-  // SHM size
-  if (config.shmSize) {
-    args.push('--shm-size', config.shmSize);
-  }
+  args.push(...resourceArgs(resources));
 
   // Entrypoint override
   if (config.entrypoint) {
@@ -672,6 +754,14 @@ export async function createContainer(config: ResolvedContainer): Promise<string
   if (config.ports.length > 0 && !(await arePortsPublished(config.name, config.ports))) {
     await cleanFailedCreation(config.name, creation);
     ({ stdout } = await runDocker());
+  }
+
+  if (Object.keys(resources).length) {
+    const actual = await getContainerState(config.name, { orThrow: true, fullId: true });
+    if (!actual || actual.labels?.['omnitron.creation'] !== creation || !containerResourcesMatch(config, actual)) {
+      await cleanFailedCreation(config.name, creation);
+      throw new Error(`Container '${config.name}' does not enforce its declared resource limits`);
+    }
   }
 
   const output = (stdout ?? '').trim();

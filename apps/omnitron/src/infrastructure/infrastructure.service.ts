@@ -45,6 +45,8 @@ import {
   waitForHealthy,
   createVolume,
   containerSpecHash,
+  containerResources,
+  containerResourcesMatch,
 } from './container-runtime.js';
 import { summariseProvisioning, describeProvisioning, retainProvisioningObservation } from './provisioning-outcome.js';
 import {
@@ -204,6 +206,7 @@ export class InfrastructureService {
     }
     this.normalizedServices = normalizedServices;
     this.desiredContainers = resolveInfrastructure(config, normalizedServices, serviceOverrides);
+    for (const desired of this.desiredContainers) containerResources(desired);
     this.omnitronPgContainer = resolveOmnitronPg();
   }
 
@@ -227,6 +230,7 @@ export class InfrastructureService {
    */
   @RecoveryMutation()
   addAppContainers(containers: ResolvedContainer[]): void {
+    for (const desired of containers) containerResources(desired);
     if (this.monitoringRelinquished) throw new Error('Infrastructure monitoring ownership has been relinquished');
     if (this.ownershipFrozen) throw new Error('Infrastructure ownership is frozen');
     for (const c of containers) {
@@ -296,6 +300,7 @@ export class InfrastructureService {
   }
 
   private async provisionOwned(): Promise<InfrastructureState> {
+    for (const desired of [...this.desiredContainers, ...this.controlPlaneContainers()]) containerResources(desired);
     // 1. Verify Docker is available
     if (!(await isDockerAvailable())) {
       throw new Error(
@@ -506,7 +511,7 @@ export class InfrastructureService {
         const actual = await getContainerState(name);
         const labels = desired.labels;
         if (!labels['omnitron.project'] || !labels['omnitron.stack'] || labels['omnitron.managed'] !== 'true' ||
-            actual?.status !== 'running' || actual.networkAttached === false || actual.specHash !== containerSpecHash(desired) ||
+            actual?.status !== 'running' || actual.networkAttached === false || actual.specHash !== containerSpecHash(desired) || !containerResourcesMatch(desired, actual) ||
             Object.entries(labels).some(([key, value]) => actual.labels?.[key] !== value)) {
           throw new Error(`Cannot adopt service without matching running native ownership and spec: ${name}`);
         }
@@ -619,7 +624,7 @@ export class InfrastructureService {
       // shape for rollback, while comparing a full prior state ID when present.
       const matches = (id: string | null | undefined) => id?.length === 12
         ? actual.containerId?.startsWith(id) : id === actual.containerId;
-      if (!actual.containerId || actual.specHash !== containerSpecHash(desired) ||
+      if (!actual.containerId || actual.specHash !== containerSpecHash(desired) || !containerResourcesMatch(desired, actual) ||
           (expected && !matches(expected.get(desired.name))) ||
           (previous?.containerId && !matches(previous.containerId)) ||
           Object.entries(desired.labels).some(([key, value]) => actual.labels?.[key] !== value)) {
@@ -1048,8 +1053,12 @@ export class InfrastructureService {
     desired: ResolvedContainer,
     actual: ContainerState | null
   ): ReconcileAction {
+    containerResources(desired);
     if (!actual) {
       return { type: 'create', service: desired.name, config: desired };
+    }
+    if (!containerResourcesMatch(desired, actual)) {
+      return { type: 'recreate', service: desired.name, config: desired, reason: 'resource limits differ from Docker inspection' };
     }
 
     if (actual.status === 'running') {
@@ -1136,6 +1145,7 @@ export class InfrastructureService {
   }
 
   private async createAndStart(desired: ResolvedContainer): Promise<void> {
+    containerResources(desired);
     // Ensure volumes exist
     for (const vol of desired.volumes) {
       if (!vol.source.startsWith('/') && !vol.source.startsWith('.')) {

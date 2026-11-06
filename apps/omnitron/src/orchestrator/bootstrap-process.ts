@@ -890,25 +890,19 @@ class BootstrapProcess {
 
     // Mismatch — produce a high-signal error.
     const msg =
-      `Titan package identity mismatch detected between omnitron daemon and app '${this.definition?.name ?? '<unknown>'}'.\n\n` +
-      `  Daemon resolves @omnitron-dev/titan from:\n    ${daemonTitanRoot}\n\n` +
+      `Titan package identity mismatch detected between the bootstrap adapter and app '${this.definition?.name ?? '<unknown>'}'.\n\n` +
+      `  Bootstrap adapter resolves @omnitron-dev/titan from:\n    ${daemonTitanRoot}\n\n` +
       `  App   resolves @omnitron-dev/titan from:\n    ${appTitanRoot}\n\n` +
       `These are different physical installations, so the 'Container' class identity differs.\n` +
       `Provider injections like @Inject(Container) (used internally by titan-scheduler, titan-events,\n` +
       `etc.) will fail with the cryptic message "Dependency 'Container' not found".\n\n` +
       `How to fix:\n` +
-      `  1. Ensure the daemon and the app are using the SAME @omnitron-dev/titan installation.\n` +
-      `  2. If you are running omnitron from a local monorepo while the app installs published\n` +
-      `     versions, add pnpm overrides in the app project's package.json:\n\n` +
-      `       "pnpm": {\n` +
-      `         "overrides": {\n` +
-      `           "@omnitron-dev/titan": "link:<path-to-omni>/packages/titan",\n` +
-      `           "@omnitron-dev/omnitron": "link:<path-to-omni>/apps/omnitron",\n` +
-      `           "@omnitron-dev/titan-scheduler": "link:<path-to-omni>/packages/titan-scheduler",\n` +
-      `           ...other @omnitron-dev/* packages used by the app\n` +
-      `         }\n` +
-      `       }\n\n` +
-      `  3. After updating overrides run 'pnpm install' in the app project.`;
+      `  1. Restore a coherent application dependency installation: its Omnitron adapter and\n` +
+      `     Titan must come from the same aligned SDK. Use the project's frozen lockfile.\n` +
+      `  2. Restart the application through Omnitron so development entry points are rebuilt.\n` +
+      `  3. If the SDK changed under a resident owner, that owner must support fresh runtime\n` +
+      `     resolution. Otherwise restore the previous SDK or schedule an owner update.\n` +
+      `The controller and other applications can keep their own isolated SDK installations.`;
     throw new Error(msg);
   }
 }

@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { extract, list } from 'tar';
 import { applicationBootstrapRuntime } from '../orchestrator/application-runtime.js';
+import { resolveApplicationBootstrapRuntime } from '../orchestrator/application-runtime-resolution.js';
 import { shellEscape } from '../shared/shell-escape.js';
 import { CLOSURE_FILE } from './application-closure.js';
 import { RELEASE_RECEIPT, releaseTreeDigest } from './runtime-provenance.js';
@@ -90,7 +91,7 @@ export async function verifyFrozenApplication(root: string, launch: ReleaseLaunc
   if (launch.mode === 'bootstrap') {
     // Boot via the same adapter resolution as the supervisor, without a fallback to its SDK.
     const adapter = await fs.realpath(createRequire(file).resolve('@omnitron-dev/omnitron'));
-    if (!inside(root, adapter) || !inside(root, await fs.realpath(applicationBootstrapRuntime(file, adapter))))
+    if (!inside(root, adapter) || !inside(root, await fs.realpath(await applicationBootstrapRuntime(file, adapter))))
       throw Error('Frozen release must supply its own aligned Omnitron adapter');
   }
   return file;
@@ -127,7 +128,7 @@ const digest=${digest.toString()},componentPath=${componentPath.toString()},insi
 const assertFrozenLaunch=${assertFrozenLaunch.toString()};
 const assertFrozenDirectory=${assertFrozenDirectory.toString()},frozenMember=${frozenMember.toString()};
 const extractFrozenArchive=${extractFrozenArchive.toString()},releaseTreeDigest=${releaseTreeDigest.toString()};
-const applicationBootstrapRuntime=((fs)=>(${applicationBootstrapRuntime.toString()}))(fsSync);
+const applicationBootstrapRuntime=((fs)=>(${resolveApplicationBootstrapRuntime.toString()}))(fsSync);
 const targetRuntime=${targetRuntime.toString()},assertReleaseTarget=${assertReleaseTarget.toString()},verifyFrozenApplication=${verifyFrozenApplication.toString()};
 const assertNoReleaseMetadata=${assertNoReleaseMetadata.toString()},writeInstalledReleaseReceipt=${writeInstalledReleaseReceipt.toString()};
 const root=${JSON.stringify(directory)},archive=path.join(root,${JSON.stringify(archiveName)}),origin=${JSON.stringify(origin)};

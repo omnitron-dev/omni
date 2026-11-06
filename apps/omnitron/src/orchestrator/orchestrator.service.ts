@@ -446,7 +446,7 @@ export class OrchestratorService extends EventEmitter {
     this.resolveTopologyReady();
   }
 
-  private bootstrapRuntime(bootstrap: string): string {
+  private async bootstrapRuntime(bootstrap: string): Promise<string> {
     return this.ownerOptions.applicationRuntime ? applicationBootstrapRuntime(bootstrap, BOOTSTRAP_PROCESS_PATH) : BOOTSTRAP_PROCESS_PATH;
   }
 
@@ -2543,6 +2543,9 @@ export class OrchestratorService extends EventEmitter {
     topology: IProcessEntry[],
     buildResult?: BuildResult
   ): Promise<void> {
+    // One fresh, aligned adapter for every pool and single process in this
+    // application generation. Resolve before allocating topology resources.
+    const runtime = await this.bootstrapRuntime(bootstrapAbsPath);
     const policy = buildRestartPolicy(entry, config);
 
     const needsRouting = topology.some(proc => proc.topology?.expose === true || proc.topology?.access?.length);
@@ -2645,7 +2648,7 @@ export class OrchestratorService extends EventEmitter {
       );
 
       // pm.pool() returns a Proxy wrapping ProcessPool — execute() dispatches to pool workers
-      const pool = await this.pm.pool(this.bootstrapRuntime(bootstrapAbsPath), poolOptions) as unknown as
+      const pool = await this.pm.pool(runtime, poolOptions) as unknown as
         ProcessPool<unknown> & { execute(method: string, ...args: unknown[]): Promise<unknown> };
       poolNames.push(procEntry.name);
 
@@ -2712,7 +2715,7 @@ export class OrchestratorService extends EventEmitter {
 
       children.push({
         name: `${entry.name}/${procEntry.name}`,
-        process: this.bootstrapRuntime(bootstrapAbsPath),
+        process: runtime,
         spawnOptions: spawnOpts,
         critical: procEntry.critical ?? entry.critical ?? false,
       });
@@ -2869,7 +2872,7 @@ export class OrchestratorService extends EventEmitter {
 
     const childConfig: ISupervisorChildConfig = {
       name: entry.name,
-      process: this.bootstrapRuntime(bootstrapAbsPath),
+      process: await this.bootstrapRuntime(bootstrapAbsPath),
       spawnOptions: spawnOpts,
       critical: entry.critical ?? false,
     };

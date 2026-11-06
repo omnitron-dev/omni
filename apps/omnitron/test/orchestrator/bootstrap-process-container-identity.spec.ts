@@ -149,9 +149,10 @@ describe('BootstrapProcess.assertContainerIdentity', () => {
       // Must mention the offending package and both paths
       expect(msg).toContain('@omnitron-dev/titan');
       expect(msg).toContain(appTitanPath);
-      // Must include actionable guidance — the pnpm overrides recipe is the
-      // primary fix path so it MUST appear in the message verbatim.
-      expect(msg).toMatch(/pnpm.*overrides/i);
+      // Repair the application's own graph without coupling it to a dev SDK.
+      expect(msg).toContain('application dependency installation');
+      expect(msg).toContain('frozen lockfile');
+      expect(msg).not.toContain('link:<path-to-omni>');
       expect(msg).toContain('mismatched-app'); // app name woven into the error
     });
   });

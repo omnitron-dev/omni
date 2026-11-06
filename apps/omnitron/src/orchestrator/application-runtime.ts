@@ -1,23 +1,21 @@
-import fs from 'node:fs';
 import path from 'node:path';
-import { createRequire } from 'node:module';
+import { readInFreshProcess, moduleReaderEntry } from '../shared/fresh-module-reader.js';
 
 /** Keep an application's Titan/DI identity independent of the controller's release. */
-export function applicationBootstrapRuntime(bootstrap: string, fallback: string): string {
-  const request = createRequire(bootstrap);
-  let entry: string;
-  try { entry = request.resolve('@omnitron-dev/omnitron'); }
-  catch {
-    // A standalone app can use the owner's adapter if both share Titan.
-    const owner = createRequire(fallback).resolve('@omnitron-dev/titan');
-    const application = request.resolve('@omnitron-dev/titan');
-    if (fs.realpathSync(owner) === fs.realpathSync(application)) return fallback;
-    throw new Error('The application uses a different Titan runtime. Install an aligned @omnitron-dev/omnitron adapter with the application before starting it.');
+export async function applicationBootstrapRuntime(bootstrap: string, fallback: string): Promise<string> {
+  // createRequire() shares Node's resolution and realpath caches. Recreating
+  // the require function does not observe a replaced pnpm link or package.json
+  // in a resident owner. Use the same bounded reader as application metadata;
+  // never clear global loader internals or retain another module graph here.
+  const adapter = await readInFreshProcess({
+    entryPath: moduleReaderEntry(import.meta.url, 'application-runtime-child'),
+    args: [bootstrap, fallback],
+    timeoutMs: 10_000,
+    label: 'the current application runtime',
+  });
+  if (typeof adapter !== 'string' || !path.isAbsolute(adapter)) {
+    throw new Error('The application runtime reader returned an invalid adapter path');
   }
-  const adapter = path.join(path.dirname(entry), 'orchestrator/bootstrap-process.js');
-  if (!fs.statSync(adapter).isFile()) throw new Error('The application Omnitron package has no compiled bootstrap adapter');
-  const expected = request.resolve('@omnitron-dev/titan');
-  const actual = createRequire(adapter).resolve('@omnitron-dev/titan');
-  if (fs.realpathSync(expected) !== fs.realpathSync(actual)) throw new Error('The application and its Omnitron adapter resolve different Titan instances; align their installed dependencies');
   return adapter;
 }
+

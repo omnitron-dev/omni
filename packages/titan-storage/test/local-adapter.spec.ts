@@ -5,7 +5,7 @@
  * Uses temporary directories for isolation.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
@@ -16,6 +16,57 @@ import type {
   CompletedPart,
 } from '../src/adapter.interface.js';
 import { realLocalAdapter } from './real-adapters.js';
+
+describe('local storage initialization boundary', () => {
+  let directory: string;
+  beforeEach(async () => { directory = await fs.mkdtemp(path.join(os.tmpdir(), 'storage-initialization-')); });
+  afterEach(async () => { await fs.rm(directory, { recursive: true, force: true }); });
+
+  it('does not create storage directories when an unused adapter is registered', async () => {
+    await realLocalAdapter(path.join(directory, 'unused', 'objects'));
+    expect(await fs.readdir(directory)).toEqual([]);
+  });
+
+  it('initializes one store for concurrent first operations', async () => {
+    const root = path.join(directory, 'objects');
+    const storage = await realLocalAdapter(root);
+    await Promise.all(Array.from({ length: 16 }, (_, index) => storage.put(`${index}.txt`, Buffer.from('x'), {
+      contentType: 'text/plain', contentLength: 1,
+    })));
+    expect((await storage.list()).objects).toHaveLength(16);
+    expect(await storage.getStorageInfo()).toEqual({ usedBytes: 16, objectCount: 16 });
+  });
+
+  it.each(['list', 'getStorageInfo'] as const)('initializes an empty store on first %s', async method => {
+    const root = path.join(directory, 'objects');
+    const storage = await realLocalAdapter(root);
+    await storage[method]();
+    expect((await fs.stat(root)).isDirectory()).toBe(true);
+    expect(await fs.readdir(root)).toEqual([]);
+  });
+
+  it('reports failed initialization to concurrent callers and permits a repaired store to retry', async () => {
+    const blocker = path.join(directory, 'mount');
+    await fs.writeFile(blocker, 'not a directory');
+    const storage = await realLocalAdapter(path.join(blocker, 'objects'));
+    const results = await Promise.allSettled([storage.list(), storage.getStorageInfo(), storage.exists('missing')]);
+    expect(results.every(result => result.status === 'rejected')).toBe(true);
+    for (const result of results) if (result.status === 'rejected') expect(result.reason.code).toBe('ENOTDIR');
+    await fs.unlink(blocker);
+    await storage.put('recovered', Buffer.from('x'), { contentType: 'text/plain', contentLength: 1 });
+    expect(await storage.exists('recovered')).toBe(true);
+  });
+
+  it('distinguishes missing objects from corrupt metadata and unsafe paths', async () => {
+    const root = path.join(directory, 'objects');
+    const storage = await realLocalAdapter(root);
+    expect(await storage.exists('absent')).toBe(false);
+    await fs.writeFile(path.join(root, 'broken.meta.json'), '{');
+    await expect(storage.exists('broken')).rejects.toMatchObject({ cause: expect.any(SyntaxError) });
+    await fs.symlink(directory, path.join(root, 'linked'));
+    await expect(storage.exists('linked/object')).rejects.toThrow('symbolic link');
+  });
+});
 
 
 // Helper functions

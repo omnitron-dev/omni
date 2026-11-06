@@ -9,7 +9,13 @@ Import `StorageModule.forRoot({ backend: 's3' })` and inject `STORAGE_ADAPTER`.
 Titan config supplies `storage.s3` (endpoint, bucket, credentials, region,
 forcePathStyle and connection limits); the adapter also supports Omnitron's
 `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET` environment convention.
-The local backend reads `storage.local.basePath`. Provide Titan config and logger
+The local backend reads `storage.local.basePath` (default `./data/storage`, relative
+to the application's working directory). Registration captures this path without
+creating directories. The first storage operation initializes the root; concurrent
+calls share initialization, and a failed initialization can be retried after the
+underlying problem is repaired. Permission, invalid metadata and I/O errors remain
+errors, including in existence and usage checks; only missing objects mean `false`.
+Provide Titan config and logger
 modules. Only the selected backend is instantiated; objects remain private until
 an application explicitly grants access. Applications own authorization, metadata
 transactions, content validation, quota policy and retention.

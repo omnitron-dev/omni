@@ -49,6 +49,7 @@ interface MultipartState {
 @Injectable()
 export class LocalAdapter implements StorageAdapter {
   private basePath!: string;
+  private rootReady: Promise<void> | undefined;
   private multipartUploads = new Map<string, MultipartState>();
 
   constructor(
@@ -58,15 +59,30 @@ export class LocalAdapter implements StorageAdapter {
 
   async onInit() {
     const localConfig = this.config.get('storage.local') as LocalConfig;
-    this.basePath = localConfig?.basePath || './data/storage';
-    await fs.mkdir(this.basePath, { recursive: true });
-    this.basePath = await fs.realpath(this.basePath);
+    // Capture the application's directory now, but registering an unused
+    // adapter must not write to disk (for example when S3 is selected).
+    this.basePath = path.resolve(localConfig?.basePath || './data/storage');
+  }
 
-    this.loggerModule.logger.info({ basePath: this.basePath }, 'Local adapter initialized');
+  private ensureRoot(): Promise<void> {
+    if (!this.rootReady) {
+      this.rootReady = (async () => {
+        await fs.mkdir(this.basePath, { recursive: true });
+        this.basePath = await fs.realpath(this.basePath);
+        this.loggerModule.logger.info({ basePath: this.basePath }, 'Local adapter initialized');
+      })().catch(error => {
+        // A failed mount/permission check is reported to every waiting caller.
+        // A later operation can retry after the operator repairs the store.
+        this.rootReady = undefined;
+        throw error;
+      });
+    }
+    return this.rootReady;
   }
 
   /** Storage owns this directory. Never follow symbolic links below its configured root. */
   private async resolveUnderRoot(relative: string): Promise<string> {
+    await this.ensureRoot();
     const full = path.resolve(this.basePath, relative);
     const fromRoot = path.relative(this.basePath, full);
     if (path.isAbsolute(relative) || path.isAbsolute(fromRoot) || fromRoot === '..' || fromRoot.startsWith('..' + path.sep)) {
@@ -116,7 +132,9 @@ export class LocalAdapter implements StorageAdapter {
       const content = await fs.readFile(metaPath, 'utf-8');
       return JSON.parse(content);
     } catch (_error) {
-      throw new Error(`Metadata not found for key: ${key}`, { cause: _error });
+      const message = (_error as NodeJS.ErrnoException).code === 'ENOENT'
+        ? `Metadata not found for key: ${key}` : `Cannot read metadata for key: ${key}`;
+      throw new Error(message, { cause: _error });
     }
   }
 
@@ -313,6 +331,7 @@ export class LocalAdapter implements StorageAdapter {
       }
     }
 
+    await this.ensureRoot();
     let last: string | undefined;
     for await (const key of keys(this.basePath)) {
       const split = delimiter ? key.indexOf(delimiter, prefix.length) : -1;
@@ -334,8 +353,10 @@ export class LocalAdapter implements StorageAdapter {
     try {
       await this.head(key);
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      const cause = (error as Error).cause ?? error;
+      if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw error;
     }
   }
 
@@ -482,6 +503,7 @@ export class LocalAdapter implements StorageAdapter {
   }
 
   async getStorageInfo(): Promise<StorageInfo> {
+    await this.ensureRoot();
     let usedBytes = 0;
     let objectCount = 0;
 
@@ -500,9 +522,9 @@ export class LocalAdapter implements StorageAdapter {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
         this.loggerModule.logger.warn(
           { err: error, dir },
-          'Could not read directory while computing storage usage — the reported total is incomplete'
+          'Could not compute storage usage because a directory could not be read'
         );
-        return;
+        throw error;
       }
       for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);

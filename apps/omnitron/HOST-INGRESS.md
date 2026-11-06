@@ -62,6 +62,12 @@ Under the existing host deployment lease:
 
 To remove one owner, pass `{ "owner": {...}, "expectedGeneration": "..." }` to `omnitron --json infra ingress remove removal.json` / `removeHostIngress`. The remaining owners remain in the next generation. Removing the final owner leaves an empty, rejecting host proxy. Decommissioning the host itself is an explicit administrator operation.
 
+### Maintenance during an application transition
+
+Use the same owner transaction to hold a tenant temporarily: preserve its domains, TLS and reserved ports, and replace each route's locations with `[{ "path": "/", "deny": 503 }]`. Validate and apply with the current generation and prepared owner revision **before** changing application services or static mounts. HTTPS requests then receive `503`, `Retry-After: 60` and `Cache-Control: no-store`; HTTP still redirects to HTTPS. A root deny cannot contain overriding child locations. Other owners keep their routes, and no application maintenance implementation or separate controller is required.
+
+Retain the prior generation and maintenance owner revision. After private readiness and static-asset acceptance, publish the verified ready routes through the same CAS API. On a failed transition, keep maintenance active until application recovery succeeds, then use `restoreHostIngressOwner` with the saved prior generation and the exact current maintenance revision. An ingress restore only changes routing; it does not restore application processes, data or volumes. Do not reopen traffic to an unhealthy rollback target. Maintenance remains selected across daemon restarts and has no automatic expiry; an interrupted deployment must resume from observed ingress state.
+
 ## Publication and recovery
 
 Cross-process publication uses a Linux kernel lock whose holding subprocess exits when its parent pipe closes. There is no stale PID-file deletion. Generations and TLS objects are immutable and content-checked. A candidate is written and synced, validated with `nginx -t`, and then selected by an atomic symlink rename with directory fsync. The durable journal records the previous and candidate generations. A reload/start is successful only after a fresh request to the loopback control endpoint observes the candidate generation.

@@ -13,7 +13,8 @@ export interface HostIngressOwner { project: string; stack: string; app: string 
 export interface HostIngressUpstream { host: '127.0.0.1' | '::1'; port: number }
 export type HostIngressLocation =
   | { path: string; upstream: HostIngressUpstream; stripPrefix: boolean }
-  | { path: string; deny: 403 | 404 | 410 };
+  /** 503 is a temporary maintenance response with no-store and Retry-After: 60. */
+  | { path: string; deny: 403 | 404 | 410 | 503 };
 export interface HostIngressRoute {
   domains: string[];
   /** Request body limit; defaults to 16 MiB, maximum 128 MiB. */

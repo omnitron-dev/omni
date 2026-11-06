@@ -139,6 +139,28 @@ describe('host ingress ownership and publication', () => {
 });
 
 describe('prepared revisions and immutable owner restoration', () => {
+  it('holds one tenant in maintenance and restores its exact routes without changing its neighbour', async () => {
+    const first = await service.apply(app());
+    const second = await service.apply({ ...app('b', 4710), expectedGeneration: first.generation });
+    const before = await service.status();
+    const request = app();
+    request.expectedGeneration = second.generation;
+    request.routes[0]!.locations = [{ path: '/', deny: 503 }];
+    const planned = await service.validate(request);
+    expect((await service.status()).generation).toBe(second.generation);
+    const held = await service.apply({ ...request, preparedOwnerRevision: planned.ownerRevision });
+    const during = await service.status();
+    expect(during.applications[0]!.routes[0]!.locations).toEqual([{ path: '/', deny: 503 }]);
+    expect(during.applications[0]!.reservedPorts).toEqual(before.applications[0]!.reservedPorts);
+    expect(during.applications[1]).toEqual(before.applications[1]);
+    await expect(service.restoreOwner({ owner: request.owner, fromGeneration: second.generation,
+      expectedGeneration: second.generation, expectedOwnerRevision: held.ownerRevision })).rejects.toThrow('generation conflict');
+    const restored = await service.restoreOwner({ owner: request.owner, fromGeneration: second.generation,
+      expectedGeneration: held.generation, expectedOwnerRevision: held.ownerRevision });
+    expect((await service.status()).applications).toEqual(before.applications);
+    expect(restored.ownerRevision).toBe(first.ownerRevision);
+    expect(restored.observedGeneration).toBe(restored.generation);
+  });
   it('validates natively without activation, then binds publication to its planned content', async () => {
     const request = app(); const planned = await service.validate(request);
     expect(planned.nativeConfigValidated).toBe(true); expect(runtime.events).toEqual(['validate']); expect(runtime.active).toBe(null); expect((await service.status()).generation).toBe(null);
@@ -217,6 +239,29 @@ describe('explicit initial origin takeover and recovery', () => {
 });
 
 describe('closed ingress schema and proxy policy', () => {
+  it('accepts explicit maintenance without allowing proxy bypasses or arbitrary response configuration', () => {
+    const request = app(); request.routes[0]!.locations = [{ path: '/', deny: 503 }];
+    expect(normalizeIngressApplication(request).routes[0]!.locations).toEqual([{ path: '/', deny: 503 }]);
+    for (const location of [
+      { path: '/', deny: 500 }, { path: '/', deny: '503' },
+      { path: '/', deny: 503, upstream: { host: '127.0.0.1', port: 4611 } },
+      { path: '/', deny: 503, stripPrefix: false },
+      { path: '/', deny: 503, headers: { 'Retry-After': '0' } },
+    ]) {
+      expect(() => normalizeIngressApplication({ ...request, routes: [{ ...request.routes[0], locations: [location] }] })).toThrow();
+    }
+    request.routes[0]!.locations.push({ path: '/api/', upstream: { host: '127.0.0.1', port: 4611 }, stripPrefix: false });
+    expect(() => normalizeIngressApplication(request)).toThrow('overriding child');
+  });
+  it('marks both exact and descendant maintenance responses as non-cacheable with a bounded retry hint', async () => {
+    const request = app(); request.routes[0]!.locations[0] = { path: '/netron', deny: 503 };
+    const first = await service.apply(request); const state = await service.status();
+    const rendered = renderHostIngress(settings, { version: 1, sequence: 1, generation: first.generation, applications: state.applications });
+    const response = 'add_header Retry-After "60" always; add_header Cache-Control "no-store" always; return 503;';
+    expect(rendered).toContain(`location = /netron { ${response} }`);
+    expect(rendered).toContain(`location ^~ /netron/ { ${response} }`);
+    expect(rendered).toContain('proxy_pass http://127.0.0.1:4611;');
+  });
   it('rejects remote upstreams, nginx injection, traversal, port conflicts and ambiguous locations', () => {
     const request = app(); (request.routes[0]!.locations[2] as any).upstream.host = '169.254.169.254'; expect(() => normalizeIngressApplication(request)).toThrow('literal loopback');
     for (const name of ['*.example.test', 'a.example.test;return 200', 'a.example.test/evil', '127.0.0.1']) { const r = app(); r.routes[0]!.domains = [name]; expect(() => normalizeIngressApplication(r)).toThrow(); }
@@ -262,9 +307,9 @@ it.skipIf(!process.env['OMNITRON_INGRESS_DOCKER_TEST_IMAGE'])('native OpenResty 
   const directory = path.join(root, 'native'); const docker = new DockerHostIngressRuntime(directory);
   const native = new HostIngressService(directory, docker, lock);
   const ca = await fs.readFile(path.join(certs, 'certificate.pem'));
-  const get = (host: string, url: string) => new Promise<{ code: number; body: string }>((resolve, reject) => {
+  const get = (host: string, url: string) => new Promise<{ code: number; body: string; headers: import('node:http').IncomingHttpHeaders }>((resolve, reject) => {
     const request = https.get({ host: '127.0.0.1', port: 28443, servername: host, path: url, ca, headers: { Host: host }, agent: false, timeout: 2000 }, (response) => {
-      let body = ''; response.on('data', (chunk) => { body += chunk; }); response.on('end', () => resolve({ code: response.statusCode!, body }));
+      let body = ''; response.on('data', (chunk) => { body += chunk; }); response.on('end', () => resolve({ code: response.statusCode!, body, headers: response.headers }));
     }); request.on('error', reject); request.on('timeout', () => request.destroy(new Error('HTTPS probe timed out')));
   });
   try {
@@ -275,13 +320,20 @@ it.skipIf(!process.env['OMNITRON_INGRESS_DOCKER_TEST_IMAGE'])('native OpenResty 
       request.on('error', reject); request.end(Buffer.alloc(bytes));
     });
     expect(await upload(2 * 1024 * 1024)).toBe(200);
-    expect(await get('a.example.test', '/api/site/value')).toEqual({ code: 200, body: 'A:/value' });
+    expect(await get('a.example.test', '/api/site/value')).toMatchObject({ code: 200, body: 'A:/value' });
     expect((await get('a.example.test', '/netron')).code).toBe(404); expect((await get('a.example.test', '/netron/rpc')).code).toBe(404);
     const second = await native.apply({ ...app('b', 28471), expectedGeneration: first.generation });
-    expect(await get('b.example.test', '/hello')).toEqual({ code: 200, body: 'B:/hello' });
+    expect(await get('b.example.test', '/hello')).toMatchObject({ code: 200, body: 'B:/hello' });
     await expect(get('unknown.example.test', '/')).rejects.toThrow();
-    await native.remove({ owner: app().owner, expectedGeneration: second.generation });
-    expect(await get('b.example.test', '/still-live')).toEqual({ code: 200, body: 'B:/still-live' });
+    const maintenance = app('a', 28461); maintenance.routes[0]!.locations = [{ path: '/', deny: 503 }];
+    const held = await native.apply({ ...maintenance, expectedGeneration: second.generation });
+    for (const url of ['/', '/api/site/value', '/netron'])
+      expect(await get('a.example.test', url)).toMatchObject({ code: 503, headers: { 'retry-after': '60', 'cache-control': 'no-store' } });
+    expect(await get('b.example.test', '/during-maintenance')).toMatchObject({ code: 200, body: 'B:/during-maintenance' });
+    const restored = await native.restoreOwner({ owner: maintenance.owner, fromGeneration: second.generation, expectedGeneration: held.generation, expectedOwnerRevision: held.ownerRevision });
+    expect(await get('a.example.test', '/api/site/restored')).toMatchObject({ code: 200, body: 'A:/restored' });
+    await native.remove({ owner: app().owner, expectedGeneration: restored.generation });
+    expect(await get('b.example.test', '/still-live')).toMatchObject({ code: 200, body: 'B:/still-live' });
     await expect(get('a.example.test', '/')).rejects.toThrow();
     const third = await native.status(); const limited = app('b', 28471); limited.routes[0]!.maxBodyBytes = 1024;
     await native.apply({ ...limited, expectedGeneration: third.generation });

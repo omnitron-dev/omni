@@ -75,8 +75,8 @@ export function normalizeIngressApplication(value: unknown): HostIngressApplicat
       const effective = prefix === '/' ? '/' : prefix.replace(/\/$/, '');
       if (seen.has(effective)) throw new Error(`Duplicate location: ${prefix}`); seen.add(effective);
       if ('deny' in loc) {
-        if (![403, 404, 410].includes(loc.deny as number) || 'upstream' in loc || 'stripPrefix' in loc) throw new Error('Invalid deny location');
-        return { path: prefix, deny: loc.deny as 403 | 404 | 410 };
+        if (![403, 404, 410, 503].includes(loc.deny as number) || 'upstream' in loc || 'stripPrefix' in loc) throw new Error('Invalid deny location');
+        return { path: prefix, deny: loc.deny as 403 | 404 | 410 | 503 };
       }
       if (!prefix.endsWith('/') || typeof loc.stripPrefix !== 'boolean') throw new Error('Proxy prefixes end with / and declare stripPrefix');
       const upstream = record(loc.upstream, ['host', 'port'], 'upstream');
@@ -122,8 +122,11 @@ export function renderHostIngress(settings: HostIngressSettings, manifest: HostI
     for (const location of route.locations) {
       if ('deny' in location) {
         const base = location.path.replace(/\/$/, '');
-        if (base) lines.push(`    location = ${base} { return ${location.deny}; }`);
-        lines.push(`    location ^~ ${base}/ { return ${location.deny}; }`); continue;
+        const response = location.deny === 503
+          ? 'add_header Retry-After "60" always; add_header Cache-Control "no-store" always; return 503;'
+          : `return ${location.deny};`;
+        if (base) lines.push(`    location = ${base} { ${response} }`);
+        lines.push(`    location ^~ ${base}/ { ${response} }`); continue;
       }
       const host = location.upstream.host === '::1' ? '[::1]' : location.upstream.host;
       lines.push(`    location ^~ ${location.path} {`, `      proxy_pass http://${host}:${location.upstream.port}${location.stripPrefix ? '/' : ''};`, '      proxy_http_version 1.1;', '      proxy_buffering off;', '      proxy_set_header Host $host;', '      proxy_set_header X-Real-IP $remote_addr;', '      proxy_set_header X-Forwarded-For $remote_addr;', '      proxy_set_header X-Forwarded-Proto $scheme;', '      proxy_set_header Forwarded "";', '      proxy_set_header CF-Connecting-IP "";', '      proxy_set_header Upgrade $http_upgrade;', '      proxy_set_header Connection $ingress_connection;', '      proxy_connect_timeout 5s;', '      proxy_read_timeout 60s;', '    }');

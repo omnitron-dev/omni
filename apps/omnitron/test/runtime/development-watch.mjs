@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { fork } from 'node:child_process';
 import { once } from 'node:events';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -26,7 +27,9 @@ if (nextSdk) {
   assert.ok(nextTitan, 'Next application SDK must resolve its own Titan');
   assert.notEqual(await fs.realpath(nextTitan), await fs.realpath(titan), 'The SDK transition must change physical Titan identity');
 }
-const directory = await fs.mkdtemp('/private/tmp/omni-watch-');
+// Keep Darwin sockets below its shorter UDS path limit; other hosts use their
+// native temporary root, including Linux containers without /private/tmp.
+const directory = await fs.mkdtemp(path.join(process.platform === 'darwin' ? '/private/tmp' : os.tmpdir(), 'omni-watch-'));
 const observed = path.join(directory, 'observed.jsonl');
 const config = { ...DEFAULT_ECOSYSTEM, apps: [] };
 const sources = new Map();

@@ -89,12 +89,20 @@ describe.skipIf(!testPg.ok)('Omnitron migrations (integration)', () => {
   });
 
   it('creates the full schema from an empty database', async () => {
-    const { migrateOmnitronDb } = await import('../../src/database/migration-runner.js');
+    const { migrateOmnitronDb, createOmnitronMigrationRunner } = await import('../../src/database/migration-runner.js');
+    const { migrationIntegrity } = await import('../../src/migration/index.js');
     const { OMNITRON_MIGRATIONS } = await import('../../src/database/migrations/index.js');
 
     const outcome = await migrateOmnitronDb(db);
 
     expect(outcome.applied).toEqual(OMNITRON_MIGRATIONS.map((m) => m.name));
+    const report = await createOmnitronMigrationRunner(db).inspect();
+    expect(migrationIntegrity(report)).toBe('verified');
+    expect(report.pending).toEqual([]);
+    expect(report.drift).toEqual([]);
+    expect(report.unknownChecksums).toEqual([]);
+    expect(report.executed.map(({ name, checksum }) => ({ name, checksum })))
+      .toEqual(OMNITRON_MIGRATIONS.map(({ name, checksum }) => ({ name, checksum })));
 
     const tables = await listTables(db);
     for (const table of EXPECTED_TABLES) {

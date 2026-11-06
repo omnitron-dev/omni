@@ -53,6 +53,11 @@ jobs:
           node test/runtime/installed-runtime-context.mjs dist dist ../.. --reconcile-stack
           pnpm exec vitest run --maxWorkers 2 test/integration/execution-connection.test.ts
           node test/runtime/execution-host.mjs dist
+      - name: Verify fresh daemon migration history through the CLI
+        working-directory: apps/omnitron
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:isolated-ci@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres
+        run: node test/runtime/fresh-migration-history.mjs dist
       - name: Enforce one service identity and authorization decision across Netron transports
         working-directory: packages/titan
         run: >-

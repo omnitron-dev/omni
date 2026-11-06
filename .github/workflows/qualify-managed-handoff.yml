@@ -23,6 +23,16 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 50
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: isolated-ci
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 3s --health-retries 12
     env:
       PREVIOUS: ${{ inputs.previous }}
       CANDIDATE: ${{ inputs.candidate }}
@@ -71,6 +81,12 @@ jobs:
           JS
             )
           done
+      - name: Verify empty metadata through the sealed candidate CLI
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:isolated-ci@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres
+        run: >-
+          node apps/omnitron/test/runtime/fresh-migration-history.mjs
+          "$RUNNER_TEMP/omnitron-handoff-$CANDIDATE/packages/0/dist"
       - name: Upgrade and roll back a development SDK through one resident candidate owner
         run: |
           node apps/omnitron/test/runtime/development-watch.mjs \

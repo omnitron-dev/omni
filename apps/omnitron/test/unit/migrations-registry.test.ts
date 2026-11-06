@@ -11,9 +11,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { describe, it, expect } from 'vitest';
 
 import { OMNITRON_MIGRATIONS } from '../../src/database/migrations/index.js';
+import { SLAVE_MIGRATIONS } from '../../src/database/slave-migrations/index.js';
 
 const migrationsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../src/database/migrations');
 
@@ -47,6 +49,20 @@ describe('OMNITRON_MIGRATIONS registry', () => {
     for (const migration of OMNITRON_MIGRATIONS) {
       expect(typeof migration.up, `${migration.name}.up`).toBe('function');
       expect(typeof migration.down, `${migration.name}.down`).toBe('function');
+    }
+  });
+
+  it('binds procedural migration integrity to source bytes, independent of transpilation', () => {
+    const definitions = [
+      ...OMNITRON_MIGRATIONS.slice(0, 13).map(migration => ({ migration, directory: migrationsDir })),
+      { migration: SLAVE_MIGRATIONS[0]!, directory: path.join(migrationsDir, '../slave-migrations') },
+    ];
+    for (const { migration, directory } of definitions) {
+      const source = fs.readFileSync(path.join(directory, migration.name + '.ts'));
+      expect(migration.checksum, migration.name).toBe(createHash('sha256').update(source).digest('hex'));
+    }
+    for (const migration of [...OMNITRON_MIGRATIONS, ...SLAVE_MIGRATIONS]) {
+      expect(migration.checksum, migration.name).toMatch(/^[a-f0-9]{64}$/);
     }
   });
 });

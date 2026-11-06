@@ -32,6 +32,25 @@ async function open(file = temporary(), maxBufferSize = 1024 * 1024) {
 }
 
 describe('durable replication evidence', () => {
+  it('records new SQLite migration integrity without backfilling historical unknown checksums', async () => {
+    const { createMigrationRunner, migrationIntegrity } = await import('../../src/migration/index.js');
+    const { SLAVE_MIGRATIONS } = await import('../../src/database/slave-migrations/index.js');
+    const inspect = (handle: Kysely<OmnitronDatabase>) =>
+      createMigrationRunner(handle as unknown as Kysely<unknown>, SLAVE_MIGRATIONS).inspect();
+    const { file, storage, db } = await open();
+    const before = await inspect(db);
+    expect(migrationIntegrity(before)).toBe('verified');
+    expect(before.executed.map(row => row.checksum)).toEqual(SLAVE_MIGRATIONS.map(row => row.checksum));
+    await sql`UPDATE migrations SET checksum = NULL`.execute(db);
+    const legacy = await inspect(db);
+    await storage.dispose();
+    const reopened = await open(file);
+    const after = await inspect(reopened.db);
+    expect(after.executed).toEqual(legacy.executed);
+    expect(after.unknownChecksums).toEqual(SLAVE_MIGRATIONS.map(row => row.name));
+    expect(migrationIntegrity(after)).toBe('unverified');
+  });
+
   it('keeps contiguous receipts, actual UTF-8 bytes and last release across restart and retention', async () => {
     const { file, storage, service, append, db } = await open();
     const ids = await append('я', 'two', 'three');

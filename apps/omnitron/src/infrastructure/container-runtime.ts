@@ -10,6 +10,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { CONFIG_ROOT_PREFIX } from './shipped-config.js';
+import { nativeHealthCheck } from './health-recovery.js';
 import type { ContainerState, ContainerStatus, ResolvedContainer } from './types.js';
 
 /** Label carrying the desired-spec fingerprint, used for config-drift detection. */
@@ -207,6 +208,7 @@ export async function listManagedContainers(options: { orThrow?: boolean; checkN
         specHash: info.Config?.Labels?.[SPEC_HASH_LABEL],
         labels: info.Config?.Labels,
         health: mapInspectHealth(info.State?.Health?.Status, info.State?.Status),
+        healthCheck: nativeHealthCheck(info.State?.Health),
         startedAt: info.State?.StartedAt,
         ports: publishedPorts(info),
         service: info.Config?.Labels?.['omnitron.service'],
@@ -334,6 +336,7 @@ export async function getContainerState(name: string, options: { orThrow?: boole
         status: mapInspectStatus(info.State?.Status),
         containerId: options.fullId ? info.Id : info.Id?.slice(0, 12),
         health: mapInspectHealth(info.State?.Health?.Status, info.State?.Status),
+        healthCheck: nativeHealthCheck(info.State?.Health),
         startedAt: info.State?.StartedAt,
         ports: publishedPorts(info),
         specHash: info.Config?.Labels?.[SPEC_HASH_LABEL],

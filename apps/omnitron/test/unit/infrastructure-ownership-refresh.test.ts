@@ -145,12 +145,13 @@ describe('native monitoring ownership refresh', () => {
   it('transfers restart backoff and unhealthy observations without Docker mutations', async () => {
     const redis = desired('redis'), original = service(redis);
     runtime.get.mockResolvedValue(actual(redis));
-    original.unhealthyTicks.set('redis', 1);
+    original.unhealthyEvidence.set('redis', { containerId: '1'.repeat(64), startedAt: '2026-01-01T00:00:00Z', firstObservedAt: Date.now() - 30_000, lastProbeAt: Date.now(), confirmations: 1 });
     original.restartBackoff.set('redis', { failures: 4, nextAttemptAt: Date.now() + 120_000 });
     const checkpoint = await original.prepareHandoff();
     const restored = await InfrastructureService.adoptHandoff(logger, checkpoint);
     const second = await (async () => { restored.resumeAfterHandoff(); return restored.prepareHandoff(); })();
-    expect(second.unhealthyTicks).toEqual(checkpoint.unhealthyTicks);
+    expect(second.unhealthyTicks).toEqual([]);
+    expect(second.unhealthyEvidence).toEqual(checkpoint.unhealthyEvidence);
     expect(second.restartBackoff).toEqual(checkpoint.restartBackoff);
     expect(runtime.create).not.toHaveBeenCalled(); expect(runtime.remove).not.toHaveBeenCalled(); expect(runtime.start).not.toHaveBeenCalled();
     original.dispose(); restored.dispose();
@@ -196,11 +197,15 @@ describe('native monitoring ownership refresh', () => {
     expect(runtime.create).not.toHaveBeenCalled(); expect(svc.getDesiredServices()).toEqual([]);
   });
   it('waits for an already-started unhealthy restart before handing off', async () => {
-    const origin = desired('origin'), svc = service(origin); const removed = deferred<void>();
-    runtime.get.mockResolvedValue(actual(origin, { health: 'unhealthy' }));
-    svc.unhealthyTicks.set('origin', 1); runtime.remove.mockReturnValueOnce(removed.promise);
+    const origin = desired('origin'), svc = service(origin); const removed = deferred<void>(), removing = deferred<void>();
+    const now = Date.now(), startedAt = new Date(now - 120_000).toISOString();
+    runtime.get.mockResolvedValue(actual(origin, { health: 'unhealthy', startedAt,
+      healthCheck: { completedAt: new Date(now).toISOString(), exitCode: 1 } }));
+    svc.unhealthyEvidence.set('origin', { containerId: '1'.repeat(64), startedAt,
+      firstObservedAt: now - 60_000, lastProbeAt: now - 30_000, confirmations: 1 });
+    runtime.remove.mockImplementationOnce(() => { removing.resolve(); return removed.promise; });
     svc.createAndStart = vi.fn().mockResolvedValue(undefined);
-    const sweep = svc.healthSweep(); await Promise.resolve(); expect(runtime.remove).toHaveBeenCalledOnce();
+    const sweep = svc.healthSweep(); await removing.promise; expect(runtime.remove).toHaveBeenCalledOnce();
     const refresh = svc.refreshOwnershipFrom(service()); let done = false; void refresh.then(() => { done = true; });
     await Promise.resolve(); expect(done).toBe(false); removed.resolve(); await sweep; await refresh;
     expect(svc.createAndStart).toHaveBeenCalledOnce(); expect(svc.getDesiredServices()).toEqual([]);

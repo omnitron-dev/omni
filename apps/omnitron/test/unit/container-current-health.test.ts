@@ -42,6 +42,18 @@ describe('current container health', () => {
     });
     expect(await getContainerState('sample-db')).toMatchObject({ status: 'running', health });
   });
+  it('exposes native probe identity without exposing command output', async () => {
+    const completedAt = '2026-11-06T00:00:00Z';
+    adapter.inspectContainer.mockResolvedValue({
+      Id: 'a'.repeat(64), Name: '/sample-db',
+      State: { Status: 'running', StartedAt: '2026-11-05T00:00:00Z', Health: {
+        Status: 'unhealthy', Log: [{ End: completedAt, ExitCode: 1, Output: 'private credentials' }],
+      } },
+    });
+    const state = await getContainerState('sample-db', { fullId: true });
+    expect(state).toMatchObject({ containerId: 'a'.repeat(64), healthCheck: { completedAt, exitCode: 1 } });
+    expect(JSON.stringify(state)).not.toContain('private credentials');
+  });
   it('keeps a real exit failure and its reason even when the last probe was healthy', async () => {
     adapter.inspectContainer.mockResolvedValue({
       Name: '/sample-db',

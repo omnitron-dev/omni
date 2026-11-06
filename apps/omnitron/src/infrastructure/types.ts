@@ -233,6 +233,8 @@ export interface ContainerState {
   /** Published ports as `"80/tcp" -> 9800`. Absent when nothing is published. */
   ports?: Record<string, number> | undefined;
   health?: 'healthy' | 'unhealthy' | 'starting' | 'none' | undefined;
+  /** Last completed native check. Re-reading cached health is not a new failure. */
+  healthCheck?: { completedAt: string; exitCode: number } | undefined;
   startedAt?: string | undefined;
   error?: string | undefined;
   /** Declared databases, extensions and buckets are separate from container liveness. */

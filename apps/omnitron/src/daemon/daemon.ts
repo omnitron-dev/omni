@@ -303,8 +303,13 @@ export class OmnitronDaemon {
   private healthWorkerStartupTimeout = 0;
   /** In-daemon check timer, armed only while the worker is down. */
   private fallbackNodeCheckTimer: NodeJS.Timeout | null = null;
-  /** Set by the shutdown task so nothing schedules work on the way out. */
+  /** Latched when shutdown begins, before any asynchronous cleanup. */
   private isShuttingDown = false;
+  /** app.stop() owns its task pass; only app.shutdown() may be joined here. */
+  private shutdownRequested = false;
+  private readonly startupAbort = new AbortController();
+  private startupWork: Promise<void> | null = null;
+  private healthMonitorStartup: Promise<void> | null = null;
   private leaderElection: import('../cluster/leader-election.js').LeaderElection | null = null;
   private clusterDb?: import('kysely').Kysely<unknown>;
   private configSyncService: any = null;
@@ -458,7 +463,25 @@ export class OmnitronDaemon {
     await this.app.stop({ timeout: 60_000 });
   }
 
-  async start(config: IEcosystemConfig, options?: DaemonStartOptions, daemonConfig?: IDaemonConfig): Promise<void> {
+  /** False means shutdown interrupted boot; callers must not announce readiness. */
+  async start(config: IEcosystemConfig, options?: DaemonStartOptions, daemonConfig?: IDaemonConfig): Promise<boolean> {
+    if (this.startupWork) throw new Error('Daemon startup was already requested');
+    this.startupWork = this.startRuntime(config, options, daemonConfig);
+    try {
+      await this.startupWork;
+      return true;
+    } catch (error) {
+      if (this.shutdownRequested) {
+        // Join Titan's existing shutdown after the raw startup work settles.
+        // The first shutdown task waits for that work, never this wrapper.
+        await this.app?.shutdown(ShutdownReason.Manual);
+      }
+      if (this.startupAbort.signal.aborted && error === this.startupAbort.signal.reason) return false;
+      throw error;
+    }
+  }
+
+  private async startRuntime(config: IEcosystemConfig, options?: DaemonStartOptions, daemonConfig?: IDaemonConfig): Promise<void> {
     this.backendAdmitted = !options?.backendHandoff;
     this.dc = daemonConfig ?? DEFAULT_DAEMON_CONFIG;
     this.watchConfig = options?.backendHandoff?.watchConfig ?? config;
@@ -499,6 +522,12 @@ export class OmnitronDaemon {
       version: CLI_VERSION,
     });
 
+    const loggerModule = await this.app.container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN);
+    const logger = loggerModule.logger;
+    // Install the complete cleanup contract BEFORE Titan installs signal
+    // handlers. A stop during boot must own every resource boot can create.
+    this.registerShutdownTasks(this.app, logger);
+
     // P1-M — install our own SIGHUP handler BEFORE Application's
     // default shutdown handlers attach, so `kill -HUP <daemon>`
     // triggers a config reload (the Unix convention for long-running
@@ -506,7 +535,8 @@ export class OmnitronDaemon {
     // this through the Application's signal manager because that
     // path is wired to `runShutdownTasks()`; we install at the
     // process level and the listener runs first.
-    process.on('SIGHUP', () => {
+    const reloadOnHup = () => {
+      if (this.isShuttingDown) return;
       this.reloadConfigOnHup().catch((err) => {
         // The message already carries which steps applied — printing only
         // `.message` was fine for the load failure and misleading for the
@@ -519,13 +549,17 @@ export class OmnitronDaemon {
           console.warn(`[omnitron]   caused by: ${(cause as Error).stack ?? String(cause)}`);
         }
       });
-    });
+    };
+    process.on('SIGHUP', reloadOnHup);
+    this.app.registerCleanup(() => { process.off('SIGHUP', reloadOnHup); });
 
     // 2. Register transports (Unix, TCP, HTTP, WebSocket)
     await this.registerTransports(this.dc);
+    this.startupAbort.signal.throwIfAborted();
 
     // 3. Resolve and expose RPC services via Netron
     await this.exposeRpcServices(config, this.dc);
+    this.startupAbort.signal.throwIfAborted();
 
     // Reconcile bookkeeping before any new public listener can admit a
     // command. Adoption only reads native container identities; it never
@@ -537,15 +571,16 @@ export class OmnitronDaemon {
         const logging = await this.app.container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN);
         this.infraService = await InfrastructureService.adoptHandoff(logging.logger, options.backendHandoff.infrastructure);
       }
+      this.startupAbort.signal.throwIfAborted();
     }
 
     // 4. Start the Titan Application (boots DI, starts Netron, opens transports)
     await this.app.start();
+    this.startupAbort.signal.throwIfAborted();
 
-    const loggerModule = await this.app.container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN);
-    const logger = loggerModule.logger;
     this.execution?.setLogger(logger);
     if (this.execution) this.backendControl = await startBackendControl(this, this.execution.controllerId, logger);
+    this.startupAbort.signal.throwIfAborted();
     runtimeDiagnostics.setLogger(logger);
 
     // As soon as there is somewhere to say it, so a stall in the boot's own
@@ -555,36 +590,28 @@ export class OmnitronDaemon {
     this.eventLoopWatch = new EventLoopWatch(logger);
     this.eventLoopWatch.start();
 
-    logger.info(
-      {
-        socketPath: this.dc.socketPath,
-        port: this.dc.port,
-        httpPort: this.dc.httpPort,
-        wsPort: (this.dc.httpPort ?? 9800) + 2,
-        host: this.dc.host,
-        pid: process.pid,
-        version: CLI_VERSION,
-      },
-      'Omnitron daemon started'
-    );
-
     // 5. Wire log persistence
     await this.wireLogPersistence();
+    this.startupAbort.signal.throwIfAborted();
 
     // 5.5. Check for crash recovery
     if (!this.execution) await this.checkCrashRecovery(logger);
+    this.startupAbort.signal.throwIfAborted();
 
     // 6. Provision infrastructure (omnitron-pg + app infra from config.infrastructure)
     if (options?.backendHandoff) {
       const gate = await this.app.container.resolveAsync<InfrastructureGate>(INFRASTRUCTURE_GATE_TOKEN);
       gate.markReady(this.infraService?.getState() ?? { services: {}, ready: true });
     } else await this.startInfrastructure(config, options, logger);
+    this.startupAbort.signal.throwIfAborted();
 
     // 7. Register custom health indicators (Docker + apps)
     await this.registerHealthIndicators();
+    this.startupAbort.signal.throwIfAborted();
 
     // 8. File watching (dev mode)
     if (!options?.backendHandoff) await this.startFileWatcher(config, options, logger);
+    this.startupAbort.signal.throwIfAborted();
 
     // 8.5. Configure application-owned topology listeners for in-process ownership.
     {
@@ -618,6 +645,7 @@ export class OmnitronDaemon {
         );
       }
     }
+    this.startupAbort.signal.throwIfAborted();
 
     // 8.8. Start webapp (nginx container serving Console UI) if enabled
     {
@@ -662,6 +690,7 @@ export class OmnitronDaemon {
         }
       }
     }
+    this.startupAbort.signal.throwIfAborted();
 
     // 8.9. Fleet monitoring. Started BEFORE managed apps and not awaited.
     //
@@ -678,7 +707,7 @@ export class OmnitronDaemon {
     // worker has a 30-second startup timeout, and the applications should not
     // wait behind it. The function handles and logs its own failures, and arms
     // the in-daemon fallback checks when the worker cannot run.
-    void this.startHealthMonitorWorker(logger).catch((err: Error) => {
+    this.healthMonitorStartup = this.startHealthMonitorWorker(logger).catch((err: Error) => {
       // It handles its own failures; this is the last resort, because an
       // unhandled rejection is a crash of the daemon rather than a lost
       // subsystem.
@@ -687,31 +716,39 @@ export class OmnitronDaemon {
 
     // 9. Start managed apps (waits for infra gate if apps have `requires`)
     if (!options?.backendHandoff) await this.startApps(config, logger);
+    this.startupAbort.signal.throwIfAborted();
 
     // 10. Start background tasks via titan-scheduler (replaces bare setInterval)
     await this.startScheduledTasks(config, logger);
+    this.startupAbort.signal.throwIfAborted();
 
     // 11. Start remaining background services (telemetry, traces, leader election)
     await this.startBackgroundServices(config, logger);
+    this.startupAbort.signal.throwIfAborted();
 
     // (Fleet monitoring is started at 8.5, above — before managed apps.)
 
     // 12. Wire event broadcasting (orchestrator events → WebSocket push)
     await this.wireEventBroadcasting(logger);
+    this.startupAbort.signal.throwIfAborted();
 
-    // 13. Register shutdown tasks — Application handles SIGTERM/SIGINT
-    // and calls shutdown tasks in priority order before process.exit()
-    this.registerShutdownTasks(this.app, logger);
     await this.execution?.activateObservations();
+    this.startupAbort.signal.throwIfAborted();
 
     if (options?.backendHandoff) {
       const projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
+      this.startupAbort.signal.throwIfAborted();
       projects.resumeAfterHandoff();
       this.infraService?.resumeAfterHandoff();
     }
+    await this.recoveryMonitor?.start();
+    this.startupAbort.signal.throwIfAborted();
     this.backendAdmitted = true;
     this.metricSampling?.resume();
-    await this.recoveryMonitor?.start();
+
+    logger.info({ socketPath: this.dc.socketPath, port: this.dc.port,
+      httpPort: this.dc.httpPort, wsPort: (this.dc.httpPort ?? 9800) + 2,
+      host: this.dc.host, pid: process.pid, version: CLI_VERSION }, 'Omnitron daemon started');
 
     // 15. Broadcast daemon.started event
     this.eventBroadcaster?.broadcast(DAEMON_EVENTS.STARTED, {
@@ -1790,6 +1827,7 @@ export class OmnitronDaemon {
     if (!this.app) return;
 
     const projectService = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
+    this.startupAbort.signal.throwIfAborted();
     let allProjects = projectService.listProjectRegistrations();
 
     // Auto-register project from CWD if no projects registered
@@ -1831,6 +1869,7 @@ export class OmnitronDaemon {
     let totalStacks = 0;
 
     for (const project of allProjects) {
+      this.startupAbort.signal.throwIfAborted();
       // Load project config (populates internal cache used by listStacks)
       try {
         await projectService.loadProjectConfig(project.name);
@@ -1861,6 +1900,7 @@ export class OmnitronDaemon {
 
       // Start each enabled stack
       for (const stackName of enabledStacks) {
+        this.startupAbort.signal.throwIfAborted();
         try {
           const result = await projectService.startStack(project.name, stackName, { source: 'boot' });
           if (result.type === 'local' && result.status !== 'running') {
@@ -1885,6 +1925,7 @@ export class OmnitronDaemon {
     // Keep converging after boot: retry failed resumes (with backoff) and
     // re-start enabled stacks that later fall over. One-shot boot resume is
     // not enough — see the 2026-07-11 Docker-race incident.
+    this.startupAbort.signal.throwIfAborted();
     projectService.startEnabledStacksReconciler();
   }
 
@@ -2045,7 +2086,7 @@ export class OmnitronDaemon {
   private async startHealthMonitorWorker(
     logger: import('@omnitron-dev/titan/module/logger').ILogger,
   ): Promise<void> {
-    if (this.dc.role === 'slave') return; // By design: slaves do not manage a fleet.
+    if (this.isShuttingDown || this.dc.role === 'slave') return; // Slaves do not manage a fleet.
     if (!this.app) {
       logger.warn({}, 'Health monitor not started — application is not available');
       return;
@@ -2067,6 +2108,7 @@ export class OmnitronDaemon {
       const pm = await this.app.container.resolveAsync<any>(titanPm.PM_MANAGER_TOKEN);
 
       const loggerModule = await this.app.container.resolveAsync<ILoggerModule>(LOGGER_SERVICE_TOKEN);
+      if (this.isShuttingDown) return;
       const workerManager = new SystemWorkerManager(pm, loggerModule.logger.child({ component: 'system-workers' }));
       this.systemWorkerManager = workerManager;
 
@@ -2137,6 +2179,7 @@ export class OmnitronDaemon {
       this.healthWorkerSpawn = async () => {
         const healthConfig = buildConfig();
         const nodesJson = JSON.stringify(await nodeManager.getNodeCheckTargets());
+        if (this.isShuttingDown) return;
         const proxy = await workerManager.spawn(
           'health-monitor',
           workerPath,
@@ -2226,6 +2269,7 @@ export class OmnitronDaemon {
 
       await this.healthWorkerSpawn();
     } catch (err) {
+      if (this.isShuttingDown) return;
       logger.warn(
         { error: (err as Error).message },
         'Health monitor worker failed to start — falling back to direct checks'
@@ -2254,7 +2298,8 @@ export class OmnitronDaemon {
     this.healthWorkerRestartTimer = setTimeout(() => {
       this.healthWorkerRestartTimer = null;
       if (this.isShuttingDown || !this.healthWorkerSpawn) return;
-      this.healthWorkerSpawn().catch((err: Error) => {
+      this.healthMonitorStartup = this.healthWorkerSpawn().catch((err: Error) => {
+        if (this.isShuttingDown) return;
         logger.warn(
           { attempt, startupTimeoutMs: this.healthWorkerStartupTimeout, error: err.message },
           'Health monitor worker restart failed',
@@ -2602,6 +2647,21 @@ export class OmnitronDaemon {
    */
   private registerShutdownTasks(app: Application, logger: ILogger): void {
     const container = app.container;
+    const cancelStartup = () => {
+      this.isShuttingDown = true;
+      this.backendAdmitted = false;
+      this.startupAbort.abort();
+    };
+    // Titan remains the only shutdown coordinator. Its first task joins the
+    // in-flight startup step before cleanup can dispose resources that step
+    // is still creating. The concurrent health worker is owned by the same
+    // barrier, even though normal boot does not wait for fleet monitoring.
+    app.registerShutdownTask('settle-daemon-startup', async () => {
+      cancelStartup();
+      await this.startupWork?.catch(() => undefined);
+      await this.healthMonitorStartup;
+    }, ShutdownPriority.First - 1, true);
+
     app.registerShutdownTask('close-recovery-journal', async () => {
       await this.recoveryMonitor?.close(this.stopApplicationsOnExit || this.handingOffBackend);
       this.recoveryMonitor = null;
@@ -2609,6 +2669,8 @@ export class OmnitronDaemon {
 
     // Broadcast DAEMON_EVENTS.STOPPING on shutdown start
     app.on(ApplicationEvent.ShutdownStart, ({ reason, details }: any) => {
+      this.shutdownRequested = true;
+      cancelStartup();
       this.eventBroadcaster?.broadcast(DAEMON_EVENTS.STOPPING, {
         reason,
         signal: details?.signal,
@@ -2648,6 +2710,8 @@ export class OmnitronDaemon {
     }, ShutdownPriority.First);
 
     app.registerShutdownTask('stop-file-watcher-and-webapp', async () => {
+      this.eventLoopWatch?.stop();
+      this.eventLoopWatch = null;
       await this.filesRpcService?.dispose();
       this.filesRpcService = null;
       await this.fileNode?.dispose();
@@ -2769,7 +2833,6 @@ export class OmnitronDaemon {
 
       // Before stopping the workers: a worker exiting on the way out must not
       // be read as a crash and rescheduled.
-      this.isShuttingDown = true;
       this.healthWorkerSpawn = null;
       if (this.healthWorkerRestartTimer) {
         clearTimeout(this.healthWorkerRestartTimer);

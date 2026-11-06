@@ -12,6 +12,10 @@ import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
 const execute = promisify(execFile);
+// Forwarding verifies both sealed runtimes before the daemon can bind a socket.
+// Use the same bounded wall-clock budget for every public CLI entry point;
+// a count of connection-refused polls gave foreground only about 12 seconds.
+const startupTimeoutMs = 90_000;
 const dist = path.resolve(process.argv[2]);
 assert.ok(dist.includes('omnitron-handoff-'), 'Pass a disposable, sealed validation runtime');
 assert.ok(process.argv.length === 3 || (process.argv.length === 4 && process.argv[3] === '--master'),
@@ -92,10 +96,12 @@ try {
   }
   await release();
   for (const [cycle, mode] of ['background', 'foreground', 'forwarded-foreground'].entries()) {
+    const startupBegan = performance.now();
+    const startupDeadline = startupBegan + startupTimeoutMs;
     const args = ['up', ...(role === 'master' ? ['--master'] : []), '--no-infra', '--no-watch', '--no-webapp'];
     const options = { cwd: directory, env: { ...process.env, OMNITRON_HOME: home } };
     if (mode === 'background') {
-      const output = await execute(installed.launcher, args, { ...options, timeout: 90_000, maxBuffer: 1024 * 1024 });
+      const output = await execute(installed.launcher, args, { ...options, timeout: startupTimeoutMs, maxBuffer: 1024 * 1024 });
       await fs.writeFile(path.join(directory, `start-${cycle}.log`), output.stdout + output.stderr, { mode: 0o600 });
     } else {
       args.push('--foreground');
@@ -114,17 +120,23 @@ try {
       owned.add(foreground.pid);
     }
     let status;
-    for (let attempt = 0; attempt < 120; attempt++) {
+    let statusError;
+    do {
       if (foreground) {
         assert.ifError(foregroundError);
         assert.equal(foreground.exitCode, null, `Foreground CLI exited during startup in ${mode}`);
         assert.equal(foreground.signalCode, null, `Foreground CLI was signalled during startup in ${mode}`);
       }
-      client = createDaemonClient(socket, 2_000);
+      client = createDaemonClient(socket, Math.max(1, Math.min(2_000, Math.ceil(startupDeadline - performance.now()))));
       try { status = await client.status(); break; }
-      catch { await client.disconnect(); client = null; await new Promise(resolve => setTimeout(resolve, 100)); }
-    }
-    assert.ok(status, `Daemon did not become ready in ${mode}`);
+      catch (error) {
+        statusError = error;
+        await client.disconnect(); client = null;
+        const remaining = startupDeadline - performance.now();
+        if (remaining > 0) await new Promise(resolve => setTimeout(resolve, Math.min(100, remaining)));
+      }
+    } while (performance.now() < startupDeadline);
+    assert.ok(status, `Daemon did not become ready in ${mode} within ${startupTimeoutMs}ms: ${statusError?.message ?? 'no status response'}`);
     assert.equal(status.build.commit, installed.artifact.build.commit);
     assert.equal(status.execution.mode, 'resident');
     assert.ok(PidManager.processArgvMatches(status.pid, mode === 'background'
@@ -141,7 +153,8 @@ try {
       assert.deepEqual(migration.data.report.pending, []);
     }
     owned.add(status.pid); owned.add(status.execution.owner.pid);
-    states.push({ mode, backend: status.pid, owner: status.execution.owner.pid, epoch: status.execution.epoch });
+    states.push({ mode, backend: status.pid, owner: status.execution.owner.pid, epoch: status.execution.epoch,
+      startupMs: Math.round(performance.now() - startupBegan) });
     // Startup has completed: the foreground CLI must remain available, while
     // another foreground invocation against it must return without lingering.
     const alreadyRunning = await execute(installed.launcher, ['up', '--foreground', '--no-infra', '--no-watch', '--no-webapp'], {

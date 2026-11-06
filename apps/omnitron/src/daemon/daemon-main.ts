@@ -28,7 +28,7 @@ async function main() {
     const record = await readBackendBootRecord(process.argv[3]);
     process.chdir(record.cwd);
     const daemon = new OmnitronDaemon();
-    await daemon.start(record.state.watchConfig, { backendHandoff: record.state }, record.daemonConfig);
+    if (!await daemon.start(record.state.watchConfig, { backendHandoff: record.state }, record.daemonConfig)) return;
     process.send?.({ type: 'backend-ready', pid: process.pid, execution: daemon.backendRuntimeStatus(), build: OWN_BUILD });
     process.disconnect?.();
     return;

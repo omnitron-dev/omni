@@ -126,7 +126,12 @@ jobs:
       - name: Rehearse package publication against a loopback registry
         run: node --test scripts/ci/release.test.mjs
       - name: Console publication, recovery and runtime fixture cleanup
-        run: node --test apps/omnitron/scripts/console-publication.test.mjs apps/omnitron/test/runtime/fixture-cleanup.test.mjs
+        run: >-
+          node --test
+          apps/omnitron/scripts/console-publication.test.mjs
+          apps/omnitron/test/runtime/fixture-cleanup.test.mjs
+          apps/omnitron/test/runtime/fixture-master-options.test.mjs
+          apps/omnitron/test/runtime/fixture-unit-files.test.mjs
       - name: Verify both sides of the authenticated control-plane RPC boundary
         working-directory: apps/omnitron
         run: >-

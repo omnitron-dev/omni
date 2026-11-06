@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
@@ -41,7 +41,7 @@ describe('deployment operations workspace', () => {
     expect(await screen.findByRole('link', { name: 'sample-release' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'prod' })).toHaveAttribute('href', '/stacks/prod');
     expect(screen.queryByText('foreign-release')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: /App history/ }));
+    await act(async () => { fireEvent.click(screen.getByRole('tab', { name: /App history/ })); });
     expect(await screen.findByText('old-label')).toBeInTheDocument();
     expect(screen.queryByText('foreign-label')).not.toBeInTheDocument();
     expect(screen.getByText('Requested label')).toBeInTheDocument();
@@ -51,7 +51,7 @@ describe('deployment operations workspace', () => {
     mocks.progress.mockResolvedValue([{ node: 'node.example:9700', app: 'api', status: 'installing', progress: 50, message: 'Unscoped transfer', at: new Date().toISOString() }]);
     draw();
     const toggle = await screen.findByRole('button', { name: /Show unscoped observations/ });
-    fireEvent.click(toggle);
+    await act(async () => { fireEvent.click(toggle); });
     expect(screen.getByText(/no recorded project or stack/)).toBeInTheDocument();
     expect(await screen.findByText('Unscoped transfer')).toBeVisible();
   });
@@ -80,7 +80,7 @@ describe('deployment operations workspace', () => {
     expect(mocks.history).not.toHaveBeenCalled();
     expect(mocks.starts).not.toHaveBeenCalled();
     expect(screen.queryByRole('link', { name: 'Deploy a release' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh deployments' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Refresh deployments' })); });
     expect(mocks.progress).toHaveBeenCalledTimes(2);
     expect(mocks.history).not.toHaveBeenCalled();
     expect(mocks.starts).not.toHaveBeenCalled();
@@ -104,7 +104,7 @@ describe('deployment operations workspace', () => {
       .mockResolvedValue({ known: false, why: 'Audit unavailable' });
     draw();
     expect(await screen.findByRole('link', { name: 'sample-release' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh deployments' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Refresh deployments' })); });
     expect(await screen.findByText(/Audit unavailable/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'sample-release' })).toBeInTheDocument();
   });
@@ -112,9 +112,10 @@ describe('deployment operations workspace', () => {
     mocks.progress.mockResolvedValueOnce([{ node: 'node.example:9700', app: 'api', status: 'installing', progress: 50, message: 'Last transfer report', at: new Date().toISOString() }])
       .mockRejectedValue(new Error('peer unavailable'));
     draw();
-    fireEvent.click(await screen.findByRole('button', { name: /Show unscoped observations/ }));
+    const toggle = await screen.findByRole('button', { name: /Show unscoped observations/ });
+    await act(async () => { fireEvent.click(toggle); });
     expect(screen.getByText('Last transfer report')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh deployments' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Refresh deployments' })); });
     expect(await screen.findByText(/Transfer observations unavailable: peer unavailable/)).toBeInTheDocument();
     expect(screen.getByText('Last transfer report')).toBeVisible();
     expect(screen.getByText(/completion is unknown/)).toBeVisible();

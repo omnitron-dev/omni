@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
@@ -91,8 +91,8 @@ async function renderPage(initial = '/') {
   );
   // Logs now opens in live mode. These assertions concern the explicit
   // paginated hour view and its total, not the live tail's retained rows.
-  fireEvent.click(screen.getByRole('button', { name: /^Filters/ }));
-  fireEvent.click(screen.getByRole('button', { name: '1h' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Filters/ })); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '1h' })); });
   await screen.findByText('Showing 2 of 48,991');
 }
 
@@ -107,7 +107,7 @@ describe('a breakdown beside a total it did not add up to', () => {
     expect(screen.queryByText('error: 42,650')).not.toBeInTheDocument();
     // A message without structured metadata can still be expanded and read by keyboard.
     const row = screen.getByRole('button', { name: /sample\/dev\/main info: line 1/ });
-    row.focus();
+    await act(async () => { row.focus(); });
     const keyboard = userEvent.setup();
     await keyboard.keyboard('{Enter}');
     expect(row).toHaveAttribute('aria-expanded', 'true');
@@ -125,7 +125,7 @@ describe('a breakdown beside a total it did not add up to', () => {
     await keyboard.click(input);
     await keyboard.click(await screen.findByRole('option', { name: 'medium' }));
     await waitFor(() => expect(queryLogs).toHaveBeenCalledWith(expect.objectContaining({ level: ['unknown', 'medium'] })));
-    fireEvent.click(unknown);
+    await act(async () => { fireEvent.click(unknown); });
     await waitFor(() => expect(queryLogs).toHaveBeenCalledWith(expect.objectContaining({ level: ['medium'] })));
   });
 
@@ -135,12 +135,12 @@ describe('a breakdown beside a total it did not add up to', () => {
     const asked = getLogStats.mock.calls.length;
 
     // The level chip: `error` in the DOM, capitals by CSS.
-    fireEvent.click(screen.getByText('error', { selector: 'span' }));
+    await act(async () => { fireEvent.click(screen.getByText('error', { selector: 'span' })); });
 
     await screen.findByText('Showing 1 of 149');
     await waitFor(() => expect(breakdown()).toEqual(['error: 149']));
     expect(getLogStats.mock.calls.length).toBe(asked);
-    fireEvent.click(screen.getByRole('button', { name: 'Filters · 2' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Filters · 2' })); });
     await waitFor(() => expect(screen.queryByRole('button', { name: '1h' })).toBeNull());
     expect(screen.getByRole('button', { name: 'Filters · 2' })).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByText('Showing 1 of 149')).toBeInTheDocument();

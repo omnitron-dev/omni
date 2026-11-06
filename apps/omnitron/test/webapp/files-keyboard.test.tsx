@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { useState, type ComponentProps } from 'react';
 import userEvent from '@testing-library/user-event';
@@ -74,7 +74,7 @@ describe('File panel keyboard', () => {
     const left = await screen.findByRole('table', { name: 'left files' });
     await waitFor(() => expect(left.querySelectorAll('tbody tr')).toHaveLength(3));
     const user = userEvent.setup();
-    screen.getByRole('button', { name: 'Sidebar link' }).focus();
+    await act(async () => { screen.getByRole('button', { name: 'Sidebar link' }).focus(); });
     await user.tab();
     expect(document.activeElement).toBe(left);
     await user.tab();
@@ -102,12 +102,12 @@ describe('File panel keyboard', () => {
       mount(compact);
       const left = await screen.findByRole('table', { name: 'left files' });
       await waitFor(() => expect(left.querySelectorAll('tbody tr')).toHaveLength(3));
-      left.focus();
-      fireEvent.keyDown(left, { key: 'Tab' });
+      await act(async () => { left.focus(); });
+      await act(async () => { fireEvent.keyDown(left, { key: 'Tab' }); });
       await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('table', { name: 'right files' })));
-      fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey: true });
+      await act(async () => { fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey: true }); });
       await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('table', { name: 'left files' })));
-      fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+      await act(async () => { fireEvent.keyDown(document.activeElement!, { key: 'Escape' }); });
       expect(document.activeElement).toBe(screen.getByRole('button', { name: 'New left location tab' }));
       expect(fireEvent.keyDown(document.activeElement!, { key: 'Tab' })).toBe(true);
     }
@@ -118,17 +118,17 @@ describe('File panel keyboard', () => {
     mount();
     const table = await screen.findByRole('table', { name: 'left files' });
     await waitFor(() => expect(table.querySelectorAll('tbody tr')).toHaveLength(3));
-    table.focus();
-    fireEvent.keyDown(table, { key: 'ArrowDown' });
+    await act(async () => { table.focus(); });
+    await act(async () => { fireEvent.keyDown(table, { key: 'ArrowDown' }); });
     expect(document.activeElement?.textContent).toContain('beta.txt');
-    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown', shiftKey: true });
+    await act(async () => { fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown', shiftKey: true }); });
     expect(table.querySelectorAll('tbody input:checked')).toHaveLength(2);
-    fireEvent.keyDown(document.activeElement!, { key: 'F5' });
+    await act(async () => { fireEvent.keyDown(document.activeElement!, { key: 'F5' }); });
     expect(action).toHaveBeenCalledWith('copy');
-    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
-    table.focus();
-    fireEvent.keyDown(table, { key: 'Home' });
-    fireEvent.keyDown(document.activeElement!, { key: 'Enter' });
+    await act(async () => { fireEvent.keyDown(document.activeElement!, { key: 'Escape' }); });
+    await act(async () => { table.focus(); });
+    await act(async () => { fireEvent.keyDown(table, { key: 'Home' }); });
+    await act(async () => { fireEvent.keyDown(document.activeElement!, { key: 'Enter' }); });
     expect(open).toHaveBeenCalledWith(
       expect.objectContaining({ path: 'alpha.txt' }),
       expect.objectContaining({ path: 'alpha.txt' }),
@@ -140,8 +140,8 @@ describe('File panel keyboard', () => {
     mount(false, false);
     const table = await screen.findByRole('table', { name: 'left files' });
     await waitFor(() => expect(table.querySelectorAll('tbody tr')).toHaveLength(3));
-    table.focus();
-    fireEvent.keyDown(table, { key: 'Delete' });
+    await act(async () => { table.focus(); });
+    await act(async () => { fireEvent.keyDown(table, { key: 'Delete' }); });
     expect(action).not.toHaveBeenCalled();
   });
   it('keeps parent navigation out of selections and destructive actions, including empty directories', async () => {
@@ -151,14 +151,15 @@ describe('File panel keyboard', () => {
       action.mockClear(); mount();
       const left = await screen.findByRole('table', { name: 'left files' });
       await waitFor(() => expect(left.querySelectorAll('tbody tr')).toHaveLength(1));
-      left.focus(); fireEvent.keyDown(left, { key: 'ArrowRight' });
+      await act(async () => { left.focus(); });
+      await act(async () => { fireEvent.keyDown(left, { key: 'ArrowRight' }); });
       await waitFor(() => expect(screen.getByRole('row', { name: 'Parent directory' })).toBeTruthy());
-      fireEvent.keyDown(document.activeElement!, { key: ' ' });
-      fireEvent.keyDown(document.activeElement!, { key: 'a', ctrlKey: true });
-      fireEvent.keyDown(document.activeElement!, { key: 'Delete' });
+      await act(async () => { fireEvent.keyDown(document.activeElement!, { key: ' ' }); });
+      await act(async () => { fireEvent.keyDown(document.activeElement!, { key: 'a', ctrlKey: true }); });
+      await act(async () => { fireEvent.keyDown(document.activeElement!, { key: 'Delete' }); });
       expect(action).not.toHaveBeenCalled();
       expect(left.querySelectorAll('tbody input:checked')).toHaveLength(0);
-      fireEvent.keyDown(document.activeElement!, { key: 'Enter' });
+      await act(async () => { fireEvent.keyDown(document.activeElement!, { key: 'Enter' }); });
       await waitFor(() => expect(screen.queryByRole('row', { name: 'Parent directory' })).toBeNull());
     } finally { vi.mocked(files.list).mockImplementation(prior!); }
   });

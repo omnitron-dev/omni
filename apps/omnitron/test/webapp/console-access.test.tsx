@@ -70,7 +70,7 @@ describe('console RPC-derived access', () => {
     await act(async () => resolve(snapshot(true)));
     expect(await screen.findByText('Protected terminal')).toBeInTheDocument();
     describeAccess.mockResolvedValue(snapshot(false));
-    fireEvent.click(screen.getByRole('button', { name: 'Check access' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Check access' })); });
     await waitFor(() => expect(screen.queryByText('Protected terminal')).not.toBeInTheDocument());
     expect(screen.queryByRole('button', { name: 'Open SSH' })).not.toBeInTheDocument();
     expect(useAuthStore.getState().user?.role).toBe('viewer');
@@ -81,12 +81,12 @@ describe('console RPC-derived access', () => {
     mount();
     await screen.findByText('Protected terminal');
     describeAccess.mockRejectedValue(new Error('Session revoked'));
-    fireEvent.click(screen.getByRole('button', { name: 'Check access' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Check access' })); });
     await screen.findByText(/Could not verify your access/);
     expect(screen.queryByText('Protected terminal')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open SSH' })).not.toBeInTheDocument();
     describeAccess.mockResolvedValue(snapshot(true));
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry' })); });
     await screen.findByText('Protected terminal');
   });
 
@@ -136,9 +136,9 @@ it('does not show the previous account page when pagination races an outstanding
     .mockResolvedValue({ users: [account('second')], next: null });
   mount(<AccessPage />);
   await screen.findByText('first@example.test');
-  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Refresh' })); });
   await waitFor(() => expect(listUsers).toHaveBeenCalledTimes(2));
-  fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Next page' })); });
   expect(screen.queryByText('first@example.test')).not.toBeInTheDocument();
   await act(async () => resolve(first));
   await screen.findByText('second@example.test');

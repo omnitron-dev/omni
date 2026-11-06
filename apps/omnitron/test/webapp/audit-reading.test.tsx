@@ -54,16 +54,16 @@ it('keeps time, identity and original details distinct, with keyboard disclosure
   expect(screen.getAllByText('Service: omnitron-local').length).toBeGreaterThan(0);
   expect(first.getByText('partial')).toBeInTheDocument();
   expect(screen.queryByText('a'.repeat(40))).not.toBeInTheDocument();
-  fireEvent.click(buttons[0]!);
+  await act(async () => { fireEvent.click(buttons[0]!); });
   const details = screen.getByRole('region', { name: 'Audit details: stack.start' });
   expect(within(details).getByText(base.createdAt)).toBeInTheDocument();
   expect(within(details).getByText('original-project-name/dev')).toBeInTheDocument();
   expect(within(details).getByText('omnitron-local')).toBeInTheDocument();
   expect(within(details).getByText(/does not identify a person/)).toBeInTheDocument();
   expect(within(details).getByText(/"commit":/)).toBeInTheDocument();
-  fireEvent.click(within(details).getByRole('button', { name: 'Raw event' }));
+  await act(async () => { fireEvent.click(within(details).getByRole('button', { name: 'Raw event' })); });
   expect(screen.getByLabelText('Raw audit event').textContent).toBe(JSON.stringify(base, null, 2));
-  fireEvent.keyDown(details, { key: 'Escape' });
+  await act(async () => { fireEvent.keyDown(details, { key: 'Escape' }); });
   expect(screen.queryByRole('region', { name: 'Audit details: stack.start' })).not.toBeInTheDocument();
   expect(buttons[0]).toHaveFocus();
 });
@@ -71,12 +71,13 @@ it('keeps time, identity and original details distinct, with keyboard disclosure
 it('filters the stored actor kind and exact action without claiming a specific local tool', async () => {
   render(view());
   await screen.findAllByRole('button', { name: /Details for stack.start/ });
-  fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Actor' }));
-  fireEvent.click(await screen.findByRole('option', { name: 'Local client' }));
+  await act(async () => { fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Actor' })); });
+  const localClient = await screen.findByRole('option', { name: 'Local client' });
+  await act(async () => { fireEvent.click(localClient); });
   await waitFor(() =>
     expect(rpc.list).toHaveBeenLastCalledWith({ limit: 100, actorType: 'user', actorId: 'omnitron-local' })
   );
-  fireEvent.change(screen.getByRole('textbox', { name: 'Action (exact)' }), { target: { value: 'stack.start' } });
+  await act(async () => { fireEvent.change(screen.getByRole('textbox', { name: 'Action (exact)' }), { target: { value: 'stack.start' } }); });
   await waitFor(() =>
     expect(rpc.list).toHaveBeenLastCalledWith({
       limit: 100,
@@ -85,7 +86,7 @@ it('filters the stored actor kind and exact action without claiming a specific l
       action: 'stack.start',
     })
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Reset filters' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Reset filters' })); });
   await waitFor(() => expect(rpc.list).toHaveBeenLastCalledWith({ limit: 100 }));
 });
 
@@ -94,7 +95,7 @@ it('reports unavailable storage separately and clears the reading when permissio
   const rendered = render(view());
   expect(await screen.findByText(/This daemon has no audit storage/)).toBeInTheDocument();
   expect(rpc.list).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Refresh audit' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Refresh audit' })); });
   await screen.findAllByRole('button', { name: /Details for stack.start/ });
   rpc.permitted = false;
   rendered.rerender(view());
@@ -119,7 +120,7 @@ it('shows a pending read and a retryable failure without reporting an empty hist
   });
   expect(await screen.findByText(/Could not read the audit trail: storage offline/)).toBeInTheDocument();
   expect(screen.queryByText('Nothing recorded yet')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry' })); });
   await screen.findAllByRole('button', { name: /Details for stack.start/ });
 });
 
@@ -147,7 +148,7 @@ it('reads older events through an exact server cursor and freezes the snapshot u
   });
   expect(await screen.findByText('stack · older/project')).toBeInTheDocument();
   expect(screen.getByText('Start of matching history')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Resume audit updates' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Resume audit updates' })); });
   await waitFor(() => expect(rpc.list).toHaveBeenLastCalledWith({ limit: 100 }));
   expect(screen.queryByText('stack · older/project')).not.toBeInTheDocument();
 });
@@ -162,15 +163,17 @@ it('discards an in-flight historical page after a filter change, even when retur
       })
   );
   render(view());
-  fireEvent.click(await screen.findByRole('button', { name: 'Load older' }));
-  fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Actor' }));
-  fireEvent.click(await screen.findByRole('option', { name: 'System' }));
+  const loadOlder = await screen.findByRole('button', { name: 'Load older' });
+  await act(async () => { fireEvent.click(loadOlder); });
+  await act(async () => { fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Actor' })); });
+  const system = await screen.findByRole('option', { name: 'System' });
+  await act(async () => { fireEvent.click(system); });
   await waitFor(() => expect(rpc.list).toHaveBeenLastCalledWith({ limit: 100, actorType: 'system' }));
   await act(async () => {
     finish([{ ...base, id: 'obsolete', resourceId: 'obsolete/project' }]);
   });
   expect(screen.queryByText('stack · obsolete/project')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Reset filters' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Reset filters' })); });
   await waitFor(() => expect(rpc.list).toHaveBeenLastCalledWith({ limit: 100 }));
   expect(screen.queryByText('stack · obsolete/project')).not.toBeInTheDocument();
   expect(screen.getByRole('status')).not.toHaveTextContent('Reading history');

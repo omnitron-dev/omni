@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { RowActions } from '../../webapp/src/components/row-actions.js';
 
@@ -14,31 +14,31 @@ describe('Console row commands', () => {
       { id: 'inspect', label: 'Inspect worker', onClick: vi.fn() },
     ]} />);
     const trigger = screen.getByRole('button', { name: 'Actions for worker' });
-    trigger.focus();
-    fireEvent.click(trigger);
+    await act(async () => { trigger.focus(); });
+    await act(async () => { fireEvent.click(trigger); });
     const menu = screen.getByRole('menu');
     const inspect = screen.getByRole('menuitem', { name: 'Inspect worker' });
     const destructive = screen.getByRole('menuitem', { name: 'Remove worker' });
     expect(screen.getAllByRole('menuitem')).toEqual([inspect, destructive]);
     expect(screen.getByRole('separator')).toBeInTheDocument();
     await waitFor(() => expect(inspect).toHaveFocus());
-    fireEvent.keyDown(menu, { key: 'End' });
+    await act(async () => { fireEvent.keyDown(menu, { key: 'End' }); });
     expect(destructive).toHaveFocus();
-    fireEvent.keyDown(menu, { key: 'Escape' });
+    await act(async () => { fireEvent.keyDown(menu, { key: 'Escape' }); });
     await waitFor(() => expect(trigger).toHaveFocus());
     expect(remove).not.toHaveBeenCalled();
   });
 
-  it('does not add an empty group when only protected destructive commands are available', () => {
+  it('does not add an empty group when only protected destructive commands are available', async () => {
     const remove = vi.fn();
     render(<RowActions label="Worker operations" actions={[
       { id: 'remove', label: 'Remove worker', color: 'error', disabled: true, onClick: remove },
     ]} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Worker operations' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Worker operations' })); });
     expect(screen.queryByRole('separator')).not.toBeInTheDocument();
     const item = screen.getByRole('menuitem', { name: 'Remove worker' });
     expect(item).toHaveAttribute('aria-disabled', 'true');
-    fireEvent.click(item);
+    await act(async () => { fireEvent.click(item); });
     expect(remove).not.toHaveBeenCalled();
   });
 
@@ -58,13 +58,13 @@ describe('Console row commands', () => {
       </div>
     );
     const trigger = screen.getByRole('button', { name: 'Actions for worker' });
-    fireEvent.click(trigger);
+    await act(async () => { fireEvent.click(trigger); });
     expect(screen.getByRole('menu', { name: 'Actions for worker' })).toBeInTheDocument();
     const disabled = screen.getByRole('menuitem', { name: 'Change role' });
     expect(disabled).toHaveAttribute('aria-disabled', 'true');
-    fireEvent.click(disabled);
+    await act(async () => { fireEvent.click(disabled); });
     expect(grant).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Inspect' }));
+    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Inspect' })); });
     expect(inspect).toHaveBeenCalledTimes(1);
     expect(parent).not.toHaveBeenCalled();
     await waitFor(() => expect(trigger).toHaveAttribute('aria-expanded', 'false'));

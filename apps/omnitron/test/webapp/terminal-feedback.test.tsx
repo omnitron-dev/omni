@@ -80,7 +80,7 @@ function mount() {
 async function open() {
   const button = await screen.findByRole('button', { name: 'New SSH tab' });
   await waitFor(() => expect(button).toBeEnabled());
-  fireEvent.click(button);
+  await act(async () => { fireEvent.click(button); });
 }
 beforeEach(() => {
   vi.resetAllMocks();
@@ -106,11 +106,11 @@ it('opens a pending tab immediately, blocks duplicate opens, and reports a faile
   await open();
   expect(screen.getByRole('tab', { name: /Remote · connecting/ })).toHaveAttribute('aria-selected', 'true');
   expect(screen.getByText('Connecting to Remote')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'New SSH tab' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'New SSH tab' })); });
   expect(api.open).toHaveBeenCalledOnce();
   await act(async () => request.reject(new Error('Host key is not trusted')));
   expect(screen.getByRole('alert')).toHaveTextContent('Host key is not trusted');
-  fireEvent.click(screen.getByRole('button', { name: 'Retry connection' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry connection' })); });
   await screen.findByRole('tab', { name: 'Remote 1' });
   expect(screen.queryByText('Connecting to Remote')).not.toBeInTheDocument();
 });
@@ -121,7 +121,7 @@ it('does not steal selection when a connection finishes in another tab', async (
   const second = deferred<TerminalSession>();
   api.open.mockReturnValueOnce(second.promise);
   await open();
-  fireEvent.click(screen.getByRole('tab', { name: 'Remote 1' }));
+  await act(async () => { fireEvent.click(screen.getByRole('tab', { name: 'Remote 1' })); });
   await act(async () => second.resolve(session('two')));
   expect(screen.getByRole('tab', { name: 'Remote 1' })).toHaveAttribute('aria-selected', 'true');
   expect(screen.getByRole('tab', { name: 'Remote 2' })).toHaveAttribute('aria-selected', 'false');
@@ -139,7 +139,7 @@ it('removes an expired tab without asking to close an already ended session', as
   await screen.findByRole('tab', { name: /Remote 1 · closed/ });
   expect(screen.getByText(/Session ended: idle timeout/)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Terminal input unavailable' })).toBeDisabled();
-  fireEvent.click(screen.getByRole('button', { name: 'Close Remote 1' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Close Remote 1' })); });
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(screen.queryByRole('tab')).not.toBeInTheDocument();
   expect(api.close).not.toHaveBeenCalled();
@@ -148,15 +148,15 @@ it('retains the tab and shows a closure failure inside the confirmation dialog',
   mount();
   await open();
   await screen.findByRole('tab', { name: 'Remote 1' });
-  fireEvent.click(screen.getByRole('button', { name: 'Close Remote 1' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Close Remote 1' })); });
   expect(api.close).not.toHaveBeenCalled();
   const request = deferred<void>();
   api.close.mockReturnValueOnce(request.promise);
-  fireEvent.click(screen.getByRole('button', { name: 'Close session' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Close session' })); });
   expect(within(screen.getByRole('dialog')).getByText('Closing SSH session')).toBeInTheDocument();
   await act(async () => request.reject(new Error('Daemon unavailable')));
   expect(within(screen.getByRole('dialog')).getByRole('alert')).toHaveTextContent('Closure not confirmed');
-  fireEvent.click(screen.getByRole('button', { name: 'Close session' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Close session' })); });
   await waitFor(() => expect(screen.queryByRole('tab', { name: 'Remote 1' })).not.toBeInTheDocument());
 });
 it('resolves a pending confirmation locally if the shell exits meanwhile', async () => {
@@ -165,7 +165,7 @@ it('resolves a pending confirmation locally if the shell exits meanwhile', async
   mount();
   await open();
   await screen.findByRole('tab', { name: 'Remote 1' });
-  fireEvent.click(screen.getByRole('button', { name: 'Close Remote 1' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Close Remote 1' })); });
   await act(async () =>
     read.resolve({
       session: { ...session(), state: 'closed', reason: 'idle_timeout' },
@@ -181,7 +181,8 @@ it('resolves a pending confirmation locally if the shell exits meanwhile', async
 it('offers a retry when workspace discovery fails', async () => {
   api.listNodes.mockRejectedValueOnce(new Error('Node registry unavailable'));
   mount();
-  fireEvent.click(await screen.findByRole('button', { name: 'Retry loading SSH workspace' }));
+  const retry = await screen.findByRole('button', { name: 'Retry loading SSH workspace' });
+  await act(async () => { fireEvent.click(retry); });
   await waitFor(() => expect(screen.getByRole('button', { name: 'New SSH tab' })).toBeEnabled());
   expect(screen.queryByText('Node registry unavailable')).not.toBeInTheDocument();
 });

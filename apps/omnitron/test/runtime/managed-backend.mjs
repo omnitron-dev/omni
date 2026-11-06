@@ -21,6 +21,13 @@ if (managementDist) assert.ok(managementDist.includes('omnitron-handoff-'), 'Use
 // guardian retained. This is the same CLI path used by a backend-only rollout.
 const backendOnly = process.argv.includes('--backend-only');
 if (backendOnly) assert.ok(managementDist, 'Provide the candidate artifact before --backend-only');
+const ownerRoundtrip = process.argv.includes('--owner-roundtrip');
+assert.ok(!(backendOnly && ownerRoundtrip), 'Choose backend-only or owner-roundtrip qualification');
+if (ownerRoundtrip) assert.ok(managementDist, 'Owner replacement requires an independently built candidate');
+const initialBackendArg = process.argv.indexOf('--initial-backend');
+const initialBackendDist = initialBackendArg === -1 ? dist : path.resolve(process.argv[initialBackendArg + 1]);
+assert.ok(initialBackendArg === -1 || (ownerRoundtrip && initialBackendDist.includes('omnitron-handoff-')),
+  'A distinct initial backend is supported only by the cold owner fixture');
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-managed-'));
 const instance = path.join(root, 'i'), execution = path.join(root, 'e');
 for (const directory of [instance, execution]) await fs.mkdir(directory, { mode: 0o700 });
@@ -36,11 +43,12 @@ const native = args => run(linux ? 'systemctl' : '/bin/launchctl', args, { timeo
 const domain = `gui/${process.getuid()}`;
 const id = randomUUID();
 const installation = await RuntimeInstallation.open(instance);
-let artifact;
+let artifact, initialBackend;
 try {
   artifact = await installation.exclusive(async () => {
     const installed = await installation.install(path.resolve(dist, '../../..'));
-    await installation.select(installed.runtimeHash, 0);
+    initialBackend = initialBackendDist === dist ? installed : await installation.install(path.resolve(initialBackendDist, '../../..'));
+    await installation.select(initialBackend.runtimeHash, 0);
     await installation.writeLauncher();
     return installed;
   });
@@ -66,7 +74,7 @@ await fs.writeFile(path.join(root, 'counter.mjs'), `import http from 'node:http'
  const server=http.createServer((q,r)=>{if(q.url==='/pause')paused=true;r.end(JSON.stringify({pid:process.pid,parent:process.ppid,value,fixture:${JSON.stringify(id)},ready:true,timestamp:new Date().toISOString()}));});
  server.listen(${counterPort},'127.0.0.1',()=>{fs.writeFileSync(${JSON.stringify(path.join(root, 'address.json'))},JSON.stringify(server.address()));process.send?.({type:'ready'});});
  process.on('SIGTERM',()=>server.close(()=>process.exit(0)));`);
-await fs.writeFile(path.join(root, 'omnitron.config.mjs'), `export default {apps:[{name:'counter',script:'./counter.mjs',cwd:${JSON.stringify(root)},enabled:true,readiness:${JSON.stringify(readiness)}}]};`);
+await fs.writeFile(path.join(root, 'omnitron.config.mjs'), `export default {${ownerRoundtrip ? "project:'probe',stacks:{local:{type:'local',apps:'all',infrastructureOwnership:'external'}}," : ''}apps:[{name:'counter',script:'./counter.mjs',cwd:${JSON.stringify(root)},enabled:true,readiness:${JSON.stringify(readiness)}}]};`);
 const units = [];
 for (const mode of ['owner', 'backend']) {
   const systemUnitDir = managementDist ? '/etc/systemd/system' : '/run/systemd/system';
@@ -79,7 +87,7 @@ for (const mode of ['owner', 'backend']) {
     identity: linux ? { user: 'root', home: os.homedir() } : undefined,
     environment: { OMNITRON_HOME: instance }, stderrLog: path.join(root, `${mode}.log`) }));
   await run(linux ? 'systemd-analyze' : '/usr/bin/plutil', linux ? ['verify', file] : ['-lint', file]);
-  units.push({ file, job: linux ? config[mode].unit : `${domain}/${config[mode].label}` });
+  units.push({ mode, file, job: linux ? config[mode].unit : `${domain}/${config[mode].label}` });
 }
 const socket = path.join(instance, 'daemon.sock');
 const status = async () => {
@@ -97,6 +105,7 @@ const until = async (work, message, ms = 150_000) => {
 };
 const waitCertificate = () => until(async () => (await status()).execution?.recovery?.status === 'ready', 'No recovery certificate');
 let sampler, inFlight = false, samples = 0, failures = 0, ownerPid, applicationPid, ownerClient;
+const ownerRoundtripPids = new Set();
 let samplingStage = 'cold-start';
 const eventLoop = monitorEventLoopDelay({ resolution: 20 });
 const mark = event => {
@@ -115,6 +124,15 @@ try {
   let first = await until(status, 'Initial managed backend did not start');
   mark({ stage: 'cold-start', root, backend: first.pid, owner: first.execution.owner.pid });
   ownerPid = first.execution.owner.pid;
+  if (ownerRoundtrip) {
+    const { managedOwnerRoundtrip } = await import('./managed-owner-roundtrip.mjs');
+    const result = await managedOwnerRoundtrip({ root, instance, execution, config, units, first, artifact, initialBackend,
+      managementDist, run, native, domain, linux, until, status, render: linux ? renderSystemdUnit : renderLaunchdPlist,
+      track: (...pids) => { for (const pid of pids) { assert.ok(Number.isSafeInteger(pid) && pid > 0); ownerRoundtripPids.add(pid); } }, mark });
+    ownerPid = result.rounds.at(-1).ownerPid;
+    applicationPid = result.rounds.at(-1).applicationPid;
+    console.log(JSON.stringify(result));
+  } else {
   const client = createDaemonClient(socket, 30_000);
   try { await client.startApp({ name: 'counter' }); } finally { await client.disconnect(); }
   const address = await until(async () => JSON.parse(await fs.readFile(path.join(root, 'address.json'), 'utf8')), 'Counter did not start');
@@ -429,6 +447,7 @@ try {
   console.log(JSON.stringify({ test: linux ? 'independent-systemd-supervision' : 'independent-launchd-supervision', root, ownerPid, applicationPid,
     backends: [first.pid, upgraded.pid, recovered.pid, afterGuardian.pid], killedGuardian: guardian.pid, samples, failures,
     verifiedLogs: expected.length, preservedMigrationHistoryRows: originalHistory.length }));
+  }
 } finally {
   if (sampler) clearInterval(sampler);
   while (inFlight) await new Promise(resolve => setTimeout(resolve, 10));
@@ -442,6 +461,7 @@ try {
   for (const unit of units.toReversed()) await native(linux ? ['stop', unit.job] : ['bootout', unit.job]).catch(() => {});
   if (ownerPid) await until(() => !PidManager.isProcessAlive(ownerPid), 'Fixture owner did not stop', 35_000);
   if (applicationPid) assert.equal(PidManager.isProcessAlive(applicationPid), false, 'Fixture app survived normal owner shutdown');
+  for (const pid of ownerRoundtripPids) await until(() => !PidManager.isProcessAlive(pid), `Owner-roundtrip fixture process ${pid} survived cleanup`, 35_000);
   if (linux) {
     for (const unit of units) await fs.unlink(unit.file);
     await native(['daemon-reload']);

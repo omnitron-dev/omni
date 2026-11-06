@@ -110,3 +110,9 @@ jobs:
           done
           sudo -- "$(command -v node)" apps/omnitron/test/runtime/managed-backend.mjs \
             "$stage/$PREVIOUS/packages/0/dist" "$stage/$CANDIDATE/packages/0/dist"
+      - name: Replace and roll back the execution owner with reviewed stack stops
+        run: |
+          stage=/opt/omnitron-handoff-qualification
+          sudo -- "$(command -v node)" apps/omnitron/test/runtime/managed-backend.mjs \
+            "$stage/$PREVIOUS/packages/0/dist" "$stage/$CANDIDATE/packages/0/dist" \
+            --owner-roundtrip

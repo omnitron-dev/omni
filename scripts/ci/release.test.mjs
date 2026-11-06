@@ -83,12 +83,19 @@ test('release plans, seals, pushes one tag and resumes a partial registry public
   const json = (name, value) => fs.writeFile(path.join(workspace, name), JSON.stringify(value, null, 2));
   await fs.mkdir(path.join(workspace, 'scripts'), { recursive: true });
   for (const file of ['release.mjs', 'build-release.mjs']) await fs.copyFile(path.join(repo, 'scripts', file), path.join(workspace, 'scripts', file));
+  // The fixture publishes two tiny packages, not the complete Omnitron SDK.
+  // Keep both package-consumer validation stages observable in its archive.
+  await fs.mkdir(path.join(workspace, 'scripts/ci'));
+  await fs.writeFile(path.join(workspace, 'scripts/check-package-exports.mjs'),
+    "import assert from 'node:assert/strict'; import fs from 'node:fs'; assert.equal(process.argv[2], '--install-consumer'); fs.mkdirSync(process.argv[3]); fs.writeFileSync(process.argv[3]+'/audit-checked', 'checked');");
+  await fs.writeFile(path.join(workspace, 'scripts/ci/check-runtime-consumer.mjs'),
+    "import assert from 'node:assert/strict'; import fs from 'node:fs'; assert.equal(fs.readFileSync(process.argv[2]+'/audit-checked', 'utf8'), 'checked'); fs.writeFileSync('packages/base/consumer-checked', 'archives, audit, runtime');");
   await json('package.json', { name: 'fixture', private: true, type: 'module', scripts: { build: 'node scripts/build.mjs' } });
   await fs.writeFile(path.join(workspace, 'scripts/build.mjs'), "import {writeFileSync} from 'node:fs'; for(const n of ['base','client']) writeFileSync('packages/'+n+'/index.js', 'export default 1;');");
   await fs.writeFile(path.join(workspace, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n");
   for (const [folder, name] of [['base', first], ['client', second]]) {
     await fs.mkdir(path.join(workspace, 'packages', folder), { recursive: true });
-    await json(`packages/${folder}/package.json`, { name, version: '0.1.0', main: './index.js', files: ['index.js'],
+    await json(`packages/${folder}/package.json`, { name, version: '0.1.0', main: './index.js', files: ['index.js', 'consumer-checked'],
       ...(name === second ? { dependencies: { [first]: 'workspace:*' } } : {}) });
   }
   await fs.writeFile(path.join(workspace, '.gitignore'), 'node_modules\n.release-artifacts\n');
@@ -116,6 +123,7 @@ test('release plans, seals, pushes one tag and resumes a partial registry public
     const tarball = path.join(workspace, '.release-artifacts', version, commit, artifact.file);
     const packed = JSON.parse((await exec('tar', ['-xOf', tarball, 'package/package.json'])).stdout);
     assert.equal(packed.gitHead, commit);
+    if (artifact.name === first) assert.equal((await exec('tar', ['-xOf', tarball, 'package/consumer-checked'])).stdout, 'archives, audit, runtime');
   }
   await release('--push');
   assert.equal(await git('ls-remote', '--tags', 'origin', 'refs/tags/unrelated'), '');

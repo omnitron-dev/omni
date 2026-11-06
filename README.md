@@ -68,6 +68,12 @@ omni/
 pnpm install
 ```
 
+The workspace uses pnpm's hoisted layout to publish standard bundled dependency
+archives for the KB extraction toolchain. Its versions remain fixed by
+`pnpm-lock.yaml`; consumers can use their own package manager and installation
+layout. Run `pnpm install --frozen-lockfile` after a workspace layout change
+before running build or test commands.
+
 ### Build
 
 ```bash
@@ -113,7 +119,9 @@ node scripts/release.mjs <version> --publish
 node scripts/release.mjs <version> --github
 ```
 
-Preparation builds a separate checkout and creates a local annotated tag.
+Preparation builds a separate checkout, verifies package exports, installs and
+audits an independent npm consumer, checks its runtime and creates a local
+annotated tag. Consumer checks do not inherit workspace overrides.
 Review the package inventory, SHA-512 digests and release notes in
 `.release-artifacts/<version>/<commit>/` before pushing. The push updates
 the selected branch and tag atomically. Publication verifies the remote

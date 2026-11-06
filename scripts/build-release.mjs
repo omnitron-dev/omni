@@ -1,7 +1,8 @@
 /** Xec extracts the exact revision into a private directory. Attach the original
  * Git identity so the backend and Console embed the same verifiable provenance. */
 import path from 'node:path';
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, realpathSync, mkdtempSync, rmSync } from 'node:fs';
+import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 
 const [source, commit] = process.argv.slice(2);
@@ -17,3 +18,15 @@ git('update-ref', 'HEAD', commit);
 git('read-tree', commit);
 if (git('status', '--porcelain')) throw new Error('Exported source differs from the release commit');
 execFileSync('pnpm', ['run', 'build'], { cwd: destination, stdio: 'inherit' });
+const verification = mkdtempSync(path.join(os.tmpdir(), 'omnitron-release-consumer-'));
+try {
+  const consumer = path.join(verification, 'consumer');
+  execFileSync(process.execPath, ['scripts/check-package-exports.mjs', '--install-consumer', consumer], {
+    cwd: destination, stdio: 'inherit',
+  });
+  execFileSync(process.execPath, ['scripts/ci/check-runtime-consumer.mjs', consumer], {
+    cwd: destination, stdio: 'inherit',
+  });
+} finally {
+  rmSync(verification, { recursive: true, force: true });
+}

@@ -78,6 +78,32 @@ it.each(['../public', '/public', 'dist/../public', 'dist//public', 'dist/./publi
   expect(() => artifactVolumeBindings(i)).toThrow('package-relative');
 });
 
+it.each(['\r', '\n', '\t', '\x7f'])('refuses Docker mount control characters in declared directory and target: %j', delimiter => {
+  const source = infra(); source.artifactVolumes!['web']!.directory = 'dist/public' + delimiter + 'extra';
+  expect(() => artifactVolumeBindings(source)).toThrow('package-relative');
+  const destination = infra(); destination.artifactVolumes!['web']!.target = '/var/www/site' + delimiter + 'extra';
+  expect(() => artifactVolumeBindings(destination)).toThrow('package-relative');
+});
+
+it.each(['\r', '\n', '\t', '\x7f', ':'])('refuses mount separators or control characters inherited from the physical installation root: %j', async delimiter => {
+  const tmp = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'artifact-volume-'))); cleanup.push(tmp);
+  const root = path.join(tmp, 'installed' + delimiter + 'extra');
+  await fs.mkdir(path.join(root, 'dist/public'), { recursive: true });
+  const declaration = infra(), before = structuredClone(declaration);
+  await expect(bindArtifactVolumes(declaration, new Map([['web', root]]))).rejects.toThrow('cannot be encoded as a Docker mount');
+  expect(declaration).toEqual(before);
+});
+
+it('preserves commas supported by the ordinary argv -v mount encoder', async () => {
+  const tmp = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'artifact-volume-'))); cleanup.push(tmp);
+  const root = path.join(tmp, 'installed,one'), directory = 'dist/public,two', target = '/var/www/site,three';
+  await fs.mkdir(path.join(root, directory), { recursive: true });
+  const declaration = infra(); Object.assign(declaration.artifactVolumes!['web']!, { directory, target });
+  const resolved = await bindArtifactVolumes(declaration, new Map([['web', root]]));
+  const service = resolved!.services!['gateway']!; if ('preset' in service) throw Error('fixture');
+  expect(service.docker!.volumes!['web']).toEqual({ source: path.join(root, directory), target, readonly: true });
+});
+
 it.each(['/var/www/site', '/var/www', '/var/www/site/assets'])('refuses target overlap with an existing Docker mount: %s', target => {
   const i = infra(); const service = i.services!['gateway']!;
   if ('preset' in service) throw Error('fixture');

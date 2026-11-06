@@ -6,7 +6,7 @@ import type { ArtifactVolumeBinding, InfrastructureConfig, IVolumeMount } from '
 import { mergeInfrastructure } from '../infrastructure/merge-config.js';
 
 const name = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/.test(value) && !value.includes('..');
-const relative = (value: unknown): value is string => typeof value === 'string' && value.length <= 4096 && !/[\\:\0]/.test(value) &&
+const relative = (value: unknown): value is string => typeof value === 'string' && value.length <= 4096 && !/[\\:\x00-\x1f\x7f]/.test(value) &&
   value.split('/').every(part => !!part && part !== '.' && part !== '..' && part.toLowerCase() !== 'node_modules');
 const target = (value: unknown): value is string => typeof value === 'string' && value.startsWith('/') && relative(value.slice(1));
 const overlap = (a: string, b: string) => a === b || a.startsWith(b + '/') || b.startsWith(a + '/');
@@ -63,6 +63,9 @@ export function releaseBuildEntries(config: IEcosystemConfig): IEcosystemAppEntr
 /** No symlink at any source segment or within the served tree, and no dependency exposure. */
 async function physicalDirectory(root: string, directory: string): Promise<string> {
   if (!relative(directory) || !path.isAbsolute(root) || await fs.realpath(root) !== root) throw Error('Artifact volume root is not physical');
+  // The ordinary Docker encoder uses colon-delimited -v. A physical
+  // installation root must not introduce separators or control characters.
+  if (/[\\:\x00-\x1f\x7f]/.test(path.join(root, directory))) throw Error('Artifact volume source cannot be encoded as a Docker mount');
   let selected = root;
   for (const part of directory.split('/')) {
     selected = path.join(selected, part);

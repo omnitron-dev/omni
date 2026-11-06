@@ -19,6 +19,13 @@ const applicationSdkArg = process.argv.indexOf('--application-sdk');
 const sdk = await fs.realpath(applicationSdkArg === -1 ? path.dirname(dist) : process.argv[applicationSdkArg + 1]);
 const titan = await resolveInstalledDependency(sdk, '@omnitron-dev/titan');
 assert.ok(titan, 'Application SDK must resolve its own Titan');
+const nextSdkArg = process.argv.indexOf('--next-application-sdk');
+const nextSdk = nextSdkArg === -1 ? undefined : await fs.realpath(process.argv[nextSdkArg + 1]);
+const nextTitan = nextSdk && await resolveInstalledDependency(nextSdk, '@omnitron-dev/titan');
+if (nextSdk) {
+  assert.ok(nextTitan, 'Next application SDK must resolve its own Titan');
+  assert.notEqual(await fs.realpath(nextTitan), await fs.realpath(titan), 'The SDK transition must change physical Titan identity');
+}
 const directory = await fs.mkdtemp('/private/tmp/omni-watch-');
 const observed = path.join(directory, 'observed.jsonl');
 const config = { ...DEFAULT_ECOSYSTEM, apps: [] };
@@ -47,9 +54,13 @@ export default defineSystem({name:current.value,version:'1.0.0',processes:[
  {name:'provider',module:'./provider.ts',topology:{expose:true}},
  {name:'consumer',module:'./consumer.ts',topology:{access:['FixtureWorker']}}
 ]});`);
-  await fs.writeFile(app + '/src/provider.ts', `import {Module,Service,Public} from '@omnitron-dev/titan/decorators';
+  await fs.writeFile(app + '/src/provider.ts', `import fs from 'node:fs';
+import {createRequire} from 'node:module';
+import {Module,Service,Public} from '@omnitron-dev/titan/decorators';
 import {current} from '@fixture/kit';
-class Worker {snapshot(){return {value:current.value,pid:process.pid,parent:process.ppid};}}
+class Worker {snapshot(){return {value:current.value,pid:process.pid,parent:process.ppid,
+ titan:fs.realpathSync(createRequire(import.meta.url).resolve('@omnitron-dev/titan')),
+ adapter:fs.realpathSync((globalThis as any).workerData.processPath)};}}
 Public()(Worker.prototype,'snapshot',Object.getOwnPropertyDescriptor(Worker.prototype,'snapshot'));
 Service({name:'FixtureWorker'})(Worker);
 class Provider {} Module({providers:[Worker],exports:[Worker]})(Provider);export default Provider;`);
@@ -101,6 +112,7 @@ try {
   const snapshot = await client.connect(); connected = true;
   assert.equal(snapshot.ownerBuild.commit, OWN_BUILD.commit);
   assert.equal(snapshot.capabilities.applicationTopology, 1);
+  if (nextSdk) assert.equal(snapshot.capabilities.applicationRuntimeResolution, 1);
   await client.acquire(); client.orchestrator.devMode = true;
   for (const entry of config.apps) await client.orchestrator.startApp(entry, config);
   const initial = {};
@@ -120,9 +132,32 @@ try {
   const stoppedAt = Date.now();
   const survivor = await until(async () => (await rows()).find(row => row.observer === 'second' && row.at > stoppedAt), 'Surviving topology after stop');
   assert.equal(survivor.pid, initial.second.pid); assert.equal(survivor.value, 'second-initial');
+  const sdkTransitions = [];
+  if (nextSdk) {
+    // Keep the owner's loader history and the application's absolute bootstrap
+    // path. Only the stopped fixture's normal dependency links change.
+    for (const [phase, selectedSdk, selectedTitan] of [['upgrade', nextSdk, nextTitan], ['rollback', sdk, titan]]) {
+      await client.orchestrator.stopApp('first/dev/probe');
+      for (const [name, target] of [['omnitron', selectedSdk], ['titan', selectedTitan]]) {
+        const link = path.join(directory, 'first/node_modules/@omnitron-dev', name);
+        await fs.unlink(link); await fs.symlink(target, link, 'dir');
+      }
+      const after = Date.now();
+      await client.orchestrator.restartApp('first/dev/probe');
+      const current = await until(async () => (await rows()).find(row => row.observer === 'first' && row.at >= after && row.value === 'first-updated'), phase + ' RPC');
+      assert.ok(current.titan.startsWith(await fs.realpath(selectedTitan) + path.sep));
+      assert.equal(current.adapter, await fs.realpath(path.join(selectedSdk, 'dist/orchestrator/bootstrap-process.js')));
+      assert.equal(current.parent, owner.pid);
+      const previous = sdkTransitions.at(-1)?.current ?? changed;
+      assert.notEqual(current.pid, previous.pid); assert.notEqual(current.consumerPid, previous.consumerPid);
+      const sibling = await until(async () => (await rows()).find(row => row.observer === 'second' && row.at > current.at), phase + ' unrelated RPC');
+      assert.equal(sibling.pid, initial.second.pid); assert.equal(sibling.consumerPid, initial.second.consumerPid);
+      sdkTransitions.push({ phase, sdk: selectedSdk, current, sibling });
+    }
+  }
   console.log(JSON.stringify({ test: 'development-topology-watch', commit: OWN_BUILD.commit,
     applicationSdk: JSON.parse(await fs.readFile(path.join(sdk, 'dist/BUILD.json'), 'utf8')).commit,
-    ownerPid: owner.pid, initial, changed, survivor, sourceSymlinks: true, sameNamesIsolated: true, productionChanged: false }));
+    ownerPid: owner.pid, initial, changed, survivor, sdkTransitions, sourceSymlinks: true, sameNamesIsolated: true, productionChanged: false }));
 } catch (error) { primaryFailure = { error }; }
 finally {
   await cleanupFixture(directory, primaryFailure, async attempt => {

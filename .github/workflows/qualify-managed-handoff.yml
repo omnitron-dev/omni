@@ -71,6 +71,12 @@ jobs:
           JS
             )
           done
+      - name: Upgrade and roll back a development SDK through one resident candidate owner
+        run: |
+          node apps/omnitron/test/runtime/development-watch.mjs \
+            "$RUNNER_TEMP/omnitron-handoff-$CANDIDATE/packages/0/dist" \
+            --application-sdk "$RUNNER_TEMP/omnitron-handoff-$PREVIOUS/packages/0" \
+            --next-application-sdk "$RUNNER_TEMP/omnitron-handoff-$CANDIDATE/packages/0"
       - name: Deliver an application on its own SDK through the previous execution owner
         run: |
           node apps/omnitron/test/runtime/installed-runtime-context.mjs \

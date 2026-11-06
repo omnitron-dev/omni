@@ -312,6 +312,10 @@ it.skipIf(!process.env['OMNITRON_INGRESS_DOCKER_TEST_IMAGE'])('native OpenResty 
       let body = ''; response.on('data', (chunk) => { body += chunk; }); response.on('end', () => resolve({ code: response.statusCode!, body, headers: response.headers }));
     }); request.on('error', reject); request.on('timeout', () => request.destroy(new Error('HTTPS probe timed out')));
   });
+  // Control-generation acknowledgment precedes acceptance on every TLS listener.
+  // A fresh connection can briefly reach the old worker during graceful reload.
+  const ready = (host: string, url: string, expected: { code: number; body?: string; headers?: Record<string, string> }) =>
+    expect.poll(() => get(host, url), { timeout: 5000, interval: 100 }).toMatchObject(expected);
   try {
     const state = await docker.inspect(nativeSettings); if (state.exists) throw new Error('Native ingress fixture requires the dedicated container name to be unused');
     await native.configure(nativeSettings); const first = await native.apply(app('a', 28461));
@@ -320,18 +324,18 @@ it.skipIf(!process.env['OMNITRON_INGRESS_DOCKER_TEST_IMAGE'])('native OpenResty 
       request.on('error', reject); request.end(Buffer.alloc(bytes));
     });
     expect(await upload(2 * 1024 * 1024)).toBe(200);
-    expect(await get('a.example.test', '/api/site/value')).toMatchObject({ code: 200, body: 'A:/value' });
+    await ready('a.example.test', '/api/site/value', { code: 200, body: 'A:/value' });
     expect((await get('a.example.test', '/netron')).code).toBe(404); expect((await get('a.example.test', '/netron/rpc')).code).toBe(404);
     const second = await native.apply({ ...app('b', 28471), expectedGeneration: first.generation });
-    expect(await get('b.example.test', '/hello')).toMatchObject({ code: 200, body: 'B:/hello' });
+    await ready('b.example.test', '/hello', { code: 200, body: 'B:/hello' });
     await expect(get('unknown.example.test', '/')).rejects.toThrow();
     const maintenance = app('a', 28461); maintenance.routes[0]!.locations = [{ path: '/', deny: 503 }];
     const held = await native.apply({ ...maintenance, expectedGeneration: second.generation });
     for (const url of ['/', '/api/site/value', '/netron'])
-      expect(await get('a.example.test', url)).toMatchObject({ code: 503, headers: { 'retry-after': '60', 'cache-control': 'no-store' } });
+      await ready('a.example.test', url, { code: 503, headers: { 'retry-after': '60', 'cache-control': 'no-store' } });
     expect(await get('b.example.test', '/during-maintenance')).toMatchObject({ code: 200, body: 'B:/during-maintenance' });
     const restored = await native.restoreOwner({ owner: maintenance.owner, fromGeneration: second.generation, expectedGeneration: held.generation, expectedOwnerRevision: held.ownerRevision });
-    expect(await get('a.example.test', '/api/site/restored')).toMatchObject({ code: 200, body: 'A:/restored' });
+    await ready('a.example.test', '/api/site/restored', { code: 200, body: 'A:/restored' });
     await native.remove({ owner: app().owner, expectedGeneration: restored.generation });
     expect(await get('b.example.test', '/still-live')).toMatchObject({ code: 200, body: 'B:/still-live' });
     await expect(get('a.example.test', '/')).rejects.toThrow();

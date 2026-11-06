@@ -7,6 +7,7 @@ import { readBuildStamp, type BuildStamp } from '../shared/build-stamp.js';
 import { verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
 import { readExecutionCapabilities, type ExecutionCapabilities } from './execution-capabilities.js';
 import type { IDaemonConfig } from '../config/types.js';
+import { compareMigrationChecksumMetadata, type MigrationChecksumChange } from '../database/migration-registry-compatibility.js';
 
 const execute = promisify(execFile);
 export interface BackendArtifact {
@@ -23,17 +24,21 @@ export function backendSchemaScope(config: Pick<IDaemonConfig, 'role' | 'cluster
   return config.role === 'slave' && (config.cluster === undefined || config.cluster?.enabled === false) ? 'node' : 'all';
 }
 
-export async function backendMigrationDigest(directory: string, scope: BackendSchemaScope = 'all'): Promise<string> {
+async function readBackendMigrations(directory: string, scope: BackendSchemaScope) {
   const hash = createHash('sha256');
+  const files = new Map<string, { hash: string; content: string }>(), directories: string[] = [];
   const walk = async (root: string, prefix: string): Promise<void> => {
     if (!(await fs.lstat(root)).isDirectory()) throw new Error('Database migration directories must not be symlinks');
+    directories.push(prefix);
     hash.update(JSON.stringify(['directory', prefix]));
     for (const item of (await fs.readdir(root, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
       const relative = path.join(prefix, item.name);
       if (item.isDirectory()) await walk(path.join(root, item.name), relative);
       else if (item.isFile() && item.name.endsWith('.js')) {
-        const content = createHash('sha256').update(await fs.readFile(path.join(root, item.name))).digest('hex');
-        hash.update(JSON.stringify([relative, content]));
+        const content = await fs.readFile(path.join(root, item.name));
+        const digest = createHash('sha256').update(content).digest('hex');
+        files.set(relative, { hash: digest, content: content.toString('utf8') });
+        hash.update(JSON.stringify([relative, digest]));
       } else if (item.isSymbolicLink()) throw new Error('Database migration files must not be symlinks');
     }
   };
@@ -43,15 +48,45 @@ export async function backendMigrationDigest(directory: string, scope: BackendSc
     if (!(await fs.lstat(path.join(local, 'index.js'))).isFile()) throw new Error('A regular worker migration registry is required');
   } else {
     try { await fs.lstat(local); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return hash.digest('hex'); throw error; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { digest: hash.digest('hex'), files, directories }; throw error; }
   }
   await walk(local, 'node');
-  return hash.digest('hex');
+  return { digest: hash.digest('hex'), files, directories };
 }
 
-export async function assertBackendMigrationsCompatible(current: string, next: string, scope: BackendSchemaScope): Promise<void> {
-  const [before, after] = await Promise.all([backendMigrationDigest(current, scope), backendMigrationDigest(next, scope)]);
-  if (before !== after) throw new Error(`This update changes database migrations (${scope}). Prepare a separate compatible database transition before replacing the backend.`);
+export async function backendMigrationDigest(directory: string, scope: BackendSchemaScope = 'all'): Promise<string> {
+  return (await readBackendMigrations(directory, scope)).digest;
+}
+
+export type BackendMigrationCompatibility = { kind: 'identical' } | {
+  kind: 'checksum-metadata'; changes: Array<MigrationChecksumChange & { registry: string }>;
+};
+
+export async function assertBackendMigrationsCompatible(current: string, next: string, scope: BackendSchemaScope): Promise<BackendMigrationCompatibility> {
+  const [before, after] = await Promise.all([readBackendMigrations(current, scope), readBackendMigrations(next, scope)]);
+  if (before.digest === after.digest) return { kind: 'identical' };
+  try {
+    if (JSON.stringify(before.directories) !== JSON.stringify(after.directories) || before.files.size !== after.files.size) {
+      throw new Error('Migration files or directories changed');
+    }
+    const changes: Array<MigrationChecksumChange & { registry: string }> = [];
+    for (const [file, source] of before.files) {
+      const target = after.files.get(file);
+      if (!target) throw new Error(`Migration file was removed: ${file}`);
+      if (source.hash === target.hash) continue;
+      const registry = file === 'master/index.js' ? 'OMNITRON_MIGRATIONS' : file === 'node/index.js' ? 'SLAVE_MIGRATIONS' : null;
+      if (!registry) throw new Error(`Migration body changed: ${file}`);
+      const metadata = compareMigrationChecksumMetadata(source.content, target.content, registry);
+      for (const change of metadata) {
+        if (!before.files.has(path.join(path.dirname(file), `${change.name}.js`))) throw new Error('Migration body is missing');
+        changes.push({ ...change, registry });
+      }
+    }
+    if (!changes.length) throw new Error('No compatible checksum metadata change found');
+    return { kind: 'checksum-metadata', changes };
+  } catch (cause) {
+    throw new Error(`This update changes database migrations (${scope}). Prepare a separate compatible database transition before replacing the backend.`, { cause });
+  }
 }
 
 /** Validate an already-built local artifact; never build, install dependencies or migrate here. */

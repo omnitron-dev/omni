@@ -181,6 +181,35 @@ try {
   const cli = (...args) => run(artifact.execPath, [path.join(artifact.directory, 'cli/omnitron.js'), ...args, '--json'], {
     env: { ...process.env, OMNITRON_HOME: instance }, cwd: root, timeout: 600_000, maxBuffer: 1024 * 1024,
   });
+  const require = createRequire(path.join(artifact.directory, '../package.json'));
+  const Database = require('better-sqlite3');
+  const migrationHistory = () => {
+    const db = new Database(path.join(instance, 'data/slave.db'), { readonly: true, fileMustExist: true });
+    try { return db.prepare('SELECT * FROM migrations ORDER BY name').all(); } finally { db.close(); }
+  };
+  const originalHistory = migrationHistory();
+  assert.ok(originalHistory.length > 0, 'The baseline did not create its migration journal');
+  const assertHistoryPreserved = stage => {
+    assert.deepEqual(migrationHistory(), originalHistory, `${stage}: migration journal was rewritten`);
+  };
+  if (managementDist && !backendOnly) {
+    const { assertBackendMigrationsCompatible } = await import(pathToFileURL(path.join(managementDist, 'daemon/backend-candidate.js')).href);
+    const compatibility = await assertBackendMigrationsCompatible(artifact.directory, managementDist, 'node');
+    if (compatibility?.kind === 'checksum-metadata') {
+      const supervisor = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor');
+      let capable;
+      try { capable = (await supervisor.service.status()).migrationChecksumMetadata === 1; } finally { await supervisor.close(); }
+      if (!capable) {
+        const baselinePid = (await status()).pid;
+        await assert.rejects(run(path.resolve(managementDist, '../../../node'), [path.join(managementDist, 'cli/omnitron.js'),
+          '--json', 'backend', 'upgrade', managementDist, '--check'], { cwd: root, env: process.env, timeout: 90_000 }), /backend guardian transition/);
+        assert.equal((await status()).pid, baselinePid, 'Unsupported guardian check changed the backend');
+        assert.equal((await probe()).pid, applicationPid);
+        assertHistoryPreserved('legacy-guardian-refusal');
+        mark({ stage: 'legacy-guardian-refusal', ownerPid, applicationPid, journalRows: originalHistory.length });
+      }
+    }
+  }
   // Upgrade the independent guardian first: a backend replacement cannot change
   // the guardian code already supervising it. Keep the baseline owner throughout.
   const guardianTransition = managementDist && !backendOnly ? await (async () => {
@@ -219,6 +248,7 @@ try {
     assert.equal(transitioned.result.ownerPid, ownerPid);
     assert.notEqual(transitioned.result.backendPid, settled.pid);
     assert.notEqual(transitioned.result.guardianPid, prepared.guardianPid);
+    assertHistoryPreserved('guardian-transition');
     await checkPlan(plan.file, false, transitioned.result.backendPid);
     assert.equal((await applySupervisorTransition(plan.file)).result.backendPid, transitioned.result.backendPid, 'A repeated apply started another backend');
     mark({ stage: 'guardian-transition-complete', result: transitioned.result });
@@ -253,6 +283,7 @@ try {
         assert.equal(current.build.commit, stamp.commit); assert.equal(current.execution.owner.pid, ownerPid);
         assert.equal((await supervisor.service.status()).pid, initialGuardian.pid, 'Backend update replaced its guardian');
         assert.equal((await probe()).pid, applicationPid);
+        assertHistoryPreserved(stage);
         mark({ stage, commit: stamp.commit, backendPid: current.pid, ownerPid, applicationPid, guardianPid: initialGuardian.pid });
       }
     } finally { await supervisor.close(); }
@@ -381,8 +412,6 @@ try {
   }
   await fetch(`http://127.0.0.1:${address.port}/pause`);
   const expected = (await fs.readFile(path.join(root, 'expected.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
-  const require = createRequire(path.join(artifact.directory, '../package.json'));
-  const Database = require('better-sqlite3');
   await until(async () => {
     const db = new Database(path.join(instance, 'data/slave.db'), { readonly: true, fileMustExist: true });
     try {
@@ -396,8 +425,10 @@ try {
       return true;
     } finally { db.close(); }
   }, 'Exact multiline logs did not reach the durable outbox');
+  assertHistoryPreserved('complete');
   console.log(JSON.stringify({ test: linux ? 'independent-systemd-supervision' : 'independent-launchd-supervision', root, ownerPid, applicationPid,
-    backends: [first.pid, upgraded.pid, recovered.pid, afterGuardian.pid], killedGuardian: guardian.pid, samples, failures, verifiedLogs: expected.length }));
+    backends: [first.pid, upgraded.pid, recovered.pid, afterGuardian.pid], killedGuardian: guardian.pid, samples, failures,
+    verifiedLogs: expected.length, preservedMigrationHistoryRows: originalHistory.length }));
 } finally {
   if (sampler) clearInterval(sampler);
   while (inFlight) await new Promise(resolve => setTimeout(resolve, 10));

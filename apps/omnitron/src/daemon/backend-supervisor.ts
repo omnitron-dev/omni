@@ -22,6 +22,7 @@ import { checkBackendCandidate, verifyBackendEntry } from './backend-candidate.j
 
 export interface SupervisorStatus {
   kernelHandoff?: 1;
+  migrationChecksumMetadata?: 1;
   operationPending?: boolean;
   pid: number;
   backendPid: number | null;
@@ -63,7 +64,7 @@ export class BackendSupervisorService {
 
   @Public({ auth: { roles: ADMIN_ROLES } })
   async status(): Promise<SupervisorStatus> {
-    return { ...this.state, kernelHandoff: 1, operationPending: this.operationClaimed || (this.busy && !this.inspection) };
+    return { ...this.state, kernelHandoff: 1, migrationChecksumMetadata: 1, operationPending: this.operationClaimed || (this.busy && !this.inspection) };
   }
 
   @Public({ auth: { roles: ADMIN_ROLES } })

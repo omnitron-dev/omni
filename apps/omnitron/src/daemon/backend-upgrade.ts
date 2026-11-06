@@ -181,9 +181,16 @@ export async function replaceBackend(directory: string, options: {
     };
     await validateOwner();
     if (managed && !supervisesBackendChildren()) {
+      const compatibility = options.schemaPlan ? null : await assertBackendMigrationsCompatible(
+        path.dirname(path.dirname(previous.entry)), artifact.directory, previous.schemaScope === 'node' ? 'node' : 'all');
       const supervisor = await privateControlClient<BackendSupervisorService>(managedSupervisorSocket(managed), 'OmnitronSupervisor', 600_000);
-      try { return await supervisor.service.upgrade({ directory, checkOnly: options.checkOnly === true,
-        ...(options.schemaPlan ? { schemaPlan: path.resolve(options.schemaPlan) } : {}) }); }
+      try {
+        if (compatibility?.kind === 'checksum-metadata' && (await supervisor.service.status()).migrationChecksumMetadata !== 1) {
+          throw new Error('Only migration checksum metadata changed, but the running guardian cannot verify that transition. Prepare and apply a backend guardian transition with this candidate, then retry backend upgrade. No backend or application was stopped.');
+        }
+        return await supervisor.service.upgrade({ directory, checkOnly: options.checkOnly === true,
+          ...(options.schemaPlan ? { schemaPlan: path.resolve(options.schemaPlan) } : {}) });
+      }
       finally { await supervisor.close(); }
     }
     progress('Validating candidate and rollback artifacts');

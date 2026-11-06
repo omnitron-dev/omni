@@ -24,7 +24,8 @@ import { writePrivateRecord } from '../../src/daemon/execution-journal.js';
 import type { BackendBootRecord } from '../../src/daemon/backend-handoff-types.js';
 
 const roots: string[] = [];
-beforeEach(() => { vi.resetAllMocks(); mocks.ambientHome = '/ambient-instance-must-not-be-used'; mocks.supervised.mockReturnValue(false); });
+beforeEach(() => { vi.resetAllMocks(); mocks.ambientHome = '/ambient-instance-must-not-be-used'; mocks.supervised.mockReturnValue(false);
+  mocks.migrations.mockResolvedValue({ kind: 'identical' }); });
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
 async function fixture(managed = false) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-instance-')); roots.push(root);
@@ -43,11 +44,12 @@ async function fixture(managed = false) {
   const prepare = vi.fn();
   const upgrade = vi.fn().mockResolvedValue({ checked: true, build: { commit: 'target' } });
   const recover = vi.fn().mockResolvedValue({ pid: 456 });
+  const supervisorStatus = vi.fn().mockResolvedValue({ migrationChecksumMetadata: 1 });
   mocks.daemon.mockReturnValue({ service: async () => ({ status: async () => ({ handoffSupported: true }), controlAddress: async () => ({ socket: control }) }), disconnect: vi.fn() });
   mocks.control.mockImplementation(async (target, service) => {
     if (target === control && service === 'OmnitronBackendControl') return { service: { status: async () => status, prepare }, close: vi.fn() };
     if (target === path.join(execution, 'owner.sock') && service === 'OmnitronExecution') return { service: { snapshot: observe }, close: vi.fn() };
-    if (target === path.join(execution, 'supervisor.sock') && service === 'OmnitronSupervisor') return { service: { upgrade, recover }, close: vi.fn() };
+    if (target === path.join(execution, 'supervisor.sock') && service === 'OmnitronSupervisor') return { service: { upgrade, recover, status: supervisorStatus }, close: vi.fn() };
     throw new Error(`Unexpected private control target: ${target}`);
   });
   mocks.candidate.mockResolvedValue({ build: { commit: 'fixture' } });
@@ -63,7 +65,7 @@ async function fixture(managed = false) {
     previousEntry: status.entry, previousPid: 999999, createdAt: new Date().toISOString(), cwd: home,
     environment: { OMNITRON_HOME: home },
   };
-  return { root, home, execution, socket, control, config, record, upgrade, recover, status, snapshot, observe, prepare };
+  return { root, home, execution, socket, control, config, record, upgrade, recover, status, snapshot, observe, prepare, supervisorStatus };
 }
 
 it('uses the selected socket identity even when its location differs from instance home', async () => {
@@ -92,6 +94,23 @@ it('delegates to the selected managed instance and never the ambient instance', 
   expect(target.upgrade).toHaveBeenCalledWith({ directory: '/candidate', checkOnly: true });
   expect(mocks.control.mock.calls.map(call => call[0])).toEqual([target.control, path.join(target.execution, 'supervisor.sock')]);
   expect(mocks.candidate).toHaveBeenCalledWith('/candidate', undefined, undefined);
+});
+
+it.each([true, false])('explains an old guardian metadata refusal before any lifecycle change (check=%s)', async checkOnly => {
+  const target = await fixture(true);
+  mocks.migrations.mockResolvedValue({ kind: 'checksum-metadata', changes: [] });
+  target.supervisorStatus.mockResolvedValue({});
+  await expect(replaceBackend('/candidate', { socket: target.socket, checkOnly })).rejects.toThrow('backend guardian transition');
+  expect(target.upgrade).not.toHaveBeenCalled(); expect(target.prepare).not.toHaveBeenCalled();
+  expect(mocks.installation).not.toHaveBeenCalled();
+});
+
+it('delegates checked metadata transitions only to a capable guardian', async () => {
+  const target = await fixture(true);
+  mocks.migrations.mockResolvedValue({ kind: 'checksum-metadata', changes: [] });
+  await expect(replaceBackend('/candidate', { socket: target.socket, checkOnly: true })).resolves.toMatchObject({ checked: true });
+  expect(target.supervisorStatus).toHaveBeenCalledOnce();
+  expect(target.upgrade).toHaveBeenCalledOnce();
 });
 
 it.each([false, true])('refuses an incompatible owner before draining or delegating (managed=%s)', async managed => {

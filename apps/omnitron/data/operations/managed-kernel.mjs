@@ -13,7 +13,7 @@ const dir = path.join(home, 'runtime'),
   pkg = path.join(bootstrap, 'packages/0');
 const sdk = (name) => import(pathToFileURL(path.join(pkg, 'dist', name + '.js')).href);
 const { readManagedRuntime, managedJobPid, verifyManagedIsolation } = await sdk('daemon/managed-runtime');
-const { checkBackendCandidate, backendMigrationDigest } = await sdk('daemon/backend-candidate');
+const { checkBackendCandidate } = await sdk('daemon/backend-candidate');
 const { createDaemonClient } = await sdk('daemon/daemon-client');
 const { privateControlClient } = await sdk('daemon/private-control-client');
 const config = await readManagedRuntime(home);
@@ -233,9 +233,10 @@ try {
         throw Error('Expected exactly one installed sealed runtime for ' + wanted.commit + '; found ' + matches.length);
       const candidate = matches[0].name === current.runtimeHash ? current : await checkout(matches[0].name);
       if (candidate.build.commit !== wanted.commit) throw Error('Candidate changed during qualification');
-      if ((await backendMigrationDigest(current.directory)) !== (await backendMigrationDigest(candidate.directory)))
-        throw Error('Kernel rollout requires identical migration sets; qualify schema changes separately');
       if (candidate.runtimeHash !== current.runtimeHash) {
+        // The canonical preflight checks the live backend's migration scope,
+        // checksum metadata compatibility and the running guardian's capabilities.
+        // A second whole-tree digest policy here would disagree with that path.
         const check = spawnSync(
           candidate.execPath,
           [

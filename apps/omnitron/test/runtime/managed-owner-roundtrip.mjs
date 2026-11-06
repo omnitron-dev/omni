@@ -4,6 +4,24 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { verifyFixtureLogs } from './fixture-log-evidence.mjs';
 
+/** This counter fixture owns no containers. Prove that footprint and use the
+ * ordinary reviewed stop on every backend version; it does not qualify the
+ * separate keepInfrastructure extension or silently fall back from it. */
+export async function stopPrivateFixtureStack(project) {
+  const scope = { project: 'probe', stack: 'local' };
+  const review = await project.reviewStackStop(scope);
+  assert.equal(review.project, scope.project); assert.equal(review.stack, scope.stack);
+  assert.match(review.digest, /^[a-f0-9]{64}$/);
+  assert.equal(review.targets.length, 1);
+  const target = review.targets[0];
+  assert.equal(target.node, 'local'); assert.equal(target.reason, undefined);
+  if (target.runtime) assert.deepEqual(target.runtime, scope);
+  assert.deepEqual(target.applications, ['probe/local/counter']);
+  assert.deepEqual(target.containers, [], 'Counter fixture must own no infrastructure');
+  const stopped = await project.stopStack({ ...scope, review: review.digest });
+  assert.equal(stopped.status, 'stopped'); assert.equal(stopped.stopOperation.phase, 'stopped');
+}
+
 /** Cold owner qualification shares the managed-backend fixture and its private OS jobs. */
 export async function managedOwnerRoundtrip(context) {
   const { root, projectDirectory, instance, execution, config, units, first, artifact, initialBackend, initialGuardian, managementDist, fixtureId,
@@ -82,14 +100,7 @@ export async function managedOwnerRoundtrip(context) {
     assert.equal(checked.checked, true);
     assert.equal((await status()).execution.owner.pid, priorOwner, 'Read-only compatibility changed ownership');
     await projects?.stop();
-    await api(async client => {
-      const project = await client.service('OmnitronProject');
-      const review = await project.reviewStackStop({ project: 'probe', stack: 'local', keepInfrastructure: true });
-      assert.equal(review.keepInfrastructure, true); assert.ok(review.digest);
-      assert.deepEqual(review.targets.flatMap(t => t.applications), ['probe/local/counter']);
-      const stopped = await project.stopStack({ project: 'probe', stack: 'local', keepInfrastructure: true, review: review.digest });
-      assert.equal(stopped.status, 'stopped'); assert.equal(stopped.stopOperation.phase, 'stopped');
-    });
+    await api(async client => stopPrivateFixtureStack(await client.service('OmnitronProject')));
     await until(() => !PidManager.isProcessAlive(priorWorker), 'Reviewed application did not stop');
     await certificate();
     const guardianUnit = units.find(u => u.mode === 'backend');
@@ -152,7 +163,8 @@ export async function managedOwnerRoundtrip(context) {
       await projects.start(after.execution.owner.pid, true);
     }
     rounds.push({ ...target, cwd: config.cwd, ownerPid: after.execution.owner.pid, guardianPid: await jobPid('backend'), backendPid: after.pid,
-      applicationPid: worker.pid, previousOwnerCleanExit: true, stoppedIntentPreserved: true, preservedMigrationHistoryRows: originalHistory.length });
+      applicationPid: worker.pid, previousOwnerCleanExit: true, stoppedIntentPreserved: true,
+      reviewedInfrastructureEmpty: true, preservedMigrationHistoryRows: originalHistory.length });
     mark({ stage: target.phase, ...rounds.at(-1) });
   }
   const applicationRuntime = await projects?.finish();

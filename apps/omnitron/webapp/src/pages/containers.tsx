@@ -35,6 +35,8 @@ import Link from '@mui/material/Link';
 import { useStackContext } from 'src/hooks/use-stack-context';
 import { useActiveProjectStacks, useProjectStore } from 'src/stores/project.store';
 import { usePolledResource } from 'src/hooks/use-polled-resource';
+import { isRpcTimeout } from 'src/utils/rpc-error';
+import { isLostRpcAcknowledgement } from '@omnitron-dev/omnitron/dto/services';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -227,14 +229,21 @@ export default function ContainersPage() {
   const refresh = async () => {
     await Promise.all([fetchContainers(), activeProject && canReadStacks ? fetchStacks(activeProject) : null]);
   };
-  const operate = async (name: string, operation: Operation, run: () => Promise<void>) => {
+  const operate = async (name: string, operation: Operation, run: () => Promise<void>, mutates = true) => {
     if (pendingRef.current.has(name)) return;
     pendingRef.current.add(name);
     setPending((current) => ({ ...current, [name]: operation }));
     setActionError(null);
     try { await run(); }
-    catch (err) { setActionError(`${operation} ${name} failed: ${err instanceof Error ? err.message : String(err)}`); }
+    catch (err) {
+      setActionError(mutates && (isRpcTimeout(err) || isLostRpcAcknowledgement(err))
+        ? `${operation} ${name}: acknowledgement unavailable. The operation may have completed. Check the current container state before retrying.`
+        : `${operation} ${name} failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
     finally {
+      // Observe after every mutation attempt. A lost reply never authorizes
+      // replay, and a failed observation must leave the old inventory marked stale.
+      if (mutates) await fetchContainers();
       pendingRef.current.delete(name);
       setPending((current) => { const next = { ...current }; delete next[name]; return next; });
     }
@@ -273,12 +282,10 @@ export default function ContainersPage() {
 
   const handleStart = (name: string) => operate(name, 'Starting', async () => {
     await infra.startContainer({ name });
-    await fetchContainers();
   });
 
   const handleStop = (name: string) => operate(name, 'Stopping', async () => {
     await infra.stopContainer({ name });
-    await fetchContainers();
   });
 
   const handleRemove = async () => {
@@ -287,7 +294,6 @@ export default function ContainersPage() {
     await operate(name, 'Removing', async () => {
       await infra.removeContainer({ name });
       setConfirmRemove(null);
-      await fetchContainers();
     });
   };
 
@@ -296,7 +302,7 @@ export default function ContainersPage() {
     setLogModalContainer(container.name);
     setLogModalLines(logs ? logs.split('\n') : []);
     setLogModalOpen(true);
-  });
+  }, false);
 
   const pageRows = containers.slice(page * pageSize, page * pageSize + pageSize);
 
@@ -456,9 +462,9 @@ export default function ContainersPage() {
           {canReadStacks && inventoryError && <Button size="small" onClick={() => void fetchStacks(activeProject)}>Retry stack locations</Button>}
         </Alert>
       )}
-      {(error || actionError) && (
+      {actionError && (
         <Alert closable severity="warning" variant="outlined" onClose={() => setActionError(null)}>
-          {actionError ?? error}
+          {actionError}
         </Alert>
       )}
       {remoteStacks.length > 0 && (

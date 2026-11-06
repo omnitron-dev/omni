@@ -88,11 +88,44 @@ it('shows pending container work, prevents duplicate start and recovers from ref
   expect(screen.getByRole('button', { name: 'Logs for project-db' })).toBeDisabled();
   await act(async () => { fail(Error('fixture refused')); });
   expect(await screen.findByText(/Starting project-db failed: fixture refused/)).toBeInTheDocument();
-  expect(start).toBeEnabled();
+  await waitFor(() => expect(start).toBeEnabled());
   expect(screen.queryByText('Starting…')).not.toBeInTheDocument();
   fireEvent.click(start);
   await waitFor(() => expect(rpc.start).toHaveBeenCalledTimes(2));
   await waitFor(() => expect(start).toBeEnabled());
+});
+
+it.each([
+  Object.assign(Error('Socket closed during RPC'), { code: 503 }),
+  Object.assign(Error('Request timeout after 30000ms'), { code: 'TIMEOUT' }),
+])('observes a stop after a lost acknowledgement without replaying it: %s', async (failure) => {
+  const running = { ...containers[0]!, containerId: 'a'.repeat(64), status: 'running' as const };
+  rpc.list.mockResolvedValue([running]);
+  rpc.stop.mockImplementationOnce(async () => {
+    rpc.list.mockResolvedValue([{ ...running, status: 'exited' }]);
+    throw failure;
+  });
+  render(view());
+  fireEvent.click(await screen.findByRole('button', { name: 'Stop container project-db' }));
+  expect(await screen.findByText(/acknowledgement unavailable/)).toBeInTheDocument();
+  const row = within(screen.getByText('project-db').closest('tr')!);
+  expect(await row.findByText('exited')).toBeInTheDocument();
+  expect(screen.queryByText(/Stopping project-db failed/)).not.toBeInTheDocument();
+  expect(rpc.stop).toHaveBeenCalledTimes(1);
+  expect(rpc.start).not.toHaveBeenCalled();
+});
+
+it('retains both an uncertain mutation and a failed observation instead of confirming stale state', async () => {
+  rpc.start.mockImplementationOnce(async () => {
+    rpc.list.mockRejectedValue(Error('container inventory unavailable'));
+    throw Object.assign(Error('reply lost'), { code: 'ECONNRESET' });
+  });
+  render(view());
+  fireEvent.click(await screen.findByRole('button', { name: 'Start container project-db' }));
+  expect(await screen.findByText(/acknowledgement unavailable/)).toBeInTheDocument();
+  expect(await screen.findByText(/Could not ask the container runtime: container inventory unavailable/)).toBeInTheDocument();
+  expect(screen.getByText('project-db')).toBeInTheDocument();
+  expect(rpc.start).toHaveBeenCalledTimes(1);
 });
 
 it('separates native health from failed setup and shows its actionable reason', async () => {

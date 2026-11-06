@@ -248,14 +248,51 @@ export class InfrastructureService {
    * runs post-provisioning setup, and starts the health monitor.
    */
   @RecoveryMutation()
-  async provision(): Promise<InfrastructureState> {
+  async provision(definition?: InfrastructureService): Promise<InfrastructureState> {
     if (this.monitoringRelinquished) throw new Error('Infrastructure monitoring ownership has been relinquished');
     if (this.ownershipFrozen) throw new Error('Infrastructure ownership is frozen');
-    if (this.provisioning) return this.provisioning;
-    const task = this.provisionOwned();
+    if (this.provisioning) {
+      if (definition) throw new Error('Infrastructure provisioning is already in progress; retry the new declaration after it finishes');
+      return this.provisioning;
+    }
+    const task = this.provisionDefinition(definition);
     this.provisioning = task;
     try { return await task; }
     finally { if (this.provisioning === task) this.provisioning = undefined; }
+  }
+
+  /** Resolve a plan without installing another monitor or changing the current definition. */
+  resolveDefinition(
+    config: InfrastructureConfig,
+    services: Record<string, import('./types.js').IServiceRequirement>,
+    overrides?: Record<string, import('./types.js').IServiceOverride>,
+  ): InfrastructureService {
+    return new InfrastructureService(this.logger, config, services, this.presetRegistry, overrides, this.needsControlPlaneDatabase);
+  }
+
+  private async provisionDefinition(definition?: InfrastructureService): Promise<InfrastructureState> {
+    const monitored = this.healthTimer !== null;
+    this.definitionChanging = true;
+    try {
+      try {
+        // An old sweep must finish before fresh declarations can authorize native work.
+        const drained = await Promise.allSettled([...this.activeSweeps, ...this.reconcileTasks.values()]);
+        if (drained.some(result => result.status === 'rejected')) throw new Error('In-flight infrastructure reconciliation failed; inspect it before retrying provisioning');
+        await this.phantomJanitor?.drain();
+        if (definition && this.ownershipFrozen) throw new Error('Infrastructure ownership changed before the new declaration was applied');
+        if (definition) this.replaceDefinitionFrom(definition);
+        this.state.ready = false;
+      } finally {
+        this.definitionChanging = false;
+      }
+      return await this.provisionOwned();
+    } finally {
+      // Failed Docker admission must not silently abandon previously owned services.
+      if (monitored && !this.ownershipFrozen && !this.monitoringRelinquished) {
+        this.startHealthMonitor();
+        this.phantomJanitor?.start();
+      }
+    }
   }
 
   private async provisionOwned(): Promise<InfrastructureState> {
@@ -449,7 +486,7 @@ export class InfrastructureService {
    */
   @RecoveryMutation()
   async refreshOwnershipFrom(candidate: InfrastructureService): Promise<{ released: string[]; adopted: string[] }> {
-    if (this.ownershipFrozen) throw new Error('Infrastructure ownership refresh already in progress');
+    if (this.ownershipFrozen || this.provisioning) throw new Error('Infrastructure ownership refresh or provisioning already in progress');
     this.ownershipFrozen = true;
     try {
       const drained = await Promise.allSettled([...this.activeSweeps, ...this.reconcileTasks.values()]);
@@ -476,18 +513,7 @@ export class InfrastructureService {
         adopted.push(name);
       }
       const released = [...current.keys()].filter(name => !next.has(name));
-      const previousServices = this.normalizedServices;
-      this.desiredContainers = [...candidate.desiredContainers];
-      this.config = candidate.config;
-      this.normalizedServices = candidate.normalizedServices;
-      this.serviceOverrides = candidate.serviceOverrides;
-      this.invalidateChangedSetup(previousServices);
-      for (const name of released) {
-        delete this.state.services[name];
-        this.unhealthyEvidence.delete(name);
-        this.restartBackoff.delete(name);
-        this.lastActions.delete(name);
-      }
+      this.replaceDefinitionFrom(candidate);
       return { released, adopted };
     } finally {
       this.ownershipFrozen = false;
@@ -724,32 +750,33 @@ export class InfrastructureService {
     return this.state;
   }
 
-  /**
-   * Serve the stack's definition as it is now.
-   *
-   * A node's daemon builds this service on its first `provisionStack` and
-   * reuses it for every later one — rightly: a second service would be a
-   * second janitor and a second health monitor over one set of containers.
-   * But the definition it was built with stayed its definition. A later
-   * deployment that enabled a service, changed an image or dropped a
-   * `disabled` reached the node's host services — `reconcileHostServices`
-   * reads each call's own — and not its containers, until something restarted
-   * the daemon. Replaced whole, as the constructor sets it; `setConfigRoots`
-   * and `addAppContainers` then work on this set, as on a first call.
-   */
-  @RecoveryMutation()
-  redefine(
-    config: InfrastructureConfig,
-    normalizedServices: Record<string, import('./types.js').IServiceRequirement>,
-    serviceOverrides?: Record<string, import('./types.js').IServiceOverride>,
-  ): void {
-    if (this.ownershipFrozen) throw new Error('Infrastructure ownership refresh in progress');
+  /** Called only after older native work has drained and new observations are held. */
+  private replaceDefinitionFrom(candidate: InfrastructureService): void {
+    if (candidate.needsControlPlaneDatabase !== this.needsControlPlaneDatabase)
+      throw new Error('Infrastructure declaration cannot change control-plane database ownership');
+    const next = new Map(candidate.desiredContainers.map(container => [container.name, container]));
+    if (next.size !== candidate.desiredContainers.length) throw new Error('Duplicate desired container identity');
+    for (const container of this.desiredContainers) {
+      const replacement = next.get(container.name);
+      if (replacement && !sameRecord(container.labels, replacement.labels))
+        throw new Error(`Infrastructure declaration cannot change retained ownership: ${container.name}`);
+    }
     const previousServices = this.normalizedServices;
-    this.config = config;
-    this.normalizedServices = normalizedServices;
-    this.serviceOverrides = serviceOverrides;
-    this.desiredContainers = resolveInfrastructure(config, normalizedServices, serviceOverrides);
+    for (const container of this.desiredContainers) {
+      const replacement = next.get(container.name);
+      if (!replacement || containerSpecHash(container) !== containerSpecHash(replacement)) {
+        delete this.state.services[container.name];
+        this.unhealthyEvidence.delete(container.name);
+        this.restartBackoff.delete(container.name);
+        this.lastActions.delete(container.name);
+      }
+    }
+    this.config = candidate.config;
+    this.normalizedServices = candidate.normalizedServices;
+    this.serviceOverrides = candidate.serviceOverrides;
+    this.desiredContainers = [...candidate.desiredContainers];
     this.invalidateChangedSetup(previousServices);
+    this.state.ready = summariseProvisioning(this.desiredContainers, this.state.services).ready;
   }
 
   /**
@@ -863,6 +890,7 @@ export class InfrastructureService {
   private readonly reconcileTasks = new Map<string, Promise<void>>();
   private readonly activeSweeps = new Set<Promise<void>>();
   private ownershipFrozen = false;
+  private definitionChanging = false;
   private monitoringRelinquished = false;
   private provisioning: Promise<InfrastructureState> | undefined;
   private relinquishedNames: string[] = [];
@@ -917,7 +945,7 @@ export class InfrastructureService {
 
   private async withContainerReconciliation(desired: ResolvedContainer, operation: () => Promise<void>): Promise<void> {
     // T#58: per-name lock around the whole inspect→decide→act loop.
-    if (this.ownershipFrozen || this.retiredStacks.has(this.containerScope(desired)) || this.reconciling.has(desired.name)) {
+    if (this.ownershipFrozen || this.definitionChanging || this.retiredStacks.has(this.containerScope(desired)) || this.reconciling.has(desired.name)) {
       this.logger.debug({ service: desired.name }, 'Reconcile already in flight — skipping');
       return;
     }
@@ -935,7 +963,7 @@ export class InfrastructureService {
   @RecoveryMutation()
   private async reconcileServiceLocked(desired: ResolvedContainer): Promise<void> {
     const actual = await getContainerState(desired.name, { orThrow: true, fullId: true });
-    if (this.ownershipFrozen || this.retiredStacks.has(this.containerScope(desired))) return;
+    if (this.ownershipFrozen || this.definitionChanging || this.retiredStacks.has(this.containerScope(desired))) return;
 
     const id = actual && ownedContainerId(desired, actual);
     const action = this.computeAction(desired, actual);
@@ -991,7 +1019,7 @@ export class InfrastructureService {
     // Recheck immediately before destruction: queued polls, recovery and
     // replacement while inspecting must not authorize a stale decision.
     const confirmed = await getContainerState(desired.name, { orThrow: true, fullId: true });
-    if (this.ownershipFrozen || this.retiredStacks.has(this.containerScope(desired))) return;
+    if (this.ownershipFrozen || this.definitionChanging || this.retiredStacks.has(this.containerScope(desired))) return;
     if (!confirmed || confirmed.containerId !== actual.containerId || confirmed.startedAt !== actual.startedAt ||
         Date.parse(confirmed.healthCheck?.completedAt ?? '') < Date.parse(actual.healthCheck!.completedAt) ||
         !observeUnhealthy(previous, confirmed, Date.now()).restart) {
@@ -1344,7 +1372,7 @@ export class InfrastructureService {
     const allContainers = [...this.controlPlaneContainers(), ...this.desiredContainers];
     for (const desired of allContainers) {
       const actual = await getContainerState(desired.name, { orThrow: true, fullId: true });
-      if (this.ownershipFrozen) return;
+      if (this.ownershipFrozen || this.definitionChanging) return;
       if (this.retiredStacks.has(this.containerScope(desired))) continue;
 
       // T#58: Docker's own `--restart=always` / `--restart=on-failure`

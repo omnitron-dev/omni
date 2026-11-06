@@ -83,7 +83,8 @@ describe('declared service setup belongs to infrastructure readiness', () => {
     await service.runPresetPostProvisionHooks();
     const declarations = structuredClone(service.getNormalizedServices());
     declarations.storage._presetConfig = { buckets: ['new-bucket'] };
-    service.redefine({ services: {} }, declarations);
+    service.provisionOwned = vi.fn(async () => service.getState());
+    await service.provision(service.resolveDefinition({ services: {} }, declarations));
     expect(service.getState().services[actual.name]).toMatchObject({ provisioning: 'pending', error: expect.stringContaining('setup changed') });
   });
   it('redacts known credentials before an error reaches the shared state and diagnostic logger', async () => {

@@ -71,7 +71,7 @@ describe('infrastructure stop acknowledgements', () => {
     inspect.mockResolvedValueOnce(reviewed).mockResolvedValueOnce(reviewed).mockResolvedValueOnce([]);
     removed.mockRejectedValueOnce(new Error('container still alive')).mockResolvedValue(undefined);
     const relinquishMonitoring = vi.fn().mockResolvedValue(['pg']);
-    const manager: any = Object.assign(Object.create(StackInfrastructureManager.prototype), {
+    const manager: any = Object.assign(new StackInfrastructureManager(logger), {
       instances: new Map([['project/prod', { relinquishMonitoring }]]), portAllocations: new Map([['project/prod', [5432]]]), logger,
     });
     await expect(manager.teardownStack('project', 'prod', reviewed)).rejects.toThrow('still alive');
@@ -82,7 +82,7 @@ describe('infrastructure stop acknowledgements', () => {
     expect(manager.portAllocations.size).toBe(0);
   });
   it('does not forget failed stacks during bulk teardown', async () => {
-    const manager: any = Object.assign(Object.create(StackInfrastructureManager.prototype), {
+    const manager: any = Object.assign(new StackInfrastructureManager(logger), {
       instances: new Map([
         ['project/prod', { teardown: vi.fn().mockRejectedValue(new Error('offline')) }],
         ['project/test', { teardown: vi.fn().mockResolvedValue(undefined) }],

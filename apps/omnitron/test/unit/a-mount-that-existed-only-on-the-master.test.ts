@@ -305,7 +305,7 @@ describe('from the master\'s call to the node\'s container, through the calls th
     // the applications' containers are added to it.
     const added: ResolvedContainer[] = [];
     const reused = {
-      redefine: vi.fn(),
+      resolveDefinition: vi.fn(function resolveDefinition(this: unknown) { return this; }),
       addAppContainers: (cs: ResolvedContainer[]) => added.push(...cs),
       setConfigRoots: vi.fn(),
       provision: vi.fn(async () => ({ services: {}, ready: true })),

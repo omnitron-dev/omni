@@ -29,7 +29,7 @@ describe('a node asked twice', () => {
     let hosted: InfrastructureService | null = null;
     const host = vi.fn((config: never, declared: never, registry: never, overrides: never) => {
       hosted = new InfrastructureService(quiet(), config, declared, registry, overrides, false);
-      vi.spyOn(hosted, 'provision').mockResolvedValue({ services: {}, ready: true } as never);
+      vi.spyOn(hosted as any, 'provisionOwned').mockResolvedValue({ services: {}, ready: true });
       return hosted;
     });
     const node = new InfrastructureRpcService(() => hosted, host as never);

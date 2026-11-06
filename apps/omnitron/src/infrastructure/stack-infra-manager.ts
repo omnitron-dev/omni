@@ -1,6 +1,7 @@
+import { isDeepStrictEqual } from 'node:util';
 import { inspectStackContainers, removeContainer } from './container-runtime.js';
 import { ownsStackInfrastructure } from '../project/infrastructure-ownership.js';
-import { RecoveryMutation } from '../daemon/recovery-state.js';
+import { RecoveryBusyError, RecoveryMutation } from '../daemon/recovery-state.js';
 import { usesGatewayTemplate, withInfrastructureScope } from './service-resolver.js';
 /**
  * StackInfrastructureManager — Per-stack infrastructure isolation
@@ -49,6 +50,7 @@ const REDIS_DB_RANGE_SIZE = 5;
 
 export class StackInfrastructureManager {
   captureRecoveryState(): Awaited<ReturnType<StackInfrastructureManager['prepareHandoff']>> {
+    if (this.mutations.size || this.handoffFrozen) throw new RecoveryBusyError('Stack infrastructure ownership is changing');
     return [...this.instances].map(([key, service]) => {
       const allocation = this.portAllocations.get(key);
       if (!allocation) throw new Error(`Infrastructure port ownership is missing for ${key}`);
@@ -60,6 +62,8 @@ export class StackInfrastructureManager {
     key: string; allocation: StackPortAllocation;
     infrastructure: import('./infrastructure.service.js').InfrastructureHandoffState;
   }>> {
+    if (this.mutations.size || this.handoffFrozen) throw new RecoveryBusyError('Stack infrastructure ownership is changing');
+    this.handoffFrozen = true;
     const records = [];
     try {
       for (const [key, service] of this.instances) {
@@ -73,10 +77,12 @@ export class StackInfrastructureManager {
 
   resumeAfterHandoff(): void {
     for (const service of this.instances.values()) service.resumeAfterHandoff();
+    this.handoffFrozen = false;
   }
 
   async adoptHandoff(records: Awaited<ReturnType<StackInfrastructureManager['prepareHandoff']>>): Promise<void> {
-    if (this.instances.size) throw new Error('Infrastructure must be empty before handoff adoption');
+    if (this.instances.size || this.mutations.size) throw new Error('Infrastructure must be empty before handoff adoption');
+    this.handoffFrozen = true;
     for (const record of records) {
       if (this.instances.has(record.key)) throw new Error(`Duplicate infrastructure owner ${record.key}`);
       const service = await InfrastructureService.adoptHandoff(this.logger, record.infrastructure);
@@ -90,6 +96,18 @@ export class StackInfrastructureManager {
 
   /** Port allocations keyed by `${project}/${stack}` */
   private readonly portAllocations = new Map<string, StackPortAllocation>();
+
+  private readonly mutations = new Set<string>();
+  private handoffFrozen = false;
+
+  /** Reserve the allocation before asynchronous resolution as well as native work. */
+  private async mutateStack<T>(key: string, operation: () => Promise<T>): Promise<T> {
+    if (this.handoffFrozen) throw new RecoveryBusyError('Stack infrastructure ownership is frozen');
+    if (this.mutations.has(key)) throw new RecoveryBusyError(`Infrastructure mutation is already in progress for ${key}`);
+    this.mutations.add(key);
+    try { return await operation(); }
+    finally { this.mutations.delete(key); }
+  }
 
   /** Deterministic hash of stack name → offset index for unknown stack names */
 
@@ -109,9 +127,10 @@ export class StackInfrastructureManager {
     projectRoot?: string
   ): Promise<InfrastructureService> {
     if (!ownsStackInfrastructure(stackConfig)) throw new Error('This stack does not own infrastructure provisioning');
-    return withInfrastructureScope(project, stack, () =>
+    const key = `${project}/${stack}`;
+    return this.mutateStack(key, () => withInfrastructureScope(project, stack, () =>
       this.provisionStackScoped(project, stack, stackConfig, baseInfraConfig, appDefinitions, projectRoot)
-    );
+    ));
   }
 
   /** Same resolver as provisioning, without reserving ports, registering owners or touching Docker. */
@@ -137,27 +156,27 @@ export class StackInfrastructureManager {
   ): Promise<InfrastructureService> {
     const key = `${project}/${stack}`;
 
-    if (this.instances.has(key)) {
-      this.logger.warn({ project, stack }, 'Stack infrastructure already provisioned');
-      return this.instances.get(key)!;
-    }
-
     // 1. Compute port allocation for this stack
     const portAlloc = this.computePortAllocation(project, stack, stackConfig.settings, baseInfraConfig);
-    this.portAllocations.set(key, portAlloc);
-
-    const infraService = await this.resolveStackDefinition(project, stack, stackConfig, baseInfraConfig, portAlloc, appDefinitions, projectRoot);
+    const definition = await this.resolveStackDefinition(project, stack, stackConfig, baseInfraConfig, portAlloc, appDefinitions, projectRoot);
+    const existing = this.instances.get(key);
+    const infraService = existing ?? definition;
 
     // Register BEFORE provision so the UI can query intermediate state
     // during the provisioning process (which may take 30+ seconds).
     this.instances.set(key, infraService);
 
     try {
-      await infraService.provision();
+      await infraService.provision(existing ? definition : undefined);
+      this.portAllocations.set(key, portAlloc);
       return infraService;
     } catch (err) {
-      // Remove on failure — the infrastructure is not usable
-      this.instances.delete(key);
+      // Retain the observer and declared resources after a failed retry.
+      // A normalization failure above never changes the existing definition.
+      if (!existing) {
+        this.instances.delete(key);
+        this.portAllocations.delete(key);
+      } else if (isDeepStrictEqual(existing.getDesiredContainers(), definition.getDesiredContainers())) this.portAllocations.set(key, portAlloc);
       this.logger.error({ project, stack, error: (err as Error).message }, 'Failed to provision stack infrastructure');
       throw err;
     }
@@ -166,6 +185,14 @@ export class StackInfrastructureManager {
   /** Resolve the current declaration without provisioning or changing containers. */
   @RecoveryMutation()
   async refreshOwnership(
+    project: string, stack: string, stackConfig: IStackConfig, baseInfraConfig: InfrastructureConfig,
+    appDefinitions?: Map<string, import('../config/types.js').IAppDefinition>, projectRoot?: string,
+  ): Promise<{ released: string[]; adopted: string[] }> {
+    const key = `${project}/${stack}`;
+    return this.mutateStack(key, () => this.refreshOwnershipScoped(project, stack, stackConfig, baseInfraConfig, appDefinitions, projectRoot));
+  }
+
+  private async refreshOwnershipScoped(
     project: string, stack: string, stackConfig: IStackConfig, baseInfraConfig: InfrastructureConfig,
     appDefinitions?: Map<string, import('../config/types.js').IAppDefinition>, projectRoot?: string,
   ): Promise<{ released: string[]; adopted: string[] }> {
@@ -330,6 +357,11 @@ export class StackInfrastructureManager {
   @RecoveryMutation()
   async teardownStack(project: string, stack: string, reviewed: ReadonlyArray<{ id: string; name: string }>): Promise<void> {
     const key = `${project}/${stack}`;
+    return this.mutateStack(key, () => this.teardownStackScoped(project, stack, reviewed));
+  }
+
+  private async teardownStackScoped(project: string, stack: string, reviewed: ReadonlyArray<{ id: string; name: string }>): Promise<void> {
+    const key = `${project}/${stack}`;
     const infraService = this.instances.get(key);
 
     if (!infraService) {
@@ -369,6 +401,13 @@ export class StackInfrastructureManager {
    */
   @RecoveryMutation()
   async teardownAll(): Promise<void> {
+    if (this.mutations.size || this.handoffFrozen) throw new RecoveryBusyError('Stack infrastructure ownership is changing');
+    this.handoffFrozen = true;
+    try { await this.teardownAllOwned(); }
+    finally { this.handoffFrozen = false; }
+  }
+
+  private async teardownAllOwned(): Promise<void> {
     const entries = [...this.instances.entries()];
     const failures: unknown[] = [];
     for (const [key, infraService] of entries) {

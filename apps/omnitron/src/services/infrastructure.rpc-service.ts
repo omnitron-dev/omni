@@ -363,10 +363,8 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     const declared = { ...fromStack, ...(data.services ?? {}) };
     const reused = this.getInfra();
     const service = reused ?? this.hostInfra(config, declared, registry, data.overrides ?? {});
+    const definition = reused?.resolveDefinition(config, declared, data.overrides ?? {}) ?? service;
     if (data.project && data.stack) service.resumeStack({ project: data.project, stack: data.stack });
-    // Reused, it is told the definition this call carries — the one the
-    // master deploys now, not the one the daemon's first call carried.
-    if (reused) reused.redefine(config, declared, data.overrides ?? {});
 
     // Write what the master sent, and point this node's containers at its own
     // copies. Before `provision()`, because a container created against a
@@ -388,7 +386,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
       // on the node as a system service came up as a container as well.
       // With this node's copies of what they mount (`shipped-config.ts`).
       const containers = resolveAppInfrastructure(data.services ?? {}, data.overrides, undefined, configRoots);
-      if (containers.length > 0) service.addAppContainers(containers);
+      if (containers.length > 0) definition.addAppContainers(containers);
     }
 
     if (configRoots.size > 0) {
@@ -406,7 +404,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
         redis?: { port?: number; db?: number; password?: string; databases?: Record<string, number> };
       }).redis;
       const endpoint = containerEndpoint('redis', REDIS_CONTAINER_PORT);
-      service.setConfigRoots(configRoots, staticRoots, {
+      definition.setConfigRoots(configRoots, staticRoots, {
         host: endpoint.host,
         port: endpoint.port,
         // Not `(redis.db ?? 0) + 1`: on sample/test that is 1, storage's
@@ -416,7 +414,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
       }, staticLinkRoots);
     }
 
-    const state = await service.provision();
+    const state = await service.provision(reused ? definition : undefined);
     const outcome = summariseProvisioning(service.getDesiredServices(), state.services);
 
     // Services that are not containers.

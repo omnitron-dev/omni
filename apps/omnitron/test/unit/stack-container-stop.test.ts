@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StackInfrastructureManager } from '../../src/infrastructure/stack-infra-manager.js';
+import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 
 const docker = vi.hoisted(() => ({ inspect: vi.fn(), remove: vi.fn() }));
 vi.mock('../../src/infrastructure/container-runtime.js', async original => ({
@@ -11,7 +12,7 @@ const replacement = { ...before, id: 'b'.repeat(64) };
 beforeEach(() => vi.resetAllMocks());
 function fixture() {
   const owner = { getTeardownNames: () => [before.name], relinquishMonitoring: vi.fn(async () => [before.name]) };
-  const manager = Object.assign(Object.create(StackInfrastructureManager.prototype), {
+  const manager = Object.assign(new StackInfrastructureManager(createNullLogger()), {
     instances: new Map([['sample/prod', owner]]), portAllocations: new Map(), logger: { error: vi.fn(), debug: vi.fn() },
   }) as StackInfrastructureManager;
   return { manager, owner };

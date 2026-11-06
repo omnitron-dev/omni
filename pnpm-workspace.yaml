@@ -1,7 +1,9 @@
+# Standard bundledDependencies require pnpm's hoisted publication layout.
+nodeLinker: hoisted
 overrides:
   "katex@<0.18.2": ^0.19.1
-  "minimatch@10": ^11.0.3
-  "minimatch@9": ^11.0.3
+  "minimatch@10": ^11.0.5
+  "minimatch@9": ^11.0.5
   "glob@10": ^14.0.3
   "@kysera/audit": 0.10.2
   "@kysera/core": 0.10.2
@@ -74,7 +76,7 @@ minimumReleaseAgeExclude:
   - "@aws-sdk/xml-builder@3.972.42"
   - "@isaacs/nonrecursive-glob-match@1.0.2 || 1.0.3"
   - glob@14.0.3
-  - minimatch@11.0.2 || 11.0.3
+  - minimatch@11.0.2 || 11.0.3 || 11.0.5
   - msgpackr@2.1.3
   - path-scurry@3.0.0
   - systeminformation@5.33.18

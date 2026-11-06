@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import semver from 'semver';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -40,6 +41,11 @@ function installConsumer(destination) {
   execFileSync('npm', ['install', '--omit=dev', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org/'], {
     cwd: consumer, stdio: 'inherit',
   });
+  // Workspace overrides are not inherited by published npm consumers. Audit
+  // the actual installed archives, including bundled dependency trees.
+  execFileSync('npm', ['audit', '--omit=dev', '--audit-level=low', '--registry=https://registry.npmjs.org/'], {
+    cwd: consumer, stdio: 'inherit',
+  });
 }
 
 try {
@@ -63,7 +69,10 @@ try {
         execFileSync('tar', ['-xf', packed.filename, '-C', unpacked]);
         // CSS @imports need the package's declared peers. Reuse the frozen CI
         // installation; all Prism code and styles still come from the archive.
-        fs.symlinkSync(path.join(directory, 'node_modules'), path.join(unpacked, 'package/node_modules'), 'dir');
+        fs.symlinkSync(path.join(root, 'node_modules'), path.join(unpacked, 'node_modules'), 'dir');
+        if (fs.existsSync(path.join(directory, 'node_modules'))) {
+          fs.symlinkSync(path.join(directory, 'node_modules'), path.join(unpacked, 'package/node_modules'), 'dir');
+        }
         execFileSync(process.execPath, [
           path.join(directory, 'test/runtime/bundle-consumer.mjs'), path.join(unpacked, 'package'),
         ], { stdio: 'inherit' });
@@ -82,8 +91,13 @@ try {
       }
       if (manifest.engines?.node) {
         const minimum = semver.minVersion(manifest.engines.node);
+        const resolver = createRequire(source);
         for (const dependency of Object.keys(manifest.dependencies ?? {})) {
-          const installed = path.join(directory, 'node_modules', dependency, 'package.json');
+          // Follow Node's search order for either isolated or hoisted installs.
+          // Resolving the manifest directly would require a package.json export.
+          const installed = resolver.resolve.paths(`${dependency}/package.json`)
+            .map(base => path.join(base, dependency, 'package.json')).find(file => fs.existsSync(file));
+          if (!installed) throw new Error(`${manifest.name}: installed dependency is absent: ${dependency}`);
           const required = JSON.parse(fs.readFileSync(installed, 'utf8')).engines?.node;
           if (required && !semver.satisfies(minimum, required)) {
             failures.push(`${manifest.name}: Node ${minimum} is below the requirement of ${dependency} (${required})`);

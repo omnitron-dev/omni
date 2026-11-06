@@ -105,11 +105,12 @@ describe('current application runtime selection', () => {
     await expect(applicationBootstrapRuntime(bootstrap, fallback)).rejects.toThrow('different Titan runtime');
   });
 
-  it.each(['missing-entry', 'unexported-entry'])('does not replace a broken %s application adapter with the owner', async kind => {
+  it.each(['missing-entry', 'unexported-entry', 'dangling-link'])('does not replace a broken %s application adapter with the owner', async kind => {
     const current = graph('broken');
     select(current);
     link(path.dirname(fallback), 'titan', current.titan);
     if (kind === 'missing-entry') fs.rmSync(path.join(current.adapter, 'dist/index.js'));
+    else if (kind === 'dangling-link') fs.rmSync(current.adapter, { recursive: true });
     else write(path.join(current.adapter, 'package.json'), JSON.stringify({ name: '@omnitron-dev/omnitron', exports: {} }));
     await expect(applicationBootstrapRuntime(bootstrap, fallback)).rejects.toThrow('cannot be resolved');
   });

@@ -16,7 +16,7 @@ export function resolveApplicationBootstrapRuntime(bootstrap: string, fallback: 
     // the owner's SDK would conceal an incomplete dependency installation.
     if ((error as NodeJS.ErrnoException).code !== 'MODULE_NOT_FOUND' ||
         request.resolve.paths('@omnitron-dev/omnitron')?.some(directory =>
-          fs.existsSync(path.join(directory, '@omnitron-dev/omnitron')))) {
+          fs.lstatSync(path.join(directory, '@omnitron-dev/omnitron'), { throwIfNoEntry: false }))) {
       throw new Error('The installed application Omnitron adapter cannot be resolved; repair its dependency installation', { cause: error });
     }
     // A standalone app can use the owner's adapter if both share Titan.

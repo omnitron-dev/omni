@@ -6,6 +6,7 @@ import type { ArtifactVolumeBinding, InfrastructureConfig, IVolumeMount } from '
 import { mergeInfrastructure } from '../infrastructure/merge-config.js';
 
 const name = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/.test(value) && !value.includes('..');
+// eslint-disable-next-line no-control-regex -- Deliberately reject control bytes in declarative Docker mount paths.
 const relative = (value: unknown): value is string => typeof value === 'string' && value.length <= 4096 && !/[\\:\x00-\x1f\x7f]/.test(value) &&
   value.split('/').every(part => !!part && part !== '.' && part !== '..' && part.toLowerCase() !== 'node_modules');
 const target = (value: unknown): value is string => typeof value === 'string' && value.startsWith('/') && relative(value.slice(1));
@@ -65,6 +66,7 @@ async function physicalDirectory(root: string, directory: string): Promise<strin
   if (!relative(directory) || !path.isAbsolute(root) || await fs.realpath(root) !== root) throw Error('Artifact volume root is not physical');
   // The ordinary Docker encoder uses colon-delimited -v. A physical
   // installation root must not introduce separators or control characters.
+  // eslint-disable-next-line no-control-regex -- Physical installation paths must reject the same control bytes as declarations.
   if (/[\\:\x00-\x1f\x7f]/.test(path.join(root, directory))) throw Error('Artifact volume source cannot be encoded as a Docker mount');
   let selected = root;
   for (const part of directory.split('/')) {

@@ -65,7 +65,7 @@ describe('enabled stack recovery isolates infrastructure failures', () => {
       listStacks: () => ['managed', 'external', 'remote'].map(name => ({ name })),
       startEnabledStacksReconciler: vi.fn(),
     });
-    const daemon: any = Object.assign(Object.create(OmnitronDaemon.prototype), {
+    const daemon: any = Object.assign(new OmnitronDaemon(), {
       app: { container: { resolveAsync: async () => service } },
       dc: {}, reconcileOrphanContainers: vi.fn(async () => {}),
     });

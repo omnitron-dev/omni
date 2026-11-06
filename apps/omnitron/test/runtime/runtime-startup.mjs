@@ -18,6 +18,17 @@ assert.ok(process.argv.length === 3 || (process.argv.length === 4 && process.arg
   'Usage: runtime-startup.mjs <sealed-dist> [--master]');
 const role = process.argv[3] === '--master' ? 'master' : 'slave';
 if (role === 'master') assert.ok(process.env.TEST_DATABASE_URL, 'Master qualification requires an explicit TEST_DATABASE_URL');
+if (process.env.OMNITRON_TEST_SCOPE) {
+  assert.equal(process.platform, 'linux');
+  const scope = process.env.OMNITRON_TEST_SCOPE;
+  assert.match(scope, /^omnitron-cli-\d+-\d+-(?:slave|master)\.scope$/);
+  const cgroup = await fs.readFile('/proc/self/cgroup', 'utf8');
+  assert.ok(cgroup.split('\n').some(line => line.endsWith('/' + scope)), 'CLI fixture must run in its own native scope');
+  assert.doesNotMatch(cgroup, /\.service(?:\/|\n|$)/, 'CLI fixture must not inherit the runner service cgroup');
+  assert.equal(process.env.INVOCATION_ID, undefined, 'Do not inherit the runner service identity');
+  assert.equal(process.env.SYSTEMD_EXEC_PID, undefined);
+  console.log(JSON.stringify({ test: 'standalone-cli-scope', scope, cgroup }));
+}
 delete process.env.OMNITRON_DATABASE_URL;
 const directory = await fs.mkdtemp(path.join(process.platform === 'darwin' ? '/private/tmp' : os.tmpdir(), 'omni-start-'));
 const home = path.join(directory, 'i');

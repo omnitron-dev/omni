@@ -10,13 +10,14 @@ depends_on: [architecture]
 
 ## Startup Sequence
 
-When `omnitron up` is executed, the daemon goes through a precise 13-step startup sequence defined in `OmnitronDaemon.start()` (`src/daemon/daemon.ts`):
+Every entry point uses the startup sequence in `OmnitronDaemon.start()` (`src/daemon/daemon.ts`), including foreground CLI, detached CLI and native supervision:
 
 ```
 omnitron up
   |
   v
 1. PID check (prevent duplicate daemons)
+   Prepare the master database and schema before resolving providers
 2. Create Titan Application (Application.create(DaemonModule))
 3. Register four Netron transports (Unix, TCP, HTTP, WebSocket)
 4. Resolve and expose RPC services via Netron
@@ -45,6 +46,19 @@ this.pidManager.write();
 ```
 
 PID file at `~/.omnitron/daemon.pid` prevents duplicate daemon instances.
+
+Before connecting to the execution owner or creating the Titan application, a
+master prepares its control-plane database through the shared migration runner.
+`--no-infra` skips Docker provisioning, but still initializes the master's schema.
+An explicit `OMNITRON_DATABASE_URL` uses that database without provisioning a
+local PostgreSQL container. A slave uses its own SQLite lifecycle.
+
+A backend handoff only verifies the current schema; it never provisions or
+migrates it. Database failures prevent provider initialization and listener
+publication, and their cause is retained in the startup diagnostic. This keeps
+auth, audit and pipeline services from observing absent or partially migrated
+tables. Managed PostgreSQL recreation checks native ownership and preserves its
+data volume.
 
 ### Step 2: Create Titan Application
 
@@ -82,7 +96,10 @@ The daemon registers four transport servers and exposes multiple RPC services on
 await this.app.start();
 ```
 
-Titan's `Application.start()` boots the DI container, resolves all providers, starts Netron, and opens all registered transport servers. After this, the daemon is accepting connections.
+Titan's `Application.create()` eagerly initializes singleton providers, so the
+schema must already be ready at that point. `Application.start()` starts Netron
+and opens the registered transport servers. After this, the daemon accepts
+connections.
 
 ### Step 8: Infrastructure Provisioning
 
@@ -92,7 +109,8 @@ await this.startInfrastructure(config, options, logger);
 
 The `InfrastructureService` provisions Docker containers declared in `omnitron.config.ts` (PostgreSQL, Redis, MinIO, etc.). The `InfrastructureGate` signals readiness when all services are healthy. Apps that declare `requires` wait for this gate before starting.
 
-Can be skipped with `omnitron up --no-infra`.
+Docker provisioning can be skipped with `omnitron up --no-infra`; this does not
+skip the master database schema check or initialization described above.
 
 ### Step 12: Start Managed Apps
 

@@ -52,6 +52,7 @@ import { SyncRpcService } from '../services/sync.rpc-service.js';
 import { SystemInfoService } from '../services/system-info.service.js';
 import { SystemInfoRpcService } from '../services/system-info.rpc-service.js';
 import { PidManager } from './pid-manager.js';
+import { prepareDaemonDatabase } from './database-startup.js';
 import type { OrchestratorControl as OrchestratorService } from '../orchestrator/execution-contract.js';
 import { FileWatcher } from '../orchestrator/file-watcher.js';
 import { InfrastructureService } from '../infrastructure/infrastructure.service.js';
@@ -477,6 +478,11 @@ export class OmnitronDaemon {
     this.pidManager.remove();
     this.pidManager.write();
 
+    await prepareDaemonDatabase(this.dc.role, {
+      noInfra: Boolean(options?.noInfra),
+      handoff: Boolean(options?.backendHandoff),
+    });
+
     // 1. Create Titan Application (the daemon itself)
     if (this.dc.executionHost?.enabled) {
       const connection = await connectExecutionOwner(config, this.dc, createNullLogger(), options?.backendHandoff?.ticket);
@@ -525,12 +531,6 @@ export class OmnitronDaemon {
     // command. Adoption only reads native container identities; it never
     // deploys an app or applies a new infrastructure declaration.
     if (options?.backendHandoff) {
-      if (this.dc.role === 'master') {
-        // Replacement must not mutate shared schema behind a rollback binary.
-        // Check the existing Kysera journal before admitting public requests.
-        const { assertOmnitronMigrationsCurrent } = await import('../database/migration-runner.js');
-        await assertOmnitronMigrationsCurrent();
-      }
       const projects = await this.app.container.resolveAsync<ProjectService>(PROJECT_SERVICE_TOKEN);
       await projects.adoptHandoff(options.backendHandoff.projects);
       if (options.backendHandoff.infrastructure) {
@@ -1501,42 +1501,6 @@ export class OmnitronDaemon {
     const isSlave = this.dc.role === 'slave';
     const startTime = Date.now();
 
-    // Step 1: Provision omnitron's own database (omnitron-pg)
-    // Slave daemons use SQLite — no Docker, no PostgreSQL
-    if (isSlave) {
-      logger.info({ role: 'slave' }, 'Slave mode — skipping omnitron-pg provisioning (using SQLite)');
-    } else {
-      try {
-        const { resolveOmnitronPg } = await import('../infrastructure/service-resolver.js');
-        const { createContainer, getContainerState, waitForHealthy, ensureImage, removeContainer, createVolume } =
-          await import('../infrastructure/container-runtime.js');
-
-        const pgSpec = resolveOmnitronPg();
-        const existing = await getContainerState(pgSpec.name, { orThrow: true, fullId: true });
-        const { ownedContainerId } = await import('../infrastructure/owned-container.js');
-        const existingId = existing && ownedContainerId(pgSpec, existing);
-
-        if (!existing || existing.status !== 'running') {
-          logger.info('Provisioning omnitron-pg...');
-          if (existingId) await removeContainer(existingId);
-          await ensureImage(pgSpec.image);
-          for (const vol of pgSpec.volumes) {
-            if (!vol.source.startsWith('/')) await createVolume(vol.source);
-          }
-          await createContainer(pgSpec);
-          await waitForHealthy(pgSpec.name, 60_000);
-          logger.info('omnitron-pg ready');
-        } else {
-          logger.debug('omnitron-pg already running');
-        }
-
-        await this.runOmnitronMigrations(logger);
-      } catch (err) {
-        logger.error({ error: (err as Error).message }, 'Failed to provision omnitron-pg');
-        logger.warn('Continuing without internal database — some features will be unavailable');
-      }
-    }
-
     // Step 2: Provision app infrastructure (postgres, redis, minio) if declared.
     //
     // Two ownership models share this slot historically:
@@ -1740,29 +1704,6 @@ export class OmnitronDaemon {
 
     if (orphanCount > 0) {
       logger.info({ removed: orphanCount }, 'Orphan container cleanup complete');
-    }
-  }
-
-  /**
-   * Apply the internal-database schema.
-   *
-   * Delegates to the shared runner (`database/migration-runner.ts`) so this
-   * path, the infrastructure service and the `migrate` CLI all execute the
-   * same registry through the same engine. A failure here is logged as an
-   * ERROR — the daemon keeps running, but every feature backed by
-   * omnitron-pg (alerts, sessions, logs, metrics, deployments) is degraded
-   * and the operator has to see it.
-   */
-  private async runOmnitronMigrations(logger: ILogger): Promise<void> {
-    const { runOmnitronMigrations } = await import('../database/migration-runner.js');
-
-    try {
-      await runOmnitronMigrations(logger);
-      runtimeDiagnostics.resolve('database.migration.failed');
-    } catch (err) {
-      runtimeDiagnostics.failure('database.migration.failed',
-        'Database migrations failed — database-backed features are unavailable', err,
-        'Run omnitron migrate status --daemon and verify --daemon; reconcile the schema before retrying.');
     }
   }
 

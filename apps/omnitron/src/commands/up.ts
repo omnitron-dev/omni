@@ -123,51 +123,8 @@ async function ensureDaemonConfig(options?: UpCommandOptions): Promise<SavedDaem
   writeSavedDaemonConfig(savedConfig);
   log.success(`Role: ${role}`);
 
-  // Provision omnitron-pg for master on first run
-  if (role === 'master' && !options?.noInfra) {
-    await provisionOmnitronPg();
-  }
-
   log.success('Configuration saved to ~/.omnitron/config.json\n');
   return savedConfig;
-}
-
-/**
- * Provision omnitron-pg Docker container (master first-run only).
- */
-async function provisionOmnitronPg(): Promise<void> {
-  const s = spinner();
-  s.start('Provisioning Omnitron internal database...');
-
-  try {
-    const { resolveOmnitronPg } = await import('../infrastructure/service-resolver.js');
-    const { createContainer, getContainerState, waitForHealthy, ensureImage, removeContainer, createVolume } =
-      await import('../infrastructure/container-runtime.js');
-
-    const pgSpec = resolveOmnitronPg();
-    const existing = await getContainerState(pgSpec.name);
-
-    // Recreate when absent, not running, OR running-but-network-detached — the
-    // last case is the OrbStack/dockerd-restart artifact that leaves the auth
-    // DB 'running' yet unreachable (host :5480 dead), which silently breaks
-    // Console login. The named data volume is preserved across recreation.
-    const detached = existing?.status === 'running' && existing.networkAttached === false;
-    if (!existing || existing.status !== 'running' || detached) {
-      if (existing) await removeContainer(pgSpec.name);
-      await ensureImage(pgSpec.image);
-      for (const vol of pgSpec.volumes) {
-        if (!vol.source.startsWith('/')) await createVolume(vol.source);
-      }
-      await createContainer(pgSpec);
-      await waitForHealthy(pgSpec.name, 60_000);
-      s.stop(detached ? 'omnitron-pg recreated (was network-detached; port 5480)' : 'omnitron-pg ready (port 5480)');
-    } else {
-      s.stop('omnitron-pg already running');
-    }
-  } catch (err) {
-    s.stop(`Failed to provision omnitron-pg: ${(err as Error).message}`);
-    log.warn('You can retry with `omnitron infra up` later.');
-  }
 }
 
 /** A foreground daemon owns process shutdown after startup has completed. */
@@ -249,14 +206,6 @@ export async function upCommand(options?: UpCommandOptions): Promise<'foreground
     log.info('Use `omnitron stack start/stop` to manage stacks.');
     log.info('Use `omnitron down` to stop.');
     return 'completed';
-  }
-
-  // Ensure omnitron-pg (Console auth DB) is healthy on EVERY master start, not
-  // just first-run init — recreates it if absent, stopped, or running-but-
-  // network-detached (the OrbStack/dockerd-restart artifact that silently
-  // breaks Console login). Idempotent: a healthy container is left as-is.
-  if (savedConfig.role === 'master' && !options?.noInfra) {
-    await provisionOmnitronPg();
   }
 
   // 3. Foreground mode — blocks terminal

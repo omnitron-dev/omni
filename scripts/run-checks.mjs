@@ -35,7 +35,7 @@ const EXCLUDED = new Map([
   ['release', 'maintainer release entry point with its own qualification suite'],
   ['check-package-exports', 'CI checks packed exports after building all packages'],
   ['react-client-entries', 'tsup plugin used by the Prism and Netron React builds; verified in the packed exports'],
-  ['check-reproducible-backend', 'a dedicated CI job builds and compares independent backend and Console artifacts'],
+  ['check-reproducible-backend', 'a dedicated CI job compares independent backend, Console and normalized public npm archives'],
 ]);
 
 /**

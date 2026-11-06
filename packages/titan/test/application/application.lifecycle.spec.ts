@@ -186,16 +186,38 @@ describe('Application Lifecycle', () => {
       expect(module.destroyCalled).toBe(true);
     });
 
-    it('should handle slow module startup', async () => {
-      const module = new SlowModule(200);
+    it('should wait for module startup before reporting the application started', async () => {
+      const entered = Promise.withResolvers<void>();
+      const complete = Promise.withResolvers<void>();
+      const order: string[] = [];
+      class PendingModule extends SimpleModule {
+        override async onStart(): Promise<void> {
+          order.push('module:starting');
+          entered.resolve();
+          await complete.promise;
+          await super.onStart();
+          order.push('module:started');
+        }
+      }
+      const module = new PendingModule();
       app.use(module);
+      app.on('started', () => { order.push('application:started'); });
+      const starting = app.start();
+      try {
+        await entered.promise;
+        expect(app.state).toBe(ApplicationState.Starting);
+        expect(module.startCalled).toBe(false);
+        expect(order).toEqual(['module:starting']);
 
-      const startTime = Date.now();
-      await app.start();
-      const duration = Date.now() - startTime;
-
-      expect(duration).toBeGreaterThanOrEqual(200);
-      expect(app.state).toBe(ApplicationState.Started);
+        complete.resolve();
+        await starting;
+        expect(order).toEqual(['module:starting', 'module:started', 'application:started']);
+        expect(module.startCalled).toBe(true);
+        expect(app.state).toBe(ApplicationState.Started);
+      } finally {
+        complete.resolve();
+        await starting;
+      }
     });
 
     it('should handle module failure during start', async () => {

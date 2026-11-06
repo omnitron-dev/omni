@@ -324,7 +324,7 @@ export class InfrastructureService {
       // 0.0.0.0:5480 on a host whose firewall allows only SSH.
       //
       // The control plane's database belongs to the control plane.
-      this.logger.debug('This daemon keeps its own state in SQLite — not provisioning a control-plane database');
+      this.logger.debug('Control-plane database provisioning is outside this infrastructure allocation');
     } else if (decision.action === 'reconcile') {
       this.usingGlobalOmnitronPg = true;
 

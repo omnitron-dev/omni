@@ -84,8 +84,17 @@ export interface IProcessOptions {
   /** Environment variables to inject into the child process */
   env?: Record<string, string>;
 
-  /** Working directory for the child process (defaults to parent's CWD) */
+  /** Working directory for a forked child (defaults to the parent's CWD).
+   * Threads share their parent's directory; use child isolation for a separate cwd. */
   cwd?: string;
+
+  /**
+   * Deadline for one RPC to this worker, in milliseconds. Distinct from
+   * startupTimeout and the pool queue deadline. Reaches the Netron RemotePeer;
+   * omitted means its default. A pool passes its requestTimeout to its workers
+   * unless their spawn options explicitly override it.
+   */
+  requestTimeout?: number;
 
   /** Netron peer configuration */
   netron?: {
@@ -1165,16 +1174,12 @@ export interface IWorkerHandle {
 /**
  * Spawn options
  */
-export interface ISpawnOptions {
+export interface ISpawnOptions extends IProcessOptions {
   /** Parent-only capture, installed before worker readiness. Throw to apply pipe backpressure. */
   onOutput?: import('./output-capture.js').ProcessOutputHandler;
   processId?: string;
-  name?: string;
-  version?: string;
-  config?: any;
-  dependencies?: Record<string, any>;
-  /** Environment variables to inject into the child process */
-  env?: Record<string, string>;
+  /** @deprecated Constructor alias for existing custom spawners. Native workers consume the inherited process options. */
+  config?: IProcessOptions;
   discovery?: {
     enabled?: boolean;
   };
@@ -1192,20 +1197,6 @@ export interface ISpawnOptions {
    * arriving here from an untyped caller is still honoured as a sandbox
    * request, so the old runtime behaviour is unchanged.
    */
-  /**
-   * Deadline for a single RPC to this worker, in milliseconds.
-   *
-   * Distinct from `startupTimeout`, which bounds the wait for 'ready', and
-   * from `IProcessPoolOptions.requestTimeout`, which bounds the QUEUE wait.
-   * This one reaches the `RemotePeer` and is the deadline the call itself runs
-   * under. Left undefined, netron's 5 s wire default applies — right for a
-   * management-plane call, wrong for a job.
-   *
-   * A pool passes its own `requestTimeout` down to this, so setting one on the
-   * pool governs both halves rather than only the queue.
-   */
-  requestTimeout?: number;
-
   isolation?: 'none' | 'worker' | 'child';
   /**
    * Requested sandbox. Neither 'vm' nor 'container' is implemented; both spawn
@@ -1213,11 +1204,6 @@ export interface ISpawnOptions {
    * posture and deliberately says nothing about the spawn strategy.
    */
   sandbox?: 'none' | 'vm' | 'container';
-  /** Additional Node.js CLI flags passed to forked child process (e.g. ['--import', 'tsx/esm']) */
-  execArgv?: string[];
-
-  /** Startup timeout in milliseconds. @default 30000 */
-  startupTimeout?: number;
 }
 
 /**

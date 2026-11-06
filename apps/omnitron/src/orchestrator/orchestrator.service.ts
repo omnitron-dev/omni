@@ -2592,7 +2592,7 @@ export class OrchestratorService extends EventEmitter {
           ...(handle.appLogLevel && { logLevel: handle.appLogLevel }),
           startupTimeout: procEntry.startupTimeout ?? entry.startupTimeout ?? DEFAULT_CHILD_STARTUP_TIMEOUT,
           ...(entry.env && { env: entry.env as Record<string, string> }),
-          ...((entry as any).cwd && { cwd: (entry as any).cwd }),
+          cwd: entry.cwd ?? this.cwd,
           dependencies: {
             bootstrapPath: bootstrapAbsPath,
             processName: procEntry.name,
@@ -2694,7 +2694,7 @@ export class OrchestratorService extends EventEmitter {
         requestTimeout: CHILD_REQUEST_TIMEOUT,
         startupTimeout: procEntry.startupTimeout ?? entry.startupTimeout ?? DEFAULT_CHILD_STARTUP_TIMEOUT,
         ...(entry.env && { env: entry.env as Record<string, string> }),
-        ...((entry as any).cwd && { cwd: (entry as any).cwd }),
+        cwd: entry.cwd ?? this.cwd,
         dependencies: {
           bootstrapPath: bootstrapAbsPath,
           processName: procEntry.name,
@@ -2844,6 +2844,9 @@ export class OrchestratorService extends EventEmitter {
     const spawnOpts = {
       name: entry.name,
       version: '1.0.0',
+      // The execution owner's sealed runtime is never the application's
+      // implicit working directory. Titan PM forwards this to native fork.
+      cwd: entry.cwd ?? this.cwd,
       // As above: a single child's client otherwise runs on netron's default.
       requestTimeout: CHILD_REQUEST_TIMEOUT,
       ...(entry.env && { env: entry.env as Record<string, string> }),
@@ -2882,6 +2885,7 @@ export class OrchestratorService extends EventEmitter {
         size: instances,
         strategy: PoolStrategy.ROUND_ROBIN,
         metrics: true,
+        spawnOptions: spawnOpts,
         // See the note on the other pool: `replaceUnhealthy` is declared by
         // titan-pm and read by nothing.
         healthCheck: {
@@ -2890,19 +2894,10 @@ export class OrchestratorService extends EventEmitter {
         },
         spawnOptionsFactory: (index: number) => ({
           name: `${entry.name}-${index}`,
-          ...(entry.env && { env: entry.env as Record<string, string> }),
-          ...(entry.startupTimeout != null && { startupTimeout: entry.startupTimeout }),
           dependencies: {
-            bootstrapPath: bootstrapAbsPath,
-            ...(bundledModulePath && { bundledModulePath }),
+            ...spawnOpts.dependencies,
             portOffset: index,
           },
-          health: {
-            enabled: true,
-            interval: config.monitoring.healthCheck.interval,
-            timeout: config.monitoring.healthCheck.timeout,
-          },
-          observability: { metrics: true },
         }),
       };
     }

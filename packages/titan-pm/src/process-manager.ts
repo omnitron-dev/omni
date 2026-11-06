@@ -225,13 +225,13 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
 
       // Spawn the process with unified interface
       const spawnTask = this.spawnAndHonourKill(processId, processInfo, processPathOrClass, {
+        // The spawner and worker consume the same process contract. A manual
+        // field list lost cwd, logLevel, shutdownTimeout, allMethodsPublic
+        // and requestTimeout even though they were present in `config`.
+        ...mergedOptions,
         processId,
-        name: mergedOptions.name,
-        version: mergedOptions.version,
+        // Retained for custom/mock spawners using the legacy constructor alias.
         config: mergedOptions,
-        dependencies: mergedOptions.dependencies,
-        env: mergedOptions.env,
-        startupTimeout: mergedOptions.startupTimeout,
         transport: this.mapTransport(mergedOptions.netron?.transport),
         host: mergedOptions.netron?.host,
         // The sandbox request, NOT the spawn strategy. These are two different
@@ -239,8 +239,8 @@ export class ProcessManager extends EventEmitter implements IProcessManager {
         // the sandbox into the strategy slot meant `security.isolation: 'none'`
         // silently selected the in-process strategy, which skips the Netron
         // management client. The strategy comes from the manager config.
+        isolation: this.config.isolation,
         sandbox: mergedOptions.security?.isolation,
-        execArgv: mergedOptions.execArgv,
       });
       // Settles only after the handle is in hand AND any kill that arrived
       // meanwhile has been honoured, so a `kill()` awaiting this promise

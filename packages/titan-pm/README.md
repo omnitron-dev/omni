@@ -22,6 +22,22 @@ Process supervision, worker pools, and lifecycle management for Titan applicatio
 - Health monitoring and automatic recovery
 - Configurable startup timeouts per process
 
+## Process options and working directories
+
+`ProcessManager.spawn` forwards one typed process contract to the native spawner:
+`cwd`, environment, log level, startup/shutdown budgets, RPC deadline and explicit
+method visibility retain their meaning. `ISpawnOptions` extends `IProcessOptions`;
+the deprecated `config` constructor alias remains only for existing custom
+spawners and is not serialized into the native worker's context.
+
+Forked children use their declared `cwd`. Worker threads share the parent's
+directory and reject a different `cwd`; choose `isolation: 'child'` when a worker
+needs its own directory. A supervisor pool takes its common worker options from
+`poolOptions.spawnOptions`, with `spawnOptionsFactory` adding per-worker values.
+Keep mutable application data outside a sealed runtime and configure persistent
+storage paths explicitly. Omnitron supplies the application directory to all
+bootstrap workers, including single-process and pooled applications.
+
 ## Recovery contract
 
 A supervisor retries noncritical startup failures and failures during crash recovery with the same restart budget and backoff as runtime crashes. `maxRestarts: 0` disables automatic retries. Required critical children fail initial startup immediately; later recovery remains governed by the configured policy.

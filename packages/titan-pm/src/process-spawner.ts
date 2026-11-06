@@ -921,12 +921,19 @@ export class ProcessSpawner implements IProcessSpawner {
     // Prepare transport configuration
     const transport = await this.setupTransport(processId, options);
 
+    // Native workers consume the canonical, flat process options. The legacy
+    // constructor alias belongs to custom spawners; serializing it here would
+    // duplicate the complete configuration and inflate the bounded IPC envelope.
+    const workerOptions = { ...options };
+    delete workerOptions.config;
+    delete workerOptions.onOutput;
+
     // Prepare worker context
     const context: IWorkerContext = {
       processId,
       processPath,
       transport,
-      options: options as IProcessOptions,
+      options: workerOptions,
       dependencies: options.dependencies,
     };
 
@@ -988,6 +995,12 @@ export class ProcessSpawner implements IProcessSpawner {
     });
 
     try {
+      if (useWorkerThreads && options.cwd) {
+        const [requested, current] = await Promise.all([fs.realpath(options.cwd), fs.realpath(process.cwd())]);
+        if (requested !== current) {
+          throw new Error('A separate working directory requires child isolation; worker threads share the parent cwd');
+        }
+      }
       // Spawn based on configuration
       if (sandboxUnimplemented) {
         // Neither is implemented. Both fall through to an ordinary child

@@ -95,6 +95,19 @@ effect on the next reload. Native `import.meta.url`, `createRequire`, TypeScript
 ESM/CommonJS, the invoking working directory and environment keep their normal meanings.
 App-relative paths are then anchored to the configuration's directory.
 
+All bootstrap forks, topology children and pool workers receive the application's
+working directory. The owner's sealed runtime is not an application state directory.
+Keep persistent storage outside release trees and configure its absolute path;
+an application package can itself be immutable even when its launch cwd is correct.
+
+Before replacing an owner, validate both the forward and rollback application
+selections through the ordinary stack release check, against the actual registered
+configuration and its complete inputs. A backend compatibility check does not
+establish cold application recovery. Retained launch handles belong to a living
+owner; after replacing it, a selected archive still needs an admissible deployment
+declaration. Preserve and qualify that declaration instead of relaxing its digest
+check or temporarily substituting files to obtain an admission receipt.
+
 Return plain declarative objects, arrays and finite primitives; optional `undefined`
 values are preserved. Functions inside the result, accessors, class instances, cycles,
 symbols and bigint values are refused explicitly. Lifecycle hooks belong in the app's

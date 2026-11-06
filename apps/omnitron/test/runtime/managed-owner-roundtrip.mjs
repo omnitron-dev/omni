@@ -6,8 +6,8 @@ import { verifyFixtureLogs } from './fixture-log-evidence.mjs';
 
 /** Cold owner qualification shares the managed-backend fixture and its private OS jobs. */
 export async function managedOwnerRoundtrip(context) {
-  const { root, instance, execution, config, units, first, artifact, initialBackend, initialGuardian, managementDist, fixtureId,
-    run, native, domain, linux, until, status, render, track, mark } = context;
+  const { root, projectDirectory, instance, execution, config, units, first, artifact, initialBackend, initialGuardian, managementDist, fixtureId,
+    applicationSdk, run, native, domain, linux, until, status, assertActive, render, track, mark } = context;
   assert.ok(managementDist, 'An independent candidate runtime is required');
   const candidateRoot = path.resolve(managementDist, '../../..');
   const load = name => import(pathToFileURL(path.join(managementDist, name + '.js')).href);
@@ -16,6 +16,7 @@ export async function managedOwnerRoundtrip(context) {
   const { PidManager } = await load('daemon/pid-manager');
   const quiet = { trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {}, child() { return this; } };
   const api = async work => {
+    assertActive();
     const client = createDaemonClient(path.join(instance, 'daemon.sock'), 60_000);
     try { return await work(client); } finally { await client.disconnect(); }
   };
@@ -61,14 +62,17 @@ export async function managedOwnerRoundtrip(context) {
   };
   await api(async client => {
     const project = await client.service('OmnitronProject');
-    await project.addProject({ name: 'probe', path: root });
+    await project.addProject({ name: 'probe', path: projectDirectory });
     await project.startStack({ project: 'probe', stack: 'local', workingTree: true });
   });
   let worker = await ready(first.execution.owner.pid);
   track(first.execution.owner.pid, worker.pid, first.pid, await jobPid('backend'));
   const originalHistory = await history(), rounds = [];
+  let projects;
   for (const target of [
     { phase: 'owner-forward', owner: candidate.id, guardian: candidate.id, backend: candidate.id, commit: candidate.build.commit },
+    ...(applicationSdk ? [{ phase: 'owner-cold-restart', owner: candidate.id, guardian: candidate.id,
+      backend: candidate.id, commit: candidate.build.commit }] : []),
     { phase: 'owner-rollback', ...previous },
   ]) {
     const before = await status(), priorOwner = before.execution.owner.pid, priorGuardian = await jobPid('backend');
@@ -77,6 +81,7 @@ export async function managedOwnerRoundtrip(context) {
     const checked = await cli('backend', 'select', target.backend, '--check');
     assert.equal(checked.checked, true);
     assert.equal((await status()).execution.owner.pid, priorOwner, 'Read-only compatibility changed ownership');
+    await projects?.stop();
     await api(async client => {
       const project = await client.service('OmnitronProject');
       const review = await project.reviewStackStop({ project: 'probe', stack: 'local', keepInfrastructure: true });
@@ -102,6 +107,11 @@ export async function managedOwnerRoundtrip(context) {
     assert.equal(selected.selection.current, target.backend);
     config.owner.artifact = target.owner;
     config.backend.artifact = target.guardian;
+    // Service installation uses the sealed package as its cwd. Qualify that
+    // exact boundary: a fork that drops the application's cwd would write into
+    // the sealed owner, not merely into another disposable project directory.
+    config.cwd = applicationSdk && target.phase !== 'owner-rollback'
+      ? path.join(installed(target.owner), 'packages/0') : root;
     await fs.writeFile(path.join(instance, 'runtime/supervision.json'), JSON.stringify(config), { mode: 0o600 });
     for (const unit of units) {
       const runtime = installed(config[unit.mode].artifact);
@@ -131,13 +141,22 @@ export async function managedOwnerRoundtrip(context) {
       assert.equal(after.execution.ownerCapabilities[capability], 1);
     await api(async client => (await client.service('OmnitronProject')).startStack({ project: 'probe', stack: 'local', workingTree: true }));
     worker = await ready(after.execution.owner.pid, priorWorker); track(worker.pid);
-    rounds.push({ ...target, ownerPid: after.execution.owner.pid, guardianPid: await jobPid('backend'), backendPid: after.pid,
+    if (applicationSdk && target.phase === 'owner-forward') {
+      const { prepareManagedProjectRuntime } = await import('./managed-project-runtime.mjs');
+      projects = await prepareManagedProjectRuntime({ root, instance, applicationSdk, managementDist,
+        candidate, runtime: installed(candidate.id), api, run, until, track, mark });
+      await projects.start(after.execution.owner.pid, false);
+    } else if (target.phase === 'owner-cold-restart') {
+      await projects.start(after.execution.owner.pid, true);
+    }
+    rounds.push({ ...target, cwd: config.cwd, ownerPid: after.execution.owner.pid, guardianPid: await jobPid('backend'), backendPid: after.pid,
       applicationPid: worker.pid, previousOwnerCleanExit: true, stoppedIntentPreserved: true, preservedMigrationHistoryRows: originalHistory.length });
     mark({ stage: target.phase, ...rounds.at(-1) });
   }
+  const applicationRuntime = await projects?.finish();
   const verifiedLogs = await verifyFixtureLogs({ root, instance, runtime: candidateRoot, fixtureId, until });
   const result = { test: 'managed-owner-roundtrip', platform: process.platform, root, previous, candidate: candidate.build,
-    rounds, verifiedLogs, liveMutation: false, success: true };
+    rounds, verifiedLogs, ...(applicationRuntime && { applicationRuntime }), liveMutation: false, success: true };
   await fs.writeFile(path.join(root, 'owner-roundtrip.json'), JSON.stringify(result, null, 2) + '\n');
   return result;
 }

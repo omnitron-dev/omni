@@ -108,6 +108,17 @@ owner; after replacing it, a selected archive still needs an admissible deployme
 declaration. Preserve and qualify that declaration instead of relaxing its digest
 check or temporarily substituting files to obtain an admission receipt.
 
+The native `test/runtime/managed-backend.mjs` owner roundtrip accepts
+`--application-sdk /absolute/path/to/installed/@omnitron-dev/omnitron`.
+The independent consumer must also contain its matching Titan and Titan Storage.
+Alongside the baseline → candidate → baseline service transition, this exercises
+one project's source and pinned-release stacks through the public project API:
+single and pooled bootstrap workers, source watch without restarting frozen workers,
+a second cold candidate start, retained release selection, and explicit refusal of
+a changed declaration. It verifies runtime bytes and entry change times after the
+applications run. All services, Git inputs and release archives belong to the private
+fixture; this does not establish cold readiness of real application registrations.
+
 Return plain declarative objects, arrays and finite primitives; optional `undefined`
 values are preserved. Functions inside the result, accessors, class instances, cycles,
 symbols and bigint values are refused explicitly. Lifecycle hooks belong in the app's

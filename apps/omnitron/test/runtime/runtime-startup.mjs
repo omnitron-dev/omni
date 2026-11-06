@@ -27,7 +27,12 @@ if (process.env.OMNITRON_TEST_SCOPE) {
   assert.doesNotMatch(cgroup, /\.service(?:\/|\n|$)/, 'CLI fixture must not inherit the runner service cgroup');
   assert.equal(process.env.INVOCATION_ID, undefined, 'Do not inherit the runner service identity');
   assert.equal(process.env.SYSTEMD_EXEC_PID, undefined);
-  console.log(JSON.stringify({ test: 'standalone-cli-scope', scope, cgroup }));
+  const uid = process.getuid();
+  const gid = process.getgid();
+  assert.ok(uid > 0, 'The interactive CLI must run without root privileges');
+  assert.equal(uid, Number(process.env.OMNITRON_TEST_UID), 'Preserve the artifact owner when entering the scope');
+  assert.equal(gid, Number(process.env.OMNITRON_TEST_GID), 'Preserve the artifact group when entering the scope');
+  console.log(JSON.stringify({ test: 'standalone-cli-scope', scope, cgroup, uid, gid }));
 }
 delete process.env.OMNITRON_DATABASE_URL;
 const directory = await fs.mkdtemp(path.join(process.platform === 'darwin' ? '/private/tmp' : os.tmpdir(), 'omni-start-'));

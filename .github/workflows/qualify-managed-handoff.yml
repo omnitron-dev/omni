@@ -95,14 +95,18 @@ jobs:
           # The runner is itself a service. Exercise an interactive CLI in a
           # separate native scope; removing its service environment alone
           # would leave detached children inside the runner's kill group.
+          # Root is needed only to enter that scope. Keep the CLI and its
+          # sealed runtime under the same unprivileged artifact owner.
           for role in slave master; do
             scope="omnitron-cli-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${role}.scope"
             args=("$RUNNER_TEMP/omnitron-handoff-$CANDIDATE/packages/0/dist")
             if [[ "$role" == master ]]; then args+=(--master); fi
             sudo systemd-run --scope --quiet --unit="$scope" \
               --property=RuntimeMaxSec=8min --property=MemoryMax=2G --property=TasksMax=256 \
+              "$(command -v setpriv)" --reuid="$(id -u)" --regid="$(id -g)" --init-groups \
               /usr/bin/env -i PATH="$PATH" HOME="$RUNNER_TEMP" TZ=UTC \
               TEST_DATABASE_URL="$TEST_DATABASE_URL" OMNITRON_TEST_SCOPE="$scope" \
+              OMNITRON_TEST_UID="$(id -u)" OMNITRON_TEST_GID="$(id -g)" \
               "$(command -v node)" apps/omnitron/test/runtime/runtime-startup.mjs "${args[@]}"
           done
       - name: Upgrade and roll back a development SDK through one resident candidate owner

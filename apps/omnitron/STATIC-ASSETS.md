@@ -64,3 +64,69 @@ its lazy/shared graph after publication; the release-only reader produces HTTP40
 native execution-fence tests separately exercise Linux exclusion and process failure behavior.
 These tests complement application-reader tests and actual browser acceptance; they do not
 substitute for either.
+
+## Local gateway documents from a selected consumer artifact
+
+A local stack can bind a physical public directory from its selected release without
+starting the payload application:
+
+```ts
+apps: [
+  // Three enabled application declarations with exact releaseFrom references…
+  { name: 'web', enabled: false, releaseFrom: producerWebReference },
+],
+stacks: {
+  production: {
+    type: 'local', apps: ['core', 'api', 'mail'],
+    infrastructure: {
+      artifactVolumes: {
+        web: { service: 'gateway', app: 'web', directory: 'dist/public', target: '/var/www/site' },
+      },
+      services: { gateway: gatewayDockerService },
+    },
+  },
+},
+```
+
+`app` is the consumer artifact name; `releaseFrom` pins its actual producer. The
+ordinary release builder includes a disabled artifact explicitly referenced by a
+binding. It preserves the producer archive, manifest bytes and gate admission.
+Consumer gates do not replace producer gates. Release-phase configuration needs
+only the binding and imported app declarations; service/profile/secret reads may
+remain in the runtime phase. Keep public release pins in the configuration's
+relative import graph (including imported JSON), so normal Git definition-input
+admission compares them to the consumer commit. Do not read mutable public pins
+from an arbitrary filesystem path.
+
+`checkRelease(..., prepare: true)` only prepares/verifies the normal local release
+installation. It does not alter the gateway, select a release or start a process.
+After successful preparation, `ReleaseAdmission.preparedArtifactVolumes` returns
+binding/service/app, package-relative directory, host-local verified `source`,
+read-only target and consumer release/manifest/artifact digests. These are paths
+on the execution node, not portable locations or write permission. A
+`requires-stop` result retains this evidence after complete payload inspection,
+allowing the existing owner-scoped asset publisher to consume verified public
+files before an application stop. Other failures and checks without `prepare`
+return no prepared paths. The existing operator authorization remains unchanged;
+callers must not infer `.installed` layouts or treat preparation as publication.
+Start requires a selected release, complete integrity checks and the existing
+owner stop fence before changing an immutable mount. The custom Docker service
+receives a read-only physical source directory from that verified installation;
+there is no checkout or missing-directory fallback. Mount keys and overlapping
+ancestor/descendant targets, source aliases, traversal, dependency directories,
+links and special files are refused. This binding currently supports independently
+owned local stacks and explicitly declared custom Docker services; remote stacks
+and standalone infrastructure provisioning refuse unresolved bindings.
+
+Payload verification is independent of execution: new artifacts record a
+`closureSha256` without requiring a fictitious JavaScript entry. Older executable
+artifacts retain their `launch.closureSha256`. Runnable apps still require the
+usual compiled launch and exact execution-owner target. Boot/restart verifies the
+stored selected digest again. `diagnoseStack` resolves the same verified selected
+mount and refuses changed payload bytes before planning infrastructure. Selecting
+an older release reuses its verified mount; newer installations are not deleted. Infrastructure reconciliation and
+application startup are not an atomic database/pipeline rollback transaction.
+
+The existing owner-scoped `/assets/*` pool above is unchanged. This binding serves
+selected-release documents/public files; it neither publishes to nor changes
+ownership of that retained asset pool.

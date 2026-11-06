@@ -101,6 +101,8 @@ export interface ReleaseArtifact {
    */
   readonly inputs?: string;
   readonly launch?: ReleaseLaunch;
+  /** Payload proof independent of an executable entry. Older applications carry this in launch. */
+  readonly closureSha256?: string;
   /** Older releases did not attribute migration files to individual packages. */
   readonly packageSource?: ReleasePackageSource;
   /** Consumer alias; all other metadata and archive bytes remain those of this producer. */

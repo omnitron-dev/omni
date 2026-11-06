@@ -170,7 +170,26 @@ export interface StackStopProgress {
     authority?: { clusterId: string; nodeId: string; epoch: string } }>;
 }
 
+/** Fresh operator evidence about a host-local prepared payload, not gateway publication. */
+export interface PreparedArtifactVolume {
+  binding: string;
+  service: string;
+  app: string;
+  directory: string;
+  /** Physical source returned by the verified installer on this execution node. */
+  source: string;
+  target: string;
+  readonly: true;
+  releaseId: string;
+  manifestSha256: string;
+  artifactSha256: string;
+}
+
 export interface ReleaseAdmission {
+  /** Only a successful prepare inspection supplies paths. Requires-stop may retain this
+   * evidence so an operator can publish immutable assets before quiescing applications.
+   * It does not select a release, update a gateway, or authorize any filesystem mutation. */
+  preparedArtifactVolumes?: PreparedArtifactVolume[];
   ok: boolean;
   because: string;
   state?: 'unprepared' | 'requires-stop';

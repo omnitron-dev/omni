@@ -25,6 +25,8 @@ export function normalizeInfraConfig(
   raw: InfrastructureConfig,
   registry: PresetRegistry,
 ): Record<string, IServiceRequirement> {
+  if (raw.artifactVolumes && Object.keys(raw.artifactVolumes).length)
+    throw Error('Artifact volumes require a selected and verified local release before infrastructure provisioning');
   const services: Record<string, IServiceRequirement> = {};
 
   // 1. Legacy sugar → preset expansion

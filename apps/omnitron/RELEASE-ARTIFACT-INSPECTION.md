@@ -60,8 +60,11 @@ The verification path is shared with deployment:
 5. Selected regular files are read or hashed; the closure is reverified before
    returning. The temporary directory is removed in `finally` on success/failure.
 
-An artifact without an admitted compiled launch, supported closure protocol or
-complete recorded target is refused. There is no installed-tree, developer
+A static-only artifact may instead carry an artifact-level `closureSha256`; the
+same payload verifier checks it without inventing or evaluating a launch. Its
+result contains only explicitly requested files. Executable artifacts retain
+launch-first inspection and adapter checks. An artifact without either closure
+binding, a supported closure protocol or a complete recorded target is refused. There is no installed-tree, developer
 checkout, current-host or legacy-archive fallback. Bootstrap adapter resolution
 uses the shared verifier and does not evaluate the adapter or application.
 

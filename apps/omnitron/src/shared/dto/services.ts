@@ -3,7 +3,7 @@ export type { InstalledReleaseInspection, InstalledArtifactObservation, Installe
 import type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace } from './topology.js';
 export type { TopologyScope, TopologySpec, TopologyDraft, TopologyPlan, TopologyInventory, TopologyWorkspace, TopologyChange, TopologyIssue } from './topology.js';
 import type { ProjectTopology } from './project.js';
-export type { InstalledStackResumeResult, ConfigurationImport, ProjectConfigurationInfo, RuntimeStackScope, ProjectDependency, ProjectTopology, TopologyMetadataRefresh, StackStopReview } from './project.js';
+export type { PreparedArtifactVolume, ReleaseAdmission, InstalledStackResumeResult, ConfigurationImport, ProjectConfigurationInfo, RuntimeStackScope, ProjectDependency, ProjectTopology, TopologyMetadataRefresh, StackStopReview } from './project.js';
 import type { LogIngestionStats } from './logs.js';
 /**
  * Omnitron Daemon RPC Service Interfaces

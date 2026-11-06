@@ -141,8 +141,10 @@ function validMigrationPrograms(value: unknown): boolean {
 /** An import is an independently portable application, not a claim inferred from a legacy tar. */
 export function assertImportableArtifact(manifest: ReleaseManifest, artifact: ReleaseArtifact): void {
   const launch = artifact.launch, source = artifact.packageSource, target = manifest.builtWith?.target;
-  if (!object(launch) || !object(source) || !object(target)) throw Error('Imported application needs a recorded package source, frozen entry and execution target: ' + artifact.app);
-  if (!['bootstrap', 'script'].includes(launch.mode) || !relative(launch.file) || !/\.[cm]?js$/.test(launch.file) || !sha256(launch.closureSha256) ||
+  if (!object(source) || !object(target) || (!object(launch) && !sha256(artifact.closureSha256)))
+    throw Error('Imported application needs a recorded package source, frozen entry or payload closure, and execution target: ' + artifact.app);
+  if ((launch !== undefined && (!object(launch) || !['bootstrap', 'script'].includes(launch.mode) || !relative(launch.file) || !/\.[cm]?js$/.test(launch.file) || !sha256(launch.closureSha256))) ||
+      (artifact.closureSha256 !== undefined && (!sha256(artifact.closureSha256) || (launch && artifact.closureSha256 !== launch.closureSha256))) ||
       (source.directory !== '.' && !relative(source.directory)) || !commit(source.manifestBlob) ||
       !object(source.migrations) || !validMigrationPrograms(source.migrationPrograms) ||
       Object.entries(source.migrations).some(([file, sha]) => !relative(file) || !sha256(sha)) ||

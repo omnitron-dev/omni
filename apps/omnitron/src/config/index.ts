@@ -4,4 +4,5 @@ export { loadEcosystemConfig, loadEcosystemConfigFile, loadEcosystemConfigSafe, 
 export type { EcosystemPhase, EcosystemLoadOptions } from './loader.js';
 export { OMNITRON_HOME, CLI_VERSION, DAEMON_SERVICE_ID, DEFAULT_PORTS, DEFAULT_ECOSYSTEM } from './defaults.js';
 export type * from './types.js';
+export type { ArtifactVolumeBinding } from '../infrastructure/types.js';
 export { createOmnitronConfigSchema } from './omnitron-config.schema.js';

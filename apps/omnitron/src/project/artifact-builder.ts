@@ -63,6 +63,7 @@ export interface ArtifactInfo {
    */
   tarballSha256?: string;
   launch?: import('../release/manifest.js').ReleaseLaunch;
+  closureSha256?: string;
   /** Workspace-relative physical package whose build and closure produced this checked archive. */
   sourceDirectory?: string;
   migrationPrograms?: readonly import('../release/migration-programs.js').PackedMigrationProgram[];
@@ -305,6 +306,7 @@ export class ArtifactBuilder {
       tarballSha256,
       ...(frozen && { sourceDirectory: path.relative(fs.realpathSync(this.projectRoot), fs.realpathSync(appDir)) || '.' }),
       ...(frozen?.launch && { launch: frozen.launch }),
+      ...(frozen && { closureSha256: frozen.closureSha256 }),
       ...(frozen?.migrationPrograms.length && { migrationPrograms: frozen.migrationPrograms }),
     };
   }
@@ -563,7 +565,7 @@ export class ArtifactBuilder {
       const { packedMigrationPrograms } = await import('../release/migration-programs.js');
       const migrationPrograms = await packedMigrationPrograms(staging, programs);
       await archiveBundle(staging, artifactPath);
-      return { sha256: await sha256File(artifactPath), launch, migrationPrograms };
+      return { sha256: await sha256File(artifactPath), closureSha256: await sha256File(path.join(staging, '.omnitron-closure.json')), launch, migrationPrograms };
     } finally { await io.rm(staging, { recursive: true, force: true }); }
   }
 

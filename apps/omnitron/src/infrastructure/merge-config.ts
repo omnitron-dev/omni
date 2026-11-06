@@ -10,6 +10,7 @@ export function mergeInfrastructure(
     ...ecosystem.infrastructure,
     ...stack.infrastructure,
     services: { ...ecosystem.infrastructure?.services, ...stack.infrastructure?.services },
+    ...((ecosystem.infrastructure?.artifactVolumes || stack.infrastructure?.artifactVolumes) && { artifactVolumes: { ...ecosystem.infrastructure?.artifactVolumes, ...stack.infrastructure?.artifactVolumes } }),
   } as InfrastructureConfig;
 }
 

@@ -19,6 +19,7 @@ import { stackExecutionKey, type StackExecutionPlan, type StackExecutionScope } 
 import { publicStack } from '../project/public-stack.js';
 import { TopologyStateStore } from '../project/topology-state.js';
 import { TopologyControl } from '../project/topology-control.js';
+import { artifactVolumeBindings, artifactVolumeEntries, bindArtifactVolumes } from '../release/artifact-volumes.js';
 import { mergeInfrastructure, mergeInferredInfrastructure } from '../infrastructure/merge-config.js';
 export { mergeInfrastructure } from '../infrastructure/merge-config.js';
 import type { TopologyScope, TopologySpec, TopologyPlan, TopologyWorkspace } from '../shared/dto/topology.js';
@@ -1288,9 +1289,18 @@ export class ProjectService extends EventEmitter {
         'This records the previous start attempt; current startup remains unverified. Correct the cause and retry the stack start.');
     }
     let entries: IEcosystemAppEntry[];
+    let infrastructure = mergeInfrastructure(config, stack);
     try {
-      entries = await this.launchEntries(projectName, stackName, stack, config);
       const selected = stack.type === 'local' && !stack.managedOrigin ? this.localSelection(projectName, stackName).read().release : null;
+      if (selected && artifactVolumeBindings(infrastructure).length) {
+        const { loadRelease } = await import('../release/load.js');
+        const release = await loadRelease(selected.id, await this.releaseStore());
+        if (release.manifestSha256 !== selected.manifestSha256) throw Error('Selected release manifest changed on disk');
+        const installed = await this.installedRelease(projectName, stackName, stack, config, release);
+        if (!installed.infrastructure) throw Error('Selected artifact infrastructure is unavailable');
+        entries = installed.entries;
+        infrastructure = installed.infrastructure;
+      } else entries = await this.launchEntries(projectName, stackName, stack, config);
       if (selected) add('release.selected', 'Release', 'pass', 'Next start uses verified release ' + selected.id);
       else if (stack.release?.mode === 'required') add('release.required', 'Release', 'unknown', 'This stack requires an immutable release; no release was selected for this check.', 'Use Deploy release and review its admission checks.');
     } catch (error) {
@@ -1346,7 +1356,7 @@ export class ProjectService extends EventEmitter {
       return done();
     }
     try {
-      const effective = mergeInferredInfrastructure(buildInfraFromRequirements(requirementsFromDefinitions(definitions)), mergeInfrastructure(config, stack));
+      const effective = mergeInferredInfrastructure(buildInfraFromRequirements(requirementsFromDefinitions(definitions)), infrastructure);
       const migrations = requestedMigrations(normalizeInfraConfig(effective, createDefaultRegistry()));
       if (migrations.length) {
         try {
@@ -1734,11 +1744,19 @@ export class ProjectService extends EventEmitter {
 
     const selected = release ? { id: release.id, manifestSha256: release.manifestSha256 } : null;
     const changing = !!selector && !isDeepStrictEqual(prior?.release, selected);
-    const entries = local && release ? await this.installedEntries(projectName, stackName, stackConfig, config, release, true) : undefined;
+    const mounted = artifactVolumeBindings(mergeInfrastructure(config, stackConfig));
+    if (mounted.length && (!local || !release || !ownsStackInfrastructure(stackConfig)))
+      throw Error('Artifact volumes require a selected release on an independently owned local stack');
+    const installation = mounted.length && release
+      ? await this.installedRelease(projectName, stackName, stackConfig, config, release, true) : undefined;
+    const entries = installation?.entries ?? (local && release ? await this.installedEntries(projectName, stackName, stackConfig, config, release, true) : undefined);
     let localMembershipChanged = false;
     if (local) {
       const target = entries ?? this.resolveStackApps(stackConfig, config);
       const plan = await this.checkLocalOwner(projectName, stackName, target, changing, source === 'boot' || source === 'auto-resume');
+      // A changed immutable mount may not reach Docker before the ordinary owner stop fence.
+      if (mounted.length && changing && plan.phase !== 'stopped')
+        throw new LocalReleaseStopRequired('Stop this local stack before changing its immutable artifact volumes');
       const names = new Set(target.map(entry => ProjectService.handleKey(projectName, stackName, entry.name)));
       localMembershipChanged = plan.apps.some(app => !names.has(app.name));
       if ((source === 'boot' || source === 'auto-resume') && plan.phase !== 'running')
@@ -1825,7 +1843,12 @@ export class ProjectService extends EventEmitter {
               else if (selector.read().revision !== prior.revision) throw new Error('Local release selection changed during admission');
             });
             await enable();
-          }, release ? (names, files) => this.installedEntries(projectName, stackName, stackConfig, config, release, false, names, files) : undefined);
+          }, release ? (names, files) => this.installedEntries(projectName, stackName, stackConfig, config, release, false, names, files) : undefined,
+          installation ? async () => {
+            const plan = await this.checkLocalOwner(projectName, stackName, target, changing);
+            if (changing && plan.phase !== 'stopped') throw new LocalReleaseStopRequired('Artifact volume selection requires the owner stop fence');
+            return (await this.installedRelease(projectName, stackName, stackConfig, config, release!, false)).infrastructure;
+          } : undefined);
         } else {
           await this.startLocalStack(projectName, stackName, stackConfig, config, undefined, async () => { await enable(); });
         }
@@ -2306,6 +2329,7 @@ export class ProjectService extends EventEmitter {
     releaseId: string,
     prepare = false,
   ): Promise<import('../shared/dto/project.js').ReleaseAdmission> {
+    let preparedArtifactVolumes: import('../shared/dto/project.js').PreparedArtifactVolume[] | undefined;
     try {
       const config = await this.loadProjectConfig(projectName);
       const stacks = this.resolveStacks(config, projectName);
@@ -2316,10 +2340,15 @@ export class ProjectService extends EventEmitter {
       const release = await this.admitRelease(projectName, stackName, stackConfig, config, releaseId, 'check');
       let retiring: string[] = [];
       if (stackConfig.type === 'local') {
-        const entries = await this.installedEntries(projectName, stackName, stackConfig, config, release, prepare);
+        const inspected = artifactVolumeBindings(mergeInfrastructure(config, stackConfig)).length
+          ? await this.installedRelease(projectName, stackName, stackConfig, config, release, prepare) : undefined;
+        const entries = inspected?.entries ?? await this.installedEntries(projectName, stackName, stackConfig, config, release, prepare);
+        if (prepare && inspected) preparedArtifactVolumes = inspected.preparedArtifactVolumes;
         const prior = this.localSelection(projectName, stackName).read().release;
         if (prior?.id === release.id && prior.manifestSha256 !== release.manifestSha256) throw new Error('Selected manifest changed on disk');
         const plan = await this.checkLocalOwner(projectName, stackName, entries, prior?.id !== release.id);
+        if (artifactVolumeBindings(mergeInfrastructure(config, stackConfig)).length && prior?.id !== release.id && plan.phase !== 'stopped')
+          throw new LocalReleaseStopRequired('Stop this local stack before changing its immutable artifact volumes');
         const target = new Set(entries.map(entry => ProjectService.handleKey(projectName, stackName, entry.name)));
         retiring = plan.apps.filter(app => !target.has(app.name)).map(app => app.name);
       }
@@ -2327,6 +2356,7 @@ export class ProjectService extends EventEmitter {
       const passed = gates.filter((g) => g.status === 'passed').length;
       return {
         ok: true,
+        ...(preparedArtifactVolumes?.length && { preparedArtifactVolumes }),
         because:
           `${projectName}/${stackName} would take ${release.id}: ${passed} of ${gates.length} gates passed, ` +
           `${release.files.length} artifact(s) match the manifest` +
@@ -2337,7 +2367,8 @@ export class ProjectService extends EventEmitter {
       const { LocalReleaseNotPreparedError } = await import('../release/local-installation.js');
       return { ok: false, because: (err as Error).message,
         ...(err instanceof LocalReleaseNotPreparedError && { state: 'unprepared' as const }),
-        ...(err instanceof LocalReleaseStopRequired && { state: 'requires-stop' as const }) };
+        ...(err instanceof LocalReleaseStopRequired && { state: 'requires-stop' as const,
+          ...(preparedArtifactVolumes?.length && { preparedArtifactVolumes }) }) };
     }
   }
 
@@ -2942,7 +2973,10 @@ export class ProjectService extends EventEmitter {
     const configuredApps = this.resolveStackApps(stackConfig, config);
     if (stackConfig.type !== 'local' && configuredApps.some(entry => entry.releaseFrom || release.manifest.artifacts.some(artifact => artifact.app === entry.name && artifact.origin)))
       throw Error('Imported applications require verified local release installation. Remote admission needs producer-captured deployment declarations and a compatible execution owner.');
-    const apps = configuredApps.map((a) => a.name);
+    const mounted = artifactVolumeEntries(mergeInfrastructure(config, stackConfig), config.apps);
+    if (mounted.length && (stackConfig.type !== 'local' || stackConfig.managedOrigin || !ownsStackInfrastructure(stackConfig)))
+      throw Error('Artifact volumes require an independently owned local stack');
+    const apps = [...new Set([...configuredApps, ...mounted].map(a => a.name))];
     // The fourth argument, which was `[]` for as long as nothing wrote one:
     // a stack declaring `verifiedOn` refused every release forever, with a
     // refusal that read «nothing has been verified on 'test'» while there
@@ -3585,6 +3619,7 @@ export class ProjectService extends EventEmitter {
     selectedEntries?: IEcosystemAppEntry[],
     enable?: (build: (entry: IEcosystemAppEntry) => IEcosystemAppEntry) => Promise<void>,
     verifyMigrations?: VerifyMigrationEntries,
+    verifyArtifactInfrastructure?: () => Promise<InfrastructureConfig | undefined>,
   ): Promise<void> {
     const ownsInfrastructure = ownsStackInfrastructure(stackConfig);
     const stateKey = `${projectName}/${stackName}`;
@@ -3607,7 +3642,8 @@ export class ProjectService extends EventEmitter {
       if (entry.bootstrap && !appDefinitions.has(entry.name)) throw new Error(`Bootstrap declarations unavailable for ${entry.name}`);
     }
     const effectiveInfra = ownsInfrastructure ? mergeInferredInfrastructure(
-      buildInfraFromRequirements(requirementsFromDefinitions(appDefinitions)), mergeInfrastructure(ecosystemConfig, stackConfig),
+      buildInfraFromRequirements(requirementsFromDefinitions(appDefinitions)),
+      verifyArtifactInfrastructure ? await verifyArtifactInfrastructure() : mergeInfrastructure(ecosystemConfig, stackConfig),
     ) : undefined;
     // Refuse missing/tampered migrators before creating or changing infrastructure.
     if (effectiveInfra && project) {
@@ -5088,9 +5124,13 @@ export class ProjectService extends EventEmitter {
   }
 
   private async installedEntries(project: string, stack: string, definition: IStackConfig, config: IEcosystemConfig, release: LoadedRelease, prepare = false, requiredMigrations?: readonly string[], migrationFiles?: MigrationRequiredFiles) {
+    return (await this.installedRelease(project, stack, definition, config, release, prepare, requiredMigrations, migrationFiles)).entries;
+  }
+
+  private async installedRelease(project: string, stack: string, definition: IStackConfig, config: IEcosystemConfig, release: LoadedRelease, prepare = false, requiredMigrations?: readonly string[], migrationFiles?: MigrationRequiredFiles) {
     const root = this.registry.get(project)?.path;
     if (!root) throw new Error('Project is not registered');
-    const { inspectLocalReleaseInstallation } = await import('../release/local-installation.js');
+    const { inspectLocalReleaseInstallation, inspectLocalReleasePayloads } = await import('../release/local-installation.js');
     const stackEntries = this.resolveStackApps(definition, config);
     // Validate the complete stack before narrowing executable verification to
     // migration owners. Other applications still own their declared environment.
@@ -5105,9 +5145,22 @@ export class ProjectService extends EventEmitter {
     if (!ownerPid) throw new Error('A verified local release requires a connected independent execution owner');
     const ownerPackage = await this.orchestrator.getExecutionOwnerPackage?.();
     if (!ownerPackage) throw new Error('Verified runtime origin requires an independently verified execution-owner package');
-    return inspectLocalReleaseInstallation(release, stack, entries, { prepare, ownerPid, ownerPackage,
+    const infrastructure = mergeInfrastructure(config, definition);
+    const payloads = artifactVolumeEntries(infrastructure, config.apps);
+    const roots = await inspectLocalReleasePayloads(release, payloads, prepare);
+    const resolved = await bindArtifactVolumes(infrastructure, roots);
+    const installed = await inspectLocalReleaseInstallation(release, stack, entries, { prepare, ownerPid, ownerPackage,
       ...(requiredMigrations && { requiredFiles: migrationFiles ?? Object.fromEntries(requiredMigrations.map(app => [app, [COMPILED_MIGRATION_ENTRY]])) }),
     });
+    const preparedArtifactVolumes: import('../shared/dto/project.js').PreparedArtifactVolume[] = artifactVolumeBindings(infrastructure).map(([binding, value]) => {
+      const service = resolved?.services?.[value.service];
+      const mount = service && !('preset' in service) ? service.docker?.volumes?.[binding] : undefined;
+      const artifact = release.manifest.artifacts.find(item => item.app === value.app);
+      if (!mount || typeof mount === 'string' || mount.readonly !== true || !artifact) throw Error('Verified artifact volume result is unavailable');
+      return { binding, ...value, source: mount.source, target: mount.target, readonly: true,
+        releaseId: release.id, manifestSha256: release.manifestSha256, artifactSha256: artifact.sha256 };
+    });
+    return { entries: installed, infrastructure: resolved, preparedArtifactVolumes };
   }
 
   /** All consumers of executable declarations must see the same physical entry as the owner. */

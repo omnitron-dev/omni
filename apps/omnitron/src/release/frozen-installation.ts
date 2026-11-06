@@ -73,8 +73,20 @@ export async function assertFrozenDirectory(dir: string) {
  * execution owner supplies the exact Node image, lifecycle and authorization. */
 export async function verifyFrozenApplication(root: string, launch: ReleaseLaunch, runtime: TargetRuntime, nodeOptions: string): Promise<string> {
   assertFrozenLaunch(launch);
-  await assertFrozenDirectory(root);
+  await verifyFrozenPayload(root, launch.closureSha256, runtime, nodeOptions);
   const file = await frozenMember(root, launch.file);
+  if (launch.mode === 'bootstrap') {
+    const adapter = await fs.realpath(createRequire(file).resolve('@omnitron-dev/omnitron'));
+    if (!inside(root, adapter) || !inside(root, await fs.realpath(await applicationBootstrapRuntime(file, adapter))))
+      throw Error('Frozen release must supply its own aligned Omnitron adapter');
+  }
+  return file;
+}
+
+/** Immutable payload proof does not require or execute a JavaScript launch entry. */
+export async function verifyFrozenPayload(root: string, closureSha256: string, runtime: TargetRuntime, nodeOptions?: string): Promise<void> {
+  if (!digest(closureSha256)) throw Error('Frozen payload requires a recorded closure digest');
+  await assertFrozenDirectory(root);
   const handle = await fs.open(path.join(root, CLOSURE_FILE), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   let raw: Buffer;
   try {
@@ -82,19 +94,13 @@ export async function verifyFrozenApplication(root: string, launch: ReleaseLaunc
     if (!s.isFile() || s.size > 2_000_000) throw Error('Invalid frozen closure record');
     raw = await handle.readFile();
   } finally { await handle.close(); }
-  if (createHash('sha256').update(raw).digest('hex') !== launch.closureSha256) throw Error('Frozen closure differs from the admitted manifest');
+  if (createHash('sha256').update(raw).digest('hex') !== closureSha256) throw Error('Frozen closure differs from the admitted manifest');
   const c = JSON.parse(raw.toString('utf8'));
-  if (c.protocol !== 1 || !digest(c.payloadSha256) ||
-    c.nodeOptions !== nodeOptions) throw Error('Frozen release closure, execution target or Node options differ from the build');
+  if (c.protocol !== 1 || !digest(c.payloadSha256) || typeof c.nodeOptions !== 'string' ||
+    releaseNodeOptions(c.nodeOptions) !== c.nodeOptions || (nodeOptions !== undefined && c.nodeOptions !== nodeOptions))
+    throw Error('Frozen release closure, execution target or Node options differ from the build');
   assertReleaseTarget(c.runtime, runtime);
   if (await releaseTreeDigest(root, true, false, [CLOSURE_FILE]) !== c.payloadSha256) throw Error('Frozen release files differ from the admitted payload');
-  if (launch.mode === 'bootstrap') {
-    // Boot via the same adapter resolution as the supervisor, without a fallback to its SDK.
-    const adapter = await fs.realpath(createRequire(file).resolve('@omnitron-dev/omnitron'));
-    if (!inside(root, adapter) || !inside(root, await fs.realpath(await applicationBootstrapRuntime(file, adapter))))
-      throw Error('Frozen release must supply its own aligned Omnitron adapter');
-  }
-  return file;
 }
 
 /** A receipt is operational evidence, never a trusted member of a build archive. */
@@ -129,6 +135,7 @@ const assertFrozenLaunch=${assertFrozenLaunch.toString()};
 const assertFrozenDirectory=${assertFrozenDirectory.toString()},frozenMember=${frozenMember.toString()};
 const extractFrozenArchive=${extractFrozenArchive.toString()},releaseTreeDigest=${releaseTreeDigest.toString()};
 const applicationBootstrapRuntime=((fs)=>(${resolveApplicationBootstrapRuntime.toString()}))(fsSync);
+const releaseNodeOptions=${releaseNodeOptions.toString()},verifyFrozenPayload=${verifyFrozenPayload.toString()};
 const targetRuntime=${targetRuntime.toString()},assertReleaseTarget=${assertReleaseTarget.toString()},verifyFrozenApplication=${verifyFrozenApplication.toString()};
 const assertNoReleaseMetadata=${assertNoReleaseMetadata.toString()},writeInstalledReleaseReceipt=${writeInstalledReleaseReceipt.toString()};
 const root=${JSON.stringify(directory)},archive=path.join(root,${JSON.stringify(archiveName)}),origin=${JSON.stringify(origin)};

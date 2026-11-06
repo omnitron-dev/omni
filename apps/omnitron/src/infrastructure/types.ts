@@ -185,7 +185,22 @@ export interface GenericContainerConfig {
 // Infrastructure Definition (top-level config section)
 // =============================================================================
 
+/** A read-only directory in an admitted consumer artifact, mounted without starting that application. */
+export interface ArtifactVolumeBinding {
+  /** Custom Docker service declared in infrastructure.services. */
+  service: string;
+  /** Consumer artifact name (not the producer alias). May name a disabled application. */
+  app: string;
+  /** Physical package-relative directory; no links or node_modules may be exposed. */
+  directory: string;
+  /** Absolute container directory. Overlapping mount targets are refused. */
+  target: string;
+}
+
 export interface InfrastructureConfig {
+  /** Local selected releases only. Resolved through verified installation before provisioning;
+   * never a working-tree path, runtime process, or writable Docker volume. */
+  artifactVolumes?: Record<string, ArtifactVolumeBinding>;
   /**
    * Unified services map — the canonical way to declare infrastructure.
    * Each key is a logical service name. Values are either:

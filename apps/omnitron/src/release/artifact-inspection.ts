@@ -5,10 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { CLOSURE_FILE } from './application-closure.js';
-import { assertFrozenDirectory, assertFrozenLaunch, extractFrozenArchive, verifyFrozenApplication } from './frozen-installation.js';
+import { assertFrozenDirectory, assertFrozenLaunch, extractFrozenArchive, verifyFrozenApplication, verifyFrozenPayload } from './frozen-installation.js';
 import { loadRelease } from './load.js';
 import type { ReleaseArtifact, ReleaseArtifactReference, ReleaseManifest } from './manifest.js';
-import { artifactReleaseContext } from './origin.js';
+import { artifactReleaseContext, assertImportableArtifact } from './origin.js';
 import { sha256File } from './portable-archive.js';
 import { releaseNodeOptions, type TargetRuntime } from './target-runtime.js';
 
@@ -39,7 +39,7 @@ export interface ReleaseArtifactInspection {
     readonly target: TargetRuntime;
     readonly nodeOptions: string;
   };
-  /** Launch first, then requested files in request order, each member once. */
+  /** Launch (when present) first, then requested files in request order, each member once. */
   readonly files: readonly InspectedReleaseFile[];
 }
 
@@ -154,8 +154,10 @@ export async function inspectReleaseArtifact(
   if (!artifact || !archive) throw Error('No release artifact for ' + releaseId + '/' + app);
   const producer = artifactReleaseContext(release.manifest, app);
   const launch = producer.artifact.launch;
-  assertFrozenLaunch(launch);
+  if (launch || !producer.artifact.closureSha256) assertFrozenLaunch(launch);
   const target = recordedTarget(producer.manifest.builtWith.target);
+  if (!launch) assertImportableArtifact(producer.manifest, producer.artifact);
+  const closureSha256 = producer.artifact.closureSha256 ?? launch!.closureSha256;
   const temporary = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'omnitron-artifact-inspection-'));
   try {
     await assertFrozenDirectory(temporary);
@@ -166,7 +168,7 @@ export async function inspectReleaseArtifact(
       throw Error('Release archive changed before inspection');
     await extractFrozenArchive(copied, payload);
     const raw = await readPhysical(path.join(payload, CLOSURE_FILE), 2_000_000);
-    if (hash(raw) !== launch.closureSha256) throw Error('Frozen closure differs from the admitted manifest');
+    if (hash(raw) !== closureSha256) throw Error('Frozen closure differs from the admitted manifest');
     const closure: unknown = JSON.parse(raw.toString('utf8'));
     if (!closure || typeof closure !== 'object' || Array.isArray(closure) ||
         !('nodeOptions' in closure) || typeof closure.nodeOptions !== 'string') throw Error('Invalid frozen closure Node options');
@@ -174,11 +176,12 @@ export async function inspectReleaseArtifact(
     if (!('payloadSha256' in closure) || typeof closure.payloadSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(closure.payloadSha256))
       throw Error('Invalid frozen closure payload digest');
     const nodeOptions = releaseNodeOptions(closure.nodeOptions);
-    await verifyFrozenApplication(payload, launch, target, nodeOptions);
+    const verify = () => launch ? verifyFrozenApplication(payload, launch, target, nodeOptions) : verifyFrozenPayload(payload, closureSha256, target, nodeOptions);
+    await verify();
     const files: InspectedReleaseFile[] = [];
     let total = 0;
-    const selected = [{ path: launch.file, includeContents: requested.find(file => file.path === launch.file)?.includeContents ?? false },
-      ...requested.filter(file => file.path !== launch.file)];
+    const selected = launch ? [{ path: launch.file, includeContents: requested.find(file => file.path === launch.file)?.includeContents ?? false },
+      ...requested.filter(file => file.path !== launch.file)] : requested;
     for (const request of selected) {
       const file = await physicalMember(payload, request.path);
       const evidence = await inspectPhysical(file, request.includeContents === true, Math.min(MAX_FILE_BYTES, MAX_TOTAL_BYTES - total));
@@ -186,11 +189,11 @@ export async function inspectReleaseArtifact(
       files.push({ path: request.path, ...evidence });
     }
     // Detect any change during requested reads, including private dependency bytes.
-    await verifyFrozenApplication(payload, launch, target, nodeOptions);
+    await verify();
     return { manifest: release.manifest, manifestSha256: release.manifestSha256, artifact,
       producer: { manifest: producer.manifest,
         manifestSha256: producer.chain.at(-1)?.manifestSha256 ?? release.manifestSha256,
         app: producer.artifact.app, chain: producer.chain },
-      closure: { sha256: launch.closureSha256, payloadSha256: closure.payloadSha256, target, nodeOptions }, files };
+      closure: { sha256: closureSha256, payloadSha256: closure.payloadSha256, target, nodeOptions }, files };
   } finally { await fs.rm(temporary, { recursive: true, force: true }); }
 }

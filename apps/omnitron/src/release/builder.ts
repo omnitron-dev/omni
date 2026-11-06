@@ -103,7 +103,7 @@ export interface ManifestInput {
   readonly id: string;
   readonly project: ReleaseSource;
   readonly omni: ReleaseSource;
-  readonly artifacts: ReadonlyArray<{ app: string; version: string; tarballSha256?: string; size: number; checksum?: string; launch?: ReleaseArtifact['launch']; packageSource?: ReleaseArtifact['packageSource'] }>;
+  readonly artifacts: ReadonlyArray<{ app: string; version: string; tarballSha256?: string; size: number; checksum?: string; launch?: ReleaseArtifact['launch']; closureSha256?: string; packageSource?: ReleaseArtifact['packageSource'] }>;
   readonly artifactFailures: ReadonlyArray<{ app: string; error: string }>;
   readonly importedArtifacts?: readonly ReleaseArtifact[];
   readonly imports?: ReleaseManifest['imports'];
@@ -132,6 +132,7 @@ export function assembleManifest(input: ManifestInput): ReleaseManifest {
     sha256: a.tarballSha256 ?? '',
     bytes: a.size,
     ...(a.launch ? { launch: a.launch } : {}),
+    ...(a.closureSha256 ? { closureSha256: a.closureSha256 } : {}),
     ...(a.packageSource ? { packageSource: a.packageSource } : {}),
     ...(a.checksum ? { inputs: a.checksum } : {}),
   }));

@@ -794,7 +794,8 @@ async function buildRelease(
   const { ArtifactBuilder } = await import('../project/artifact-builder.js');
   const configDirectory = path.join(plan.repositoryDir, projectPrefix);
   const config = await loadEcosystemConfig(configDirectory, 'release');
-  const apps = config.apps.filter((a) => a.enabled !== false);
+  const { releaseBuildEntries } = await import('./artifact-volumes.js');
+  const apps = releaseBuildEntries(config);
   const { declaredMigrationPrograms } = await import('./migration-programs.js');
   const migrationPrograms = declaredMigrationPrograms(config, options.forStack);
   const builder = new ArtifactBuilder(plan.projectDir, path.join(releaseRoot, 'artifacts'), {

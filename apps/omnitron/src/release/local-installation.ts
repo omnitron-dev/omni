@@ -7,11 +7,11 @@ import { isDeepStrictEqual } from 'node:util';
 import type { IEcosystemAppEntry } from '../config/types.js';
 import { validateReadiness } from '../health/contracts.js';
 import { CLOSURE_FILE } from './application-closure.js';
-import { assertFrozenDirectory as assertDirectory, frozenMember as member, extractFrozenArchive, verifyFrozenApplication } from './frozen-installation.js';
+import { assertFrozenDirectory as assertDirectory, frozenMember as member, extractFrozenArchive, verifyFrozenApplication, verifyFrozenPayload } from './frozen-installation.js';
 import type { LoadedRelease } from './load.js';
 import { assertOwnerExecutable } from './owner-executable.js';
 import type { ReleaseLaunch } from './manifest.js';
-import { releaseArtifactOrigins } from './origin.js';
+import { releaseArtifactOrigins, assertImportableArtifact } from './origin.js';
 import { sha256File } from './portable-archive.js';
 import { RELEASE_RECEIPT, releaseTreeDigest } from './runtime-provenance.js';
 import { readInstalledReleaseReceipt, writeInstalledReleaseReceipt, type ReleaseArtifactOrigin } from './installed-origin.js';
@@ -154,4 +154,67 @@ export async function inspectLocalReleaseInstallation(release: LoadedRelease, st
       [launch.mode]: executable, releaseRoot: root, watch: false });
   }
   return result;
+}
+
+/** Materialize a payload without inventing a process or an execution-owner binding.
+ * Uses the existing release store and origin receipt; the payload's own target is
+ * checked against its closure, not asserted to be this host's execution runtime. */
+export async function inspectLocalReleasePayloads(release: LoadedRelease, entries: readonly IEcosystemAppEntry[], prepare = false): Promise<Map<string, string>> {
+  if (!digest(release.manifestSha256)) throw Error('Invalid local release manifest digest');
+  const sources = new Map(releaseArtifactOrigins(release.manifest, release.manifestSha256).map(source => [source.app, source]));
+  const selected = entries.map(entry => {
+    const source = sources.get(entry.name), artifacts = release.manifest.artifacts.filter(a => a.app === entry.name), files = release.files.filter(f => f.app === entry.name);
+    const artifact = artifacts[0], file = files[0];
+    if (!source || artifacts.length !== 1 || files.length !== 1 || !artifact || !file || !digest(file.sha256) || file.sha256 !== artifact.sha256 || file.bytes !== artifact.bytes)
+      throw Error('No unique verified local payload for ' + entry.name);
+    if (!isDeepStrictEqual(artifact.origin, entry.releaseFrom)) throw Error('Configured payload source differs from the selected release for ' + entry.name);
+    assertImportableArtifact(source.manifest, source.artifact);
+    const closureSha256 = source.artifact.closureSha256 ?? source.artifact.launch?.closureSha256;
+    if (!closureSha256 || !digest(closureSha256)) throw Error('Payload lacks an admitted closure: ' + entry.name);
+    return { source, file, closureSha256 };
+  });
+  const roots = new Map<string, string>();
+  if (!selected.length) return roots;
+  const releases = await fs.realpath(path.dirname(release.root)), store = path.join(releases, '.installed'), group = path.join(store, release.manifestSha256);
+  if (prepare) { await privateDirectory(releases, '.installed'); await privateDirectory(store, release.manifestSha256); }
+  else {
+    try { await assertDirectory(store); await assertDirectory(group); }
+    catch (error) { if (!absent(error)) throw error; throw new LocalReleaseNotPreparedError('Local payload has not been prepared: ' + release.id, { cause: error }); }
+  }
+  for (const { source, file, closureSha256 } of selected) {
+    const { origin } = source;
+    const binding = createHash('sha256').update(JSON.stringify({ origin, use: 'artifact-volume' })).digest('hex');
+    const root = path.join(group, file.sha256 + '-' + binding);
+    const verifyPayload = () => verifyFrozenPayload(root, closureSha256, source.manifest.builtWith.target!);
+    const exists = await fs.lstat(root).then(() => true, error => { if (absent(error)) return false; throw error; });
+    if (!exists) {
+      if (!prepare) throw new LocalReleaseNotPreparedError('Local payload has not been prepared: ' + source.app);
+      const tmp = await fs.mkdtemp(path.join(group, '.install-'));
+      try {
+        const copied = path.join(tmp, 'archive'), payload = await privateDirectory(tmp, 'payload');
+        await fs.copyFile(file.path, copied, constants.COPYFILE_FICLONE | constants.COPYFILE_EXCL);
+        if ((await fs.stat(copied)).size !== file.bytes || await sha256File(copied) !== file.sha256) throw Error('Local release archive changed before installation');
+        await extractFrozenArchive(copied, payload);
+        await verifyFrozenPayload(payload, closureSha256, source.manifest.builtWith.target!);
+        try { await fs.rename(payload, root); }
+        catch (error) { if (!['EEXIST', 'ENOTEMPTY'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error; }
+      } finally { await fs.rm(tmp, { recursive: true, force: true }); }
+    }
+    if (prepare && !await fs.lstat(path.join(root, RELEASE_RECEIPT)).then(() => true, error => { if (absent(error)) return false; throw error; })) {
+      await verifyPayload();
+      const receipt = { version: 1 as const, root, origin, treeSha256: await releaseTreeDigest(root),
+        installedFrameworkCommit: origin.frameworkCommit, frameworkContentUnchanged: true, artifactPayloadUnchanged: true };
+      try { await writeInstalledReleaseReceipt(root, receipt); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
+    }
+    await verifyPayload();
+    const receipt = await readInstalledReleaseReceipt(root);
+    if (receipt.version !== 1 || !isDeepStrictEqual(receipt.origin, origin) || receipt.treeSha256 !== await releaseTreeDigest(root) ||
+        receipt.installedFrameworkCommit !== origin.frameworkCommit || receipt.frameworkContentUnchanged !== true || receipt.artifactPayloadUnchanged !== true)
+      throw Error('Local installed payload origin changed');
+    if (await fs.lstat(path.join(root, '.artifact-sha256')).then(() => true, error => { if (absent(error)) return false; throw error; }))
+      throw Error('Unexpected operational metadata in local release');
+    roots.set(source.app, root);
+  }
+  return roots;
 }

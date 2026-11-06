@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { reserveDaemonPorts } from './fixture-ports.mjs';
+import { verifyFixtureLogs } from './fixture-log-evidence.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
@@ -41,7 +42,15 @@ for (const directory of [instance, execution]) await fs.mkdir(directory, { mode:
 process.env.OMNITRON_HOME = instance;
 const load = file => import(pathToFileURL(path.join(dist, file)).href);
 const { RuntimeInstallation } = await load('daemon/runtime-installation.js');
-const { renderLaunchdPlist, renderSystemdUnit } = await load('commands/service-units.js');
+const { renderLaunchdPlist, renderSystemdUnit: nativeSystemdUnit } = await load('commands/service-units.js');
+const renderSystemdUnit = inputs => {
+  const unit = nativeSystemdUnit(inputs);
+  if (!ownerRoundtrip) return unit;
+  // Every cold-roundtrip unit is rendered here, including rollback. These
+  // limits cover each service's descendants, independently of the SSH shell.
+  assert.ok(unit.includes('[Service]\n'));
+  return unit.replace('[Service]\n', '[Service]\nMemoryMax=2G\nCPUQuota=100%\nTasksMax=128\n');
+};
 const { createDaemonClient } = await load('daemon/daemon-client.js');
 const { privateControlClient } = await load('daemon/private-control-client.js');
 const { PidManager } = await load('daemon/pid-manager.js');
@@ -136,7 +145,7 @@ try {
   ownerPid = first.execution.owner.pid;
   if (ownerRoundtrip) {
     const { managedOwnerRoundtrip } = await import('./managed-owner-roundtrip.mjs');
-    const result = await managedOwnerRoundtrip({ root, instance, execution, config, units, first, artifact, initialBackend, initialGuardian,
+    const result = await managedOwnerRoundtrip({ root, instance, execution, config, units, first, artifact, initialBackend, initialGuardian, fixtureId: id,
       managementDist, run, native, domain, linux, until, status, render: linux ? renderSystemdUnit : renderLaunchdPlist,
       track: (...pids) => { for (const pid of pids) { assert.ok(Number.isSafeInteger(pid) && pid > 0); ownerRoundtripPids.add(pid); } }, mark });
     ownerPid = result.rounds.at(-1).ownerPid;
@@ -438,25 +447,11 @@ try {
     await assert.rejects(run('/bin/sh', ['-c', runtimeProbeCommand(bundle, applicationPid)], options), /no recognized entry/);
     console.log(JSON.stringify({ stage: 'remote-inspection-verified', ownerPid, backendPid: afterGuardian.pid }));
   }
-  await fetch(`http://127.0.0.1:${address.port}/pause`);
-  const expected = (await fs.readFile(path.join(root, 'expected.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
-  await until(async () => {
-    const db = new Database(path.join(instance, 'data/slave.db'), { readonly: true, fileMustExist: true });
-    try {
-      const records = db.prepare("SELECT payload FROM sync_buffer WHERE category='logs'").all()
-        .map(row => JSON.parse(row.payload)).filter(row => row.message?.startsWith(`fixture:${id}:`));
-      if (records.length < expected.length) return false;
-      assert.equal(records.length, expected.length, 'Duplicate fixture log deliveries');
-      const actual = records.map(row => ({ time: new Date(row.timestamp).toISOString(), msg: row.message }))
-        .sort((a, b) => a.msg.localeCompare(b.msg));
-      assert.deepEqual(actual, expected.map(({ time, msg }) => ({ time, msg })).sort((a, b) => a.msg.localeCompare(b.msg)));
-      return true;
-    } finally { db.close(); }
-  }, 'Exact multiline logs did not reach the durable outbox');
+  const verifiedLogs = await verifyFixtureLogs({ root, instance, runtime: path.resolve(dist, '../../..'), fixtureId: id, until });
   assertHistoryPreserved('complete');
   console.log(JSON.stringify({ test: linux ? 'independent-systemd-supervision' : 'independent-launchd-supervision', root, ownerPid, applicationPid,
     backends: [first.pid, upgraded.pid, recovered.pid, afterGuardian.pid], killedGuardian: guardian.pid, samples, failures,
-    verifiedLogs: expected.length, preservedMigrationHistoryRows: originalHistory.length }));
+    verifiedLogs, preservedMigrationHistoryRows: originalHistory.length }));
   }
 } finally {
   if (sampler) clearInterval(sampler);

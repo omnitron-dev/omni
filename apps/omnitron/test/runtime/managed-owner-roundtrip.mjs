@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { verifyFixtureLogs } from './fixture-log-evidence.mjs';
 
 /** Cold owner qualification shares the managed-backend fixture and its private OS jobs. */
 export async function managedOwnerRoundtrip(context) {
-  const { root, instance, execution, config, units, first, artifact, initialBackend, initialGuardian, managementDist,
+  const { root, instance, execution, config, units, first, artifact, initialBackend, initialGuardian, managementDist, fixtureId,
     run, native, domain, linux, until, status, render, track, mark } = context;
   assert.ok(managementDist, 'An independent candidate runtime is required');
   const candidateRoot = path.resolve(managementDist, '../../..');
@@ -41,6 +42,7 @@ export async function managedOwnerRoundtrip(context) {
   };
   const ready = async (ownerPid, priorPid) => until(async () => {
     const value = await probe();
+    assert.equal(value.fixture, fixtureId);
     assert.equal(value.parent, ownerPid);
     if (priorPid) assert.notEqual(value.pid, priorPid);
     return value;
@@ -133,8 +135,9 @@ export async function managedOwnerRoundtrip(context) {
       applicationPid: worker.pid, previousOwnerCleanExit: true, stoppedIntentPreserved: true, preservedMigrationHistoryRows: originalHistory.length });
     mark({ stage: target.phase, ...rounds.at(-1) });
   }
+  const verifiedLogs = await verifyFixtureLogs({ root, instance, runtime: candidateRoot, fixtureId, until });
   const result = { test: 'managed-owner-roundtrip', platform: process.platform, root, previous, candidate: candidate.build,
-    rounds, liveMutation: false, success: true };
+    rounds, verifiedLogs, liveMutation: false, success: true };
   await fs.writeFile(path.join(root, 'owner-roundtrip.json'), JSON.stringify(result, null, 2) + '\n');
   return result;
 }

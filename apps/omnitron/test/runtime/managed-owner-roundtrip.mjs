@@ -7,7 +7,7 @@ import { verifyFixtureLogs } from './fixture-log-evidence.mjs';
 /** Cold owner qualification shares the managed-backend fixture and its private OS jobs. */
 export async function managedOwnerRoundtrip(context) {
   const { root, projectDirectory, instance, execution, config, units, first, artifact, initialBackend, initialGuardian, managementDist, fixtureId,
-    applicationSdk, run, native, domain, linux, until, status, assertActive, render, track, mark } = context;
+    applicationSdk, run, native, domain, linux, until, status, assertActive, render, track, mark, authorizeUnitWrite } = context;
   assert.ok(managementDist, 'An independent candidate runtime is required');
   const candidateRoot = path.resolve(managementDist, '../../..');
   const load = name => import(pathToFileURL(path.join(managementDist, name + '.js')).href);
@@ -115,11 +115,13 @@ export async function managedOwnerRoundtrip(context) {
     await fs.writeFile(path.join(instance, 'runtime/supervision.json'), JSON.stringify(config), { mode: 0o600 });
     for (const unit of units) {
       const runtime = installed(config[unit.mode].artifact);
-      await fs.writeFile(unit.file, render({ scope: config.scope, execPath: path.join(runtime, 'node'),
+      const contents = render({ scope: config.scope, execPath: path.join(runtime, 'node'),
         entryPath: path.join(runtime, 'packages/0/dist/daemon/managed-entry.js'), args: [unit.mode], label: config[unit.mode].label,
         nodeArgs: [], restart: unit.mode === 'backend', workdir: path.join(runtime, 'packages/0'), path: process.env.PATH,
         identity: linux ? { user: 'root', home: process.env.HOME } : undefined,
-        environment: { OMNITRON_HOME: instance }, stderrLog: path.join(root, `${unit.mode}.log`) }));
+        environment: { OMNITRON_HOME: instance }, stderrLog: path.join(root, `${unit.mode}.log`) });
+      await authorizeUnitWrite(unit, contents);
+      await fs.writeFile(unit.file, contents);
       await run(linux ? 'systemd-analyze' : '/usr/bin/plutil', linux ? ['verify', unit.file] : ['-lint', unit.file]);
     }
     if (linux) await native(['daemon-reload']);

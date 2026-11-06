@@ -24,10 +24,17 @@ if (backendOnly) assert.ok(managementDist, 'Provide the candidate artifact befor
 const ownerRoundtrip = process.argv.includes('--owner-roundtrip');
 assert.ok(!(backendOnly && ownerRoundtrip), 'Choose backend-only or owner-roundtrip qualification');
 if (ownerRoundtrip) assert.ok(managementDist, 'Owner replacement requires an independently built candidate');
-const initialBackendArg = process.argv.indexOf('--initial-backend');
-const initialBackendDist = initialBackendArg === -1 ? dist : path.resolve(process.argv[initialBackendArg + 1]);
-assert.ok(initialBackendArg === -1 || (ownerRoundtrip && initialBackendDist.includes('omnitron-handoff-')),
-  'A distinct initial backend is supported only by the cold owner fixture');
+const initialRuntime = option => {
+  const index = process.argv.indexOf(option);
+  if (index === -1) return dist;
+  const directory = process.argv[index + 1];
+  assert.ok(ownerRoundtrip && directory && !directory.startsWith('--'), `${option} requires a cold owner fixture and a runtime path`);
+  const resolved = path.resolve(directory);
+  assert.ok(resolved.includes('omnitron-handoff-'), 'Use a disposable initial runtime artifact');
+  return resolved;
+};
+const initialBackendDist = initialRuntime('--initial-backend');
+const initialGuardianDist = initialRuntime('--initial-guardian');
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-managed-'));
 const instance = path.join(root, 'i'), execution = path.join(root, 'e');
 for (const directory of [instance, execution]) await fs.mkdir(directory, { mode: 0o700 });
@@ -43,11 +50,13 @@ const native = args => run(linux ? 'systemctl' : '/bin/launchctl', args, { timeo
 const domain = `gui/${process.getuid()}`;
 const id = randomUUID();
 const installation = await RuntimeInstallation.open(instance);
-let artifact, initialBackend;
+let artifact, initialBackend, initialGuardian;
 try {
   artifact = await installation.exclusive(async () => {
     const installed = await installation.install(path.resolve(dist, '../../..'));
     initialBackend = initialBackendDist === dist ? installed : await installation.install(path.resolve(initialBackendDist, '../../..'));
+    initialGuardian = initialGuardianDist === dist ? installed : initialGuardianDist === initialBackendDist
+      ? initialBackend : await installation.install(path.resolve(initialGuardianDist, '../../..'));
     await installation.select(initialBackend.runtimeHash, 0);
     await installation.writeLauncher();
     return installed;
@@ -60,7 +69,7 @@ const readiness = { intervalMs: 1000, timeoutMs: 1000, probes: [
 const config = { protocol: 1, instanceHome: instance, directory: execution, scope: linux ? 'system' : 'user', cwd: root,
   environment: { OMNITRON_HOME: instance, OMNITRON_NO_INFRA: '1', OMNITRON_NO_WATCH: '1', PATH: process.env.PATH },
   owner: { label: `dev.omnitron.fixture.${id}.owner`, unit: `omnitron-fixture-${id}-owner.service`, artifact: artifact.runtimeHash },
-  backend: { label: `dev.omnitron.fixture.${id}.backend`, unit: `omnitron-fixture-${id}-backend.service`, artifact: artifact.runtimeHash },
+  backend: { label: `dev.omnitron.fixture.${id}.backend`, unit: `omnitron-fixture-${id}-backend.service`, artifact: initialGuardian.runtimeHash },
 };
 await fs.writeFile(path.join(instance, 'config.json'), JSON.stringify({ role: 'slave', port: tcpPort, httpPort: port,
   executionHost: { enabled: true, directory: execution } }), { mode: 0o600 });
@@ -80,10 +89,11 @@ for (const mode of ['owner', 'backend']) {
   const systemUnitDir = managementDist ? '/etc/systemd/system' : '/run/systemd/system';
   const file = linux ? path.join(systemUnitDir, config[mode].unit) : path.join(root, `${mode}.plist`);
   const render = linux ? renderSystemdUnit : renderLaunchdPlist;
-  await fs.writeFile(file, render({ scope: config.scope, execPath: artifact.execPath,
-    entryPath: path.join(artifact.directory, 'daemon/managed-entry.js'), args: [mode], label: config[mode].label,
+  const serviceArtifact = mode === 'owner' ? artifact : initialGuardian;
+  await fs.writeFile(file, render({ scope: config.scope, execPath: serviceArtifact.execPath,
+    entryPath: path.join(serviceArtifact.directory, 'daemon/managed-entry.js'), args: [mode], label: config[mode].label,
     nodeArgs: [],
-    restart: mode === 'backend', workdir: path.dirname(artifact.directory), path: process.env.PATH,
+    restart: mode === 'backend', workdir: path.dirname(serviceArtifact.directory), path: process.env.PATH,
     identity: linux ? { user: 'root', home: os.homedir() } : undefined,
     environment: { OMNITRON_HOME: instance }, stderrLog: path.join(root, `${mode}.log`) }));
   await run(linux ? 'systemd-analyze' : '/usr/bin/plutil', linux ? ['verify', file] : ['-lint', file]);
@@ -126,7 +136,7 @@ try {
   ownerPid = first.execution.owner.pid;
   if (ownerRoundtrip) {
     const { managedOwnerRoundtrip } = await import('./managed-owner-roundtrip.mjs');
-    const result = await managedOwnerRoundtrip({ root, instance, execution, config, units, first, artifact, initialBackend,
+    const result = await managedOwnerRoundtrip({ root, instance, execution, config, units, first, artifact, initialBackend, initialGuardian,
       managementDist, run, native, domain, linux, until, status, render: linux ? renderSystemdUnit : renderLaunchdPlist,
       track: (...pids) => { for (const pid of pids) { assert.ok(Number.isSafeInteger(pid) && pid > 0); ownerRoundtripPids.add(pid); } }, mark });
     ownerPid = result.rounds.at(-1).ownerPid;

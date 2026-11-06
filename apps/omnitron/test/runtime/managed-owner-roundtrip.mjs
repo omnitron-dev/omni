@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 
 /** Cold owner qualification shares the managed-backend fixture and its private OS jobs. */
 export async function managedOwnerRoundtrip(context) {
-  const { root, instance, execution, config, units, first, artifact, initialBackend, managementDist,
+  const { root, instance, execution, config, units, first, artifact, initialBackend, initialGuardian, managementDist,
     run, native, domain, linux, until, status, render, track, mark } = context;
   assert.ok(managementDist, 'An independent candidate runtime is required');
   const candidateRoot = path.resolve(managementDist, '../../..');
@@ -30,7 +30,8 @@ export async function managedOwnerRoundtrip(context) {
   };
   const candidate = await cli('backend', 'install', candidateRoot);
   assert.equal(candidate.build.dirty, false);
-  const previous = { owner: artifact.runtimeHash, backend: initialBackend.runtimeHash, commit: first.build.commit };
+  const previous = { owner: artifact.runtimeHash, guardian: initialGuardian.runtimeHash,
+    backend: initialBackend.runtimeHash, commit: first.build.commit };
   const installed = hash => path.join(instance, 'runtime/releases', hash);
   const probe = async () => {
     const address = JSON.parse(await fs.readFile(path.join(root, 'address.json'), 'utf8'));
@@ -65,7 +66,7 @@ export async function managedOwnerRoundtrip(context) {
   track(first.execution.owner.pid, worker.pid, first.pid, await jobPid('backend'));
   const originalHistory = await history(), rounds = [];
   for (const target of [
-    { phase: 'owner-forward', owner: candidate.id, backend: candidate.id, commit: candidate.build.commit },
+    { phase: 'owner-forward', owner: candidate.id, guardian: candidate.id, backend: candidate.id, commit: candidate.build.commit },
     { phase: 'owner-rollback', ...previous },
   ]) {
     const before = await status(), priorOwner = before.execution.owner.pid, priorGuardian = await jobPid('backend');
@@ -98,7 +99,7 @@ export async function managedOwnerRoundtrip(context) {
     const selected = await cli('backend', 'select', target.backend);
     assert.equal(selected.selection.current, target.backend);
     config.owner.artifact = target.owner;
-    config.backend.artifact = target.owner;
+    config.backend.artifact = target.guardian;
     await fs.writeFile(path.join(instance, 'runtime/supervision.json'), JSON.stringify(config), { mode: 0o600 });
     for (const unit of units) {
       const runtime = installed(config[unit.mode].artifact);

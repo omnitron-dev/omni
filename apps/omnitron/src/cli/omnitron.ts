@@ -12,6 +12,7 @@ import { CLI_VERSION } from '../config/defaults.js';
 import { exitAfterOutput } from './exit-after-output.js';
 
 const program = new OutputCommand();
+let foregroundDaemonRunning = false;
 
 program.command('migrate [action]')
   .description('Inspect or execute application migrations (default: status)')
@@ -119,7 +120,7 @@ program
   .option('--no-webapp', 'Disable Console UI (webapp) auto-start')
   .action(async (opts) => {
     const { upCommand } = await import('../commands/up.js');
-    await upCommand({
+    const completion = await upCommand({
       configPath: opts.config,
       project: opts.project,
       foreground: opts.foreground,
@@ -129,6 +130,7 @@ program
       slave: opts.slave,
       webapp: opts.webapp,
     });
+    foregroundDaemonRunning = completion === 'foreground-running';
   });
 
 program
@@ -1647,14 +1649,16 @@ kb.command('query <question>')
  * `process.exitCode` is what the commands set to report failure, so it is
  * what is used — this changes when the process leaves, not what it says.
  *
- * Commands that run indefinitely by design — `monit`, `logs --follow` — hold
- * the loop with their own work and never reach here.
+ * A successful `up --foreground` finishes startup, but its daemon still owns
+ * this process. Leave its handles and Titan shutdown lifecycle intact. An
+ * already-running refusal or a completed forwarded runtime owns no daemon
+ * here, so those calls retain the ordinary CLI completion path.
  */
 program.parseAsync().then(
   async () => {
     const { finishJsonModeGuard } = await import('../commands/output.js');
     finishJsonModeGuard();
-    return exitAfterOutput(process.exitCode ?? 0);
+    if (!foregroundDaemonRunning) await exitAfterOutput(process.exitCode ?? 0);
   },
   async (err: unknown) => {
     // Commander prints its own errors and sets an exit code; anything else

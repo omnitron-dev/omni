@@ -170,7 +170,8 @@ async function provisionOmnitronPg(): Promise<void> {
   }
 }
 
-export async function upCommand(options?: UpCommandOptions): Promise<void> {
+/** A foreground daemon owns process shutdown after startup has completed. */
+export async function upCommand(options?: UpCommandOptions): Promise<'foreground-running' | 'completed'> {
   const { selectedBackend } = await import('../daemon/runtime-installation.js');
   const installed = await selectedBackend();
   if (options?.foreground && installed && (installed.directory !== path.resolve(__dirname, '..') || installed.execPath !== fs.realpathSync(process.execPath))) {
@@ -184,7 +185,7 @@ export async function upCommand(options?: UpCommandOptions): Promise<void> {
     if (options.slave) args.push('--slave', ...(typeof options.slave === 'string' ? [options.slave] : []));
     if (options.webapp !== undefined) args.push(options.webapp ? '--webapp' : '--no-webapp');
     await runRuntimeEntry(installed, 'cli', args);
-    return;
+    return 'completed';
   }
   // 1. First-run setup — configure daemon role
   const savedConfig = await ensureDaemonConfig(options);
@@ -247,7 +248,7 @@ export async function upCommand(options?: UpCommandOptions): Promise<void> {
     log.error(`Daemon already running (PID: ${pid}).`);
     log.info('Use `omnitron stack start/stop` to manage stacks.');
     log.info('Use `omnitron down` to stop.');
-    return;
+    return 'completed';
   }
 
   // Ensure omnitron-pg (Console auth DB) is healthy on EVERY master start, not
@@ -262,11 +263,12 @@ export async function upCommand(options?: UpCommandOptions): Promise<void> {
   if (options?.foreground) {
     const { withRuntimeStartup } = await import('../daemon/runtime-installation.js');
     await withRuntimeStartup(path.resolve(__dirname, '..'), () => startForeground(config, options, registry, dc));
-    return;
+    return 'foreground-running';
   }
 
   // 4. Background mode (default) — fork detached daemon
   await startBackground(socketPath, dc, options);
+  return 'completed';
 }
 
 // =============================================================================

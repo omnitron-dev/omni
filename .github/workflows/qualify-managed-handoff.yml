@@ -88,6 +88,10 @@ jobs:
           node apps/omnitron/test/runtime/fresh-migration-history.mjs
           "$RUNNER_TEMP/omnitron-handoff-$CANDIDATE/packages/0/dist"
           "$RUNNER_TEMP/omnitron-handoff-$PREVIOUS/packages/0/dist"
+      - name: Start the installed CLI in background and foreground and shut down through RPC
+        run: |
+          node apps/omnitron/test/runtime/runtime-startup.mjs \
+            "$RUNNER_TEMP/omnitron-handoff-$CANDIDATE/packages/0/dist"
       - name: Upgrade and roll back a development SDK through one resident candidate owner
         run: |
           node apps/omnitron/test/runtime/development-watch.mjs \

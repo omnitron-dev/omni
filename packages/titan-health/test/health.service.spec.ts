@@ -4,9 +4,22 @@
  * Tests for HealthService, HealthIndicator, and CompositeHealthIndicator
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, onTestFinished, vi } from 'vitest';
 import { HealthService, HealthIndicator, CompositeHealthIndicator } from '../src/index.js';
 import type { HealthIndicatorResult, HealthStatus } from '../src/index.js';
+
+function useWallClock() {
+  let now = Date.now();
+  const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+  onTestFinished(() => {
+    clock.mockRestore();
+  });
+  return {
+    advance(milliseconds: number) {
+      now += milliseconds;
+    },
+  };
+}
 
 // Mock indicator for testing
 class MockHealthIndicator extends HealthIndicator {
@@ -492,13 +505,14 @@ describe('HealthIndicator', () => {
 
   describe('withLatency', () => {
     it('should measure operation latency', async () => {
+      const clock = useWallClock();
       const { result, latency } = await indicator.testWithLatency(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        clock.advance(50);
         return 'done';
       });
 
       expect(result).toBe('done');
-      expect(latency).toBeGreaterThanOrEqual(50);
+      expect(latency).toBe(50);
     });
   });
 
@@ -663,10 +677,17 @@ describe('CompositeHealthIndicator', () => {
     });
 
     it('should include latency', async () => {
-      composite.addIndicator(new MockHealthIndicator('test').setDelay(10));
+      const clock = useWallClock();
+      const delayed = new MockHealthIndicator('test');
+      const originalCheck = delayed.check.bind(delayed);
+      vi.spyOn(delayed, 'check').mockImplementation(async () => {
+        clock.advance(10);
+        return originalCheck();
+      });
+      composite.addIndicator(delayed);
 
       const result = await composite.check();
-      expect(result.latency).toBeGreaterThanOrEqual(10);
+      expect(result.latency).toBe(10);
     });
   });
 });

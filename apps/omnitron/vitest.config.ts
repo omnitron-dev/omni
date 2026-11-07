@@ -1,7 +1,15 @@
 import path from 'node:path';
+import { createRequire } from 'node:module';
+import { realpathSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 import { defineConfig } from 'vitest/config';
 import { withPrismSourceAliases } from './scripts/console-source-aliases.js';
+
+const require = createRequire(import.meta.url);
+const webappRequire = createRequire(path.join(import.meta.dirname, 'webapp/package.json'));
+// Filesystem admission tests use physical paths, including on macOS where /tmp is a symlink.
+const temporaryDirectory = realpathSync(tmpdir());
 
 export default defineConfig({
   resolve: {
@@ -16,7 +24,7 @@ export default defineConfig({
       // assert. Nothing under `apps/omnitron/src` uses this prefix, so it
       // cannot shadow the daemon's own imports.
       src: path.resolve(import.meta.dirname, 'webapp/src'),
-      '@xyflow/react': path.resolve(import.meta.dirname, 'webapp/node_modules/@xyflow/react'),
+      '@xyflow/react': path.dirname(webappRequire.resolve('@xyflow/react/package.json')),
       '@omnitron-dev/omnitron/dto/services': path.resolve(import.meta.dirname, 'src/shared/dto/services.ts'),
       '@omnitron-dev/omnitron/alerts': path.resolve(import.meta.dirname, 'src/shared/alert-expression.ts'),
       '@omnitron-dev/omnitron/dto/events': path.resolve(import.meta.dirname, 'src/shared/events.ts'),
@@ -33,7 +41,7 @@ export default defineConfig({
         '../../packages/titan-metrics/src/types.ts'
       ),
       '@omnitron-dev/titan-metrics': path.resolve(import.meta.dirname, '../../packages/titan-metrics/src/index.ts'),
-      kysely: path.resolve(import.meta.dirname, 'node_modules/kysely/dist/index.js'),
+      kysely: require.resolve('kysely'),
       '@omnitron-dev/omnitron/relay-reading': path.resolve(import.meta.dirname, 'src/shared/relay-reading.ts'),
       '@omnitron-dev/omnitron/stack-reading': path.resolve(import.meta.dirname, 'src/shared/stack-reading.ts'),
       '@omnitron-dev/omnitron/sync-reading': path.resolve(import.meta.dirname, 'src/shared/sync-reading.ts'),
@@ -67,6 +75,9 @@ export default defineConfig({
     teardownTimeout: 10000,
     env: {
       NODE_ENV: 'test',
+      TMPDIR: temporaryDirectory,
+      TMP: temporaryDirectory,
+      TEMP: temporaryDirectory,
     },
   },
 });

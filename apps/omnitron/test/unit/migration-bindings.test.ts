@@ -10,6 +10,7 @@ import { executeLocalMigration, prepareRemoteMigration } from '../../src/service
 import { planDeclaredWorkspaceMigrations } from '../../src/migration/workspace.js';
 import { execFileSync } from 'node:child_process';
 import type { MigrationBinding } from '../../src/infrastructure/types.js';
+import { linkFixtureDependencies } from '../helpers/installed-dependencies.js';
 
 const { probe } = vi.hoisted(() => ({ probe: vi.fn() }));
 vi.mock('../../src/services/wait-for-postgres.js', () => ({ waitForPostgres: probe }));
@@ -102,10 +103,7 @@ describe('explicit migration ownership', () => {
 });
 
 async function applicationDependencies(cwd: string) {
-  const installed = path.resolve(import.meta.dirname, '../../node_modules');
-  await fs.mkdir(path.join(cwd, 'node_modules/@omnitron-dev'), { recursive: true });
-  for (const name of ['better-sqlite3', 'kysely', 'tsx', '@omnitron-dev/titan', '@omnitron-dev/titan-database'])
-    await fs.symlink(path.join(installed, name), path.join(cwd, 'node_modules', name));
+  await linkFixtureDependencies(cwd, ['better-sqlite3', 'kysely', 'tsx', '@omnitron-dev/titan', '@omnitron-dev/titan-database']);
   const sdk = path.join(cwd, 'node_modules/@omnitron-dev/omnitron');
   await fs.mkdir(sdk);
   await fs.writeFile(path.join(sdk, 'package.json'), JSON.stringify({ name: '@omnitron-dev/omnitron', type: 'module', exports: { './migration': './migration.mjs' } }));

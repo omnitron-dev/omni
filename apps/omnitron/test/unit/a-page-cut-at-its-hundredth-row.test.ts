@@ -18,6 +18,7 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -193,13 +194,13 @@ describe('the CLI hands the flags over as typed', () => {
   // The real entry point, in a process of its own with a home of its own: it
   // cannot reach a daemon, and the answers below come before it would try.
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const tsx = path.resolve(here, '../../node_modules/.bin/tsx');
+  const loader = createRequire(import.meta.url).resolve('tsx/esm');
   const entry = path.resolve(here, '../../src/cli/omnitron.ts');
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'omx-audit-cli-'));
   afterAll(() => fs.rmSync(home, { recursive: true, force: true }));
 
   const cli = (...args: string[]) => {
-    const r = spawnSync(tsx, [entry, ...args], {
+    const r = spawnSync(process.execPath, ['--import', loader, entry, ...args], {
       env: { PATH: process.env['PATH'] ?? '', HOME: home, OMNITRON_SOCKET: path.join(home, 'no-daemon.sock') },
       encoding: 'utf8',
       timeout: 120_000,

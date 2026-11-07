@@ -5,19 +5,20 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import { bootstrapPreflightCommand, type HostUpgradePlan } from '../../src/services/host-upgrade.js';
+import { linkFixtureDependencies } from '../helpers/installed-dependencies.js';
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const made: string[] = [];
 afterEach(() => { for (const dir of made.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
 
-function fixture() {
+async function fixture() {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'host-reader-'))); made.push(root);
   const candidate = root + '/candidate', previous = root + '/previous', proc = root + '/proc/100';
   const operator = root + '/operator';
   for (const dir of [candidate + '/dist/orchestrator', previous + '/dist/daemon', proc, operator]) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(previous + '/dist/daemon/daemon-entry.js', '');
   fs.writeFileSync(candidate + '/package.json', '{"type":"module"}');
-  fs.symlinkSync(packageRoot + '/node_modules', candidate + '/node_modules', 'dir');
+  await linkFixtureDependencies(candidate, ['tsx']);
   fs.writeFileSync(candidate + '/dist/orchestrator/bootstrap-loader.js',
     `export {loadBootstrapConfig} from ${JSON.stringify(pathToFileURL(packageRoot + '/src/orchestrator/bootstrap-loader.ts').href)};`);
   const bootstrap = root + '/bootstrap.mjs';
@@ -46,17 +47,17 @@ function fixture() {
 }
 
 describe('candidate bootstrap preflight before a maintenance window', () => {
-  it('uses the captured cwd and private environment, deduplicates readers and leaves offline apps alone', () => {
-    const f = fixture();
+  it('uses the captured cwd and private environment, deduplicates readers and leaves offline apps alone', async () => {
+    const f = await fixture();
     expect(JSON.parse(f.run())).toEqual({ checked: ['p/prod/api'], classic: 1, total: 3 });
     expect(JSON.stringify(f.plan)).not.toContain('a=b');
   });
-  it('reports the specific application and import failure without starting an application', () => {
-    const f = fixture(); fs.writeFileSync(f.bootstrap, "throw Error('incompatible module export');");
+  it('reports the specific application and import failure without starting an application', async () => {
+    const f = await fixture(); fs.writeFileSync(f.bootstrap, "throw Error('incompatible module export');");
     expect(f.run).toThrow(/Candidate bootstrap preflight failed for p\/prod\/api.*incompatible module export/s);
   });
-  it('refuses a stale process identity and incomplete boot inventory', () => {
-    const f = fixture(); fs.writeFileSync(f.proc + '/cmdline', 'another-program\0');
+  it('refuses a stale process identity and incomplete boot inventory', async () => {
+    const f = await fixture(); fs.writeFileSync(f.proc + '/cmdline', 'another-program\0');
     expect(f.run).toThrow();
     f.plan.inventory.launches!.pop();
     expect(() => bootstrapPreflightCommand(f.plan)).toThrow('bootstrap launch inventory');

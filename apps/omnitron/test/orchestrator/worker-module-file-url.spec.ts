@@ -5,11 +5,12 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { linkFixtureDependencies } from '../helpers/installed-dependencies.js';
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-worker-url-'));
 const packageRoot = fileURLToPath(new URL('../../', import.meta.url));
 beforeAll(async () => {
-  await fs.symlink(path.join(packageRoot, 'node_modules'), path.join(root, 'node_modules'), 'dir');
+  await linkFixtureDependencies(root);
   await fs.writeFile(path.join(root, 'package.json'), '{"type":"module"}');
   await build({ entryPoints: ['bootstrap-process', 'module-worker-process'].map(name =>
     path.join(packageRoot, 'src/orchestrator', name + '.ts')), outdir: root,

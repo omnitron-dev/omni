@@ -1,17 +1,15 @@
 import { afterAll, beforeAll, expect, it } from 'vitest';
-import { mkdtempSync, writeFileSync, rmSync, symlinkSync, realpathSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import BootstrapProcess from '../../src/orchestrator/bootstrap-process.js';
+import { linkFixtureDependencies } from '../helpers/installed-dependencies.js';
 let directory: string, boot: BootstrapProcess, endpoint: string;
 let hits: { media: number; ready: number };
 beforeAll(async () => {
   directory = realpathSync(mkdtempSync(join(tmpdir(), 'omni-http-routes-')));
-  symlinkSync(
-    resolve(fileURLToPath(new URL('../../', import.meta.url)), 'node_modules'),
-    join(directory, 'node_modules')
-  );
+  await linkFixtureDependencies(directory, ['@omnitron-dev/titan']);
   writeFileSync(
     join(directory, 'module.mjs'),
     `import { Module } from '@omnitron-dev/titan'; class AppModule {} Module({})(AppModule); export default AppModule;`

@@ -4,6 +4,31 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+/** The SDK is an independent release input. Verify it before any native job is created. */
+export async function inspectApplicationSdk(root, commit) {
+  assert.match(commit, /^[0-9a-f]{40}$/, 'Expected the full reviewed application SDK commit');
+  const sdk = await fs.realpath(root);
+  const metadata = JSON.parse(await fs.readFile(path.join(sdk, 'package.json'), 'utf8'));
+  const stamp = JSON.parse(await fs.readFile(path.join(sdk, 'dist/BUILD.json'), 'utf8'));
+  assert.equal(metadata.name, '@omnitron-dev/omnitron', 'Expected the installed Omnitron application SDK');
+  assert.equal(stamp.dirty, false, 'The application SDK must be built from clean sources');
+  assert.equal(stamp.commit, commit, 'The installed application SDK differs from the independently reviewed commit');
+  return { root: sdk, commit };
+}
+
+export async function applicationSdkOption(argv) {
+  const flags = ['--application-sdk', '--application-sdk-commit'];
+  if (!flags.some(flag => argv.includes(flag))) return undefined;
+  assert.ok(argv.includes('--owner-roundtrip'), 'Application SDK qualification requires an owner roundtrip');
+  const [root, commit] = flags.map(flag => {
+    const i = argv.indexOf(flag);
+    assert.ok(i >= 0 && i === argv.lastIndexOf(flag) && argv[i + 1] && !argv[i + 1].startsWith('--'),
+      'Supply --application-sdk and --application-sdk-commit exactly once');
+    return argv[i + 1];
+  });
+  return inspectApplicationSdk(root, commit);
+}
+
 /** Public stack lifecycle with real source bootstrap, pools and a retained archive.
  * Shares the managed-owner fixture's native services, cleanup and cold transitions.
  * This fixture's syntax gate is not qualification of a production application.
@@ -17,9 +42,7 @@ export async function prepareManagedProjectRuntime(context) {
   const { loadRelease } = await load('release/load');
   const { verifyRuntimeArtifact } = await load('shared/runtime-artifact');
   const { PidManager } = await load('daemon/pid-manager');
-  const sdk = await fs.realpath(applicationSdk);
-  const sdkBuild = JSON.parse(await fs.readFile(path.join(sdk, 'dist/BUILD.json'), 'utf8'));
-  assert.equal(sdkBuild.commit, candidate.build.commit, 'Qualify the exact candidate SDK');
+  const { root: sdk, commit: sdkCommit } = await inspectApplicationSdk(applicationSdk.root, applicationSdk.commit);
   const project = path.join(root, 'applications'), app = path.join(project, 'app');
   const observations = path.join(root, 'application-runtime.jsonl');
   for (const directory of ['src', 'dist', 'node_modules/@omnitron-dev'])
@@ -87,7 +110,7 @@ providers:[LocalAdapter,Probe]})(RuntimeModule);export default RuntimeModule;
     { name: 'runtime', cwd: app, bootstrap: 'dist/bootstrap.js' },
     { skipBuild: true, releaseCheckouts: [project, path.resolve(sdk, '../../..')] });
   const manifest = { id: releaseId, project: { repo: project, commit, onRemote: false },
-    omni: { repo: sdk, commit: sdkBuild.commit, onRemote: null },
+    omni: { repo: sdk, commit: sdkCommit, onRemote: null },
     artifacts: [{ app: 'runtime', version: built.version, sha256: built.tarballSha256, bytes: built.size, launch: built.launch,
       packageSource: { directory: 'app', manifestBlob, migrations: {} } }],
     gates: [{ name: 'syntax', status: 'passed', checks: 4, detail: 'node --check on the four fixture JavaScript entries' }],
@@ -104,7 +127,8 @@ providers:[LocalAdapter,Probe]})(RuntimeModule);export default RuntimeModule;
   const prepared = await call('checkRelease', { stack: 'frozen', release: releaseId, prepare: true });
   assert.equal(prepared.ok, true, JSON.stringify(prepared));
   mark({ stage: 'application-runtime-prepared', release: releaseId, manifestSha256 });
-  const report = { source: commit, framework: sdkBuild.commit, release: releaseId, manifestSha256, phases: [] };
+  const report = { source: commit, framework: sdkCommit, ownerCommit: candidate.build.commit, ownerArtifact: candidate.id,
+    release: releaseId, manifestSha256, phases: [] };
   let active = [], previous;
   const rows = async () => {
     try { return (await fs.readFile(observations, 'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse); }
@@ -126,7 +150,7 @@ providers:[LocalAdapter,Probe]})(RuntimeModule);export default RuntimeModule;
         assert.equal(row.context.state, 'verified');
         assert.equal(row.context.basis, 'verified-installed-runtime');
         assert.equal(row.context.producer.manifestSha256, manifestSha256);
-        assert.equal(row.context.producer.frameworkCommit, sdkBuild.commit);
+        assert.equal(row.context.producer.frameworkCommit, sdkCommit);
         // A locally pinned release retains the declared working directory;
         // executable modules and their dependency graph come from the archive.
         assert.equal(await fs.realpath(row.cwd), app);

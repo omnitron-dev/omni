@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { reserveDaemonPorts } from './fixture-ports.mjs';
+import { applicationSdkOption } from './managed-project-runtime.mjs';
 import { readMasterFixture, removeOwnedFixtureRoot } from './fixture-master-options.mjs';
 import { verifyFixtureLogs } from './fixture-log-evidence.mjs';
 import { createFixtureUnitFiles, assertFixtureUnitFilesOwned, removeFixtureUnitFiles, authorizeFixtureUnitWrite, authorizeFixtureGuardianReplacement } from './fixture-unit-files.mjs';
@@ -28,10 +29,7 @@ if (backendOnly) assert.ok(managementDist, 'Provide the candidate artifact befor
 const ownerRoundtrip = process.argv.includes('--owner-roundtrip');
 assert.ok(!(backendOnly && ownerRoundtrip), 'Choose backend-only or owner-roundtrip qualification');
 if (ownerRoundtrip) assert.ok(managementDist, 'Owner replacement requires an independently built candidate');
-const applicationSdkIndex = process.argv.indexOf('--application-sdk');
-const applicationSdk = applicationSdkIndex < 0 ? undefined : process.argv[applicationSdkIndex + 1];
-if (applicationSdkIndex >= 0) assert.ok(ownerRoundtrip && applicationSdk && !applicationSdk.startsWith('--'),
-  '--application-sdk requires owner-roundtrip and an independently installed application SDK');
+const applicationSdk = await applicationSdkOption(process.argv.slice(2));
 const initialRuntime = option => {
   const index = process.argv.indexOf(option);
   if (index === -1) return dist;

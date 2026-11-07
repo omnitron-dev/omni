@@ -10,7 +10,6 @@ import {
   RedisModuleOptions,
   isClientReady,
   isClientConnecting,
-  isClientAlive,
   toInternalClientOptions,
   toInternalModuleOptions,
 } from './redis.types.js';
@@ -32,6 +31,11 @@ export class RedisManager {
   private readonly connectionPromises = new Map<string, Promise<void>>();
 
   constructor(options: RedisModuleOptions, logger: ILogger) {
+    if (options.shutdownTimeout !== undefined && (
+      !Number.isInteger(options.shutdownTimeout) || options.shutdownTimeout < 0 || options.shutdownTimeout > 2_147_483_647
+    )) {
+      throw Errors.badRequest('shutdownTimeout must be an integer between 0 and 2147483647 milliseconds');
+    }
     this.options = toInternalModuleOptions(options);
     this.logger = logger.child({ module: 'RedisManager' });
   }
@@ -376,13 +380,7 @@ export class RedisManager {
     }
 
     try {
-      if (isClientAlive(client)) {
-        await client.quit();
-      }
-
-      this.clients.delete(namespace);
-      this.scripts.delete(namespace);
-      this.connectionPromises.delete(namespace);
+      await this.closeConnection(client, namespace);
 
       if (this.options.onClientDestroyed) {
         this.options.onClientDestroyed(namespace);
@@ -392,6 +390,10 @@ export class RedisManager {
     } catch (error) {
       this.logger.error({ error }, `Error destroying Redis client "${namespace}"`);
       throw error;
+    } finally {
+      this.clients.delete(namespace);
+      this.scripts.delete(namespace);
+      this.connectionPromises.delete(namespace);
     }
   }
 
@@ -509,6 +511,30 @@ export class RedisManager {
     }
   }
 
+  private async closeConnection(client: InternalRedisClient, namespace: string): Promise<void> {
+    const timeout = this.options.shutdownTimeout ?? 5000;
+    // QUIT is a command: on a lazy or reconnecting client it can open a new
+    // connection or wait indefinitely in the offline queue during shutdown.
+    if (!isClientReady(client) || timeout === 0) {
+      client.disconnect();
+      return;
+    }
+
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        client.quit(),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(Errors.timeout(`Redis shutdown "${namespace}"`, timeout)), timeout);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+      // Also stops reconnects after QUIT rejects or its acknowledgement is lost.
+      client.disconnect();
+    }
+  }
+
   private async closeAllClients(): Promise<void> {
     if (this.options.closeClient === false) {
       return;
@@ -516,9 +542,7 @@ export class RedisManager {
 
     const closePromises = Array.from(this.clients.entries()).map(async ([namespace, client]) => {
       try {
-        if (isClientAlive(client)) {
-          await client.quit();
-        }
+        await this.closeConnection(client, namespace);
         this.logger.info(`Redis client "${namespace}" closed`);
       } catch (error) {
         this.logger.error({ error }, `Error closing Redis client "${namespace}"`);

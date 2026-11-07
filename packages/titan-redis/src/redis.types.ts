@@ -150,6 +150,8 @@ export interface RedisModuleOptions {
   commonOptions?: Partial<IRedisClientOptions>;
   isGlobal?: boolean;
   closeClient?: boolean;
+  /** Maximum wait for QUIT in milliseconds. Defaults to 5000; 0 disconnects immediately. */
+  shutdownTimeout?: number;
   readyLog?: boolean;
   errorLog?: boolean;
   /** Logger instance for RedisManager. Required for proper logging integration */
@@ -186,6 +188,7 @@ export interface InternalRedisModuleOptions {
   commonOptions?: Partial<InternalRedisClientOptions>;
   isGlobal?: boolean;
   closeClient?: boolean;
+  shutdownTimeout?: number;
   readyLog?: boolean;
   errorLog?: boolean;
   logger?: ILogger;
@@ -335,6 +338,7 @@ export function toInternalModuleOptions(options: RedisModuleOptions): InternalRe
   const internal: InternalRedisModuleOptions = {
     isGlobal: options.isGlobal,
     closeClient: options.closeClient,
+    shutdownTimeout: options.shutdownTimeout,
     readyLog: options.readyLog,
     errorLog: options.errorLog,
     logger: options.logger,

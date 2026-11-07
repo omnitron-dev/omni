@@ -16,7 +16,7 @@ import { createMockRedisClient, createMockLogger } from '@omnitron-dev/testing/t
 import { LOGGER_SERVICE_TOKEN } from '@omnitron-dev/titan/module/logger';
 
 // Mock redis.utils to use mock clients
-vi.mock('../../../src/modules/redis/redis.utils.js', () => ({
+vi.mock('../src/redis.utils.js', () => ({
   createRedisClient: vi.fn(() => createMockRedisClient()),
   waitForConnection: vi.fn(async () => {}),
   mergeOptions: vi.fn((a, b) => ({ ...a, ...b })),
@@ -75,7 +75,7 @@ describe('TitanRedisModule', () => {
       await manager.destroy();
     }
 
-    container.dispose();
+    await container.dispose();
     vi.clearAllMocks();
   });
 

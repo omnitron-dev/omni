@@ -44,11 +44,13 @@ describe('Redis Utils', () => {
     // Cleanup all test clients
     for (const client of testClients) {
       try {
-        if (client && typeof client.quit === 'function') {
+        if (client.status === 'ready') {
           await client.quit();
         }
       } catch (_error) {
-        // Ignore errors during cleanup
+        // The connection can already have ended in a failure-path test.
+      } finally {
+        client.disconnect();
       }
     }
     testClients = [];
@@ -61,7 +63,7 @@ describe('Redis Utils', () => {
         host: 'localhost',
         port: 6379,
         db: 15,
-        lazyConnect: false,
+        lazyConnect: true,
       };
 
       const client = createRedisClient(options);
@@ -200,7 +202,7 @@ describe('Redis Utils', () => {
 
   describe('isCluster', () => {
     it('should identify cluster client', () => {
-      const cluster = new Cluster([{ host: 'localhost', port: 7000 }]);
+      const cluster = new Cluster([{ host: 'localhost', port: 7000 }], { lazyConnect: true });
       testClients.push(cluster);
       expect(isCluster(cluster)).toBe(true);
     });

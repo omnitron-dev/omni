@@ -23,9 +23,15 @@ const execFileSyncMock = vi.fn(() => '');
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
   return { ...actual, execFileSync: (...args: unknown[]) => execFileSyncMock(...args),
-    spawnSync: (...args: unknown[]) => {
-      try { return { status: 0, stdout: execFileSyncMock(...args), stderr: '' }; }
-      catch (error) { return error; }
+    execFile: (...args: unknown[]) => {
+      const callback = args.pop() as (error: unknown, stdout: string, stderr: string) => void;
+      queueMicrotask(() => {
+        try { callback(null, execFileSyncMock(...args), ''); }
+        catch (error) {
+          const failure = error as { status?: number; stdout?: string; stderr?: string };
+          callback({ code: failure.status ?? 1 }, failure.stdout ?? '', failure.stderr ?? '');
+        }
+      });
     },
   };
 });
@@ -76,6 +82,20 @@ describe('DockerTestManager container removal', () => {
     const command = run[run.indexOf('--health-cmd') + 1];
     const { execFileSync } = await vi.importActual<typeof import('node:child_process')>('node:child_process');
     expect(execFileSync('/bin/sh', ['-c', command], { encoding: 'utf8' })).toBe(literal);
+    await container.cleanup();
+  });
+
+  it('passes command argv without losing empty arguments or evaluating shell syntax', async () => {
+    const id = 'c'.repeat(64);
+    let run: string[] = [];
+    execFileSyncMock.mockImplementation((_exe, args) => {
+      if (args[0] === 'run') { run = args; return id; }
+      return '';
+    });
+    const manager = DockerTestManager.getInstance({ dockerPath: 'docker', cleanup: false });
+    const command = ['redis-server', '--save', '', '--requirepass', "a' b; $(echo INJECTED)"];
+    const container = await manager.createContainer({ image: 'fixture', command });
+    expect(run.slice(run.indexOf('fixture') + 1)).toEqual(command);
     await container.cleanup();
   });
 

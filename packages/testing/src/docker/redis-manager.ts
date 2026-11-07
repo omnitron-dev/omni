@@ -85,7 +85,7 @@ export class RedisTestManager {
     // Configure Redis settings
     command.push('--maxmemory', maxMemory);
     command.push('--maxmemory-policy', 'allkeys-lru');
-    command.push("--save ''"); // Disable RDB snapshots for tests
+    command.push('--save', ''); // Disable RDB snapshots for tests
     command.push('--appendonly', 'no'); // Disable AOF for tests
 
     if (requirePass && password) {
@@ -97,7 +97,7 @@ export class RedisTestManager {
       image: 'redis:7-alpine',
       ports: { 6379: port },
       environment,
-      command: command.join(' '),
+      command,
       healthcheck: {
         test: password ? ['CMD', 'redis-cli', '-a', password, 'ping'] : ['CMD', 'redis-cli', 'ping'],
         interval: '1s',
@@ -147,6 +147,14 @@ export class RedisTestManager {
     const nodes: Array<{ host: string; port: number }> = [];
     const allocatedPorts: number[] = [];
 
+    const cleanup = async () => {
+      const settled = await Promise.allSettled([...masters, ...replicas].map(container => container.cleanup()));
+      const errors = settled.filter(result => result.status === 'rejected').map(result => result.reason);
+      try { await RedisTestManager.getDockerManager().removeNetwork(networkName); }
+      catch (error) { errors.push(error); }
+      if (errors.length) throw new AggregateError(errors, 'Redis cluster cleanup was not confirmed');
+    };
+
     // Extract unique ID from network name to ensure container names are unique
     const networkId = networkName.split('-').pop() || randomBytes(4).toString('hex');
 
@@ -191,7 +199,7 @@ export class RedisTestManager {
           image: 'redis:7-alpine',
           ports: { 6379: port },
           networks: [networkName],
-          command: command.join(' '),
+          command,
           healthcheck: {
             test: password
               ? (['CMD', 'redis-cli', '-a', password, 'ping'] as string[])
@@ -221,7 +229,9 @@ export class RedisTestManager {
         plan.push({ kind: 'replica', index: i, port });
       }
 
-      const created = await Promise.all(
+      // Drain every creation before cleanup: an early rejection must not lose
+      // ownership of peers that finish starting after that rejection.
+      const created = await Promise.allSettled(
         plan.map(async ({ kind, index, port }) => ({
           kind,
           port,
@@ -231,10 +241,14 @@ export class RedisTestManager {
         }))
       );
 
-      for (const { kind, port, container } of created) {
+      for (const result of created) {
+        if (result.status !== 'fulfilled') continue;
+        const { kind, port, container } = result.value;
         (kind === 'master' ? masters : replicas).push(container);
         nodes.push({ host: container.host, port });
       }
+      const failures = created.filter(result => result.status === 'rejected').map(result => result.reason);
+      if (failures.length) throw new AggregateError(failures, 'Could not start every Redis cluster node');
 
       // Wait for all containers to be fully ready and connected to network
       const preInitDelay = options?.preInitDelay ?? 5000;
@@ -285,44 +299,16 @@ export class RedisTestManager {
         network: networkName,
         nodes,
         natMap,
-        cleanup: async () => {
-          // Clean up containers first
-          await Promise.allSettled([...masters.map((c) => c.cleanup()), ...replicas.map((c) => c.cleanup())]);
-          // Then remove the network
-          try {
-            await RedisTestManager.getDockerManager().removeNetwork(networkName);
-          } catch (error) {
-            // Log but don't throw - network cleanup is best effort
-            console.warn(`Failed to remove network ${networkName}:`, error);
-          }
-        },
+        cleanup,
       };
     } catch (error) {
-      // Cleanup on failure - release allocated ports and clean up containers
+      // A container releases its own reservation only after confirmed cleanup.
+      const ownedPorts = new Set([...masters, ...replicas].flatMap(container => [...container.ports.values()]));
       allocatedPorts.forEach((port) => {
-        RedisTestManager.getDockerManager()['usedPorts'].delete(port);
+        if (!ownedPorts.has(port)) RedisTestManager.getDockerManager()['usedPorts'].delete(port);
       });
-      await Promise.allSettled([
-        ...masters.map((c) =>
-          c.cleanup().catch((cleanupError) => {
-            // Log cleanup errors but don't fail the error flow - we're already handling a failure
-            console.error(`Failed to cleanup master container ${c.name}:`, cleanupError);
-          })
-        ),
-        ...replicas.map((c) =>
-          c.cleanup().catch((cleanupError) => {
-            // Log cleanup errors but don't fail the error flow - we're already handling a failure
-            console.error(`Failed to cleanup replica container ${c.name}:`, cleanupError);
-          })
-        ),
-      ]);
-      // Try to remove network on failure too
-      try {
-        await RedisTestManager.getDockerManager().removeNetwork(networkName);
-      } catch (networkError) {
-        // Log network cleanup errors but don't fail - network might be in use or already removed
-        console.error(`Failed to remove network ${networkName} during failure cleanup:`, networkError);
-      }
+      try { await cleanup(); }
+      catch (cleanupError) { throw new AggregateError([error, cleanupError], 'Redis cluster startup and cleanup failed', { cause: cleanupError }); }
       throw error;
     }
   }
@@ -382,7 +368,7 @@ export class RedisTestManager {
         image: 'redis:7-alpine',
         ports: { 6379: masterPort },
         networks: [networkName],
-        command: command.join(' '),
+        command,
         healthcheck: {
           test: password ? ['CMD', 'redis-cli', '-a', password, 'ping'] : ['CMD', 'redis-cli', 'ping'],
           interval: '1s',
@@ -410,7 +396,7 @@ export class RedisTestManager {
           image: 'redis:7-alpine',
           ports: { 6379: replicaPort },
           networks: [networkName],
-          command: replicaCommand.join(' '),
+          command: replicaCommand,
           healthcheck: {
             test: password ? ['CMD', 'redis-cli', '-a', password, 'ping'] : ['CMD', 'redis-cli', 'ping'],
             interval: '1s',
@@ -444,18 +430,16 @@ export class RedisTestManager {
           sentinelConfig.push(`sentinel auth-pass ${masterName} ${password}`);
         }
 
-        const sentinelCommand = [
-          'sh',
-          '-c',
-          `echo "${sentinelConfig.join('\\n')}" > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf`,
-        ];
+        const sentinelCommand = ['sh', '-c',
+          'printf "%s\\n" "$1" > /tmp/sentinel.conf && exec redis-sentinel /tmp/sentinel.conf',
+          'sentinel-config', sentinelConfig.join('\n')];
 
         const sentinel = await RedisTestManager.getDockerManager().createContainer({
           name: `redis-sentinel-${i}`,
           image: 'redis:7-alpine',
           ports: { 26379: sentinelPort },
           networks: [networkName],
-          command: sentinelCommand.join(' '),
+          command: sentinelCommand,
           healthcheck: {
             test: ['CMD', 'redis-cli', '-p', '26379', 'ping'],
             interval: '1s',

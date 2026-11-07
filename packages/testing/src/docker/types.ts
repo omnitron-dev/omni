@@ -63,7 +63,7 @@ export interface DockerTestManagerOptions {
   basePort?: number;
   /** Maximum retries for port allocation (default: 20) */
   maxRetries?: number;
-  /** Timeout in ms for container startup (default: 30000) */
+  /** Timeout in ms for the Docker start command and readiness (default: 60000). */
   startupTimeout?: number;
   /** Whether to cleanup containers on exit (default: true) */
   cleanup?: boolean;
@@ -85,8 +85,8 @@ export interface ContainerOptions {
   name?: string;
   /** Docker image to use */
   image: string;
-  /** Command to run in container */
-  command?: string;
+  /** Literal argv, or an explicitly shell-interpreted command string. */
+  command?: string | string[];
   /** Port mappings: container port -> host port or 'auto' */
   ports?: Record<number, number | 'auto'>;
   /** Environment variables */

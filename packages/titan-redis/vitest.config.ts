@@ -23,6 +23,9 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    // Each integration file can own a six-node cluster. Keep the Docker
+    // fixture budget bounded independently of the host's CPU count.
+    fileParallelism: false,
     include: ['test/**/*.spec.ts', 'test/**/*.test.ts'],
     globalSetup: ['./globalSetup.ts'],
     testTimeout: 120_000,

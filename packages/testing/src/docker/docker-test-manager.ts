@@ -13,7 +13,7 @@
  * - Network management
  */
 
-import { execSync, execFileSync, spawnSync } from 'child_process';
+import { execSync, execFileSync, execFile } from 'child_process';
 import { randomBytes } from 'crypto';
 import { hostname } from 'os';
 import * as net from 'net';
@@ -762,19 +762,23 @@ export class DockerTestManager extends EventEmitter {
     // Add image and command
     dockerArgs.push(options.image);
     if (options.command) {
-      dockerArgs.push('sh', '-c', options.command);
+      if (Array.isArray(options.command)) dockerArgs.push(...options.command);
+      else dockerArgs.push('sh', '-c', options.command);
     }
 
     let containerId: string;
     for (let attempt = 0; ; attempt++) {
       this.log(`Starting container: ${name}`, { image: options.image });
-      const result = spawnSync(this.dockerPath, dockerArgs, {
-        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+      // A synchronous Docker start blocks every peer's readiness timer while
+      // Docker creates the next container. Keep cluster startup concurrent.
+      const result = await new Promise<{ status: number | null; stdout: string; stderr: string; error?: { code?: string | number | null } }>(resolve => {
+        execFile(this.dockerPath, dockerArgs, { encoding: 'utf8', timeout: this.startupTimeout, maxBuffer: 2 * 1024 * 1024 },
+          (error, stdout, stderr) => resolve({ status: error ? (typeof error.code === 'number' ? error.code : null) : 0,
+            stdout, stderr, ...(error && typeof error.code !== 'number' ? { error } : {}) }));
       });
       containerId = (result.stdout ?? '').trim();
       if (result.status === 0 && /^[a-f0-9]{64}$/.test(containerId)) break;
       portMappings.forEach(port => this.usedPorts.delete(port));
-      if (result.error) throw new Error(`Could not execute Docker for ${name}: ${(result.error as NodeJS.ErrnoException).code ?? 'unknown'}`);
       let diagnostic = (result.stderr ?? '').trim();
       for (const value of Object.values(environment)) {
         if (value) diagnostic = diagnostic.replaceAll(value, '[redacted]');
@@ -790,6 +794,7 @@ export class DockerTestManager extends EventEmitter {
       if (/^[a-f0-9]{64}$/.test(residue)) {
         execFileSync(this.dockerPath, ['rm', '-f', '-v', residue], { stdio: 'ignore' });
       }
+      if (result.error) throw new Error(`Could not execute Docker for ${name}: ${result.error.code ?? 'unknown'}`);
       if (!/port is already allocated|address already in use|Bind for /.test(diagnostic)
         || !autoPorts.size || attempt >= DockerTestManager.PORT_COLLISION_RETRIES) {
         throw new Error(`Failed to start container ${name} (${options.image}), exit ${result.status ?? 'unknown'}: ${diagnostic.slice(0, 2000) || 'Docker did not confirm creation'}`);

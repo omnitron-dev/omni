@@ -3,7 +3,7 @@
  * Historical owners may run the application while honestly reporting no receipt capability.
  */
 import assert from 'node:assert/strict';
-import { fork, exec as execCallback } from 'node:child_process';
+import { fork, exec as execCallback, execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import fs from 'node:fs/promises';
@@ -11,7 +11,7 @@ import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const dist = await fs.realpath(path.resolve(process.argv[2] ?? 'dist'));
 const ownerDist = await fs.realpath(path.resolve(process.argv[3] ?? dist));
@@ -52,6 +52,19 @@ const waitFor = async (read, label) => {
   throw Error('Timed out waiting for ' + label + '; inspect ' + directory + '/owner.log');
 };
 try {
+  // A deployed controller returns its verified, materialized package. A workspace
+  // checkout may hoist tar and its peers outside apps/omnitron/node_modules.
+  const runtimeRoot = path.resolve(dist, '../../..');
+  let receiverDist = dist;
+  if (dist !== path.join(runtimeRoot, 'packages/0/dist')) {
+    const snapshot = path.join(directory, 'receiver-runtime');
+    const freeze = fileURLToPath(new URL('../../scripts/freeze-backend.mjs', import.meta.url));
+    execFileSync(process.execPath, [freeze, path.dirname(dist), snapshot], { timeout: 120_000 });
+    receiverDist = path.join(snapshot, 'packages/0/dist');
+  }
+  const { checkBackendCandidate } = await load('daemon/backend-candidate');
+  const receiver = await checkBackendCandidate(receiverDist);
+  report.receiverArtifact = receiver.runtimeHash;
   const boot = path.join(directory, 'boot.json');
   await fs.writeFile(boot, JSON.stringify({ directory, cwd: directory, config,
     daemonConfig: { ...DEFAULT_DAEMON_CONFIG, logDir: path.join(directory, 'logs') } }), { mode: 0o600 });
@@ -276,7 +289,7 @@ Module({providers:[[createToken('mixed-watch-proof'),{useFactory:()=>{fs.appendF
       const snap=await client.recoverySnapshot();
       assert.equal(snap.protocol,1);assert.equal(snap.status.owner.pid,owner.pid);
       assert.equal(snap.status.phase,'active');
-      return {root:path.dirname(dist),commit:JSON.parse(await fs.readFile(path.join(dist,'BUILD.json'),'utf8')).commit,version:'fixture',applicationRuntime:{
+      return {root:path.dirname(receiver.directory),commit:receiver.build.commit,version:'fixture',applicationRuntime:{
         root:ownerPackage,executable:process.execPath,commit:ownerBuild.commit,target:await targetRuntime(),
         execution:{mode:'resident',protocol:snap.protocol,ownerId:snap.status.owner.id,pid:owner.pid,epoch:snap.status.controller.epoch}}};
     },

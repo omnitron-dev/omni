@@ -9,7 +9,7 @@
  * minute: p99 for a slow loop, max for a stopped one.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 
 import { EventLoopHealthIndicator, type EventLoopDelayHistogram } from '../src/indicators/event-loop.indicator.js';
 import * as health from '../src/index.js';
@@ -39,27 +39,20 @@ function scripted() {
   return { h, set: (r: { p99: number; max: number; count: number }) => { reading = r; } };
 }
 
-const busy = (msToHold: number) => {
-  const end = Date.now() + msToHold;
-  while (Date.now() < end) {
-    // the loop stands still here
-  }
-};
-
 describe('an event loop indicator that measured the one instant nothing could be wrong', () => {
   it('sees a stall that happened between two checks', async () => {
     const i = indicator();
-    // The histogram's first firing only sets its baseline.
-    await new Promise((r) => setTimeout(r, 100));
+    const { stallThreshold } = i.getThresholds();
+    await vi.waitFor(async () => expect(Number((await i.check()).details?.['samples'])).toBeGreaterThan(0));
 
-    busy(1_200);
-    await new Promise((r) => setTimeout(r, 60));
-    const result = await i.check();
-
-    // The claim: the stall is seen. The old indicator answered «healthy, lag
-    // 0.xx ms» here, whatever had happened a moment before.
+    // Block the real loop past the configured threshold without spinning a CPU.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, stallThreshold + 200);
+    const result = await vi.waitFor(async () => {
+      const sample = await i.check();
+      expect(Number.parseFloat(String(sample.details?.['max']))).toBeGreaterThanOrEqual(stallThreshold);
+      return sample;
+    });
     expect(result.status).not.toBe('healthy');
-    expect(Number.parseFloat(String(result.details?.['max']))).toBeGreaterThanOrEqual(1_200);
     // Which threshold says it depends on how many samples the window holds: a
     // stall is one sample, so it IS the p99 of a window of a few — as here,
     // a second after start — and leaves the p99 of a minute's hundreds alone.

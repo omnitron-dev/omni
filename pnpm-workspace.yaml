@@ -29,10 +29,10 @@ overrides:
   react: 19.3.1
   react-dom: 19.3.1
   react-router-dom: 7.18.5
-  "@xec-sh/core": 0.11.2
-  "@xec-sh/kit": 0.11.2
-  "@xec-sh/loader": 0.11.2
-  "@xec-sh/ops": 0.11.2
+  "@xec-sh/core": 0.11.3
+  "@xec-sh/kit": 0.11.3
+  "@xec-sh/loader": 0.11.3
+  "@xec-sh/ops": 0.11.3
 patchedDependencies:
   vitest@5.0.5: patches/vitest@5.0.5.patch
 packages:
@@ -128,10 +128,10 @@ minimumReleaseAgeExclude:
   - "@kysera/soft-delete@0.10.2"
   - "@kysera/testing@0.10.2"
   - "@kysera/timestamps@0.10.2"
-  - "@xec-sh/core@0.11.2"
-  - "@xec-sh/kit@0.11.2"
-  - "@xec-sh/loader@0.11.2"
-  - "@xec-sh/ops@0.11.2"
+  - "@xec-sh/core@0.11.3"
+  - "@xec-sh/kit@0.11.3"
+  - "@xec-sh/loader@0.11.3"
+  - "@xec-sh/ops@0.11.3"
 # SQON ships JavaScript and declarations without a Compiler API dependency.
 # Its types compile with our TypeScript 7 build; the tooling alias is API 6.
 peerDependencyRules:

@@ -28,18 +28,12 @@ const usage = `node scripts/release.mjs [VERSION] [OPERATION]
 
 Every operation is separate. Archives and receipts live under .release-artifacts/.`;
 
-function publicationError(error, version, customRegistry) {
+function publicationError(error) {
   if (!(error?.cause instanceof ReleaseCommandError)) return error;
   let detail;
   try { detail = JSON.parse(error.cause.stdout).error; } catch { return error; }
   if (typeof detail?.code !== 'string' || !/^E[A-Z0-9_]+$/.test(detail.code)) return error;
-  const messages = [error.message, `npm ${detail.code}`];
-  if (detail.code === 'E409' && /previously staged version/i.test(detail.summary)) {
-    messages.push(`Version ${version} is already staged. Wait until it is visible in the registry.`,
-      `Keep the sealed archives. From the same release commit run node scripts/release.mjs ${version} --resume` +
-      (customRegistry ? ' with the original --registry option.' : '.'));
-  }
-  return new Error(messages.join('\n'), { cause: error });
+  return new Error(`${error.message}\nnpm ${detail.code}`, { cause: error });
 }
 
 async function main() {
@@ -132,7 +126,7 @@ async function main() {
         if (isCancel(answer)) throw new Error('Publication interrupted. Preserve the archives and use --resume');
         return answer;
       },
-    }).catch(error => { throw publicationError(error, version, values.registry); });
+    }).catch(error => { throw publicationError(error); });
     console.log(`Verified ${prepared.artifacts.length} npm packages. Use --github to publish the release notes.`);
   } finally { await unlock(); }
 }

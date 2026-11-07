@@ -812,9 +812,9 @@ export async function startContainer(nameOrId: string): Promise<void> {
 /**
  * Stop a running container gracefully.
  */
-export async function stopContainer(nameOrId: string, _timeout = 10): Promise<void> {
+export async function stopContainer(nameOrId: string, timeout = 10): Promise<void> {
   const adapter = await getAdapter();
-  await adapter.stopContainer(nameOrId);
+  await adapter.stopContainer(nameOrId, timeout);
 }
 
 /**

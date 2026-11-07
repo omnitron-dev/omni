@@ -8,6 +8,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { stageFixtureExtractor } from './fixture-extractor.mjs';
 const dist = await fs.realpath(process.argv[2]);
 const sdk = name => import(pathToFileURL(path.join(dist, name + '.js')).href);
 const { RuntimeInstallation } = await sdk('daemon/runtime-installation');
@@ -17,7 +18,8 @@ const { importKernelBuild, resolveKernelBuild } = await sdk('services/kernel-cat
 const shell = promisify(execFile);
 const work = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'omnitron-kernel-transfer-')));
 const home = path.join(work, 'instance');
-const receiver = await fs.readFile(new URL('../../data/operations/stage-kernel.mjs', import.meta.url), 'utf8');
+const { kernelReceiverSource } = await sdk('services/kernel-distribution');
+const receiver = kernelReceiverSource();
 async function fixture(name, commit) {
   const root = path.join(work, name), pkg = path.join(root, 'packages/0'), compiled = path.join(pkg, 'dist');
   await fs.mkdir(path.join(compiled, 'daemon'), { recursive: true, mode: 0o700 });
@@ -43,8 +45,9 @@ async function fixture(name, commit) {
   await fs.copyFile(process.execPath, path.join(root, 'node'), constants.COPYFILE_FICLONE);
   await fs.chmod(path.join(root, 'node'), 0o500);
   await fs.symlink('packages/0', path.join(root, 'app'));
+  const dependencies = await stageFixtureExtractor(dist, pkg, i => path.join(root, 'packages', String(i + 1)));
   const sha256 = await runtimeArtifactDigest(root);
-  const manifest = { protocol: 1, sha256, platform: process.platform, arch: process.arch, nodeVersion: process.version, packages: 1 };
+  const manifest = { protocol: 1, sha256, platform: process.platform, arch: process.arch, nodeVersion: process.version, packages: 1 + dependencies };
   await fs.writeFile(path.join(root, 'RUNTIME.json'), JSON.stringify(manifest), { mode: 0o600 });
   return { root, commit, manifest };
 }
@@ -71,9 +74,12 @@ try {
     entry = { commit: next.commit, ...next.manifest, artifact: next.manifest.sha256, archive: await sha256File(archive), bytes: (await fs.stat(archive)).size };
   }
   const remoteFile = path.join(registry, '.incoming-' + entry.artifact, 'runtime.tgz');
+  const cleanEnv = { ...process.env, OMNITRON_HOME: home };
+  delete cleanEnv.NODE_PATH;
+  delete cleanEnv.NODE_OPTIONS;
   const call = async (phase, capability = 1) => {
     const result = await shell(selected.execPath, ['--input-type=module', '-e', 'process.umask(0o077);\n' + receiver, phase, registry, selected.runtimeHash, JSON.stringify(entry)], {
-      env: { ...process.env, NODE_PATH: path.resolve(dist, '../node_modules'), OMNITRON_HOME: home, FIXTURE_HANDOFF: String(capability) },
+      env: { ...cleanEnv, FIXTURE_HANDOFF: String(capability) },
     });
     return JSON.parse(result.stdout);
   };

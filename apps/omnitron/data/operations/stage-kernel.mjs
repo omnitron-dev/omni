@@ -4,7 +4,6 @@ import { createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createRequire } from 'node:module';
 
 const [phase, registry, current, receipt] = process.argv.slice(1);
 const build = JSON.parse(receipt);
@@ -75,7 +74,7 @@ try {
       const sum = createHash('sha256');
       for await (const chunk of createReadStream(archive)) sum.update(chunk);
       if (sum.digest('hex') !== build.archive) throw Error('Kernel transfer SHA-256 mismatch');
-      const tar = createRequire(path.join(pkg, 'package.json'))('tar');
+      const tar = await loadRuntimeExtractor(pkg);
       let expanded = 0, invalid = false;
       const entries = new Map();
       await tar.list({ file: archive, strict: true, onReadEntry(entry) {

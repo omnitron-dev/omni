@@ -6,7 +6,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createRequire } from 'node:module';
+import { stageFixtureExtractor } from './fixture-extractor.mjs';
 import { promisify } from 'node:util';
 const exec = promisify(execCb), execFile = promisify(execFileCb);
 const dist = path.resolve(process.argv[2] ?? 'dist');
@@ -185,11 +185,7 @@ try {
     frameworkCommit:'c'.repeat(40),runtimeOrigin:{projectCommit:'d'.repeat(40),producerApp:'api',
       consumer:{releaseId:'sample-1',manifestSha256:'a'.repeat(64),app:'api'},entry:{mode:'script',relativeFile:launch.file}}};
   // The test owner's bounded extractor is physically inside its own runtime.
-  let tarRoot=path.dirname(createRequire(import.meta.url).resolve('tar'));
-  while(await fs.readFile(path.join(tarRoot,'package.json'),'utf8').then(raw=>JSON.parse(raw).name!=='tar',()=>true))tarRoot=path.dirname(tarRoot);
-  const extractorGraph=await installedGraph(tarRoot),extractorLocations=extractorGraph.map((_,i)=>path.join(owner,'extractor',String(i)));
-  await materializeGraph(extractorGraph,extractorLocations);
-  await fs.symlink(extractorLocations[0],path.join(ownerPkg,'node_modules/tar'),'dir');
+  await stageFixtureExtractor(dist,ownerPkg,i=>path.join(owner,'extractor',String(i)));
   const runtime={root:ownerPkg,executable:process.execPath,commit:'e'.repeat(40)};
   assert.notEqual(runtime.commit,origin.frameworkCommit,'the execution owner does not select the application SDK');
   await fs.mkdir(root,{mode:0o700});

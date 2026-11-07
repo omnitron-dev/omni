@@ -193,11 +193,12 @@ describe('closure-library-path', () => {
         '-shared',
         '-fPIC',
         `-Wl,--disable-new-dtags,-rpath,$ORIGIN/../../probe-libvips-linux/lib`,
-        `-L${srcDir}`,
-        '-lomnitron_closure_probe',
         '-o',
         addonPath,
         addonSrc,
+        `-L${srcDir}`,
+        '-Wl,--no-as-needed',
+        '-lomnitron_closure_probe',
       ]);
 
       // Without LD_LIBRARY_PATH, dlopen fails with ERR_DLOPEN_FAILED.

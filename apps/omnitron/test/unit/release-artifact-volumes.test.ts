@@ -26,6 +26,7 @@ import { releaseTreeDigest } from '../../src/release/runtime-provenance.js';
 import { sha256File } from '../../src/release/portable-archive.js';
 import { targetRuntime } from '../../src/release/target-runtime.js';
 import { ProjectService } from '../../src/services/project.service.js';
+import { linkFixtureDependencies } from '../helpers/installed-dependencies.js';
 
 const cleanup: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); for (const root of cleanup.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
@@ -341,7 +342,7 @@ it('keeps the ordinary standalone destination installer self-contained after sep
   }
   await compile('release/frozen-installation.js');
   await fs.writeFile(path.join(compiled, 'package.json'), '{"type":"module"}');
-  await fs.symlink(path.join(control, 'node_modules'), path.join(compiled, 'node_modules'), 'dir');
+  await linkFixtureDependencies(compiled);
   const args = [destination, 'worker.tar.gz', launch, origin, { root, executable: process.execPath }, nodeOptions, control];
   const script = `import {installFrozenApplicationCommand} from ${JSON.stringify(pathToFileURL(path.join(compiled, 'release/frozen-installation.js')).href)};
 import {execFileSync} from 'node:child_process';

@@ -1,0 +1,7 @@
+{
+  // Resolve test globals through package metadata in hoisted and isolated installs.
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node", "vitest/globals"]
+  }
+}

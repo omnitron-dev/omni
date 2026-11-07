@@ -36,6 +36,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { readInFreshProcess, moduleReaderEntry } from '../shared/fresh-module-reader.js';
+import { withClosureLibraryPath } from '../release/closure-library-path.js';
 import type { IAppDefinition } from '../config/types.js';
 
 // Module cache — cleared on dev-mode restarts via clearCache()
@@ -131,8 +132,10 @@ export async function loadBootstrapConfig(
     const timeoutMs =
       (typeof options.freshModuleGraph === 'object' ? options.freshModuleGraph.timeoutMs : undefined) ??
       FRESH_GRAPH_TIMEOUT_MS;
+    const env = withClosureLibraryPath(undefined, [resolved]);
     const definition = await readInFreshProcess({ entryPath: moduleReaderEntry(import.meta.url, 'bootstrap-loader-child'),
-      args: [resolved, options.devMode ? 'development' : 'production'], timeoutMs, label: 'the definition' });
+      args: [resolved, options.devMode ? 'development' : 'production'], timeoutMs, label: 'the definition',
+      ...(env && { env }) });
     assertDefinition(definition, bootstrapPath);
     // As every dev load has done: the cache is not read, and is left holding
     // the latest read for a production load of the same path.

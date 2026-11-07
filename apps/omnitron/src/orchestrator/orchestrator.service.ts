@@ -74,6 +74,7 @@ import type {
 } from '../config/types.js';
 import { AppHandle } from './app-handle.js';
 import { verifyLaunchRelease } from '../release/runtime-provenance.js';
+import { withClosureLibraryPath } from '../release/closure-library-path.js';
 import { parsePsLine, parsePsBatch } from './ps-metrics.js';
 import { launchClassic } from './classic-launcher.js';
 import { resolveStartupOrder, resolveShutdownOrder } from './dependency-resolver.js';
@@ -2547,6 +2548,7 @@ export class OrchestratorService extends EventEmitter {
     // application generation. Resolve before allocating topology resources.
     const runtime = await this.bootstrapRuntime(bootstrapAbsPath);
     const policy = buildRestartPolicy(entry, config);
+    const spawnEnv = withClosureLibraryPath(entry.env, [entry.releaseRoot, entry.cwd, bootstrapAbsPath]);
 
     const needsRouting = topology.some(proc => proc.topology?.expose === true || proc.topology?.access?.length);
     handle.deferStartup();
@@ -2591,7 +2593,7 @@ export class OrchestratorService extends EventEmitter {
           allMethodsPublic: true,
           ...(handle.appLogLevel && { logLevel: handle.appLogLevel }),
           startupTimeout: procEntry.startupTimeout ?? entry.startupTimeout ?? DEFAULT_CHILD_STARTUP_TIMEOUT,
-          ...(entry.env && { env: entry.env as Record<string, string> }),
+          ...(spawnEnv && { env: spawnEnv }),
           cwd: entry.cwd ?? this.cwd,
           dependencies: {
             bootstrapPath: bootstrapAbsPath,
@@ -2693,7 +2695,7 @@ export class OrchestratorService extends EventEmitter {
         // path beside it has always stated one. See CHILD_REQUEST_TIMEOUT.
         requestTimeout: CHILD_REQUEST_TIMEOUT,
         startupTimeout: procEntry.startupTimeout ?? entry.startupTimeout ?? DEFAULT_CHILD_STARTUP_TIMEOUT,
-        ...(entry.env && { env: entry.env as Record<string, string> }),
+        ...(spawnEnv && { env: spawnEnv }),
         cwd: entry.cwd ?? this.cwd,
         dependencies: {
           bootstrapPath: bootstrapAbsPath,
@@ -2834,6 +2836,7 @@ export class OrchestratorService extends EventEmitter {
   ): Promise<void> {
     const instances = entry.instances ?? 1;
     const policy = buildRestartPolicy(entry, config);
+    const spawnEnv = withClosureLibraryPath(entry.env, [entry.releaseRoot, entry.cwd, bootstrapAbsPath]);
 
     // For single-process apps, use the first (only) process entry's bundled module
     const firstProcessName = buildResult?.modulePaths.keys().next().value;
@@ -2849,7 +2852,7 @@ export class OrchestratorService extends EventEmitter {
       cwd: entry.cwd ?? this.cwd,
       // As above: a single child's client otherwise runs on netron's default.
       requestTimeout: CHILD_REQUEST_TIMEOUT,
-      ...(entry.env && { env: entry.env as Record<string, string> }),
+      ...(spawnEnv && { env: spawnEnv }),
       dependencies: {
         bootstrapPath: bootstrapAbsPath,
         ...(bundledModulePath && { bundledModulePath }),

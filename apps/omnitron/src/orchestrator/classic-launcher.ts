@@ -19,6 +19,7 @@ import { randomUUID } from 'node:crypto';
 import type { IEcosystemAppEntry } from '../config/types.js';
 import type { AppHandle } from './app-handle.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import { withClosureLibraryPath } from '../release/closure-library-path.js';
 const READY_TIMEOUT = 30_000;
 
 export async function launchClassic(
@@ -46,9 +47,10 @@ export async function launchClassic(
 
   handle.healthRunId = randomUUID();
   const heartbeat = entry.readiness?.probes.find((probe) => probe.type === 'heartbeat');
+  const spawnEnv = withClosureLibraryPath(entry.env, [entry.releaseRoot, cwd, scriptPath]);
   const env: Record<string, string | undefined> = {
     ...process.env,
-    ...entry.env,
+    ...spawnEnv,
     OMNITRON_MANAGED: '1',
     OMNITRON_APP_NAME: entry.name,
     OMNITRON_RUN_ID: handle.healthRunId,

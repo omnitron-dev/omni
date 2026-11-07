@@ -23,6 +23,7 @@ export interface FreshModuleReadOptions {
   timeoutMs: number;
   label: string;
   typescript?: boolean;
+  env?: NodeJS.ProcessEnv;
 }
 /** Locate the checked-in child beside source or compiled caller; never a cwd guess. */
 export function moduleReaderEntry(callerUrl: string, name: string): string {
@@ -133,7 +134,7 @@ export function readInFreshProcess(options: FreshModuleReadOptions): Promise<unk
     try {
       child = fork(entryPath, args, {
         execArgv,
-        env: { ...process.env, [FRESH_MODULE_MARK]: '1' },
+        env: { ...process.env, ...options.env, [FRESH_MODULE_MARK]: '1' },
         // Configuration output is bounded and private. Only a redacted error tail
         // may leave this reader; stdout must not corrupt CLI JSON or leak secrets.
         stdio: ['ignore', 'pipe', 'pipe', 'ipc'],

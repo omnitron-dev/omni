@@ -1,5 +1,6 @@
 import { defineConfig } from 'tsup';
 import { reactClientEntries } from '../../scripts/react-client-entries.mjs';
+import manifest from './package.json';
 
 export default defineConfig([
   // Main library build (React components)
@@ -77,7 +78,7 @@ export default defineConfig([
     minify: false,
     // Ship just the Markdown math tokenizer. Its unused HTML renderer pins
     // an older KaTeX; Prism renders equations with its own declared KaTeX.
-    noExternal: ['micromark-extension-math'],
+    noExternal: manifest.tsup.noExternal,
     external: [
       'react',
       'react-dom',

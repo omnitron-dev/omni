@@ -3,6 +3,9 @@
   "version": "0.3.1",
   "description": "Design System Constructor - High-level UI building blocks for complex frontends",
   "type": "module",
+  "tsup": {
+    "noExternal": ["micromark-extension-math"]
+  },
   "sideEffects": [
     "**/*.css",
     "./bin/prism.js",

@@ -8,6 +8,7 @@ import { parseArgs } from 'node:util';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import semver from 'semver';
+import { inlinedDevDependencies, retainedBuildImports } from './lib/package-imports.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'omni-pack-check-'));
@@ -53,7 +54,9 @@ try {
       if (!entry.isDirectory()) continue;
       const directory = path.join(root, group, entry.name);
       const source = path.join(directory, 'package.json');
-      if (!fs.existsSync(source) || JSON.parse(fs.readFileSync(source, 'utf8')).private) continue;
+      if (!fs.existsSync(source)) continue;
+      const workspace = JSON.parse(fs.readFileSync(source, 'utf8'));
+      if (workspace.private) continue;
       const packed = JSON.parse(execFileSync('pnpm', ['pack', '--json', '--pack-destination', temporary], {
         cwd: directory, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
       }));
@@ -62,19 +65,18 @@ try {
         encoding: 'utf8', maxBuffer: 1024 * 1024,
       }));
       const files = new Set(packed.files.map(file => file.path));
-      if (manifest.name === '@omnitron-dev/prism') {
-        const unpacked = path.join(temporary, 'prism-consumer');
-        fs.mkdirSync(unpacked);
+      const inlined = inlinedDevDependencies(workspace);
+      const prism = manifest.name === '@omnitron-dev/prism';
+      if (inlined.size || prism) {
+        const unpacked = fs.mkdtempSync(path.join(temporary, 'archive-'));
         execFileSync('tar', ['-xf', packed.filename, '-C', unpacked]);
-        // CSS @imports need the package's declared peers. Reuse the frozen CI
-        // installation; all Prism code and styles still come from the archive.
-        fs.symlinkSync(path.join(root, 'node_modules'), path.join(unpacked, 'node_modules'), 'dir');
-        if (fs.existsSync(path.join(directory, 'node_modules'))) {
-          fs.symlinkSync(path.join(directory, 'node_modules'), path.join(unpacked, 'package/node_modules'), 'dir');
+        const packageDir = path.join(unpacked, 'package');
+        if (inlined.size) {
+          for (const finding of retainedBuildImports(packageDir, files, inlined)) {
+            failures.push(`${manifest.name}: inlined build dependency escaped: ${finding}`);
+          }
         }
-        execFileSync(process.execPath, [
-          path.join(directory, 'test/runtime/bundle-consumer.mjs'), path.join(unpacked, 'package'),
-        ], { stdio: 'inherit' });
+        if (prism) checkPrismConsumer(unpacked, packageDir, directory);
       }
       if (['@omnitron-dev/netron-react', '@omnitron-dev/prism'].includes(manifest.name)) {
         for (const [subpath, conditions] of Object.entries(manifest.exports)) {
@@ -129,6 +131,18 @@ try {
   }
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });
+}
+
+function checkPrismConsumer(unpacked, packageDir, directory) {
+  // CSS @imports need the package's declared peers. All Prism code and styles
+  // still come from the archive. Inspect the archive before adding these links.
+  fs.symlinkSync(path.join(root, 'node_modules'), path.join(unpacked, 'node_modules'), 'dir');
+  if (fs.existsSync(path.join(directory, 'node_modules'))) {
+    fs.symlinkSync(path.join(directory, 'node_modules'), path.join(packageDir, 'node_modules'), 'dir');
+  }
+  execFileSync(process.execPath, [
+    path.join(directory, 'test/runtime/bundle-consumer.mjs'), packageDir,
+  ], { stdio: 'inherit' });
 }
 if (failures.length) {
   console.error(failures.join('\n'));

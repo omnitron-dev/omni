@@ -124,7 +124,7 @@ jobs:
           npx --yes --package=node@23.6.0 -- node scripts/ci/check-runtime-consumer.mjs "$RUNNER_TEMP/omnitron-npm-consumer"
           npx --yes --package=node@22.12.0 -- node scripts/ci/check-runtime-consumer.mjs "$RUNNER_TEMP/omnitron-npm-consumer" --expect-unsupported
       - name: Rehearse package publication against a loopback registry
-        run: node --test scripts/ci/release.test.mjs
+        run: node --test scripts/ci/release.test.mjs scripts/ci/package-imports.test.mjs
       - name: Console publication, recovery and runtime fixture cleanup
         run: >-
           node --test

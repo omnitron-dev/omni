@@ -1,3 +1,4 @@
+import { TEST_POSTGRES_URL } from '@omnitron-dev/testing/env';
 /**
  * A check that could not read the answer, counted as an answer.
  *
@@ -21,7 +22,7 @@ import { setEnvOverride, resetEnvCache } from '../../src/shared/env-config.js';
 import { NOT_INSTALLED, NOT_RUNNING, omnitronFinding, type OmnitronFinding } from '../../src/shared/node-check.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
 
-const TEST_PG_URL = process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test';
+const TEST_PG_URL = TEST_POSTGRES_URL;
 const testPg = await requiresTestPostgres(TEST_PG_URL);
 
 const SCHEMA = `court_answer_${process.pid}`;

@@ -1,3 +1,4 @@
+import { TEST_POSTGRES_URL } from '@omnitron-dev/testing/env';
 /**
  * A breakdown beside a total it did not add up to.
  *
@@ -22,7 +23,7 @@ import { withDateBinding } from '../../src/database/sqlite-date-binding.js';
 import { setEnvOverride, resetEnvCache } from '../../src/shared/env-config.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
 
-const TEST_PG_URL = process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test';
+const TEST_PG_URL = TEST_POSTGRES_URL;
 const testPg = await requiresTestPostgres(TEST_PG_URL);
 const SCHEMA = `court_breakdown_${process.pid}`;
 

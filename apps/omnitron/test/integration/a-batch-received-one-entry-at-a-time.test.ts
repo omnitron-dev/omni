@@ -1,3 +1,4 @@
+import { TEST_POSTGRES_URL } from '@omnitron-dev/testing/env';
 /**
  * A batch of a thousand entries was received as a thousand transactions.
  *
@@ -39,7 +40,7 @@ import type { OmnitronDatabase } from '../../src/database/schema.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
 import { databaseOfItsOwn, type OwnDatabase } from './a-database-of-its-own.js';
 
-const TEST_PG_URL = process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test';
+const TEST_PG_URL = TEST_POSTGRES_URL;
 const testPg = await requiresTestPostgres(TEST_PG_URL);
 
 /** Its own database — see `a-database-of-its-own.ts` for why. */

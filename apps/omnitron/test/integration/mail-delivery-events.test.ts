@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { TEST_POSTGRES_URL } from '@omnitron-dev/testing/env';
+import { requiresTestPostgres } from './requires-test-postgres.js';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -8,8 +10,9 @@ import {
   type MailDeliveryEvent,
 } from '../../../../packages/titan-mailer/src/postgres.js';
 
-// Only an explicitly supplied test database. Every object belongs to a unique schema.
-const url = process.env['OMNITRON_TEST_DATABASE_URL'];
+// The shared test endpoint; every object belongs to a unique schema.
+const url = TEST_POSTGRES_URL;
+const available = await requiresTestPostgres(url);
 const schema = `mail_events_${randomUUID().replaceAll('-', '')}`;
 let pool: Pool;
 const events: MailDeliveryEvent[] = [];
@@ -37,7 +40,7 @@ async function queued(expired = false) {
   );
   return id;
 }
-describe.skipIf(!url)('committed mail outcomes on PostgreSQL', () => {
+describe.skipIf(!available.ok)('committed mail outcomes on PostgreSQL', () => {
   beforeAll(async () => {
     const admin = new Pool({ connectionString: url });
     try {

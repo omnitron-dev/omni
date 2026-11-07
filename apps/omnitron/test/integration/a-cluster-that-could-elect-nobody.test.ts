@@ -1,3 +1,4 @@
+import { TEST_POSTGRES_URL } from '@omnitron-dev/testing/env';
 import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sql } from 'kysely';
 import { PostgresLeaseStore, LeaseLostError } from '@omnitron-dev/titan-database/coordination';
@@ -11,7 +12,7 @@ let own: OwnDatabase;
 let store: PostgresLeaseStore<unknown>;
 const claimant = (owner: string, incarnation = owner) => ({ key: 'cluster', owner, incarnation });
 beforeAll(async () => {
-  own = await databaseOfItsOwn(process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test', `omnitron_cluster_leases_${process.pid}`);
+  own = await databaseOfItsOwn(TEST_POSTGRES_URL, `omnitron_cluster_leases_${process.pid}`);
   store = new PostgresLeaseStore(own.db as never);
 });
 afterAll(async () => { await own?.drop(); });

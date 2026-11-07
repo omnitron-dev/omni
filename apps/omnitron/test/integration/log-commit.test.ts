@@ -1,15 +1,16 @@
 import { randomUUID } from 'node:crypto';
+import { TEST_POSTGRES_URL } from '@omnitron-dev/testing/env';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';
 import { LogCollectorService } from '../../src/services/log-collector.service.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
 import { databaseOfItsOwn, type OwnDatabase } from './a-database-of-its-own.js';
 
-const url = process.env['TEST_DATABASE_URL'];
-const available = url ? await requiresTestPostgres(url) : { ok: false };
+const url = TEST_POSTGRES_URL;
+const available = await requiresTestPostgres(url);
 let own: OwnDatabase;
 let collector: LogCollectorService;
-beforeAll(async () => { if (available.ok) own = await databaseOfItsOwn(url!, `omnitron_log_commit_${process.pid}`); });
+beforeAll(async () => { if (available.ok) own = await databaseOfItsOwn(url, `omnitron_log_commit_${process.pid}`); });
 beforeEach(async () => {
   if (!available.ok) return;
   await sql`TRUNCATE logs`.execute(own.db);

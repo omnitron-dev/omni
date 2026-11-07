@@ -1,3 +1,4 @@
+import { TEST_POSTGRES_URL } from '@omnitron-dev/testing/env';
 /**
  * A master that forgot its own row.
  *
@@ -21,7 +22,7 @@ import type { OmnitronDatabase } from '../../src/database/schema.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
 import { databaseOfItsOwn, type OwnDatabase } from './a-database-of-its-own.js';
 
-const TEST_PG_URL = process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test';
+const TEST_PG_URL = TEST_POSTGRES_URL;
 const testPg = await requiresTestPostgres(TEST_PG_URL);
 
 let own: OwnDatabase | undefined;

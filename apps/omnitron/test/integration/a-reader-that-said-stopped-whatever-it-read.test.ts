@@ -1,3 +1,4 @@
+import { TEST_POSTGRES_URL } from '@omnitron-dev/testing/env';
 /**
  * A reader that said «stopped» whatever it read.
  *
@@ -20,7 +21,7 @@ import { sql, type Kysely } from 'kysely';
 import { setEnvOverride, resetEnvCache } from '../../src/shared/env-config.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
 
-const TEST_PG_URL = process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test';
+const TEST_PG_URL = TEST_POSTGRES_URL;
 const testPg = await requiresTestPostgres(TEST_PG_URL);
 
 const SCHEMA = `court_reader_${process.pid}`;

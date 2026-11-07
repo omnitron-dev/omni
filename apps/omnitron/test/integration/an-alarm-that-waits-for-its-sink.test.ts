@@ -1,3 +1,4 @@
+import { TEST_POSTGRES_URL } from '@omnitron-dev/testing/env';
 /**
  * An alarm that waits for its sink.
  *
@@ -24,7 +25,7 @@ vi.mock('../../src/monitoring/host-disk.js', () => ({
   diskAtHome: async () => ({ free: 198 * 1024 ** 3, total: 1843 * 1024 ** 3 }),
 }));
 
-const TEST_PG_URL = process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test';
+const TEST_PG_URL = TEST_POSTGRES_URL;
 const testPg = await requiresTestPostgres(TEST_PG_URL);
 
 const logger = { debug() {}, info() {}, warn() {}, error() {}, trace() {}, fatal() {} };

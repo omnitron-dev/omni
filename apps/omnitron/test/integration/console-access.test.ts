@@ -1,3 +1,4 @@
+import { TEST_POSTGRES_URL } from '@omnitron-dev/testing/env';
 import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { Netron } from '@omnitron-dev/titan/netron';
@@ -14,7 +15,7 @@ import { databaseOfItsOwn, type OwnDatabase } from './a-database-of-its-own.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
 import { ADMIN_ROLES, OPERATOR_ROLES, VIEWER_ROLES } from '../../src/shared/roles.js';
 
-const url = process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test';
+const url = TEST_POSTGRES_URL;
 const pg = await requiresTestPostgres(url);
 const local = <T>(fn: () => T) =>
   runWithAuth(

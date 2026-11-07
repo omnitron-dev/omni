@@ -1,3 +1,4 @@
+import { TEST_POSTGRES_URL } from '@omnitron-dev/testing/env';
 /**
  * The two log filters the schema was built for and no query used.
  *
@@ -31,7 +32,7 @@ const namespaceApps = [`${APP}/local/api`, `${APP}_research/local/api`, `${APP}X
 
 // Use the ordinary test server, but own a migrated database for this file.
 // Never insert probes into the daemon's database or a shared test schema.
-const TEST_URL = process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test';
+const TEST_URL = TEST_POSTGRES_URL;
 const available = await requiresTestPostgres(TEST_URL);
 let own: OwnDatabase | undefined;
 let db: OwnDatabase['db'];

@@ -46,6 +46,9 @@ export async function requiresTestPostgres(url: string): Promise<TestPostgres> {
     await sql`SELECT 1`.execute(db);
     return { ok: true, url };
   } catch (err) {
+    if (process.env['CI'] === 'true' || process.env['CI'] === '1') {
+      throw new Error('Required test PostgreSQL is unavailable; the CI integration suite cannot be skipped', { cause: err });
+    }
     const reason = (err as Error).message;
     // One line, on stderr, so it survives a reporter that only prints
     // counts. Without it a skipped suite is indistinguishable from a suite

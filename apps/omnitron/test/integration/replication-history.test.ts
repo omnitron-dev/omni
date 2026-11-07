@@ -1,3 +1,4 @@
+import { TEST_POSTGRES_URL } from '@omnitron-dev/testing/env';
 import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';
@@ -9,7 +10,7 @@ import { historyWords, syncFinding, syncWords } from '../../src/shared/sync-read
 import { requiresTestPostgres } from './requires-test-postgres.js';
 import { databaseOfItsOwn, type OwnDatabase } from './a-database-of-its-own.js';
 
-const url = process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test';
+const url = TEST_POSTGRES_URL;
 const available = await requiresTestPostgres(url);
 const nodeId = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa';
 let own: OwnDatabase, storage: PostgresMetricsStorage;

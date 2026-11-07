@@ -1,3 +1,4 @@
+import { TEST_POSTGRES_URL } from '@omnitron-dev/testing/env';
 /**
  * End-to-end migration run against a real PostgreSQL.
  *
@@ -25,7 +26,7 @@ import { setEnvOverride, resetEnvCache } from '../../src/shared/env-config.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
 import { OMNITRON_MIGRATIONS } from '../../src/database/migrations/index.js';
 
-const TEST_PG_URL = process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test';
+const TEST_PG_URL = TEST_POSTGRES_URL;
 
 // Asked once, at module scope: `describe.skipIf` needs the answer before the
 // suite is declared, and a `beforeAll` runs too late to skip its own suite.

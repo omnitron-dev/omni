@@ -1,3 +1,4 @@
+import { TEST_POSTGRES_URL } from '@omnitron-dev/testing/env';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { sql, type KyselyPlugin, type QueryId } from 'kysely';
@@ -7,7 +8,7 @@ import { databaseOfItsOwn, type OwnDatabase } from './a-database-of-its-own.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
 
 const postgres = await requiresTestPostgres(
-  process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test'
+  TEST_POSTGRES_URL
 );
 const logger = { info() {}, warn() {}, error() {}, debug() {} } as never;
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;

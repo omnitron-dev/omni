@@ -1,3 +1,4 @@
+import { TEST_POSTGRES_URL } from '@omnitron-dev/testing/env';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, rm, access } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -8,7 +9,7 @@ import { databaseOfItsOwn, type OwnDatabase } from './a-database-of-its-own.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
 
 const postgres = await requiresTestPostgres(
-  process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test'
+  TEST_POSTGRES_URL
 );
 const logger = { info() {}, error() {}, warn() {}, debug() {} } as never;
 describe.skipIf(!postgres.ok)('durable Xec automation lifecycle', () => {

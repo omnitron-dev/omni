@@ -1,3 +1,4 @@
+import { TEST_POSTGRES_URL } from '@omnitron-dev/testing/env';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -17,7 +18,7 @@ import type { OmnitronDatabase } from '../../src/database/schema.js';
 import { requiresTestPostgres } from './requires-test-postgres.js';
 import { databaseOfItsOwn, type OwnDatabase } from './a-database-of-its-own.js';
 
-const url = process.env['TEST_DATABASE_URL'] ?? 'postgresql://test:test@localhost:15432/test';
+const url = TEST_POSTGRES_URL;
 const available = await requiresTestPostgres(url);
 const node = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa';
 let own: OwnDatabase;

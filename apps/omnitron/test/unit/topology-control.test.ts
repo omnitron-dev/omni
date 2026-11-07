@@ -281,6 +281,14 @@ describe('target intent is separate from executable configuration', () => {
     ]);
     expect(JSON.stringify(services)).not.toContain('never-return');
   });
+
+  it('describes a Docker service before its release-backed mount is installed', () => {
+    const services = topologyServices({
+      artifactVolumes: { site: { service: 'gateway', app: 'web', directory: 'dist/public', target: '/srv/site' } },
+      services: { gateway: { ports: {}, env: {}, docker: { image: 'gateway' } } },
+    }, { type: 'local' }, []);
+    expect(services).toEqual([{ name: 'gateway', runtime: 'docker', stateful: 'unknown' }]);
+  });
 });
 
 describe('durable topology intent and immutable plans', () => {

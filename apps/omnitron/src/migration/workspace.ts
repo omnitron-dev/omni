@@ -43,7 +43,7 @@ export async function planWorkspaceMigrations(rootPath: string, apps: IEcosystem
  * database migration policy exists. It is never a missing-config fallback. */
 export async function planDeclaredWorkspaceMigrations(root: string, config: import('../config/types.js').IEcosystemConfig,
   options: { app?: string; stack?: string } = {}) {
-  const { normalizeInfraConfig } = await import('../infrastructure/config-normalizer.js');
+  const { expandServiceDeclarations } = await import('../infrastructure/config-normalizer.js');
   const { createDefaultRegistry } = await import('../infrastructure/presets/index.js');
   const { mergeInfrastructure } = await import('../infrastructure/merge-config.js');
   const { ownsStackInfrastructure } = await import('../project/infrastructure-ownership.js');
@@ -51,9 +51,9 @@ export async function planDeclaredWorkspaceMigrations(root: string, config: impo
   const { hasMigrationDeclarations, requestedMigrations, localMigrationTargets, migrationDatabaseEnvironment, validateMigrationDestinations } = await import('../services/migration-target.js');
   const stacks = Object.entries(config.stacks ?? {});
   const policies = stacks.map(([name, stack]) => ({ name, stack,
-    services: normalizeInfraConfig(mergeInfrastructure(config, stack) ?? {}, createDefaultRegistry()) }));
+    services: expandServiceDeclarations(mergeInfrastructure(config, stack) ?? {}, createDefaultRegistry()) }));
   const declared = policies.filter(policy => hasMigrationDeclarations(policy.services));
-  const rootServices = normalizeInfraConfig(config.infrastructure ?? {}, createDefaultRegistry());
+  const rootServices = expandServiceDeclarations(config.infrastructure ?? {}, createDefaultRegistry());
   if (!options.stack && !declared.length && !hasMigrationDeclarations(rootServices)) return null;
   if (!options.stack && declared.length > 1) throw Error('Choose --stack: multiple stacks declare migration ownership');
   const policy = options.stack ? policies.find(candidate => candidate.name === options.stack) : declared[0];

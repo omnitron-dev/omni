@@ -11,7 +11,8 @@ import { loadEcosystemConfig } from '../../src/config/loader.js';
 import { create } from 'tar';
 import { DEFAULT_ECOSYSTEM } from '../../src/config/defaults.js';
 import type { InfrastructureConfig } from '../../src/infrastructure/types.js';
-import { normalizeInfraConfig } from '../../src/infrastructure/config-normalizer.js';
+import { expandServiceDeclarations, normalizeInfraConfig } from '../../src/infrastructure/config-normalizer.js';
+import { resolveInfrastructure } from '../../src/infrastructure/service-resolver.js';
 import { createDefaultRegistry } from '../../src/infrastructure/presets/index.js';
 import { mergeInfrastructure } from '../../src/infrastructure/merge-config.js';
 import { artifactVolumeBindings, bindArtifactVolumes, releaseBuildEntries } from '../../src/release/artifact-volumes.js';
@@ -125,6 +126,14 @@ it('refuses conflicting keys, variant overlaps and two artifact mounts, preservi
   i.artifactVolumes!['second'] = { ...binding, target: '/var/www' };
   expect(() => artifactVolumeBindings(i)).toThrow('overlapping');
   expect(() => normalizeInfraConfig(infra(), createDefaultRegistry())).toThrow('selected and verified');
+});
+
+it('requires a verified installation when resolving containers from pre-expanded services', () => {
+  const declaration = infra();
+  const services = expandServiceDeclarations(declaration, createDefaultRegistry());
+  expect(services['gateway']?.docker?.volumes).toBeUndefined();
+  expect(() => resolveInfrastructure(declaration, services)).toThrow('selected and verified');
+  expect(() => resolveInfrastructure(declaration, {})).toThrow('selected and verified');
 });
 
 it('prepares, inspects and remounts a static-only imported artifact without any JS launch or application execution', async () => {
@@ -305,6 +314,12 @@ it('diagnoses the verified selected mount and refuses changed bytes without fall
   await fs.writeFile(path.join(roots.get('web')!, 'dist/public/index.html'), 'changed');
   const refused = await service['inspectStackReadiness']('consumer', 'production');
   expect(refused.checks).toContainEqual(expect.objectContaining({ code: 'release.unavailable', state: 'blocked' }));
+  expect(plan).not.toHaveBeenCalled();
+  Object.assign(service, { localSelection: () => ({ read: () => ({ release: null }) }) });
+  const unselected = await service['inspectStackReadiness']('consumer', 'production');
+  expect(unselected.checks).toContainEqual(expect.objectContaining({
+    code: 'release.mounts-unselected', state: 'blocked', message: expect.stringContaining('web → gateway:/var/www/site'),
+  }));
   expect(plan).not.toHaveBeenCalled();
 });
 

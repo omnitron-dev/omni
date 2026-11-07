@@ -94,7 +94,13 @@ describe('explicit migration ownership', () => {
   });
   it('uses the same declaration for standalone CLI and preserves explicit false', async () => {
     const f = await workspace();
-    const config = { apps: f.entries, infrastructure: { services: { primary: { preset: 'postgres', config: { databases: { api: { migrate: binding() } } } } } } };
+    const config = { apps: [...f.entries, { name: 'site', enabled: false }], infrastructure: {
+      artifactVolumes: { site: { service: 'gateway', app: 'site', directory: 'dist/public', target: '/srv/site' } },
+      services: {
+        primary: { preset: 'postgres', config: { databases: { api: { migrate: binding() } } } },
+        gateway: { ports: {}, env: {}, docker: { image: 'gateway' } },
+      },
+    } };
     const plan = await planDeclaredWorkspaceMigrations(f.root, config as never);
     expect(plan?.[0]?.target).toMatchObject({ app: 'owner-api', database: 'api', cwd: f.cwd, mode: 'config' });
     config.infrastructure.services.primary.config.databases.api.migrate = false as never;

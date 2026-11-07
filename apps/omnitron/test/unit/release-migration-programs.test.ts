@@ -7,6 +7,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { IEcosystemConfig } from '../../src/config/types.js';
 import { ArtifactBuilder } from '../../src/project/artifact-builder.js';
+import { releaseBuildEntries } from '../../src/release/artifact-volumes.js';
 import { declaredMigrationPrograms, packedMigrationPrograms } from '../../src/release/migration-programs.js';
 import { changedReleasedMigrations, releaseMigrationSources } from '../../src/release/migrations.js';
 
@@ -37,6 +38,22 @@ function config(): IEcosystemConfig {
 }
 
 describe('declared migration program provenance', () => {
+  it('packs mounted payloads and discovers declared migrations before a release is installed', () => {
+    const input = config();
+    const web = { name: 'web', enabled: false, releaseFrom: { release: 'producer', manifestSha256: 'a'.repeat(64), app: 'site' } };
+    input.apps.push(web);
+    input.stacks!['production']!.infrastructure = {
+      artifactVolumes: { site: { service: 'gateway', app: 'web', directory: 'dist/public', target: '/srv/site' } },
+    };
+    const original = structuredClone(input);
+    expect(releaseBuildEntries(input).map(entry => entry.name)).toEqual(['api', 'web']);
+    expect(declaredMigrationPrograms(input).get('api')).toEqual([program]);
+    expect(declaredMigrationPrograms(input, 'production').get('api')).toEqual([program]);
+    expect(input).toEqual(original);
+    delete input.infrastructure;
+    expect(declaredMigrationPrograms(input, 'production').size).toBe(0);
+  });
+
   it('uses the same named database ownership and stack overrides as deployment', () => {
     const input = config();
     expect(declaredMigrationPrograms(input).get('api')).toEqual([program]);

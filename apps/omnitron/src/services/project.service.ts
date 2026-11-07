@@ -129,7 +129,7 @@ import { migrationOutput } from './migration-output.js';
 import { redactDiagnosticText } from '@omnitron-dev/titan/diagnostics';
 import { COMPILED_MIGRATION_ENTRY, localMigrationTargets, requestedMigrations, migrationDatabaseEnvironment, validateMigrationDestinations, validateMigrationOwners, orderMigrationPlacements, type MigrationRequiredFiles, type VerifyMigrationEntries } from './migration-target.js';
 import { executeLocalMigration } from './migration-process.js';
-import { normalizeInfraConfig } from '../infrastructure/config-normalizer.js';
+import { expandServiceDeclarations, normalizeInfraConfig } from '../infrastructure/config-normalizer.js';
 import { createDefaultRegistry } from '../infrastructure/presets/index.js';
 import type { LoadedRelease } from '../release/load.js';
 import { readArchiveInfrastructure } from '../release/infrastructure.js';
@@ -1357,7 +1357,7 @@ export class ProjectService extends EventEmitter {
     }
     try {
       const effective = mergeInferredInfrastructure(buildInfraFromRequirements(requirementsFromDefinitions(definitions)), infrastructure);
-      const migrations = requestedMigrations(normalizeInfraConfig(effective, createDefaultRegistry()));
+      const migrations = requestedMigrations(expandServiceDeclarations(effective, createDefaultRegistry()));
       if (migrations.length) {
         try {
           const targets = await localMigrationTargets(migrations, entries, project.path,
@@ -1385,8 +1385,15 @@ export class ProjectService extends EventEmitter {
         if (binding.provisioning === 'none') add('service.unconfigured', service, 'blocked', 'This service has no provisioning definition or external endpoint.');
         if (binding.provisioning === 'bareMetal' || binding.provisioning === 'external') add('service.host', service, 'unknown', 'This service uses a host or external endpoint; Docker readiness does not verify it.', 'Check the service endpoint, authentication and host configuration separately.');
       }
-      const containers = await this.infraManager.planStack(projectName, stackName, stack, effective, definitions, project.path);
-      checks.push(...await diagnoseContainers(containers));
+      const mounts = artifactVolumeBindings(effective);
+      if (mounts.length) {
+        add('release.mounts-unselected', 'Artifact volumes', 'blocked',
+          'These mounts require an installed release: ' + mounts.map(([, mount]) => mount.app + ' → ' + mount.service + ':' + mount.target).join(', '),
+          'Prepare and select the consumer release, then run diagnosis again.');
+      } else {
+        const containers = await this.infraManager.planStack(projectName, stackName, stack, effective, definitions, project.path);
+        checks.push(...await diagnoseContainers(containers));
+      }
     } catch {
       add('infrastructure.invalid', 'Infrastructure plan', 'blocked', 'The infrastructure declaration could not be resolved.', 'Review service presets, port mappings and service overrides. No infrastructure was changed.');
     }

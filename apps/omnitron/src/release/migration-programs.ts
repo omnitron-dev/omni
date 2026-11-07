@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import type { IEcosystemConfig } from '../config/types.js';
-import { normalizeInfraConfig } from '../infrastructure/config-normalizer.js';
+import { expandServiceDeclarations } from '../infrastructure/config-normalizer.js';
 import { mergeInfrastructure } from '../infrastructure/merge-config.js';
 import { createDefaultRegistry } from '../infrastructure/presets/index.js';
 import { requestedMigrations, validateMigrationOwners, type MigrationRequest } from '../services/migration-target.js';
@@ -19,7 +19,7 @@ export function declaredMigrationPrograms(config: IEcosystemConfig, forStack?: s
   if (!scopes.length) scopes.push({ type: 'local', apps: 'all' });
   const result = new Map<string, MigrationProgramInput[]>();
   for (const stack of scopes) {
-    const services = normalizeInfraConfig(mergeInfrastructure(config, stack) ?? {}, createDefaultRegistry());
+    const services = expandServiceDeclarations(mergeInfrastructure(config, stack) ?? {}, createDefaultRegistry());
     const requests = requestedMigrations(services);
     const apps = config.apps.filter(app => app.enabled !== false && (!Array.isArray(stack.apps) || stack.apps.includes(app.name)));
     validateMigrationOwners(requests, apps);

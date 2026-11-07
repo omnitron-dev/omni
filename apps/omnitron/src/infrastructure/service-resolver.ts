@@ -13,6 +13,7 @@ import path from 'node:path';
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 import { configFilesHash, type ConfigFile } from './config-payload.js';
+import { assertArtifactVolumesBound } from './config-normalizer.js';
 import { gatewayStaticLinkName } from '../services/static-carry-forward.js';
 import { CONFIG_ROOT_PREFIX, shippedMountPath } from './shipped-config.js';
 import { bindService } from './service-binding.js';
@@ -976,7 +977,7 @@ export function resolveOmnitronNginx(options?: {
  * Uses preset-normalized services map — all services go through resolveServiceRequirement().
  */
 export function resolveInfrastructure(
-  _config: InfrastructureConfig,
+  config: InfrastructureConfig,
   normalizedServices?: Record<string, IServiceRequirement>,
   /**
    * Stack overrides — `disabled`, `external`, per-service docker changes.
@@ -1022,6 +1023,7 @@ export function resolveInfrastructure(
     staticLinkRoots?: Map<string, string>;
   }
 ): ResolvedContainer[] {
+  assertArtifactVolumesBound(config);
   if (!normalizedServices || Object.keys(normalizedServices).length === 0) {
     return [];
   }

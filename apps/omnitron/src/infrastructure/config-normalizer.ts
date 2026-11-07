@@ -18,15 +18,26 @@ function presetConfig(base: Record<string, unknown>): IPresetServiceConfig {
   return result as unknown as IPresetServiceConfig;
 }
 
-/**
- * Normalize any InfrastructureConfig into a flat services map.
- */
+/** Provisioning consumes only mounts resolved by the selected release installation. */
+export function assertArtifactVolumesBound(raw: InfrastructureConfig): void {
+  const volumes = raw.artifactVolumes;
+  if (volumes !== undefined && (!volumes || typeof volumes !== 'object' || Array.isArray(volumes) || Object.keys(volumes).length > 0))
+    throw Error('Artifact volumes require a selected and verified local release before infrastructure provisioning');
+}
+
 export function normalizeInfraConfig(
   raw: InfrastructureConfig,
   registry: PresetRegistry,
 ): Record<string, IServiceRequirement> {
-  if (raw.artifactVolumes && Object.keys(raw.artifactVolumes).length)
-    throw Error('Artifact volumes require a selected and verified local release before infrastructure provisioning');
+  assertArtifactVolumesBound(raw);
+  return expandServiceDeclarations(raw, registry);
+}
+
+/** Expand configured services for inspection before an installation exists. */
+export function expandServiceDeclarations(
+  raw: InfrastructureConfig,
+  registry: PresetRegistry,
+): Record<string, IServiceRequirement> {
   const services: Record<string, IServiceRequirement> = {};
 
   // 1. Legacy sugar → preset expansion

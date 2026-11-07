@@ -2,7 +2,7 @@ import type { IStackConfig } from '../config/types.js';
 import type { InfrastructureConfig } from '../infrastructure/types.js';
 import type { ProjectDependency } from '../shared/dto/project.js';
 import type { TopologyWorkspace } from '../shared/dto/topology.js';
-import { normalizeInfraConfig } from '../infrastructure/config-normalizer.js';
+import { expandServiceDeclarations } from '../infrastructure/config-normalizer.js';
 import { createDefaultRegistry } from '../infrastructure/presets/index.js';
 import { bindService } from '../infrastructure/service-binding.js';
 
@@ -14,7 +14,7 @@ export function topologyServices(
 ): TopologyWorkspace['services'] {
   const services: TopologyWorkspace['services'] = [];
   for (const [name, requirement] of Object.entries(
-    normalizeInfraConfig(infrastructure ?? {}, createDefaultRegistry())
+    expandServiceDeclarations(infrastructure ?? {}, createDefaultRegistry())
   )) {
     const binding = bindService(requirement, stack.serviceOverrides?.[name]);
     if (binding.provisioning === 'disabled') continue;

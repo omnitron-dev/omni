@@ -10,6 +10,7 @@ import { Application, createApp, APPLICATION_TOKEN, startApp } from '../../src/a
 import { ApplicationState, ApplicationEvent, IApplicationOptions } from '../../src/types.js';
 import { SimpleModule, FailingModule, SlowModule } from '../fixtures/test-modules.js';
 import { createMinimalApplication, createWebApplication } from '../fixtures/test-applications.js';
+import { useWallClock } from '../fixtures/wall-clock.js';
 
 describe('Application Core', () => {
   let app: Application;
@@ -168,16 +169,14 @@ describe('Application Core', () => {
     });
 
     it('should track uptime correctly', async () => {
+      const clock = useWallClock();
       app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
 
       expect(app.metrics.uptime).toBe(0);
 
       await app.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      const uptime = app.metrics.uptime;
-      expect(uptime).toBeGreaterThan(0);
-      expect(uptime).toBeLessThan(1000); // Less than 1 second
+      clock.advance(100);
+      expect(app.metrics.uptime).toBe(100);
 
       await app.stop();
     });

@@ -9,6 +9,7 @@
  * - State machine transitions
  */
 import { describe, it, expect, afterEach } from 'vitest';
+import { useWallClock } from '../fixtures/wall-clock.js';
 
 import { Application } from '../../src/application.js';
 import {
@@ -547,10 +548,11 @@ describe('Titan Application Comprehensive Tests', () => {
 
   describe('Metrics and Monitoring', () => {
     it('should track startup time', async () => {
+      const clock = useWallClock();
       class SlowModule implements IModule {
         name = 'slow';
         async onStart() {
-          await new Promise((resolve) => setTimeout(resolve, 50));
+          clock.advance(50);
         }
       }
 
@@ -562,7 +564,7 @@ describe('Titan Application Comprehensive Tests', () => {
 
       await app.start();
 
-      expect(app.metrics.startupTime).toBeGreaterThanOrEqual(50);
+      expect(app.metrics.startupTime).toBe(50);
     });
 
     it('should provide module count', async () => {
@@ -588,23 +590,16 @@ describe('Titan Application Comprehensive Tests', () => {
     });
 
     it('should track uptime after start', async () => {
+      const clock = useWallClock();
       app = await Application.create({
         disableGracefulShutdown: true,
         disableCoreModules: true,
       });
 
       await app.start();
-      const before = app.metrics.uptime;
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      // `uptime` is a Date.now() difference, whose millisecond truncation can
-      // report a 100ms wait as 99 — asserting `>= 100` was a check on timer
-      // precision, and it failed a full run at 99. What matters is that
-      // uptime is measured from start and advances with wall time.
-      const after = app.metrics.uptime;
-      expect(after, 'uptime did not advance while the app was running').toBeGreaterThan(before);
-      expect(after).toBeGreaterThanOrEqual(80);
-      expect(after, 'uptime is not measured from start').toBeLessThan(10_000);
+      expect(app.metrics.uptime).toBe(0);
+      clock.advance(100);
+      expect(app.metrics.uptime).toBe(100);
     });
   });
 

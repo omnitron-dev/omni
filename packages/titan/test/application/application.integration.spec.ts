@@ -16,6 +16,7 @@
  * - Advanced patterns
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { useWallClock } from '../fixtures/wall-clock.js';
 
 import { Application, createApp, APPLICATION_TOKEN, NETRON_TOKEN } from '../../src/application.js';
 import { createToken, Container } from '../../src/nexus/index.js';
@@ -844,16 +845,13 @@ describe('Application Integration', () => {
     });
 
     it('should report uptime correctly after start', async () => {
+      const clock = useWallClock();
       app = createApp({ disableGracefulShutdown: true, disableCoreModules: true });
 
       await app.start();
 
-      // Wait a bit
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      const uptime = app.uptime;
-      expect(uptime).toBeGreaterThanOrEqual(100);
-      expect(uptime).toBeLessThan(5000); // Sanity check
+      clock.advance(100);
+      expect(app.uptime).toBe(100);
     });
   });
 

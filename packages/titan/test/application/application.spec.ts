@@ -2,6 +2,7 @@
  * Comprehensive tests for Titan Application
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { useWallClock } from '../fixtures/wall-clock.js';
 
 import { Container, createToken, Token } from '../../src/nexus/index.js';
 import { Application, createApp as originalCreateApp, startApp } from '../../src/application.js';
@@ -1018,22 +1019,15 @@ describe('Titan Application', () => {
   describe('Performance and Resource Management', () => {
     it('should track uptime correctly', async () => {
       app = createApp();
-      const startedAt = 1_700_000_000_000;
-      const clock = vi.spyOn(Date, 'now').mockReturnValue(startedAt);
+      const clock = useWallClock();
+      expect(app.uptime).toBe(0);
+      await app.start();
+      expect(app.uptime).toBe(0);
 
-      try {
-        expect(app.uptime).toBe(0);
-        await app.start();
-        expect(app.uptime).toBe(0);
-
-        clock.mockReturnValue(startedAt + 137);
-        expect(app.uptime).toBe(137);
-
-        clock.mockReturnValue(startedAt + 1_024);
-        expect(app.uptime).toBe(1_024);
-      } finally {
-        clock.mockRestore();
-      }
+      clock.advance(137);
+      expect(app.uptime).toBe(137);
+      clock.advance(887);
+      expect(app.uptime).toBe(1_024);
     });
 
     it('should handle many modules efficiently', async () => {

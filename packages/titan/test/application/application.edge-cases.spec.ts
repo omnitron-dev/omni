@@ -2,6 +2,7 @@
  * Edge case tests for Titan Application to achieve >96% coverage
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { useWallClock } from '../fixtures/wall-clock.js';
 
 import { Application, createApp } from '../../src/application.js';
 import { ApplicationState, IApplication, IModule } from '../../src/types.js';
@@ -429,16 +430,16 @@ describe('Titan Application Edge Cases', () => {
     });
 
     it('should provide accurate metrics', async () => {
+      const clock = useWallClock();
       app = createApp();
 
       await app.start();
 
-      // Wait a bit for uptime
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      clock.advance(100);
 
       const metrics = app.metrics;
 
-      expect(metrics.uptime).toBeGreaterThanOrEqual(100);
+      expect(metrics.uptime).toBe(100);
       expect(metrics.memoryUsage).toBeDefined();
       expect(metrics.memoryUsage.rss).toBeGreaterThan(0);
       expect(metrics.memoryUsage.heapUsed).toBeGreaterThan(0);

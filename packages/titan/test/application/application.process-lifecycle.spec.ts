@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import { Application } from '../../src/application.js';
+import { useWallClock } from '../fixtures/wall-clock.js';
 import {
   ApplicationState,
   ApplicationEvent,
@@ -119,6 +120,7 @@ describe('Application Process Lifecycle Management', () => {
     });
 
     it('should update metrics during runtime', async () => {
+      const clock = useWallClock();
       app = await Application.create({
         disableCoreModules: true,
         disableGracefulShutdown: false,
@@ -127,12 +129,11 @@ describe('Application Process Lifecycle Management', () => {
 
       await app.start();
 
-      // Wait a bit for uptime to increase
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      clock.advance(50);
 
       const metrics = app.getProcessMetrics();
 
-      expect(metrics.uptime).toBeGreaterThanOrEqual(50);
+      expect(metrics.uptime).toBe(50);
       expect(metrics.memoryUsage.rss).toBeGreaterThan(0);
       expect(metrics.memoryUsage.heapUsed).toBeGreaterThan(0);
       expect(metrics.memoryUsage.heapTotal).toBeGreaterThan(0);

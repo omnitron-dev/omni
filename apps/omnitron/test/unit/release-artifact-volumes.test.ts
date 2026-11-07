@@ -27,6 +27,7 @@ import { sha256File } from '../../src/release/portable-archive.js';
 import { targetRuntime } from '../../src/release/target-runtime.js';
 import { ProjectService } from '../../src/services/project.service.js';
 import { linkFixtureDependencies } from '../helpers/installed-dependencies.js';
+import { stageFixtureExtractor } from '../runtime/fixture-extractor.mjs';
 
 const cleanup: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); for (const root of cleanup.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
@@ -326,7 +327,8 @@ it('keeps the ordinary standalone destination installer self-contained after sep
       consumer: { releaseId: 'fixture-release', manifestSha256: 'a'.repeat(64), app: 'worker' }, entry: { relativeFile: launch.file, mode: launch.mode } } };
   // Function.toString must see ordinary compiled ESM, not Vitest's rewritten
   // __vite_ssr_import_* aliases. Compile the actual dependency graph unchanged.
-  const control = path.resolve(import.meta.dirname, '../..'), compiled = path.join(root, 'compiled');
+  const control = path.resolve(import.meta.dirname, '../..');
+  const compilerPackage = path.join(root, 'compiler'), compiled = path.join(compilerPackage, 'dist');
   const seen = new Set<string>();
   async function compile(relative: string): Promise<void> {
     if (seen.has(relative)) return; seen.add(relative);
@@ -341,9 +343,12 @@ it('keeps the ordinary standalone destination installer self-contained after sep
     }
   }
   await compile('release/frozen-installation.js');
-  await fs.writeFile(path.join(compiled, 'package.json'), '{"type":"module"}');
-  await linkFixtureDependencies(compiled);
-  const args = [destination, 'worker.tar.gz', launch, origin, { root, executable: process.execPath }, nodeOptions, control];
+  await compile('release/installed-graph.js');
+  await fs.writeFile(path.join(compilerPackage, 'package.json'), '{"type":"module"}');
+  await linkFixtureDependencies(compilerPackage);
+  const packages = path.join(root, 'receiver', 'packages'), receiver = path.join(packages, '0');
+  await stageFixtureExtractor(compiled, receiver, (i: number) => path.join(packages, String(i + 1)));
+  const args = [destination, 'worker.tar.gz', launch, origin, { root, executable: process.execPath }, nodeOptions, receiver];
   const script = `import {installFrozenApplicationCommand} from ${JSON.stringify(pathToFileURL(path.join(compiled, 'release/frozen-installation.js')).href)};
 import {execFileSync} from 'node:child_process';
 try { process.stdout.write(execFileSync('/bin/sh', ['-c', installFrozenApplicationCommand(...${JSON.stringify(args)})],

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { guardianControlGroup, guardianGroupIdentity, checkGuardianStopFence, verifyStoppedGuardian } from '../../src/daemon/system-guardian-cgroup.js';
+import { guardianControlGroup, guardianGroupIdentity, prepareGuardianFence, checkGuardianStopFence, verifyStoppedGuardian } from '../../src/daemon/system-guardian-cgroup.js';
 import { readProcessLifetime } from '../../src/monitoring/process-lifetime.js';
 
 vi.mock('../../src/monitoring/process-lifetime.js', () => ({ readProcessLifetime: vi.fn() }));
@@ -83,6 +83,43 @@ it('rejects PID reuse after preparation, and a PID replaced between two observat
   expect(() => checkGuardianStopFence(group, guardian, backend, fence)).toThrow(/identity changed/);
   vi.mocked(readProcessLifetime).mockImplementationOnce(() => ({ state: 'alive', identity: 'first' }));
   expect(() => checkGuardianStopFence(group, guardian, backend)).toThrow(/identity changed/);
+});
+
+it('prepares only after an extra root member leaves and the original lifetimes are reverified', async () => {
+  mountFixture(); vi.useFakeTimers();
+  try {
+    const file = path.join(root, 'cgroup.procs');
+    fs.writeFileSync(file, '101\n102\n999\n');
+    const inspect = vi.fn(async () => checkGuardianStopFence(group, guardian, backend));
+    const pending = prepareGuardianFence(guardian, backend, inspect);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(inspect).toHaveBeenCalledTimes(2);
+    fs.writeFileSync(file, '101\n102\n');
+    await vi.advanceTimersByTimeAsync(100);
+    expect(await pending).toEqual(checkGuardianStopFence(group, guardian, backend));
+  } finally { vi.useRealTimers(); }
+});
+
+it('keeps the refusal for a persistent, missing or nested member and never admits a reused PID', async () => {
+  mountFixture(); vi.useFakeTimers();
+  const inspect = vi.fn(async () => checkGuardianStopFence(group, guardian, backend));
+  try {
+    write(root, 'cgroup.procs', '101\n102\n999');
+    const timeout = expect(prepareGuardianFence(guardian, backend, inspect)).rejects.toThrow('observed [101 102 999]');
+    await vi.advanceTimersByTimeAsync(1600); await timeout;
+    inspect.mockClear(); write(root, 'cgroup.procs', '101');
+    await expect(prepareGuardianFence(guardian, backend, inspect)).rejects.toThrow('observed [101]');
+    expect(inspect).toHaveBeenCalledTimes(1);
+    inspect.mockClear(); domain(root, [guardian, backend], 1); domain(path.join(root, 'child'), [999]);
+    await expect(prepareGuardianFence(guardian, backend, inspect)).rejects.toThrow('cgroup "child"');
+    expect(inspect).toHaveBeenCalledTimes(1);
+    domain(path.join(root, 'child'), []); write(root, 'cgroup.procs', '101\n102\n999');
+    const reused = expect(prepareGuardianFence(guardian, backend, inspect)).rejects.toThrow('identity changed');
+    await vi.advanceTimersByTimeAsync(0);
+    write(root, 'cgroup.procs', '101\n102');
+    vi.mocked(readProcessLifetime).mockImplementation(pid => ({state:'alive', identity:'replacement:' + pid}));
+    await vi.advanceTimersByTimeAsync(100); await reused;
+  } finally { vi.useRealTimers(); }
 });
 it('allows a confirmed backend exit only during retirement, retaining the prepared guardian and process identity', () => {
   mountFixture();

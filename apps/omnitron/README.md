@@ -521,11 +521,19 @@ On Linux, guardian replacement checks the full systemd cgroup before stopping
 the unit. Its only permitted processes are the recorded guardian and backend;
 occupied descendants, additional processes, frozen or ambiguous group state
 refuse the transition. The refusal identifies the group and expected/observed
-PIDs or state. A short-lived native inspection child may require waiting for
-the observation to finish and preparing again. Do not kill an unidentified
-process or bypass this check. PID ordering and repeated entries in the kernel's
+PIDs or state. During preparation, if both original processes are present and
+the root group has an extra member, Omnitron can spend up to 1.5 seconds waiting
+between full inspections. Preparation succeeds only after the extra member exits
+and the original process lifetimes and unit pass inspection again. Review and
+apply check the saved plan against the current scope immediately. PID ordering and repeated entries in the kernel's
 `cgroup.procs` record do not change its process set; process lifetimes, executable
 identities and group membership are independently verified twice.
+
+For an isolated native owner roundtrip with real application workloads, pass
+`--application-sdk <installed-package>` and `--application-sdk-commit <full-sha>`
+to `test/runtime/managed-backend.mjs` alongside `--owner-roundtrip`. The fixture
+checks the package and its clean build stamp before creating services. Its result
+records the application's framework commit and the owner's commit and artifact hash.
 
 ## Standalone infrastructure
 

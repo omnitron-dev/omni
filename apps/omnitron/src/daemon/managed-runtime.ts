@@ -6,7 +6,7 @@ import { OMNITRON_HOME } from '../config/defaults.js';
 import { readPrivateRecord } from './execution-journal.js';
 import type { ServiceScope } from '../commands/service-units.js';
 import { checkGuardianStopEffects, guardianStopProperties } from './system-guardian-unit.js';
-import { checkGuardianStopFence, guardianControlGroup, verifyStoppedGuardian, type GuardianStopFence } from './system-guardian-cgroup.js';
+import { checkGuardianStopFence, guardianControlGroup, prepareGuardianFence, verifyStoppedGuardian, type GuardianStopFence } from './system-guardian-cgroup.js';
 import { readHostBootIdentity, isStableHostBootIdentity, provesDifferentHostBoot } from '../shared/host-boot-identity.js';
 
 export interface ManagedRuntime {
@@ -112,9 +112,13 @@ export async function managedGuardianStopFence(
   config: ManagedRuntime, guardianPid: number, backendPid: number, expected?: GuardianStopFence, retired = false,
 ): Promise<GuardianStopFence> {
   const properties = [...guardianStopProperties, 'Id', 'MainPID', 'ControlGroup', 'Delegate', 'ActiveState'];
-  const facts = await managedSystemdProperties(config, config.backend.unit, properties);
-  checkGuardianStopEffects(facts, true);
-  return checkGuardianStopFence(guardianControlGroup(config.backend.unit, guardianPid, facts), guardianPid, backendPid, expected, retired);
+  const inspect = async () => {
+    const facts = await managedSystemdProperties(config, config.backend.unit, properties);
+    checkGuardianStopEffects(facts, true);
+    return checkGuardianStopFence(guardianControlGroup(config.backend.unit, guardianPid, facts), guardianPid, backendPid, expected, retired);
+  };
+  // A saved plan (including --check), drain, retirement and stop must use the current scope immediately.
+  return expected || retired ? inspect() : prepareGuardianFence(guardianPid, backendPid, inspect);
 }
 
 export async function assertGuardianStopped(config: ManagedRuntime, fence?: GuardianStopFence): Promise<void> {

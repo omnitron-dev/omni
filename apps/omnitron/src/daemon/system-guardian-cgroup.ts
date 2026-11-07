@@ -11,6 +11,7 @@ export interface GuardianStopFence {
 }
 
 const cgroupRoot = '/sys/fs/cgroup';
+class ExtraGuardianRootProcess extends Error {}
 
 function requireUnifiedHierarchy(): void {
   if (fs.statfsSync(cgroupRoot).type !== 0x63677270) throw Error('Guardian transition requires Linux cgroup v2');
@@ -62,7 +63,9 @@ export function guardianGroupIdentity(directory: string, permitted: number[]): s
     if (observed.join(' ') !== wanted) {
       const scope = JSON.stringify(path.relative(directory, dir) || '.');
       const shown = observed.slice(0, 16).join(' ') + (observed.length > 16 ? ` … (${observed.length} total)` : '');
-      throw Error(`Unknown, missing or nested process in the guardian cgroup ${scope}: expected PIDs [${wanted}], observed [${shown}]. Inspect the processes and wait for unrelated work to settle before preparing again.`);
+      const reason = `Unknown, missing or nested process in the guardian cgroup ${scope}: expected PIDs [${wanted}], observed [${shown}]. Inspect the processes and wait for unrelated work to settle before preparing again.`;
+      if (!depth && permitted.length && permitted.every(pid => observed.includes(pid))) throw new ExtraGuardianRootProcess(reason);
+      throw Error(reason);
     }
     const events = read('cgroup.events').split('\n');
     const populated = events.filter(event => event.startsWith('populated'));
@@ -90,6 +93,33 @@ export function guardianGroupIdentity(directory: string, permitted: number[]): s
   };
   walk(directory, 0);
   return createHash('sha256').update(JSON.stringify(entries)).digest('hex');
+}
+
+/** During preparation only, a concurrent native query may briefly add a child.
+ * Re-read the complete unit and fence. Never signal, adopt or allow that PID. */
+export async function prepareGuardianFence(guardianPid: number, backendPid: number, inspect: () => Promise<GuardianStopFence>): Promise<GuardianStopFence> {
+  const pids = [guardianPid, backendPid];
+  const original = pids.map(readProcessLifetime);
+  const unchanged = () => original.every((initial, i) => {
+    const current = readProcessLifetime(pids[i]!);
+    return initial.state === 'alive' && current.state === 'alive' && initial.identity === current.identity;
+  });
+  const deadline = performance.now() + 1500;
+  let waited = false;
+  for (;;) {
+    try {
+      const fence = await inspect();
+      if (waited && !unchanged()) throw Error('Guardian or backend process identity changed while waiting for its cgroup');
+      return fence;
+    } catch (error) {
+      if (!(error instanceof ExtraGuardianRootProcess) || performance.now() >= deadline) throw error;
+      if (!unchanged()) throw Error('Guardian or backend identity could not be confirmed while inspecting its cgroup', { cause: error });
+      await new Promise(resolve => setTimeout(resolve, Math.min(100, deadline - performance.now())));
+      if (!unchanged()) throw Error('Guardian or backend identity changed while waiting for its cgroup', { cause: error });
+      if (performance.now() >= deadline) throw error;
+      waited = true;
+    }
+  }
 }
 
 export function checkGuardianStopFence(

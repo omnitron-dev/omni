@@ -3,7 +3,7 @@
  * Tests connection management, script loading, error handling, and lifecycle
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { RedisManager } from '../../src/redis.manager.js';
 import type { RedisModuleOptions } from '../../src/redis.types.js';
 import { delay } from '@omnitron-dev/common';
@@ -27,22 +27,24 @@ const describeOrSkip = skipTests ? describe.skip : describe;
 
 describeOrSkip('Redis Manager - Infrastructure Tests', () => {
   let dockerFixture: DockerRedisTestFixture;
+
+  // The server belongs to this suite; each test still owns fresh clients.
+  beforeAll(async () => { dockerFixture = await createDockerRedisFixture(); });
+  afterAll(async () => { await dockerFixture?.cleanup(); });
   let testContainer: { host: string; port: number };
   let manager: RedisManager;
   let mockLogger: ILogger;
 
   beforeEach(async () => {
     mockLogger = createMockLogger();
-    dockerFixture = await createDockerRedisFixture();
+    await dockerFixture.client.flushall();
+    await dockerFixture.client.script('FLUSH');
     testContainer = { host: 'localhost', port: dockerFixture.port };
   });
 
   afterEach(async () => {
     if (manager) {
       await manager.destroy();
-    }
-    if (dockerFixture) {
-      await dockerFixture.cleanup();
     }
   });
 

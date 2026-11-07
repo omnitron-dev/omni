@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { RedisService } from '../src/redis.service.js';
 import { RedisManager } from '../src/redis.manager.js';
 import { isRedisInMockMode, createDockerRedisFixture, type DockerRedisTestFixture } from './utils/redis-test-utils.js';
@@ -13,9 +13,13 @@ describeOrSkip('RedisService with Real Redis', () => {
   let manager: RedisManager;
   let dockerFixture: DockerRedisTestFixture;
 
+  // The server belongs to this suite; each test still owns fresh clients.
+  beforeAll(async () => { dockerFixture = await createDockerRedisFixture(); });
+  afterAll(async () => { await dockerFixture?.cleanup(); });
+
   beforeEach(async () => {
-    // Create a dedicated Docker Redis container for each test
-    dockerFixture = await createDockerRedisFixture();
+    await dockerFixture.client.flushall();
+    await dockerFixture.client.script('FLUSH');
 
     // Create manager and service with real Redis
     const mockLogger = createMockLogger();
@@ -58,9 +62,6 @@ describeOrSkip('RedisService with Real Redis', () => {
     // Disconnect and cleanup
     if (manager) {
       await manager.destroy();
-    }
-    if (dockerFixture) {
-      await dockerFixture.cleanup();
     }
   });
 

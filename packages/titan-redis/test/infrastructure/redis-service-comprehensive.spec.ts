@@ -3,7 +3,7 @@
  * Tests all Redis operations, pub/sub, scripts, transactions, and pipelines
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { RedisManager } from '../../src/redis.manager.js';
 import { RedisService } from '../../src/redis.service.js';
 import { delay } from '@omnitron-dev/common';
@@ -26,11 +26,16 @@ const describeOrSkip = skipTests ? describe.skip : describe;
 
 describeOrSkip('Redis Service - Infrastructure Tests', () => {
   let dockerFixture: DockerRedisTestFixture;
+
+  // The server belongs to this suite; each test still owns fresh clients.
+  beforeAll(async () => { dockerFixture = await createDockerRedisFixture(); });
+  afterAll(async () => { await dockerFixture?.cleanup(); });
   let manager: RedisManager;
   let service: RedisService;
 
   beforeEach(async () => {
-    dockerFixture = await createDockerRedisFixture();
+    await dockerFixture.client.flushall();
+    await dockerFixture.client.script('FLUSH');
 
     manager = new RedisManager(
       {
@@ -50,9 +55,6 @@ describeOrSkip('Redis Service - Infrastructure Tests', () => {
   afterEach(async () => {
     if (manager) {
       await manager.destroy();
-    }
-    if (dockerFixture) {
-      await dockerFixture.cleanup();
     }
   });
 

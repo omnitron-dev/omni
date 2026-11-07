@@ -48,6 +48,9 @@ export default defineConfig([
       'components/map/index': 'src/components/map/index.ts',
       'components/doc-layout/index': 'src/components/doc-layout/index.ts',
       'components/research/index': 'src/components/research/index.ts',
+      // Keep the existing parser export in a chunk independent of the React
+      // reader and its renderer. This build entry is not a public subpath.
+      'internal/research-parser': 'src/components/research/parse.ts',
       'components/research-editor/index': 'src/components/research-editor/index.ts',
       'components/knowledge-graph/index': 'src/components/knowledge-graph/index.ts',
       'components/editor/index': 'src/components/editor/index.ts',
@@ -72,6 +75,9 @@ export default defineConfig([
     clean: true,
     treeshake: true,
     minify: false,
+    // Ship just the Markdown math tokenizer. Its unused HTML renderer pins
+    // an older KaTeX; Prism renders equations with its own declared KaTeX.
+    noExternal: ['micromark-extension-math'],
     external: [
       'react',
       'react-dom',
@@ -96,7 +102,7 @@ export default defineConfig([
       options.jsx = 'automatic';
     },
     plugins: [reactClientEntries((entry: string) =>
-      !['http/index', 'registry/index', 'types/index'].includes(entry))],
+      !['http/index', 'registry/index', 'types/index', 'internal/research-parser'].includes(entry))],
   },
   // CLI build (Node.js)
   {

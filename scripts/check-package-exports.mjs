@@ -20,7 +20,7 @@ const strings = value => typeof value === 'string' ? [value]
   : value && typeof value === 'object' ? Object.values(value).flatMap(strings) : [];
 const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-function installConsumer(destination) {
+function installConsumer(destination, roots) {
   const consumer = path.resolve(destination);
   fs.mkdirSync(consumer);
   fs.mkdirSync(path.join(consumer, 'archives'));
@@ -35,8 +35,7 @@ function installConsumer(destination) {
       ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.peerDependencies,
     })) include(dependency);
   }
-  include('@omnitron-dev/omnitron');
-  include('@omnitron-dev/netron-react');
+  for (const name of roots) include(name);
   fs.writeFileSync(path.join(consumer, 'package.json'), JSON.stringify({ private: true, dependencies }));
   execFileSync('npm', ['install', '--omit=dev', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org/'], {
     cwd: consumer, stdio: 'inherit',
@@ -122,7 +121,12 @@ try {
       else fs.rmSync(packed.filename);
     }
   }
-  if (!failures.length && values['install-consumer']) installConsumer(values['install-consumer']);
+  if (!failures.length && values['install-consumer']) {
+    // Keep the runtime probe independent of optional packages: a full install
+    // could hide an undeclared import. Audit the remaining public surface too.
+    installConsumer(values['install-consumer'], ['@omnitron-dev/omnitron', '@omnitron-dev/netron-react']);
+    installConsumer(path.join(temporary, 'all-public'), archives.keys());
+  }
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });
 }

@@ -52,6 +52,11 @@ try {
   const calendar = await bundle(`export { PrismDatePicker } from ${target('./ui')};`);
   assert.ok(calendar.imports.includes('dayjs/locale/ru.js'), 'Calendar locale registration was removed');
   assert.ok(calendar.imports.includes('dayjs/plugin/utc.js'), 'Calendar wall-clock support was removed');
+  const mathParser = await bundle(`export { parseResearchMarkdown } from ${target('./components/research')};`);
+  assert.ok(!mathParser.imports.includes('micromark-extension-math'), 'The syntax parser must not install the upstream HTML renderer');
+  assert.ok(!mathParser.imports.includes('katex'), 'Parsing must not load the equation renderer');
+  const reader = await bundle(`export { ResearchDocument } from ${target('./components/research')};`);
+  assert.ok(reader.imports.includes('katex'), 'The research reader must use the declared equation renderer');
   const map = await bundle(`export { Map } from ${target('./components/map')};`);
   assert.ok(map.imports.includes('maplibre-gl'), 'Selected map engine was removed');
   assert.ok(map.imports.includes('pmtiles'), 'Selected map protocol was removed');

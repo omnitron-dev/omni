@@ -1,5 +1,4 @@
-import fs from 'node:fs';
-import path from 'node:path';
+import type { Dirent } from 'node:fs';
 
 /**
  * Locate shared-object directories packaged inside an application's `.omnitron`
@@ -13,10 +12,12 @@ import path from 'node:path';
  * on Linux restores dynamic-linker resolution without mutating the verified
  * `.installed` payload tree on disk.
  *
- * Self-contained (`fs` + `path` only, no module-scope captures) so the remote
- * migration wrapper can serialize this exact implementation via `.toString()`.
+ * Self-contained (`process.getBuiltinModule` only, zero module-scope value imports)
+ * so Vitest/Rolldown/esbuild never rewrite identifiers inside `.toString()`.
  */
 export function closureLibraryDirectories(candidates: Iterable<string | undefined>): string[] {
+  const fs = process.getBuiltinModule('node:fs');
+  const path = process.getBuiltinModule('node:path');
   let closureRoot: string | null = null;
   for (const candidate of candidates) {
     if (!candidate) continue;
@@ -56,7 +57,7 @@ export function closureLibraryDirectories(candidates: Iterable<string | undefine
   const seen = new Set<string>();
   const scanPackageDir = (dir: string, depth: number): void => {
     if (depth > 8) return;
-    let entries: fs.Dirent[];
+    let entries: Dirent[];
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true });
     } catch {
@@ -92,7 +93,7 @@ export function closureLibraryDirectories(candidates: Iterable<string | undefine
     }
   };
 
-  let packages: fs.Dirent[];
+  let packages: Dirent[];
   try {
     packages = fs.readdirSync(omnitronDir, { withFileTypes: true });
   } catch {

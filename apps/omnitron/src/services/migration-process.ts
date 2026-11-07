@@ -21,7 +21,7 @@ ${validate ? "console.log(JSON.stringify({name:prepared.name??null,validated:tru
 /** SSH carries credentials on stdin; the remote process receives them only as its environment.
  * The deployment execution fence owns the timeout and process group. Do not retry this command. */
 export function prepareRemoteMigration(target: { cwd: string; script: string; node?: string; mode?: 'script' | 'config'; validate?: boolean }, env: Record<string, string>) {
-  const source = `import fs from 'node:fs';import path from 'node:path';import {spawn} from 'node:child_process';
+  const source = `import {spawn} from 'node:child_process';
     const closureLibraryDirectories=${closureLibraryDirectories.toString()};
     let size=0;const chunks=[];
     for await(const chunk of process.stdin){size+=chunk.length;if(size>1024*1024)throw Error('Migration environment input exceeds 1 MiB');chunks.push(chunk)}

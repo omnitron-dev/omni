@@ -1,8 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
+import { closureLibraryDirectories } from '../../src/release/closure-library-path.js';
 import { prepareRemoteMigration } from '../../src/services/migration-process.js';
 
 const cleanup: string[] = [];
@@ -35,4 +36,18 @@ it('reports a failed migration without retrying it', async () => {
   const request = prepareRemoteMigration({ cwd, script, node: process.execPath }, {});
   expect(() => execFileSync('/bin/sh', ['-c', request.command], { input: request.stdin, stdio: 'pipe' })).toThrow();
   expect(await readFile(join(cwd, 'attempts'), 'utf8')).toBe('once\n');
+});
+
+it('serializes closureLibraryDirectories without bundler or Vitest module-import captures', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'omni-migration-closure-')); cleanup.push(root);
+  const libDir = join(root, 'node_modules/.omnitron/0/lib');
+  await mkdir(libDir, { recursive: true });
+  await writeFile(join(root, '.omnitron-closure.json'), '{"version":1}');
+  await writeFile(join(libDir, 'libvips-cpp.so.42'), 'elf');
+  const stdout = execFileSync(
+    process.execPath,
+    ['--input-type=module', '-e', `const fn = ${closureLibraryDirectories.toString()}; console.log(JSON.stringify(fn([${JSON.stringify(join(root, 'dist/migrate.mjs'))}])));`],
+    { encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: '' } },
+  );
+  expect(JSON.parse(stdout)).toEqual([await realpath(libDir)]);
 });

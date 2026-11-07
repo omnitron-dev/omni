@@ -65,8 +65,7 @@ err() {
 if [[ $SKIP_TITAN -eq 0 ]]; then
   log "1/4 Rebuilding titan dist..."
   cd "$OMNI_ROOT/packages/titan"
-  rm -rf dist node_modules/.tmp
-  if ! npx tsc -p ./tsconfig.json; then
+  if ! pnpm run build; then
     err "titan tsc failed — aborting"
     exit 1
   fi

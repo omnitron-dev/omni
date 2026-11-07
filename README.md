@@ -80,6 +80,11 @@ before running build or test commands.
 pnpm build
 ```
 
+Package builds use the workspace TypeScript compiler installed from the
+lockfile. To reproduce an older SDK, use the toolchain its source revision
+requires. Revisions that call `npx` need the npm CLI from the corresponding
+Node.js distribution on the builder's `PATH`.
+
 ### Development
 
 ```bash

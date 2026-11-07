@@ -17,6 +17,31 @@ const first = '@fixture/base';
 const second = '@fixture/client';
 const version = '0.2.0-rc.1';
 
+test('package builds use the installed compiler on an isolated builder', async t => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'omnitron-package-build-'));
+  t.after(() => fs.rm(cwd, { recursive: true, force: true }));
+  const bin = path.join(cwd, 'bin');
+  await fs.mkdir(bin);
+  // Expose the shell and filesystem tools an isolated builder provides.
+  for (const [name, target] of Object.entries({
+    node: process.execPath, bash: '/bin/bash', basename: '/usr/bin/basename',
+    dirname: '/usr/bin/dirname', rm: '/bin/rm', mv: '/bin/mv',
+  })) await fs.symlink(target, path.join(bin, name));
+  const source = path.join(repo, 'packages/access');
+  await fs.cp(path.join(source, 'src'), path.join(cwd, 'src'), { recursive: true });
+  for (const file of ['tsconfig.json', 'package.json']) await fs.copyFile(path.join(source, file), path.join(cwd, file));
+  const build = path.join(repo, 'scripts/build-package.sh');
+  const options = { cwd, env: { ...process.env, PATH: bin } };
+  await run(build, [], options);
+  const output = path.join(cwd, 'dist/index.d.ts');
+  const declarations = await fs.readFile(output, 'utf8');
+  assert.ok(declarations.length > 0);
+  await fs.access(path.join(cwd, 'dist/index.js'));
+  await assert.rejects(run(build, ['-p', './tsconfig.json', '--declarationDir', 'dist'], options),
+    error => error.code === 1 && error.stderr.includes('sets declarationDir'));
+  assert.equal(await fs.readFile(output, 'utf8'), declarations);
+});
+
 test('public npm packages link to their own workspace in the canonical repository', async () => {
   for (const pkg of await discoverReleasePackages(repo)) {
     const manifest = JSON.parse(await fs.readFile(path.join(repo, pkg.path, 'package.json'), 'utf8'));

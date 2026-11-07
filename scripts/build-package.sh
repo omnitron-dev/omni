@@ -17,12 +17,16 @@
 set -euo pipefail
 
 pkg="$(basename "$PWD")"
+workspace="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+compiler="$workspace/node_modules/.bin/tsc"
+if [[ ! -x "$compiler" ]]; then
+  echo "build-package: missing workspace compiler at $compiler. Run pnpm install --frozen-lockfile in the workspace." >&2
+  exit 1
+fi
 args=("$@")
 if [ ${#args[@]} -eq 0 ]; then
   args=(-p ./tsconfig.json)
 fi
-
-rm -rf dist.next dist.old node_modules/.tmp
 
 # `--outDir` overrides whatever the tsconfig says, and declarations follow it
 # — unless `declarationDir` is set, in which case tsc writes them THERE, the
@@ -33,11 +37,16 @@ rm -rf dist.next dist.old node_modules/.tmp
 # developer's checkout hid it with declarations left over from a build before
 # this script (measured 2026-09-25, a sample release refused because payments
 # could not resolve `@omnitron-dev/testing/async`). So it is checked, here.
-if npx tsc "${args[@]}" --showConfig | grep -q '"declarationDir"'; then
+if ! config=$("$compiler" "${args[@]}" --showConfig); then
+  printf '%s\n' "$config" >&2
+  exit 1
+fi
+if [[ "$config" == *'"declarationDir":'* ]]; then
   echo "build-package: $pkg sets declarationDir — its declarations would land outside dist.next and be thrown away by the swap. Remove it (they follow --outDir)." >&2
   exit 1
 fi
-npx tsc "${args[@]}" --outDir dist.next
+rm -rf dist.next dist.old node_modules/.tmp
+"$compiler" "${args[@]}" --outDir dist.next
 
 if [ ! -d dist.next ]; then
   echo "build-package: $pkg produced no dist.next — refusing to swap" >&2

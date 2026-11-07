@@ -33,7 +33,9 @@
         "^build",
         "^test"
       ],
-      "outputs": []
+      "outputs": [],
+      "env": ["TEST_*", "OMNITRON_TEST_*", "OMNITRON_HOME", "USE_MOCK_REDIS"],
+      "passThroughEnv": ["DOCKER_*", "NODE_OPTIONS", "TMPDIR", "TMP", "TEMP"]
     },
     "typecheck": {
       "dependsOn": [

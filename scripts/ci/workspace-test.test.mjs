@@ -3,7 +3,25 @@ import { spawnSync } from 'node:child_process';
 import { mkdtemp, mkdir, copyFile, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+
+test('strict Turbo mode carries the isolated test endpoints and home into the test cache key', () => {
+  const turbo = createRequire(import.meta.url).resolve('turbo/bin/turbo');
+  const result = spawnSync(process.execPath, [turbo, 'test', '--filter=@omnitron-dev/omnitron', '--only', '--dry=json', '--env-mode=strict'], {
+    cwd: fileURLToPath(new URL('../../', import.meta.url)), encoding: 'utf8', timeout: 30_000, maxBuffer: 4 * 1024 * 1024,
+    env: { ...process.env, TEST_POSTGRES_PORT: '25432', TEST_DATABASE_URL: 'postgresql://test:test@127.0.0.1:25432/test',
+      OMNITRON_HOME: '/private-test-home', DOCKER_HOST: 'unix:///private-test-docker.sock' },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const task = JSON.parse(result.stdout).tasks.find(value => value.taskId === '@omnitron-dev/omnitron#test');
+  assert.equal(task.envMode, 'strict');
+  for (const name of ['TEST_POSTGRES_PORT', 'TEST_DATABASE_URL', 'OMNITRON_HOME']) {
+    assert.ok(task.environmentVariables.configured.some(value => value.startsWith(name + '=')), name + ' must be hashed and forwarded');
+  }
+  assert.ok(task.environmentVariables.passthrough.some(value => value.startsWith('DOCKER_HOST=')));
+});
 
 for (const [up, suite, down] of [[0, 0, 0], [2, 0, 0], [0, 7, 0], [0, 0, 9], [0, 7, 9]]) {
   test(`compose up=${up}, tests=${suite}, compose down=${down}`, { skip: process.platform === 'win32' }, async t => {

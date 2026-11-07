@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createMockLogger } from '@omnitron-dev/testing/titan';
+import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import { RedisManager } from '../src/redis.manager.js';
 
 const { createClient } = vi.hoisted(() => ({ createClient: vi.fn() }));
@@ -26,7 +26,7 @@ describe('Redis shutdown', () => {
     'disconnects a %s client without starting or retrying a connection', async (status) => {
       const connection = client(status);
       createClient.mockReturnValue(connection);
-      const manager = new RedisManager({}, createMockLogger());
+      const manager = new RedisManager({}, createNullLogger());
       await manager.init();
       await manager.destroy();
       expect(connection.quit).not.toHaveBeenCalled();
@@ -39,7 +39,7 @@ describe('Redis shutdown', () => {
     let finish!: (value: string) => void;
     const connection = client('ready', vi.fn(() => new Promise<string>((resolve) => { finish = resolve; })));
     createClient.mockReturnValue(connection);
-    const manager = new RedisManager({}, createMockLogger());
+    const manager = new RedisManager({}, createNullLogger());
     await manager.init();
     const closing = manager.destroy();
     expect(connection.quit).toHaveBeenCalledOnce();
@@ -55,8 +55,9 @@ describe('Redis shutdown', () => {
     const stalled = client('ready', vi.fn(() => new Promise<string>(() => {})));
     const healthy = client('ready');
     createClient.mockReturnValueOnce(stalled).mockReturnValueOnce(healthy);
-    const logger = createMockLogger();
-    vi.mocked(logger.child).mockReturnValue(logger);
+    const logger = createNullLogger();
+    vi.spyOn(logger, 'child').mockReturnValue(logger);
+    vi.spyOn(logger, 'error');
     const manager = new RedisManager({
       shutdownTimeout: 25,
       clients: [{ namespace: 'stalled' }, { namespace: 'healthy' }],
@@ -79,7 +80,7 @@ describe('Redis shutdown', () => {
     const failure = new Error('server disconnected');
     const connection = client('ready', vi.fn(async () => { throw failure; }));
     createClient.mockReturnValue(connection);
-    const manager = new RedisManager({}, createMockLogger());
+    const manager = new RedisManager({}, createNullLogger());
     await manager.init();
     await expect(manager.destroyClient('default')).rejects.toBe(failure);
     expect(connection.disconnect).toHaveBeenCalledOnce();
@@ -89,7 +90,7 @@ describe('Redis shutdown', () => {
   it('preserves explicitly external ownership until the caller removes a client', async () => {
     const connection = client('ready');
     createClient.mockReturnValue(connection);
-    const manager = new RedisManager({ closeClient: false }, createMockLogger());
+    const manager = new RedisManager({ closeClient: false }, createNullLogger());
     await manager.init();
     await manager.destroy();
     expect(connection.quit).not.toHaveBeenCalled();
@@ -102,7 +103,7 @@ describe('Redis shutdown', () => {
   it('supports explicit immediate disconnect of a ready client', async () => {
     const connection = client('ready');
     createClient.mockReturnValue(connection);
-    const manager = new RedisManager({ shutdownTimeout: 0 }, createMockLogger());
+    const manager = new RedisManager({ shutdownTimeout: 0 }, createNullLogger());
     await manager.init();
     await manager.destroy();
     expect(connection.quit).not.toHaveBeenCalled();
@@ -110,6 +111,6 @@ describe('Redis shutdown', () => {
   });
 
   it.each([-1, NaN, Infinity, 2 ** 31, 1.5])('rejects an invalid shutdown timeout: %s', (timeout) => {
-    expect(() => new RedisManager({ shutdownTimeout: timeout }, createMockLogger())).toThrow(/shutdownTimeout/);
+    expect(() => new RedisManager({ shutdownTimeout: timeout }, createNullLogger())).toThrow(/shutdownTimeout/);
   });
 });

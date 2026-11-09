@@ -41,6 +41,11 @@ function installConsumer(destination, roots) {
   execFileSync('npm', ['install', '--omit=dev', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org/'], {
     cwd: consumer, stdio: 'inherit',
   });
+  // npm install can accept a bundled tree with an unsatisfied dependency.
+  // Replay the generated lockfile as a consumer's CI would.
+  execFileSync('npm', ['ci', '--omit=dev', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org/'], {
+    cwd: consumer, stdio: 'inherit',
+  });
   // Workspace overrides are not inherited by published npm consumers. Audit
   // the actual installed archives, including bundled dependency trees.
   execFileSync('npm', ['audit', '--omit=dev', '--audit-level=low', '--registry=https://registry.npmjs.org/'], {

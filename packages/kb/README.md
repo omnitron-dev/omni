@@ -18,8 +18,9 @@ The published archive includes the `ts-morph` extraction toolchain and its resol
 dependencies from the workspace lockfile. This preserves the corrected `minimatch`
 version when installing with npm or pnpm, without requiring consumer overrides.
 The public `./extractors` API and `kb-extract` command use that same toolchain.
-Publication checks install the actual archives in an independent consumer, audit
-its production dependency tree and extract a real TypeScript project.
+Publication checks install the archives in an independent consumer, replay its
+generated lockfile with `npm ci`, audit the production dependency tree and
+extract a TypeScript project.
 
 ### Key Features
 

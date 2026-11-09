@@ -34,6 +34,7 @@ overrides:
   "@xec-sh/loader": 0.11.3
   "@xec-sh/ops": 0.11.3
 patchedDependencies:
+  "@ts-morph/common@0.29.0": patches/ts-morph-common@0.29.0.patch
   vitest@5.0.5: patches/vitest@5.0.5.patch
 packages:
   - apps/*

@@ -197,6 +197,7 @@ overrides:
   '@xec-sh/ops': 0.11.3
 
 patchedDependencies:
+  '@ts-morph/common@0.29.0': 0410e2a72a770cb3c724f5e414d1acf8c5d5e27e829beccb320fc1fe89a13cbc
   vitest@5.0.5: c3c2409fb3a28cc9085db38333002c7de59470ec9743dedcfb6a5844d2fcb8b7
 
 importers:
@@ -9990,7 +9991,7 @@ snapshots:
       '@tiptap/extensions': 3.32.2(@tiptap/core@3.32.2(@tiptap/pm@3.32.2))(@tiptap/pm@3.32.2)
       '@tiptap/pm': 3.32.2
 
-  '@ts-morph/common@0.29.0':
+  '@ts-morph/common@0.29.0(patch_hash=0410e2a72a770cb3c724f5e414d1acf8c5d5e27e829beccb320fc1fe89a13cbc)':
     dependencies:
       minimatch: 11.0.5
       path-browserify: 1.0.1
@@ -14047,7 +14048,7 @@ snapshots:
 
   ts-morph@28.0.0:
     dependencies:
-      '@ts-morph/common': 0.29.0
+      '@ts-morph/common': 0.29.0(patch_hash=0410e2a72a770cb3c724f5e414d1acf8c5d5e27e829beccb320fc1fe89a13cbc)
       code-block-writer: 13.0.3
 
   ts-node@10.9.2(@swc/core@1.16.20)(@types/node@26.6.6)(@typescript/typescript6@6.0.2):

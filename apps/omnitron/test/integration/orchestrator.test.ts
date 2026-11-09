@@ -247,6 +247,23 @@ describe('bootstrap admission at the current PM boundary', () => {
     expect(handle.bootstrapMetadata?.source.path).toBe(entry.bootstrap);
     expect(handle.status).toBe('starting'); // Held admission is not actual readiness.
   });
+  it('uses the application SDK for worker admission when the daemon owns processes directly', async () => {
+    const appModules = path.join(directory, 'node_modules', '@omnitron-dev');
+    const sdk = path.join(appModules, 'omnitron');
+    const titan = path.join(appModules, 'titan');
+    const adapter = path.join(sdk, 'dist/orchestrator/bootstrap-process.js');
+    await fs.mkdir(path.dirname(adapter), { recursive: true });
+    await fs.mkdir(titan);
+    await fs.writeFile(path.join(sdk, 'package.json'), JSON.stringify({ main: 'dist/index.js' }));
+    await fs.writeFile(path.join(sdk, 'dist/index.js'), '');
+    await fs.writeFile(adapter, '');
+    await fs.writeFile(path.join(titan, 'index.js'), '');
+    const create = holdSupervisor();
+    await start(await bootstrap());
+    const supervisor = create.mock.calls[0]![0] as ISupervisorConfig;
+    expect(await fs.realpath(supervisor.children![0]!.process as string)).toBe(await fs.realpath(adapter));
+  });
+
   it('maps supervision strategy and inherits criticality without overriding child policy', async () => {
     const create = holdSupervisor(); const entry = { ...await bootstrap([
       { name: 'inherited', module: './module.mjs' }, { name: 'optional', module: './module.mjs', critical: false },

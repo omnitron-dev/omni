@@ -9,7 +9,7 @@ try {
   const bootstrap = process.argv[2];
   const fallback = process.argv[3];
   if (!bootstrap || !fallback) throw new Error('Application runtime entry paths were not supplied');
-  answerModuleRead({ ok: true, value: resolveApplicationBootstrapRuntime(bootstrap, fallback) });
+  answerModuleRead({ ok: true, value: resolveApplicationBootstrapRuntime(bootstrap, fallback, process.argv[4] === '--allow-sdkless-bootstrap') });
 } catch (error) {
   answerModuleRead({ ok: false, error });
 }

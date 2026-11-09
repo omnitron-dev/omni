@@ -105,6 +105,17 @@ describe('current application runtime selection', () => {
     await expect(applicationBootstrapRuntime(bootstrap, fallback)).rejects.toThrow('different Titan runtime');
   });
 
+  it('preserves plain bootstrap files in coupled mode and refuses incomplete SDK installations', async () => {
+    await expect(applicationBootstrapRuntime(bootstrap, fallback, true)).resolves.toBe(fallback);
+    await expect(applicationBootstrapRuntime(bootstrap, fallback)).rejects.toThrow('Titan runtime');
+    write(path.join(path.dirname(bootstrap), 'package.json'), JSON.stringify({ dependencies: { '@omnitron-dev/titan': '^1' } }));
+    await expect(applicationBootstrapRuntime(bootstrap, fallback, true)).rejects.toThrow('declares a missing');
+    const current = graph('incomplete');
+    select(current);
+    fs.rmSync(current.titan, { recursive: true });
+    await expect(applicationBootstrapRuntime(bootstrap, fallback, true)).rejects.toThrow('cannot be resolved');
+  });
+
   it.each(['missing-entry', 'unexported-entry', 'dangling-link'])('does not replace a broken %s application adapter with the owner', async kind => {
     const current = graph('broken');
     select(current);

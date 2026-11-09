@@ -49,7 +49,7 @@ export async function startExecutionOwner(options: {
   const state = new StateStore(store);
   await state.init();
   const pm = new ProcessManager(logger, executionProcessConfig(config));
-  const orchestrator = new OrchestratorService(logger, pm, state, undefined, { reapForeignOrphans: false, applicationRuntime: true });
+  const orchestrator = new OrchestratorService(logger, pm, state, undefined, { reapForeignOrphans: false, allowSdklessBootstrap: false });
   orchestrator.setConfig(config);
   const logs = executionLogManager(config, daemonConfig, orchestrator);
   orchestrator.onAppLog((app, line, context) => logs.appendToFile(app, line, context));

@@ -364,6 +364,13 @@ can be verified through its managed OS service. An unsupported or unverified
 owner refuses preparation with an actionable error. Working-tree development
 continues to use the explicit unavailable context.
 
+For working-tree bootstraps, both a directly supervising daemon and a resident
+owner select the adapter from the application's current dependencies. The
+adapter and the application must resolve the same physical Titan installation.
+Use the project's lockfile to install them together. The controller can use its
+own SDK. In coupled mode, a plain bootstrap with no declared or installed
+Omnitron or Titan package can use the daemon's built-in adapter.
+
 Local and remote checked installations preserve the complete application package,
 including its own Omnitron bootstrap adapter and Titan dependency identity. The
 execution owner's SDK may be a different release: its responsibilities are the

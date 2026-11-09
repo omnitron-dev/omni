@@ -426,7 +426,7 @@ export class OrchestratorService extends EventEmitter {
     private readonly pm: ProcessManager,
     private readonly stateStore: StateStore,
     cwd?: string,
-    private readonly ownerOptions: { reapForeignOrphans?: boolean; applicationRuntime?: boolean } = {},
+    private readonly ownerOptions: { reapForeignOrphans?: boolean; allowSdklessBootstrap?: boolean } = {},
   ) {
     super();
     this.cwd = cwd ?? process.cwd();
@@ -448,7 +448,7 @@ export class OrchestratorService extends EventEmitter {
   }
 
   private async bootstrapRuntime(bootstrap: string): Promise<string> {
-    return this.ownerOptions.applicationRuntime ? applicationBootstrapRuntime(bootstrap, BOOTSTRAP_PROCESS_PATH) : BOOTSTRAP_PROCESS_PATH;
+    return applicationBootstrapRuntime(bootstrap, BOOTSTRAP_PROCESS_PATH, this.ownerOptions.allowSdklessBootstrap ?? true);
   }
 
   /**

@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-storage",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "description": "Object storage adapters and lifecycle integration for Titan applications",
   "type": "module",
   "main": "dist/index.js",

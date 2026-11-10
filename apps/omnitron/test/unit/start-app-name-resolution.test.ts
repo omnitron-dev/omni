@@ -23,13 +23,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import 'reflect-metadata';
 
+import { registeredAppName } from '../../src/orchestrator/app-name.js';
 import { DaemonRpcService } from '../../src/daemon/daemon.rpc-service.js';
 import type { IEcosystemConfig } from '../../src/config/types.js';
 
 /** The config as it is on disk: bare names, one entry per app. */
 function ecosystem(): IEcosystemConfig {
   return {
-    project: 'downstream',
+    project: 'acme',
     stacks: { dev: {} },
     apps: [
       { name: 'main', bootstrap: './apps/main/src/bootstrap.ts' },
@@ -52,13 +53,7 @@ function serviceWith(config: IEcosystemConfig, registry: Record<string, string> 
   // The orchestrator owns the processes — that is the boundary. Its name
   // resolution is production's, reproduced here only as far as this test
   // needs: a handle exists under the canonical key.
-  const resolve = (name: string): string | undefined => {
-    if (registry[name]) return name;
-    // Production resolves by path SEGMENT (`resolveAppName`), never by string
-    // suffix — which is what keeps `.../notpayments` from reaching `payments`.
-    const seg = name.split('/').pop();
-    return Object.keys(registry).find((k) => k.split('/').pop() === seg);
-  };
+  const resolve = (name: string) => registeredAppName(name, Object.keys(registry));
   const orchestrator: any = {
     startApp: async (entry: { name: string }) => {
       started.push(entry.name);
@@ -128,6 +123,21 @@ describe('startApp — the name an operator can see', () => {
 
     await expect(ctx.svc.startApp({ name: 'acme/dev/payments' })).rejects.toThrow(/stack start/i);
     expect(ctx.started).toHaveLength(0);
+  });
+
+  it('uses the selected registered definition before an unscoped declaration with the same name', async () => {
+    const registry = { 'alpha/dev/pricing': 'stopped', 'beta/local/pricing': 'online' };
+    const c = serviceWith({ project: 'controller', apps: [{ name: 'pricing', script: 'wrong.js' }] } as IEcosystemConfig, registry);
+    expect((await c.svc.startApp({ name: 'alpha/dev/pricing' })).name).toBe('alpha/dev/pricing');
+    expect(c.started).toEqual(['alpha/dev/pricing']);
+    await expect(c.svc.startApp({ name: 'pricing' })).rejects.toThrow(/ambiguous/);
+    await expect(c.svc.startApp({ name: 'gamma/test/pricing' })).rejects.toThrow(/stack start/);
+    expect(c.started).toHaveLength(1);
+  });
+
+  it('refuses a different stack of the same project when it has no registered handle', async () => {
+    await expect(ctx.svc.startApp({ name: 'acme/prod/payments' })).rejects.toThrow(/stack start acme prod/);
+    expect(ctx.started).toEqual([]);
   });
 
   it('does not match a different app that shares a suffix', async () => {

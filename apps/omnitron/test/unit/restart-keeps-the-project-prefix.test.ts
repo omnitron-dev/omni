@@ -52,7 +52,8 @@ function build() {
     // A project config: `project` is what tells the orchestrator these entries
     // are its own to start. The daemon's own config has no such field, and
     // that is the distinction the refusal below turns on.
-    project: 'downstream',
+    project: 'acme',
+    stacks: { dev: { type: 'local' } },
     apps: [
       { name: 'main', bootstrap: './apps/main/src/bootstrap.ts' },
       { name: 'payments', bootstrap: './apps/payments/src/bootstrap.ts' },
@@ -90,6 +91,7 @@ describe('restart with no live handle', () => {
   it('leaves a bare request bare', async () => {
     // `omnitron restart payments` in a single-project setup must not invent a
     // prefix that no stack owns.
+    ctx.orch.config.stacks = {};
     await ctx.orch.restartApp('payments');
     expect(ctx.started[0]!.name).toBe('payments');
   });
@@ -99,8 +101,9 @@ describe('restart with no live handle', () => {
     // cross-project administrative run — and must survive untouched.
     ctx.orch.config = { project: 'downstream', apps: [{ name: 'other/prod/payments', bootstrap: './b.ts' }] };
 
-    await ctx.orch.restartApp('acme/dev/payments');
-
+    await expect(ctx.orch.restartApp('acme/dev/payments')).rejects.toThrow(/Unknown app/);
+    expect(ctx.started).toEqual([]);
+    await ctx.orch.restartApp('other/prod/payments');
     expect(ctx.started[0]!.name).toBe('other/prod/payments');
   });
 

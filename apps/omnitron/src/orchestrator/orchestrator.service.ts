@@ -1,3 +1,4 @@
+import { configuredStartEntry, effectiveAppName, ensureNamespacedEntry, registeredAppName } from './app-name.js';
 import { Errors } from '@omnitron-dev/titan/errors';
 import { OWNER_CAPABILITIES } from '../daemon/execution-capabilities.js';
 import { parsePoolScaleRequest, assertPoolScaleTarget } from '../shared/pool-scale.js';
@@ -156,44 +157,7 @@ function mapStrategy(strategy: string): SupervisionStrategy {
   }
 }
 
-/**
- * Strip the `${project}/${stack}/` prefix from a handle key (or
- * leave a bare name untouched). Used to identify "the same physical
- * app under any registration form" so duplicate registrations from
- * stack mode + bare-name RPC paths can be deduplicated.
- *
- * Examples:
- *   effectiveAppName('omni/dev/payments') === 'payments'
- *   effectiveAppName('payments')           === 'payments'
- *   effectiveAppName('a/b/c/payments')     === 'payments'  (last segment)
- */
-export function effectiveAppName(key: string): string {
-  const idx = key.lastIndexOf('/');
-  return idx >= 0 ? key.slice(idx + 1) : key;
-}
-
-/**
- * Auto-promote a bare `entry.name` to canonical `${project}/${stack}/${name}`
- * form when the env carries OMNITRON_PROJECT + OMNITRON_STACK. The stack-mode
- * boot path (ProjectService.startStack) already prefixes the name explicitly;
- * this helper closes every other entry point that could otherwise register a
- * bare-name handle which then becomes invisible to the stack-prefix-based
- * UI lookup (ProjectService.toStackInfo filters on `${project}/${stack}/`).
- *
- * Idempotent: if the entry already looks namespaced (or env lacks the keys),
- * the input is returned unchanged. An entry qualified under a DIFFERENT
- * project/stack is preserved too — that's operator intent (cross-project
- * administrative run), not a bug.
- */
-export function ensureNamespacedEntry(entry: IEcosystemAppEntry): IEcosystemAppEntry {
-  const project = entry.env?.['OMNITRON_PROJECT'];
-  const stack = entry.env?.['OMNITRON_STACK'];
-  if (!project || !stack) return entry;
-  const canonicalPrefix = `${project}/${stack}/`;
-  if (entry.name.startsWith(canonicalPrefix)) return entry;
-  if (entry.name.includes('/')) return entry;
-  return { ...entry, name: `${canonicalPrefix}${entry.name}` };
-}
+export { effectiveAppName, ensureNamespacedEntry } from './app-name.js';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -1645,40 +1609,14 @@ export class OrchestratorService extends EventEmitter {
       // this exact shape and names the command that works; this is the same
       // refusal on the same reasoning, at the point where "no live handle" is
       // already known.
-      const qualified = name.includes('/');
-      const ownProject = (this.config as { project?: string } | undefined)?.project;
-      if (qualified && !ownProject) {
-        const [project, stack] = name.split('/');
-        throw new Error(
-          `'${name}' belongs to a registered project, which this daemon restarts through its ` +
-            `stack. Use \`omnitron stack start ${project} ${stack}\`, or restart the app by its ` +
-            `bare name if you mean the daemon's own config.`,
-        );
-      }
-
-      // P1-F — fall through to startApp when there's no live handle but
-      // the ecosystem config declares the app. Operators expect
-      // `omnitron restart foo` to work even when `foo` was never started
-      // (or was stopped, or crashed and was reaped). Previously this
-      // threw "Unknown app", forcing the operator to first run start
-      // explicitly.
-      const effective = effectiveAppName(name);
-      const entry = this.config?.apps.find(
-        (a) => a.name === name || a.name === effective || effectiveAppName(a.name) === effective,
-      );
+      const entry = this.config && configuredStartEntry(name, this.config);
       if (entry) {
-        this.logger.info({ app: name }, 'restartApp: no live handle — falling through to startApp');
-        // Restart under the name the OPERATOR asked for. The match above
-        // accepts a bare entry for a qualified request, and handing it to
-        // `startApp` unchanged re-registers the app bare —
-        // `ensureNamespacedEntry` leaves an entry with no OMNITRON_PROJECT /
-        // OMNITRON_STACK env alone by design. The app then silently leaves its
-        // stack, because `ProjectService.toStackInfo` filters handles on the
-        // `${project}/${stack}/` prefix.
-        const requested = name.includes('/') && !entry.name.includes('/')
-          ? { ...entry, name }
-          : entry;
-        return this.startApp(requested);
+        this.logger.info({ app: entry.name }, 'Restarting declared application with no live handle');
+        return this.startApp(entry);
+      }
+      if (name.includes('/')) {
+        const [project, stack] = name.split('/');
+        throw new Error("Unknown app '" + name + "'. To start the registered stack use: omnitron stack start " + project + ' ' + stack);
       }
       throw new Error(`Unknown app: ${name}`);
     }
@@ -1854,29 +1792,8 @@ export class OrchestratorService extends EventEmitter {
    */
   resolveAppName(rawName: string): string | undefined {
     if (this.handles.has(rawName)) return rawName;
-
-    // A qualified name is an ADDRESS, and the only handle that satisfies it
-    // is the one with that address. Falling through to the short-name match
-    // answered a question about one deployment with another's data:
-    //
-    //     omnitron logs sample/deployed/main   →  sample/dev/main
-    //
-    // — the node's app asked for, this laptop's app printed, with nothing
-    // said. `startApp` already refuses this for the same reason ("a
-    // PROJECT-QUALIFIED name with no live handle is not this daemon's to
-    // start"); the resolver every other caller goes through did not.
     if (rawName.includes('/')) return undefined;
-
-    const effective = effectiveAppName(rawName);
-    const matches: string[] = [];
-    for (const key of this.handles.keys()) {
-      if (effectiveAppName(key) === effective) matches.push(key);
-    }
-    if (matches.length === 0) return undefined;
-    if (matches.length === 1) return matches[0]!;
-    throw new Error(
-      `App name '${rawName}' is ambiguous — multiple matches: ${matches.join(', ')}. Use the full canonical name.`,
-    );
+    return registeredAppName(rawName, this.handles.keys());
   }
 
   /**

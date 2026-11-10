@@ -29,7 +29,7 @@ import type {
   PoolDiagnosticsDto,
   LogPathsDto,
 } from '../config/types.js';
-import { effectiveAppName } from '../orchestrator/orchestrator.service.js';
+import { configuredStartEntry, withDefaultStack } from '../orchestrator/app-name.js';
 import { worstVerdict } from '../orchestrator/app-health.js';
 import { redactEnv } from '../shared/redact-env.js';
 import type { AuditService } from '../services/audit.service.js';
@@ -70,128 +70,27 @@ export class DaemonRpcService implements IDaemonService {
   @Public({ auth: { roles: OPERATOR_ROLES } })
   async startApp(data: { name: string }): Promise<ProcessInfoDto> {
     this.assertLifecycleMutable?.();
-    const entry = this.findConfiguredApp(data.name);
-    if (!entry) {
-      // Nothing in THIS daemon's ecosystem config — but a project stack
-      // registers handles the daemon never declared, and those are the names
-      // `list` prints. `stop`, `restart` and `reload` all resolve through the
-      // registry; `start` alone stopped at the config, so every downstream backend
-      // could be stopped and restarted and not started: `omnitron start
-      // acme/dev/storage` answered "App with id acme/dev/storage not found"
-      // directly under an `ls` row reading `stopped`.
-      //
-      // The config still wins where it has an opinion; this only reaches
-      // names it has none about.
-      const known = this.orchestrator.getApp(data.name);
-      if (known) {
-        // Already up, or on its way: `start` is idempotent, not a second
-        // spawn racing the first.
-        if (known.status === 'online' || known.status === 'starting') return known;
-        await this.orchestrator.startKnownApp(data.name);
-        return this.orchestrator.getApp(data.name)!;
-      }
-
-      if (data.name.includes('/')) {
-        const [project, stack] = data.name.split('/');
-        throw Errors.notFound(
-          'App',
-          `${data.name} — this daemon declares no such app and none is registered under that name. ` +
-            `If it belongs to a registered project, bring its stack up with ` +
-            `\`omnitron stack start ${project} ${stack}\``,
-        );
-      }
-      throw Errors.notFound('App', data.name);
+    const known = this.orchestrator.getApp(data.name);
+    if (known) {
+      if (known.status === 'online' || known.status === 'starting') return known;
+      const started = await this.orchestrator.startKnownApp(known.name);
+      const observed = started && this.orchestrator.getApp(known.name);
+      if (!observed) throw Errors.notFound('Registered application', known.name);
+      return observed;
     }
-
-    // Accepting the canonical name is only half of it. `namespaceEntry` builds
-    // the handle key from THIS daemon's config, and a daemon supervising
-    // registered projects has no `project` of its own — so the promotion is a
-    // no-op and the app would register under the bare name, beside the
-    // canonical entry the stack owns, in classic mode.
-    //
-    // Observed on the stand: `omnitron start acme/dev/storage` reported
-    // success and left `storage` (classic, errored) in the state store next to
-    // the stack's six. Refusing and naming the command that does work is the
-    // honest answer; succeeding wrongly is worse than the "not found" this
-    // path used to give, because nothing tells the operator it went sideways.
-    if (data.name.includes('/') && !this.config.project) {
+    const entry = configuredStartEntry(data.name, this.config);
+    if (entry) {
+      await this.orchestrator.startApp(entry);
+      const observed = this.orchestrator.getApp(entry.name);
+      if (!observed) throw Errors.notFound('Started application', entry.name);
+      return observed;
+    }
+    if (data.name.includes('/')) {
       const [project, stack] = data.name.split('/');
-      throw Errors.badRequest(
-        `'${data.name}' belongs to a registered project, which this daemon starts through its stack. ` +
-          `Use \`omnitron stack start ${project} ${stack}\`, or start the app by its bare name ` +
-          `('${entry.name}') if you mean the daemon's own config.`
-      );
+      throw Errors.notFound('App', data.name + ' — no registered handle or matching declaration. Use `omnitron stack start ' +
+        project + ' ' + stack + '` to start that stack.');
     }
-
-    // Inject project + default-stack context so `ensureNamespacedEntry`
-    // promotes a bare-name `entry.name` to the canonical
-    // `${project}/${stack}/${name}` form. Without this, every CLI
-    // `omnitron start <bareName>` (and every webapp "Start" button)
-    // registered handles under bare keys that the stack/project view
-    // filtered out by prefix — same fault class as the user-reported
-    // "main shows stopped" bug.
-    const enriched = this.namespaceEntry(entry);
-    await this.orchestrator.startApp(enriched);
-    return this.orchestrator.getApp(data.name)!;
-  }
-
-  /**
-   * Find the config entry an operator means.
-   *
-   * The ecosystem config holds BARE names; `omnitron list` prints canonical
-   * handle keys (`acme/dev/payments`), because that is what a project-scoped app
-   * is registered under. Comparing the request to the config by string
-   * equality therefore rejected the only name an operator can see, with "App
-   * with id acme/dev/payments not found" printed directly under a row saying it
-   * exists. Every other entry point — `getApp`, `stopApp`, `restartApp`,
-   * `reloadApp` — already resolves through `orchestrator.resolveAppName`; this
-   * one compared strings.
-   *
-   * Matched by path SEGMENT, never by string suffix: `acme/dev/notpayments` must
-   * not reach `payments`. Ambiguity is an error rather than a guess, for the
-   * reason `resolveAppName` gives — operating on the wrong app is worse than
-   * refusing.
-   */
-  private findConfiguredApp(requested: string): import('../config/types.js').IEcosystemAppEntry | undefined {
-    const exact = this.config.apps.find((a) => a.name === requested);
-    if (exact) return exact;
-
-    const wanted = effectiveAppName(requested);
-    const matches = this.config.apps.filter((a) => effectiveAppName(a.name) === wanted);
-    if (matches.length === 1) return matches[0];
-    if (matches.length > 1) {
-      throw Errors.badRequest(
-        `App name '${requested}' is ambiguous — the config declares ${matches
-          .map((a) => a.name)
-          .join(', ')}. Use the name exactly as declared.`
-      );
-    }
-    return undefined;
-  }
-
-  /**
-   * Decorate an ecosystem entry with the daemon's default project +
-   * stack env so downstream `ensureNamespacedEntry` promotes the
-   * handle key. No-op when the entry already declares them or the
-   * daemon config lacks a project name (multi-project deployments
-   * MUST go through the stack-mode startStack path instead).
-   */
-  private namespaceEntry(entry: import('../config/types.js').IEcosystemAppEntry): import('../config/types.js').IEcosystemAppEntry {
-    const project = this.config.project;
-    if (!project) return entry;
-    if (entry.env?.['OMNITRON_PROJECT'] && entry.env?.['OMNITRON_STACK']) return entry;
-    const stacks = this.config.stacks ?? {};
-    const stackKeys = Object.keys(stacks);
-    const defaultStack = stackKeys.length === 1 ? stackKeys[0] : (stacks['dev'] ? 'dev' : stackKeys[0]);
-    if (!defaultStack) return entry;
-    return {
-      ...entry,
-      env: {
-        ...entry.env,
-        OMNITRON_PROJECT: project,
-        OMNITRON_STACK: defaultStack,
-      },
-    };
+    throw Errors.notFound('App', data.name);
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
@@ -200,7 +99,7 @@ export class DaemonRpcService implements IDaemonService {
     // Bulk startup must carry the same project/stack identity as a single-app
     // start. Preserve declared names/dependencies for startup ordering; the owner
     // promotes each entry when it registers the actual process handle.
-    await this.orchestrator.startAll({ ...this.config, apps: this.config.apps.map(entry => this.namespaceEntry(entry)) });
+    await this.orchestrator.startAll({ ...this.config, apps: this.config.apps.map(entry => withDefaultStack(entry, this.config)) });
     return this.orchestrator.list();
   }
 

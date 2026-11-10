@@ -1,3 +1,4 @@
+import { registeredAppName } from '../orchestrator/app-name.js';
 import { parsePoolScaleRequest } from '../shared/pool-scale.js';
 import type { LogCollectorService } from '../services/log-collector.service.js';
 import { logEntryOf } from '../monitoring/log-entry.js';
@@ -347,17 +348,18 @@ export class ExecutionClient {
     return withControlDeadline(this.rpc().read({ method, args }), 15_000, `Execution read ${method} timed out; application state is unknown`);
   }
 
-  private resolve(name: string): string | undefined {
+  private registeredApp(name: string) {
     const apps = this.view().apps;
-    if (apps.some(app => app.info.name === name)) return name;
-    const matches = apps.filter(app => app.info.name.split('/').at(-1) === name);
-    return matches.length === 1 ? matches[0]!.info.name : undefined;
+    const exact = apps.find(app => app.info.name === name);
+    if (exact || name.includes('/')) return exact;
+    const canonical = registeredAppName(name, apps.map(app => app.info.name));
+    return canonical === undefined ? undefined : apps.find(app => app.info.name === canonical);
   }
 
   private handle(name: string): AppExecutionView | undefined {
-    const canonical = this.resolve(name) ?? name;
-    const snapshot = this.view().apps.find(app => app.info.name === canonical);
+    const snapshot = this.registeredApp(name);
     if (!snapshot) return undefined;
+    const canonical = snapshot.info.name;
     return {
       ...snapshot.info, entry: snapshot.entry, startedAt: snapshot.startedAt,
       instanceCount: snapshot.instanceCount, lastMetrics: snapshot.lastMetrics, lastExit: snapshot.lastExit,
@@ -392,17 +394,19 @@ export class ExecutionClient {
       },
       refreshObservation: async () => { await withControlDeadline(this.recoverySnapshot(), 4000, 'Execution owner observation timed out'); },
       list: (filter?: { prefix?: string }) => this.view().apps.filter(app => !filter?.prefix || app.info.name.startsWith(filter.prefix)).map(app => app.info),
-      getApp: (name: string) => this.view().apps.find(app => app.info.name === (this.resolve(name) ?? name))?.info ?? null,
+      getApp: (name: string) => this.registeredApp(name)?.info ?? null,
       getHandle: (name: string) => this.handle(name),
-      resolveAppName: (name: string) => this.resolve(name),
+      resolveAppName: (name: string) => this.registeredApp(name)?.info.name,
       listHandleNames: (prefix?: string) => this.view().apps.map(app => app.info.name).filter(name => !prefix || name.startsWith(prefix)),
       getWorkerHandle: (id: string) => this.view().workers.find(worker => worker.info.id === id),
       getChildProcessInfo: (id: string) => this.view().workers.find(worker => worker.info.id === id)?.info,
-      getAppStatus: (name: string) => this.handle(name)?.status,
+      getAppStatus: (name: string) => this.registeredApp(name)?.info.status,
       getBuildWatchedApps: () => this.view().watchedApps,
-      getLogs: (name?: string, lines = 100) => this.view().apps.filter(app => !name || app.info.name === this.resolve(name))
-        .map(app => ({ app: app.info.name, lines: app.logs.slice(-lines) })),
-      hasDeclaredReadiness: (name: string) => this.view().apps.find(app => app.info.name === this.resolve(name))?.declaredReadiness ?? false,
+      getLogs: (name?: string, lines = 100) => {
+        const measured = name === undefined ? this.view().apps : [this.registeredApp(name)];
+        return measured.flatMap(app => app ? [{ app: app.info.name, lines: app.logs.slice(-lines) }] : []);
+      },
+      hasDeclaredReadiness: (name: string) => this.registeredApp(name)?.declaredReadiness ?? false,
       onAppLog: (handler: (name: string, line: string, context?: ProcessOutputContext) => void) => { this.logHandlers.push(handler); },
       // The resident owner owns application listeners; backend handoff cannot replace them.
       setTopologyDirectory: () => {},

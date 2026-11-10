@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-redis",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Redis module for Titan framework with connection management, clustering, and health checks",
   "author": "LuxQuant",
   "license": "MIT",

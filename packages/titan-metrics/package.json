@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-metrics",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Titan-native metrics module — counters, gauges, histograms, time-series storage",
   "author": "LuxQuant",
   "license": "MIT",

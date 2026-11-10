@@ -147,7 +147,7 @@ async function installDevelopment(root, profile) {
   await seedLock(root, dir, distribution);
   // The workspace hook selects the same graph for normal pnpm install, run and exec.
   await atomic(path.join(dir, 'install.json'), JSON.stringify(profile, null, 2) + '\n');
-  await command('pnpm', ['install', '--no-frozen-lockfile', '--config.confirm-modules-purge=false'], root);
+  await command('pnpm', ['install', '--force', '--no-frozen-lockfile', '--config.confirm-modules-purge=false'], root);
   if (sha256(await fs.readFile(path.join(root, 'pnpm-lock.yaml'))) !== profile.lockSha256)
     throw Error('Distributed lockfile changed during the local installation');
   await verifyLinks(root, profile);
@@ -191,7 +191,7 @@ async function verifyLinks(root, profile) {
 }
 async function frozen(root) {
   await fs.rm(path.join(statePath(root), 'install.json'), { force: true });
-  await command('pnpm', ['install', '--frozen-lockfile', '--config.confirm-modules-purge=false'], root);
+  await command('pnpm', ['install', '--force', '--frozen-lockfile', '--config.confirm-modules-purge=false'], root);
 }
 
 async function build(source, names, signal) {

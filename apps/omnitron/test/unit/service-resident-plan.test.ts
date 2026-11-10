@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({ home: '', directory: '', artifact: '', pid: 123 as number | null,
   hash: 'a'.repeat(64), certificateHash: '', certified: true, oldArtifact: '', oldHash: 'b'.repeat(64),
-  leaseHeld: false, ownerError: '', artifactCalls: [] as string[], requirements: { stackControl: 1 } as Record<string, number> }));
+  checkpointObserved: undefined as (() => void) | undefined, leaseHeld: false, ownerError: '', artifactCalls: [] as string[], requirements: { stackControl: 1 } as Record<string, number> }));
 vi.mock('node:child_process', async importOriginal => ({
   ...await importOriginal<typeof import('node:child_process')>(),
   execFileSync: vi.fn(),
@@ -40,7 +40,7 @@ vi.mock('../../src/daemon/pid-manager.js', () => ({ PidManager: class {
   getPid() { return state.pid; } isRunning() { return state.pid !== null; }
 } }));
 vi.mock('../../src/daemon/backend-recovery-journal.js', () => ({ BackendRecoveryJournal: class {
-  read() { return state.certified ? { status: 'ready', record: { previousPid: 123, runtimeHash: state.certificateHash || state.hash,
+  read() { state.checkpointObserved?.(); return state.certified ? { status: 'ready', record: { previousPid: 123, runtimeHash: state.certificateHash || state.hash,
     environment: { OMNITRON_HOME: state.home, OMNITRON_DATABASE_URL: 'fixture-daemon-database', PATH: '/fixture/bin' },
   } } : { status: 'invalid', reason: 'Application ownership is changing' }; }
   async close() {}
@@ -339,12 +339,15 @@ it('waits for checkpoint publication outside the installation lease and revalida
   const { prepareResidentService } = await import('../../src/commands/service-resident.js');
   state.certified = false;
   let heldWhileWaiting: boolean | undefined;
-  const timer = setTimeout(() => { heldWhileWaiting = state.leaseHeld; state.certified = true; }, 25);
+  state.checkpointObserved = () => {
+    state.checkpointObserved = undefined;
+    setImmediate(() => { heldWhileWaiting = state.leaseHeld; state.certified = true; });
+  };
   try {
     const plan = await prepareResidentService({ ...inputs(), recoveryWaitMs: 1000 });
     expect(heldWhileWaiting).toBe(false);
     expect(plan.config.environment['OMNITRON_DATABASE_URL']).toBe('fixture-daemon-database');
-  } finally { clearTimeout(timer); }
+  } finally { state.checkpointObserved = undefined; }
 });
 
 it('explains checkpoint refusal and writes no partial service plan', async () => {

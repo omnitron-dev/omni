@@ -1174,18 +1174,22 @@ infra
 
 infra
   .command('psql [database]')
-  .description('Open psql shell to PostgreSQL')
-  .action(async (database) => {
+  .description('Open psql on this machine or run one SQL command')
+  .option('--stack <project/stack>', 'Select the local stack that owns PostgreSQL')
+  .option('-c, --command <sql>', 'Run SQL and return its exit status')
+  .action(async (database, opts) => {
     const { infraPsqlCommand } = await import('../commands/infra.js');
-    await infraPsqlCommand(database);
+    await infraPsqlCommand(database, opts);
   });
 
 infra
-  .command('redis-cli')
-  .description('Open redis-cli shell')
-  .action(async () => {
+  .command('redis-cli [arguments...]')
+  .description('Open redis-cli on this machine or run one Redis command')
+  .option('--stack <project/stack>', 'Select the local stack that owns Redis')
+  .option('--db <index>', 'Select a Redis logical database')
+  .action(async (args, opts) => {
     const { infraRedisCliCommand } = await import('../commands/infra.js');
-    await infraRedisCliCommand();
+    await infraRedisCliCommand(opts, args);
   });
 
 infra

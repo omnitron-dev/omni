@@ -526,81 +526,66 @@ export async function infraLogsCommand(
   }
 }
 
-/**
- * The running container for a declared service, found by its label.
- *
- * A container's NAME carries the project-and-environment prefix
- * (`sample-test-postgres`); only the `omnitron.service` label says which
- * service it is. These two commands used to guess the name — `omnitron-postgres`,
- * then `omnitron-pg`, then `omnitron-redis` — and on a host where the stack
- * is anything but the default they all missed. Measured on the `sample/test`
- * node: `sample-test-postgres` and `sample-test-redis` both up and healthy, and
- * `infra psql` answered "No PostgreSQL container found. Run: omnitron infra up"
- * — the wrong cause, and advice to re-provision a database that was serving.
- */
-async function runningContainerForService(...services: string[]): Promise<ContainerState | null> {
-  const managed = await listManagedContainers();
-  for (const service of services) {
-    const found = managed.find((c) => c.service === service && c.status === 'running');
-    if (found) return found;
-  }
-  return null;
-}
-
-/**
- * Hand the terminal to a tool inside a container.
- *
- * The lookup happens BEFORE the exec so the two outcomes stay separate: a
- * container that is not there is this command's problem to explain, while a
- * non-zero exit from psql or redis-cli belongs to the user's own session and
- * must not be reported as a missing container. The previous form could not
- * tell them apart — quitting psql after a failed query looked exactly like an
- * absent container and sent the reader to `infra up`.
- */
+/** Open only a service whose identity is unambiguous in the local Docker inventory. */
 async function execInteractively(
   what: string,
   services: string[],
+  scope: string | undefined,
   argv: (container: ContainerState) => string[],
 ): Promise<void> {
-  const container = await runningContainerForService(...services);
-  if (!container) {
-    const managed = await listManagedContainers();
-    const present = managed.filter((c) => services.includes(c.service ?? '')).map((c) => `${c.name} (${c.status})`);
-    log.error(
-      present.length > 0
-        ? `No RUNNING ${what} container. Found: ${present.join(', ')}. Start it with: omnitron infra up`
-        : `No ${what} container on this host. Run: omnitron infra up`,
-    );
-    return;
-  }
-
-  const { execFileSync } = await import('node:child_process');
   try {
-    execFileSync('docker', ['exec', '-it', container.name, ...argv(container)], { stdio: 'inherit' });
+    const wanted = scope === undefined ? undefined : parseStack(scope);
+    if (typeof wanted === 'string') throw new Error(wanted);
+    const managed = await listManagedContainers({ orThrow: true });
+    const scoped = wanted ? managed.filter(c => c.project === wanted.project && c.stack === wanted.stack) : managed;
+    // Prefer the application service. A stopped application database must never select the control database.
+    const service = services.find(name => scoped.some(c => c.service === name));
+    const matches = service ? scoped.filter(c => c.service === service) : [];
+    if (!matches.length) throw new Error('No ' + what + ' container on this host' + (scope ? ' for ' + scope : '') +
+      '. Inspect the target with omnitron infra status' + (scope ? ' --stack ' + scope : '') + '.');
+    if (matches.length > 1) throw new Error('Several ' + what + ' containers match. Select --stack <project>/<stack>. Candidates: ' +
+      matches.map(c => stackLabel(c) + ' (' + c.name + ')').sort().join(', '));
+    const container = matches[0]!;
+    if (container.status !== 'running') throw new Error(what + ' container ' + container.name + ' (' + container.status + ')');
+    const { execFileSync } = await import('node:child_process');
+    const terminal = process.stdin.isTTY && process.stdout.isTTY ? '-it' : '-i';
+    execFileSync('docker', ['exec', terminal, container.containerId ?? container.name, ...argv(container)], { stdio: 'inherit' });
   } catch (err) {
-    // The container was found a moment ago, so this is the tool's own exit
-    // status or a docker failure — report it as such rather than as absence.
     const status = (err as { status?: number }).status;
-    if (typeof status === 'number' && status !== 0) return; // the user's own session ended non-zero
-    log.error(`Could not attach to ${container.name}: ${(err as Error).message}`);
+    // psql/redis-cli and Docker already wrote their diagnostic to the inherited terminal or pipe.
+    if (typeof status === 'number' && status > 0) { process.exitCode = status; return; }
+    log.error(err instanceof Error ? err.message : String(err));
+    process.exitCode = 1;
   }
 }
 
-export async function infraPsqlCommand(database?: string): Promise<void> {
+export async function infraPsqlCommand(database?: string, options: { stack?: string; command?: string } = {}): Promise<void> {
   const db = database ?? 'postgres';
-  // The stack's own Postgres first, then the daemon's internal one: a caller
-  // asking for `psql` wants the application database when there is one.
-  await execInteractively('PostgreSQL', ['postgres', 'omnitron-pg'], (c) => [
-    'psql',
-    '-U',
-    c.service === 'omnitron-pg' ? 'omnitron' : 'postgres',
-    '-d',
-    db,
+  if (options.stack !== undefined && (db.includes('=') || /^postgres(?:ql)?:\/\//i.test(db))) {
+    log.error('A scoped database shell takes a database name; a connection string can select a different server.');
+    process.exitCode = 1;
+    return;
+  }
+  await execInteractively('PostgreSQL', options.stack === undefined ? ['postgres', 'omnitron-pg'] : ['postgres'], options.stack, c => [
+    'psql', '-U', c.service === 'omnitron-pg' ? 'omnitron' : 'postgres', '-d', db,
+    ...(options.command === undefined ? [] : ['-v', 'ON_ERROR_STOP=1', '-c', options.command]),
   ]);
 }
 
-export async function infraRedisCliCommand(): Promise<void> {
-  await execInteractively('Redis', ['redis'], () => ['redis-cli']);
+export async function infraRedisCliCommand(options: { stack?: string; db?: string } = {}, args: string[] = []): Promise<void> {
+  if (options.db !== undefined && (!/^\d+$/.test(options.db) || !Number.isSafeInteger(Number(options.db)))) {
+    log.error('--db takes a nonnegative Redis database index');
+    process.exitCode = 1;
+    return;
+  }
+  if (args.length && !/^[a-z][\w.-]*$/i.test(args[0]!)) {
+    log.error('Pass a Redis command followed by its arguments. Use --db to select a database.');
+    process.exitCode = 1;
+    return;
+  }
+  await execInteractively('Redis', ['redis'], options.stack, () => [
+    'redis-cli', ...(options.db === undefined ? [] : ['-n', options.db]), ...(args.length ? ['-e', ...args] : []),
+  ]);
 }
 
 export async function infraMigrateCommand(app?: string, options: { dryRun?: boolean; stack?: string } = {}): Promise<void> {

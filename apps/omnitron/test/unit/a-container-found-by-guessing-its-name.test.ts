@@ -23,7 +23,7 @@
  * both for a stopped unit and for a unit that does not exist.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const logged: Array<{ level: string; text: string }> = [];
 vi.mock('@xec-sh/kit', () => ({
@@ -57,6 +57,9 @@ const onTheTestNode = [
   { name: 'sample-test-pg', service: 'omnitron-pg', status: 'running', image: 'postgres:17-alpine' },
   { name: 'sample-test-redis', service: 'redis', status: 'running', image: 'redis:7-alpine' },
 ];
+
+const previousExitCode = process.exitCode;
+afterEach(() => { process.exitCode = previousExitCode; });
 
 const said = () => logged.map((l) => l.text).join('\n');
 const dockerArgs = () => (execFileSync.mock.calls[0]?.[1] ?? []) as string[];
@@ -150,5 +153,44 @@ describe('the two ways of not getting a shell stay apart', () => {
     await infraPsqlCommand();
 
     expect(said()).toMatch(/No PostgreSQL container on this host/);
+  });
+});
+
+describe('selection across project stacks', () => {
+  const inventory = ['alpha', 'beta'].flatMap(project => ['postgres', 'redis'].map(service => ({
+    project, stack: 'dev', service, name: project + '-dev-' + service, containerId: 'id-' + project + '-' + service, status: 'running',
+  })));
+  it('refuses ambiguity even when only one of the matching databases is running', async () => {
+    listManagedContainers.mockResolvedValue(inventory.map(c => c.project === 'alpha' ? { ...c, status: 'stopped' } : c));
+    await infraPsqlCommand();
+    expect(said()).toContain('alpha/dev');
+    expect(said()).toContain('beta/dev');
+    expect(execFileSync).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+  it('executes in the inspected container ID with the exact database and query', async () => {
+    listManagedContainers.mockResolvedValue(inventory);
+    await infraPsqlCommand('market', { stack: 'beta/dev', command: 'SELECT current_database()' });
+    expect(dockerArgs()).toEqual(['exec', process.stdin.isTTY && process.stdout.isTTY ? '-it' : '-i', 'id-beta-postgres',
+      'psql', '-U', 'postgres', '-d', 'market', '-v', 'ON_ERROR_STOP=1', '-c', 'SELECT current_database()']);
+  });
+  it('refuses a missing application database even when a control store is present', async () => {
+    listManagedContainers.mockResolvedValue([{ ...onTheTestNode[1], project: 'alpha', stack: 'dev' }]);
+    await infraPsqlCommand('market', { stack: 'alpha/dev' });
+    expect(execFileSync).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+  it('refuses scoped connection strings and client flags that can redirect to a different server', async () => {
+    await infraPsqlCommand('host=unknown dbname=market', { stack: 'alpha/dev' });
+    await infraRedisCliCommand({ stack: 'alpha/dev' }, ['-h', 'unknown']);
+    expect(execFileSync).not.toHaveBeenCalled();
+    expect(listManagedContainers).not.toHaveBeenCalled();
+  });
+  it('preserves Redis arguments and the exit status returned to automation', async () => {
+    listManagedContainers.mockResolvedValue(inventory);
+    execFileSync.mockImplementation(() => { throw Object.assign(new Error('redis-cli failed'), { status: 2 }); });
+    await infraRedisCliCommand({ stack: 'alpha/dev', db: '3' }, ['XINFO', 'GROUPS', 'stream:trades']);
+    expect(dockerArgs()).toEqual(expect.arrayContaining(['id-alpha-redis', 'redis-cli', '-n', '3', '-e', 'XINFO', 'GROUPS', 'stream:trades']));
+    expect(process.exitCode).toBe(2);
   });
 });

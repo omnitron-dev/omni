@@ -24,7 +24,7 @@ export const postgresPreset: IServicePreset = {
     // executor is functional. Higher retry count covers slow boots
     // (volume create + WAL replay can take 15s+).
     type: 'command',
-    target: 'sh -c "psql -U postgres -d postgres -h /var/run/postgresql -tAc \\"SELECT 1\\" | grep -q 1"',
+    target: 'psql -U "$POSTGRES_USER" -d postgres -h /var/run/postgresql -tAc "SELECT 1" | grep -qx 1',
     interval: '3s',
     timeout: '5s',
     retries: 30,

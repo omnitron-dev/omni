@@ -17,6 +17,23 @@ import { describe, it, expect } from 'vitest';
 
 import { postgresPreset } from '../../src/infrastructure/presets/postgres.js';
 import { redisPreset } from '../../src/infrastructure/presets/redis.js';
+import { createDefaultRegistry } from '../../src/infrastructure/presets/index.js';
+
+it('passes database credentials as data and authenticates the Redis server and its health check with the same value', () => {
+  const registry = createDefaultRegistry();
+  const value = "fixture 'password' with spaces and $()";
+  const redis = registry.expand('redis', { preset: 'redis', secrets: { password: value } });
+  expect(redis.docker?.command?.slice(-2)).toEqual(['--requirepass', value]);
+  expect(redis.docker?.environment?.['REDISCLI_AUTH']).toBe(value);
+  expect(redis.healthCheck?.target).not.toContain(value);
+  expect(redis.healthCheck?.target).toContain('PONG');
+  expect(() => registry.expand('redis', { preset: 'redis', secrets: { password: value },
+    docker: { command: ['redis-server', '--requirepass', 'different'] } })).toThrow('disagree');
+  const pg = registry.expand('postgres', { preset: 'postgres', secrets: { user: value } });
+  expect(pg.docker?.environment?.['POSTGRES_USER']).toBe(value);
+  expect(pg.healthCheck?.target).toContain('"$POSTGRES_USER"');
+  expect(pg.healthCheck?.target).not.toContain(value);
+});
 
 /** `['-c', 'k=v']` pairs → `{ k: 'v' }`. */
 function settings(command: string[]): Record<string, string> {

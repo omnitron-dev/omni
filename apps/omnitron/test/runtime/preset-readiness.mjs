@@ -1,4 +1,4 @@
-/** Real preset readiness on disposable, memory-backed PostgreSQL and MinIO.
+/** Real preset readiness on disposable, memory-backed PostgreSQL, Redis and MinIO.
  * node test/runtime/preset-readiness.mjs dist [receipt.json]
  * Requires the preset images already installed; never pulls or touches managed containers.
  */
@@ -16,6 +16,7 @@ const dist = path.resolve(process.argv[2] || 'dist');
 const load = name => import(pathToFileURL(path.join(dist, 'infrastructure/presets', name + '.js')));
 const { postgresPreset } = await load('postgres');
 const { minioPreset } = await load('minio');
+const { createDefaultRegistry } = await load('index');
 const nonce = randomBytes(12).toString('hex');
 const owned = [];
 const report = { test: 'preset-readiness', nonce, liveActivation: false, passed: false, checks: [] };
@@ -32,10 +33,10 @@ const inspect = async resource => {
   assert(!value.Mounts.some(m => m.Type === 'volume'));
   return value;
 };
-const create = async (kind, image, args) => {
+const create = async (kind, image, args, command = kind === 'minio' ? ['server', '/data'] : []) => {
   const id = await exec(['create', '--pull=never', '--name', `omnitron-setup-qa-${nonce}-${kind}`,
     '--label', `omnitron.test=${nonce}`, '--network=none', '--cpus=1', '--memory=512m', '--memory-swap=512m',
-    '--pids-limit=128', ...args, image, ...(kind === 'minio' ? ['server', '/data'] : [])]);
+    '--pids-limit=128', ...args, image, ...command]);
   const resource = { id, image }; owned.push(resource);
   await inspect(resource); await exec(['start', id]);
   return command => exec(['exec', id, ...command]);
@@ -54,8 +55,18 @@ try {
   const pgImage = await exec(['image', 'inspect', postgresPreset.defaultImage, '--format', '{{.Id}}']);
   const minioImage = await exec(['image', 'inspect', minioPreset.defaultImage, '--format', '{{.Id}}']);
   const pg = await create('postgres', pgImage, ['--tmpfs', '/var/lib/postgresql/data:rw,size=256m',
-    '--shm-size=64m', '--env', 'POSTGRES_HOST_AUTH_METHOD=trust']);
+    '--shm-size=64m', '--env', 'POSTGRES_USER=postgres', '--env', 'POSTGRES_HOST_AUTH_METHOD=trust']);
   await wait(() => pg(['pg_isready', '-U', 'postgres']));
+  await pg(['sh', '-ec', postgresPreset.defaultHealthCheck.target]);
+  const password = nonce + " 'fixture $()";
+  const preset = createDefaultRegistry().expand('redis', { preset: 'redis', secrets: { password } });
+  const redisImage = await exec(['image', 'inspect', preset.docker.image, '--format', '{{.Id}}']);
+  const redis = await create('redis', redisImage, ['--tmpfs', '/data:rw,size=33554432',
+    '--env', 'REDISCLI_AUTH=' + password], preset.docker.command);
+  await wait(() => redis(['sh', '-ec', preset.healthCheck.target]));
+  assert.equal(await redis(['redis-cli', 'ping']), 'PONG');
+  assert.match(await redis(['env', '-u', 'REDISCLI_AUTH', 'redis-cli', 'ping']), /NOAUTH/);
+  report.checks.push('Redis requires the declared credential and its health probe authenticates');
   const database = 'setup\'"-fixture';
   const pgContext = { containerName: 'fixture', secrets: { user: 'postgres' }, logger,
     execInContainer: pg, userConfig: { databases: { [database]: { extensions: ['pgcrypto'] } } } };

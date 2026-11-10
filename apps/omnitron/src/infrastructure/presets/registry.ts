@@ -147,32 +147,23 @@ export class PresetRegistry {
       ...(Object.keys(hostMappings).length > 0 ? { portMappings: hostMappings } : {}),
     };
 
-    // Build health check — customize user secret (e.g., pg_isready -U <user>)
-    let healthCheck = preset.defaultHealthCheck;
-    if (preset.name === 'postgres' && mergedSecrets['user']) {
-      // Parametrise the user, keep the check. This used to replace the whole
-      // target with `pg_isready -U <user>` — the exact check the preset
-      // spends a paragraph explaining is not good enough, because it returns
-      // 0 the moment the postmaster accepts connections, while WAL replay or
-      // extension creation may still be running. So configuring a user
-      // silently downgraded the health check to the one the preset warns
-      // against, and only for the deployments that configure a user.
-      const user = mergedSecrets['user'];
-      healthCheck = {
-        ...healthCheck,
-        type: 'command',
-        target: `sh -c "psql -U ${user} -d postgres -h /var/run/postgresql -tAc \\"SELECT 1\\" | grep -q 1"`,
-      };
-    }
+    // Docker passes command arguments directly. Keep configured credentials out of shell programs.
     if (preset.name === 'redis' && mergedSecrets['password']) {
-      healthCheck = { ...healthCheck, type: 'command', target: `redis-cli -a ${mergedSecrets['password']} ping` };
+      const password = mergedSecrets['password'];
+      const command = [...(docker.command ?? ['redis-server'])];
+      const index = command.indexOf('--requirepass');
+      if (index >= 0 && (command[index + 1] !== password || command.indexOf('--requirepass', index + 1) >= 0))
+        throw new Error('Redis command and service credential disagree');
+      if (index < 0) command.push('--requirepass', password);
+      docker.command = command;
+      dockerEnv['REDISCLI_AUTH'] = password;
     }
 
     const result: IServiceRequirement = {
       type: preset.type,
       ports: mergedPorts,
       env: preset.generateEnvTemplates?.(config.config ?? {}) ?? {},
-      healthCheck,
+      healthCheck: preset.defaultHealthCheck,
       secrets: mergedSecrets,
       docker,
       _preset: config.preset,

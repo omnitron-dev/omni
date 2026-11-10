@@ -16,8 +16,8 @@ it('keeps ordinary pnpm config on clean installs and accepts only physical packa
     await fs.mkdir(pkg, { recursive: true });
     await fs.mkdir(state, { recursive: true });
     await fs.copyFile(new URL('../../bin/pnpmfile-sdk.mjs', import.meta.url), path.join(project, '.pnpmfile.mjs'));
-    const probe = () => exec(process.execPath, ['--input-type=module', '-e',
-      "import {hooks} from './.pnpmfile.mjs'; console.log(JSON.stringify(hooks.updateConfig({overrides:{other:'1'}})));"], { cwd: project })
+    const probe = (overrides: Record<string, string> = { other: '1' }) => exec(process.execPath, ['--input-type=module', '-e',
+      "import {hooks} from './.pnpmfile.mjs'; console.log(JSON.stringify(hooks.updateConfig({overrides:JSON.parse(process.argv[1])})));", JSON.stringify(overrides)], { cwd: project })
       .then(result => JSON.parse(result.stdout));
     expect(await probe()).toEqual({ overrides: { other: '1' } });
     const select = (links: Record<string, string>) => fs.writeFile(path.join(state, 'install.json'), JSON.stringify({
@@ -25,6 +25,11 @@ it('keeps ordinary pnpm config on clean installs and accepts only physical packa
     }));
     await select({ '@omnitron-dev/titan': pkg });
     expect(await probe()).toEqual({ lockfileDir: state, overrides: { other: '1', '@omnitron-dev/titan': 'link:' + pkg } });
+    const local = { '@fixture/archive@1': 'file:vendor/pkg.tgz', 'parent>folder': 'link:../local', kept: 'catalog:' };
+    expect((await probe(local)).overrides).toMatchObject({
+      '@fixture/archive@1': 'file:' + path.join(project, 'vendor/pkg.tgz').split(path.sep).join('/'),
+      'parent>folder': 'link:' + path.resolve(project, '../local').split(path.sep).join('/'), kept: 'catalog:',
+    });
     await select({ 'other': pkg });
     await expect(probe()).rejects.toThrow('Invalid Omnitron SDK package');
     await select({ '@omnitron-dev/titan': project });

@@ -22,6 +22,8 @@ reuse the selection. --no-watch installs the profile for a separate watch sessio
 registry restores the frozen distribution dependencies. Releases always read Git.`;
 
 const scope = '@omnitron-dev/';
+// Released hook templates eligible for the explicit, idempotent init upgrade.
+const previousBridgeHashes = new Set(['28220745dd5d0643c4ac64ef75e7c466a9863741bd23473bbbfccee5c5f7858b']);
 const statePath = (root) => path.join(root, '.omnitron', 'dev-sdk');
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const inside = (parent, child) => {
@@ -488,7 +490,9 @@ export async function sdkCommand(argv) {
       await fs.writeFile(bridge, template, { flag: 'wx' });
     } catch (error) {
       if (error.code !== 'EEXIST') throw error;
-      if ((await fs.readFile(bridge, 'utf8')) !== template)
+      const current = await fs.readFile(bridge, 'utf8');
+      if (previousBridgeHashes.has(sha256(current))) await atomic(bridge, template);
+      else if (current !== template)
         throw Error(
           'An existing pnpm hook owns ' +
             bridge +
@@ -505,7 +509,7 @@ export async function sdkCommand(argv) {
     return;
   }
   if (action === 'dev' && (await fs.readFile(bridge, 'utf8').catch(() => null)) !== template)
-    throw Error('Initialize the supported local SDK bridge with omnitron sdk init');
+    throw Error('Run omnitron sdk init to install or upgrade the project bridge, then commit the hook and the resulting lockfile');
   await prepareState(root);
   await exclusively(dir, async () => {
     const previous = await profileStatus(root);

@@ -28,7 +28,12 @@ export const hooks = {
   updateConfig(config) {
     const links = Object.entries(developmentPackages());
     if (!links.length) return config;
-    const overrides = { ...config.overrides };
+    // pnpm resolves workspace overrides from lockfileDir. Importers keep their own base.
+    const overrides = Object.fromEntries(Object.entries(config.overrides ?? {}).map(([selector, specifier]) => {
+      const local = typeof specifier === 'string' && /^(file:|link:)(.+)$/.exec(specifier);
+      if (!local || path.isAbsolute(local[2])) return [selector, specifier];
+      return [selector, local[1] + path.resolve(root, local[2]).split(path.sep).join('/')];
+    }));
     for (const [name, directory] of links) overrides[name] = 'link:' + directory;
     return { ...config, lockfileDir: profileDirectory, overrides };
   },

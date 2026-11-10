@@ -1682,6 +1682,16 @@ kb.command('query <question>')
 // Run
 // ============================================================================
 
+// Let the selected command parse its own options. In particular, a file
+// version is a write precondition, even when the root also has --version.
+// Group-level --json keeps structured output available on either side of
+// the command name, including in groups with nested commands.
+program.enablePositionalOptions();
+const jsonOutputOption = program.options.find((option) => option.long === '--json')!;
+for (const command of program.commands) {
+  if (!command.options.some((option) => option.long === '--json')) command.addOption(jsonOutputOption);
+}
+
 /**
  * Leave when the command is done, whatever the transport is still holding.
  *

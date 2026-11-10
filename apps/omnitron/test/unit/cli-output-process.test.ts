@@ -63,4 +63,14 @@ describe('actual CLI machine output boundary', () => {
     expect(result.stderr).toBe('');
     expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, data: { apps: [] } });
   });
+
+  it('parses a file revision without invoking the global version action', () => {
+    const help = run(['files', 'save', 'probe.txt', '--version', 'new', '--help']);
+    expect(help.status).toBe(0);
+    expect(help.stdout).toContain('Usage: omnitron files save');
+    const result = run(['files', 'save', 'probe.txt', '--version', 'new', '--json']);
+    expect(result.status).toBe(1);
+    expect(JSON.parse(result.stderr)).toMatchObject({ ok: false });
+    expect(result.stdout).toBe('');
+  });
 });

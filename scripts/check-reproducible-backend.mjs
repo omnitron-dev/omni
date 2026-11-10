@@ -67,9 +67,11 @@ async function build(round, retained, retainedSdk) {
   const cwd = path.join(root, round);
   const output = retained ?? path.join(root, round + '-runtime');
   const sdkOutput = retainedSdk ?? path.join(root, round + '-sdk');
-  execFileSync('git', ['clone', '--quiet', '--no-checkout', '--local', source, cwd]);
+  await fs.mkdir(cwd);
   const buildEnv = { ...env, OMNITRON_HOME: path.join(root, round + '-home') };
   const run = (command, args) => execFileSync(command, args, { cwd, env: buildEnv, stdio: 'inherit' });
+  run('git', ['init', '--quiet']);
+  run('git', ['fetch', '--quiet', '--depth=1', '--no-tags', '--', source, revision]);
   run('git', ['checkout', '--quiet', '--detach', revision]);
   run('pnpm', ['install', '--frozen-lockfile']);
   run('pnpm', ['run', 'build']);

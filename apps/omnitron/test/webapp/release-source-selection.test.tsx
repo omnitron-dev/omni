@@ -18,6 +18,15 @@ afterEach(() => { cleanup(); vi.resetAllMocks(); });
 const submit = () => screen.getByRole('button', { name: 'Build' });
 function sourceOptions() { fireEvent.click(screen.getByRole('button', { name: /SDK source/ })); }
 
+it('shows the configured store destination and explains why publication is unavailable', () => {
+  const p = props(), location = 's3://artifacts at http://127.0.0.1:9000 via SSH storage.example:22';
+  const view = render(<BuildReleaseDialog {...p} preflight={{ ...preflight, publish: 1, store: { state: 'configured', location } }} />);
+  expect(screen.getByText(location)).toBeTruthy();
+  view.rerender(<BuildReleaseDialog {...p} preflight={{ ...preflight, store: { state: 'invalid' } }} />);
+  expect(screen.getByText('Release store configuration is invalid.')).toBeTruthy();
+  expect(screen.queryByLabelText('Publish verified build to shared store')).toBeNull();
+});
+
 it('leaves source selection to the committed project when no override was requested', async () => {
   const p = props();
   render(<BuildReleaseDialog {...p} />);

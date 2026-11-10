@@ -337,6 +337,10 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
               control={<Switch checked={skipGates} onChange={(e) => setSkipGates(e.target.checked)} size="small" disabled={starting || publish} />}
               label={<Typography variant="body2">Skip the gates</Typography>}
             />
+            {preflight?.store && <Typography variant="caption" component="p" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+              {preflight.store.state === 'configured' ? preflight.store.location
+                : preflight.store.state === 'invalid' ? 'Release store configuration is invalid.' : 'Release store is not configured.'}
+            </Typography>}
             {skipGates && (
               <Alert severity="warning" sx={{ mt: 0.5 }}>
                 Every gate is recorded as <strong>not-run</strong>, and a stack that requires any will refuse the release.

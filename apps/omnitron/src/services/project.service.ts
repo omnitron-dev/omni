@@ -5687,7 +5687,7 @@ export const MASTER_PROJECT_SERVICE_PROVIDER: {
         } catch (error) {
           await audit.record({ action: 'release.pull', resourceType: 'release', resourceId: id, outcome: 'failed', error });
           throw error;
-        } finally { store.close(); }
+        } finally { await store.close(); }
       } } : {}),
     }),
 };

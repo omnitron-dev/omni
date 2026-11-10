@@ -281,6 +281,8 @@ export async function releaseJobsCommand(action: 'preflight' | 'list' | 'show' |
         if (result.buildSlots) log.info(`Build slots: ${result.buildSlots.running}/${result.buildSlots.limit} · ${result.buildSlots.queued} queued`);
         else log.info('Controller uses the legacy exclusive builder');
         log.info('Artifact store publication: ' + (result.publish === 1 ? 'available' : 'unavailable'));
+        if (result.store) log.info('Configured destination: ' +
+          (result.store.state === 'configured' ? result.store.location : result.store.state));
         log.info('Release catalog: ' + result.root);
         if (!result.canBuild) log.error('Missing build tools: ' + result.missingTools.join(', '));
       }

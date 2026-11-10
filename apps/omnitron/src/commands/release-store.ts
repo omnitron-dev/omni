@@ -130,7 +130,7 @@ export async function releasePushCommand(id: string, options: { root?: string; r
   } catch (err) {
     fail(err);
   } finally {
-    store?.close();
+    await store?.close();
   }
 }
 
@@ -165,6 +165,6 @@ export async function releasePullCommand(id: string, options: { root?: string } 
   } catch (err) {
     fail(err);
   } finally {
-    store?.close();
+    await store?.close();
   }
 }

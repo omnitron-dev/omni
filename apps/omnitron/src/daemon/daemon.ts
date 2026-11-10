@@ -1170,8 +1170,8 @@ export class OmnitronDaemon {
           const { configuredReleaseStore, configuredStoreConfig } = await import('../release/configured-store.js');
           const { pushRelease } = await import('../release/artifact-store.js');
           await audit.record({ action: 'release.push.requested', resourceType: 'release', resourceId: id }, true);
-          const store = await configuredReleaseStore(configuredStoreConfig(), key => secretsService.get(key));
-          const cancel = () => store.close();
+          const store = await configuredReleaseStore(configuredStoreConfig(), key => secretsService.get(key), signal);
+          const cancel = () => { void store.close().catch(() => {}); };
           signal.addEventListener('abort', cancel, { once: true });
           try {
             signal.throwIfAborted();
@@ -1181,12 +1181,13 @@ export class OmnitronDaemon {
             return { indexSha256: result.indexSha256, location: result.location };
           } finally {
             signal.removeEventListener('abort', cancel);
-            store.close();
+            await store.close();
           }
         } : undefined);
       await this.releaseService.restore();
       const releaseAuth = await container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN);
-      await this.app.netron.peer.exposeService(new ReleaseRpcService(this.releaseService, audit, projectService, releaseAuth));
+      const { releaseStoreStatus } = await import('../release/configured-store.js');
+      await this.app.netron.peer.exposeService(new ReleaseRpcService(this.releaseService, audit, projectService, releaseAuth, releaseStoreStatus));
     }
 
     // One service owns both the SQLite outbox writer and the replication transport.

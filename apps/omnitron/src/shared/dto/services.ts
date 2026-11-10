@@ -822,6 +822,8 @@ export type { StoredAttestation } from '../../release/attest.js';
 
 /** Whether this master can build a release, and where they are kept. */
 export interface ReleasePreflightDto {
+  /** Configuration observed without connecting, signing or disclosing vault references. */
+  readonly store?: { state: 'configured'; location: string } | { state: 'unconfigured' | 'invalid' };
   /** Older controllers use a single exclusive builder. */
   readonly buildSlots?: { limit: number; running: number; queued: number };
   /** Available only when this controller supports publishing completed builds and has a store. */

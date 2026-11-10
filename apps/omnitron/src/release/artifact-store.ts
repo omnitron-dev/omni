@@ -104,10 +104,12 @@ import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
 import os from 'node:os';
+import { isIP } from 'node:net';
 import path from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
+import { isSshHostFingerprint } from '../services/node-host-key.js';
 import type { SecretRef } from '../infrastructure/types.js';
 import { resolveSecretRefs } from '../project/config-resolver.js';
 import { isReleaseId, loadRelease, releasesRoot } from './load.js';
@@ -133,8 +135,32 @@ export interface ReleaseStoreConfig {
   readonly forcePathStyle?: boolean;
   /** Where in the bucket releases live, for a bucket that holds other things too. */
   readonly prefix?: string;
+  readonly ssh?: StoreSshConfig;
   readonly accessKey: SecretRef;
   readonly secretKey: SecretRef;
+}
+
+export interface StoreSshConfig {
+  readonly host: string;
+  readonly port: number;
+  readonly username: string;
+  readonly hostFingerprint: string;
+  readonly privateKey: SecretRef;
+  readonly passphrase?: SecretRef;
+}
+
+export function releaseStoreLocation(config: { endpoint: string | URL; bucket: string; prefix?: string; ssh?: StoreSshConfig }): string {
+  const url = new URL(config.endpoint);
+  const prefix = (config.prefix ?? '').replace(/^\/+|\/+$/g, '');
+  const base = url.origin + url.pathname.replace(/\/+$/, '');
+  return 's3://' + config.bucket + (prefix ? '/' + prefix : '') + ' at ' + base +
+    (config.ssh ? ' via SSH ' + config.ssh.host + ':' + config.ssh.port : '');
+}
+
+export interface StoreConnection {
+  readonly port: number;
+  readonly closed: Promise<void>;
+  close(): Promise<void>;
 }
 
 export interface StoreCredentials {
@@ -151,11 +177,12 @@ export interface ResolvedStore {
   /** Without leading or trailing slashes; empty for the bucket's root. */
   readonly prefix: string;
   readonly credentials: StoreCredentials;
+  readonly ssh?: StoreSshConfig;
   /** Which vault keys the pair came from — what a refusal names instead of the values. */
   readonly credentialKeys: { readonly accessKey: string; readonly secretKey: string };
 }
 
-const CONFIG_FIELDS = new Set(['endpoint', 'bucket', 'region', 'forcePathStyle', 'prefix', 'accessKey', 'secretKey']);
+const CONFIG_FIELDS = new Set(['endpoint', 'bucket', 'region', 'forcePathStyle', 'prefix', 'accessKey', 'secretKey', 'ssh']);
 
 /** What a store looks like in the config, for a refusal to show — references, never values. */
 export const STORE_CONFIG_EXAMPLE = [
@@ -197,8 +224,7 @@ export function parseStoreConfig(raw: unknown, source: string): ReleaseStoreConf
     throw new Error(`'releaseStore' in ${source} has ${unknown.map((k) => `'${k}'`).join(', ')}, which it does not read — it reads ${[...CONFIG_FIELDS].join(', ')}`);
   }
 
-  const reference = (field: 'accessKey' | 'secretKey'): SecretRef => {
-    const value = o[field];
+  const reference = (field: string, value: unknown = o[field]): SecretRef => {
     if (typeof value === 'string') {
       throw new Error(
         `'releaseStore.${field}' in ${source} is a literal credential. The key lives in the daemon's vault and the config names it: ` +
@@ -268,9 +294,30 @@ export function parseStoreConfig(raw: unknown, source: string): ReleaseStoreConf
     }
   }
 
+  let ssh: StoreSshConfig | undefined;
+  if (o['ssh'] !== undefined) {
+    const route = o['ssh'] as Record<string, unknown> | null;
+    if (!route || typeof route !== 'object' || Array.isArray(route) ||
+        Object.keys(route).some(key => !['host', 'port', 'username', 'hostFingerprint', 'privateKey', 'passphrase'].includes(key)))
+      throw new Error('Invalid releaseStore.ssh configuration in ' + source);
+    if (url.protocol !== 'http:' || !['127.0.0.1', '[::1]'].includes(url.hostname) || forcePathStyle === false)
+      throw new Error('releaseStore.ssh requires an HTTP endpoint on numeric loopback and path-style addressing');
+    const { host, username, hostFingerprint } = route;
+    const port = route['port'] ?? 22;
+    if (typeof host !== 'string' || (!isIP(host) && !(host.length <= 253 && host.split('.').every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label)))))
+      throw new Error('Invalid releaseStore.ssh.host in ' + source);
+    if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535)
+      throw new Error('Invalid releaseStore.ssh.port in ' + source);
+    if (typeof username !== 'string' || !/^[a-z_][a-z0-9_.-]{0,63}$/i.test(username))
+      throw new Error('Invalid releaseStore.ssh.username in ' + source);
+    if (!isSshHostFingerprint(hostFingerprint)) throw new Error('releaseStore.ssh requires an independently verified SHA256 host fingerprint');
+    ssh = { host, port, username, hostFingerprint, privateKey: reference('ssh.privateKey', route['privateKey']),
+      ...(route['passphrase'] !== undefined && { passphrase: reference('ssh.passphrase', route['passphrase']) }) };
+  }
   return {
     endpoint,
     bucket,
+    ...(ssh && { ssh }),
     ...(typeof region === 'string' ? { region } : {}),
     ...(typeof forcePathStyle === 'boolean' ? { forcePathStyle } : {}),
     ...(typeof prefix === 'string' ? { prefix } : {}),
@@ -314,6 +361,7 @@ export async function resolveStore(
   }
   return {
     endpoint: new URL(config.endpoint),
+    ...(config.ssh && { ssh: config.ssh }),
     bucket: config.bucket,
     region: config.region ?? 'us-east-1',
     forcePathStyle: config.forcePathStyle ?? true,
@@ -507,21 +555,25 @@ export class S3ObjectStore implements ObjectStore {
   readonly #agent: http.Agent;
   readonly #idleMs: number;
   #closed = false;
+  #closing?: Promise<void>;
+  readonly #route: StoreConnection | undefined;
 
-  constructor(store: ResolvedStore, options: { idleTimeoutMs?: number; sockets?: number } = {}) {
+  constructor(store: ResolvedStore, options: { idleTimeoutMs?: number; sockets?: number; route?: StoreConnection } = {}) {
+    if (Boolean(store.ssh) !== Boolean(options.route)) throw new Error('The configured S3 transport is unavailable');
+    this.#route = options.route;
     this.#store = store;
     this.#credentials = store.credentials;
     this.#idleMs = options.idleTimeoutMs ?? 60_000;
     const agentOptions = { keepAlive: true, maxSockets: options.sockets ?? 8 };
     this.#agent = store.endpoint.protocol === 'https:' ? new https.Agent(agentOptions) : new http.Agent(agentOptions);
-    const base = `${store.endpoint.origin}${store.endpoint.pathname.replace(/\/+$/, '')}`;
-    this.location = `s3://${store.bucket}${store.prefix ? `/${store.prefix}` : ''} at ${base}`;
+    this.location = releaseStoreLocation(store);
+    void this.#route?.closed.then(() => { this.#closed = true; this.#agent.destroy(); });
   }
 
-  /** Keep-alive sockets hold the process open; a command closes the store when it is done. */
-  close(): void {
+  close(): Promise<void> {
     this.#closed = true;
     this.#agent.destroy();
+    return this.#closing ??= this.#route?.close() ?? Promise.resolve();
   }
 
   async put(key: string, source: string | Buffer, sum: ObjectSum, condition?: { etag: string | null }): Promise<void> {
@@ -641,8 +693,8 @@ export class S3ObjectStore implements ObjectStore {
       let response: http.IncomingMessage | null = null;
       const req = (address.https ? https : http).request(
         {
-          hostname: address.hostname,
-          ...(address.port ? { port: Number(address.port) } : {}),
+          hostname: this.#route ? '127.0.0.1' : address.hostname,
+          port: this.#route?.port ?? (address.port ? Number(address.port) : undefined),
           path: address.path,
           method,
           headers,

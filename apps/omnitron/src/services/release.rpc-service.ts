@@ -35,6 +35,7 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
     /** The transport to a stack's node, for attestations run there. */
     private readonly projects?: import('./project.service.js').ProjectService | undefined,
     private readonly auth?: Pick<AuthService, 'validateSession'> | undefined,
+    private readonly storeStatus?: () => NonNullable<ReleasePreflightDto['store']>,
   ) {}
 
   /**
@@ -52,11 +53,13 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
     const env = buildEnv(process.env);
     const missing = missingTools(env);
     const os = await import('node:os');
+    const store = this.storeStatus?.();
     return {
       root: this.releases.root(),
       frameworkSource: 1,
       buildSlots: this.releases.buildSlots,
-      ...(this.releases.canPublish && { publish: 1 as const }),
+      ...(store && { store }),
+      ...(this.releases.canPublish && (!store || store.state === 'configured') && { publish: 1 as const }),
       canBuild: missing.length === 0,
       missingTools: missing,
       path: (env['PATH'] ?? '').split(':').filter(Boolean),
@@ -135,6 +138,8 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
       // flight must not turn an admitted intent into executable authority.
       await daemonPrincipal(this.auth, 'admin');
     }
+    if (data.publish && this.storeStatus && this.storeStatus().state !== 'configured')
+      throw new Error('Publishing requires a valid releaseStore in the controller configuration');
     const actor = currentActor();
     this.projects?.getProject(data.project);
     const auth = this.auth;

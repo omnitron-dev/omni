@@ -49,6 +49,7 @@ import {
   signV4,
   type StoreIndex,
 } from '../../src/release/artifact-store.js';
+import { configuredReleaseStore } from '../../src/release/configured-store.js';
 import { loadRelease } from '../../src/release/load.js';
 import type { ReleaseManifest } from '../../src/release/manifest.js';
 
@@ -452,13 +453,16 @@ describe('one master pushes, another pulls', () => {
   });
   it.skipIf(!process.env['OMNITRON_TEST_MINIO_IMAGE'])('qualifies conditional publication and pull on a real MinIO', async () => {
     const name = 'omni-release-test-' + crypto.randomUUID();
+    const sshdImage = process.env['OMNITRON_TEST_SSHD_IMAGE'];
     const env = { ...process.env, MINIO_ROOT_USER: crypto.randomUUID(), MINIO_ROOT_PASSWORD: crypto.randomUUID() };
     const docker = async (...args: string[]) => (await promisify(execFile)('docker', args, { env, timeout: 20_000 })).stdout.trim();
     const id = await docker('run', '--detach', '--rm', '--name', name, '--pull=never', '--read-only',
       '--cpus', '0.5', '--memory', '512m', '--pids-limit', '128', '--tmpfs', '/data:size=134217728',
-      '--tmpfs', '/tmp:size=67108864,mode=1777', '-p', '127.0.0.1::9000', '-e', 'MINIO_ROOT_USER',
+      '--tmpfs', '/tmp:size=67108864,mode=1777', '-p', '127.0.0.1::9000', ...(sshdImage ? ['-p', '127.0.0.1::2222'] : []), '-e', 'MINIO_ROOT_USER',
       '-e', 'MINIO_ROOT_PASSWORD', '-e', 'MINIO_BROWSER=off', process.env['OMNITRON_TEST_MINIO_IMAGE']!, 'server', '/data');
     let store: S3ObjectStore | undefined;
+    let routed: S3ObjectStore | undefined;
+    let sshd: string | undefined;
     try {
       await vi.waitFor(() => docker('exec', id, 'sh', '-ec',
         'export MC_CONFIG_DIR=/tmp/client; mc alias set proof http://127.0.0.1:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null; mc mb --ignore-existing proof/' + BUCKET),
@@ -467,16 +471,50 @@ describe('one master pushes, another pulls', () => {
       expect(port).toMatch(/^127\.0\.0\.1:\d+$/);
       const cfg = parseStoreConfig(configFor({ endpoint: 'http://' + port }), 'private native test');
       store = new S3ObjectStore(await resolveStore(cfg, async key => key === 'court.access_key' ? env.MINIO_ROOT_USER : env.MINIO_ROOT_PASSWORD));
+      if (sshdImage) {
+        const keys = machine();
+        fs.mkdirSync(keys, { recursive: true, mode: 0o700 });
+        const key = (name: string) => path.join(keys, name);
+        for (const name of ['host', 'client']) {
+          await promisify(execFile)('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', key(name)]);
+        }
+        const serverKeys = key('server');
+        fs.mkdirSync(serverKeys, { mode: 0o700 });
+        fs.copyFileSync(key('host'), path.join(serverKeys, 'host'));
+        fs.copyFileSync(key('client.pub'), path.join(serverKeys, 'client.pub'));
+        const fingerprint = (await promisify(execFile)('ssh-keygen', ['-lf', key('host.pub')])).stdout.trim().split(/\s+/)[1]!;
+        sshd = await docker('run', '--detach', '--pull=never', '--network', 'container:' + id,
+          '--memory', '96m', '--cpus', '0.5', '--pids-limit', '64', '--tmpfs', '/run', '--tmpfs', '/tmp',
+          '--mount', 'type=bind,src=' + serverKeys + ',dst=/test-keys,readonly', '--entrypoint', 'sh', sshdImage, '-ec', [
+            'adduser -D -s /bin/false releaseproof', 'passwd -d releaseproof >/dev/null',
+            'cp /test-keys/host /tmp/host', 'chmod 600 /tmp/host',
+            'cp /test-keys/client.pub /tmp/authorized', 'chmod 644 /tmp/authorized',
+            'exec /usr/sbin/sshd -D -e -f /dev/null -h /tmp/host -p 2222 -o AuthorizedKeysFile=/tmp/authorized ' +
+            '-o StrictModes=no -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o AllowUsers=releaseproof ' +
+            '-o MaxSessions=0 -o AllowTcpForwarding=local -o PermitOpen=127.0.0.1:9000',
+          ].join('\n'));
+        const sshPort = Number((await docker('port', id, '2222/tcp')).split(':').pop());
+        const ssh = { host: '127.0.0.1', port: sshPort, username: 'releaseproof', hostFingerprint: fingerprint,
+          privateKey: { secret: 'test.ssh-key' } };
+        const keyData = fs.readFileSync(key('client'), 'utf8');
+        const read = async (name: string) => name === 'test.ssh-key' ? keyData :
+          name === 'court.access_key' ? env.MINIO_ROOT_USER : env.MINIO_ROOT_PASSWORD;
+        const config = parseStoreConfig(configFor({ endpoint: 'http://127.0.0.1:9000', ssh }), 'private native test');
+        await vi.waitFor(async () => { routed = await configuredReleaseStore(config, read); }, { timeout: 10_000, interval: 250 });
+        await expect(configuredReleaseStore({ ...config, ssh: { ...ssh, hostFingerprint: 'SHA256:' + 'A'.repeat(43) } }, read)).rejects.toThrow();
+      }
       const a = machine(), b = machine();
       const copies = [a, b].map(root => partsOf(buildRelease(root).dir));
-      const results = await Promise.allSettled([a, b].map(root => pushRelease(ID, store!, { root })));
+      const results = await Promise.allSettled([a, b].map((root, i) => pushRelease(ID, (i === 0 ? routed : undefined) ?? store!, { root })));
       expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
       expect(String(results.find(result => result.status === 'rejected')?.reason)).toContain('two different builds');
       const receiver = machine();
-      await pullRelease(ID, store, { root: receiver });
+      await pullRelease(ID, routed ?? store, { root: receiver });
       expect(partsOf(path.join(receiver, ID))).toEqual(copies[results.findIndex(result => result.status === 'fulfilled')]);
     } finally {
-      store?.close();
+      await routed?.close();
+      await store?.close();
+      if (sshd) await docker('rm', '--force', sshd);
       await docker('stop', '--time', '3', id);
     }
   }, 75_000);

@@ -2414,7 +2414,7 @@ export class RemoteDeployer {
   // Private — Progress
   // ===========================================================================
 
-  private emitProgress(node: string, app: string, status: DeployStatus, progress: number, message: string): void {
+  emitProgress(node: string, app: string, status: DeployStatus, progress: number, message: string): void {
     const event: DeployProgressRecord = { ...transferScope.getStore(), node, app, status, progress, message: redactDiagnosticText(message), at: new Date().toISOString() };
     this.lastProgress.set(deploymentProgressKey(event), event);
     for (const handler of this.progressHandlers) {

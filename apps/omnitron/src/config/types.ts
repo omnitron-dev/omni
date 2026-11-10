@@ -318,6 +318,8 @@ export interface ISSHConfig {
 export type StackEnvValue = string | { readonly secret: string };
 
 export interface IStackSettings {
+  /** Maximum wait for another identified deployment on the same host. Defaults to 300 seconds for releases, otherwise 0. */
+  deploymentLeaseWaitSeconds?: number;
   /** Redis DB offset for this stack (stacks get non-overlapping DB ranges) */
   redisDbOffset?: number;
   /** Docker container name prefix (default: `${project}-${stack}`) */

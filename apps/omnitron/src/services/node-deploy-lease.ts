@@ -31,6 +31,7 @@
 
 import crypto from 'node:crypto';
 import os from 'node:os';
+import { setTimeout as delay } from 'node:timers/promises';
 
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
@@ -453,6 +454,32 @@ export async function withNodeLeases<T>(
   logger: ILogger,
   deploy: (leases: HeldLeases) => Promise<T>,
   timing: LeaseTiming = DEFAULT_LEASE_TIMING,
+  wait?: { seconds: number; onWait: (node: string, holderStack: string, remainingSeconds: number) => void },
+): Promise<T> {
+  if (wait && (!Number.isInteger(wait.seconds) || wait.seconds < 0 || wait.seconds > 1800))
+    throw Error('Deployment lease wait must be an integer between 0 and 1800 seconds');
+  const deadline = performance.now() + (wait?.seconds ?? 0) * 1000;
+  let dispatched = false;
+  for (;;) {
+    try {
+      return await acquireAndDeploy(candidates, stack, logger, leases => {
+        dispatched = true;
+        return deploy(leases);
+      }, timing);
+    } catch (error) {
+      const remaining = deadline - performance.now();
+      if (dispatched || !wait || remaining <= 0 || !(error instanceof LeaseHeldError) || !error.holder) throw error;
+      wait.onWait(error.node, error.holder.stack, Math.ceil(remaining / 1000));
+      // No partial lease set is held while waiting. Only a positively identified holder is retryable.
+      await delay(Math.min(remaining, 1500 + Math.random() * 1000));
+      if (performance.now() >= deadline) throw error;
+    }
+  }
+}
+
+async function acquireAndDeploy<T>(
+  candidates: readonly LeaseCandidate[], stack: string, logger: ILogger,
+  deploy: (leases: HeldLeases) => Promise<T>, timing: LeaseTiming,
 ): Promise<T> {
   const machineOf = (c: LeaseCandidate) => c.machine ?? c.node;
   const order = (c: LeaseCandidate) => `${machineOf(c)}\u0000${c.node}`;
@@ -494,14 +521,14 @@ export async function withNodeLeases<T>(
       }
       if (answer.lapsed) {
         logger.warn(
-          { node: candidate.node, stack, previous: answer.lapsed.previous, idleSec: answer.lapsed.idleSec },
+          { node: candidate.node, stack, previousStack: answer.lapsed.previous?.stack, idleSec: answer.lapsed.idleSec },
           'Took over a lapsed deploy lease — its holder stopped renewing it',
         );
       }
       held.set(candidate.node, lease);
       byMachine.set(machine, lease);
       lease.startRenewing(logger);
-      logger.info({ node: candidate.node, stack, token: lease.record.token }, 'Deploy lease taken');
+      logger.info({ node: candidate.node, stack }, 'Deploy lease taken');
     }
   } catch (err) {
     await releaseAll(held, stack, logger);
@@ -535,7 +562,7 @@ async function releaseAll(held: ReadonlyMap<string, NodeLease>, stack: string, l
       const answer = await lease.release();
       if (answer.kind === 'not-held') {
         logger.warn(
-          { node: lease.node, stack, holder: answer.holder },
+          { node: lease.node, stack, holderStack: answer.holder?.stack },
           'The deploy lease was no longer ours to give back — another deployment took it over',
         );
       } else if (answer.kind === 'busy') {

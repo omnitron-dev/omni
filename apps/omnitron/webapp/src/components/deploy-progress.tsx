@@ -34,6 +34,7 @@ type Status = DeployProgressRecord['status'];
  * resolving a dependency tree on a machine in another country.
  */
 const PHASES: Record<Status, { label: string; tone: 'info' | 'success' | 'error' | 'default' }> = {
+  waiting: { label: 'Waiting for node', tone: 'info' },
   pending: { label: 'Connecting', tone: 'default' },
   transferring: { label: 'Transferring artifact', tone: 'info' },
   extracting: { label: 'Unpacking', tone: 'info' },

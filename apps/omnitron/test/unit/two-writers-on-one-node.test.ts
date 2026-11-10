@@ -214,6 +214,40 @@ describe('a node that cannot lock refuses the deployment', () => {
 });
 
 describe('a deployment takes every node first and gives them all back', () => {
+  it('waits for an identified holder without reserving the other project’s free node', async () => {
+    const free = node('waiting-free');
+    const shared = node('waiting-shared');
+    const holder = new NodeLease('shared', shared.run, 'first/test', shared.timing);
+    await holder.acquire();
+    const waiting = Promise.withResolvers<void>();
+    let dispatches = 0;
+    const operation = withNodeLeases([{ node: 'a', run: free.run }, { node: 'b', run: script => shared.run(script.replaceAll(free.dir, shared.dir)) }],
+      'second/test', silentLogger, async leases => {
+        dispatches++;
+        await leases.confirm('a', 'install');
+        await leases.confirm('b', 'install');
+      }, free.timing, { seconds: 20, onWait: (target, stack) => {
+        expect([target, stack]).toEqual(['b', 'first/test']);
+        waiting.resolve();
+      } });
+    await waiting.promise;
+    expect(dispatches).toBe(0);
+    await withNodeLeases([{ node: 'a', run: free.run }], 'third/test', silentLogger,
+      async leases => leases.confirm('a', 'independent install'), free.timing);
+    await holder.release();
+    await operation;
+    expect(dispatches).toBe(1);
+  });
+
+  it('never retries application work after dispatch even when a downstream error also reports contention', async () => {
+    const n = node('no-replay');
+    let dispatches = 0;
+    await expect(withNodeLeases([{ node: 'n', run: n.run }], 'sample/test', silentLogger, async () => {
+      dispatches++;
+      throw new LeaseHeldError('another', { holder: 'holder', stack: 'other/test', token: 'private', startedAt: 'now' }, 0, 120);
+    }, n.timing, { seconds: 5, onWait: () => { throw Error('Unexpected retry'); } })).rejects.toThrow(LeaseHeldError);
+    expect(dispatches).toBe(1);
+  });
   it('one held node refuses the whole deployment, and the node already taken is given back', async () => {
     const a = node('stack-a');
     const b = node('stack-b');
@@ -224,7 +258,7 @@ describe('a deployment takes every node first and gives them all back', () => {
     await expect(
       withNodeLeases(
         [
-          { node: 'b', run: b.run },
+          { node: 'b', run: script => b.run(script.replaceAll(a.dir, b.dir)) },
           { node: 'a', run: a.run },
         ],
         'sample/test',

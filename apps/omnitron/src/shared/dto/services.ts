@@ -319,7 +319,7 @@ export interface DeployProgressRecord {
   /** `host:port` of the node. */
   node: string;
   app: string;
-  status: 'pending' | 'transferring' | 'extracting' | 'installing' | 'restarting' | 'verifying' | 'success' | 'failed';
+  status: 'waiting' | 'pending' | 'transferring' | 'extracting' | 'installing' | 'restarting' | 'verifying' | 'success' | 'failed';
   /** 0–100. */
   progress: number;
   message: string;

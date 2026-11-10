@@ -4028,6 +4028,7 @@ export class ProjectService extends EventEmitter {
       targets.set(`${node.host}:${node.port ?? 9700}`, await this.targetForStackNode(node));
     }
     phases.enter(`leasing ${nodes.length} node(s)`);
+    const waited = new Set<string>();
     return withNodeLeases(
       [...targets].map(([node, target]) => ({
         node,
@@ -4037,6 +4038,15 @@ export class ProjectService extends EventEmitter {
       `${projectName}/${stackName}`,
       this.logger,
       async (leases) => {
+        if (release && leases.unreachable.size) {
+          const missing = [...leases.unreachable].map(([node, reason]) => `${node}: ${reason}`).join(', ');
+          throw Error('Release deployment requires every selected node to be reachable before activation: ' + missing);
+        }
+        if (waited.size && release) {
+          const current = await this.admitRelease(projectName, stackName, stackConfig, ecosystemConfig, release.id);
+          if (current.manifestSha256 !== release.manifestSha256) throw Error('Release changed while waiting for the target');
+        }
+        for (const node of waited) this.deployer.emitProgress(node, '*', 'pending', 0, 'Node lease acquired');
         // Each node's platform is held at its gateway from before the first
         // step that can stop an app until the apps answer through it again
         // (`maintenance-lock.ts`). A node whose deployment throws or is
@@ -4297,7 +4307,17 @@ export class ProjectService extends EventEmitter {
           }
         }
       },
-    );
+      undefined, {
+        seconds: stackConfig.settings?.deploymentLeaseWaitSeconds ?? (release ? 300 : 0),
+        onWait: (node, holder, remaining) => {
+          waited.add(node);
+          this.deployer.emitProgress(node, '*', 'waiting', 0, `Waiting for ${holder} on this node · ${remaining}s remaining`);
+        },
+      },
+    ).catch((error: unknown) => {
+      for (const node of waited) this.deployer.emitProgress(node, '*', 'failed', 0, describeFailure(error));
+      throw error;
+    });
   }
 
   /**

@@ -230,18 +230,16 @@ describe('a dropped peer, recognised as a connection that is gone', () => {
 });
 
 describe('a node whose infrastructure is not up (a-deployment-that-called-a-failed-daemon-healthy)', () => {
-  it('deploys anyway, and carries the node and its words in what the start reached', async () => {
+  it('refuses an immutable deployment and preserves the actual host-service failure', async () => {
     const d = deployment(async (service) => provisioned(service));
     d.svc.provisionNodeInfrastructure = async () => ({
       ready: false,
       detail: 'host services NOT up — bitcoin failed: could not start bitcoind',
     });
 
-    const reach = (await d.start()) as { notReady: string[]; reached: number };
-
-    expect(d.delivered).toEqual(['main']);
-    expect(reach.reached).toBe(1);
-    expect(reach.notReady).toEqual(['10.0.0.9:9700: host services NOT up — bitcoin failed: could not start bitcoind']);
+    await expect(d.start()).rejects.toThrow(/before application installation on 10\.0\.0\.9:9700.*could not start bitcoind/);
+    expect(d.configuredWith()).toBeUndefined();
+    expect(d.delivered).toEqual([]);
   });
 
   it('reaches no «not ready» when the node is ready — the control', async () => {

@@ -110,7 +110,8 @@ import { pipeline } from 'node:stream/promises';
 
 import type { SecretRef } from '../infrastructure/types.js';
 import { resolveSecretRefs } from '../project/config-resolver.js';
-import { loadRelease, releasesRoot } from './load.js';
+import { isReleaseId, loadRelease, releasesRoot } from './load.js';
+export { isReleaseId } from './load.js';
 import type { ReleaseManifest } from './manifest.js';
 
 // ============================================================================
@@ -722,13 +723,6 @@ export interface StoreIndex {
   readonly pushedAt: string;
   readonly pushedBy: string;
   readonly files: readonly IndexEntry[];
-}
-
-/** The same rule `loadRelease` applies — the court holds the two to one answer. */
-const RELEASE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-
-export function isReleaseId(id: string): boolean {
-  return RELEASE_ID.test(id) && !id.includes('..');
 }
 
 /**

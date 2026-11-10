@@ -51,9 +51,12 @@ function sha256Of(file: string): Promise<string> {
 
 /** A release id names a directory; it may not name one anywhere else. */
 const RELEASE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+export function isReleaseId(id: string): boolean {
+  return typeof id === 'string' && id.length <= 255 && RELEASE_ID.test(id) && !id.includes('..');
+}
 
 export function assertReleaseId(id: string): void {
-  if (!RELEASE_ID.test(id) || id.includes('..')) throw new Error(`'${id}' is not a release id`);
+  if (!isReleaseId(id)) throw new Error(`'${id}' is not a release id`);
 }
 
 export class MissingReleaseError extends Error {}
@@ -63,7 +66,7 @@ export async function loadRelease(id: string, root: string = releasesRoot()): Pr
   const dir = path.join(root, id);
   const manifestPath = path.join(dir, 'manifest.json');
   if (!fs.existsSync(manifestPath)) {
-    const Failure = fs.existsSync(dir) ? Error : MissingReleaseError;
+    const Failure = fs.lstatSync(dir, { throwIfNoEntry: false }) ? Error : MissingReleaseError;
     throw new Failure(`No release '${id}' on this machine — ${manifestPath} does not exist. \`ls ${root}\` lists what was built.`);
   }
   if (fs.realpathSync(manifestPath) !== path.join(fs.realpathSync(root), id, 'manifest.json') ||

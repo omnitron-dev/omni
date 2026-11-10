@@ -291,7 +291,7 @@ export class ProjectService extends EventEmitter {
   recoveryRegistryDigest(): string { return this.registry.recoveryDigest(); }
   /** Read-only bookkeeping; no timers are stopped and no Docker call runs. */
   captureRecoveryState(): Awaited<ReturnType<ProjectService['prepareHandoff']>> {
-    if (this.rereading?.size || this.ownershipFrozen || this.resumingInstalled || this.startsInFlight.size || this.stopsInFlight.size || this.nodeStackStop.busy || this.reconcilingStacks ||
+    if (this.incomingReleases?.size || this.rereading?.size || this.ownershipFrozen || this.resumingInstalled || this.startsInFlight.size || this.stopsInFlight.size || this.nodeStackStop.busy || this.reconcilingStacks ||
         [...this.stackStates.values()].some(state => state.status === 'starting' || state.status === 'stopping')) {
       throw new RecoveryBusyError('Project ownership is changing; a recovery snapshot is not ready');
     }
@@ -318,7 +318,7 @@ export class ProjectService extends EventEmitter {
     resumeBackoff: Array<[string, { nextAt: number; delayMs: number }]>;
     reconciling: boolean;
   }> {
-    if (this.rereading?.size || this.ownershipFrozen || this.resumingInstalled || this.startsInFlight.size || this.stopsInFlight.size || this.nodeStackStop.busy || this.reconcilingStacks || [...this.stackStates.values()].some(state => state.status === 'starting' || state.status === 'stopping')) {
+    if (this.incomingReleases?.size || this.rereading?.size || this.ownershipFrozen || this.resumingInstalled || this.startsInFlight.size || this.stopsInFlight.size || this.nodeStackStop.busy || this.reconcilingStacks || [...this.stackStates.values()].some(state => state.status === 'starting' || state.status === 'stopping')) {
       throw new Error('A stack lifecycle operation is active; finish it before transferring the backend');
     }
     this.handoffReconciling = this.resumeTimer !== null;
@@ -2278,6 +2278,7 @@ export class ProjectService extends EventEmitter {
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     let operation = this.incomingReleases.get(id);
     if (!operation) {
+      if (this.ownershipFrozen) throw new RecoveryBusyError('Release transfer must wait for the backend handoff');
       operation = this.receiveRelease(id, root).finally(() => this.incomingReleases.delete(id));
       this.incomingReleases.set(id, operation);
     }
@@ -5683,6 +5684,9 @@ export const MASTER_PROJECT_SERVICE_PROVIDER: {
           const result = await pullRelease(id, store, { root });
           await audit.record({ action: 'release.pull', resourceType: 'release', resourceId: id,
             details: { indexSha256: result.indexSha256, files: result.moved.files, bytes: result.moved.bytes } }, true);
+        } catch (error) {
+          await audit.record({ action: 'release.pull', resourceType: 'release', resourceId: id, outcome: 'failed', error });
+          throw error;
         } finally { store.close(); }
       } } : {}),
     }),

@@ -258,6 +258,8 @@ export function BuildBar({ percent, state }: { percent: number; state: string })
 }
 
 export const BUILD_STATE: Record<string, { label: string; color: 'info' | 'success' | 'error' | 'warning' }> = {
+  interrupted: { label: 'Interrupted', color: 'warning' },
+  queued: { label: 'Queued', color: 'info' },
   running: { label: 'Building', color: 'info' },
   done: { label: 'Built', color: 'success' },
   failed: { label: 'Failed', color: 'error' },

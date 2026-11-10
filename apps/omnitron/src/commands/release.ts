@@ -21,12 +21,13 @@
  */
 
 import fs from 'node:fs';
+import { setTimeout as delay } from 'node:timers/promises';
 
 import { log, table } from '@xec-sh/kit';
 
 import { createDaemonClient, LONG_REQUEST_TIMEOUT } from '../daemon/daemon-client.js';
 import { describeAbsence } from './daemon-required.js';
-import { emitError, emitJson } from './output.js';
+import { emitError, emitJson, isJsonMode } from './output.js';
 import { runReleaseBuild, type ReleaseBuildOptions } from '../release/build-run.js';
 import type { ReleaseArtifact, ReleaseManifest } from '../release/manifest.js';
 import {
@@ -177,7 +178,25 @@ export async function releaseStatusCommand(project: string, options: { inspectIn
 // build
 // ---------------------------------------------------------------------------
 
-export async function releaseBuildCommand(projectName: string, options: ReleaseBuildOptions = {}): Promise<void> {
+export async function releaseBuildCommand(projectName: string, options: ReleaseBuildOptions = {}, detach = false): Promise<void> {
+  if (detach) {
+    const client = createDaemonClient();
+    try {
+      const service = await client.service<IOmnitronReleaseService>('OmnitronRelease');
+      const record = await service.build({
+        project: projectName,
+        ...(options.projectCommit && { projectCommit: options.projectCommit }),
+        ...(options.omniCommit && { omniCommit: options.omniCommit }),
+        ...(options.frameworkSource && { frameworkSource: options.frameworkSource }),
+        ...(options.forStack && { forStack: options.forStack }),
+        ...(options.keepSource && { keepSource: true }),
+        ...(options.skipGates && { skipGates: true }),
+      });
+      if (!emitJson(record)) log.info(`${record.buildId}  ${record.request.project}  ${record.state} · ${record.phase}`);
+    } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+    finally { await client.disconnect(); }
+    return;
+  }
   const started = Date.now();
   let releaseRoot: string | null = null;
   // Ctrl-C or a `kill` stops the build the way a build stops — its steps'
@@ -235,6 +254,40 @@ export async function releaseBuildCommand(projectName: string, options: ReleaseB
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);
   }
+}
+
+export async function releaseJobsCommand(action: 'list' | 'show' | 'stop', id?: string, follow = false): Promise<void> {
+  const client = createDaemonClient();
+  try {
+    const service = await client.service<IOmnitronReleaseService>('OmnitronRelease');
+    if (action === 'list') {
+      const jobs = (await service.builds()).filter(job => !id || job.request.project === id);
+      if (!emitJson(jobs)) {
+        if (jobs.length === 0) log.info('No build jobs');
+        for (const job of jobs) log.info(`${job.buildId}  ${job.request.project}  ${job.state}  ${job.percent}%  ${job.phase}`);
+      }
+      return;
+    }
+    if (!id) throw Error('A build ID is required');
+    let job = action === 'stop' ? await service.stopBuild({ buildId: id }) : await service.getBuild({ buildId: id });
+    let previous = '';
+    while (follow && job && (job.state === 'running' || job.state === 'queued')) {
+      const reading = `${job.state}  ${job.percent}%  ${job.phase}`;
+      if (reading !== previous && !isJsonMode()) log.info(reading);
+      previous = reading;
+      await delay(1000);
+      job = await service.getBuild({ buildId: id });
+    }
+    if (!job) throw Error('Unknown build ID: ' + id);
+    if (!emitJson(job)) {
+      log.info(`${job.buildId}  ${job.request.project}  ${job.state}  ${job.percent}%  ${job.phase}`);
+      if (job.releaseId) log.info('Release ' + job.releaseId);
+      for (const gate of job.gates) log.info(`  ${gate.name}  ${gate.status}`);
+      if (job.error) log.error(job.error);
+    }
+    if (job.state === 'failed' || job.state === 'interrupted') process.exitCode = 1;
+  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+  finally { await client.disconnect(); }
 }
 
 // ---------------------------------------------------------------------------

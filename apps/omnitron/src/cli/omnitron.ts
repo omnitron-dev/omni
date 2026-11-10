@@ -371,11 +371,19 @@ stack
   });
 
 stack
+  .command('check-release <project> <stack> <release>')
+  .description('Read the deployment admission decision for a local or remote stack')
+  .structuredAction(async (projectName, stackName, release) => {
+    const { stackReleaseAdmissionCommand } = await import('../commands/stack.js');
+    await stackReleaseAdmissionCommand(projectName, stackName, release, false);
+  });
+
+stack
   .command('prepare-release <project> <stack> <release>')
   .description('Verify and stage local application archives before a maintenance window')
   .structuredAction(async (projectName, stackName, release) => {
-    const { stackPrepareReleaseCommand } = await import('../commands/stack.js');
-    await stackPrepareReleaseCommand(projectName, stackName, release);
+    const { stackReleaseAdmissionCommand } = await import('../commands/stack.js');
+    await stackReleaseAdmissionCommand(projectName, stackName, release, true);
   });
 
 stack
@@ -820,6 +828,7 @@ const release = program
 release
   .command('build <project>')
   .description('Build a clean project revision with its locked framework, run gates and package the artifacts')
+  .option('--detach', 'Submit to the controller and return a build ID for CLI or Console')
   .option('--project-commit <sha>', "The project commit to build (default: the project checkout's HEAD)")
   .option('--omni-commit <sha>', "Linked checkout revision, or the exact full commit to require from registry packages")
   .option('--framework-repository <repository>', 'Override the committed SDK source repository for this build')
@@ -830,16 +839,30 @@ release
   .action(
     async (
       projectName: string,
-      options: { projectCommit?: string; omniCommit?: string; frameworkRepository?: string; frameworkRef?: string; keepSource?: boolean; skipGates?: boolean; for?: string },
+      options: { detach?: boolean; projectCommit?: string; omniCommit?: string; frameworkRepository?: string; frameworkRef?: string; keepSource?: boolean; skipGates?: boolean; for?: string },
     ) => {
       const { releaseBuildCommand } = await import('../commands/release.js');
       const { parseFrameworkSource } = await import('../shared/framework-source.js');
-      const { frameworkRepository, frameworkRef, ...buildOptions } = options;
+      const { detach, frameworkRepository, frameworkRef, ...buildOptions } = options;
       if (frameworkRef && !frameworkRepository) throw new Error('--framework-ref requires --framework-repository; use omnitron.framework in package.json for project defaults');
       const frameworkSource = frameworkRepository ? parseFrameworkSource({ repository: frameworkRepository, ...(frameworkRef ? { ref: frameworkRef } : {}) }) : undefined;
-      await releaseBuildCommand(projectName, { ...buildOptions, ...(frameworkSource ? { frameworkSource } : {}), ...(options.for ? { forStack: options.for } : {}) });
+      await releaseBuildCommand(projectName, { ...buildOptions, ...(frameworkSource ? { frameworkSource } : {}), ...(options.for ? { forStack: options.for } : {}) }, detach);
     },
   );
+
+release.command('builds [project]').description('List controller build jobs, optionally scoped to a project')
+  .structuredAction(async projectName => {
+    const { releaseJobsCommand } = await import('../commands/release.js');
+    await releaseJobsCommand('list', projectName);
+  });
+release.command('job <id>').description('Read a build job, its gates, progress and last error')
+  .option('--follow', 'Follow this job through completion')
+  .structuredAction(async (id, options: { follow?: boolean }) => {
+    const { releaseJobsCommand } = await import('../commands/release.js');
+    await releaseJobsCommand('show', id, options.follow === true);
+  });
+release.command('stop-build <id>').description('Cancel one queued or running build')
+  .structuredAction(async id => { const { releaseJobsCommand } = await import('../commands/release.js'); await releaseJobsCommand('stop', id); });
 
 release
   .command('list')

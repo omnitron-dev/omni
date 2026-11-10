@@ -71,18 +71,21 @@ export interface BuildReleaseDialogProps {
   open: boolean;
   onClose: () => void;
   defaultProject: string | null;
+  activeBuilds?: readonly BuildRecord[];
   onStarted: (record: BuildRecord) => void;
   /** The machine as the daemon reads it now — the load the gates would run under. */
   preflight?: ReleasePreflightView | null;
 }
 
-export default function BuildReleaseDialog({ open, onClose, defaultProject, onStarted, preflight }: BuildReleaseDialogProps) {
+export default function BuildReleaseDialog({ open, onClose, defaultProject, onStarted, preflight, activeBuilds = [] }: BuildReleaseDialogProps) {
   const { snapshot } = useAccess();
   const projects = useProjectStore((s) => s.projects);
   const stacksByProject = useProjectStore((s) => s.stacksByProject);
   const fetchStacks = useProjectStore((s) => s.fetchStacks);
 
   const [project, setProject] = useState(defaultProject ?? '');
+  const inFlight = (name: string) => activeBuilds.find(job => job.request.project === name && (job.state === 'running' || job.state === 'queued'));
+  const existing = inFlight(project);
   const [forStack, setForStack] = useState('');
   const [projectCommit, setProjectCommit] = useState('');
   const [omniCommit, setOmniCommit] = useState('');
@@ -202,6 +205,7 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
             select
             label="Project"
             value={project}
+            helperText={existing ? `Build ${existing.buildId} · ${existing.phase}` : undefined}
             onChange={(e) => {
               setProject(e.target.value);
               setForStack('');
@@ -218,7 +222,7 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
               </MenuItem>
             )}
             {projects.map((p) => (
-              <MenuItem key={p.name} value={p.name}>
+              <MenuItem key={p.name} value={p.name} disabled={Boolean(inFlight(p.name))}>
                 {p.name}
               </MenuItem>
             ))}
@@ -347,7 +351,7 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
         <Button
           variant="contained"
           size="small"
-          disabled={!project || starting || bad.length > 0 || framework.error !== null || (!!framework.source && !canOverrideSource) || (hasEnvOverride && !canOverrideBuild)}
+          disabled={!project || Boolean(existing) || starting || bad.length > 0 || framework.error !== null || (!!framework.source && !canOverrideSource) || (hasEnvOverride && !canOverrideBuild)}
           startIcon={starting ? <CircularProgress size={14} color="inherit" /> : undefined}
           onClick={handleBuild}
         >

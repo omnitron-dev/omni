@@ -10,14 +10,15 @@ import { RecoveryMutation } from '../daemon/recovery-state.js';
  * and everything about it is then read from here: the phase, the percent,
  * the gates as they answer, and the error if it failed.
  *
- * The records live in memory only. A daemon restart therefore loses them —
- * and it also kills the build, which is why an unfinished build leaves a
- * directory with no manifest and `release list` shows exactly that. The disk
- * is the durable record; this is the live one.
+ * Job observations survive controller replacement in the daemon state store.
+ * A final manifest can recover a completed build after an interrupted response.
  */
 
 import { randomUUID } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { availableParallelism } from 'node:os';
 
+import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
 
 import { runReleaseBuild, type BuildPhase, type ReleaseBuildOptions } from '../release/build-run.js';
@@ -25,6 +26,7 @@ import {
   listReleases,
   pruneReleases,
   readReleaseDetail,
+  readReleaseManifest,
   readReleaseLog,
   releasesRoot,
   type PruneResult,
@@ -39,12 +41,58 @@ export type { BuildRequest, BuildRecord } from '../shared/dto/releases.js';
 
 /** How many finished builds are kept for looking back at. */
 const KEEP_RECORDS = 20;
+const RECORD_PREFIX = 'release:build:';
+type BuildStore = Pick<DaemonStateStore, 'kvKeys' | 'kvGetSync' | 'kvSetSync' | 'kvDeleteSync'>;
 
 export class ReleaseService {
   private readonly records = new Map<string, BuildRecord>();
   private readonly running = new Map<string, AbortController>();
 
-  constructor(private readonly logger: ILogger) {}
+  private readonly waiting = new Map<string, () => void>();
+
+  constructor(
+    private readonly logger: ILogger,
+    private readonly concurrency = Math.min(2, availableParallelism()),
+    private readonly store?: BuildStore,
+  ) {
+    if (!Number.isSafeInteger(concurrency) || concurrency < 1) throw new Error('releaseBuildConcurrency must be a positive integer');
+  }
+
+  /** Restore observations before exposing RPC. A lost executor cannot certify completion or replay an override. */
+  async restore(): Promise<void> {
+    if (!this.store) return;
+    for (const key of await this.store.kvKeys(RECORD_PREFIX)) {
+      const record = this.store.kvGetSync<BuildRecord>(key, { strict: true });
+      if (!record || key !== RECORD_PREFIX + record.buildId) throw Error('Invalid release build record: ' + key);
+      if (record.state === 'queued' || record.state === 'running') {
+        const manifest = record.releaseId && readReleaseManifest(record.releaseId);
+        if (manifest && manifest.id === record.releaseId) {
+          const checks = readBuildChecks(manifest);
+          record.state = checks.exitCode === 0 ? 'done' : 'failed';
+          record.error = checks.reason;
+          record.gates = [...manifest.gates];
+          record.percent = 100;
+          record.phase = 'Recovered from release manifest';
+        } else {
+          record.state = 'interrupted';
+          record.error = 'The controller session ended before a final release manifest was recorded';
+          record.phase = 'Interrupted';
+        }
+        record.finishedAt = new Date().toISOString();
+        record.durationMs = Date.parse(record.finishedAt) - Date.parse(record.startedAt);
+        this.persist(record);
+      }
+      this.records.set(record.buildId, record);
+    }
+  }
+
+  private persist(record: BuildRecord): void {
+    this.store?.kvSetSync(RECORD_PREFIX + record.buildId, record);
+  }
+
+  get activeBuildCount(): number {
+    return this.running.size + this.waiting.size;
+  }
 
   root(): string {
     return releasesRoot();
@@ -88,15 +136,7 @@ export class ReleaseService {
     return this.records.get(buildId) ?? null;
   }
 
-  /**
-   * Start a build, and refuse a second one.
-   *
-   * Two builds at once would be two `pnpm install`s, two gate suites and two
-   * copies of the same store on one machine; the second would not fail, it
-   * would just make both take three times as long and leave the operator
-   * unable to tell which set of gate failures belonged to which. One at a
-   * time, and the refusal names the one that is running.
-   */
+  /** Reserve the project before any async work. Other projects share this builder's bounded slots. */
   @RecoveryMutation()
   start(
     request: BuildRequest & { env?: Record<string, string> },
@@ -104,10 +144,10 @@ export class ReleaseService {
   ): BuildRecord {
     // Validate before a request reaches records, audit output or an asynchronous build.
     const frameworkSource = request.frameworkSource === undefined ? undefined : parseFrameworkSource(request.frameworkSource);
-    const busy = [...this.records.values()].find((r) => r.state === 'running');
+    const busy = [...this.records.values()].find(r => r.request.project === request.project && (r.state === 'queued' || r.state === 'running'));
     if (busy) {
       throw new Error(
-        `A release build is already running on this master: ${busy.request.project} ` +
+        `Project ${busy.request.project} already has build ${busy.buildId} ` +
           `${busy.releaseId ? `(${busy.releaseId}) ` : ''}— ${busy.phase} (${busy.percent}%), started ${busy.startedAt}. ` +
           `Wait for it, or stop it.`,
       );
@@ -127,8 +167,8 @@ export class ReleaseService {
         ...(envKeys.length ? { envKeys } : {}),
       },
       releaseId: null,
-      state: 'running',
-      phase: 'starting',
+      state: 'queued',
+      phase: 'Waiting for a build slot',
       percent: 0,
       startedAt: new Date().toISOString(),
       finishedAt: null,
@@ -138,11 +178,24 @@ export class ReleaseService {
       requestedBy,
       history: [],
     };
+    this.persist(record);
     this.records.set(buildId, record);
     this.forget();
 
+    const env = request.env && Object.freeze({ ...request.env });
+    const run = AsyncLocalStorage.bind(() => this.run(record, env));
+    if (this.running.size < this.concurrency) run();
+    else this.waiting.set(buildId, run);
+    return record;
+  }
+
+  private run(record: BuildRecord, env?: Record<string, string>): void {
+    const { buildId, requestedBy, request } = record;
+    const { frameworkSource } = request;
     const controller = new AbortController();
     this.running.set(buildId, controller);
+    record.state = 'running';
+    record.phase = 'starting';
     const options: ReleaseBuildOptions = {
       ...(request.projectCommit ? { projectCommit: request.projectCommit } : {}),
       ...(request.omniCommit ? { omniCommit: request.omniCommit } : {}),
@@ -150,7 +203,7 @@ export class ReleaseService {
       ...(request.forStack ? { forStack: request.forStack } : {}),
       ...(request.skipGates ? { skipGates: true } : {}),
       ...(request.keepSource ? { keepSource: true } : {}),
-      ...(request.env ? { env: request.env } : {}),
+      ...(env ? { env } : {}),
       signal: controller.signal,
     };
 
@@ -186,11 +239,18 @@ export class ReleaseService {
         );
       })
       .finally(() => {
+        try { this.persist(record); }
+        catch (error) { this.logger.error({ buildId, error: (error as Error).message }, 'Could not persist the final build record'); }
         this.running.delete(buildId);
+        const next = this.waiting.entries().next();
+        if (!next.done) {
+          const [id, start] = next.value;
+          this.waiting.delete(id);
+          start();
+        }
       });
 
     this.logger.info({ project: request.project, build: buildId, by: requestedBy ?? 'system' }, 'Release build started');
-    return record;
   }
 
   /**
@@ -204,6 +264,14 @@ export class ReleaseService {
   stop(buildId: string): BuildRecord {
     const record = this.records.get(buildId);
     if (!record) throw new Error(`No build '${buildId}' on this daemon`);
+    if (this.waiting.delete(buildId)) {
+      record.state = 'stopped';
+      record.phase = 'Cancelled before starting';
+      record.finishedAt = new Date().toISOString();
+      record.durationMs = Date.now() - Date.parse(record.startedAt);
+      this.persist(record);
+      return record;
+    }
     if (record.state !== 'running') throw new Error(`That build is already ${record.state}`);
     this.running.get(buildId)?.abort();
     record.phase = 'stopping';
@@ -218,7 +286,8 @@ export class ReleaseService {
    * quarter of an hour under no supervision at all.
    */
   stopAll(): string[] {
-    const stopped: string[] = [];
+    const stopped = [...this.waiting.keys()];
+    for (const id of stopped) this.stop(id);
     for (const [buildId, controller] of this.running) {
       controller.abort();
       const record = this.records.get(buildId);
@@ -240,13 +309,22 @@ export class ReleaseService {
     if (phase.releaseId) record.releaseId = phase.releaseId;
     if (phase.gates) record.gates = [...phase.gates];
     record.history.push(phase);
+    this.persist(record);
   }
 
   /** Keep the running ones and the newest finished; drop the rest. */
   private forget(): void {
     const finished = [...this.records.values()]
-      .filter((r) => r.state !== 'running')
+      .filter((r) => r.state !== 'running' && r.state !== 'queued')
       .sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
-    for (const old of finished.slice(KEEP_RECORDS)) this.records.delete(old.buildId);
+    const retained = new Map<string, number>();
+    for (const old of finished) {
+      const count = retained.get(old.request.project) ?? 0;
+      retained.set(old.request.project, count + 1);
+      if (count >= KEEP_RECORDS) {
+        this.store?.kvDeleteSync(RECORD_PREFIX + old.buildId);
+        this.records.delete(old.buildId);
+      }
+    }
   }
 }

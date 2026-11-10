@@ -351,7 +351,7 @@ export class OmnitronDaemon {
         terminalSessions: this.terminalRpcService?.activeSessionCount() ?? 0,
         fileTransfers: (this.filesRpcService?.activeTransferCount() ?? 0) + (this.fileNode?.activeOperationCount() ?? 0),
         pipelineRuns: this.pipelineService?.activeRunCount() ?? 0,
-        releaseBuilds: this.releaseService?.builds().filter(build => build.state === 'running').length ?? 0,
+        releaseBuilds: this.releaseService?.activeBuildCount ?? 0,
         backupOperations: this.backupService?.activeOperationCount() ?? 0,
       },
     };
@@ -1162,7 +1162,8 @@ export class OmnitronDaemon {
     if (!isSlave) {
       const { ReleaseService } = await import('../services/release.service.js');
       const { ReleaseRpcService } = await import('../services/release.rpc-service.js');
-      this.releaseService = new ReleaseService(loggerModule.logger.child({ component: 'release' }));
+      this.releaseService = new ReleaseService(loggerModule.logger.child({ component: 'release' }), dc.releaseBuildConcurrency, stateStore);
+      await this.releaseService.restore();
       const releaseAuth = await container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN);
       await this.app.netron.peer.exposeService(new ReleaseRpcService(this.releaseService, audit, projectService, releaseAuth));
     }

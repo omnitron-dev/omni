@@ -43,7 +43,7 @@ export function ReleaseBuildPanel({
   compact?: boolean;
 }) {
   const state = BUILD_STATE[record.state] ?? { label: record.state, color: 'info' as const };
-  const running = record.state === 'running';
+  const running = record.state === 'running' || record.state === 'queued';
   const lines = record.history.slice(-VISIBLE_LINES);
   const request = record.request;
 
@@ -70,7 +70,7 @@ export function ReleaseBuildPanel({
           </Typography>
           {running && onStop && (
             <Can permission="OmnitronRelease.stopBuild"><Button size="small" color="warning" startIcon={<StopIcon />} onClick={() => onStop(record.buildId)}>
-              Stop
+              {record.state === 'queued' ? 'Cancel' : 'Stop'}
             </Button></Can>
           )}
           {record.state === 'done' && record.releaseId && onDeploy && (

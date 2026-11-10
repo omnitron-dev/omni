@@ -53,3 +53,52 @@ describe('release build completion agrees in CLI and Console', () => {
     else expect(record.error).toBeNull();
   });
 });
+
+it('runs independent projects concurrently and isolates queued cancellation and failures', async () => {
+  const logger = { info: vi.fn(), error: vi.fn(), warn: vi.fn() } as unknown as ILogger;
+  const service = new ReleaseService(logger, 2);
+  const finish = new Map<string, (value: ReturnType<typeof outcome>) => void>();
+  runner.mockImplementation((name: string) => new Promise(resolve => finish.set(name, resolve)));
+  const alpha = service.start({ project: 'alpha' }, 'first');
+  const beta = service.start({ project: 'beta' }, 'second');
+  const cancelled = service.start({ project: 'gamma' }, 'third');
+  const next = service.start({ project: 'delta' }, 'fourth');
+  expect([...finish.keys()]).toEqual(['alpha', 'beta']);
+  expect(cancelled.state).toBe('queued');
+  expect(next.state).toBe('queued');
+  expect(() => service.start({ project: 'alpha' }, 'another')).toThrow(alpha.buildId);
+  expect(() => service.start({ project: 'delta' }, 'another')).toThrow(next.buildId);
+  expect(service.stop(cancelled.buildId).state).toBe('stopped');
+  finish.get('beta')!(outcome([{ name: 'tests', status: 'failed' }]));
+  await vi.waitFor(() => expect(next.state).toBe('running'));
+  expect(alpha.state).toBe('running');
+  expect(beta.state).toBe('failed');
+  expect([...finish.keys()]).toEqual(['alpha', 'beta', 'delta']);
+  finish.get('alpha')!(outcome([]));
+  finish.get('delta')!(outcome([]));
+  await vi.waitFor(() => expect(service.activeBuildCount).toBe(0));
+});
+
+it('recovers job history without replaying builds or persisting environment values', async () => {
+  const rows = new Map<string, unknown>();
+  const store = {
+    kvKeys: async (prefix?: string) => [...rows.keys()].filter(key => key.startsWith(prefix ?? '')),
+    kvGetSync: <T>(key: string) => structuredClone(rows.get(key)) as T | null,
+    kvSetSync: <T>(key: string, value: T) => { rows.set(key, structuredClone(value)); },
+    kvDeleteSync: (key: string) => { rows.delete(key); },
+  };
+  const logger = { info: vi.fn(), error: vi.fn() } as unknown as ILogger;
+  const service = new ReleaseService(logger, 1, store);
+  runner.mockImplementation(() => new Promise(() => {}));
+  const first = service.start({ project: 'first', env: { TEST_KEY: 'private-test-value' } }, 'alice');
+  const second = service.start({ project: 'second' }, 'bob');
+  expect(service.stop(second.buildId).state).toBe('stopped');
+  expect(JSON.stringify([...rows.values()])).not.toContain('private-test-value');
+  const after = new ReleaseService(logger, 1, store);
+  const calls = runner.mock.calls.length;
+  await after.restore();
+  expect(after.build(first.buildId)?.state).toBe('interrupted');
+  expect(after.build(second.buildId)?.state).toBe('stopped');
+  expect(after.activeBuildCount).toBe(0);
+  expect(runner).toHaveBeenCalledTimes(calls);
+});

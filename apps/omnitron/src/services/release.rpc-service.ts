@@ -134,6 +134,7 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
       await daemonPrincipal(this.auth, 'admin');
     }
     const actor = currentActor();
+    this.projects?.getProject(data.project);
     const record = this.releases.start(data, actor.actorId);
     await this.audit?.record({
       action: 'release.build',

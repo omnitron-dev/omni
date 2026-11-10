@@ -716,6 +716,8 @@ export interface IWatchConfig {
 // =============================================================================
 
 export interface IDaemonConfig {
+  /** Concurrent release builds on this controller. Further independent projects wait in submission order. */
+  releaseBuildConcurrency?: number;
   /** Keep supervised applications in a resident owner while backend processes are replaced. */
   executionHost?: { enabled: boolean; directory?: string };
   /** Operator-owned HTTP readiness for immutable classic releases lacking an app declaration. Exact qualified app names only. */

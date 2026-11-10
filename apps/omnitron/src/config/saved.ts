@@ -13,6 +13,7 @@ export function effectiveBindHost(saved: { role?: string; host?: string } | null
 }
 
 export interface SavedDaemonConfig {
+  releaseBuildConcurrency?: number;
   cluster?: IDaemonConfig['cluster'];
   executionHost?: IDaemonConfig['executionHost'];
   role: DaemonRole;
@@ -76,6 +77,7 @@ export function savedDaemonOverrides(saved: SavedDaemonConfig | null): Partial<I
   if (!saved) return {};
   return {
     role: saved.role,
+    ...(saved.releaseBuildConcurrency !== undefined ? { releaseBuildConcurrency: saved.releaseBuildConcurrency } : {}),
     ...(saved.cluster !== undefined ? { cluster: saved.cluster } : {}),
     ...(saved.master ? { master: saved.master } : {}),
     ...(saved.requestRateLimit ? { requestRateLimit: saved.requestRateLimit } : {}),

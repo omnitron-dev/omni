@@ -45,7 +45,7 @@ export interface BuildRecord {
   readonly request: BuildRequest;
   /** Known once the two commits are resolved, a few seconds in. */
   releaseId: string | null;
-  state: 'running' | 'done' | 'failed' | 'stopped';
+  state: 'queued' | 'running' | 'done' | 'failed' | 'stopped' | 'interrupted';
   phase: string;
   percent: number;
   startedAt: string;

@@ -303,19 +303,19 @@ function reportLifecycleError(
   process.exitCode = 1;
 }
 
-export async function stackPrepareReleaseCommand(project: string, stack: string, release: string): Promise<void> {
+export async function stackReleaseAdmissionCommand(project: string, stack: string, release: string, prepare: boolean): Promise<void> {
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {
     const service = await client.service<IProjectRpcService>('OmnitronProject');
-    const report = await service.checkRelease({ project, stack, release, prepare: true });
-    const prepared = report.ok || report.state === 'requires-stop';
-    if (!prepared) process.exitCode = 1;
-    if (!emitJson({ project, stack, release, prepared, ...report })) {
-      if (prepared) emitSuccess('Release prepared. ' + report.because);
+    const report = await service.checkRelease({ project, stack, release, prepare });
+    const accepted = report.ok || (prepare && report.state === 'requires-stop');
+    if (!accepted) process.exitCode = 1;
+    if (!emitJson({ project, stack, release, ...(prepare && { prepared: accepted }), ...report })) {
+      if (accepted) emitSuccess(report.because);
       else emitError(report.because, { project, stack, release });
     }
   } catch (error) {
-    reportLifecycleError(error, 'preparing the local release', { project, stack, release });
+    reportLifecycleError(error, prepare ? 'preparing the local release' : 'checking release admission', { project, stack, release });
   } finally { await client.disconnect(); }
 }
 

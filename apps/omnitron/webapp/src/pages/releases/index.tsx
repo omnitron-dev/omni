@@ -96,7 +96,7 @@ export default function ReleasesPage() {
 
   const { data, loading, error, refresh } = usePolledResource(loadPage, { intervalMs: 20_000 });
 
-  const building = (data?.builds ?? []).some((b) => b.state === 'running') || justStarted !== null;
+  const building = (data?.builds ?? []).some((b) => b.state === 'running' || b.state === 'queued') || justStarted !== null;
   // Three seconds while something is building, twenty when nothing is: the
   // phase and the percent are the only readings on this page that change on
   // their own, and they change every few seconds.
@@ -272,6 +272,11 @@ export default function ReleasesPage() {
 
   const visiblePage = Math.min(page, Math.max(0, Math.ceil(rows.length / pageSize) - 1));
   const pageRows = rows.slice(visiblePage * pageSize, visiblePage * pageSize + pageSize);
+  const projectBuilds = builds.filter(record => !activeProject || record.request.project === activeProject);
+  const visibleBuilds = [
+    ...projectBuilds.filter(record => record.state === 'running' || record.state === 'queued'),
+    ...projectBuilds.filter(record => record.state !== 'running' && record.state !== 'queued').slice(0, 3),
+  ];
   const canBuild = data?.preflight?.canBuild !== false;
   const totalBytes = rows.reduce((sum, r) => sum + r.bytes, 0);
 
@@ -325,9 +330,9 @@ export default function ReleasesPage() {
         </Alert>
       )}
 
-      {builds.length > 0 && (
+      {visibleBuilds.length > 0 && (
         <Stack spacing={1.5}>
-          {builds.slice(0, 3).map((record) => (
+          {visibleBuilds.map((record) => (
             <ReleaseBuildPanel
               key={record.buildId}
               record={record}
@@ -387,6 +392,7 @@ export default function ReleasesPage() {
         open={buildOpen}
         onClose={() => setBuildOpen(false)}
         defaultProject={activeProject}
+        activeBuilds={builds}
         preflight={data?.preflight ?? null}
         onStarted={(record) => {
           setJustStarted(record);

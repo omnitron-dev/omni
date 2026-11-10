@@ -192,7 +192,7 @@ export interface ReleaseAdmission {
   preparedArtifactVolumes?: PreparedArtifactVolume[];
   ok: boolean;
   because: string;
-  state?: 'unprepared' | 'requires-stop';
+  state?: 'missing' | 'unprepared' | 'requires-stop';
 }
 
 export interface SelectedRelease {

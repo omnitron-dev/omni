@@ -13,6 +13,8 @@ export function effectiveBindHost(saved: { role?: string; host?: string } | null
 }
 
 export interface SavedDaemonConfig {
+  /** Validated by the release store before credentials are resolved. */
+  releaseStore?: unknown;
   releaseBuildConcurrency?: number;
   cluster?: IDaemonConfig['cluster'];
   executionHost?: IDaemonConfig['executionHost'];

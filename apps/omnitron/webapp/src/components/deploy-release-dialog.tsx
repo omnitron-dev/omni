@@ -14,10 +14,11 @@
  * running and the place to watch it is the stack's own page.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
+import Autocomplete from '@mui/material/Autocomplete';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
@@ -30,13 +31,13 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
-import type { IStackInfo, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
+import type { IStackInfo, ReleaseAdmission, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
 import { invokeStackLifecycle } from 'src/netron/client';
 import { releaseApi } from 'src/netron/release-wire';
 import { useProjectStore } from 'src/stores/project.store';
 import { DeployIcon } from 'src/assets/icons';
 
-import { CommitPair, GateCount, GateStrip, gateSentence } from './release-bits';
+import { CommitPair, GateStrip, gateSentence } from './release-bits';
 
 export interface DeployReleaseDialogProps {
   open: boolean;
@@ -71,8 +72,10 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
   const [available, setAvailable] = useState<ReleaseSummary[]>([]);
   const [picked, setPicked] = useState('');
   const [target, setTarget] = useState(stack ?? '');
-  const [answer, setVerdict] = useState<{ key: string; ok: boolean; because: string; state?: 'unprepared' | 'requires-stop' } | null>(null);
+  const [answer, setVerdict] = useState<(ReleaseAdmission & { key: string }) | null>(null);
   const [checking, setChecking] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const selection = useRef(0);
   const [deploying, setDeploying] = useState(false);
   const [inspectTarget, setInspectTarget] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -95,7 +98,6 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
         if (!current) return;
         const mine = releases.filter((r) => r.project === project && r.complete);
         setAvailable(mine);
-        setPicked(mine[0]?.id ?? '');
       })
       .catch((err: Error) => {
         if (current) setFailure(`The release store could not be read: ${err.message}`);
@@ -109,7 +111,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
   // The effect below needs the identity of the release, not the object: a
   // new array from every poll would otherwise re-ask the daemon for a
   // verdict it has already given.
-  const releaseId = release?.id ?? '';
+  const releaseId = given?.id ?? picked.trim();
   const key = JSON.stringify([project,target,releaseId]);
   const verdict = answer?.key === key ? answer : null;
 
@@ -124,14 +126,17 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
   // The verdict belongs to one (release, stack) pair; changing either drops
   // it rather than leaving the previous answer under the new question.
   useEffect(() => {
+    const generation = ++selection.current;
     setVerdict(null);
+    setPreparing(false);
     setInspectTarget(false);
     setFailure(null);
     setChecking(false);
     if (!open || !releaseId || !target) return undefined;
     let current = true;
     setChecking(true);
-    invokeStackLifecycle('checkRelease', { project, stack: target, release: releaseId })
+    const timeout = window.setTimeout(() => {
+      void invokeStackLifecycle('checkRelease', { project, stack: target, release: releaseId })
       .then((response) => {
         if (current) setVerdict({ ...response, key });
       })
@@ -141,24 +146,30 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
       .finally(() => {
         if (current) setChecking(false);
       });
-    return () => {
-      current = false;
-    };
+    }, 250);
+    return () => { current = false; selection.current = generation + 1; window.clearTimeout(timeout); };
   }, [open, project, target, releaseId, key]);
 
   const handlePrepare = async () => {
-    setChecking(true);
-    try { setVerdict({ ...await invokeStackLifecycle('checkRelease', { project, stack: target, release: releaseId, prepare: true }), key }); }
-    catch (err) { setFailure((err as Error).message); }
-    finally { setChecking(false); }
+    const request = selection.current;
+    setPreparing(true);
+    setFailure(null);
+    try {
+      const response = await invokeStackLifecycle('checkRelease', { project, stack: target, release: releaseId, prepare: true });
+      if (request === selection.current) setVerdict({ ...response, key });
+    } catch (err) {
+      if (request === selection.current) setFailure((err as Error).message);
+    } finally {
+      if (request === selection.current) setPreparing(false);
+    }
   };
 
   const handleDeploy = async () => {
-    if (!release || !target || !verdict?.ok) return;
+    if (!releaseId || !target || !verdict?.ok) return;
     setDeploying(true);
     setFailure(null);
     try {
-      const outcome = await startStack(project, target, { release: release.id });
+      const outcome = await startStack(project, target, { release: releaseId });
       if (outcome.state !== 'confirmed') {
         setFailure(outcome.message);
         setInspectTarget(outcome.state !== 'failed');
@@ -173,6 +184,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
   };
 
   const chosen = stacks.find((s) => s.name === target);
+  const needsPreparation = verdict?.state === 'unprepared' || verdict?.state === 'missing';
   const requiresRelease = chosen?.config?.release?.mode === 'required';
 
   return (
@@ -181,38 +193,21 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
       <DialogContent>
         <Stack spacing={2.5} sx={{ mt: 1 }}>
           {!given && (
-            <TextField
-              select
-              label="Release"
-              value={picked}
-              onChange={(e) => setPicked(e.target.value)}
+            <Autocomplete
+              freeSolo
               size="small"
-              fullWidth
-              disabled={deploying}
-            >
-              {available.length === 0 && (
-                <MenuItem disabled value="">
-                  {loadingReleases ? 'Reading releases…' : 'No completed releases available'}
-                </MenuItem>
-              )}
-              {available.map((r) => (
-                <MenuItem key={r.id} value={r.id}>
-                  <Stack direction="row" spacing={1} sx={{ width: '100%', alignItems: 'center' }}>
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                      {r.id}
-                    </Typography>
-                    <Box sx={{ flex: 1 }} />
-                    <GateCount release={r} variant="caption" />
-                    {r.statics && (
-                      <Chip label={r.statics.stack} size="small" variant="outlined" sx={{ height: 18, fontSize: 10 }} />
-                    )}
-                  </Stack>
-                </MenuItem>
-              ))}
-            </TextField>
+              disabled={deploying || preparing}
+              loading={loadingReleases}
+              options={available.map(item => item.id)}
+              value={picked || null}
+              inputValue={picked}
+              onChange={(_, value) => setPicked(value ?? '')}
+              onInputChange={(_, value) => setPicked(value)}
+              renderInput={params => <TextField {...params} label="Release ID" placeholder="Select or enter a release ID" />}
+            />
           )}
 
-          {release ? (
+          {release && (
             <Box>
               <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
                 {release.id}
@@ -235,8 +230,6 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
                 )}
               </Stack>
             </Box>
-          ) : (
-            <Alert severity="warning">No release chosen.</Alert>
           )}
 
           <TextField
@@ -246,7 +239,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
             onChange={(e) => setTarget(e.target.value)}
             size="small"
             fullWidth
-            disabled={deploying}
+            disabled={deploying || preparing}
             helperText={chosen?.type === 'local' ? 'Local stacks keep the selected release across restarts. Stop their applications before changing it.' : undefined}
           >
             {stacks.length === 0 && (
@@ -282,16 +275,16 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
             </Box>
           )}
 
-          {checking && (
-            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          {(checking || preparing) && (
+            <Stack direction="row" spacing={1} role="status" sx={{ alignItems: 'center' }}>
               <CircularProgress size={16} />
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                Asking the daemon whether it would take this release…
+                {preparing ? 'Preparing and verifying release files…' : 'Checking this release against the stack…'}
               </Typography>
             </Stack>
           )}
 
-          {verdict && (
+          {verdict && !preparing && (
             <Alert severity={verdict.ok ? 'success' : verdict.state ? 'info' : 'error'}>
               <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
                 {verdict.because}
@@ -317,16 +310,16 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} size="small" disabled={deploying}>
-          Cancel
+          {preparing ? 'Close' : 'Cancel'}
         </Button>
         <Button
           variant="contained"
           size="small"
           startIcon={deploying ? <CircularProgress size={14} color="inherit" /> : <DeployIcon />}
-          disabled={!release || !target || deploying || checking || (!inspectTarget && verdict?.state !== 'unprepared' && verdict?.ok !== true)}
-          onClick={inspectTarget ? () => inspect(target) : verdict?.state === 'unprepared' ? handlePrepare : handleDeploy}
+          disabled={!releaseId || !target || deploying || preparing || checking || (!inspectTarget && !needsPreparation && verdict?.ok !== true)}
+          onClick={inspectTarget ? () => inspect(target) : needsPreparation ? handlePrepare : handleDeploy}
         >
-          {deploying ? 'Deploying…' : inspectTarget ? 'Inspect stack' : verdict?.state === 'unprepared' ? 'Prepare release' : 'Deploy'}
+          {deploying ? 'Deploying…' : preparing ? 'Preparing…' : inspectTarget ? 'Inspect stack' : verdict?.state === 'missing' ? 'Fetch and verify' : needsPreparation ? 'Prepare release' : 'Deploy'}
         </Button>
       </DialogActions>
     </Dialog>

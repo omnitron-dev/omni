@@ -24,11 +24,9 @@ import { log } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import type { IOmnitronSecretsService } from '../shared/dto/services.js';
 import {
-  parseStoreConfig,
   pullRelease,
   pushRelease,
-  resolveStore,
-  S3ObjectStore,
+  type S3ObjectStore,
   type KeptAttestation,
   type PartTally,
   type ReleasePart,
@@ -37,7 +35,7 @@ import {
 import { adviseAbsence, describeAbsence } from './daemon-required.js';
 import { emitError, emitJson, isJsonMode } from './output.js';
 
-const CONFIG_SOURCE = '~/.omnitron/config.json';
+import { configuredReleaseStore, configuredStoreConfig } from '../release/configured-store.js';
 
 function mb(bytes: number): string {
   return (bytes / 1024 / 1024).toFixed(1);
@@ -51,10 +49,7 @@ function mb(bytes: number): string {
  * anything, so a missing store is said as such rather than as a vault miss.
  */
 async function openStore(): Promise<S3ObjectStore> {
-  const { readSavedDaemonConfig } = await import('../config/saved.js');
-  const saved = readSavedDaemonConfig() as { releaseStore?: unknown } | null;
-  const config = parseStoreConfig(saved?.releaseStore, CONFIG_SOURCE);
-
+  const config = configuredStoreConfig();
   const client = createDaemonClient();
   try {
     const absence = await client.whyUnreachable();
@@ -66,8 +61,7 @@ async function openStore(): Promise<S3ObjectStore> {
       );
     }
     const secrets = await client.service<IOmnitronSecretsService>('OmnitronSecrets');
-    const resolved = await resolveStore(config, async (key) => (await secrets.get({ key })).value);
-    return new S3ObjectStore(resolved);
+    return await configuredReleaseStore(config, async key => (await secrets.get({ key })).value);
   } finally {
     await client.disconnect();
   }

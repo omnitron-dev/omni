@@ -56,12 +56,15 @@ export function assertReleaseId(id: string): void {
   if (!RELEASE_ID.test(id) || id.includes('..')) throw new Error(`'${id}' is not a release id`);
 }
 
+export class MissingReleaseError extends Error {}
+
 export async function loadRelease(id: string, root: string = releasesRoot()): Promise<LoadedRelease> {
   assertReleaseId(id);
   const dir = path.join(root, id);
   const manifestPath = path.join(dir, 'manifest.json');
   if (!fs.existsSync(manifestPath)) {
-    throw new Error(`No release '${id}' on this machine — ${manifestPath} does not exist. \`ls ${root}\` lists what was built.`);
+    const Failure = fs.existsSync(dir) ? Error : MissingReleaseError;
+    throw new Failure(`No release '${id}' on this machine — ${manifestPath} does not exist. \`ls ${root}\` lists what was built.`);
   }
   if (fs.realpathSync(manifestPath) !== path.join(fs.realpathSync(root), id, 'manifest.json') ||
       !fs.lstatSync(manifestPath).isFile()) throw Error('Release manifest must be a physical file in its store');

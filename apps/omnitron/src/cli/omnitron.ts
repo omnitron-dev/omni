@@ -380,7 +380,7 @@ stack
 
 stack
   .command('prepare-release <project> <stack> <release>')
-  .description('Verify and stage local application archives before a maintenance window')
+  .description('Fetch a missing release from the configured store and verify it against the target stack')
   .structuredAction(async (projectName, stackName, release) => {
     const { stackReleaseAdmissionCommand } = await import('../commands/stack.js');
     await stackReleaseAdmissionCommand(projectName, stackName, release, true);

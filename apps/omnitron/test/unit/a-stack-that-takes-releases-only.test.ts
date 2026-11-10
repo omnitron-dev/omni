@@ -311,6 +311,52 @@ describe('a release is admitted only onto its own commit', () => {
     expect(details['releaseOmniCommit']).toBe('b'.repeat(8));
   });
 
+  it('checks without downloading, then shares one fetch between preparation and explicit deployment', async () => {
+    const { id, svc } = setup();
+    const store = await svc.releaseStore();
+    const local = path.join(store, id);
+    const staged = path.join(scratch, id);
+    fs.renameSync(local, staged);
+    svc.incomingReleases = new Map();
+    const gate = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    svc.receiveRelease = vi.fn(async (requested: string, root: string) => {
+      expect([requested, root]).toEqual([id, store]);
+      entered.resolve();
+      await gate.promise;
+      fs.renameSync(staged, local);
+    });
+    expect(await svc.checkRelease('sample', 'test', id)).toMatchObject({ ok: false, state: 'missing' });
+    expect(svc.receiveRelease).not.toHaveBeenCalled();
+    const preparation = svc.checkRelease('sample', 'test', id, true);
+    await entered.promise;
+    const deployment = svc.startStack('sample', 'test', { source: 'operator', release: id });
+    gate.resolve();
+    expect(await preparation).toMatchObject({ ok: true });
+    await deployment;
+    expect(svc.receiveRelease).toHaveBeenCalledTimes(1);
+    expect(svc.startRemoteStack.mock.calls[0][4].id).toBe(id);
+    expect(svc.incomingReleases.size).toBe(0);
+  });
+
+  it('retains incomplete local work and allows a retry after a store failure', async () => {
+    const { id, svc } = setup();
+    const root = await svc.releaseStore();
+    svc.incomingReleases = new Map();
+    svc.receiveRelease = vi.fn(async () => { throw new Error('Store unavailable'); });
+    const local = path.join(root, id);
+    fs.unlinkSync(path.join(local, 'manifest.json'));
+    expect(await svc.checkRelease('sample', 'test', id, true)).toMatchObject({ ok: false });
+    expect(fs.existsSync(path.join(local, 'artifacts'))).toBe(true);
+    expect(svc.receiveRelease).not.toHaveBeenCalled();
+    const absent = id + '-another';
+    for (let i = 1; i <= 2; i++) {
+      expect(await svc.checkRelease('sample', 'test', absent, true)).toMatchObject({ ok: false, because: 'Store unavailable' });
+      expect(svc.receiveRelease).toHaveBeenCalledTimes(i);
+    }
+    expect(svc.startRemoteStack).not.toHaveBeenCalled();
+  });
+
   it('refuses it onto a directory that is not its commit, naming the file', async () => {
     const { dir, id, svc } = setup();
     fs.writeFileSync(path.join(dir, 'omnitron.config.ts'), 'export default { edited: true };\n');

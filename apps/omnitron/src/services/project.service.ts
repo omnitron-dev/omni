@@ -1,4 +1,5 @@
 import { readProjectStacks, resolveProjectStacks } from '../config/project-stacks.js';
+import { readSavedDaemonConfig } from '../config/saved.js';
 import { observeStackHealth, type HealthAnswers } from '../project/stack-health.js';
 import { LocalReleaseSelection } from '../project/local-release-selection.js';
 import { resolveAppPath } from '../config/app-path.js';
@@ -259,6 +260,8 @@ export type AttestAccounts = 'provisioned' | 'not-declared' | 'producer-cannot';
 
 /** What `ProjectService` takes beyond its three required collaborators. */
 export interface ProjectServiceOptions {
+  /** Master-owned artifact store. Thin nodes only consume the installed release selected by their controller. */
+  readonly receiveRelease?: (id: string, root: string) => Promise<void>;
   /** Slave→master replication, handed to the lazily built mesh connector. */
   readonly syncService?: SyncService;
   /**
@@ -399,6 +402,7 @@ export class ProjectService extends EventEmitter {
     super();
     this.syncService = options.syncService;
     this.secrets = options.secrets;
+    this.receiveRelease = options.receiveRelease;
     this.audit = options.audit;
     // T-7 — registry persistence routed through DaemonStateStore
     // (SQLite, transactional, co-located with daemon-state-kv,
@@ -1659,6 +1663,7 @@ export class ProjectService extends EventEmitter {
     let release: AdmittedRelease | null = null;
     if (requested) {
       known.release = requested;
+      if (this.receiveRelease && releaseId && source === 'operator') await this.fetchMissingRelease(releaseId);
       release = await this.admitRelease(projectName, stackName, stackConfig, config, requested);
       if (prior?.release?.id === requested && prior.release.manifestSha256 !== release.manifestSha256)
         throw new Error('The selected release manifest changed on disk; restore its original bytes');
@@ -2260,6 +2265,25 @@ export class ProjectService extends EventEmitter {
     return releasesRoot();
   }
 
+  private readonly receiveRelease: ProjectServiceOptions['receiveRelease'];
+  private readonly incomingReleases = new Map<string, Promise<void>>();
+
+  /** A failed or unfinished local build owns its directory; a pull must never replace it. */
+  private async fetchMissingRelease(id: string): Promise<void> {
+    if (!this.receiveRelease) return;
+    const { assertReleaseId } = await import('../release/load.js');
+    assertReleaseId(id);
+    const root = await this.releaseStore();
+    try { await fs.promises.lstat(path.join(root, id)); return; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    let operation = this.incomingReleases.get(id);
+    if (!operation) {
+      operation = this.receiveRelease(id, root).finally(() => this.incomingReleases.delete(id));
+      this.incomingReleases.set(id, operation);
+    }
+    await operation;
+  }
+
   /** Explicit disk inspection: never performed by polling and never alters launch evidence. */
   async inspectInstalledArtifacts(project: string, stack: string, catalogProject: string) {
     const { inspectInstalledArtifacts } = await import('../release/installed-artifacts.js');
@@ -2336,7 +2360,7 @@ export class ProjectService extends EventEmitter {
       const stackConfig = stacks[stackName];
       if (!stackConfig) throw new Error(`Stack '${stackName}' not found in project '${projectName}'`);
       this.assertStartAuthority({ project: projectName, stack: stackName }, stackConfig);
-      if (prepare && stackConfig.type !== 'local') throw new Error('Preparing a local release requires a local stack');
+      if (prepare && this.receiveRelease) await this.fetchMissingRelease(releaseId);
       const release = await this.admitRelease(projectName, stackName, stackConfig, config, releaseId, 'check');
       let retiring: string[] = [];
       if (stackConfig.type === 'local') {
@@ -2365,6 +2389,12 @@ export class ProjectService extends EventEmitter {
       };
     } catch (err) {
       const { LocalReleaseNotPreparedError } = await import('../release/local-installation.js');
+      const { MissingReleaseError } = await import('../release/load.js');
+      if (!prepare && this.receiveRelease && err instanceof MissingReleaseError) {
+        return {
+          ok: false, state: 'missing', because: `Release ${releaseId} is absent from this controller. Fetch it from the configured release store and check target admission.`,
+        };
+      }
       return { ok: false, because: (err as Error).message,
         ...(err instanceof LocalReleaseNotPreparedError && { state: 'unprepared' as const }),
         ...(err instanceof LocalReleaseStopRequired && { state: 'requires-stop' as const,
@@ -5621,7 +5651,19 @@ export const MASTER_PROJECT_SERVICE_PROVIDER: {
     // deployed app is handed `<secret:…>` as a password. `audit` is here
     // because two of the three callers of `startStack` never pass through the
     // RPC layer that used to record it.
-    new ProjectService(loggerModule.logger, orchestrator, daemonStateStore, { secrets, audit }),
+    new ProjectService(loggerModule.logger, orchestrator, daemonStateStore, {
+      secrets, audit, ...(readSavedDaemonConfig()?.releaseStore ? { receiveRelease: async (id: string, root: string) => {
+        const { configuredReleaseStore, configuredStoreConfig } = await import('../release/configured-store.js');
+        const { pullRelease } = await import('../release/artifact-store.js');
+        await audit.record({ action: 'release.pull.requested', resourceType: 'release', resourceId: id }, true);
+        const store = await configuredReleaseStore(configuredStoreConfig(), key => secrets.get(key));
+        try {
+          const result = await pullRelease(id, store, { root });
+          await audit.record({ action: 'release.pull', resourceType: 'release', resourceId: id,
+            details: { indexSha256: result.indexSha256, files: result.moved.files, bytes: result.moved.bytes } }, true);
+        } finally { store.close(); }
+      } } : {}),
+    }),
 };
 
 /** A slave has its own encrypted vault even though it has no master database/audit service. */

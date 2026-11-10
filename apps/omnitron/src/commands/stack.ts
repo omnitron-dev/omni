@@ -315,7 +315,7 @@ export async function stackReleaseAdmissionCommand(project: string, stack: strin
       else emitError(report.because, { project, stack, release });
     }
   } catch (error) {
-    reportLifecycleError(error, prepare ? 'preparing the local release' : 'checking release admission', { project, stack, release });
+    reportLifecycleError(error, prepare ? 'preparing the release' : 'checking release admission', { project, stack, release });
   } finally { await client.disconnect(); }
 }
 

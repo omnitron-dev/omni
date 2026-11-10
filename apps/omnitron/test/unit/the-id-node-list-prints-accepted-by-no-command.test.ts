@@ -66,7 +66,7 @@ vi.mock('../../src/daemon/daemon-client.js', () => ({
   }),
 }));
 
-const { nodeCheckCommand, nodeRemoveCommand, nodeUpdateCommand, resolveNodeArgument } = await import(
+const { nodeCheckCommand, nodeListCommand, nodeRemoveCommand, nodeUpdateCommand, resolveNodeArgument } = await import(
   '../../src/commands/node.js'
 );
 
@@ -87,6 +87,25 @@ afterEach(() => {
 });
 
 describe('the id node list prints', () => {
+  it('returns full inventory IDs in machine mode and excludes credential configuration from older controllers', async () => {
+    const { setEnvOverride, resetEnvCache } = await import('../../src/shared/env-config.js');
+    setEnvOverride({ OMNITRON_OUTPUT: 'json' });
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      registry = [node(SAMPLE_TEST, 'edge', 'example.test', { sshPrivateKey: 'synthetic-key' })];
+      await nodeListCommand();
+      expect(JSON.parse(String(output.mock.calls[0]![0])).data.nodes).toEqual([
+        { id: SAMPLE_TEST, name: 'edge', host: 'example.test', sshPort: 22, daemonPort: 9700, runtime: 'node', isLocal: false, tags: [], status: null },
+      ]);
+      registry = [];
+      await nodeListCommand();
+      expect(JSON.parse(String(output.mock.calls[1]![0])).data.nodes).toEqual([]);
+    } finally {
+      output.mockRestore();
+      resetEnvCache();
+    }
+  });
+
   it('is accepted by node check', async () => {
     await nodeCheckCommand('16f3dd5a');
 

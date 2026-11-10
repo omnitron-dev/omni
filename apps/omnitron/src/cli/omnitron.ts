@@ -1377,7 +1377,7 @@ node
   .command('list')
   .alias('ls')
   .description('List all registered nodes')
-  .action(async () => {
+  .structuredAction(async () => {
     const { nodeListCommand } = await import('../commands/node.js');
     await nodeListCommand();
   });

@@ -9,6 +9,7 @@ import { relayReading } from '../shared/relay-reading.js';
 import { log, table } from '@xec-sh/kit';
 import { createDaemonClient } from '../daemon/daemon-client.js';
 import { requireDaemon } from './daemon-required.js';
+import { emitError, emitJson, isJsonMode } from './output.js';
 import { readSecretFromStdin } from './secret-input.js';
 import type { INodeStatus, INodeWithStatus, IMeshNodeStatus } from '../shared/dto/nodes.js';
 import { meshReading, syncProgressWords, historyWords } from '../shared/sync-reading.js';
@@ -157,6 +158,13 @@ export async function nodeListCommand(): Promise<void> {
   try {
     const nodes = await client.service<NodesService>('OmnitronNodes');
     const list = await nodes.listNodes();
+    if (isJsonMode()) {
+      // Older controllers can return credential configuration in their node DTO.
+      const inventory = list.map(({ id, name, host, sshPort, daemonPort, runtime, isLocal, tags, status }) =>
+        ({ id, name, host, sshPort, daemonPort, runtime, isLocal, tags, status }));
+      emitJson({ nodes: inventory });
+      return;
+    }
 
     if (list.length === 0) {
       log.info('No nodes registered.');
@@ -210,7 +218,7 @@ export async function nodeListCommand(): Promise<void> {
  * running `omnitron node check <id> && …` went on as if it had worked.
  */
 function fail(err: unknown): void {
-  log.error(`Failed: ${(err as Error).message}`);
+  emitError(`Failed: ${err instanceof Error ? err.message : String(err)}`);
   process.exitCode = 1;
 }
 

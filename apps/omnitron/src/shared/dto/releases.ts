@@ -36,6 +36,8 @@ export interface BuildRequest {
   readonly forStack?: string | undefined;
   readonly skipGates?: boolean | undefined;
   readonly keepSource?: boolean | undefined;
+  /** Publish the checked build to the controller's configured shared artifact store. */
+  readonly publish?: boolean;
   /** Names only — a value here would be in every console's memory. */
   readonly envKeys?: readonly string[] | undefined;
 }
@@ -53,6 +55,8 @@ export interface BuildRecord {
   durationMs: number;
   gates: GateOutcome[];
   error: string | null;
+  /** Returned after the store commits the release index. */
+  publication?: { indexSha256: string; location: string };
   /** Who asked, as the request proved it. */
   readonly requestedBy: string | null;
   /** Every phase line, in order — the console's live log. */

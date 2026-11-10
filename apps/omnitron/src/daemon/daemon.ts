@@ -1162,7 +1162,27 @@ export class OmnitronDaemon {
     if (!isSlave) {
       const { ReleaseService } = await import('../services/release.service.js');
       const { ReleaseRpcService } = await import('../services/release.rpc-service.js');
-      this.releaseService = new ReleaseService(loggerModule.logger.child({ component: 'release' }), dc.releaseBuildConcurrency, stateStore);
+      const { readSavedDaemonConfig } = await import('../config/saved.js');
+      this.releaseService = new ReleaseService(loggerModule.logger.child({ component: 'release' }), dc.releaseBuildConcurrency, stateStore,
+        readSavedDaemonConfig()?.releaseStore ? async (id, { signal, progress }) => {
+          if (!audit) throw Error('Publishing requires audit storage');
+          const { configuredReleaseStore, configuredStoreConfig } = await import('../release/configured-store.js');
+          const { pushRelease } = await import('../release/artifact-store.js');
+          await audit.record({ action: 'release.push.requested', resourceType: 'release', resourceId: id }, true);
+          const store = await configuredReleaseStore(configuredStoreConfig(), key => secretsService.get(key));
+          const cancel = () => store.close();
+          signal.addEventListener('abort', cancel, { once: true });
+          try {
+            signal.throwIfAborted();
+            const result = await pushRelease(id, store, { signal, onProgress: (done, total) => progress(done.files, total.files) });
+            await audit.record({ action: 'release.push', resourceType: 'release', resourceId: id,
+              details: { indexSha256: result.indexSha256, files: result.moved.files, bytes: result.moved.bytes } }, true);
+            return { indexSha256: result.indexSha256, location: result.location };
+          } finally {
+            signal.removeEventListener('abort', cancel);
+            store.close();
+          }
+        } : undefined);
       await this.releaseService.restore();
       const releaseAuth = await container.resolveAsync<AuthService>(AUTH_SERVICE_TOKEN);
       await this.app.netron.peer.exposeService(new ReleaseRpcService(this.releaseService, audit, projectService, releaseAuth));

@@ -26,6 +26,21 @@ it('leaves source selection to the committed project when no override was reques
   expect(mocks.build).toHaveBeenCalledWith({ project: 'sample' });
 });
 
+it('only submits publication when the current controller advertises a shared store', async () => {
+  const p = props();
+  const view = render(<BuildReleaseDialog {...p} />);
+  const name = /publish verified build to shared store/i;
+  expect(screen.queryByLabelText(name)).toBeNull();
+  view.rerender(<BuildReleaseDialog {...p} preflight={{ ...preflight, publish: 1 }} />);
+  fireEvent.click(screen.getByLabelText(name));
+  expect(screen.getByLabelText('Skip the gates').hasAttribute('disabled')).toBe(true);
+  view.rerender(<BuildReleaseDialog {...p} />);
+  expect(submit().hasAttribute('disabled')).toBe(true);
+  view.rerender(<BuildReleaseDialog {...p} preflight={{ ...preflight, publish: 1 }} />);
+  fireEvent.click(submit());
+  await waitFor(() => expect(mocks.build).toHaveBeenCalledWith({ project: 'sample', publish: true }));
+});
+
 it('sends an arbitrary Git host and its explicit ref through the shared build request', async () => {
   render(<BuildReleaseDialog {...props()} />);
   sourceOptions();

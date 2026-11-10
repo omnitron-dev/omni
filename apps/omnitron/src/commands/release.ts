@@ -178,11 +178,12 @@ export async function releaseStatusCommand(project: string, options: { inspectIn
 // build
 // ---------------------------------------------------------------------------
 
-export async function releaseBuildCommand(projectName: string, options: ReleaseBuildOptions = {}, detach = false): Promise<void> {
-  if (detach) {
+export async function releaseBuildCommand(projectName: string, options: ReleaseBuildOptions & { publish?: boolean } = {}, detach = false): Promise<void> {
+  if (detach || options.publish) {
     const client = createDaemonClient();
     try {
       const service = await client.service<IOmnitronReleaseService>('OmnitronRelease');
+      if (options.publish && (await service.preflight()).publish !== 1) throw new Error('This controller cannot publish builds. Configure its release store and check its version.');
       const record = await service.build({
         project: projectName,
         ...(options.projectCommit && { projectCommit: options.projectCommit }),
@@ -191,8 +192,14 @@ export async function releaseBuildCommand(projectName: string, options: ReleaseB
         ...(options.forStack && { forStack: options.forStack }),
         ...(options.keepSource && { keepSource: true }),
         ...(options.skipGates && { skipGates: true }),
+        ...(options.publish && { publish: true }),
       });
-      if (!emitJson(record)) log.info(`${record.buildId}  ${record.request.project}  ${record.state} · ${record.phase}`);
+      if (detach) {
+        if (!emitJson(record)) log.info(`${record.buildId}  ${record.request.project}  ${record.state} · ${record.phase}`);
+      } else {
+        if (!isJsonMode()) log.info(`Build ${record.buildId} · ${record.request.project}`);
+        await releaseJobsCommand('show', record.buildId, true);
+      }
     } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
     finally { await client.disconnect(); }
     return;
@@ -208,13 +215,14 @@ export async function releaseBuildCommand(projectName: string, options: ReleaseB
   const onSignal = (sig: NodeJS.Signals): void => {
     if (signalled) process.exit(sig === 'SIGINT' ? 130 : 143);
     signalled = sig;
-    log.warn(`${sig} — stopping the build; its build root goes on the way out (a second ${sig} does not wait)`);
+    if (!isJsonMode()) log.warn(`${sig} — stopping the build; its build root goes on the way out (a second ${sig} does not wait)`);
     stop.abort();
   };
   process.on('SIGINT', onSignal);
   process.on('SIGTERM', onSignal);
   try {
     const outcome = await runReleaseBuild(projectName, { ...options, signal: options.signal ?? stop.signal }, (p) => {
+      if (isJsonMode()) return;
       if (p.releaseId && !releaseRoot) {
         releaseRoot = `${releasesRoot()}/${p.releaseId}`;
         log.info(`Release ${p.releaseId}`);
@@ -226,12 +234,13 @@ export async function releaseBuildCommand(projectName: string, options: ReleaseB
     const failedGates = m.gates.filter((g) => g.status !== 'passed');
     const bytes = m.artifacts.reduce((sum, a) => sum + a.bytes, 0);
     const checks = readBuildChecks(m);
+    if (checks.exitCode) process.exitCode = checks.exitCode;
+    if (emitJson({ ...outcome, checks })) return;
     const summary = `Release ${outcome.id} — ${Math.round(outcome.durationMs / MINUTE)} min`;
     if (checks.exitCode === 0) log.success(summary);
     else {
       log.warn(`${summary} — checks did not pass; retained for diagnosis`);
       log.warn(`  ${checks.reason}`);
-      process.exitCode = checks.exitCode;
     }
     log.info(
       `  gates: ${m.gates.length - failedGates.length} of ${m.gates.length} passed` +
@@ -245,7 +254,9 @@ export async function releaseBuildCommand(projectName: string, options: ReleaseB
     if (publication.state !== 'recorded') log.warn(`  ${publication.label}: ${publication.detail}`);
     log.info(`  manifest: ${outcome.manifestPath}`);
   } catch (err) {
-    log.error(`Release build failed after ${Math.round((Date.now() - started) / MINUTE)} min: ${(err as Error).message}`);
+    const message = `Release build failed after ${Math.round((Date.now() - started) / MINUTE)} min: ${(err as Error).message}`;
+    if (isJsonMode()) emitError(message, { project: projectName });
+    else log.error(message);
     if (releaseRoot) {
       log.info(`  its logs: ${releaseRoot}/logs${options.keepSource ? ` · its build root: ${releaseRoot}/src` : ''}`);
     }
@@ -282,10 +293,11 @@ export async function releaseJobsCommand(action: 'list' | 'show' | 'stop', id?: 
     if (!emitJson(job)) {
       log.info(`${job.buildId}  ${job.request.project}  ${job.state}  ${job.percent}%  ${job.phase}`);
       if (job.releaseId) log.info('Release ' + job.releaseId);
+      if (job.publication) log.info(`Published to ${job.publication.location} · index sha256 ${job.publication.indexSha256}`);
       for (const gate of job.gates) log.info(`  ${gate.name}  ${gate.status}`);
       if (job.error) log.error(job.error);
     }
-    if (job.state === 'failed' || job.state === 'interrupted') process.exitCode = 1;
+    if (job.state === 'failed' || job.state === 'interrupted' || (follow && job.state === 'stopped')) process.exitCode = 1;
   } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
   finally { await client.disconnect(); }
 }

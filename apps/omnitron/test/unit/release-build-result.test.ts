@@ -102,3 +102,44 @@ it('recovers job history without replaying builds or persisting environment valu
   expect(after.activeBuildCount).toBe(0);
   expect(runner).toHaveBeenCalledTimes(calls);
 });
+
+it('records a verified store index only after a successful build and confirmed publication', async () => {
+  const logger = { info: vi.fn(), error: vi.fn() } as unknown as ILogger;
+  const done = Promise.withResolvers<{ location: string; indexSha256: string }>();
+  const publisher = vi.fn(async () => done.promise);
+  const service = new ReleaseService(logger, 1, undefined, publisher);
+  const auth = vi.fn(async () => {});
+  const checked = outcome([{ name: 'test', status: 'passed' }]);
+  runner.mockResolvedValueOnce(checked);
+  const record = service.start({ project: 'sample', publish: true }, 'operator', auth);
+  await vi.waitFor(() => expect(publisher).toHaveBeenCalledOnce());
+  expect(auth).toHaveBeenCalledOnce();
+  expect(record.state).toBe('running');
+  expect(record.publication).toBeUndefined();
+  const receipt = { location: 's3://releases', indexSha256: 'e'.repeat(64) };
+  done.resolve(receipt);
+  await vi.waitFor(() => expect(record.state).toBe('done'));
+  expect(record.publication).toEqual(receipt);
+  runner.mockResolvedValueOnce(outcome([{ name: 'test', status: 'failed' }]));
+  const failed = service.start({ project: 'sample', publish: true }, 'operator', auth);
+  await vi.waitFor(() => expect(failed.state).toBe('failed'));
+  expect(publisher).toHaveBeenCalledTimes(1);
+  expect(() => service.start({ project: 'sample', skipGates: true, publish: true }, 'operator')).toThrow('full gate run');
+});
+
+it('revalidates a queued actor before executing project code and before publishing', async () => {
+  const logger = { info: vi.fn(), error: vi.fn() } as unknown as ILogger;
+  const publisher = vi.fn();
+  const service = new ReleaseService(logger, 1, undefined, publisher);
+  const first = Promise.withResolvers<ReturnType<typeof outcome>>();
+  runner.mockReturnValueOnce(first.promise);
+  const revoked = vi.fn(async () => { throw Error('Role revoked'); });
+  const running = service.start({ project: 'first', publish: true }, 'operator', revoked);
+  const waiting = service.start({ project: 'second', publish: true }, 'operator', revoked);
+  first.resolve(outcome([{ name: 'test', status: 'passed' }]));
+  await vi.waitFor(() => expect(service.activeBuildCount).toBe(0));
+  expect([running.state, waiting.state]).toEqual(['failed', 'failed']);
+  expect(waiting.error).toBe('Role revoked');
+  expect(runner).toHaveBeenCalledTimes(1);
+  expect(publisher).not.toHaveBeenCalled();
+});

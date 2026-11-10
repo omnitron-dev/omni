@@ -86,7 +86,7 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
   const [project, setProject] = useState(defaultProject ?? '');
   const inFlight = (name: string) => activeBuilds.find(job => job.request.project === name && (job.state === 'running' || job.state === 'queued'));
   const existing = inFlight(project);
-  const [forStack, setForStack] = useState('');
+  const [pickedStack, setPickedStack] = useState<string | null>(null);
   const [projectCommit, setProjectCommit] = useState('');
   const [omniCommit, setOmniCommit] = useState('');
   const [frameworkRepository, setFrameworkRepository] = useState('');
@@ -94,6 +94,7 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
   const [envText, setEnvText] = useState('');
   const [skipGates, setSkipGates] = useState(false);
   const [keepSource, setKeepSource] = useState(false);
+  const [publish, setPublish] = useState(false);
   const [starting, setStarting] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -108,6 +109,12 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
       setFrameworkRepository('');
       setFrameworkRef('');
       setEnvText('');
+      setPickedStack(null);
+      setPublish(false);
+      setSkipGates(false);
+      setKeepSource(false);
+      setProjectCommit('');
+      setOmniCommit('');
     }
   }, [open, defaultProject]);
 
@@ -118,11 +125,7 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
   // The stack a release is nearly always for: the one that takes releases
   // only. Chosen rather than left empty because a release without the static
   // bundle is refused by exactly that stack, at the end, after the build.
-  useEffect(() => {
-    if (!open || forStack) return;
-    const required = stacks.find((s) => s.config?.release?.mode === 'required');
-    if (required) setForStack(required.name);
-  }, [open, stacks, forStack]);
+  const forStack = pickedStack ?? stacks.find(s => s.config?.release?.mode === 'required')?.name ?? '';
 
   const { env, bad } = useMemo(() => parseEnv(envText), [envText]);
   const supportsSourceOverride = preflight?.frameworkSource === 1;
@@ -139,6 +142,7 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
   }, [frameworkRepository, frameworkRef]);
 
   const handleBuild = async () => {
+    if (publish && (preflight?.publish !== 1 || skipGates)) return;
     if (framework.error) {
       setFailure(framework.error);
       return;
@@ -164,6 +168,7 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
         ...(forStack ? { forStack } : {}),
         ...(skipGates ? { skipGates: true } : {}),
         ...(keepSource ? { keepSource: true } : {}),
+        ...(publish && { publish: true }),
         ...(Object.keys(env).length ? { env } : {}),
       });
       onStarted(record);
@@ -208,7 +213,10 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
             helperText={existing ? `Build ${existing.buildId} · ${existing.phase}` : undefined}
             onChange={(e) => {
               setProject(e.target.value);
-              setForStack('');
+              setPickedStack(null);
+              setEnvText('');
+              setProjectCommit('');
+              setOmniCommit('');
               setFrameworkRepository('');
               setFrameworkRef('');
             }}
@@ -232,7 +240,7 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
             select
             label="Static bundle for"
             value={forStack}
-            onChange={(e) => setForStack(e.target.value)}
+            onChange={(e) => setPickedStack(e.target.value)}
             size="small"
             fullWidth
             disabled={starting}
@@ -319,8 +327,12 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
           />
 
           <Box>
+            {preflight?.publish === 1 && <FormControlLabel
+              control={<Switch checked={publish} onChange={e => setPublish(e.target.checked)} size="small" disabled={starting || skipGates} />}
+              label={<Typography variant="body2">Publish verified build to shared store</Typography>}
+            />}
             <FormControlLabel
-              control={<Switch checked={skipGates} onChange={(e) => setSkipGates(e.target.checked)} size="small" disabled={starting} />}
+              control={<Switch checked={skipGates} onChange={(e) => setSkipGates(e.target.checked)} size="small" disabled={starting || publish} />}
               label={<Typography variant="body2">Skip the gates</Typography>}
             />
             {skipGates && (
@@ -351,7 +363,7 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
         <Button
           variant="contained"
           size="small"
-          disabled={!project || Boolean(existing) || starting || bad.length > 0 || framework.error !== null || (!!framework.source && !canOverrideSource) || (hasEnvOverride && !canOverrideBuild)}
+          disabled={!project || Boolean(existing) || starting || bad.length > 0 || framework.error !== null || (!!framework.source && !canOverrideSource) || (hasEnvOverride && !canOverrideBuild) || (publish && preflight?.publish !== 1)}
           startIcon={starting ? <CircularProgress size={14} color="inherit" /> : undefined}
           onClick={handleBuild}
         >

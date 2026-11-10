@@ -829,6 +829,7 @@ release
   .command('build <project>')
   .description('Build a clean project revision with its locked framework, run gates and package the artifacts')
   .option('--detach', 'Submit to the controller and return a build ID for CLI or Console')
+  .option('--publish', 'Build on the controller and publish verified artifacts to its configured release store')
   .option('--project-commit <sha>', "The project commit to build (default: the project checkout's HEAD)")
   .option('--omni-commit <sha>', "Linked checkout revision, or the exact full commit to require from registry packages")
   .option('--framework-repository <repository>', 'Override the committed SDK source repository for this build')
@@ -836,10 +837,10 @@ release
   .option('--keep-source', 'Keep the clones after a successful build')
   .option('--skip-gates', 'Record every gate as not-run instead of running them — a look, never a release for a stack')
   .option('--for <stack>', "Also build the static bundle this stack's gateway serves, with its environment")
-  .action(
+  .structuredAction(
     async (
       projectName: string,
-      options: { detach?: boolean; projectCommit?: string; omniCommit?: string; frameworkRepository?: string; frameworkRef?: string; keepSource?: boolean; skipGates?: boolean; for?: string },
+      options: { detach?: boolean; publish?: boolean; projectCommit?: string; omniCommit?: string; frameworkRepository?: string; frameworkRef?: string; keepSource?: boolean; skipGates?: boolean; for?: string },
     ) => {
       const { releaseBuildCommand } = await import('../commands/release.js');
       const { parseFrameworkSource } = await import('../shared/framework-source.js');

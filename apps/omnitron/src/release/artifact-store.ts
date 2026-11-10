@@ -1044,6 +1044,7 @@ async function fetchVerified(store: ObjectStore, id: string, entry: IndexEntry, 
 // ============================================================================
 
 export interface TransferOptions {
+  readonly signal?: AbortSignal;
   /** Where releases live on this machine. Default `~/.omnitron/releases`. */
   readonly root?: string;
   /** Objects in flight at once. Default 8: 548 statics files one by one is a minute on a remote store. */
@@ -1127,6 +1128,7 @@ export async function pushRelease(id: string, store: ObjectStore, options: Trans
   const total = tally(send);
   let done = { files: 0, bytes: 0 };
   await eachLimited(send, options.concurrency ?? 8, async (entry) => {
+    options.signal?.throwIfAborted();
     await store.put(`${id}/${entry.path}`, placeOf(loaded.root, entry.path), entry);
     done = { files: done.files + 1, bytes: done.bytes + entry.bytes };
     options.onProgress?.(done, total);
@@ -1142,6 +1144,7 @@ export async function pushRelease(id: string, store: ObjectStore, options: Trans
   };
   const body = Buffer.from(`${JSON.stringify(index, null, 2)}\n`);
   const indexSha256 = sha256Hex(body);
+  options.signal?.throwIfAborted();
   await store.put(indexKey, body, { sha256: indexSha256, bytes: body.length });
   return { id, location: store.location, parts: tallyParts(files), moved: total, indexSha256, keptNewer };
 }

@@ -43,6 +43,8 @@ export type { BuildRequest, BuildRecord } from '../shared/dto/releases.js';
 const KEEP_RECORDS = 20;
 const RECORD_PREFIX = 'release:build:';
 type BuildStore = Pick<DaemonStateStore, 'kvKeys' | 'kvGetSync' | 'kvSetSync' | 'kvDeleteSync'>;
+type Publisher = (id: string, options: { signal: AbortSignal; progress: (done: number, total: number) => void }) =>
+  Promise<NonNullable<BuildRecord['publication']>>;
 
 export class ReleaseService {
   private readonly records = new Map<string, BuildRecord>();
@@ -54,6 +56,7 @@ export class ReleaseService {
     private readonly logger: ILogger,
     private readonly concurrency = Math.min(2, availableParallelism()),
     private readonly store?: BuildStore,
+    private readonly publish?: Publisher,
   ) {
     if (!Number.isSafeInteger(concurrency) || concurrency < 1) throw new Error('releaseBuildConcurrency must be a positive integer');
   }
@@ -73,6 +76,11 @@ export class ReleaseService {
           record.gates = [...manifest.gates];
           record.percent = 100;
           record.phase = 'Recovered from release manifest';
+          if (checks.exitCode === 0 && record.request.publish && !record.publication) {
+            record.state = 'interrupted';
+            record.phase = 'Publication unconfirmed';
+            record.error = 'The build is complete. Verify or repeat release push for this release ID to confirm its store index.';
+          }
         } else {
           record.state = 'interrupted';
           record.error = 'The controller session ended before a final release manifest was recorded';
@@ -93,6 +101,8 @@ export class ReleaseService {
   get activeBuildCount(): number {
     return this.running.size + this.waiting.size;
   }
+
+  get canPublish(): boolean { return this.publish !== undefined; }
 
   root(): string {
     return releasesRoot();
@@ -129,7 +139,7 @@ export class ReleaseService {
 
   /** Every build this daemon has run since it started, newest first. */
   builds(): BuildRecord[] {
-    return [...this.records.values()].sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
+    return [...this.records.values()].reverse().sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   }
 
   build(buildId: string): BuildRecord | null {
@@ -141,9 +151,12 @@ export class ReleaseService {
   start(
     request: BuildRequest & { env?: Record<string, string> },
     requestedBy: string | null,
+    reauthorize?: () => Promise<unknown>,
   ): BuildRecord {
     // Validate before a request reaches records, audit output or an asynchronous build.
     const frameworkSource = request.frameworkSource === undefined ? undefined : parseFrameworkSource(request.frameworkSource);
+    if (request.publish !== undefined && typeof request.publish !== 'boolean') throw new Error('publish must be a boolean');
+    if (request.publish && (!this.publish || request.skipGates)) throw new Error('Publishing requires a configured release store and a full gate run');
     const busy = [...this.records.values()].find(r => r.request.project === request.project && (r.state === 'queued' || r.state === 'running'));
     if (busy) {
       throw new Error(
@@ -164,6 +177,7 @@ export class ReleaseService {
         ...(request.forStack ? { forStack: request.forStack } : {}),
         ...(request.skipGates ? { skipGates: true } : {}),
         ...(request.keepSource ? { keepSource: true } : {}),
+        ...(request.publish && { publish: true }),
         ...(envKeys.length ? { envKeys } : {}),
       },
       releaseId: null,
@@ -183,13 +197,12 @@ export class ReleaseService {
     this.forget();
 
     const env = request.env && Object.freeze({ ...request.env });
-    const run = AsyncLocalStorage.bind(() => this.run(record, env));
-    if (this.running.size < this.concurrency) run();
-    else this.waiting.set(buildId, run);
+    if (this.running.size < this.concurrency) this.run(record, env, reauthorize, false);
+    else this.waiting.set(buildId, AsyncLocalStorage.bind(() => this.run(record, env, reauthorize, true)));
     return record;
   }
 
-  private run(record: BuildRecord, env?: Record<string, string>): void {
+  private run(record: BuildRecord, env: Record<string, string> | undefined, reauthorize: (() => Promise<unknown>) | undefined, queued: boolean): void {
     const { buildId, requestedBy, request } = record;
     const { frameworkSource } = request;
     const controller = new AbortController();
@@ -210,16 +223,33 @@ export class ReleaseService {
     // Deliberately not awaited: the caller gets the build id now. Every
     // outcome lands on the record, including a throw — an unhandled
     // rejection here would take the daemon down with it.
-    void runReleaseBuild(request.project, options, (phase) => this.onPhase(buildId, phase))
-      .then((outcome) => {
+    const build = () => {
+      controller.signal.throwIfAborted();
+      return runReleaseBuild(request.project, options, phase => this.onPhase(buildId, request.publish
+        ? { ...phase, percent: Math.round(phase.percent * 0.9) } : phase));
+    };
+    const execution = queued && reauthorize ? reauthorize().then(build) : build();
+    void execution.then(async (outcome) => {
         const r = this.records.get(buildId)!;
         const checks = readBuildChecks(outcome.manifest);
-        r.state = checks.exitCode === 0 ? 'done' : 'failed';
-        r.error = checks.reason;
         r.releaseId = outcome.id;
         r.gates = [...outcome.manifest.gates];
+        if (checks.exitCode === 0 && request.publish && this.publish) {
+          await reauthorize?.();
+          controller.signal.throwIfAborted();
+          const progress = (done: number, total: number) => {
+            const percent = total ? 90 + Math.floor(9 * done / total) : 90;
+            if (r.percent === percent && r.phase.startsWith('Publishing')) return;
+            this.onPhase(buildId, { phase: total ? `Publishing · ${done} of ${total} files` : 'Publishing to release store', percent, at: new Date().toISOString() });
+          };
+          progress(0, 0);
+          r.publication = await this.publish(outcome.id, { signal: controller.signal, progress });
+          r.phase = 'Published to release store';
+        }
+        r.state = checks.exitCode === 0 ? 'done' : 'failed';
+        r.error = checks.reason;
         r.percent = 100;
-        r.durationMs = outcome.durationMs;
+        r.durationMs = Date.now() - Date.parse(r.startedAt);
         r.finishedAt = new Date().toISOString();
         const passed = r.gates.filter((g) => g.status === 'passed').length;
         this.logger.info(
@@ -229,8 +259,10 @@ export class ReleaseService {
       })
       .catch((err: Error) => {
         const r = this.records.get(buildId)!;
-        r.state = controller.signal.aborted ? 'stopped' : 'failed';
-        r.error = err.message;
+        const publicationUnknown = request.publish && r.history.some(phase => phase.phase.startsWith('Publishing')) && !r.publication;
+        r.state = publicationUnknown ? 'interrupted' : controller.signal.aborted ? 'stopped' : 'failed';
+        r.error = publicationUnknown
+          ? `${err.message}. Publication unconfirmed. Verify or repeat release push for ${r.releaseId}.` : err.message;
         r.finishedAt = new Date().toISOString();
         r.durationMs = Date.now() - Date.parse(r.startedAt);
         this.logger.error(
@@ -314,9 +346,7 @@ export class ReleaseService {
 
   /** Keep the running ones and the newest finished; drop the rest. */
   private forget(): void {
-    const finished = [...this.records.values()]
-      .filter((r) => r.state !== 'running' && r.state !== 'queued')
-      .sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
+    const finished = this.builds().filter(r => r.state !== 'running' && r.state !== 'queued');
     const retained = new Map<string, number>();
     for (const old of finished) {
       const count = retained.get(old.request.project) ?? 0;

@@ -22,6 +22,10 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 import { Link as RouterLink } from 'react-router-dom';
+import { useCopyToClipboard } from '@omnitron-dev/prism/core';
+import { CheckIcon, CopyIcon } from '@omnitron-dev/prism/icons';
+import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
 
 import type { BuildRecord } from '@omnitron-dev/omnitron/dto/services';
 import { StopIcon } from 'src/assets/icons';
@@ -46,6 +50,7 @@ export function ReleaseBuildPanel({
   const running = record.state === 'running' || record.state === 'queued';
   const lines = record.history.slice(-VISIBLE_LINES);
   const request = record.request;
+  const clipboard = useCopyToClipboard();
 
   return (
     <Card variant="outlined" sx={{ borderColor: running ? 'primary.main' : undefined }}>
@@ -53,6 +58,14 @@ export function ReleaseBuildPanel({
         <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: 1 }}>
           <Chip label={state.label} size="small" color={state.color} sx={{ fontWeight: 600 }} />
           <Typography variant="subtitle2">{request.project}</Typography>
+          <Tooltip title={clipboard.state === 'success' ? 'Copied' : 'Copy build ID'}>
+            <IconButton size="small" aria-label="Copy build ID" onClick={() => void clipboard.copy(record.buildId)}>
+              {clipboard.state === 'success' ? <CheckIcon fontSize="inherit" /> : <CopyIcon fontSize="inherit" />}
+            </IconButton>
+          </Tooltip>
+          {clipboard.state === 'error' && <Typography component="code" role="status" variant="caption" sx={{ overflowWrap: 'anywhere' }}>
+            {record.buildId}
+          </Typography>}
           {record.releaseId && (
             <Typography
               component={RouterLink}
@@ -104,6 +117,12 @@ export function ReleaseBuildPanel({
         {request.frameworkSource && (
           <Typography variant="caption" component="div" sx={{ mt: 0.75, color: 'text.secondary', overflowWrap: 'anywhere' }}>
             SDK source: {request.frameworkSource.repository}{request.frameworkSource.ref ? ` · ${request.frameworkSource.ref}` : ''}
+          </Typography>
+        )}
+
+        {record.publication && (
+          <Typography variant="caption" component="div" sx={{ mt: 0.75, color: 'text.secondary', overflowWrap: 'anywhere' }}>
+            {record.publication.location} · SHA-256 <code>{record.publication.indexSha256}</code>
           </Typography>
         )}
 

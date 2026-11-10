@@ -822,6 +822,8 @@ export type { StoredAttestation } from '../../release/attest.js';
 
 /** Whether this master can build a release, and where they are kept. */
 export interface ReleasePreflightDto {
+  /** Available only when this controller supports publishing completed builds and has a store. */
+  readonly publish?: 1;
   /** Absent on controllers predating configurable SDK sources. */
   readonly frameworkSource?: 1;
   readonly root: string;

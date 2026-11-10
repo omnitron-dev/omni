@@ -19,8 +19,8 @@ afterEach(() => { cleanup(); vi.resetAllMocks(); });
 it('accepts an external release ID, fetches on request and requires a separate deployment action', async () => {
   rpc.list.mockResolvedValue({ releases: [] });
   rpc.check.mockResolvedValueOnce({ ok: false, state: 'missing', because: 'Release is absent from this controller' });
-  const prepared = Promise.withResolvers<{ ok: boolean; because: string }>();
-  rpc.check.mockReturnValueOnce(prepared.promise);
+  let confirm!: (reply: { ok: boolean; because: string }) => void;
+  rpc.check.mockReturnValueOnce(new Promise(resolve => { confirm = resolve; }));
   render(<MemoryRouter><DeployReleaseDialog open onClose={vi.fn()} project="sample" stack="test" release={null} /></MemoryRouter>);
   fireEvent.change(screen.getByRole('combobox', { name: 'Release ID' }), { target: { value: 'sample-123' } });
   const fetch = await screen.findByRole('button', { name: 'Fetch and verify' });
@@ -28,7 +28,7 @@ it('accepts an external release ID, fetches on request and requires a separate d
   fireEvent.click(fetch);
   expect(screen.getByRole('status').textContent).toContain('Preparing');
   expect(rpc.check).toHaveBeenLastCalledWith('checkRelease', { project: 'sample', stack: 'test', release: 'sample-123', prepare: true });
-  prepared.resolve({ ok: true, because: 'Ready for test' });
+  confirm({ ok: true, because: 'Ready for test' });
   const deploy = await screen.findByRole('button', { name: 'Deploy' });
   expect(deploy.hasAttribute('disabled')).toBe(false);
   expect(rpc.start).not.toHaveBeenCalled();

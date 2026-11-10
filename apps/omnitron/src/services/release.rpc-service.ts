@@ -55,6 +55,7 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
     return {
       root: this.releases.root(),
       frameworkSource: 1,
+      ...(this.releases.canPublish && { publish: 1 as const }),
       canBuild: missing.length === 0,
       missingTools: missing,
       path: (env['PATH'] ?? '').split(':').filter(Boolean),
@@ -135,7 +136,11 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
     }
     const actor = currentActor();
     this.projects?.getProject(data.project);
-    const record = this.releases.start(data, actor.actorId);
+    const auth = this.auth;
+    const role = frameworkSource || envKeys.length ? 'admin' : 'operator';
+    if (data.publish && !auth) throw Errors.forbidden('Artifact publication requires authenticated operator access');
+    if (data.publish && auth) await daemonPrincipal(auth, role);
+    const record = this.releases.start(data, actor.actorId, auth ? () => daemonPrincipal(auth, role) : undefined);
     await this.audit?.record({
       action: 'release.build',
       resourceType: 'release',
@@ -147,6 +152,7 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
         ...(record.request.frameworkSource ? { frameworkSource: record.request.frameworkSource } : {}),
         ...(data.forStack ? { forStack: data.forStack } : {}),
         ...(data.skipGates ? { skipGates: true } : {}),
+        ...(data.publish && { publish: true }),
         envKeys: Object.keys(data.env ?? {}).sort().join(',') || '(none)',
       },
     });

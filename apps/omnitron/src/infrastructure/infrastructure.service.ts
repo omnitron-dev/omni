@@ -483,6 +483,12 @@ export class InfrastructureService {
     return this.desiredContainers.map((c) => ({ name: c.name, image: c.image }));
   }
 
+  /** Identify a single stack handed off by a controller predating the scoped registry. */
+  representsStack(scope: { project: string; stack: string }): boolean {
+    const key = `${scope.project}/${scope.stack}`;
+    return this.desiredContainers.length > 0 && this.desiredContainers.every(container => this.containerScope(container) === key);
+  }
+
   /**
    * Transfer monitoring ownership to a freshly resolved declaration. This never
    * provisions containers: retained specs must match; additions must already be
@@ -832,22 +838,27 @@ export class InfrastructureService {
     switch (service) {
       case 'postgres': {
         const pg = this.config.postgres;
-        if (!pg) return null;
+        const name = this.getResolvedContainerName('postgres');
+        const instance = this.desiredContainers.find(item => item.name === name);
+        if (!pg && !instance) return null;
         return {
           host: LOCAL_INFRA_HOST,
-          port: pg.port ?? 5432,
-          user: pg.user ?? 'postgres',
-          password: typeof pg.password === 'string' ? pg.password : 'postgres',
+          port: instance?.ports.find(port => port.container === 5432)?.host ?? pg?.port ?? 5432,
+          user: instance?.environment['POSTGRES_USER'] ?? pg?.user ?? 'postgres',
+          password: instance?.environment['POSTGRES_PASSWORD'] ?? (typeof pg?.password === 'string' ? pg.password : 'postgres'),
         };
       }
       case 'redis': {
         const redis = this.config.redis;
-        if (!redis) return null;
+        const name = this.getResolvedContainerName('redis');
+        const instance = this.desiredContainers.find(item => item.name === name);
+        if (!redis && !instance) return null;
+        const password = this.normalizedServices['redis']?.secrets?.['password'] ?? redis?.password;
         return {
           host: LOCAL_INFRA_HOST,
-          port: redis.port ?? 6379,
-          password: typeof redis.password === 'string' ? redis.password : undefined,
-          databases: redis.databases ?? {},
+          port: instance?.ports.find(port => port.container === 6379)?.host ?? redis?.port ?? 6379,
+          password: typeof password === 'string' ? password : undefined,
+          databases: redis?.databases ?? {},
         };
       }
       case 'minio': {

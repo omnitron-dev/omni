@@ -4187,7 +4187,8 @@ export class ProjectService extends EventEmitter {
           const nodeCredentials = await this.readNodeCredentials(
             connector,
             node,
-            CREDENTIALED_SERVICES.filter((service) => Boolean((nodeInfra as Record<string, unknown> | undefined)?.[service])),
+            CREDENTIALED_SERVICES.filter(service => Boolean(nodeInfra?.[service] || nodeInfra?.services?.[service] || declaredServices[service])),
+            { project: projectName, stack: stackName },
           );
           const deployedInfra = overlayCredentials(
             nodeInfra as Record<string, unknown> | undefined,
@@ -4547,10 +4548,11 @@ export class ProjectService extends EventEmitter {
     connector: SlaveConnector,
     node: import('../config/types.js').IStackNode,
     /** The services this stack declares — each must be answered for. */
-    declared: readonly string[] = [],
+    declared: readonly string[],
+    scope: StackExecutionScope,
   ): Promise<Record<string, Record<string, unknown>>> {
     const out: Record<string, Record<string, unknown>> = {};
-    for (const service of CREDENTIALED_SERVICES) {
+    for (const service of declared) {
       let info: Record<string, unknown> | null;
       try {
         info = (await connector.invokeOnSlave(
@@ -4558,7 +4560,7 @@ export class ProjectService extends EventEmitter {
           node.port ?? 9700,
           'OmnitronInfra',
           'getConnectionInfo',
-          [{ service }],
+          [{ service, ...scope }],
           { retryOnDisconnect: true },
         )) as Record<string, unknown> | null;
       } catch (err) {

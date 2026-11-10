@@ -1080,3 +1080,8 @@ async function inspectDockerInventory(): Promise<DockerInventory> {
     volumes: volumes.trim().split('\n').filter(Boolean),
   };
 }
+/** A wildcard Docker binding reserves this port on every interface. */
+export function hostPortsOverlap(a: { host: number; bindHost?: string }, b: { host: number; bindHost?: string }): boolean {
+  return a.host === b.host && (!a.bindHost || !b.bindHost || a.bindHost === b.bindHost ||
+    ['0.0.0.0', '::'].includes(a.bindHost) || ['0.0.0.0', '::'].includes(b.bindHost));
+}

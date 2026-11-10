@@ -12,6 +12,7 @@ import { Service, Public } from '@omnitron-dev/titan/decorators';
 import { Errors } from '@omnitron-dev/titan/errors';
 import { VIEWER_ROLES, OPERATOR_ROLES, CONTROL_PLANE_ROLES, CONTROL_PLANE_READ_ROLES } from '../shared/roles.js';
 import type { InfrastructureService } from '../infrastructure/infrastructure.service.js';
+import type { StackInfrastructureManager } from '../infrastructure/stack-infra-manager.js';
 import type { InfrastructureConfig, IServiceRequirement } from '../infrastructure/types.js';
 import { summariseProvisioning, provisioningVerdict, observeProvisioning } from '../infrastructure/provisioning-outcome.js';
 import { withGeneratedCredentials } from '../infrastructure/service-credentials.js';
@@ -97,6 +98,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
       services: Record<string, IServiceRequirement>,
       registry: import('../infrastructure/presets/registry.js').PresetRegistry,
       overrides: Record<string, import('../infrastructure/types.js').IServiceOverride>,
+      stackOwned?: boolean,
     ) => InfrastructureService,
     /**
      * This node's secret store.
@@ -134,6 +136,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     } | undefined,
     private readonly hostIngress: HostIngressService = new HostIngressService(),
     private readonly getStackObservations: () => ContainerState[] = () => [],
+    private readonly hostedStacks?: StackInfrastructureManager,
   ) {}
 
   @Public({ auth: { roles: ['admin', 'service_role'] } })
@@ -268,16 +271,20 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // Named while it runs, so a stall on this node says what it was doing.
     // Test node, 2026-09-22: it went quiet for ten seconds around the end of a
     // provision and nothing here could name it — `monitoring/event-loop-watch.ts`.
-    return this.trackMutation(data, () => withInfrastructureScope(data?.project, data?.stack, () =>
-      duringPhase(`provisioning ${data?.project ?? 'omnitron'}/${data?.stack ?? 'default'} for the master`, () =>
-        this.provisionStackNow(data),
-      ),
-    ));
+    const scope = infrastructureScope(data);
+    return this.trackMutation(data, () => duringPhase(`provisioning ${scope?.project ?? 'omnitron'}/${scope?.stack ?? 'default'} for the master`, () => {
+      if (this.hostedStacks && scope && !this.getInfra()?.representsStack(scope)) {
+        return this.hostedStacks.provisionHosted(scope.project, scope.stack, apply => this.provisionStackNow(data, apply), this.getInfra());
+      }
+      if (!scope && this.hostedStacks?.listInstances().length) throw Error('Select the project and stack before provisioning shared host infrastructure');
+      return withInfrastructureScope(scope?.project, scope?.stack, () => this.provisionStackNow(data));
+    }));
   }
 
   /** `provisionStack`'s work. Not an RPC method: it carries no `@Public`. */
   private async provisionStackNow(
     data: Parameters<InfrastructureRpcService['provisionStack']>[0],
+    apply?: (config: InfrastructureConfig, definition: InfrastructureService) => Promise<InfrastructureService>,
   ): ReturnType<InfrastructureRpcService['provisionStack']> {
     if (!this.hostInfra) {
       throw Errors.badRequest('This daemon does not host stack infrastructure.');
@@ -322,6 +329,8 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // password it was initialised with, and a fresh one each time produces
     // a database that rejects its own application.
     const vault = this.getVault?.();
+    if (this.hostedStacks && !vault && (data.config.postgres || data.config.minio))
+      throw Error('The node credential vault is unavailable. Stack database and storage provisioning require its credentials.');
     if (!vault) {
       // Said, because silence here is indistinguishable from a deployment
       // that needed no credentials at all.
@@ -361,8 +370,8 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // An application's declaration wins over the stack's sugar for the same
     // name: the app is the side that knows what it needs of it.
     const declared = { ...fromStack, ...(data.services ?? {}) };
-    const reused = this.getInfra();
-    const service = reused ?? this.hostInfra(config, declared, registry, data.overrides ?? {});
+    const reused = apply ? null : this.getInfra();
+    let service = reused ?? this.hostInfra(config, declared, registry, data.overrides ?? {}, Boolean(apply));
     const definition = reused?.resolveDefinition(config, declared, data.overrides ?? {}) ?? service;
     if (data.project && data.stack) service.resumeStack({ project: data.project, stack: data.stack });
 
@@ -414,7 +423,8 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
       }, staticLinkRoots);
     }
 
-    const state = await service.provision(reused ? definition : undefined);
+    if (apply) service = await apply(config, definition);
+    const state = apply ? service.getState() : await service.provision(reused ? definition : undefined);
     const outcome = summariseProvisioning(service.getDesiredServices(), state.services);
 
     // Services that are not containers.
@@ -635,8 +645,14 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
 
   @Public({ auth: { roles: CONTROL_PLANE_READ_ROLES } })
   async getState(): Promise<InfrastructureState | null> {
-    const infra = this.getInfra();
-    return infra ? infra.getState() : null;
+    const state = this.getInfra()?.getState();
+    const hosted = this.hostedStacks?.listInstances() ?? [];
+    if (!hosted.length) return state ?? null;
+    const states = hosted.map(({ infra }) => infra.getState());
+    if (state) states.push(state);
+    const lastReconciled = states.flatMap(item => item.lastReconciled ? [item.lastReconciled] : []).sort().at(-1);
+    return { services: Object.assign({}, ...states.map(item => item.services)), ready: states.every(item => item.ready),
+      ...(lastReconciled && { lastReconciled }) };
   }
 
   /**
@@ -705,10 +721,18 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
    * 43-character generated secret.
    */
   @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
-  async getConnectionInfo(data: { service: string }): Promise<Record<string, unknown> | null> {
+  async getConnectionInfo(data: { service: string; project?: string; stack?: string }): Promise<Record<string, unknown> | null> {
+    const scope = infrastructureScope(data);
     const infra = this.getInfra();
-    if (!infra) return null;
-    return infra.getConnectionInfo(data.service);
+    if (scope) {
+      stackExecutionKey(scope);
+      if (data.service === 'omnitron-pg') throw Errors.forbidden('The control-plane database has no application stack credentials');
+      const scoped = this.hostedStacks?.getInstance(scope.project, scope.stack) ?? (infra?.representsStack(scope) ? infra : undefined);
+      return scoped?.getConnectionInfo(data.service) ?? null;
+    }
+    const hosted = this.hostedStacks?.listInstances() ?? [];
+    if (hosted.length + Number(Boolean(infra)) > 1) throw Errors.badRequest('Multiple stacks share this node. Supply both project and stack to read service connection information.');
+    return (infra ?? hosted[0]?.infra)?.getConnectionInfo(data.service) ?? null;
   }
 
   // ===========================================================================

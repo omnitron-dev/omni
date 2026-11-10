@@ -516,7 +516,7 @@ export interface IOmnitronInfraService {
     data: import('../../infrastructure/host-inspection.js').HostInspectionRequest,
   ): Promise<import('../../infrastructure/host-inspection.js').HostInspection>;
   listContainers(): Promise<ContainerState[]>;
-  getConnectionInfo(data: { service: string }): Promise<Record<string, unknown> | null>;
+  getConnectionInfo(data: { service: string; project?: string; stack?: string }): Promise<Record<string, unknown> | null>;
   startContainer(data: { name: string }): Promise<{ success: boolean }>;
   stopContainer(data: { name: string; timeout?: number }): Promise<{ success: boolean }>;
   removeContainer(data: { name: string }): Promise<{ success: boolean }>;

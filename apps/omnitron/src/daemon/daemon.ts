@@ -1089,7 +1089,7 @@ export class OmnitronDaemon {
       // second one over RPC would give one machine two reconcilers over one
       // set of containers.
       isSlave
-        ? (infraConfig, declaredServices, presetRegistry, serviceOverrides) => {
+        ? (infraConfig, declaredServices, presetRegistry, serviceOverrides, stackOwned) => {
             const service = new InfrastructureService(
               loggerModule.logger.child({ component: 'infra' }),
               infraConfig,
@@ -1101,7 +1101,7 @@ export class OmnitronDaemon {
               // nobody queries, on default credentials.
               false,
             );
-            this.infraService = service;
+            if (!stackOwned) this.infraService = service;
             return service;
           }
         : undefined,
@@ -1127,6 +1127,7 @@ export class OmnitronDaemon {
       loggerModule.logger.child({ component: 'infra' }),
       undefined,
       () => projectService.getInfraManager().listInstances().flatMap(({ infra }) => Object.values(infra.getState().services)),
+      isSlave ? projectService.getInfraManager() : undefined,
     );
     // Project + Stack management RPC service
     const stateStore = await container.resolveAsync<import('./daemon-state-store.service.js').DaemonStateStore>(DAEMON_STATE_STORE_TOKEN);

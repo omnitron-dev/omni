@@ -23,6 +23,8 @@
 import { describe, it, expect, vi } from 'vitest';
 
 import { InfrastructureRpcService } from '../../src/services/infrastructure.rpc-service.js';
+import { InfrastructureService } from '../../src/infrastructure/infrastructure.service.js';
+import { StackInfrastructureManager } from '../../src/infrastructure/stack-infra-manager.js';
 
 /** An InfrastructureService stand-in that records what it was asked for. */
 function fakeInfra(services: Record<string, unknown>, desired: Array<{ name: string; image?: string }>) {
@@ -43,6 +45,39 @@ const up = (name: string) => ({ name, image: `${name}:1`, status: 'running', hea
 const CONFIG = { postgres: { image: 'postgres:16', port: 5432 } } as never;
 
 describe('asking a node to host a stack s infrastructure', () => {
+  it('isolates concurrent declarations, reserved ports and credentials by the owning project and stack', async () => {
+    const entered = Promise.withResolvers<void>(), proceed = Promise.withResolvers<void>();
+    const logger = { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() } as never;
+    const manager = new StackInfrastructureManager(logger);
+    const native = vi.spyOn(InfrastructureService.prototype, 'provision').mockImplementation(async function provisionFixture(this: InfrastructureService) {
+      const services = this.getDesiredServices();
+      if (services.some(item => item.name.startsWith('alpha-'))) { entered.resolve(); await proceed.promise; }
+      const state = this.getState();
+      state.ready = true;
+      for (const { name } of services) state.services[name] = up(name) as never;
+      return state;
+    });
+    const endpoint = new InfrastructureRpcService(() => null,
+      (config, declared, registry, overrides) => new InfrastructureService(logger, config, declared, registry, overrides, false),
+      () => ({ get: vi.fn(), set: vi.fn() }), logger, undefined, undefined, manager);
+    const provision = (project: string, port: number) => endpoint.provisionStack({ project, stack: 'test',
+      config: { postgres: { port, password: project + '-fixture' } } as never });
+    try {
+      const alpha = provision('alpha', 15432);
+      await entered.promise;
+      expect(await provision('beta', 25432)).toMatchObject({ ready: true });
+      await expect(provision('gamma', 15432)).rejects.toThrow(/15432.*alpha\/test/);
+      proceed.resolve();
+      expect(await alpha).toMatchObject({ ready: true });
+      expect(native).toHaveBeenCalledTimes(2);
+      expect(await endpoint.getConnectionInfo({ project: 'alpha', stack: 'test', service: 'postgres' })).toMatchObject({ port: 15432, password: 'alpha-fixture' });
+      expect(await endpoint.getConnectionInfo({ project: 'beta', stack: 'test', service: 'postgres' })).toMatchObject({ port: 25432, password: 'beta-fixture' });
+      expect(await endpoint.getConnectionInfo({ project: 'gamma', stack: 'test', service: 'postgres' })).toBeNull();
+      await expect(endpoint.getConnectionInfo({ service: 'postgres' })).rejects.toThrow('Multiple stacks');
+      await expect(endpoint.getConnectionInfo({ project: 'beta', stack: 'test', service: 'omnitron-pg' })).rejects.toThrow('control-plane');
+      expect(Object.keys((await endpoint.getState())!.services)).toHaveLength(2);
+    } finally { proceed.resolve(); native.mockRestore(); }
+  });
   it('brings up what the stack declares and reports it', async () => {
     const infra = fakeInfra({ pg: up('pg'), redis: up('redis') }, [{ name: 'pg' }, { name: 'redis' }]);
     const host = vi.fn((_config: unknown, _services: Record<string, unknown>) => infra);

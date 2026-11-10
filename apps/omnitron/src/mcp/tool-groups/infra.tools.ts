@@ -48,10 +48,13 @@ export function createInfraTools(client: DaemonClient): IMcpToolDef[] {
         type: 'object',
         properties: {
           service: { type: 'string', description: 'Logical service name, e.g. "postgres", "redis"' },
+          project: { type: 'string', description: 'Owning project, used together with stack' },
+          stack: { type: 'string', description: 'Owning stack on a shared node' },
         },
         required: ['service'],
       },
-      handler: async (params: any) => (await infra()).getConnectionInfo({ service: params.service }),
+      handler: async (params: any) => (await infra()).getConnectionInfo({ service: params.service,
+        ...(params.project !== undefined && { project: params.project }), ...(params.stack !== undefined && { stack: params.stack }) }),
     },
     {
       name: 'infra.start',

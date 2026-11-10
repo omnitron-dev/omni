@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
 import type { ResolvedContainer } from '../infrastructure/types.js';
-import { containerSpecHash, SPEC_HASH_LABEL, readDockerInventory, type DockerInventory } from '../infrastructure/container-runtime.js';
+import { containerSpecHash, hostPortsOverlap, SPEC_HASH_LABEL, readDockerInventory, type DockerInventory } from '../infrastructure/container-runtime.js';
 import type { StackDiagnosisCheck } from '../shared/dto/stack-diagnosis.js';
 
 /** A successful TCP connection does not establish ownership. Bind and immediately release instead. */
@@ -63,8 +63,7 @@ export async function diagnoseContainers(
       } else if (!inventory.volumes.includes(mount.source)) add('volume.create', 'change', `Named volume ${mount.source} will be created empty.`, 'Restore required data before starting if this is an existing environment.');
     }
     for (const port of container.ports) {
-      const overlaps = (binding: { host: number; bindHost?: string }) => binding.host === port.host &&
-        (!binding.bindHost || !port.bindHost || ['0.0.0.0', '::'].includes(binding.bindHost) || ['0.0.0.0', '::'].includes(port.bindHost) || binding.bindHost === port.bindHost);
+      const overlaps = (binding: { host: number; bindHost?: string }) => hostPortsOverlap(port, binding);
       const duplicate = reserved.find(overlaps);
       const foreign = inventory.containers.find(item => item.running && !(item === current && owned) && item.ports.some(overlaps));
       reserved.push({ name: resource, ...port });

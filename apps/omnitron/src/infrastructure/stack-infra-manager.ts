@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
-import { inspectStackContainers, removeContainer } from './container-runtime.js';
+import { hostPortsOverlap, inspectStackContainers, removeContainer } from './container-runtime.js';
 import { ownsStackInfrastructure } from '../project/infrastructure-ownership.js';
 import { RecoveryBusyError, RecoveryMutation } from '../daemon/recovery-state.js';
 import { usesGatewayTemplate, withInfrastructureScope } from './service-resolver.js';
@@ -49,6 +49,20 @@ const REDIS_DB_RANGE_SIZE = 5;
 // =============================================================================
 
 export class StackInfrastructureManager {
+  /** Incoming declarations contain the destination's actual published ports; local stack offsets have already been resolved. */
+  async provisionHosted<T>(project: string, stack: string, work: (apply: (
+    config: InfrastructureConfig, definition: InfrastructureService
+  ) => Promise<InfrastructureService>) => Promise<T>, legacy?: InfrastructureService | null): Promise<T> {
+    const key = `${project}/${stack}`;
+    return this.mutateStack(key, () => withInfrastructureScope(project, stack, () => work(async (config, definition) => {
+      const allocation = this.computePortAllocation(project, stack, {
+        portOffsets: { postgres: 0, redis: 0, minio: 0 }, redisDbOffset: 0,
+      }, config);
+      if (legacy) this.checkClaims(key, definition, 'host infrastructure', legacy);
+      this.instances.get(key)?.resumeStack({ project, stack });
+      return this.installDefinition(project, stack, definition, allocation);
+    })));
+  }
   captureRecoveryState(): Awaited<ReturnType<StackInfrastructureManager['prepareHandoff']>> {
     if (this.mutations.size || this.handoffFrozen) throw new RecoveryBusyError('Stack infrastructure ownership is changing');
     return [...this.instances].map(([key, service]) => {
@@ -97,14 +111,14 @@ export class StackInfrastructureManager {
   /** Port allocations keyed by `${project}/${stack}` */
   private readonly portAllocations = new Map<string, StackPortAllocation>();
 
-  private readonly mutations = new Set<string>();
+  private readonly mutations = new Map<string, InfrastructureService | undefined>();
   private handoffFrozen = false;
 
   /** Reserve the allocation before asynchronous resolution as well as native work. */
   private async mutateStack<T>(key: string, operation: () => Promise<T>): Promise<T> {
     if (this.handoffFrozen) throw new RecoveryBusyError('Stack infrastructure ownership is frozen');
     if (this.mutations.has(key)) throw new RecoveryBusyError(`Infrastructure mutation is already in progress for ${key}`);
-    this.mutations.add(key);
+    this.mutations.set(key, undefined);
     try { return await operation(); }
     finally { this.mutations.delete(key); }
   }
@@ -154,11 +168,18 @@ export class StackInfrastructureManager {
     appDefinitions?: Map<string, import('../config/types.js').IAppDefinition>,
     projectRoot?: string
   ): Promise<InfrastructureService> {
-    const key = `${project}/${stack}`;
-
     // 1. Compute port allocation for this stack
     const portAlloc = this.computePortAllocation(project, stack, stackConfig.settings, baseInfraConfig);
     const definition = await this.resolveStackDefinition(project, stack, stackConfig, baseInfraConfig, portAlloc, appDefinitions, projectRoot);
+    return this.installDefinition(project, stack, definition, portAlloc);
+  }
+
+  private async installDefinition(project: string, stack: string, definition: InfrastructureService, portAlloc: StackPortAllocation): Promise<InfrastructureService> {
+    const key = `${project}/${stack}`;
+    for (const [owner, service] of [...this.instances, ...this.mutations]) {
+      if (service && owner !== key) this.checkClaims(key, definition, owner, service);
+    }
+    this.mutations.set(key, definition);
     const existing = this.instances.get(key);
     const infraService = existing ?? definition;
 
@@ -179,6 +200,19 @@ export class StackInfrastructureManager {
       } else if (isDeepStrictEqual(existing.getDesiredContainers(), definition.getDesiredContainers())) this.portAllocations.set(key, portAlloc);
       this.logger.error({ project, stack, error: (err as Error).message }, 'Failed to provision stack infrastructure');
       throw err;
+    }
+  }
+
+  private checkClaims(key: string, definition: InfrastructureService, owner: string, service: InfrastructureService): void {
+    const occupied = service.getDesiredContainers();
+    for (const candidate of definition.getDesiredContainers()) {
+      for (const other of occupied) {
+        const port = candidate.ports.find(p => other.ports.some(binding => hostPortsOverlap(p, binding)));
+        const volume = candidate.volumes.find(v => other.volumes.some(m => m.source === v.source && (!v.readonly || !m.readonly)));
+        const resource = candidate.name === other.name ? 'container ' + candidate.name :
+          port ? 'host port ' + port.host : volume ? 'writable volume source ' + volume.source : undefined;
+        if (resource) throw Error(`Cannot provision ${key}: ${resource} is reserved by ${owner} (${other.name})`);
+      }
     }
   }
 

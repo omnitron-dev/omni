@@ -1,3 +1,4 @@
+import { readProjectStacks, resolveProjectStacks } from '../config/project-stacks.js';
 import { observeStackHealth, type HealthAnswers } from '../project/stack-health.js';
 import { LocalReleaseSelection } from '../project/local-release-selection.js';
 import { resolveAppPath } from '../config/app-path.js';
@@ -1141,15 +1142,7 @@ export class ProjectService extends EventEmitter {
   }
 
   private loadUserStacks(project: string, filePath = this.getUserStacksPath(project)): Record<string, IStackConfig> {
-    try {
-      const raw = fs.readFileSync(filePath, 'utf-8');
-      const stacks = JSON.parse(raw);
-      if (!stacks || typeof stacks !== 'object' || Array.isArray(stacks)) throw new Error('Expected an object of stacks');
-      return stacks as Record<string, IStackConfig>;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
-      throw new Error(`Cannot read stack overrides for '${project}'; file left intact`, { cause: error });
-    }
+    return readProjectStacks(filePath, project);
   }
 
   private saveUserStack(project: string, name: string, config: IStackConfig): void {
@@ -4925,17 +4918,10 @@ export class ProjectService extends EventEmitter {
    * No implicit fallbacks — stacks must be created explicitly.
    */
   private resolveStacks(config: IEcosystemConfig, project?: string | ISeedProject): Record<string, IStackConfig> {
-    const configStacks = config.stacks ?? {};
-
-    if (project) {
-      const userStacks = typeof project === 'string' ? this.loadUserStacks(project)
-        : this.loadUserStacks(project.name, path.join(project.path, 'omnitron.stacks.json'));
-      // Saved topology intent is deliberately separate from executable configuration.
-      // A daemon restart, auto-resume or ordinary stack start must not admit a migration.
-      return { ...userStacks, ...configStacks };
-    }
-
-    return configStacks;
+    if (!project) return config.stacks ?? {};
+    if (typeof project !== 'string') return resolveProjectStacks(config, project.path, project.name);
+    const directory = path.dirname(this.getUserStacksPath(project));
+    return resolveProjectStacks(config, directory, project);
   }
 
   /**

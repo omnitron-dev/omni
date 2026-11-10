@@ -19,6 +19,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
+import { resolveProjectStacks } from '../config/project-stacks.js';
 import { OMNITRON_HOME } from '../config/defaults.js';
 import { ProjectRegistry } from '../project/registry.js';
 import { assembleManifest, gateOutcomesFromGates, releaseId } from './builder.js';
@@ -28,7 +29,7 @@ import { releaseWorkspaceDirectory } from './workspace-source.js';
 import { readPackageGates, runPackageGates } from './package-gates.js';
 import { resolveRegistryFramework } from './registry-framework.js';
 import { reproduceVendoredFramework, requireFrameworkCommit, vendoredFrameworkSource } from './vendored-framework.js';
-import { checkoutFrameworkSource, projectFrameworkSource } from './framework-source.js';
+import { checkoutFrameworkSource, projectFrameworkSource, assertFrameworkInput } from './framework-source.js';
 import type { FrameworkSource } from '../shared/framework-source.js';
 import { OWN_BUILD } from '../shared/build-stamp.js';
 import { importReleaseArtifacts } from './import-artifacts.js';
@@ -301,13 +302,7 @@ async function buildStaticsFor(
   logFile: string,
   ctx: { env: NodeJS.ProcessEnv; signal?: AbortSignal | undefined },
 ): Promise<StaticsRecord | null> {
-  let userStacks: Record<string, unknown> = {};
-  try {
-    userStacks = JSON.parse(fs.readFileSync(path.join(projectDir, 'omnitron.stacks.json'), 'utf8')) as Record<string, unknown>;
-  } catch {
-    // No stacks file at this commit: the config's stacks are all there are.
-  }
-  const stackConfig = { ...userStacks, ...(config.stacks ?? {}) }[stack] as { infrastructure?: unknown } | undefined;
+  const stackConfig = config.stacks?.[stack] as { infrastructure?: unknown } | undefined;
   if (!stackConfig) throw new Error(`There is no stack '${stack}' at this commit`);
   const { mergeInfrastructure } = await import('../infrastructure/merge-config.js');
   const infra = mergeInfrastructure(config as never, stackConfig as never) as
@@ -529,7 +524,9 @@ async function buildRelease(
   const workspacePath = path.join(repositoryPath, workspace);
   const lockPath = path.posix.join(workspace, 'pnpm-lock.yaml');
   const layout = readFrameworkLayout(await git(['show', `${projectSha}:${lockPath}`], repositoryPath));
-  let selectedSource = projectFrameworkSource(JSON.parse(await git(['show', `${projectSha}:${path.posix.join(workspace, 'package.json')}`], repositoryPath)), options.frameworkSource);
+  const workspaceManifest = JSON.parse(await git(['show', `${projectSha}:${path.posix.join(workspace, 'package.json')}`], repositoryPath));
+  assertFrameworkInput(workspaceManifest, layout.kind);
+  let selectedSource = projectFrameworkSource(workspaceManifest, options.frameworkSource);
   let checkout: { path: string; sha: string; layout: import('./layout.js').LinkLayout; source?: FrameworkSource } | undefined;
   let pristineProject: string | undefined;
   let registry: Awaited<ReturnType<typeof resolveRegistryFramework>> | undefined;
@@ -793,7 +790,8 @@ async function buildRelease(
   const { loadEcosystemConfig } = await import('../config/loader.js');
   const { ArtifactBuilder } = await import('../project/artifact-builder.js');
   const configDirectory = path.join(plan.repositoryDir, projectPrefix);
-  const config = await loadEcosystemConfig(configDirectory, 'release');
+  const ecosystem = await loadEcosystemConfig(configDirectory, 'release');
+  const config = { ...ecosystem, stacks: resolveProjectStacks(ecosystem, configDirectory, projectName) };
   const { releaseBuildEntries } = await import('./artifact-volumes.js');
   const apps = releaseBuildEntries(config);
   const { declaredMigrationPrograms } = await import('./migration-programs.js');

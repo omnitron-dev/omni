@@ -202,7 +202,7 @@ describeOrSkip('DLQ Auto-Cleanup', () => {
         },
       });
 
-      await delay(50);
+      await manager.waitUntilReady();
       expect(cleanupSpy).toHaveBeenCalled();
       cleanupSpy.mockRestore();
     });
@@ -222,7 +222,7 @@ describeOrSkip('DLQ Auto-Cleanup', () => {
         },
       });
 
-      await delay(50);
+      await manager.waitUntilReady();
       expect(cleanupSpy).not.toHaveBeenCalled();
       cleanupSpy.mockRestore();
     });

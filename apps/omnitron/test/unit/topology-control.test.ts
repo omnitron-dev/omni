@@ -48,7 +48,7 @@ function database() {
     await db.dispose();
     fs.rmSync(dir, { recursive: true, force: true });
   });
-  return { db, topology: new TopologyStateStore(db) };
+  return { dir, db, topology: new TopologyStateStore(db) };
 }
 function plan(draftRevision: number, changes: Partial<TopologyPlan> = {}): TopologyPlan {
   return {
@@ -215,7 +215,7 @@ describe('one placement contract for planner and deployment', () => {
 
 describe('target intent is separate from executable configuration', () => {
   it('survives reopening without admitting a target for deployment or auto-resume', async () => {
-    const { db, topology } = database();
+    const { dir, db, topology } = database();
     const stack = applyTopologySpec({ type: 'cluster' }, spec);
     const config = { ...DEFAULT_ECOSYSTEM, apps: entries, stacks: { prod: stack } };
     const source = {
@@ -249,10 +249,10 @@ describe('target intent is separate from executable configuration', () => {
     expect(reopened.observed.config.nodes).toHaveLength(2);
     const resolve = (
       ProjectService.prototype as unknown as {
-        resolveStacks(config: unknown, project: string): Record<string, unknown>;
+        resolveStacks(config: unknown, project: { name: string; path: string }): Record<string, unknown>;
       }
     ).resolveStacks;
-    expect(resolve.call({ loadUserStacks: () => ({}), topologyState: topology }, config, 'sample')['prod']).toEqual(
+    expect(resolve.call({ topologyState: topology }, config, { name: 'sample', path: dir })['prod']).toEqual(
       stack
     );
   });

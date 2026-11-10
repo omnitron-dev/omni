@@ -444,7 +444,7 @@ export interface ObjectSum {
 export interface ObjectStore {
   readonly location: string;
   /** Write `source` — a file, or bytes — whose sum is already known. */
-  put(key: string, source: string | Buffer, sum: ObjectSum): Promise<void>;
+  put(key: string, source: string | Buffer, sum: ObjectSum, condition?: { etag: string | null }): Promise<void>;
   /**
    * Stream an object into `into`, hashing it on the way; null when there is
    * no such object. Stops, and refuses, past `recordedBytes`: what the index
@@ -453,7 +453,10 @@ export interface ObjectStore {
   get(key: string, into: string, recordedBytes: number): Promise<ObjectSum | null>;
   /** A small object whole, or null when there is none. */
   read(key: string, limitBytes: number): Promise<Buffer | null>;
+  readVersion(key: string, limitBytes: number): Promise<{ body: Buffer; etag: string } | null>;
 }
+
+class StoreConflict extends Error {}
 
 /** S3 refuses a single PUT above this; a multipart upload is the way past it. */
 const SINGLE_PUT_LIMIT = 5 * 1024 ** 3;
@@ -502,6 +505,7 @@ export class S3ObjectStore implements ObjectStore {
   readonly #store: ResolvedStore;
   readonly #agent: http.Agent;
   readonly #idleMs: number;
+  #closed = false;
 
   constructor(store: ResolvedStore, options: { idleTimeoutMs?: number; sockets?: number } = {}) {
     this.#store = store;
@@ -515,15 +519,19 @@ export class S3ObjectStore implements ObjectStore {
 
   /** Keep-alive sockets hold the process open; a command closes the store when it is done. */
   close(): void {
+    this.#closed = true;
     this.#agent.destroy();
   }
 
-  async put(key: string, source: string | Buffer, sum: ObjectSum): Promise<void> {
+  async put(key: string, source: string | Buffer, sum: ObjectSum, condition?: { etag: string | null }): Promise<void> {
     if (sum.bytes > SINGLE_PUT_LIMIT) {
       throw new Error(`${key} is ${sum.bytes} bytes; one PUT carries at most ${SINGLE_PUT_LIMIT}, and this store does not split uploads`);
     }
-    const res = await this.send('PUT', key, { source, sum });
+    const precondition = condition ? condition.etag === null ? { 'if-none-match': '*' } : { 'if-match': condition.etag } : undefined;
+    const res = await this.send('PUT', key, { source, sum }, precondition);
     const body = await readCapped(res, ERROR_BODY_LIMIT);
+    if (condition && (res.statusCode === 412 || (res.statusCode === 409 && xmlField(body.toString('utf8'), 'Code') === 'ConditionalRequestConflict')))
+      throw new StoreConflict('A concurrent publisher changed the store index for ' + key);
     if (res.statusCode !== 200) throw this.failure('PUT', key, res.statusCode ?? 0, body.toString('utf8'));
   }
 
@@ -558,6 +566,17 @@ export class S3ObjectStore implements ObjectStore {
   }
 
   async read(key: string, limitBytes: number): Promise<Buffer | null> {
+    return (await this.readObject(key, limitBytes))?.body ?? null;
+  }
+
+  async readVersion(key: string, limitBytes: number): Promise<{ body: Buffer; etag: string } | null> {
+    const object = await this.readObject(key, limitBytes);
+    if (!object) return null;
+    if (!object.etag || !/^"[^"\r\n]+"$/.test(object.etag)) throw new Error('The release store did not supply a strong ETag for ' + key);
+    return { body: object.body, etag: object.etag };
+  }
+
+  private async readObject(key: string, limitBytes: number) {
     const res = await this.send('GET', key, null);
     if (res.statusCode !== 200) {
       const body = (await readCapped(res, ERROR_BODY_LIMIT)).toString('utf8');
@@ -574,7 +593,7 @@ export class S3ObjectStore implements ObjectStore {
       }
       chunks.push(chunk as Buffer);
     }
-    return Buffer.concat(chunks);
+    return { body: Buffer.concat(chunks), etag: res.headers.etag };
   }
 
   /**
@@ -584,22 +603,37 @@ export class S3ObjectStore implements ObjectStore {
    * is never cut, one that has said nothing for a minute is — and the error
    * reaches the response too, so a stream being read does not wait forever.
    */
-  private send(
+  private async send(
+    method: 'GET' | 'PUT', key: string, body: { source: string | Buffer; sum: ObjectSum } | null,
+    precondition?: Record<string, string>,
+  ): Promise<http.IncomingMessage> {
+    const request = () => this.request(method, key, body, precondition);
+    try { return await request(); }
+    catch (error) {
+      // Reopen the upload stream and keep the original index precondition if the reply was lost.
+      if (this.#closed || !['ECONNRESET', 'EPIPE'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+      return request();
+    }
+  }
+
+  private request(
     method: 'GET' | 'PUT',
     key: string,
     body: { source: string | Buffer; sum: ObjectSum } | null,
+    precondition?: Record<string, string>,
   ): Promise<http.IncomingMessage> {
+    if (this.#closed) throw new Error('The release store connection was closed');
     const address = objectAddress(this.#store, key);
     const signed = signV4({
       method,
       canonicalUri: address.path,
-      headers: { host: address.host },
+      headers: { host: address.host, ...precondition },
       payloadSha256: body ? body.sum.sha256 : EMPTY_SHA256,
       region: this.#store.region,
       credentials: this.#credentials,
       now: new Date(),
     });
-    const headers: http.OutgoingHttpHeaders = { host: address.host, ...signed.headers };
+    const headers: http.OutgoingHttpHeaders = { host: address.host, ...precondition, ...signed.headers };
     if (body) headers['content-length'] = String(body.sum.bytes);
 
     return new Promise((resolve, reject) => {
@@ -683,7 +717,7 @@ export interface IndexEntry {
 }
 
 export interface StoreIndex {
-  readonly format: 1;
+  readonly format: 1 | 2;
   readonly release: string;
   readonly pushedAt: string;
   readonly pushedBy: string;
@@ -821,7 +855,7 @@ export function parseIndex(bytes: Buffer, id: string, location: string): StoreIn
   }
   const o = raw as { format?: unknown; release?: unknown; pushedAt?: unknown; pushedBy?: unknown; files?: unknown } | null;
   if (!o || typeof o !== 'object') throw new Error(`${where} is not an object`);
-  if (o.format !== 1) throw new Error(`${where} is format ${String(o.format)}; this omnitron reads format 1`);
+  if (o.format !== 1 && o.format !== 2) throw new Error(`${where} uses unsupported release index format ${String(o.format)}`);
   if (o.release !== id) throw new Error(`${where} describes release '${String(o.release)}', not '${id}'`);
   if (!Array.isArray(o.files)) throw new Error(`${where} lists no files`);
 
@@ -846,7 +880,7 @@ export function parseIndex(bytes: Buffer, id: string, location: string): StoreIn
   }
   if (!seen.has('manifest.json')) throw new Error(`${where} has no manifest.json`);
   return {
-    format: 1,
+    format: o.format,
     release: id,
     pushedAt: typeof o.pushedAt === 'string' ? o.pushedAt : '',
     pushedBy: typeof o.pushedBy === 'string' ? o.pushedBy : '',
@@ -1018,10 +1052,14 @@ function placeOf(dir: string, rel: string): string {
  * as against «a different file», and a twelve-character prefix is not what
  * an operator can paste into `grep`.
  */
-async function fetchVerified(store: ObjectStore, id: string, entry: IndexEntry, file: string, consequence: string): Promise<void> {
+function payloadKey(id: string, entry: IndexEntry, format: StoreIndex['format']): string {
+  return format === 1 ? `${id}/${entry.path}` : `${id}/objects/${entry.sha256}`;
+}
+
+async function fetchVerified(store: ObjectStore, id: string, entry: IndexEntry, file: string, consequence: string, format: StoreIndex['format']): Promise<void> {
   let got: ObjectSum | null;
   try {
-    got = await store.get(`${id}/${entry.path}`, file, entry.bytes);
+    got = await store.get(payloadKey(id, entry, format), file, entry.bytes);
   } catch (err) {
     throw new Error(`Release ${id}: ${(err as Error).message}. ${consequence}`, { cause: err });
   }
@@ -1106,47 +1144,85 @@ export async function pushRelease(id: string, store: ObjectStore, options: Trans
   checkAgainstManifest(id, loaded.manifest, local, 'on this disk');
 
   const indexKey = `${id}/${INDEX_NAME}`;
-  const existing = await store.read(indexKey, INDEX_LIMIT);
-  const remote = existing ? parseIndex(existing, id, store.location) : null;
+  const uploaded = new Set<string>();
+  let moved = { files: 0, bytes: 0 };
+  return publishIndex(0);
 
-  let send: IndexEntry[] = local;
-  let files: IndexEntry[] = local;
-  let keptNewer: KeptAttestation[] = [];
-  if (remote) {
-    const differences = compareBuilds(local, remote.files);
-    if (differences.length > 0) throw new Error(differentBuild(id, differences, 'this machine', store.location));
-    const plan = planAttestations(local.filter(isAttestation), remote.files.filter(isAttestation));
-    const kept = new Set(plan.kept.map((k) => k.path));
-    send = options.repair ? local.filter((e) => !kept.has(e.path)) : plan.copy;
-    keptNewer = plan.kept;
-    files = [...remote.files.filter((e) => !isAttestation(e)), ...plan.merged].sort(byPath);
-    if (send.length === 0) {
-      return { id, location: store.location, parts: tallyParts(remote.files), moved: tally([]), indexSha256: sha256Hex(existing!), keptNewer };
-    }
-  }
-
-  const total = tally(send);
-  let done = { files: 0, bytes: 0 };
-  await eachLimited(send, options.concurrency ?? 8, async (entry) => {
+  async function publishIndex(attempt: number): Promise<TransferResult> {
     options.signal?.throwIfAborted();
-    await store.put(`${id}/${entry.path}`, placeOf(loaded.root, entry.path), entry);
-    done = { files: done.files + 1, bytes: done.bytes + entry.bytes };
-    options.onProgress?.(done, total);
-  });
+    const version = await store.readVersion(indexKey, INDEX_LIMIT);
+    const existing = version?.body;
+    const remote = existing ? parseIndex(existing, id, store.location) : null;
 
-  // Last, and only now: the index is what makes the release exist in the store.
-  const index: StoreIndex = {
-    format: 1,
-    release: id,
-    pushedAt: new Date().toISOString(),
-    pushedBy: `${os.userInfo().username}@${os.hostname()}`,
-    files,
-  };
-  const body = Buffer.from(`${JSON.stringify(index, null, 2)}\n`);
-  const indexSha256 = sha256Hex(body);
-  options.signal?.throwIfAborted();
-  await store.put(indexKey, body, { sha256: indexSha256, bytes: body.length });
-  return { id, location: store.location, parts: tallyParts(files), moved: total, indexSha256, keptNewer };
+    let send: IndexEntry[] = local;
+    let files: IndexEntry[] = local;
+    let keptNewer: KeptAttestation[] = [];
+    if (remote) {
+      const differences = compareBuilds(local, remote.files);
+      if (differences.length > 0) throw new Error(differentBuild(id, differences, 'this machine', store.location));
+      const plan = planAttestations(local.filter(isAttestation), remote.files.filter(isAttestation));
+      const kept = new Set(plan.kept.map((k) => k.path));
+      send = options.repair ? local.filter((e) => !kept.has(e.path)) : plan.copy;
+      keptNewer = plan.kept;
+      files = [...remote.files.filter((e) => !isAttestation(e)), ...plan.merged].sort(byPath);
+      if (send.length === 0) {
+        return { id, location: store.location, parts: tallyParts(remote.files), moved, indexSha256: sha256Hex(existing!), keptNewer };
+      }
+    }
+
+    // When extending a legacy index, copy its complete verified snapshot before switching the pointer.
+    // Immutable objects keep both competing publishers' snapshots readable until the index chooses one.
+    if (remote?.format === 1) send = files;
+    const localByPath = new Map(local.map(entry => [entry.path, entry]));
+    const total = tally(send);
+    let done = { files: 0, bytes: 0 };
+    await eachLimited(send, options.concurrency ?? 8, async (entry) => {
+      options.signal?.throwIfAborted();
+      let source: Buffer | string = placeOf(loaded.root, entry.path);
+      if (localByPath.get(entry.path)?.sha256 !== entry.sha256) {
+        if (remote?.format !== 1 || !isAttestation(entry) || entry.bytes > INDEX_LIMIT) throw Error('Cannot migrate release object ' + entry.path);
+        const data = await store.read(payloadKey(id, entry, 1), entry.bytes);
+        if (!data || data.length !== entry.bytes || sha256Hex(data) !== entry.sha256) throw Error('Legacy attestation failed verification: ' + entry.path);
+        source = data;
+      }
+      if (!uploaded.has(entry.sha256)) {
+        await store.put(payloadKey(id, entry, 2), source, entry);
+        uploaded.add(entry.sha256);
+        moved = { bytes: moved.bytes + entry.bytes, files: moved.files + 1 };
+      }
+      done = { files: done.files + 1, bytes: done.bytes + entry.bytes };
+      options.onProgress?.(done, total);
+    });
+
+    // Last, and only now: the index is what makes the release exist in the store.
+    const index: StoreIndex = {
+      format: 2,
+      release: id,
+      pushedAt: new Date().toISOString(),
+      pushedBy: `${os.userInfo().username}@${os.hostname()}`,
+      files,
+    };
+    const body = Buffer.from(`${JSON.stringify(index, null, 2)}\n`);
+    const indexSha256 = sha256Hex(body);
+    options.signal?.throwIfAborted();
+    try {
+      await store.put(indexKey, body, { sha256: indexSha256, bytes: body.length }, { etag: version?.etag ?? null });
+    } catch (error) {
+      if (!(error instanceof StoreConflict)) throw error;
+      const winner = await store.read(indexKey, INDEX_LIMIT);
+      if (!winner) throw error;
+      const committed = parseIndex(winner, id, store.location);
+      const differences = compareBuilds(local, committed.files);
+      if (differences.length) throw new Error(differentBuild(id, differences, 'this machine', store.location), { cause: error });
+      const plan = planAttestations(local.filter(isAttestation), committed.files.filter(isAttestation));
+      if (plan.copy.length) {
+        if (attempt >= 4) throw new Error(`Release ${id} changed during five publication attempts. Repeat release push to merge the outstanding measurements.`, { cause: error });
+        return publishIndex(attempt + 1);
+      }
+      return { id, location: store.location, parts: tallyParts(committed.files), moved, indexSha256: sha256Hex(winner), keptNewer: plan.kept };
+    }
+    return { id, location: store.location, parts: tallyParts(files), moved, indexSha256, keptNewer };
+  }
 }
 
 /**
@@ -1190,7 +1266,7 @@ export async function pullRelease(id: string, store: ObjectStore, options: Trans
       // `*.json`, so a half-written one is never read as evidence.
       const partial = `${file}.pull-${process.pid}`;
       try {
-        await fetchVerified(store, id, entry, partial, `${file} was left as it was.`);
+        await fetchVerified(store, id, entry, partial, `${file} was left as it was.`, index.format);
         fs.renameSync(partial, file);
       } finally {
         fs.rmSync(partial, { force: true });
@@ -1221,7 +1297,7 @@ export async function pullRelease(id: string, store: ObjectStore, options: Trans
     await eachLimited(index.files, options.concurrency ?? 8, async (entry) => {
       const file = placeOf(staged, entry.path);
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      await fetchVerified(store, id, entry, file, consequence);
+      await fetchVerified(store, id, entry, file, consequence, index.format);
       done = { files: done.files + 1, bytes: done.bytes + entry.bytes };
       options.onProgress?.(done, total);
     });

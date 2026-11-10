@@ -27,12 +27,14 @@
  */
 
 import crypto from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   encodeRfc3986,
@@ -45,6 +47,7 @@ import {
   resolveStore,
   S3ObjectStore,
   signV4,
+  type StoreIndex,
 } from '../../src/release/artifact-store.js';
 import { loadRelease } from '../../src/release/load.js';
 import type { ReleaseManifest } from '../../src/release/manifest.js';
@@ -80,6 +83,7 @@ class FakeS3 {
   readonly received: Received[] = [];
   url = '';
   private server: http.Server | null = null;
+  dropCommittedIndexReply = false;
 
   constructor(
     private readonly buckets: ReadonlySet<string>,
@@ -109,7 +113,14 @@ class FakeS3 {
   }
 
   objectKey(rel: string): string {
-    return `${BUCKET}/${PREFIX}/${ID}/${rel}`;
+    const base = `${BUCKET}/${PREFIX}/${ID}/`;
+    const bytes = this.objects.get(base + 'index.json');
+    if (rel !== 'index.json' && bytes) {
+      const index = JSON.parse(bytes.toString()) as StoreIndex;
+      const entry = index.files.find(file => file.path === rel);
+      if (index.format === 2 && entry) return base + 'objects/' + entry.sha256;
+    }
+    return base + rel;
   }
 
   flipByte(rel: string, at: number): Buffer {
@@ -194,7 +205,16 @@ class FakeS3 {
       if (sha256(body) !== payload) {
         return this.xml(res, 400, 'XAmzContentSHA256Mismatch', "The provided 'x-amz-content-sha256' header does not match what was computed.");
       }
+      const previous = this.objects.get(`${bucket}/${key}`);
+      if ((previous && req.headers['if-none-match'] === '*') || (req.headers['if-match'] &&
+        (!previous || req.headers['if-match'] !== '"' + sha256(previous) + '"')))
+        return this.xml(res, 412, 'PreconditionFailed', 'Index version changed');
       this.objects.set(`${bucket}/${key}`, body);
+      if (this.dropCommittedIndexReply && key.endsWith('/index.json')) {
+        this.dropCommittedIndexReply = false;
+        req.socket.destroy();
+        return;
+      }
       res.writeHead(200, { etag: `"${crypto.createHash('md5').update(body).digest('hex')}"`, 'content-length': 0 });
       res.end();
       return;
@@ -202,7 +222,7 @@ class FakeS3 {
     if (req.method === 'GET') {
       const object = this.objects.get(`${bucket}/${key}`);
       if (!object) return this.xml(res, 404, 'NoSuchKey', 'The specified key does not exist.');
-      res.writeHead(200, { 'content-length': object.length, 'content-type': 'application/octet-stream' });
+      res.writeHead(200, { 'content-length': object.length, 'content-type': 'application/octet-stream', etag: '"' + sha256(object) + '"' });
       res.end(object);
       return;
     }
@@ -419,6 +439,116 @@ describe("Signature Version 4, held to AWS's own worked examples", () => {
 });
 
 describe('one master pushes, another pulls', () => {
+  it('recovers the committed index after the connection is lost before its acknowledgement', async () => {
+    const root = machine();
+    const { dir } = buildRelease(root);
+    const store = await openStore();
+    fake.dropCommittedIndexReply = true;
+    const published = await pushRelease(ID, store, { root });
+    expect(published.indexSha256).toBe(sha256(fake.objects.get(fake.objectKey('index.json'))!));
+    const receiver = machine();
+    await pullRelease(ID, store, { root: receiver });
+    expect(partsOf(path.join(receiver, ID))).toEqual(partsOf(dir));
+  });
+  it.skipIf(!process.env['OMNITRON_TEST_MINIO_IMAGE'])('qualifies conditional publication and pull on a real MinIO', async () => {
+    const name = 'omni-release-test-' + crypto.randomUUID();
+    const env = { ...process.env, MINIO_ROOT_USER: crypto.randomUUID(), MINIO_ROOT_PASSWORD: crypto.randomUUID() };
+    const docker = async (...args: string[]) => (await promisify(execFile)('docker', args, { env, timeout: 20_000 })).stdout.trim();
+    const id = await docker('run', '--detach', '--rm', '--name', name, '--pull=never', '--read-only',
+      '--cpus', '0.5', '--memory', '512m', '--pids-limit', '128', '--tmpfs', '/data:size=134217728',
+      '--tmpfs', '/tmp:size=67108864,mode=1777', '-p', '127.0.0.1::9000', '-e', 'MINIO_ROOT_USER',
+      '-e', 'MINIO_ROOT_PASSWORD', '-e', 'MINIO_BROWSER=off', process.env['OMNITRON_TEST_MINIO_IMAGE']!, 'server', '/data');
+    let store: S3ObjectStore | undefined;
+    try {
+      await vi.waitFor(() => docker('exec', id, 'sh', '-ec',
+        'export MC_CONFIG_DIR=/tmp/client; mc alias set proof http://127.0.0.1:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null; mc mb --ignore-existing proof/' + BUCKET),
+      { timeout: 20_000, interval: 250 });
+      const port = await docker('port', id, '9000/tcp');
+      expect(port).toMatch(/^127\.0\.0\.1:\d+$/);
+      const cfg = parseStoreConfig(configFor({ endpoint: 'http://' + port }), 'private native test');
+      store = new S3ObjectStore(await resolveStore(cfg, async key => key === 'court.access_key' ? env.MINIO_ROOT_USER : env.MINIO_ROOT_PASSWORD));
+      const a = machine(), b = machine();
+      const copies = [a, b].map(root => partsOf(buildRelease(root).dir));
+      const results = await Promise.allSettled([a, b].map(root => pushRelease(ID, store!, { root })));
+      expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+      expect(String(results.find(result => result.status === 'rejected')?.reason)).toContain('two different builds');
+      const receiver = machine();
+      await pullRelease(ID, store, { root: receiver });
+      expect(partsOf(path.join(receiver, ID))).toEqual(copies[results.findIndex(result => result.status === 'fulfilled')]);
+    } finally {
+      store?.close();
+      await docker('stop', '--time', '3', id);
+    }
+  }, 75_000);
+  it('merges concurrent measurements from the same checked build without repeating payload uploads', async () => {
+    const first = machine(), second = machine();
+    const { dir } = buildRelease(first);
+    const store = await openStore();
+    await pushRelease(ID, store, { root: first });
+    fs.mkdirSync(second, { recursive: true });
+    fs.cpSync(dir, path.join(second, ID), { recursive: true });
+    for (const [root, stack] of [[first, 'canary'], [second, 'prod']] as const) {
+      const report = { ...JSON.parse(attestation('2026-10-01T00:00:00.000Z', stack)), stack };
+      fs.writeFileSync(path.join(root, ID, 'attestations', stack + '.json'), JSON.stringify(report));
+    }
+    const read = store.readVersion.bind(store);
+    const barrier = Promise.withResolvers<void>();
+    let readers = 0;
+    vi.spyOn(store, 'readVersion').mockImplementation(async (...args) => {
+      const snapshot = await read(...args);
+      if (++readers === 2) barrier.resolve();
+      await barrier.promise;
+      return snapshot;
+    });
+    const results = await Promise.all([first, second].map(root => pushRelease(ID, store, { root })));
+    expect(results.map(result => result.moved.files)).toEqual([1, 1]);
+    const receiver = machine();
+    await pullRelease(ID, store, { root: receiver });
+    expect(fs.readdirSync(path.join(receiver, ID, 'attestations')).sort()).toEqual(['canary.json', 'prod.json', 'test.json']);
+  });
+
+  it('admits one of two different builds racing for one ID and keeps every winning byte readable', async () => {
+    const roots = [machine(), machine()];
+    const copies = roots.map(root => partsOf(buildRelease(root).dir));
+    const store = await openStore();
+    const results = await Promise.allSettled(roots.map(root => pushRelease(ID, store, { root })));
+    const winner = results.findIndex(result => result.status === 'fulfilled');
+    expect(winner).toBeGreaterThanOrEqual(0);
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    const refused = results.find(result => result.status === 'rejected');
+    expect(String(refused?.reason)).toContain('two different builds');
+    const receiver = machine();
+    await pullRelease(ID, store, { root: receiver });
+    expect(partsOf(path.join(receiver, ID))).toEqual(copies[winner]);
+    expect(fake.received.some(request => request.headers['if-none-match'] === '*')).toBe(true);
+  });
+
+  it('reads legacy path-based indexes and migrates the complete verified snapshot on the next write', async () => {
+    const root = machine();
+    const { dir } = buildRelease(root);
+    const store = await openStore();
+    await pushRelease(ID, store, { root });
+    const indexKey = fake.objectKey('index.json');
+    const index = JSON.parse(fake.objects.get(indexKey)!.toString()) as StoreIndex;
+    const prefix = indexKey.slice(0, -'index.json'.length);
+    const previous = attestation('2026-10-01T00:00:00.000Z', 'previous');
+    const entries = index.files.map(entry => {
+      const body = entry.path === 'attestations/test.json' ? Buffer.from(previous) : fs.readFileSync(path.join(dir, entry.path));
+      fake.objects.set(prefix + entry.path, body);
+      return entry.path === 'attestations/test.json'
+        ? { ...entry, sha256: sha256(body), bytes: body.length, at: '2026-10-01T00:00:00.000Z' } : entry;
+    });
+    for (const key of [...fake.objects.keys()]) if (key.startsWith(prefix + 'objects/')) fake.objects.delete(key);
+    fake.objects.set(indexKey, Buffer.from(JSON.stringify({ ...index, format: 1, files: entries })));
+    const legacy = machine();
+    await pullRelease(ID, store, { root: legacy });
+    expect(fs.readFileSync(path.join(legacy, ID, 'attestations/test.json'), 'utf8')).toBe(previous);
+    await pushRelease(ID, store, { root, repair: true });
+    expect(JSON.parse(fake.objects.get(indexKey)!.toString()).format).toBe(2);
+    const modern = machine();
+    await pullRelease(ID, store, { root: modern });
+    expect(partsOf(path.join(modern, ID))).toEqual(partsOf(path.join(legacy, ID)));
+  });
   it('pulls into a root that never saw the release: every part arrives, and loadRelease takes the copy', async () => {
     const builder = machine();
     const { dir } = buildRelease(builder);
@@ -436,7 +566,7 @@ describe('one master pushes, another pulls', () => {
     });
     // The store holds the five parts and the index — and not the builder's logs.
     const held = [...fake.objects.keys()].map((k) => k.slice(`${BUCKET}/${PREFIX}/${ID}/`.length)).sort();
-    expect(held).toEqual([...sent.keys(), 'index.json'].sort());
+    expect(held).toEqual([...new Set([...sent.values()].map(file => 'objects/' + file.sum)), 'index.json'].sort());
     expect(sha256(fake.objects.get(fake.objectKey('index.json'))!)).toBe(pushed.indexSha256);
 
     const receiver = machine();
@@ -524,10 +654,10 @@ describe('a store that no longer holds what was pushed', () => {
     const rel = 'artifacts/main-0.0.1.tar.gz';
     const original = fs.readFileSync(path.join(dir, rel));
     const forged = crypto.randomBytes(original.length);
-    fake.objects.set(fake.objectKey(rel), forged);
     const index = JSON.parse(fake.objects.get(fake.objectKey('index.json'))!.toString('utf8')) as { files: Array<{ path: string; sha256: string }> };
     index.files.find((f) => f.path === rel)!.sha256 = sha256(forged);
     fake.objects.set(fake.objectKey('index.json'), Buffer.from(JSON.stringify(index)));
+    fake.objects.set(fake.objectKey(rel), forged);
 
     const receiver = machine();
     const message = await refusal(pullRelease(ID, store, { root: receiver }));

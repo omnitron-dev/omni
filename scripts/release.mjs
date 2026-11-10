@@ -84,6 +84,11 @@ async function main() {
       const commit = await releaseCommand(root, 'git', ['rev-parse', 'HEAD']);
       const prepared = await prepareReleaseArtifacts(root, version, {
         build: { executable: process.execPath, args: ['scripts/build-release.mjs', root, commit] },
+        // This step includes both independent npm consumer installs and clean CI replays.
+        // A cold dependency cache can exceed Xec's default ten-minute command deadline.
+        run: (cwd, executable, args, options) => releaseCommand(cwd, executable, args,
+          executable === process.execPath && args[0] === 'scripts/build-release.mjs'
+            ? { ...options, timeoutMs: 45 * 60_000 } : options),
         // Xec calls this after the clean build and immediately before sealing each archive.
         async preparePackage({ workspace, pkg }) {
           const file = path.join(workspace, pkg.path, 'package.json');

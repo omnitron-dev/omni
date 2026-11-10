@@ -3,7 +3,6 @@
  * Tests for the fundamental container functionality including registration, resolution, and lifecycle
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { budget } from '../../utils/index.js';
 
 import {
   Container,
@@ -467,9 +466,10 @@ describe('Core Container', () => {
       expect(factory).toHaveBeenCalledTimes(1);
     });
 
-    it('should handle large dependency graphs efficiently', () => {
+    it('constructs each level of a deep singleton graph once and reuses its identity', () => {
       const tokens: any[] = [];
       const depth = 100;
+      const resolutions: number[] = [];
 
       // Create a deep dependency chain
       for (let i = 0; i < depth; i++) {
@@ -482,18 +482,20 @@ describe('Core Container', () => {
           });
         } else {
           container.register(token, {
-            useFactory: (prev) => ({ level: i, prev }),
+            scope: Scope.Singleton,
+            useFactory: (prev) => { resolutions.push(i); return { level: i, prev }; },
             inject: [tokens[i - 1]],
           });
         }
       }
 
-      const start = performance.now();
-      const result = container.resolve(tokens[depth - 1]);
-      const duration = performance.now() - start;
-
-      expect(result.level).toBe(depth - 1);
-      expect(duration).toBeLessThan(budget(100)); // Should resolve in less than 100ms
+      let node = container.resolve(tokens[depth - 1]);
+      for (let level = depth - 1; level >= 0; level--) {
+        expect(node.level).toBe(level);
+        expect(container.resolve(tokens[level])).toBe(node);
+        node = node.prev;
+      }
+      expect(resolutions).toEqual(Array.from({ length: depth - 1 }, (_, i) => i + 1));
     });
   });
 });

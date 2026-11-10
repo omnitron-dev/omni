@@ -113,6 +113,7 @@ export const releaseApi = {
     const p = await releases.preflight();
     return {
       ...(p.publish === 1 ? { publish: 1 as const } : {}),
+      ...(p.buildSlots && { buildSlots: p.buildSlots }),
       ...(p.frameworkSource === 1 ? { frameworkSource: 1 as const } : {}),
       root: p.root,
       canBuild: p.canBuild,

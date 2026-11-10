@@ -20,6 +20,7 @@ import { availableParallelism } from 'node:os';
 
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import type { ILogger } from '@omnitron-dev/titan/module/logger';
+import { describeError } from '@omnitron-dev/titan/diagnostics';
 
 import { runReleaseBuild, type BuildPhase, type ReleaseBuildOptions } from '../release/build-run.js';
 import {
@@ -70,10 +71,17 @@ export class ReleaseService {
       if (record.state === 'queued' || record.state === 'running') {
         const manifest = record.releaseId && readReleaseManifest(record.releaseId);
         if (manifest && manifest.id === record.releaseId) {
-          const checks = readBuildChecks(manifest);
+          // Override values are deliberately absent after restart; omit unstructured child output in that case.
+          const hideDetails = Boolean(record.request.envKeys?.length);
+          const gates = manifest.gates.map(({ detail, ...gate }) =>
+            detail && !hideDetails ? { ...gate, detail: describeError(detail) } : gate);
+          const artifactFailures = manifest.artifactFailures?.map(failure => ({
+            ...failure, error: hideDetails ? 'Artifact build failed' : describeError(failure.error),
+          }));
+          const checks = readBuildChecks({ gates, ...(artifactFailures && { artifactFailures }) });
           record.state = checks.exitCode === 0 ? 'done' : 'failed';
           record.error = checks.reason;
-          record.gates = [...manifest.gates];
+          record.gates = gates;
           record.percent = 100;
           record.phase = 'Recovered from release manifest';
           if (checks.exitCode === 0 && record.request.publish && !record.publication) {
@@ -103,6 +111,7 @@ export class ReleaseService {
   }
 
   get canPublish(): boolean { return this.publish !== undefined; }
+  get buildSlots() { return { limit: this.concurrency, running: this.running.size, queued: this.waiting.size }; }
 
   root(): string {
     return releasesRoot();
@@ -209,6 +218,10 @@ export class ReleaseService {
     this.running.set(buildId, controller);
     record.state = 'running';
     record.phase = 'starting';
+    const sensitive = Object.values(env ?? {});
+    const safe = (text: string) => describeError(text, 0, sensitive);
+    const safeGates = (gates: BuildRecord['gates'] | NonNullable<BuildPhase['gates']>) =>
+      gates.map(gate => gate.detail ? { ...gate, detail: safe(gate.detail) } : gate);
     const options: ReleaseBuildOptions = {
       ...(request.projectCommit ? { projectCommit: request.projectCommit } : {}),
       ...(request.omniCommit ? { omniCommit: request.omniCommit } : {}),
@@ -225,15 +238,17 @@ export class ReleaseService {
     // rejection here would take the daemon down with it.
     const build = () => {
       controller.signal.throwIfAborted();
-      return runReleaseBuild(request.project, options, phase => this.onPhase(buildId, request.publish
-        ? { ...phase, percent: Math.round(phase.percent * 0.9) } : phase));
+      return runReleaseBuild(request.project, options, phase => this.onPhase(buildId, {
+        ...phase, phase: safe(phase.phase), ...(phase.gates && { gates: safeGates(phase.gates) }),
+        percent: request.publish ? Math.round(phase.percent * 0.9) : phase.percent,
+      }));
     };
     const execution = queued && reauthorize ? reauthorize().then(build) : build();
     void execution.then(async (outcome) => {
         const r = this.records.get(buildId)!;
         const checks = readBuildChecks(outcome.manifest);
         r.releaseId = outcome.id;
-        r.gates = [...outcome.manifest.gates];
+        r.gates = safeGates(outcome.manifest.gates);
         if (checks.exitCode === 0 && request.publish && this.publish) {
           await reauthorize?.();
           controller.signal.throwIfAborted();
@@ -247,7 +262,7 @@ export class ReleaseService {
           r.phase = 'Published to release store';
         }
         r.state = checks.exitCode === 0 ? 'done' : 'failed';
-        r.error = checks.reason;
+        r.error = checks.reason && safe(checks.reason);
         r.percent = 100;
         r.durationMs = Date.now() - Date.parse(r.startedAt);
         r.finishedAt = new Date().toISOString();
@@ -261,12 +276,13 @@ export class ReleaseService {
         const r = this.records.get(buildId)!;
         const publicationUnknown = request.publish && r.history.some(phase => phase.phase.startsWith('Publishing')) && !r.publication;
         r.state = publicationUnknown ? 'interrupted' : controller.signal.aborted ? 'stopped' : 'failed';
+        const message = describeError(err, 0, sensitive);
         r.error = publicationUnknown
-          ? `${err.message}. Publication unconfirmed. Verify or repeat release push for ${r.releaseId}.` : err.message;
+          ? `${message}. Publication unconfirmed. Verify or repeat release push for ${r.releaseId}.` : message;
         r.finishedAt = new Date().toISOString();
         r.durationMs = Date.now() - Date.parse(r.startedAt);
         this.logger.error(
-          { project: request.project, build: buildId, error: err.message },
+          { project: request.project, build: buildId, error: r.error },
           r.state === 'stopped' ? 'Release build stopped' : 'Release build failed',
         );
       })

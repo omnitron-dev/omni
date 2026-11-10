@@ -851,6 +851,11 @@ release
     },
   );
 
+release.command('preflight').description('Inspect build tools, available job slots and publication support').structuredAction(async () => {
+  const { releaseJobsCommand } = await import('../commands/release.js');
+  await releaseJobsCommand('preflight');
+});
+
 release.command('builds [project]').description('List controller build jobs, optionally scoped to a project')
   .structuredAction(async projectName => {
     const { releaseJobsCommand } = await import('../commands/release.js');

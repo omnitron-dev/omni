@@ -84,7 +84,8 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
   const fetchStacks = useProjectStore((s) => s.fetchStacks);
 
   const [project, setProject] = useState(defaultProject ?? '');
-  const inFlight = (name: string) => activeBuilds.find(job => job.request.project === name && (job.state === 'running' || job.state === 'queued'));
+  const inFlight = (name: string) => activeBuilds.find(job =>
+    (job.request.project === name || !preflight?.buildSlots) && (job.state === 'running' || job.state === 'queued'));
   const existing = inFlight(project);
   const [pickedStack, setPickedStack] = useState<string | null>(null);
   const [projectCommit, setProjectCommit] = useState('');
@@ -210,7 +211,8 @@ export default function BuildReleaseDialog({ open, onClose, defaultProject, onSt
             select
             label="Project"
             value={project}
-            helperText={existing ? `Build ${existing.buildId} · ${existing.phase}` : undefined}
+            helperText={existing ? `${existing.request.project} · ${existing.buildId} · ${existing.phase}` :
+              preflight?.buildSlots ? `${preflight.buildSlots.running}/${preflight.buildSlots.limit} build slots in use · ${preflight.buildSlots.queued} queued` : undefined}
             onChange={(e) => {
               setProject(e.target.value);
               setPickedStack(null);

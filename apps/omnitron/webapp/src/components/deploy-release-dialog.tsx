@@ -31,13 +31,15 @@ import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
-import type { IStackInfo, ReleaseAdmission, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
-import { invokeStackLifecycle } from 'src/netron/client';
+import type { DeployProgressRecord, IStackInfo, ReleaseAdmission, ReleaseSummary } from '@omnitron-dev/omnitron/dto/services';
+import { observeStackStart } from '@omnitron-dev/omnitron/release-reading';
+import { invokeStackLifecycle, project as projectRpc } from 'src/netron/client';
 import { releaseApi } from 'src/netron/release-wire';
 import { useProjectStore } from 'src/stores/project.store';
 import { DeployIcon } from 'src/assets/icons';
 
 import { CommitPair, GateStrip, gateSentence } from './release-bits';
+import { DeployProgressList } from './deploy-progress';
 
 export interface DeployReleaseDialogProps {
   open: boolean;
@@ -77,6 +79,7 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
   const [preparing, setPreparing] = useState(false);
   const selection = useRef(0);
   const [deploying, setDeploying] = useState(false);
+  const [activity, setActivity] = useState<{ records: DeployProgressRecord[]; available: boolean }>({ records: [], available: true });
   const [inspectTarget, setInspectTarget] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -129,6 +132,8 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
     const generation = ++selection.current;
     setVerdict(null);
     setPreparing(false);
+    setDeploying(false);
+    setActivity({ records: [], available: true });
     setInspectTarget(false);
     setFailure(null);
     setChecking(false);
@@ -168,8 +173,15 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
     if (!releaseId || !target || !verdict?.ok) return;
     setDeploying(true);
     setFailure(null);
+    const attempt = selection.current;
     try {
-      const outcome = await startStack(project, target, { release: releaseId });
+      const outcome = await observeStackStart({ project, stack: target, release: releaseId },
+        () => startStack(project, target, { release: releaseId }),
+        () => projectRpc.getDeployProgress({ project, stack: target }),
+        (records, _changed, observable) => {
+          if (selection.current === attempt) setActivity({ records, available: observable });
+        });
+      if (selection.current !== attempt) return;
       if (outcome.state !== 'confirmed') {
         setFailure(outcome.message);
         setInspectTarget(outcome.state !== 'failed');
@@ -177,9 +189,9 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
       }
       inspect(target);
     } catch (err) {
-      setFailure((err as Error).message);
+      if (selection.current === attempt) setFailure((err as Error).message);
     } finally {
-      setDeploying(false);
+      if (selection.current === attempt) setDeploying(false);
     }
   };
 
@@ -293,6 +305,10 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
           )}
 
           {stackError && <Alert severity="warning">Stack inventory unavailable · {stackError}</Alert>}
+          {deploying && !activity.records.length && <Typography variant="body2" role="status" color="text.secondary">
+            {activity.available ? 'Start submitted. Waiting for target observations…' : 'Transfer observations unavailable. Waiting for the stack reply…'}
+          </Typography>}
+          <DeployProgressList records={activity.records} unavailable={!activity.available} />
           {requiresRelease && (
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               {target} requires an immutable release.
@@ -309,8 +325,8 @@ export function DeployReleaseDialog({ open, onClose, project, release: given, st
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} size="small" disabled={deploying}>
-          {preparing ? 'Close' : 'Cancel'}
+        <Button onClick={deploying ? () => inspect(target) : onClose} size="small">
+          {deploying ? 'Open stack' : preparing ? 'Close' : 'Cancel'}
         </Button>
         <Button
           variant="contained"

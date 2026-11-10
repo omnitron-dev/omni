@@ -1,4 +1,5 @@
 import { stackHealthReading, healthLabel } from '../shared/stack-reading.js';
+import { observeStackStart } from '../shared/release-reading.js';
 /**
  * Stack CLI Commands — manage stacks on the running daemon
  *
@@ -330,7 +331,8 @@ export async function stackStartCommand(
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
     emitStep(`Starting stack ${projectName}/${stackName}...`);
 
-    const stack = await svc.startStack({
+    const scope = { project: projectName, stack: stackName, ...(opts?.release && { release: opts.release }) };
+    const start = () => svc.startStack({
       project: projectName,
       stack: stackName,
       ...(opts?.allowDirty === true ? { allowDirty: true } : {}),
@@ -338,6 +340,13 @@ export async function stackStartCommand(
       ...(opts?.workingTree === true ? { workingTree: true } : {}),
       ...(opts?.reinstall === true ? { reinstall: true } : {}),
     });
+    let observationsAvailable = true;
+    const stack = isJsonMode() ? await start() : await observeStackStart(scope, start,
+      () => svc.getDeployProgress({ project: projectName, stack: stackName }), (_all, changed, available) => {
+        if (!available && observationsAvailable) log.warn('Transfer observations unavailable. Waiting for the stack reply.');
+        observationsAvailable = available;
+        for (const row of changed) emitInfo(`${row.node}  ${row.app}  ${row.status}  ${row.message}`);
+      });
     const { confirmed, outcome, online, total, issues } = readStackStart(stack);
     if (!confirmed) process.exitCode = 1;
     if (emitJson({

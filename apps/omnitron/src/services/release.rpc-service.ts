@@ -55,6 +55,7 @@ export class ReleaseRpcService implements IOmnitronReleaseService {
     return {
       root: this.releases.root(),
       frameworkSource: 1,
+      buildSlots: this.releases.buildSlots,
       ...(this.releases.canPublish && { publish: 1 as const }),
       canBuild: missing.length === 0,
       missingTools: missing,

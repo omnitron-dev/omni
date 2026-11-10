@@ -27,6 +27,45 @@ export function deploymentProgressKey(record: Pick<DeployProgressRecord, 'projec
   return JSON.stringify([record.project, record.stack, record.node, record.app]);
 }
 
+/** Observe changing target activity while the real start is pending. Only its reply settles the operation. */
+export async function observeStackStart<T>(
+  scope: { project: string; stack: string; release?: string },
+  start: () => Promise<T>,
+  read: () => Promise<DeployProgressRecord[]>,
+  update: (records: DeployProgressRecord[], changed: DeployProgressRecord[], available: boolean) => void,
+  intervalMs = 3000,
+): Promise<T> {
+  let active = true, initialized = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const seen = new Map<string, string>(), current = new Map<string, DeployProgressRecord>();
+  const observe = async () => {
+    let available = true;
+    const changed: DeployProgressRecord[] = [];
+    try {
+      const records = await read();
+      if (!active) return;
+      for (const row of records) {
+        if (row.project !== scope.project || row.stack !== scope.stack || !row.operationId || row.releaseId !== scope.release) continue;
+        const key = deploymentProgressKey(row);
+        const fingerprint = JSON.stringify([row.operationId, row.status, row.progress, row.at, row.message]);
+        if (initialized && seen.get(key) !== fingerprint) {
+          changed.push(row);
+          current.set(key, row);
+        }
+        seen.set(key, fingerprint);
+      }
+      initialized = true;
+    } catch { available = false; }
+    if (active) {
+      update([...current.values()].sort((a, b) => b.at.localeCompare(a.at)), changed, available);
+      timer = setTimeout(() => { void observe(); }, intervalMs);
+    }
+  };
+  void observe();
+  try { return await start(); }
+  finally { active = false; clearTimeout(timer); }
+}
+
 /** Current observations, including imported stack names and earlier controllers with no attribution. */
 export function readDeploymentProgress(records: readonly DeployProgressRecord[], project: Pick<IProjectInfo, 'name' | 'configurations'>, stack?: string | null) {
   const transfers: DeployProgressRecord[] = [];

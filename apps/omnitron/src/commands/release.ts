@@ -183,7 +183,11 @@ export async function releaseBuildCommand(projectName: string, options: ReleaseB
     const client = createDaemonClient();
     try {
       const service = await client.service<IOmnitronReleaseService>('OmnitronRelease');
-      if (options.publish && (await service.preflight()).publish !== 1) throw new Error('This controller cannot publish builds. Configure its release store and check its version.');
+      if (options.publish || options.frameworkSource) {
+        const support = await service.preflight();
+        if (options.publish && support.publish !== 1) throw new Error('This controller cannot publish builds. Configure its release store and check its version.');
+        if (options.frameworkSource && support.frameworkSource !== 1) throw new Error('This controller cannot bind an explicit SDK source. Update the controller before submitting this build.');
+      }
       const record = await service.build({
         project: projectName,
         ...(options.projectCommit && { projectCommit: options.projectCommit }),
@@ -267,10 +271,22 @@ export async function releaseBuildCommand(projectName: string, options: ReleaseB
   }
 }
 
-export async function releaseJobsCommand(action: 'list' | 'show' | 'stop', id?: string, follow = false): Promise<void> {
+export async function releaseJobsCommand(action: 'preflight' | 'list' | 'show' | 'stop', id?: string, follow = false): Promise<void> {
   const client = createDaemonClient();
   try {
     const service = await client.service<IOmnitronReleaseService>('OmnitronRelease');
+    if (action === 'preflight') {
+      const result = await service.preflight();
+      if (!emitJson(result)) {
+        if (result.buildSlots) log.info(`Build slots: ${result.buildSlots.running}/${result.buildSlots.limit} · ${result.buildSlots.queued} queued`);
+        else log.info('Controller uses the legacy exclusive builder');
+        log.info('Artifact store publication: ' + (result.publish === 1 ? 'available' : 'unavailable'));
+        log.info('Release catalog: ' + result.root);
+        if (!result.canBuild) log.error('Missing build tools: ' + result.missingTools.join(', '));
+      }
+      if (!result.canBuild) process.exitCode = 1;
+      return;
+    }
     if (action === 'list') {
       const jobs = (await service.builds()).filter(job => !id || job.request.project === id);
       if (!emitJson(jobs)) {

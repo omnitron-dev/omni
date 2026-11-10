@@ -143,3 +143,18 @@ it('revalidates a queued actor before executing project code and before publishi
   expect(runner).toHaveBeenCalledTimes(1);
   expect(publisher).not.toHaveBeenCalled();
 });
+
+it('removes admitted environment values from gate details, phase history, errors and service logs', async () => {
+  const logger = { info: vi.fn(), error: vi.fn() };
+  const service = new ReleaseService(logger as unknown as ILogger);
+  const secret = 'private-fixture-build-secret';
+  const gates = [{ name: 'check', status: 'failed' as const, detail: 'rejected ' + secret }];
+  runner.mockImplementationOnce(async (_project, _options, phase) => {
+    phase({ phase: 'testing ' + secret, percent: 50, at: new Date().toISOString(), gates });
+    return outcome(gates);
+  });
+  const job = service.start({ project: 'sample', env: { PRIVATE_VALUE: secret } }, 'operator');
+  await vi.waitFor(() => expect(job.state).toBe('failed'));
+  expect(job.error).toContain('[redacted]');
+  expect(JSON.stringify([job, logger.info.mock.calls, logger.error.mock.calls])).not.toContain(secret);
+});

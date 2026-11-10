@@ -3,8 +3,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-const rpc = vi.hoisted(() => ({ check: vi.fn(), list: vi.fn(), start: vi.fn() }));
-vi.mock('src/netron/client', () => ({ invokeStackLifecycle: rpc.check }));
+const rpc = vi.hoisted(() => ({ check: vi.fn(), list: vi.fn(), start: vi.fn(), progress: vi.fn() }));
+vi.mock('src/netron/client', () => ({ invokeStackLifecycle: rpc.check, project: { getDeployProgress: rpc.progress } }));
 vi.mock('src/netron/release-wire', () => ({ releaseApi: { list: rpc.list } }));
 vi.mock('src/stores/project.store', () => {
   const state = {
@@ -18,6 +18,7 @@ afterEach(() => { cleanup(); vi.resetAllMocks(); });
 
 it('accepts an external release ID, fetches on request and requires a separate deployment action', async () => {
   rpc.list.mockResolvedValue({ releases: [] });
+  rpc.progress.mockResolvedValue([]);
   rpc.check.mockResolvedValueOnce({ ok: false, state: 'missing', because: 'Release is absent from this controller' });
   let confirm!: (reply: { ok: boolean; because: string }) => void;
   rpc.check.mockReturnValueOnce(new Promise(resolve => { confirm = resolve; }));

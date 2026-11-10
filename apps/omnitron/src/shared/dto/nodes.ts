@@ -12,7 +12,9 @@ export interface INode {
   sshPort: number;
   sshUser: string;
   sshAuthMethod: 'password' | 'key';
+  /** Filesystem reference only. Inline private keys stay in the node vault. */
   sshPrivateKey?: string;
+  hasPrivateKey?: boolean;
   /** Whether an encrypted passphrase is stored in secrets.enc */
   hasPassphrase?: boolean;
   /** Whether an SSH password is stored in secrets.enc */

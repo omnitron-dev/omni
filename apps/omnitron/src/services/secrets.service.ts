@@ -68,6 +68,15 @@ interface SecretsEnvelope {
 /** Decrypted secrets store */
 type SecretsMap = Record<string, string>;
 
+class VaultRevisionChanged extends Error {
+  constructor() { super('Credential vault changed concurrently; retry the operation'); }
+}
+
+function sameEnvelope(a: SecretsEnvelope | null, b: SecretsEnvelope | null): boolean {
+  return a === b || (a !== null && b !== null && a.version === b.version && a.salt === b.salt &&
+    a.iv === b.iv && a.tag === b.tag && a.ciphertext === b.ciphertext);
+}
+
 // =============================================================================
 // Constants
 // =============================================================================
@@ -104,6 +113,23 @@ const FALLBACK_MACHINE_ID = 'omnitron-default-machine-id';
 @Injectable()
 export class SecretsService {
   private cache: SecretsMap | null = null;
+  private revision: SecretsEnvelope | null = null;
+  private pending: Promise<void> = Promise.resolve();
+
+  /** Serialize this instance; SQLite arbitrates independent processes at commit. */
+  private access<T>(action: () => Promise<T>): Promise<T> {
+    const task = this.pending.then(async () => {
+      for (let attempt = 1; ; attempt++) {
+        try { return await action(); }
+        catch (error) {
+          if (!(error instanceof VaultRevisionChanged) || attempt >= 8) throw error;
+          this.cache = null;
+        }
+      }
+    });
+    this.pending = task.then(() => {}, () => {});
+    return task;
+  }
   /** The resolved machine binding; see `resolveMachineId`. */
   private machineId: string | null = null;
 
@@ -137,8 +163,10 @@ export class SecretsService {
    * Returns null if the key doesn't exist or the secrets file is missing.
    */
   async get(key: string): Promise<string | null> {
-    const secrets = await this.load();
-    return secrets[key] ?? null;
+    return this.access(async () => {
+      const secrets = await this.load();
+      return Object.hasOwn(secrets, key) ? secrets[key]! : null;
+    });
   }
 
   /**
@@ -146,9 +174,15 @@ export class SecretsService {
    * Writes the encrypted file immediately.
    */
   async set(key: string, value: string): Promise<void> {
-    const secrets = await this.load();
-    secrets[key] = value;
-    await this.save(secrets);
+    return this.access(async () => this.save({ ...await this.load(), [key]: value }));
+  }
+
+  /** Import an older credential without overwriting a concurrent rotation. */
+  async setIfAbsent(key: string, value: string): Promise<void> {
+    return this.access(async () => {
+      const current = await this.load();
+      if (!Object.hasOwn(current, key)) await this.save({ ...current, [key]: value });
+    });
   }
 
   /**
@@ -164,14 +198,14 @@ export class SecretsService {
   async copy(from: string, to: string): Promise<void> {
     if (!from || !to) throw new Error('A copy needs the key to copy and the key to make');
     if (from === to) throw new Error(`'${from}' cannot be copied onto itself`);
-    const secrets = await this.load();
-    const value = secrets[from];
-    if (value === undefined) throw new Error(`The vault has no '${from}' — nothing was copied`);
-    if (to in secrets) {
-      throw new Error(`The vault already holds '${to}' — nothing was copied. Delete it first if replacing it is the intent`);
-    }
-    secrets[to] = value;
-    await this.save(secrets);
+    return this.access(async () => {
+      const secrets = await this.load();
+      if (!Object.hasOwn(secrets, from)) throw new Error(`The vault has no '${from}' — nothing was copied`);
+      if (Object.hasOwn(secrets, to)) {
+        throw new Error(`The vault already holds '${to}' — nothing was copied. Delete it first if replacing it is the intent`);
+      }
+      await this.save({ ...secrets, [to]: secrets[from]! });
+    });
   }
 
   /**
@@ -179,19 +213,21 @@ export class SecretsService {
    * Returns true if the key existed and was deleted.
    */
   async delete(key: string): Promise<boolean> {
-    const secrets = await this.load();
-    if (!(key in secrets)) return false;
-    delete secrets[key];
-    await this.save(secrets);
-    return true;
+    return this.access(async () => {
+      const current = await this.load();
+      if (!Object.hasOwn(current, key)) return false;
+      const updated = { ...current };
+      delete updated[key];
+      await this.save(updated);
+      return true;
+    });
   }
 
   /**
    * List all secret keys (values are NOT returned).
    */
   async list(): Promise<string[]> {
-    const secrets = await this.load();
-    return Object.keys(secrets);
+    return this.access(async () => Object.keys(await this.load()));
   }
 
   /**
@@ -199,18 +235,20 @@ export class SecretsService {
    * The old passphrase must match the current encryption.
    */
   async rotate(oldPassphrase: string, newPassphrase: string): Promise<void> {
-    // Decrypt with the old passphrase via a transient service that
-    // shares the same store + legacy-path so the import side-effect
-    // (if it hasn't happened yet) lands on the disk we expect.
-    const oldService = new SecretsService(this.store, oldPassphrase, this.legacyFilePath ?? null);
-    const secrets = await oldService.load();
-
-    // Re-encrypt under the new passphrase. Same store, so the
-    // upsert below replaces the row atomically — readers either
-    // see the old or the new envelope, never a mix.
-    this.passphrase = newPassphrase;
-    this.cache = null;
-    await this.save(secrets);
+    return this.access(async () => {
+      const old = new SecretsService(this.store, oldPassphrase, this.legacyFilePath ?? null);
+      const data = await old.load();
+      const previous = this.passphrase;
+      this.revision = old.revision;
+      this.cache = null;
+      this.passphrase = newPassphrase;
+      try {
+        await this.save(data);
+      } catch (error) {
+        this.passphrase = previous;
+        throw error;
+      }
+    });
   }
 
   /**
@@ -270,9 +308,8 @@ export class SecretsService {
     }
 
     const probed = await this.probeMachineId();
-    await this.store.kvSet(MACHINE_ID_KV_KEY, probed);
-    this.machineId = probed;
-    return probed;
+    this.machineId = this.store.kvUpdateSync<string>(MACHINE_ID_KV_KEY, value => value || probed);
+    return this.machineId;
   }
 
   /**
@@ -335,23 +372,26 @@ export class SecretsService {
   // ===========================================================================
 
   private async load(): Promise<SecretsMap> {
-    if (this.cache) return this.cache;
 
     // Try the SQLite row first. If it's empty AND the legacy
     // `secrets.enc` file exists, one-shot migrate the file in-place.
     // After the first migration boot the file is gone and the
     // SQLite row is the source of truth.
-    let envelope = await this.store.kvGet<SecretsEnvelope>(SECRETS_KV_KEY);
+    let envelope = this.store.kvGetSync<SecretsEnvelope>(SECRETS_KV_KEY, { strict: true });
+    if (this.cache && sameEnvelope(this.revision, envelope)) return this.cache;
+    this.cache = null;
 
     if (!envelope && this.legacyFilePath && existsSync(this.legacyFilePath)) {
       try {
         const raw = await readFile(this.legacyFilePath, 'utf8');
-        envelope = JSON.parse(raw) as SecretsEnvelope;
+        const legacy = JSON.parse(raw) as SecretsEnvelope;
         // Persist the imported envelope to SQLite BEFORE unlinking
         // — a crash between read and write would otherwise lose
         // the secrets.
-        await this.store.kvSet(SECRETS_KV_KEY, envelope);
-        try { await unlink(this.legacyFilePath); } catch { /* best-effort */ }
+        envelope = this.store.kvUpdateSync<SecretsEnvelope>(SECRETS_KV_KEY, current => current ?? legacy);
+        if (sameEnvelope(envelope, legacy)) {
+          try { await unlink(this.legacyFilePath); } catch { /* Another importer may have retired it. */ }
+        }
       } catch (err) {
         // Failed to read or parse — leave the legacy file in place
         // and surface the error as an empty store; the operator
@@ -364,6 +404,7 @@ export class SecretsService {
       }
     }
 
+    this.revision = envelope;
     if (!envelope) {
       this.cache = {};
       return this.cache;
@@ -391,9 +432,8 @@ export class SecretsService {
       const recovered =
         (await this.tryOtherMachineIds(envelope)) ?? (await this.tryRetiredPassphrase(envelope));
       if (recovered) {
-        this.cache = recovered;
         await this.save(recovered);
-        return this.cache;
+        return recovered;
       }
       throw new Error(`Failed to decrypt secrets: ${(err as Error).message}. Wrong passphrase?`, { cause: err });
     }
@@ -454,11 +494,12 @@ export class SecretsService {
 
   private async save(secrets: SecretsMap): Promise<void> {
     const envelope = await this.encrypt(secrets);
-    // Single atomic SQLite upsert — no torn-write window, no
-    // directory creation, no chmod dance. WAL mode + the
-    // store's per-key UPSERT covers concurrent writers (CLI +
-    // daemon) safely.
-    await this.store.kvSet(SECRETS_KV_KEY, envelope);
+    const expected = this.revision;
+    this.store.kvUpdateSync<SecretsEnvelope>(SECRETS_KV_KEY, current => {
+      if (!sameEnvelope(current, expected)) throw new VaultRevisionChanged();
+      return envelope;
+    });
+    this.revision = envelope;
     this.cache = secrets;
   }
 

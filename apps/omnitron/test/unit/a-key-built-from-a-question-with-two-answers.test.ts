@@ -27,23 +27,15 @@ import { describe, it, expect, vi } from 'vitest';
 import { hostname } from 'node:os';
 
 import { SecretsService } from '../../src/services/secrets.service.js';
+import { vaultStore } from '../helpers/vault-store.js';
 import { DEFAULT_SECRETS_PASSPHRASE } from '../../src/config/defaults.js';
 
-/** A DaemonStateStore stand-in: one in-memory KV map. */
-function store(seed: Record<string, unknown> = {}) {
-  const rows = new Map<string, unknown>(Object.entries(seed));
-  return {
-    rows,
-    kvGet: async (key: string) => rows.get(key) ?? null,
-    kvSet: async (key: string, value: unknown) => void rows.set(key, value),
-  };
-}
 
 /**
  * A service whose machine probe is under the test's control.
  * Returns the probe spy so a test can count how often the OS was asked.
  */
-function service(kv: ReturnType<typeof store>, answers: string[], passphrase = DEFAULT_SECRETS_PASSPHRASE) {
+function service(kv: ReturnType<typeof vaultStore>, answers: string[], passphrase = DEFAULT_SECRETS_PASSPHRASE) {
   const svc = new SecretsService(kv as never, passphrase, null);
   let i = 0;
   const probe = vi.fn(async () => answers[Math.min(i++, answers.length - 1)]!);
@@ -53,7 +45,7 @@ function service(kv: ReturnType<typeof store>, answers: string[], passphrase = D
 
 describe('the machine binding is resolved once and remembered', () => {
   it('persists the probe answer on first use', async () => {
-    const kv = store();
+    const kv = vaultStore();
     const { svc } = service(kv, ['UUID-A']);
 
     await svc.set('k', 'v');
@@ -64,7 +56,7 @@ describe('the machine binding is resolved once and remembered', () => {
   it('asks the OS once, not once per operation', async () => {
     // The probe shells out. It used to run on every derivation — every get,
     // every set, every list — blocking the event loop each time.
-    const kv = store();
+    const kv = vaultStore();
     const { svc, probe } = service(kv, ['UUID-A']);
 
     await svc.set('a', '1');
@@ -76,7 +68,7 @@ describe('the machine binding is resolved once and remembered', () => {
   });
 
   it('does not ask the OS at all once the binding is stored', async () => {
-    const kv = store({ 'secrets:machine-id': 'UUID-A' });
+    const kv = vaultStore({ 'secrets:machine-id': 'UUID-A' });
     const { svc, probe } = service(kv, ['SOMETHING-ELSE']);
 
     await svc.set('k', 'v');
@@ -89,7 +81,7 @@ describe('the machine binding is resolved once and remembered', () => {
     // The whole defect, in one test: seal, then have the OS answer
     // differently, then read. Before the binding was persisted this is the
     // point at which the secrets became unreachable.
-    const kv = store();
+    const kv = vaultStore();
     const first = service(kv, ['UUID-A']);
     await first.svc.set('ssh-password', 'hunter2');
 
@@ -109,7 +101,7 @@ describe('an envelope sealed under a retired binding is recovered', () => {
    * capability the design deliberately does not have.
    */
   async function sealedUnder(id: string, secrets: Record<string, string>) {
-    const kv = store();
+    const kv = vaultStore();
     const { svc } = service(kv, [id]);
     for (const [k, v] of Object.entries(secrets)) await svc.set(k, v);
     kv.rows.delete('secrets:machine-id'); // as a pre-fix daemon left it

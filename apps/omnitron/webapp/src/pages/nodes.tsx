@@ -1763,8 +1763,9 @@ function NodeDialog({ open, onClose, onSubmit, editNode, sshKeys, loading, error
           {form.sshAuthMethod === 'key' ? (
             <>
               <FormControl fullWidth>
-                <InputLabel>SSH Private Key</InputLabel>
-                <Select value={form.sshPrivateKey} label="SSH Private Key" inputProps={{ 'aria-label': 'SSH Private Key' }} onChange={(e) => up('sshPrivateKey', e.target.value as string)}>
+                <InputLabel shrink={editNode?.hasPrivateKey || undefined}>SSH Private Key</InputLabel>
+                <Select value={form.sshPrivateKey} label="SSH Private Key" displayEmpty={Boolean(editNode?.hasPrivateKey)} inputProps={{ 'aria-label': 'SSH Private Key' }} onChange={(e) => up('sshPrivateKey', e.target.value as string)}>
+                  {editNode?.hasPrivateKey && <MenuItem value="">Keep stored key</MenuItem>}
                   {sshKeys.map((key) => (
                     <MenuItem key={key.path} value={key.path}>
                       <Stack
@@ -2234,7 +2235,7 @@ export default function NodesPage() {
       const payload = {
         name: form.name.trim(), host: form.host.trim(), sshPort: form.sshPort,
         sshUser: form.sshUser.trim(), sshAuthMethod: form.sshAuthMethod,
-        sshPrivateKey: form.sshAuthMethod === 'key' ? form.sshPrivateKey : undefined,
+        sshPrivateKey: form.sshAuthMethod === 'key' && form.sshPrivateKey ? form.sshPrivateKey : undefined,
         // An empty secret field means "leave it alone", never "clear it".
         // The passphrase was already read that way; the password was not, so
         // opening an existing password-auth node, changing its NAME and

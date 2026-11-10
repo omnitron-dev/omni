@@ -52,6 +52,7 @@ function makeSecrets() {
   return {
     values,
     get: vi.fn(async (k: string) => values.get(k) ?? null),
+    setIfAbsent: vi.fn(async (k: string, v: string) => { if (!values.has(k)) values.set(k, v); }),
     set: vi.fn(async (k: string, v: string) => { values.set(k, v); }),
     delete: vi.fn(async (k: string) => { values.delete(k); }),
   } as any;
@@ -329,7 +330,7 @@ describe('a node row that holds a plaintext secret', () => {
     const secrets = makeSecrets();
     // A vault that takes its time — the daemon runs its first check round
     // within milliseconds of construction.
-    secrets.set = vi.fn(async (k: string, v: string) => {
+    secrets.setIfAbsent = vi.fn(async (k: string, v: string) => {
       await new Promise((r) => setTimeout(r, 50));
       secrets.values.set(k, v);
     });
@@ -339,6 +340,45 @@ describe('a node row that holds a plaintext secret', () => {
     // Without the bridge this is `undefined`, and the check reports a
     // perfectly reachable node as unreachable for one round after every boot.
     expect(targets.find((t) => t.id === 'leaky')?.sshPassphrase).toBe('Mer-Ka-Bah#789!');
+  });
+});
+
+describe('inline node SSH keys', () => {
+  const key = '-----BEGIN OPENSSH PRIVATE KEY-----\nsynthetic fixture\n-----END OPENSSH PRIVATE KEY-----';
+
+  it('stores only the vault marker and keeps the credential through a restart and ordinary edits', async () => {
+    const store = makeStore(), vault = makeSecrets();
+    const manager = new NodeManagerService(silentLogger, store, vault);
+    const added = await manager.addNode({ name: 'edge', host: 'example.test', sshPrivateKey: key });
+    expect(added.hasPrivateKey).toBe(true);
+    expect(JSON.stringify([added, manager.listNodes(), store.rows.get(added.id)])).not.toContain('synthetic fixture');
+    const restarted = new NodeManagerService(silentLogger, store, vault);
+    const edited = await restarted.updateNode(added.id, { name: 'renamed' });
+    expect((await restarted.nodeToSshTarget(edited)).privateKey).toBe(key);
+    await expect(restarted.updateNode(added.id, { host: 'other.test' })).rejects.toThrow(/explicitly supply/i);
+    await restarted.updateNode(added.id, { sshPrivateKey: '/keys/edge' });
+    expect(restarted.getNode(added.id)?.sshPrivateKey).toBe('/keys/edge');
+    expect(vault.values.has(`node:${added.id}:privateKey`)).toBe(false);
+  });
+
+  it('keeps the only legacy copy if the vault fails, and migrates it on retry', async () => {
+    const store = makeStore(), vault = makeSecrets();
+    const creator = new NodeManagerService(silentLogger, store, vault);
+    const node = await creator.addNode({ name: 'edge', host: 'example.test' });
+    const row = store.rows.get(node.id);
+    row.metadata = JSON.stringify({ ...node, sshPrivateKey: key });
+    store.rows.delete('local');
+    vault.setIfAbsent.mockRejectedValue(new Error('vault unavailable'));
+    const manager = new NodeManagerService(silentLogger, store, vault);
+    expect(JSON.stringify(manager.getNode(node.id))).not.toContain('synthetic fixture');
+    await expect(manager.updateNode(node.id, { name: 'edit' })).rejects.toThrow('vault unavailable');
+    expect(store.rows.get(node.id).metadata).toContain('synthetic fixture');
+    vault.setIfAbsent.mockImplementation(async (k: string, v: string) => vault.values.set(k, v));
+    const edited = await manager.updateNode(node.id, { name: 'recovered' });
+    expect(store.rows.get(node.id).metadata).not.toContain('synthetic fixture');
+    expect((await manager.nodeToSshTarget(edited)).privateKey).toBe(key);
+    await manager.removeNode(node.id);
+    expect(vault.values.has(`node:${node.id}:privateKey`)).toBe(false);
   });
 });
 

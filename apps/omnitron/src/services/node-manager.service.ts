@@ -78,6 +78,10 @@ const LOCAL_NODE_ID = 'local';
 
 /** DaemonStateStore key holding the operator-set check configuration. */
 const CHECK_CONFIG_KEY = 'nodes:check-config';
+const LEGACY_IMPORT_KEY = 'nodes:legacy-import-in-progress';
+const NODE_SECRET_FIELDS = ['privateKey', 'passphrase', 'password'] as const;
+type NodeSecretField = typeof NODE_SECRET_FIELDS[number];
+type StoredNodeSecret = { field: NodeSecretField; value: string };
 
 // =============================================================================
 // Service
@@ -107,6 +111,7 @@ export class NodeManagerService extends EventEmitter {
    * report a perfectly reachable node as unreachable.
    */
   private pendingSecrets = new Map<string, string>();
+  private readonly repairing = new Map<string, Promise<void>>();
   /** The master's mesh — see `setSlaveConnector`. */
   private mesh: NodeMeshCaller | null = null;
 
@@ -296,7 +301,6 @@ export class NodeManagerService extends EventEmitter {
       sshPort: assertPort('SSH port', input.sshPort ?? 22),
       sshUser: input.sshUser ?? 'root',
       sshAuthMethod: input.sshAuthMethod ?? 'key',
-      ...(input.sshPrivateKey && { sshPrivateKey: input.sshPrivateKey }),
       runtime: input.runtime ?? 'node',
       daemonPort: assertPort('daemon port', input.daemonPort ?? 9700),
       tags: input.tags ?? [],
@@ -308,8 +312,7 @@ export class NodeManagerService extends EventEmitter {
     if (!node.name.trim()) throw new Error('Node name is required');
     this.assertAddressIsFree(node.host, node.daemonPort);
 
-    // Store secrets encrypted (passphrase, password) — only boolean markers in nodes.json.
-    // Must await before connectivity check, otherwise getSecret() reads stale file.
+    if (input.sshPrivateKey) await this.assignPrivateKey(node, input.sshPrivateKey);
     if (input.sshPassphrase) {
       node.hasPassphrase = true;
       await this.setSecret(id, 'passphrase', input.sshPassphrase);
@@ -319,8 +322,9 @@ export class NodeManagerService extends EventEmitter {
       await this.setSecret(id, 'password', input.sshPassword);
     }
 
+    this.assertAddressIsFree(node.host, node.daemonPort);
+    this.persistNode(node, true);
     this.nodes.set(id, node);
-    this.save();
     this.emit('node:added', node);
     this.logger.info({ nodeId: id, name: node.name, host: node.host }, 'Node added');
     // Check connectivity in background — secrets are already persisted.
@@ -340,6 +344,7 @@ export class NodeManagerService extends EventEmitter {
     if (this.changingNodes.has(id)) throw new Error('Node registration is changing; retry after the current operation');
     this.changingNodes.add(id);
     try {
+      if (this.hasPendingCredentials(id)) await this.repairCredentials(previous);
       return await this.writeNodeUpdate(previous, input);
     } finally {
       this.changingNodes.delete(id);
@@ -357,20 +362,18 @@ export class NodeManagerService extends EventEmitter {
     const id = node.id;
     if (node.isLocal && input.host) throw new Error('Cannot change host of local node');
 
-    // Extract secrets before spreading into node (they must not be saved to nodes.json)
-    const { sshPassphrase, sshPassword, ...safeInput } = input;
-    if (safeInput.host !== undefined) safeInput.host = assertNodeHost(safeInput.host);
-    if (safeInput.sshPort !== undefined) safeInput.sshPort = assertPort('SSH port', safeInput.sshPort);
-    if (safeInput.daemonPort !== undefined) safeInput.daemonPort = assertPort('daemon port', safeInput.daemonPort);
-
-    const updated: INode = {
-      ...node,
-      ...safeInput,
-      id: node.id,
-      isLocal: node.isLocal,
-      createdAt: node.createdAt,
-      updatedAt: new Date().toISOString(),
-    };
+    const { sshPassphrase, sshPassword, sshPrivateKey } = input;
+    const updated: INode = { ...node, updatedAt: new Date().toISOString() };
+    if (input.name !== undefined) updated.name = input.name;
+    if (input.host !== undefined) updated.host = assertNodeHost(input.host);
+    if (input.sshPort !== undefined) updated.sshPort = assertPort('SSH port', input.sshPort);
+    if (input.daemonPort !== undefined) updated.daemonPort = assertPort('daemon port', input.daemonPort);
+    if (input.sshUser !== undefined) updated.sshUser = input.sshUser;
+    if (input.sshAuthMethod !== undefined) updated.sshAuthMethod = input.sshAuthMethod;
+    if (input.runtime !== undefined) updated.runtime = input.runtime;
+    if (input.tags !== undefined) updated.tags = input.tags;
+    if (input.offlineTimeout !== undefined) updated.offlineTimeout = input.offlineTimeout;
+    if (!updated.name.trim()) throw new Error('Node name is required');
 
     // An edit can collide as readily as an add — correcting one node's host
     // to the address another already holds is exactly how a duplicate gets
@@ -396,18 +399,22 @@ export class NodeManagerService extends EventEmitter {
       const passwordCleared = updated.sshAuthMethod !== node.sshAuthMethod && updated.sshAuthMethod === 'key';
       const keyCleared = updated.sshAuthMethod !== node.sshAuthMethod && updated.sshAuthMethod === 'password';
       if ((!passwordCleared && node.hasPassword && sshPassword === undefined)
-          || (!keyCleared && (node.sshPrivateKey && safeInput.sshPrivateKey === undefined
+          || (!keyCleared && ((node.sshPrivateKey || node.hasPrivateKey) && sshPrivateKey === undefined
             || node.hasPassphrase && sshPassphrase === undefined)))
         throw new Error('SSH destination changed. Explicitly supply or clear the SSH credential for the new host, port and account.');
       // Commit the replacement address without credentials before changing its ID-keyed vault slots.
       // A crash between these stores leaves a node that needs credentials. Xec requires explicit auth.
-      const detached = { ...updated, hasPassword: false, hasPassphrase: false };
+      const detached = { ...updated, hasPassword: false, hasPassphrase: false, hasPrivateKey: false };
       delete detached.sshPrivateKey;
       this.persistNode(detached, true);
       this.nodes.set(id, detached);
     }
 
-    // Update encrypted secrets — await to ensure they're persisted before connectivity check
+    if (updated.sshAuthMethod === 'password' && node.sshAuthMethod !== updated.sshAuthMethod) {
+      await this.assignPrivateKey(updated, '');
+    } else if (sshPrivateKey !== undefined) {
+      await this.assignPrivateKey(updated, sshPrivateKey);
+    }
     if (sshPassphrase !== undefined) {
       if (sshPassphrase) {
         updated.hasPassphrase = true;
@@ -437,7 +444,6 @@ export class NodeManagerService extends EventEmitter {
         await this.deleteSecret(id, 'password');
       }
       if (updated.sshAuthMethod === 'password') {
-        delete updated.sshPrivateKey;
         if (updated.hasPassphrase) {
           updated.hasPassphrase = false;
           await this.deleteSecret(id, 'passphrase');
@@ -471,6 +477,7 @@ export class NodeManagerService extends EventEmitter {
     if (this.changingNodes.has(id)) throw new Error('Node registration is changing; retry after the current operation');
     this.changingNodes.add(id);
     try {
+      if (this.hasPendingCredentials(id)) await this.repairCredentials(node);
       await this.deleteNodeRegistration(node);
     } finally {
       this.changingNodes.delete(id);
@@ -479,19 +486,19 @@ export class NodeManagerService extends EventEmitter {
 
   private async deleteNodeRegistration(node: INode): Promise<void> {
     const id = node.id;
+    if (node.hasPrivateKey) await this.deleteSecret(id, 'privateKey');
     await this.deleteSecret(id, 'passphrase');
     await this.deleteSecret(id, 'password');
 
-    this.nodes.delete(id);
-    this.statusCache.delete(id);
-    this.summaryCache.delete(id);
     try {
       this.store.deleteNodeSync(id);
     } catch (err) {
       this.logger.warn({ nodeId: id, error: (err as Error).message }, 'Failed to delete node row');
       throw err;
     }
-    this.save();
+    this.nodes.delete(id);
+    this.statusCache.delete(id);
+    this.summaryCache.delete(id);
     this.emit('node:removed', id);
     this.logger.info({ nodeId: id, name: node.name }, 'Node removed');
   }
@@ -720,16 +727,22 @@ export class NodeManagerService extends EventEmitter {
       port: node.sshPort,
       username: node.sshUser,
     };
-    if (node.sshPrivateKey) {
+    if (node.hasPrivateKey) {
+      const key = await this.getSecret(node.id, 'privateKey');
+      if (!key) throw new Error('Stored SSH private key is unavailable');
+      target.privateKey = key;
+    } else if (node.sshPrivateKey) {
       target.privateKey = readKeyFile(node.sshPrivateKey);
     }
     if (node.hasPassphrase) {
       const passphrase = await this.getSecret(node.id, 'passphrase');
-      if (passphrase) target.passphrase = passphrase;
+      if (!passphrase) throw new Error('Stored SSH key passphrase is unavailable');
+      target.passphrase = passphrase;
     }
     if (node.hasPassword) {
       const password = await this.getSecret(node.id, 'password');
-      if (password) target.password = password;
+      if (!password) throw new Error('Stored SSH password is unavailable');
+      target.password = password;
     }
     if (this.nodes.get(node.id) !== registered || this.changingNodes.has(node.id))
       throw new Error('SSH node registration changed during credential lookup');
@@ -926,21 +939,24 @@ export class NodeManagerService extends EventEmitter {
   // Secrets Helpers
   // ===========================================================================
 
-  private secretKey(nodeId: string, field: string): string {
+  private async assignPrivateKey(node: INode, input: string): Promise<void> {
+    if (isKeyMaterial(input)) {
+      await this.setSecret(node.id, 'privateKey', input);
+      node.hasPrivateKey = true;
+      delete node.sshPrivateKey;
+      return;
+    }
+    if (node.hasPrivateKey) await this.deleteSecret(node.id, 'privateKey');
+    delete node.hasPrivateKey;
+    if (input) node.sshPrivateKey = input;
+    else delete node.sshPrivateKey;
+  }
+
+  private secretKey(nodeId: string, field: NodeSecretField): string {
     return `node:${nodeId}:${field}`;
   }
 
-  /** The vault's own answer, with no in-memory fallback. */
-  private async readVault(nodeId: string, field: string): Promise<string | null> {
-    if (!this.secrets) return null;
-    try {
-      return await this.secrets.get(this.secretKey(nodeId, field));
-    } catch {
-      return null;
-    }
-  }
-
-  private async getSecret(nodeId: string, field: string): Promise<string | null> {
+  private async getSecret(nodeId: string, field: NodeSecretField): Promise<string | null> {
     const key = this.secretKey(nodeId, field);
     if (this.secrets) {
       try {
@@ -951,19 +967,16 @@ export class NodeManagerService extends EventEmitter {
     return this.pendingSecrets.get(key) ?? null;
   }
 
-  private async setSecret(nodeId: string, field: string, value: string): Promise<void> {
+  private async setSecret(nodeId: string, field: NodeSecretField, value: string): Promise<void> {
     if (!this.secrets) {
-      this.logger.warn({ nodeId, field }, 'SecretsService not available — secret not stored');
-      return;
+      throw new Error('SSH credential vault is unavailable');
     }
     await this.secrets.set(this.secretKey(nodeId, field), value);
   }
 
-  private async deleteSecret(nodeId: string, field: string): Promise<void> {
+  private async deleteSecret(nodeId: string, field: NodeSecretField): Promise<void> {
     if (!this.secrets) return;
-    try {
-      await this.secrets.delete(this.secretKey(nodeId, field));
-    } catch { /* non-critical */ }
+    await this.secrets.delete(this.secretKey(nodeId, field));
   }
 
   /**
@@ -1088,8 +1101,12 @@ export class NodeManagerService extends EventEmitter {
   // ===========================================================================
 
   private load(): void {
-    /** Rows found carrying a plaintext secret; healed after the loop. */
-    const leaked: Array<{ node: INode; strays: Array<{ field: 'passphrase' | 'password'; value: string }> }> = [];
+    const remember = (raw: INode & { sshPassphrase?: string; sshPassword?: string }): INode => {
+      const { node, strays } = splitStoredSecrets(raw);
+      this.nodes.set(node.id, node);
+      for (const { field, value } of strays) this.pendingSecrets.set(this.secretKey(node.id, field), value);
+      return node;
+    };
 
     try {
       // First-pass: read from SQLite. Each row's `metadata` column
@@ -1099,13 +1116,7 @@ export class NodeManagerService extends EventEmitter {
       for (const row of rows) {
         if (!row.metadata) continue;
         try {
-          const raw = JSON.parse(row.metadata) as INode & { sshPassphrase?: string; sshPassword?: string };
-          const { node, strays } = splitStoredSecrets(raw);
-          this.nodes.set(node.id, node);
-          if (strays.length > 0) {
-            for (const stray of strays) this.pendingSecrets.set(this.secretKey(node.id, stray.field), stray.value);
-            leaked.push({ node, strays });
-          }
+          const node = remember(JSON.parse(row.metadata));
           // Restore the last known health, but NOT a status reading: a
           // reachability answer from a previous daemon is not a current one,
           // and the console has no way to tell them apart on the dots. What
@@ -1125,81 +1136,61 @@ export class NodeManagerService extends EventEmitter {
         }
       }
 
-      // One-shot legacy import. If the SQLite table is empty but the
-      // pre-T-7 nodes.json file exists, migrate it in-place. The
-      // existing file is then unlinked so subsequent boots skip the
-      // branch.
-      if (this.nodes.size === 0 && fs.existsSync(NODES_FILE)) {
-        try {
-          const data = JSON.parse(fs.readFileSync(NODES_FILE, 'utf-8'));
-          if (Array.isArray(data.nodes)) {
-            for (const node of data.nodes) {
-              this.nodes.set(node.id, node);
-              this.persistNode(node);
-            }
-          }
-          try { fs.unlinkSync(NODES_FILE); } catch { /* best-effort */ }
-        } catch (err) {
-          this.logger.warn({ error: (err as Error).message }, 'Legacy nodes.json migration failed — leaving file in place');
+      // Keep the original file until every imported credential and row is durable.
+      // The marker lets an interrupted import finish after some rows already exist.
+      if ((this.nodes.size === 0 || this.store.kvGetSync(LEGACY_IMPORT_KEY)) && fs.existsSync(NODES_FILE)) {
+        const original = fs.readFileSync(NODES_FILE, 'utf8');
+        const { nodes } = JSON.parse(original);
+        if (!Array.isArray(nodes)) throw new Error('Invalid legacy node registry');
+        this.store.kvSetSync(LEGACY_IMPORT_KEY, true);
+        for (const raw of nodes) {
+          if (this.nodes.has(raw.id)) continue;
+          const node = remember(raw);
+          if (!this.hasPendingCredentials(node.id)) this.persistNode(node, true);
         }
+        // Existing SQLite rows may also still need credential migration.
+        const imported = [...this.nodes.values()].map(node => this.repairCredentials(node));
+        void Promise.all(imported).then(() => {
+          if (fs.readFileSync(NODES_FILE, 'utf8') !== original) throw new Error('Legacy node registry changed during import');
+          fs.unlinkSync(NODES_FILE);
+          this.store.kvSetSync(LEGACY_IMPORT_KEY, false);
+        }).catch(() => this.logger.error('Legacy node registry retained; retry credential migration after checking the vault and database'));
       }
     } catch (err) {
       this.logger.warn({ error: (err as Error).message }, 'Failed to load nodes from store');
     }
 
-    if (leaked.length > 0) void this.healLeakedSecrets(leaked);
-
+    for (const node of this.nodes.values()) {
+      void this.repairCredentials(node).catch(() => this.logger.error(
+        { nodeId: node.id }, 'SSH credential migration incomplete; source retained for retry',
+      ));
+    }
     this.loadCheckConfig();
   }
 
-  /**
-   * Move a plaintext secret out of a node row and into the vault.
-   *
-   * Observed on a live daemon: a node row whose `metadata` JSON contained
-   * `"sshPassphrase": "<the operator's actual passphrase>"` next to
-   * `"hasPassphrase": true`. An older `updateNode` spread its whole input
-   * into the node — the destructure that stops that was added afterwards, and
-   * it fixed new writes without touching rows already written. `listNodes`
-   * then spread the parsed row onto the wire, so the passphrase went to every
-   * caller with the VIEWER role, and to `omnitron node list`.
-   *
-   * Two things are needed and they are not the same: the wire shape is now
-   * built field by field (`toWireNode`), which stops the leak for any
-   * residue, present or future; and this moves the value to where it should
-   * have been, so the row itself stops holding it.
-   */
-  private async healLeakedSecrets(
-    leaked: Array<{ node: INode; strays: Array<{ field: 'passphrase' | 'password'; value: string }> }>,
-  ): Promise<void> {
-    for (const { node, strays } of leaked) {
-      for (const { field, value } of strays) {
-        this.logger.warn(
-          { nodeId: node.id, field },
-          'Node row held a plaintext SSH secret — moving it to the secret store',
-        );
-        // Read the VAULT, not `getSecret`: that one falls back to
-        // `pendingSecrets`, which is where this value already is — so asking
-        // it whether the secret is stored answers "yes" about the copy we are
-        // trying to store, and the write never happens.
-        const existing = await this.readVault(node.id, field);
-        if (!existing) {
-          if (!this.secrets) {
-            // Nothing to migrate into. The row keeps the value for now — the
-            // node would otherwise stop authenticating — but it no longer
-            // reaches the wire, which is the part that matters.
-            this.logger.error(
-              { nodeId: node.id, field },
-              'No secret store available — plaintext secret left in the node row',
-            );
-            continue;
-          }
-          await this.setSecret(node.id, field, value);
-        }
-      }
-      // Rewrite the row from the sanitised node.
-      this.persistNode(node);
-      for (const { field } of strays) this.pendingSecrets.delete(this.secretKey(node.id, field));
+  private hasPendingCredentials(id: string): boolean {
+    return NODE_SECRET_FIELDS.some(field => this.pendingSecrets.has(this.secretKey(id, field)));
+  }
+
+  private repairCredentials(node: INode): Promise<void> {
+    const active = this.repairing.get(node.id);
+    if (active) return active;
+    if (!this.hasPendingCredentials(node.id)) return Promise.resolve();
+    const repaired = this.storePendingCredentials(node).finally(() => this.repairing.delete(node.id));
+    this.repairing.set(node.id, repaired);
+    return repaired;
+  }
+
+  private async storePendingCredentials(node: INode): Promise<void> {
+    if (!this.secrets) throw new Error('SSH credential vault is unavailable');
+    for (const field of NODE_SECRET_FIELDS) {
+      const key = this.secretKey(node.id, field);
+      const pending = this.pendingSecrets.get(key);
+      if (pending === undefined) continue;
+      await this.secrets.setIfAbsent(key, pending);
     }
+    this.persistNode(node, true);
+    for (const field of NODE_SECRET_FIELDS) this.pendingSecrets.delete(this.secretKey(node.id, field));
   }
 
   /** Restore the operator's check configuration, if one was ever set. */
@@ -1240,21 +1231,10 @@ export class NodeManagerService extends EventEmitter {
     }
   }
 
-  /**
-   * Persist every node currently held in memory. Used after a
-   * batch mutation that affected multiple rows (the previous
-   * fs.writeFileSync semantics).
-   */
-  private save(): void {
-    for (const node of this.nodes.values()) {
-      this.persistNode(node);
-    }
-  }
-
   private ensureLocalNode(): void {
     if (this.nodes.has(LOCAL_NODE_ID)) return;
     const now = new Date().toISOString();
-    this.nodes.set(LOCAL_NODE_ID, {
+    const local: INode = {
       id: LOCAL_NODE_ID,
       name: 'Local Machine',
       host: '127.0.0.1',
@@ -1267,8 +1247,9 @@ export class NodeManagerService extends EventEmitter {
       isLocal: true,
       createdAt: now,
       updatedAt: now,
-    });
-    this.save();
+    };
+    this.nodes.set(LOCAL_NODE_ID, local);
+    this.persistNode(local);
   }
 
   async dispose(): Promise<void> {
@@ -1304,9 +1285,8 @@ function toWireNode(node: INode): INode {
     createdAt: node.createdAt,
     updatedAt: node.updatedAt,
   };
-  // The key is a PATH or key content chosen by the operator; the booleans say
-  // only whether a secret exists. Neither is a secret itself.
-  if (node.sshPrivateKey !== undefined) wire.sshPrivateKey = node.sshPrivateKey;
+  if (node.sshPrivateKey && !isKeyMaterial(node.sshPrivateKey)) wire.sshPrivateKey = node.sshPrivateKey;
+  if (node.hasPrivateKey) wire.hasPrivateKey = true;
   if (node.hasPassphrase !== undefined) wire.hasPassphrase = node.hasPassphrase;
   if (node.hasPassword !== undefined) wire.hasPassword = node.hasPassword;
   if (node.offlineTimeout !== undefined) wire.offlineTimeout = node.offlineTimeout;
@@ -1316,10 +1296,15 @@ function toWireNode(node: INode): INode {
 /** Separate a stored node from any plaintext secret its row still carries. */
 function splitStoredSecrets(
   raw: INode & { sshPassphrase?: string; sshPassword?: string },
-): { node: INode; strays: Array<{ field: 'passphrase' | 'password'; value: string }> } {
+): { node: INode; strays: StoredNodeSecret[] } {
   const { sshPassphrase, sshPassword, ...rest } = raw;
   const node = rest as INode;
-  const strays: Array<{ field: 'passphrase' | 'password'; value: string }> = [];
+  const strays: StoredNodeSecret[] = [];
+  if (node.sshPrivateKey && isKeyMaterial(node.sshPrivateKey)) {
+    strays.push({ field: 'privateKey', value: node.sshPrivateKey });
+    delete node.sshPrivateKey;
+    node.hasPrivateKey = true;
+  }
   if (typeof sshPassphrase === 'string' && sshPassphrase) {
     node.hasPassphrase = true;
     strays.push({ field: 'passphrase', value: sshPassphrase });
@@ -1328,7 +1313,11 @@ function splitStoredSecrets(
     node.hasPassword = true;
     strays.push({ field: 'password', value: sshPassword });
   }
-  return { node, strays };
+  return { node: toWireNode(node), strays };
+}
+
+function isKeyMaterial(value: string): boolean {
+  return /[\r\n\0]|^\s*(?:-{4,}|PuTTY-User-Key-File-\d+:)/i.test(value);
 }
 
 /** Fallback offline timeout, matching the health monitor's own default. */

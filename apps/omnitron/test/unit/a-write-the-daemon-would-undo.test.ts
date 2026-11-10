@@ -14,32 +14,44 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { vaultStore } from '../helpers/vault-store.js';
 import { DEFAULT_SECRETS_PASSPHRASE } from '../../src/config/defaults.js';
 import { SecretsService } from '../../src/services/secrets.service.js';
 
-/** A DaemonStateStore stand-in: one in-memory KV map, shared by whoever holds it. */
-function store() {
-  const rows = new Map<string, unknown>();
-  return { kvGet: async (key: string) => rows.get(key) ?? null, kvSet: async (key: string, value: unknown) => void rows.set(key, value) };
-}
-function vaultOver(kv: ReturnType<typeof store>) {
+function vaultOver(kv: ReturnType<typeof vaultStore>) {
   const svc = new SecretsService(kv as never, DEFAULT_SECRETS_PASSPHRASE, null);
   (svc as unknown as { probeMachineId: () => Promise<string> }).probeMachineId = async () => 'machine-a';
   return svc;
 }
 
-describe('the premise', () => {
-  it('a key written to the store behind a running daemon is gone at the daemon\'s next write', async () => {
-    const kv = store();
-    const daemon = vaultOver(kv);
-    await daemon.set('a', '1'); // the daemon has loaded and caches the vault
+describe('two writers sharing the same encrypted vault', () => {
+  it('preserves acknowledged concurrent updates and refreshes readers after another writer commits', async () => {
+    const kv = vaultStore();
+    const daemon = vaultOver(kv), other = vaultOver(kv);
+    await daemon.set('a', '1');
+    await other.set('b', '2');
+    expect(await daemon.get('b')).toBe('2');
+    await Promise.all([daemon.set('c', '3'), other.set('d', '4'), daemon.set('e', '5')]);
+    expect((await vaultOver(kv).list()).sort()).toEqual(['a', 'b', 'c', 'd', 'e']);
+    await other.delete('a');
+    expect(await daemon.get('a')).toBeNull();
+  });
 
-    const cli = vaultOver(kv);
-    await cli.set('b', '2'); // «set (direct mode)»
-    expect(await daemon.get('b')).toBeNull(); // invisible to the daemon
+  it('keeps the rotated credential when a legacy import races another writer', async () => {
+    const kv = vaultStore();
+    const daemon = vaultOver(kv), other = vaultOver(kv);
+    await Promise.all([daemon.setIfAbsent('a', 'legacy'), other.set('a', 'current')]);
+    expect(await vaultOver(kv).get('a')).toBe('current');
+  });
 
-    await daemon.set('c', '3'); // any later write
-    expect(await vaultOver(kv).get('b')).toBeNull(); // and gone from the store
+  it('keeps the last committed value when SQLite rejects a write', async () => {
+    const kv = vaultStore();
+    const vault = vaultOver(kv);
+    await vault.set('a', 'committed');
+    vi.spyOn(kv, 'kvUpdateSync').mockImplementationOnce(() => { throw new Error('write failed'); });
+    await expect(vault.set('a', 'pending')).rejects.toThrow('write failed');
+    expect(await vault.get('a')).toBe('committed');
+    expect(await vaultOver(kv).get('a')).toBe('committed');
   });
 });
 

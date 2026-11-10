@@ -15,6 +15,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 
+import { vaultStore } from '../helpers/vault-store.js';
 import { DEFAULT_SECRETS_PASSPHRASE } from '../../src/config/defaults.js';
 import { SecretsRpcService } from '../../src/services/secrets.rpc-service.js';
 import { SecretsService } from '../../src/services/secrets.service.js';
@@ -23,8 +24,7 @@ const VALUE = 'the-wallet-password-nobody-should-see-9f3c';
 
 /** A DaemonStateStore stand-in: one in-memory KV map. */
 function vault() {
-  const rows = new Map<string, unknown>();
-  const store = { kvGet: async (key: string) => rows.get(key) ?? null, kvSet: async (key: string, value: unknown) => void rows.set(key, value) };
+  const store = vaultStore();
   const svc = new SecretsService(store as never, DEFAULT_SECRETS_PASSPHRASE, null);
   (svc as unknown as { probeMachineId: () => Promise<string> }).probeMachineId = async () => 'machine-a';
   return svc;

@@ -49,7 +49,7 @@ const RELEASE = {
 } as never;
 
 /** A remote start, with every node-facing step answered — what reaches the deployer is the question. */
-function remoteStart() {
+function remoteStart(infrastructureFailure?: string) {
   const quiet: any = { info() {}, warn() {}, error() {}, debug() {}, trace() {}, fatal() {}, child: () => quiet };
   const stateStore: any = { selectProjectsSync: () => [], kvGetSync: () => null, save() {}, load: () => null, get: () => null, set() {} };
   const svc: any = new ProjectService(quiet, { list: () => [], listHandleNames: () => [] } as never, stateStore, {
@@ -73,7 +73,10 @@ function remoteStart() {
       return artifacts.map((a) => ({ app: a.app, status: 'success', node: `${NODE.host}:${NODE.port}` }));
     },
   };
-  const stack = { type: 'remote', apps: ['main'], nodes: [NODE] } as never;
+  const stack = { type: 'remote', apps: ['main'], nodes: [NODE],
+    ...(infrastructureFailure && { infrastructure: { redis: { port: 6379 } } }),
+  } as never;
+  if (infrastructureFailure) svc.provisionNodeInfrastructure = async () => ({ ready: false, detail: infrastructureFailure });
   return {
     start: (reinstall?: boolean) => svc.startRemoteStack('sample', 'test', stack, ECOSYSTEM, RELEASE, reinstall),
     asked,
@@ -81,6 +84,12 @@ function remoteStart() {
 }
 
 describe('`--reinstall`, from the service to the node', () => {
+  it('preserves installed applications when an immutable release finds its infrastructure unready', async () => {
+    const start = remoteStart('required PostgreSQL is unavailable');
+    await expect(start.start()).rejects.toThrow(/before application installation.*required PostgreSQL is unavailable/);
+    expect(start.asked).toEqual([]);
+  });
+
   it('asks the deployer to ship past the record when the operator said so', async () => {
     const s = remoteStart();
     await s.start(true);

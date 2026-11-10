@@ -4106,6 +4106,9 @@ export class ProjectService extends EventEmitter {
               release?.staticsDir ?? undefined,
             );
             if (!infrastructure.ready) {
+              if (release) {
+                throw new Error(`Release ${release.id} stopped before application installation on ${nodeKey}: ${infrastructure.detail}`);
+              }
               // Not fatal: a node whose infrastructure is incomplete can still
               // be looked at, and stopping here would leave the fleet in a state
               // no command describes. It is said at error level with the node —

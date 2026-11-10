@@ -32,7 +32,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 let status = 1;
 try {
   status = await run('docker', [...compose, 'up', '-d', '--wait']);
-  if (!status && !interrupted) status = await run(process.execPath, [turbo, 'test']);
+  if (!status && !interrupted) status = await run(process.execPath, [turbo, 'test', ...process.argv.slice(2)]);
 } finally {
   cleaning = true;
   const cleanup = await run('docker', [...compose, 'down', '-v']);

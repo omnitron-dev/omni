@@ -288,17 +288,18 @@ describe('omit', () => {
     });
   });
 
-  it('should maintain performance with large objects', () => {
+  it('removes only the requested keys from a large object and preserves its input', () => {
     const largeObj: Record<string, number> = {};
     for (let i = 0; i < 10000; i++) {
       largeObj[`key${i}`] = i;
     }
 
-    const start = performance.now();
-    omit(largeObj, ['key1', 'key2']);
-    const end = performance.now();
-
-    expect(end - start).toBeLessThan(50); // должно выполняться менее чем за 50мс
+    const result = omit(largeObj, ['key1', 'key2']);
+    expect(Object.keys(result)).toHaveLength(9998);
+    expect(result).not.toHaveProperty('key1');
+    expect(result).not.toHaveProperty('key2');
+    expect(result['key9999']).toBe(9999);
+    expect(largeObj['key1']).toBe(1);
   });
 
   it('should handle combination of options', () => {

@@ -18,6 +18,13 @@ export function projectFrameworkSource(manifest: unknown, override?: unknown): F
   return selected === undefined ? undefined : parseFrameworkSource(selected);
 }
 
+export function assertFrameworkInput(manifest: { omnitron?: { release?: { frameworkInput?: unknown } } }, layout: string): void {
+  const required = manifest.omnitron?.release?.frameworkInput;
+  if (required === undefined) return;
+  if (required !== 'registry') throw Error('Unsupported omnitron.release.frameworkInput. Use registry or omit the setting.');
+  if (layout !== required) throw Error('This project requires npm registry framework inputs for releases. Commit the published versions and their frozen registry lockfile.');
+}
+
 /** A legacy package may omit repository metadata. The packager's own declared
  * package metadata is the compatibility default, not a provider encoded in code. */
 export function defaultFrameworkSource(repository?: unknown): FrameworkSource {

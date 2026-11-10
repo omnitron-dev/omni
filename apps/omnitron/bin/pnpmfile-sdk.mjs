@@ -1,0 +1,35 @@
+// pnpm runs this hook before the first install, when project dependencies are unavailable.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = fs.realpathSync(path.dirname(fileURLToPath(import.meta.url)));
+const profileDirectory = path.join(root, '.omnitron', 'dev-sdk');
+
+export function developmentPackages() {
+  let profile;
+  try {
+    profile = JSON.parse(fs.readFileSync(path.join(profileDirectory, 'install.json'), 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT') return {};
+    throw error;
+  }
+  if (profile.schema !== 1 || profile.root !== root || !path.isAbsolute(profile.source))
+    throw Error('Invalid Omnitron development SDK selection');
+  for (const [name, directory] of Object.entries(profile.links)) {
+    if (!/^@omnitron-dev\/[a-z0-9-]+$/.test(name) || !path.isAbsolute(directory) ||
+        !directory.startsWith(profile.source + path.sep) || fs.realpathSync(directory) !== directory)
+      throw Error('Invalid Omnitron SDK package location for ' + name);
+  }
+  return profile.links;
+}
+
+export const hooks = {
+  updateConfig(config) {
+    const links = Object.entries(developmentPackages());
+    if (!links.length) return config;
+    const overrides = { ...config.overrides };
+    for (const [name, directory] of links) overrides[name] = 'link:' + directory;
+    return { ...config, lockfileDir: profileDirectory, overrides };
+  },
+};

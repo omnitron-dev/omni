@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "sdk": "node apps/omnitron/bin/sdk.mjs",
     "build": "turbo build && turbo build:titan",
     "dev": "turbo dev",
     "test": "turbo test",

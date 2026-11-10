@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { checkoutFrameworkSource, frameworkRepositoryLocation, projectFrameworkSource } from '../../src/release/framework-source.js';
+import { assertFrameworkInput, checkoutFrameworkSource, frameworkRepositoryLocation, projectFrameworkSource } from '../../src/release/framework-source.js';
 
 const exec = promisify(execFile), cleanup: string[] = [];
 afterEach(async () => { for (const directory of cleanup.splice(0)) await fs.rm(directory, { recursive: true, force: true }); });
@@ -44,4 +44,14 @@ describe('one operator-selected framework source', () => {
     await expect(checkoutFrameworkSource(path.join(root, 'refused'), { source: { ...source, ref: 'refs/heads/missing' },
       commit, sourceBase: root, env: {}, run })).rejects.toThrow('selected framework ref');
   });
+});
+
+it('enforces the committed distribution policy before creating release artifacts', () => {
+  const project = { omnitron: { release: { frameworkInput: 'registry' } } };
+  expect(() => assertFrameworkInput(project, 'registry')).not.toThrow();
+  for (const layout of ['linked', 'vendored']) {
+    expect(() => assertFrameworkInput(project, layout)).toThrow('requires npm registry');
+    expect(() => assertFrameworkInput({}, layout)).not.toThrow();
+  }
+  expect(() => assertFrameworkInput({ omnitron: { release: { frameworkInput: 'unknown' } } }, 'registry')).toThrow('Unsupported');
 });

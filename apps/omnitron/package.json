@@ -169,6 +169,9 @@
     "vitest": "^5.0.5"
   },
   "files": [
+    "bin/sdk.mjs",
+    "bin/sdk.d.mts",
+    "bin/pnpmfile-sdk.mjs",
     "dist",
     "webapp/dist",
     "data"

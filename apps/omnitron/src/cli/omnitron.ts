@@ -33,6 +33,32 @@ program.name('omnitron').description('Production-grade Titan application supervi
 // for environments where flag plumbing is awkward (CI templates, hooks).
 program.option('--json', 'Emit machine-readable JSON output (no spinners, no styling)');
 program.hook('preAction', (_root, actionCommand) => prepareCommandOutput(actionCommand));
+const sdk = program.command('sdk').description('Select the framework SDK for local development');
+sdk.command('init').description('Initialize the pnpm bridge for a project')
+  .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
+  .action(async ({ projectDir }) => (await import('../../bin/sdk.mjs')).sdkCommand(['init', '--project-dir', projectDir]));
+sdk.command('dev [checkout]').description('Select a local SDK and rebuild when it changes')
+  .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
+  .option('--stack <name>', 'Refresh watched applications in this local source stack')
+  .option('--no-watch', 'Install the SDK without starting a watch session')
+  .action(async (checkout, options) => (await import('../../bin/sdk.mjs')).sdkCommand([
+    'dev', ...(checkout ? [checkout] : []), '--project-dir', options.projectDir,
+    ...(options.stack ? ['--stack', options.stack] : []), ...(options.watch === false ? ['--no-watch'] : []),
+  ]));
+sdk.command('registry').description('Restore dependencies from the frozen distribution lock')
+  .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
+  .action(async ({ projectDir }) => (await import('../../bin/sdk.mjs')).sdkCommand(['registry', '--project-dir', projectDir]));
+sdk.command('status').description('Verify the workspace imports and report their SDK origin')
+  .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
+  .structuredAction(async ({ projectDir }) => {
+    const { inspectSdk } = await import('../../bin/sdk.mjs');
+    const { emitJson, emitInfo } = await import('../commands/output.js');
+    const status = await inspectSdk(projectDir);
+    if (!emitJson(status)) {
+      emitInfo([status.mode, status.source, status.verifiedImports + ' verified imports',
+        ...(status.distributionLockChanged ? ['distribution lock changed'] : [])].filter(Boolean).join(' · '));
+    }
+  });
 
 // ============================================================================
 // Daemon Lifecycle

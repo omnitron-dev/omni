@@ -586,6 +586,12 @@ watcher alone do not establish that the project uses the current SDK. Leave
 `sdk dev` running to rebuild platform packages and refresh their watched
 consumers; `--no-watch` selects dependencies without starting that watcher.
 
+Build caches must include `.omnitron/dev-sdk/*.json` as inputs. For Turbo, add
+this glob to the project's `globalDependencies`. It binds cached tasks to the
+selected SDK and the successful build checkpoint, including declarations and
+static assets. The distribution lock alone cannot identify locally linked code.
+These private files stay outside Git and are absent in clean registry builds.
+
 One owner can supervise development applications and installed releases together.
 Watch applies only to source entries allowed by the application and global watch
 policy. An installed entry (`releaseRoot`) never enters the source build pipeline

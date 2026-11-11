@@ -349,7 +349,7 @@ async function refresh(root, stack, changed, packages) {
   }
 }
 
-async function runtimeDigest(directory) {
+async function buildDigest(directory) {
   const root = path.join(directory, 'dist'),
     hash = createHash('sha256');
   async function visit(relative) {
@@ -357,7 +357,9 @@ async function runtimeDigest(directory) {
     for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       const file = path.join(relative, e.name);
       if (e.isDirectory()) await visit(file);
-      else if (e.isFile() && /\.(?:(?:c|m)?js|json|css|wasm)$/.test(file)) {
+      // Declarations and static assets are build inputs too. A type-only SDK
+      // change must invalidate a consumer's cached compiler result.
+      else if (e.isFile()) {
         hash
           .update(file)
           .update('\0')
@@ -396,7 +398,7 @@ export async function watchSdk(profile, stack, signal) {
     const changed = new Set();
     const next = { ...hashes };
     for (const name of names) {
-      next[name] = await runtimeDigest(profile.links[name]);
+      next[name] = await buildDigest(profile.links[name]);
       if (hashes[name] !== next[name]) changed.add(name);
     }
     if (signal.aborted) return;
@@ -529,6 +531,7 @@ export async function sdkCommand(argv) {
     }
     await command('pnpm', ['install', '--lockfile-only', '--no-frozen-lockfile'], root);
     console.log('Commit the pnpm hook and distribution lockfile.');
+    console.log('Include .omnitron/dev-sdk/*.json in build cache inputs (Turbo: globalDependencies).');
     return;
   }
   const distribution = await fs.readFile(path.join(root, 'pnpm-lock.yaml'), 'utf8');
@@ -580,7 +583,7 @@ export async function sdkCommand(argv) {
         try {
           await installDevelopment(root, desired);
           const hashes = {};
-          for (const [name, directory] of Object.entries(desired.links)) hashes[name] = await runtimeDigest(directory);
+          for (const [name, directory] of Object.entries(desired.links)) hashes[name] = await buildDigest(directory);
           await atomic(path.join(dir, 'built.json'), JSON.stringify({ source: desired.source, hashes }) + '\n');
           await atomic(selection, JSON.stringify(desired, null, 2) + '\n');
         } catch (error) {

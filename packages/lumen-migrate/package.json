@@ -6,7 +6,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "lumen-migrate": "./bin/lumen-migrate.mjs"
+    "lumen-migrate": "./bin/lumen-migrate.js"
   },
   "exports": {
     ".": {

@@ -15,7 +15,7 @@ it('keeps ordinary pnpm config on clean installs and accepts only physical packa
     const pkg = path.join(source, 'packages', 'titan'), state = path.join(project, '.omnitron', 'dev-sdk');
     await fs.mkdir(pkg, { recursive: true });
     await fs.mkdir(state, { recursive: true });
-    await fs.copyFile(new URL('../../bin/pnpmfile-sdk.mjs', import.meta.url), path.join(project, '.pnpmfile.mjs'));
+    await fs.copyFile(new URL('../../bin/pnpmfile-sdk.js', import.meta.url), path.join(project, '.pnpmfile.mjs'));
     const probe = (overrides: Record<string, string> = { other: '1' }) => exec(process.execPath, ['--input-type=module', '-e',
       "import {hooks} from './.pnpmfile.mjs'; console.log(JSON.stringify(hooks.updateConfig({overrides:JSON.parse(process.argv[1])})));", JSON.stringify(overrides)], { cwd: project })
       .then(result => JSON.parse(result.stdout));

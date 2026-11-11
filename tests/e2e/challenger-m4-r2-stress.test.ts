@@ -17,7 +17,7 @@ import {
 import { parseDocument } from '@omnitron-dev/lumen-ast';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../..');
-const BIN_PATH = resolve(REPO_ROOT, 'packages/lumen/bin/lumen.mjs');
+const BIN_PATH = resolve(REPO_ROOT, 'packages/lumen/bin/lumen.js');
 
 describe('Empirical Adversarial Stress Suite: Iteration 2 Hardening', () => {
   describe('Challenge 1: CorpusGraph Empty String Resolution & Substring Isolation', () => {
@@ -463,7 +463,7 @@ describe('Empirical Adversarial Stress Suite: Iteration 2 Hardening', () => {
   });
 
   describe('Challenge 5: Direct CLI Binary Execution & SSG Route Normalization', () => {
-    it('executes bin/lumen.mjs check --json with zero non-JSON preamble', () => {
+    it('executes bin/lumen.js check --json with zero non-JSON preamble', () => {
       const proc = spawnSync(process.execPath, [BIN_PATH, 'check', '--json'], {
         encoding: 'utf-8',
         cwd: REPO_ROOT,

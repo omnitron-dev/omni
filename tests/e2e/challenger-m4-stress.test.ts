@@ -17,7 +17,7 @@ import {
 import { parseDocument } from '@omnitron-dev/lumen-ast';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../..');
-const BIN_PATH = resolve(REPO_ROOT, 'packages/lumen/bin/lumen.mjs');
+const BIN_PATH = resolve(REPO_ROOT, 'packages/lumen/bin/lumen.js');
 
 describe('Empirical Stress Harness: Milestone 4 (@omnitron-dev/lumen)', () => {
   describe('Suite 1: SSG Build Concurrency (100+ documents) & Isolation', () => {
@@ -148,8 +148,8 @@ Content uniquely belonging to document ${i}.
       }
     });
 
-    it('challenges binary execution bin/lumen.mjs: checks for single invocation vs double invocation', () => {
-      // Run --version directly via node on bin/lumen.mjs
+    it('challenges binary execution bin/lumen.js: checks for single invocation vs double invocation', () => {
+      // Run --version directly via node on bin/lumen.js
       const procVersion = spawnSync(process.execPath, [BIN_PATH, '--version'], {
         encoding: 'utf-8',
         cwd: REPO_ROOT,
@@ -158,7 +158,7 @@ Content uniquely belonging to document ${i}.
       expect(procVersion.status).toBe(0);
       const versionLines = procVersion.stdout.trim().split(/\r?\n/).filter(Boolean);
 
-      // CHALLENGE: Does bin/lumen.mjs print version once or twice?
+      // CHALLENGE: Does bin/lumen.js print version once or twice?
       // If it prints twice, this empirically reproduces the double-invocation bug!
       const versionOccurrences = versionLines.filter((l) => /^\d+\.\d+\.\d+$/.test(l));
       expect(
@@ -167,7 +167,7 @@ Content uniquely belonging to document ${i}.
       ).toBe(1);
     });
 
-    it('challenges binary execution bin/lumen.mjs: checks --help output duplication', () => {
+    it('challenges binary execution bin/lumen.js: checks --help output duplication', () => {
       const procHelp = spawnSync(process.execPath, [BIN_PATH, '--help'], {
         encoding: 'utf-8',
         cwd: REPO_ROOT,
@@ -181,7 +181,7 @@ Content uniquely belonging to document ${i}.
       ).toBe(1);
     });
 
-    it('challenges binary execution bin/lumen.mjs: checks check --json produces valid parseable JSON without prefix text', () => {
+    it('challenges binary execution bin/lumen.js: checks check --json produces valid parseable JSON without prefix text', () => {
       const procCheck = spawnSync(process.execPath, [BIN_PATH, 'check', '--json'], {
         encoding: 'utf-8',
         cwd: REPO_ROOT,

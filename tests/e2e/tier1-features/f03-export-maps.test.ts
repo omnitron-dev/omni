@@ -67,8 +67,8 @@ describe('Feature 3: Export Map & Build Verification', () => {
 
   it('TC-F03-05: verifies CLI executable shebang and bin entries in lumen and lumen-migrate', () => {
     const clis = [
-      { pkg: 'packages/lumen', binKey: 'lumen', binFile: 'bin/lumen.mjs' },
-      { pkg: 'packages/lumen-migrate', binKey: 'lumen-migrate', binFile: 'bin/lumen-migrate.mjs' },
+      { pkg: 'packages/lumen', binKey: 'lumen', binFile: 'bin/lumen.js' },
+      { pkg: 'packages/lumen-migrate', binKey: 'lumen-migrate', binFile: 'bin/lumen-migrate.js' },
     ];
 
     for (const cli of clis) {

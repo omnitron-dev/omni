@@ -485,7 +485,7 @@ export async function sdkCommand(argv) {
   const root = await fs.realpath(values['project-dir'] ?? process.cwd()),
     dir = statePath(root);
   const bridge = path.join(root, '.pnpmfile.mjs');
-  const template = await fs.readFile(new URL('./pnpmfile-sdk.mjs', import.meta.url), 'utf8');
+  const template = await fs.readFile(new URL('./pnpmfile-sdk.js', import.meta.url), 'utf8');
   if (action === 'init') {
     for (const existing of ['.pnpmfile.cjs', '.pnpmfile.js']) {
       if (

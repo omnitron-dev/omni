@@ -289,7 +289,7 @@ describe('IA-08 & CLI Probes: Corpus Integrity, Built-in CLI & Stdio MCP Project
         `---\ntitle: Secret Doc\naccess: confidential\n---\n\n${SECRET_CANARY}\n`
       );
 
-      const lumenBin = join(REPO_ROOT, 'packages/lumen/bin/lumen.mjs');
+      const lumenBin = join(REPO_ROOT, 'packages/lumen/bin/lumen.js');
 
       const checkRun = spawnSync(process.execPath, [lumenBin, 'check', '--json'], {
         cwd: scratch,

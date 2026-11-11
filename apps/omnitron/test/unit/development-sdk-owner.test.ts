@@ -17,7 +17,7 @@ vi.mock('@omnitron-dev/omnitron/operations', async () => ({
 }));
 // Exercise the shipped CLI path. Refusal must precede deleting the installation
 // selection or invoking pnpm against a project's working dependencies.
-const { sdkCommand, watchSdk } = await import('../../bin/sdk.mjs');
+const { sdkCommand, watchSdk } = await import('../../bin/sdk.js');
 let root: string, state: string, profile: string;
 beforeEach(async () => {
   vi.clearAllMocks();

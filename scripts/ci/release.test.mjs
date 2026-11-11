@@ -118,7 +118,20 @@ test('release plans, seals, pushes one tag and resumes a partial registry public
   const registry = `http://${address}/`;
   const npmrc = path.join(temp, 'npmrc');
   await fs.writeFile(npmrc, `registry=${registry}\n//${address}/:_authToken=loopback-fixture\nfetch-retries=0\n`, { mode: 0o600 });
-  const env = { ...process.env, CI: 'true', NPM_CONFIG_USERCONFIG: npmrc, NPM_CONFIG_CACHE: path.join(temp, 'npm-cache'),
+  const bin = path.join(temp, 'bin');
+  await fs.mkdir(bin);
+  const githubState = path.join(temp, 'github-release');
+  await fs.writeFile(path.join(bin, 'gh'), `#!/usr/bin/env node
+const fs = require('node:fs');
+const [cmd, op, tag] = process.argv.slice(2);
+const state = process.env.FIXTURE_GITHUB_STATE;
+if (cmd === 'api') { if (fs.existsSync(state)) console.log(fs.readFileSync(state, 'utf8')); }
+else if (cmd === 'release' && op === 'create' && process.argv.includes('--verify-tag')) fs.writeFileSync(state, tag, { flag: 'wx' });
+else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') === tag) {
+  console.log(JSON.stringify({ tagName: tag, isPrerelease: true, isDraft: false, url: 'https://github.com/omnitron-dev/omni/releases/tag/' + tag }));
+} else process.exit(1);
+`, { mode: 0o700 });
+  const env = { ...process.env, PATH: bin + path.delimiter + process.env.PATH, FIXTURE_GITHUB_STATE: githubState, CI: 'true', NPM_CONFIG_USERCONFIG: npmrc, NPM_CONFIG_CACHE: path.join(temp, 'npm-cache'),
     GIT_CONFIG_GLOBAL: path.join(temp, 'gitconfig'), GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 'Fixture',
     GIT_COMMITTER_NAME: 'Fixture', GIT_AUTHOR_EMAIL: 'fixture@localhost', GIT_COMMITTER_EMAIL: 'fixture@localhost' };
   const exec = (bin, args, cwd = workspace) => run(bin, args, { cwd, env, signal: t.signal });
@@ -169,13 +182,14 @@ test('release plans, seals, pushes one tag and resumes a partial registry public
     assert.equal(packed.gitHead, commit);
     if (artifact.name === first) assert.equal((await exec('tar', ['-xOf', tarball, 'package/consumer-checked'])).stdout, 'archives, audit, runtime');
   }
-  await release('--push');
+  await assert.rejects(release('--finish', '--registry', registry), /Publication interrupted for @fixture\/client[^\n]*\nnpm E403/);
+  assert.equal(await fs.stat(githubState).catch(() => null), null);
   assert.equal(await git('ls-remote', '--tags', 'origin', 'refs/tags/unrelated'), '');
   assert.equal((await git('ls-remote', 'origin', 'refs/heads/main')).split(/\s/)[0], commit);
-  await assert.rejects(release('--publish', '--registry', registry), /Publication interrupted for @fixture\/client[^\n]*\nnpm E403/);
   assert.equal(store.size, 1);
   interrupt = false;
-  await release('--resume', '--registry', registry);
+  await release('--finish', '--registry', registry);
+  assert.equal(await fs.readFile(githubState, 'utf8'), 'v' + version);
   assert.equal(store.size, 2);
   const receipts = (await fs.readFile(path.join(workspace, '.release-artifacts', version, commit, 'publication.jsonl'), 'utf8'))
     .trim().split('\n').map(line => JSON.parse(line));

@@ -19,6 +19,7 @@ const usage = `node scripts/release.mjs [VERSION] [OPERATION]
   --list      Show all public workspaces in dependency order
   --dry-run   Print the release plan (default)
   --prepare   Commit public versions, build and verify archives, create local tag
+  --finish    Check npm access, push the exact tag, publish archives and complete GitHub
   --push      Push the prepared commit and its single annotated tag atomically
   --publish   Publish sealed archives from the exact remotely tagged commit
   --resume    Resume --publish using the same archives
@@ -26,7 +27,7 @@ const usage = `node scripts/release.mjs [VERSION] [OPERATION]
 
   --registry URL  Select an HTTPS registry or a loopback test registry
 
-Every operation is separate. Archives and receipts live under .release-artifacts/.`;
+Archives and receipts live under .release-artifacts/.`;
 
 function publicationError(error) {
   if (!(error?.cause instanceof ReleaseCommandError)) return error;
@@ -39,14 +40,14 @@ function publicationError(error) {
 async function main() {
   const { values, positionals } = parseArgs({
     options: { registry: { type: 'string' }, ...Object.fromEntries(['help', 'list', 'list-packages', 'dry-run', 'prepare', 'skip-publish',
-      'push', 'publish', 'resume', 'github'].map(key => [key, { type: 'boolean' }])) },
+      'finish', 'push', 'publish', 'resume', 'github'].map(key => [key, { type: 'boolean' }])) },
     allowPositionals: true,
   });
   if (values.help) { console.log(usage); return; }
   const selected = [
     [values.list || values['list-packages'], 'list'], [values['dry-run'], 'plan'],
     [values.prepare || values['skip-publish'], 'prepare'], [values.push, 'push'],
-    [values.publish || values.resume, 'publish'], [values.github, 'github'],
+    [values.finish, 'finish'], [values.publish || values.resume, 'publish'], [values.github, 'github'],
   ].filter(([enabled]) => enabled).map(([, command]) => command);
   if (selected.length > 1 || positionals.length > 1) throw new Error(usage);
   const operation = selected[0] ?? 'plan';
@@ -100,7 +101,7 @@ async function main() {
       const notes = await releaseNotes(root, version, repository);
       await writeFile(path.join(root, '.release-artifacts', version, prepared.commit, 'NOTES.md'), notes);
       await ensureReleaseTag(root, version);
-      console.log(`Prepared ${prepared.artifacts.length} archives. Review the notes and hashes, then run node scripts/release.mjs ${version} --push.`);
+      console.log(`Prepared ${prepared.artifacts.length} archives. Review the notes and hashes, then run node scripts/release.mjs ${version} --finish.`);
       return;
     }
 
@@ -108,23 +109,24 @@ async function main() {
     if (!await assertReleaseHead(root, version)) throw new Error('Missing local release tag; finish --prepare first');
     if (operation === 'push') { await pushReleaseRefs(root, version); return; }
 
-    await verifyRemoteReleaseTag(root, version, true);
     const registry = registryAddress(typeof values.registry === 'string' ? values.registry : undefined);
-    const scopes = [...new Set(prepared.artifacts.map(pkg => pkg.name.split('/')[0]).filter(name => name?.startsWith('@')))];
-    const run = (cwd, executable, args, options) => {
-      if (executable !== 'npm') return releaseCommand(cwd, executable, args, options);
-      const destination = scopes.map(scope => `--${scope}:registry=${registry}`);
-      return releaseCommand(cwd, executable, [...args, ...destination, ...(args[0] === 'view' ? ['--prefer-online'] : [])], options);
+    if (operation !== 'finish') await verifyRemoteReleaseTag(root, version, true);
+    const finishGithub = async () => {
+      console.log(await createGithubRelease(root, version, repository, await releaseNotes(root, version, repository)));
     };
     if (operation === 'github') {
       for (const artifact of prepared.artifacts) {
-        if (!await registryArtifactMatches(root, artifact, { registry, run })) throw new Error(`npm has not confirmed ${artifact.name}`);
+        if (!await registryArtifactMatches(root, artifact, { registry })) throw new Error(`npm has not confirmed ${artifact.name}`);
       }
-      console.log(await createGithubRelease(root, version, repository, await releaseNotes(root, version, repository)));
+      await finishGithub();
       return;
     }
     await publishPreparedRelease(root, version, {
-      registry, run, progress: console.log,
+      registry, progress: console.log,
+      beforeUpload: operation === 'finish' ? async () => {
+        await pushReleaseRefs(root, version);
+        await verifyRemoteReleaseTag(root, version, true);
+      } : undefined,
       otp: async () => {
         if (!process.stdin.isTTY) throw new Error('An npm one-time password requires an interactive terminal');
         const answer = await password({ message: 'npm one-time password' });
@@ -132,7 +134,8 @@ async function main() {
         return answer;
       },
     }).catch(error => { throw publicationError(error); });
-    console.log(`Verified ${prepared.artifacts.length} npm packages. Use --github to publish the release notes.`);
+    if (operation === 'finish') await finishGithub();
+    else console.log(`Verified ${prepared.artifacts.length} npm packages. Use --github to publish the release notes.`);
   } finally { await unlock(); }
 }
 

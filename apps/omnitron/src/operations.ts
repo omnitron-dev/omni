@@ -2,6 +2,7 @@
  * Credentials stay in the daemon vault; this entry point does not expose them to browser code.
  */
 export { createDaemonClient, LONG_REQUEST_TIMEOUT } from './daemon/daemon-client.js';
+export { assertExecutionCapabilities, type ExecutionCapabilities } from './daemon/execution-capabilities.js';
 export { ExecutionService, type SSHTarget } from './execution/execution.service.js';
 export type { InstalledBundle, ApplicationRuntime } from './services/host-upgrade.js';
 export { RemoteDeployer, type DeployTarget } from './services/remote-deployer.service.js';

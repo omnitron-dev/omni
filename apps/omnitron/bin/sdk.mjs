@@ -220,6 +220,13 @@ async function profileStatus(root) {
   return active;
 }
 
+async function requireApplicationRuntime(client) {
+  const { assertExecutionCapabilities } = await import('@omnitron-dev/omnitron/operations');
+  const status = await client.status();
+  assertExecutionCapabilities(status.execution?.ownerCapabilities,
+    { applicationRuntimeResolution: 1 }, 'Development SDK activation');
+}
+
 async function localStack(root, stack) {
   const { createDaemonClient, LONG_REQUEST_TIMEOUT } = await import('@omnitron-dev/omnitron/operations');
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
@@ -232,6 +239,7 @@ async function localStack(root, stack) {
     const state = await projects.getStack({ project: candidates[0], stack });
     if (state.type !== 'local' || state.selectedRelease || state.config.watch === false)
       throw Error('SDK refresh requires an unpinned local development stack with watching enabled');
+    await requireApplicationRuntime(client);
     return { client, state, project: candidates[0] };
   } catch (error) {
     await client.disconnect();
@@ -257,16 +265,19 @@ async function requireStopped(root, stack) {
   try {
     const service = await client.service('OmnitronProject');
     let found = false;
+    let sourceStack = false;
     for (const project of await service.listProjects()) {
       if ((await fs.realpath(project.path).catch(() => null)) !== root) continue;
       for (const active of await service.listStacks({ project: project.name })) {
         if (active.type !== 'local' || active.selectedRelease) continue;
+        sourceStack = true;
         if (active.name === stack) found = true;
         if (active.apps.some((app) => !['stopped', 'offline', 'not-started'].includes(app.status)))
           throw Error(`Stop ${project.name}/${active.name} before switching its working-tree dependencies`);
       }
     }
     if (stack && !found) throw Error('No local source stack named ' + stack + ' is registered for this checkout');
+    if (sourceStack) await requireApplicationRuntime(client);
   } finally {
     await client.disconnect();
   }
@@ -350,6 +361,10 @@ async function runtimeDigest(directory) {
 }
 
 export async function watchSdk(profile, stack, signal) {
+  if (stack) {
+    const { client } = await localStack(profile.root, stack);
+    await client.disconnect();
+  }
   const packages = new Map([...(await inventory(profile.source)), ...(await inventory(profile.root))]);
   const checkpoint = path.join(statePath(profile.root), 'built.json');
   const prior = await optionalJson(checkpoint);

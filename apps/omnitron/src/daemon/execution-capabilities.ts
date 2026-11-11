@@ -17,11 +17,11 @@ export function readExecutionCapabilities(value: unknown): ExecutionCapabilities
   return Object.fromEntries(entries) as ExecutionCapabilities;
 }
 
-export function assertExecutionCapabilities(available: unknown, required: ExecutionCapabilities): void {
+export function assertExecutionCapabilities(available: unknown, required: ExecutionCapabilities, operation = 'Backend activation'): void {
   const actual = readExecutionCapabilities(available);
   const missing = Object.entries(required).filter(([key, version]) => actual[key] !== version);
   if (missing.length) throw new Error(
     `Execution owner lacks required capabilities: ${missing.map(([key, version]) => `${key}@${version}`).join(', ')}. ` +
-    'Backend activation is refused before transferring control. Prepare an owner transition and rollback; replacing the owner requires an application restart.',
+    `${operation} is refused before changing runtime state. Prepare an owner transition and rollback; replacing the owner requires an application restart.`,
   );
 }

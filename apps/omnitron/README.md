@@ -567,6 +567,21 @@ the backend cannot replace its capture mechanism without an owner maintenance wi
 
 ## Source development and installed releases
 
+`omnitron sdk dev /path/to/omni --project-dir /path/to/project --stack dev`
+selects a local SDK and watches its source changes. The project must have an npm
+distribution lock and the hook installed by `omnitron sdk init`. The initial
+dependency switch requires the project's local source stacks to be stopped.
+The owner must advertise `applicationRuntimeResolution@1`: otherwise it can
+retain a previous package identity after pnpm replaces dependencies. Both SDK
+selection and restoration of registry dependencies refuse this owner before
+installing packages. Prepare and qualify an owner transition separately.
+
+`sdk status` checks the project's resolved imports; the daemon's `status` reports
+the running backend and owner independently. Online applications or a source
+watcher alone do not establish that the project uses the current SDK. Leave
+`sdk dev` running to rebuild platform packages and refresh their watched
+consumers; `--no-watch` selects dependencies without starting that watcher.
+
 One owner can supervise development applications and installed releases together.
 Watch applies only to source entries allowed by the application and global watch
 policy. An installed entry (`releaseRoot`) never enters the source build pipeline

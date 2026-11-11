@@ -10,6 +10,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { discoverReleasePackages } from '@xec-sh/ops/release';
+import { supersedeDraft } from '../../.xec/supersede-draft.mjs';
 
 const run = promisify(execFile);
 const repo = fileURLToPath(new URL('../../', import.meta.url));
@@ -177,6 +178,14 @@ else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') ==
   await release('--prepare');
   const commit = await git('rev-parse', 'HEAD');
   assert.notEqual(commit, before);
+  const next = path.join(temp, 'next');
+  await git('worktree', 'add', '-b', 'next', next, 'HEAD');
+  await run('git', ['commit', '--allow-empty', '-qm', 'Reviewed correction'], { cwd: next, env });
+  const revised = await supersedeDraft(next, version, workspace, async (cwd, executable, args) => (await exec(executable, args, cwd)).stdout.trim());
+  assert.equal(revised.commit, commit);
+  await assert.rejects(git('rev-parse', 'refs/tags/v' + version));
+  // Restore the preserved object only inside this fixture to continue the publication acceptance below.
+  await git('update-ref', 'refs/tags/v' + version, await git('rev-parse', revised.archived));
   const manifest = JSON.parse(await fs.readFile(path.join(workspace, '.release-artifacts', version, commit, 'release.json')));
   assert.deepEqual(manifest.artifacts.map(p => p.name), [first, second]);
   for (const artifact of manifest.artifacts) {
@@ -190,6 +199,7 @@ else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') ==
   assert.equal(await git('ls-remote', '--tags', 'origin', 'refs/tags/unrelated'), '');
   assert.equal((await git('ls-remote', 'origin', 'refs/heads/main')).split(/\s/)[0], commit);
   assert.equal(store.size, 1);
+  await assert.rejects(supersedeDraft(next, version, workspace, async (cwd, executable, args) => (await exec(executable, args, cwd)).stdout.trim()), /publication receipts/);
   interrupt = false;
   await release('--finish', '--registry', registry);
   assert.equal(await fs.readFile(githubState, 'utf8'), 'v' + version);

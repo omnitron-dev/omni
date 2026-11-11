@@ -12,6 +12,7 @@ import {
 } from '@xec-sh/ops/release';
 import semver from 'semver';
 import policy from './release-policy.mjs';
+import { supersedeDraft } from './supersede-draft.mjs';
 import { qualifyRelease, verifyReleaseQualification } from './qualification.mjs';
 
 const defaultRoot = fileURLToPath(new URL('../', import.meta.url));
@@ -31,6 +32,7 @@ const usage = `xec release [VERSION] [OPERATION]
 
   --previous COMMIT  Exact previous backend for transition and rollback qualification
   --push-source      Push the exact source branch for CI before qualification (no tags)
+  --supersede DIR    Archive an unsubmitted local draft from its preserved checkout
   --registry URL     Select an HTTPS registry or a loopback test registry
 
 Use --prepare --previous COMMIT --push-source for the complete preparation pipeline.
@@ -49,7 +51,7 @@ function publicationError(error) {
 export async function runRelease(args, root = defaultRoot) {
   const { values, positionals } = parseArgs({
     args,
-    options: { registry: { type: 'string' }, previous: { type: 'string' }, ...Object.fromEntries(['help', 'list', 'list-packages', 'dry-run', 'prepare', 'skip-publish',
+    options: { registry: { type: 'string' }, previous: { type: 'string' }, supersede: { type: 'string' }, ...Object.fromEntries(['help', 'list', 'list-packages', 'dry-run', 'prepare', 'skip-publish',
       'finish', 'push', 'publish', 'resume', 'github', 'qualify', 'status', 'push-source'].map(key => [key, { type: 'boolean' }])) },
     allowPositionals: true,
   });
@@ -57,7 +59,7 @@ export async function runRelease(args, root = defaultRoot) {
   const selected = [
     [values.list || values['list-packages'], 'list'], [values['dry-run'], 'plan'],
     [values.prepare || values['skip-publish'], 'prepare'], [values.push, 'push'],
-    [values.qualify, 'qualify'], [values.status, 'status'], [values.finish, 'finish'], [values.publish || values.resume, 'publish'], [values.github, 'github'],
+    [values.supersede, 'supersede'], [values.qualify, 'qualify'], [values.status, 'status'], [values.finish, 'finish'], [values.publish || values.resume, 'publish'], [values.github, 'github'],
   ].filter(([enabled]) => enabled).map(([, command]) => command);
   if (selected.length > 1 || positionals.length > 1) throw new Error(usage);
   const operation = selected[0] ?? 'plan';
@@ -82,6 +84,10 @@ export async function runRelease(args, root = defaultRoot) {
     }
   }
   if (!version || semver.valid(version) !== version) throw new Error('Supply an exact semantic version.\n' + usage);
+  if (operation === 'supersede') {
+    console.log(JSON.stringify(await supersedeDraft(root, version, values.supersede), null, 2));
+    return;
+  }
   const plan = await planRelease(root, version);
   console.log(`${plan.tag} · ${plan.npmTag} · ${plan.packages.length} packages · ${plan.commit}`);
   if (plan.blockers.length) throw new Error(plan.blockers.join('\n'));

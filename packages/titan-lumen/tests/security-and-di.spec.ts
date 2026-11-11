@@ -622,12 +622,11 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
       expect(denied).toEqual({
         frontmatter: {
           title: 'Restricted',
-          access: 'confidential',
+          access: 'restricted',
         },
         children: [],
         toc: [],
         diagnostics: [],
-        rawContent: '',
       });
 
       const projections = [
@@ -704,8 +703,9 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
       // 1. Anonymous projection
       const anonAst = filter.filterAst(parsed, ['anonymous']);
       expect(anonAst.toc.map((t) => t.title)).toEqual(['Public Overview']);
-      expect(anonAst.rawContent).toContain('Public Overview');
-      expect(anonAst.rawContent).toContain('Visible baseline architecture summary.');
+      expect(anonAst.rawContent).toBeUndefined();
+      expect(toCleanMarkdown(anonAst)).toContain('Public Overview');
+      expect(toCleanMarkdown(anonAst)).toContain('Visible baseline architecture summary.');
 
       const anonOutputs = [
         anonAst.rawContent ?? '',
@@ -728,9 +728,9 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
         expect(out).not.toContain('THETA_INTERNAL');
       }
 
-      // 2. Staff projection: internal allowed, confidential and unknown denied
+      // 2. A confidential heading also restricts the internal block nested in its section.
       const staffAst = filter.filterAst(parsed, ['staff']);
-      expect(staffAst.rawContent).toContain('THETA_INTERNAL');
+      expect(toCleanMarkdown(staffAst)).not.toContain('THETA_INTERNAL');
       expect(JSON.stringify(staffAst)).not.toContain('ALPHA_SECRET');
       expect(JSON.stringify(staffAst)).not.toContain('DELTA_SECRET');
       expect(JSON.stringify(staffAst)).not.toContain('ZETA_SECRET');
@@ -741,7 +741,9 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
       expect(JSON.stringify(adminAst)).toContain('GAMMA_SECRET');
       expect(adminAst.toc.some((t) => t.title.includes('HiddenHeading'))).toBe(true);
       expect(JSON.stringify(adminAst)).not.toContain('ZETA_SECRET');
-      expect(adminAst.rawContent).not.toContain('ZETA_SECRET');
+      expect(adminAst.rawContent).toBeUndefined();
+      expect(toCleanMarkdown(adminAst)).toContain('THETA_INTERNAL');
+      expect(toCleanMarkdown(adminAst)).not.toContain('ZETA_SECRET');
     });
 
     it('IA-04: resolves singleton service, tokens, and controller via real Titan Application.create across bareModule, forRoot, and forRootAsync', async () => {

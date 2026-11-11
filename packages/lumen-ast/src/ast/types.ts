@@ -26,6 +26,7 @@ export interface LumenBaseNode {
   depth?: 1 | 2 | 3 | 4 | 5 | 6;
   id?: string;
   title?: string;
+  tagName?: string;
   status?: MathStatus;
   envKind?: MathEnvType | string;
   number?: string;

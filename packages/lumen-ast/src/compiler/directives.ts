@@ -2,6 +2,7 @@
  * Directive Pre-Processing and Container Mapping
  */
 
+import { fromMarkdown } from 'mdast-util-from-markdown';
 import { MAX_ATTRIBUTE_STRING_LENGTH, parseAttributeString } from './lexer-attrs.js';
 import { parseDirectiveAttributes } from '../math/environments.js';
 import type { MathEnvType } from '../math/environments.js';
@@ -32,8 +33,21 @@ export function preProcessDirectives(content: string): DirectivePreProcessResult
   }
   let counter = 0;
 
+  // Use the Markdown grammar to protect literal code/HTML, including nested fences.
+  const protectedLines = new Set<number>();
+  const protect = (
+    node: ReturnType<typeof fromMarkdown> | ReturnType<typeof fromMarkdown>['children'][number]
+  ): void => {
+    if ((node.type === 'code' || node.type === 'html') && node.position) {
+      for (let line = node.position.start.line; line <= node.position.end.line; line++) protectedLines.add(line - 1);
+    } else if ('children' in node) {
+      for (const child of node.children) protect(child);
+    }
+  };
+  protect(fromMarkdown(content));
+
   // First pass: normalize nested :::tabs so outer tabs container fence has 4 colons
-  const normalizedTabs = normalizeTabsDirectives(content);
+  const normalizedTabs = normalizeTabsDirectives(content, protectedLines);
 
   // Second pass: mask complex attributes containing [ or nested {
   const lines = normalizedTabs.split('\n');
@@ -41,7 +55,7 @@ export function preProcessDirectives(content: string): DirectivePreProcessResult
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? '';
-    if (line.length > MAX_ATTRIBUTE_STRING_LENGTH * 2 || !line.startsWith(':::')) {
+    if (protectedLines.has(i) || line.length > MAX_ATTRIBUTE_STRING_LENGTH * 2 || !line.startsWith(':::')) {
       processedLines.push(line);
       continue;
     }
@@ -76,7 +90,7 @@ export function preProcessDirectives(content: string): DirectivePreProcessResult
   };
 }
 
-function normalizeTabsDirectives(content: string): string {
+function normalizeTabsDirectives(content: string, protectedLines: ReadonlySet<number>): string {
   const lines = content.split('\n');
 
   // Pass 1: find max tabs nesting depth
@@ -92,6 +106,7 @@ function normalizeTabsDirectives(content: string): string {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? '';
+    if (protectedLines.has(i)) continue;
     const dirMatch = line.match(/^(:{3,})([a-zA-Z0-9_-]+)(\b.*)$/);
     if (dirMatch) {
       const name = dirMatch[2] ?? '';
@@ -136,6 +151,10 @@ function normalizeTabsDirectives(content: string): string {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? '';
+    if (protectedLines.has(i)) {
+      result.push(line);
+      continue;
+    }
     const dirMatch = line.match(/^(:{3,})([a-zA-Z0-9_-]+)(\b.*)$/);
     if (dirMatch) {
       const name = dirMatch[2] ?? '';

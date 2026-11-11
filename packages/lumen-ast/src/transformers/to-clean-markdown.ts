@@ -2,6 +2,8 @@
  * Clean Markdown Transformer (Optimized for LLMs, llms.txt, and Markdown mirrors)
  */
 
+import { normalizeLumenHtml } from '../compiler/html.js';
+import { renderSafeHtmlElement } from './safe-html.js';
 import type { LumenDocumentAst, LumenNode } from '../ast/types.js';
 
 export interface CleanMarkdownOptions {
@@ -17,7 +19,7 @@ export function toCleanMarkdown(ast: LumenDocumentAst, options?: CleanMarkdownOp
   // 1. Frontmatter (if requested, only include public fields)
   if (options?.includeFrontmatter && Object.keys(ast.frontmatter ?? {}).length > 0) {
     const publicFields: string[] = [];
-    const ALLOWED = ['id', 'title', 'description', 'status', 'version', 'tags', 'relations', 'authors', 'abstract'];
+    const ALLOWED = ['id', 'title', 'access', 'description', 'status', 'version', 'tags', 'relations', 'authors', 'abstract'];
     for (const key of ALLOWED) {
       if (ast.frontmatter[key] !== undefined) {
         publicFields.push(`${key}: ${JSON.stringify(ast.frontmatter[key])}`);
@@ -159,9 +161,12 @@ function serializeSingleNode(node: LumenNode, options?: CleanMarkdownOptions): s
       return '';
     }
 
+    case 'htmlElement': {
+      return renderSafeHtmlElement(String(node.tagName), node.attributes ?? {}, serializeNodesToCleanMarkdown(node.children ?? [], options));
+    }
+
     case 'rawHtmlPlaceholder': {
-      // Strip UI placeholders
-      return '';
+      return serializeNodesToCleanMarkdown(normalizeLumenHtml([node]), options);
     }
 
     case 'blockquote': {
@@ -223,6 +228,7 @@ function serializeInlineNodes(nodes: LumenNode[], options?: CleanMarkdownOptions
         const url = String(n['url'] ?? '#');
         return `[${serializeInlineNodes((n.children ?? []) as LumenNode[], options)}](${url})`;
       }
+      if (n.type === 'htmlElement' || n.type === 'rawHtmlPlaceholder') return serializeSingleNode(n, options);
       if (n.value !== undefined && n.value !== null) return String(n.value);
       if (n.raw !== undefined && n.raw !== null) return String(n.raw);
       if (n.children && Array.isArray(n.children)) return serializeInlineNodes(n.children as LumenNode[], options);

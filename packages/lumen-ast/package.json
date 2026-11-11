@@ -36,7 +36,13 @@
     "shiki": "^4.6.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "zod": "^4.6.7",
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.1",
+    "@omnitron-dev/access": "workspace:*",
+    "hast-util-raw": "^9.2.0",
+    "hast-util-sanitize": "^5.0.2",
+    "hast-util-to-html": "^9.0.6",
+    "@types/hast": "^3.0.5",
+    "mdast-util-to-hast": "^13.2.1"
   },
   "devDependencies": {
     "@types/katex": "^0.16.7",

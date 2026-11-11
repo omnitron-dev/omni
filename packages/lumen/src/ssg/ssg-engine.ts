@@ -10,17 +10,16 @@ import { generateRouteMirrors } from '../ai/route-mirrors.js';
 import { buildSearchIndex } from '../search/index-builder.js';
 import { generateAssetManifest, carryPreviousBuildForward } from '../manifest/generator.js';
 import { computeContentHash, computeSriHash } from '../manifest/hashing.js';
-import { projectCorpus } from '../corpus/projection.js';
+import { projectCorpus, type CorpusProjectionOptions } from '../corpus/projection.js';
 import type { CorpusGraph } from '../corpus/graph.js';
 import type { LumenConfig } from '../config/schema.js';
 import type { AssetManifest } from '../manifest/types.js';
 
-export interface SsgBuildOptions {
+export interface SsgBuildOptions extends CorpusProjectionOptions {
   outDir?: string;
   writeToDisk?: boolean;
   previousManifest?: AssetManifest | null;
   carryPreviousBuildForward?: boolean;
-  roles?: string[];
 }
 
 export interface SsgBuildResult {
@@ -190,8 +189,11 @@ export async function buildStaticSite(
   config: LumenConfig,
   options?: SsgBuildOptions
 ): Promise<SsgBuildResult> {
-  const audienceRoles = options?.roles ?? ['anonymous'];
-  const projectedCorpus = projectCorpus(corpus, { roles: audienceRoles });
+  const audience: CorpusProjectionOptions = {
+    roles: options?.roles ?? ['anonymous'],
+    accessFilter: options?.accessFilter,
+  };
+  const projectedCorpus = projectCorpus(corpus, audience);
   const documents = projectedCorpus.getAllDocuments();
 
   const pages = new Map<string, string>();
@@ -244,7 +246,7 @@ export async function buildStaticSite(
           currentPath: route,
           extraHead: [stylesheetLinkTag],
           bodyScripts: hasInteractiveIslands ? [islandsScriptTag] : undefined,
-          roles: audienceRoles,
+          ...audience,
         })
       : `<!DOCTYPE html><html><head>${stylesheetLinkTag}</head><body><h1>${escapeHtml(doc.title || doc.id)}</h1></body></html>`;
 
@@ -267,15 +269,15 @@ export async function buildStaticSite(
   }
 
   // 3. Generate AI Agent endpoints strictly from projected public corpus
-  const llmsTxt = generateLlmsTxt(projectedCorpus, config, { roles: audienceRoles });
-  const llmsFullTxt = generateLlmsFullTxt(projectedCorpus, config, { roles: audienceRoles });
-  const mirrors = generateRouteMirrors(projectedCorpus, config, { roles: audienceRoles });
+  const llmsTxt = generateLlmsTxt(projectedCorpus, config, audience);
+  const llmsFullTxt = generateLlmsFullTxt(projectedCorpus, config, audience);
+  const mirrors = generateRouteMirrors(projectedCorpus, config, audience);
 
   currentAssets['llms.txt'] = `assets/llms.${computeContentHash(llmsTxt)}.txt`;
   currentAssets['llms-full.txt'] = `assets/llms-full.${computeContentHash(llmsFullTxt)}.txt`;
 
   // 4. Generate Pagefind search index shards + portable ESM runtime strictly from projected public corpus
-  const searchResult = await buildSearchIndex(projectedCorpus, config, { roles: audienceRoles });
+  const searchResult = await buildSearchIndex(projectedCorpus, config, audience);
   Object.assign(currentAssets, searchResult.manifestEntries);
   for (const [relPath, fileContent] of Object.entries(searchResult.files)) {
     assets.set(relPath, fileContent);

@@ -2,6 +2,8 @@
  * Server-Side Rendering (SSR) HTML Transformer (XSS-Hardened)
  */
 
+import { normalizeLumenHtml } from '../compiler/html.js';
+import { renderSafeHtmlElement } from './safe-html.js';
 import type { LumenDocumentAst, LumenNode } from '../ast/types.js';
 import { renderDiagramHtml } from '../diagrams/renderer.js';
 import { renderCodeBlockHtml } from '../highlight/emitter.js';
@@ -24,20 +26,6 @@ interface SsrContext {
 const ALLOWED_URL_SCHEMES = new Set(['http', 'https', 'mailto', 'tel']);
 const VALID_HYDRATE_MODES = new Set(['load', 'visible', 'idle', 'interaction']);
 
-const ISLAND_ALLOWED_TAGS = new Set(['div', 'section', 'aside', 'span']);
-
-const ISLAND_ALLOWED_ATTRS = new Set([
-  'id',
-  'class',
-  'data-lumen-island',
-  'data-component',
-  'data-hydrate',
-  'data-props',
-  'data-access',
-  'role',
-  'aria-label',
-]);
-
 function decodeNumericHtmlEntities(input: string): string {
   return input
     .replace(/&#x([0-9a-f]+);?/gi, (_, hex: string) => {
@@ -51,15 +39,6 @@ function decodeNumericHtmlEntities(input: string): string {
     .replace(/&colon;/gi, ':')
     .replace(/&tab;/gi, '\t')
     .replace(/&newline;/gi, '\n');
-}
-
-function decodeStandardAttrEntities(input: string): string {
-  return input
-    .replace(/&quot;/g, '"')
-    .replace(/&#0*39;|&#x0*27;|&apos;/gi, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
 }
 
 function stripControlChars(str: string, stripSpaces = false): string {
@@ -140,158 +119,6 @@ export function sanitizeUrl(url: string): string {
   }
 
   return cleaned;
-}
-
-function parseOpeningHtmlElement(
-  source: string
-): { tag: string; attrs: Array<[string, string]>; openEnd: number; selfClosing: boolean } | null {
-  const tagMatch = source.match(/^<([A-Za-z][A-Za-z0-9-]*)\b/);
-  if (!tagMatch || !tagMatch[1]) {
-    return null;
-  }
-
-  const tag = tagMatch[1].toLowerCase();
-  let i = tagMatch[0].length;
-  const len = source.length;
-  const attrs: Array<[string, string]> = [];
-
-  while (i < len) {
-    while (i < len && /\s/.test(source[i]!)) {
-      i += 1;
-    }
-    if (i >= len) return null;
-
-    if (source[i] === '/' && source[i + 1] === '>') {
-      return { tag, attrs, openEnd: i + 2, selfClosing: true };
-    }
-    if (source[i] === '>') {
-      return { tag, attrs, openEnd: i + 1, selfClosing: false };
-    }
-
-    // Read attribute name
-    const nameStart = i;
-    while (i < len && !/[\s=/>"'<]/.test(source[i]!)) {
-      i += 1;
-    }
-    const rawName = source.slice(nameStart, i).toLowerCase();
-    if (!rawName) {
-      // Malformed character inside tag; skip or abort if quote/angle bracket
-      if (source[i] === '<') return null;
-      i += 1;
-      continue;
-    }
-
-    while (i < len && /\s/.test(source[i]!)) {
-      i += 1;
-    }
-
-    let attrVal = '';
-    if (i < len && source[i] === '=') {
-      i += 1;
-      while (i < len && /\s/.test(source[i]!)) {
-        i += 1;
-      }
-
-      if (i < len && (source[i] === '"' || source[i] === "'")) {
-        const quote = source[i]!;
-        i += 1;
-        const valStart = i;
-        while (i < len && source[i] !== quote) {
-          i += 1;
-        }
-        attrVal = source.slice(valStart, i);
-        if (i < len && source[i] === quote) {
-          i += 1;
-        }
-      } else {
-        const valStart = i;
-        while (i < len && !/[\s>]/.test(source[i]!)) {
-          if (source[i] === '/' && source[i + 1] === '>') break;
-          i += 1;
-        }
-        attrVal = source.slice(valStart, i);
-      }
-    }
-
-    attrs.push([rawName, attrVal]);
-  }
-
-  return null;
-}
-
-function sanitizeIslandInnerText(innerRaw: string): string {
-  if (!innerRaw) return '';
-
-  let cleaned = innerRaw;
-  // Iteratively strip dangerous paired containers and their payloads
-  const dangerousPaired =
-    /<(script|style|iframe|svg|object|embed|math|template|noscript|textarea|title|xmp)\b[\s\S]*?<\/\1\s*>/gi;
-  let prev = '';
-  while (cleaned !== prev) {
-    prev = cleaned;
-    cleaned = cleaned.replace(dangerousPaired, '');
-  }
-
-  // Strip any unclosed dangerous opening tags to end of string
-  cleaned = cleaned.replace(
-    /<(script|style|iframe|svg|object|embed|math|template|noscript|textarea|title|xmp)\b[\s\S]*$/gi,
-    ''
-  );
-
-  // Strip HTML comments and all remaining HTML tags
-  cleaned = cleaned.replace(/<!--[\s\S]*?-->/g, '');
-  cleaned = cleaned.replace(/<[^>]*>/g, '');
-
-  return escapeHtml(cleaned);
-}
-
-function sanitizeRawHtmlPlaceholder(raw: string): string {
-  const trimmed = raw.trim();
-  if (!trimmed.startsWith('<') || !trimmed.toLowerCase().includes('data-lumen-island')) {
-    return escapeHtml(raw);
-  }
-
-  const parsedOpen = parseOpeningHtmlElement(trimmed);
-  if (!parsedOpen || !ISLAND_ALLOWED_TAGS.has(parsedOpen.tag)) {
-    return escapeHtml(raw);
-  }
-
-  const hasIslandAttr = parsedOpen.attrs.some(([name]) => name === 'data-lumen-island');
-  if (!hasIslandAttr) {
-    return escapeHtml(raw);
-  }
-
-  const safeAttrParts: string[] = [];
-  const seenAttrs = new Set<string>();
-  for (const [name, rawValue] of parsedOpen.attrs) {
-    if (!ISLAND_ALLOWED_ATTRS.has(name) || seenAttrs.has(name)) {
-      continue;
-    }
-    seenAttrs.add(name);
-    const decoded = decodeStandardAttrEntities(rawValue);
-    safeAttrParts.push(` ${name}="${escapeHtml(decoded)}"`);
-  }
-
-  if (parsedOpen.selfClosing) {
-    return `<${parsedOpen.tag}${safeAttrParts.join('')}></${parsedOpen.tag}>`;
-  }
-
-  // Locate matching closing tag for root element (ignoring any trailing injected siblings)
-  const closingRegex = new RegExp(`</${parsedOpen.tag}\\s*>`, 'ig');
-  closingRegex.lastIndex = parsedOpen.openEnd;
-  let lastCloseMatch: RegExpExecArray | null = null;
-  let m: RegExpExecArray | null = closingRegex.exec(trimmed);
-  while (m !== null) {
-    lastCloseMatch = m;
-    m = closingRegex.exec(trimmed);
-  }
-
-  const innerSlice = lastCloseMatch
-    ? trimmed.slice(parsedOpen.openEnd, lastCloseMatch.index)
-    : trimmed.slice(parsedOpen.openEnd);
-
-  const safeInner = sanitizeIslandInnerText(innerSlice);
-  return `<${parsedOpen.tag}${safeAttrParts.join('')}>${safeInner}</${parsedOpen.tag}>`;
 }
 
 export function toHtmlSsr(ast: LumenDocumentAst, options?: SsrOptions): string {
@@ -458,9 +285,13 @@ function renderSingleNodeToHtml(node: LumenNode, context: SsrContext): string {
       return `<div class="lumen-widget lumen-portal-island" data-widget="${name}" data-lumen-island="lumen-widget-${context.widgetCounter}-${safeIslandName}" data-component="${name}" data-hydrate="${escapeHtml(hydrate)}" data-props="${propsJson}">${inner}</div>`;
     }
 
+    case 'htmlElement': {
+      return renderSafeHtmlElement(String(node.tagName), node.attributes ?? {}, renderNodesToHtml(node.children ?? [], context));
+    }
+
     case 'rawHtmlPlaceholder': {
       const raw = String(node.raw ?? '');
-      return sanitizeRawHtmlPlaceholder(raw);
+      return renderNodesToHtml(normalizeLumenHtml([{ type: 'rawHtmlPlaceholder', raw }]), context);
     }
 
     case 'blockquote': {

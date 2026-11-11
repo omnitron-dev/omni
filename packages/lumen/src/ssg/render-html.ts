@@ -4,18 +4,22 @@ import createCache from '@emotion/cache';
 import { CacheProvider, ClassNames } from '@emotion/react';
 import createEmotionServer from '@emotion/server/create-instance';
 import { LumenShell } from '@omnitron-dev/lumen-ui';
-import { toHtmlSsr, type LumenDocumentAst } from '@omnitron-dev/lumen-ast';
-import { isAccessAllowedForRoles, projectDocumentAst } from '../corpus/projection.js';
+import {
+  toHtmlSsr,
+  createDocumentAccessPredicate,
+  projectDocumentAccess,
+  type LumenDocumentAst,
+} from '@omnitron-dev/lumen-ast';
+import type { CorpusProjectionOptions } from '../corpus/projection.js';
 import { buildHtmlPage } from './assemble-html.js';
 
-export interface RenderDocumentHtmlOptions {
+export interface RenderDocumentHtmlOptions extends CorpusProjectionOptions {
   theme?: 'light' | 'dark' | string;
   locale?: string;
   baseUrl?: string;
   currentPath?: string;
   extraHead?: string[];
   bodyScripts?: string[];
-  roles?: string[];
 }
 
 export function renderDocumentHtml(ast: LumenDocumentAst, options?: RenderDocumentHtmlOptions): string {
@@ -24,16 +28,10 @@ export function renderDocumentHtml(ast: LumenDocumentAst, options?: RenderDocume
   const currentPath = options?.currentPath ?? '/';
   const roles = options?.roles ?? ['anonymous'];
 
-  const docAllowed = isAccessAllowedForRoles(ast.frontmatter?.['access'], roles);
-  const effectiveAst: LumenDocumentAst = docAllowed
-    ? projectDocumentAst(ast, roles).ast
-    : {
-        frontmatter: { title: 'Restricted' },
-        children: [],
-        toc: [],
-        diagnostics: [],
-        rawContent: undefined,
-      };
+  const { allowed: docAllowed, ast: effectiveAst } = projectDocumentAccess(
+    ast,
+    createDocumentAccessPredicate(roles, options?.accessFilter)
+  );
 
   const articleHtml = docAllowed
     ? toHtmlSsr(effectiveAst, { theme })

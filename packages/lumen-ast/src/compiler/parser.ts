@@ -2,6 +2,7 @@
  * Core Parser: prism-doc/2 to LumenDocumentAst Compiler
  */
 
+import { normalizeLumenHtml } from './html.js';
 import { directiveFromMarkdown } from 'mdast-util-directive';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
@@ -126,7 +127,7 @@ function parseMarkdownFragmentSync(
     }
   }
 
-  return transformedChildren;
+  return normalizeLumenHtml(transformedChildren);
 }
 
 // Register default synchronous Markdown+JSX fragment parser for standalone parseJsxTag() calls
@@ -144,6 +145,11 @@ registerJsxFragmentParser((markdown, filePath) => {
 });
 
 export async function parseDocument(content: string, filePath?: string): Promise<LumenDocumentAst> {
+  return parseDocumentSync(content, filePath);
+}
+
+/** The same compiler for synchronous adapters; no second Markdown parser. */
+export function parseDocumentSync(content: string, filePath?: string): LumenDocumentAst {
   // Handle empty or whitespace-only documents
   if (!content || !content.trim()) {
     return {
@@ -340,20 +346,20 @@ function transformNode(rawNode: Record<string, unknown>, context: ParseContext):
           );
         }
 
-        return createMathEnvironmentNode(mathEnvKind, resolvedAttrs, children);
+        return { ...createMathEnvironmentNode(mathEnvKind, resolvedAttrs, children), position: node['position'] };
       }
 
       // 2. Admonitions
       if (isAdmonitionKind(name)) {
-        return createAdmonitionNode(name, resolvedAttrs, children);
+        return { ...createAdmonitionNode(name, resolvedAttrs, children), position: node['position'] };
       }
 
       // 3. Tabs & Tab Items
       if (name === 'tabs') {
-        return createTabsNode(resolvedAttrs, children);
+        return { ...createTabsNode(resolvedAttrs, children), position: node['position'] };
       }
       if (name === 'tab') {
-        return createTabItemNode(resolvedAttrs, children);
+        return { ...createTabItemNode(resolvedAttrs, children), position: node['position'] };
       }
 
       // 4. Fallback Container

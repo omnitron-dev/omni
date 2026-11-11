@@ -6,3 +6,5 @@ export * from './types.js';
 export * from './frontmatter.js';
 export * from './diagnostics.js';
 export * from './guards.js';
+
+export * from './access.js';

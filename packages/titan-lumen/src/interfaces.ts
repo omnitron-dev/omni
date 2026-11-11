@@ -1,6 +1,6 @@
 import type { IncomingMessage } from 'node:http';
 import type { KnowledgeBase } from '@omnitron-dev/kb';
-import type { RoleHierarchy } from '@omnitron-dev/access';
+import type { DocumentAccessOptions } from '@omnitron-dev/lumen-ast';
 import type { AccessFilterService } from './access/access-filter.service.js';
 
 export interface LumenSessionContext {
@@ -95,10 +95,7 @@ export interface LiveEditServiceOptions {
   maxDocumentBytes?: number;
 }
 
-export interface AccessFilterOptions {
-  hierarchy?: RoleHierarchy;
-  grants?: Record<string, string[]>;
-}
+export type AccessFilterOptions = DocumentAccessOptions;
 
 export type TransportAuthResult = boolean | LumenSessionContext | null | undefined;
 

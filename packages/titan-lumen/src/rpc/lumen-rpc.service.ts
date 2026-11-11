@@ -3,7 +3,7 @@ import { extname, relative, resolve, sep as pathSep } from 'node:path';
 import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import ts from 'typescript';
 import { Injectable } from '@omnitron-dev/titan';
-import { parseDocument, toCleanMarkdown, type LumenNode } from '@omnitron-dev/lumen-ast';
+import { parseDocument, type LumenNode } from '@omnitron-dev/lumen-ast';
 import { DEFAULT_DOCS_DIR } from '../constants.js';
 import {
   AccessFilterService,
@@ -361,37 +361,11 @@ export class LumenRpcService implements ILumenService {
 
   private async projectAuthorizedContent(
     content: string,
-    docPath: string,
+    _docPath: string,
     effectiveRoles: string[],
     explicitAccess?: string
   ): Promise<string | null> {
-    const docAccess = explicitAccess ?? extractDocumentAccess(content);
-    if (!this.accessFilter.isAllowed(effectiveRoles, docAccess)) {
-      return null;
-    }
-    const bodyWithoutFm = stripFrontmatter(content);
-    if (!/\baccess\s*=/.test(bodyWithoutFm)) {
-      return content;
-    }
-    const countTreeNodes = (nodes: LumenNode[]): number => {
-      let total = 0;
-      for (const n of nodes) {
-        if (!n || typeof n !== 'object') continue;
-        total += 1;
-        if (Array.isArray(n.children)) {
-          total += countTreeNodes(n.children);
-        }
-      }
-      return total;
-    };
-
-    const ast = await parseDocument(content, docPath);
-    const filtered = this.accessFilter.filterAst(ast, effectiveRoles);
-    if (countTreeNodes(filtered.children) === countTreeNodes(ast.children) && filtered.toc.length === ast.toc.length) {
-      return content;
-    }
-    const hasFrontmatter = content.startsWith('---') || content.startsWith('~~~');
-    return toCleanMarkdown(filtered, { includeFrontmatter: hasFrontmatter });
+    return this.accessFilter.filterRawMarkdownContent(content, effectiveRoles, explicitAccess);
   }
 
   private async scanDocsDirectory(
@@ -487,19 +461,15 @@ export class LumenRpcService implements ILumenService {
         const kbResult = await this.options.knowledgeBase.query(trimmedQuery, { maxResults: limit });
         for (const entry of kbResult.entries ?? []) {
           const entryAccess = inferKbEntryAccess(entry.content ?? '', entry.tags ?? []);
-          const projectedContent = await this.projectAuthorizedContent(
-            entry.content ?? '',
-            `${entry.module}/${entry.id}.pdx`,
-            effectiveRoles,
-            entryAccess
+          const { content: projectedContent, strippedAny } = this.accessFilter.projectContent(
+            entry.content ?? '', effectiveRoles, entryAccess
           );
           if (projectedContent === null) {
             continue;
           }
           const projectedBody = stripFrontmatter(projectedContent).trim();
-          const hasInlineRestriction = /\baccess\s*=/.test(stripFrontmatter(entry.content ?? ''));
           if (
-            hasInlineRestriction &&
+            strippedAny &&
             !entry.title.toLowerCase().includes(lowerQuery) &&
             !projectedBody.toLowerCase().includes(lowerQuery)
           ) {

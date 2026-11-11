@@ -1,3 +1,4 @@
+import type { ServiceDescriptor as TypedServiceDescriptor } from '@omnitron-dev/netron-protocol';
 /**
  * Multi-Backend Client Type Definitions
  *
@@ -353,7 +354,7 @@ export interface IBackendClient<T = unknown> {
    * const user = await users.getById('123');
    * ```
    */
-  service<S>(serviceName: string): TypedServiceProxy<S>;
+  service<S>(serviceName: string | TypedServiceDescriptor<S>): TypedServiceProxy<S>;
 
   /**
    * Invoke a service method on this backend
@@ -421,7 +422,7 @@ export interface IMultiBackendClient<T extends BackendSchema = BackendSchema> {
    * const users = client.service<UserService>('core.users');
    * ```
    */
-  service<S>(serviceName: string): TypedServiceProxy<S>;
+  service<S>(serviceName: string | TypedServiceDescriptor<S>): TypedServiceProxy<S>;
 
   /**
    * Direct invoke with explicit backend

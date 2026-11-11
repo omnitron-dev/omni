@@ -82,14 +82,15 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:unit": "vitest run --exclude test/integration/**",
     "test:all": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "clean": "rm -rf dist coverage",
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@omnitron-dev/netron-browser": "workspace:*"
+    "@omnitron-dev/netron-browser": "workspace:*",
+    "@omnitron-dev/netron-protocol": "workspace:*"
   },
   "peerDependencies": {
     "react": ">=18.0.0 || >=19.0.0",

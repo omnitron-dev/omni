@@ -1,0 +1,6 @@
+{
+  "extends": ["./tsconfig.json", "../../tsconfig.vitest.json"],
+  "compilerOptions": { "noEmit": true },
+  "include": ["src/**/*", "test/**/*.types.ts"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]
+}

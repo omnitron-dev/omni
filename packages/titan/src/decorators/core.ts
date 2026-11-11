@@ -6,6 +6,7 @@
 
 import 'reflect-metadata';
 import semver from 'semver';
+import { isServiceDescriptor, type ServiceDescriptor } from '@omnitron-dev/netron-protocol';
 import { normalizeTransportPolicy } from '../netron/transport-policy.js';
 import { Scope, type ScopeValue, type Constructor } from '../nexus/index.js';
 import { Errors } from '../errors/index.js';
@@ -38,6 +39,9 @@ export interface ServiceOptions {
    * The fully qualified name of the service (name[@version])
    */
   name: string;
+
+  /** Explicit service version, overriding the version embedded in name. */
+  version?: string;
 
   /**
    * Optional service contract for validation and documentation
@@ -514,25 +518,16 @@ export function Request() {
  *   @Service({ name: 'Auth', version: '1.0.0' })   — full options
  *   @Service(AuthService)                          — typed ServiceDescriptor
  *
- * The descriptor form (B6) is preferred — it co-locates the wire
- * name with the interface in shared DTO modules so renames break
- * compile on every consumer that drifted.
+ * A descriptor from @omnitron-dev/netron-protocol binds the wire name to
+ * the shared interface used by server, browser and React clients.
  */
 export const Service = (
-  options?: string | ServiceOptions | { readonly name: string; readonly version?: string; readonly qualifiedName?: string },
+  options?: string | ServiceOptions | ServiceDescriptor<unknown>,
 ) => (target: any) => {
-  // Accept ServiceDescriptor — duck-typed by the qualifiedName field
-  // we set in service-descriptor.ts. Keeps the decorator independent
-  // of the netron module to avoid circular imports.
   let serviceOptions: ServiceOptions;
   if (typeof options === 'string') {
     serviceOptions = { name: options };
-  } else if (
-    options &&
-    typeof options === 'object' &&
-    'qualifiedName' in options &&
-    typeof options.qualifiedName === 'string'
-  ) {
+  } else if (isServiceDescriptor(options)) {
     serviceOptions = { name: options.qualifiedName };
   } else if (options) {
     serviceOptions = options as ServiceOptions;

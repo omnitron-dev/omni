@@ -1,3 +1,4 @@
+import type { ServiceDescriptor as TypedServiceDescriptor } from '@omnitron-dev/netron-protocol';
 /**
  * Multi-Backend Client - Main Orchestrator
  *
@@ -135,7 +136,8 @@ export class MultiBackendClient<T extends BackendSchema = BackendSchema> impleme
    * @param serviceName - Service name (can be qualified as 'backend.service')
    * @returns Typed service proxy
    */
-  service<S>(serviceName: string): TypedServiceProxy<S> {
+  service<S>(service: string | TypedServiceDescriptor<S>): TypedServiceProxy<S> {
+    const serviceName = typeof service === 'string' ? service : service.qualifiedName;
     // Resolve backend for this service
     const backendName = this.router.resolve(serviceName);
     const actualServiceName = this.router.getServiceName(serviceName);

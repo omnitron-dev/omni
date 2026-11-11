@@ -1,48 +1,14 @@
 /**
- * ServiceDescriptor — compile-time link between a service's wire name
- * and its TypeScript interface.
- *
- * Why: today's bug — the backend declared `@Service({ name:
- * 'SwapV2AdminService' })` while the frontend called the service by
- * literal `'SwapAdminService'`. Both string literals, no relationship,
- * no compile error. Production discovered the mismatch via 404 at
- * runtime.
- *
- * Pattern: define the descriptor ONCE in a shared DTO module. Both
- * sides import it. Renaming the service name (or its interface) is
- * a single edit; any consumer that drifted lights up the type checker.
+ * Shared service identity for Titan and browser/React clients.
+ * Define a descriptor beside the service interface and use it on both ends.
  *
  * @example
  * ```ts
- * // shared DTO (apps/main/src/shared/dto/services.ts):
- * import { ServiceDescriptor } from '@omnitron-dev/titan/netron';
- *
- * export interface IAuthService {
- *   signIn(input: SignInInput): Promise<Session>;
- *   ...
- * }
- *
- * export const AuthService = ServiceDescriptor.of<IAuthService>('Auth', '1.0.0');
- *
- *
- * // backend (apps/main/src/modules/auth/auth.rpc-service.ts):
- * import { AuthService } from '@project/main/dto';
- *
- * @Service(AuthService)        // accepts ServiceDescriptor — name + version come from it
- * class AuthRpcService implements IAuthService { ... }
- *
- *
- * // frontend (apps/portal/src/netron/rpc.ts):
- * import { AuthService } from 'main/dto/services';
- *
- * export function authRpc<M extends keyof IAuthService>(
- *   method: M,
- *   ...args: Parameters<IAuthService[M]>
- * ): Promise<Awaited<ReturnType<IAuthService[M]>>> {
- *   return invokeDescriptor('main', AuthService, method, args);
- *   // descriptor.name flows into the wire name; renaming on backend
- *   // forces frontend to recompile too.
- * }
+ * import { ServiceDescriptor } from '@omnitron-dev/netron-protocol';
+ * interface Catalog { read(id: string): Promise<string> }
+ * export const CatalogService = ServiceDescriptor.of<Catalog>('Catalog', '1.0.0');
+ * // Server: @Service(CatalogService)
+ * // Client: client.service(CatalogService).read('guide')
  * ```
  */
 
@@ -105,3 +71,10 @@ export function isServiceDescriptor(value: unknown): value is ServiceDescriptor<
 export const ServiceDescriptor = {
   of: ofImpl,
 };
+
+/** Method names and invocation types derived from the shared service interface. */
+export type ServiceMethodName<I> = {
+  [K in keyof I]-?: I[K] extends (...args: never[]) => unknown ? K : never;
+}[keyof I] & string;
+export type ServiceArguments<I, M extends ServiceMethodName<I>> = I[M] extends (...args: infer A) => unknown ? A : never;
+export type ServiceResult<I, M extends ServiceMethodName<I>> = I[M] extends (...args: never[]) => infer R ? Awaited<R> : never;

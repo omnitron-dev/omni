@@ -1,3 +1,4 @@
+import type { ServiceDescriptor } from '@omnitron-dev/netron-protocol';
 /**
  * useService - Hook for type-safe service access
  */
@@ -41,8 +42,9 @@ import { useMutation } from './useMutation.js';
  * }
  * ```
  */
-export function useService<TService>(serviceName: string, options?: ServiceOptions): TypedServiceProxy<TService> {
+export function useService<TService>(service: string | ServiceDescriptor<TService>, options?: ServiceOptions): TypedServiceProxy<TService> {
   const client = useNetronClient();
+  const serviceName = typeof service === 'string' ? service : service.qualifiedName;
 
   const proxy = useMemo(
     () =>
@@ -117,7 +119,7 @@ export function useService<TService>(serviceName: string, options?: ServiceOptio
  * ```
  */
 export function createServiceHook<TService>(
-  serviceName: string,
+  serviceName: string | ServiceDescriptor<TService>,
   defaultOptions?: ServiceOptions
 ): (options?: ServiceOptions) => TypedServiceProxy<TService> {
   return (options?: ServiceOptions) => {

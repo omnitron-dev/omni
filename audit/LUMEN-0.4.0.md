@@ -7,6 +7,7 @@ Baseline: `3ea505ad` (2026-11-11). This is a verification ledger, not a release 
 - Preserve the sealed 0.3.5 publication at `8bdc660e`. Lumen enters 0.4.0 only after qualification.
 - Develop visibly on `main` in the primary checkout. Use AGI for qualification snapshots and generated artifacts. Do not replace deployed controllers, owner, applications or Atlas.
 - Use Netron for transport/authentication, Titan for lifecycle and DI, Prism for shared UI, Xec for release orchestration, Turbo for the package graph and cache.
+- Remove obsolete files, exports and compatibility aliases rather than retaining parallel APIs during this development-stage refactor. `ServiceDescriptor` now belongs only to `netron-protocol`; its old Titan subpath and barrel alias are removed. Server decoration, browser clients and React hooks consume the same typed contract.
 - A test must validate useful behavior. A PDF magic header is not evidence of typesetting; a hydration attribute is not evidence of a working interactive component.
 
 ## Findings and closure evidence

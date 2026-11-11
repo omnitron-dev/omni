@@ -1,3 +1,4 @@
+import type { ServiceDescriptor as TypedServiceDescriptor } from '@omnitron-dev/netron-protocol';
 /**
  * Backend Client - Single Backend Wrapper
  *
@@ -218,7 +219,8 @@ export class BackendClient implements IBackendClient {
    * @param serviceName - Name of the service
    * @returns Typed service proxy for method invocation
    */
-  service<S>(serviceName: string): TypedServiceProxy<S> {
+  service<S>(service: string | TypedServiceDescriptor<S>): TypedServiceProxy<S> {
+    const serviceName = typeof service === 'string' ? service : service.qualifiedName;
     return new Proxy({} as TypedServiceProxy<S>, {
       get: (_target, prop: string | symbol) => {
         if (typeof prop === 'symbol') {

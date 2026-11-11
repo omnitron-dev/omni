@@ -1,3 +1,4 @@
+import type { ServiceDescriptor, ServiceMethodName, ServiceArguments, ServiceResult } from '@omnitron-dev/netron-protocol';
 /**
  * NetronReactClient - Central client for React integration
  */
@@ -230,24 +231,26 @@ export class NetronReactClient {
   /**
    * Get typed service proxy
    */
-  service<T>(name: string, options?: ServiceOptions): TypedServiceProxy<T> {
-    return this.serviceRegistry.getService<T>(name, options);
+  service<T>(name: string | ServiceDescriptor<T>, options?: ServiceOptions): TypedServiceProxy<T> {
+    return this.serviceRegistry.getService<T>(typeof name === 'string' ? name : name.qualifiedName, options);
   }
 
   /**
    * Invoke a service method directly
    */
-  async invoke<T = unknown>(
-    service: string,
-    method: string,
-    args: unknown[],
+  invoke<I, M extends ServiceMethodName<I>>(
+    service: ServiceDescriptor<I>, method: M, args: ServiceArguments<I, M>,
     options?: { timeout?: number; signal?: AbortSignal }
-  ): Promise<T> {
+  ): Promise<ServiceResult<I, M>>;
+  invoke<T = unknown>(service: string, method: string, args: unknown[], options?: { timeout?: number; signal?: AbortSignal }): Promise<T>;
+  async invoke(
+    service: string | ServiceDescriptor<unknown>, method: string, args: unknown[],
+    options?: { timeout?: number; signal?: AbortSignal }
+  ): Promise<unknown> {
     const client = this.getActiveClient();
-    return client.invoke(service, method, args, {
-      hints: { timeout: options?.timeout },
-      signal: options?.signal,
-    }) as Promise<T>;
+    return client.invoke(typeof service === 'string' ? service : service.qualifiedName, method, args, {
+      hints: { timeout: options?.timeout }, signal: options?.signal,
+    });
   }
 
   // ============================================================================

@@ -3,6 +3,7 @@
  */
 
 import React, { type ReactNode } from 'react';
+import type { ServiceDescriptor } from '@omnitron-dev/netron-protocol';
 import { NetronReactClient } from '../core/client.js';
 import { NetronProvider } from '../core/provider.js';
 import type { QueryKey, NetronReactClientConfig } from '../core/types.js';
@@ -57,12 +58,13 @@ export function createTestClient(testConfig?: TestClientConfig): NetronReactClie
   // Override invoke to use mocks
   const originalInvoke = client.invoke.bind(client);
   client.invoke = async <T>(
-    service: string,
+    service: string | ServiceDescriptor<unknown>,
     method: string,
     args: unknown[],
-    options?: { timeout?: number }
+    options?: { timeout?: number; signal?: AbortSignal }
   ): Promise<T> => {
-    const key = `${service}.${method}`;
+    const name = typeof service === 'string' ? service : service.qualifiedName;
+    const key = `${name}.${method}`;
     const mock = mockMap.get(key);
 
     if (mock) {
@@ -79,7 +81,7 @@ export function createTestClient(testConfig?: TestClientConfig): NetronReactClie
     }
 
     // Fall back to original (will likely fail in tests)
-    return originalInvoke(service, method, args, options);
+    return originalInvoke<T>(name, method, args, options);
   };
 
   return client;

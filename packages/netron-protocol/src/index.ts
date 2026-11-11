@@ -82,3 +82,5 @@ export type { PacketImpulse, PacketType } from './packet-types.js';
 // per-package serializers (which bind env-specific StreamReference codecs)
 // operate on this shared class.
 export { Packet, createPacket } from './packet.js';
+
+export { ServiceDescriptor, isServiceDescriptor, type InterfaceOf, type ServiceMethodName, type ServiceArguments, type ServiceResult } from './service-descriptor.js';

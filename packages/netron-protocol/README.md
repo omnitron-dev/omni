@@ -44,3 +44,24 @@ Consumers should branch on `code` / `details.errorCode`, not message text.
   bundled browser build (netron-browser, `tsup`).
 - Anything here is **protocol**, not behaviour: values/shapes/codecs that must
   match across the wire, not transport, DI, or app logic.
+
+## Typed service identity
+
+Define each service interface and descriptor together in a shared application
+contract module. Import the factory directly from `@omnitron-dev/netron-protocol`:
+
+```ts
+import { ServiceDescriptor } from '@omnitron-dev/netron-protocol';
+
+export interface Catalog { read(id: string): Promise<{ title: string }> }
+export const CatalogService = ServiceDescriptor.of<Catalog>('Catalog', '1.0.0');
+```
+
+Titan's `@Service(CatalogService)`, Netron browser clients and React's
+`useService(CatalogService)` use the same qualified wire name. `invoke` infers
+method names, argument tuples and results from the descriptor. Dynamic string
+names remain available for discovery-driven clients.
+
+The factory lives only in this package. The former Titan descriptor file,
+subpath export and barrel alias have been removed; import the shared protocol
+API directly. No Node dependencies are needed by application contract modules.

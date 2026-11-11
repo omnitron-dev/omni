@@ -1033,6 +1033,9 @@ importers:
       '@omnitron-dev/netron-browser':
         specifier: workspace:*
         version: link:../netron-browser
+      '@omnitron-dev/netron-protocol':
+        specifier: workspace:*
+        version: link:../netron-protocol
     devDependencies:
       '@testing-library/jest-dom':
         specifier: ^7.0.1

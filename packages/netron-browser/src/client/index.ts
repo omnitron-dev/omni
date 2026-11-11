@@ -1,3 +1,4 @@
+import type { ServiceDescriptor as TypedServiceDescriptor, ServiceMethodName, ServiceArguments, ServiceResult } from '@omnitron-dev/netron-protocol';
 /**
  * Netron Browser Client
  *
@@ -111,19 +112,17 @@ export class NetronClient {
   /**
    * Invoke a service method
    */
-  async invoke<T = any>(
-    service: string,
-    method: string,
-    args: any[] = [],
-    options?: InvocationOptions
-  ): Promise<T> {
-    return await this.transport.invoke(service, method, args, options);
+  invoke<I, M extends ServiceMethodName<I>>(service: TypedServiceDescriptor<I>, method: M, args: ServiceArguments<I, M>, options?: InvocationOptions): Promise<ServiceResult<I, M>>;
+  invoke<T = unknown>(service: string, method: string, args?: unknown[], options?: InvocationOptions): Promise<T>;
+  async invoke(service: string | TypedServiceDescriptor<unknown>, method: string, args: unknown[] = [], options?: InvocationOptions): Promise<unknown> {
+    return this.transport.invoke(typeof service === 'string' ? service : service.qualifiedName, method, args, options);
   }
 
   /**
    * Create a service proxy for type-safe method calls
    */
-  service<T extends object>(serviceName: string): T {
+  service<T extends object>(service: string | TypedServiceDescriptor<T>): T {
+    const serviceName = typeof service === 'string' ? service : service.qualifiedName;
     return new Proxy({} as T, {
       get:
         (_target, prop: string) =>

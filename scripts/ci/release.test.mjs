@@ -140,14 +140,15 @@ else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') ==
   const git = async (...args) => (await exec('git', args)).stdout.trim();
   const release = (...args) => exec(process.execPath, [path.join(repo, 'node_modules/@xec-sh/cli/bin/xec'), 'release', version, ...args]);
   const json = (name, value) => fs.writeFile(path.join(workspace, name), JSON.stringify(value, null, 2));
-  await fs.mkdir(path.join(workspace, 'scripts'), { recursive: true });
-  for (const file of ['release.mjs', 'build-release.mjs']) await fs.copyFile(path.join(repo, 'scripts', file), path.join(workspace, 'scripts', file));
+  // Exercise the checked-in recipe with its complete relative module tree.
+  // A hand-picked entrypoint list silently drops new shared dependencies.
+  await fs.cp(path.join(repo, 'scripts'), path.join(workspace, 'scripts'), { recursive: true });
   await fs.cp(path.join(repo, '.xec'), path.join(workspace, '.xec'), { recursive: true, filter: file => !file.includes('/.tmp') });
   // CI qualification has its own failure/resume suite; this loopback suite exercises registry publication.
   await fs.writeFile(path.join(workspace, '.xec/qualification.mjs'), 'export async function qualifyRelease() {}\nexport async function verifyReleaseQualification() { return {fixture:true}; }\n');
   // The fixture publishes two tiny packages, not the complete Omnitron SDK.
   // Keep both package-consumer validation stages observable in its archive.
-  await fs.mkdir(path.join(workspace, 'scripts/ci'));
+  await fs.mkdir(path.join(workspace, 'scripts/ci'), { recursive: true });
   await fs.writeFile(path.join(workspace, 'scripts/check-package-exports.mjs'),
     "import assert from 'node:assert/strict'; import fs from 'node:fs'; assert.equal(process.argv[2], '--install-consumer'); fs.mkdirSync(process.argv[3]); fs.writeFileSync(process.argv[3]+'/audit-checked', 'checked');");
   await fs.writeFile(path.join(workspace, 'scripts/ci/check-runtime-consumer.mjs'),

@@ -203,7 +203,10 @@ jobs:
         working-directory: apps/omnitron/webapp
         run: |
           node --test test/chart-loading.test.mjs
-          pnpm exec playwright install --with-deps --only-shell chromium
+          # ubuntu-24.04 already provides the Chromium shared libraries.
+          # Install the browser pinned by Playwright without updating the host
+          # through APT. Browser launch still validates all required libraries.
+          pnpm exec playwright install --only-shell chromium
           pnpm run test:browser
       - name: Isolated test orchestration
         run: node --test scripts/ci/workspace-test.test.mjs

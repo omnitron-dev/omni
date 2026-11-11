@@ -10,13 +10,13 @@ import { qualifiedRuntimes } from './qualification.mjs';
 /** Xec orchestrates; the daemon remains the authority for pins, roles, locks and recovery. */
 export async function runUpdate(args, options = {}) {
   const { values, positionals } = parseArgs({ args, allowPositionals: true, options: {
-    cli: { type: 'string', default: 'omnitron' }, runtime: { type: 'string', multiple: true },
+    cli: { type: 'string' }, runtime: { type: 'string', multiple: true },
     node: { type: 'string', multiple: true }, 'request-id': { type: 'string' }, help: { type: 'boolean' },
   } });
   const usage = 'xec update plan <commit> [--runtime <sealed-linux-runtime>] --node <registered-node> [--node ...]\n' +
     'xec update apply <plan-id>\nxec update status [plan-id]\nxec update reconcile <plan-id>\n' +
     'xec update local-check <dist>\nxec update local-apply <dist>\n' +
-    '  --cli <executable> Select the installed Omnitron CLI\n' +
+    '  --cli <executable> Select the fleet controller CLI; local updates use the candidate CLI\n' +
     'A plan never activates a backend. Owner transitions remain separate reviewed operations.';
   if (values.help) { console.log(usage); return; }
   const [operation, target] = positionals;
@@ -26,25 +26,39 @@ export async function runUpdate(args, options = {}) {
   const root = options.root ?? process.cwd();
   const run = options.run ?? releaseCommand;
   const progress = options.progress ?? console.log;
+  const local = operation.startsWith('local-');
+  const candidate = local ? path.resolve(root, target) : null;
+  const runtime = local ? path.resolve(candidate, '../../..') : null;
+  if (local && (values.cli || candidate !== path.join(runtime, 'packages/0/dist')))
+    throw new UserError('Local updates require the sealed candidate packages/0/dist and its own CLI; --cli selects a fleet controller');
+  // Candidate admission must understand its own requirements. Using the installed
+  // older CLI can miss new owner contracts or misclassify checksum-only changes.
+  const executable = local ? path.join(runtime, 'node') : values.cli ?? 'omnitron';
+  const prefix = local ? [path.join(candidate, 'cli/omnitron.js')] : [];
   const call = async argv => {
     let output, failure;
-    try { output = await run(root, values.cli, ['--json', ...argv], { timeoutMs: 30 * 60_000 }); }
+    try { output = await run(root, executable, [...prefix, '--json', ...argv], { timeoutMs: 30 * 60_000 }); }
     catch (error) {
       if (!(error instanceof ReleaseCommandError)) throw error;
-      output = error.stdout;
+      // Omnitron emits successful receipts on stdout and refusals on stderr.
+      output = error.stdout.trim() ? error.stdout : error.stderr;
       failure = error;
     }
     let reply;
     try { reply = JSON.parse(output); } catch (error) { throw failure ?? error; }
     const reason = typeof reply?.error === 'string' ? reply.error : reply?.error?.message;
-    if (reply?.ok === false && typeof reason === 'string') throw new UserError(reason);
+    const exitCode = Number.isInteger(failure?.status) && failure.status > 0 && failure.status < 256 ? failure.status : 1;
+    if (reply?.ok === false && typeof reason === 'string') {
+      if (Object.keys(reply).some(key => !['ok', 'error'].includes(key))) progress(JSON.stringify(reply, null, 2));
+      throw new UserError(reason, { exitCode });
+    }
     if (reply?.ok !== true) throw failure ?? Error('Omnitron did not confirm the operation');
     if (failure) {
       // A known blocked/uncertain rollout is still a failed command. Preserve its
       // receipt and explanation; never turn non-zero exit into success or retry it.
       progress(JSON.stringify(reply.data, null, 2));
       throw new UserError(reply.data?.reason ?? 'Omnitron did not complete the operation',
-        { exitCode: Number.isInteger(failure.status) && failure.status > 0 && failure.status < 256 ? failure.status : 1 });
+        { exitCode });
     }
     return reply.data;
   };

@@ -32,17 +32,19 @@ test('Xec stages a reviewed candidate through Omnitron without activating or usi
 test('activation and reconciliation delegate exactly once; local check cannot imply apply', async () => {
   const id = '12345678-1234-1234-1234-123456789abc';
   const calls = [];
-  const options = { progress() {}, run: async (_root, _cmd, args) => {
+  const options = { progress() {}, run: async (_root, command, args) => {
+    if (args.includes('backend')) assert.equal(command, '/private/runtime/node');
+    else assert.equal(command, 'omnitron');
     calls.push(args);
     return JSON.stringify({ ok: true, data: { id } });
   } };
   await runUpdate(['apply', id], options);
   await runUpdate(['reconcile', id], options);
-  await runUpdate(['local-check', '/private/runtime/dist'], options);
+  await runUpdate(['local-check', '/private/runtime/packages/0/dist'], options);
   assert.deepEqual(calls, [
     ['--json', 'fleet', 'rollout', 'apply', id, '--wait'],
     ['--json', 'fleet', 'rollout', 'reconcile', id],
-    ['--json', 'backend', 'upgrade', '/private/runtime/dist', '--check'],
+    ['/private/runtime/packages/0/dist/cli/omnitron.js', '--json', 'backend', 'upgrade', '/private/runtime/packages/0/dist', '--check'],
   ]);
   await assert.rejects(runUpdate(['apply', '--apply'], options));
   const failed = { ...options, run: async () => { throw Error('connection lost'); } };
@@ -57,15 +59,17 @@ test('controller refusals preserve structured receipts, nonzero status and the a
   let reply = { ok: true, data: receipt };
   const options = { progress: message => output.push(message), run: async (_root, _cmd, args) => {
     calls.push(args);
-    throw new ReleaseCommandError('omnitron', 1, JSON.stringify(reply), '');
+    throw new ReleaseCommandError('omnitron', reply.ok ? 1 : 7, reply.ok ? JSON.stringify(reply) : '', reply.ok ? '' : JSON.stringify(reply));
   } };
   await assert.rejects(runUpdate(['status', id], options), error =>
     error.isUserError && error.exitCode === 1 && error.message === receipt.reason);
   assert.deepEqual(JSON.parse(output[0]), receipt);
   reply = { ok: false, error: 'Prepare a compatible database transition' };
-  await assert.rejects(runUpdate(['local-check', '/private/runtime/dist'], options), error =>
-    error.isUserError && error.message === reply.error);
+  await assert.rejects(runUpdate(['local-check', '/private/runtime/packages/0/dist'], options), error =>
+    error.isUserError && error.exitCode === 7 && error.message === reply.error);
   assert.equal(calls.length, 2, 'a refusal cannot replay an operation');
+  await assert.rejects(runUpdate(['local-check', '/private/runtime/packages/0/dist', '--cli', '/old/omnitron'], options), /its own CLI/);
+  assert.equal(calls.length, 2);
   const transport = new ReleaseCommandError('omnitron', 2, 'incomplete response', 'connection lost');
   await assert.rejects(runUpdate(['apply', id], { ...options, run: async () => { throw transport; } }), error => error === transport);
 });

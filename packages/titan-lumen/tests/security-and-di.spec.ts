@@ -1,88 +1,12 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { EventEmitter } from 'node:events';
 import { mkdtempSync, writeFileSync, symlinkSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Application } from '@omnitron-dev/titan';
 import { parseDocument, toCleanMarkdown, toHtmlSsr, toTypst } from '@omnitron-dev/lumen-ast';
 import type { KnowledgeBase } from '@omnitron-dev/kb';
-import type { SearchOptions, SearchResult } from '../src/interfaces.js';
-import {
-  ACCESS_FILTER_SERVICE_TOKEN,
-  AccessFilterService,
-  LIVE_EDIT_SERVICE_TOKEN,
-  LiveEditService,
-  LUMEN_OPTIONS_TOKEN,
-  LUMEN_RPC_CONTROLLER_TOKEN,
-  LUMEN_SERVICE_TOKEN,
-  LumenMcpServer,
-  LumenModule,
-  LumenRpcController,
-  LumenRpcService,
-  MCP_SERVER_TOKEN,
-  getActiveSseConnections,
-  handleHttpMcpRequest,
-  handleSseMcpConnection,
-} from '../src/index.js';
-
-class MockHttpRequest extends EventEmitter {
-  method: string;
-  url: string;
-  headers: Record<string, string>;
-  destroyed = false;
-
-  constructor(method = 'POST', url = '/mcp', headers: Record<string, string> = {}) {
-    super();
-    this.method = method;
-    this.url = url;
-    this.headers = { 'content-type': 'application/json', ...headers };
-  }
-
-  destroy(): this {
-    this.destroyed = true;
-    this.emit('close');
-    return this;
-  }
-}
-
-class MockHttpResponse extends EventEmitter {
-  statusCode = 200;
-  headers: Record<string, string> = {};
-  body = '';
-  chunks: string[] = [];
-  writableEnded = false;
-  destroyed = false;
-
-  writeHead(statusCode: number, headers: Record<string, string>): this {
-    this.statusCode = statusCode;
-    for (const [k, v] of Object.entries(headers)) {
-      this.headers[k.toLowerCase()] = v;
-    }
-    return this;
-  }
-
-  setHeader(name: string, value: string): void {
-    this.headers[name.toLowerCase()] = value;
-  }
-
-  write(chunk: string): boolean {
-    this.body += chunk;
-    this.chunks.push(chunk);
-    return true;
-  }
-
-  end(chunk?: string): this {
-    if (chunk) {
-      this.body += chunk;
-      this.chunks.push(chunk);
-    }
-    this.writableEnded = true;
-    this.emit('finish');
-    this.emit('close');
-    return this;
-  }
-}
+import { AccessFilterService, LiveEditService, LumenModule, LumenService } from '../src/index.js';
+import { asUser, mcpFor } from './netron-fixture.js';
 
 describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
   const createdDirs: string[] = [];
@@ -102,13 +26,13 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
     }
   });
 
-  describe('SEC-01: Controller Auth Enforcement & Worker Sandbox', () => {
-    it('rejects direct controller calls with forged session roles', async () => {
-      const controller = new LumenRpcController(new LumenRpcService());
+  describe('SEC-01: Native Netron Authorization & Worker Sandbox', () => {
+    it('rejects direct mutation calls with forged session roles', async () => {
+      const service = new LumenService();
       for (const session of [undefined, { valid: false, roles: ['admin'] }, { valid: true, roles: ['admin'] }]) {
-        await expect(Reflect.apply(controller.executePlayground, controller, ['return 2;', session]))
+        await expect(Reflect.apply(service.executePlayground, service, ['return 2;', session]))
           .rejects.toMatchObject({ code: 401 });
-        await expect(Reflect.apply(controller.saveLiveEdit, controller, [{ docId: 'a.pdx', patch: 'hello', baseRevision: 1 }, session]))
+        await expect(Reflect.apply(service.saveLiveEdit, service, [{ docId: 'a.pdx', patch: 'hello', baseRevision: 1 }, session]))
           .rejects.toMatchObject({ code: 401 });
       }
     });
@@ -116,12 +40,12 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
     it('does not allow direct search callers to claim an authenticated role', async () => {
       const docsDir = makeTempDir('spoof-check');
       writeFileSync(join(docsDir, 'secret.pdx'), '---\ntitle: Classified Spec\naccess: confidential\n---\nClassified spectral payload.');
-      const controller = new LumenRpcController(new LumenRpcService({ docsDir }));
-      expect(await Reflect.apply(controller.search, controller, ['spectral', { filter: { roles: ['admin'] } }, { valid: true, roles: ['admin'] }])).toEqual([]);
+      const service = new LumenService({ docsDir });
+      expect(await Reflect.apply(service.search, service, ['spectral', { filter: { roles: ['admin'] } }, { valid: true, roles: ['admin'] }])).toEqual([]);
     });
 
     it('respects enablePlayground: false and max code size cap (64 KiB)', async () => {
-      const disabledService = new LumenRpcService({ enablePlayground: false });
+      const disabledService = await asUser(new LumenService({ enablePlayground: false }), 'admin');
       const disabledRes = await disabledService.executePlayground('return 42;');
       expect(disabledRes).toEqual({
         code: 'return 42;',
@@ -129,7 +53,7 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
         error: 'Playground execution is disabled',
       });
 
-      const activeService = new LumenRpcService();
+      const activeService = await asUser(new LumenService(), 'admin');
       const oversizedCode = `const s = "${'a'.repeat(70 * 1024)}"; return s.length;`;
       const oversizedRes = await activeService.executePlayground(oversizedCode);
       expect(oversizedRes.result).toBeNull();
@@ -137,7 +61,7 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
     });
 
     it('isolates worker sandbox from host globals and survives infinite loops and memory bombs', async () => {
-      const service = new LumenRpcService();
+      const service = await asUser(new LumenService(), 'admin');
 
       // Standard expressions
       const exprRes = await service.executePlayground('JSON.stringify({ status: "active", nodes: 42 });');
@@ -193,7 +117,7 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
       const envLink = join(docsDir, 'sneaky.pdx');
       symlinkSync(secretEnv, envLink);
 
-      const service = new LumenRpcService({ docsDir });
+      const service = new LumenService({ docsDir });
 
       // Valid document works (with and without extension)
       expect(await service.getDocument('valid.pdx')).toContain('Valid Inside Corpus');
@@ -232,7 +156,7 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
         'utf8'
       );
 
-      const service = new LumenRpcService({ docsDir });
+      const service = new LumenService({ docsDir });
 
       // Anonymous getDocument
       expect(await service.getDocument('guides/public-guide.pdx')).toContain('Shared quantum reference');
@@ -240,121 +164,27 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
       expect(await service.getDocument('guides/confidential-keys.pdx')).toBeNull();
 
       // Staff getDocument
-      const staffSession = { valid: true, roles: ['staff'] };
-      expect(await service.getDocument('guides/internal-runbook.md', staffSession)).toContain('runbook for staff');
-      expect(await service.getDocument('guides/confidential-keys.pdx', staffSession)).toBeNull();
+      const staff = await asUser(service, 'staff');
+      expect(await staff.getDocument('guides/internal-runbook.md')).toContain('runbook for staff');
+      expect(await staff.getDocument('guides/confidential-keys.pdx')).toBeNull();
 
       // Security officer / Admin getDocument
-      const adminSession = { valid: true, roles: ['admin'] };
-      expect(await service.getDocument('guides/confidential-keys.pdx', adminSession)).toContain('master key schedule');
+      const adminToken = 'admin';
+      expect(await (await asUser(service, adminToken)).getDocument('guides/confidential-keys.pdx')).toContain('master key schedule');
 
       // Search RBAC filtering
       const anonHits = await service.search('quantum');
       expect(anonHits.map((h) => h.title)).toEqual(['Public Guide']);
 
-      const staffHits = await service.search('quantum', undefined, staffSession);
+      const staffHits = await staff.search('quantum');
       expect(staffHits.map((h) => h.title).sort()).toEqual(['Internal Runbook', 'Public Guide']);
 
-      const adminHits = await service.search('quantum', undefined, adminSession);
+      const adminHits = await (await asUser(service, adminToken)).search('quantum');
       expect(adminHits).toHaveLength(3);
     });
   });
 
-  describe('SEC-05: HTTP/SSE Transport DoS Protections & LiveEditService Bounds', () => {
-    it('returns HTTP 413 when HTTP MCP payload exceeds 1 MiB and enforces authorize / allowedOrigins', async () => {
-      const mcp = new LumenMcpServer();
-
-      // 1. Streaming > 1 MiB payload triggers 413 Payload Too Large and destroys request
-      const bigReq = new MockHttpRequest('POST', '/mcp');
-      const bigRes = new MockHttpResponse();
-      const pending = handleHttpMcpRequest(
-        bigReq as unknown as IncomingMessage,
-        bigRes as unknown as ServerResponse,
-        mcp
-      );
-
-      const chunk512k = Buffer.alloc(600 * 1024, 'x');
-      bigReq.emit('data', chunk512k);
-      bigReq.emit('data', chunk512k); // 1.2 MiB > 1 MiB default limit
-      await pending;
-
-      expect(bigRes.statusCode).toBe(413);
-      expect(bigReq.destroyed).toBe(true);
-
-      // 2. Disallowed origin returns HTTP 403
-      const badOriginReq = new MockHttpRequest('POST', '/mcp', { origin: 'https://evil.example' });
-      const badOriginRes = new MockHttpResponse();
-      await handleHttpMcpRequest(
-        badOriginReq as unknown as IncomingMessage,
-        badOriginRes as unknown as ServerResponse,
-        mcp,
-        { allowedOrigins: ['https://docs.omnitron.dev'] }
-      );
-      expect(badOriginRes.statusCode).toBe(403);
-
-      // 3. Unauthorized request returns HTTP 401
-      const unauthReq = new MockHttpRequest('POST', '/mcp');
-      const unauthRes = new MockHttpResponse();
-      await handleHttpMcpRequest(unauthReq as unknown as IncomingMessage, unauthRes as unknown as ServerResponse, mcp, {
-        authorize: () => false,
-      });
-      expect(unauthRes.statusCode).toBe(401);
-    });
-
-    it('enforces maxConnections (HTTP 429), connection decrement on close, and RBAC filtering on SSE live-edit events', async () => {
-      const live = new LiveEditService();
-
-      const anonReq = new MockHttpRequest('GET', '/mcp/events');
-      const anonRes = new MockHttpResponse();
-      handleSseMcpConnection(anonReq as unknown as IncomingMessage, anonRes as unknown as ServerResponse, live, {
-        maxConnections: 2,
-      });
-
-      const adminReq = new MockHttpRequest('GET', '/mcp/events');
-      const adminRes = new MockHttpResponse();
-      handleSseMcpConnection(adminReq as unknown as IncomingMessage, adminRes as unknown as ServerResponse, live, {
-        maxConnections: 2,
-        resolveSession: () => ({ valid: true, roles: ['admin'] }),
-      });
-
-      expect(getActiveSseConnections(live)).toBe(2);
-
-      // 3rd connection exceeds maxConnections = 2 -> HTTP 429
-      const excessReq = new MockHttpRequest('GET', '/mcp/events');
-      const excessRes = new MockHttpResponse();
-      handleSseMcpConnection(excessReq as unknown as IncomingMessage, excessRes as unknown as ServerResponse, live, {
-        maxConnections: 2,
-      });
-      expect(excessRes.statusCode).toBe(429);
-
-      // Confidential live-edit is delivered ONLY to admin subscriber, NOT anonymous subscriber
-      await live.applyEdit({
-        docId: 'docs/vault.pdx',
-        patch: 'Confidential rotation key update',
-        baseRevision: 1,
-        access: 'confidential',
-      });
-
-      expect(anonRes.body).not.toContain('Confidential rotation key update');
-      expect(adminRes.body).toContain('Confidential rotation key update');
-
-      // Public live-edit is delivered to both
-      await live.applyEdit({
-        docId: 'docs/public.pdx',
-        patch: 'Public release notes update',
-        baseRevision: 1,
-        access: 'public',
-      });
-      expect(anonRes.body).toContain('Public release notes update');
-      expect(adminRes.body).toContain('Public release notes update');
-
-      // Closing connections decrements active count allowing new connections
-      anonReq.emit('close');
-      expect(getActiveSseConnections(live)).toBe(1);
-      adminReq.emit('close');
-      expect(getActiveSseConnections(live)).toBe(0);
-    });
-
+  describe('SEC-05: LiveEditService bounds', () => {
     it('enforces maxDocuments eviction, maxPatchBytes, maxDocumentBytes, and replace/line-range modes in LiveEditService', async () => {
       const live = new LiveEditService({
         maxDocuments: 2,
@@ -470,8 +300,9 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
         },
       } as unknown as KnowledgeBase;
 
-      const service = new LumenRpcService({
+      const service = new LumenService({
         knowledgeBase: mockKb,
+        docsDir: makeTempDir('kb-docs'),
         sourceDir,
       });
 
@@ -481,7 +312,7 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
       expect(anonSearch.some((r) => r.documentId === 'kb-secret-1')).toBe(false);
 
       // Admin search includes confidential KB entry
-      const adminSearch = await service.search('Architecture', undefined, { valid: true, roles: ['admin'] });
+      const adminSearch = await (await asUser(service, 'admin')).search('Architecture');
       expect(adminSearch.some((r) => r.documentId === 'kb-secret-1')).toBe(true);
 
       // getSymbolContract resolves from KnowledgeBase.getApi first
@@ -494,35 +325,6 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
       expect(tsSym?.name).toBe('QuantumSpectrumSolver');
       expect(tsSym?.kind).toBe('class');
       expect(tsSym?.methods).toHaveProperty('computeEigenvalues');
-    });
-
-    it('provides and exports all services, controller, and tokens in LumenModule.forRoot and forRootAsync', async () => {
-      const syncMod = LumenModule.forRoot({ docsDir: 'docs', global: true });
-      expect(syncMod.global).toBe(true);
-
-      const findProvider = (token: unknown) => syncMod.providers.find((p: any) => p.provide === token);
-
-      expect(findProvider(LUMEN_OPTIONS_TOKEN)?.useValue).toEqual({ docsDir: 'docs', global: true });
-      expect(findProvider(LUMEN_SERVICE_TOKEN)?.useValue).toBeInstanceOf(LumenRpcService);
-      expect(findProvider(LumenRpcService)?.useValue).toBeInstanceOf(LumenRpcService);
-      expect(findProvider(AccessFilterService)?.useValue).toBeInstanceOf(AccessFilterService);
-      expect(findProvider(ACCESS_FILTER_SERVICE_TOKEN)?.useValue).toBeInstanceOf(AccessFilterService);
-      expect(findProvider(LiveEditService)?.useValue).toBeInstanceOf(LiveEditService);
-      expect(findProvider(LIVE_EDIT_SERVICE_TOKEN)?.useValue).toBeInstanceOf(LiveEditService);
-      expect(findProvider(LumenMcpServer)?.useValue).toBeInstanceOf(LumenMcpServer);
-      expect(findProvider(MCP_SERVER_TOKEN)?.useValue).toBeInstanceOf(LumenMcpServer);
-      expect(findProvider(LumenRpcController)?.useValue).toBeInstanceOf(LumenRpcController);
-      expect(findProvider(LUMEN_RPC_CONTROLLER_TOKEN)?.useValue).toBeInstanceOf(LumenRpcController);
-
-      const asyncMod = LumenModule.forRootAsync({
-        global: true,
-        useFactory: async () => ({ docsDir: 'async-docs' }),
-      });
-      expect(asyncMod.global).toBe(true);
-      const opts = await asyncMod.providers.find((p: any) => p.provide === LUMEN_OPTIONS_TOKEN).useFactory();
-      const svc = await asyncMod.providers.find((p: any) => p.provide === LUMEN_SERVICE_TOKEN).useFactory(opts);
-      const ctrl = asyncMod.providers.find((p: any) => p.provide === LumenRpcController).useFactory(svc);
-      expect(ctrl).toBeInstanceOf(LumenRpcController);
     });
 
     it('parses real AST nodes in lumen_inspect_ast and enforces AccessFilterService on AST and resources', async () => {
@@ -546,16 +348,13 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
         'utf8'
       );
 
-      const rpcService = new LumenRpcService({ docsDir });
-      const mcp = rpcService.getMcpServer();
-      mcp.registerResource(
-        'classified/roadmap.pdx',
-        '---\ntitle: Classified Roadmap\naccess: confidential\n---\n# Secret',
-        'confidential'
-      );
+      const rpcService = new LumenService({ docsDir });
+      const mcp = await mcpFor(rpcService, { resources: ['classified/roadmap.pdx'] });
+      mkdirSync(join(docsDir, 'classified'));
+      writeFileSync(join(docsDir, 'classified/roadmap.pdx'), '---\ntitle: Classified Roadmap\naccess: confidential\n---\n# Secret');
 
       // Anonymous AST inspection returns real parsed heading + paragraph, strips confidential JSX node
-      const anonAstRes = await mcp.handleRequest({
+      const anonAstRes = await mcp.call({
         method: 'tools/call',
         id: 'ast-1',
         params: { name: 'lumen_inspect_ast', arguments: { docId: 'theorem.pdx' } },
@@ -570,26 +369,26 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
       expect(anonAstRes.result.toc).toHaveLength(1);
 
       // Admin AST inspection retains confidential JSX node
-      const adminSession = { valid: true, roles: ['admin'] };
-      const adminAstRes = await mcp.handleRequest(
+      const adminToken = 'admin';
+      const adminAstRes = await mcp.call(
         {
           method: 'tools/call',
           id: 'ast-2',
           params: { name: 'lumen_inspect_ast', arguments: { docId: 'theorem.pdx' } },
         },
-        adminSession
+        adminToken
       );
       expect(JSON.stringify(adminAstRes.result.content)).toContain('SecretBlock');
 
       // Anonymous resource list & read hides confidential resource
-      const anonList = await mcp.handleRequest({ method: 'resources/list', id: 'list-1' });
+      const anonList = await mcp.call({ method: 'resources/list', id: 'list-1' });
       expect(anonList.result.resources.some((r: any) => r.name === 'classified/roadmap.pdx')).toBe(false);
 
-      const anonRead = mcp.readResource('lumen://corpus/classified/roadmap.pdx');
-      expect(anonRead.code).toBe(403);
+      const anonRead = await mcp.readResource('lumen://corpus/classified/roadmap.pdx');
+      expect(anonRead.error).toBeDefined();
       expect(anonRead.content).toBeUndefined();
 
-      const adminRead = mcp.readResource('lumen://corpus/classified/roadmap.pdx', adminSession);
+      const adminRead = await mcp.readResource('lumen://corpus/classified/roadmap.pdx', adminToken);
       expect(adminRead.content).toContain('Classified Roadmap');
     });
   });
@@ -746,7 +545,7 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
       expect(toCleanMarkdown(adminAst)).not.toContain('ZETA_SECRET');
     });
 
-    it('IA-04: resolves singleton service, tokens, and controller via real Titan Application.create across bareModule, forRoot, and forRootAsync', async () => {
+    it('IA-04: resolves one lazy service and its collaborators via real Titan Application.create across bareModule, forRoot, and forRootAsync', async () => {
       for (const mode of ['bareModule', 'forRoot', 'forRootAsync'] as const) {
         const options = {
           docsDir: `audit-docs-${mode}`,
@@ -774,76 +573,35 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
         });
 
         try {
-          const byToken = app.resolve(LUMEN_SERVICE_TOKEN);
-          const byClass = app.resolve(LumenRpcService);
-          expect(byToken.getOptions()).toEqual(expectedOptions);
-          expect(byClass).toBe(byToken);
-
-          const controller = app.resolve(LumenRpcController);
-          expect(controller).toBe(app.resolve(LUMEN_RPC_CONTROLLER_TOKEN));
-          expect(controller).toBeInstanceOf(LumenRpcController);
-
-          expect(app.resolve(AccessFilterService)).toBe(byToken.getAccessFilterService());
-          expect(app.resolve(ACCESS_FILTER_SERVICE_TOKEN)).toBe(byToken.getAccessFilterService());
-          expect(app.resolve(LiveEditService)).toBe(byToken.getLiveEditService());
-          expect(app.resolve(LIVE_EDIT_SERVICE_TOKEN)).toBe(byToken.getLiveEditService());
-          expect(app.resolve(LumenMcpServer)).toBe(byToken.getMcpServer());
-          expect(app.resolve(MCP_SERVER_TOKEN)).toBe(byToken.getMcpServer());
+          const service = app.resolve(LumenService);
+          expect(service.getOptions()).toEqual(expectedOptions);
+          expect(app.resolve(LumenService)).toBe(service);
+          expect(app.resolve(AccessFilterService)).toBe(service.getAccessFilterService());
+          expect(app.resolve(LiveEditService)).toBe(service.getLiveEditService());
 
           // bareModule uses default grants (staff -> internal allowed); custom options restrict staff to public only
-          expect(byToken.getAccessFilterService().isAllowed(['staff'], 'internal')).toBe(mode === 'bareModule');
+          expect(service.getAccessFilterService().isAllowed(['staff'], 'internal')).toBe(mode === 'bareModule');
         } finally {
           await app.stop();
         }
       }
     });
 
-    it('Integration #3: strips caller-supplied options.filter.roles escalation on LumenRpcController and MCP even with custom service subclasses', async () => {
-      class SubclassPortalRpcService extends LumenRpcService {
-        override async search(query: string, opts?: SearchOptions): Promise<SearchResult[]> {
-          const roles = opts?.filter?.roles ?? ['anonymous'];
-          const allItems: Array<SearchResult & { access: string }> = [
-            { documentId: 'pub-1', title: 'Public Spec', snippet: `${query} public`, score: 1, access: 'public' },
-            {
-              documentId: 'conf-1',
-              title: 'Classified Spec',
-              snippet: `${query} classified`,
-              score: 1,
-              access: 'confidential',
-            },
-          ];
-          return allItems.filter((item) => this.getAccessFilterService().isAllowed(roles, item.access));
-        }
-      }
-
-      const customService = new SubclassPortalRpcService();
-      const controller = new LumenRpcController(customService);
-      const mcp = customService.getMcpServer();
-
-      // Programmatic internal call with explicit filter.roles works for internal subclasses
-      const internalAdminHits = await customService.search('spec', { filter: { roles: ['admin'] } });
-      expect(internalAdminHits).toHaveLength(2);
-
-      // Network/Controller call WITHOUT valid session attempting to escalate via filter.roles: ['admin']
-      const unauthSpoof = await controller.search('spec', { filter: { roles: ['admin'] } });
-      expect(unauthSpoof.map((r) => r.documentId)).toEqual(['pub-1']);
-
-      // Network/Controller call with forged invalid session { valid: false, roles: ['admin'] }
-      const invalidSessionSpoof = await Reflect.apply(controller.search, controller, [
-        'spec', { filter: { roles: ['admin'] } }, { valid: true, roles: ['admin'] },
-      ]);
-      expect(invalidSessionSpoof.map((r) => r.documentId)).toEqual(['pub-1']);
-
-      // MCP tools/call search_corpus attempting to pass roles/filter in JSON-RPC arguments
-      const mcpSpoof = await mcp.handleRequest({
-        method: 'tools/call',
-        id: 'spoof-mcp-1',
-        params: {
-          name: 'search_corpus',
-          arguments: { query: 'spec', roles: ['admin'], filter: { roles: ['admin'] } },
-        },
-      });
-      expect(mcpSpoof.result.map((r: SearchResult) => r.documentId)).toEqual(['pub-1']);
+    it('refuses caller-supplied roles through native RPC and MCP', async () => {
+      const docsDir = makeTempDir('anti-escalation');
+      writeFileSync(join(docsDir, 'public.pdx'), '# Spec\nPublic Spec.');
+      writeFileSync(join(docsDir, 'secret.pdx'), '---\naccess: confidential\n---\n# Spec\nClassified Spec.');
+      const service = new LumenService({ docsDir });
+      const client = await asUser(service);
+      const hits = await Reflect.apply(client.search, client, ['Spec', { filter: { roles: ['admin'] } }, { valid: true, roles: ['admin'] }]);
+      expect(hits).toHaveLength(1);
+      expect(hits[0].snippet).not.toContain('Classified');
+      const mcp = await mcpFor(service);
+      const spoof = await mcp.call({ method: 'tools/call', params: {
+        name: 'search_corpus', arguments: { query: 'Spec', roles: ['admin'], filter: { roles: ['admin'] } },
+      } });
+      expect(spoof.error ?? spoof.result?.isError).toBeTruthy();
+      expect(JSON.stringify(spoof)).not.toContain('Classified');
     });
 
     it('IA-01/IA-02/IA-10 Deep Projection: strips restricted directives inside public docs across getDocument, search, MCP readResource, and fails closed on engine frontmatter', async () => {
@@ -871,10 +629,11 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
         'utf8'
       );
 
-      const rpc = new LumenRpcService({ docsDir });
-      const mcp = rpc.getMcpServer();
-      mcp.registerResource(
-        'guides/mixed-resource.pdx',
+      const rpc = new LumenService({ docsDir });
+      const mcp = await mcpFor(rpc, { resources: ['guides/mixed-resource.pdx'] });
+      mkdirSync(join(docsDir, 'guides'));
+      writeFileSync(
+        join(docsDir, 'guides/mixed-resource.pdx'),
         [
           '---',
           'title: Mixed MCP Resource',
@@ -885,7 +644,7 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
           'Secretresource88',
           ':::',
         ].join('\n'),
-        'public'
+        'utf8'
       );
 
       // Anonymous getDocument & search strip confidential directive inside public document
@@ -901,22 +660,22 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
       expect(anonPublicHits[0]?.snippet).not.toContain('Confidentialcanary9922');
 
       // Admin getDocument & search retain authorized confidential directive
-      const adminSession = { valid: true, roles: ['admin'] };
-      const adminDoc = await rpc.getDocument('mixed.pdx', adminSession);
+      const adminToken = 'admin';
+      const adminDoc = await (await asUser(rpc, adminToken)).getDocument('mixed.pdx');
       expect(adminDoc).toContain('Confidentialcanary9922');
 
       // MCP readResource strips confidential directive for anonymous, preserves for admin
-      const anonRes = mcp.readResource('lumen://corpus/guides/mixed-resource.pdx');
+      const anonRes = await mcp.readResource('lumen://corpus/guides/mixed-resource.pdx');
       expect(anonRes.content).toContain('Publicresource11');
       expect(anonRes.content).not.toContain('Secretresource88');
 
-      const adminRes = mcp.readResource('lumen://corpus/guides/mixed-resource.pdx', adminSession);
+      const adminRes = await mcp.readResource('lumen://corpus/guides/mixed-resource.pdx', adminToken);
       expect(adminRes.content).toContain('Secretresource88');
 
       // Executable frontmatter engine (---js) fails closed even for admin
       expect(await rpc.getDocument('engine-blocked.pdx')).toBeNull();
-      expect(await rpc.getDocument('engine-blocked.pdx', adminSession)).toBeNull();
-      expect(await rpc.search('Enginebodycanary3344', { filter: { roles: ['admin'] } })).toHaveLength(0);
+      expect(await (await asUser(rpc, adminToken)).getDocument('engine-blocked.pdx')).toBeNull();
+      expect(await (await asUser(rpc, adminToken)).search('Enginebodycanary3344')).toHaveLength(0);
     });
 
     it('GAP-09 Theorem Graph: extracts real authorized theorem dependency graph from docsDir', async () => {
@@ -945,12 +704,12 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
         'utf8'
       );
 
-      const rpc = new LumenRpcService({ docsDir });
+      const rpc = new LumenService({ docsDir });
       const anonGraph = await rpc.getTheoremGraph();
       expect(anonGraph.nodes.map((n) => n.id)).toEqual(['lem-bounded', 'thm-compact']);
       expect(anonGraph.edges).toEqual([{ source: 'thm-compact', target: 'lem-bounded', relation: 'dependsOn' }]);
 
-      const adminGraph = await rpc.getTheoremGraph({ valid: true, roles: ['admin'] });
+      const adminGraph = await (await asUser(rpc, 'admin')).getTheoremGraph();
       expect(adminGraph.nodes.map((n) => n.id)).toEqual(['lem-bounded', 'thm-compact', 'thm-classified']);
       expect(adminGraph.edges).toContainEqual({
         source: 'thm-classified',

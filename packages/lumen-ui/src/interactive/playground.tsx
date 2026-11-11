@@ -16,7 +16,7 @@ export interface PlaygroundRpcClient {
 }
 
 export interface NetronPlaygroundProps {
-  /** Target Titan Netron RPC service name (e.g. 'LumenRpcService') */
+  /** Target Titan Netron RPC service name (e.g. 'Lumen') */
   service?: string;
   /** Target RPC method name (e.g. 'search') */
   method?: string;

@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { LumenShell, PortalIslandHost, ApiExplorer, NetronPlayground, CodeBlock } from '@omnitron-dev/lumen-ui';
-import { LumenRpcService } from '@omnitron-dev/titan-lumen';
+import { LumenService } from '@omnitron-dev/titan-lumen';
+import { asUser } from '../../../packages/titan-lumen/tests/netron-fixture.js';
 
 describe('Tier 4: Scenario 06 — Interactive API Documentation with Live Playground', () => {
   it('renders virtualized API explorer and sandboxed Netron playground inside selective portal islands', () => {
@@ -12,7 +13,7 @@ describe('Tier 4: Scenario 06 — Interactive API Documentation with Live Playgr
     };
 
     const playgroundProps = {
-      initialSnippet: 'const client = new LumenRpcClient();\nawait client.ping();',
+      initialSnippet: 'const x = Math.sqrt(16); return x;',
       runtime: 'node22',
       timeoutMs: 5000,
     };
@@ -54,17 +55,18 @@ describe('Tier 4: Scenario 06 — Interactive API Documentation with Live Playgr
     expect(html).toContain('lumen-netron-playground');
   });
 
-  it('executes sandboxed RPC snippets and provides signed static fallback outputs', async () => {
-    const rpcService = new LumenRpcService({
+  it('executes an authorized snippet and renders its source for non-interactive clients', async () => {
+    const rpcService = new LumenService({
       docsDir: 'docs',
       kbEnabled: true,
     });
 
     const snippet = 'const x = Math.sqrt(16); return x;';
-    const execution = (await rpcService.executePlayground(snippet)) as { result: unknown; code: string };
+    const execution = (await (await asUser(rpcService, 'admin')).executePlayground(snippet)) as { result: unknown; code: string };
 
     expect(execution).toBeDefined();
     expect(execution.code).toBe(snippet);
+    expect(execution.result).toBe(4);
 
     // Static code fallback rendering for non-interactive clients
     const fallbackHtml = renderToStaticMarkup(

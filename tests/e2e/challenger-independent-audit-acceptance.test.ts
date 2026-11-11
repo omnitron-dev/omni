@@ -193,12 +193,12 @@ describe('IA-01..IA-03: Canonical Authorization Projection & Public Static Artif
   });
 });
 
-describe('IA-04: Real Titan Application.create DI & Controller Lifecycle', () => {
+describe('IA-04: Real Titan Application.create DI & Service Lifecycle', () => {
   it.each(['bareModule', 'forRoot', 'forRootAsync'] as const)(
-    'resolves configured LumenRpcService and LumenRpcController through %s',
+    'resolves configured LumenService and its collaborators through %s',
     async (mode) => {
       const { Application } = await import('../../packages/titan/dist/index.js');
-      const { LumenModule, LumenRpcController, LumenRpcService, LUMEN_SERVICE_TOKEN } =
+      const { LumenModule, LumenService, AccessFilterService, LiveEditService } =
         await import('../../packages/titan-lumen/dist/index.js');
       const options = { docsDir: `audit-${mode}-docs`, accessFilter: { grants: { staff: [] } } };
       const mod =
@@ -215,12 +215,11 @@ describe('IA-04: Real Titan Application.create DI & Controller Lifecycle', () =>
       });
       try {
         const expectedOptions = mode === 'bareModule' ? {} : options;
-        const byToken = app.resolve(LUMEN_SERVICE_TOKEN);
-        const byClass = app.resolve(LumenRpcService);
-        const controller = app.resolve(LumenRpcController);
-        expect(byToken).toBe(byClass);
-        expect(byToken.getOptions()).toEqual(expectedOptions);
-        expect(controller.getOptions()).toEqual(expectedOptions);
+        const byClass = app.resolve(LumenService);
+        expect(app.resolve(LumenService)).toBe(byClass);
+        expect(byClass.getOptions()).toEqual(expectedOptions);
+        expect(byClass.getAccessFilterService()).toBe(app.resolve(AccessFilterService));
+        expect(byClass.getLiveEditService()).toBe(app.resolve(LiveEditService));
       } finally {
         await app.stop();
       }

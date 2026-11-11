@@ -1,6 +1,4 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { EventEmitter } from 'node:events';
-import type { IncomingMessage, ServerResponse } from 'node:http';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -22,12 +20,11 @@ import type { CorpusDocument } from '@omnitron-dev/lumen';
 
 // Subsystem 2: @omnitron-dev/titan-lumen
 import {
-  LumenRpcService,
+  LumenService,
   AccessFilterService,
-  handleSseMcpConnection,
-  LiveEditService,
 } from '@omnitron-dev/titan-lumen';
 import type { LumenDocumentAst } from '@omnitron-dev/lumen-ast';
+import { asUser } from '../../../packages/titan-lumen/tests/netron-fixture.js';
 
 // Subsystem 3: @omnitron-dev/lumen-migrate
 import {
@@ -38,53 +35,6 @@ import {
   autogenerateSidebarForDir,
   resolveLinks,
 } from '@omnitron-dev/lumen-migrate';
-
-// ============================================================================
-// MOCKS & TEST HELPERS
-// ============================================================================
-class MockSseResponse extends EventEmitter {
-  statusCode = 200;
-  headers: Record<string, string> = {};
-  dataChunks: string[] = [];
-  writableEnded = false;
-  destroyed = false;
-
-  writeHead(statusCode: number, headers: Record<string, string>): this {
-    this.statusCode = statusCode;
-    Object.assign(this.headers, headers);
-    return this;
-  }
-
-  write(chunk: string): boolean {
-    if (this.writableEnded || this.destroyed) {
-      throw new Error('ERR_STREAM_WRITE_AFTER_END: write after end');
-    }
-    this.dataChunks.push(chunk);
-    return true;
-  }
-
-  end(): this {
-    this.writableEnded = true;
-    this.emit('close');
-    return this;
-  }
-
-  destroy(): this {
-    this.destroyed = true;
-    this.emit('close');
-    return this;
-  }
-}
-
-class MockSseRequest extends EventEmitter {
-  headers: Record<string, string> = {};
-  aborted = false;
-
-  abort(): void {
-    this.aborted = true;
-    this.emit('close');
-  }
-}
 
 function makeDoc(partial: Partial<CorpusDocument> & { id: string; title: string; path: string }): CorpusDocument {
   return {
@@ -337,7 +287,7 @@ describe('Tier 5 Adversarial Hardening: @omnitron-dev/lumen, @omnitron-dev/titan
   // ==========================================================================
   describe('Subsystem 2: @omnitron-dev/titan-lumen Adversarial Tests', () => {
     it('TC-ADV-TITAN-01A: executePlayground prevents host process access via constructor escape', async () => {
-      const service = new LumenRpcService();
+      const service = await asUser(new LumenService(), 'admin');
 
       // Attack: Sandbox escape via Function constructor
       const exploitCode = `
@@ -357,7 +307,7 @@ describe('Tier 5 Adversarial Hardening: @omnitron-dev/lumen, @omnitron-dev/titan
     });
 
     it('TC-ADV-TITAN-01B: executePlayground prevents host prototype pollution', async () => {
-      const service = new LumenRpcService();
+      const service = await asUser(new LumenService(), 'admin');
 
       // Attack: Polluting Object.prototype from inside the playground
       const exploitCode = `
@@ -373,7 +323,7 @@ describe('Tier 5 Adversarial Hardening: @omnitron-dev/lumen, @omnitron-dev/titan
     });
 
     it('TC-ADV-TITAN-01C: executePlayground denies require and child_process access', async () => {
-      const service = new LumenRpcService();
+      const service = await asUser(new LumenService(), 'admin');
 
       const exploitCode = `
         try {
@@ -389,7 +339,7 @@ describe('Tier 5 Adversarial Hardening: @omnitron-dev/lumen, @omnitron-dev/titan
     });
 
     it('TC-ADV-TITAN-02A: executePlayground terminates synchronous infinite loops within timeout', async () => {
-      const service = new LumenRpcService();
+      const service = await asUser(new LumenService(), 'admin');
 
       const infiniteLoop = `while (true) {}`;
       const start = Date.now();
@@ -402,7 +352,7 @@ describe('Tier 5 Adversarial Hardening: @omnitron-dev/lumen, @omnitron-dev/titan
     });
 
     it('TC-ADV-TITAN-03A: getDocument rejects null-byte injection path traversal', async () => {
-      const service = new LumenRpcService();
+      const service = await asUser(new LumenService(), 'admin');
 
       // Attack: Poisoned null byte attempting to bypass suffix/extension checks
       const traversalPath = 'docs/intro.pdx\0/../../../../etc/passwd';
@@ -412,7 +362,7 @@ describe('Tier 5 Adversarial Hardening: @omnitron-dev/lumen, @omnitron-dev/titan
     });
 
     it('TC-ADV-TITAN-03B: getDocument rejects URL-encoded directory traversal sequences', async () => {
-      const service = new LumenRpcService();
+      const service = await asUser(new LumenService(), 'admin');
 
       const attackVectors = [
         '%2e%2e%2fpackage.json',
@@ -495,53 +445,7 @@ describe('Tier 5 Adversarial Hardening: @omnitron-dev/lumen, @omnitron-dev/titan
       expect(confidentialToc).toBeUndefined();
     });
 
-    it('TC-ADV-TITAN-05A: SSE MCP transport handles abrupt client disconnection without throwing on write', async () => {
-      const liveEditService = new LiveEditService();
-      const req = new MockSseRequest();
-      const res = new MockSseResponse();
 
-      handleSseMcpConnection(req as unknown as IncomingMessage, res as unknown as ServerResponse, liveEditService);
-
-      // Verify connection established
-      expect(res.dataChunks.some((c) => c.includes('ready'))).toBe(true);
-
-      // Abruptly terminate response / close client
-      res.destroy();
-
-      // Emit live edit event on liveEditService: must NOT throw ERR_STREAM_WRITE_AFTER_END
-      await expect(
-        liveEditService.applyEdit({
-          docId: 'doc-collab',
-          baseRevision: 0,
-          patch: 'New line added after client disconnect',
-        })
-      ).resolves.toBeDefined();
-    });
-
-    it('TC-ADV-TITAN-05B: LiveEditService supports >10 SSE subscribers without MaxListeners warning', () => {
-      const liveEditService = new LiveEditService();
-      const warnSpy = vi.spyOn(process, 'emitWarning');
-
-      const clients: Array<{ req: MockSseRequest; res: MockSseResponse }> = [];
-      for (let i = 0; i < 20; i++) {
-        const req = new MockSseRequest();
-        const res = new MockSseResponse();
-        handleSseMcpConnection(req as unknown as IncomingMessage, res as unknown as ServerResponse, liveEditService);
-        clients.push({ req, res });
-      }
-
-      // Should not have triggered MaxListenersExceededWarning
-      const maxListenerWarnings = warnSpy.mock.calls.filter((call) =>
-        String(call[0]).includes('MaxListenersExceededWarning')
-      );
-      expect(maxListenerWarnings).toHaveLength(0);
-
-      // Clean up
-      for (const { req } of clients) {
-        req.abort();
-      }
-      warnSpy.mockRestore();
-    });
   });
 
   // ==========================================================================

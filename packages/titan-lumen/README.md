@@ -9,21 +9,21 @@ belong to Titan's Netron core.
 
 Register `LumenModule.forRoot({ docsDir: '/absolute/docs' })` in the application's
 modules, or use `LumenModule.forRootAsync({ useFactory, inject })` for configuration
-provided by DI. Resolve `LumenRpcController` and expose it on the application's
-Netron peer using `peer.exposeService(controller)`. The application owns its
+provided by DI. Resolve `LumenService` and expose it on the application's
+Netron peer using `peer.exposeService(app.resolve(LumenService))`. The application owns its
 listeners and authentication adapter; Lumen does not need a second HTTP auth
 middleware.
 
 The equivalent explicit composition is:
 
 ```ts
-import { LumenRpcController, LumenRpcService } from '@omnitron-dev/titan-lumen';
+import { LumenService } from '@omnitron-dev/titan-lumen';
 
-const documents = new LumenRpcService({
+const documents = new LumenService({
   docsDir: '/absolute/docs',
   enablePlayground: false,
 });
-await netron.peer.exposeService(new LumenRpcController(documents));
+await netron.peer.exposeService(documents);
 ```
 
 Configure authentication on the host Netron before opening its listeners. Use the
@@ -32,7 +32,7 @@ accept a role list or `valid: true` in a request as proof of identity.
 
 ## Published RPC surface
 
-The service name is `Lumen`. `ILumenRpcService` describes the six network methods:
+The service name is `Lumen`. `LumenServiceContract` describes the six network methods:
 
 | Method | Result | Authorization |
 | --- | --- | --- |
@@ -54,17 +54,66 @@ administrator. Search filters cannot override the verified caller's roles.
 `getOptions()` and `getAccessFilterService()` are internal service APIs and are
 not published RPC methods.
 
-`ILumenService` is the in-process contract for trusted adapters. Its optional
-`LumenSessionContext` parameter is resolved by the adapter on the server. It must
-never be passed through directly from an HTTP body, socket payload or tool
-arguments. `LumenRpcService` implements this interface; the network controller
-implements `ILumenRpcService`.
+Direct in-process reads outside an admitted Netron invocation are anonymous.
+Mutations require the corresponding admitted service method and a verified
+identity. There is one service and one contract; there are no session arguments,
+controller wrappers or alternate service tokens. Titan resolves the service and
+its `AccessFilterService` and `LiveEditService` collaborators by their classes.
+`LUMEN_OPTIONS_TOKEN` is the configuration token.
+
+An empty corpus returns empty results. A missing configured corpus reports an
+error when searching or loading the graph; it never substitutes demonstration
+documents or symbol contracts.
+
+## MCP on the existing Netron HTTP host
+
+`LumenMcpAdapter` uses the official MCP SDK for protocol negotiation, schemas and
+errors. It translates tool/resource calls into the host's native Netron HTTP
+entry point in process. Authorization headers and the host-supplied connection
+address enter the same authentication, permission and rate-limit path as RPC.
+The adapter has no listener, authentication callback or mutable caller session.
+
+```ts
+import { HttpNativeServer } from '@omnitron-dev/titan/netron/transport/http';
+import { LumenMcpAdapter } from '@omnitron-dev/titan-lumen';
+
+let mcp: LumenMcpAdapter;
+const http = new HttpNativeServer({
+  host: '127.0.0.1',
+  port: 8081,
+  customRoutes: [async (request, { remoteAddress }) =>
+    new URL(request.url).pathname === '/mcp'
+      ? mcp.handleRequest(request, remoteAddress)
+      : null],
+});
+http.setPeer(netron.peer);
+mcp = new LumenMcpAdapter({
+  http,
+  resources: ['guides/start.pdx'],
+  allowedHostnames: ['localhost', '127.0.0.1', '[::1]'],
+  allowedOriginHostnames: ['localhost', '127.0.0.1', '[::1]'],
+});
+await http.listen();
+```
+
+The adapter publishes `search_corpus`, `get_document`, `lumen_inspect_ast` and
+`lumen://corpus/{path}` resources. Resource lists contain only documents readable
+by the caller; every read re-enters the service, so no independent content store
+can bypass document access. Tool schemas reject undeclared role/session fields.
+
+The endpoint uses stateless Streamable HTTP with JSON responses. POST is the
+only accepted method; it does not open persistent SSE sessions. The default
+body limit is 1 MiB. Configure host/origin hostname allowlists for the actual
+deployment; they default to loopback names. Set `rpcPath` when the host changes
+its native invocation route. The host owns TLS, authentication and shutdown.
+See the [official TypeScript MCP SDK](https://github.com/modelcontextprotocol/typescript-sdk).
 
 ## Qualification status
 
 The 0.4.0 audit is in progress. Do not infer that a test with a PDF header,
 hydration flag or mock request establishes production readiness. The repository's
 `audit/LUMEN-0.4.0.md` records remaining sandbox, document projection, persistence,
-MCP and browser integration work. Keep remote playground execution disabled until
+and browser integration work. Live edits currently use bounded in-memory state;
+durable authoring is still a release blocker. Keep remote playground execution disabled until
 the isolated execution engine is qualified. Nothing in this package's audit
 activates changes on running Omnitron controllers or applications.

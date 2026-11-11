@@ -23,11 +23,12 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@omnitron-dev/access": "workspace:*",
     "@omnitron-dev/kb": "workspace:*",
     "@omnitron-dev/lumen-ast": "workspace:*",
-    "reflect-metadata": "^0.2.2",
-    "typescript": "npm:@typescript/typescript6@^6.0.2"
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "@modelcontextprotocol/server": "^2.4.0",
+    "@omnitron-dev/netron-protocol": "workspace:*",
+    "zod": "^4.6.7"
   },
   "peerDependencies": {
     "@omnitron-dev/titan": "workspace:*"
@@ -36,7 +37,8 @@
     "@omnitron-dev/titan": "workspace:*",
     "@types/node": "26.6.6",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "vitest": "^5.0.5"
+    "vitest": "^5.0.5",
+    "@modelcontextprotocol/client": "^2.4.0"
   },
   "engines": {
     "node": ">=22.12.0"

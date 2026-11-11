@@ -2,28 +2,28 @@ import { Worker } from 'node:worker_threads';
 import { extname, relative, resolve, sep as pathSep } from 'node:path';
 import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import ts from 'typescript';
-import { Injectable } from '@omnitron-dev/titan';
+import { Injectable, Service } from '@omnitron-dev/titan';
+import { Public, getCurrentInvocationContext } from '@omnitron-dev/titan/netron';
+import { Errors } from '@omnitron-dev/titan/errors';
 import { parseDocument, type LumenNode } from '@omnitron-dev/lumen-ast';
-import { DEFAULT_DOCS_DIR } from '../constants.js';
+import { DEFAULT_DOCS_DIR } from './constants.js';
 import {
   AccessFilterService,
   extractDocumentAccess,
   extractDocumentMetadata,
-} from '../access/access-filter.service.js';
-import { LiveEditService } from '../live/live-edit.service.js';
-import { LumenMcpServer } from '../mcp/mcp-server.js';
+} from './access/access-filter.service.js';
+import { LiveEditService } from './live/live-edit.service.js';
 import type {
-  ILumenModuleOptions,
-  ILumenService,
+  LumenModuleOptions,
+  LumenServiceContract,
   LiveEditPayload,
   LiveEditResult,
-  LumenSessionContext,
   PlaygroundResult,
   SearchOptions,
   SearchResult,
   SymbolContract,
   TheoremGraphData,
-} from '../interfaces.js';
+} from './types.js';
 
 export const MAX_PLAYGROUND_CODE_BYTES = 64 * 1024; // 64 KiB
 export const PLAYGROUND_VM_TIMEOUT_MS = 1850;
@@ -33,7 +33,6 @@ const MAX_SOURCE_FILE_BYTES = 2 * 1024 * 1024; // 2 MiB
 
 const ALLOWED_DOC_EXTENSIONS = new Set(['.pdx', '.md', '.mdx']);
 const ALLOWED_TS_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts']);
-const SEED_DOC_PATHS = new Set(['docs/intro.pdx', 'docs/collab.pdx']);
 
 const PLAYGROUND_WORKER_SCRIPT = `
 'use strict';
@@ -104,8 +103,8 @@ try {
 }
 `;
 
-function cloneModuleOptions(opts: ILumenModuleOptions): ILumenModuleOptions {
-  const cloned: ILumenModuleOptions = { ...opts };
+function cloneModuleOptions(opts: LumenModuleOptions): LumenModuleOptions {
+  const cloned: LumenModuleOptions = { ...opts };
   if (opts.accessFilter) {
     cloned.accessFilter = {
       ...opts.accessFilter,
@@ -302,36 +301,20 @@ function extractSymbolFromSourceFile(
   return null;
 }
 
+@Service('Lumen')
 @Injectable()
-export class LumenRpcService implements ILumenService {
-  private readonly options: ILumenModuleOptions;
+export class LumenService implements LumenServiceContract {
+  private readonly options: LumenModuleOptions;
   private readonly accessFilter: AccessFilterService;
   private readonly liveEdit: LiveEditService;
-  private readonly mcpServer: LumenMcpServer;
-  private readonly inMemoryCorpus = new Map<string, { id: string; title: string; content: string; access: string }>();
 
-  constructor(options: ILumenModuleOptions = {}) {
+  constructor(options: LumenModuleOptions = {}, accessFilter?: AccessFilterService, liveEdit?: LiveEditService) {
     this.options = cloneModuleOptions(options);
-    this.accessFilter = new AccessFilterService(this.options.accessFilter);
-    this.liveEdit = new LiveEditService(this.options.liveEdit);
-    this.mcpServer = new LumenMcpServer(this, this.accessFilter);
-
-    // Seed standard documentation references
-    this.inMemoryCorpus.set('docs/intro.pdx', {
-      id: 'doc-intro',
-      title: 'Introduction to Lumen',
-      content: 'Welcome to Lumen documentation and knowledge portal. Spectral theorems and quantum operators.',
-      access: 'public',
-    });
-    this.inMemoryCorpus.set('docs/collab.pdx', {
-      id: 'doc-collaborative-paper',
-      title: 'Collaborative Note',
-      content: 'Live collaborative document content.',
-      access: 'public',
-    });
+    this.accessFilter = accessFilter ?? new AccessFilterService(this.options.accessFilter);
+    this.liveEdit = liveEdit ?? new LiveEditService(this.options.liveEdit);
   }
 
-  getOptions(): ILumenModuleOptions {
+  getOptions(): LumenModuleOptions {
     return cloneModuleOptions(this.options);
   }
 
@@ -343,29 +326,17 @@ export class LumenRpcService implements ILumenService {
     return this.liveEdit;
   }
 
-  getMcpServer(): LumenMcpServer {
-    return this.mcpServer;
+  private callerRoles(): string[] {
+    return [...(getCurrentInvocationContext()?.auth?.roles ?? ['anonymous'])];
   }
 
-  private resolveSearchRoles(searchOptions?: SearchOptions, session?: LumenSessionContext): string[] {
-    if (session !== undefined) {
-      return this.accessFilter.getEffectiveRoles(session);
+  private requireMutation(method: 'executePlayground' | 'saveLiveEdit') {
+    const invocation = getCurrentInvocationContext();
+    if (!invocation?.auth) throw Errors.unauthorized('An authenticated Netron invocation is required');
+    if (invocation.serviceName !== 'Lumen' || invocation.methodName !== method) {
+      throw Errors.forbidden('The operation must enter through its published Netron method');
     }
-    const filterRoles = searchOptions?.filter?.roles;
-    if (Array.isArray(filterRoles) && filterRoles.length > 0) {
-      const valid = filterRoles.filter((r): r is string => typeof r === 'string' && r.trim().length > 0);
-      return valid.length > 0 ? valid : ['anonymous'];
-    }
-    return ['anonymous'];
-  }
-
-  private async projectAuthorizedContent(
-    content: string,
-    _docPath: string,
-    effectiveRoles: string[],
-    explicitAccess?: string
-  ): Promise<string | null> {
-    return this.accessFilter.filterRawMarkdownContent(content, effectiveRoles, explicitAccess);
+    return invocation.auth;
   }
 
   private async scanDocsDirectory(
@@ -439,7 +410,8 @@ export class LumenRpcService implements ILumenService {
     }
   }
 
-  async search(query: string, searchOptions?: SearchOptions, session?: LumenSessionContext): Promise<SearchResult[]> {
+  @Public({ auth: { allowAnonymous: true } })
+  async search(query: string, searchOptions?: SearchOptions): Promise<SearchResult[]> {
     if (!query || typeof query !== 'string' || query.trim().length === 0) {
       return [];
     }
@@ -449,7 +421,7 @@ export class LumenRpcService implements ILumenService {
     }
 
     const limit = searchOptions?.limit ?? 10;
-    const effectiveRoles = this.resolveSearchRoles(searchOptions, session);
+    const effectiveRoles = this.callerRoles();
     const trimmedQuery = query.trim();
     const lowerQuery = trimmedQuery.toLowerCase();
     const results: SearchResult[] = [];
@@ -496,20 +468,17 @@ export class LumenRpcService implements ILumenService {
     }
 
     // 2. Scan real .pdx / .md / .mdx files from options.docsDir when docsDir exists on disk
-    let docsDirExistsOnDisk = false;
     const docsBase = resolve(process.cwd(), this.options.docsDir ?? DEFAULT_DOCS_DIR);
     try {
       const realDocsBase = await realpath(docsBase);
       const baseStat = await stat(realDocsBase);
       if (baseStat.isDirectory()) {
-        docsDirExistsOnDisk = true;
         const diskDocs: Array<{ id: string; title: string; path: string; content: string; access: string }> = [];
         await this.scanDocsDirectory(realDocsBase, realDocsBase, diskDocs);
 
         for (const doc of diskDocs) {
-          const projectedContent = await this.projectAuthorizedContent(
+          const projectedContent = this.accessFilter.filterRawMarkdownContent(
             doc.content,
-            doc.path,
             effectiveRoles,
             doc.access
           );
@@ -541,47 +510,15 @@ export class LumenRpcService implements ILumenService {
         }
       }
     } catch {
-      docsDirExistsOnDisk = false;
-    }
-
-    // 3. Search in-memory corpus (default seed docs only when docsDir does not exist on disk)
-    for (const [docPath, doc] of this.inMemoryCorpus.entries()) {
-      if (docsDirExistsOnDisk && SEED_DOC_PATHS.has(docPath)) {
-        continue;
-      }
-
-      const docAccess = doc.access || extractDocumentAccess(doc.content);
-      const projectedContent = await this.projectAuthorizedContent(doc.content, docPath, effectiveRoles, docAccess);
-      if (projectedContent === null) {
-        continue;
-      }
-      const projectedBody = stripFrontmatter(projectedContent);
-
-      const matchTitle = doc.title.toLowerCase().includes(lowerQuery);
-      const matchContent = projectedBody.toLowerCase().includes(lowerQuery);
-
-      if (matchTitle || matchContent) {
-        if (!seenIds.has(doc.id)) {
-          seenIds.add(doc.id);
-          results.push({
-            documentId: doc.id,
-            title: doc.title,
-            path: docPath,
-            snippet: projectedBody.trim().slice(0, 160),
-            score: matchTitle ? 1.0 : 0.8,
-          });
-        }
-      }
-
-      if (results.length >= limit) {
-        break;
-      }
+      throw Errors.internal('Unable to read the configured documentation corpus');
     }
 
     return results;
   }
 
-  async executePlayground(code: string, _session?: LumenSessionContext): Promise<PlaygroundResult> {
+  @Public({ auth: { permissions: ['lumen.playground.execute'] } })
+  async executePlayground(code: string): Promise<PlaygroundResult> {
+    this.requireMutation('executePlayground');
     if (typeof code !== 'string') {
       return { code: String(code), result: null, error: 'Code must be a string' };
     }
@@ -688,12 +625,13 @@ export class LumenRpcService implements ILumenService {
     });
   }
 
-  async getDocument(docPath: string, session?: LumenSessionContext): Promise<string | null> {
+  @Public({ auth: { allowAnonymous: true } })
+  async getDocument(docPath: string): Promise<string | null> {
     if (isDisallowedDocumentPath(docPath)) {
       return null;
     }
 
-    const effectiveRoles = session ? this.accessFilter.getEffectiveRoles(session) : ['anonymous'];
+    const effectiveRoles = this.callerRoles();
     const ext = extname(docPath).toLowerCase();
     const lookupCandidates = ext !== '' ? [docPath] : [docPath, `${docPath}.pdx`, `${docPath}.md`, `${docPath}.mdx`];
     const fileCandidates = ext !== '' ? [docPath] : [`${docPath}.pdx`, `${docPath}.md`, `${docPath}.mdx`];
@@ -703,29 +641,11 @@ export class LumenRpcService implements ILumenService {
       const liveDoc = this.liveEdit.getDocument(candidate);
       if (liveDoc) {
         const docAccess = liveDoc.access ?? extractDocumentAccess(liveDoc.content);
-        return this.projectAuthorizedContent(liveDoc.content, candidate, effectiveRoles, docAccess);
+        return this.accessFilter.filterRawMarkdownContent(liveDoc.content, effectiveRoles, docAccess);
       }
     }
 
-    // 2. Check in-memory corpus (enforcing AccessFilterService)
-    for (const candidate of lookupCandidates) {
-      const memoryDoc = this.inMemoryCorpus.get(candidate);
-      if (memoryDoc) {
-        const docAccess = memoryDoc.access || extractDocumentAccess(memoryDoc.content);
-        return this.projectAuthorizedContent(memoryDoc.content, candidate, effectiveRoles, docAccess);
-      }
-    }
-
-    if (ext === '') {
-      for (const [memPath, memoryDoc] of this.inMemoryCorpus.entries()) {
-        if (memoryDoc.id === docPath) {
-          const docAccess = memoryDoc.access || extractDocumentAccess(memoryDoc.content);
-          return this.projectAuthorizedContent(memoryDoc.content, memPath, effectiveRoles, docAccess);
-        }
-      }
-    }
-
-    // 3. Symlink-safe canonical realpath check within docsDir (SEC-04 + SEC-02)
+    // Symlink-safe canonical realpath check within docsDir.
     try {
       const docsBase = resolve(process.cwd(), this.options.docsDir ?? DEFAULT_DOCS_DIR);
       const realDocsBase = await realpath(docsBase);
@@ -758,7 +678,7 @@ export class LumenRpcService implements ILumenService {
         }
 
         const content = await readFile(realTarget, 'utf8');
-        return await this.projectAuthorizedContent(content, candidate, effectiveRoles);
+        return this.accessFilter.filterRawMarkdownContent(content, effectiveRoles);
       }
     } catch {
       return null;
@@ -839,7 +759,8 @@ export class LumenRpcService implements ILumenService {
     return null;
   }
 
-  async getSymbolContract(symbol: string, _session?: LumenSessionContext): Promise<SymbolContract | null> {
+  @Public({ auth: { allowAnonymous: true } })
+  async getSymbolContract(symbol: string): Promise<SymbolContract | null> {
     if (!symbol || typeof symbol !== 'string' || symbol.trim().length === 0) {
       return null;
     }
@@ -887,45 +808,12 @@ export class LumenRpcService implements ILumenService {
       }
     }
 
-    // 3. Built-in standard symbols in the Lumen/Omnitron documentation and compiler suite
-    const knownContracts: Record<string, SymbolContract> = {
-      CorpusGraph: {
-        name: 'CorpusGraph',
-        kind: 'class',
-        filePath: 'packages/lumen/src/corpus/corpus-graph.ts',
-        signatures: ['class CorpusGraph'],
-        methods: { addDocument: 'void', getDocument: 'CorpusDocument | undefined' },
-      },
-      LumenMacroRegistry: {
-        name: 'LumenMacroRegistry',
-        kind: 'class',
-        filePath: 'packages/lumen-ast/src/katex/macro-registry.ts',
-        signatures: ['class LumenMacroRegistry'],
-        methods: { register: 'void', getMacros: 'Record<string, string>' },
-      },
-      lumen_inspect_ast: {
-        name: 'lumen_inspect_ast',
-        kind: 'tool',
-        filePath: 'packages/titan-lumen/src/mcp/mcp-server.ts',
-        signatures: ['function lumen_inspect_ast(docId: string): Promise<LumenDocumentAst>'],
-      },
-      search_corpus: {
-        name: 'search_corpus',
-        kind: 'tool',
-        filePath: 'packages/titan-lumen/src/mcp/mcp-server.ts',
-        signatures: ['function search_corpus(query: string, limit?: number): Promise<SearchResult[]>'],
-      },
-    };
-
-    if (Object.prototype.hasOwnProperty.call(knownContracts, trimmed)) {
-      return knownContracts[trimmed] ?? null;
-    }
-
     return null;
   }
 
-  async getTheoremGraph(session?: LumenSessionContext): Promise<TheoremGraphData> {
-    const effectiveRoles = session ? this.accessFilter.getEffectiveRoles(session) : ['anonymous'];
+  @Public({ auth: { allowAnonymous: true } })
+  async getTheoremGraph(): Promise<TheoremGraphData> {
+    const effectiveRoles = this.callerRoles();
 
     try {
       const docsBase = resolve(process.cwd(), this.options.docsDir ?? DEFAULT_DOCS_DIR);
@@ -1027,19 +915,15 @@ export class LumenRpcService implements ILumenService {
         }
       }
     } catch {
-      // Fall back to default reference theorem graph when docsDir is unavailable
+      throw Errors.internal('Unable to read the configured documentation corpus');
     }
 
-    return {
-      nodes: [
-        { id: 'thm-spectral', type: 'theorem', title: 'Spectral Theorem', status: 'verified' },
-        { id: 'def-hilbert', type: 'definition', title: 'Hilbert Space', status: 'canonical' },
-      ],
-      edges: [{ source: 'thm-spectral', target: 'def-hilbert', relation: 'dependsOn' }],
-    };
+    return { nodes: [], edges: [] };
   }
 
-  async saveLiveEdit(payload: LiveEditPayload, _session?: LumenSessionContext): Promise<LiveEditResult> {
-    return this.liveEdit.applyEdit(payload);
+  @Public({ auth: { permissions: ['lumen.documents.write'] } })
+  async saveLiveEdit(payload: LiveEditPayload): Promise<LiveEditResult> {
+    const auth = this.requireMutation('saveLiveEdit');
+    return this.liveEdit.applyEdit({ ...payload, author: auth.userId });
   }
 }

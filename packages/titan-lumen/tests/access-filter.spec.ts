@@ -28,13 +28,6 @@ describe('AccessFilterService', () => {
     expect(service.isAllowed(['anonymous'], 'unknown')).toBe(false);
   });
 
-  it('downgrades invalid session to anonymous', () => {
-    expect(service.getEffectiveRoles({ valid: false, roles: ['admin'] })).toEqual(['anonymous']);
-    expect(service.getEffectiveRoles(null)).toEqual(['anonymous']);
-    expect(service.getEffectiveRoles({ valid: true, roles: [] })).toEqual(['anonymous']);
-    expect(service.getEffectiveRoles({ valid: true, roles: ['staff'] })).toEqual(['staff']);
-  });
-
   it('filters sections based on caller role', () => {
     const sections = [
       { id: '1', access: 'public', title: 'Open' },

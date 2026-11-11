@@ -16,12 +16,12 @@ Baseline: `3ea505ad` (2026-11-11). This is a verification ledger, not a release 
 | --- | --- | --- | --- |
 | L40-01 | Malformed frontmatter can become public; migration uses a second parser; cyclic metadata survives. | One bounded data-only parser, fail-closed metadata, browser compatibility, regression tests. | Closed in source: five baseline failures reproduced; 78 AST and 29 migration tests, typechecks and both package builds pass. YAML/JSON share the browser-compatible bounded parser; plural `tests/` directories now receive the common lint policy. |
 | L40-02 | SSG and Titan re-parse raw source with independent access algorithms and incompatible role defaults. | One AST projection, one configurable permission policy, consistent exports and section semantics. | Closed in source: 96 AST, 49 site and 44 Titan-Lumen tests pass, including three reproduced mixed HTML/Markdown leaks and configurable SSG grants. Three builds/typechecks and changed-file lint pass. Roughly 1,000 duplicated lines removed. |
-| L40-03 | RPC controller trusts caller-supplied session roles, uses the HTTP auth decorator instead of Netron publication metadata, and retains mutable auth state. | Authoritative invocation context and actual HTTP/WS tests with concurrent identities. | Backend fixed: 91 Netron checks and 44 Titan-Lumen checks pass; HTTP/WS use trusted context, mutation grants are distinct. Browser and MCP transport integration still under audit. |
+| L40-03 | RPC controller trusts caller-supplied session roles, uses the HTTP auth decorator instead of Netron publication metadata, and retains mutable auth state. | Authoritative invocation context and actual HTTP/WS tests with concurrent identities. | Native backend and HTTP MCP corrected: one `LumenService`, class-based DI and one wire contract. No controller, session arguments, duplicate tokens or handwritten HTTP/SSE MCP transport. Official MCP client works through a real Netron HTTP listener; verified authors and concurrent caller isolation are tested. Browser integration and the separate static-corpus stdio MCP implementation remain under audit. |
 | L40-04 | Server JavaScript execution still uses node:vm inside a Worker; browser execution uses host JavaScript with an ambient-global denylist. | Capability-free interpreter, resource limits and no host fallback. | Open |
 | L40-05 | PDF is an ASCII-only handwritten PDF writer; it does not compile Typst and truncates long words. | Real typesetter with Unicode, mathematics, layout and independently decoded output checks. | Open |
 | L40-06 | SSG emits a second island runtime which reports hydration without mounting a component. | Built client assets using the actual lumen-ui runtime; interaction tests against generated output. | Open |
 | L40-07 | Pagefind is a handwritten compatibility layer; Mermaid/ELK implementation needs semantic verification. | Use real declared engines or expose accurately scoped alternatives, with representative fixtures. | Open |
-| L40-08 | Runtime starts with synthetic seed documents; live edits, persistence, missing-directory handling and KB authorization need end-to-end verification. | No synthetic production data or successful fallback; consistent durable state and authorization. | Open |
+| L40-08 | Runtime starts with synthetic seed documents; live edits, persistence, missing-directory handling and KB authorization need end-to-end verification. | No synthetic production data or successful fallback; consistent durable state and authorization. | Synthetic documents, symbol contracts and theorem-graph fallback removed. Missing configured corpus now fails search/graph reads explicitly. Durable editing, KB/source visibility, scan failure handling and traversal bounds remain open. |
 | L40-09 | SSG writes in place, silently skips invalid output paths, and can retain old files after access changes. | Validated output inventory and atomic replacement; deletion/restriction and interrupted-build tests. | Open |
 | L40-10 | Five package READMEs contain only a heading and one sentence. | Complete public APIs, configuration, trust model, practical examples and limitations; publish-install checks. | Open |
 
@@ -50,3 +50,33 @@ Pending comparison: VitePress, Rspress, Mintlify, MyST, Sphinx and Material for 
 - Canonical projections discard `rawContent` and author-only diagnostics. Tests
   verify useful public content in rendered outputs instead of relying on a
   second reconstructed raw-source cache.
+
+## Native service and adapter acceptance
+
+- `LumenService` owns its Netron publication metadata. Direct mutation calls
+  without an admitted invocation fail; HTTP and WebSocket share 401/403 behavior.
+  A caller cannot supply an author identity, role list or valid-session flag to
+  gain authority. The application resolves a single lazy service and its actual
+  collaborators through Titan, including asynchronous configuration.
+- `LumenMcpAdapter` uses the official MCP SDK for protocol negotiation, tool
+  schemas and resource handling. Calls enter native Netron HTTP in process;
+  they do not use a second authentication dispatcher or loopback connection.
+  Mounted adapters receive the real connection address, independent of spoofed
+  forwarding headers. Request bodies and host/origin names are bounded/validated.
+- Validation: 35 Titan-Lumen checks; 38 focused Netron HTTP checks; 69 affected
+  cross-package scenarios, including real Chromium and child-process CLI probes.
+  The latter include 100 concurrent MCP requests and 50 conflicting writes.
+  Builds and typechecks cover Titan-Lumen, Netron/Titan and Omnitron consumers.
+  Frozen-lockfile installation and changed-package lint pass. The actual
+  Titan-Lumen archive contains 35 files, all required public entry points, and
+  none of the removed controller, RPC/MCP directories, token aliases or interface
+  forwarding files. This is a local packaging check, not npm publication.
+- Removed the old F24/F25/F27 and B24/B25 tests of provider counts, synthetic
+  default documents, local imitation tools and handwritten diff functions.
+  Their useful coverage is exercised through real module lifecycle, HTTP/WS,
+  official MCP-client, document-projection and live-edit tests. Test subclasses
+  implementing their own role filtering were replaced by actual service calls.
+- These checks do not certify the worker sandbox or durable authoring. The
+  worker still uses `node:vm`, edits are still in memory, and the static-corpus
+  stdio adapter remains separate. Those release blockers must be closed before
+  claiming a production-ready 0.4.0.

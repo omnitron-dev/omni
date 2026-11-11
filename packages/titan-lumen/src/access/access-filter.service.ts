@@ -5,11 +5,9 @@ import {
   parseDocumentSync,
   parseSafeFrontmatter,
   toCleanMarkdown,
+  type DocumentAccessOptions,
   type LumenDocumentAst,
 } from '@omnitron-dev/lumen-ast';
-import type { AccessFilterOptions, LumenSessionContext } from '../interfaces.js';
-
-export { defaultDocRoleHierarchy, defaultRoleGrants } from '@omnitron-dev/lumen-ast';
 
 export function extractDocumentMetadata(content: string): { id?: string; title?: string; access: string } {
   const parsed = parseSafeFrontmatter(content);
@@ -29,13 +27,7 @@ export function extractDocumentAccess(content: string): string {
 
 @Injectable()
 export class AccessFilterService {
-  constructor(private readonly options: AccessFilterOptions = {}) {}
-
-  getEffectiveRoles(session?: LumenSessionContext | null): string[] {
-    if (!session || session.valid !== true || !Array.isArray(session.roles)) return ['anonymous'];
-    const roles = session.roles.filter((role): role is string => typeof role === 'string' && role.trim().length > 0);
-    return roles.length > 0 ? roles : ['anonymous'];
-  }
+  constructor(private readonly options: DocumentAccessOptions = {}) {}
 
   isAllowed(userRoles: string[], accessLevel?: unknown): boolean {
     return createDocumentAccessPredicate(userRoles, this.options)(accessLevel);

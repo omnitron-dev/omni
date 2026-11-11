@@ -7,33 +7,20 @@ import { AuthenticationManager } from '@omnitron-dev/titan/netron/auth';
 import { HttpNativeServer } from '@omnitron-dev/titan/netron/transport/http';
 import { WebSocketTransport } from '@omnitron-dev/titan/netron/transport/websocket';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
-import { LumenRpcController } from '../src/rpc/lumen-rpc.controller.js';
-import { LumenRpcService } from '../src/rpc/lumen-rpc.service.js';
-import type { ILumenRpcService, LiveEditPayload, LumenSessionContext } from '../src/interfaces.js';
-
-// Observe an accepted mutation without executing user code or writing real documents.
-class RecordingService extends LumenRpcService {
-  readonly mutations: Array<{ operation: string; session?: LumenSessionContext }> = [];
-  override async executePlayground(code: string, session?: LumenSessionContext) {
-    this.mutations.push({ operation: 'execute', session });
-    return { code, result: 42 };
-  }
-  override async saveLiveEdit(_payload: LiveEditPayload, session?: LumenSessionContext) {
-    this.mutations.push({ operation: 'edit', session });
-    return { success: true, revision: 2 };
-  }
-}
+import { LumenService } from '../src/lumen.service.js';
+import type { LumenServiceContract, LiveEditEvent } from '../src/types.js';
 
 describe('Lumen through the published Netron HTTP and WebSocket surface', () => {
   let server: Netron;
   let http: HttpNativeServer;
-  let service: RecordingService;
+  let service: LumenService;
+  let edits: LiveEditEvent[];
   let root: string;
   let baseUrl: string;
   let wsPort: number;
   const clients: Netron[] = [];
   const forged = { valid: true, roles: ['admin'], userId: 'forged' };
-  const payload = { docId: 'public.pdx', patch: 'change', baseRevision: 1 };
+  const payload = { docId: 'public.pdx', patch: 'change', baseRevision: 1, author: 'forged-author' };
 
   beforeEach(async () => {
     root = mkdtempSync(join(tmpdir(), 'lumen-authority-'));
@@ -53,8 +40,9 @@ describe('Lumen through the published Netron HTTP and WebSocket surface', () => 
     server.registerTransport('ws', () => new WebSocketTransport());
     server.registerTransportServer('ws', { name: 'ws', options: { host: '127.0.0.1', port: 0 } });
     await server.start();
-    service = new RecordingService({ docsDir: root });
-    await server.peer.exposeService(new LumenRpcController(service));
+    service = new LumenService({ docsDir: root });
+    edits = []; service.getLiveEditService().on('live-edit', (event: LiveEditEvent) => edits.push(event));
+    await server.peer.exposeService(service);
     wsPort = (server.transportServers.get('ws') as { port: number }).port;
     http = new HttpNativeServer({ host: '127.0.0.1', port: 0, cors: false });
     http.setPeer(server.peer);
@@ -83,7 +71,7 @@ describe('Lumen through the published Netron HTTP and WebSocket surface', () => 
     client.registerTransport('ws', () => new WebSocketTransport());
     const peer = await client.connect(`ws://127.0.0.1:${wsPort}`);
     if (token) expect(await peer.runTask('authenticate', { token })).toMatchObject({ success: true });
-    return peer.queryInterface<ILumenRpcService>('Lumen');
+    return peer.queryInterface<LumenServiceContract>('Lumen');
   }
 
   it('exposes the six intended methods and hides internal service configuration', async () => {
@@ -100,7 +88,7 @@ describe('Lumen through the published Netron HTTP and WebSocket surface', () => 
     expect((await invoke('saveLiveEdit', [payload, forged], 'reader')).status).toBe(403);
     expect((await invoke('getDocument', ['secret.pdx', forged])).body.data).toBeNull();
     expect((await invoke('search', ['Corpus', { filter: { roles: ['admin'] } }, forged])).body.data.map((hit: { title: string }) => hit.title)).toEqual(['Public']);
-    expect(service.mutations).toEqual([]);
+    expect(edits).toEqual([]);
   });
 
   it('uses the same authorization on WebSocket and grants independently configurable operations', async () => {
@@ -112,7 +100,7 @@ describe('Lumen through the published Netron HTTP and WebSocket surface', () => 
     const editor = await socket('editor-without-execute');
     expect(await editor.saveLiveEdit(payload)).toMatchObject({ success: true });
     await expect(editor.executePlayground('42')).rejects.toMatchObject({ code: 403 });
-    expect(service.mutations).toEqual([{ operation: 'edit', session: { valid: true, userId: 'limited-editor', roles: ['staff'] } }]);
+    expect(edits).toMatchObject([{ author: 'limited-editor', docId: 'public.pdx', patch: 'change' }]);
   });
 
   it('uses validated identities for allowed reads and writes on both transports', async () => {
@@ -127,7 +115,6 @@ describe('Lumen through the published Netron HTTP and WebSocket surface', () => 
     expect(results[1].body.data).toBeNull();
     expect(results[2]).toMatchObject({ status: 200, body: { data: { result: 42 } } });
     expect(results[3]).toMatchObject({ success: true });
-    expect(service.mutations).toHaveLength(2);
-    for (const mutation of service.mutations) expect(mutation.session).toEqual({ valid: true, roles: ['admin'], userId: 'trusted-editor' });
+    expect(edits).toMatchObject([{ author: 'trusted-editor' }]);
   });
 });

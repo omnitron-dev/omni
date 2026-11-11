@@ -2,27 +2,28 @@ import { describe, it, expect } from 'vitest';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ApiExplorer, NetronPlayground, PortalIslandHost } from '@omnitron-dev/lumen-ui';
-import { LumenRpcService } from '@omnitron-dev/titan-lumen';
+import { LumenService } from '@omnitron-dev/titan-lumen';
+import { asUser } from '../../../packages/titan-lumen/tests/netron-fixture.js';
 
 describe('Feature 15: Interactive Playground & Explorer Boundaries', () => {
-  it('TC-B15-01: executes infinite loop snippet guard via timeout simulation', async () => {
-    const service = new LumenRpcService();
+  it('TC-B15-01: executes infinite loop snippet guard through an authorized Netron invocation', async () => {
+    const service = await asUser(new LumenService(), 'admin');
     const infiniteSnippet = 'while (true) { /* infinite loop */ }';
 
     const result = (await service.executePlayground(infiniteSnippet)) as {
       code: string;
       result: unknown;
+      error?: string;
     };
     expect(result).toBeDefined();
     expect(result.code).toContain('while (true)');
+    expect(result.result).toBeNull();
+    expect(result.error).toMatch(/timed out/);
   });
 
-  it('TC-B15-02: handles offline backend simulation without crashing client components', async () => {
-    // Simulate unreachable RPC service
-    const offlineService = new LumenRpcService({ docsDir: '__non_existent_offline__' });
-    const searchRes = await offlineService.search('test query');
-    expect(Array.isArray(searchRes)).toBe(true);
-    expect(searchRes).toHaveLength(0);
+  it('TC-B15-02: reports an unavailable configured corpus without fabricating empty success', async () => {
+    const offlineService = new LumenService({ docsDir: '__non_existent_offline__' });
+    await expect(offlineService.search('test query')).rejects.toThrow('configured documentation corpus');
 
     const docRes = await offlineService.getDocument('phantom.pdx');
     expect(docRes).toBeNull();

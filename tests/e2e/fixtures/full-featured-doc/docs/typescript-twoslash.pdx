@@ -28,4 +28,4 @@ const config: SiteConfig = {
 
 <ApiExplorer symbol="CorpusGraph" module="@omnitron-dev/lumen" />
 
-<NetronPlayground service="LumenRpcService" method="search" />
+<NetronPlayground service="Lumen" method="search" />

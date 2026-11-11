@@ -8,7 +8,7 @@ import type {
   LiveEditPayload,
   LiveEditResult,
   LiveEditServiceOptions,
-} from '../interfaces.js';
+} from '../types.js';
 
 export const DEFAULT_MAX_LIVE_DOCUMENTS = 500;
 export const DEFAULT_MAX_PATCH_BYTES = 262_144; // 256 KiB

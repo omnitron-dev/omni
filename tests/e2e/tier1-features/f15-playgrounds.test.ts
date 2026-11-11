@@ -52,7 +52,7 @@ describe('Feature 15: Interactive Playground & Explorer', () => {
 
   it('TC-F15-05: serializes complex configuration props safely to data-props', () => {
     const complexProps = {
-      service: 'LumenRpcService',
+      service: 'Lumen',
       method: 'search',
       timeoutMs: 5000,
       headers: { 'X-Requested-With': 'LumenUI' },
@@ -67,7 +67,7 @@ describe('Feature 15: Interactive Playground & Explorer', () => {
     );
 
     expect(html).toContain('data-props');
-    expect(html).toContain('LumenRpcService');
+    expect(html).toContain('Lumen');
     expect(html).toContain('timeoutMs');
   });
 });

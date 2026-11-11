@@ -2,14 +2,15 @@ import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
 import { parseDocument, toHtmlSsr, toCleanMarkdown } from '@omnitron-dev/lumen-ast';
 import { CorpusGraph, type CorpusDocument } from '@omnitron-dev/lumen';
-import { LumenRpcService } from '@omnitron-dev/titan-lumen';
+import type { LiveEditEvent } from '@omnitron-dev/titan-lumen';
+import { asUser, createLumenFixture } from '../../../packages/titan-lumen/tests/netron-fixture.js';
 
 describe('Tier 4: Scenario 15 — Live Collaborative Editing Ingestion', () => {
   function hash(content: string): string {
     return createHash('sha256').update(content).digest('hex');
   }
 
-  it('receives live edit stream updates and updates CorpusGraph node and cache atomically', async () => {
+  it('replaces a corpus graph document and renders the updated AST', async () => {
     const graph = new CorpusGraph();
 
     // Initial document state before live edit
@@ -39,7 +40,7 @@ The spectral radius satisfies $\\rho(T) = 1$.
     expect(graph.getDocument(docId)?.hash).toBe(initialHash);
     expect(initialHtml).toContain('The spectral radius satisfies');
 
-    // Simulate ResearchEditor SSE / HTTP live diff event:
+    // The graph owns document replacement; durable edit ingestion is qualified separately.
     // Co-author refines hypothesis into a formal theorem
     const editedText = `---
 title: Collaborative Quantum Note
@@ -82,15 +83,19 @@ For any normal operator $T$ on a Hilbert space, $\\rho(T) = \\|T\\|$.
     expect(editedCleanMd).toContain('Spectral Radius Identity');
   });
 
-  it('integrates with Titan LumenModule RPC to propagate live edit notifications', async () => {
-    const rpcService = new LumenRpcService({
-      docsDir: 'docs',
-      kbEnabled: true,
-      mcpEnabled: true,
+  it('emits the verified author and accepted revision after an admitted RPC edit', async () => {
+    const service = createLumenFixture();
+    const events: LiveEditEvent[] = [];
+    service.getLiveEditService().on('live-edit', event => events.push(event));
+    const client = await asUser(service, 'admin');
+    const result = await client.saveLiveEdit({
+      docId: 'collab.pdx', patch: '# Accepted draft', baseRevision: 1, author: 'forged',
     });
-
-    // Inquire about document state through RPC
-    const docContent = await rpcService.getDocument('docs/collab.pdx');
-    expect(docContent === null || typeof docContent === 'string').toBe(true);
+    expect(result).toMatchObject({ success: true, revision: 2 });
+    expect(events).toMatchObject([{ docId: 'collab.pdx', revision: 2, author: 'verified-admin' }]);
+    expect(await client.getDocument('collab.pdx')).toContain('# Accepted draft');
+    const conflict = await client.saveLiveEdit({ docId: 'collab.pdx', patch: 'stale', baseRevision: 1 });
+    expect(conflict.conflict).toBe(true);
+    expect(events).toHaveLength(1);
   });
 });

@@ -191,10 +191,10 @@ overrides:
   react: 19.3.1
   react-dom: 19.3.1
   react-router-dom: 7.18.5
-  '@xec-sh/core': 0.11.3
-  '@xec-sh/kit': 0.11.3
-  '@xec-sh/loader': 0.11.3
-  '@xec-sh/ops': 0.11.3
+  '@xec-sh/core': 0.11.4
+  '@xec-sh/kit': 0.11.4
+  '@xec-sh/loader': 0.11.4
+  '@xec-sh/ops': 0.11.4
 
 patchedDependencies:
   '@ts-morph/common@0.29.0': 0410e2a72a770cb3c724f5e414d1acf8c5d5e27e829beccb320fc1fe89a13cbc
@@ -236,11 +236,11 @@ importers:
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
       '@xec-sh/kit':
-        specifier: 0.11.3
-        version: 0.11.3
+        specifier: 0.11.4
+        version: 0.11.4
       '@xec-sh/ops':
-        specifier: 0.11.3
-        version: 0.11.3
+        specifier: 0.11.4
+        version: 0.11.4
       add:
         specifier: ^2.0.9
         version: 2.0.9
@@ -326,14 +326,14 @@ importers:
         specifier: 1100.1.24
         version: 1100.1.24(@pnpm/logger@1100.0.0)
       '@xec-sh/core':
-        specifier: 0.11.3
-        version: 0.11.3
+        specifier: 0.11.4
+        version: 0.11.4
       '@xec-sh/kit':
-        specifier: 0.11.3
-        version: 0.11.3
+        specifier: 0.11.4
+        version: 0.11.4
       '@xec-sh/ops':
-        specifier: 0.11.3
-        version: 0.11.3
+        specifier: 0.11.4
+        version: 0.11.4
       acorn:
         specifier: 8.19.0
         version: 8.19.0
@@ -4457,22 +4457,22 @@ packages:
   '@vitest/utils@5.0.5':
     resolution: {integrity: sha512-/rBu7gzLDQI/SC79Tn98b5DwOgaHU/Gt4I9OVeP3YofzNaYtbImRCOJQmT1S6vOJg9gEIlWC+r3QxKkjuSa1nQ==}
 
-  '@xec-sh/core@0.11.3':
-    resolution: {integrity: sha512-vjtXRD2qXMdVogas70ASuN33ZEdsOS4zc84HuMwnYEZ1yMNhrXH8ec8tREf6xg9/UBpROuEzaV1BZXemDAIuWA==}
+  '@xec-sh/core@0.11.4':
+    resolution: {integrity: sha512-AkhN1Z3M/2oWvf37Rxf4cVkCuSkmPAGFdAD99r1x3X+f4Lk7f/Ai8REh0THuE+ijbKRBTn+Y6p4lFmTpuTFvNQ==}
     engines: {node: '>=20.0.0'}
     bundledDependencies:
       - ssh2
 
-  '@xec-sh/kit@0.11.3':
-    resolution: {integrity: sha512-eCnDvEODR9H+pC7u5C+NeJVkokDKldgCGjbwXdmMdKa+Ly3w1uKYRPU0JrlZBNY+op+zvuM+jiKzUUtSs8NkgQ==}
+  '@xec-sh/kit@0.11.4':
+    resolution: {integrity: sha512-p0x/zZDy3/yn+eWfb0b3NvKFbtirBgFGJ9CYrg5OtxQzBKIMFXvMnvW+LV+G6Ub4lKi0VQU6KaUbmYvjjMwFXw==}
     engines: {bun: '>=1.2.0', node: '>=20.0.0'}
 
-  '@xec-sh/loader@0.11.3':
-    resolution: {integrity: sha512-9Riv04hR8xXAUmuoNUUTogcHJYF05dXZaUrBlASbC30xfc4dXpyzauVWr/Q5ouKN2nBZQuBohz7t/pAhdbKrDQ==}
+  '@xec-sh/loader@0.11.4':
+    resolution: {integrity: sha512-OrJTLcC88Vtyx2dnJReAXjeQwLZjyUp/nqUQgNOBXVgWJ3HoEkgoQt4J/aYao+zmwXb7hD5QJ0GJ2NNAUVpWVQ==}
     engines: {node: '>=20.0.0'}
 
-  '@xec-sh/ops@0.11.3':
-    resolution: {integrity: sha512-deaGzf/QlijBl1ZzfVo9SAmnvnMEmhZPBABoEF9oCmmbzGOYNNH4MXnP8/MaVWZdEzwqlx7HVelfMH/jVib09A==}
+  '@xec-sh/ops@0.11.4':
+    resolution: {integrity: sha512-PqWD63T16o/Ipk3dWJJgH9O4RvxiXPPmuwrCORSucExTRoWSg8xQdAvWIJtPa/UUMx8eAmZ+8RRZqoiqbsZQfw==}
     engines: {node: '>=20.0.0'}
 
   '@xterm/addon-fit@0.11.0':
@@ -10512,22 +10512,22 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.2.0
 
-  '@xec-sh/core@0.11.3': {}
+  '@xec-sh/core@0.11.4': {}
 
-  '@xec-sh/kit@0.11.3':
+  '@xec-sh/kit@0.11.4':
     dependencies:
       sisteransi: 2.0.0
 
-  '@xec-sh/loader@0.11.3':
+  '@xec-sh/loader@0.11.4':
     dependencies:
-      '@xec-sh/kit': 0.11.3
+      '@xec-sh/kit': 0.11.4
       esbuild: 0.28.2
 
-  '@xec-sh/ops@0.11.3':
+  '@xec-sh/ops@0.11.4':
     dependencies:
-      '@xec-sh/core': 0.11.3
-      '@xec-sh/kit': 0.11.3
-      '@xec-sh/loader': 0.11.3
+      '@xec-sh/core': 0.11.4
+      '@xec-sh/kit': 0.11.4
+      '@xec-sh/loader': 0.11.4
       dotenv: 18.0.9
       fs-extra: 11.4.1
       glob: 14.0.3

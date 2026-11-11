@@ -1,0 +1,16 @@
+---
+id: getting-started
+title: Getting Started
+description: Setup and installation
+sidebar_position: 2
+---
+
+# Getting Started
+
+Install the CLI tool:
+
+```bash
+pnpm add @omnitron-dev/lumen
+```
+
+Return to [Architecture Overview](./intro.pdx#architecture).

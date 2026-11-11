@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "noPropertyAccessFromIndexSignature": false,
+    "noUncheckedIndexedAccess": false,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ESNext",
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "allowJs": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "@omnitron-dev/lumen-ast": ["../../packages/lumen-ast/src/index.ts"],
+      "@omnitron-dev/lumen-ast/*": ["../../packages/lumen-ast/src/*"],
+      "@omnitron-dev/lumen-ui": ["../../packages/lumen-ui/src/index.ts"],
+      "@omnitron-dev/lumen-ui/*": ["../../packages/lumen-ui/src/*"],
+      "@omnitron-dev/lumen": ["../../packages/lumen/src/index.ts"],
+      "@omnitron-dev/lumen/*": ["../../packages/lumen/src/*"],
+      "@omnitron-dev/titan-lumen": ["../../packages/titan-lumen/src/index.ts"],
+      "@omnitron-dev/titan-lumen/*": ["../../packages/titan-lumen/src/*"],
+      "@omnitron-dev/lumen-migrate": ["../../packages/lumen-migrate/src/index.ts"],
+      "@omnitron-dev/lumen-migrate/*": ["../../packages/lumen-migrate/src/*"]
+    }
+  },
+  "include": ["./**/*.ts", "./**/*.tsx"],
+  "exclude": ["../../node_modules", "../../dist", "./fixtures/**"]
+}

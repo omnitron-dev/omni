@@ -1,0 +1,8 @@
+---
+id: page-a
+title: Page A
+---
+
+# Page A
+
+Link to non-existent document: [Missing Document](./non-existent-page.pdx).

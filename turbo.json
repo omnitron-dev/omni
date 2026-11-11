@@ -56,6 +56,15 @@
         "kb/generated/**"
       ],
       "outputLogs": "new-only"
+    },
+    "test:e2e": {
+      "dependsOn": [
+        "build"
+      ],
+      "outputs": [
+        "dist/e2e-report.json"
+      ],
+      "cache": false
     }
   }
 }

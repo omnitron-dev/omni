@@ -28,7 +28,8 @@
     "kb:extract": "turbo kb:extract",
     "kb:index": "cd apps/omnitron && tsx src/commands/kb.ts index",
     "check:reproducibility": "node scripts/check-reproducible-backend.mjs",
-    "check:packages": "node scripts/check-package-exports.mjs"
+    "check:packages": "node scripts/check-package-exports.mjs",
+    "test:e2e": "vitest run --config tests/e2e/vitest.e2e.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -52,7 +53,8 @@
     "tsx": "^4.23.15",
     "turbo": "^2.11.10",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "@typescript/native": "npm:typescript@^7.0.2"
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "vitest": "^5.0.5"
   },
   "packageManager": "pnpm@12.16.1",
   "engines": {

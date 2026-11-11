@@ -1,0 +1,16 @@
+---
+id: circular-theorems
+title: Circular Dependency Suite
+---
+
+:::theorem{id="thm-alpha" title="Theorem Alpha" dependsOn=["thm-gamma"]}
+Alpha statement.
+:::
+
+:::theorem{id="thm-beta" title="Theorem Beta" dependsOn=["thm-alpha"]}
+Beta statement.
+:::
+
+:::theorem{id="thm-gamma" title="Theorem Gamma" dependsOn=["thm-beta"]}
+Gamma statement.
+:::

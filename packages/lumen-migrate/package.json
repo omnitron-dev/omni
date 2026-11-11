@@ -1,0 +1,54 @@
+{
+  "name": "@omnitron-dev/lumen-migrate",
+  "version": "0.3.5",
+  "description": "Docusaurus to Lumen migration engine and URL/anchor parity verification tool",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "lumen-migrate": "./bin/lumen-migrate.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./cli": {
+      "types": "./dist/cli/index.d.ts",
+      "import": "./dist/cli/index.js",
+      "default": "./dist/cli/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "../../scripts/build-package.sh -p ./tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@omnitron-dev/lumen-ast": "workspace:*",
+    "commander": "^15.0.0",
+    "gray-matter": "^4.0.3",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omnitron-dev/omni.git",
+    "directory": "packages/lumen-migrate"
+  }
+}

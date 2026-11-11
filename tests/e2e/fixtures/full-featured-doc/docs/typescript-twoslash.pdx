@@ -1,0 +1,31 @@
+---
+id: typescript-twoslash
+title: TypeScript Twoslash and Interactive Islands
+description: Build-time code type-checking and portal island hydration
+sidebar_position: 3
+---
+
+# TypeScript Twoslash & Interactive Islands
+
+## Typechecked Snippet {#twoslash-demo}
+
+```ts twoslash
+// @errors: 2322
+interface SiteConfig {
+  title: string;
+  url: string;
+  locales: string[];
+}
+
+const config: SiteConfig = {
+  title: "Scientific Portal",
+  url: "https://science.example.com",
+  locales: 12345
+};
+```
+
+## Interactive Portal Islands {#portal-islands}
+
+<ApiExplorer symbol="CorpusGraph" module="@omnitron-dev/lumen" />
+
+<NetronPlayground service="LumenRpcService" method="search" />

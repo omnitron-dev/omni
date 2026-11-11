@@ -1,0 +1,15 @@
+---
+id: intro
+title: Introduction to Lumen
+description: Baseline documentation entry point
+sidebar_position: 1
+---
+
+# Introduction
+
+Welcome to Lumen SSG. This is a minimal documentation fixture.
+
+## Architecture {#architecture}
+
+Lumen provides isomorphic compilation for typed documentation.
+Proceed to [Getting Started](./getting-started.pdx) for installation details.

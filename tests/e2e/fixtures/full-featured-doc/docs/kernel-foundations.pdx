@@ -1,0 +1,63 @@
+---
+id: kernel-foundations
+title: Mathematical Kernel Foundations
+description: Formal verification of mathematical statements and environments
+sidebar_position: 1
+paper: true
+authors:
+  - LuxQuant Research Team
+abstract: A rigorous formulation of spectral properties in infinite-dimensional vector spaces.
+---
+
+# Mathematical Kernel Foundations
+
+This document demonstrates all ten formal mathematical environments supported by Lumen AST.
+
+## Hilbert Spaces in $\R^n$ {#hilbert-spaces}
+
+:::axiom{id="ax-cauchy-schwarz" title="Inner Product Continuity"}
+For all elements $u, v \in \mathcal{H}$, the inner product satisfies $\braket{u | v} \le \norm{u} \norm{v}$.
+:::
+
+:::definition{id="def-hilbert-space" title="Hilbert Space" status="verified"}
+A Hilbert space $\mathcal{H}$ is a real or complex inner product space that is also a complete metric space with respect to the distance function induced by the inner product.
+:::
+
+:::theorem{id="thm-spectral-decomp" title="Spectral Decomposition" status="verified" dependsOn=["ax-cauchy-schwarz", "def-hilbert-space"]}
+Let $T$ be a compact self-adjoint operator on $\mathcal{H}$. There exists an orthonormal basis consisting of eigenvectors of $T$.
+:::
+
+:::lemma{id="lem-orthogonal-projection" title="Orthogonal Projection" dependsOn=["def-hilbert-space"]}
+For every closed subspace $M \subset \mathcal{H}$, any vector $x \in \mathcal{H}$ can be uniquely written as $x = y + z$ where $y \in M$ and $z \in M^\perp$.
+:::
+
+:::proposition{id="prop-norm-equivalence" title="Norm Equivalence"}
+On a finite-dimensional vector space over $\R$, all norms are topologically equivalent.
+:::
+
+:::corollary{id="cor-dimension-bound" title="Dimension Bound" dependsOn=["thm-spectral-decomp"]}
+Every compact self-adjoint operator has at most countably many non-zero eigenvalues.
+:::
+
+:::proof{of="thm-spectral-decomp"}
+By the Rayleigh quotient maximization on the unit sphere, let $\lambda_1 = \sup_{\norm{x}=1} \braket{Tx | x}$. Compactness guarantees attainment of the supremum, yielding an eigenvector $e_1$. Induction on the orthogonal complement completes the decomposition.
+:::
+
+:::remark{title="Historical Note"}
+The spectral theorem was originally formulated by David Hilbert in the context of integral equations.
+:::
+
+:::example{title="Finite Matrix Realization"}
+Consider the symmetric matrix $A = \begin{pmatrix} 2 & 1 \\ 1 & 2 \end{pmatrix}$. The eigenvalues are $\lambda_1 = 3, \lambda_2 = 1$.
+:::
+
+:::hypothesis{id="hyp-spectral-gap" title="Spectral Gap Bound"}
+There exists a universal constant $c > 0$ such that the spectral gap $\Delta \ge c / \sqrt{N}$ for all lattice dimensions $N$.
+:::
+
+## Cross-Referencing
+
+Reference to our theorem: see @thm:thm-spectral-decomp.
+Definition reference: see @def:def-hilbert-space.
+Lemma reference: see @lemma:lem-orthogonal-projection.
+External API reference: see @api:@omnitron-dev/titan.

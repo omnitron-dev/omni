@@ -1,5 +1,6 @@
 internal/
 .playwright-mcp/
+.agents/
 # Dependencies
 node_modules/
 

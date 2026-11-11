@@ -1,0 +1,56 @@
+{
+  "name": "@omnitron-dev/lumen-ast",
+  "version": "0.3.5",
+  "description": "Pure isomorphic prism-doc/2 AST compiler, math environments, Shiki/Twoslash highlighter, and multi-target emitters",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "../../scripts/build-package.sh -p ./tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3",
+    "katex": "^0.19.1",
+    "mdast-util-directive": "^3.2.0",
+    "mdast-util-from-markdown": "^2.1.0",
+    "mdast-util-gfm": "^3.1.0",
+    "mdast-util-math": "^3.0.0",
+    "mdast-util-to-markdown": "^2.2.1",
+    "mermaid": "^12.2.0",
+    "micromark-extension-directive": "^4.0.0",
+    "micromark-extension-gfm": "^3.0.0",
+    "micromark-extension-math": "^3.1.0",
+    "shiki": "^4.6.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/katex": "^0.16.7",
+    "@types/node": "26.6.6",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "vitest": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omnitron-dev/omni.git",
+    "directory": "packages/lumen-ast"
+  }
+}

@@ -1,0 +1,34 @@
+---
+id: architectural-diagrams
+title: Architectural Diagrams
+description: Build-time Mermaid diagram compilation with ELK layout
+sidebar_position: 2
+---
+
+# Architectural Diagrams
+
+## Pipeline Flowchart {#pipeline}
+
+```mermaid
+%%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
+flowchart TD
+  Source[Source .pdx Files] --> Compiler[Lumen AST Compiler]
+  Compiler --> SSR[Static HTML SSR]
+  Compiler --> MD[Clean Markdown Mirrors]
+  Compiler --> Typst[Typst Academic PDF Engine]
+  SSR --> Dist[Output Distribution]
+  MD --> Dist
+  Typst --> Dist
+```
+
+## State Machine {#state-machine}
+
+```mermaid
+stateDiagram-v2
+  [*] --> Draft
+  Draft --> Review: Submit
+  Review --> Verified: Corpus Gates Pass
+  Review --> Rejected: Gate Violations
+  Rejected --> Draft: Edit
+  Verified --> [*]
+```

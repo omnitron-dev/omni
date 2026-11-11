@@ -117,7 +117,8 @@ The full production dependency graphs must stay inside that consumer checkout
 Alongside the baseline → candidate → baseline service transition, this exercises
 one project's source and pinned-release stacks through the public project API:
 single and pooled bootstrap workers, source watch without restarting frozen workers,
-a second cold candidate start, retained release selection, and explicit refusal of
+a storage write/read from each worker in the application's directory, a second cold
+candidate start, retained release selection, and explicit refusal of
 a changed declaration. It verifies runtime bytes and entry change times after the
 applications run. All services, Git inputs and release archives belong to the private
 fixture; this does not establish cold readiness of real application registrations.

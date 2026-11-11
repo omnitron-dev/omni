@@ -96,10 +96,15 @@ import {RUNTIME_CONTEXT} from '@omnitron-dev/omnitron/runtime';
 import {value} from './value.${extension}';
 class Probe {
   constructor(adapter,context){this.adapter=adapter;this.context=context;}
-  onInit(){
+  async onInit(){
     if(this.context.state!=='verified')fs.writeFileSync('application-state-'+process.pid+'.txt',value);
+    const storageKey='native-fixture/'+process.pid+'.txt';
+    await this.adapter.put(storageKey,Buffer.from(value),{contentType:'text/plain'});
+    const stored=await this.adapter.get(storageKey),chunks=[];
+    for await(const chunk of stored.body)chunks.push(Buffer.from(chunk));
+    if(Buffer.concat(chunks).toString()!==value)throw Error('Application storage read differs from its write');
     const record=()=>fs.appendFileSync(process.env.RUNTIME_PROOF,JSON.stringify({at:Date.now(),pid:process.pid,parent:process.ppid,
-      cwd:process.cwd(),module:import.meta.url,stack:process.env.OMNITRON_STACK,role:${JSON.stringify(role)},value,context:this.context})+'\\n');
+      cwd:process.cwd(),module:import.meta.url,stack:process.env.OMNITRON_STACK,role:${JSON.stringify(role)},value,storageKey,context:this.context})+'\\n');
     record();this.timer=setInterval(record,200);this.timer.unref();
   }
   onDestroy(){clearInterval(this.timer);}
@@ -172,7 +177,9 @@ providers:[LocalAdapter,Probe]})(RuntimeModule);export default RuntimeModule;
         assert.ok(fileURLToPath(row.module).startsWith(path.join(instance, 'releases', '.installed') + path.sep),
           'Frozen executable must come from its verified installation');
       }
-      await assert.rejects(fs.lstat(path.join(row.cwd, 'data/storage')), { code: 'ENOENT' });
+      assert.equal(row.storageKey, 'native-fixture/' + row.pid + '.txt');
+      assert.equal(await fs.readFile(path.join(app, 'data/storage', row.storageKey), 'utf8'), value,
+        'Storage writes must land in the application directory, never in its sealed owner or executable');
     }
     const info = await call('getStack', { stack });
     assert.equal(info.apps.length, 1);
@@ -259,7 +266,7 @@ providers:[LocalAdapter,Probe]})(RuntimeModule);export default RuntimeModule;
       assert.equal(report.declarationDriftRefused, true);
       assert.equal(report.watchPreservedFrozenWorkers, true);
       await verifyRuntimeArtifact(runtime, candidate.id, unchangedSince);
-      return { ...report, sealedOwnerUnchanged: true, publicStackLifecycle: true };
+      return { ...report, applicationStorageVerified: true, sealedOwnerUnchanged: true, publicStackLifecycle: true };
     },
   };
 }

@@ -12,7 +12,7 @@ import { createNullLogger } from '../../../src/types/logger.js';
 import type { NetronReadableStream } from '../../../src/netron/streams/index.js';
 import type { AuthContext } from '../../../src/netron/auth/types.js';
 
-const applicationScope = new AsyncLocalStorage<string>();
+const applicationScope = new AsyncLocalStorage<AuthContext>();
 const observe = () => {
   const context = getCurrentInvocationContext();
   return {
@@ -20,7 +20,8 @@ const observe = () => {
     roles: context?.auth?.roles ?? [],
     transport: context?.transport,
     method: context?.methodName,
-    applicationScope: applicationScope.getStore() ?? null,
+    applicationScope: applicationScope.getStore()?.userId ?? null,
+    applicationRoles: applicationScope.getStore()?.roles ?? [],
     cookie: readRequestCookie('fixture'),
   };
 };
@@ -79,7 +80,7 @@ describe('Netron authoritative invocation context over actual transports', () =>
     await server.peer.exposeService(new InvocationProbe());
     wsPort = (server.transportServers.get('ws') as { port: number }).port;
     http = new HttpServer({ host: '127.0.0.1', port: 0, cors: false,
-      invocationWrapper: (metadata, fn) => applicationScope.run((metadata.get('authContext') as AuthContext | undefined)?.userId ?? 'anonymous', fn),
+      invocationWrapper: (metadata, fn) => applicationScope.run((metadata.get('authContext') as AuthContext | undefined) ?? { userId: 'anonymous', roles: [], permissions: [] }, fn),
     });
     http.setPeer(server.peer);
     await http.listen();
@@ -206,6 +207,7 @@ describe('Netron authoritative invocation context over actual transports', () =>
       const admitted = await pending;
       expect(admitted.body.data.before.roles).toEqual(['staff']);
       expect(admitted.body.data.after.roles).toEqual(['staff']);
+      expect(admitted.body.data.after.applicationRoles).toEqual(['staff']);
       expect((await invoke('observe', 'alice')).body.data.after.roles).toEqual(['reader']);
       expect((await invoke('write', 'alice')).status).toBe(403);
     } finally {

@@ -1,4 +1,4 @@
-import { runWithInvocationContext } from '../../invocation-context.js';
+import { runWithInvocationContext, getCurrentInvocationContext } from '../../invocation-context.js';
 import type { AuthContext } from '../../auth/types.js';
 import { projectTransportDefinition } from '../../transport-surface.js';
 /**
@@ -1104,6 +1104,8 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       requestId: context.metadata.get('requestId') as string | undefined,
       auth: context.metadata.get('authContext') as AuthContext | undefined,
     }, () => {
+      const auth = getCurrentInvocationContext()?.auth;
+      if (auth) context.metadata.set('authContext', auth);
       const consume = async () => {
         const result = await handler();
         return isAsyncGenerator(result) ? this.collectAsyncGeneratorValues(result) : result;

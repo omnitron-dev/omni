@@ -289,7 +289,7 @@ export class RemotePeer extends AbstractPeer {
     return runWithInvocationContext({
       peer: this, peerId: this.id, transport: this.transportName,
       serviceName: serviceName(), methodName, auth,
-    }, () => this.invocationWrapper ? this.wrapInvocation(serviceName, methodName, fn, auth) : fn());
+    }, () => this.invocationWrapper ? this.wrapInvocation(serviceName, methodName, fn, this.getAuthContext()) : fn());
   }
 
   private async wrapInvocation<T>(

@@ -1,12 +1,12 @@
 /**
- * Server-Side Rendering (SSR) HTML Transformer
+ * Server-Side Rendering (SSR) HTML Transformer (XSS-Hardened)
  */
 
 import type { LumenDocumentAst, LumenNode } from '../ast/types.js';
+import { renderDiagramHtml } from '../diagrams/renderer.js';
+import { renderCodeBlockHtml } from '../highlight/emitter.js';
 import { LumenMacroRegistry } from '../katex/macro-registry.js';
 import { escapeHtml, renderKaTeX } from '../katex/render-math.js';
-import { renderCodeBlockHtml } from '../highlight/emitter.js';
-import { renderDiagramHtml } from '../diagrams/renderer.js';
 
 export interface SsrOptions {
   macros?: Record<string, string> | LumenMacroRegistry;
@@ -18,6 +18,280 @@ export interface SsrOptions {
 interface SsrContext {
   macros: LumenMacroRegistry;
   diagramCounter: number;
+  widgetCounter: number;
+}
+
+const ALLOWED_URL_SCHEMES = new Set(['http', 'https', 'mailto', 'tel']);
+const VALID_HYDRATE_MODES = new Set(['load', 'visible', 'idle', 'interaction']);
+
+const ISLAND_ALLOWED_TAGS = new Set(['div', 'section', 'aside', 'span']);
+
+const ISLAND_ALLOWED_ATTRS = new Set([
+  'id',
+  'class',
+  'data-lumen-island',
+  'data-component',
+  'data-hydrate',
+  'data-props',
+  'data-access',
+  'role',
+  'aria-label',
+]);
+
+function decodeNumericHtmlEntities(input: string): string {
+  return input
+    .replace(/&#x([0-9a-f]+);?/gi, (_, hex: string) => {
+      const cp = parseInt(hex, 16);
+      return Number.isNaN(cp) || cp < 0 || cp > 0x10ffff ? '' : String.fromCodePoint(cp);
+    })
+    .replace(/&#(\d+);?/g, (_, dec: string) => {
+      const cp = parseInt(dec, 10);
+      return Number.isNaN(cp) || cp < 0 || cp > 0x10ffff ? '' : String.fromCodePoint(cp);
+    })
+    .replace(/&colon;/gi, ':')
+    .replace(/&tab;/gi, '\t')
+    .replace(/&newline;/gi, '\n');
+}
+
+function decodeStandardAttrEntities(input: string): string {
+  return input
+    .replace(/&quot;/g, '"')
+    .replace(/&#0*39;|&#x0*27;|&apos;/gi, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+function stripControlChars(str: string, stripSpaces = false): string {
+  let out = '';
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    if (code <= 0x1f || (code >= 0x7f && code <= 0x9f)) {
+      continue;
+    }
+    if (stripSpaces && (code === 0x20 || /\s/.test(str[i]!))) {
+      continue;
+    }
+    out += str[i];
+  }
+  return out;
+}
+
+/**
+ * Sanitizes a URL attribute value (`href`, `src`), stripping control/whitespace obfuscation
+ * before validating the scheme. Replaces dangerous protocols (`javascript:`, `vbscript:`,
+ * `data:`, `file:`, etc.) with `'#unsafe-url'`.
+ */
+export function sanitizeUrl(url: string): string {
+  if (typeof url !== 'string') {
+    return '#unsafe-url';
+  }
+
+  // Strip ASCII control characters and trim surrounding whitespace
+  const cleaned = stripControlChars(url, false).trim();
+  if (!cleaned) {
+    return '#';
+  }
+
+  // Normalize entity & whitespace obfuscation for scheme inspection
+  const normalizedForScheme = stripControlChars(decodeNumericHtmlEntities(cleaned), true).toLowerCase();
+
+  if (
+    normalizedForScheme.startsWith('#') ||
+    normalizedForScheme.startsWith('./') ||
+    normalizedForScheme.startsWith('../') ||
+    normalizedForScheme.startsWith('?')
+  ) {
+    return cleaned;
+  }
+
+  if (normalizedForScheme.startsWith('/')) {
+    return cleaned;
+  }
+
+  // Check if there is a scheme before any '/', '?', or '#'
+  const schemeMatch = normalizedForScheme.match(/^([a-z][a-z0-9+.-]*):/);
+  if (schemeMatch && schemeMatch[1]) {
+    const firstColon = normalizedForScheme.indexOf(':');
+    const firstSlash = normalizedForScheme.indexOf('/');
+    const firstQuery = normalizedForScheme.indexOf('?');
+    const firstHash = normalizedForScheme.indexOf('#');
+
+    const firstSep = [firstSlash, firstQuery, firstHash]
+      .filter((idx) => idx !== -1)
+      .reduce((min, idx) => Math.min(min, idx), Infinity);
+
+    if (firstColon < firstSep) {
+      const scheme = schemeMatch[1].toLowerCase();
+      if (!ALLOWED_URL_SCHEMES.has(scheme)) {
+        return '#unsafe-url';
+      }
+      return cleaned;
+    }
+  }
+
+  // Reject colon schemes with non-alpha obfuscation before path separators
+  const rawColon = normalizedForScheme.indexOf(':');
+  if (rawColon !== -1) {
+    const rawSlash = normalizedForScheme.indexOf('/');
+    if (rawSlash === -1 || rawColon < rawSlash) {
+      return '#unsafe-url';
+    }
+  }
+
+  return cleaned;
+}
+
+function parseOpeningHtmlElement(
+  source: string
+): { tag: string; attrs: Array<[string, string]>; openEnd: number; selfClosing: boolean } | null {
+  const tagMatch = source.match(/^<([A-Za-z][A-Za-z0-9-]*)\b/);
+  if (!tagMatch || !tagMatch[1]) {
+    return null;
+  }
+
+  const tag = tagMatch[1].toLowerCase();
+  let i = tagMatch[0].length;
+  const len = source.length;
+  const attrs: Array<[string, string]> = [];
+
+  while (i < len) {
+    while (i < len && /\s/.test(source[i]!)) {
+      i += 1;
+    }
+    if (i >= len) return null;
+
+    if (source[i] === '/' && source[i + 1] === '>') {
+      return { tag, attrs, openEnd: i + 2, selfClosing: true };
+    }
+    if (source[i] === '>') {
+      return { tag, attrs, openEnd: i + 1, selfClosing: false };
+    }
+
+    // Read attribute name
+    const nameStart = i;
+    while (i < len && !/[\s=/>"'<]/.test(source[i]!)) {
+      i += 1;
+    }
+    const rawName = source.slice(nameStart, i).toLowerCase();
+    if (!rawName) {
+      // Malformed character inside tag; skip or abort if quote/angle bracket
+      if (source[i] === '<') return null;
+      i += 1;
+      continue;
+    }
+
+    while (i < len && /\s/.test(source[i]!)) {
+      i += 1;
+    }
+
+    let attrVal = '';
+    if (i < len && source[i] === '=') {
+      i += 1;
+      while (i < len && /\s/.test(source[i]!)) {
+        i += 1;
+      }
+
+      if (i < len && (source[i] === '"' || source[i] === "'")) {
+        const quote = source[i]!;
+        i += 1;
+        const valStart = i;
+        while (i < len && source[i] !== quote) {
+          i += 1;
+        }
+        attrVal = source.slice(valStart, i);
+        if (i < len && source[i] === quote) {
+          i += 1;
+        }
+      } else {
+        const valStart = i;
+        while (i < len && !/[\s>]/.test(source[i]!)) {
+          if (source[i] === '/' && source[i + 1] === '>') break;
+          i += 1;
+        }
+        attrVal = source.slice(valStart, i);
+      }
+    }
+
+    attrs.push([rawName, attrVal]);
+  }
+
+  return null;
+}
+
+function sanitizeIslandInnerText(innerRaw: string): string {
+  if (!innerRaw) return '';
+
+  let cleaned = innerRaw;
+  // Iteratively strip dangerous paired containers and their payloads
+  const dangerousPaired =
+    /<(script|style|iframe|svg|object|embed|math|template|noscript|textarea|title|xmp)\b[\s\S]*?<\/\1\s*>/gi;
+  let prev = '';
+  while (cleaned !== prev) {
+    prev = cleaned;
+    cleaned = cleaned.replace(dangerousPaired, '');
+  }
+
+  // Strip any unclosed dangerous opening tags to end of string
+  cleaned = cleaned.replace(
+    /<(script|style|iframe|svg|object|embed|math|template|noscript|textarea|title|xmp)\b[\s\S]*$/gi,
+    ''
+  );
+
+  // Strip HTML comments and all remaining HTML tags
+  cleaned = cleaned.replace(/<!--[\s\S]*?-->/g, '');
+  cleaned = cleaned.replace(/<[^>]*>/g, '');
+
+  return escapeHtml(cleaned);
+}
+
+function sanitizeRawHtmlPlaceholder(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith('<') || !trimmed.toLowerCase().includes('data-lumen-island')) {
+    return escapeHtml(raw);
+  }
+
+  const parsedOpen = parseOpeningHtmlElement(trimmed);
+  if (!parsedOpen || !ISLAND_ALLOWED_TAGS.has(parsedOpen.tag)) {
+    return escapeHtml(raw);
+  }
+
+  const hasIslandAttr = parsedOpen.attrs.some(([name]) => name === 'data-lumen-island');
+  if (!hasIslandAttr) {
+    return escapeHtml(raw);
+  }
+
+  const safeAttrParts: string[] = [];
+  const seenAttrs = new Set<string>();
+  for (const [name, rawValue] of parsedOpen.attrs) {
+    if (!ISLAND_ALLOWED_ATTRS.has(name) || seenAttrs.has(name)) {
+      continue;
+    }
+    seenAttrs.add(name);
+    const decoded = decodeStandardAttrEntities(rawValue);
+    safeAttrParts.push(` ${name}="${escapeHtml(decoded)}"`);
+  }
+
+  if (parsedOpen.selfClosing) {
+    return `<${parsedOpen.tag}${safeAttrParts.join('')}></${parsedOpen.tag}>`;
+  }
+
+  // Locate matching closing tag for root element (ignoring any trailing injected siblings)
+  const closingRegex = new RegExp(`</${parsedOpen.tag}\\s*>`, 'ig');
+  closingRegex.lastIndex = parsedOpen.openEnd;
+  let lastCloseMatch: RegExpExecArray | null = null;
+  let m: RegExpExecArray | null = closingRegex.exec(trimmed);
+  while (m !== null) {
+    lastCloseMatch = m;
+    m = closingRegex.exec(trimmed);
+  }
+
+  const innerSlice = lastCloseMatch
+    ? trimmed.slice(parsedOpen.openEnd, lastCloseMatch.index)
+    : trimmed.slice(parsedOpen.openEnd);
+
+  const safeInner = sanitizeIslandInnerText(innerSlice);
+  return `<${parsedOpen.tag}${safeAttrParts.join('')}>${safeInner}</${parsedOpen.tag}>`;
 }
 
 export function toHtmlSsr(ast: LumenDocumentAst, options?: SsrOptions): string {
@@ -30,10 +304,11 @@ export function toHtmlSsr(ast: LumenDocumentAst, options?: SsrOptions): string {
   const context: SsrContext = {
     macros,
     diagramCounter: 0,
+    widgetCounter: 0,
   };
 
   let bodyHtml = '';
-  if (ast.children && ast.children.length > 0) {
+  if (Array.isArray(ast.children)) {
     bodyHtml = renderNodesToHtml(ast.children, context);
   } else if (ast.rawContent) {
     bodyHtml = `<div class="lumen-body">${escapeHtml(ast.rawContent)}</div>`;
@@ -136,7 +411,7 @@ function renderSingleNodeToHtml(node: LumenNode, context: SsrContext): string {
     }
 
     case 'admonition': {
-      const kind = escapeHtml(String(node.kind ?? 'note'));
+      const kind = escapeHtml(String(node.kind ?? 'note').replace(/[^a-zA-Z0-9_-]/g, ''));
       const title = escapeHtml(String(node.title ?? capitalize(kind)));
       const children = (node.children ?? []) as LumenNode[];
       const inner = renderNodesToHtml(children, context);
@@ -169,20 +444,23 @@ function renderSingleNodeToHtml(node: LumenNode, context: SsrContext): string {
     }
 
     case 'jsxWidget': {
-      const name = escapeHtml(String(node.name ?? 'Widget'));
-      const propsJson = escapeHtml(JSON.stringify(node.props ?? {}));
+      context.widgetCounter += 1;
+      const rawName = String(node.name ?? 'Widget');
+      const name = escapeHtml(rawName);
+      const safeIslandName = escapeHtml(rawName.replace(/[^a-zA-Z0-9_.-]/g, '') || 'Widget');
+      const propsObj = (node.props && typeof node.props === 'object' ? node.props : {}) as Record<string, unknown>;
+      const rawHydrate = propsObj['client:hydrate'] ?? propsObj['hydrate'];
+      const hydrate =
+        typeof rawHydrate === 'string' && VALID_HYDRATE_MODES.has(rawHydrate) ? rawHydrate : 'interaction';
+      const propsJson = escapeHtml(safeJsonStringify(propsObj));
       const children = (node.children ?? []) as LumenNode[];
       const inner = renderNodesToHtml(children, context);
-      return `<div class="lumen-widget" data-widget="${name}" data-props="${propsJson}">${inner}</div>`;
+      return `<div class="lumen-widget lumen-portal-island" data-widget="${name}" data-lumen-island="lumen-widget-${context.widgetCounter}-${safeIslandName}" data-component="${name}" data-hydrate="${escapeHtml(hydrate)}" data-props="${propsJson}">${inner}</div>`;
     }
 
     case 'rawHtmlPlaceholder': {
       const raw = String(node.raw ?? '');
-      // If it's a portal island container, preserve it but strip executable script tags
-      if (raw.includes('data-lumen-island')) {
-        return raw.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-      }
-      return escapeHtml(raw);
+      return sanitizeRawHtmlPlaceholder(raw);
     }
 
     case 'blockquote': {
@@ -234,10 +512,20 @@ function renderSingleNodeToHtml(node: LumenNode, context: SsrContext): string {
     case 'link': {
       const rawUrl = node['url'];
       const rawTitle = node['title'];
-      const url = escapeHtml(String(rawUrl ?? '#'));
+      const url = escapeHtml(sanitizeUrl(String(rawUrl ?? '#')));
       const title = rawTitle ? ` title="${escapeHtml(String(rawTitle))}"` : '';
       const children = (node.children ?? []) as LumenNode[];
       return `<a href="${url}"${title}>${renderNodesToHtml(children, context)}</a>`;
+    }
+
+    case 'image': {
+      const rawSrc = node['url'];
+      const rawAlt = node['alt'];
+      const rawTitle = node['title'];
+      const src = escapeHtml(sanitizeUrl(String(rawSrc ?? '')));
+      const alt = escapeHtml(String(rawAlt ?? ''));
+      const title = rawTitle ? ` title="${escapeHtml(String(rawTitle))}"` : '';
+      return `<img src="${src}" alt="${alt}"${title} />`;
     }
 
     default: {
@@ -249,6 +537,26 @@ function renderSingleNodeToHtml(node: LumenNode, context: SsrContext): string {
       }
       return '';
     }
+  }
+}
+
+function safeJsonStringify(value: unknown): string {
+  const seen = new WeakSet<object>();
+  try {
+    return JSON.stringify(value ?? {}, (_key, val: unknown) => {
+      if (typeof val === 'bigint') {
+        return val.toString();
+      }
+      if (val && typeof val === 'object') {
+        if (seen.has(val)) {
+          return '[Circular]';
+        }
+        seen.add(val);
+      }
+      return val;
+    });
+  } catch {
+    return '{}';
   }
 }
 

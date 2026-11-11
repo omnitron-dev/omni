@@ -1,3 +1,4 @@
+import { posix } from 'node:path';
 import type {
   CorpusDocument,
   CorpusMathObject,
@@ -5,6 +6,28 @@ import type {
   LinkResolutionResult,
   OutdatedTranslation,
 } from './types.js';
+
+function normalizeSlashPath(p: string): string {
+  return p.replace(/\\/g, '/').replace(/^\.?\//, '');
+}
+
+function stripDocExtension(p: string): string {
+  return p.replace(/\.(pdx|md)$/, '');
+}
+
+function docContainsAnchor(doc: CorpusDocument, anchor: string): boolean {
+  if (!anchor) return false;
+  if (Array.isArray(doc.anchors) && doc.anchors.includes(anchor)) {
+    return true;
+  }
+  if (Array.isArray(doc.headers) && doc.headers.some((h) => h.id === anchor)) {
+    return true;
+  }
+  if (Array.isArray(doc.mathObjects) && doc.mathObjects.some((m) => m.id === anchor)) {
+    return true;
+  }
+  return false;
+}
 
 export class CorpusGraph {
   private readonly documents = new Map<string, CorpusDocument>();
@@ -15,6 +38,30 @@ export class CorpusGraph {
   private readonly translations = new Map<string, Map<string, CorpusDocument>>();
 
   addDocument(doc: CorpusDocument): void {
+    // 0. Enforce unique math identity ownership within the same locale BEFORE mutating any internal state
+    if (Array.isArray(doc.mathObjects)) {
+      const seenIncomingIds = new Set<string>();
+      for (const math of doc.mathObjects) {
+        if (!math?.id) continue;
+        const existingOwner = this.mathObjects.get(math.id);
+        if (existingOwner && existingOwner.docId && existingOwner.docId !== doc.id) {
+          const existingOwnerDoc = this.documents.get(existingOwner.docId);
+          const isDistinctLocaleTranslation = Boolean(
+            existingOwnerDoc?.locale && doc.locale && existingOwnerDoc.locale !== doc.locale
+          );
+          if (!isDistinctLocaleTranslation) {
+            throw new Error(
+              `Duplicate math object ID "${math.id}" is already owned by document "${existingOwner.docId}"`
+            );
+          }
+        }
+        if (seenIncomingIds.has(math.id)) {
+          throw new Error(`Duplicate math object ID "${math.id}" declared multiple times in document "${doc.id}"`);
+        }
+        seenIncomingIds.add(math.id);
+      }
+    }
+
     // 1. Purge old forward dependencies from backlinksIndex on overwrite
     const oldDeps = this.docDependencies.get(doc.id);
     if (oldDeps) {
@@ -23,11 +70,13 @@ export class CorpusGraph {
       }
     }
 
-    // 2. Purge old math objects registered by this document ID on overwrite
+    // 2. Purge old math objects owned by this document ID on overwrite
     const oldMathIds = this.docMathObjects.get(doc.id);
     if (oldMathIds) {
       for (const mathId of oldMathIds) {
-        this.mathObjects.delete(mathId);
+        if (this.mathObjects.get(mathId)?.docId === doc.id) {
+          this.mathObjects.delete(mathId);
+        }
       }
     }
     // Defensive cleanup: purge any lingering math objects belonging to doc.id
@@ -39,11 +88,14 @@ export class CorpusGraph {
 
     this.documents.set(doc.id, doc);
 
-    // 3. Register new math objects and record their IDs in docMathObjects
+    // 3. Register new math objects (preserving primary locale owner if already registered by another locale)
     const currentMathIds = new Set<string>();
     if (doc.mathObjects) {
       for (const math of doc.mathObjects) {
-        this.mathObjects.set(math.id, { ...math, docId: doc.id });
+        const existing = this.mathObjects.get(math.id);
+        if (!existing || existing.docId === doc.id) {
+          this.mathObjects.set(math.id, { ...math, docId: doc.id });
+        }
         currentMathIds.add(math.id);
       }
     }
@@ -90,6 +142,13 @@ export class CorpusGraph {
   }
 
   addMathObject(math: CorpusMathObject): void {
+    const existing = this.mathObjects.get(math.id);
+    if (existing && (existing.docId || math.docId) && existing.docId !== math.docId) {
+      throw new Error(
+        `Duplicate math object ID "${math.id}" is already owned by document "${existing.docId ?? 'unknown'}"`
+      );
+    }
+
     this.mathObjects.set(math.id, math);
     if (math.docId) {
       let ids = this.docMathObjects.get(math.docId);
@@ -118,16 +177,44 @@ export class CorpusGraph {
   }
 
   /**
+   * Resolves a relative link against the directory of `fromDoc` when `fromDoc` exists.
+   */
+  private findDocumentRelativeToSource(fromDoc: CorpusDocument, rawDocPart: string): CorpusDocument | undefined {
+    const slashHref = rawDocPart.replace(/\\/g, '/').trim();
+    if (!slashHref || slashHref.startsWith('/')) {
+      return undefined;
+    }
+
+    const normFromPath = normalizeSlashPath(fromDoc.path);
+    const fromDir = posix.dirname(normFromPath);
+    const joined = fromDir === '.' ? posix.normalize(slashHref) : posix.normalize(posix.join(fromDir, slashHref));
+
+    if (!joined || joined === '.' || joined.startsWith('..')) {
+      return undefined;
+    }
+
+    const joinedStem = stripDocExtension(joined);
+    for (const candidate of this.documents.values()) {
+      const candidateStem = stripDocExtension(normalizeSlashPath(candidate.path));
+      if (candidateStem === joinedStem || candidateStem === `${joinedStem}/index`) {
+        return candidate;
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
    * Helper to look up a document by exact ID, exact path, normalized path stem,
-   * routePath, or path suffix (e.g. 'guide' matching 'docs/guide.pdx').
-   * Guarantees that empty strings and substring false-positives are rejected.
+   * routePath, or unambiguous path segment suffix.
    */
   private findDocumentByRef(ref: string): CorpusDocument | undefined {
     if (!ref || ref.trim() === '') {
       return undefined;
     }
-    const clean = ref.replace(/\.(pdx|md)$/, '').replace(/^\.?\//, '');
-    if (!clean) {
+    const slashRef = ref.replace(/\\/g, '/').trim();
+    const clean = stripDocExtension(slashRef).replace(/^\.?\//, '');
+    if (!clean || clean === '.' || clean.startsWith('..')) {
       return undefined;
     }
 
@@ -139,51 +226,91 @@ export class CorpusGraph {
     for (const doc of this.documents.values()) {
       if (doc.id === clean) return doc;
 
-      const normDocPath = doc.path.replace(/\.(pdx|md)$/, '').replace(/^\.?\//, '');
-      if (doc.path === ref || doc.path === clean || normDocPath === clean) return doc;
+      const normDocPath = stripDocExtension(normalizeSlashPath(doc.path));
+      if (doc.path === slashRef || doc.path === clean || normDocPath === clean) return doc;
 
       if (doc.routePath) {
         const normRoute = doc.routePath.replace(/^\.?\//, '');
-        if (normRoute === clean || doc.routePath === ref) return doc;
+        if (normRoute === clean || doc.routePath === slashRef) return doc;
       }
     }
 
-    // 3. Suffix match on path segment boundary (e.g. 'guide' matches 'docs/guide')
+    // 3. Unambiguous suffix match on path segment boundary (e.g. 'tutorials/guide' matches 'docs/tutorials/guide')
+    const suffixMatches: CorpusDocument[] = [];
     for (const doc of this.documents.values()) {
-      const normDocPath = doc.path.replace(/\.(pdx|md)$/, '').replace(/^\.?\//, '');
-      if (normDocPath.endsWith('/' + clean)) return doc;
+      const normDocPath = stripDocExtension(normalizeSlashPath(doc.path));
+      if (normDocPath.endsWith(`/${clean}`)) {
+        suffixMatches.push(doc);
+      }
+    }
+
+    if (suffixMatches.length === 1) {
+      return suffixMatches[0];
     }
 
     return undefined;
   }
 
-  resolveAnchor(href: string): AnchorResolutionResult {
+  resolveAnchor(href: string, fromDocId?: string): AnchorResolutionResult {
     if (!href || href.trim() === '') {
       return { resolved: false };
     }
 
-    const parts = href.split('#');
-    const docPart = parts[0] ?? '';
-    const anchorPart = parts[1];
-    const cleanDoc = docPart.replace(/\.(pdx|md)$/, '').replace(/^\.?\//, '');
+    const hashIdx = href.indexOf('#');
+    const docPart = (hashIdx === -1 ? href : href.slice(0, hashIdx)).trim();
+    const anchorPart = hashIdx === -1 ? undefined : href.slice(hashIdx + 1).trim();
+    const cleanDoc = stripDocExtension(docPart).replace(/^\.?\//, '');
 
-    // Local anchor reference within the current document (e.g. '#install')
+    // Local anchor reference within a document (e.g. '#install')
     if (!cleanDoc) {
-      if (anchorPart && anchorPart.trim().length > 0) {
-        return { resolved: true, anchor: anchorPart };
+      if (!anchorPart || anchorPart.length === 0) {
+        return { resolved: false };
       }
-      return { resolved: false };
+
+      if (fromDocId !== undefined) {
+        const sourceDoc = this.documents.get(fromDocId);
+        if (sourceDoc && docContainsAnchor(sourceDoc, anchorPart)) {
+          return { resolved: true, targetDocId: sourceDoc.id, anchor: anchorPart };
+        }
+        return {
+          resolved: false,
+          ...(sourceDoc ? { targetDocId: sourceDoc.id } : {}),
+          anchor: anchorPart,
+        };
+      }
+
+      // When fromDocId is omitted, verify that at least one document in the corpus owns this anchor
+      for (const doc of this.documents.values()) {
+        if (docContainsAnchor(doc, anchorPart)) {
+          return { resolved: true, anchor: anchorPart };
+        }
+      }
+
+      return { resolved: false, anchor: anchorPart };
     }
 
-    const doc = this.findDocumentByRef(cleanDoc);
-    if (doc) {
-      if (anchorPart) {
-        if (doc.anchors && doc.anchors.includes(anchorPart)) {
-          return { resolved: true, targetDocId: doc.id, anchor: anchorPart };
-        }
-        return { resolved: false, targetDocId: doc.id, anchor: anchorPart };
+    // Cross-document reference (with optional `#anchor`)
+    let targetDoc: CorpusDocument | undefined;
+    if (fromDocId !== undefined) {
+      const linkRes = this.resolveLink(fromDocId, docPart);
+      if (linkRes.resolved && linkRes.targetDocId) {
+        targetDoc = this.documents.get(linkRes.targetDocId);
       }
-      return { resolved: true, targetDocId: doc.id };
+    } else {
+      targetDoc = this.findDocumentByRef(docPart);
+    }
+
+    if (targetDoc) {
+      if (anchorPart !== undefined) {
+        if (!anchorPart) {
+          return { resolved: false, targetDocId: targetDoc.id };
+        }
+        if (docContainsAnchor(targetDoc, anchorPart)) {
+          return { resolved: true, targetDocId: targetDoc.id, anchor: anchorPart };
+        }
+        return { resolved: false, targetDocId: targetDoc.id, anchor: anchorPart };
+      }
+      return { resolved: true, targetDocId: targetDoc.id };
     }
 
     return { resolved: false };
@@ -194,13 +321,29 @@ export class CorpusGraph {
       return { resolved: false };
     }
 
-    const docPart = href.split('#')[0] ?? '';
-    const cleanHref = docPart.replace(/\.(pdx|md)$/, '').replace(/^\.?\//, '');
-    if (!cleanHref) {
+    const docPart = (href.split('#')[0] ?? '').trim();
+    if (!docPart) {
       return { resolved: false };
     }
 
-    const found = this.findDocumentByRef(cleanHref);
+    const slashDocPart = docPart.replace(/\\/g, '/');
+    const isExplicitRelative = slashDocPart.startsWith('./') || slashDocPart.startsWith('../');
+    const fromDoc = fromDocId ? this.documents.get(fromDocId) : undefined;
+
+    // 1. Resolve relative to source document's directory first when `fromDoc` exists in the graph
+    if (fromDoc && !slashDocPart.startsWith('/')) {
+      const relativeMatch = this.findDocumentRelativeToSource(fromDoc, slashDocPart);
+      if (relativeMatch) {
+        return { resolved: true, targetDocId: relativeMatch.id };
+      }
+      // Explicit `./` or `../` from a known source document must NOT fall back to unrelated directories
+      if (isExplicitRelative) {
+        return { resolved: false };
+      }
+    }
+
+    // 2. Fallback to exact ID / corpus path / unambiguous suffix resolution
+    const found = this.findDocumentByRef(slashDocPart);
     if (found) {
       return { resolved: true, targetDocId: found.id };
     }

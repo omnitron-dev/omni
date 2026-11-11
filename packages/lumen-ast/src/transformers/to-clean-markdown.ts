@@ -28,14 +28,11 @@ export function toCleanMarkdown(ast: LumenDocumentAst, options?: CleanMarkdownOp
     }
   }
 
-  // 2. Body serialization
+  // 2. Body serialization (strictly derived from ast.children when present; never resurrects rawContent)
   let bodyText = '';
-  if (ast.children && ast.children.length > 0) {
+  if (Array.isArray(ast.children)) {
     bodyText = serializeNodesToCleanMarkdown(ast.children, options);
-  }
-
-  // Fallback to rawContent if node serialization produced empty or whitespace-only content
-  if (!bodyText.trim() && ast.rawContent) {
+  } else if (ast.rawContent) {
     let clean = ast.rawContent.trim();
     // Strip YAML frontmatter block if present
     clean = clean.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');

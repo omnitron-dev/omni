@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterAll } from 'vitest';
 import { rmSync, existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   convertDocusaurusConfig,
   convertDocusaurusSidebars,
@@ -519,51 +520,64 @@ export interface Config {
   // Domain 4: CLI Binary Stress
   // =========================================================================
   describe('Domain 4: CLI Binary Stress', () => {
-    it('executes docusaurus migration on non-existent directories gracefully with --verify and --json', async () => {
-      const tempNonExistentSource = resolve(process.cwd(), '.tmp-challenger-nonexistent-src');
-      const tempTarget = resolve(process.cwd(), '.tmp-challenger-cli-target-1');
+    it('fails closed on docusaurus migration of non-existent directories with --verify and --json', async () => {
+      const tempNonExistentSource = join(tmpdir(), `lumen-challenger-nonexistent-src-${Date.now()}`);
+      const tempTarget = join(tmpdir(), `lumen-challenger-cli-target-${Date.now()}`);
       tempDirsToClean.push(tempTarget);
 
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const prevExitCode = process.exitCode;
+      try {
+        await runLumenMigrateCli(['docusaurus', tempNonExistentSource, tempTarget, '--verify', '--json']);
 
-      await runLumenMigrateCli(['docusaurus', tempNonExistentSource, tempTarget, '--verify', '--json']);
+        expect(logSpy).toHaveBeenCalled();
+        const rawOutput = logSpy.mock.calls.map((c) => c[0]).join('\n');
+        const parsed = JSON.parse(rawOutput);
 
-      expect(logSpy).toHaveBeenCalled();
-      const rawOutput = logSpy.mock.calls.map((c) => c[0]).join('\n');
-      const parsed = JSON.parse(rawOutput);
-
-      expect(parsed).toBeDefined();
-      expect(parsed.config).toBeDefined();
-      expect(parsed.config.title).toBe('Migrated Documentation');
-      expect(parsed.documentsMigrated).toBe(0);
-      expect(parsed.parity).toBeDefined();
-      expect(parsed.parity.passed).toBe(true);
-
-      logSpy.mockRestore();
+        expect(parsed).toBeDefined();
+        expect(parsed.config).toBeDefined();
+        expect(parsed.config.title).toBe('Migrated Documentation');
+        expect(parsed.documentsMigrated).toBe(0);
+        expect(parsed.parity).toBeDefined();
+        expect(parsed.parity.passed).toBe(false);
+        expect(process.exitCode).toBe(1);
+      } finally {
+        process.exitCode = prevExitCode ?? 0;
+        logSpy.mockRestore();
+      }
     });
 
-    it('executes verify command on empty/non-existent paths returning structured JSON report', async () => {
+    it('fails closed on verify command against empty/non-existent paths returning structured JSON report', async () => {
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const prevExitCode = process.exitCode;
+      try {
+        await runLumenMigrateCli([
+          'verify',
+          join(tmpdir(), 'challenger-nonexistent-a'),
+          join(tmpdir(), 'challenger-nonexistent-b'),
+          '--json',
+        ]);
 
-      await runLumenMigrateCli(['verify', '/tmp/challenger-nonexistent-a', '/tmp/challenger-nonexistent-b', '--json']);
+        expect(logSpy).toHaveBeenCalled();
+        const rawOutput = logSpy.mock.calls.map((c) => c[0]).join('\n');
+        const parsed = JSON.parse(rawOutput);
 
-      expect(logSpy).toHaveBeenCalled();
-      const rawOutput = logSpy.mock.calls.map((c) => c[0]).join('\n');
-      const parsed = JSON.parse(rawOutput);
-
-      expect(parsed.passed).toBe(true);
-      expect(parsed.totalRoutes).toBe(0);
-      expect(parsed.totalAnchors).toBe(0);
-      expect(parsed.parityScore).toBe(1);
-
-      logSpy.mockRestore();
+        expect(parsed.passed).toBe(false);
+        expect(parsed.totalRoutes).toBe(0);
+        expect(parsed.totalAnchors).toBe(0);
+        expect(parsed.parityScore).toBe(0);
+        expect(process.exitCode).toBe(1);
+      } finally {
+        process.exitCode = prevExitCode ?? 0;
+        logSpy.mockRestore();
+      }
     });
 
     it('handles CLI global flags --version and --help without throwing', async () => {
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
       await runLumenMigrateCli(['--version']);
-      expect(logSpy).toHaveBeenCalledWith('0.3.4');
+      expect(logSpy.mock.calls[0]?.[0]).toMatch(/^0\.\d+\.\d+$/);
 
       logSpy.mockClear();
       await runLumenMigrateCli(['--help']);

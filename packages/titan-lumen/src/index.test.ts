@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { LUMEN_OPTIONS_TOKEN, LUMEN_SERVICE_TOKEN, LumenModule, LumenRpcService } from './index.js';
+import {
+  ACCESS_FILTER_SERVICE_TOKEN,
+  AccessFilterService,
+  LIVE_EDIT_SERVICE_TOKEN,
+  LiveEditService,
+  LUMEN_OPTIONS_TOKEN,
+  LUMEN_RPC_CONTROLLER_TOKEN,
+  LUMEN_SERVICE_TOKEN,
+  LumenMcpServer,
+  LumenModule,
+  LumenRpcController,
+  LumenRpcService,
+  MCP_SERVER_TOKEN,
+} from './index.js';
 
 describe('@omnitron-dev/titan-lumen', () => {
   it('provides identical tokens and configuration in forRoot and forRootAsync', async () => {
@@ -11,10 +24,30 @@ describe('@omnitron-dev/titan-lumen', () => {
     const syncTokens = syncResult.providers.map((p: any) => p.provide);
     const asyncTokens = asyncResult.providers.map((p: any) => p.provide);
 
-    expect(syncTokens).toEqual([LUMEN_OPTIONS_TOKEN, LUMEN_SERVICE_TOKEN]);
-    expect(asyncTokens).toEqual([LUMEN_OPTIONS_TOKEN, LUMEN_SERVICE_TOKEN]);
-    expect(syncResult.exports).toEqual([LUMEN_SERVICE_TOKEN]);
-    expect(asyncResult.exports).toEqual([LUMEN_SERVICE_TOKEN]);
+    const expectedTokens = [
+      LUMEN_OPTIONS_TOKEN,
+      LUMEN_SERVICE_TOKEN,
+      LumenRpcService,
+      AccessFilterService,
+      ACCESS_FILTER_SERVICE_TOKEN,
+      LiveEditService,
+      LIVE_EDIT_SERVICE_TOKEN,
+      LumenMcpServer,
+      MCP_SERVER_TOKEN,
+      LumenRpcController,
+      LUMEN_RPC_CONTROLLER_TOKEN,
+    ];
+
+    expect(syncTokens).toEqual(expectedTokens);
+    expect(asyncTokens).toEqual(expectedTokens);
+    expect(syncResult.exports).toContain(LUMEN_OPTIONS_TOKEN);
+    expect(syncResult.exports).toContain(LUMEN_SERVICE_TOKEN);
+    expect(syncResult.exports).toContain(LumenRpcService);
+    expect(syncResult.exports).toContain(LumenRpcController);
+    expect(syncResult.exports).toContain(AccessFilterService);
+    expect(syncResult.exports).toContain(LiveEditService);
+    expect(syncResult.exports).toContain(LumenMcpServer);
+    expect(asyncResult.exports).toEqual(syncResult.exports);
   });
 
   it('implements ILumenRpcService methods and exposes options', async () => {

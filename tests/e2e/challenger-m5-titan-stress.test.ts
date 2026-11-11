@@ -5,7 +5,12 @@ import {
   LumenModule,
   LUMEN_OPTIONS_TOKEN,
   LUMEN_SERVICE_TOKEN,
+  LUMEN_RPC_CONTROLLER_TOKEN,
+  ACCESS_FILTER_SERVICE_TOKEN,
+  LIVE_EDIT_SERVICE_TOKEN,
+  MCP_SERVER_TOKEN,
   LumenRpcService,
+  LumenRpcController,
   AccessFilterService,
   defaultDocRoleHierarchy,
   defaultRoleGrants,
@@ -75,23 +80,50 @@ describe('Empirical Adversarial Stress Suite: Milestone 5 (@omnitron-dev/titan-l
   // Dimension 1: Dynamic Module DI Drift, Provider Symmetry & Isolation
   // =========================================================================
   describe('Dimension 1: Dynamic Module DI Drift, Provider Symmetry & Isolation', () => {
-    it('asserts provider length is strictly 2 and tokens match between forRoot and forRootAsync', () => {
+    it('asserts full DI provider/export symmetry between forRoot and forRootAsync', () => {
       const syncModule = LumenModule.forRoot({ docsDir: 'docs-sync' });
       const asyncModule = LumenModule.forRootAsync({
         useFactory: () => ({ docsDir: 'docs-async' }),
       });
 
-      expect(syncModule.providers).toHaveLength(2);
-      expect(asyncModule.providers).toHaveLength(2);
+      const expectedTokens = [
+        LUMEN_OPTIONS_TOKEN,
+        LUMEN_SERVICE_TOKEN,
+        LumenRpcService,
+        AccessFilterService,
+        ACCESS_FILTER_SERVICE_TOKEN,
+        LiveEditService,
+        LIVE_EDIT_SERVICE_TOKEN,
+        LumenMcpServer,
+        MCP_SERVER_TOKEN,
+        LumenRpcController,
+        LUMEN_RPC_CONTROLLER_TOKEN,
+      ];
+      const expectedExports = [
+        LUMEN_OPTIONS_TOKEN,
+        LUMEN_SERVICE_TOKEN,
+        LumenRpcService,
+        LumenRpcController,
+        LUMEN_RPC_CONTROLLER_TOKEN,
+        AccessFilterService,
+        ACCESS_FILTER_SERVICE_TOKEN,
+        LiveEditService,
+        LIVE_EDIT_SERVICE_TOKEN,
+        LumenMcpServer,
+        MCP_SERVER_TOKEN,
+      ];
+
+      expect(syncModule.providers).toHaveLength(11);
+      expect(asyncModule.providers).toHaveLength(11);
 
       const syncTokens = syncModule.providers.map((p: any) => p.provide);
       const asyncTokens = asyncModule.providers.map((p: any) => p.provide);
 
-      expect(syncTokens).toEqual([LUMEN_OPTIONS_TOKEN, LUMEN_SERVICE_TOKEN]);
-      expect(asyncTokens).toEqual([LUMEN_OPTIONS_TOKEN, LUMEN_SERVICE_TOKEN]);
+      expect(syncTokens).toEqual(expectedTokens);
+      expect(asyncTokens).toEqual(expectedTokens);
 
-      expect(syncModule.exports).toEqual([LUMEN_SERVICE_TOKEN]);
-      expect(asyncModule.exports).toEqual([LUMEN_SERVICE_TOKEN]);
+      expect(syncModule.exports).toEqual(expectedExports);
+      expect(asyncModule.exports).toEqual(expectedExports);
     });
 
     it('resolves forRootAsync with delayed promises and custom dependency injection tokens', async () => {

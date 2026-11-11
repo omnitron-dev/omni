@@ -114,6 +114,7 @@ export type ParityCheckResult = ParityReport;
 export interface MigrationOptions {
   verify?: boolean;
   json?: boolean;
+  strict?: boolean;
   reportFormat?: 'json' | 'summary';
   silent?: boolean;
 }

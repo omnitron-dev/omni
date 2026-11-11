@@ -1,19 +1,38 @@
-import { describe, it, expect, vi } from 'vitest';
-import React from 'react';
+import React, { act } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { LumenSearchDialog, PagefindAdapter, NetronAdapter } from '../src/search/index.js';
+import { vi, it, expect, describe, beforeEach } from 'vitest';
+
+import {
+  NetronAdapter,
+  PagefindAdapter,
+  LumenSearchDialog,
+  parseSearchSnippet,
+  sanitizeSearchResultUrl,
+} from '../src/search/index.js';
+
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe('Search Dialog & Adapters', () => {
-  it('returns null when open is false and renders dialog when true', () => {
+  let container: HTMLDivElement;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    return () => {
+      if (container.parentNode) {
+        container.parentNode.removeChild(container);
+      }
+    };
+  });
+
+  it('returns null when open is false and renders accessible dialog when true', () => {
     expect(LumenSearchDialog({ open: false })).toBeNull();
 
-    const openEl = LumenSearchDialog({ open: true, onClose: () => {} });
-    expect(openEl).not.toBeNull();
-    expect(openEl?.props.role).toBe('dialog');
-
-    const html = renderToStaticMarkup(openEl);
+    const html = renderToStaticMarkup(React.createElement(LumenSearchDialog, { open: true, onClose: () => {} }));
     expect(html).toContain('role="dialog"');
     expect(html).toContain('aria-modal="true"');
+    expect(html).toContain('aria-label="Search documentation"');
     expect(html).toContain('class="lumen-search-dialog"');
     expect(html).toContain('<button type="button">Close</button>');
   });
@@ -65,18 +84,190 @@ describe('Search Dialog & Adapters', () => {
     expect(adapter1.isFailedState).toBe(true);
     expect(adapter1.isReady).toBe(false);
 
-    // Second call on same instance returns immediately from failed state without new import
     const initResult2 = await adapter1.init();
     expect(initResult2).toBe(false);
 
-    // New instance with same failed path immediately inherits permanent failure state
     const adapter2 = new PagefindAdapter(nonExistentPath);
     expect(adapter2.isFailedState).toBe(true);
     const initResult3 = await adapter2.init();
     expect(initResult3).toBe(false);
 
-    // Clearing failure cache resets permanent failure state
     PagefindAdapter.resetFailureCache();
     expect(adapter2.isFailedState).toBe(false);
+  });
+
+  it('SEC-03: neutralizes XSS in search snippets and URLs without dangerouslySetInnerHTML', async () => {
+    const maliciousSnippet =
+      'Safe <mark>highlighted</mark> <script>window.__xss = 1</script><style>body{display:none}</style><img src=x onerror="alert(1)"> &amp; more';
+    const nodes = parseSearchSnippet(maliciousSnippet);
+    const renderedSnippet = renderToStaticMarkup(React.createElement('div', null, ...nodes));
+
+    expect(renderedSnippet).toContain('<mark>highlighted</mark>');
+    expect(renderedSnippet).not.toContain('<script');
+    expect(renderedSnippet).not.toContain('window.__xss');
+    expect(renderedSnippet).not.toContain('<style');
+    expect(renderedSnippet).not.toContain('<img');
+    expect(renderedSnippet).toContain('&amp; more');
+
+    expect(sanitizeSearchResultUrl('javascript:alert(1)')).toBe('#');
+    expect(sanitizeSearchResultUrl('  JaVaScRiPt:alert(1)  ')).toBe('#');
+    expect(sanitizeSearchResultUrl('vbscript:msgbox(1)')).toBe('#');
+    expect(sanitizeSearchResultUrl('data:text/html,<script>alert(1)</script>')).toBe('#');
+    expect(sanitizeSearchResultUrl('//evil.example/phish')).toBe('#');
+    expect(sanitizeSearchResultUrl('java\tscript:alert(1)')).toBe('#');
+    expect(sanitizeSearchResultUrl('/docs/getting-started#setup')).toBe('/docs/getting-started#setup');
+    expect(sanitizeSearchResultUrl('https://docs.example.com/guide')).toBe('https://docs.example.com/guide');
+
+    const onSelectResult = vi.fn();
+    const rpcClient = {
+      search: vi.fn().mockResolvedValue([
+        {
+          id: 'xss-1',
+          title: 'XSS Candidate',
+          url: 'javascript:alert(document.cookie)',
+          snippet: '<img src=x onerror=alert(1)>Found <mark>term</mark><script>evil()</script>',
+          score: 0.99,
+        },
+      ]),
+    };
+
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        React.createElement(LumenSearchDialog, {
+          open: true,
+          defaultTab: 'semantic',
+          initialQuery: 'term',
+          rpcClient,
+          onSelectResult,
+        })
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+
+    const link = container.querySelector('.lumen-search-result-item a') as HTMLAnchorElement | null;
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe('#');
+    expect(container.querySelector('.lumen-search-result-item img')).toBeNull();
+    expect(container.querySelector('.lumen-search-result-item script')).toBeNull();
+    expect(container.querySelector('.lumen-search-result-item mark')?.textContent).toBe('term');
+
+    await act(async () => {
+      link?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+
+    expect(onSelectResult).toHaveBeenCalledWith({ url: '#', title: 'XSS Candidate' });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('UI-06: clears loading state immediately when query is emptied and ignores superseded search responses', async () => {
+    let resolveSlowSearch: ((items: any[]) => void) | null = null;
+    const rpcClient = {
+      search: vi.fn().mockImplementation(
+        () =>
+          new Promise<any[]>((resolve) => {
+            resolveSlowSearch = resolve;
+          })
+      ),
+    };
+
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        React.createElement(LumenSearchDialog, {
+          open: true,
+          defaultTab: 'semantic',
+          initialQuery: 'slow-query',
+          rpcClient,
+        })
+      );
+    });
+
+    expect(container.textContent).toContain('Searching...');
+
+    const input = container.querySelector('input[type="search"]') as HTMLInputElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      setter?.call(input, '');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    expect(container.textContent).not.toContain('Searching...');
+
+    await act(async () => {
+      resolveSlowSearch?.([{ id: 'late', title: 'Stale Result', url: '/docs/stale', snippet: 'late' }]);
+      await new Promise((resolve) => setTimeout(resolve, 260));
+    });
+
+    expect(container.textContent).not.toContain('Searching...');
+    expect(container.textContent).not.toContain('Stale Result');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('UI-07: traps Tab and Shift+Tab focus strictly inside dialog and restores prior focus on close', async () => {
+    const outsideTrigger = document.createElement('button');
+    outsideTrigger.type = 'button';
+    outsideTrigger.textContent = 'Open Search';
+    document.body.appendChild(outsideTrigger);
+    outsideTrigger.focus();
+    expect(document.activeElement).toBe(outsideTrigger);
+
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(React.createElement(LumenSearchDialog, { open: true, onClose: () => {} }));
+    });
+
+    const dialog = container.querySelector('.lumen-search-dialog') as HTMLElement;
+    expect(dialog.getAttribute('aria-label')).toBe('Search documentation');
+
+    const focusables = Array.from(
+      dialog.querySelectorAll<HTMLElement>('input:not([disabled]), button:not([disabled]), a[href]')
+    );
+    expect(focusables.length).toBeGreaterThanOrEqual(2);
+
+    const firstEl = focusables[0]!;
+    const lastEl = focusables[focusables.length - 1]!;
+
+    lastEl.focus();
+    expect(document.activeElement).toBe(lastEl);
+
+    const forwardTab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    await act(async () => {
+      dialog.dispatchEvent(forwardTab);
+    });
+    expect(forwardTab.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(firstEl);
+
+    const backwardTab = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => {
+      dialog.dispatchEvent(backwardTab);
+    });
+    expect(backwardTab.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(lastEl);
+
+    await act(async () => {
+      root.render(React.createElement(LumenSearchDialog, { open: false, onClose: () => {} }));
+    });
+
+    expect(document.activeElement).toBe(outsideTrigger);
+
+    await act(async () => {
+      root.unmount();
+    });
+    document.body.removeChild(outsideTrigger);
   });
 });

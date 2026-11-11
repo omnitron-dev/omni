@@ -1,144 +1,60 @@
 /**
  * Safe, Zero-Eval Attribute Lexer for Directives and JSX Widgets
+ * Enforces strict O(N) forward cursor progress, nesting depth cap, and prototype-pollution blocking.
  */
 
+export const MAX_ATTRIBUTE_STRING_LENGTH = 16_384;
+export const MAX_ATTRIBUTE_DEPTH = 16;
+
+const FORBIDDEN_ATTR_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 export function parseAttributeString(input: string): Record<string, unknown> {
+  return parseAttributeStringInternal(input, 0);
+}
+
+function parseAttributeStringInternal(input: string, depth: number): Record<string, unknown> {
   const result: Record<string, unknown> = {};
-  if (!input) return result;
+  if (!input || typeof input !== 'string' || depth > MAX_ATTRIBUTE_DEPTH) {
+    return result;
+  }
 
-  const trimmed = input.trim();
-  // Strip outer { and } if present (e.g. {id="thm-purity" title="..."})
-  const content = trimmed.startsWith('{') && trimmed.endsWith('}') ? trimmed.slice(1, -1).trim() : trimmed;
+  const bounded = input.length > MAX_ATTRIBUTE_STRING_LENGTH ? input.slice(0, MAX_ATTRIBUTE_STRING_LENGTH) : input;
+  const trimmed = bounded.trim();
+  if (!trimmed) {
+    return result;
+  }
 
-  let i = 0;
+  // Strip outer { and } only when balanced as an outer wrapper (e.g. {id="thm-purity" title="..."})
+  const content =
+    trimmed.startsWith('{') && trimmed.endsWith('}')
+      ? trimmed.slice(1, -1).trim()
+      : trimmed.startsWith('{')
+        ? trimmed.slice(1).trim()
+        : trimmed;
+
+  let cursor = 0;
   const len = content.length;
 
-  function skipWhitespace() {
-    while (i < len && /\s/.test(content[i]!)) i++;
+  function skipWhitespace(): void {
+    while (cursor < len && /\s/.test(content[cursor]!)) {
+      cursor += 1;
+    }
   }
 
   function readKey(): string {
     skipWhitespace();
-    const start = i;
-    while (i < len && /[a-zA-Z0-9_#@:.-]/.test(content[i]!)) {
-      i++;
+    const start = cursor;
+    while (cursor < len && /[a-zA-Z0-9_#@:.-]/.test(content[cursor]!)) {
+      cursor += 1;
     }
-    return content.slice(start, i);
+    return content.slice(start, cursor);
   }
 
-  function parseValue(): unknown {
-    skipWhitespace();
-    if (i >= len) return true;
-
-    const char = content[i];
-
-    // String: double quotes
-    if (char === '"') {
-      i++;
-      let val = '';
-      while (i < len) {
-        if (content[i] === '\\' && i + 1 < len) {
-          val += content[i + 1];
-          i += 2;
-        } else if (content[i] === '"') {
-          i++;
-          break;
-        } else {
-          val += content[i];
-          i++;
-        }
-      }
-      return val;
-    }
-
-    // String: single quotes
-    if (char === "'") {
-      i++;
-      let val = '';
-      while (i < len) {
-        if (content[i] === '\\' && i + 1 < len) {
-          val += content[i + 1];
-          i += 2;
-        } else if (content[i] === "'") {
-          i++;
-          break;
-        } else {
-          val += content[i];
-          i++;
-        }
-      }
-      return val;
-    }
-
-    // Array: [...]
-    if (char === '[') {
-      i++; // consume [
-      const items: unknown[] = [];
-      while (i < len) {
-        skipWhitespace();
-        if (content[i] === ']') {
-          i++;
-          break;
-        }
-        const itemVal = parseValue();
-        items.push(itemVal);
-        skipWhitespace();
-        if (content[i] === ',') {
-          i++;
-        } else if (content[i] === ']') {
-          i++;
-          break;
-        }
-      }
-      return items;
-    }
-
-    // Object or JSX expression: {...}
-    if (char === '{') {
-      i++; // consume {
-      skipWhitespace();
-      // Nested object or JSX expression inside braces
-      // Check if it's a nested object key-value or literal
-      let depth = 1;
-      const start = i;
-      while (i < len && depth > 0) {
-        if (content[i] === '{') depth++;
-        else if (content[i] === '}') depth--;
-        i++;
-      }
-      const inner = content.slice(start, i - 1).trim();
-
-      // Literal boolean / number / string inside JSX {}
-      if (inner === 'true') return true;
-      if (inner === 'false') return false;
-      if (/^-?\d+(\.\d+)?$/.test(inner)) return Number(inner);
-      if ((inner.startsWith('"') && inner.endsWith('"')) || (inner.startsWith("'") && inner.endsWith("'"))) {
-        return inner.slice(1, -1);
-      }
-      if (inner.startsWith('[') && inner.endsWith(']')) {
-        return parseAttributeString(inner)['items'] ?? [];
-      }
-      if (inner.includes(':')) {
-        // Nested object literal: parse as key-values
-        return parseObjectContent(inner);
-      }
-      return inner;
-    }
-
-    // Bare number, boolean, or identifier
-    const start = i;
-    while (i < len && !/[\s,}\]]/.test(content[i]!)) {
-      i++;
-    }
-    const token = content.slice(start, i);
-    if (token === 'true') return true;
-    if (token === 'false') return false;
-    if (/^-?\d+(\.\d+)?$/.test(token)) return Number(token);
-    return token;
-  }
-
-  function parseObjectContent(objContent: string): Record<string, unknown> {
+  function parseObjectContent(objContent: string, nextDepth: number): Record<string, unknown> {
     const obj: Record<string, unknown> = {};
+    if (nextDepth > MAX_ATTRIBUTE_DEPTH) {
+      return obj;
+    }
     const pairs = objContent.split(',');
     for (const pair of pairs) {
       const idx = pair.indexOf(':');
@@ -147,6 +63,9 @@ export function parseAttributeString(input: string): Record<string, unknown> {
           .slice(0, idx)
           .trim()
           .replace(/^['"]|['"]$/g, '');
+        if (!k || FORBIDDEN_ATTR_KEYS.has(k)) {
+          continue;
+        }
         const v = pair
           .slice(idx + 1)
           .trim()
@@ -160,28 +79,188 @@ export function parseAttributeString(input: string): Record<string, unknown> {
     return obj;
   }
 
-  while (i < len) {
+  function parseValue(currentDepth: number): unknown {
     skipWhitespace();
-    if (i >= len) break;
+    if (cursor >= len) return true;
+
+    if (currentDepth > MAX_ATTRIBUTE_DEPTH) {
+      // Depth budget exhausted: consume remaining non-whitespace token safely without recursion
+      const fallbackStart = cursor;
+      while (cursor < len && !/\s/.test(content[cursor]!)) {
+        cursor += 1;
+      }
+      if (cursor <= fallbackStart) {
+        cursor = fallbackStart + 1;
+      }
+      return undefined;
+    }
+
+    const char = content[cursor];
+
+    // String: double quotes
+    if (char === '"') {
+      cursor += 1;
+      let val = '';
+      while (cursor < len) {
+        const prevCursor = cursor;
+        if (content[cursor] === '\\' && cursor + 1 < len) {
+          val += content[cursor + 1];
+          cursor += 2;
+        } else if (content[cursor] === '"') {
+          cursor += 1;
+          break;
+        } else {
+          val += content[cursor];
+          cursor += 1;
+        }
+        if (cursor <= prevCursor) {
+          cursor = prevCursor + 1;
+        }
+      }
+      return val;
+    }
+
+    // String: single quotes
+    if (char === "'") {
+      cursor += 1;
+      let val = '';
+      while (cursor < len) {
+        const prevCursor = cursor;
+        if (content[cursor] === '\\' && cursor + 1 < len) {
+          val += content[cursor + 1];
+          cursor += 2;
+        } else if (content[cursor] === "'") {
+          cursor += 1;
+          break;
+        } else {
+          val += content[cursor];
+          cursor += 1;
+        }
+        if (cursor <= prevCursor) {
+          cursor = prevCursor + 1;
+        }
+      }
+      return val;
+    }
+
+    // Array: [...]
+    if (char === '[') {
+      cursor += 1; // consume [
+      const items: unknown[] = [];
+      while (cursor < len) {
+        const prevCursor = cursor;
+        skipWhitespace();
+        if (cursor >= len) break;
+
+        if (content[cursor] === ']') {
+          cursor += 1;
+          break;
+        }
+        if (content[cursor] === ',' || content[cursor] === '}') {
+          cursor += 1;
+          continue;
+        }
+
+        const itemVal = parseValue(currentDepth + 1);
+        if (itemVal !== undefined) {
+          items.push(itemVal);
+        }
+        skipWhitespace();
+        if (cursor < len && content[cursor] === ',') {
+          cursor += 1;
+        } else if (cursor < len && content[cursor] === ']') {
+          cursor += 1;
+          break;
+        }
+
+        if (cursor <= prevCursor) {
+          cursor = prevCursor + 1;
+        }
+      }
+      return items;
+    }
+
+    // Object or JSX expression: {...}
+    if (char === '{') {
+      cursor += 1; // consume {
+      skipWhitespace();
+      let braceDepth = 1;
+      const start = cursor;
+      while (cursor < len && braceDepth > 0) {
+        const prevCursor = cursor;
+        if (content[cursor] === '{') braceDepth += 1;
+        else if (content[cursor] === '}') braceDepth -= 1;
+        cursor += 1;
+        if (cursor <= prevCursor) {
+          cursor = prevCursor + 1;
+        }
+      }
+      const endOffset = braceDepth === 0 ? cursor - 1 : cursor;
+      const inner = content.slice(start, endOffset).trim();
+
+      if (inner === 'true') return true;
+      if (inner === 'false') return false;
+      if (/^-?\d+(\.\d+)?$/.test(inner)) return Number(inner);
+      if ((inner.startsWith('"') && inner.endsWith('"')) || (inner.startsWith("'") && inner.endsWith("'"))) {
+        return inner.slice(1, -1);
+      }
+      if (inner.startsWith('[') && inner.endsWith(']')) {
+        const nested = parseAttributeStringInternal(`items=${inner}`, currentDepth + 1);
+        return nested['items'] ?? [];
+      }
+      if (inner.includes(':')) {
+        return parseObjectContent(inner, currentDepth + 1);
+      }
+      return inner;
+    }
+
+    // Bare number, boolean, or identifier
+    const start = cursor;
+    while (cursor < len && !/[\s,}\]]/.test(content[cursor]!)) {
+      cursor += 1;
+    }
+    if (cursor === start) {
+      // Unexpected delimiter at value start: consume 1 char to guarantee progress
+      cursor += 1;
+      return undefined;
+    }
+    const token = content.slice(start, cursor);
+    if (token === 'true') return true;
+    if (token === 'false') return false;
+    if (/^-?\d+(\.\d+)?$/.test(token)) return Number(token);
+    return token;
+  }
+
+  while (cursor < len) {
+    const prevCursor = cursor;
+    skipWhitespace();
+    if (cursor >= len) break;
+
     const key = readKey();
     if (!key) {
-      i++;
+      cursor += 1;
       continue;
     }
 
     skipWhitespace();
-    if (i < len && content[i] === '=') {
-      i++; // consume =
-      const val = parseValue();
-      result[key] = val;
-    } else {
+    if (cursor < len && content[cursor] === '=') {
+      cursor += 1; // consume =
+      const val = parseValue(depth + 1);
+      if (!FORBIDDEN_ATTR_KEYS.has(key) && val !== undefined) {
+        result[key] = val;
+      }
+    } else if (!FORBIDDEN_ATTR_KEYS.has(key)) {
       // Boolean shorthand attribute (e.g. unnumbered, disabled)
       result[key] = true;
     }
 
     skipWhitespace();
-    if (i < len && (content[i] === ',' || content[i] === ' ')) {
-      i++;
+    if (cursor < len && (content[cursor] === ',' || content[cursor] === ' ')) {
+      cursor += 1;
+    }
+
+    if (cursor <= prevCursor) {
+      cursor = prevCursor + 1;
     }
   }
 

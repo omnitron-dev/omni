@@ -53,6 +53,7 @@ export interface LumenBaseNode {
   target?: string;
   symbol?: string;
   package?: string;
+  access?: string;
   attributes?: Record<string, unknown>;
   [key: string]: unknown;
 }
@@ -71,6 +72,8 @@ export interface LumenHeadingNode extends LumenBaseNode {
   type: 'heading';
   depth: 1 | 2 | 3 | 4 | 5 | 6;
   id: string;
+  access?: string;
+  attributes?: Record<string, unknown>;
   children: LumenNode[];
 }
 
@@ -114,6 +117,8 @@ export interface LumenMathEnvironmentNode extends LumenBaseNode {
   number?: string;
   unnumbered?: boolean;
   of?: string;
+  access?: string;
+  attributes?: Record<string, unknown>;
   children: LumenNode[];
 }
 
@@ -133,12 +138,16 @@ export interface LumenAdmonitionNode extends LumenBaseNode {
   type: 'admonition';
   kind: AdmonitionKind;
   title?: string;
+  access?: string;
+  attributes?: Record<string, unknown>;
   children: LumenNode[];
 }
 
 export interface LumenTabsNode extends LumenBaseNode {
   type: 'tabs';
   syncKey?: string;
+  access?: string;
+  attributes?: Record<string, unknown>;
   children: LumenTabItemNode[];
 }
 
@@ -146,6 +155,8 @@ export interface LumenTabItemNode extends LumenBaseNode {
   type: 'tabItem';
   label: string;
   value?: string;
+  access?: string;
+  attributes?: Record<string, unknown>;
   children: LumenNode[];
 }
 
@@ -199,8 +210,11 @@ export interface LumenTocItem {
   id: string;
   title: string;
   level: number;
+  access?: string;
   children?: LumenTocItem[];
 }
+
+export type LumenTocEntry = LumenTocItem;
 
 export interface LumenDocumentAst {
   frontmatter: LumenFrontmatter;

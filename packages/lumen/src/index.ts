@@ -22,7 +22,16 @@ export {
 export type { LumenConfig, LumenUserConfig, LumenSidebarItem } from './config/index.js';
 
 // 2. Corpus Knowledge Graph Subsystem
-export { CorpusGraph } from './corpus/index.js';
+export {
+  CorpusGraph,
+  isAccessAllowedForRoles,
+  isDocumentAllowed,
+  projectDocumentAst,
+  projectCorpusDocument,
+  projectCorpus,
+  extractAstPlainText,
+  extractFirstParagraphSummary,
+} from './corpus/index.js';
 export type {
   CorpusDocument,
   CorpusMathObject,
@@ -32,6 +41,7 @@ export type {
   AnchorResolutionResult,
   LinkResolutionResult,
   OutdatedTranslation,
+  CorpusProjectionOptions,
 } from './corpus/index.js';
 
 // 3. Verification Gates Framework Subsystem
@@ -59,6 +69,7 @@ export {
   buildStaticSite,
   renderDocumentHtml,
   extractCriticalEmotionCss,
+  BASE_LUMEN_THEME_CSS,
   buildHtmlPage,
   escapeHtml,
 } from './ssg/index.js';
@@ -74,7 +85,12 @@ export type {
 export { generateLlmsTxt, generateLlmsFullTxt, generateRouteMirrors, runLumenMcpServer } from './ai/index.js';
 
 // 6. Search Index & Asset Manifest Subsystems
-export { tokenizeMultilingual, generateSearchIndex } from './search/index.js';
+export {
+  tokenizeMultilingual,
+  generateSearchIndex,
+  buildSearchIndex,
+  createPagefindRuntimeScript,
+} from './search/index.js';
 export type { SearchIndexEntry, SearchIndexResult } from './search/index.js';
 
 export {
@@ -88,4 +104,4 @@ export {
 export type { AssetManifest, AssetManifestEntry, GenerateAssetManifestOptions } from './manifest/index.js';
 
 // 7. CLI Entrypoint
-export { runLumenCli } from './cli/index.js';
+export { runLumenCli, loadCorpusFromDirectory } from './cli/index.js';

@@ -133,15 +133,18 @@ Content uniquely belonging to document ${i}.
       }
     });
 
-    it('executes programmatic runLumenCli with unknown subcommand cleanly exiting 0', async () => {
-      const logs: string[] = [];
-      const origLog = console.log;
-      console.log = (...args: unknown[]) => logs.push(args.join(' '));
+    it('rejects programmatic runLumenCli with unknown subcommand with nonzero exitCode', async () => {
+      const errors: string[] = [];
+      const origError = console.error;
+      const prevExitCode = process.exitCode;
+      console.error = (...args: unknown[]) => errors.push(args.join(' '));
       try {
         await runLumenCli(['unrecognized-subcommand-404']);
-        expect(logs.some((l) => l.includes('command: unrecognized-subcommand-404'))).toBe(true);
+        expect(errors.some((l) => l.includes('Unknown command: unrecognized-subcommand-404'))).toBe(true);
+        expect(process.exitCode).toBe(1);
       } finally {
-        console.log = origLog;
+        process.exitCode = prevExitCode ?? 0;
+        console.error = origError;
       }
     });
 

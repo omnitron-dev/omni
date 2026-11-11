@@ -1,3 +1,4 @@
+import type { EmotionCache } from '@emotion/cache';
 import { extractCriticalEmotionCss } from './emotion-extractor.js';
 
 export function escapeHtml(str: string): string {
@@ -17,6 +18,9 @@ export interface HtmlPageOptions {
   contentHtml: string;
   baseUrl?: string;
   extraHead?: string[];
+  bodyScripts?: string[];
+  shellWrapped?: boolean;
+  emotionCache?: EmotionCache;
 }
 
 export function buildHtmlPage(options: HtmlPageOptions): string {
@@ -27,10 +31,17 @@ export function buildHtmlPage(options: HtmlPageOptions): string {
 
   const metaDesc = escapedDesc ? `\n    <meta name="description" content="${escapedDesc}" />` : '';
   const ogDesc = escapedDesc ? `\n    <meta property="og:description" content="${escapedDesc}" />` : '';
-  const extraHeadTags = options.extraHead ? `\n    ${options.extraHead.join('\n    ')}` : '';
+  const extraHeadTags =
+    options.extraHead && options.extraHead.length > 0 ? `\n    ${options.extraHead.join('\n    ')}` : '';
+  const bodyScriptTags =
+    options.bodyScripts && options.bodyScripts.length > 0 ? `\n    ${options.bodyScripts.join('\n    ')}` : '';
+
+  const bodyContent = options.shellWrapped
+    ? options.contentHtml
+    : `<div class="lumen-shell" data-theme="${escapeHtml(theme)}" data-locale="${escapeHtml(lang)}">\n      ${options.contentHtml}\n    </div>`;
 
   const initialHtml = `<!DOCTYPE html>
-<html lang="${lang}">
+<html lang="${escapeHtml(lang)}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -38,14 +49,12 @@ export function buildHtmlPage(options: HtmlPageOptions): string {
     <meta property="og:title" content="${escapedTitle}" />${ogDesc}
     <meta property="og:type" content="article" />${extraHeadTags}
   </head>
-  <body data-theme="${theme}">
-    <div class="lumen-shell" data-theme="${theme}" data-locale="${lang}">
-      ${options.contentHtml}
-    </div>
+  <body data-theme="${escapeHtml(theme)}">
+    ${bodyContent}${bodyScriptTags}
   </body>
 </html>`;
 
-  // Inject critical Emotion CSS into <head>
-  const { html } = extractCriticalEmotionCss(initialHtml);
+  // Extract and consolidate critical Emotion CSS into <head>
+  const { html } = extractCriticalEmotionCss(initialHtml, options.emotionCache);
   return html;
 }

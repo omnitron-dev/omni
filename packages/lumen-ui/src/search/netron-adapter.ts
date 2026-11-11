@@ -6,11 +6,46 @@ export interface NetronSearchResult {
   score: number;
 }
 
-function sanitizeSnippet(snippet: string): string {
+function stripDangerousTagsLinear(snippet: string): string {
   if (!snippet) return '';
-  return snippet
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/\bon\w+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]+)/gi, '');
+  let lower = snippet.toLowerCase();
+  let current = snippet;
+
+  for (const blocked of ['script', 'style']) {
+    let out = '';
+    let cursor = 0;
+    const openToken = `<${blocked}`;
+    const closeToken = `</${blocked}`;
+
+    while (cursor < current.length) {
+      const idx = lower.indexOf(openToken, cursor);
+      if (idx === -1) {
+        out += current.slice(cursor);
+        break;
+      }
+      const nextChar = lower[idx + openToken.length] ?? '';
+      if (nextChar && nextChar !== '>' && nextChar !== '/' && !/\s/.test(nextChar)) {
+        out += current.slice(cursor, idx + openToken.length);
+        cursor = idx + openToken.length;
+        continue;
+      }
+      out += current.slice(cursor, idx);
+      const closeIdx = lower.indexOf(closeToken, idx + openToken.length);
+      if (closeIdx === -1) {
+        break;
+      }
+      const closeEnd = lower.indexOf('>', closeIdx + closeToken.length);
+      if (closeEnd === -1) {
+        break;
+      }
+      cursor = closeEnd + 1;
+    }
+
+    current = out;
+    lower = current.toLowerCase();
+  }
+
+  return current;
 }
 
 export class NetronAdapter {
@@ -26,10 +61,10 @@ export class NetronAdapter {
       try {
         const results = await this.rpcClient.search(query, { limit });
         return (results || []).map((r, idx) => ({
-          id: r.documentId || `netron-${idx}`,
+          id: r.documentId || r.id || `netron-${idx}`,
           title: r.title || 'Untitled',
-          path: r.path || '',
-          snippet: sanitizeSnippet(r.snippet || ''),
+          path: r.path || r.url || '',
+          snippet: stripDangerousTagsLinear(r.snippet || ''),
           score: r.score ?? 1.0,
         }));
       } catch {
@@ -50,8 +85,8 @@ export class NetronAdapter {
         return items.map((r: any, idx: number) => ({
           id: r.documentId || r.id || `netron-${idx}`,
           title: r.title || 'Untitled',
-          path: r.path || '',
-          snippet: sanitizeSnippet(r.snippet || ''),
+          path: r.path || r.url || '',
+          snippet: stripDangerousTagsLinear(r.snippet || ''),
           score: r.score ?? 1.0,
         }));
       } catch {

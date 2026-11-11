@@ -1,4 +1,5 @@
 import type { ParityReport } from '../types.js';
+
 import { normalizeUrl } from './normalizer.js';
 import { crawlDocumentationDirectory } from './crawler.js';
 
@@ -75,7 +76,16 @@ export function compareDirectories(sourceDir: string, targetDir: string): Parity
   const sourceCrawled = crawlDocumentationDirectory(sourceDir);
   const targetCrawled = crawlDocumentationDirectory(targetDir);
 
-  return compareUrlArrays(sourceCrawled.allUrls, targetCrawled.allUrls);
+  const report = compareUrlArrays(sourceCrawled.allUrls, targetCrawled.allUrls);
+  if (sourceCrawled.routeUrls.length === 0 && sourceCrawled.allUrls.length === 0) {
+    return {
+      ...report,
+      passed: false,
+      parityScore: 0,
+    };
+  }
+
+  return report;
 }
 
 export function verifyUrlAndAnchorParity(source: string[] | string, target: string[] | string): ParityReport {

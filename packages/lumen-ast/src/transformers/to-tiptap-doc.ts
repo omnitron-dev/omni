@@ -23,11 +23,10 @@ export interface TipTapDoc {
 }
 
 export function toTipTapDoc(ast: LumenDocumentAst, _options?: TipTapOptions): TipTapDoc {
-  if (ast.children && ast.children.length > 0) {
-    const content = convertAstNodesToTipTap(ast.children);
+  if (Array.isArray(ast.children)) {
     return {
       type: 'doc',
-      content: content.length > 0 ? content : createFallbackParagraph(ast.rawContent),
+      content: convertAstNodesToTipTap(ast.children),
     };
   }
 

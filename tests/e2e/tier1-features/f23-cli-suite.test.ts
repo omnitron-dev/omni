@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { runLumenCli } from '@omnitron-dev/lumen';
 import { cliRunner } from '../harness/cli-runner.js';
@@ -42,8 +45,13 @@ describe('Feature 23: Lumen CLI Suite', () => {
   });
 
   it('TC-F23-05: dispatches lumen build command with custom output directory argument', async () => {
-    const result = await cliRunner.runLumenBuild({ outputDir: './custom-dist' });
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('command: build');
+    const customOutDir = mkdtempSync(join(tmpdir(), 'lumen-f23-dist-'));
+    try {
+      const result = await cliRunner.runLumenBuild({ outputDir: customOutDir });
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('command: build');
+    } finally {
+      rmSync(customOutDir, { recursive: true, force: true });
+    }
   });
 });

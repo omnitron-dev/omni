@@ -1,13 +1,19 @@
 import { toCleanMarkdown } from '@omnitron-dev/lumen-ast';
 import type { CorpusGraph } from '../corpus/graph.js';
+import { projectCorpus, type CorpusProjectionOptions } from '../corpus/projection.js';
 import type { LumenConfig } from '../config/schema.js';
 
-export function generateLlmsFullTxt(corpus: CorpusGraph, _config: LumenConfig): string {
-  const topoOrder = corpus.getTopologicalOrder();
+export function generateLlmsFullTxt(
+  corpus: CorpusGraph,
+  _config: LumenConfig,
+  options?: CorpusProjectionOptions
+): string {
+  const projectedCorpus = projectCorpus(corpus, options);
+  const topoOrder = projectedCorpus.getTopologicalOrder();
   const documentSections: string[] = [];
 
   for (const docId of topoOrder) {
-    const doc = corpus.getDocument(docId);
+    const doc = projectedCorpus.getDocument(docId);
     if (!doc) continue;
 
     if (doc.ast) {
@@ -17,8 +23,7 @@ export function generateLlmsFullTxt(corpus: CorpusGraph, _config: LumenConfig): 
       }
     } else {
       const title = doc.title || docId;
-      const raw = doc.frontmatter?.['rawContent'] ?? '';
-      documentSections.push(`# ${title}\n\n${raw}`.trim());
+      documentSections.push(`# ${title}`.trim());
     }
   }
 

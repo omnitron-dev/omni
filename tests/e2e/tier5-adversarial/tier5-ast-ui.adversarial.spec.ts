@@ -246,22 +246,22 @@ Real body content following unclosed frontmatter fence.`;
   });
 
   describe('1.4 Typst Academic Compiler Resilience & Injection Hardening', () => {
-    it('ADV-AST-14: exposes silent loss of unclosed theorem content in toTypst', () => {
-      // In to-typst.ts: if a theorem directive does not have a closing fence before EOF,
-      // the content inside theoremContent is never flushed to the typst string.
-      const doc: LumenDocumentAst = {
-        frontmatter: { title: 'Typst Test' },
-        rawContent: `:::theorem{id="thm-unclosed" title="Unclosed Theorem"}
-This crucial theorem proof content must not be discarded.`,
+    it('ADV-AST-14: preserves unclosed theorem content through parseDocument -> toTypst while never resurrecting rawContent on empty children (IA-01)', async () => {
+      const parsedUnclosed = await parseDocument(
+        `---\ntitle: Typst Test\n---\n:::theorem{id="thm-unclosed" title="Unclosed Theorem"}\nThis crucial theorem proof content must not be discarded.`
+      );
+      const typst = toTypst(parsedUnclosed);
+      expect(typst).toContain('This crucial theorem proof content must not be discarded.');
+
+      // IA-01 invariant: an AST with empty children must NEVER fall back to rawContent
+      const projectedEmpty: LumenDocumentAst = {
+        frontmatter: { title: 'Restricted', access: 'confidential' },
+        rawContent: 'DENIED_SECRET_CANARY_MUST_NEVER_RENDER',
         children: [],
         toc: [],
         diagnostics: [],
       };
-
-      const typst = toTypst(doc);
-      // Expected: the unclosed theorem's content is preserved in the emitted Typst output
-      // Current behavior: the content is silently dropped!
-      expect(typst).toContain('This crucial theorem proof content must not be discarded.');
+      expect(toTypst(projectedEmpty)).not.toContain('DENIED_SECRET_CANARY_MUST_NEVER_RENDER');
     });
 
     it('ADV-AST-15: exposes unescaped Typst markup injection in paper author and title', () => {

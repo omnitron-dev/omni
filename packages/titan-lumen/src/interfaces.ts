@@ -1,4 +1,13 @@
+import type { IncomingMessage } from 'node:http';
+import type { KnowledgeBase } from '@omnitron-dev/kb';
 import type { RoleHierarchy } from '@omnitron-dev/access';
+import type { AccessFilterService } from './access/access-filter.service.js';
+
+export interface LumenSessionContext {
+  valid: boolean;
+  roles: string[];
+  userId?: string;
+}
 
 export interface SearchOptions {
   limit?: number;
@@ -48,11 +57,17 @@ export interface TheoremGraphData {
   edges: TheoremGraphEdge[];
 }
 
+export type LiveEditMode = 'append' | 'replace' | 'line-range';
+
 export interface LiveEditPayload {
   docId: string;
   patch: string;
   baseRevision: number;
   author?: string;
+  mode?: LiveEditMode;
+  startLine?: number;
+  endLine?: number;
+  access?: string;
 }
 
 export interface LiveEditResult {
@@ -64,18 +79,61 @@ export interface LiveEditResult {
   content?: string;
 }
 
+export interface LiveEditEvent {
+  docId: string;
+  revision: number;
+  hash: string;
+  patch: string;
+  author?: string;
+  mode: LiveEditMode;
+  access: string;
+}
+
+export interface LiveEditServiceOptions {
+  maxDocuments?: number;
+  maxPatchBytes?: number;
+  maxDocumentBytes?: number;
+}
+
 export interface AccessFilterOptions {
   hierarchy?: RoleHierarchy;
   grants?: Record<string, string[]>;
 }
 
+export type TransportAuthResult = boolean | LumenSessionContext | null | undefined;
+
+export interface HttpMcpTransportOptions {
+  maxBodyBytes?: number;
+  readTimeoutMs?: number;
+  allowedOrigins?: string[];
+  authorize?: (req: IncomingMessage) => Promise<TransportAuthResult> | TransportAuthResult;
+  resolveSession?: (
+    req: IncomingMessage
+  ) => Promise<LumenSessionContext | null | undefined> | LumenSessionContext | null | undefined;
+}
+
+export interface SseMcpTransportOptions {
+  maxConnections?: number;
+  heartbeatIntervalMs?: number;
+  allowedOrigins?: string[];
+  accessFilter?: AccessFilterService;
+  authorize?: (req: IncomingMessage) => Promise<TransportAuthResult> | TransportAuthResult;
+  resolveSession?: (
+    req: IncomingMessage
+  ) => Promise<LumenSessionContext | null | undefined> | LumenSessionContext | null | undefined;
+}
+
 export interface ILumenModuleOptions {
   docsDir?: string;
+  sourceDir?: string;
   kbEnabled?: boolean;
+  knowledgeBase?: KnowledgeBase;
   mcpEnabled?: boolean;
   mcpPort?: number;
   global?: boolean;
+  enablePlayground?: boolean;
   accessFilter?: AccessFilterOptions;
+  liveEdit?: LiveEditServiceOptions;
 }
 
 export interface ILumenModuleAsyncOptions {
@@ -89,11 +147,11 @@ export type LumenModuleOptions = ILumenModuleOptions;
 export type LumenModuleAsyncOptions = ILumenModuleAsyncOptions;
 
 export interface ILumenRpcService {
-  search(query: string, options?: SearchOptions): Promise<SearchResult[]>;
-  executePlayground(code: string): Promise<PlaygroundResult | unknown>;
-  getDocument(path: string): Promise<string | null>;
-  getSymbolContract(symbol: string): Promise<SymbolContract | unknown | null>;
-  getTheoremGraph(): Promise<TheoremGraphData>;
-  saveLiveEdit(payload: LiveEditPayload): Promise<LiveEditResult>;
+  search(query: string, options?: SearchOptions, session?: LumenSessionContext): Promise<SearchResult[]>;
+  executePlayground(code: string, session?: LumenSessionContext): Promise<PlaygroundResult | unknown>;
+  getDocument(path: string, session?: LumenSessionContext): Promise<string | null>;
+  getSymbolContract(symbol: string, session?: LumenSessionContext): Promise<SymbolContract | unknown | null>;
+  getTheoremGraph(session?: LumenSessionContext): Promise<TheoremGraphData>;
+  saveLiveEdit(payload: LiveEditPayload, session?: LumenSessionContext): Promise<LiveEditResult>;
   getOptions(): ILumenModuleOptions;
 }

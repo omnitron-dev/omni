@@ -2,7 +2,7 @@
  * Directive Pre-Processing and Container Mapping
  */
 
-import { parseAttributeString } from './lexer-attrs.js';
+import { MAX_ATTRIBUTE_STRING_LENGTH, parseAttributeString } from './lexer-attrs.js';
 import { parseDirectiveAttributes } from '../math/environments.js';
 import type { MathEnvType } from '../math/environments.js';
 import type {
@@ -27,6 +27,9 @@ export interface DirectivePreProcessResult {
 
 export function preProcessDirectives(content: string): DirectivePreProcessResult {
   const attrMap = new Map<string, Record<string, unknown>>();
+  if (!content.includes(':::')) {
+    return { processedContent: content, attrMap };
+  }
   let counter = 0;
 
   // First pass: normalize nested :::tabs so outer tabs container fence has 4 colons
@@ -38,6 +41,10 @@ export function preProcessDirectives(content: string): DirectivePreProcessResult
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? '';
+    if (line.length > MAX_ATTRIBUTE_STRING_LENGTH * 2 || !line.startsWith(':::')) {
+      processedLines.push(line);
+      continue;
+    }
     // Look for lines like :::theorem{id="thm-1" dependsOn=["a", "b"]}
     const match = line.match(/^(:::{1,}\s*)([a-zA-Z0-9_-]+)(\{[^\n]*\})(.*)$/);
     if (match) {
@@ -190,6 +197,7 @@ export function createMathEnvironmentNode(
   children: LumenNode[]
 ): LumenMathEnvironmentNode {
   const parsed = parseDirectiveAttributes(attrs);
+  const access = typeof attrs['access'] === 'string' ? attrs['access'] : undefined;
   return {
     type: 'mathEnvironment',
     envKind,
@@ -201,6 +209,8 @@ export function createMathEnvironmentNode(
     number: parsed.number,
     unnumbered: parsed.unnumbered,
     of: parsed.of,
+    access,
+    attributes: { ...attrs },
     children,
   };
 }
@@ -212,10 +222,13 @@ export function createAdmonitionNode(
 ): LumenAdmonitionNode {
   const rawTitle = attrs['title'];
   const title = typeof rawTitle === 'string' ? rawTitle.trim() : capitalize(kind);
+  const access = typeof attrs['access'] === 'string' ? attrs['access'] : undefined;
   return {
     type: 'admonition',
     kind,
     title,
+    access,
+    attributes: { ...attrs },
     children,
   };
 }
@@ -223,10 +236,13 @@ export function createAdmonitionNode(
 export function createTabsNode(attrs: Record<string, unknown>, children: LumenNode[]): LumenTabsNode {
   const rawSyncKey = attrs['syncKey'];
   const syncKey = typeof rawSyncKey === 'string' ? rawSyncKey.trim() : undefined;
+  const access = typeof attrs['access'] === 'string' ? attrs['access'] : undefined;
   const tabItems = children.filter((c): c is LumenTabItemNode => c.type === 'tabItem');
   return {
     type: 'tabs',
     syncKey,
+    access,
+    attributes: { ...attrs },
     children: tabItems,
   };
 }
@@ -236,10 +252,13 @@ export function createTabItemNode(attrs: Record<string, unknown>, children: Lume
   const rawValue = attrs['value'];
   const label = typeof rawLabel === 'string' ? rawLabel.trim() : typeof rawValue === 'string' ? rawValue.trim() : 'Tab';
   const value = typeof rawValue === 'string' ? rawValue.trim() : undefined;
+  const access = typeof attrs['access'] === 'string' ? attrs['access'] : undefined;
   return {
     type: 'tabItem',
     label,
     value,
+    access,
+    attributes: { ...attrs },
     children,
   };
 }

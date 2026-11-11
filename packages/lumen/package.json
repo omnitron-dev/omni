@@ -32,17 +32,28 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@emotion/cache": "^11.14.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/server": "^11.11.0",
     "@omnitron-dev/lumen-ast": "workspace:*",
     "@omnitron-dev/lumen-ui": "workspace:*",
     "@omnitron-dev/prism": "workspace:*",
     "commander": "^15.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vite": "^8.3.5",
     "zod": "^4.6.7"
   },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
   "devDependencies": {
     "@types/node": "26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "vitest": "^5.0.5"
   },
   "engines": {

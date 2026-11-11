@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { runLumenCli } from '@omnitron-dev/lumen';
 import { cliRunner } from '../harness/cli-runner.js';
@@ -11,16 +14,21 @@ describe('Feature 23: Lumen CLI Suite Boundaries', () => {
     expect(result.stdout).toContain('build');
   });
 
-  it('TC-B23-02: handles unknown command argument safely without uncaught exception', async () => {
+  it('TC-B23-02: rejects unknown command argument with nonzero exit code without uncaught exception', async () => {
     const result = await cliRunner.runLumen(['unrecognized-subcommand-404']);
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('command: unrecognized-subcommand-404');
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Unknown command: unrecognized-subcommand-404');
   });
 
   it('TC-B23-03: handles lumen build with custom outDir and flag arguments', async () => {
-    const result = await cliRunner.runLumen(['build', '--outDir', './tmp/dist-custom']);
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('command: build');
+    const customOutDir = mkdtempSync(join(tmpdir(), 'lumen-b23-dist-'));
+    try {
+      const result = await cliRunner.runLumen(['build', '--outDir', customOutDir]);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('command: build');
+    } finally {
+      rmSync(customOutDir, { recursive: true, force: true });
+    }
   });
 
   it('TC-B23-04: handles lumen check with format flags', async () => {

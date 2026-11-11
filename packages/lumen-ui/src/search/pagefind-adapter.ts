@@ -38,10 +38,10 @@ export class PagefindAdapter {
 
   async init(): Promise<boolean> {
     if (this.isLoaded) return true;
-    if (typeof window === 'undefined') return false;
+    if (typeof window === 'undefined' && !this.pagefindPath.startsWith('file:')) return false;
 
     // Fast path: if window.pagefind is already present in the global scope
-    if ((window as any).pagefind) {
+    if (typeof window !== 'undefined' && (window as any).pagefind) {
       try {
         this.pagefindInstance = (window as any).pagefind;
         await this.pagefindInstance?.init?.();

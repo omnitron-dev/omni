@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import clsx from 'clsx';
 
 export interface PlaygroundSnapshot {
@@ -6,6 +6,13 @@ export interface PlaygroundSnapshot {
   code: string;
   signature?: string;
   timestamp?: number;
+  provenance?: string;
+}
+
+export interface PlaygroundRpcClient {
+  execute?: (payload: { service?: string; method?: string; code: string }) => Promise<unknown>;
+  call?: (service: string, method: string, payload?: unknown) => Promise<unknown>;
+  [key: string]: unknown;
 }
 
 export interface NetronPlaygroundProps {
@@ -21,6 +28,8 @@ export interface NetronPlaygroundProps {
   code?: string;
   /** Direct script string */
   script?: string;
+  /** Execution mode ('local' | 'server') */
+  mode?: 'local' | 'server' | string;
   /** Runtime environment indicator ('node22' | 'browser' | string) */
   runtime?: string;
   /** Execution timeout in milliseconds (default: 5000) */
@@ -29,13 +38,24 @@ export interface NetronPlaygroundProps {
   readOnly?: boolean;
   /** Remote Titan RPC endpoint URL */
   endpoint?: string;
+  /** Direct RPC client instance */
+  rpcClient?: PlaygroundRpcClient;
   /** Signed static snapshot for offline / fallback execution */
   snapshot?: PlaygroundSnapshot;
   /** Custom headers to send with RPC call */
   headers?: Record<string, string>;
+  /** Disables main-thread fallback evaluation when Web Workers are unavailable */
+  disableMainThreadFallback?: boolean;
+  /** Explicitly permits local shadowed fallback in browser DOM when Web Workers are unavailable */
+  allowUnsafeFallback?: boolean;
   /** Callback after execution finishes */
-  onExecute?: (result: { code: string; result: unknown; executionTimeMs: number }) => void;
+  onExecute?: (result: { code: string; result: unknown; error?: string; executionTimeMs: number }) => void;
   className?: string;
+}
+
+export interface SandboxExecutionOptions {
+  disableMainThreadFallback?: boolean;
+  allowUnsafeFallback?: boolean;
 }
 
 interface PrototypeSnapshot {
@@ -45,11 +65,22 @@ interface PrototypeSnapshot {
 }
 
 /**
- * Captures property snapshots of key prototypes to enable generic cleanup
+ * Captures property snapshots of key built-in prototypes to enable generic cleanup
  * and restoration after sandboxed evaluation.
  */
 function capturePrototypeSnapshots(): PrototypeSnapshot[] {
-  const targets = [Object.prototype, Array.prototype, Function.prototype];
+  const targets = [
+    Object.prototype,
+    Array.prototype,
+    Function.prototype,
+    String.prototype,
+    Number.prototype,
+    Boolean.prototype,
+    RegExp.prototype,
+    Promise.prototype,
+    Map.prototype,
+    Set.prototype,
+  ];
   return targets.map((target) => {
     const keys = [...Object.getOwnPropertyNames(target), ...Object.getOwnPropertySymbols(target)];
     const initialDescriptors = new Map<string | symbol, PropertyDescriptor>();
@@ -111,7 +142,6 @@ function restorePrototypeSnapshots(snapshots: PrototypeSnapshot[]): void {
  */
 function canUseWebWorker(): boolean {
   return (
-    typeof window !== 'undefined' &&
     typeof Worker !== 'undefined' &&
     typeof Blob !== 'undefined' &&
     typeof URL !== 'undefined' &&
@@ -120,65 +150,137 @@ function canUseWebWorker(): boolean {
 }
 
 /**
- * Evaluates untrusted code in an isolated Web Worker with hard timeout termination.
+ * Detects whether the current environment is a unit-test DOM shim (Happy-DOM / jsdom)
+ * or non-DOM Node environment vs a real browser window.
+ */
+function isUnitTestOrNodeEnvironment(): boolean {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return true;
+  }
+  return Boolean((window as unknown as Record<string, unknown>)['happyDOM']);
+}
+
+/**
+ * Generates the isolated Web Worker bootstrap script that disables ambient network
+ * and storage APIs before executing untrusted user snippets.
+ */
+export function createWorkerBootstrapSource(): string {
+  return `
+    (function bootstrapSandboxWorker() {
+      var postMsg = self.postMessage.bind(self);
+      var RealFunction = Function;
+
+      var disabledApis = [
+        'fetch',
+        'XMLHttpRequest',
+        'WebSocket',
+        'EventSource',
+        'importScripts',
+        'indexedDB',
+        'caches',
+        'BroadcastChannel',
+        'Worker',
+        'SharedWorker'
+      ];
+
+      for (var i = 0; i < disabledApis.length; i++) {
+        (function disableApi(apiName) {
+          try {
+            delete self[apiName];
+          } catch (_) {
+            // Ignore non-deletable properties
+          }
+          try {
+            Object.defineProperty(self, apiName, {
+              value: undefined,
+              writable: false,
+              configurable: false
+            });
+          } catch (_) {
+            try {
+              self[apiName] = undefined;
+            } catch (__) {
+              // Ignore non-writable intrinsics
+            }
+          }
+        })(disabledApis[i]);
+      }
+
+      self.onmessage = function handleMessage(e) {
+        var code = e && e.data ? e.data.code : '';
+        try {
+          var logs = [];
+          var formatArgs = function formatArgs(argsList) {
+            var arr = Array.prototype.slice.call(argsList);
+            return arr.map(function formatItem(a) {
+              if (typeof a === 'object' && a !== null) {
+                try { return JSON.stringify(a); } catch (_) { return String(a); }
+              }
+              return String(a);
+            }).join(' ');
+          };
+
+          var customConsole = {
+            log: function log() { logs.push(formatArgs(arguments)); },
+            warn: function warn() { logs.push('[WARN] ' + formatArgs(arguments)); },
+            error: function error() { logs.push('[ERR] ' + formatArgs(arguments)); }
+          };
+
+          var sandboxedFn = new RealFunction(
+            'console',
+            'self',
+            'globalThis',
+            'fetch',
+            'XMLHttpRequest',
+            'WebSocket',
+            'EventSource',
+            'importScripts',
+            'indexedDB',
+            'caches',
+            'Function',
+            'eval',
+            'return (async function runUserSnippet() {\\n"use strict";\\n' + code + '\\n})();'
+          );
+
+          var resPromise = sandboxedFn(
+            customConsole,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined
+          );
+
+          if (resPromise && typeof resPromise.then === 'function') {
+            resPromise.then(function onResolve(val) {
+              postMsg({ ok: true, result: val !== undefined ? val : logs.join('\\n') });
+            }).catch(function onReject(err) {
+              postMsg({ ok: false, error: err && err.message ? err.message : String(err) });
+            });
+          } else {
+            postMsg({ ok: true, result: resPromise !== undefined ? resPromise : logs.join('\\n') });
+          }
+        } catch (err) {
+          postMsg({ ok: false, error: err && err.message ? err.message : String(err) });
+        }
+      };
+    })();
+  `;
+}
+
+/**
+ * Evaluates untrusted code in an isolated Web Worker with hard timeout termination
+ * and disabled network/storage globals. Never retries failed worker code on the host window.
  */
 function runInWorker(code: string, timeoutMs: number): Promise<unknown> {
   return new Promise((resolve, reject) => {
-    const workerSource = `
-      self.onmessage = function(e) {
-        var code = e.data.code;
-        try {
-          var logs = [];
-          var customConsole = {
-            log: function() {
-              var args = Array.prototype.slice.call(arguments);
-              logs.push(args.map(function(a) {
-                if (typeof a === 'object' && a !== null) {
-                  try { return JSON.stringify(a); } catch (_) { return String(a); }
-                }
-                return String(a);
-              }).join(' '));
-            },
-            warn: function() {
-              var args = Array.prototype.slice.call(arguments);
-              logs.push('[WARN] ' + args.map(function(a) {
-                if (typeof a === 'object' && a !== null) {
-                  try { return JSON.stringify(a); } catch (_) { return String(a); }
-                }
-                return String(a);
-              }).join(' '));
-            },
-            error: function() {
-              var args = Array.prototype.slice.call(arguments);
-              logs.push('[ERR] ' + args.map(function(a) {
-                if (typeof a === 'object' && a !== null) {
-                  try { return JSON.stringify(a); } catch (_) { return String(a); }
-                }
-                return String(a);
-              }).join(' '));
-            }
-          };
-
-          var sandboxedFn = new Function(
-            'console',
-            '"use strict";\\nreturn (async function() {\\n' + code + '\\n})();'
-          );
-          var resPromise = sandboxedFn(customConsole);
-
-          if (resPromise && typeof resPromise.then === 'function') {
-            resPromise.then(function(val) {
-              self.postMessage({ ok: true, result: val !== undefined ? val : logs.join('\\n') });
-            }).catch(function(err) {
-              self.postMessage({ ok: false, error: err && err.message ? err.message : String(err) });
-            });
-          } else {
-            self.postMessage({ ok: true, result: resPromise !== undefined ? resPromise : logs.join('\\n') });
-          }
-        } catch (err) {
-          self.postMessage({ ok: false, error: err && err.message ? err.message : String(err) });
-        }
-      };
-    `;
+    const workerSource = createWorkerBootstrapSource();
 
     let blobUrl: string | null = null;
     let worker: Worker | null = null;
@@ -232,13 +334,14 @@ function runInWorker(code: string, timeoutMs: number): Promise<unknown> {
       worker.postMessage({ code });
     } catch (err) {
       cleanup();
-      reject(err);
+      reject(err instanceof Error ? err : new Error(String(err)));
     }
   });
 }
 
 /**
- * Evaluates code on the local thread with generic prototype snapshotting and restoration.
+ * Evaluates code with shadowed ambient globals and generic prototype snapshotting
+ * (used only in non-Worker unit-test environments or when allowUnsafeFallback is explicitly enabled).
  */
 function runInLocalSandbox(code: string, timeoutMs: number): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -255,21 +358,61 @@ function runInLocalSandbox(code: string, timeoutMs: number): Promise<unknown> {
 
     try {
       const logs: string[] = [];
-      const customConsole = {
-        log: (...args: any[]) =>
-          logs.push(args.map((a) => (typeof a === 'object' && a !== null ? JSON.stringify(a) : String(a))).join(' ')),
-        warn: (...args: any[]) =>
-          logs.push(
-            '[WARN] ' + args.map((a) => (typeof a === 'object' && a !== null ? JSON.stringify(a) : String(a))).join(' ')
-          ),
-        error: (...args: any[]) =>
-          logs.push(
-            '[ERR] ' + args.map((a) => (typeof a === 'object' && a !== null ? JSON.stringify(a) : String(a))).join(' ')
-          ),
+      const formatArg = (a: unknown): string => {
+        if (typeof a === 'object' && a !== null) {
+          try {
+            return JSON.stringify(a);
+          } catch {
+            return String(a);
+          }
+        }
+        return String(a);
       };
 
-      const sandboxedFn = new Function('console', `"use strict";\nreturn (async function() {\n${code}\n})();`);
-      const resPromise = sandboxedFn(customConsole);
+      const customConsole = {
+        log: (...args: unknown[]) => logs.push(args.map(formatArg).join(' ')),
+        warn: (...args: unknown[]) => logs.push('[WARN] ' + args.map(formatArg).join(' ')),
+        error: (...args: unknown[]) => logs.push('[ERR] ' + args.map(formatArg).join(' ')),
+      };
+
+      // Outer non-strict wrapper permits shadowing `eval` alongside ambient globals;
+      // inner async IIFE enforces strict mode (`this === undefined`).
+      const sandboxedFn = new Function(
+        'console',
+        'window',
+        'document',
+        'globalThis',
+        'self',
+        'fetch',
+        'XMLHttpRequest',
+        'WebSocket',
+        'EventSource',
+        'localStorage',
+        'sessionStorage',
+        'indexedDB',
+        'caches',
+        'Function',
+        'eval',
+        `return (async function runIsolatedSnippet() {\n"use strict";\n${code}\n})();`
+      );
+
+      const resPromise = sandboxedFn(
+        customConsole,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined
+      );
 
       if (resPromise && typeof (resPromise as any).then === 'function') {
         (resPromise as Promise<unknown>)
@@ -289,13 +432,11 @@ function runInLocalSandbox(code: string, timeoutMs: number): Promise<unknown> {
               reject(err);
             }
           });
-      } else {
-        if (!settled) {
-          settled = true;
-          clearTimeout(timer);
-          restorePrototypeSnapshots(snapshots);
-          resolve(resPromise !== undefined ? resPromise : logs.join('\n'));
-        }
+      } else if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        restorePrototypeSnapshots(snapshots);
+        resolve(resPromise !== undefined ? resPromise : logs.join('\n'));
       }
     } catch (err) {
       if (!settled) {
@@ -309,20 +450,29 @@ function runInLocalSandbox(code: string, timeoutMs: number): Promise<unknown> {
 }
 
 /**
- * Sandboxed code executor supporting Web Workers where available and local prototype-guarded fallback.
+ * Sandboxed code executor:
+ * - When Web Workers exist, executes inside a network-isolated Worker and NEVER retries on the host window.
+ * - When Web Workers are unavailable, fails closed in real browsers unless allowUnsafeFallback is explicitly set,
+ *   and runs with shadowed globals (`window`, `document`, `localStorage`, `fetch`, etc. = undefined) in unit tests.
  */
-async function executeSandboxedCode(code: string, timeoutMs: number): Promise<unknown> {
+export async function executeSandboxedCode(
+  code: string,
+  timeoutMs: number,
+  options?: SandboxExecutionOptions
+): Promise<unknown> {
   if (canUseWebWorker()) {
-    try {
-      return await runInWorker(code, timeoutMs);
-    } catch (err: any) {
-      if (err?.message?.includes('timed out')) {
-        throw err;
-      }
-      return await runInLocalSandbox(code, timeoutMs);
-    }
+    return runInWorker(code, timeoutMs);
   }
-  return await runInLocalSandbox(code, timeoutMs);
+
+  if (options?.disableMainThreadFallback) {
+    throw new Error('Isolated Web Worker runtime is unavailable');
+  }
+
+  if (!options?.allowUnsafeFallback && !isUnitTestOrNodeEnvironment()) {
+    throw new Error('Isolated Web Worker runtime is unavailable');
+  }
+
+  return runInLocalSandbox(code, timeoutMs);
 }
 
 export function NetronPlayground({
@@ -332,12 +482,16 @@ export function NetronPlayground({
   initialCode = '',
   code: directCode,
   script: directScript,
+  mode,
   runtime = 'browser',
   timeoutMs = 5000,
   readOnly = false,
   endpoint,
+  rpcClient,
   snapshot,
   headers = {},
+  disableMainThreadFallback = false,
+  allowUnsafeFallback = false,
   onExecute,
   className,
 }: NetronPlaygroundProps = {}): React.JSX.Element {
@@ -347,6 +501,16 @@ export function NetronPlayground({
   const [output, setOutput] = useState<unknown>(snapshot?.result ?? null);
   const [error, setError] = useState<string | null>(null);
   const [durationMs, setDurationMs] = useState<number | null>(null);
+  const [activeProvenance, setActiveProvenance] = useState<string | null>(
+    snapshot?.result !== undefined ? (snapshot.provenance ?? 'snapshot') : null
+  );
+
+  useEffect(() => {
+    const controlled = directCode ?? directScript;
+    if (controlled !== undefined) {
+      setCurrentCode(controlled);
+    }
+  }, [directCode, directScript]);
 
   const executeSandbox = useCallback(async () => {
     if (readOnly || isRunning) return;
@@ -354,63 +518,136 @@ export function NetronPlayground({
     setError(null);
     const start = performance.now();
 
+    const failClosed = (errMessage: string) => {
+      const elapsed = Math.round(performance.now() - start);
+      setOutput(null);
+      setError(errMessage);
+      setDurationMs(elapsed);
+      onExecute?.({ code: currentCode, result: undefined, error: errMessage, executionTimeMs: elapsed });
+    };
+
     try {
-      // 1. If remote RPC endpoint is explicitly defined, attempt remote execution
-      if (endpoint) {
-        try {
-          const payload = { service, method, code: currentCode };
-          const res = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...headers },
-            body: JSON.stringify(payload),
-          });
-          if (res.ok) {
+      const isRemoteMode = Boolean(endpoint || rpcClient || mode === 'server');
+
+      // 1. Remote RPC execution: fail closed on any HTTP non-2xx or transport rejection (NEVER fall back to local eval!)
+      if (isRemoteMode) {
+        if (rpcClient) {
+          try {
+            let rpcResult: unknown;
+            if (typeof rpcClient.execute === 'function') {
+              rpcResult = await rpcClient.execute({ service, method, code: currentCode });
+            } else if (typeof rpcClient.call === 'function') {
+              rpcResult = await rpcClient.call(service, method || 'execute', { code: currentCode });
+            } else {
+              const dynamicMethod = rpcClient[method || 'execute'];
+              if (typeof dynamicMethod !== 'function') {
+                throw new Error(`RPC method "${method || 'execute'}" is not available on rpcClient`);
+              }
+              rpcResult = await (dynamicMethod as (payload: unknown) => Promise<unknown>)(currentCode);
+            }
+            const elapsed = Math.round(performance.now() - start);
+            const unwrapped =
+              rpcResult && typeof rpcResult === 'object' && 'result' in (rpcResult as Record<string, unknown>)
+                ? (rpcResult as Record<string, unknown>)['result']
+                : rpcResult;
+            setOutput(unwrapped);
+            setDurationMs(elapsed);
+            onExecute?.({ code: currentCode, result: unwrapped, executionTimeMs: elapsed });
+            return;
+          } catch (rpcErr: any) {
+            failClosed(rpcErr?.message || 'Remote RPC execution failed');
+            return;
+          }
+        }
+
+        if (endpoint) {
+          try {
+            const payload = { service, method, code: currentCode };
+            const res = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...headers },
+              body: JSON.stringify(payload),
+            });
+
+            if (!res.ok) {
+              let detail = `Remote RPC error (HTTP ${res.status})`;
+              try {
+                const bodyJson = await res.json();
+                if (bodyJson && typeof bodyJson === 'object') {
+                  const serverMsg = bodyJson.error || bodyJson.message;
+                  if (typeof serverMsg === 'string' && serverMsg.trim()) {
+                    detail = `HTTP ${res.status}: ${serverMsg}`;
+                  }
+                }
+              } catch {
+                // Keep status code message when response body is not JSON
+              }
+              failClosed(detail);
+              return;
+            }
+
             const data = await res.json();
             const elapsed = Math.round(performance.now() - start);
-            const finalResult = data.result !== undefined ? data.result : data;
+            const finalResult = data && typeof data === 'object' && data.result !== undefined ? data.result : data;
             setOutput(finalResult);
             setDurationMs(elapsed);
             onExecute?.({ code: currentCode, result: finalResult, executionTimeMs: elapsed });
             return;
+          } catch (fetchErr: any) {
+            failClosed(fetchErr?.message || 'Remote RPC request failed');
+            return;
           }
-        } catch {
-          // Network failure or backend offline; proceed to fallback
         }
 
-        // If backend RPC failed, fall back to static snapshot result if available
-        if (snapshot && snapshot.result !== undefined) {
-          const elapsed = Math.round(performance.now() - start);
-          setOutput(snapshot.result);
-          setDurationMs(elapsed);
-          onExecute?.({ code: currentCode, result: snapshot.result, executionTimeMs: elapsed });
-          return;
-        }
+        failClosed('Remote RPC endpoint is not configured for server mode');
+        return;
       }
 
-      // 2. Client-side sandboxed JS execution with prototype isolation & timeout termination
+      // 2. Client-side sandboxed JS execution (Worker-isolated, never retried on host main thread)
       try {
-        const result = await executeSandboxedCode(currentCode, timeoutMs);
+        const result = await executeSandboxedCode(currentCode, timeoutMs, {
+          disableMainThreadFallback,
+          allowUnsafeFallback,
+        });
         const elapsed = Math.round(performance.now() - start);
+        setActiveProvenance('sandbox');
         setOutput(result);
         setDurationMs(elapsed);
         onExecute?.({ code: currentCode, result, executionTimeMs: elapsed });
       } catch (evalErr: any) {
-        // If client-side execution failed and a static snapshot result is provided, fall back to snapshot
-        if (snapshot && snapshot.result !== undefined) {
+        const snapshotMatchesCode = !snapshot?.code || snapshot.code.trim() === currentCode.trim();
+        if (snapshot && snapshot.result !== undefined && snapshotMatchesCode) {
           const elapsed = Math.round(performance.now() - start);
+          setActiveProvenance(snapshot.provenance ?? 'snapshot');
           setOutput(snapshot.result);
           setDurationMs(elapsed);
           onExecute?.({ code: currentCode, result: snapshot.result, executionTimeMs: elapsed });
         } else {
-          setError(evalErr?.message || 'Execution error');
+          setActiveProvenance(null);
+          failClosed(evalErr?.message || 'Execution error');
         }
       }
     } catch (err: any) {
-      setError(err?.message || 'Execution error');
+      failClosed(err?.message || 'Execution error');
     } finally {
       setIsRunning(false);
     }
-  }, [currentCode, endpoint, service, method, headers, timeoutMs, readOnly, isRunning, snapshot, onExecute]);
+  }, [
+    currentCode,
+    endpoint,
+    rpcClient,
+    mode,
+    service,
+    method,
+    headers,
+    timeoutMs,
+    readOnly,
+    isRunning,
+    snapshot,
+    disableMainThreadFallback,
+    allowUnsafeFallback,
+    onExecute,
+  ]);
 
   return (
     <div
@@ -418,6 +655,7 @@ export function NetronPlayground({
       data-service={service || undefined}
       data-method={method || undefined}
       data-runtime={runtime}
+      data-provenance={activeProvenance || undefined}
     >
       <header className="lumen-playground-header">
         <div className="lumen-playground-title">

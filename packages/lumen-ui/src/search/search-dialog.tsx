@@ -24,11 +24,197 @@ export interface LumenSearchDialogProps {
   className?: string;
 }
 
-function sanitizeSnippetHtml(html: string): string {
-  if (!html) return '';
-  return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/\bon\w+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]+)/gi, '');
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+const ENTITY_MAP: Record<string, string> = {
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&#39;': "'",
+  '&#x27;': "'",
+  '&apos;': "'",
+  '&nbsp;': ' ',
+};
+
+function decodeSafeEntities(text: string): string {
+  if (!text || !text.includes('&')) return text;
+  return text.replace(/&(?:amp|lt|gt|quot|apos|nbsp|#39|#x27);/gi, (match) => {
+    const lower = match.toLowerCase();
+    return ENTITY_MAP[lower] ?? match;
+  });
+}
+
+/**
+ * Strictly validates search result URLs, allowing only http:, https:, mailto:,
+ * or safe relative URLs (/, ./, ../, #, ?). Replaces javascript:, vbscript:, data:,
+ * protocol-relative //, and unknown schemes with '#'.
+ */
+export function sanitizeSearchResultUrl(rawUrl: string): string {
+  if (!rawUrl || typeof rawUrl !== 'string') {
+    return '#';
+  }
+
+  const trimmed = rawUrl.trim();
+  if (!trimmed) {
+    return '#';
+  }
+
+  // Reject any URL containing control characters (e.g. java\tscript:, null bytes, newlines)
+  for (let i = 0; i < trimmed.length; i++) {
+    const code = trimmed.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f) {
+      return '#';
+    }
+  }
+
+  // Reject protocol-relative URLs (//evil.example)
+  if (trimmed.startsWith('//')) {
+    return '#';
+  }
+
+  // Allow safe relative URL forms
+  if (
+    trimmed.startsWith('/') ||
+    trimmed.startsWith('./') ||
+    trimmed.startsWith('../') ||
+    trimmed.startsWith('#') ||
+    trimmed.startsWith('?')
+  ) {
+    return trimmed;
+  }
+
+  // Normalize whitespace to detect obfuscated schemes
+  const collapsed = trimmed.replace(/\s+/g, '');
+  const colonIdx = collapsed.indexOf(':');
+  if (colonIdx !== -1) {
+    const scheme = collapsed.slice(0, colonIdx + 1).toLowerCase();
+    if (scheme === 'http:' || scheme === 'https:' || scheme === 'mailto:') {
+      return trimmed;
+    }
+    return '#';
+  }
+
+  return '#';
+}
+
+/**
+ * Parses a search result snippet into safe React child nodes without raw HTML injection.
+ * - Strips <script>...</script> and <style>...</style> blocks completely.
+ * - Converts <mark>...</mark> segments into React <mark> elements.
+ * - Strips all other tags down to plain escaped text nodes.
+ */
+export function parseSearchSnippet(snippet: string): React.ReactNode[] {
+  if (!snippet || typeof snippet !== 'string') {
+    return [];
+  }
+
+  const nodes: React.ReactNode[] = [];
+  let plainBuffer = '';
+  let markBuffer = '';
+  let inMark = false;
+  let ignoredTag: 'script' | 'style' | null = null;
+  let markKey = 0;
+  let index = 0;
+
+  const flushPlain = () => {
+    if (plainBuffer.length > 0) {
+      nodes.push(decodeSafeEntities(plainBuffer));
+      plainBuffer = '';
+    }
+  };
+
+  const flushMark = () => {
+    if (markBuffer.length > 0) {
+      nodes.push(React.createElement('mark', { key: `mark-${markKey}` }, decodeSafeEntities(markBuffer)));
+      markKey += 1;
+      markBuffer = '';
+    }
+  };
+
+  while (index < snippet.length) {
+    const lt = snippet.indexOf('<', index);
+    if (lt === -1) {
+      if (ignoredTag === null) {
+        const tail = snippet.slice(index);
+        if (inMark) {
+          markBuffer += tail;
+        } else {
+          plainBuffer += tail;
+        }
+      }
+      break;
+    }
+
+    if (lt > index && ignoredTag === null) {
+      const chunk = snippet.slice(index, lt);
+      if (inMark) {
+        markBuffer += chunk;
+      } else {
+        plainBuffer += chunk;
+      }
+    }
+
+    const gt = snippet.indexOf('>', lt + 1);
+    if (gt === -1) {
+      // Unclosed tag at end of snippet: drop trailing fragment safely
+      break;
+    }
+
+    const rawTag = snippet.slice(lt + 1, gt).trim();
+    index = gt + 1;
+
+    if (!rawTag || rawTag.startsWith('!')) {
+      continue;
+    }
+
+    const isClosing = rawTag.startsWith('/');
+    const tagBody = isClosing ? rawTag.slice(1).trim() : rawTag;
+    const isSelfClosing = !isClosing && rawTag.endsWith('/');
+
+    let nameEnd = 0;
+    while (nameEnd < tagBody.length) {
+      const ch = tagBody.charCodeAt(nameEnd);
+      const isAlphaNum = (ch >= 48 && ch <= 57) || (ch >= 65 && ch <= 90) || (ch >= 97 && ch <= 122) || ch === 45;
+      if (!isAlphaNum) break;
+      nameEnd += 1;
+    }
+    const tagName = tagBody.slice(0, nameEnd).toLowerCase();
+
+    if (ignoredTag !== null) {
+      if (isClosing && tagName === ignoredTag) {
+        ignoredTag = null;
+      }
+      continue;
+    }
+
+    if (!isClosing && (tagName === 'script' || tagName === 'style')) {
+      if (!isSelfClosing) {
+        ignoredTag = tagName;
+      }
+      continue;
+    }
+
+    if (tagName === 'mark') {
+      if (!isClosing && !isSelfClosing) {
+        if (!inMark) {
+          flushPlain();
+          inMark = true;
+        }
+      } else if (isClosing && inMark) {
+        flushMark();
+        inMark = false;
+      }
+    }
+  }
+
+  if (inMark) {
+    flushMark();
+  }
+  flushPlain();
+
+  return nodes;
 }
 
 export function LumenSearchDialogContent({
@@ -45,56 +231,134 @@ export function LumenSearchDialogContent({
   const [activeTab, setActiveTab] = useState<'local' | 'semantic'>(defaultTab);
   const [results, setResults] = useState<Array<{ id: string; title: string; url: string; snippet: string }>>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(
+    typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null
+  );
+  const requestIdRef = useRef(0);
 
   const pagefindAdapter = useMemo(() => new PagefindAdapter(pagefindUrl), [pagefindUrl]);
   const netronAdapter = useMemo(() => new NetronAdapter(rpcClient, rpcEndpoint), [rpcClient, rpcEndpoint]);
 
   const sanitizeQuery = useCallback((str: string): string => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), []);
 
+  // Focus search input on open and restore previously focused element on close/unmount
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return undefined;
+    }
+
+    if (!previousFocusRef.current) {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && active !== inputRef.current) {
+        previousFocusRef.current = active;
+      }
+    }
+
+    inputRef.current?.focus();
+
+    return () => {
+      const prev = previousFocusRef.current;
+      if (prev && typeof prev.focus === 'function' && prev.isConnected) {
+        prev.focus();
+      }
+    };
+  }, []);
+
+  const trapTabFocus = useCallback((e: { key: string; shiftKey: boolean; preventDefault: () => void }) => {
+    if (typeof document === 'undefined') return;
+    const container = dialogRef.current;
+    if (!container) return;
+
+    const focusable = Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+    if (focusable.length === 0) {
+      e.preventDefault();
+      return;
+    }
+
+    const activeEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const currentIndex = activeEl ? focusable.indexOf(activeEl) : -1;
+
+    e.preventDefault();
+    if (e.shiftKey) {
+      const prevIndex = currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1;
+      focusable[prevIndex]?.focus();
+    } else {
+      const nextIndex = currentIndex === -1 || currentIndex >= focusable.length - 1 ? 0 : currentIndex + 1;
+      focusable[nextIndex]?.focus();
+    }
+  }, []);
+
+  const handleDialogKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose?.();
+      } else if (e.key === 'Tab') {
+        trapTabFocus(e);
+      }
+    },
+    [onClose, trapTabFocus]
+  );
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return undefined;
     }
 
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleWindowKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         onClose?.();
+      } else if (e.key === 'Tab') {
+        trapTabFocus(e);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+
+    window.addEventListener('keydown', handleWindowKeyDown);
+    return () => window.removeEventListener('keydown', handleWindowKeyDown);
+  }, [onClose, trapTabFocus]);
 
   useEffect(() => {
     const raw = query.trim();
     if (!raw) {
+      requestIdRef.current += 1;
       setResults([]);
+      setIsLoading(false);
       return undefined;
     }
 
+    const currentRequestId = requestIdRef.current + 1;
+    requestIdRef.current = currentRequestId;
     const truncated = sanitizeQuery(raw.slice(0, 256));
     let cancelled = false;
+    setIsLoading(true);
 
     async function executeSearch() {
-      setIsLoading(true);
+      if (cancelled || currentRequestId !== requestIdRef.current) return;
       try {
         if (activeTab === 'local') {
           const res = await pagefindAdapter.search(truncated, maxResults);
-          if (!cancelled) {
+          if (!cancelled && currentRequestId === requestIdRef.current) {
             setResults(res.map((r) => ({ id: r.id, title: r.title, url: r.url, snippet: r.excerpt })));
           }
         } else {
           const res = await netronAdapter.search(truncated, maxResults);
-          if (!cancelled) {
+          if (!cancelled && currentRequestId === requestIdRef.current) {
             setResults(res.map((r) => ({ id: r.id, title: r.title, url: r.path, snippet: r.snippet })));
           }
         }
       } catch {
-        if (!cancelled) setResults([]);
+        if (!cancelled && currentRequestId === requestIdRef.current) {
+          setResults([]);
+        }
       } finally {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled && currentRequestId === requestIdRef.current) {
+          setIsLoading(false);
+        }
       }
     }
 
@@ -106,7 +370,12 @@ export function LumenSearchDialogContent({
   }, [query, activeTab, maxResults, pagefindAdapter, netronAdapter, sanitizeQuery]);
 
   return (
-    <div className="lumen-search-dialog">
+    <div
+      ref={dialogRef}
+      className="lumen-search-dialog"
+      aria-label="Search documentation"
+      onKeyDown={handleDialogKeyDown}
+    >
       <header className="lumen-search-header">
         <div className="lumen-search-input-wrapper">
           <input
@@ -114,6 +383,7 @@ export function LumenSearchDialogContent({
             type="search"
             className="lumen-search-input"
             placeholder="Search documentation..."
+            aria-label="Search query"
             value={query}
             maxLength={256}
             autoFocus
@@ -151,26 +421,25 @@ export function LumenSearchDialogContent({
         )}
         {!isLoading && results.length > 0 && (
           <ul className="lumen-search-results-list">
-            {results.map((r) => (
-              <li
-                key={r.id}
-                className="lumen-search-result-item"
-                onClick={() => {
-                  onSelectResult?.({ url: r.url, title: r.title });
-                  onClose?.();
-                }}
-              >
-                <a href={r.url} className="lumen-search-result-link">
-                  <span className="lumen-search-result-title">{r.title}</span>
-                  {r.snippet && (
-                    <span
-                      className="lumen-search-result-snippet"
-                      dangerouslySetInnerHTML={{ __html: sanitizeSnippetHtml(r.snippet) }}
-                    />
-                  )}
-                </a>
-              </li>
-            ))}
+            {results.map((r) => {
+              const safeUrl = sanitizeSearchResultUrl(r.url);
+              const snippetNodes = r.snippet ? parseSearchSnippet(r.snippet) : [];
+              return (
+                <li
+                  key={r.id}
+                  className="lumen-search-result-item"
+                  onClick={() => {
+                    onSelectResult?.({ url: safeUrl, title: r.title });
+                    onClose?.();
+                  }}
+                >
+                  <a href={safeUrl} className="lumen-search-result-link">
+                    <span className="lumen-search-result-title">{r.title}</span>
+                    {snippetNodes.length > 0 && <span className="lumen-search-result-snippet">{snippetNodes}</span>}
+                  </a>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -198,6 +467,7 @@ export function LumenSearchDialog({
       className: className ? `lumen-search-dialog-backdrop ${className}` : 'lumen-search-dialog-backdrop',
       role: 'dialog',
       'aria-modal': true,
+      'aria-label': 'Search documentation',
       onClick: (e: React.MouseEvent) => {
         if (e.target === e.currentTarget) onClose?.();
       },
@@ -207,8 +477,8 @@ export function LumenSearchDialog({
       initialQuery,
       defaultTab,
       pagefindUrl,
-      rpcEndpoint,
       rpcClient,
+      rpcEndpoint,
       maxResults,
       onSelectResult,
     })

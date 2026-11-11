@@ -70,15 +70,23 @@ Unitary evolution is reversible.
     expect(buffer.length).toBeGreaterThan(0);
   });
 
-  it('falls back to rawContent and strips generic frontmatter when node serialization is empty', () => {
-    const customAst: LumenDocumentAst = {
+  it('never resurrects rawContent when ast.children is an array (IA-01 redaction safety), and strips frontmatter only when children is absent', () => {
+    const redactedAst: LumenDocumentAst = {
+      frontmatter: { title: 'Restricted', access: 'confidential' },
+      children: [],
+      toc: [],
+      diagnostics: [],
+      rawContent: 'CONFIDENTIAL PAYLOAD THAT MUST NEVER LEAK',
+    };
+
+    expect(toHtmlSsr(redactedAst)).not.toContain('CONFIDENTIAL PAYLOAD');
+    expect(toCleanMarkdown(redactedAst)).toBe('');
+    expect(toTipTapDoc(redactedAst)).toEqual({ type: 'doc', content: [] });
+    expect(toTypst(redactedAst)).not.toContain('CONFIDENTIAL PAYLOAD');
+
+    const unparsedLegacyAst = {
       frontmatter: { title: 'Arbitrary Metadata Document' },
-      children: [
-        {
-          type: 'unsupported_extension_node',
-          data: { meta: 'opaque-binary' },
-        },
-      ],
+      children: undefined as unknown as LumenDocumentAst['children'],
       toc: [],
       diagnostics: [],
       rawContent: `---
@@ -88,9 +96,9 @@ arbitraryInternalTag: 9999
 
 # Recovered Title
 Recovered body text after generic frontmatter stripping.`,
-    };
+    } satisfies LumenDocumentAst;
 
-    const clean = toCleanMarkdown(customAst);
+    const clean = toCleanMarkdown(unparsedLegacyAst);
     expect(clean).toContain('# Recovered Title');
     expect(clean).toContain('Recovered body text after generic frontmatter stripping.');
     expect(clean).not.toContain('customMetadataKey');

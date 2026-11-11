@@ -5,10 +5,18 @@ export function generateAssetManifest(
   options?: GenerateAssetManifestOptions
 ): AssetManifest {
   const prev: AssetManifest = {};
-  if (options?.carryPreviousBuildForward && options.previousManifest && typeof options.previousManifest === 'object') {
+  if (
+    options?.carryPreviousBuildForward &&
+    options.previousManifest &&
+    typeof options.previousManifest === 'object' &&
+    !Array.isArray(options.previousManifest)
+  ) {
     const rawPrev = options.previousManifest;
     for (const [key, val] of Object.entries(rawPrev)) {
-      if ((key.startsWith('routes/') || key.endsWith('.html')) && !(key in currentAssets)) {
+      if (
+        (key.startsWith('routes/') || key.endsWith('.html') || key.endsWith('.md') || key.startsWith('pagefind/')) &&
+        !(key in currentAssets)
+      ) {
         continue;
       }
       prev[key] = val;

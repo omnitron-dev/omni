@@ -2,19 +2,17 @@
  * Core Parser: prism-doc/2 to LumenDocumentAst Compiler
  */
 
-import matter from 'gray-matter';
-import { fromMarkdown } from 'mdast-util-from-markdown';
-import { gfm } from 'micromark-extension-gfm';
-import { gfmFromMarkdown } from 'mdast-util-gfm';
-import { directive } from 'micromark-extension-directive';
 import { directiveFromMarkdown } from 'mdast-util-directive';
-import { math } from 'micromark-extension-math';
+import { fromMarkdown } from 'mdast-util-from-markdown';
+import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { mathFromMarkdown } from 'mdast-util-math';
+import { directive } from 'micromark-extension-directive';
+import { gfm } from 'micromark-extension-gfm';
+import { math } from 'micromark-extension-math';
 
 import type { LumenDiagnostic } from '../ast/diagnostics.js';
 import { createDiagnostic } from '../ast/diagnostics.js';
-import type { LumenFrontmatter } from '../ast/frontmatter.js';
-import { validateFrontmatter } from '../ast/frontmatter.js';
+import { parseSafeFrontmatter } from '../ast/frontmatter.js';
 import type {
   LumenCodeBlockNode,
   LumenDiagramNode,
@@ -27,10 +25,10 @@ import type {
   LumenParagraphNode,
   LumenRootNode,
 } from '../ast/types.js';
-
-import { buildTableOfContents, extractHeadingIdAndTitle } from './headings.js';
-import { parseJsxTag } from './jsx-parser.js';
-import { splitTextWithSmartRefs, SMART_REF_PATTERN } from './smart-refs.js';
+import { generateMathAnchor } from '../math/anchors.js';
+import type { MathEnvType } from '../math/environments.js';
+import { isFormalMathEnv } from '../math/environments.js';
+import { MathNumberingEngine } from '../math/numbering.js';
 import {
   createAdmonitionNode,
   createMathEnvironmentNode,
@@ -40,82 +38,56 @@ import {
   preProcessDirectives,
   resolveDirectiveAttributes,
 } from './directives.js';
-import { isFormalMathEnv } from '../math/environments.js';
-import type { MathEnvType } from '../math/environments.js';
-import { MathNumberingEngine } from '../math/numbering.js';
-import { generateMathAnchor } from '../math/anchors.js';
+import {
+  computeTocFromNodes,
+  extractHeadingMetadata,
+  serializeHeadingInlineText,
+  stripTrailingHeadingAttrFromChildren,
+} from './headings.js';
+import { maskPascalJsxElements, parseJsxTag, registerJsxFragmentParser } from './jsx-parser.js';
+import { SMART_REF_PATTERN, splitTextWithSmartRefs } from './smart-refs.js';
 
 interface ParseContext {
   filePath?: string;
   attrMap: Map<string, Record<string, unknown>>;
+  jsxMap: Map<string, string>;
   diagnostics: LumenDiagnostic[];
   numberingEngine: MathNumberingEngine;
   existingAnchors: Set<string>;
-  mathIndex: number;
+  mathIndexRef: { value: number };
+  headingIndexRef: { value: number };
 }
 
-export async function parseDocument(content: string, filePath?: string): Promise<LumenDocumentAst> {
-  const diagnostics: LumenDiagnostic[] = [];
-
-  // Handle empty or whitespace-only documents
-  if (!content || !content.trim()) {
-    return {
-      frontmatter: {},
-      children: [],
-      toc: [],
-      diagnostics: [],
-      rawContent: content,
-    };
+function parseMarkdownFragmentSync(
+  fragmentContent: string,
+  shared: {
+    filePath?: string;
+    diagnostics: LumenDiagnostic[];
+    numberingEngine: MathNumberingEngine;
+    existingAnchors: Set<string>;
+    mathIndexRef: { value: number };
+    headingIndexRef: { value: number };
+  }
+): LumenNode[] {
+  if (!fragmentContent || !fragmentContent.trim()) {
+    return [];
   }
 
-  let parsedFrontmatter: LumenFrontmatter = {};
-  let bodyContent = content;
+  // 1. Pre-process directives (masking attributes with unquoted arrays)
+  const { processedContent, attrMap } = preProcessDirectives(fragmentContent);
 
-  // 1. Split frontmatter safely
-  try {
-    const parsedMatter = matter(content);
-    bodyContent = parsedMatter.content;
-    const validated = validateFrontmatter(parsedMatter.data, filePath);
-    parsedFrontmatter = validated.frontmatter;
-    diagnostics.push(...validated.diagnostics);
-  } catch (err) {
-    diagnostics.push(
-      createDiagnostic('FRONTMATTER_PARSE_ERROR', err instanceof Error ? err.message : String(err), 'error', {
-        file: filePath,
-        line: 1,
-      })
-    );
+  // 2. Pre-process PascalCase JSX tags (preserving multi-line tags & `{...}` props)
+  const { maskedContent, jsxMap } = maskPascalJsxElements(processedContent);
 
-    // Fallback extraction of body content after unclosed or broken frontmatter fence
-    if (content.startsWith('---')) {
-      const closingIdx = content.indexOf('\n---\n', 3);
-      if (closingIdx !== -1) {
-        bodyContent = content.slice(closingIdx + 5);
-      } else {
-        const nextHeadingIdx = content.indexOf('\n#');
-        if (nextHeadingIdx !== -1) {
-          bodyContent = content.slice(nextHeadingIdx + 1);
-        }
-      }
-    }
-  }
-
-  // 2. Build Table of Contents
-  const lines = bodyContent.split('\n');
-  const toc = buildTableOfContents(lines);
-
-  // 3. Pre-process directives (masking attributes with unquoted arrays)
-  const { processedContent, attrMap } = preProcessDirectives(bodyContent);
-
-  // 4. Mask smart references: @domain:target -> @domain__LUMEN_COLON__target so micromark doesn't treat : as textDirective
-  const maskedSmartRefs = processedContent.includes('@')
-    ? processedContent.replace(
+  // 3. Mask smart references: @domain:target -> @domain__LUMEN_COLON__target
+  const maskedSmartRefs = maskedContent.includes('@')
+    ? maskedContent.replace(
         new RegExp(SMART_REF_PATTERN.source, 'g'),
         (_, domain, target) => `@${domain}__LUMEN_COLON__${target}`
       )
-    : processedContent;
+    : maskedContent;
 
-  // 5. Parse Markdown with micromark & mdast extensions
+  // 4. Parse Markdown with micromark & mdast extensions
   let mdastTree: { type: string; children?: unknown[] };
   try {
     mdastTree = fromMarkdown(maskedSmartRefs, {
@@ -123,25 +95,26 @@ export async function parseDocument(content: string, filePath?: string): Promise
       mdastExtensions: [gfmFromMarkdown(), directiveFromMarkdown(), mathFromMarkdown()],
     }) as { type: string; children?: unknown[] };
   } catch (err) {
-    diagnostics.push(
+    shared.diagnostics.push(
       createDiagnostic('MARKDOWN_PARSE_ERROR', err instanceof Error ? err.message : String(err), 'error', {
-        file: filePath,
+        file: shared.filePath,
       })
     );
     mdastTree = { type: 'root', children: [] };
   }
 
-  // 6. Transform mdast tree into typed LumenNode tree
   const context: ParseContext = {
-    filePath,
+    filePath: shared.filePath,
     attrMap,
-    diagnostics,
-    numberingEngine: new MathNumberingEngine(),
-    existingAnchors: new Set<string>(),
-    mathIndex: 0,
+    jsxMap,
+    diagnostics: shared.diagnostics,
+    numberingEngine: shared.numberingEngine,
+    existingAnchors: shared.existingAnchors,
+    mathIndexRef: shared.mathIndexRef,
+    headingIndexRef: shared.headingIndexRef,
   };
 
-  const mdastChildren = ((mdastTree as any)['children'] ?? []) as Record<string, unknown>[];
+  const mdastChildren = ((mdastTree as Record<string, unknown>)['children'] ?? []) as Record<string, unknown>[];
   const transformedChildren: LumenNode[] = [];
 
   for (const child of mdastChildren) {
@@ -153,6 +126,54 @@ export async function parseDocument(content: string, filePath?: string): Promise
     }
   }
 
+  return transformedChildren;
+}
+
+// Register default synchronous Markdown+JSX fragment parser for standalone parseJsxTag() calls
+registerJsxFragmentParser((markdown, filePath) => {
+  const localDiagnostics: LumenDiagnostic[] = [];
+  const children = parseMarkdownFragmentSync(markdown, {
+    filePath,
+    diagnostics: localDiagnostics,
+    numberingEngine: new MathNumberingEngine(),
+    existingAnchors: new Set<string>(),
+    mathIndexRef: { value: 0 },
+    headingIndexRef: { value: 0 },
+  });
+  return { children, diagnostics: localDiagnostics };
+});
+
+export async function parseDocument(content: string, filePath?: string): Promise<LumenDocumentAst> {
+  // Handle empty or whitespace-only documents
+  if (!content || !content.trim()) {
+    return {
+      frontmatter: {},
+      children: [],
+      toc: [],
+      diagnostics: [],
+      rawContent: content,
+    };
+  }
+
+  // 1. Safely split and validate frontmatter (rejects executable engines & oversized inputs)
+  const fmResult = parseSafeFrontmatter(content, filePath);
+  const diagnostics: LumenDiagnostic[] = [...fmResult.diagnostics];
+  const parsedFrontmatter = fmResult.frontmatter;
+  const bodyContent = fmResult.content;
+
+  // 2. Parse document body recursively with shared numbering & diagnostics state
+  const transformedChildren = parseMarkdownFragmentSync(bodyContent, {
+    filePath,
+    diagnostics,
+    numberingEngine: new MathNumberingEngine(),
+    existingAnchors: new Set<string>(),
+    mathIndexRef: { value: 0 },
+    headingIndexRef: { value: 0 },
+  });
+
+  // 3. Derive Table of Contents strictly from parsed AST children (propagating ancestor access)
+  const toc = computeTocFromNodes(transformedChildren);
+
   return {
     frontmatter: parsedFrontmatter,
     children: transformedChildren,
@@ -163,7 +184,7 @@ export async function parseDocument(content: string, filePath?: string): Promise
 }
 
 function transformNode(rawNode: Record<string, unknown>, context: ParseContext): LumenNode | LumenNode[] {
-  const node = rawNode as any;
+  const node = rawNode as Record<string, any>;
   const type = String(node['type'] ?? '');
 
   switch (type) {
@@ -194,6 +215,7 @@ function transformNode(rawNode: Record<string, unknown>, context: ParseContext):
     }
 
     case 'heading': {
+      context.headingIndexRef.value += 1;
       const depth = Number(node['depth'] ?? 1) as 1 | 2 | 3 | 4 | 5 | 6;
       const rawChildren = (node['children'] ?? []) as Record<string, unknown>[];
       const children = rawChildren.flatMap((c) => {
@@ -201,17 +223,17 @@ function transformNode(rawNode: Record<string, unknown>, context: ParseContext):
         return Array.isArray(res) ? res : [res];
       });
 
-      // Extract plain text to compute heading id
-      const fullText = children
-        .map((c) => ('value' in c && typeof c['value'] === 'string' ? c['value'] : ''))
-        .join(' ');
-      const { id } = extractHeadingIdAndTitle(fullText, 1);
+      const fullText = serializeHeadingInlineText(children);
+      const meta = extractHeadingMetadata(fullText, context.headingIndexRef.value);
+      const cleanedChildren = meta.hasTrailingAttrBlock ? stripTrailingHeadingAttrFromChildren(children) : children;
 
       return {
         type: 'heading',
         depth,
-        id,
-        children,
+        id: meta.id,
+        ...(meta.access !== undefined ? { access: meta.access } : {}),
+        ...(meta.attributes !== undefined ? { attributes: meta.attributes } : {}),
+        children: cleanedChildren,
         position: node['position'],
       } as LumenHeadingNode;
     }
@@ -299,7 +321,7 @@ function transformNode(rawNode: Record<string, unknown>, context: ParseContext):
         name === 'definition' ||
         name === 'theorem'
       ) {
-        context.mathIndex++;
+        context.mathIndexRef.value += 1;
         const mathEnvKind = (isFormalMathEnv(name) ? name : 'theorem') as MathEnvType;
 
         // Auto assign number if not explicit
@@ -313,7 +335,7 @@ function transformNode(rawNode: Record<string, unknown>, context: ParseContext):
           resolvedAttrs['id'] = generateMathAnchor(
             mathEnvKind,
             resolvedAttrs,
-            context.mathIndex,
+            context.mathIndexRef.value,
             context.existingAnchors
           );
         }
@@ -338,6 +360,7 @@ function transformNode(rawNode: Record<string, unknown>, context: ParseContext):
       return {
         type: 'containerDirective',
         name,
+        access: typeof resolvedAttrs['access'] === 'string' ? resolvedAttrs['access'] : undefined,
         attributes: resolvedAttrs,
         children,
         position: node['position'],
@@ -346,7 +369,25 @@ function transformNode(rawNode: Record<string, unknown>, context: ParseContext):
 
     case 'html': {
       const rawHtml = String(node['value'] ?? '');
-      const { node: jsxNode, diagnostics: jsxDiagnostics } = parseJsxTag(rawHtml, context.filePath);
+      const tokenMatch = rawHtml.trim().match(/^<!--(__LUMEN_JSX_TOKEN_\d+__)-->$/);
+      const effectiveHtml = tokenMatch && tokenMatch[1] ? (context.jsxMap.get(tokenMatch[1]) ?? rawHtml) : rawHtml;
+
+      const { node: jsxNode, diagnostics: jsxDiagnostics } = parseJsxTag(
+        effectiveHtml,
+        context.filePath,
+        (innerMd, fp) => {
+          const innerDiag: LumenDiagnostic[] = [];
+          const innerChildren = parseMarkdownFragmentSync(innerMd, {
+            filePath: fp ?? context.filePath,
+            diagnostics: innerDiag,
+            numberingEngine: context.numberingEngine,
+            existingAnchors: context.existingAnchors,
+            mathIndexRef: context.mathIndexRef,
+            headingIndexRef: context.headingIndexRef,
+          });
+          return { children: innerChildren, diagnostics: innerDiag };
+        }
+      );
       context.diagnostics.push(...jsxDiagnostics);
       return jsxNode;
     }

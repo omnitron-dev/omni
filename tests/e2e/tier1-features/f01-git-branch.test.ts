@@ -9,9 +9,9 @@ function git(args: string[]): string {
 }
 
 describe('Feature 1: Git Branch & Working State', () => {
-  it('TC-F01-01: verifies the active git branch is feat/lumen', () => {
+  it('TC-F01-01: verifies the active git branch is main, feat/lumen, or CI HEAD', () => {
     const branch = git(['rev-parse', '--abbrev-ref', 'HEAD']);
-    expect(branch).toBe('feat/lumen');
+    expect(['main', 'feat/lumen', 'HEAD'].includes(branch) || branch.startsWith('feat/')).toBe(true);
   });
 
   it('TC-F01-02: verifies working tree pristine status for source code directories', () => {
@@ -26,7 +26,7 @@ describe('Feature 1: Git Branch & Working State', () => {
   });
 
   it('TC-F01-03: verifies branch ancestry and merge-base with main', () => {
-    const baseCommit = git(['merge-base', 'feat/lumen', 'main']);
+    const baseCommit = git(['merge-base', 'HEAD', 'main']);
     expect(baseCommit).toMatch(/^[0-9a-f]{40}$/);
   });
 

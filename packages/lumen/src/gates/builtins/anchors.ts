@@ -1,4 +1,23 @@
+import type { LumenNode } from '@omnitron-dev/lumen-ast';
 import type { CorpusGate, GateContext, GateResult, LumenGateDiagnostic } from '../types.js';
+
+function walkAstNodes(nodes: LumenNode[], visitor: (node: LumenNode) => void): void {
+  for (const node of nodes) {
+    visitor(node);
+    if (Array.isArray(node.children) && node.children.length > 0) {
+      walkAstNodes(node.children, visitor);
+    }
+  }
+}
+
+function isExternalHref(href: string): boolean {
+  const trimmed = href.trim();
+  return (
+    trimmed.startsWith('//') ||
+    trimmed === '#unsafe-url' ||
+    /^(?:https?:|mailto:|tel:|javascript:|vbscript:|data:)/i.test(trimmed)
+  );
+}
 
 export const anchorsGate: CorpusGate = {
   name: 'anchorsGate',
@@ -39,21 +58,40 @@ export const anchorsGate: CorpusGate = {
         }
       }
 
-      // 3. Check cross-document anchor links
+      const checkedRefs = new Set<string>();
+      const verifyAnchorRef = (ref: string, line?: number) => {
+        const trimmed = ref.trim();
+        if (!trimmed || !trimmed.includes('#') || isExternalHref(trimmed) || checkedRefs.has(trimmed)) {
+          return;
+        }
+        checkedRefs.add(trimmed);
+
+        const res = context.graph.resolveAnchor(trimmed, doc.id);
+        if (!res.resolved) {
+          diagnostics.push({
+            code: 'ERR_BROKEN_ANCHOR',
+            message: `Anchor ${trimmed} does not resolve`,
+            file: doc.path,
+            ...(line !== undefined ? { line } : {}),
+            severity: 'error',
+          });
+        }
+      };
+
+      // 3. Check cross-document and local anchor links in relations.seeAlso
       if (doc.relations?.seeAlso) {
         for (const ref of doc.relations.seeAlso) {
-          if (ref.includes('#')) {
-            const res = context.graph.resolveAnchor(ref);
-            if (!res.resolved) {
-              diagnostics.push({
-                code: 'ERR_BROKEN_ANCHOR',
-                message: `Anchor ${ref} does not resolve`,
-                file: doc.path,
-                severity: 'error',
-              });
-            }
-          }
+          verifyAnchorRef(ref);
         }
+      }
+
+      // 4. Inspect AST link nodes directly for `#anchor` and `doc#anchor` references
+      if (doc.ast?.children) {
+        walkAstNodes(doc.ast.children, (node) => {
+          if (node.type === 'link' && typeof node.url === 'string' && node.url.includes('#')) {
+            verifyAnchorRef(node.url, node.position?.start?.line);
+          }
+        });
       }
     }
 

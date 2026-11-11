@@ -182,7 +182,8 @@ Paragraph.
     const decoded = new TextDecoder().decode(buffer);
 
     expect(decoded).toContain('= Heading with `inline_code()` and "double quotes"');
-    expect(decoded).toContain("== Heading with 'single quotes' & ampersand & symbols < > $ %");
-    expect(decoded).toContain('=== Heading with backslash \\ and math $x = \\alpha + \\beta$');
+    expect(decoded).toContain("// Section: ## Heading with 'single quotes' & ampersand & symbols < > $ %");
+    expect(decoded).toContain("== Heading with 'single quotes' & ampersand & symbols \\< \\> \\$ %");
+    expect(decoded).toContain('=== Heading with backslash \\\\ and math $x = \\alpha + \\beta$');
   });
 });

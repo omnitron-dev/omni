@@ -1,10 +1,16 @@
 import { toCleanMarkdown } from '@omnitron-dev/lumen-ast';
 import type { CorpusGraph } from '../corpus/graph.js';
+import { projectCorpus, type CorpusProjectionOptions } from '../corpus/projection.js';
 import type { LumenConfig } from '../config/schema.js';
 
-export function generateRouteMirrors(corpus: CorpusGraph, _config: LumenConfig): Map<string, string> {
+export function generateRouteMirrors(
+  corpus: CorpusGraph,
+  _config?: LumenConfig,
+  options?: CorpusProjectionOptions
+): Map<string, string> {
   const mirrors = new Map<string, string>();
-  const docs = corpus.getAllDocuments();
+  const projectedCorpus = projectCorpus(corpus, options);
+  const docs = projectedCorpus.getAllDocuments();
 
   for (const doc of docs) {
     const cleanMd = doc.ast

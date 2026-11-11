@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
 import { expect, it } from 'vitest';
-import { watchSdk } from '../../bin/sdk.js';
+import { watchSdk, type DevelopmentSdkProfile } from '../../bin/sdk.js';
 
 const exec = promisify(execFile);
 const require = createRequire(import.meta.url);
@@ -59,7 +59,7 @@ await fs.mkdir('dist',{recursive:true});
 await fs.copyFile('src/index.ts','dist/index.d.ts');
 await fs.writeFile('dist/index.js','export const value=1;\\n');\n`);
     await fs.writeFile(path.join(pkg, 'src/index.ts'), 'export declare const value: number;\n');
-    const profile = { schema: 1, root: consumer, source, links: { '@omnitron-dev/probe': pkg } };
+    const profile: DevelopmentSdkProfile = { schema: 1, root: consumer, source, links: { '@omnitron-dev/probe': pkg } };
     await fs.writeFile(path.join(state, 'active.json'), JSON.stringify(profile));
     const taskHash = async () => {
       const { stdout } = await exec(process.execPath, [turbo, 'run', '//#build', '--dry=json'], { cwd: consumer });

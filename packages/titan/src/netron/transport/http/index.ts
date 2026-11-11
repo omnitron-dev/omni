@@ -38,6 +38,7 @@ export type {
   ITransportServer,
   TransportCapabilities,
   TransportOptions,
+  HttpRouteContext,
   TransportAddress,
   ConnectionState,
   ServerMetrics,

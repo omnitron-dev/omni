@@ -935,10 +935,10 @@ export class HttpServer extends EventEmitter implements ITransportServer {
    */
   async handleRequest(request: Request, remoteAddress?: string): Promise<Response> {
     const key = this.rateLimiter.clientKey(request, remoteAddress);
-    return this.dispatchRequest(request, key, this.rateLimiter.consume(key), true);
+    return this.dispatchRequest(request, key, this.rateLimiter.consume(key), true, remoteAddress);
   }
 
-  private async dispatchRequest(request: Request, key: string, rateLimitResult: RateLimitResult, boundFetchBody = false): Promise<Response> {
+  private async dispatchRequest(request: Request, key: string, rateLimitResult: RateLimitResult, boundFetchBody = false, remoteAddress?: string): Promise<Response> {
     const startTime = performance.now();
     this.metrics.totalRequests++;
     this.metrics.activeRequests++;
@@ -967,7 +967,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     let status = 500;
     try {
       if (boundFetchBody) request = this.fetchBodyBoundary.bound(request, detectRuntime() === 'bun');
-      const response = await this.route(request, pathname, key);
+      const response = await this.route(request, pathname, key, remoteAddress);
       status = response.status;
       return response;
     } catch (error: any) {
@@ -1019,7 +1019,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
   }
 
   /** Which handler answers this request — the dispatch `handleRequest` measures. */
-  private async route(request: Request, pathname: string, key: string): Promise<Response> {
+  private async route(request: Request, pathname: string, key: string, remoteAddress?: string): Promise<Response> {
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return this.handleCorsPreflightRequest(request);
@@ -1054,7 +1054,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     // Custom routes (file serving, webhooks, etc.)
     if (this.options.customRoutes) {
       for (const routeHandler of this.options.customRoutes) {
-        const customResponse = await routeHandler(request);
+        const customResponse = await routeHandler(request, Object.freeze({ remoteAddress }));
         if (customResponse) return customResponse;
       }
     }
@@ -2372,7 +2372,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
         // Release incoming chunks without buffering or parsing a refused upload.
         req.resume();
       }
-      response = await this.dispatchRequest(request, key, admission);
+      response = await this.dispatchRequest(request, key, admission, false, req.socket.remoteAddress);
     } catch (error) {
       // Node's HTTP listener does not await an async callback. A rejected body
       // read must become a transport refusal, never an unhandled rejection that

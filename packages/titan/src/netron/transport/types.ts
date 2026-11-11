@@ -198,7 +198,12 @@ export interface TransportOptions {
    * ]
    * ```
    */
-  customRoutes?: Array<(request: Request) => Promise<Response | null>>;
+  customRoutes?: Array<(request: Request, context: HttpRouteContext) => Promise<Response | null>>;
+}
+
+/** Connection facts supplied by the HTTP host, never by request headers or bodies. */
+export interface HttpRouteContext {
+  readonly remoteAddress?: string;
 }
 
 /**

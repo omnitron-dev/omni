@@ -495,24 +495,33 @@ describe('retry', () => {
   });
 
   it('should respect custom backoff settings', async () => {
-    const start = Date.now();
+    const setTimer = globalThis.setTimeout;
+    // Verify the delays requested from the clock. Wall-clock measurements can
+    // round down or include unrelated scheduler delays on a busy runner.
+    const schedule = vi.spyOn(globalThis, 'setTimeout')
+      .mockImplementation((callback, _ms, ...args) => setTimer(callback, 0, ...args));
     let count = 0;
 
-    await retry(
-      () => {
-        count++;
-        if (count < 3) throw new Error('fail');
-        return 'success';
-      },
-      {
-        max: 5,
-        backoffBase: 50,
-        backoffExponent: 2,
-      }
-    );
+    try {
+      const result = await retry(
+        () => {
+          count++;
+          if (count < 3) throw new Error('fail');
+          return 'success';
+        },
+        {
+          max: 5,
+          backoffBase: 50,
+          backoffExponent: 2,
+        }
+      );
 
-    const duration = Date.now() - start;
-    expect(duration).toBeGreaterThanOrEqual(150); // 50 + 100
+      expect(result).toBe('success');
+      expect(count).toBe(3);
+      expect(schedule.mock.calls.map(([, ms]) => ms)).toEqual([50, 100]);
+    } finally {
+      schedule.mockRestore();
+    }
   });
 
   it('should handle custom match patterns', async () => {

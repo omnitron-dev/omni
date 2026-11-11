@@ -27,7 +27,7 @@
     "unlink:global": "pnpm uninstall --global @omnitron-dev/omnitron",
     "kb:extract": "turbo kb:extract",
     "kb:index": "cd apps/omnitron && tsx src/commands/kb.ts index",
-    "check:reproducibility": "node scripts/check-reproducible-backend.mjs",
+    "check:reproducibility": "xec run scripts/check-reproducible-backend.mjs",
     "check:packages": "node scripts/check-package-exports.mjs",
     "release": "xec release"
   },

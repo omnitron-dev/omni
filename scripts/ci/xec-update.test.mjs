@@ -3,6 +3,7 @@ import test from 'node:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { ReleaseCommandError } from '@xec-sh/ops/release';
 import { runUpdate } from '../../.xec/update.mjs';
 
 test('Xec stages a reviewed candidate through Omnitron without activating or using SSH', async t => {
@@ -46,4 +47,25 @@ test('activation and reconciliation delegate exactly once; local check cannot im
   await assert.rejects(runUpdate(['apply', '--apply'], options));
   const failed = { ...options, run: async () => { throw Error('connection lost'); } };
   await assert.rejects(runUpdate(['apply', id], failed), /connection lost/);
+});
+
+
+test('controller refusals preserve structured receipts, nonzero status and the actual reason', async () => {
+  const id = '12345678-1234-1234-1234-123456789abc';
+  const receipt = { id, state: 'blocked', reason: 'Migration sets differ', targets: [{ name: 'worker-a', state: 'blocked' }] };
+  const output = [], calls = [];
+  let reply = { ok: true, data: receipt };
+  const options = { progress: message => output.push(message), run: async (_root, _cmd, args) => {
+    calls.push(args);
+    throw new ReleaseCommandError('omnitron', 1, JSON.stringify(reply), '');
+  } };
+  await assert.rejects(runUpdate(['status', id], options), error =>
+    error.isUserError && error.exitCode === 1 && error.message === receipt.reason);
+  assert.deepEqual(JSON.parse(output[0]), receipt);
+  reply = { ok: false, error: 'Prepare a compatible database transition' };
+  await assert.rejects(runUpdate(['local-check', '/private/runtime/dist'], options), error =>
+    error.isUserError && error.message === reply.error);
+  assert.equal(calls.length, 2, 'a refusal cannot replay an operation');
+  const transport = new ReleaseCommandError('omnitron', 2, 'incomplete response', 'connection lost');
+  await assert.rejects(runUpdate(['apply', id], { ...options, run: async () => { throw transport; } }), error => error === transport);
 });

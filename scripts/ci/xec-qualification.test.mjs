@@ -72,7 +72,8 @@ test('qualification uses one Xec pipeline, resumes a completed build and keeps b
   const run = async (_root, executable, args) => {
     if (executable === 'git') return commit;
     assert.equal(executable, process.execPath);
-    assert.equal(args[0], 'scripts/check-reproducible-backend.mjs');
+    assert.ok(path.isAbsolute(args[0]));
+    assert.deepEqual(args.slice(1, 3), ['run', 'scripts/check-reproducible-backend.mjs']);
     builds++;
     const directory = args.at(-1);
     await fs.mkdir(directory, { recursive: true });

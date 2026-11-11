@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { UserError } from '@xec-sh/ops';
 import { Pipeline } from '@xec-sh/ops/pipeline';
 import { releaseCommand } from '@xec-sh/ops/release';
 import policy from './release-policy.mjs';
@@ -81,7 +82,8 @@ export async function qualifyRelease(root, version, options = {}) {
         build = path.join(directory, state.buildDirectory);
       }
       await persist();
-      await run(root, process.execPath, ['scripts/check-reproducible-backend.mjs', '--revision', commit, '--out', build],
+      await run(root, process.execPath, [fileURLToPath(new URL('../bin/xec', import.meta.resolve('@xec-sh/cli'))),
+        'run', 'scripts/check-reproducible-backend.mjs', '--revision', commit, '--out', build],
         { timeoutMs: 90 * 60_000 });
     }
     state.stages.reproducibility = await (options.verifyBuild ?? verifyBuild)(build, commit);
@@ -104,7 +106,7 @@ export async function qualifyRelease(root, version, options = {}) {
     },
   });
   if (await run(root, 'git', ['rev-parse', 'HEAD']) !== commit) throw Error('Release HEAD changed during qualification');
-  if (!result.success) throw Error('Release qualification is incomplete:\n' +
+  if (!result.success) throw new UserError('Release qualification is incomplete:\n' +
     result.steps.filter(step => !step.success).map(step => step.name + ': ' + step.error).join('\n'));
   const runtimes = {};
   if (provider.downloadNative) for (const node of nodes) {

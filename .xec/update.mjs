@@ -3,7 +3,8 @@ import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { Pipeline } from '@xec-sh/ops/pipeline';
-import { releaseCommand } from '@xec-sh/ops/release';
+import { UserError } from '@xec-sh/ops';
+import { releaseCommand, ReleaseCommandError } from '@xec-sh/ops/release';
 import { qualifiedRuntimes } from './qualification.mjs';
 
 /** Xec orchestrates; the daemon remains the authority for pins, roles, locks and recovery. */
@@ -26,9 +27,25 @@ export async function runUpdate(args, options = {}) {
   const run = options.run ?? releaseCommand;
   const progress = options.progress ?? console.log;
   const call = async argv => {
-    const output = await run(root, values.cli, ['--json', ...argv], { timeoutMs: 30 * 60_000 });
-    const reply = JSON.parse(output);
-    if (!reply?.ok) throw Error(reply?.error?.message ?? 'Omnitron did not confirm the operation');
+    let output, failure;
+    try { output = await run(root, values.cli, ['--json', ...argv], { timeoutMs: 30 * 60_000 }); }
+    catch (error) {
+      if (!(error instanceof ReleaseCommandError)) throw error;
+      output = error.stdout;
+      failure = error;
+    }
+    let reply;
+    try { reply = JSON.parse(output); } catch (error) { throw failure ?? error; }
+    const reason = typeof reply?.error === 'string' ? reply.error : reply?.error?.message;
+    if (reply?.ok === false && typeof reason === 'string') throw new UserError(reason);
+    if (reply?.ok !== true) throw failure ?? Error('Omnitron did not confirm the operation');
+    if (failure) {
+      // A known blocked/uncertain rollout is still a failed command. Preserve its
+      // receipt and explanation; never turn non-zero exit into success or retry it.
+      progress(JSON.stringify(reply.data, null, 2));
+      throw new UserError(reply.data?.reason ?? 'Omnitron did not complete the operation',
+        { exitCode: Number.isInteger(failure.status) && failure.status > 0 && failure.status < 256 ? failure.status : 1 });
+    }
     return reply.data;
   };
   if (operation === 'plan') {

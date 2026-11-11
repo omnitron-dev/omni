@@ -14,6 +14,7 @@ import type {
   TokenStorage,
 } from './types.js';
 import { LocalTokenStorage, MemoryTokenStorage } from './storage.js';
+import { scheduleDeadline } from './deadline.js';
 
 /**
  * Default options
@@ -101,8 +102,8 @@ type MergedOptions = {
 export class AuthenticationClient {
   private options: MergedOptions;
   private state: AuthState;
-  private refreshTimer?: ReturnType<typeof setTimeout>;
-  private inactivityTimer?: ReturnType<typeof setTimeout>;
+  private refreshTimer?: () => void;
+  private inactivityTimer?: () => void;
   private lastActivity: number = Date.now();
   private eventHandlers = new Map<AuthEventType, Set<AuthEventHandler>>();
   private refreshPromise?: Promise<AuthResult>;
@@ -266,9 +267,7 @@ export class AuthenticationClient {
     this.persistToStorage();
 
     // Set up auto-refresh if enabled
-    if (this.options.autoRefresh && this.state.expiresAt) {
-      this.scheduleRefresh();
-    }
+    this.scheduleRefresh();
 
     // Reset inactivity timer
     this.resetInactivityTimer();
@@ -473,9 +472,7 @@ export class AuthenticationClient {
 
     this.persistToStorage();
 
-    if (this.options.autoRefresh && this.state.expiresAt) {
-      this.scheduleRefresh();
-    }
+    this.scheduleRefresh();
 
     this.resetInactivityTimer();
     this.emit('authenticated', { context });
@@ -639,9 +636,10 @@ export class AuthenticationClient {
       return;
     }
 
-    this.inactivityTimer = setTimeout(() => {
+    this.inactivityTimer = scheduleDeadline(() => {
+      this.inactivityTimer = undefined;
       this.handleInactivity();
-    }, this.options.inactivityConfig.timeout);
+    }, Date.now() + this.options.inactivityConfig.timeout);
   }
 
   /**
@@ -649,7 +647,7 @@ export class AuthenticationClient {
    */
   private cancelInactivityTimer(): void {
     if (this.inactivityTimer !== undefined) {
-      clearTimeout(this.inactivityTimer);
+      this.inactivityTimer();
       this.inactivityTimer = undefined;
     }
   }
@@ -727,6 +725,7 @@ export class AuthenticationClient {
    * Restore auth state from storage
    */
   private restoreFromStorage(): void {
+    this.cancelRefresh();
     try {
       // Try to restore full context
       const contextJson = this.options.storage.getValue(`${this.options.storageKey}_context`);
@@ -838,13 +837,14 @@ export class AuthenticationClient {
   private scheduleRefresh(): void {
     this.cancelRefresh();
 
-    if (!this.state.expiresAt) {
+    if (!this.state.expiresAt || !this.options.autoRefresh) {
       return;
     }
 
-    const timeUntilRefresh = Math.max(0, this.state.expiresAt.getTime() - Date.now() - this.options.refreshThreshold);
+    const refreshAt = this.state.expiresAt.getTime() - this.options.refreshThreshold;
 
-    this.refreshTimer = setTimeout(async () => {
+    this.refreshTimer = scheduleDeadline(async () => {
+      this.refreshTimer = undefined;
       // Attempt automatic refresh if refresh token is available
       if (this.state.refreshToken && this.options.refreshConfig) {
         await this.refreshToken();
@@ -852,7 +852,7 @@ export class AuthenticationClient {
         // Just emit event for manual refresh
         this.emit('token-refreshed', { needsRefresh: true });
       }
-    }, timeUntilRefresh);
+    }, refreshAt);
   }
 
   /**
@@ -860,7 +860,7 @@ export class AuthenticationClient {
    */
   private cancelRefresh(): void {
     if (this.refreshTimer !== undefined) {
-      clearTimeout(this.refreshTimer);
+      this.refreshTimer();
       this.refreshTimer = undefined;
     }
   }

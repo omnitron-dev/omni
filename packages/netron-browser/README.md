@@ -105,6 +105,18 @@ idempotence. Protocol errors and ordinary server refusals are not automatically
 retried. Authentication middleware may request one re-invocation after a refusal,
 within the same deadline.
 
+## Authentication deadlines
+
+Token refresh uses the credential's absolute expiry minus `refreshThreshold`.
+Refresh and inactivity timers support durations beyond the platform's roughly
+25-day timer limit without firing early. Activity resets the inactivity
+deadline; replacing credentials cancels their previous refresh deadline,
+including when the replacement has no expiry. `clearAuth()` and `destroy()`
+cancel pending authentication timers.
+
+These client timers control refresh and interface state. The receiving Netron
+service still verifies credentials and authorizes every request.
+
 ## Related
 
 - `@omnitron-dev/netron-react` — React hooks and providers

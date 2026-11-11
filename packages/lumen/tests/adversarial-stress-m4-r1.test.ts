@@ -8,7 +8,6 @@ import {
   anchorsGate,
   mathKernelGate,
   type CorpusDocument,
-  type CorpusMathObject,
   type GateContext,
   type GateResult,
   type LumenGateDiagnostic,

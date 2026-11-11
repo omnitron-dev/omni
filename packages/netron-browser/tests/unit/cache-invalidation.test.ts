@@ -2,7 +2,7 @@
  * Unit tests for Cache Invalidation
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   CORE_TASK_INVALIDATE_CACHE,
   createInvalidateCacheRequest,

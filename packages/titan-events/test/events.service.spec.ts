@@ -122,26 +122,32 @@ describe('EventsService', () => {
 
   describe('emitSerial', () => {
     it('should emit event asynchronously in series', async () => {
-      const results: any[] = [];
+      const order: string[] = [];
+      const started = Promise.withResolvers<void>();
+      const first = Promise.withResolvers<void>();
 
-      service.subscribe('serial.event', async (data) => {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        results.push({ handler: 1, timestamp: Date.now() });
+      service.subscribe('serial.event', async () => {
+        order.push('first:start');
+        started.resolve();
+        await first.promise;
+        order.push('first:end');
         return 'result1';
       });
 
-      service.subscribe('serial.event', async (data) => {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        results.push({ handler: 2, timestamp: Date.now() });
+      service.subscribe('serial.event', async () => {
+        order.push('second:start');
         return 'result2';
       });
 
-      const responses = await service.emitSerial('serial.event', { test: true });
+      const emission = service.emitSerial('serial.event', { test: true });
+      await started.promise;
+      const whileBlocked = [...order];
+      first.resolve();
+      const responses = await emission;
 
       expect(responses).toEqual(['result1', 'result2']);
-      expect(results).toHaveLength(2);
-      // Check that handlers ran sequentially
-      expect(results[1].timestamp).toBeGreaterThanOrEqual(results[0].timestamp + 10);
+      expect(whileBlocked).toEqual(['first:start']);
+      expect(order).toEqual(['first:start', 'first:end', 'second:start']);
     });
   });
 

@@ -12,14 +12,13 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Application, NetronToken } from '@omnitron-dev/titan';
-import { Module, Injectable } from '@omnitron-dev/titan/decorators';
+import { Module } from '@omnitron-dev/titan/decorators';
 import { Service, Public, type INetron } from '@omnitron-dev/titan/netron';
 import { HttpNativeServer } from '@omnitron-dev/titan/netron/transport/http';
 import { HttpRemotePeer, HttpCacheManager } from '../../src/transport/http/index.js';
 import { AuthenticationClient, MemoryTokenStorage } from '../../src/auth/index.js';
 import {
   MiddlewarePipeline,
-  MiddlewareStage,
   createAuthMiddleware,
   createLoggingMiddleware,
   createTimingMiddleware,
@@ -334,7 +333,7 @@ describe('Full Features Integration', () => {
   describe('Auth-Aware Service Discovery', () => {
     it('should query interface and discover service methods', async () => {
       // HTTP transport doesn't fetch definitions - just creates a proxy
-      const userService = await client.queryInterface('UserService@1.0.0');
+      await client.queryInterface('UserService@1.0.0');
 
       // Verify we can call methods (which proves they exist)
       const publicInfo = await client.call('UserService@1.0.0', 'getPublicInfo');
@@ -361,7 +360,7 @@ describe('Full Features Integration', () => {
       pipeline.use(createAuthMiddleware({ tokenProvider }));
 
       // Query interface with auth headers automatically added
-      const userService = await client.queryInterface('UserService@1.0.0');
+      await client.queryInterface('UserService@1.0.0');
 
       // Verify we can call methods with auth middleware
       const publicInfo = await client.call('UserService@1.0.0', 'getPublicInfo');
@@ -387,7 +386,7 @@ describe('Full Features Integration', () => {
       pipeline.use(createAuthMiddleware({ tokenProvider }));
 
       // Query interface to get proxy
-      const userService = await client.queryInterface('UserService@1.0.0');
+      await client.queryInterface('UserService@1.0.0');
 
       // Call various methods - auth token will be automatically added
       const publicInfo = await client.call('UserService@1.0.0', 'getPublicInfo');
@@ -436,7 +435,7 @@ describe('Full Features Integration', () => {
 
     it('should invalidate only service definitions', async () => {
       // Query interface to cache definition
-      const userService = await client.queryInterface('UserService@1.0.0');
+      await client.queryInterface('UserService@1.0.0');
 
       // Make HTTP call to cache response
       await client.call('UserService@1.0.0', 'getPublicInfo');
@@ -476,7 +475,7 @@ describe('Full Features Integration', () => {
       pipeline.use(createTimingMiddleware({ collector: metricsCollector }), { priority: 2 });
 
       // 3. Discover available services
-      const userService = await client.queryInterface('UserService@1.0.0');
+      await client.queryInterface('UserService@1.0.0');
 
       // 4. Call service methods
       const publicInfo = await client.call('UserService@1.0.0', 'getPublicInfo');
@@ -528,7 +527,7 @@ describe('Full Features Integration', () => {
       pipeline.use(createTimingMiddleware({ collector: metricsCollector }), { priority: 3 });
 
       // 3. Query interface to discover available methods
-      const userService = await client.queryInterface('UserService@1.0.0');
+      await client.queryInterface('UserService@1.0.0');
 
       // 4. Call various service methods
       const publicInfo = await client.call('UserService@1.0.0', 'getPublicInfo');
@@ -602,17 +601,12 @@ describe('Full Features Integration', () => {
       pipeline.use(createTimingMiddleware({ collector: metricsCollector }), { priority: 1 });
 
       // First call - no cache
-      const start1 = performance.now();
       await client.call('UserService@1.0.0', 'getPublicInfo');
-      const duration1 = performance.now() - start1;
 
       // Second call - should hit cache
-      const start2 = performance.now();
       await client.call('UserService@1.0.0', 'getPublicInfo');
-      const duration2 = performance.now() - start2;
 
-      // Cached call should be faster (note: this may not always be true in tests)
-      // but we can verify cache was used
+      // Verify cache reuse directly, independent of scheduler timing.
       const stats = client.getCacheStats();
       expect(stats.http.hits).toBeGreaterThan(0);
     });

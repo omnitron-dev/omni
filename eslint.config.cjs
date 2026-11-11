@@ -170,24 +170,11 @@ module.exports = [
     languageOptions: {
       parser: eslintTs.parser,
       parserOptions: {
-        // `apps/*/webapp/tsconfig.json` is listed separately: the console
-        // lives one level deeper than every other app, which is also why the
-        // `files` globs above say `webapp` — they said `web`, a directory
-        // that does not exist in this repo, so 63 source files had never been
-        // linted at all.
-        project: [
-          './packages/*/tsconfig.json',
-          // packages/kb splits its program in two: `tsconfig.json` EXCLUDES
-          // `src/extractors/**` and `src/cli/extract.ts`, and a second
-          // config compiles them (the build runs both). Listing only the
-          // first left six files — 887 lines, including the 364-line symbol
-          // extractor — in no project at all, so every one of them answered
-          // with a parsing error and not a single rule ever ran on them.
-          './packages/kb/tsconfig.extract.json',
-          './apps/*/tsconfig*.json',
-          './apps/*/webapp/tsconfig.json',
-        ],
-        tsconfigRootDir: __dirname,
+        // These recommended and custom rules use syntax, not type services.
+        // Building every workspace's TypeScript Program for each lint process
+        // exhausted CI memory without enabling an additional rule. Typecheck
+        // remains a separate required gate for every workspace.
+        project: false,
       },
       globals: { ...globals.browser, ...globals.node },
     },

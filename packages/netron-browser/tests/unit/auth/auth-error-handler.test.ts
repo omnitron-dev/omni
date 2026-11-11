@@ -145,7 +145,7 @@ class AuthErrorHandler {
         this.emit('auth-error', { status: 401, error: result.error });
         throw error;
       }
-    } catch (refreshError) {
+    } catch {
       this.clearAuth();
       this.emit('auth-error', { status: 401, error: 'Token refresh failed' });
       throw error;

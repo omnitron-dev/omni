@@ -199,7 +199,7 @@ describe('Streaming Integration (HTTP)', () => {
   beforeAll(async () => {
     server = await createTitanServer({
       enableHttp: true,
-      enableWebSocket: false,
+      enableWebSocket: true,
       logLevel: 'silent',
     });
 
@@ -236,15 +236,22 @@ describe('Streaming Integration (HTTP)', () => {
   describe('HTTP vs WebSocket Comparison', () => {
     it('should produce identical results across transports', async () => {
       const wsClient = new WebSocketClient({
-        url: server.httpUrl.replace('http', 'ws'),
+        url: server.wsUrl,
         reconnect: false,
+        enableServiceDiscovery: true,
       });
 
-      // Note: Since we only have HTTP server, we can't directly compare
-      // This test would need both transports enabled
-      const httpResult = await client.invoke('stream@1.0.0', 'generateNumbers', [10]);
-
-      expect(httpResult).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+      try {
+        await wsClient.connect();
+        const [httpResult, wsResult] = await Promise.all([
+          client.invoke('stream@1.0.0', 'generateNumbers', [10]),
+          wsClient.invoke('stream@1.0.0', 'generateNumbers', [10]),
+        ]);
+        expect(httpResult).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        expect(wsResult).toEqual(httpResult);
+      } finally {
+        await wsClient.disconnect();
+      }
     });
   });
 });

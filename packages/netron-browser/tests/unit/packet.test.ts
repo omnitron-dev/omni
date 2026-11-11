@@ -12,7 +12,6 @@ import {
   createStreamClosePacket,
   encodePacket,
   decodePacket,
-  serializer,
 } from '../../src/packet/index.js';
 
 describe('Packet System', () => {

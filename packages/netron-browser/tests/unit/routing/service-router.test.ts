@@ -5,7 +5,7 @@
  * including explicit mappings, pattern matching, and default fallback.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { ServiceRouter } from '../../../src/routing/service-router.js';
 import type { RoutingConfig } from '../../../src/types/multi-backend.js';
 

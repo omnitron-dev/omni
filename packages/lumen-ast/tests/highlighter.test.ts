@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCodeDirectives, parseTwoslashAnnotations, renderCodeBlockHtml, LumenHighlighter } from '../src/index.js';
+import { parseCodeDirectives, parseTwoslashAnnotations, LumenHighlighter } from '../src/index.js';
 
 describe('Syntax Highlighter, Magic Diff Comments, and Twoslash Annotations', () => {
   it('parses magic comments for line highlight, additions, deletions, and focus', () => {

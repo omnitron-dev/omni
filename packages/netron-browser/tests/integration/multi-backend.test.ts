@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { createApiGateway, createMockBackend, type ApiGateway, type MockBackend } from '../fixtures/api-gateway.js';
 import { createTitanServer, type TitanServerFixture } from '../fixtures/titan-server.js';
-import { createMultiBackendClient, MultiBackendClient } from '../../src/client/multi-backend-client.js';
+import { createMultiBackendClient } from '../../src/client/multi-backend-client.js';
 import { HttpClient } from '../../src/client/http-client.js';
 import type { IMultiBackendClient } from '../../src/types/multi-backend.js';
 

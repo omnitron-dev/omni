@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
 import { AuthenticationClient } from '../../../src/auth/client.js';
 import { MemoryTokenStorage, LocalTokenStorage } from '../../../src/auth/storage.js';
-import type { AuthContext, AuthResult, TokenStorage } from '../../../src/auth/types.js';
+import type { AuthContext } from '../../../src/auth/types.js';
 
 // =============================================================================
 // SECTION 1: TOKEN SECURITY TESTS
@@ -35,12 +35,8 @@ describe('Token Security', () => {
     vi.clearAllMocks();
   });
 
-  describe('token tampering detection', () => {
-    it('should reject tokens with modified payload (tampered signature)', () => {
-      // Set a valid-looking JWT
-      const originalToken =
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
-
+  describe('token integrity', () => {
+    it('should preserve a modified token for server-side signature validation', () => {
       // Tamper with the payload (change one character)
       const tamperedToken =
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkxIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
@@ -601,7 +597,6 @@ describe('Storage Security', () => {
 describe('Cross-Tab Sync Security', () => {
   let mockStorage: Record<string, string>;
   let storageEventHandlers: ((event: StorageEvent) => void)[];
-  let originalWindow: typeof window;
 
   beforeEach(() => {
     mockStorage = {};
@@ -1996,12 +1991,13 @@ describe('Additional Security Edge Cases', () => {
         metadata: { token: 'token' },
       });
 
-      const handlersBefore = handlers.length;
+      expect(handlers.length).toBeGreaterThan(0);
 
       client.destroy();
 
       // After destroy, handlers should be removed
       expect(mockWindow.removeEventListener.mock.calls.length).toBeGreaterThan(0);
+      expect(handlers).toHaveLength(0);
     });
   });
 

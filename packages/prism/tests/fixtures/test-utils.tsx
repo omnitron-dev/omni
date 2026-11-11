@@ -114,10 +114,10 @@ export const a11yChecks = {
   /**
    * Check that color contrast meets WCAG AA standards
    */
-  meetsContrastRequirements: (foreground: string, background: string) => {
+  meetsContrastRequirements: (foreground: string, background: string) =>
     // Simplified contrast check - real implementation would calculate ratio
-    return true; // Placeholder
-  },
+     true // Placeholder
+  ,
 };
 
 /**

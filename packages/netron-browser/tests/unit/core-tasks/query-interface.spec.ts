@@ -20,7 +20,7 @@ import {
   type QueryInterfaceResponse,
 } from '../../../src/core-tasks/query-interface.js';
 import { Definition } from '../../../src/core/definition.js';
-import { TitanError, ErrorCode } from '../../../src/errors/index.js';
+import { TitanError } from '../../../src/errors/index.js';
 
 describe('query-interface core-task', () => {
   describe('createQueryInterfaceRequest', () => {

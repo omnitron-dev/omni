@@ -522,6 +522,8 @@ describe('NetronReadableStream', () => {
         isLive: false,
       });
 
+      expect(peer.readableStreams.get(1)).toBe(stream);
+
       // Advance time past the timeout
       vi.advanceTimersByTime(1500);
 
@@ -1136,7 +1138,7 @@ describe('NetronWritableStream', () => {
         isLive: false,
       });
 
-      const source = (async function* () {
+      const source = (async function* chunks() {
         yield 'chunk-1';
       })();
 

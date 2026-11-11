@@ -8,7 +8,7 @@
  * - Conflicting states resolved correctly
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { AuthContext, TokenStorage } from '../../../src/auth/types.js';
 
 /**

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseMermaidDirectives, renderDiagramHtml, DiagramRenderer, parseDocument } from '../src/index.js';
+import { parseMermaidDirectives, DiagramRenderer, parseDocument } from '../src/index.js';
 
 describe('Mermaid Diagrams & ELK Layout', () => {
   it('parses ELK layout configuration and diagram types from directives', () => {

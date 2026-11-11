@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  Packet as BrowserPacket,
   TYPE_CALL,
   TYPE_PING,
   createPacket as createBrowserPacket,
@@ -10,7 +9,6 @@ import {
 
 // Import Titan's packet system for compatibility testing
 import {
-  Packet as TitanPacket,
   TYPE_CALL as TITAN_TYPE_CALL,
   TYPE_PING as TITAN_TYPE_PING,
   createPacket as createTitanPacket,

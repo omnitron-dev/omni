@@ -83,12 +83,12 @@ describe.skip('Performance Benchmarks - WebSocket', () => {
   afterAll(async () => {
     try {
       await client.disconnect();
-    } catch (e) {
+    } catch {
       // Ignore disconnect errors during cleanup
     }
     try {
       await server.cleanup();
-    } catch (e) {
+    } catch {
       // Ignore cleanup errors
     }
   });
@@ -366,7 +366,7 @@ describe.skip('Performance Benchmarks - WebSocket', () => {
         const start = performance.now();
         try {
           await client.invoke('calculator@1.0.0', 'divide', [10, 0]);
-        } catch (e) {
+        } catch {
           // Expected
         }
         errorLatencies.push(performance.now() - start);
@@ -410,17 +410,17 @@ describe.skip('Performance Benchmarks - HTTP vs WebSocket', () => {
   afterAll(async () => {
     try {
       await httpClient?.disconnect();
-    } catch (e) {
+    } catch {
       // Ignore disconnect errors during cleanup
     }
     try {
       await wsClient?.disconnect();
-    } catch (e) {
+    } catch {
       // Ignore disconnect errors during cleanup
     }
     try {
       await server?.cleanup();
-    } catch (e) {
+    } catch {
       // Ignore cleanup errors
     }
   });
@@ -542,12 +542,12 @@ describe.skip('Performance Regression Detection', () => {
   afterAll(async () => {
     try {
       await client.disconnect();
-    } catch (e) {
+    } catch {
       // Ignore disconnect errors during cleanup
     }
     try {
       await server.cleanup();
-    } catch (e) {
+    } catch {
       // Ignore cleanup errors
     }
   });

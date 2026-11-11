@@ -169,12 +169,7 @@ describe('Error Serialization (WebSocket)', () => {
   describe('Error Recovery', () => {
     it('should allow successful requests after error', async () => {
       // First, trigger an error
-      try {
-        await client.invoke('calculator@1.0.0', 'divide', [10, 0]);
-        expect.fail('Should have thrown');
-      } catch (error) {
-        // Expected
-      }
+      await expect(client.invoke('calculator@1.0.0', 'divide', [10, 0])).rejects.toThrow('Division by zero');
 
       // Then, make successful request
       const result = await client.invoke('calculator@1.0.0', 'divide', [10, 2]);
@@ -188,12 +183,7 @@ describe('Error Serialization (WebSocket)', () => {
         expect(successResult).toBe(i * 2);
 
         // Error
-        try {
-          await client.invoke('calculator@1.0.0', 'divide', [10, 0]);
-          expect.fail('Should have thrown');
-        } catch (error) {
-          // Expected
-        }
+        await expect(client.invoke('calculator@1.0.0', 'divide', [10, 0])).rejects.toThrow('Division by zero');
       }
     });
   });
@@ -206,7 +196,7 @@ describe('Error Serialization (HTTP)', () => {
   beforeAll(async () => {
     server = await createTitanServer({
       enableHttp: true,
-      enableWebSocket: false,
+      enableWebSocket: true,
       logLevel: 'silent',
       port: 0, // Use random port to avoid conflicts
     });
@@ -263,17 +253,23 @@ describe('Error Serialization (HTTP)', () => {
     it('should produce consistent errors with WebSocket', async () => {
       // Create a WebSocket client for comparison
       const wsClient = new WebSocketClient({
-        url: server.httpUrl.replace('http', 'ws'),
+        url: server.wsUrl,
         reconnect: false,
+        enableServiceDiscovery: true,
       });
 
-      // Note: This test would need both transports enabled on the server
-      // For now, just verify HTTP errors work
       try {
-        await client.invoke('calculator@1.0.0', 'divide', [10, 0]);
-        expect.fail('Should have thrown');
-      } catch (error: any) {
-        expect(error.message).toContain('Division by zero');
+        await wsClient.connect();
+        const results = await Promise.allSettled([
+          client.invoke('calculator@1.0.0', 'divide', [10, 0]),
+          wsClient.invoke('calculator@1.0.0', 'divide', [10, 0]),
+        ]);
+        expect(results.map((result) => result.status)).toEqual(['rejected', 'rejected']);
+        for (const result of results) {
+          if (result.status === 'rejected') expect(result.reason.message).toContain('Division by zero');
+        }
+      } finally {
+        await wsClient.disconnect();
       }
     });
   });

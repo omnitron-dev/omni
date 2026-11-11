@@ -6,12 +6,11 @@
  * caching, authentication, and error handling scenarios.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import * as http from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { HttpClient } from '../../src/client/http-client.js';
-import { AuthenticationClient } from '../../src/auth/client.js';
 
 // ============================================================================
 // Test Server Utilities
@@ -259,16 +258,12 @@ const testServices = {
     },
   },
   'data@1.0.0': {
-    generateLargePayload: (size: number) => {
-      return Array.from({ length: size }, (_, i) => ({
+    generateLargePayload: (size: number) => Array.from({ length: size }, (_, i) => ({
         id: i,
         value: `item-${i}`,
         timestamp: Date.now(),
-      }));
-    },
-    processData: (data: any[]) => {
-      return { processed: data.length, success: true };
-    },
+      })),
+    processData: (data: any[]) => ({ processed: data.length, success: true }),
   },
 };
 
@@ -735,7 +730,6 @@ describe('Caching Tests', () => {
 describe('Authentication Tests', () => {
   let mockServer: MockServer;
   let client: HttpClient;
-  let authClient: AuthenticationClient;
   let validToken: string;
   let tokenExpired: boolean;
 

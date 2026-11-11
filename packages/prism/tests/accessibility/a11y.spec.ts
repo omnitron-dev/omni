@@ -181,13 +181,11 @@ test.describe('Accessibility: Screen Reader', () => {
 
     for (const input of inputs) {
       // Each input should have an accessible name
-      const accessibleName = await input.evaluate((el) => {
-        return (
+      const accessibleName = await input.evaluate((el) => (
           el.getAttribute('aria-label') ||
           el.getAttribute('aria-labelledby') ||
           document.querySelector(`label[for="${el.id}"]`)?.textContent
-        );
-      });
+        ));
 
       expect(accessibleName).toBeTruthy();
     }
@@ -200,9 +198,7 @@ test.describe('Accessibility: Screen Reader', () => {
 
     for (const button of buttons) {
       // Each button should have accessible text
-      const accessibleName = await button.evaluate((el) => {
-        return el.getAttribute('aria-label') || el.textContent?.trim() || el.getAttribute('title');
-      });
+      const accessibleName = await button.evaluate((el) => el.getAttribute('aria-label') || el.textContent?.trim() || el.getAttribute('title'));
 
       expect(accessibleName).toBeTruthy();
     }
@@ -249,9 +245,7 @@ test.describe('Accessibility: Focus Management', () => {
     await expect(focusedElement).toBeVisible();
 
     // Verify focused element is inside dialog
-    const isInDialog = await focusedElement.evaluate((el, dialogSelector) => {
-      return el.closest('[role="dialog"]') !== null;
-    }, '[role="dialog"]');
+    const isInDialog = await focusedElement.evaluate((el, dialogSelector) => el.closest('[role="dialog"]') !== null, '[role="dialog"]');
 
     expect(isInDialog).toBe(true);
   });
@@ -282,9 +276,7 @@ test.describe('Accessibility: Motion and Animation', () => {
 
     // Check that animations are disabled or reduced
     const animatedElement = page.locator('[data-animated]');
-    const animationDuration = await animatedElement.evaluate((el) => {
-      return window.getComputedStyle(el).animationDuration;
-    });
+    const animationDuration = await animatedElement.evaluate((el) => window.getComputedStyle(el).animationDuration);
 
     // Animation should be instant or very short
     expect(animationDuration).toMatch(/^0s$|^0\.0*1s$/);

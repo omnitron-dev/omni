@@ -5,7 +5,7 @@
  * providing a unified interface for service access and method invocation.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BackendClient, type BackendClientOptions } from '../../../src/client/backend-client.js';
 import type { BackendConfig } from '../../../src/types/multi-backend.js';
 import { ConnectionState } from '../../../src/types/index.js';

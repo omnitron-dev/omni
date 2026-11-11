@@ -550,7 +550,7 @@ describe('Cross-Transport Tests', () => {
       expect(retrievedUser.email).toBe('test@example.com');
 
       // Update via WebSocket
-      const updatedUser = await wsClient.invoke('user@1.0.0', 'updateUser', [newUser.id, { name: 'Updated Name' }]);
+      await wsClient.invoke('user@1.0.0', 'updateUser', [newUser.id, { name: 'Updated Name' }]);
 
       // Verify via HTTP
       const verifiedUser = await httpClient.invoke('user@1.0.0', 'getUser', [newUser.id]);

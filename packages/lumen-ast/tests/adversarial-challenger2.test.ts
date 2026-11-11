@@ -12,7 +12,6 @@ import {
   parseTwoslashAnnotations,
   renderCodeBlockHtml,
   parseMermaidDirectives,
-  renderDiagramHtml,
   DiagramRenderer,
   type LumenDocumentAst,
 } from '../src/index.js';

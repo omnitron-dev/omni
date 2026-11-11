@@ -568,7 +568,7 @@ describe('Advanced Integration Scenarios', () => {
     });
 
     it('should handle sparse arrays', async () => {
-      const sparseArray = [1, , 3, , 5]; // eslint-disable-line no-sparse-arrays
+      const sparseArray = [1, , 3, , 5];
       const result = await client.invoke('echo@1.0.0', 'echoArray', [sparseArray]);
 
       // Note: Sparse arrays might be converted to dense arrays with undefined
@@ -598,11 +598,7 @@ describe('Advanced Integration Scenarios', () => {
       const beforeErrors = beforeMetrics.errors;
 
       // Trigger an error
-      try {
-        await client.invoke('calculator@1.0.0', 'divide', [10, 0]);
-      } catch (e) {
-        // Expected
-      }
+      await expect(client.invoke('calculator@1.0.0', 'divide', [10, 0])).rejects.toThrow('Division by zero');
 
       const afterMetrics = client.getMetrics();
       expect(afterMetrics.errors).toBeGreaterThan(beforeErrors);

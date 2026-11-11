@@ -34,19 +34,14 @@ import {
   createAuthMiddleware,
   createLoggingMiddleware,
   createTimingMiddleware,
-  createErrorTransformMiddleware,
   SimpleTokenProvider,
   InMemoryMetricsCollector,
   type ClientMiddlewareContext,
 } from '../../src/middleware/index.js';
 import {
-  CORE_TASK_QUERY_INTERFACE,
-  CORE_TASK_AUTHENTICATE,
-  CORE_TASK_INVALIDATE_CACHE,
   createQueryInterfaceRequest,
   createAuthenticateRequest,
   createInvalidateCacheRequest,
-  isQueryInterfaceResponse,
   isAuthenticateResponse,
   isInvalidateCacheResponse,
 } from '../../src/core-tasks/index.js';

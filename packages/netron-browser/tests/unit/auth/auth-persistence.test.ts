@@ -8,7 +8,7 @@
  * - Storage version migration
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { AuthContext, TokenStorage } from '../../../src/auth/types.js';
 
 /**
@@ -380,8 +380,7 @@ describe('Session Persistence', () => {
 
       client.setAuth('token', context);
 
-      // Create new client and listen for restored event
-      const restoredHandler = vi.fn();
+      // Restore authentication from a fresh client using the same storage.
       const newStorage = new SessionPersistenceStorage('test_auth');
       const newClient = new PersistentAuthClient(newStorage);
 

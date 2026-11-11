@@ -20,9 +20,6 @@ import {
   decodePacket,
   TYPE_CALL,
   TYPE_PING,
-  TYPE_STREAM,
-  TYPE_STREAM_ERROR,
-  TYPE_STREAM_CLOSE,
 } from '../../src/packet/index.js';
 import { AuthenticationClient } from '../../src/auth/client.js';
 import type { TokenStorage, AuthResult, AuthContext } from '../../src/auth/types.js';
@@ -176,8 +173,7 @@ async function createMockServer(options: MockServerOptions = {}): Promise<MockSe
     port,
     clients,
     receivedPackets,
-    close: async () => {
-      return new Promise((resolve) => {
+    close: async () => new Promise((resolve) => {
         // Close all client connections
         for (const client of clients) {
           client.terminate();
@@ -191,8 +187,7 @@ async function createMockServer(options: MockServerOptions = {}): Promise<MockSe
             resolve();
           });
         });
-      });
-    },
+      }),
     sendToAll: (packet: Packet) => {
       const encoded = encodePacket(packet);
       for (const client of clients) {
@@ -876,11 +871,11 @@ describe('WebSocket Authentication Tests', () => {
       const validToken = 'valid-test-token-12345';
 
       const authServer = await createMockServer({
-        authenticateRequest: (req) => {
+        authenticateRequest: (req) =>
           // Check protocols for token (WebSocket doesn't support custom headers)
           // In real implementation, token might be in query string or first message
-          return true; // Accept all for this test
-        },
+           true // Accept all for this test
+        ,
       });
 
       // Create auth client with token
@@ -923,10 +918,10 @@ describe('WebSocket Authentication Tests', () => {
 
     it('should reject connection with invalid token', async () => {
       const authServer = await createMockServer({
-        authenticateRequest: (req) => {
+        authenticateRequest: (req) =>
           // Reject all connections for this test
-          return false;
-        },
+           false
+        ,
       });
 
       const client = new WebSocketClient({

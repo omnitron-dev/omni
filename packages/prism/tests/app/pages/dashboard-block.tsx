@@ -34,7 +34,7 @@ function DashboardBlockWithContent({
       error={error}
       errorConfig={{
         message: 'Failed to load data',
-        onRetry: onRetry,
+        onRetry,
       }}
       variant={variant}
       size={size}
@@ -69,7 +69,7 @@ function DashboardBlockWithHook() {
 }
 
 export function DashboardBlockTestPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   const loading = searchParams.get('loading') === 'true';

@@ -13,7 +13,7 @@ import Typography from '@mui/material/Typography';
 import { ConfirmDialog, DeleteDialog } from '../../../src/components/confirm-dialog';
 
 export function DialogTestPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const isLoadingMode = searchParams.get('loading') === 'true';
 
   const [confirmOpen, setConfirmOpen] = useState(false);

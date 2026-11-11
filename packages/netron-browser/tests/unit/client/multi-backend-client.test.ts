@@ -7,8 +7,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MultiBackendClient, createMultiBackendClient } from '../../../src/client/multi-backend-client.js';
-import type { BackendConfig, MultiBackendClientOptions } from '../../../src/types/multi-backend.js';
-import { ConnectionState } from '../../../src/types/index.js';
+import type { BackendConfig } from '../../../src/types/multi-backend.js';
 import { MiddlewareStage } from '../../../src/middleware/types.js';
 import type { ClientMiddlewareContext } from '../../../src/middleware/types.js';
 
@@ -22,55 +21,6 @@ function middlewareContext(service = 'users', method = 'findAll'): ClientMiddlew
     metadata: new Map(),
   };
 }
-
-// Create mock for BackendClient
-const createMockBackendClient = (name: string, config: BackendConfig, baseUrl: string) => {
-  let connected = false;
-
-  return {
-    name,
-    connect: vi.fn().mockImplementation(async () => {
-      connected = true;
-    }),
-    disconnect: vi.fn().mockImplementation(async () => {
-      connected = false;
-    }),
-    destroy: vi.fn().mockImplementation(async () => {
-      connected = false;
-    }),
-    isConnected: vi.fn().mockImplementation(() => connected),
-    getMetrics: vi.fn().mockImplementation(() => ({
-      id: name,
-      url: `${baseUrl}${config.path}`,
-      state: connected ? ConnectionState.CONNECTED : ConnectionState.DISCONNECTED,
-      transport: config.transport || 'http',
-      requestsSent: 10,
-      responsesReceived: 9,
-      errors: 1,
-      avgLatency: 50,
-    })),
-    getPath: vi.fn().mockReturnValue(config.path),
-    getTransportType: vi.fn().mockReturnValue(config.transport || 'http'),
-    getName: vi.fn().mockReturnValue(name),
-    service: vi.fn().mockImplementation((serviceName: string) => {
-      return new Proxy(
-        {},
-        {
-          get: (_target, method: string) => {
-            if (typeof method === 'symbol') return undefined;
-            return vi.fn().mockResolvedValue({
-              backend: name,
-              service: serviceName,
-              method,
-              result: 'success',
-            });
-          },
-        }
-      );
-    }),
-    invoke: vi.fn().mockResolvedValue({ result: 'success' }),
-  };
-};
 
 // Mock BackendClient module as a class
 vi.mock('../../../src/client/backend-client.js', () => {

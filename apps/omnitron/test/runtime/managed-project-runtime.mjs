@@ -142,8 +142,13 @@ providers:[LocalAdapter,Probe]})(RuntimeModule);export default RuntimeModule;
   assert.equal((await loadRelease(releaseId, path.dirname(releaseRoot))).manifestSha256, manifestSha256);
   await verifyRuntimeArtifact(runtime, candidate.id);
   const unchangedSince = Date.now();
-  const call = (method, args) => api(async client => (await client.service('OmnitronProject'))[method]({ project: 'applications', ...args }));
+  const call = async (method, args) => {
+    try { return await api(async client => (await client.service('OmnitronProject'))[method]({ project: 'applications', ...args })); }
+    catch (cause) { throw new Error(`Public ${method} for applications/${args?.stack ?? '*'}: ${cause.message}`, {cause}); }
+  };
+  mark({ stage: 'application-project-registering', sdkCommit, consumer: applicationSdk.project });
   await call('addProject', { name: 'applications', path: project });
+  mark({ stage: 'application-runtime-preparing', release: releaseId });
   const prepared = await call('checkRelease', { stack: 'frozen', release: releaseId, prepare: true });
   assert.equal(prepared.ok, true, JSON.stringify(prepared));
   mark({ stage: 'application-runtime-prepared', release: releaseId, manifestSha256 });

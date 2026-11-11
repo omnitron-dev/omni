@@ -29,13 +29,15 @@ export async function managedOwnerRoundtrip(context) {
   assert.ok(managementDist, 'An independent candidate runtime is required');
   const candidateRoot = path.resolve(managementDist, '../../..');
   const load = name => import(pathToFileURL(path.join(managementDist, name + '.js')).href);
-  const { createDaemonClient } = await load('daemon/daemon-client');
+  const { createDaemonClient, LONG_REQUEST_TIMEOUT } = await load('daemon/daemon-client');
   const { ExecutionClient } = await load('daemon/execution-client');
   const { PidManager } = await load('daemon/pid-manager');
   const quiet = { trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {}, child() { return this; } };
   const api = async work => {
     assertActive();
-    const client = createDaemonClient(path.join(instance, 'daemon.sock'), 60_000);
+    // Admission installs and verifies a real application closure. Use the same
+    // bounded lifecycle budget as the public CLI, including on external disks.
+    const client = createDaemonClient(path.join(instance, 'daemon.sock'), LONG_REQUEST_TIMEOUT);
     try { return await work(client); } finally { await client.disconnect(); }
   };
   const cli = async (...args) => {

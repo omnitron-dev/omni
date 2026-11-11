@@ -575,6 +575,10 @@ The owner must advertise `applicationRuntimeResolution@1`: otherwise it can
 retain a previous package identity after pnpm replaces dependencies. Both SDK
 selection and restoration of registry dependencies refuse this owner before
 installing packages. Prepare and qualify an owner transition separately.
+SDK commands also require a fresh owner observation and a matching Node ABI,
+platform and architecture. Use the Node version reported by `omnitron status`;
+the SDK command passes its selected Node to package installation and builds.
+A different shell default must not silently produce incompatible native addons.
 
 `sdk status` checks the project's resolved imports; the daemon's `status` reports
 the running backend and owner independently. Online applications or a source

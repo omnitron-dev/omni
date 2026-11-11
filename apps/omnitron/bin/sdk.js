@@ -51,8 +51,12 @@ async function atomic(file, value) {
 
 function command(program, args, cwd, capture = false, signal) {
   return new Promise((resolve, reject) => {
+    // pnpm and its lifecycle scripts must use the Node selected for this CLI,
+    // including when it was invoked by absolute path under a different shell.
+    const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === 'path') ?? 'PATH';
     const child = spawn(program, args, {
       cwd,
+      env: { ...process.env, [pathKey]: path.dirname(process.execPath) + path.delimiter + (process.env[pathKey] ?? '') },
       shell: false,
       signal,
       stdio: capture ? ['ignore', 'pipe', 'inherit'] : 'inherit',
@@ -225,6 +229,15 @@ async function requireApplicationRuntime(client) {
   const status = await client.status();
   assertExecutionCapabilities(status.execution?.ownerCapabilities,
     { applicationRuntimeResolution: 1 }, 'Development SDK activation');
+  if (status.execution.connection?.status !== 'connected')
+    throw Error('Development SDK activation requires a current execution owner observation; restore the owner connection first');
+  const runtime = status.execution.ownerRuntime;
+  if (!runtime || ['node', 'abi', 'platform', 'arch'].some((key) => typeof runtime[key] !== 'string' || !runtime[key]))
+    throw Error('Execution owner did not report its Node runtime. Prepare an owner transition before switching the development SDK');
+  if (runtime.abi !== process.versions.modules || runtime.platform !== process.platform || runtime.arch !== process.arch)
+    throw Error(`Development SDK Node ${process.version} (ABI ${process.versions.modules}, ${process.platform}/${process.arch}) ` +
+      `is incompatible with owner Node ${runtime.node} (ABI ${runtime.abi}, ${runtime.platform}/${runtime.arch}). ` +
+      'Run omnitron sdk with the owner-compatible Node before installing or building native dependencies');
 }
 
 async function localStack(root, stack) {

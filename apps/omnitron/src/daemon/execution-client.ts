@@ -163,7 +163,7 @@ export class ExecutionClient {
     this.remote = null;
   }
 
-  state(): { owner: ExecutionSnapshot['status']['owner']; ownerBuild?: BuildStamp | null; ownerCapabilities: ExecutionCapabilities; phase: string; epoch: number; observedAgeMs: number;
+  state(): { owner: ExecutionSnapshot['status']['owner']; ownerBuild?: BuildStamp | null; ownerRuntime?: NonNullable<ExecutionSnapshot['runtime']>; ownerCapabilities: ExecutionCapabilities; phase: string; epoch: number; observedAgeMs: number;
     connection: { status: 'connected' | 'unavailable' | 'owner-changed'; observedAt: string | null; error: string | null } } | null {
     if (!this.inventory) return null;
     const age = performance.now() - this.observedAt;
@@ -171,6 +171,7 @@ export class ExecutionClient {
       : age > 5000 ? 'No execution owner observation within 5 seconds' : null);
     return { owner: this.inventory.status.owner, ownerCapabilities: readExecutionCapabilities(this.inventory.capabilities), phase: this.inventory.status.phase,
       ...(this.inventory.ownerBuild !== undefined && { ownerBuild: this.inventory.ownerBuild }),
+      ...(this.inventory.runtime !== undefined && { ownerRuntime: this.inventory.runtime }),
       epoch: this.inventory.status.controller.epoch, observedAgeMs: age,
       connection: { status: this.ownerChanged ? 'owner-changed' : error ? 'unavailable' : 'connected',
         observedAt: this.lastObservedAt, error } };

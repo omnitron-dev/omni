@@ -83,6 +83,8 @@ try {
   const snapshot = await first.connect();
   assert.deepEqual(snapshot.ownerBuild, OWN_BUILD);
   assert.deepEqual(first.state().ownerBuild, snapshot.ownerBuild);
+  assert.deepEqual(snapshot.runtime, { node: process.version, abi: process.versions.modules, platform: process.platform, arch: process.arch });
+  assert.deepEqual(first.state().ownerRuntime, snapshot.runtime);
   await first.acquire();
   const launched = await first.orchestrator.startApp({ name: 'fixture/local/counter', script, cwd: directory, enabled: true }, config);
   const { port } = JSON.parse(await fs.readFile(path.join(directory, 'address.json'), 'utf8'));

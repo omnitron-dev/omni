@@ -21,4 +21,12 @@ it('does not manufacture a freshness reading from an older backend', async () =>
   render(<BackendRuntimeCard />);
   await waitFor(() => expect(screen.getByText(/does not report owner connection freshness/)).toBeTruthy());
   expect(screen.queryByText('Owner connected')).toBeNull();
+  expect(screen.queryByText(/Node .*ABI/)).toBeNull();
+});
+
+it('shows the execution owner Node independently of the backend or browser', async () => {
+  status.mockResolvedValue({ mode: 'resident', handoffSupported: true,
+    ownerRuntime: { node: 'v24.13.0', abi: '137', platform: 'linux', arch: 'arm64' } });
+  render(<BackendRuntimeCard />);
+  await waitFor(() => expect(screen.getByText('Node v24.13.0 · ABI 137 · linux/arm64')).toBeTruthy());
 });

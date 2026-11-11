@@ -78,6 +78,7 @@ export async function statusCommand(): Promise<void> {
       ...(status.execution?.owner ? [`Owner:      ${status.execution.owner.pid} · epoch ${status.execution.epoch} · ${status.execution.phase}`]
         : status.execution ? ['Handoff:    initial owner installation requires a controlled restart'] : []),
       ...(status.execution?.connection ? [`Owner RPC:  ${status.execution.connection.status}${status.execution.connection.error ? ` · ${status.execution.connection.error}` : ''}`] : []),
+      ...(status.execution?.ownerRuntime ? [`Owner Node: ${status.execution.ownerRuntime.node} · ABI ${status.execution.ownerRuntime.abi} · ${status.execution.ownerRuntime.platform}/${status.execution.ownerRuntime.arch}`] : []),
       `Uptime:     ${formatUptime(status.uptime)}`,
       // The daemon's own memory and the apps' apart; a daemon on an older
       // build answers only the sum, and says so.

@@ -62,6 +62,32 @@ it('refuses to resume the SDK watcher on an incompatible owner before building',
   expect(rpc.disconnect).toHaveBeenCalledOnce();
 });
 
+const runtime = { node: process.version, abi: process.versions.modules, platform: process.platform, arch: process.arch };
+it.each([
+  [undefined, /did not report its Node runtime/],
+  [{ ...runtime, abi: '' }, /did not report its Node runtime/],
+  [{ ...runtime, abi: 'wrong-abi' }, /is incompatible with owner Node/],
+  [{ ...runtime, platform: 'another-platform' }, /is incompatible with owner Node/],
+  [{ ...runtime, arch: 'another-architecture' }, /is incompatible with owner Node/],
+] as const)('refuses an unknown or incompatible owner runtime before changing dependencies: %j', async (ownerRuntime, reason) => {
+  rpc.status.mockResolvedValue({ execution: {
+    ownerCapabilities: { applicationRuntimeResolution: 1 }, connection: { status: 'connected' }, ownerRuntime,
+  } });
+  await expect(sdkCommand(['registry', '--project-dir', root, '--stack', 'dev'])).rejects.toThrow(reason);
+  await expect(watchSdk(JSON.parse(profile), 'dev', new AbortController().signal)).rejects.toThrow(reason);
+  expect(await fs.readFile(path.join(state, 'install.json'), 'utf8')).toBe(profile);
+  expect(await fs.readFile(path.join(state, 'active.json'), 'utf8')).toBe(profile);
+  expect(rpc.disconnect).toHaveBeenCalledTimes(2);
+});
+
+it.each([undefined, 'unavailable', 'owner-changed'])('refuses stale owner runtime observations: %s', async connection => {
+  rpc.status.mockResolvedValue({ execution: { ownerCapabilities: { applicationRuntimeResolution: 1 },
+    connection: connection && { status: connection }, ownerRuntime: runtime } });
+  await expect(sdkCommand(['registry', '--project-dir', root, '--stack', 'dev']))
+    .rejects.toThrow('requires a current execution owner observation');
+  expect(await fs.readFile(path.join(state, 'install.json'), 'utf8')).toBe(profile);
+});
+
 it('still refuses a running source stack even when the owner supports SDK changes', async () => {
   rpc.stacks.mockResolvedValue([{ name: 'dev', type: 'local', apps: [{ status: 'online' }] }]);
   rpc.status.mockResolvedValue({ execution: { ownerCapabilities: { applicationRuntimeResolution: 1 } } });

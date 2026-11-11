@@ -1,4 +1,5 @@
 import type { BuildStamp } from '../build-stamp.js';
+import type { TargetRuntime } from '../../release/target-runtime.js';
 
 /** Counters all resident backends must report before transferring control. */
 export const BACKEND_ACTIVITY_COUNTERS = ['terminalSessions', 'fileTransfers', 'pipelineRuns', 'releaseBuilds'] as const;
@@ -10,6 +11,8 @@ export interface BackendRuntimeStatus {
   owner?: { id: string; pid: number; startedAt: string };
   /** The build loaded by the process running applications. Older owners omit it. */
   ownerBuild?: BuildStamp | null;
+  /** Actual process supervising source applications; omitted when not observed. */
+  ownerRuntime?: Pick<TargetRuntime, 'node' | 'abi' | 'platform' | 'arch'>;
   /** Absent on older backends; an empty map means the owner advertised none. */
   ownerCapabilities?: Readonly<Record<string, number>>;
   epoch?: number;

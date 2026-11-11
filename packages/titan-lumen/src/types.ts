@@ -21,4 +21,5 @@ export type {
   LumenModuleOptions,
   LumenModuleAsyncOptions,
   ILumenRpcService,
+  ILumenService,
 } from './interfaces.js';

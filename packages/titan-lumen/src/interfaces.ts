@@ -146,11 +146,22 @@ export interface ILumenModuleAsyncOptions {
 export type LumenModuleOptions = ILumenModuleOptions;
 export type LumenModuleAsyncOptions = ILumenModuleAsyncOptions;
 
+/** The complete wire contract. Identity is resolved by Netron, never serialized here. */
 export interface ILumenRpcService {
+  search(query: string, options?: SearchOptions): Promise<SearchResult[]>;
+  executePlayground(code: string): Promise<PlaygroundResult>;
+  getDocument(path: string): Promise<string | null>;
+  getSymbolContract(symbol: string): Promise<SymbolContract | null>;
+  getTheoremGraph(): Promise<TheoremGraphData>;
+  saveLiveEdit(payload: LiveEditPayload): Promise<LiveEditResult>;
+}
+
+/** In-process operations for adapters which have already resolved a trusted session. */
+export interface ILumenService extends ILumenRpcService {
   search(query: string, options?: SearchOptions, session?: LumenSessionContext): Promise<SearchResult[]>;
-  executePlayground(code: string, session?: LumenSessionContext): Promise<PlaygroundResult | unknown>;
+  executePlayground(code: string, session?: LumenSessionContext): Promise<PlaygroundResult>;
   getDocument(path: string, session?: LumenSessionContext): Promise<string | null>;
-  getSymbolContract(symbol: string, session?: LumenSessionContext): Promise<SymbolContract | unknown | null>;
+  getSymbolContract(symbol: string, session?: LumenSessionContext): Promise<SymbolContract | null>;
   getTheoremGraph(session?: LumenSessionContext): Promise<TheoremGraphData>;
   saveLiveEdit(payload: LiveEditPayload, session?: LumenSessionContext): Promise<LiveEditResult>;
   getOptions(): ILumenModuleOptions;

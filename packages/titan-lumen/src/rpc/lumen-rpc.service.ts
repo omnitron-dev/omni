@@ -14,7 +14,7 @@ import { LiveEditService } from '../live/live-edit.service.js';
 import { LumenMcpServer } from '../mcp/mcp-server.js';
 import type {
   ILumenModuleOptions,
-  ILumenRpcService,
+  ILumenService,
   LiveEditPayload,
   LiveEditResult,
   LumenSessionContext,
@@ -303,7 +303,7 @@ function extractSymbolFromSourceFile(
 }
 
 @Injectable()
-export class LumenRpcService implements ILumenRpcService {
+export class LumenRpcService implements ILumenService {
   private readonly options: ILumenModuleOptions;
   private readonly accessFilter: AccessFilterService;
   private readonly liveEdit: LiveEditService;

@@ -1730,9 +1730,6 @@ importers:
       '@omnitron-dev/lumen-ast':
         specifier: workspace:*
         version: link:../lumen-ast
-      '@omnitron-dev/titan-auth':
-        specifier: workspace:*
-        version: link:../titan-auth
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2

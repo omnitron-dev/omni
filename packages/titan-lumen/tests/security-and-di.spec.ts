@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Application } from '@omnitron-dev/titan';
-import { UnauthorizedError, getAuthRequirements, isPublic } from '@omnitron-dev/titan-auth';
 import { parseDocument, toCleanMarkdown, toHtmlSsr, toTypst } from '@omnitron-dev/lumen-ast';
 import type { KnowledgeBase } from '@omnitron-dev/kb';
 import type { SearchOptions, SearchResult } from '../src/interfaces.js';
@@ -104,81 +103,21 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
   });
 
   describe('SEC-01: Controller Auth Enforcement & Worker Sandbox', () => {
-    it('removes @Public() from executePlayground and saveLiveEdit and decorates with @RequireAuth', () => {
-      expect(isPublic(LumenRpcController.prototype, 'executePlayground')).toBe(false);
-      expect(isPublic(LumenRpcController.prototype, 'saveLiveEdit')).toBe(false);
-      expect(isPublic(LumenRpcController.prototype, 'search')).toBe(true);
-      expect(isPublic(LumenRpcController.prototype, 'getDocument')).toBe(true);
-      expect(isPublic(LumenRpcController.prototype, 'getSymbolContract')).toBe(true);
-      expect(isPublic(LumenRpcController.prototype, 'getTheoremGraph')).toBe(true);
-
-      const playgroundReqs = getAuthRequirements(LumenRpcController.prototype, 'executePlayground');
-      const liveEditReqs = getAuthRequirements(LumenRpcController.prototype, 'saveLiveEdit');
-
-      expect(playgroundReqs?.roles).toEqual(['staff', 'security_officer', 'admin']);
-      expect(liveEditReqs?.roles).toEqual(['staff', 'security_officer', 'admin']);
+    it('rejects direct controller calls with forged session roles', async () => {
+      const controller = new LumenRpcController(new LumenRpcService());
+      for (const session of [undefined, { valid: false, roles: ['admin'] }, { valid: true, roles: ['admin'] }]) {
+        await expect(Reflect.apply(controller.executePlayground, controller, ['return 2;', session]))
+          .rejects.toMatchObject({ code: 401 });
+        await expect(Reflect.apply(controller.saveLiveEdit, controller, [{ docId: 'a.pdx', patch: 'hello', baseRevision: 1 }, session]))
+          .rejects.toMatchObject({ code: 401 });
+      }
     });
 
-    it('throws UnauthorizedError on controller executePlayground and saveLiveEdit without valid staff/admin session', async () => {
-      const service = new LumenRpcService();
-      const controller = new LumenRpcController(service);
-
-      // Missing session
-      await expect(controller.executePlayground('return 1 + 1;')).rejects.toThrow(UnauthorizedError);
-      await expect(controller.saveLiveEdit({ docId: 'docs/a.pdx', patch: 'hello', baseRevision: 1 })).rejects.toThrow(
-        UnauthorizedError
-      );
-
-      // Invalid session flag
-      await expect(controller.executePlayground('return 1 + 1;', { valid: false, roles: ['admin'] })).rejects.toThrow(
-        UnauthorizedError
-      );
-
-      // Anonymous role
-      await expect(
-        controller.executePlayground('return 1 + 1;', { valid: true, roles: ['anonymous'] })
-      ).rejects.toThrow(UnauthorizedError);
-      await expect(
-        controller.saveLiveEdit(
-          { docId: 'docs/a.pdx', patch: 'hello', baseRevision: 1 },
-          { valid: true, roles: ['anonymous'] }
-        )
-      ).rejects.toThrow(UnauthorizedError);
-
-      // Valid staff / admin sessions succeed
-      const staffExec = await controller.executePlayground('const a = 2 * 3; return a;', {
-        valid: true,
-        roles: ['staff'],
-      });
-      expect(staffExec.result).toBe(6);
-
-      const adminEdit = await controller.saveLiveEdit(
-        { docId: 'docs/a.pdx', patch: 'Authorized patch', baseRevision: 1 },
-        { valid: true, roles: ['admin'] }
-      );
-      expect(adminEdit.success).toBe(true);
-      expect(adminEdit.revision).toBe(2);
-    });
-
-    it('prevents unauthenticated controller.search callers from spoofing filter.roles', async () => {
+    it('does not allow direct search callers to claim an authenticated role', async () => {
       const docsDir = makeTempDir('spoof-check');
-      writeFileSync(
-        join(docsDir, 'secret.pdx'),
-        `---\ntitle: Classified Spec\naccess: confidential\n---\nClassified spectral payload.`,
-        'utf8'
-      );
-
-      const service = new LumenRpcService({ docsDir });
-      const controller = new LumenRpcController(service);
-
-      // Unauthenticated controller call attempting to spoof admin role via SearchOptions.filter.roles
-      const spoofed = await controller.search('spectral', { filter: { roles: ['admin'] } });
-      expect(spoofed).toHaveLength(0);
-
-      // Authenticated admin session succeeds
-      const authorized = await controller.search('spectral', {}, { valid: true, roles: ['admin'] });
-      expect(authorized).toHaveLength(1);
-      expect(authorized[0]?.title).toBe('Classified Spec');
+      writeFileSync(join(docsDir, 'secret.pdx'), '---\ntitle: Classified Spec\naccess: confidential\n---\nClassified spectral payload.');
+      const controller = new LumenRpcController(new LumenRpcService({ docsDir }));
+      expect(await Reflect.apply(controller.search, controller, ['spectral', { filter: { roles: ['admin'] } }, { valid: true, roles: ['admin'] }])).toEqual([]);
     });
 
     it('respects enablePlayground: false and max code size cap (64 KiB)', async () => {
@@ -840,7 +779,7 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
 
           const controller = app.resolve(LumenRpcController);
           expect(controller).toBe(app.resolve(LUMEN_RPC_CONTROLLER_TOKEN));
-          expect(controller.getOptions()).toEqual(expectedOptions);
+          expect(controller).toBeInstanceOf(LumenRpcController);
 
           expect(app.resolve(AccessFilterService)).toBe(byToken.getAccessFilterService());
           expect(app.resolve(ACCESS_FILTER_SERVICE_TOKEN)).toBe(byToken.getAccessFilterService());
@@ -888,11 +827,9 @@ describe('Titan-Lumen Security Hardening & Architecture Verification', () => {
       expect(unauthSpoof.map((r) => r.documentId)).toEqual(['pub-1']);
 
       // Network/Controller call with forged invalid session { valid: false, roles: ['admin'] }
-      const invalidSessionSpoof = await controller.search(
-        'spec',
-        { filter: { roles: ['admin'] } },
-        { valid: false, roles: ['admin'] }
-      );
+      const invalidSessionSpoof = await Reflect.apply(controller.search, controller, [
+        'spec', { filter: { roles: ['admin'] } }, { valid: true, roles: ['admin'] },
+      ]);
       expect(invalidSessionSpoof.map((r) => r.documentId)).toEqual(['pub-1']);
 
       // MCP tools/call search_corpus attempting to pass roles/filter in JSON-RPC arguments

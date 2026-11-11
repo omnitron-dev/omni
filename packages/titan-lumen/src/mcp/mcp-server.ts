@@ -2,7 +2,7 @@ import { Injectable } from '@omnitron-dev/titan';
 import { parseDocument } from '@omnitron-dev/lumen-ast';
 import { MCP_PROTOCOL_VERSION, MCP_RESOURCE_URI_PREFIX } from '../constants.js';
 import { AccessFilterService, extractDocumentAccess } from '../access/access-filter.service.js';
-import type { ILumenRpcService, LumenSessionContext } from '../interfaces.js';
+import type { ILumenService, LumenSessionContext } from '../interfaces.js';
 
 export interface JsonRpcRequest {
   jsonrpc?: string;
@@ -40,7 +40,7 @@ export class LumenMcpServer {
   private readonly accessFilter: AccessFilterService;
 
   constructor(
-    private readonly rpcService?: ILumenRpcService,
+    private readonly rpcService?: ILumenService,
     accessFilter?: AccessFilterService
   ) {
     if (accessFilter) {

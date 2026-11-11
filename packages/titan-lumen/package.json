@@ -26,7 +26,6 @@
     "@omnitron-dev/access": "workspace:*",
     "@omnitron-dev/kb": "workspace:*",
     "@omnitron-dev/lumen-ast": "workspace:*",
-    "@omnitron-dev/titan-auth": "workspace:*",
     "reflect-metadata": "^0.2.2",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },

@@ -55,6 +55,6 @@ describe('LumenRpcService and Controller', () => {
 
     const res = await controller.search('intro');
     expect(Array.isArray(res)).toBe(true);
-    expect(controller.getOptions()).toEqual(service.getOptions());
+    expect('getOptions' in controller).toBe(false);
   });
 });

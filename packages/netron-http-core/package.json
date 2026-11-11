@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/netron-http-core",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "HTTP query builder, cache, retries and configurable service proxy shared by Titan and the Netron browser client.",
   "type": "module",
   "main": "./dist/index.js",

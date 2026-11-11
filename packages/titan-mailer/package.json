@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/titan-mailer",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Lifecycle-managed transactional email for Titan with Nodemailer and durable notification workers",
   "author": "LuxQuant",
   "license": "MIT",

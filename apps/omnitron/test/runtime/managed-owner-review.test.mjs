@@ -6,22 +6,63 @@ import path from 'node:path';
 import { stopPrivateFixtureStack } from './managed-owner-roundtrip.mjs';
 import { applicationSdkOption } from './managed-project-runtime.mjs';
 
+async function applicationProject(t) {
+  const checkout = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-sdk-input-'));
+  t.after(() => fs.rm(checkout, {recursive:true, force:true}));
+  await fs.writeFile(path.join(checkout, 'package.json'), JSON.stringify({name:'consumer', version:'1.0.0'}));
+  const dependencies = {};
+  for (const name of ['@omnitron-dev/omnitron', '@omnitron-dev/titan', '@omnitron-dev/titan-storage']) {
+    const root = path.join(checkout, 'node_modules', name);
+    await fs.mkdir(path.join(root, 'dist'), {recursive:true});
+    await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({name, version:'1.0.0'}));
+    dependencies[name] = await fs.realpath(root);
+  }
+  return {project:await fs.realpath(checkout), checkout:await fs.realpath(checkout), root:dependencies['@omnitron-dev/omnitron'], dependencies};
+}
+
 test('admits only the separately pinned installed application SDK before the owner lifecycle starts', async t => {
-  const sdk = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-sdk-input-'));
-  t.after(() => fs.rm(sdk, {recursive:true, force:true}));
+  const project = await applicationProject(t), sdk = project.root;
   const application = 'a'.repeat(40), controller = 'b'.repeat(40);
-  await fs.mkdir(path.join(sdk, 'dist'));
-  await fs.writeFile(path.join(sdk, 'package.json'), JSON.stringify({name:'@omnitron-dev/omnitron'}));
   const stamp = path.join(sdk, 'dist/BUILD.json');
   await fs.writeFile(stamp, JSON.stringify({commit:application, dirty:false}));
-  const args = ['/owner', '/controller', '--owner-roundtrip', '--application-sdk', sdk, '--application-sdk-commit'];
-  assert.deepEqual(await applicationSdkOption([...args, application]), {root:await fs.realpath(sdk), commit:application});
+  const args = ['/owner', '/controller', '--owner-roundtrip', '--application-project', project.checkout, '--application-sdk-commit'];
+  assert.deepEqual(await applicationSdkOption([...args, application]), {...project, commit:application});
   await assert.rejects(applicationSdkOption([...args, controller]), /independently reviewed/);
   await assert.rejects(applicationSdkOption(args), /exactly once/);
   await assert.rejects(applicationSdkOption([...args, application, '--application-sdk-commit', application]), /exactly once/);
   await fs.writeFile(stamp, JSON.stringify({commit:application, dirty:true}));
   await assert.rejects(applicationSdkOption([...args, application]), /clean sources/);
   assert.equal(await applicationSdkOption(['/owner', '/controller', '--owner-roundtrip']), undefined);
+  await assert.rejects(applicationSdkOption(['--application-sdk', sdk]), /installed consumer checkout/);
+});
+
+test('refuses a missing workload dependency before creating native services', async t => {
+  const project = await applicationProject(t);
+  await fs.rm(project.dependencies['@omnitron-dev/titan-storage'], {recursive:true});
+  await assert.rejects(applicationSdkOption(['--owner-roundtrip', '--application-project', project.checkout,
+    '--application-sdk-commit', 'a'.repeat(40)]), /must provide @omnitron-dev\/titan-storage/);
+});
+
+test('accepts virtual-store siblings inside the consumer workspace', async t => {
+  const project = await applicationProject(t);
+  await fs.writeFile(path.join(project.checkout, 'pnpm-workspace.yaml'), 'packages:\n  - apps/*\n');
+  const app = path.join(project.checkout, 'apps/consumer');
+  await fs.mkdir(path.join(app, 'node_modules/@omnitron-dev'), {recursive:true});
+  await fs.writeFile(path.join(app, 'package.json'), JSON.stringify({name:'app', version:'1.0.0'}));
+  for (const [name, root] of Object.entries(project.dependencies)) await fs.symlink(root, path.join(app, 'node_modules', name), 'dir');
+  await fs.writeFile(path.join(project.root, 'dist/BUILD.json'), JSON.stringify({commit:'a'.repeat(40), dirty:false}));
+  assert.deepEqual(await applicationSdkOption(['--owner-roundtrip', '--application-project', app,
+    '--application-sdk-commit', 'a'.repeat(40)]), {...project, project:app, commit:'a'.repeat(40)});
+});
+
+test('refuses transitive dependencies outside the reviewed consumer installation', async t => {
+  const project = await applicationProject(t), external = await applicationProject(t);
+  const sdk = project.root;
+  await fs.writeFile(path.join(sdk, 'package.json'), JSON.stringify({name:'@omnitron-dev/omnitron', version:'1.0.0', dependencies:{escape:'1.0.0'}}));
+  await fs.mkdir(path.join(sdk, 'node_modules'));
+  await fs.symlink(external.root, path.join(sdk, 'node_modules/escape'), 'dir');
+  await assert.rejects(applicationSdkOption(['--owner-roundtrip', '--application-project', project.checkout,
+    '--application-sdk-commit', 'a'.repeat(40)]), /escapes the frozen checkouts/);
 });
 
 const scope = { project: 'probe', stack: 'local' };

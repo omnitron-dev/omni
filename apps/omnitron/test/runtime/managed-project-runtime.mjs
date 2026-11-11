@@ -3,27 +3,44 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { resolveInstalledDependency } from '../../dist/release/package-resolution.js';
+import { installedGraph } from '../../dist/release/installed-graph.js';
+import { findWorkspaceRoot } from '../../dist/services/bundle-builder.js';
 
 /** The SDK is an independent release input. Verify it before any native job is created. */
-export async function inspectApplicationSdk(root, commit) {
+export async function inspectApplicationSdk(directory, commit) {
   assert.match(commit, /^[0-9a-f]{40}$/, 'Expected the full reviewed application SDK commit');
-  const sdk = await fs.realpath(root);
+  const project = await fs.realpath(directory);
+  await fs.access(path.join(project, 'package.json'));
+  const checkout = await fs.realpath(findWorkspaceRoot(project) ?? project);
+  const dependencies = {};
+  for (const name of ['@omnitron-dev/omnitron', '@omnitron-dev/titan', '@omnitron-dev/titan-storage']) {
+    const dependency = await resolveInstalledDependency(project, name, true);
+    assert.ok(dependency, 'The application project must provide ' + name);
+    const root = await fs.realpath(dependency);
+    // A pnpm package leaf is not a checkout: its siblings belong to the same
+    // installation. Review the consumer's complete graph before native startup.
+    await installedGraph(root, new Map(), [checkout]);
+    dependencies[name] = root;
+  }
+  const sdk = dependencies['@omnitron-dev/omnitron'];
   const metadata = JSON.parse(await fs.readFile(path.join(sdk, 'package.json'), 'utf8'));
   const stamp = JSON.parse(await fs.readFile(path.join(sdk, 'dist/BUILD.json'), 'utf8'));
   assert.equal(metadata.name, '@omnitron-dev/omnitron', 'Expected the installed Omnitron application SDK');
   assert.equal(stamp.dirty, false, 'The application SDK must be built from clean sources');
   assert.equal(stamp.commit, commit, 'The installed application SDK differs from the independently reviewed commit');
-  return { root: sdk, commit };
+  return { root: sdk, project, checkout, commit, dependencies };
 }
 
 export async function applicationSdkOption(argv) {
-  const flags = ['--application-sdk', '--application-sdk-commit'];
+  assert.ok(!argv.includes('--application-sdk'), 'Use --application-project with the installed consumer checkout, not a package leaf');
+  const flags = ['--application-project', '--application-sdk-commit'];
   if (!flags.some(flag => argv.includes(flag))) return undefined;
   assert.ok(argv.includes('--owner-roundtrip'), 'Application SDK qualification requires an owner roundtrip');
   const [root, commit] = flags.map(flag => {
     const i = argv.indexOf(flag);
     assert.ok(i >= 0 && i === argv.lastIndexOf(flag) && argv[i + 1] && !argv[i + 1].startsWith('--'),
-      'Supply --application-sdk and --application-sdk-commit exactly once');
+      'Supply --application-project and --application-sdk-commit exactly once');
     return argv[i + 1];
   });
   return inspectApplicationSdk(root, commit);
@@ -37,21 +54,19 @@ export async function prepareManagedProjectRuntime(context) {
   const { root, instance, applicationSdk, managementDist, candidate, runtime, api, run, until, track, mark } = context;
   const load = name => import(pathToFileURL(path.join(managementDist, name + '.js')).href);
   const { ArtifactBuilder } = await load('project/artifact-builder');
-  const { resolveInstalledDependency } = await load('release/package-resolution');
   const { targetRuntime } = await load('release/target-runtime');
   const { loadRelease } = await load('release/load');
   const { verifyRuntimeArtifact } = await load('shared/runtime-artifact');
   const { PidManager } = await load('daemon/pid-manager');
-  const { root: sdk, commit: sdkCommit } = await inspectApplicationSdk(applicationSdk.root, applicationSdk.commit);
+  const { root: sdk, checkout, commit: sdkCommit, dependencies: installedDependencies } =
+    await inspectApplicationSdk(applicationSdk.project, applicationSdk.commit);
   const project = path.join(root, 'applications'), app = path.join(project, 'app');
   const observations = path.join(root, 'application-runtime.jsonl');
   for (const directory of ['src', 'dist', 'node_modules/@omnitron-dev'])
     await fs.mkdir(path.join(app, directory), { recursive: true });
   const dependencies = {};
   for (const name of ['@omnitron-dev/omnitron', '@omnitron-dev/titan', '@omnitron-dev/titan-storage']) {
-    const dependency = name === '@omnitron-dev/omnitron' ? sdk : await resolveInstalledDependency(sdk, name);
-    assert.ok(dependency, 'The application SDK must provide ' + name);
-    const real = await fs.realpath(dependency);
+    const real = installedDependencies[name];
     await fs.symlink(real, path.join(app, 'node_modules', name), 'dir');
     dependencies[name] = JSON.parse(await fs.readFile(path.join(real, 'package.json'), 'utf8')).version;
   }
@@ -108,7 +123,7 @@ providers:[LocalAdapter,Probe]})(RuntimeModule);export default RuntimeModule;
   const releaseRoot = path.join(instance, 'releases', releaseId);
   const built = await new ArtifactBuilder(project, path.join(releaseRoot, 'artifacts')).buildApp(
     { name: 'runtime', cwd: app, bootstrap: 'dist/bootstrap.js' },
-    { skipBuild: true, releaseCheckouts: [project, path.resolve(sdk, '../../..')] });
+    { skipBuild: true, releaseCheckouts: [project, checkout] });
   const manifest = { id: releaseId, project: { repo: project, commit, onRemote: false },
     omni: { repo: sdk, commit: sdkCommit, onRemote: null },
     artifacts: [{ app: 'runtime', version: built.version, sha256: built.tarballSha256, bytes: built.size, launch: built.launch,

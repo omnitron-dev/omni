@@ -109,8 +109,11 @@ declaration. Preserve and qualify that declaration instead of relaxing its diges
 check or temporarily substituting files to obtain an admission receipt.
 
 The native `test/runtime/managed-backend.mjs` owner roundtrip accepts
-`--application-sdk /absolute/path/to/installed/@omnitron-dev/omnitron`.
-The independent consumer must also contain its matching Titan and Titan Storage.
+`--application-project /absolute/path/to/installed-consumer`
+and `--application-sdk-commit <full-sha>`.
+The consumer must directly resolve its matching Omnitron, Titan and Titan Storage.
+The full production dependency graphs must stay inside that consumer checkout
+(or its pnpm workspace); virtual-store siblings are included, external links are refused.
 Alongside the baseline → candidate → baseline service transition, this exercises
 one project's source and pinned-release stacks through the public project API:
 single and pooled bootstrap workers, source watch without restarting frozen workers,
@@ -537,9 +540,10 @@ apply check the saved plan against the current scope immediately. PID ordering a
 identities and group membership are independently verified twice.
 
 For an isolated native owner roundtrip with real application workloads, pass
-`--application-sdk <installed-package>` and `--application-sdk-commit <full-sha>`
+`--application-project <installed-consumer>` and `--application-sdk-commit <full-sha>`
 to `test/runtime/managed-backend.mjs` alongside `--owner-roundtrip`. The fixture
-checks the package and its clean build stamp before creating services. Its result
+checks all required dependencies, their containment and the SDK's clean build stamp
+before creating services. Its result
 records the application's framework commit and the owner's commit and artifact hash.
 
 ## Standalone infrastructure

@@ -2,6 +2,15 @@
 
 Pure isomorphic prism-doc/2 AST compiler, math environments, KaTeX macro registry, Shiki/Twoslash highlighter, and multi-target emitters for Omnitron Lumen.
 
+## Published math dependencies
+
+The build includes the upstream `micromark-extension-math` syntax tokenizer,
+using the same `tsup.noExternal` publication contract as Prism. Its unused HTML
+renderer is removed; consumers do not install the extension's separate legacy
+KaTeX dependency. Rendering uses this package's direct, patched KaTeX version.
+The archive gate rejects retained imports of bundled build inputs and installs
+and audits the packages with npm, without workspace overrides.
+
 ## Frontmatter trust boundary
 
 `parseSafeFrontmatter` is shared by the compiler, Titan integration and migrator. It accepts data-only YAML or JSON, including BOM and CRLF input, and runs in Node and browsers. Unsupported engines, malformed metadata, invalid declared fields, cyclic structures and exceeded limits produce error diagnostics and `access: 'restricted'`. A recovered document body is for authoring diagnostics; it must never be published without authorization.

@@ -132,7 +132,11 @@ try {
     // Keep the runtime probe independent of optional packages: a full install
     // could hide an undeclared import. Audit the remaining public surface too.
     installConsumer(values['install-consumer'], ['@omnitron-dev/omnitron', '@omnitron-dev/netron-react']);
-    installConsumer(path.join(temporary, 'all-public'), archives.keys());
+    const allPublic = path.join(temporary, 'all-public');
+    installConsumer(allPublic, archives.keys());
+    execFileSync(process.execPath, [
+      path.join(root, 'packages/lumen-ast/test/runtime/bundle-consumer.js'), allPublic,
+    ], { stdio: 'inherit' });
   }
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });

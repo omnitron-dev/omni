@@ -235,6 +235,9 @@ importers:
       '@typescript/native':
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
+      '@xec-sh/cli':
+        specifier: 0.11.4
+        version: 0.11.4
       '@xec-sh/kit':
         specifier: 0.11.4
         version: 0.11.4
@@ -4456,6 +4459,11 @@ packages:
 
   '@vitest/utils@5.0.5':
     resolution: {integrity: sha512-/rBu7gzLDQI/SC79Tn98b5DwOgaHU/Gt4I9OVeP3YofzNaYtbImRCOJQmT1S6vOJg9gEIlWC+r3QxKkjuSa1nQ==}
+
+  '@xec-sh/cli@0.11.4':
+    resolution: {integrity: sha512-v28S81yJ86sN20geZE3cfkhltgOgbVuWgef02WAmY8QFIboc0dhOlzao0JgYP5tX+RvPwOgXuGN5dLKv+fOMeg==}
+    engines: {node: '>=22.18.0'}
+    hasBin: true
 
   '@xec-sh/core@0.11.4':
     resolution: {integrity: sha512-AkhN1Z3M/2oWvf37Rxf4cVkCuSkmPAGFdAD99r1x3X+f4Lk7f/Ai8REh0THuE+ijbKRBTn+Y6p4lFmTpuTFvNQ==}
@@ -10511,6 +10519,19 @@ snapshots:
       '@vitest/pretty-format': 5.0.5
       convert-source-map: 2.0.0
       tinyrainbow: 3.2.0
+
+  '@xec-sh/cli@0.11.4':
+    dependencies:
+      '@xec-sh/core': 0.11.4
+      '@xec-sh/kit': 0.11.4
+      '@xec-sh/loader': 0.11.4
+      '@xec-sh/ops': 0.11.4
+      commander: 15.0.0
+      fs-extra: 11.4.1
+      glob: 14.0.3
+      js-yaml: 5.5.0
+      yaml: 2.9.1
+      zod: 4.6.7
 
   '@xec-sh/core@0.11.4': {}
 

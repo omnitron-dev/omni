@@ -136,10 +136,13 @@ else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') ==
     GIT_COMMITTER_NAME: 'Fixture', GIT_AUTHOR_EMAIL: 'fixture@localhost', GIT_COMMITTER_EMAIL: 'fixture@localhost' };
   const exec = (bin, args, cwd = workspace) => run(bin, args, { cwd, env, signal: t.signal });
   const git = async (...args) => (await exec('git', args)).stdout.trim();
-  const release = (...args) => exec(process.execPath, ['scripts/release.mjs', version, ...args]);
+  const release = (...args) => exec(process.execPath, [path.join(repo, 'node_modules/@xec-sh/cli/bin/xec'), 'release', version, ...args]);
   const json = (name, value) => fs.writeFile(path.join(workspace, name), JSON.stringify(value, null, 2));
   await fs.mkdir(path.join(workspace, 'scripts'), { recursive: true });
   for (const file of ['release.mjs', 'build-release.mjs']) await fs.copyFile(path.join(repo, 'scripts', file), path.join(workspace, 'scripts', file));
+  await fs.cp(path.join(repo, '.xec'), path.join(workspace, '.xec'), { recursive: true, filter: file => !file.includes('/.tmp') });
+  // CI qualification has its own failure/resume suite; this loopback suite exercises registry publication.
+  await fs.writeFile(path.join(workspace, '.xec/qualification.mjs'), 'export async function qualifyRelease() {}\nexport async function verifyReleaseQualification() { return {fixture:true}; }\n');
   // The fixture publishes two tiny packages, not the complete Omnitron SDK.
   // Keep both package-consumer validation stages observable in its archive.
   await fs.mkdir(path.join(workspace, 'scripts/ci'));
@@ -155,7 +158,7 @@ else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') ==
     await json(`packages/${folder}/package.json`, { name, version: '0.1.0', main: './index.js', files: ['index.js', 'consumer-checked'],
       ...(name === second ? { dependencies: { [first]: 'workspace:*' } } : {}) });
   }
-  await fs.writeFile(path.join(workspace, '.gitignore'), 'node_modules\n.release-artifacts\n');
+  await fs.writeFile(path.join(workspace, '.gitignore'), 'node_modules\n.release-artifacts\n.xec/.tmp/\n');
   await exec('pnpm', ['install', '--lockfile-only', '--offline']);
   await fs.symlink(path.join(repo, 'node_modules'), path.join(workspace, 'node_modules'), 'junction');
   await git('init', '-q', '-b', 'main');

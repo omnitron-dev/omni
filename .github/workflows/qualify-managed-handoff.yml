@@ -1,9 +1,12 @@
 name: Qualify a managed backend handoff
-run-name: Handoff ${{ inputs.previous }} → ${{ inputs.candidate }}
+run-name: Handoff ${{ inputs.previous }} → ${{ inputs.candidate }} · Node ${{ inputs.node }} · ${{ inputs.qualification || 'manual' }}
 
 on:
   workflow_dispatch:
     inputs:
+      qualification:
+        description: Unique Xec qualification intent for dispatch reconciliation
+        required: false
       previous:
         description: Full commit of the independently supervised backend currently serving
         required: true
@@ -137,3 +140,14 @@ jobs:
           sudo -- "$(command -v node)" apps/omnitron/test/runtime/managed-backend.mjs \
             "$stage/$PREVIOUS/packages/0/dist" "$stage/$CANDIDATE/packages/0/dist" \
             --owner-roundtrip
+
+      - name: Retain the qualified candidate for managed delivery
+        working-directory: ${{ runner.temp }}/source-${{ inputs.candidate }}
+        run: pnpm exec xec run .xec/native-artifact.mjs "$RUNNER_TEMP/omnitron-handoff-$CANDIDATE" "$RUNNER_TEMP/native-delivery"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-${{ inputs.candidate }}-${{ inputs.node }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-delivery/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

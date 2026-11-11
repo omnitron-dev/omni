@@ -21,14 +21,15 @@
     "cleanup": "find . -name \"node_modules\" -type d -prune -exec rm -rf '{}' +",
     "changeset": "changeset",
     "ai-prompt": "ts-node scripts/gen-aiprompt.ts",
-    "publish": "node scripts/release.mjs",
+    "publish": "xec release",
     "transform-hugeicons": "tsx scripts/transform-hugeicons.ts",
     "link:global": "cd apps/omnitron && pnpm link --global",
     "unlink:global": "pnpm uninstall --global @omnitron-dev/omnitron",
     "kb:extract": "turbo kb:extract",
     "kb:index": "cd apps/omnitron && tsx src/commands/kb.ts index",
     "check:reproducibility": "node scripts/check-reproducible-backend.mjs",
-    "check:packages": "node scripts/check-package-exports.mjs"
+    "check:packages": "node scripts/check-package-exports.mjs",
+    "release": "xec release"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -52,7 +53,8 @@
     "tsx": "^4.23.15",
     "turbo": "^2.11.10",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "@typescript/native": "npm:typescript@^7.0.2"
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "@xec-sh/cli": "0.11.4"
   },
   "packageManager": "pnpm@12.16.1",
   "engines": {

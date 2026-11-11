@@ -1,0 +1,3 @@
+version: '1.0'
+name: Omnitron
+description: Reproducible platform release and managed rollout through Xec

@@ -1,0 +1,72 @@
+import path from 'node:path';
+import fs from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { parseArgs } from 'node:util';
+import { Pipeline } from '@xec-sh/ops/pipeline';
+import { releaseCommand } from '@xec-sh/ops/release';
+import { qualifiedRuntimes } from './qualification.mjs';
+
+/** Xec orchestrates; the daemon remains the authority for pins, roles, locks and recovery. */
+export async function runUpdate(args, options = {}) {
+  const { values, positionals } = parseArgs({ args, allowPositionals: true, options: {
+    cli: { type: 'string', default: 'omnitron' }, runtime: { type: 'string', multiple: true },
+    node: { type: 'string', multiple: true }, 'request-id': { type: 'string' }, help: { type: 'boolean' },
+  } });
+  const usage = 'xec update plan <commit> [--runtime <sealed-linux-runtime>] --node <registered-node> [--node ...]\n' +
+    'xec update apply <plan-id>\nxec update status [plan-id]\nxec update reconcile <plan-id>\n' +
+    'xec update local-check <dist>\nxec update local-apply <dist>\n' +
+    '  --cli <executable> Select the installed Omnitron CLI\n' +
+    'A plan never activates a backend. Owner transitions remain separate reviewed operations.';
+  if (values.help) { console.log(usage); return; }
+  const [operation, target] = positionals;
+  if (positionals.length > 2 || !['plan', 'apply', 'status', 'reconcile', 'local-check', 'local-apply'].includes(operation) ||
+      (operation !== 'status' && !target)) throw Error(usage);
+  if (operation !== 'plan' && (values.runtime || values.node || values['request-id'])) throw Error('Runtime, node and request ID options belong to plan');
+  const root = options.root ?? process.cwd();
+  const run = options.run ?? releaseCommand;
+  const progress = options.progress ?? console.log;
+  const call = async argv => {
+    const output = await run(root, values.cli, ['--json', ...argv], { timeoutMs: 30 * 60_000 });
+    const reply = JSON.parse(output);
+    if (!reply?.ok) throw Error(reply?.error?.message ?? 'Omnitron did not confirm the operation');
+    return reply.data;
+  };
+  if (operation === 'plan') {
+    if (!/^[a-f0-9]{40}$/.test(target) || !values.node?.length)
+      throw Error('Plan requires a full commit, qualified Linux runtimes and explicit registered nodes');
+    if (new Set(values.node).size !== values.node.length || values.node.some(node => !node || node.startsWith('-') || node.trim() !== node))
+      throw Error('Use distinct registered node names or IDs, not command options');
+    const id = values['request-id'] ?? randomUUID();
+    if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id)) throw Error('Invalid request ID');
+    const runtimes = values.runtime ? values.runtime.map(value => path.resolve(root, value)) : await qualifiedRuntimes(root, target);
+    if (!runtimes.length) throw Error('No qualified native runtime is available');
+    // Reject a mixed candidate before the catalog or any remote node can be changed.
+    for (const runtime of runtimes) {
+      const stamp = JSON.parse(await fs.readFile(path.join(runtime, 'packages/0/dist/BUILD.json')));
+      if (stamp.commit !== target || stamp.dirty) throw Error('Runtime source differs from the requested candidate');
+    }
+    progress('Plan ' + id + '. If interrupted, use xec update status ' + id + '; do not replay apply.');
+    let plan;
+    const pipeline = Pipeline.create('platform-update-plan')
+      .step('catalog', { run: async () => { await call(['fleet', 'rollout', 'import', ...runtimes]); } })
+      .step('prepare', { dependsOn: ['catalog'], run: async () => {
+        plan = await call(['fleet', 'rollout', 'plan', target, ...values.node, '--stage', '--wait', '--request-id', id]);
+        if (plan?.id !== id || plan.commit !== target || plan.state !== 'planned') throw Error('Controller did not confirm the requested plan');
+      } });
+    const result = await pipeline.run({}, { onEvent(event) {
+      if (event.type === 'step-start') progress(event.step + ' · running');
+      if (event.type === 'step-complete') progress(event.step + ' · ' + (event.result.success ? 'complete' : event.result.error));
+    } });
+    if (!result.success) throw Error('Update preparation failed. Inspect xec update status ' + id + '\n' +
+      result.steps.filter(step => !step.success).map(step => step.error).join('\n'));
+    progress(JSON.stringify(plan, null, 2));
+    return plan;
+  }
+  if (!operation.startsWith('local-') && target && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(target)) throw Error('Use the exact rollout UUID');
+  const argv = operation.startsWith('local-')
+    ? ['backend', 'upgrade', path.resolve(root, target), ...(operation === 'local-check' ? ['--check'] : [])]
+    : ['fleet', 'rollout', operation, ...(target ? [target] : []), ...(['apply', 'status'].includes(operation) ? ['--wait'] : [])];
+  const result = await call(argv);
+  progress(JSON.stringify(result, null, 2));
+  return result;
+}

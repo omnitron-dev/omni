@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { releaseCommand } from '@xec-sh/ops/release';
 import { createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
@@ -8,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
-const { values } = parseArgs({ options: { out: { type: 'string' }, revision: { type: 'string' } } });
+const { values } = parseArgs({ args: globalThis.args ?? process.argv.slice(2), options: { out: { type: 'string' }, revision: { type: 'string' } } });
 if (values.revision && !/^[a-f0-9]{40}$/.test(values.revision)) throw Error('--revision requires a full Git commit');
 const destination = values.out ? path.resolve(values.out) : null;
 if (destination) {
@@ -16,10 +16,10 @@ if (destination) {
   catch (error) { if (error.code !== 'ENOENT') throw error; }
 }
 const source = fileURLToPath(new URL('../', import.meta.url));
-const git = (...args) => execFileSync('git', args, { cwd: source, encoding: 'utf8' }).trim();
-const revision = git('rev-parse', '--verify', `${values.revision ?? 'HEAD'}^{commit}`);
+const git = (...args) => releaseCommand(source, 'git', args);
+const revision = await git('rev-parse', '--verify', `${values.revision ?? 'HEAD'}^{commit}`);
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'omnitron-reproduce-'));
-const env = { ...process.env, TZ: 'UTC', SOURCE_DATE_EPOCH: git('show', '-s', '--format=%ct', revision),
+const env = { ...process.env, TZ: 'UTC', SOURCE_DATE_EPOCH: await git('show', '-s', '--format=%ct', revision),
   npm_config_side_effects_cache: 'false', TURBO_TELEMETRY_DISABLED: '1', TURBO_FORCE: 'true', TURBO_CONCURRENCY: '3' };
 delete env.TURBO_TOKEN;
 delete env.TURBO_TEAM;
@@ -39,14 +39,10 @@ async function packSdk(cwd, output, buildEnv) {
   let files = 0;
   for (const pkg of packages) {
     const archive = path.join(output, 'workspace.tgz');
-    execFileSync('pnpm', ['pack', '--out', archive], {
-      cwd: directoryOf(pkg), env: buildEnv, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
-    });
+    await releaseCommand(directoryOf(pkg), 'pnpm', ['pack', '--out', archive], { env: buildEnv });
     await normalizePackedWorkspace(archive);
     const bytes = await fs.readFile(archive);
-    const metadata = JSON.parse(execFileSync('tar', ['-xOf', archive, 'package/package.json'], {
-      encoding: 'utf8', maxBuffer: 1024 * 1024,
-    }));
+    const metadata = JSON.parse(await releaseCommand(cwd, 'tar', ['-xOf', archive, 'package/package.json']));
     const sha256 = createHash('sha256').update(bytes).digest('hex');
     const integrity = 'sha512-' + createHash('sha512').update(bytes).digest('base64');
     const inspected = await inspectFrameworkArchive({ name: pkg.name, version: pkg.version, integrity },
@@ -69,13 +65,13 @@ async function build(round, retained, retainedSdk) {
   const sdkOutput = retainedSdk ?? path.join(root, round + '-sdk');
   await fs.mkdir(cwd);
   const buildEnv = { ...env, OMNITRON_HOME: path.join(root, round + '-home') };
-  const run = (command, args) => execFileSync(command, args, { cwd, env: buildEnv, stdio: 'inherit' });
-  run('git', ['init', '--quiet']);
-  run('git', ['fetch', '--quiet', '--depth=1', '--no-tags', '--', source, revision]);
-  run('git', ['checkout', '--quiet', '--detach', revision]);
-  run('pnpm', ['install', '--frozen-lockfile']);
-  run('pnpm', ['run', 'build']);
-  run(process.execPath, ['apps/omnitron/scripts/freeze-backend.mjs', 'apps/omnitron', output]);
+  const run = (command, args) => releaseCommand(cwd, command, args, { env: buildEnv, timeoutMs: 30 * 60_000 });
+  await run('git', ['init', '--quiet']);
+  await run('git', ['fetch', '--quiet', '--depth=1', '--no-tags', '--', source, revision]);
+  await run('git', ['checkout', '--quiet', '--detach', revision]);
+  await run('pnpm', ['install', '--frozen-lockfile']);
+  await run('pnpm', ['run', 'build']);
+  await run(process.execPath, ['apps/omnitron/scripts/freeze-backend.mjs', 'apps/omnitron', output]);
   const read = async filename => JSON.parse(await fs.readFile(path.join(output, filename), 'utf8'));
   const stamp = await read('packages/0/dist/BUILD.json');
   assert.equal(stamp.commit, revision);
@@ -83,7 +79,7 @@ async function build(round, retained, retainedSdk) {
   const runtime = await read('RUNTIME.json');
   const ui = await read('packages/0/webapp/dist/console-version.json');
   const sdk = await packSdk(cwd, sdkOutput, buildEnv);
-  assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd, encoding: 'utf8' }).trim(), '',
+  assert.equal(await releaseCommand(cwd, 'git', ['status', '--porcelain']), '',
     'The independent checkout changed during build or packing');
   const result = { sha256: runtime.sha256, packages: runtime.packages, console: ui.version, sdk };
   // Only the measurements are needed for the comparison. Free the checkout and
@@ -95,12 +91,15 @@ async function build(round, retained, retainedSdk) {
 }
 let staging;
 try {
+  console.log('Independent build 1/2 · running');
   const first = await build('first');
+  console.log('Independent build 1/2 · verified');
   // Stage the second verified tree on the requested filesystem. The caller
   // can import <destination>/runtime only after both measurements agree.
   if (destination) staging = await fs.mkdtemp(path.join(path.dirname(destination), '.omnitron-qualification-'));
   const retained = staging && path.join(staging, 'runtime');
   const retainedSdk = staging && path.join(staging, 'sdk');
+  console.log('Independent build 2/2 · running');
   const second = await build('second', retained, retainedSdk);
   assert.deepEqual(second, first, 'Independent backend, Console or normalized npm archives differ');
   if (destination) {

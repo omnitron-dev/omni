@@ -81,3 +81,9 @@ apps/omnitron/webapp/dist.publish-lock/
 
 # Immutable local release archives and publication receipts
 /.release-artifacts/
+
+# Xec dynamic command transform cache
+.xec/.tmp/
+.xec/cache/
+.xec/module-cache/
+.xec/logs/

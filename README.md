@@ -108,31 +108,42 @@ pnpm fm:fix
 
 MIT
 
-## Publishing Omnitron
+## Publishing and updating Omnitron
 
-Run `node scripts/release.mjs --list` to see the public packages in dependency order.
-`node scripts/release.mjs <version> --dry-run` checks the version, current commit and
-worktree. Choose the version before preparing a release.
-
-From a clean `main`, run the following operations in order. Replace
-`<version>` with the same exact version throughout.
+The project recipes run inside the pinned Xec CLI and use its release API and
+Pipeline. Install dependencies with `pnpm install --frozen-lockfile`, then use a
+clean `main` checkout:
 
 ```sh
-node scripts/release.mjs <version> --prepare
-node scripts/release.mjs <version> --push
-node scripts/release.mjs <version> --publish
-node scripts/release.mjs <version> --github
+pnpm exec xec release <version> --dry-run
+pnpm exec xec release <version> --prepare --previous <full-previous-backend-commit> --push-source
+pnpm exec xec release <version> --finish
 ```
 
-Preparation builds a separate checkout, verifies package exports, installs and
-audits an independent npm consumer, checks its runtime and creates a local
-annotated tag. Consumer checks do not inherit workspace overrides.
-Review the package inventory, SHA-512 digests and release notes in
-`.release-artifacts/<version>/<commit>/` before pushing. The push updates
-the selected branch and tag atomically. Publication verifies the remote
-tag and checks the sealed SHA-512 digests against npm metadata. For an interrupted
-publication, keep the archives, return to the same clean commit and run
-`node scripts/release.mjs <version> --resume`. If npm reports that a version
-is already staged, wait for that package version to become visible in the
-original registry before resuming. Use the same registry and prepared archives.
-The GitHub release can be completed separately after all npm packages are confirmed.
+Preparation builds and verifies immutable archives, compares two clean builds,
+observes CI and qualifies native transition/rollback on each configured Node.
+The release policy is in `.xec/release-policy.mjs`. `--push-source` publishes
+only the reviewed source branch for CI; omit it when another system handles Git.
+Publication rechecks exact evidence and hashes without rebuilding or retesting.
+
+Resume qualification with `xec release <version> --qualify --previous <commit>`.
+Repeat `--finish` to reconcile interrupted npm uploads from the same archives.
+Use `--status` to inspect current qualification and `--list` for package inventory.
+State remains in `.release-artifacts/`; no personal launcher or temporary shell
+script is required. `pnpm release` invokes the same Xec command.
+
+Native qualification retains the tested Linux runtimes for deployment.
+After publication, prepare an update through the daemon's existing lifecycle:
+
+```sh
+pnpm exec xec update plan <candidate-commit> --node test-controller --node production-controller
+pnpm exec xec update apply <reviewed-plan-id>
+pnpm exec xec update status <plan-id>
+```
+
+Planning never activates a backend. Roles, runtime pins, locks and rollback remain
+owned by Omnitron. Use `reconcile <plan-id>` after an uncertain response.
+Local supervised backends use `xec update local-check <dist>` followed by the
+explicit `local-apply <dist>`; owner transitions are separate reviewed operations.
+See the [release guide](https://omnitron.dev/docs/community/contributing#release-process)
+for qualification, recovery and credentials.

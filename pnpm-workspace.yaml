@@ -133,6 +133,7 @@ minimumReleaseAgeExclude:
   - "@xec-sh/kit@0.11.4"
   - "@xec-sh/loader@0.11.4"
   - "@xec-sh/ops@0.11.4"
+  - "@xec-sh/cli@0.11.4"
 # SQON ships JavaScript and declarations without a Compiler API dependency.
 # Its types compile with our TypeScript 7 build; the tooling alias is API 6.
 peerDependencyRules:

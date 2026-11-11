@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { discoverReleasePackages } from '@xec-sh/ops/release';
 import { supersedeDraft } from '../../.xec/supersede-draft.mjs';
+import { assertPipelineSucceeded } from '../lib/pipeline-result.mjs';
 
 const run = promisify(execFile);
 const repo = fileURLToPath(new URL('../../', import.meta.url));
@@ -217,4 +218,22 @@ else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') ==
   store.get(first).versions[version].dist.integrity = 'sha512-foreign';
   await assert.rejects(release('--resume', '--registry', registry), /Registry archive differs/);
   assert.equal(writes.get(first), 1);
+});
+
+test('success does not report a failure', () => {
+  assert.doesNotThrow(() => assertPipelineSucceeded({ success: true, steps: [] }));
+});
+test('preserves stdout-only failures and stderr while excluding skipped dependents', () => {
+  assert.throws(() => assertPipelineSucceeded({ success: false, steps: [
+    { name: 'consumer-install', success: false, exitCode: 1, error: 'Command exited with code 1', stdout: 'specific npm or cleanup failure', stderr: 'additional context' },
+    { name: 'consumer-runtime', success: false, skipped: true, error: 'Skipped due to dependency failure' },
+  ] }), error => error.message.includes('specific npm or cleanup failure') && error.message.includes('additional context') && !error.message.includes('consumer-runtime'));
+});
+test('bounds diagnostic tails without losing the final reason', () => {
+  assert.throws(() => assertPipelineSucceeded({ success: false, steps: [
+    { name: 'consumer', success: false, exitCode: 1, stdout: 'x'.repeat(100_000) + 'final-reason', stderr: '', outputTruncated: true },
+  ] }), error => error.message.length < 17_000 && error.message.includes('final-reason') && error.message.includes('output truncated'));
+});
+test('skipped-only outcomes still reject publication', () => {
+  assert.throws(() => assertPipelineSucceeded({ success: false, steps: [{ success: false, skipped: true }] }), /did not complete/);
 });

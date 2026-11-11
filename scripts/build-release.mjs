@@ -4,6 +4,7 @@ import os from 'node:os';
 import { existsSync, realpathSync, mkdtempSync, rmSync } from 'node:fs';
 import { Pipeline } from '@xec-sh/ops/pipeline';
 import { releaseCommand } from '@xec-sh/ops/release';
+import { assertPipelineSucceeded } from './lib/pipeline-result.mjs';
 
 const [source, commit] = globalThis.args ?? process.argv.slice(2);
 const destination = realpathSync(process.cwd());
@@ -32,7 +33,7 @@ try {
     if (event.type === 'step-output') process[event.stream].write(event.text);
     if (event.type === 'step-start') console.log(event.step + ' · running');
   } });
-  if (!result.success) throw Error(result.steps.filter(step => !step.success).map(step => step.name + ': ' + step.error).join('\n'));
+  assertPipelineSucceeded(result);
 } finally {
   rmSync(verification, { recursive: true, force: true });
 }

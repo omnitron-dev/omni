@@ -1,7 +1,7 @@
 import { sep } from 'node:path';
 import { lstatSync, realpathSync } from 'node:fs';
 
-import matter from 'gray-matter';
+import { parseSafeFrontmatter as parseMetadata } from '@omnitron-dev/lumen-ast';
 
 export class DisabledFrontmatterEngineError extends Error {
   constructor(engineName: string) {
@@ -10,42 +10,17 @@ export class DisabledFrontmatterEngineError extends Error {
   }
 }
 
-const EXECUTABLE_FENCE_RE = /^---(?:js|javascript|coffee|coffeescript)\b/i;
-
-function createDisabledEngine(name: string): () => never {
-  return () => {
-    throw new DisabledFrontmatterEngineError(name);
-  };
-}
-
 export interface SafeMatterResult {
   data: Record<string, unknown>;
   content: string;
 }
 
 export function parseSafeFrontmatter(rawContent: string): SafeMatterResult {
-  if (EXECUTABLE_FENCE_RE.test(rawContent)) {
-    throw new DisabledFrontmatterEngineError('script');
-  }
-
-  const parsed = matter(rawContent, {
-    engines: {
-      js: createDisabledEngine('js'),
-      javascript: createDisabledEngine('javascript'),
-      coffee: createDisabledEngine('coffee'),
-      coffeescript: createDisabledEngine('coffeescript'),
-    },
-  });
-
-  const data =
-    parsed.data && typeof parsed.data === 'object' && !Array.isArray(parsed.data)
-      ? (parsed.data as Record<string, unknown>)
-      : {};
-
-  return {
-    data,
-    content: typeof parsed.content === 'string' ? parsed.content : '',
-  };
+  const parsed = parseMetadata(rawContent);
+  const error = parsed.diagnostics.find((diagnostic) => diagnostic.severity === 'error');
+  if (error?.code === 'EXECUTABLE_FRONTMATTER_FORBIDDEN') throw new DisabledFrontmatterEngineError('script');
+  if (error) throw new Error(error.message);
+  return { data: parsed.data, content: parsed.content };
 }
 
 export interface PathContainmentResult {

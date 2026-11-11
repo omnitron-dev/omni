@@ -218,6 +218,7 @@ module.exports = [
   {
     files: [
       'packages/*/test/**/*.{js,mjs,cjs,ts,jsx,tsx,spec.ts}',
+      'packages/*/tests/**/*.{js,mjs,cjs,ts,jsx,tsx}',
       'packages/*/__tests__/**/*.{js,mjs,cjs,ts,jsx,tsx}',
       'packages/*/src/**/*.{test,spec}.{ts,tsx}',
       'apps/*/test/**/*.{js,mjs,cjs,ts,jsx,tsx}',

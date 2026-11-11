@@ -2,7 +2,7 @@
  * Frontmatter Schema, Safe Parser, and Validation via Zod
  */
 
-import matter from 'gray-matter';
+import { parseDocument as parseYamlDocument } from 'yaml';
 import { z } from 'zod';
 import type { LumenDiagnostic } from './diagnostics.js';
 import { createDiagnostic } from './diagnostics.js';
@@ -12,22 +12,6 @@ export const MAX_FRONTMATTER_BYTES = 64 * 1024; // 64 KiB
 
 const VALID_ACCESS_LEVELS = new Set(['public', 'internal', 'confidential']);
 const FORBIDDEN_PROTO_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
-const EXECUTABLE_FRONTMATTER_RE = /^\uFEFF?(?:---|~~~)[ \t]*(js|javascript|coffee|coffeescript|toml)\b/i;
-
-const DISABLED_ENGINE = (): never => {
-  throw new Error('Executable frontmatter is disabled');
-};
-
-const SAFE_MATTER_OPTIONS = {
-  engines: {
-    js: DISABLED_ENGINE,
-    javascript: DISABLED_ENGINE,
-    coffee: DISABLED_ENGINE,
-    coffeescript: DISABLED_ENGINE,
-    toml: DISABLED_ENGINE,
-  },
-};
-
 export const LumenFrontmatterSchema = z
   .object({
     id: z.string().optional(),
@@ -66,21 +50,26 @@ export interface SafeFrontmatterResult {
   diagnostics: LumenDiagnostic[];
 }
 
-function stripForbiddenKeys(value: unknown, depth = 0): unknown {
-  if (depth > 16 || value === null || typeof value !== 'object') {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => stripForbiddenKeys(item, depth + 1));
-  }
-  const clean: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-    if (FORBIDDEN_PROTO_KEYS.has(key)) {
-      continue;
+function stripForbiddenKeys(value: unknown): unknown {
+  const ancestors = new WeakSet<object>();
+  let remaining = 10_000;
+  const visit = (item: unknown, depth: number): unknown => {
+    if (--remaining < 0 || depth > 16) throw new Error('Frontmatter structure exceeds its limits');
+    if (item === null || typeof item !== 'object') return item;
+    if (ancestors.has(item)) throw new Error('Cyclic frontmatter is not supported');
+    ancestors.add(item);
+    try {
+      if (Array.isArray(item)) return item.map((child) => visit(child, depth + 1));
+      const clean: Record<string, unknown> = {};
+      for (const [key, child] of Object.entries(item)) {
+        if (!FORBIDDEN_PROTO_KEYS.has(key)) clean[key] = visit(child, depth + 1);
+      }
+      return clean;
+    } finally {
+      ancestors.delete(item);
     }
-    clean[key] = stripForbiddenKeys(val, depth + 1);
-  }
-  return clean;
+  };
+  return visit(value, 0);
 }
 
 function resolveFailClosedAccess(rawAccess: unknown): string {
@@ -105,11 +94,21 @@ export function validateFrontmatter(
   filePath?: string
 ): { frontmatter: LumenFrontmatter; diagnostics: LumenDiagnostic[] } {
   const diagnostics: LumenDiagnostic[] = [];
-  if (!data || typeof data !== 'object' || Array.isArray(data)) {
-    return { frontmatter: {}, diagnostics };
+  let sanitizedData: Record<string, unknown>;
+  try {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Frontmatter must be a mapping');
+    sanitizedData = stripForbiddenKeys(data) as Record<string, unknown>;
+  } catch (error) {
+    return {
+      frontmatter: { access: 'restricted' },
+      diagnostics: [
+        createDiagnostic('INVALID_FRONTMATTER', error instanceof Error ? error.message : 'Invalid metadata', 'error', {
+          file: filePath,
+          line: 1,
+        }),
+      ],
+    };
   }
-
-  const sanitizedData = stripForbiddenKeys(data) as Record<string, unknown>;
   const hasExplicitAccess =
     Object.prototype.hasOwnProperty.call(sanitizedData, 'access') && sanitizedData['access'] !== undefined;
   const rawAccess = sanitizedData['access'];
@@ -152,7 +151,7 @@ export function validateFrontmatter(
     }
 
     diagnostics.push(
-      createDiagnostic('INVALID_FRONTMATTER', `${path}: ${issue.message}`, 'warning', {
+      createDiagnostic('INVALID_FRONTMATTER', `${path}: ${issue.message}`, 'error', {
         file: filePath,
         line: 1,
         suggestedFix,
@@ -160,147 +159,50 @@ export function validateFrontmatter(
     );
   }
 
-  const fallbackFrontmatter: LumenFrontmatter = { ...(sanitizedData as LumenFrontmatter) };
-  if (forcedAccess !== undefined) {
-    fallbackFrontmatter.access = forcedAccess;
-  }
-
-  return { frontmatter: fallbackFrontmatter, diagnostics };
+  return { frontmatter: { access: 'restricted' }, diagnostics };
 }
 
-function extractBodyAfterFence(content: string): string {
-  const withoutBom = content.startsWith('\uFEFF') ? content.slice(1) : content;
-  if (!withoutBom.startsWith('---') && !withoutBom.startsWith('~~~')) {
-    return content;
-  }
-  const fence = withoutBom.slice(0, 3);
-  const closeRegex = new RegExp(`\\r?\\n${fence}[ \\t]*(?:\\r?\\n|$)`);
-  const rest = withoutBom.slice(3);
-  const match = closeRegex.exec(rest);
-  if (match) {
-    return rest.slice(match.index + match[0].length);
-  }
-  const nextHeadingIdx = withoutBom.indexOf('\n#');
-  if (nextHeadingIdx !== -1) {
-    return withoutBom.slice(nextHeadingIdx + 1);
-  }
-  return '';
-}
-
+/** Parse data-only YAML/JSON identically in browsers, SSG, RPC and migration. */
 export function parseSafeFrontmatter(content: string, filePath?: string): SafeFrontmatterResult {
-  const diagnostics: LumenDiagnostic[] = [];
-  if (typeof content !== 'string' || content.length === 0) {
-    return { frontmatter: {}, content: '', data: {}, diagnostics };
-  }
+  const fail = (code: string, message: string, body = ''): SafeFrontmatterResult => ({
+    frontmatter: { access: 'restricted' },
+    data: { access: 'restricted' },
+    content: body,
+    diagnostics: [createDiagnostic(code, message, 'error', { file: filePath, line: 1 })],
+  });
+  if (typeof content !== 'string' || !content) return { frontmatter: {}, data: {}, content: '', diagnostics: [] };
+  const bytes = (value: string): number => new TextEncoder().encode(value).byteLength;
+  if (content.length > MAX_DOCUMENT_BYTES || bytes(content) > MAX_DOCUMENT_BYTES)
+    return fail('DOCUMENT_TOO_LARGE', `Document exceeds ${MAX_DOCUMENT_BYTES} bytes`);
 
-  const totalBytes = Buffer.byteLength(content, 'utf8');
-  if (totalBytes > MAX_DOCUMENT_BYTES) {
-    diagnostics.push(
-      createDiagnostic(
-        'DOCUMENT_TOO_LARGE',
-        `Document size (${totalBytes} bytes) exceeds maximum limit of ${MAX_DOCUMENT_BYTES} bytes`,
-        'error',
-        { file: filePath, line: 1 }
-      )
-    );
-    return {
-      frontmatter: { access: 'restricted' },
-      content: '',
-      data: { access: 'restricted' },
-      diagnostics,
-    };
-  }
-
-  if (EXECUTABLE_FRONTMATTER_RE.test(content)) {
-    diagnostics.push(
-      createDiagnostic(
-        'EXECUTABLE_FRONTMATTER_FORBIDDEN',
-        'Executable frontmatter engines (js, javascript, coffee, coffeescript, toml) are forbidden',
-        'error',
-        { file: filePath, line: 1 }
-      )
-    );
-    return {
-      frontmatter: { access: 'restricted' },
-      content: '',
-      data: { access: 'restricted' },
-      diagnostics,
-    };
-  }
-
-  const withoutBom = content.startsWith('\uFEFF') ? content.slice(1) : content;
-  if (/^(?:---|~~~)[ \t]*(?:yaml|yml|json)?[ \t]*\r?\n/i.test(withoutBom)) {
-    const fence = withoutBom.slice(0, 3);
-    const rest = withoutBom.slice(3);
-    const closeMatch = new RegExp(`\\r?\\n${fence}[ \\t]*(?:\\r?\\n|$)`).exec(rest);
-    const fmCandidate = closeMatch ? rest.slice(0, closeMatch.index) : rest;
-    const fmBytes = Buffer.byteLength(fmCandidate, 'utf8');
-    if (fmBytes > MAX_FRONTMATTER_BYTES) {
-      diagnostics.push(
-        createDiagnostic(
-          'FRONTMATTER_TOO_LARGE',
-          `Frontmatter size (${fmBytes} bytes) exceeds maximum limit of ${MAX_FRONTMATTER_BYTES} bytes`,
-          'error',
-          { file: filePath, line: 1 }
-        )
-      );
-      return {
-        frontmatter: { access: 'restricted' },
-        content: closeMatch ? rest.slice(closeMatch.index + closeMatch[0].length) : '',
-        data: { access: 'restricted' },
-        diagnostics,
-      };
-    }
-  }
+  const source = content.replace(/^\uFEFF/, '');
+  const opening = /^(---|~~~)([^\r\n]*)\r?\n/.exec(source);
+  if (!opening) return { frontmatter: {}, data: {}, content: source, diagnostics: [] };
+  const engine = opening[2]!.trim().toLowerCase();
+  if (!['', 'yaml', 'yml', 'json'].includes(engine))
+    return fail('EXECUTABLE_FRONTMATTER_FORBIDDEN', 'Only data-only YAML and JSON frontmatter are supported');
+  const rest = source.slice(opening[0].length);
+  const closing = new RegExp(`^${opening[1]}[ \t]*(?:\\r?\\n|$)`, 'm').exec(rest);
+  const metadata = closing ? rest.slice(0, closing.index) : rest;
+  const body = closing ? rest.slice(closing.index + closing[0].length) : '';
+  if (metadata.length > MAX_FRONTMATTER_BYTES || bytes(metadata) > MAX_FRONTMATTER_BYTES)
+    return fail('FRONTMATTER_TOO_LARGE', `Frontmatter exceeds ${MAX_FRONTMATTER_BYTES} bytes`, body);
+  if (!closing) return fail('FRONTMATTER_PARSE_ERROR', 'Unclosed frontmatter');
 
   try {
-    const parsedMatter = matter(content, SAFE_MATTER_OPTIONS);
-    const validated = validateFrontmatter(parsedMatter.data, filePath);
-    diagnostics.push(...validated.diagnostics);
-    return {
-      frontmatter: validated.frontmatter,
-      content: parsedMatter.content,
-      data: validated.frontmatter as Record<string, unknown>,
-      diagnostics,
-    };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const isExecAttempt = message.includes('Executable frontmatter is disabled');
-    diagnostics.push(
-      createDiagnostic(
-        isExecAttempt ? 'EXECUTABLE_FRONTMATTER_FORBIDDEN' : 'FRONTMATTER_PARSE_ERROR',
-        message,
-        'error',
-        {
-          file: filePath,
-          line: 1,
-        }
-      )
-    );
-
-    if (isExecAttempt) {
-      return {
-        frontmatter: { access: 'restricted' },
-        content: '',
-        data: { access: 'restricted' },
-        diagnostics,
-      };
+    let data: unknown = {};
+    if (metadata.trim()) {
+      if (engine === 'json') data = JSON.parse(metadata);
+      else {
+        const document = parseYamlDocument(metadata, { schema: 'core', uniqueKeys: true });
+        const issue = document.errors[0] ?? document.warnings[0];
+        if (issue) throw new Error(issue.message);
+        data = document.toJS({ maxAliasCount: 100 });
+      }
     }
-
-    const recoveredBody = extractBodyAfterFence(content);
-    // Preserve non-public access hint if present in malformed frontmatter
-    const accessHintMatch = content.slice(0, 4096).match(/^\s*access\s*:\s*['"]?([^\s#'"]+)['"]?/m);
-    const hintedAccess = accessHintMatch?.[1];
-    const recoveredFrontmatter: LumenFrontmatter =
-      hintedAccess && hintedAccess !== 'public'
-        ? { access: VALID_ACCESS_LEVELS.has(hintedAccess) ? hintedAccess : resolveFailClosedAccess(hintedAccess) }
-        : {};
-
-    return {
-      frontmatter: recoveredFrontmatter,
-      content: recoveredBody,
-      data: recoveredFrontmatter as Record<string, unknown>,
-      diagnostics,
-    };
+    const validated = validateFrontmatter(data, filePath);
+    return { ...validated, content: body, data: validated.frontmatter };
+  } catch (error) {
+    return fail('FRONTMATTER_PARSE_ERROR', error instanceof Error ? error.message : 'Invalid frontmatter', body);
   }
 }

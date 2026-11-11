@@ -23,7 +23,6 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "gray-matter": "^4.0.3",
     "katex": "^0.19.1",
     "mdast-util-directive": "^3.2.0",
     "mdast-util-from-markdown": "^2.1.0",
@@ -36,7 +35,8 @@
     "micromark-extension-math": "^3.1.0",
     "shiki": "^4.6.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@types/katex": "^0.16.7",

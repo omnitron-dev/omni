@@ -21,7 +21,7 @@
  * @module @omnitron-dev/titan/netron/auth/token-issuance
  */
 
-import { AsyncLocalStorage } from 'node:async_hooks';
+import { runWithInvocationResponseContext, getInvocationResponseContext } from '../invocation-context.js';
 import type { NetronMiddlewareContext } from '../transport/http/middleware/types.js';
 import type { IssuedTokens } from './token-transport.js';
 import { buildSetCookie, buildClearCookie, type CookieAttributes } from './cookie-codec.js';
@@ -41,24 +41,6 @@ export const TOKEN_ISSUANCE_METADATA_KEYS = {
 } as const;
 
 /**
- * Per-request context frame. Lives only for the duration of a single
- * service method invocation; the HTTP transport pushes it before
- * calling the handler and pops it on return.
- *
- * `requestHeaders` is an optional snapshot of the incoming request
- * headers (lowercase keys) so service code can introspect things like
- * the Cookie header — used by cookie-mode refresh, where the refresh
- * token lives in a cookie the JS layer can't read, so the server-side
- * RPC method needs to extract it itself.
- */
-interface TokenIssuanceFrame {
-  metadata: Map<string, unknown>;
-  requestHeaders?: Record<string, string>;
-}
-
-const storage = new AsyncLocalStorage<TokenIssuanceFrame>();
-
-/**
  * Internal: invoke `fn` inside an AsyncLocalStorage frame so that
  * {@link issueTokens} / {@link clearTokens} can find the current
  * request's metadata Map without receiving it as an argument.
@@ -72,7 +54,7 @@ export function runWithTokenIssuanceContext<T>(
   fn: () => T | Promise<T>,
   options?: { requestHeaders?: Record<string, string> }
 ): T | Promise<T> {
-  return storage.run({ metadata, ...(options?.requestHeaders ? { requestHeaders: options.requestHeaders } : {}) }, fn);
+  return runWithInvocationResponseContext({ metadata, ...(options?.requestHeaders ? { requestHeaders: options.requestHeaders } : {}) }, fn);
 }
 
 /**
@@ -91,7 +73,7 @@ export function runWithTokenIssuanceContext<T>(
  *   }
  */
 export function readRequestCookie(name: string): string | null {
-  const headers = storage.getStore()?.requestHeaders;
+  const headers = getInvocationResponseContext()?.requestHeaders;
   if (!headers) return null;
   const cookieHeader = headers['cookie'];
   if (!cookieHeader) return null;
@@ -117,7 +99,7 @@ export function readRequestCookie(name: string): string | null {
  * exercising the helpers directly).
  */
 function currentMetadata(): Map<string, unknown> | null {
-  return storage.getStore()?.metadata ?? null;
+  return getInvocationResponseContext()?.metadata ?? null;
 }
 
 /**

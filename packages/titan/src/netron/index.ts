@@ -15,6 +15,8 @@
 
 import 'reflect-metadata';
 
+export { getCurrentInvocationContext, type NetronInvocationContext, type InvocationAuthContext } from './invocation-context.js';
+
 // ============================================================================
 // Pure Type Interfaces (No circular dependencies)
 // ============================================================================

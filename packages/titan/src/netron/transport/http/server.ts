@@ -1,3 +1,5 @@
+import { runWithInvocationContext } from '../../invocation-context.js';
+import type { AuthContext } from '../../auth/types.js';
 import { projectTransportDefinition } from '../../transport-surface.js';
 /**
  * Native HTTP Server implementation for Netron v1.0
@@ -1085,6 +1087,32 @@ export class HttpServer extends EventEmitter implements ITransportServer {
     };
   }
 
+  /** Invoke and consume lazy results inside the same admitted identity/wrapper. */
+  private executeInvocation(
+    context: NetronMiddlewareContext,
+    request: Request,
+    handler: () => Promise<unknown>,
+  ): Promise<unknown> {
+    const methodName = context.methodName;
+    if (!methodName) throw Errors.internal('Invocation method is missing');
+    const requestHeaders: Record<string, string> = {};
+    request.headers.forEach((value, key) => { requestHeaders[key.toLowerCase()] = value; });
+    return runWithInvocationContext({
+      serviceName: context.serviceName,
+      methodName,
+      transport: 'http',
+      requestId: context.metadata.get('requestId') as string | undefined,
+      auth: context.metadata.get('authContext') as AuthContext | undefined,
+    }, () => {
+      const consume = async () => {
+        const result = await handler();
+        return isAsyncGenerator(result) ? this.collectAsyncGeneratorValues(result) : result;
+      };
+      const invoke = () => runWithTokenIssuanceContext(context.metadata, consume, { requestHeaders }) as Promise<unknown>;
+      return this.options.invocationWrapper ? this.options.invocationWrapper(context.metadata, invoke) : invoke();
+    });
+  }
+
   /**
    * Handle simple invocation without middleware (fast-path)
    * This is called when no auth, CORS, or custom middleware is needed
@@ -1137,16 +1165,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       const methodStart = performance.now();
       const executeHandler = () => method.handler(validatedInput, handlerContext);
 
-      // Wrap in invocationWrapper if configured (for AsyncLocalStorage contexts)
-      let result = this.options.invocationWrapper
-        ? await this.options.invocationWrapper(metadata, executeHandler)
-        : await executeHandler();
-
-      // CRITICAL FIX: Check if result is an async generator
-      // HTTP transport doesn't support true streaming, so collect all values into an array
-      if (isAsyncGenerator(result)) {
-        result = await this.collectAsyncGeneratorValues(result);
-      }
+      const result = await this.executeInvocation(handlerContext.middleware!, request, executeHandler);
 
       const serverTime = Math.round(performance.now() - methodStart);
 
@@ -1497,34 +1516,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
 
         // Execute method with timing using validated input (includes defaults)
         const methodStart = performance.now();
-        // T#176 — wrap handler in an AsyncLocalStorage frame so the
-        // ambient `issueTokens()` / `clearTokens()` helpers can locate
-        // ctx.metadata without the user method having to receive a
-        // framework context arg. Composes with the existing
-        // invocationWrapper (RLS) by stacking ALS frames.
-        const rawCallHandler = () => method.handler(validatedInput, handlerContext);
-        // Snapshot request headers into the ALS frame so service code
-        // can use `readRequestCookie()` to extract cookie-only inputs
-        // (e.g. cookie-mode refresh-token).
-        const requestHeaders: Record<string, string> = {};
-        if (request?.headers) {
-          request.headers.forEach((value, key) => {
-            requestHeaders[key.toLowerCase()] = value;
-          });
-        }
-        const callHandler = () =>
-          runWithTokenIssuanceContext(context.metadata, rawCallHandler, { requestHeaders }) as Promise<unknown>;
-
-        // Wrap in invocationWrapper if configured (for AsyncLocalStorage contexts like RLS)
-        let result = this.options.invocationWrapper
-          ? await this.options.invocationWrapper(context.metadata, callHandler)
-          : await callHandler();
-
-        // CRITICAL FIX: Check if result is an async generator
-        // HTTP transport doesn't support true streaming, so collect all values into an array
-        if (isAsyncGenerator(result)) {
-          result = await this.collectAsyncGeneratorValues(result);
-        }
+        const result = await this.executeInvocation(context, request, () => method.handler(validatedInput, handlerContext));
 
         context.output = result;
         context.result = result; // For middleware compatibility
@@ -1843,21 +1835,7 @@ export class HttpServer extends EventEmitter implements ITransportServer {
       middleware: context,
     };
 
-    const requestHeaders: Record<string, string> = {};
-    request.headers.forEach((value, key) => {
-      requestHeaders[key.toLowerCase()] = value;
-    });
-    const rawCallHandler = () => method.handler(validatedInput, handlerContext);
-    const callHandler = () =>
-      runWithTokenIssuanceContext(context.metadata, rawCallHandler, { requestHeaders }) as Promise<unknown>;
-
-    let result = this.options.invocationWrapper
-      ? await this.options.invocationWrapper(context.metadata, callHandler)
-      : await callHandler();
-
-    if (isAsyncGenerator(result)) {
-      result = await this.collectAsyncGeneratorValues(result);
-    }
+    const result = await this.executeInvocation(context, request, () => method.handler(validatedInput, handlerContext));
 
     context.output = result;
     context.result = result;

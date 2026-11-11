@@ -8,7 +8,8 @@ import {
   permissionGrants, hasPermission as policyHasPermission, createPermissionChecker as compilePermissions,
 } from '@omnitron-dev/access/permissions';
 
-import type { AuthContext, AccessValidationResult } from './types.js';
+import type { InvocationAuthContext } from '../invocation-context.js';
+import type { AccessValidationResult } from './types.js';
 
 /**
  * Constant-time string comparison to prevent timing attacks.
@@ -99,7 +100,7 @@ export interface AccessRequirements {
  *   - scopes      → ALL-of
  */
 export function validateAccessRequirements(
-  authContext: Pick<AuthContext, 'roles' | 'permissions' | 'scopes'>,
+  authContext: Pick<InvocationAuthContext, 'roles' | 'permissions' | 'scopes'>,
   requirements: AccessRequirements,
 ): AccessValidationResult {
   const roles = authContext.roles ?? [];

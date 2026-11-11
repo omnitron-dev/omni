@@ -130,3 +130,37 @@ privileged credentials or HTTP authentication has an exemption. The upstream
 service still applies its own guards. Definitions carry transport restrictions,
 not the publisher's executable authorization policy; trusted local proxy calls
 continue to use the existing local contract.
+
+
+## Identity inside an RPC method
+
+Use `getCurrentInvocationContext()` from `@omnitron-dev/titan/netron` to read
+Netron's admitted caller. It works on HTTP (including batches) and persistent
+transports such as WebSocket, TCP and Unix. It requires no application wrapper.
+The context contains the service, method, transport, optional request/peer IDs,
+and verified `auth`. Outside a network invocation it is `undefined`; an
+anonymous invocation has no `auth`. RPC arguments and tracing hints cannot
+supply an authenticated identity.
+
+```ts
+import { Public, Service, getCurrentInvocationContext } from '@omnitron-dev/titan/netron';
+
+@Service('Documents@1.0.0')
+class Documents {
+  @Public({ auth: { permissions: ['documents.write'] } })
+  async save(id: string, content: string) {
+    const actor = getCurrentInvocationContext()!.auth!.userId;
+    return { id, content, actor };
+  }
+}
+```
+
+Method authorization runs before dispatch. The admitted role, permission and
+scope arrays are immutable snapshots; parallel logins or adapter updates cannot
+replace them mid-call. The next invocation undergoes normal authentication and
+revocation checks. Async work and streamed results retain the originating frame.
+Do not store the caller on a shared service instance or accept a `session` DTO as
+authentication. `invocationWrapper` remains an extension point for application
+contexts such as RLS; it is not required to obtain Netron identity. HTTP token
+issuance and cookie reading share this invocation storage, and lazy HTTP results
+are consumed before leaving the application wrapper.

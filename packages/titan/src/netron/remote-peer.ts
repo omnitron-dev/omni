@@ -7,7 +7,7 @@ import type { ILogger } from '../types/logger.js';
  */
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 import { TimedMap } from '@omnitron-dev/common';
-import { AsyncLocalStorage } from 'node:async_hooks';
+import { runWithInvocationContext, getInvocationAuthority } from './invocation-context.js';
 
 // Use type-only import for INetron to break circular dependency
 import type { INetron, INetronOptions, EventSubscriber, RemotePeerSocket } from './interfaces/core-types.js';
@@ -46,9 +46,6 @@ import type { ExtendedServiceMetadata } from '../decorators/core.js';
 import type { ITransport } from './transport/types.js';
 import type { AuthContext } from './auth/types.js';
 import { enforceInvocationAuthorization, isPublishedMember } from './auth/method-authorization.js';
-
-/** A request's authorized identity cannot be replaced by a concurrent login. */
-const invocationAuthority = new AsyncLocalStorage<{ peer: RemotePeer; context: AuthContext | undefined }>();
 
 /**
  * Security constants for input validation in packet handlers.
@@ -289,19 +286,10 @@ export class RemotePeer extends AbstractPeer {
     fn: () => Promise<T>,
     auth: AuthContext | undefined,
   ): Promise<T> {
-    // NOT `async`, deliberately. An async function wraps its return in a
-    // second promise, adding one microtask hop before `sendResponse` — and a
-    // streaming method starts emitting STREAM packets from inside `stub.call`.
-    // With the extra hop the data packets overtook the response carrying the
-    // stream reference, and the client collected an empty stream. Returning
-    // `fn()` directly keeps the no-wrapper path timed exactly as it was.
-    //
-    // Nothing is computed or dereferenced unless a wrapper is configured. The
-    // service name arrives as a thunk for the same reason: reading it eagerly
-    // made dispatch depend on `stub.definition`, which callers holding a
-    // narrower stub do not have.
-    return invocationAuthority.run({ peer: this, context: auth }, () =>
-      this.invocationWrapper ? this.wrapInvocation(serviceName, methodName, fn, auth) : fn());
+    return runWithInvocationContext({
+      peer: this, peerId: this.id, transport: this.transportName,
+      serviceName: serviceName(), methodName, auth,
+    }, () => this.invocationWrapper ? this.wrapInvocation(serviceName, methodName, fn, auth) : fn());
   }
 
   private async wrapInvocation<T>(
@@ -1224,7 +1212,8 @@ export class RemotePeer extends AbstractPeer {
               throw Errors.notImplemented('runTask not available');
             }
             const auth = name === 'authenticate' ? this.getAuthContext() : await this.revalidateAuthority();
-            await this.sendResponse(packet, await invocationAuthority.run({ peer: this, context: auth },
+            await this.sendResponse(packet, await runWithInvocationContext({ peer: this, peerId: this.id,
+              transport: this.transportName, methodName: name, auth },
               () => this.netron.runTask!(this, name, ...args)));
           } catch (err: unknown) {
             if (isPeerGone(err)) {
@@ -1722,8 +1711,8 @@ export class RemotePeer extends AbstractPeer {
    * @returns {AuthContext | undefined} The authentication context if authenticated
    */
   getAuthContext(): AuthContext | undefined {
-    const invocation = invocationAuthority.getStore();
-    if (invocation?.peer === this) return invocation.context;
+    const invocation = getInvocationAuthority(this);
+    if (invocation) return invocation.auth;
     return this.authContext;
   }
 

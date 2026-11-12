@@ -1,19 +1,20 @@
 import { expect } from '@playwright/test';
 import { createBrowserTest, importConsumer } from './browser-fixture.js';
 
-const { default: React } = await importConsumer('react');
-const { renderToStaticMarkup } = await importConsumer('react-dom/server');
-const { PortalIslandHost } = await importConsumer('@omnitron-dev/lumen-ui/runtime');
-const { toHtmlSsr } = await importConsumer('@omnitron-dev/lumen-ast');
-
-const shared = { value: '<script>window.pwned=true</script>' };
-const markup = renderToStaticMarkup(React.createElement(PortalIslandHost, {
-  islandId: 'react-host', component: 'Counter', hydrate: 'interaction', props: { label: 'React', left: shared, right: shared },
-}, 'React fallback')) + toHtmlSsr({ frontmatter: {}, toc: [], diagnostics: [], children: [
-  { type: 'jsxWidget', name: 'Counter', props: { label: 'AST', hydrate: 'interaction' }, children: [{ type: 'text', value: 'AST fallback' }] },
-] });
 const test = createBrowserTest('hydration.html', {
-  plugins: [{ name: 'actual-ssr-fixture', transformIndexHtml: html => html.replace('<!--ssr-islands-->', markup) }],
+  plugins: [{ name: 'actual-ssr-fixture', async transformIndexHtml(html) {
+    const { default: React } = await importConsumer('react');
+    const { renderToStaticMarkup } = await importConsumer('react-dom/server');
+    const { PortalIslandHost } = await importConsumer('@omnitron-dev/lumen-ui/runtime');
+    const { toHtmlSsr } = await importConsumer('@omnitron-dev/lumen-ast');
+    const shared = { value: '<script>window.pwned=true</script>' };
+    const markup = renderToStaticMarkup(React.createElement(PortalIslandHost, {
+      islandId: 'react-host', component: 'Counter', hydrate: 'interaction', props: { label: 'React', left: shared, right: shared },
+    }, 'React fallback')) + toHtmlSsr({ frontmatter: {}, toc: [], diagnostics: [], children: [
+      { type: 'jsxWidget', name: 'Counter', props: { label: 'AST', hydrate: 'interaction' }, children: [{ type: 'text', value: 'AST fallback' }] },
+    ] });
+    return html.replace('<!--ssr-islands-->', markup);
+  } }],
   contentSecurityPolicy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'",
 });
 

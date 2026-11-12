@@ -86,13 +86,58 @@ test('Playwright resolves computed config paths and collection errors remain fai
   const missing = fixture.scan();
   assert.equal(missing.status, 1);
   assert.equal(missing.collectionFailures.length, 1, 'a passing config must not hide a refused script collection');
+  assert.match(missing.collectionFailures[0].error, /No tests found/);
   assert.deepEqual(missing.orphans, []);
   await fixture.manifest({});
   await writeFile(join(fixture.pkg, 'tests/browser/good.spec.js'), "throw new Error('Declaration refused intentionally');\n");
   const refused = fixture.scan();
   assert.equal(refused.status, 1);
   assert.equal(refused.collectionFailures.length, 1);
+  assert.match(refused.collectionFailures[0].error, /Declaration refused intentionally/);
   assert.deepEqual(refused.orphans, []);
+});
+
+test('collection reports structured stdout failures and stderr within a bounded diagnostic', async t => {
+  const fixture = await collectionFixture(t, {
+    'tests/browser/broken.spec.js': "console.error('declaration stderr context'); throw Error('declaration reason: ' + 'x'.repeat(20000));\n",
+  }, { 'test:browser': 'playwright test tests/browser' });
+  const result = fixture.scan();
+  assert.equal(result.status, 1);
+  const diagnostic = result.collectionFailures[0].error;
+  assert.match(diagnostic, /status=1/);
+  assert.match(diagnostic, /declaration reason:/);
+  assert.match(diagnostic, /declaration stderr context/);
+  assert.match(diagnostic, /\[truncated\]/);
+  assert.ok(diagnostic.length <= 6000);
+});
+
+test('collection imports runtime dependencies only when its ordinary fixture executes', async t => {
+  const fixture = await collectionFixture(t, {
+    'tests/browser/lazy.spec.js': "import { test } from '@playwright/test';\n" +
+      "test.beforeAll(async () => { await import('./not-built.js'); });\n" +
+      "test('needs a built runtime', async () => {});\n",
+  }, { 'test:browser': 'playwright test tests/browser' });
+  const listed = fixture.scan();
+  assert.equal(listed.status, 0);
+  assert.deepEqual(listed.collectionFailures, []);
+  const cli = createRequire(join(fixture.pkg, 'package.json')).resolve('@playwright/test/cli');
+  const executed = spawnSync(process.execPath, [cli, 'test', 'tests/browser', '--reporter=json'], {
+    cwd: fixture.pkg, encoding: 'utf8', timeout: 30_000, maxBuffer: 4 * 1024 * 1024,
+  });
+  assert.equal(executed.status, 1, 'A missing runtime must still fail execution');
+  assert.match(executed.stdout, /not-built\.js/);
+});
+
+test('a failing Vitest config is not hidden by another successful runner', async t => {
+  const fixture = await collectionFixture(t, {
+    'vitest.config.js': "throw Error('vitest declaration refused');\n",
+    'tests/browser/a.spec.js': collectedTest,
+  }, { 'test:browser': 'playwright test tests/browser' });
+  const result = fixture.scan();
+  assert.equal(result.status, 1);
+  assert.equal(result.collectionFailures.length, 1);
+  assert.deepEqual(result.collectionFailures[0].configs, ['vitest.config.js']);
+  assert.match(result.collectionFailures[0].error, /vitest declaration refused/);
 });
 
 test('strict Turbo mode carries the isolated test endpoints and home into the test cache key', () => {
@@ -132,6 +177,6 @@ for (const [up, suite, down] of [[0, 0, 0], [2, 0, 0], [0, 7, 0], [0, 0, 9], [0,
     assert.match(calls[0][2], /^omni-ci-[0-9a-f-]{36}$/);
     assert.deepEqual(calls.at(-1).slice(0, 5), calls[0].slice(0, 5));
     assert.deepEqual(calls.at(-1).slice(5), ['down', '-v']);
-    assert.deepEqual(calls.slice(1, -1), up ? [] : [['test']]);
+    assert.deepEqual(calls.slice(1, -1), up ? [] : [['test', '--continue=dependencies-successful']]);
   });
 }

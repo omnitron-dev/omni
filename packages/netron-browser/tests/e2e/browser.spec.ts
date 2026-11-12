@@ -4,12 +4,12 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { createTitanServer } from '../fixtures/titan-server.js';
 
 let serverFixture: any;
 
 test.beforeAll(async () => {
   // Start Titan server for E2E tests
+  const { createTitanServer } = await import('../fixtures/titan-server.js');
   serverFixture = await createTitanServer({
     port: 3456, // Use fixed port for E2E tests
     enableHttp: true,

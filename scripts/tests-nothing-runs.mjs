@@ -131,22 +131,42 @@ const configsIn = (pkgDir, re) => {
   }
 };
 
+/** Runners may put structured declaration failures on stdout, even with an
+ * empty stderr. Keep the actual failure bounded, not just the command wrapper. */
+function collectionError(error, output = '') {
+  const stdout = String(error?.stdout ?? output).trim();
+  const stderr = String(error?.stderr ?? '').trim();
+  let report;
+  try { report = JSON.parse(stdout); } catch { /* Non-JSON output is retained below. */ }
+  const details = Array.isArray(report?.errors) ? report.errors.map(item =>
+    typeof item === 'string' ? item : item?.stack ?? item?.message ?? JSON.stringify(item)).join('\n') : '';
+  const bound = (value, limit) => value.length > limit ? value.slice(0, limit) + '\n[truncated]' : value;
+  return [
+    ['status', 'signal', 'code'].filter(key => error?.[key] !== undefined && error?.[key] !== null)
+      .map(key => `${key}=${error[key]}`).join(' '),
+    details && 'runner errors:\n' + bound(details, 2500),
+    stderr && 'stderr:\n' + bound(stderr, 2000),
+    bound(String(error?.message ?? error), 1000),
+    !details && stdout && 'stdout:\n' + bound(stdout, 1500),
+  ].filter(Boolean).join('\n').slice(0, 6000);
+}
+
 /** `vitest list --filesOnly` is the runner's own answer to "what would you run". */
 function vitestCollects(pkg, config) {
   try {
     const out = execFileSync('npx', ['vitest', 'list', '--filesOnly', '--config', config], {
       cwd: join(ROOT, pkg),
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
+      stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 300_000,
     });
-    return out
+    return { files: out
       .split('\n')
       .map((l) => l.trim())
       .filter((l) => /\.(test|spec)\.(ts|tsx|js)$/.test(l))
-      .map((l) => join(pkg, l.replace(/^\.\//, '')));
-  } catch {
-    return null; // a runner that refused to answer is not an empty answer
+      .map((l) => join(pkg, l.replace(/^\.\//, ''))) };
+  } catch (error) {
+    return { error: collectionError(error) };
   }
 }
 
@@ -172,10 +192,11 @@ function playwrightCommands(pkg, configs) {
 /** --list imports declarations but starts neither tests nor browser fixtures. */
 function playwrightCollects(pkg, command) {
   if (command.error) return { error: command.error };
+  let out = '';
   try {
     const cwd = join(ROOT, pkg);
     const cli = createRequire(join(cwd, 'package.json')).resolve('@playwright/test/cli');
-    const out = execFileSync(process.execPath, [cli, 'test', ...command.args, '--list', '--reporter=json'], {
+    out = execFileSync(process.execPath, [cli, 'test', ...command.args, '--list', '--reporter=json'], {
       cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 300_000, maxBuffer: 16 * 1024 * 1024,
     });
     const report = JSON.parse(out);
@@ -193,7 +214,7 @@ function playwrightCollects(pkg, command) {
     visit(report.suites);
     return { files: [...files] };
   } catch (error) {
-    return { error: String(error.stderr || error.message).trim().slice(0, 1000) };
+    return { error: collectionError(error, out) };
   }
 }
 
@@ -271,17 +292,21 @@ for (const [pkg, files] of [...byPackage].sort()) {
 
   const covered = new Set();
   let anyAnswered = false;
+  let collectionFailed = false;
   for (const c of vitestConfigs) {
     const got = vitestCollects(pkg, c);
-    if (got === null) continue;
+    if (got.error) {
+      collectionFailed = true;
+      collectionFailures.push({ pkg, files: files.length, configs: [c], error: got.error });
+      continue;
+    }
     anyAnswered = true;
-    for (const f of got) covered.add(f);
+    for (const f of got.files) covered.add(f);
   }
-  let playwrightFailed = false;
   for (const command of pwCommands) {
     const got = playwrightCollects(pkg, command);
     if (got.error) {
-      playwrightFailed = true;
+      collectionFailed = true;
       collectionFailures.push({ pkg, files: files.length, configs: [command.label], error: got.error });
       continue;
     }
@@ -290,7 +315,7 @@ for (const [pkg, files] of [...byPackage].sort()) {
   }
 
   if (!anyAnswered || (covered.size === 0 && files.length > 0)) {
-    if (!playwrightFailed) collectionFailures.push({ pkg, files: files.length, configs: runnerNames });
+    if (!collectionFailed) collectionFailures.push({ pkg, files: files.length, configs: runnerNames });
     continue;
   }
 

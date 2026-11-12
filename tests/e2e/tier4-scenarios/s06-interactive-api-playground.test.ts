@@ -8,8 +8,8 @@ import { asUser } from '../../../packages/titan-lumen/tests/netron-fixture.js';
 describe('Tier 4: Scenario 06 — Interactive API Documentation with Live Playground', () => {
   it('renders virtualized API explorer and sandboxed Netron playground inside selective portal islands', () => {
     const explorerProps = {
-      specUrl: '/api/v1/openapi.json',
-      filterTags: ['crypto', 'compiler'],
+      symbols: [{ id: 'corpus', name: 'CorpusGraph', kind: 'class' }],
+      tags: ['crypto', 'compiler'],
     };
 
     const playgroundProps = {
@@ -27,6 +27,7 @@ describe('Tier 4: Scenario 06 — Interactive API Documentation with Live Playgr
             {
               key: 'api-explorer',
               islandId: 'api-explorer-island',
+              component: 'ApiExplorer',
               hydrate: 'visible',
               props: explorerProps,
             },
@@ -37,6 +38,7 @@ describe('Tier 4: Scenario 06 — Interactive API Documentation with Live Playgr
             {
               key: 'netron-playground',
               islandId: 'netron-playground-island',
+              component: 'NetronPlayground',
               hydrate: 'interaction',
               props: playgroundProps,
             },

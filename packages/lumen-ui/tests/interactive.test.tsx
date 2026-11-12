@@ -24,9 +24,35 @@ describe('interactive documentation', () => {
   });
 
   it('renders API methods without executing them', () => {
-    const html = renderToStaticMarkup(<ApiExplorer symbol="CorpusGraph" module="@omnitron-dev/lumen" methods={[{ name: 'getBacklinks', signature: 'getBacklinks(id: string): Set<string>' }]} filterTags={['ast']} />);
+    const html = renderToStaticMarkup(<ApiExplorer symbol="CorpusGraph" module="@omnitron-dev/lumen" methods={[{ name: 'getBacklinks', signature: 'getBacklinks(id: string): Set<string>' }]} tags={['ast']} />);
     expect(html).toContain('getBacklinks(id: string): Set&lt;string&gt;');
     expect(html).toContain('#ast');
+  });
+
+  it('navigates the whole virtual symbol list with the keyboard and resets after filtering', async () => {
+    const symbols = Array.from({ length: 1000 }, (_, index) => ({ id: `symbol-${index}`, name: `Symbol ${index}` }));
+    const onSelectSymbol = vi.fn();
+    await act(async () => root.render(<ApiExplorer symbols={symbols} onSelectSymbol={onSelectSymbol} maxListHeight={144} />));
+    const list = container.querySelector('[role="listbox"]') as HTMLElement;
+    expect(container.querySelectorAll('[role="option"]').length).toBeLessThan(12);
+    list.focus();
+    await act(async () => { list.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true })); });
+    const active = container.querySelector(`[id="${list.getAttribute('aria-activedescendant')}"]`);
+    expect(active?.textContent).toBe('Symbol 999');
+    await act(async () => { list.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
+    expect(onSelectSymbol).toHaveBeenCalledExactlyOnceWith(symbols[999]);
+    await act(async () => root.render(<ApiExplorer symbols={symbols} searchQuery="Symbol 237" onSelectSymbol={onSelectSymbol} maxListHeight={144} />));
+    expect(container.querySelectorAll('[role="option"]')).toHaveLength(1);
+    expect(container.querySelector('[role="option"]')?.textContent).toBe('Symbol 237');
+    expect(list.scrollTop).toBe(0);
+    await act(async () => { list.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true })); });
+    expect(onSelectSymbol.mock.lastCall).toEqual([symbols[237]]);
+  });
+
+  it('rejects invalid virtual row geometry instead of silently rendering an empty explorer', () => {
+    for (const itemHeight of [0, -1, NaN, Infinity]) {
+      expect(() => renderToStaticMarkup(<ApiExplorer itemHeight={itemHeight} />)).toThrow('positive finite');
+    }
   });
 
   it('keeps recorded output separate from a failed local run when Workers are unavailable', async () => {

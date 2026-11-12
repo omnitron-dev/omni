@@ -14,7 +14,7 @@ this package directly when embedding documentation in an existing React app.
 | --- | --- |
 | `@omnitron-dev/lumen-ui` | All public components, adapters and types, including `ApiExplorer` and `NetronPlayground`. |
 | `@omnitron-dev/lumen-ui/runtime` | `LumenShell`, `PortalIslandHost`, `PortalIslandManager`, `useLumen` and activation triggers. |
-| `@omnitron-dev/lumen-ui/layout` | `LumenNavbar`, `LumenFooter`, `DocLayout`, `SectionNav` and `DocPagination`. |
+| `@omnitron-dev/lumen-ui/layout` | `LumenNavbar`, `LumenFooter`, `DocLayout`, `DocSectionNav` and `DocPagination`. |
 | `@omnitron-dev/lumen-ui/blocks` | `MathTheoremBlock`, `HoverReferenceCard`, `CodeBlock`, `BacklinksSection` and `PageAgentActions`. |
 | `@omnitron-dev/lumen-ui/search` | `LumenSearchDialog`, `PagefindAdapter`, `NetronAdapter` and their contracts. |
 
@@ -149,7 +149,8 @@ Blob workers are not required.
 - `MathTheoremBlock` renders an identified mathematical environment and a proof
   terminator. Parsing, numbering, access projection and graph validation belong
   to `lumen-ast` and the builder. The block does not prove a theorem.
-- `CodeBlock` renders escaped source. `BacklinksSection` and
+- `CodeBlock` renders escaped source; `copyable` enables the shared Prism clipboard
+  action with success/failure feedback. `BacklinksSection` and
   `HoverReferenceCard` display supplied references. `PageAgentActions` links to
   the clean Markdown mirror for the supplied path; that mirror must be produced
   and authorized by the builder/service.

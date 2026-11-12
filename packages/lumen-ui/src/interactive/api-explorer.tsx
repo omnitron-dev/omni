@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useTransition } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useId, useTransition } from 'react';
 import clsx from 'clsx';
 
 export interface ApiExplorerMethod {
@@ -24,9 +24,8 @@ export interface ApiExplorerProps {
   symbol?: string | null;
   module?: string;
   symbols?: ApiSymbolItem[];
-  endpoint?: string;
-  specUrl?: string;
-  filterTags?: string[];
+  /** Informational tags; filtering is driven by the symbol search input. */
+  tags?: string[];
   methods?: ApiExplorerMethod[];
   description?: string;
   searchQuery?: string;
@@ -40,9 +39,7 @@ export function ApiExplorer({
   symbol = null,
   module = '',
   symbols = [],
-  endpoint,
-  specUrl,
-  filterTags = [],
+  tags = [],
   methods = [],
   description = '',
   searchQuery = '',
@@ -54,6 +51,19 @@ export function ApiExplorer({
   const [filter, setFilter] = useState(searchQuery);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(symbol);
   const [scrollTop, setScrollTop] = useState(0);
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
+  const listId = useId();
+  if (!Number.isFinite(itemHeight) || itemHeight <= 0 || !Number.isFinite(maxListHeight) || maxListHeight <= 0) {
+    throw new RangeError('API explorer row and viewport heights must be positive finite numbers');
+  }
+  useEffect(() => setFilter(searchQuery), [searchQuery]);
+  useEffect(() => setSelectedSymbol(symbol), [symbol]);
+  useEffect(() => {
+    setFocusedIndex(0);
+    setScrollTop(0);
+    if (listRef.current) listRef.current.scrollTop = 0;
+  }, [filter, symbols]);
   const [, startTransition] = useTransition();
 
   const filteredSymbols = useMemo(() => {
@@ -69,7 +79,7 @@ export function ApiExplorer({
 
   const totalItems = filteredSymbols.length;
   const totalHeight = totalItems * itemHeight;
-  const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - 2);
+  const startIndex = Math.min(Math.max(0, totalItems - 1), Math.max(0, Math.floor(scrollTop / itemHeight) - 2));
   const visibleCount = Math.ceil(maxListHeight / itemHeight) + 4;
   const endIndex = Math.min(totalItems, startIndex + visibleCount);
   const visibleItems = useMemo(
@@ -77,14 +87,42 @@ export function ApiExplorer({
     [filteredSymbols, startIndex, endIndex]
   );
   const offsetY = startIndex * itemHeight;
+  const selectSymbol = (index: number) => {
+    const selected = filteredSymbols[index];
+    if (!selected) return;
+    setFocusedIndex(index);
+    setSelectedSymbol(selected.name);
+    onSelectSymbol?.(selected);
+  };
+  const navigateSymbols = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!totalItems) return;
+    const origin = focusedIndex >= startIndex && focusedIndex < endIndex ? focusedIndex : startIndex;
+    let next: number;
+    switch (event.key) {
+      case 'ArrowDown': next = Math.min(totalItems - 1, origin + 1); break;
+      case 'ArrowUp': next = Math.max(0, origin - 1); break;
+      case 'Home': next = 0; break;
+      case 'End': next = totalItems - 1; break;
+      case 'PageDown': next = Math.min(totalItems - 1, origin + Math.max(1, Math.floor(maxListHeight / itemHeight))); break;
+      case 'PageUp': next = Math.max(0, origin - Math.max(1, Math.floor(maxListHeight / itemHeight))); break;
+      case 'Enter': case ' ': event.preventDefault(); event.stopPropagation(); selectSymbol(origin); return;
+      default: return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    setFocusedIndex(next);
+    const top = next * itemHeight;
+    const bottom = top + itemHeight;
+    const position = top < scrollTop ? top : bottom > scrollTop + maxListHeight ? bottom - maxListHeight : scrollTop;
+    if (listRef.current) listRef.current.scrollTop = position;
+    setScrollTop(position);
+  };
 
   return (
     <div
       className={clsx('lumen-api-explorer', className)}
       data-module={module || undefined}
       data-symbol={symbol ?? undefined}
-      data-endpoint={endpoint}
-      data-spec-url={specUrl}
     >
       <header className="lumen-api-explorer-header">
         <div className="lumen-api-explorer-title-row">
@@ -101,6 +139,8 @@ export function ApiExplorer({
             type="search"
             className="lumen-api-explorer-filter-input"
             placeholder="Filter symbols..."
+            aria-label="Filter API symbols"
+            aria-controls={listId}
             value={filter}
             onChange={(e) => {
               const val = e.target.value;
@@ -112,6 +152,13 @@ export function ApiExplorer({
 
       {symbols.length > 0 && (
         <div
+          ref={listRef}
+          id={listId}
+          role="listbox"
+          tabIndex={0}
+          aria-label="API symbols"
+          aria-activedescendant={focusedIndex >= startIndex && focusedIndex < endIndex ? `${listId}-${focusedIndex}` : undefined}
+          onKeyDown={navigateSymbols}
           className="lumen-api-explorer-list-container"
           style={{ maxHeight: maxListHeight, overflowY: 'auto', position: 'relative' }}
           onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
@@ -121,11 +168,17 @@ export function ApiExplorer({
               {visibleItems.map((sym, idx) => (
                 <div
                   key={sym.id || sym.name || idx}
+                  id={`${listId}-${startIndex + idx}`}
+                  role="option"
+                  aria-selected={selectedSymbol === sym.name}
+                  aria-posinset={startIndex + idx + 1}
+                  aria-setsize={totalItems}
                   className={`lumen-api-symbol-item ${selectedSymbol === sym.name ? 'active' : ''}`}
+                  data-focused={focusedIndex === startIndex + idx || undefined}
                   style={{ height: itemHeight, display: 'flex', alignItems: 'center' }}
                   onClick={() => {
-                    setSelectedSymbol(sym.name);
-                    onSelectSymbol?.(sym);
+                    selectSymbol(startIndex + idx);
+                    listRef.current?.focus();
                   }}
                 >
                   {sym.kind && <span className={`lumen-kind-badge kind-${sym.kind}`}>{sym.kind}</span>}
@@ -136,6 +189,8 @@ export function ApiExplorer({
           </div>
         </div>
       )}
+
+      {symbols.length > 0 && totalItems === 0 && <p role="status">No matching symbols</p>}
 
       {methods.length > 0 && (
         <div className="lumen-api-explorer-methods">
@@ -151,10 +206,10 @@ export function ApiExplorer({
         </div>
       )}
 
-      {filterTags.length > 0 && (
+      {tags.length > 0 && (
         <footer className="lumen-api-explorer-footer">
           <div className="lumen-api-tags">
-            {filterTags.map((tag) => (
+            {tags.map((tag) => (
               <span key={tag} className="lumen-api-tag">
                 #{tag}
               </span>

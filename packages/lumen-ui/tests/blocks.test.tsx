@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import React from 'react';
+import { describe, it, expect, vi } from 'vitest';
+import React, { act } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
   MathTheoremBlock,
@@ -50,6 +51,29 @@ describe('Documentation Content Blocks', () => {
     const withCode = renderToStaticMarkup(CodeBlock({ code: 'const x = 10;', language: 'typescript' }));
     expect(withCode).toContain('class="lumen-code-block language-typescript"');
     expect(withCode).toContain('<code>const x = 10;</code>');
+  });
+
+  it('copies exact code through Prism and exposes clipboard failure', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    try {
+      const code = 'const message = "Привет";\n';
+      await act(async () => root.render(<CodeBlock code={code} copyable />));
+      await act(async () => (container.querySelector('button') as HTMLButtonElement).click());
+      expect(writeText).toHaveBeenCalledExactlyOnceWith(code);
+      expect(container.querySelector('[role="status"]')?.textContent).toBe('Copied');
+      writeText.mockRejectedValue(new Error('Clipboard denied'));
+      await act(async () => (container.querySelector('button') as HTMLButtonElement).click());
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain('Copy failed');
+      expect(container.querySelector('code')?.textContent).toBe(code);
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+      vi.unstubAllGlobals();
+    }
   });
 
   it('renders BacklinksSection with exact empty match and backlink items', () => {

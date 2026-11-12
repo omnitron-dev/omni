@@ -49,14 +49,14 @@ describe('Feature 15: Interactive Playground & Explorer Boundaries', () => {
         PortalIslandHost,
         {
           islandId: 'playground-empty',
-          props: { initialCode: '', readOnly: true },
+          props: { code: '', readOnly: true },
         },
         React.createElement(NetronPlayground)
       )
     );
 
     expect(htmlPlayground).toContain('class="lumen-netron-playground"');
-    expect(htmlPlayground).toContain('&quot;initialCode&quot;:&quot;&quot;');
+    expect(htmlPlayground).toContain('&quot;code&quot;:&quot;&quot;');
   });
 
   it('TC-B15-04: serializes oversized script payloads (>1MB) safely in island configuration props', () => {

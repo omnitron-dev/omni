@@ -1,279 +1,116 @@
 import React, { act } from 'react';
-import { createRoot } from 'react-dom/client';
+import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { vi, it, expect, describe, beforeEach } from 'vitest';
+import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
+import { ApiExplorer, NetronPlayground, executeSandboxedCode, type NetronPlaygroundProps, type PlaygroundServiceResult } from '../src/interactive/index.js';
 
-import { ApiExplorer, NetronPlayground } from '../src/interactive/index.js';
+(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
-(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
-
-describe('Interactive Explorer & Playground Components', () => {
+describe('interactive documentation', () => {
   let container: HTMLDivElement;
-
+  let root: Root;
+  const mount = async (props: NetronPlaygroundProps) => { await act(async () => root.render(<NetronPlayground {...props} />)); };
+  const run = async () => { await act(async () => (container.querySelector('button') as HTMLButtonElement).click()); };
   beforeEach(() => {
     container = document.createElement('div');
-    document.body.appendChild(container);
-    return () => {
-      if (container.parentNode) {
-        container.parentNode.removeChild(container);
-      }
-    };
+    document.body.append(container);
+    root = createRoot(container);
+  });
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
-  it('renders ApiExplorer with module, methods, and filter tags', () => {
-    const html = renderToStaticMarkup(
-      React.createElement(ApiExplorer, {
-        symbol: 'CorpusGraph',
-        module: '@omnitron-dev/lumen',
-        description: 'Corpus dependency DAG maintainer',
-        methods: [
-          { name: 'getBacklinks', signature: 'getBacklinks(id: string): Set<string>', description: 'Finds backlinks' },
-          { name: 'detectMathCycles', signature: 'detectMathCycles(): string[][]', description: 'Detects DAG cycles' },
-        ],
-        filterTags: ['ast', 'dag'],
-      })
-    );
-
-    expect(html).toContain('class="lumen-api-explorer"');
-    expect(html).toContain('@omnitron-dev/lumen');
-    expect(html).toContain('CorpusGraph');
+  it('renders API methods without executing them', () => {
+    const html = renderToStaticMarkup(<ApiExplorer symbol="CorpusGraph" module="@omnitron-dev/lumen" methods={[{ name: 'getBacklinks', signature: 'getBacklinks(id: string): Set<string>' }]} filterTags={['ast']} />);
     expect(html).toContain('getBacklinks(id: string): Set&lt;string&gt;');
     expect(html).toContain('#ast');
-    expect(html).toContain('#dag');
   });
 
-  it('renders NetronPlayground with initial code and executes client snippet safely', async () => {
+  it('keeps recorded output separate from a failed local run when Workers are unavailable', async () => {
+    vi.stubGlobal('Worker', undefined);
     const onExecute = vi.fn();
-    const snippet = 'const a = 10; const b = 20; return a + b;';
-
-    const html = renderToStaticMarkup(
-      React.createElement(NetronPlayground, {
-        initialSnippet: snippet,
-        service: 'MathService',
-        method: 'calculate',
-        runtime: 'browser',
-        onExecute,
-      })
-    );
-
-    expect(html).toContain('class="lumen-netron-playground"');
-    expect(html).toContain('MathService.calculate');
-    expect(html).toContain('browser');
-    expect(html).toContain('const a = 10;');
+    const code = 'return 42';
+    await mount({ code, snapshot: { code, result: 42 }, onExecute });
+    await run();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Web Worker runtime is unavailable');
+    expect(container.querySelector('.lumen-playground-result')).toBeNull();
+    expect(container.querySelector('details')?.textContent).toContain('Recorded output42');
+    expect(onExecute).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ result: undefined, error: expect.any(String) }));
   });
 
-  it('verifies generic prototype pollution defense and prototype immutability in NetronPlayground', () => {
-    const dynamicKey1 = `__lumen_canary_${Math.random().toString(36).slice(2, 10)}`;
-    const dynamicKey2 = `__injected_role_${Math.random().toString(36).slice(2, 10)}`;
-    const initialProtoKeys = new Set(Object.getOwnPropertyNames(Object.prototype));
-
-    const html = renderToStaticMarkup(
-      React.createElement(NetronPlayground, {
-        script: `Object.prototype.${dynamicKey1} = 'exploit'; Object.prototype.${dynamicKey2} = 'admin';`,
-        readOnly: true,
-      })
-    );
-
-    expect(html).toContain('class="lumen-netron-playground"');
-    expect((Object.prototype as any)[dynamicKey1]).toBeUndefined();
-    expect((Object.prototype as any)[dynamicKey2]).toBeUndefined();
-
-    const currentProtoKeys = Object.getOwnPropertyNames(Object.prototype);
-    for (const key of currentProtoKeys) {
-      expect(initialProtoKeys.has(key)).toBe(true);
-    }
-    expect(currentProtoKeys.length).toBe(initialProtoKeys.size);
-  });
-
-  it('preserves snapshot result fallback when offline and no endpoint is configured', () => {
-    const snapshot = {
-      result: 42,
-      code: 'return 42;',
-      timestamp: Date.now(),
-    };
-
-    const html = renderToStaticMarkup(
-      React.createElement(NetronPlayground, {
-        service: 'CalculatorService',
-        snapshot,
-      })
-    );
-
-    expect(html).toContain('class="lumen-netron-playground"');
-    expect(html).toContain('CalculatorService.execute');
-    expect(html).toContain('42');
-  });
-
-  it('IA-05: fails closed on remote HTTP 403 / RPC errors without falling back to local execution', async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 403,
-      statusText: 'Forbidden',
-    }) as any;
-
+  it('uses one typed remote method and preserves service errors', async () => {
+    const code = 'return 6 * 7';
+    const execute = vi.fn().mockResolvedValue({ code, result: 42 });
     const onExecute = vi.fn();
-    const root = createRoot(container);
-
-    try {
-      await act(async () => {
-        root.render(
-          React.createElement(NetronPlayground, {
-            endpoint: 'https://rpc.example.com/execute',
-            initialSnippet: 'return 999;',
-            onExecute,
-          })
-        );
-      });
-
-      const runBtn = container.querySelector('.lumen-playground-run-btn') as HTMLButtonElement;
-      await act(async () => {
-        runBtn.click();
-      });
-
-      expect(container.querySelector('.lumen-playground-error')?.textContent).toContain('403');
-      expect(container.querySelector('.lumen-playground-result')).toBeNull();
-      expect(onExecute).toHaveBeenCalledTimes(1);
-      expect(onExecute.mock.calls[0]?.[0]?.result).toBeUndefined();
-      expect(onExecute.mock.calls[0]?.[0]?.error).toContain('403');
-    } finally {
-      globalThis.fetch = originalFetch;
-      await act(async () => {
-        root.unmount();
-      });
-    }
+    await mount({ code, execute, onExecute });
+    await run();
+    expect(execute).toHaveBeenCalledExactlyOnceWith(code);
+    expect(container.querySelector('.lumen-playground-result')?.textContent).toBe('42');
+    execute.mockResolvedValue({ code, result: null, error: 'Permission denied' });
+    await run();
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Permission denied');
+    expect(container.querySelector('.lumen-playground-result')).toBeNull();
+    expect(onExecute.mock.lastCall?.[0].result).toBeUndefined();
   });
 
-  it('SEC-07 & IA-05: never retries failed Worker code on host window and strips Worker network APIs', async () => {
-    const originalWorker = (globalThis as any).Worker;
-    const originalCreateObjectURL = URL.createObjectURL;
-    const originalRevokeObjectURL = URL.revokeObjectURL;
-    let capturedWorkerBootstrap = '';
-
-    URL.createObjectURL = vi.fn((blob: any) => {
-      if (blob && typeof blob.text === 'function') {
-        blob.text().then((t: string) => {
-          capturedWorkerBootstrap = t;
-        });
-      }
-      return 'blob:mock-worker-url';
-    }) as any;
-    URL.revokeObjectURL = vi.fn();
-
-    class MockWorker {
-      onmessage: ((e: { data: any }) => void) | null = null;
-
-      onerror: ((e: any) => void) | null = null;
-
-      postMessage(_msg: { code: string }) {
-        setTimeout(() => {
-          this.onmessage?.({ data: { ok: false, error: 'ReferenceError: document is not defined' } });
-        }, 5);
-      }
-
-      terminate() {}
-    }
-
-    (globalThis as any).Worker = MockWorker;
-    const onExecute = vi.fn();
-    const root = createRoot(container);
-
-    try {
-      await act(async () => {
-        root.render(
-          React.createElement(NetronPlayground, {
-            initialSnippet: 'return document.cookie;',
-            onExecute,
-          })
-        );
-      });
-
-      const runBtn = container.querySelector('.lumen-playground-run-btn') as HTMLButtonElement;
-      await act(async () => {
-        runBtn.click();
-        await new Promise((resolve) => setTimeout(resolve, 30));
-      });
-
-      expect(capturedWorkerBootstrap).toContain("'fetch'");
-      expect(capturedWorkerBootstrap).toContain("'XMLHttpRequest'");
-      expect(capturedWorkerBootstrap).toContain("'WebSocket'");
-      expect(capturedWorkerBootstrap).toContain("'importScripts'");
-      expect(container.querySelector('.lumen-playground-error')?.textContent).toContain('document is not defined');
-      expect(onExecute).toHaveBeenCalledTimes(1);
-      expect(onExecute.mock.calls[0]?.[0]?.result).toBeUndefined();
-      expect(onExecute.mock.calls[0]?.[0]?.error).toContain('document is not defined');
-    } finally {
-      (globalThis as any).Worker = originalWorker;
-      URL.createObjectURL = originalCreateObjectURL;
-      URL.revokeObjectURL = originalRevokeObjectURL;
-      await act(async () => {
-        root.unmount();
-      });
-    }
+  it('fails server execution without a configured queried service rather than running locally', async () => {
+    const worker = vi.fn();
+    vi.stubGlobal('Worker', worker);
+    await mount({ code: 'return 42', mode: 'server' });
+    await run();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Netron executePlayground method is required');
+    expect(worker).not.toHaveBeenCalled();
   });
 
-  it('SEC-07 & IA-05: shadows host window/document/localStorage/fetch in test fallback and fails closed in real browsers without Worker', async () => {
-    const originalWorker = (globalThis as any).Worker;
-    (globalThis as any).Worker = undefined;
-    window.localStorage.setItem('secret_token', 'top-secret');
-
+  it('does not report a stale remote response after the snippet changes', async () => {
+    let resolve!: (value: PlaygroundServiceResult) => void;
+    const execute = () => new Promise<PlaygroundServiceResult>(done => { resolve = done; });
     const onExecute = vi.fn();
-    const root = createRoot(container);
+    await mount({ code: 'return 1', execute, onExecute });
+    await run();
+    expect(container.querySelector('[role="status"]')?.textContent).toBe('Running code…');
+    await mount({ code: 'return 2', execute, onExecute });
+    await act(async () => resolve({ code: 'return 1', result: 1 }));
+    expect(onExecute).not.toHaveBeenCalled();
+    expect(container.querySelector('.lumen-playground-result')).toBeNull();
+  });
 
-    try {
-      await act(async () => {
-        root.render(
-          React.createElement(NetronPlayground, {
-            initialSnippet:
-              'return { hasWindow: typeof window !== "undefined", hasDoc: typeof document !== "undefined", hasStorage: typeof localStorage !== "undefined", hasFetch: typeof fetch !== "undefined" };',
-            onExecute,
-          })
-        );
-      });
+  it('terminates its worker on unmount without reporting completion', async () => {
+    const terminate = vi.fn();
+    const options: unknown[] = [];
+    vi.stubGlobal('Worker', class {
+      constructor(...args: unknown[]) { options.push(args); }
+      terminate = terminate;
+      postMessage() {}
+    });
+    const onExecute = vi.fn();
+    await mount({ code: 'while(true){}', onExecute });
+    await run();
+    expect(options[0]).toEqual([expect.any(URL), { type: 'module', name: 'lumen-playground' }]);
+    await act(async () => root.render(null));
+    expect(terminate).toHaveBeenCalledOnce();
+    expect(onExecute).not.toHaveBeenCalled();
+  });
 
-      const runBtn = container.querySelector('.lumen-playground-run-btn') as HTMLButtonElement;
-      await act(async () => {
-        runBtn.click();
-      });
+  it('enforces the host deadline even when the worker never responds', async () => {
+    vi.useFakeTimers();
+    const terminate = vi.fn();
+    vi.stubGlobal('Worker', class { terminate = terminate; postMessage() {} });
+    const outcome = executeSandboxedCode('while(true){}', 100).catch(error => error);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(await outcome).toEqual(new Error('Execution timed out after 100ms'));
+    expect(terminate).toHaveBeenCalledOnce();
+  });
 
-      expect(onExecute).toHaveBeenCalledWith(
-        expect.objectContaining({
-          result: {
-            hasWindow: false,
-            hasDoc: false,
-            hasStorage: false,
-            hasFetch: false,
-          },
-        })
-      );
-
-      // Simulate real browser without happyDOM marker and without Worker: must fail closed
-      const savedDescriptor = Object.getOwnPropertyDescriptor(window, 'happyDOM');
-      const savedProtoDescriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window), 'happyDOM');
-      Object.defineProperty(window, 'happyDOM', { value: undefined, configurable: true, writable: true });
-      try {
-        onExecute.mockClear();
-        await act(async () => {
-          runBtn.click();
-        });
-        expect(onExecute).toHaveBeenCalledTimes(1);
-        expect(onExecute.mock.calls[0]?.[0]?.error).toContain('Isolated Web Worker runtime is unavailable');
-      } finally {
-        if (savedDescriptor) {
-          Object.defineProperty(window, 'happyDOM', savedDescriptor);
-        } else {
-          delete (window as any).happyDOM;
-          if (savedProtoDescriptor) {
-            Object.defineProperty(Object.getPrototypeOf(window), 'happyDOM', savedProtoDescriptor);
-          }
-        }
-      }
-    } finally {
-      (globalThis as any).Worker = originalWorker;
-      window.localStorage.removeItem('secret_token');
-      await act(async () => {
-        root.unmount();
-      });
-    }
+  it('rejects oversized snippets and deadlines outside the shared limit before creating workers', async () => {
+    const worker = vi.fn();
+    vi.stubGlobal('Worker', worker);
+    await expect(executeSandboxedCode('x'.repeat(65_537))).rejects.toThrow('65536 bytes');
+    for (const timeout of [0, -1, 5001, Number.NaN, Infinity])
+      await expect(executeSandboxedCode('return 42', timeout)).rejects.toThrow('between 1 and 5000');
+    expect(worker).not.toHaveBeenCalled();
   });
 });

@@ -13,8 +13,7 @@ describe('Tier 4: Scenario 06 — Interactive API Documentation with Live Playgr
     };
 
     const playgroundProps = {
-      initialSnippet: 'const x = Math.sqrt(16); return x;',
-      runtime: 'node22',
+      code: 'const x = Math.sqrt(16); return x;',
       timeoutMs: 5000,
     };
 

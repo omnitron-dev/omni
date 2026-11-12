@@ -39,7 +39,7 @@ describe('Feature 15: Interactive Playground & Explorer', () => {
         {
           islandId: 'playground-island',
           hydrate: 'interaction',
-          props: { initialSnippet: 'return 42;' },
+          props: { code: 'return 42;' },
         },
         React.createElement(NetronPlayground)
       )
@@ -52,10 +52,9 @@ describe('Feature 15: Interactive Playground & Explorer', () => {
 
   it('TC-F15-05: serializes complex configuration props safely to data-props', () => {
     const complexProps = {
-      service: 'Lumen',
-      method: 'search',
+      code: 'return { name: "Lumen" };',
       timeoutMs: 5000,
-      headers: { 'X-Requested-With': 'LumenUI' },
+      snapshot: { code: 'return { name: "Lumen" };', result: { name: 'Lumen' } },
     };
 
     const html = renderToStaticMarkup(

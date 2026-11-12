@@ -9,7 +9,7 @@ export { PLAYGROUND_LIMITS } from './limits.js';
  * functions, module loader, network, filesystem or DOM. Call inside a Worker
  * for an independent wall-clock termination boundary as well as these limits.
  */
-export async function evaluatePlayground(code: string, timeoutMs = PLAYGROUND_LIMITS.timeoutMs): Promise<unknown> {
+export async function evaluatePlayground(code: string, timeoutMs: number = PLAYGROUND_LIMITS.timeoutMs): Promise<unknown> {
   if (typeof code !== 'string' || new TextEncoder().encode(code).length > PLAYGROUND_LIMITS.codeBytes)
     throw new Error(`Playground code exceeds ${PLAYGROUND_LIMITS.codeBytes} bytes`);
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > PLAYGROUND_LIMITS.maxTimeoutMs)

@@ -463,12 +463,8 @@ import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { NetronPlayground } from './packages/lumen-ui/src/interactive/playground.tsx';
-import { LumenSearchDialog } from './packages/lumen-ui/src/search/search-dialog.tsx';
-import { PortalIslandManager, LumenShell } from './packages/lumen-ui/src/hydration/shell.tsx';
-import { PortalIslandHost } from './packages/lumen-ui/src/hydration/host.tsx';
-import { useLumen } from './packages/lumen-ui/src/hydration/context.ts';
-import { LumenNavbar } from './packages/lumen-ui/src/navigation/navbar.tsx';
+import { NetronPlayground, LumenSearchDialog, PortalIslandManager, LumenShell,
+  PortalIslandHost, useLumen, LumenNavbar } from './packages/lumen-ui/dist/index.js';
 
 const root = createRoot(document.getElementById('root'));
 const audit = window.audit = { results: [], searches: [], pending: {}, closed: 0, changes: [] };
@@ -484,7 +480,9 @@ audit.hostHtml = (id = 'counter', children = false) => renderToStaticMarkup(
 );
 audit.mount = (kind, props = {}) => {
   let component;
-  if (kind === 'playground') component = <NetronPlayground {...props} onExecute={(r) => audit.results.push(r)} />;
+  if (kind === 'playground') component = <NetronPlayground {...props}
+    execute={props.remoteDenied ? async () => { throw new Error('Execution forbidden'); } : undefined}
+    onExecute={(r) => audit.results.push(r)} />;
   if (kind === 'search') component = <LumenSearchDialog open defaultTab="semantic" {...props}
     onClose={() => audit.closed++} rpcClient={{ search: (q) => {
       audit.searches.push(q);
@@ -512,20 +510,27 @@ audit.replace = () => {
       stdin: { contents: browserEntry, resolveDir: REPO_ROOT, loader: 'tsx' },
       bundle: true,
       write: false,
-      format: 'iife',
+      format: 'esm',
       platform: 'browser',
-      alias: { '@omnitron-dev/prism': resolve(REPO_ROOT, 'packages/prism/src/core/provider.tsx') },
       define: { 'process.env.NODE_ENV': '"development"' },
     });
     const js = bundle.outputFiles[0]!.text;
+    // Bundle the shipped module worker as a separate entry, as consumers do.
+    const workerBundle = await build({
+      entryPoints: [join(REPO_ROOT, 'packages/lumen-ui/dist/playground-worker.js')],
+      bundle: true,
+      write: false,
+      format: 'esm',
+      platform: 'browser',
+    });
     let cookieCanaryHits = 0;
     server = createServer((req, res) => {
       if (req.url === '/bundle.js') {
         res.setHeader('Content-Type', 'text/javascript');
         res.end(js);
-      } else if (req.url === '/rpc-forbidden') {
-        res.writeHead(403, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Execution forbidden' }));
+      } else if (req.url === '/playground-worker.js') {
+        res.setHeader('Content-Type', 'text/javascript');
+        res.end(workerBundle.outputFiles[0]!.text);
       } else if (req.url === '/cookie-canary') {
         cookieCanaryHits += 1;
         res.setHeader('Content-Type', 'application/json');
@@ -533,7 +538,7 @@ audit.replace = () => {
       } else {
         res.setHeader('Content-Type', 'text/html');
         res.end(
-          '<!doctype html><div id="hosts"></div><div id="root"></div><button id="outside">Outside modal</button><script src="/bundle.js"></script>'
+          '<!doctype html><div id="hosts"></div><div id="root"></div><button id="outside">Outside modal</button><script type="module" src="/bundle.js"></script>'
         );
       }
     });
@@ -549,7 +554,7 @@ audit.replace = () => {
     if (server) await new Promise<void>((r) => server.close(() => r()));
   });
 
-  it('IA-05: enforces Worker isolation, blocks network/cookies, and never falls back to host DOM or local eval on 403', async () => {
+  it('IA-05: enforces Worker isolation, blocks network/cookies, and preserves remote service denial', async () => {
     const page = await browser.newPage();
     try {
       // 1. Worker ReferenceError must NOT retry on host window
@@ -560,22 +565,22 @@ audit.replace = () => {
           code: 'document.documentElement.dataset.auditExecution = "host-window"; return "host-window";',
         })
       );
-      await page.getByRole('button', { name: 'Run ▶' }).click();
+      await page.getByRole('button', { name: 'Run code' }).click();
       await page.waitForFunction(() => (window as any).audit.results.length === 1);
       expect(await page.locator('html').getAttribute('data-audit-execution')).toBeNull();
       expect(await page.locator('.lumen-playground-error').count()).toBe(1);
 
-      // 2. Remote HTTP 403 must fail closed and NEVER execute locally
+      // 2. A queried service denial must fail without local execution.
       await page.goto(origin);
       await page.waitForFunction(() => Boolean((window as any).audit));
       await page.evaluate(() =>
         (window as any).audit.mount('playground', {
-          endpoint: '/rpc-forbidden',
-          runtime: 'node22',
+          mode: 'server',
+          remoteDenied: true,
           code: 'return "forbidden-remote-but-executed-locally";',
         })
       );
-      await page.getByRole('button', { name: 'Run ▶' }).click();
+      await page.getByRole('button', { name: 'Run code' }).click();
       await page.waitForFunction(() => (window as any).audit.results.length === 1);
       expect(await page.evaluate(() => (window as any).audit.results[0].result)).toBeUndefined();
       expect(await page.locator('.lumen-playground-error').count()).toBe(1);
@@ -589,7 +594,7 @@ audit.replace = () => {
           code: 'localStorage.setItem("independent-audit-canary", "written-by-snippet"); return true;',
         });
       });
-      await page.getByRole('button', { name: 'Run ▶' }).click();
+      await page.getByRole('button', { name: 'Run code' }).click();
       await page.waitForFunction(() => (window as any).audit.results.length === 1);
       expect(await page.evaluate(() => localStorage.getItem('independent-audit-canary'))).toBeNull();
       expect(await page.locator('.lumen-playground-error').count()).toBe(1);
@@ -605,7 +610,7 @@ audit.replace = () => {
           }),
         origin
       );
-      await page.getByRole('button', { name: 'Run ▶' }).click();
+      await page.getByRole('button', { name: 'Run code' }).click();
       await page.waitForFunction(() => (window as any).audit.results.length === 1);
       expect(await page.evaluate(() => (window as any).audit.results[0].result)).toBeUndefined();
       expect(await page.locator('.lumen-playground-error').count()).toBe(1);

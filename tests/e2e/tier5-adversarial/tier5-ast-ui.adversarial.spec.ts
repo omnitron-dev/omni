@@ -627,26 +627,23 @@ Real body content following unclosed frontmatter fence.`;
     });
   });
 
-  describe('2.4 NetronPlayground Sandboxed Evaluation & Prototype Tampering', () => {
-    it('ADV-AST-35: exposes unmonitored prototype pollution in NetronPlayground local sandbox', () => {
-      // In playground.tsx: capturePrototypeSnapshots captures Object, Array, Function.
-      // String.prototype, RegExp.prototype, Promise.prototype, etc. are NOT snapshotted or restored!
+  describe('2.4 NetronPlayground server rendering', () => {
+    it('ADV-AST-35: renders editable code without evaluating it during SSR', () => {
       const initialDescriptor = Object.getOwnPropertyDescriptor(String.prototype, 'adversarialPollution');
       expect(initialDescriptor).toBeUndefined();
 
-      // Render playground component
       const html = renderToStaticMarkup(
-        React.createElement(NetronPlayground as any, {
-          initialSnippet: 'const a = 1;',
-          runtime: 'browser',
+        React.createElement(NetronPlayground, {
+          code: 'String.prototype.adversarialPollution = true;',
         })
       );
-      expect(html).toContain('lumen-playground');
+      expect(html).toContain('String.prototype.adversarialPollution = true;');
+      expect(Object.getOwnPropertyDescriptor(String.prototype, 'adversarialPollution')).toBeUndefined();
     });
 
-    it('ADV-AST-36: handles readonly playground with snapshot fallback safely', () => {
+    it('ADV-AST-36: labels readonly recorded output separately from execution', () => {
       const html = renderToStaticMarkup(
-        React.createElement(NetronPlayground as any, {
+        React.createElement(NetronPlayground, {
           code: 'console.log("cached");',
           readOnly: true,
           snapshot: {
@@ -656,7 +653,9 @@ Real body content following unclosed frontmatter fence.`;
           },
         })
       );
-      expect(html).toContain('lumen-playground');
+      expect(html).toContain('Recorded output');
+      expect(html).toContain('cached output');
+      expect(html).not.toContain('Run code');
     });
   });
 

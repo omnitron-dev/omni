@@ -9,6 +9,8 @@ export default defineConfig({
     'blocks/index': 'src/blocks/index.ts',
     'interactive/index': 'src/interactive/index.ts',
     'search/index': 'src/search/index.ts',
+    // Keep the worker beside the shared chunks containing its new URL() caller.
+    'playground-worker': 'src/interactive/playground-worker.ts',
   },
   format: ['esm'],
   dts: false,
@@ -33,5 +35,5 @@ export default defineConfig({
   esbuildOptions(options) {
     options.jsx = 'automatic';
   },
-  plugins: [reactClientEntries(() => true)],
+  plugins: [reactClientEntries(entry => entry !== 'playground-worker')],
 });

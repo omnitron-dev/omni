@@ -324,7 +324,7 @@ export class ExecutionClient {
   private async submitMutation(method: ExecutionMutation, args: unknown[]): Promise<unknown> {
     const reply = await this.rpc().mutate({ grant: this.currentGrant(), sequence: ++this.sequence, method, args });
     this.apply(reply.snapshot);
-    if (['startApp', 'startKnownApp', 'restartApp', 'restartAfterChange', 'reloadApp', 'scaleApp'].includes(method)) {
+    if (['startApp', 'startKnownApp', 'restartApp', 'reloadApp', 'scaleApp'].includes(method)) {
       return reply.value ? this.handle((reply.value as { appName: string }).appName) : undefined;
     }
     return reply.value;

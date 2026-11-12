@@ -10,16 +10,18 @@ import { DaemonRpcService } from '../../src/daemon/daemon.rpc-service.js';
 import { DEFAULT_ECOSYSTEM, DAEMON_SERVICE_ID } from '../../src/config/defaults.js';
 import { createAuthContextWrapper } from '../../src/services/auth-context.js';
 import type { ProcessInfoDto } from '../../src/config/types.js';
-import type { SourceChangeRequest } from '../../src/shared/dto/services.js';
+import type { SourceChangeRequest, SourceRefreshReceipt } from '../../src/shared/dto/services.js';
 
 describe('source refresh over the authenticated Netron HTTP surface', () => {
   const binding: SourceChangeRequest = { name: 'fixture/local/site', generation: 'observed-generation', definitionRevision: 7 };
   const online: ProcessInfoDto = { name: binding.name, generation: binding.generation, mode: 'classic', status: 'online',
     pid: null, cpu: 0, memory: 0, uptime: 0, restarts: 0, instances: 1, port: null, critical: false };
   let observed: ProcessInfoDto | null;
-  const refresh = vi.fn(async (_name: string, _expected: Omit<SourceChangeRequest, 'name'>): Promise<ProcessInfoDto | undefined> => {
+  const receipt = (process: ProcessInfoDto): SourceRefreshReceipt => ({ process,
+    source: { name: process.name, generation: process.generation!, definitionRevision: 3, directory: '/fixture/source' } });
+  const refresh = vi.fn(async (_name: string, _expected: Omit<SourceChangeRequest, 'name'>): Promise<SourceRefreshReceipt | undefined> => {
     observed = { ...online, generation: 'confirmed-generation' };
-    return observed;
+    return receipt(observed);
   });
   const read = vi.fn((name: string) => name === binding.name && observed ? structuredClone(observed) : null);
   const manualRestart = vi.fn();
@@ -112,7 +114,7 @@ describe('source refresh over the authenticated Netron HTTP surface', () => {
         observed = condition === 'removed' ? null : { ...online,
           generation: condition === 'unchanged generation' ? binding.generation : 'new-generation',
           status: condition === 'not online' ? 'starting' : 'online' };
-        return condition === 'no owner result' ? undefined : { ...online };
+        return condition === 'no owner result' || !observed ? undefined : receipt(observed);
       });
       const response = await request('operator', binding);
       expect(response.status).toBe(409);
@@ -125,13 +127,35 @@ describe('source refresh over the authenticated Netron HTTP surface', () => {
     const response = await request(role, binding);
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ success: true, data: {
-      name: binding.name, generation: 'confirmed-generation', status: 'online',
+      process: { name: binding.name, generation: 'confirmed-generation', status: 'online' },
+      source: { name: binding.name, generation: 'confirmed-generation', definitionRevision: 3, directory: '/fixture/source' },
     } });
     expect(lifecycleGate).toHaveBeenCalledTimes(1);
     expect(refresh).toHaveBeenCalledExactlyOnceWith(binding.name, {
       generation: binding.generation, definitionRevision: binding.definitionRevision,
     });
-    expect(read).toHaveBeenCalledExactlyOnceWith(binding.name);
+    expect(read).not.toHaveBeenCalled();
+    expect(manualRestart).not.toHaveBeenCalled();
+  });
+
+  it('does not replace the admitted result with a later unrelated observation', async () => {
+    const confirmed = receipt({ ...online, generation: 'confirmed-generation' });
+    refresh.mockImplementationOnce(async () => {
+      observed = { ...online, generation: 'later-generation' };
+      return confirmed;
+    });
+    expect((await request('operator', binding)).body).toMatchObject({ success: true, data: confirmed });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it.each(['name', 'generation', 'revision', 'directory'] as const)('rejects an inconsistent source receipt: %s', async field => {
+    const result = receipt({ ...online, generation: 'confirmed-generation' });
+    if (field === 'name') result.source.name = 'other/local/site';
+    if (field === 'generation') result.source.generation = 'unrelated-generation';
+    if (field === 'revision') result.source.definitionRevision = -1;
+    if (field === 'directory') result.source.directory = '';
+    refresh.mockResolvedValueOnce(result);
+    expect((await request('operator', binding)).status).toBe(409);
     expect(manualRestart).not.toHaveBeenCalled();
   });
 });

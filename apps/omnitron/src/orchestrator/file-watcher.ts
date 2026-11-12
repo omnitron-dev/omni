@@ -457,8 +457,9 @@ export class FileWatcher {
 
       try {
         if (!this.running || this.apps.get(app.entry.name) !== app) return;
-        await this.orchestrator.restartAfterChange(appName);
-        this.logger.info({ app: appName }, 'Restart complete');
+        const receipt = await this.orchestrator.restartAfterChange(appName);
+        if (receipt) this.logger.info({ app: appName }, 'Restart complete');
+        else this.logger.debug({ app: appName }, 'Source refresh was cancelled or not confirmed');
       } catch (err) {
         const message = (err as Error).message;
         this.logger.error({ app: appName, error: message }, 'Restart failed');

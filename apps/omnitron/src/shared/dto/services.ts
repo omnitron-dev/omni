@@ -46,6 +46,12 @@ export interface WatchedApplication {
 
 export type SourceChangeRequest = Pick<WatchedApplication, 'name' | 'generation' | 'definitionRevision'>;
 
+/** Exact result of the admitted owner operation, independent of later observations. */
+export interface SourceRefreshReceipt {
+  process: ProcessInfoDto;
+  source: WatchedApplication;
+}
+
 /** These transport failures cannot attest whether an in-flight mutation took effect. */
 export function isLostRpcAcknowledgement(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
@@ -69,7 +75,7 @@ export interface IDaemonService {
   stopAll(data: { force?: boolean }): Promise<{ count: number }>;
   restartApp(data: { name: string }): Promise<ProcessInfoDto>;
   /** Automatic source refresh; refuses a changed source binding or revoked watch policy. */
-  restartAfterChange(data: SourceChangeRequest): Promise<ProcessInfoDto>;
+  restartAfterChange(data: SourceChangeRequest): Promise<SourceRefreshReceipt>;
   restartAll(): Promise<ProcessInfoDto[]>;
   reloadApp(data: { name: string }): Promise<ProcessInfoDto>;
 

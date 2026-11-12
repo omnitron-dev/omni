@@ -261,7 +261,7 @@ export class ExecutionHostService {
     if (!(EXECUTION_MUTATIONS as readonly string[]).includes(method)) throw new Error('Unsupported execution mutation');
     const fn = this.orchestrator[method as typeof EXECUTION_MUTATIONS[number]] as (...values: unknown[]) => unknown;
     const result = await fn.apply(this.orchestrator, args);
-    if (['startApp', 'startKnownApp', 'restartApp', 'restartAfterChange', 'reloadApp', 'scaleApp'].includes(method)) {
+    if (['startApp', 'startKnownApp', 'restartApp', 'reloadApp', 'scaleApp'].includes(method)) {
       return result ? { appName: (result as { name: string }).name } : undefined;
     }
     return result;

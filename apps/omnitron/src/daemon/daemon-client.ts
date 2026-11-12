@@ -145,7 +145,7 @@ export class DaemonClient implements IDaemonService {
     return this.proxy!.restartApp(data);
   }
 
-  async restartAfterChange(data: Parameters<IDaemonService['restartAfterChange']>[0]): Promise<ProcessInfoDto> {
+  async restartAfterChange(data: Parameters<IDaemonService['restartAfterChange']>[0]): ReturnType<IDaemonService['restartAfterChange']> {
     await this.ensureConnected();
     return this.proxy!.restartAfterChange(data);
   }

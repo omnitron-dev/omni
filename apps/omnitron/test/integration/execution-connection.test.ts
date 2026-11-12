@@ -14,6 +14,7 @@ class Owner {
   acknowledgments = 0;
   mutations = 0;
   mutationInputs: unknown[] = [];
+  mutationValue: unknown;
   capabilities?: Record<string, number>;
   unavailable = false;
   rejectAck = false;
@@ -44,7 +45,7 @@ class Owner {
   async mutate(input: unknown) {
     this.mutations++;
     this.mutationInputs.push(input);
-    return { value: null, snapshot: await this.snapshot() };
+    return { value: this.mutationValue, snapshot: await this.snapshot() };
   }
 }
 
@@ -200,4 +201,18 @@ it('sends the exact source binding through the existing owner mutation channel o
     method: 'restartAfterChange', args: ['fixture/local/site', binding] }]);
   expect(recoveryState.token()).not.toBe(before);
   expect(client.state()?.owner.id).toBe(owner.id);
+});
+
+it('preserves the owner source receipt independently of subsequent inventory', async () => {
+  const { client, owner, internals } = await fixture();
+  owner.capabilities = { sourceRefresh: 1 };
+  await internals.refresh();
+  owner.mutationValue = { process: { name: 'fixture/local/site', status: 'online', generation: 'confirmed' },
+    source: { name: 'fixture/local/site', generation: 'confirmed', directory: '/fixture/source', definitionRevision: 3 } };
+  // The snapshot deliberately has no application; the result belongs to the
+  // completed mutation and must not be reconstructed from a newer inventory.
+  await expect(client.orchestrator.restartAfterChange('fixture/local/site', {
+    generation: 'observed', definitionRevision: 7,
+  })).resolves.toEqual(owner.mutationValue);
+  expect(client.orchestrator.list()).toEqual([]);
 });

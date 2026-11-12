@@ -137,7 +137,7 @@ export class DaemonRpcService implements IDaemonService {
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async restartAfterChange(data: Parameters<IDaemonService['restartAfterChange']>[0]): Promise<ProcessInfoDto> {
+  async restartAfterChange(data: Parameters<IDaemonService['restartAfterChange']>[0]): ReturnType<IDaemonService['restartAfterChange']> {
     this.assertLifecycleMutable?.();
     if (!data || typeof data.name !== 'string' || !data.name || data.name.length > 1024 ||
         typeof data.generation !== 'string' || !data.generation || data.generation.length > 128 ||
@@ -147,10 +147,13 @@ export class DaemonRpcService implements IDaemonService {
     const result = await this.orchestrator.restartAfterChange(data.name, {
       generation: data.generation, definitionRevision: data.definitionRevision,
     });
-    const observed = result && this.orchestrator.getApp(result.name);
-    if (!observed || observed.status !== 'online' || !observed.generation || observed.generation === data.generation)
+    const observed = result?.process, source = result?.source;
+    if (!result || !observed || observed.name !== data.name || observed.status !== 'online' ||
+        !observed.generation || observed.generation === data.generation ||
+        !source || source.name !== observed.name || source.generation !== observed.generation ||
+        !source.directory || !Number.isSafeInteger(source.definitionRevision) || source.definitionRevision < 0)
       throw Errors.conflict(`Source refresh of '${data.name}' was not confirmed by the execution owner`);
-    return observed;
+    return result;
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })

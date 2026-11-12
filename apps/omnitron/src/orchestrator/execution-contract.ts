@@ -20,7 +20,7 @@ export interface AppExecutionView extends Pick<AppHandle,
   topologyPools: Map<string, { getWorkerIds(): string[] }>;
 }
 
-type HandleMethods = 'startApp' | 'startKnownApp' | 'restartAfterChange' | 'restartApp' | 'reloadApp' | 'scaleApp';
+type HandleMethods = 'startApp' | 'startKnownApp' | 'restartApp' | 'reloadApp' | 'scaleApp';
 type Methods = Omit<OrchestratorService, HandleMethods | 'getHandle' | 'getWorkerHandle' | 'getChildProcessInfo' | 'setConfig' | 'configureReadiness'>;
 
 /** The backend has no direct access to ProcessManager, forks or threads. */
@@ -33,7 +33,6 @@ export interface OrchestratorControl extends Methods {
   getExecutionOwnerPackage?(): Promise<string>;
   startApp(...args: Parameters<OrchestratorService['startApp']>): Promise<AppExecutionView>;
   startKnownApp(name: string): Promise<AppExecutionView | undefined>;
-  restartAfterChange(...args: Parameters<OrchestratorService['restartAfterChange']>): Promise<AppExecutionView | undefined>;
   restartApp(name: string): Promise<AppExecutionView>;
   reloadApp(name: string): Promise<AppExecutionView>;
   scaleApp(name: string, instances: number, process?: string): Promise<AppExecutionView>;

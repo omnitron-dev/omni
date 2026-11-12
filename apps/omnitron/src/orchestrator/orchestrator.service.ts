@@ -38,7 +38,7 @@ import type { ProcessOutputContext } from '@omnitron-dev/titan-pm';
 
 import { ReadinessMonitor } from '../health/readiness.js';
 import { FileWatcher } from './file-watcher.js';
-import type { WatchedApplication } from '../shared/dto/services.js';
+import type { SourceRefreshReceipt, WatchedApplication } from '../shared/dto/services.js';
 import fs from 'node:fs';
 import { readDeclaredConfig, withDeclaredConfig } from '../project/declared-config.js';
 import path from 'node:path';
@@ -332,28 +332,39 @@ export class OrchestratorService extends EventEmitter {
   }
 
   /** Automatic triggers remain revocable while queued; manual restart is independent. */
-  async restartAfterChange(name: string, expected?: { generation: string; definitionRevision: number }): Promise<AppHandle | undefined> {
+  async restartAfterChange(name: string, expected?: { generation: string; definitionRevision: number }): Promise<SourceRefreshReceipt | undefined> {
     const canonical = this.resolveAppName(name) ?? name;
+    if (expected && canonical !== name)
+      throw new Error(`Source refresh requires the observed canonical application name '${canonical}'`);
     const handle = this.handles.get(canonical);
     if (expected && (!handle || handle.generation !== expected.generation || handle.definitionRevision !== expected.definitionRevision))
       throw new Error(`Application '${canonical}' source binding changed; observe its watch status before retrying`);
     if (!handle || !this.allowsWatch(handle.entry)) {
       if (expected) throw new Error(`Source refresh of '${canonical}' is excluded by the current watch policy`);
-      return handle;
+      return undefined;
     }
     if (expected && !this.getWatchedApps().some(app => app.name === canonical &&
         app.generation === expected.generation && app.definitionRevision === expected.definitionRevision))
       throw new Error(`Source watcher for '${canonical}' is unavailable; SDK refresh was not started`);
     const entry = handle.entry;
     const definitionRevision = handle.definitionRevision;
+    const generation = handle.generation;
     const result = await this.restartAppCoalesced(canonical, true, 'watch');
-    if (expected && (handle.definitionRevision !== definitionRevision || result.entry !== entry ||
-        result.generation === expected.generation || result.status !== 'online'))
-      throw new Error(`Source refresh of '${canonical}' was cancelled or its source binding changed`);
-    if (expected && !this.getWatchedApps().some(app => app.name === canonical &&
-        app.generation === result.generation && app.definitionRevision === result.definitionRevision))
+    if (handle.definitionRevision !== definitionRevision || result.entry !== entry ||
+        result.generation === generation || result.status !== 'online') {
+      if (expected) throw new Error(`Source refresh of '${canonical}' was cancelled or its source binding changed`);
+      return undefined;
+    }
+    const source = this.getWatchedApps().find(app => app.name === canonical &&
+      app.generation === result.generation && app.definitionRevision === result.definitionRevision);
+    if (expected && !source)
       throw new Error(`Source watcher for '${canonical}' is unavailable after restart; SDK readiness is not confirmed`);
-    return result;
+    const process = this.getApp(canonical);
+    if (!source || !process || process.status !== 'online' || process.generation !== source.generation) {
+      if (expected) throw new Error(`Source refresh of '${canonical}' has no matching online observation`);
+      return undefined;
+    }
+    return { process, source };
   }
 
   /** Cached build results per app name */

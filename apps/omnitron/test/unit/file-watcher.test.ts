@@ -441,6 +441,15 @@ describe('FileWatcher', () => {
     expect(orchestrator.restartApp).toHaveBeenCalledWith('test-app');
   });
 
+  it('does not report a completed restart when the owner returns no confirmation', async () => {
+    const w = startWatcher();
+    w.emit('src/service.ts');
+    await settle();
+    expect(restartMock()).toHaveBeenCalledExactlyOnceWith('test-app');
+    expect(logger.info).not.toHaveBeenCalledWith({ app: 'test-app' }, 'Restart complete');
+    expect(logger.debug).toHaveBeenCalledWith({ app: 'test-app' }, 'Source refresh was cancelled or not confirmed');
+  });
+
   it.each([
     ['node_modules/some-pkg/index.js', 'node_modules'],
     ['dist/index.js', 'dist'],

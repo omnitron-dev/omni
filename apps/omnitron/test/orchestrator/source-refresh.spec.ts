@@ -45,6 +45,14 @@ function outcome<T>(promise: Promise<T>) {
 }
 
 describe('owner source-refresh binding and queued policy', () => {
+  it('rejects a source-binding alias before replacing the canonical application', async () => {
+    const run = fixture();
+    await expect(run.service.restartAfterChange('site', run.expected)).rejects.toThrow(/canonical application name/);
+    expect(run.stop).not.toHaveBeenCalled();
+    expect(run.start).not.toHaveBeenCalled();
+    expect(run.original.status).toBe('online');
+  });
+
   it.each(['generation', 'definition revision'] as const)('refuses a stale %s before process effects', async stale => {
     const run = fixture();
     const expected = { ...run.expected, ...(stale === 'generation'
@@ -121,7 +129,9 @@ describe('owner source-refresh binding and queued policy', () => {
     const newRequest = outcome(run.service.restartAfterChange(run.entry.name, currentBinding));
     await vi.advanceTimersByTimeAsync(1100);
     expect(await oldRequest).toHaveProperty('error');
-    expect(await newRequest).toMatchObject({ value: { status: 'online', entry: next } });
+    expect(await newRequest).toMatchObject({ value: {
+      process: { status: 'online', name: next.name }, source: { directory: next.cwd },
+    } });
     expect(run.stop).toHaveBeenCalledTimes(1);
     expect(run.start).toHaveBeenCalledExactlyOnceWith(next);
     expect(run.service.getHandle(next.name)!.generation).not.toBe(currentBinding.generation);
@@ -133,6 +143,19 @@ describe('owner source-refresh binding and queued policy', () => {
     await expect(run.service.restartAfterChange(run.entry.name, run.expected)).rejects.toThrow(/cancelled|binding changed/);
     expect(run.original.status).toBe('online');
     expect(run.original.generation).toBe(run.expected.generation);
+  });
+
+  it('does not acknowledge a native source event revoked during cooldown', async () => {
+    vi.useFakeTimers();
+    const run = fixture();
+    run.internals.getCoalescerState(run.entry.name).cooldownUntil = Date.now() + 1000;
+    const pending = run.service.restartAfterChange(run.entry.name);
+    await run.service.redefineApp(run.entry.name, run.entry);
+    await vi.advanceTimersByTimeAsync(1100);
+    await expect(pending).resolves.toBeUndefined();
+    expect(run.stop).not.toHaveBeenCalled();
+    expect(run.start).not.toHaveBeenCalled();
+    expect(run.original.status).toBe('online');
   });
 
   it('rejects a vanished watcher before process effects', async () => {
@@ -209,10 +232,11 @@ describe('owner source-refresh binding and queued policy', () => {
   it('confirms a new online generation from the same admitted source', async () => {
     const run = fixture();
     const refreshed = await run.service.restartAfterChange(run.entry.name, run.expected);
-    expect(refreshed).toBe(run.service.getHandle(run.entry.name));
-    expect(refreshed?.status).toBe('online');
-    expect(refreshed?.generation).not.toBe(run.expected.generation);
-    expect(refreshed?.entry).toBe(run.entry);
+    expect(refreshed?.process).toEqual(run.service.getApp(run.entry.name));
+    expect(refreshed?.process.status).toBe('online');
+    expect(refreshed?.source).toEqual(run.service.getWatchedApps()[0]);
+    expect(refreshed?.source.generation).not.toBe(run.expected.generation);
+    expect(run.service.getHandle(run.entry.name)?.entry).toBe(run.entry);
     expect(run.stop).toHaveBeenCalledExactlyOnceWith(run.original, false, 10_000);
     expect(run.start).toHaveBeenCalledExactlyOnceWith(run.entry);
   });

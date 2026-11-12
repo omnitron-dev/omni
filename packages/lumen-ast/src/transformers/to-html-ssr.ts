@@ -10,6 +10,7 @@ import { renderDiagramHtml } from '../diagrams/renderer.js';
 import { renderCodeBlockHtml } from '../highlight/emitter.js';
 import { LumenMacroRegistry } from '../katex/macro-registry.js';
 import { escapeHtml, renderKaTeX } from '../katex/render-math.js';
+import { renderFileTreeHtml } from './file-tree.js';
 
 export interface SsrOptions {
   macros?: Record<string, string> | LumenMacroRegistry;
@@ -240,6 +241,11 @@ function renderSingleNodeToHtml(node: LumenNode, context: SsrContext): string {
   <div class="lumen-admonition-title">${title}</div>
   <div class="lumen-admonition-content">${inner}</div>
 </aside>`;
+    }
+
+    case 'containerDirective': {
+      if (node.name === 'filetree') return renderFileTreeHtml(node, nodes => renderNodesToHtml(nodes, context));
+      return renderNodesToHtml(node.children ?? [], context);
     }
 
     case 'tabs': {

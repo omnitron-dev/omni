@@ -4,6 +4,7 @@
 
 import { tex2typst } from 'tex2typst';
 import type { LumenDocumentAst, LumenNode } from '../ast/types.js';
+import { readFileTree, fileTreeTypstLines } from './file-tree.js';
 
 export interface TypstOptions {
   paperSize?: string;
@@ -239,6 +240,12 @@ function serializeSingleTypstNode(node: LumenNode): string {
     case 'tabs': {
       const children = Array.isArray(node.children) ? node.children : [];
       return serializeTypstBlockNodes(children);
+    }
+
+    case 'containerDirective': {
+      if (node.name !== 'filetree') return serializeTypstBlockNodes(node.children ?? []);
+      const { title } = readFileTree(node);
+      return `#strong[${escapeTypst(title)}]\n\n${fileTreeTypstLines(node, serializeTypstInlineNodes)}\n`;
     }
 
     case 'tabItem': {

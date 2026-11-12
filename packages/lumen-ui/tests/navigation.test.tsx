@@ -80,13 +80,23 @@ describe('Navigation Layout Components', () => {
     expect(html).toContain('© 2026 Omnitron');
   });
 
-  it('renders DocPagination with exact empty match and single-side links', () => {
+  it('renders semantic pagination with mirrored slots and single-side links', () => {
     const emptyHtml = renderToStaticMarkup(DocPagination({}));
-    expect(emptyHtml).toBe('<nav class="lumen-pagination" aria-label="Docs pagination"></nav>');
+    expect(emptyHtml).toContain('aria-label="Docs pagination"');
+    expect(emptyHtml).not.toContain('href=');
 
     const prevOnly = renderToStaticMarkup(DocPagination({ prev: { label: 'Intro', href: '/intro' } }));
-    expect(prevOnly).toContain('class="lumen-pagination-prev"');
-    expect(prevOnly).not.toContain('class="lumen-pagination-next"');
+    expect(prevOnly).toContain('rel="prev"');
+    expect(prevOnly).not.toContain('rel="next"');
+    const previousLink = prevOnly.slice(prevOnly.indexOf('<a '));
+    expect(previousLink.indexOf('lumen-pagination-arrow')).toBeLessThan(previousLink.indexOf('lumen-pagination-label'));
+    const nextOnly = renderToStaticMarkup(DocPagination({ next: { label: 'Start', href: '/start' } }));
+    expect(nextOnly).toContain('rel="next"');
+    expect(nextOnly).not.toContain('rel="prev"');
+    // Exclude Emotion's selector when checking the actual named slot order.
+    const link = nextOnly.slice(nextOnly.indexOf('<a '));
+    expect(link.indexOf('lumen-pagination-label')).toBeLessThan(link.indexOf('lumen-pagination-arrow'));
+    expect(link).toContain('aria-hidden="true"');
   });
 
   it('renders native SSR section links and an explicitly controlled current section', () => {

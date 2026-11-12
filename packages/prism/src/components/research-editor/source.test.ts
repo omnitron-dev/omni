@@ -28,6 +28,7 @@ describe('Research editor source invariants', () => {
       '```rust title="x"\nlet x=1;\n```',
       '[citation][r]\n\n[r]: https://example.org "source"',
       ':::unknown\nRetain exactly.\n:::',
+      ':::filetree{title="my-service/"}\r\n- `src/` — source\r\n  - `main.ts` — entrypoint\r\n:::',
       '$$\n\\int f(x)\\,dx\n$$',
       '<script>doNotRun()</script>',
       '```prism\n{"type":"future","version":4,"props":{"x":3}}\n```',

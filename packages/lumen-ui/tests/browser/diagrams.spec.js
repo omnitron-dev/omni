@@ -48,14 +48,21 @@ test('real ELK produces non-overlapping labeled nodes and connected edges', asyn
   await page.screenshot({ path: test.info().outputPath('elk-dark.png') });
 });
 
-test('the official sequence and class engines preserve branches, loops and members', async ({ page, url }) => {
-  await page.goto(url + '?example=sequence');
+test('the official sequence, class and state engines preserve their contracts in both themes', async ({ page, url }) => {
   const svg = page.locator('.lumen-diagram-content svg');
-  await expect(svg).toBeVisible();
-  for (const label of ['authenticated', 'denied', 'retry', 'Save', 'Denied', 'Complete contract']) await expect(svg).toContainText(label);
-  await page.goto(url + '?example=classes');
-  await expect(svg).toBeVisible();
-  for (const label of ['Document', 'Revision', 'title', 'save()', 'history']) await expect(svg).toContainText(label);
+  for (const [example, labels] of Object.entries({
+    sequence: ['authenticated', 'denied', 'retry', 'Save', 'Denied', 'Complete contract'],
+    classes: ['Document', 'Revision', 'title', 'save()', 'history'],
+    states: ['Pending', 'Running', 'Finished', 'Failed', 'accepted', 'complete'],
+  })) {
+    await page.goto(url + '?example=' + example);
+    await expect(svg).toBeVisible();
+    for (const label of labels) await expect(svg).toContainText(label);
+    const light = await svg.innerHTML();
+    await page.getByRole('button', { name: 'Change theme' }).click();
+    await expect.poll(() => svg.innerHTML()).not.toBe(light);
+    for (const label of labels) await expect(svg).toContainText(label);
+  }
 });
 
 test('syntax failure stays visible with source and a later valid diagram recovers', async ({ page, url }) => {
@@ -66,6 +73,26 @@ test('syntax failure stays visible with source and a later valid diagram recover
   await page.getByRole('button', { name: 'Valid diagram' }).click();
   await expect(page.locator('.lumen-diagram-content svg')).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('quoted labels and Mermaid entity codes survive SSR props without HTML unescaping', async ({ page, url }) => {
+  await page.goto(url + '?example=entities');
+  const svg = page.locator('.lumen-diagram-content svg');
+  await expect(svg).toBeVisible();
+  await expect(svg).toContainText('Infrastructure (Docker / bare-metal)');
+  await expect(svg).toContainText('A "quoted" contract');
+  await expect(svg).toContainText('x < y & y > 0');
+  const light = await svg.innerHTML();
+  await page.getByRole('button', { name: 'Change theme' }).click();
+  await expect.poll(() => svg.innerHTML()).not.toBe(light);
+  await expect(svg).toContainText('A "quoted" contract');
+  await expect(svg).toContainText('x < y & y > 0');
+  const source = await page.locator('[data-component="MermaidDiagram"]').evaluate(element => JSON.parse(element.getAttribute('data-props')).code);
+  expect(source).toContain('#quot;');
+  expect(source).toContain('#60;');
+  await expect(page.locator('details pre code')).toHaveText(source);
+  expect(await svg.locator('script,img,image,a').count()).toBe(0);
+  expect(await svg.locator('foreignObject').count()).toBeGreaterThan(0);
 });
 
 test('document directives cannot enable script callbacks or page-level CSS', async ({ page, url }) => {
@@ -79,7 +106,20 @@ test('document directives cannot enable script callbacks or page-level CSS', asy
   await svg.getByText('Safe', { exact: true }).click();
   expect(dialogs).toBe(0);
   expect(canary).toBe(0);
-  expect(await svg.locator('script,img,foreignObject,a[href^="javascript:"]').count()).toBe(0);
+  expect(await svg.locator('script,img,image,iframe,object,embed,input,form,foreignObject a').count()).toBe(0);
+  // Mermaid can retain an inert SVG anchor around a rejected click directive.
+  expect(await svg.locator('a').evaluateAll(elements => elements.map(element => [
+    element.getAttribute('href'), element.getAttributeNS('http://www.w3.org/1999/xlink', 'href'),
+  ]))).toEqual([[null, null]]);
+  const labels = await svg.locator('foreignObject').evaluateAll(elements => elements.map(element => ({
+    tags: Array.from(element.querySelectorAll('*'), child => child.localName),
+    eventAttributes: Array.from(element.querySelectorAll('*')).flatMap(child => child.getAttributeNames().filter(name => name.startsWith('on'))),
+  })));
+  expect(labels.length).toBeGreaterThan(0);
+  for (const label of labels) {
+    expect(label.tags.every(tag => ['div', 'span', 'p', 'br', 'b', 'i', 'em', 'strong', 'code', 'del', 's', 'sub', 'sup'].includes(tag))).toBe(true);
+    expect(label.eventAttributes).toEqual([]);
+  }
   expect(await page.locator('body').evaluate(node => getComputedStyle(node).opacity)).toBe('1');
 });
 

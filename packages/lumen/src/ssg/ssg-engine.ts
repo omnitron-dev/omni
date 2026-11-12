@@ -5,6 +5,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import type { LumenNode } from '@omnitron-dev/lumen-ast';
 import { BASE_LUMEN_THEME_CSS } from './emotion-extractor.js';
+import { FILE_TREE_CSS } from './file-tree-styles.js';
 import { escapeHtml } from './assemble-html.js';
 import { renderDocumentHtml } from './render-html.js';
 import { generateLlmsTxt } from '../ai/llms-txt.js';
@@ -58,6 +59,7 @@ function normalizeBaseUrl(baseUrl?: string): string {
 function createClientStylesheet(): string {
   return [
     BASE_LUMEN_THEME_CSS,
+    FILE_TREE_CSS,
     '.lumen-doc h1,.lumen-doc h2,.lumen-doc h3,.lumen-doc h4{color:var(--lumen-fg);line-height:1.3;margin-top:1.75em;margin-bottom:0.6em;}',
     '.lumen-doc a{color:var(--lumen-accent);text-decoration:none;}',
     '.lumen-doc a:hover{text-decoration:underline;}',

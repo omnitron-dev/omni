@@ -50,6 +50,12 @@ Twoslash uses actual default libraries from the exact TypeScript dependency. Bro
 
 `toCleanMarkdown` is a read/export representation, not a lossless editing format. It can simplify presentation constructs. The authoring path is `LumenService.getEditableDocument` → Prism `ResearchEditor.initialSource` → snapshot `getSource()` → `saveLiveEdit` with the original revision and hash. Do not overwrite the original document with an audience projection.
 
+## Document presentation
+
+The `filetree` container directive accepts an optional `title` and one nested unordered Markdown list. Start each item with an inline-code filename, then an optional annotation; a trailing `/` or child list identifies a directory. HTML uses native, initially open disclosures, while Markdown and Typst retain the nested list and annotations. Lumen supplies the shared stylesheet. Prism ResearchEditor preserves the directive as opaque source; the standalone ResearchDocument reader does not interpret it.
+
+Mermaid diagrams retain readable source during SSR and use the real browser engine for layout. Labels support quoted text and Mermaid entity codes such as `#quot;`. Strict rendering permits a fixed set of text-formatting elements without author-supplied attributes, resources or actions; document directives cannot relax that boundary.
+
 ## Documentation
 
 [Public API](src/index.ts) · [Package exports](package.json) · [Lumen](../lumen/README.md) · [Prism authoring](../prism/README.md#research-documents-and-authoring)

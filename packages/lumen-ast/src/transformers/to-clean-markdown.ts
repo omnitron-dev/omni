@@ -9,6 +9,7 @@ import { normalizeLumenHtml } from '../compiler/html.js';
 import { LumenMacroRegistry } from '../katex/macro-registry.js';
 import { isInteractiveHtmlElement } from './safe-html.js';
 import { renderNodesToHtml, sanitizeUrl } from './to-html-ssr.js';
+import { readFileTree } from './file-tree.js';
 
 type MarkdownNode = Parameters<typeof toMarkdown>[0];
 type MarkdownContent = Extract<MarkdownNode, { type: 'root' }>['children'][number];
@@ -284,6 +285,11 @@ function mapNode(node: LumenNode, options: CleanMarkdownOptions): MarkdownConten
     }
     case 'tabItem':
       return [{ type: 'heading', depth: 3, children: [text(node.label ?? 'Tab')] }, ...toFlow(children())];
+    case 'containerDirective': {
+      if (node.name !== 'filetree') return children();
+      const { title } = readFileTree(node);
+      return [{ type: 'paragraph', children: [{ type: 'strong', children: [text(title)] }] }, ...toFlow(children())];
+    }
     case 'htmlElement': {
       if (isInteractiveHtmlElement(String(node.tagName), node.attributes ?? {})) return children();
       const value = renderNodesToHtml(prepareHtml([node]), {

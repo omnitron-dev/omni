@@ -62,7 +62,14 @@ export async function renderDiagramSvg(code: string, id: string, options: Diagra
         labelBoxBkgColor: colors.surface, labelBoxBorderColor: colors.border, labelTextColor: colors.foreground,
         activationBkgColor: colors.accent, activationBorderColor: colors.border,
       } } : {}),
-      htmlLabels: false,
+      // Mermaid's SVG-text renderer prints entity codes literally (#7015).
+      // Let its label renderer decode them before measuring, while admitting
+      // only text formatting: document HTML cannot add resources or actions.
+      htmlLabels: true,
+      dompurifyConfig: {
+        ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'em', 'strong', 'code', 'del', 's', 'sub', 'sup'],
+        ALLOWED_ATTR: [],
+      },
       fontFamily: options.fontFamily ?? 'system-ui, sans-serif',
       themeCSS: '.node, .cluster, .node rect, .node polygon, .node circle, .cluster rect { filter: none !important; }',
       maxTextSize: DIAGRAM_LIMITS.sourceBytes,
@@ -70,7 +77,7 @@ export async function renderDiagramSvg(code: string, id: string, options: Diagra
       deterministicIds: true,
       deterministicIDSeed: id,
       // Document directives may choose layout, but cannot relax these boundaries.
-      secure: ['secure', 'securityLevel', 'startOnLoad', 'suppressErrorRendering', 'maxTextSize', 'maxEdges', 'htmlLabels', 'themeCSS', 'theme', 'themeVariables', 'fontFamily'],
+      secure: ['secure', 'securityLevel', 'startOnLoad', 'suppressErrorRendering', 'maxTextSize', 'maxEdges', 'htmlLabels', 'dompurifyConfig', 'themeCSS', 'theme', 'themeVariables', 'fontFamily'],
     });
     const { svg } = await mermaid.render(id, code);
     options.signal?.throwIfAborted();

@@ -35,7 +35,26 @@ Compare ordinary workflows, extension boundaries, failure behavior, performance 
 - Antora: component/version identity across repositories — https://docs.antora.org/antora/latest/distributed-component-version/
 - Quarto: real Typst scientific output — https://quarto.org/docs/output-formats/typst.html
 
-Pending comparison: VitePress, Rspress, Mintlify, MyST, Sphinx and Material for MkDocs; real migration of the Omnitron website; independently measured build/search/browser budgets.
+Additional primary-source comparison, checked 2026-11-12:
+
+| Reference | Documented capability | Engineering consequence for Lumen |
+| --- | --- | --- |
+| [VitePress search](https://vitepress.dev/reference/default-theme-search) and [i18n](https://vitepress.dev/guide/i18n) | Local MiniSearch, localized search UI and per-locale configuration; the current docs also describe RTL behavior. | Local search is a baseline capability, not a differentiator. Verify real indexed results, keyboard navigation and source-language content. Locale configuration alone does not establish RTL or multilingual ranking parity. |
+| [Rspress introduction](https://www.rspress.rs/guide/start/introduction) and [AI configuration](https://www.rspress.rs/api/config/config-agent) | React documentation tooling includes versions, locales, search and Markdown/llms exports; AI output has explicit configuration. | Producing llms.txt is insufficient evidence of a distinct agent platform. Lumen must prove identical authorization/projection in HTML, Markdown, indexes and MCP, and expose configured capabilities honestly. |
+| [Mintlify authentication](https://www.mintlify.com/docs/deploy/authentication-setup) | Full or partial authentication and group-aware methods; the guide calls out old public previews when enabling authentication. | Restricting the next build cannot revoke already distributed copies. Local publication must remove stale public output; operators need an explicit retention/revocation policy for hosted previews, caches and downloaded artifacts. Netron identity must govern every live retrieval path. |
+| [MyST cross-references](https://mystmd.org/guide/cross-references) | Structured labels, references and numbering cover documents, equations, figures and tables. | A graph drawn from guessed text is not equivalent. Reference identity and projection must survive HTML and PDF; missing targets must produce diagnostics. Lumen's verified Typst output does not establish full citation, notebook or JATS parity. |
+| [Sphinx Intersphinx](https://www.sphinx-doc.org/en/master/usage/extensions/intersphinx.html) | Published symbol inventories resolve references across projects, including configured local inventory files. | Cross-project linking needs explicit inventory identity and offline inputs. Lumen's local corpus graph does not yet prove interoperability with external inventories; do not advertise that as implemented. |
+| [Material for MkDocs search](https://squidfunk.github.io/mkdocs-material/setup/setting-up-site-search/) | Client-side multilingual search, optional keyboard suggestions, highlighting and shareable queries. | Evaluate the actual search interaction, not only index generation. Search exclusion is not access control: restricted bytes must be absent from the generated public corpus and index. |
+
+These are documentation-based comparisons, not measurements of competing
+implementations. No latency, memory, accessibility or superiority ranking has
+been established. Lumen's release acceptance focuses on complete advertised
+workflows and failure boundaries rather than adding every competitor feature.
+The website migration now preserves 236 prior routes and 2,855 content anchors;
+its 10 browser scenarios cover real search, execution and both themes at three
+viewport widths. Large-corpus performance budgets, external-inventory linking,
+full RTL qualification and broader scientific-output parity remain separately
+unqualified; they must not be implied by the 0.4.0 release description.
 
 ## Projection acceptance notes
 

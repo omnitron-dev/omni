@@ -55,7 +55,7 @@ title: Empty Code Block
     expect(elapsed).toBeLessThan(5_000);
   });
 
-  it('TC-B08-04: preserves malformed or invalid Twoslash compiler annotations safely', async () => {
+  it('TC-B08-04: rejects malformed Twoslash error directives before emitting HTML', async () => {
     const malformedTwoslashDoc = `---
 title: Malformed Twoslash
 ---
@@ -73,8 +73,7 @@ const invalid = "twoslash";
     expect(ast.rawContent).toContain('// @errors: not-a-number');
     expect(ast.rawContent).toContain('// @unknownCompilerFlag: true');
 
-    const html = toHtmlSsr(ast);
-    expect(html).toContain('lumen-doc');
+    expect(() => toHtmlSsr(ast)).toThrow('Invalid Twoslash @errors directive');
   });
 
   it('TC-B08-05: escapes raw HTML tags and script injections embedded within code blocks', async () => {

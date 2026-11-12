@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import fs from 'node:fs/promises';
 import http from 'node:http';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -133,7 +134,8 @@ else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') ==
   console.log(JSON.stringify({ tagName: tag, isPrerelease: true, isDraft: false, url: 'https://github.com/omnitron-dev/omni/releases/tag/' + tag }));
 } else process.exit(1);
 `, { mode: 0o700 });
-  const env = { ...process.env, PATH: bin + path.delimiter + process.env.PATH, FIXTURE_GITHUB_STATE: githubState, CI: 'true', NPM_CONFIG_USERCONFIG: npmrc, NPM_CONFIG_CACHE: path.join(temp, 'npm-cache'),
+  const buildRecord = path.join(temp, 'build-record');
+  const env = { ...process.env, PATH: bin + path.delimiter + process.env.PATH, FIXTURE_GITHUB_STATE: githubState, FIXTURE_BUILD_RECORD: buildRecord, CI: 'true', NPM_CONFIG_USERCONFIG: npmrc, NPM_CONFIG_CACHE: path.join(temp, 'npm-cache'),
     GIT_CONFIG_GLOBAL: path.join(temp, 'gitconfig'), GIT_CONFIG_NOSYSTEM: '1', GIT_AUTHOR_NAME: 'Fixture',
     GIT_COMMITTER_NAME: 'Fixture', GIT_AUTHOR_EMAIL: 'fixture@localhost', GIT_COMMITTER_EMAIL: 'fixture@localhost' };
   const exec = (bin, args, cwd = workspace) => run(bin, args, { cwd, env, signal: t.signal });
@@ -153,13 +155,36 @@ else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') ==
     "import assert from 'node:assert/strict'; import fs from 'node:fs'; assert.equal(process.argv[2], '--install-consumer'); fs.mkdirSync(process.argv[3]); fs.writeFileSync(process.argv[3]+'/audit-checked', 'checked');");
   await fs.writeFile(path.join(workspace, 'scripts/ci/check-runtime-consumer.mjs'),
     "import assert from 'node:assert/strict'; import fs from 'node:fs'; assert.equal(fs.readFileSync(process.argv[2]+'/audit-checked', 'utf8'), 'checked'); fs.writeFileSync('packages/base/consumer-checked', 'archives, audit, runtime');");
+  // The real preflight resolves its parser from tools/lint. Declare the actual
+  // installed compiler in the fixture so Xec's clean export installs it too.
+  // Lumen AST owns the direct Compiler API package; tools/lint may resolve an
+  // alias wrapper with another dependency. Neither parent node_modules tree
+  // can satisfy the exported workspace's install.
+  const compilerRequire = createRequire(new URL('../../packages/lumen-ast/package.json', import.meta.url));
+  assert.equal(compilerRequire('typescript/package.json').name, 'typescript');
+  assert.equal(typeof compilerRequire('typescript').createSourceFile, 'function');
+  const compilerDirectory = path.dirname(compilerRequire.resolve('typescript/package.json'));
+  await fs.mkdir(path.join(workspace, 'tools/lint'), { recursive: true });
+  await json('tools/lint/package.json', { name: '@fixture/lint', private: true,
+    devDependencies: { typescript: `file:${compilerDirectory}` } });
   await json('package.json', { name: 'fixture', private: true, type: 'module', scripts: { build: 'node scripts/build.mjs' } });
-  await fs.writeFile(path.join(workspace, 'scripts/build.mjs'), "import {writeFileSync} from 'node:fs'; for(const n of ['base','client']) writeFileSync('packages/'+n+'/index.js', 'export default 1;');");
-  await fs.writeFile(path.join(workspace, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n");
+  await fs.writeFile(path.join(workspace, 'scripts/build.mjs'), `
+import assert from 'node:assert/strict';
+import { realpathSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { sep } from 'node:path';
+const require = createRequire(new URL('../tools/lint/package.json', import.meta.url));
+assert.equal(typeof require('typescript').createSourceFile, 'function');
+assert.ok(realpathSync(require.resolve('typescript')).startsWith(realpathSync(process.cwd()) + sep),
+  'the clean export must own its installed compiler');
+writeFileSync(process.env.FIXTURE_BUILD_RECORD, process.cwd());
+for (const name of ['base', 'client']) writeFileSync('packages/' + name + '/index.js', 'export default 1;');
+`);
+  await fs.writeFile(path.join(workspace, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n  - 'tools/*'\n");
   for (const [folder, name] of [['base', first], ['client', second]]) {
     await fs.mkdir(path.join(workspace, 'packages', folder), { recursive: true });
     await json(`packages/${folder}/package.json`, { name, version: '0.1.0', main: './index.js', files: ['index.js', 'consumer-checked'],
-      ...(name === second ? { dependencies: { [first]: 'workspace:*' } } : {}) });
+      ...(name === second ? { dependencies: { [first]: 'workspace:*' }, peerDependencies: { [first]: '^0.1.0' } } : {}) });
   }
   await fs.writeFile(path.join(workspace, '.gitignore'), 'node_modules\n.release-artifacts\n.xec/.tmp/\n');
   await exec('pnpm', ['install', '--lockfile-only', '--offline']);
@@ -177,7 +202,20 @@ else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') ==
   assert.equal(await git('rev-parse', 'HEAD'), before);
   assert.equal(await git('status', '--porcelain'), '');
   assert.equal(await fs.stat(path.join(workspace, '.release-artifacts')).catch(() => null), null);
+  await assert.rejects(release('--prepare'), error => error.code === 1 &&
+    `${error.stdout}\n${error.stderr}`.includes('dependency-preflight') &&
+    `${error.stdout}\n${error.stderr}`.includes(`peerDependencies.${first}: "^0.1.0" must be workspace:*`));
+  assert.equal(await fs.stat(buildRecord).catch(() => null), null, 'preflight must stop before the build');
+  assert.deepEqual(await fs.readdir(path.join(workspace, '.release-artifacts', version)), []);
+  await assert.rejects(git('rev-parse', 'refs/tags/v' + version));
+  const client = JSON.parse(await fs.readFile(path.join(workspace, 'packages/client/package.json'), 'utf8'));
+  client.peerDependencies[first] = 'workspace:*';
+  await json('packages/client/package.json', client);
+  await exec('pnpm', ['install', '--lockfile-only', '--offline']);
+  await git('add', '--', 'packages/client/package.json', 'pnpm-lock.yaml');
+  await git('commit', '-qm', 'Fix internal workspace peer');
   await release('--prepare');
+  assert.notEqual(await fs.readFile(buildRecord, 'utf8'), workspace, 'the build must run in the clean export');
   const commit = await git('rev-parse', 'HEAD');
   assert.notEqual(commit, before);
   const next = path.join(temp, 'next');

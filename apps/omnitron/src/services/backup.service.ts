@@ -17,6 +17,7 @@ import { OMNITRON_HOME } from '../config/defaults.js';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { Injectable, Inject, Optional } from '@omnitron-dev/titan/decorators';
 import { LOGGER_SERVICE_TOKEN, type ILoggerModule, type ILogger } from '@omnitron-dev/titan/module/logger';
 import { DAEMON_STATE_STORE_TOKEN, PROJECT_SERVICE_TOKEN } from '../shared/tokens.js';
@@ -331,10 +332,7 @@ export class BackupService {
   private readonly backupDir: string;
   private readonly logger: ILogger;
   private schedules = new Map<string, ScheduleEntry>();
-  /**
-   * True once the legacy .meta.json scan + import has run for this
-   * process. Subsequent list/restore calls skip the directory walk.
-   */
+  /** True only after every discovered metadata sidecar was safely imported. */
   private legacyMigrated = false;
   /** The tail of the scheduled passes, which run one at a time — see `runExclusive`. */
   private passQueue: Promise<unknown> = Promise.resolve();
@@ -435,47 +433,69 @@ export class BackupService {
     }
   }
 
-  /**
-   * Lazy one-shot import of legacy .meta.json side-cars into the
-   * SQLite `backups` table. Idempotent — flag-guarded so multiple
-   * concurrent listBackups() calls don't double-import. After this
-   * runs the .meta.json files are unlinked (the SQLite row is
-   * authoritative).
-   */
+  /** Transfer historical sidecars only after a durable, exact index acknowledgement. */
   private migrateLegacyMetaIfPresent(): void {
     if (this.legacyMigrated) return;
     this.legacyMigrated = true;
     try {
-      const files = fs.readdirSync(this.backupDir).filter((f) => f.endsWith('.meta.json'));
+      const files = fs.readdirSync(this.backupDir).filter(file => file.endsWith('.meta.json'));
       for (const file of files) {
+        const metadataFile = path.join(this.backupDir, file);
         try {
-          const content = fs.readFileSync(path.join(this.backupDir, file), 'utf-8');
+          const original = fs.lstatSync(metadataFile);
+          if (!original.isFile()) throw new Error('Backup metadata is not a regular file');
+          const content = fs.readFileSync(metadataFile, 'utf8');
           const info = JSON.parse(content) as BackupInfo;
+          if (!info || typeof info.id !== 'string' || !info.id || typeof info.database !== 'string' || !info.database ||
+            typeof info.filename !== 'string' || !info.filename || path.basename(info.filename) !== info.filename ||
+            typeof info.createdAt !== 'string' || !Number.isFinite(Date.parse(info.createdAt)) || typeof info.compressed !== 'boolean')
+            throw new Error('Invalid backup metadata record');
           const backupFile = path.join(this.backupDir, info.filename);
-          if (!fs.existsSync(backupFile)) continue;
-          const stats = fs.statSync(backupFile);
-          // upsert isn't available; insert is — but the migration
-          // can run multiple times across crashes, so swallow
-          // duplicate-id errors (better-sqlite3 throws on UNIQUE).
+          const stats = fs.lstatSync(backupFile);
+          if (!stats.isFile()) throw new Error('Backup archive is not a regular file');
+          const expected = {
+            id: info.id, app: info.database, path: backupFile,
+            size_bytes: stats.size, created_at: info.createdAt,
+          };
+          const metadata = { filename: info.filename, compressed: info.compressed };
+          const db = this.store.initSync();
+          if (db.inTransaction) throw new Error('Backup index is busy in another transaction; retry the metadata import');
+          const previous = db.pragma('synchronous', { simple: true });
           try {
-            this.store.insertBackupSync({
-              id: info.id,
-              app: info.database,
-              path: backupFile,
-              size_bytes: stats.size,
-              created_at: info.createdAt,
-              metadata: { filename: info.filename, compressed: info.compressed },
-            });
-          } catch {
-            // Already imported — skip.
-          }
-          try { fs.unlinkSync(path.join(this.backupDir, file)); } catch { /* */ }
+            db.pragma('synchronous = FULL');
+            let existed = false;
+            db.transaction(() => {
+              existed = this.store.selectBackupsSync().some(row => row.id === info.id);
+              if (!existed) this.store.insertBackupSync({ ...expected, metadata });
+              const observed = this.store.selectBackupsSync().find(row => row.id === info.id);
+              if (!observed) throw new Error(`Backup index did not confirm metadata ID '${info.id}'`);
+              const { metadata: storedMetadata, ...identity } = observed;
+              if (!isDeepStrictEqual(identity, expected) || !isDeepStrictEqual(JSON.parse(storedMetadata ?? 'null'), metadata))
+                throw new Error(`Backup metadata ID '${info.id}' conflicts with its existing index record`);
+            }).immediate();
+            if (existed) {
+              // A read-only FULL transaction cannot harden an earlier NORMAL
+              // commit. Confirm that its WAL frames reached the synced database
+              // before discarding the remaining sidecar copy.
+              const checkpoint = db.pragma('wal_checkpoint(FULL)') as Array<{ busy: number; log: number; checkpointed: number }>;
+              const result = checkpoint[0];
+              if (!result || result.busy !== 0 || result.log < 0 || result.checkpointed !== result.log)
+                throw new Error(`Backup index checkpoint was not confirmed for metadata ID '${info.id}'`);
+            }
+          } finally { db.pragma(`synchronous = ${Number(previous)}`); }
+          const current = fs.lstatSync(metadataFile);
+          if (current.dev !== original.dev || current.ino !== original.ino || current.size !== original.size ||
+            current.mtimeMs !== original.mtimeMs || current.ctimeMs !== original.ctimeMs || fs.readFileSync(metadataFile, 'utf8') !== content)
+            throw new Error('Backup metadata changed during import; replacement was retained');
+          fs.unlinkSync(metadataFile);
         } catch (err) {
-          this.logger.warn({ file, err: (err as Error).message }, 'Backup metadata migration: skipping corrupt entry');
+          this.legacyMigrated = false;
+          this.logger.warn({ file, err: reasonOf(err) }, 'Backup metadata migration deferred; source will be retried if present');
         }
       }
-    } catch {
-      // backup dir doesn't exist or unreadable — nothing to migrate.
+    } catch (err) {
+      this.legacyMigrated = false;
+      this.logger.warn({ directory: this.backupDir, err: reasonOf(err) }, 'Could not scan backup metadata; import will be retried');
     }
   }
 

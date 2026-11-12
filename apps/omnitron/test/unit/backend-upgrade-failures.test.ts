@@ -10,11 +10,12 @@ import { DEFAULT_DAEMON_CONFIG, DEFAULT_ECOSYSTEM } from '../../src/config/defau
 import type { BackendArtifact } from '../../src/daemon/backend-candidate.js';
 import type { BackendBootRecord } from '../../src/daemon/backend-handoff-types.js';
 import { writePrivateRecord } from '../../src/daemon/execution-journal.js';
+import { BackendRecoveryJournal } from '../../src/daemon/backend-recovery-journal.js';
 import { resetEnvCache, setEnvOverride } from '../../src/shared/env-config.js';
 
 const mocks = vi.hoisted(() => ({
   daemon: vi.fn(), control: vi.fn(), candidate: vi.fn(), installation: vi.fn(),
-  observe: vi.fn(), replacement: vi.fn(), disconnect: vi.fn(),
+  observe: vi.fn(), replacement: vi.fn(), disconnect: vi.fn(), adoption: vi.fn(),
   killFailure: new Map<string, Error>(),
   children: [] as Array<{ entry: string; child: ChildProcess; kill: ChildProcess['kill'] }>,
 }));
@@ -23,7 +24,7 @@ vi.mock('../../src/daemon/private-control-client.js', async importOriginal => ({
   ...await importOriginal<typeof import('../../src/daemon/private-control-client.js')>(), privateControlClient: mocks.control,
 }));
 vi.mock('../../src/daemon/backend-candidate.js', () => ({
-  checkBackendCandidate: mocks.candidate, assertBackendMigrationsCompatible: vi.fn(), verifyBackendEntry: vi.fn(),
+  checkBackendCandidate: mocks.candidate, assertBackendMigrationsCompatible: vi.fn(), verifyBackendEntry: vi.fn(), checkBackendAdoption: mocks.adoption,
 }));
 vi.mock('../../src/daemon/runtime-installation.js', () => ({ RuntimeInstallation: { open: mocks.installation } }));
 vi.mock('../../src/daemon/backend-child.js', () => ({ supervisesBackendChildren: () => false, observeBackendChild: vi.fn() }));
@@ -44,12 +45,12 @@ vi.mock('node:child_process', async importOriginal => {
   } };
 });
 
-const { replaceBackend } = await import('../../src/daemon/backend-upgrade.js');
+const { replaceBackend, spawnReplacement } = await import('../../src/daemon/backend-upgrade.js');
 const roots: string[] = [];
 const digest = 'c'.repeat(64);
 const owner = { id: 'fixture-owner', pid: 123, startedAt: '2026-01-01T00:00:00.000Z' };
 
-beforeEach(() => { vi.clearAllMocks(); mocks.killFailure.clear(); resetEnvCache(); });
+beforeEach(() => { vi.clearAllMocks(); mocks.adoption.mockReset().mockResolvedValue(undefined); mocks.killFailure.clear(); resetEnvCache(); });
 afterEach(async () => {
   // Only harmless children allocated by this fixture. Retain the original kill
   // function so the injected refusal cannot obstruct fixture teardown.
@@ -104,11 +105,15 @@ async function fixture(restoreReady = true) {
   };
   const checkpoint = path.join(execution, 'handoff-initial.json');
   await writePrivateRecord(checkpoint, record);
-  const complete = vi.fn(), select = vi.fn(), abort = vi.fn();
+  const journal = new BackendRecoveryJournal(execution);
+  journal.publish({ ...record, controller: ticket.from, runtimeHash: previous.runtimeHash, registryDigest: 'a'.repeat(64) });
+  await journal.close();
+  const complete = vi.fn(), select = vi.fn(), abort = vi.fn(), retire = vi.fn(), prepare = vi.fn(async () => ({ file: checkpoint, ticketId: ticket.id }));
+  const beginActivation = vi.fn();
   mocks.candidate.mockImplementation(async directory => artifacts.find(item => item.directory === directory));
   mocks.control.mockResolvedValue({ service: {
-    status: async () => ({ instanceHome: home, entry: previous.entry, pid: record.previousPid }),
-    prepare: async () => ({ file: checkpoint, ticketId: ticket.id }), retire: vi.fn(), abort, complete,
+    status: async () => ({ instanceHome: home, entry: previous.entry, pid: record.previousPid, runtime: { owner, epoch: 1 } }),
+    prepare, retire, abort, complete,
   }, close: vi.fn() });
   mocks.daemon.mockReturnValue({ service: async () => ({ status: async () => ({ handoffSupported: true }),
     controlAddress: async () => ({ socket: path.join(execution, 'control.sock') }) }),
@@ -116,12 +121,39 @@ async function fixture(restoreReady = true) {
   mocks.installation.mockResolvedValue({ exclusive: async (work: () => Promise<unknown>) => work(), activation: () => null,
     install: async (runtimeRoot: string) => artifacts.find(item => item.runtimeRoot === runtimeRoot),
     selection: () => ({ current: previous.runtimeHash, revision: 1 }), select,
-    writeLauncher: vi.fn(), beginActivation: vi.fn(), close: vi.fn() });
+    writeLauncher: vi.fn(), beginActivation, close: vi.fn() });
   mocks.observe.mockResolvedValue({ inventoryDigest: digest });
   mocks.replacement.mockResolvedValue({ ...ticket, id: 'recovery-ticket', from: ticket.to,
     to: { ownerId: owner.id, controllerId: 'restored', epoch: 3 } });
-  return { root, candidate, previous, checkpoint, record, complete, select, abort };
+  return { root, candidate, previous, checkpoint, record, complete, select, abort, prepare, retire, beginActivation };
 }
+
+it('refuses a candidate adoption failure before draining the current backend', async () => {
+  const target = await fixture();
+  mocks.adoption.mockRejectedValueOnce(new Error('Native container specification differs'));
+  await expect(replaceBackend(target.candidate.directory)).rejects.toThrow('Native container specification differs');
+  expect(target.prepare).not.toHaveBeenCalled(); expect(target.retire).not.toHaveBeenCalled();
+  expect(mocks.installation).not.toHaveBeenCalled(); expect(mocks.children).toHaveLength(0);
+});
+
+it('awaits the final receiving fence before creating any candidate child', async () => {
+  const target = await fixture(), spawned = vi.fn(), refused = new Error('Reviewed owner changed during artifact validation');
+  const beforeSpawn = vi.fn(async () => { throw refused; });
+  await expect(spawnReplacement(target.candidate, target.checkpoint, target.record, spawned, beforeSpawn)).rejects.toBe(refused);
+  expect(beforeSpawn).toHaveBeenCalledOnce(); expect(spawned).not.toHaveBeenCalled(); expect(mocks.children).toHaveLength(0);
+});
+
+it('checks the frozen checkpoint again and aborts before retirement when adoption changes during drain', async () => {
+  const target = await fixture();
+  mocks.adoption.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('Native resource changed during drain'));
+  await expect(replaceBackend(target.candidate.directory)).rejects.toThrow('Native resource changed during drain');
+  expect(mocks.adoption).toHaveBeenCalledTimes(2);
+  expect(mocks.adoption.mock.calls[0]![1]).toMatchObject({ controller: target.record.state.ticket.from });
+  expect(mocks.adoption.mock.calls[1]![1]).toMatchObject({ state: { ticket: target.record.state.ticket } });
+  expect(target.abort).toHaveBeenCalledWith({ ticketId: target.record.state.ticket.id });
+  expect(target.retire).not.toHaveBeenCalled(); expect(target.beginActivation).not.toHaveBeenCalled();
+  expect(mocks.children).toHaveLength(0);
+});
 
 async function refused(target: Awaited<ReturnType<typeof fixture>>): Promise<DomainError> {
   const outcome = await replaceBackend(target.candidate.directory).then(() => null, error => error);

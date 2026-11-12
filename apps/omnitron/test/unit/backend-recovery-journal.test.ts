@@ -9,6 +9,23 @@ import { BackendRecoveryJournal, type BackendRecoveryRecord } from '../../src/da
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
 
+it('opens an existing recovery certificate read-only and never initializes a missing journal', async () => {
+  const root = await fs.mkdtemp('/tmp/omni-recovery-'); roots.push(root);
+  await fs.chmod(root, 0o700);
+  expect(() => new BackendRecoveryJournal(root, { readOnly: true })).toThrow();
+  expect(await fs.readdir(root)).toEqual([]);
+  const journal = new BackendRecoveryJournal(root);
+  journal.invalidate('fixture mutation'); await journal.close();
+  const file = path.join(root, 'recovery.db'), before = await fs.readFile(file);
+  const reader = new BackendRecoveryJournal(root, { readOnly: true });
+  try {
+    expect(reader.read()).toMatchObject({ status: 'invalid', reason: 'fixture mutation' });
+    expect(() => reader.invalidate('not allowed')).toThrow('read-only');
+    expect(() => reader.publish({} as BackendRecoveryRecord)).toThrow('read-only');
+  } finally { await reader.close(); }
+  expect(await fs.readFile(file)).toEqual(before);
+});
+
 it('invalidates before a synchronous side effect and refuses mutation when durability fails', () => {
   const state = new RecoveryState();
   let invalidated = false;

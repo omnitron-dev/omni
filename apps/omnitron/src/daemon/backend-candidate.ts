@@ -9,6 +9,9 @@ import { verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
 import { readExecutionCapabilities, type ExecutionCapabilities } from './execution-capabilities.js';
 import type { IDaemonConfig } from '../config/types.js';
 import { compareMigrationChecksumMetadata, type MigrationChecksumChange } from '../database/migration-registry-compatibility.js';
+import type { BackendBootRecord } from './backend-handoff-types.js';
+import type { BackendRecoveryRecord } from './backend-recovery-journal.js';
+import { backendInfrastructureDigest, backendInfrastructureInput } from './backend-infrastructure-preflight.js';
 
 const execute = promisify(execFile);
 const PREFLIGHT_TIMEOUT_MS = 30_000;
@@ -84,6 +87,7 @@ export interface BackendArtifact {
   directory: string; entry: string; entryHash: string; build: BuildStamp;
   runtimeRoot: string; runtimeHash: string; execPath: string;
   schemaExpansionProtocol?: number;
+  infrastructureAdoptionProtocol?: 1;
   executionRequirements?: ExecutionCapabilities;
 }
 
@@ -175,13 +179,51 @@ export async function checkBackendCandidate(directory: string, currentEntry?: st
   const build = readBuildStamp(directory);
   if (!build || build.dirty) throw new Error('Backend activation requires a stamped build from a clean commit');
   const entryHash = createHash('sha256').update(await fs.readFile(entry)).digest('hex');
+  const artifact = { directory, entry, entryHash, build, runtimeRoot, runtimeHash: runtime.sha256, execPath };
+  const answer = await runBackendPreflight(artifact);
+  if (currentEntry) {
+    const currentDist = path.dirname(path.dirname(await fs.realpath(currentEntry)));
+    await assertBackendMigrationsCompatible(currentDist, directory, 'all');
+  }
+  return { ...artifact, executionRequirements: readExecutionCapabilities(answer.executionRequirements),
+    ...(answer.schemaExpansionProtocol === 1 ? { schemaExpansionProtocol: 1 } : {}),
+    ...(answer.infrastructureAdoptionProtocol === 1 ? { infrastructureAdoptionProtocol: 1 } : {}) };
+}
+
+/** The candidate must affirm the exact read-only projection; an older generic check is insufficient. */
+export async function checkBackendAdoption(artifact: BackendArtifact, record: BackendBootRecord | BackendRecoveryRecord): Promise<void> {
+  if (artifact.infrastructureAdoptionProtocol !== 1) throw new DomainError({
+    domainCode: 'BACKEND_INFRASTRUCTURE_PREFLIGHT_UNSUPPORTED', httpStatus: 409,
+    message: 'The candidate does not support infrastructure adoption preflight protocol 1. This check does not drain or retire a backend. Select a capable target before starting an upgrade.',
+    details: { runtimeHash: artifact.runtimeHash, requiredProtocol: 1 },
+  });
+  const input = backendInfrastructureInput(record.state);
+  await runBackendPreflight(artifact, { input, cwd: record.cwd, environment: record.environment });
+}
+
+interface BackendPreflightResponse {
+  protocol?: number; schemaExpansionProtocol?: number; infrastructureAdoptionProtocol?: number;
+  infrastructureAdoption?: { protocol?: number; digest?: string };
+  build?: BuildStamp; executionRequirements?: unknown;
+}
+
+async function runBackendPreflight(artifact: Pick<BackendArtifact, 'entry' | 'execPath' | 'build' | 'runtimeHash'>,
+  adoption?: { input: string; cwd: string; environment: Record<string, string> }): Promise<BackendPreflightResponse> {
   const started = performance.now();
-  const pending = execute(execPath, [entry, '--check-backend'], { timeout: PREFLIGHT_TIMEOUT_MS, maxBuffer: 1024 * 1024 });
+  const pending = execute(artifact.execPath, [artifact.entry, '--check-backend', ...(adoption ? ['--adopt-infrastructure'] : [])], {
+    timeout: PREFLIGHT_TIMEOUT_MS, maxBuffer: 1024 * 1024,
+    ...(adoption && { cwd: adoption.cwd, env: adoption.environment }),
+  });
+  let inputFailure: Error | undefined;
+  if (adoption) {
+    pending.child.stdin!.on('error', error => { inputFailure = error; });
+    pending.child.stdin!.end(adoption.input);
+  }
   let checked: Awaited<typeof pending>;
   try { checked = await pending; }
   catch (cause) {
     const failure = cause as { stderr?: unknown; code?: unknown; signal?: unknown; killed?: unknown } | null;
-    const details = preflightFailure(runtime.sha256, started, pending.child.pid,
+    const details = preflightFailure(artifact.runtimeHash, started, pending.child.pid,
       typeof failure?.stderr === 'string' ? failure.stderr : '',
       typeof failure?.code === 'string' || typeof failure?.code === 'number' ? failure.code : null,
       typeof failure?.signal === 'string' ? failure.signal : null);
@@ -189,22 +231,20 @@ export async function checkBackendCandidate(directory: string, currentEntry?: st
       details.elapsedMs >= PREFLIGHT_TIMEOUT_MS;
     throw new BackendPreflightError(timeout ? 'BACKEND_PREFLIGHT_TIMEOUT' : 'BACKEND_PREFLIGHT_PROCESS_FAILED', details, cause);
   }
-  let answer: { protocol?: number; schemaExpansionProtocol?: number; build?: BuildStamp; executionRequirements?: unknown };
-  let executionRequirements: ExecutionCapabilities;
+  let answer: BackendPreflightResponse;
   try {
+    if (inputFailure) throw inputFailure;
     answer = JSON.parse(checked.stdout.trim()) as typeof answer;
-    executionRequirements = readExecutionCapabilities(answer.executionRequirements);
-    if (answer.protocol !== 1 || answer.build?.commit !== build.commit || answer.build.dirty) throw new Error('Candidate execution protocol or build identity does not match');
+    readExecutionCapabilities(answer.executionRequirements);
+    if (answer.protocol !== 1 || answer.build?.commit !== artifact.build.commit || answer.build.dirty) throw new Error('Candidate execution protocol or build identity does not match');
+    if (adoption && (answer.infrastructureAdoptionProtocol !== 1 || answer.infrastructureAdoption?.protocol !== 1 ||
+        answer.infrastructureAdoption.digest !== backendInfrastructureDigest(adoption.input)))
+      throw new Error('Candidate did not confirm the exact infrastructure adoption snapshot');
   } catch (cause) {
     throw new BackendPreflightError('BACKEND_PREFLIGHT_RESPONSE_INVALID',
-      preflightFailure(runtime.sha256, started, pending.child.pid, checked.stderr, 0, null), cause);
+      preflightFailure(artifact.runtimeHash, started, pending.child.pid, checked.stderr, 0, null), cause);
   }
-  if (currentEntry) {
-    const currentDist = path.dirname(path.dirname(await fs.realpath(currentEntry)));
-    await assertBackendMigrationsCompatible(currentDist, directory, 'all');
-  }
-  return { directory, entry, entryHash, build, runtimeRoot, runtimeHash: runtime.sha256, execPath, executionRequirements,
-    ...(answer.schemaExpansionProtocol === 1 ? { schemaExpansionProtocol: 1 } : {}) };
+  return answer;
 }
 
 export async function verifyBackendEntry(artifact: BackendArtifact): Promise<void> {

@@ -4,6 +4,7 @@ import { createNullLogger } from '@omnitron-dev/titan/module/logger';
 import type { ControllerGrant } from '@omnitron-dev/titan-pm';
 import type { BackendBootRecord, BackendHandoffState } from './backend-handoff-types.js';
 import { DaemonStateStore } from './daemon-state-store.service.js';
+import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 
 export interface BackendRecoveryRecord extends Omit<BackendBootRecord, 'state'> {
   state: Omit<BackendHandoffState, 'ticket'>;
@@ -18,9 +19,10 @@ export type BackendRecoveryState =
 
 /** Small, private FULL-synchronous journal, using the daemon's SQLite store. */
 export class BackendRecoveryJournal {
-  private readonly store: DaemonStateStore;
+  private readonly store: DaemonStateStore | null;
+  private readonly inspection: import('better-sqlite3').Database | null;
   private invalid = false;
-  constructor(readonly directory: string) {
+  constructor(readonly directory: string, options: { readOnly?: boolean } = {}) {
     const stat = fs.lstatSync(directory);
     if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 ||
         (process.getuid && stat.uid !== process.getuid())) throw new Error('Recovery directory must be private and owned by this user');
@@ -32,11 +34,13 @@ export class BackendRecoveryJournal {
             (process.getuid && entry.uid !== process.getuid())) throw new Error('Recovery state must be a private regular file');
       } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     }
-    this.store = new DaemonStateStore(createNullLogger(), file);
-    this.store.initSync().pragma('synchronous = FULL');
+    this.inspection = options.readOnly ? openSqliteDatabase(file, { readonly: true, fileMustExist: true }) : null;
+    this.store = options.readOnly ? null : new DaemonStateStore(createNullLogger(), file);
+    this.store?.initSync().pragma('synchronous = FULL');
   }
 
   invalidate(reason: string): void {
+    if (!this.store) throw new Error('Recovery journal is read-only');
     // One durable invalidation suffices until another snapshot is published.
     if (this.invalid) return;
     const prior = this.read();
@@ -46,12 +50,13 @@ export class BackendRecoveryJournal {
   }
 
   publish(record: BackendRecoveryRecord): void {
+    if (!this.store) throw new Error('Recovery journal is read-only');
     this.store.kvSetSync('backend.recovery', { status: 'ready', record, at: new Date().toISOString() });
     this.invalid = false;
   }
 
   read(): BackendRecoveryState | null {
-    const row = this.store.initSync().prepare('SELECT value FROM state_kv WHERE key = ?').get('backend.recovery') as { value: string } | undefined;
+    const row = (this.inspection ?? this.store!.initSync()).prepare('SELECT value FROM state_kv WHERE key = ?').get('backend.recovery') as { value: string } | undefined;
     if (!row) return null;
     const state = JSON.parse(row.value) as BackendRecoveryState;
     if (!Number.isFinite(Date.parse(state.at))) throw new Error('Invalid recovery journal timestamp');
@@ -67,5 +72,5 @@ export class BackendRecoveryJournal {
     return state;
   }
 
-  async close(): Promise<void> { await this.store.dispose(); }
+  async close(): Promise<void> { this.inspection?.close(); await this.store?.dispose(); }
 }

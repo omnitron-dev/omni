@@ -9,7 +9,7 @@ import { createDaemonClient } from './daemon-client.js';
 import type { BackendRpcService } from './backend.rpc-service.js';
 import type { BackendControlService } from './backend-control.js';
 import { privateControlClient, withControlDeadline } from './private-control-client.js';
-import { assertBackendMigrationsCompatible, checkBackendCandidate, verifyBackendEntry, type BackendArtifact } from './backend-candidate.js';
+import { assertBackendMigrationsCompatible, checkBackendAdoption, checkBackendCandidate, verifyBackendEntry, type BackendArtifact } from './backend-candidate.js';
 import { readBackendBootRecord, checkpointInstanceHome, type BackendBootRecord } from './backend-handoff-types.js';
 import { writePrivateRecord } from './execution-journal.js';
 import { ExecutionClient } from './execution-client.js';
@@ -24,6 +24,7 @@ import type { BackendSupervisorService } from './backend-supervisor.js';
 import type { ExecutionHostService } from './execution-host.js';
 import { assertExecutionCapabilities } from './execution-capabilities.js';
 import { describeError } from '../shared/describe-error.js';
+import { BackendRecoveryJournal } from './backend-recovery-journal.js';
 
 export interface BackendReplacementResult {
   pid: number;
@@ -65,11 +66,12 @@ class BackendReplacementError extends DomainError {
 }
 
 export async function spawnReplacement(artifact: BackendArtifact, file: string, record: BackendBootRecord,
-  onSpawn: (child: ChildProcess) => void): Promise<BackendReplacementResult> {
+  onSpawn: (child: ChildProcess) => void, beforeSpawn?: () => Promise<void>): Promise<BackendReplacementResult> {
   await verifyBackendEntry(artifact);
   const log = await fs.open(path.join(executionDirectory(record.daemonConfig), `backend-${record.state.ticket.to.controllerId}.log`), 'a', 0o600);
   let child: ChildProcess;
   try {
+    await beforeSpawn?.();
     // Resolve tsx from the candidate installation, not the operator's cwd.
     child = fork(artifact.entry, ['--backend-handoff', file], {
       cwd: path.dirname(artifact.directory), env: record.environment, detached: !supervisesBackendChildren(),
@@ -212,12 +214,31 @@ export async function replaceBackend(directory: string, options: {
       } finally { await owner.close(); }
     };
     await validateOwner();
+    // This is a read-only certificate, not a request to drain the current
+    // controller. The candidate checks its own adoption logic before that
+    // controller gives up listeners or infrastructure monitoring.
+    const journal = new BackendRecoveryJournal(path.dirname(address.socket), { readOnly: true });
+    try {
+      const certificate = journal.read();
+      if (previous.retired || previous.ticketId || certificate?.status !== 'ready' ||
+          certificate.record.previousPid !== previous.pid || certificate.record.previousEntry !== previous.entry ||
+          checkpointInstanceHome(certificate.record) !== path.resolve(previous.instanceHome) ||
+          certificate.record.controller.ownerId !== previous.runtime?.owner?.id ||
+          certificate.record.controller.epoch !== previous.runtime?.epoch) {
+        throw new Error('Wait for a current recovery certificate for this backend before checking infrastructure adoption');
+      }
+      await checkBackendAdoption(artifact, certificate.record);
+    } finally { await journal.close(); }
     if (managed && !supervisesBackendChildren()) {
       const compatibility = options.schemaPlan ? null : await assertBackendMigrationsCompatible(
         path.dirname(path.dirname(previous.entry)), artifact.directory, previous.schemaScope === 'node' ? 'node' : 'all');
       const supervisor = await privateControlClient<BackendSupervisorService>(managedSupervisorSocket(managed), 'OmnitronSupervisor', 600_000);
       try {
-        if (compatibility?.kind === 'checksum-metadata' && (await supervisor.service.status()).migrationChecksumMetadata !== 1) {
+        const guardian = await supervisor.service.status();
+        if (guardian.infrastructureAdoptionPreflight !== 1) {
+          throw new Error('The running guardian cannot verify candidate infrastructure adoption before retirement. Prepare a capable backend guardian before retrying. No backend was retired.');
+        }
+        if (compatibility?.kind === 'checksum-metadata' && guardian.migrationChecksumMetadata !== 1) {
           throw new Error('Only migration checksum metadata changed, but the running guardian cannot verify that transition. Prepare and apply a backend guardian transition with this candidate, then retry backend upgrade. No backend or application was stopped.');
         }
         return await supervisor.service.upgrade({ directory, checkOnly: options.checkOnly === true,
@@ -267,6 +288,9 @@ export async function replaceBackend(directory: string, options: {
         record = await readBackendBootRecord(prepared.file);
         if (fence && (record.previousPid !== fence.backendPid || record.state.ticket.ownerId !== fence.ownerId ||
             record.state.executionInventory !== fence.appsDigest)) throw Error('Prepared application inventory differs from the kernel rollout plan');
+        // The certificate may change while requests drain. Check the exact
+        // frozen checkpoint again while the existing abort path is available.
+        await checkBackendAdoption(installedCandidate, record);
         record.previousEntry = installedRollback.entry;
         await writePrivateRecord(prepared.file, record);
         await verifyBackendEntry(installedCandidate); await verifyBackendEntry(installedRollback);
@@ -391,7 +415,7 @@ export async function recoverBackend(file: string): Promise<BackendReplacementRe
   }); } finally { await installation.close(); }
 }
 
-async function completeRetiredBackend(record: BackendBootRecord): Promise<void> {
+export async function completeRetiredBackend(record: BackendBootRecord): Promise<void> {
   if (!PidManager.isProcessAlive(record.previousPid)) return;
   const socket = path.join(executionDirectory(record.daemonConfig), `c-${record.state.ticket.from.controllerId}.sock`);
   const control = await privateControlClient<BackendControlService>(socket, 'OmnitronBackendControl');

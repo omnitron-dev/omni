@@ -7,7 +7,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { transform } from 'esbuild';
 import { afterEach, expect, it, vi } from 'vitest';
-import { BackendPreflightError, checkBackendCandidate } from '../../src/daemon/backend-candidate.js';
+import { BackendPreflightError, checkBackendAdoption, checkBackendCandidate } from '../../src/daemon/backend-candidate.js';
+import type { BackendRecoveryRecord } from '../../src/daemon/backend-recovery-journal.js';
 import { runtimeArtifactDigest } from '../../src/shared/runtime-artifact.js';
 import { resetEnvCache, setEnvOverride } from '../../src/shared/env-config.js';
 
@@ -84,9 +85,50 @@ it('does not add preflight records to a normal daemon entry', async () => {
   expect(await fs.readdir(candidate.home)).toEqual([]);
 });
 
+it('keeps the startup failure journal for an ordinary daemon failure', async () => {
+  const candidate = await fixture('throw new Error("ordinary startup failure");');
+  await expect(execute(candidate.node, [candidate.entry], { timeout: 5000 })).rejects.toMatchObject({ code: 1 });
+  const directory = path.join(candidate.home, 'data/startup-failures');
+  const files = await fs.readdir(directory);
+  expect(files).toHaveLength(1);
+  expect(JSON.parse(await fs.readFile(path.join(directory, files[0]!), 'utf8'))).toMatchObject({
+    component: 'daemon', event: 'runtime.startup_failed', err: { message: 'ordinary startup failure' },
+  });
+});
+
 it('accepts a valid response independently of optional diagnostic records', async () => {
   const candidate = await fixture('', `process.stdout.write(${JSON.stringify(JSON.stringify(response) + '\n')});`);
   expect(await checkBackendCandidate(candidate.dist)).toMatchObject({ runtimeHash: candidate.hash, build: stamp });
+});
+
+it('refuses an older target without claiming its generic import check verifies adoption', async () => {
+  const candidate = await fixture(`process.stdout.write(${JSON.stringify(JSON.stringify(response) + '\n')});`);
+  const artifact = await checkBackendCandidate(candidate.dist);
+  await expect(checkBackendAdoption(artifact, {} as BackendRecoveryRecord)).rejects.toMatchObject({
+    domainCode: 'BACKEND_INFRASTRUCTURE_PREFLIGHT_UNSUPPORTED', details: { runtimeHash: candidate.hash, requiredProtocol: 1 },
+  });
+  expect(await fs.readdir(candidate.home)).toEqual([]);
+});
+
+it.each(['matching', 'wrong-digest', 'missing'])('requires a real child response bound to the exact adoption input (%s)', async result => {
+  const candidate = await fixture(`
+    import {createHash} from 'node:crypto';
+    const answer=${JSON.stringify({ ...response, infrastructureAdoptionProtocol: 1 })};
+    if(process.argv[3]==='--adopt-infrastructure') {
+      let input=''; for await(const chunk of process.stdin) input+=chunk;
+      if(process.env.FIXTURE_MARKER!=='record-environment' || process.cwd()!==process.env.OMNITRON_HOME) throw Error('Wrong adoption execution context');
+      ${result === 'missing' ? '' : `answer.infrastructureAdoption={protocol:1,digest:${result === 'matching' ? "createHash('sha256').update(input).digest('hex')" : "'0'.repeat(64)"}};`}
+    }
+    process.stdout.write(JSON.stringify(answer)+'\\n');
+  `);
+  const artifact = await checkBackendCandidate(candidate.dist);
+  const record = { state: { infrastructure: null, projects: { infrastructure: [] } }, cwd: candidate.home,
+    environment: { OMNITRON_HOME: candidate.home, FIXTURE_MARKER: 'record-environment' } } as unknown as BackendRecoveryRecord;
+  const checked = checkBackendAdoption(artifact, record);
+  if (result === 'matching') await expect(checked).resolves.toBeUndefined();
+  else await expect(checked).rejects.toMatchObject({ domainCode: 'BACKEND_PREFLIGHT_RESPONSE_INVALID',
+    cause: { message: 'Candidate did not confirm the exact infrastructure adoption snapshot' } });
+  expect(await fs.readdir(candidate.home)).toEqual([]);
 });
 
 it('retains import failure, verified identity and the phase in a machine-readable error', async () => {
@@ -104,6 +146,7 @@ it('retains import failure, verified identity and the phase in a machine-readabl
   const { serializer } = await import('@omnitron-dev/titan/netron');
   expect(serializer.decode(serializer.encode(error))).toMatchObject({ code: error.code,
     domainCode: error.domainCode, details: error.details, cause: { message: (error.cause as Error).message } });
+  expect(await fs.readdir(candidate.home)).toEqual([]);
 });
 
 it('ignores malformed, oversized or foreign-PID progress records', async () => {

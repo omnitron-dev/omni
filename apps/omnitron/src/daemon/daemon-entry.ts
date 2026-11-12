@@ -15,4 +15,4 @@ await guardEntry('daemon', async () => {
   progress('loading-runtime');
   await import('./daemon-main.js');
   progress('runtime-loaded');
-});
+}, { persistFailure: !preflight });

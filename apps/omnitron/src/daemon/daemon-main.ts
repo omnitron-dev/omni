@@ -20,7 +20,15 @@ import { REQUIRED_OWNER_CAPABILITIES } from './execution-capabilities.js';
 async function main() {
   // Preflight must never open databases, listeners or start applications.
   if (process.argv[2] === '--check-backend') {
+    if (process.argv.length > 3 && (process.argv.length !== 4 || process.argv[3] !== '--adopt-infrastructure'))
+      throw new Error('Unsupported backend preflight mode');
+    const infrastructureAdoption = process.argv[3] === '--adopt-infrastructure'
+      ? await (async () => {
+        const { readBackendInfrastructureInput, validateBackendInfrastructureInput } = await import('./backend-infrastructure-preflight.js');
+        return validateBackendInfrastructureInput(await readBackendInfrastructureInput(process.stdin));
+      })() : undefined;
     process.stdout.write(JSON.stringify({ protocol: 1, schemaExpansionProtocol: 1,
+      infrastructureAdoptionProtocol: 1, ...(infrastructureAdoption && { infrastructureAdoption }),
       executionRequirements: REQUIRED_OWNER_CAPABILITIES, build: OWN_BUILD }) + '\n');
     return;
   }

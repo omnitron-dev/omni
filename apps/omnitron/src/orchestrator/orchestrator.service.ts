@@ -105,6 +105,14 @@ function qualifyChildName(appName: string, childName: string): string {
     : `${appName}/${childName}`;
 }
 
+/** Historical records remain readable, but an unsupported multiplier must not
+ * change only the reported instance count while still launching one app. */
+function assertApplicationInstances(entry: IEcosystemAppEntry): void {
+  if ('instances' in entry && entry.instances !== undefined && entry.instances !== 1)
+    throw Errors.badRequest(`Application '${entry.name}' does not support app-level instances. ` +
+      'Declare process.instances in defineSystem(), then use omnitron scale <app> <count> --process <pool> for runtime resizing.');
+}
+
 const TOPOLOGY_EXPOSE_TIMEOUT_MS = 30_000;
 const TOPOLOGY_EXPOSE_POLL_MS = 250;
 import { ServiceRouter } from './service-router.js';
@@ -658,6 +666,7 @@ export class OrchestratorService extends EventEmitter {
   }
 
   async startAll(config: IEcosystemConfig): Promise<void> {
+    for (const entry of config.apps) if (entry.enabled !== false) assertApplicationInstances(entry);
     this.config = config;
 
     // Cold-start orphan reap + periodic janitor arming. Idempotent —
@@ -840,6 +849,7 @@ export class OrchestratorService extends EventEmitter {
   }
 
   async startApp(entry: IEcosystemAppEntry, config?: IEcosystemConfig): Promise<AppHandle> {
+    assertApplicationInstances(entry);
     const stopGeneration = this.stopGeneration;
     if (this.stoppingApps) throw new Error('Application stop is in progress; new starts are not admitted');
     // Defensive auto-namespacing — promotes a bare entry.name to the
@@ -890,6 +900,7 @@ export class OrchestratorService extends EventEmitter {
   }
 
   private async startAppInternal(entry: IEcosystemAppEntry, config?: IEcosystemConfig, installed?: InstalledAppBinding): Promise<AppHandle> {
+    assertApplicationInstances(entry);
     if (!installed) this.assertAppStartAllowed(entry.name);
     else this.assertApplicationFence(entry.name);
     // Persist ecosystem config for restartApp — stack mode passes config per-app,
@@ -1191,6 +1202,7 @@ export class OrchestratorService extends EventEmitter {
           executionScopeKey({ ...plan, application: entry.name.slice(key.length + 1) }) !== entry.name || target.has(entry.name)) {
         throw new Error('Stack reconciliation requires unique canonical applications inside its scope');
       }
+      assertApplicationInstances(entry);
       target.set(entry.name, entry);
     }
     const fingerprint = topologyRevision({ kind: 'reconcile', ...input });
@@ -1284,6 +1296,7 @@ export class OrchestratorService extends EventEmitter {
 
   private retainedApp(name: string, generation: string) {
     const handle = this.handles.get(name);
+    if (handle) assertApplicationInstances(handle.entry);
     if (!handle || handle.generation !== generation || handle.status !== 'stopped' || handle.pid !== null ||
         handle.childProcess || handle.supervisor || handle.topology || handle.topologyPools.size) {
       throw new Error(`Application '${name}' is not the retained stopped generation`);
@@ -1477,6 +1490,8 @@ export class OrchestratorService extends EventEmitter {
   }
 
   assertAppStartAllowed(name: string): void {
+    const entry = this.handles.get(name)?.entry;
+    if (entry) assertApplicationInstances(entry);
     const parts = name.split('/');
     // Stack stops own the whole prefix, including retained legacy nested names.
     // Admission must enforce the same boundary before recovery or watch can restart them.
@@ -1635,6 +1650,7 @@ export class OrchestratorService extends EventEmitter {
    * here. See `AppHandle.redefine`.
    */
   async redefineApp(name: string, entry: IEcosystemAppEntry): Promise<boolean> {
+    assertApplicationInstances(entry);
     const handle = this.handles.get(this.resolveAppName(name) ?? name);
     if (!handle) return false;
     const [project, stack, app] = handle.name.split('/');
@@ -2790,7 +2806,6 @@ export class OrchestratorService extends EventEmitter {
 
     // Set supervisor on handle BEFORE start so attachLogCapture can access it
     handle.supervisor = supervisor;
-    handle.instanceCount = entry.instances ?? 1;
     handle.topologyProcesses = topology;
 
     this.wireSupervisorEvents(entry, handle, supervisor);
@@ -2862,16 +2877,8 @@ export class OrchestratorService extends EventEmitter {
   }
 
   /**
-   * Launch single-process bootstrap app (no topology — original behavior).
-   */
-  /**
-   * A topology child's start: the app is online when the start
-   * completes it, and not before (`AppHandle.childStarted`).
-   *
-   * Each path had its own copy of this handler, and both marked the app
-   * online — with that child's pid — on every child's start. `app:online`
-   * went out once per child with it: three STARTED events for one boot of a
-   * three-process app, the first two about an app still coming up.
+   * A topology becomes online only when every declared supervised child is
+   * ready and topology setup has finished. The selected server supplies its PID.
    */
   private onChildStarted(
     entry: IEcosystemAppEntry,
@@ -3457,6 +3464,7 @@ export class OrchestratorService extends EventEmitter {
       void this.lifecycleQueue.enqueue(entry.name, 'crash-restart', async () => {
         // A stop can arrive after the timer fires but before this job runs.
         if (!eligible()) return;
+        assertApplicationInstances(entry);
         if (exhausted) window.clear();
         window.record(policy.window);
         handle.status = 'stopped';

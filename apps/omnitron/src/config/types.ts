@@ -652,8 +652,6 @@ export interface IEcosystemAppEntry {
   critical?: boolean;
   /** Start after these apps are healthy */
   dependsOn?: string[];
-  /** Override instances for this app */
-  instances?: number;
   /** Per-app environment variables */
   env?: Record<string, string>;
   /**

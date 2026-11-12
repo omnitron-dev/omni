@@ -5,7 +5,7 @@ import { useTheme } from '@mui/material/styles';
 import { runExclusive } from '@omnitron-dev/common';
 import type { ResearchLabels } from './document.js';
 import { researchLimits } from './parse.js';
-import { diagramImage } from './diagram-image.js';
+import { diagramImage, diagramLabelPolicy } from './diagram-image.js';
 export function diagramSourceAllowed(source: string, engine: string) {
   return (
     engine === 'mermaid' && source.length <= researchLimits.block && !/^\s*---/m.test(source) && !/%%\s*\{/.test(source)
@@ -48,7 +48,8 @@ export function ResearchDiagram({
           mermaid.initialize({
             startOnLoad: false,
             securityLevel: 'strict',
-            htmlLabels: false,
+            htmlLabels: true,
+            dompurifyConfig: diagramLabelPolicy,
             maxTextSize: researchLimits.block,
             maxEdges: 256,
             suppressErrorRendering: true,
@@ -67,13 +68,14 @@ export function ResearchDiagram({
               fontFamily: 'system-ui, sans-serif',
               fontSize: '16px',
             },
-            flowchart: { htmlLabels: false },
+            flowchart: { htmlLabels: true },
             secure: [
               'securityLevel',
               'startOnLoad',
               'maxTextSize',
               'maxEdges',
               'htmlLabels',
+              'dompurifyConfig',
               'theme',
               'look',
               'fontFamily',

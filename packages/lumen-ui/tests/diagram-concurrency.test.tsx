@@ -62,7 +62,10 @@ describe('shared Mermaid configuration ownership', () => {
     engine.renders[0].release();
     await lumen;
     await vi.waitFor(() => expect(engine.render).toHaveBeenCalledTimes(2));
-    expect(engine.renders[1].configuration).toMatchObject({ theme: 'base', htmlLabels: false });
+    expect(engine.renders[1].configuration).toMatchObject({
+      theme: 'base', securityLevel: 'strict', htmlLabels: true,
+      dompurifyConfig: { ALLOWED_ATTR: [], ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false },
+    });
     await act(async () => engine.renders[1].release());
     expect(container.querySelector('img')?.getAttribute('alt')).toBe('Evidence');
   });

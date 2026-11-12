@@ -3,6 +3,124 @@ import { createBrowserTest } from './browser-fixture.js';
 
 const test = createBrowserTest('diagrams.html');
 
+async function imageSvg(image) {
+  return image.evaluate(element => {
+    const source = decodeURIComponent(element.src.slice(element.src.indexOf(',') + 1));
+    const svg = new DOMParser().parseFromString(source, 'image/svg+xml');
+    return {
+      source, text: svg.documentElement.textContent,
+      activeElements: svg.querySelectorAll('script,iframe,img,image,a,object,embed,input,form').length,
+      eventAttributes: [...svg.querySelectorAll('*')].flatMap(node => node.getAttributeNames().filter(name => /^on/i.test(name))),
+      labels: [...svg.querySelectorAll('foreignObject')].map(label => ({
+        width: Number.parseFloat(label.getAttribute('width')), height: Number.parseFloat(label.getAttribute('height')),
+        text: label.textContent, namespaces: [...label.querySelectorAll('*')].map(child => child.namespaceURI),
+      })),
+    };
+  });
+}
+
+test('Prism SVG images draw measured entity labels and text formatting in both themes', async ({ page, url }) => {
+  await page.goto(url + '?consumer=prism&example=entities');
+  const image = page.locator('.prism-research__diagram-image');
+  for (const mode of ['light', 'dark']) {
+    await expect(image).toBeVisible();
+    await image.evaluate(element => element.decode());
+    await expect(image).toHaveAttribute('alt', /A "quoted" contract.*x < y & y > 0/);
+    const svg = await imageSvg(image);
+    expect(svg.labels.length).toBeGreaterThanOrEqual(2);
+    for (const label of svg.labels) {
+      expect(label.width).toBeGreaterThan(20); expect(label.height).toBeGreaterThan(10);
+      expect(label.namespaces.every(namespace => namespace === 'http://www.w3.org/1999/xhtml')).toBe(true);
+    }
+    expect(await image.evaluate(element => element.naturalWidth)).toBeGreaterThan(100);
+    const visible = await image.screenshot({ path: test.info().outputPath(`prism-labels-${mode}.png`), animations: 'disabled' });
+    // A real image-rendering oracle: remove text only, retaining every measured
+    // viewport, wrapper and node. A blank foreignObject implementation would
+    // produce identical screenshots despite correct source/alt attributes.
+    const original = await image.getAttribute('src');
+    await image.evaluate(element => {
+      const svg = new DOMParser().parseFromString(decodeURIComponent(element.src.slice(element.src.indexOf(',') + 1)), 'image/svg+xml');
+      for (const label of svg.querySelectorAll('foreignObject')) {
+        const walker = svg.createTreeWalker(label, NodeFilter.SHOW_TEXT);
+        const nodes = []; while (walker.nextNode()) nodes.push(walker.currentNode);
+        for (const node of nodes) node.textContent = '';
+      }
+      element.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svg));
+      return element.decode();
+    });
+    const blank = await image.screenshot({ animations: 'disabled' });
+    const changedPixels = await page.evaluate(async pictures => {
+      const pixels = [];
+      for (const base64 of pictures) {
+        const picture = new Image(); picture.src = 'data:image/png;base64,' + base64; await picture.decode();
+        const canvas = document.createElement('canvas'); canvas.width = picture.width; canvas.height = picture.height;
+        const context = canvas.getContext('2d'); context.drawImage(picture, 0, 0);
+        pixels.push(context.getImageData(0, 0, canvas.width, canvas.height).data);
+      }
+      if (pixels[0].length !== pixels[1].length) throw new Error('Image geometry changed');
+      let count = 0;
+      for (let i = 0; i < pixels[0].length; i += 4) if (pixels[0].slice(i, i + 4).some((value, j) => value !== pixels[1][i + j])) count++;
+      return count;
+    }, [visible.toString('base64'), blank.toString('base64')]);
+    expect(changedPixels).toBeGreaterThan(100);
+    await image.evaluate((element, source) => { element.src = source; }, original);
+    await page.getByRole('button', { name: 'Change theme' }).click();
+    await expect(image).not.toHaveAttribute('src', original);
+  }
+  await page.goto(url + '?consumer=prism&example=formatting');
+  await expect(image).toBeVisible();
+  const formatted = await imageSvg(image);
+  expect(formatted.source).toContain('<strong>bold</strong>');
+  expect(formatted.source).toContain('<em>Formatted</em>');
+  expect(formatted.labels.some(label => label.height >= 40)).toBe(true);
+  await image.screenshot({ path: test.info().outputPath('prism-formatting.png'), animations: 'disabled' });
+});
+
+test('Prism image labels cannot request resources, act on clicks or style the host', async ({ page, url }) => {
+  let dialogs = 0; let canary = 0;
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('dialog', async dialog => { dialogs++; await dialog.dismiss(); });
+  await page.route('**/canary', route => { canary++; return route.fulfill({ body: 'private' }); });
+  await page.goto(url + '?consumer=prism&example=labelAttack');
+  const image = page.locator('.prism-research__diagram-image');
+  await expect(image).toBeVisible(); await image.evaluate(element => element.decode()); await image.click();
+  const svg = await imageSvg(image);
+  expect(svg.activeElements).toBe(0);
+  expect(svg.eventAttributes).toEqual([]);
+  expect(svg.source).not.toMatch(/position:\s*fixed|url\(\/canary/);
+  expect(svg.labels.map(label => label.text).join(' ')).toContain('Safe text');
+  expect(svg.labels.map(label => label.text).join(' ')).toContain('<img src=/canary onerror=alert(2)>Encoded');
+  expect(await page.locator('.prism-research').locator('svg,foreignObject').count()).toBe(0);
+  expect(await page.locator('body').evaluate(element => getComputedStyle(element).opacity)).toBe('1');
+  expect(dialogs).toBe(0); expect(canary).toBe(0); expect(errors).toEqual([]);
+  await page.getByRole('button', { name: 'Change theme' }).click();
+  await expect(image).not.toHaveAttribute('src', 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg.source));
+  await image.evaluate(element => element.decode());
+  expect(canary).toBe(0); expect(dialogs).toBe(0);
+});
+
+test('Prism preserves sequence, class and state labels in isolated images in both themes', async ({ page, url }) => {
+  const image = page.locator('.prism-research__diagram-image');
+  for (const [example, labels] of Object.entries({
+    sequence: ['authenticated', 'denied', 'retry', 'Complete contract'],
+    classes: ['Document', 'Revision', 'title', 'save()', 'history'],
+    states: ['Pending', 'Running', 'Finished', 'Failed', 'accepted', 'complete'],
+  })) {
+    await page.goto(url + '?consumer=prism&example=' + example);
+    for (const mode of ['light', 'dark']) {
+      await expect(image).toBeVisible(); await image.evaluate(element => element.decode());
+      const svg = await imageSvg(image);
+      for (const label of labels) expect(svg.text).toContain(label);
+      expect(svg.activeElements).toBe(0); expect(svg.eventAttributes).toEqual([]);
+      await image.screenshot({ path: test.info().outputPath(`prism-${example}-${mode}.png`), animations: 'disabled' });
+      const current = await image.getAttribute('src');
+      await page.getByRole('button', { name: 'Change theme' }).click();
+      await expect(image).not.toHaveAttribute('src', current);
+    }
+  }
+});
+
 test('the ordinary diagram-only site build ships its bootstrap, renderer and Pagefind WASM', async ({ page, siteUrl }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));

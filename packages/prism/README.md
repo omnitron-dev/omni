@@ -41,7 +41,7 @@ Public component subpaths provide lazy-loading boundaries. Import the documented
 
 `@omnitron-dev/prism/components/research` exports `ResearchDocument`, `parseResearchMarkdown` and validated widget definitions. Import `@omnitron-dev/prism/components/research/styles.css` once. The renderer supports GFM, heading anchors, admonitions, tabs, KaTeX and strict Mermaid diagrams.
 
-Documents cannot import code or grant permissions. Host applications register widgets and validate their versioned props. Raw HTML and unsupported constructs remain inert with diagnostics. Mermaid output is sanitized and displayed as an isolated SVG image; source-size limits do not impose a browser execution-time limit.
+Documents cannot import code or grant permissions. Host applications register widgets and validate their versioned props. Raw HTML and unsupported constructs remain inert with diagnostics. Mermaid output is sanitized and displayed as an isolated SVG image. Labels admit text formatting before measurement; measured XHTML wrappers retain a limited set of text-layout styles, without links, resources, events or arbitrary CSS. Quoted labels and Mermaid entity codes therefore render as text without injecting SVG into the host document. Source-size limits do not impose a browser execution-time limit.
 
 `@omnitron-dev/prism/components/research-editor` accepts the original document through `initialSource`. Save the resulting snapshot's `getSource()` through the host's revision and authorization checks. An unchanged snapshot preserves the original source bytes. A projected or cleaned Markdown export is not a lossless replacement for that source.
 

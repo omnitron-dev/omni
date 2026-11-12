@@ -17,3 +17,11 @@ A[CLI input] --> B[Browser output]
 - `empty/` — reserved directory
 - `package.json` — dependencies
 :::
+
+```typescript
+const document = { title: 'A deliberately long code line for native horizontal scrolling', source: 'ordinary CLI build' };
+```
+
+| Source | Result |
+| --- | --- |
+| Ordinary Markdown table | Native overflow retains its scrollbar policy |

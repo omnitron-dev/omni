@@ -68,3 +68,63 @@ test('filetree content is present in the built Pagefind index', async ({ page, c
   });
   expect(results).toEqual(['/docs']);
 });
+
+const scrollports = '.lumen-code-block,.lumen-doc table,.lumen-file-tree,.lumen-diagram-content';
+const transparentThumb = 'rgba(0, 0, 0, 0) rgba(0, 0, 0, 0)';
+
+async function prepareScrollports(page, url) {
+  await page.goto(url);
+  await expect(page.locator('.lumen-diagram-content svg')).toBeVisible();
+  // Constrain ordinary emitted blocks, without supplying any scrollbar rules.
+  // The file tree normally wraps, but consumers can bound a long tree's height.
+  await page.locator(scrollports).evaluateAll(elements => {
+    for (const element of elements) {
+      element.style.cssText += ';display:block;max-width:200px;max-height:100px;overflow:auto';
+    }
+  });
+}
+
+test('internal scrollbars reveal on hover and keyboard focus without resizing their scrollports', async ({ page, cliSiteUrl }) => {
+  await prepareScrollports(page, cliSiteUrl);
+  for (const mode of ['light', 'dark']) {
+    await page.locator('.lumen-shell').evaluateAll((elements, value) => {
+      for (const element of elements) element.setAttribute('data-theme', value);
+    }, mode);
+    for (const block of await page.locator(scrollports).all()) {
+      await block.scrollIntoViewIfNeeded();
+      await page.mouse.move(0, 0);
+      await expect(block).toHaveCSS('scrollbar-color', transparentThumb);
+      await expect(block).toHaveCSS('scrollbar-width', 'thin');
+      const before = await block.evaluate(element => [element.clientWidth, element.clientHeight]);
+      await block.hover();
+      await expect(block).not.toHaveCSS('scrollbar-color', transparentThumb);
+      expect(await block.evaluate(element => [element.clientWidth, element.clientHeight])).toEqual(before);
+    }
+    const tree = page.locator('.lumen-file-tree');
+    await page.mouse.move(0, 0);
+    await tree.locator('summary').first().focus();
+    await expect(tree).not.toHaveCSS('scrollbar-color', transparentThumb);
+    await page.keyboard.press('Tab');
+    await expect(tree.locator('summary').nth(1)).toBeFocused();
+    await page.locator('button').first().focus();
+    await expect(tree).toHaveCSS('scrollbar-color', transparentThumb);
+  }
+});
+
+test('touch and forced-colors keep visible native scrollbar indications', async ({ browser, cliSiteUrl }) => {
+  const context = await browser.newContext({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+  try {
+    const page = await context.newPage();
+    await prepareScrollports(page, cliSiteUrl);
+    expect(await page.evaluate(() => matchMedia('(hover: hover) and (pointer: fine)').matches)).toBe(false);
+    for (const block of await page.locator(scrollports).all()) {
+      await expect(block).toHaveCSS('scrollbar-width', 'thin');
+      await expect(block).not.toHaveCSS('scrollbar-color', transparentThumb);
+    }
+    await page.emulateMedia({ forcedColors: 'active' });
+    for (const block of await page.locator(scrollports).all()) {
+      await expect(block).toHaveCSS('scrollbar-color', 'auto');
+      await expect(block).toHaveCSS('scrollbar-width', 'auto');
+    }
+  } finally { await context.close(); }
+});

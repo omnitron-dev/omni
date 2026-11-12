@@ -1,9 +1,10 @@
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import createCache from '@emotion/cache';
-import { CacheProvider, ClassNames } from '@emotion/react';
+import { CacheProvider, ClassNames, Global } from '@emotion/react';
 import createEmotionServer from '@emotion/server/create-instance';
 import { LumenShell } from '@omnitron-dev/lumen-ui';
+import { mixins } from '@omnitron-dev/prism/theme';
 import {
   toHtmlSsr,
   createDocumentAccessPredicate,
@@ -46,6 +47,13 @@ export function renderDocumentHtml(ast: LumenDocumentAst, options?: RenderDocume
     React.createElement(
       CacheProvider,
       { value: cache },
+      React.createElement(Global, { styles: {
+        ':is(.lumen-code-block,.lumen-doc pre,.lumen-doc table,.lumen-file-tree,.lumen-diagram-content)':
+          mixins.scrollbarStyles(undefined, {
+            thumbColor: 'color-mix(in srgb,var(--lumen-muted) 55%,transparent)',
+            hoverThumbColor: 'var(--lumen-muted)',
+          }),
+      } }),
       React.createElement(ClassNames, {
         children: ({ css, cx }) =>
           React.createElement(

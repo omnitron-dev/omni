@@ -8,6 +8,7 @@
  */
 
 import type { Theme, CSSObject } from '@mui/material/styles';
+import type { CSSObject as EmotionCSSObject } from '@emotion/react';
 import { varAlpha } from './utils/color.js';
 
 // =============================================================================
@@ -404,28 +405,38 @@ export function borderGradient(options: { color?: string; borderWidth?: number; 
  * ...scrollbarStyles(theme)
  * ```
  */
-export function scrollbarStyles(theme: Theme, { autoHide = true }: { autoHide?: boolean } = {}): CSSObject {
-  const palette = theme.vars?.palette || theme.palette;
-  const greyChannel = (palette.grey as { ['500Channel']?: string })['500Channel'] || '145, 158, 171';
+export function scrollbarStyles(
+  theme: Theme | undefined,
+  { autoHide = true, thumbColor, hoverThumbColor }: {
+    autoHide?: boolean;
+    /** CSS colours, including custom properties, for surfaces outside a MUI theme. */
+    thumbColor?: string;
+    hoverThumbColor?: string;
+  } = {}
+): EmotionCSSObject {
+  const palette = theme?.vars?.palette || theme?.palette;
+  const greyChannel = (palette?.grey as { ['500Channel']?: string } | undefined)?.['500Channel'] || '145, 158, 171';
+  const thumb = thumbColor ?? varAlpha(greyChannel, 0.4);
+  const hoverThumb = hoverThumbColor ?? varAlpha(greyChannel, 0.65);
   return {
     scrollbarWidth: 'thin',
-    scrollbarColor: `${varAlpha(greyChannel, 0.4)} transparent`,
+    scrollbarColor: `${thumb} transparent`,
     '&::-webkit-scrollbar': { width: 6, height: 6 },
     '&::-webkit-scrollbar-track': { backgroundColor: 'transparent' },
-    '&::-webkit-scrollbar-thumb': { backgroundColor: varAlpha(greyChannel, 0.4), borderRadius: 3 },
-    '&::-webkit-scrollbar-thumb:hover': { backgroundColor: varAlpha(greyChannel, 0.65) },
+    '&::-webkit-scrollbar-thumb': { backgroundColor: thumb, borderRadius: 3 },
+    '&::-webkit-scrollbar-thumb:hover': { backgroundColor: hoverThumb },
     '&::-webkit-scrollbar-corner': { backgroundColor: 'transparent' },
     // Change colour only: revealing a thumb must not change the scrollport's
     // geometry. Touch and high-contrast interfaces retain native discoverability.
     '@media (hover: hover) and (pointer: fine) and (forced-colors: none)': {
-      scrollbarColor: autoHide ? 'transparent transparent' : `${varAlpha(greyChannel, 0.4)} transparent`,
+      scrollbarColor: autoHide ? 'transparent transparent' : `${thumb} transparent`,
       '&::-webkit-scrollbar-thumb': {
-        backgroundColor: autoHide ? 'transparent' : varAlpha(greyChannel, 0.4),
+        backgroundColor: autoHide ? 'transparent' : thumb,
       },
       '&:hover, &:focus-within': {
-        scrollbarColor: `${varAlpha(greyChannel, 0.4)} transparent`,
-        '&::-webkit-scrollbar-thumb': { backgroundColor: varAlpha(greyChannel, 0.4) },
-        '&::-webkit-scrollbar-thumb:hover': { backgroundColor: varAlpha(greyChannel, 0.65) },
+        scrollbarColor: `${thumb} transparent`,
+        '&::-webkit-scrollbar-thumb': { backgroundColor: thumb },
+        '&::-webkit-scrollbar-thumb:hover': { backgroundColor: hoverThumb },
       },
     },
     '@media (forced-colors: active)': {

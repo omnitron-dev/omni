@@ -1,7 +1,34 @@
 /** Shared dependency analysis for workspace sources and packed Node/TypeScript modules. */
-import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { readFileSync, realpathSync } from 'node:fs';
 import { builtinModules, createRequire } from 'node:module';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
+
+/** No nested registry copy or workspace link may substitute for a qualified SDK archive. */
+export function assertConsumerArchives(directory, archives) {
+  const root = realpathSync(directory);
+  const lock = JSON.parse(readFileSync(join(root, 'package-lock.json'), 'utf8'));
+  const expected = new Map([...archives].map(([name, archive]) => [name, {
+    integrity: 'sha512-' + createHash('sha512').update(readFileSync(archive.filename)).digest('base64'),
+    version: archive.manifest.version,
+  }]));
+  let checked = 0;
+  for (const [location, installed] of Object.entries(lock.packages ?? {})) {
+    const name = location.split('node_modules/').at(-1);
+    if (!name.startsWith('@omnitron-dev/')) continue;
+    const archive = expected.get(name);
+    assert.ok(archive, `Unqualified SDK package in consumer: ${name}`);
+    assert.equal(installed.integrity, archive.integrity, `Consumer did not install the qualified archive: ${location}`);
+    assert.equal(installed.version, archive.version, `Consumer archive version differs: ${location}`);
+    assert.equal(installed.link, undefined, `Consumer SDK package is linked: ${location}`);
+    assert.ok(installed.resolved?.startsWith('file:'), `Consumer SDK package came from a registry: ${location}`);
+    assert.ok(realpathSync(join(root, location)).startsWith(join(root, 'node_modules') + sep), `Consumer SDK package escaped: ${location}`);
+    checked++;
+  }
+  assert.ok(checked > 0, 'No qualified SDK archives were installed');
+  return checked;
+}
 
 // TypeScript 6, resolved from tools/lint — the same mechanism eslint.config.cjs
 // uses and for the same reason: the root is on TypeScript 7, whose package

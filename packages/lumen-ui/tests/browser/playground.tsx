@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 // Exercise the published entry and emitted worker, not a substitute source evaluator.
-import { NetronPlayground, type PlaygroundExecutionResult } from '../../dist/index.js';
+import { NetronPlayground, type PlaygroundExecutionResult } from '@omnitron-dev/lumen-ui';
 
 declare global {
   interface Window { playgroundAudit: { results: PlaygroundExecutionResult[]; created: number; terminated: number } }

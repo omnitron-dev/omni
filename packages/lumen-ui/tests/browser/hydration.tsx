@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { LumenShell } from '../../dist/hydration/index.js';
+import { LumenShell } from '@omnitron-dev/lumen-ui/runtime';
 
 function Counter({ label, left, right }: { label: string; left?: { value: string }; right?: { value: string } }) {
   const [count, setCount] = useState(0);

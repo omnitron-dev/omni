@@ -3,6 +3,24 @@ import { createBrowserTest } from './browser-fixture.js';
 
 const test = createBrowserTest('diagrams.html');
 
+test('the ordinary diagram-only site build ships its bootstrap, renderer and Pagefind WASM', async ({ page, siteUrl }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('response', response => { if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`); });
+  await page.goto(siteUrl);
+  const svg = page.locator('.lumen-diagram-content svg');
+  await expect(svg).toBeVisible();
+  await expect(svg).toContainText('Archive input');
+  await expect(svg).toContainText('Archive output');
+  const results = await page.evaluate(async () => {
+    const pagefind = await import('/pagefind/pagefind.js');
+    const reply = await pagefind.search('ArchiveSearchToken');
+    return Promise.all(reply.results.map(async result => (await result.data()).url));
+  });
+  expect(results).toEqual(['/docs']);
+  expect(errors).toEqual([]);
+});
+
 test('real ELK produces non-overlapping labeled nodes and connected edges', async ({ page, url }) => {
   await page.goto(url);
   const svg = page.locator('.lumen-diagram-content svg');

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderDiagramHtml } from '@omnitron-dev/lumen-ast/diagrams';
-import { LumenShell, MermaidDiagram } from '../../dist/index.js';
+import { LumenShell, MermaidDiagram } from '@omnitron-dev/lumen-ui';
 
 const examples: Record<string, string> = {
   flow: '---\nconfig:\n  layout: elk\n---\nflowchart LR\nsubgraph Input\nA[Parser] --> B{Valid?}\nend\nB -->|yes| C[Commit]\nB -.->|no| D[Reject]',

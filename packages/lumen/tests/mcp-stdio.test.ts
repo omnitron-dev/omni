@@ -1,7 +1,9 @@
 import { afterEach, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, sep } from 'node:path';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { Client } from '@modelcontextprotocol/client';
@@ -11,19 +13,24 @@ import { LATEST_PROTOCOL_VERSION } from '@modelcontextprotocol/server';
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
+const consumer = process.env['LUMEN_CONSUMER_ROOT'] && realpathSync(process.env['LUMEN_CONSUMER_ROOT']);
+const consumerRequire = consumer ? createRequire(join(consumer, 'package.json')) : undefined;
+const cli = consumerRequire ? realpathSync(consumerRequire.resolve('@omnitron-dev/lumen/cli')) : undefined;
+if (consumer) expect(cli?.startsWith(join(consumer, 'node_modules') + sep)).toBe(true);
+
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'lumen-mcp-stdio-')); roots.push(root);
   mkdirSync(join(root, 'docs'));
   writeFileSync(join(root, 'docs', 'public guide.md'), '---\nid: public-guide\nslug: /guide\n---\n# Public guide\n\nA searchable needle in the body.\n\n:::note{access="confidential"}\nHIDDEN_SECTION_CANARY\n:::\n');
   writeFileSync(join(root, 'docs', 'secret.md'), '---\naccess: confidential\n---\n# Private\nHIDDEN_DOCUMENT_CANARY');
-  const cli = new URL('../src/cli/index.ts', import.meta.url).href;
+  const cliUrl = cli ? pathToFileURL(cli).href : new URL('../src/cli/index.ts', import.meta.url).href;
   // An external process fixture, deliberately outside an ESM package boundary.
   const entry = join(root, 'entry.mjs');
-  writeFileSync(entry, `import { runLumenCli } from ${JSON.stringify(cli)};
+  writeFileSync(entry, `import { runLumenCli } from ${JSON.stringify(cliUrl)};
 try { await runLumenCli(['mcp', '--stdio', '--root', ${JSON.stringify(root)}]); }
 catch (error) { console.error(error.message); process.exitCode = 1; }
 `);
-  return { root, args: ['--import', import.meta.resolve('tsx'), entry] };
+  return { root, args: cli ? [entry] : ['--import', import.meta.resolve('tsx'), entry] };
 }
 
 it('serves the public projection through an actual official stdio client', async () => {
@@ -33,7 +40,10 @@ it('serves the public projection through an actual official stdio client', async
     env: { ...Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)), NODE_ENV: 'test', VITEST: '1' } });
   try {
     await client.connect(transport);
-    const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+    const manifest = consumerRequire
+      ? join(dirname(consumerRequire.resolve('@omnitron-dev/lumen')), '../package.json')
+      : new URL('../package.json', import.meta.url);
+    const version = JSON.parse(readFileSync(manifest, 'utf8')).version;
     expect(client.getServerVersion()).toMatchObject({ name: '@omnitron-dev/lumen', version });
     expect((await client.listTools()).tools.map(tool => tool.name)).toEqual(['search_corpus', 'get_document', 'lumen_inspect_ast']);
     const resources = await client.listResources();

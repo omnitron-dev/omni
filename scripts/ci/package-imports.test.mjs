@@ -1,9 +1,58 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { inlinedDevDependencies, retainedBuildImports } from '../lib/package-imports.mjs';
+import { assertConsumerArchives, inlinedDevDependencies, retainedBuildImports } from '../lib/package-imports.mjs';
+
+test('the dependency gate recognizes DefinitelyTyped declarations without allowing runtime imports', t => {
+  const directory = mkdtempSync(join(tmpdir(), 'omni-types-consumer-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  mkdirSync(join(directory, 'src'));
+  writeFileSync(join(directory, 'package.json'), JSON.stringify({ name: 'types-probe', dependencies: {
+    '@types/hast': '*', '@types/example__schema': '*',
+  } }));
+  const source = "import type { Root } from 'hast'; import type { Node } from '@example/schema';\n";
+  const file = join(directory, 'src/index.ts');
+  writeFileSync(file, source);
+  const args = [fileURLToPath(new URL('../undeclared-dependencies.mjs', import.meta.url)), directory];
+  const accepted = spawnSync(process.execPath, args, { encoding: 'utf8' });
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.match(accepted.stdout, /0 runtime, 0 type-only/);
+  writeFileSync(file, source + "import { render } from 'hast';\n");
+  const denied = spawnSync(process.execPath, args, { encoding: 'utf8' });
+  assert.equal(denied.status, 1, denied.stderr);
+  assert.match(denied.stdout, /RUNTIME\s+hast/);
+});
+
+test('an installed archive graph rejects a nested SDK version outside the qualified inventory', { timeout: 30_000 }, t => {
+  const directory = mkdtempSync(join(tmpdir(), 'omni-archive-consumer-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const npm = (cwd, args) => execFileSync('npm', [...args, '--ignore-scripts', '--offline', '--no-audit', '--no-fund'], {
+    cwd, encoding: 'utf8', timeout: 15_000, env: { ...process.env, NPM_CONFIG_CACHE: join(directory, 'cache') },
+  });
+  const pack = (folder, name, version, dependencies) => {
+    const source = join(directory, folder); mkdirSync(source);
+    const manifest = { name, version, files: ['index.js'], main: 'index.js', ...(dependencies && { dependencies }) };
+    writeFileSync(join(source, 'package.json'), JSON.stringify(manifest));
+    writeFileSync(join(source, 'index.js'), `exports.version = ${JSON.stringify(version)};`);
+    const [packed] = JSON.parse(npm(source, ['pack', '--json', '--pack-destination', directory]));
+    return { manifest, filename: join(directory, packed.filename) };
+  };
+  const name = '@omnitron-dev/qualification-base';
+  const old = pack('old', name, '0.1.0');
+  const current = pack('current', name, '0.2.0');
+  const parent = pack('parent', '@omnitron-dev/qualification-parent', '0.2.0', { [name]: 'file:' + old.filename });
+  const archives = new Map([[name, current], [parent.manifest.name, parent]]);
+  const consumer = join(directory, 'consumer'); mkdirSync(consumer);
+  writeFileSync(join(consumer, 'package.json'), JSON.stringify({ private: true, dependencies: { [name]: 'file:' + current.filename } }));
+  npm(consumer, ['install']);
+  assert.equal(assertConsumerArchives(consumer, archives), 1);
+  npm(consumer, ['install', 'file:' + parent.filename]);
+  assert.throws(() => assertConsumerArchives(consumer, archives), /qualified archive.*qualification-parent\/node_modules\/.*qualification-base/);
+});
 
 test('only explicitly bundled dev dependencies are build inputs', () => {
   const pkg = {

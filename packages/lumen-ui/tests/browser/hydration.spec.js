@@ -1,9 +1,10 @@
-import React from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { expect } from '@playwright/test';
-import { PortalIslandHost } from '../../dist/hydration/index.js';
-import { toHtmlSsr } from '@omnitron-dev/lumen-ast';
-import { createBrowserTest } from './browser-fixture.js';
+import { createBrowserTest, importConsumer } from './browser-fixture.js';
+
+const { default: React } = await importConsumer('react');
+const { renderToStaticMarkup } = await importConsumer('react-dom/server');
+const { PortalIslandHost } = await importConsumer('@omnitron-dev/lumen-ui/runtime');
+const { toHtmlSsr } = await importConsumer('@omnitron-dev/lumen-ast');
 
 const shared = { value: '<script>window.pwned=true</script>' };
 const markup = renderToStaticMarkup(React.createElement(PortalIslandHost, {

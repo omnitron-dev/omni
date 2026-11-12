@@ -293,6 +293,10 @@ for (const dir of packageDirs(argv)) {
       if (matchesAlias(spec, aliases)) continue;
       imported.add(name);
       if (declared.has(name)) continue;
+      // Type-only packages such as hast are published through DefinitelyTyped.
+      // Their declaration package never satisfies an executable runtime import.
+      const declaration = '@types/' + (name.startsWith('@') ? name.slice(1).replace('/', '__') : name);
+      if (typeOnly && declared.has(declaration)) continue;
       const entry = missing.get(name) ?? { runtime: new Set(), type: new Set(), onlyDev: dev.has(name) };
       const site = `${relative(ROOT, file)}:${line}`;
       (typeOnly ? entry.type : entry.runtime).add(site);

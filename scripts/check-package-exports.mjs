@@ -8,7 +8,7 @@ import { parseArgs } from 'node:util';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import semver from 'semver';
-import { inlinedDevDependencies, retainedBuildImports } from './lib/package-imports.mjs';
+import { assertConsumerArchives, inlinedDevDependencies, retainedBuildImports } from './lib/package-imports.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'omni-pack-check-'));
@@ -36,7 +36,10 @@ function installConsumer(destination, roots) {
       ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.peerDependencies,
     })) include(dependency);
   }
-  for (const name of roots) include(name);
+  for (const name of roots) {
+    if (!archives.has(name)) throw new Error('Required public package is absent: ' + name);
+    include(name);
+  }
   fs.writeFileSync(path.join(consumer, 'package.json'), JSON.stringify({ private: true, dependencies }));
   execFileSync('npm', ['install', '--omit=dev', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org/'], {
     cwd: consumer, stdio: 'inherit',
@@ -46,6 +49,7 @@ function installConsumer(destination, roots) {
   execFileSync('npm', ['ci', '--omit=dev', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org/'], {
     cwd: consumer, stdio: 'inherit',
   });
+  assertConsumerArchives(consumer, archives);
   // Workspace overrides are not inherited by published npm consumers. Audit
   // the actual installed archives, including bundled dependency trees.
   execFileSync('npm', ['audit', '--omit=dev', '--audit-level=low', '--registry=https://registry.npmjs.org/'], {
@@ -134,9 +138,27 @@ try {
     installConsumer(values['install-consumer'], ['@omnitron-dev/omnitron', '@omnitron-dev/netron-react']);
     const allPublic = path.join(temporary, 'all-public');
     installConsumer(allPublic, archives.keys());
+    // Lumen must also work with only its declared dependency closure. An unrelated
+    // public package in all-public must not satisfy an undeclared runtime import.
+    const lumenConsumer = path.join(temporary, 'lumen-runtime');
+    installConsumer(lumenConsumer, ['@omnitron-dev/lumen']);
     execFileSync(process.execPath, [
-      path.join(root, 'packages/lumen-ast/test/runtime/bundle-consumer.js'), allPublic,
+      path.join(root, 'packages/lumen-ast/test/runtime/bundle-consumer.js'), lumenConsumer,
     ], { stdio: 'inherit' });
+    const consumerEnv = { ...process.env, LUMEN_CONSUMER_ROOT: lumenConsumer };
+    // Reuse the official-client and real-browser suites against this installation.
+    // Fixtures are copied into the consumer; no source/dist aliases satisfy imports.
+    execFileSync('pnpm', ['exec', 'vitest', 'run', 'tests/mcp-stdio.test.ts', '--maxWorkers', '1',
+      '--no-cache', '--fsModuleCachePath', path.join(temporary, 'mcp-cache')], {
+      cwd: path.join(root, 'packages/lumen'), env: consumerEnv, stdio: 'inherit', timeout: 120_000,
+    });
+    const browserCwd = path.join(root, 'packages/lumen-ui');
+    execFileSync('pnpm', ['exec', 'playwright', 'install', '--only-shell', 'chromium'], {
+      cwd: browserCwd, stdio: 'inherit', timeout: 300_000,
+    });
+    execFileSync('pnpm', ['run', 'test:browser', '--output', path.join(temporary, 'browser-results')], {
+      cwd: browserCwd, env: consumerEnv, stdio: 'inherit', timeout: 300_000,
+    });
   }
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });

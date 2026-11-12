@@ -177,6 +177,37 @@ describe('classic watches follow the authoritative application lifecycle', () =>
     expect(subscription.close).not.toHaveBeenCalled();
   });
 
+  it('retargets a mutated entry object to its new directory through canonical redefinition', async () => {
+    const f = await fixture();
+    const entry = f.application('source-a');
+    const original = { ...entry };
+    const target = f.application('source-b');
+    const initial = await f.owner.startApp(entry);
+    const old = f.subscriptions[0]!;
+    expect((await f.currentHttp(entry)).revision).toBe('source-a');
+
+    entry.cwd = target.cwd!;
+    await f.owner.redefineApp(entry.name, entry);
+    expect(old.close).toHaveBeenCalledTimes(1);
+    expect(f.subscriptions).toHaveLength(2);
+    expect(f.subscriptions[1]!.directory).toBe(target.cwd);
+    expect(f.owner.getWatchedApps()).toEqual([{ name: entry.name, directory: target.cwd,
+      generation: initial.generation, definitionRevision: 1 }]);
+
+    f.revise(original, 'retired-source');
+    old.emit('change', 'revision.json');
+    await new Promise(resolve => setTimeout(resolve, 60));
+    expect(f.owner.getHandle(entry.name)?.pid).toBe(initial.pid);
+    expect(f.boots(target)).toEqual([]);
+
+    f.revise(target, 'new-source');
+    f.subscriptions[1]!.emit('change', 'revision.json');
+    await vi.waitFor(async () => expect((await f.currentHttp(entry)).revision).toBe('new-source'), { timeout: 10000 });
+    expect(f.owner.getHandle(entry.name)?.pid).not.toBe(initial.pid);
+    expect(f.boots(original)).toHaveLength(1);
+    expect(f.boots(target)).toHaveLength(1);
+  });
+
   it('removes bare aliases and stopped registrations, and never advertises a failed launch', async () => {
     const f = await fixture();
     const bare = f.application('alias', 'site');

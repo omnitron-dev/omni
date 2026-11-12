@@ -86,6 +86,7 @@ const WATCH_EXTENSIONS = new Set([
 
 interface WatchedApp {
   entry: IEcosystemAppEntry;
+  configuration: string;
   observationRevision: number;
   watchDir: string;
   watchers: fs.FSWatcher[];
@@ -171,9 +172,8 @@ export class FileWatcher {
     );
 
     for (const name of [...this.apps.keys()]) {
-      const next = desired.get(name), previous = this.apps.get(name)!.entry;
-      if (!next || JSON.stringify([next.watch, next.cwd, next.script, next.bootstrap]) !==
-          JSON.stringify([previous.watch, previous.cwd, previous.script, previous.bootstrap])) this.removeApp(name);
+      const next = desired.get(name), previous = this.apps.get(name)!;
+      if (!next || this.watchConfiguration(next) !== previous.configuration) this.removeApp(name);
     }
     for (const [name, entry] of desired) {
       if (!this.apps.has(name)) this.addApp(entry);
@@ -191,7 +191,12 @@ export class FileWatcher {
 
   /** Keep a source subscription across child replacement, never across retargeting. */
   isWatching(entry: IEcosystemAppEntry): boolean {
-    return this.apps.get(entry.name)?.entry === entry;
+    const app = this.apps.get(entry.name);
+    return app?.entry === entry && app.configuration === this.watchConfiguration(entry);
+  }
+
+  private watchConfiguration(entry: IEcosystemAppEntry): string {
+    return JSON.stringify([entry.watch, entry.cwd, entry.script, entry.bootstrap]);
   }
 
   /** Get list of watched apps and their directories */
@@ -254,13 +259,16 @@ export class FileWatcher {
 
     const watched: WatchedApp = {
       entry,
+      // Keep the configuration that created these native resources. The owner
+      // can accept a redefinition using the same mutated entry object.
+      configuration: this.watchConfiguration(entry),
       observationRevision: 0,
       watchDir: dirs[0]!, // primary directory for display
       watchers: [],
       debounceTimer: null,
       pendingFiles: new Set(),
       restarting: false,
-      extraIgnore,
+      extraIgnore: [...extraIgnore],
       debounceMs: debounce,
     };
 

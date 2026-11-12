@@ -62,18 +62,18 @@ describe('SystemWorkerManager', () => {
         name: 'system:health-monitor',
         allMethodsPublic: true,
         dependencies: { foo: 'bar' },
+        isolation: 'child',
+        execArgv: [],
       }));
       expect(proxy).toBeDefined();
       expect((proxy as any).__processId).toBe('proc-1');
     });
 
-    it('passes execArgv when provided', async () => {
-      await manager.spawn('test-worker', '/path/to/worker.js', {}, {
-        execArgv: ['--import', 'tsx/esm'],
-      });
+    it('resolves a source worker loader from the installed manager', async () => {
+      await manager.spawn('test-worker', '/path/to/worker.ts', {});
 
-      expect(pm.spawn).toHaveBeenCalledWith('/path/to/worker.js', expect.objectContaining({
-        execArgv: ['--import', 'tsx/esm'],
+      expect(pm.spawn).toHaveBeenCalledWith('/path/to/worker.ts', expect.objectContaining({
+        execArgv: ['--import', import.meta.resolve('tsx/esm')],
       }));
     });
 

@@ -2145,10 +2145,7 @@ export class OmnitronDaemon {
           ? tsPath
           : jsPath; // fall through to .js — error will be clear if missing
 
-      const spawnOpts: { execArgv?: string[]; startupTimeout?: number } = {};
-      if (process.execArgv.some((a) => a.includes('tsx'))) {
-        spawnOpts.execArgv = ['--import', 'tsx/esm'];
-      }
+      const spawnOpts: { startupTimeout?: number } = {};
       // What the worker has to do before it can report ready is create a
       // Titan application — a DI container, a module graph and a PG pool.
       // Managed applications get two to five minutes for that; this was

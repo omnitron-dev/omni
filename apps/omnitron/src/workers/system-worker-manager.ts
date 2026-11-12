@@ -69,13 +69,13 @@ export class SystemWorkerManager {
    * @param name - Logical name (e.g., 'health-monitor')
    * @param processPath - Absolute path to the @Process file
    * @param dependencies - Dependencies passed to process init()
-   * @param options - PM spawn options (execArgv, etc.)
+   * @param options - Worker startup deadline
    */
   async spawn<T>(
     name: string,
     processPath: string,
     dependencies: Record<string, any>,
-    options: { execArgv?: string[]; startupTimeout?: number } = {},
+    options: { startupTimeout?: number } = {},
   ): Promise<ServiceProxy<T>> {
     if (this.workers.has(name)) {
       throw new Error(`System worker "${name}" is already running`);
@@ -88,8 +88,11 @@ export class SystemWorkerManager {
       name: pmName,
       allMethodsPublic: true,
       dependencies,
+      isolation: 'child',
+      // The worker's entry determines its loader, not the daemon's execArgv.
+      // Resolve source support from this installation, never the ecosystem cwd.
+      execArgv: processPath.endsWith('.ts') ? ['--import', import.meta.resolve('tsx/esm')] : [],
     };
-    if (options.execArgv) spawnOpts['execArgv'] = options.execArgv;
     if (options.startupTimeout != null) spawnOpts['startupTimeout'] = options.startupTimeout;
 
     const proxy = await this.pm.spawn<T>(processPath, spawnOpts);

@@ -6,6 +6,18 @@ import { fileURLToPath } from 'node:url';
 const root = fs.realpathSync(path.dirname(fileURLToPath(import.meta.url)));
 const profileDirectory = path.join(root, '.omnitron', 'dev-sdk');
 
+// Shared with the SDK selector: a directory must contain the actual public
+// framework package, not an alias, a private workspace or an unversioned stub.
+export function frameworkPackage(name, directory, expectedVersion) {
+  const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'package.json'), 'utf8'));
+  if (!/^@omnitron-dev\/[a-z0-9-]+$/.test(name) || manifest.name !== name || manifest.private ||
+      typeof manifest.version !== 'string' ||
+      !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[\da-zA-Z-]+(?:\.[\da-zA-Z-]+)*)?(?:\+[\da-zA-Z-]+(?:\.[\da-zA-Z-]+)*)?$/.test(manifest.version) ||
+      expectedVersion !== undefined && manifest.version !== expectedVersion)
+    throw Error('Invalid Omnitron SDK package identity for ' + name);
+  return manifest;
+}
+
 export function developmentPackages() {
   let profile;
   try {
@@ -20,6 +32,7 @@ export function developmentPackages() {
     if (!/^@omnitron-dev\/[a-z0-9-]+$/.test(name) || !path.isAbsolute(directory) ||
         !directory.startsWith(profile.source + path.sep) || fs.realpathSync(directory) !== directory)
       throw Error('Invalid Omnitron SDK package location for ' + name);
+    frameworkPackage(name, directory, profile.versions?.[name]);
   }
   return profile.links;
 }

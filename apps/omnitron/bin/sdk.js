@@ -7,15 +7,16 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
-import { parseArgs } from 'node:util';
+import { isDeepStrictEqual, parseArgs } from 'node:util';
 import { parseAllDocuments } from 'yaml';
-import { readFrameworkLayout } from '@omnitron-dev/omnitron/source-layout';
+import { frameworkPackage } from './pnpmfile-sdk.js';
 
 const help = `omnitron sdk init [--project-dir PATH]
 omnitron sdk dev [SDK_CHECKOUT] [--project-dir PATH] [--stack NAME] [--no-watch]
 omnitron sdk registry [--project-dir PATH]
 omnitron sdk status [--project-dir PATH]
 
+init installs the pnpm bridge without resolving registry dependencies.
 dev selects the local SDK and watches its sources. Start again without a path to
 reuse the selection. --no-watch installs the profile for a separate watch session.
 --stack also refreshes running, watched applications in that local source stack.
@@ -23,7 +24,10 @@ registry restores the frozen distribution dependencies. Releases always read Git
 
 const scope = '@omnitron-dev/';
 // Released hook templates eligible for the explicit, idempotent init upgrade.
-const previousBridgeHashes = new Set(['28220745dd5d0643c4ac64ef75e7c466a9863741bd23473bbbfccee5c5f7858b']);
+const previousBridgeHashes = new Set([
+  '28220745dd5d0643c4ac64ef75e7c466a9863741bd23473bbbfccee5c5f7858b',
+  '5d68d3ac4deb8f9d525b1db2e020dc1610d2ea49f3892232d982db20341c1735',
+]);
 const statePath = (root) => path.join(root, '.omnitron', 'dev-sdk');
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const inside = (parent, child) => {
@@ -38,6 +42,48 @@ async function optionalJson(file) {
     if (error.code === 'ENOENT') return null;
     throw error;
   }
+}
+async function distributionLock(root) {
+  try { return await fs.readFile(path.join(root, 'pnpm-lock.yaml'), 'utf8'); }
+  catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+}
+const lockIdentity = (distribution) => distribution === null ? null : sha256(distribution);
+async function assertDistribution(root, identity) {
+  if (lockIdentity(await distributionLock(root)) !== identity)
+    throw Error('Distribution lock changed while preparing the development profile');
+}
+function lockDocuments(distribution) {
+  if (distribution === null) return [];
+  const documents = parseAllDocuments(distribution);
+  for (const document of documents)
+    if (document.errors.length) throw Error('Invalid pnpm-lock.yaml: ' + document.errors[0].message);
+  return documents;
+}
+const applicationDocument = (distribution) => lockDocuments(distribution).at(-1)?.toJS() ?? null;
+
+async function restoreDistribution(root, original, owned) {
+  if (original === owned) return;
+  if (await distributionLock(root) !== owned)
+    throw Error('Distribution lock changed outside this SDK operation; its newer contents were preserved');
+  const file = path.join(root, 'pnpm-lock.yaml');
+  if (original === null) await fs.rm(file);
+  else await atomic(file, original);
+}
+
+async function bootstrapPackageManager(root, original) {
+  const application = applicationDocument(original);
+  await assertDistribution(root, lockIdentity(original));
+  let failure;
+  try { await command('pnpm', ['--version'], root, true); }
+  catch (error) { failure = error; }
+  const generated = await distributionLock(root);
+  if (!isDeepStrictEqual(applicationDocument(generated), application))
+    throw Error('Application distribution graph changed during package-manager bootstrap; its newer contents were preserved');
+  if (failure) {
+    await restoreDistribution(root, original, generated);
+    throw failure;
+  }
+  return generated;
 }
 async function atomic(file, value) {
   const tmp = file + '.' + randomUUID() + '.tmp';
@@ -92,18 +138,44 @@ async function inventory(root) {
   }
   return entries;
 }
+function frameworkDependencies(manifest, development = false) {
+  const dependencies = { ...manifest.peerDependencies, ...manifest.dependencies,
+    ...manifest.optionalDependencies, ...(development && manifest.devDependencies) };
+  return Object.keys(dependencies).filter(name => name.startsWith(scope) &&
+    !(manifest.peerDependenciesMeta?.[name]?.optional && !manifest.dependencies?.[name] &&
+      !manifest.optionalDependencies?.[name] && !(development && manifest.devDependencies?.[name]))).sort();
+}
 async function desiredProfile(root, source, distribution) {
-  const layout = readFrameworkLayout(distribution);
-  if (layout.kind !== 'registry')
-    throw Error('Commit an npm registry lockfile for the project before selecting a development SDK');
-  const packages = await inventory(source);
-  const links = {};
-  for (const { name } of layout.packages) {
-    const pkg = packages.get(name);
-    if (!pkg || pkg.manifest.private) throw Error('SDK checkout does not provide ' + name);
-    links[name] = pkg.directory;
+  const packages = await inventory(source), consumers = await inventory(root);
+  for (const { directory } of consumers.values()) {
+    const modules = path.join(directory, 'node_modules');
+    const present = await fs.lstat(modules).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+    if (present && !inside(root, await fs.realpath(modules)))
+      throw Error('SDK installation requires project-owned node_modules; preserve the external dependency directory separately before selecting: ' + modules);
   }
-  return { schema: 1, root, source, lockSha256: sha256(distribution), links };
+  const links = {}, versions = {};
+  function select(name) {
+    if (Object.hasOwn(links, name)) return;
+    const pkg = packages.get(name);
+    if (!pkg) throw Error('SDK checkout does not provide ' + name);
+    const manifest = frameworkPackage(name, pkg.directory);
+    links[name] = pkg.directory;
+    versions[name] = manifest.version;
+    for (const dependency of frameworkDependencies(manifest)) select(dependency);
+  }
+  for (const { manifest } of consumers.values()) for (const name of frameworkDependencies(manifest, true)) {
+    if (consumers.has(name)) throw Error('A consumer workspace cannot shadow framework SDK package ' + name);
+    select(name);
+  }
+  if (!Object.keys(links).length) throw Error('The project declares no framework SDK dependencies');
+  const manifests = [...consumers.values()].map(({ directory, manifest }) => [path.relative(root, directory), manifest])
+    .sort(([left], [right]) => left.localeCompare(right));
+  const settings = [];
+  for (const file of ['pnpm-workspace.yaml', '.npmrc']) settings.push([file,
+    await fs.readFile(path.join(root, file), 'utf8').catch(error => { if (error.code === 'ENOENT') return null; throw error; })]);
+  const names = Object.keys(links).sort();
+  return { schema: 1, root, source, lockSha256: lockIdentity(distribution), inputSha256: sha256(JSON.stringify({ manifests, settings })),
+    links: Object.fromEntries(names.map(name => [name, links[name]])), versions: Object.fromEntries(names.map(name => [name, versions[name]])) };
 }
 
 async function prepareState(root) {
@@ -137,54 +209,83 @@ async function exclusively(dir, body, waitSignal) {
 }
 
 async function seedLock(root, dir, distribution) {
-  const documents = parseAllDocuments(distribution);
+  if (applicationDocument(distribution) === null) {
+    await fs.rm(path.join(dir, 'pnpm-lock.yaml'), { force: true });
+    return;
+  }
+  const documents = lockDocuments(distribution);
   const app = documents.at(-1);
-  const importers = app.get('importers');
+  const importers = app?.get('importers');
   const prefix = path.relative(dir, root).split(path.sep).join('/');
-  for (const entry of importers.items) entry.key.value = path.posix.normalize(path.posix.join(prefix, entry.key.value));
+  for (const entry of importers?.items ?? []) entry.key.value = path.posix.normalize(path.posix.join(prefix, entry.key.value));
   await atomic(path.join(dir, 'pnpm-lock.yaml'), documents.map((doc) => doc.toString()).join('---\n'));
 }
 
-async function installDevelopment(root, profile) {
+async function installDevelopment(root, profile, expectedDistribution = profile.lockSha256) {
   const dir = statePath(root);
-  const distribution = await fs.readFile(path.join(root, 'pnpm-lock.yaml'), 'utf8');
-  if (profile.lockSha256 !== sha256(distribution))
-    throw Error('Distribution lock changed while preparing the development profile');
+  const distribution = await distributionLock(root);
+  await assertDistribution(root, expectedDistribution);
   await seedLock(root, dir, distribution);
   // The workspace hook selects the same graph for normal pnpm install, run and exec.
-  await atomic(path.join(dir, 'install.json'), JSON.stringify(profile, null, 2) + '\n');
+  // Keep an interrupted reinstall distinguishable from its last accepted profile.
+  await atomic(path.join(dir, 'install.json'), JSON.stringify({ ...profile, installing: true }, null, 2) + '\n');
+  // The package-manager boot document was prepared before capturing the
+  // baseline. Use ordinary hook discovery, also used by pnpm run/exec, so the
+  // installed pnpmfile receipt matches verifyDepsBeforeRun.
   await command('pnpm', ['install', '--force', '--no-frozen-lockfile', '--config.confirm-modules-purge=false'], root);
-  if (sha256(await fs.readFile(path.join(root, 'pnpm-lock.yaml'))) !== profile.lockSha256)
-    throw Error('Distributed lockfile changed during the local installation');
+  await assertDistribution(root, expectedDistribution);
   await verifyLinks(root, profile);
+  await atomic(path.join(dir, 'install.json'), JSON.stringify(profile, null, 2) + '\n');
+}
+// Development consumers need not be Omnitron applications. Registry restoration
+// checks their own frozen importers; release archive admission remains separate.
+async function registryBaseline(root, distribution, consumers) {
+  if (distribution === null)
+    throw Error('No distribution lock is available. Create a registry lock with pnpm install --lockfile-only --config.ignore-pnpmfile=true before sdk registry.');
+  if (applicationDocument(distribution) === null)
+    throw Error('The distribution lock contains package-manager metadata only; create a current registry application lock before sdk registry');
+  consumers ??= await inventory(root);
+  const importers = {}, packages = {};
+  for (const document of lockDocuments(distribution)) {
+    const graph = document.toJS();
+    Object.assign(importers, graph?.importers);
+    Object.assign(packages, graph?.packages);
+  }
+  const result = new Map(), sections = ['dependencies', 'devDependencies', 'optionalDependencies'];
+  for (const { directory, manifest } of consumers.values()) {
+    const key = path.relative(root, directory).split(path.sep).join('/') || '.';
+    const importer = importers[key];
+    if (!importer) throw Error('Distribution lock has no importer for ' + key);
+    for (const section of sections) {
+      const wanted = manifest[section] ?? {}, locked = importer[section] ?? {};
+      if (Object.entries(wanted).some(([name, specifier]) => locked[name]?.specifier !== specifier) ||
+          Object.keys(locked).some(name => !Object.hasOwn(wanted, name) && !Object.hasOwn(manifest.peerDependencies ?? {}, name)))
+        throw Error('Distribution lock is stale for ' + key + ' / ' + section + '; create a current registry lock before sdk registry');
+    }
+    for (const name of frameworkDependencies(manifest, true)) {
+      const entry = sections.map(section => importer[section]?.[name]).find(Boolean);
+      const version = typeof entry?.version === 'string' ? entry.version.split('(')[0] : '';
+      const archive = packages[name + '@' + version];
+      if (!archive || /^(?:link:|file:|workspace:)/.test(version) || archive.resolution?.type ||
+          !/^sha512-[A-Za-z0-9+/]{85}[AQgw]==$/.test(archive.resolution?.integrity ?? ''))
+        throw Error('Distribution lock must resolve a registry archive for ' + name);
+      result.set(directory + '\0' + name, version);
+    }
+  }
+  return result;
 }
 async function verifyLinks(root, profile) {
   const importers = await inventory(root);
-  const locked = profile ? null : readFrameworkLayout(await fs.readFile(path.join(root, 'pnpm-lock.yaml'), 'utf8'));
-  if (locked && locked.kind !== 'registry') throw Error('The distribution lock must select registry packages');
+  const locked = profile ? null : await registryBaseline(root, await distributionLock(root), importers);
   let verified = 0;
   for (const { directory, manifest } of importers.values()) {
-    for (const name of Object.keys({
-      ...manifest.dependencies,
-      ...manifest.devDependencies,
-      ...manifest.peerDependencies,
-      ...manifest.optionalDependencies,
-    })) {
-      if (!name.startsWith(scope)) continue;
-      if (
-        manifest.peerDependenciesMeta?.[name]?.optional &&
-        !manifest.dependencies?.[name] &&
-        !manifest.devDependencies?.[name]
-      )
-        continue;
+    for (const name of frameworkDependencies(manifest, true)) {
       const actual = await fs.realpath(path.join(directory, 'node_modules', name));
       if (!profile) {
         const identity = await readJson(path.join(actual, 'package.json'));
-        const entry = locked.packages.find((pkg) => pkg.name === name);
         if (
-          !entry ||
           identity.name !== name ||
-          identity.version !== entry.version ||
+          identity.version !== locked.get(directory + '\0' + name) ||
           !inside(path.join(root, 'node_modules'), actual)
         )
           throw Error('Registry installation does not match the distribution lock for ' + name);
@@ -193,9 +294,20 @@ async function verifyLinks(root, profile) {
       verified++;
     }
   }
+  if (profile) for (const [name, directory] of Object.entries(profile.links)) {
+    if (!inside(profile.source, directory) || await fs.realpath(directory) !== directory)
+      throw Error('Invalid Omnitron SDK package location for ' + name);
+    const manifest = frameworkPackage(name, directory, profile.versions?.[name]);
+    for (const dependency of frameworkDependencies(manifest)) {
+      const actual = await fs.realpath(path.join(directory, 'node_modules', dependency));
+      if (actual !== profile.links[dependency])
+        throw Error(`${name} resolves ${dependency} from ${actual}, expected ${profile.links[dependency]}`);
+    }
+  }
   return verified;
 }
 async function frozen(root) {
+  await registryBaseline(root, await distributionLock(root));
   await fs.rm(path.join(statePath(root), 'install.json'), { force: true });
   await command('pnpm', ['install', '--force', '--frozen-lockfile', '--config.confirm-modules-purge=false'], root);
 }
@@ -395,6 +507,7 @@ export async function watchSdk(profile, stack, signal) {
       .filter(([name, pkg]) => edits.has(name) || dependsOn(pkg.manifest, edits, sdkPackages))
       .map(([name]) => name);
     await build(profile.source, names, signal);
+    await verifyLinks(profile.root, profile);
     const changed = new Set();
     const next = { ...hashes };
     for (const name of names) {
@@ -464,18 +577,19 @@ export async function inspectSdk(projectDirectory = process.cwd()) {
   const root = await fs.realpath(projectDirectory);
   const dir = statePath(root);
   const active = await profileStatus(root);
-  const distribution = await fs.readFile(path.join(root, 'pnpm-lock.yaml'), 'utf8');
+  const distribution = await distributionLock(root);
   const selected = await optionalJson(path.join(dir, 'install.json'));
   if (JSON.stringify(selected) !== JSON.stringify(active))
-    throw Error('An SDK switch was interrupted. Run sdk registry or sdk dev to reconcile the installation.');
+    throw Error('An SDK switch was interrupted. Run sdk dev to complete it, or sdk registry if a current registry lock is available.');
   return active
     ? {
         mode: 'development',
         source: active.source,
         verifiedImports: await verifyLinks(root, active),
-        distributionLockChanged: sha256(distribution) !== active.lockSha256,
+        distributionLock: distribution === null ? 'absent' : applicationDocument(distribution) === null ? 'manager-only' : 'present',
+        distributionLockChanged: lockIdentity(distribution) !== active.lockSha256,
       }
-    : { mode: readFrameworkLayout(distribution).kind, verifiedImports: await verifyLinks(root, null) };
+    : { mode: 'registry', verifiedImports: await verifyLinks(root, null) };
 }
 
 export async function sdkCommand(argv) {
@@ -514,8 +628,6 @@ export async function sdkCommand(argv) {
       )
         throw Error('An existing pnpm hook owns ' + existing + ' in ' + root);
     }
-    if (await optionalJson(path.join(dir, 'install.json')))
-      throw Error('Restore the registry profile before initializing its distribution hook');
     try {
       await fs.writeFile(bridge, template, { flag: 'wx' });
     } catch (error) {
@@ -529,18 +641,17 @@ export async function sdkCommand(argv) {
             '. Preserve that hook and integrate the SDK selection before enabling development.'
         );
     }
-    await command('pnpm', ['install', '--lockfile-only', '--no-frozen-lockfile'], root);
-    console.log('Commit the pnpm hook and distribution lockfile.');
+    console.log('Commit the pnpm hook. Select a local SDK with omnitron sdk dev, or install published dependencies with pnpm install.');
     console.log('Include .omnitron/dev-sdk/*.json in build cache inputs (Turbo: globalDependencies).');
     return;
   }
-  const distribution = await fs.readFile(path.join(root, 'pnpm-lock.yaml'), 'utf8');
+  const distribution = await distributionLock(root);
   if (action === 'status') {
     console.log(JSON.stringify(await inspectSdk(root), null, 2));
     return;
   }
   if (action === 'dev' && (await fs.readFile(bridge, 'utf8').catch(() => null)) !== template)
-    throw Error('Run omnitron sdk init to install or upgrade the project bridge, then commit the hook and the resulting lockfile');
+    throw Error('Run omnitron sdk init to install or upgrade the project bridge, then commit the hook');
   await prepareState(root);
   await exclusively(dir, async () => {
     const previous = await profileStatus(root);
@@ -553,13 +664,15 @@ export async function sdkCommand(argv) {
         return;
       }
       await requireStopped(root, values.stack);
+      await registryBaseline(root, distribution);
       try {
         await frozen(root);
         await verifyLinks(root, null);
         await fs.rm(selection, { force: true });
       } catch (error) {
         try {
-          if (previous) await installDevelopment(root, previous);
+          if (previous && JSON.stringify(await optionalJson(path.join(dir, 'install.json'))) !== JSON.stringify(selected))
+            await installDevelopment(root, previous, lockIdentity(distribution));
         } catch (rollback) {
           throw new AggregateError([error, rollback], 'Registry switch and recovery failed');
         }
@@ -568,10 +681,10 @@ export async function sdkCommand(argv) {
       return;
     }
     const source = await fs.realpath(
-      sourceArg ?? previous?.source ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
+      sourceArg ?? previous?.source ?? selected?.source ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
     );
     if (inside(root, source) || inside(source, root)) throw Error('Select separate project and SDK workspaces');
-    const desired = await desiredProfile(root, source, distribution);
+    let desired = await desiredProfile(root, source, distribution);
     const controller = new AbortController();
     const stop = () => controller.abort();
     process.once('SIGINT', stop);
@@ -579,20 +692,42 @@ export async function sdkCommand(argv) {
     try {
       if (interrupted || JSON.stringify(previous) !== JSON.stringify(desired)) {
         await requireStopped(root, values.stack);
+        let registryAvailable = false;
+        if (!previous) {
+          try { await registryBaseline(root, distribution); registryAvailable = true; }
+          catch { /* A missing or stale distribution is not a rollback target. */ }
+        }
         await build(source, Object.keys(desired.links), controller.signal);
+        if (!isDeepStrictEqual(await desiredProfile(root, source, distribution), desired))
+          throw Error('Consumer or SDK inputs changed while building; run sdk dev again');
+        let prepared = distribution;
+        let installationStarted = false;
         try {
+          prepared = await bootstrapPackageManager(root, distribution);
+          desired = { ...desired, lockSha256: lockIdentity(prepared) };
+          installationStarted = true;
           await installDevelopment(root, desired);
           const hashes = {};
           for (const [name, directory] of Object.entries(desired.links)) hashes[name] = await buildDigest(directory);
           await atomic(path.join(dir, 'built.json'), JSON.stringify({ source: desired.source, hashes }) + '\n');
           await atomic(selection, JSON.stringify(desired, null, 2) + '\n');
+          if (prepared !== distribution)
+            console.log('Accepted pnpm package-manager metadata in the distribution lock; the application dependency graph is unchanged.');
         } catch (error) {
-          try {
-            if (previous) await installDevelopment(root, previous);
-            else await frozen(root);
-          } catch (rollback) {
-            throw new AggregateError([error, rollback], 'SDK switch and recovery failed');
+          if (!installationStarted || !previous && !registryAvailable) {
+            try { await restoreDistribution(root, distribution, prepared); }
+            catch (restore) { throw new AggregateError([error, restore], 'SDK switch failed; a changed distribution lock was preserved'); }
+            if (!installationStarted) throw error;
+            throw new Error(error.message + '. No verified registry baseline is available; the SDK installation is incomplete. Run sdk dev again to finish it.', { cause: error });
           }
+          let recovery;
+          try {
+            if (previous) await installDevelopment(root, previous, lockIdentity(prepared));
+            else if (registryAvailable) { await frozen(root); await verifyLinks(root, null); }
+          } catch (rollback) { recovery = rollback; }
+          try { await restoreDistribution(root, distribution, prepared); }
+          catch (restore) { throw new AggregateError([error, ...(recovery ? [recovery] : []), restore], 'SDK switch failed; a changed distribution lock was preserved'); }
+          if (recovery) throw new AggregateError([error, recovery], 'SDK switch and recovery failed');
           throw error;
         }
       } else await verifyLinks(root, desired);

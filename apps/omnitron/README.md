@@ -639,9 +639,44 @@ the backend cannot replace its capture mechanism without an owner maintenance wi
 ## Source development and installed releases
 
 `omnitron sdk dev /path/to/omni --project-dir /path/to/project --stack dev`
-selects a local SDK and watches its source changes. The project must have an npm
-distribution lock and the hook installed by `omnitron sdk init`. The initial
-dependency switch requires the project's local source stacks to be stopped.
+selects a local SDK and watches its source changes. First run
+`omnitron sdk init --project-dir /path/to/project` and commit its canonical pnpm
+hook. Init does not resolve or install registry dependencies. The consumer's
+workspace manifests declare the framework packages it uses with normal version
+dependencies; the SDK command selects their public packages and transitive
+runtime dependencies from a separate SDK checkout, then uses its normal Turbo
+build graph. A standalone Lumen or Prism consumer does not need an Omnitron
+application dependency. Use a complete, normally installed SDK workspace.
+The consumer must own its dependency directory. An external `node_modules`
+symlink is refused before installation; preserve that directory separately
+before migrating an ad hoc dependency setup to an SDK profile.
+
+A new consumer can use unpublished SDK packages without a distribution lock.
+An existing lock may also predate newly declared packages. Development installation
+first runs pnpm's ordinary package-manager bootstrap. This may add or update the
+manager metadata document in root `pnpm-lock.yaml`; the SDK checks that the
+parsed application dependency document remains unchanged. On success it accepts
+that root lock as its baseline and writes the development dependency graph only
+under `.omnitron/dev-sdk`. A manager-only root lock is not a registry application
+lock. This one-time bootstrap lets subsequent ordinary `pnpm run build` and
+`pnpm exec` use the selected profile through the same hook without extra flags.
+`--no-watch` selects it without starting a watcher; omit `--stack` for an
+unregistered build-only consumer.
+
+`omnitron sdk registry` explicitly restores a current frozen registry lock.
+It refuses an absent or stale lock before replacing the local selection. Once
+the dependencies are published, create a real distribution lock with
+`pnpm install --lockfile-only --config.ignore-pnpmfile=true`, review and commit
+it, then run `sdk registry`. A failed SDK switch restores the previous accepted
+SDK when possible. A failed first install without a verified registry baseline
+remains visibly incomplete; correct the cause and run `sdk dev` again. No
+registry lock or successful installation is invented for recovery. Releases
+continue to read committed inputs and enforce their existing provenance gates.
+If bootstrap or installation fails, the SDK restores the original root lock
+bytes or absence only while that file still matches the metadata it generated.
+It preserves concurrent edits and reports the conflict instead of overwriting them.
+
+The initial dependency switch requires the project's local source stacks to be stopped.
 The owner must advertise `applicationRuntimeResolution@1`: otherwise it can
 retain a previous package identity after pnpm replaces dependencies. Both SDK
 selection and restoration of registry dependencies refuse this owner before
@@ -651,7 +686,8 @@ platform and architecture. Use the Node version reported by `omnitron status`;
 the SDK command passes its selected Node to package installation and builds.
 A different shell default must not silently produce incompatible native addons.
 
-`sdk status` checks the project's resolved imports; the daemon's `status` reports
+`sdk status` checks the project's resolved imports, the SDK's transitive framework
+imports and selected package identities; the daemon's `status` reports
 the running backend and owner independently. Online applications or a source
 watcher alone do not establish that the project uses the current SDK. Leave
 `sdk dev` running to rebuild platform packages and refresh their watched

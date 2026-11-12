@@ -34,7 +34,7 @@ program.name('omnitron').description('Production-grade Titan application supervi
 program.option('--json', 'Emit machine-readable JSON output (no spinners, no styling)');
 program.hook('preAction', (_root, actionCommand) => prepareCommandOutput(actionCommand));
 const sdk = program.command('sdk').description('Select the framework SDK for local development');
-sdk.command('init').description('Initialize the pnpm bridge for a project')
+sdk.command('init').description('Install the pnpm bridge without resolving registry dependencies')
   .option('--project-dir <path>', 'Consumer workspace directory', process.cwd())
   .action(async ({ projectDir }) => (await import('../../bin/sdk.js')).sdkCommand(['init', '--project-dir', projectDir]));
 sdk.command('dev [checkout]').description('Select a local SDK and rebuild when it changes')
@@ -56,6 +56,8 @@ sdk.command('status').description('Verify the workspace imports and report their
     const status = await inspectSdk(projectDir);
     if (!emitJson(status)) {
       emitInfo([status.mode, status.source, status.verifiedImports + ' verified imports',
+        ...(status.distributionLock === 'absent' ? ['no distribution lock'] : []),
+        ...(status.distributionLock === 'manager-only' ? ['package-manager metadata only'] : []),
         ...(status.distributionLockChanged ? ['distribution lock changed'] : [])].filter(Boolean).join(' · '));
     }
   });

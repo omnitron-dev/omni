@@ -2,6 +2,7 @@ export interface DevelopmentSdkStatus {
   mode: 'development' | 'registry';
   verifiedImports: number;
   source?: string;
+  distributionLock?: 'present' | 'absent' | 'manager-only';
   distributionLockChanged?: boolean;
 }
 export interface DevelopmentSdkProfile {
@@ -9,6 +10,9 @@ export interface DevelopmentSdkProfile {
   root: string;
   source: string;
   links: Record<string, string>;
+  lockSha256?: string | null;
+  versions?: Record<string, string>;
+  inputSha256?: string;
 }
 export function sdkCommand(args: string[]): Promise<void>;
 export function inspectSdk(projectDirectory?: string): Promise<DevelopmentSdkStatus>;

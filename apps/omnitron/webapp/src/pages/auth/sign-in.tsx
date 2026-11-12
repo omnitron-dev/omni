@@ -11,7 +11,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { EyeIcon } from 'src/assets/icons';
 
 import { useAuthStore } from 'src/auth/store';
-import { OmnitronLogo } from 'src/components/omnitron-logo';
+import { OmnitronMark } from '@omnitron-dev/prism/identity';
 import { classifyRpcError, sanitizeReturnTo } from 'src/utils/errors';
 import { useBackendOnline } from 'src/stores/backend-status.store';
 
@@ -57,7 +57,7 @@ export default function SignInPage() {
           alignItems: "center",
           textAlign: "center"
         }}>
-        <OmnitronLogo size={48} />
+        <OmnitronMark size={64} label={null} />
         <Typography variant="h4">Omnitron Console</Typography>
         <Typography variant="body2" sx={{
           color: "text.secondary"
@@ -102,7 +102,7 @@ export default function SignInPage() {
               input: {
                 endAdornment: (
                   <InputAdornment position="end">
-                    <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
+                    <IconButton aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} onClick={() => setShowPassword(!showPassword)} edge="end">
                       {<EyeIcon open={showPassword} />}
                     </IconButton>
                   </InputAdornment>

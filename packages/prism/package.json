@@ -26,6 +26,10 @@
       "types": "./dist/theme/index.d.ts",
       "import": "./dist/theme/index.js"
     },
+    "./identity": {
+      "types": "./dist/identity/index.d.ts",
+      "import": "./dist/identity/index.js"
+    },
     "./core": {
       "types": "./dist/core/index.d.ts",
       "import": "./dist/core/index.js"

@@ -13,7 +13,7 @@ import { daemonClient } from 'src/netron/client';
 import { Router } from 'src/routes';
 import { useProjectStore } from 'src/stores/project.store';
 import { reportCrash } from 'src/utils/report-crash';
-import { consoleTheme } from 'src/theme';
+import { omnitronTheme } from '@omnitron-dev/prism/identity';
 
 function AppContent() {
   const { pathname } = useLocation();
@@ -41,10 +41,10 @@ function AppContent() {
 export function App() {
   return (
     <PrismProvider
-      themeOverrides={consoleTheme}
+      themeOverrides={omnitronTheme}
       defaultSettings={{
         mode: 'dark',
-        preset: 'midnight',
+        preset: 'minimal',
         direction: 'ltr',
       }}
     >

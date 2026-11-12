@@ -15,7 +15,7 @@ export const test = base.extend({
     const output = await mkdtemp(path.join(os.tmpdir(), 'omnitron-console-browser-'));
     const config = {
       root, configFile: path.resolve(root, '../../vite.config.ts'), logLevel: 'error',
-      build: { outDir: output, rolldownOptions: { input: [path.join(root, 'index.html'), path.join(root, 'workspace.html')] } },
+      build: { outDir: output, rolldownOptions: { input: [path.join(root, 'index.html'), path.join(root, 'workspace.html'), path.join(root, 'identity.html')] } },
     };
     let server;
     try {

@@ -7,7 +7,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Stack from '@mui/material/Stack';
 import { ErrorBoundary } from '@omnitron-dev/prism/components/error-boundary';
 import { DashboardLayout, useLayoutConfig } from '@omnitron-dev/prism/layouts';
-import { SplashScreen } from '@omnitron-dev/prism/components/loading-screen';
+import { OmnitronBrand, OmnitronMark, OmnitronSplash } from '@omnitron-dev/prism/identity';
 import { usePrismContext } from '@omnitron-dev/prism/core';
 import { useSettingsStore } from '@omnitron-dev/prism/state';
 import type { ThemeMode } from '@omnitron-dev/prism/theme';
@@ -17,7 +17,6 @@ import { DaemonOfflineBanner } from 'src/components/daemon-offline-banner';
 import { ConsoleUpdateBanner } from 'src/components/console-update-banner';
 import { isVisible } from 'src/components/keyboard-model';
 import { ConsoleKeyboard, useConsoleKeyboard } from 'src/components/console-keyboard';
-import { OmnitronLogo } from 'src/components/omnitron-logo';
 
 import {
   DashboardIcon,
@@ -194,31 +193,7 @@ function ConsoleLogo() {
   const { sidenavCollapsed, sidenavVariant } = useLayoutConfig();
   const showText = !sidenavCollapsed && sidenavVariant !== 'mini';
 
-  return (
-    <Stack
-      direction="row"
-      spacing={1}
-      sx={{
-        alignItems: 'center',
-      }}
-    >
-      <OmnitronLogo size={48} />
-      {showText && (
-        <Typography
-          variant="subtitle1"
-          noWrap
-          sx={{
-            fontWeight: 800,
-            letterSpacing: 2,
-            textTransform: 'uppercase',
-            fontSize: '0.85rem',
-          }}
-        >
-          Omnitron
-        </Typography>
-      )}
-    </Stack>
-  );
+  return showText ? <OmnitronBrand size={36} /> : <OmnitronMark size={36} />;
 }
 
 // =============================================================================
@@ -279,11 +254,10 @@ function ThemeModeIcon({ mode }: { mode: string }) {
   );
 }
 
-/** Shared icon button style — no border, scale on hover (portal pattern) */
+/** Header controls retain the same quiet hover and focus states as the workspace. */
 const headerIconBtnSx = {
   p: 0.75,
-  transition: 'transform 0.2s ease',
-  '&:hover': { transform: 'scale(1.1)', bgcolor: 'transparent' },
+  '&:hover': { bgcolor: 'action.hover' },
 } as const;
 
 function HeaderRight() {
@@ -425,7 +399,7 @@ export function ConsoleLayout() {
           route took thirty seconds to arrive, and for all thirty a bare
           progress bar is indistinguishable from a page that broke.
         */}
-          <Suspense fallback={<SplashScreen variant="linear" message="Loading…" />}>
+          <Suspense fallback={<OmnitronSplash message="Loading…" />}>
             {!terminalVisible && !filesVisible && (
               <PageAccess>
                 <Outlet />
@@ -442,7 +416,7 @@ export function ConsoleLayout() {
                 minWidth: 0,
               }}
             >
-              <Suspense fallback={<SplashScreen variant="linear" message="Loading files…" />}>
+              <Suspense fallback={<OmnitronSplash message="Loading files…" />}>
                 <AccessBoundary permission="OmnitronFiles.roots">
                   <FilesPage visible={filesVisible} />
                 </AccessBoundary>
@@ -459,7 +433,7 @@ export function ConsoleLayout() {
                 minWidth: 0,
               }}
             >
-              <Suspense fallback={<SplashScreen variant="linear" message="Loading SSH workspace…" />}>
+              <Suspense fallback={<OmnitronSplash message="Loading SSH workspace…" />}>
                 <AccessBoundary permission="OmnitronTerminal.open">
                   <TerminalPage visible={terminalVisible} />
                 </AccessBoundary>

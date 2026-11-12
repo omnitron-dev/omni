@@ -4,16 +4,20 @@ import { PrismProvider } from '@omnitron-dev/prism/core';
 import { ConsoleAccessProvider } from '../../src/auth/access';
 import { useAuthStore } from '../../src/auth/store';
 import { ConsoleLayout } from '../../src/layouts/console-layout';
-import { consoleTheme } from '../../src/theme';
+import { omnitronTheme } from '@omnitron-dev/prism/identity';
 import { FleetRollout } from '../../src/components/fleet-rollout';
 import AuditPage from '../../src/pages/audit';
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
 
 const params = new URLSearchParams(location.search);
 const view = params.get('view');
 const direction = params.get('dir') === 'rtl' ? 'rtl' : 'ltr';
 useAuthStore.setState({ user: { id: 'reader', username: 'reader', displayName: 'Reader', role: 'viewer' } });
 createRoot(document.getElementById('root')!).render(
-  <PrismProvider themeOverrides={consoleTheme} defaultSettings={{ mode: 'dark', preset: 'midnight', direction }}>
+  <PrismProvider themeOverrides={omnitronTheme} defaultSettings={{ mode: params.get('mode') === 'light' ? 'light' : 'dark', preset: 'minimal', direction }}>
     <MemoryRouter initialEntries={[view === 'files' ? '/files' : view === 'audit' ? '/audit' : '/']}>
       <ConsoleAccessProvider>
         <Routes>

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { SplashScreen } from '@omnitron-dev/prism/components/loading-screen';
+import { OmnitronSplash } from '@omnitron-dev/prism/identity';
 import { useAuthStore } from './store';
 import { sanitizeReturnTo } from 'src/utils/errors';
 import { ConsoleAccessProvider } from './access';
@@ -22,12 +22,8 @@ export function AuthGuard({ children }: AuthGuardProps) {
   }, [initialize]);
 
   if (!initialized) {
-    // `LoadingScreen` is prism's component for lazy route CONTENT inside a
-    // layout — a lone 4px bar. This is an app-level gate: nothing at all is
-    // on screen behind it, and on a cold load the session probe takes long
-    // enough that a bare bar reads as a page that failed to render.
-    // `SplashScreen` is the one prism documents for auth checks.
-    return <SplashScreen fullScreen message="Checking your session…" />;
+    // Session validation has no measurable total: keep the brand activity indeterminate.
+    return <OmnitronSplash fullScreen message="Checking your session…" />;
   }
 
   if (!user) {
@@ -55,12 +51,8 @@ export function GuestGuard({ children }: GuestGuardProps) {
   }, [initialize]);
 
   if (!initialized) {
-    // `LoadingScreen` is prism's component for lazy route CONTENT inside a
-    // layout — a lone 4px bar. This is an app-level gate: nothing at all is
-    // on screen behind it, and on a cold load the session probe takes long
-    // enough that a bare bar reads as a page that failed to render.
-    // `SplashScreen` is the one prism documents for auth checks.
-    return <SplashScreen fullScreen message="Checking your session…" />;
+    // Session validation has no measurable total: keep the brand activity indeterminate.
+    return <OmnitronSplash fullScreen message="Checking your session…" />;
   }
 
   if (user) {

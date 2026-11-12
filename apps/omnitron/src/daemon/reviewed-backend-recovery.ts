@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { ChildProcess } from 'node:child_process';
 import type { ControllerGrant, ExecutionOwnerIdentity, HandoffTicket } from '@omnitron-dev/titan-pm';
@@ -49,7 +50,7 @@ export interface ReviewedBackendRecoveryFence {
 
 const HASH = /^[a-f0-9]{64}$/;
 const digest = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+const same = isDeepStrictEqual;
 const text = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= 1024;
 const positive = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) > 0;
 const grant = (value: ControllerGrant | undefined): boolean => !!value && text(value.ownerId) && text(value.controllerId) && positive(value.epoch);
@@ -216,7 +217,8 @@ async function checkStatic(fence: ReviewedBackendRecoveryFence, certificate = tr
 }
 
 async function assertRestoredCertificate(directory: string, fence: ReviewedBackendRecoveryFence,
-  ticket: HandoffTicket, pid: number, entry: string): Promise<void> {
+  admitted: BackendBootRecord, pid: number, entry: string): Promise<void> {
+  const { ticket, ...admittedState } = admitted.state;
   const until = Date.now() + 15_000;
   let reason = 'No recovery certificate has been published';
   while (true) {
@@ -227,11 +229,13 @@ async function assertRestoredCertificate(directory: string, fence: ReviewedBacke
     if (candidate) {
       const expected = candidate.previousPid === pid && candidate.previousEntry === entry &&
         candidate.runtimeHash === fence.activation.previous && same(candidate.controller, ticket.to) &&
-        candidate.registryDigest === fence.registryDigest && candidate.state.executionInventory === fence.inventoryDigest;
+        candidate.registryDigest === fence.registryDigest && candidate.state.executionInventory === fence.inventoryDigest &&
+        same(withoutNativeObservations(candidate.state), withoutNativeObservations(admittedState)) &&
+        same(candidate.daemonConfig, admitted.daemonConfig) && candidate.cwd === admitted.cwd;
       // Startup may retain the old certificate while its new writer is pending.
       // A different writer or contradictory new certificate is never a wait condition.
       if (!expected && !(state?.status === 'invalid' && digest(candidate) === fence.certifiedRecoveryRecordSha256))
-        throw Error('Restored recovery certificate belongs to a different writer, registry, runtime or execution inventory');
+        throw Error('Restored recovery certificate belongs to a different writer, registry, runtime, execution inventory or configuration');
       if (state?.status === 'ready' && expected) return;
     }
     if (state?.status === 'invalid') reason = state.reason.slice(0, 1024);
@@ -312,7 +316,7 @@ export async function recoverReviewedBackend(config: ManagedRuntime, input: { pl
       const confirm = async () => {
         // The newly admitted controller legitimately replaces the recovery
         // certificate. Its new receipt must be proven, not compared to the old writer's bytes.
-        await assertRestoredCertificate(config.directory, fence, ticket!, result.pid, artifact.entry);
+        await assertRestoredCertificate(config.directory, fence, boot, result.pid, artifact.entry);
         await checkStatic(fence, false);
         await checkOwner(fence, config.directory, { ...fence, controller: ticket!.to, pending: ticket! });
         const fresh = await readSupervisorTransition(input.plan);

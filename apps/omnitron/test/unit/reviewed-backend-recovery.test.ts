@@ -115,7 +115,11 @@ async function fixture() {
     state: { protocol: 1, ticket: originalTicket, watchConfig: { ...DEFAULT_ECOSYSTEM, apps: [] }, infrastructure: null,
       projects: { projects: [], infrastructure: [], stacks: [], resumeBackoff: [], reconciling: false }, executionInventory: 'f'.repeat(64) } };
   const checkpoint = path.join(directory, 'handoff-original.json'); await writePrivateRecord(checkpoint, boot);
-  const { ticket: _ticket, ...certifiedState } = boot.state;
+  // The monitor constructs its state independently, in a different property
+  // order from the handoff producer. Do not derive this fixture by object rest.
+  const certifiedState: BackendRecoveryRecord['state'] = { protocol: 1,
+    watchConfig: structuredClone(boot.state.watchConfig), projects: structuredClone(boot.state.projects),
+    infrastructure: structuredClone(boot.state.infrastructure), executionInventory: boot.state.executionInventory };
   const certified = { ...boot, state: certifiedState, controller, runtimeHash: runtime, registryDigest };
   const recovery = new BackendRecoveryJournal(directory); recovery.publish(certified); recovery.invalidate('Failed candidate startup'); await recovery.close();
   await instance.exclusive(async () => { instance.beginActivation('1'.repeat(64), runtime, checkpoint); });
@@ -181,14 +185,16 @@ it('waits passively for the admitted writer to replace its real startup-invalid 
   expect(fake.prepare).toHaveBeenCalledTimes(1); expect(fake.children).toHaveLength(1);
 });
 
-it.each(['writer', 'registry', 'inventory'])('rejects a contradictory new %s certificate instead of waiting or retrying', async variant => {
+it.each(['writer', 'registry', 'inventory', 'configuration'])('rejects a contradictory new %s certificate instead of waiting or retrying', async variant => {
   const f = await fixture();
   fake.certificate.mockImplementationOnce(async (record: BackendRecoveryRecord) => ({ ...record,
     ...(variant === 'writer' ? { controller: { ...record.controller, controllerId: 'foreign' } } : {}),
     ...(variant === 'registry' ? { registryDigest: '8'.repeat(64) } : {}),
     ...(variant === 'inventory' ? { state: { ...record.state, executionInventory: '8'.repeat(64) } } : {}),
+    ...(variant === 'configuration' ? { state: { ...record.state, watchConfig: { ...record.state.watchConfig,
+      apps: [{ name: 'unreviewed-restored-app', script: './other.js' }] } } } : {}),
   }));
-  await expect(f.invoke()).rejects.toThrow('different writer, registry, runtime or execution inventory');
+  await expect(f.invoke()).rejects.toThrow('different writer, registry, runtime, execution inventory or configuration');
   expect(fake.children).toHaveLength(1); expect(fake.children[0]!.signalCode).not.toBeNull();
   expect(fake.prepare).toHaveBeenCalledTimes(1); expect(f.instance.activation()?.reviewedRecovery?.phase).toBe('unconfirmed');
 });
@@ -260,6 +266,23 @@ it('does not treat a different owner or foreign controller as a reviewable basel
   db.kvSetSync('runtime.activation', f.fence.activation);
   const ticket = await f.handoff.prepare(f.handoff.status().controller, 'foreign'); await f.handoff.commit(ticket);
   await expect(prepareReviewedBackendRecovery(f.checkpoint, f.home)).rejects.toThrow('original activation candidate grant');
+  expect(fake.prepare).not.toHaveBeenCalled(); expect(fake.children).toHaveLength(0);
+});
+
+it.each(['watch configuration', 'project configuration'])('still rejects genuine %s drift despite independent certificate property order', async variant => {
+  const f = await fixture();
+  const journal = new BackendRecoveryJournal(f.directory);
+  try {
+    const state = journal.read();
+    if (state?.status !== 'invalid' || !state.previous) throw Error('Missing fixture certificate');
+    const changed = structuredClone(state.previous);
+    if (variant === 'watch configuration') changed.state.watchConfig.apps.push({ name: 'unreviewed-app', script: './other.js' });
+    else changed.state.projects.reconciling = true;
+    journal.publish(changed); journal.invalidate('Configuration changed before preparation');
+  } finally { await journal.close(); }
+  const db = new DaemonStateStore(createNullLogger(), path.join(f.home, 'runtime/state.db')); stores.push(db);
+  db.kvSetSync('runtime.activation', f.fence.activation);
+  await expect(prepareReviewedBackendRecovery(f.checkpoint, f.home)).rejects.toThrow('Certified project/configuration ownership differs');
   expect(fake.prepare).not.toHaveBeenCalled(); expect(fake.children).toHaveLength(0);
 });
 

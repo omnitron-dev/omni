@@ -1,38 +1,19 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { mkdtemp, rm } from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-import { build, preview } from 'vite';
-import { test as base, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { PortalIslandHost } from '../../dist/hydration/index.js';
 import { toHtmlSsr } from '@omnitron-dev/lumen-ast';
+import { createBrowserTest } from './browser-fixture.js';
 
-const test = base.extend({
-  channel: [({ launchOptions }, provide) => provide(process.env.PLAYWRIGHT_CHANNEL ?? launchOptions.channel), { scope: 'worker', option: true }],
-  url: [async ({}, provide) => {
-    const root = import.meta.dirname;
-    const output = await mkdtemp(path.join(os.tmpdir(), 'lumen-hydration-browser-'));
-    const shared = { value: '<script>window.pwned=true</script>' };
-    const markup = renderToStaticMarkup(React.createElement(PortalIslandHost, {
-      islandId: 'react-host', component: 'Counter', hydrate: 'interaction', props: { label: 'React', left: shared, right: shared },
-    }, 'React fallback')) + toHtmlSsr({ frontmatter: {}, toc: [], diagnostics: [], children: [
-      { type: 'jsxWidget', name: 'Counter', props: { label: 'AST', hydrate: 'interaction' }, children: [{ type: 'text', value: 'AST fallback' }] },
-    ] });
-    let server;
-    try {
-      const config = { root, configFile: false, publicDir: false, logLevel: 'error',
-        resolve: { dedupe: ['react', 'react-dom'] },
-        plugins: [{ name: 'actual-ssr-fixture', transformIndexHtml: html => html.replace('<!--ssr-islands-->', markup) }],
-        build: { outDir: output, rolldownOptions: { input: path.join(root, 'hydration.html') } },
-        preview: { host: '127.0.0.1', port: 0, headers: {
-          'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'",
-        } },
-      };
-      await build(config); server = await preview(config);
-      await provide('http://127.0.0.1:' + server.httpServer.address().port + '/hydration.html');
-    } finally { await server?.close(); await rm(output, { recursive: true, force: true }); }
-  }, { scope: 'worker', timeout: 90_000 }],
+const shared = { value: '<script>window.pwned=true</script>' };
+const markup = renderToStaticMarkup(React.createElement(PortalIslandHost, {
+  islandId: 'react-host', component: 'Counter', hydrate: 'interaction', props: { label: 'React', left: shared, right: shared },
+}, 'React fallback')) + toHtmlSsr({ frontmatter: {}, toc: [], diagnostics: [], children: [
+  { type: 'jsxWidget', name: 'Counter', props: { label: 'AST', hydrate: 'interaction' }, children: [{ type: 'text', value: 'AST fallback' }] },
+] });
+const test = createBrowserTest('hydration.html', {
+  plugins: [{ name: 'actual-ssr-fixture', transformIndexHtml: html => html.replace('<!--ssr-islands-->', markup) }],
+  contentSecurityPolicy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'",
 });
 
 test('actual React and AST SSR hosts share props and respond to same-element metadata updates', async ({ page, url }) => {

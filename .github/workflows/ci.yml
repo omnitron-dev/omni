@@ -270,6 +270,8 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - run: pnpm install --frozen-lockfile
+      - name: Verify reproducibility failure diagnostics
+        run: node --test scripts/ci/reproducibility.test.mjs
       - run: pnpm check:reproducibility --diagnostics "${{ runner.temp }}/reproducibility-evidence"
       - name: Preserve reproducibility failure evidence
         if: failure()

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 const native = vi.hoisted(() => vi.fn());
 vi.mock('node:child_process', async importOriginal => ({ ...await importOriginal<typeof import('node:child_process')>(), execFileSync: native }));
-import { readHostBootIdentity, provesDifferentHostBoot, compareProcessLifetimes, isLegacyDarwinBootIdentity } from '../../src/shared/host-boot-identity.js';
+import { readHostBootIdentity, provesDifferentHostBoot, compareProcessLifetimes, isLegacyDarwinBootIdentity } from '@omnitron-dev/common/process-identity';
 import { assertCleanOwnerBoot, OwnerReconciliationRequiredError } from '../../src/daemon/managed-runtime.js';
 const boot = 'darwin:119bd1eb-252d-4be8-ad83-69e325fbd927';
 const next = 'darwin:219bd1eb-252d-4be8-ad83-69e325fbd927';

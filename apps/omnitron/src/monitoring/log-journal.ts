@@ -1,9 +1,8 @@
+import { readProcessLifetime, compareProcessLifetimes } from '@omnitron-dev/common/process-identity';
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { openSqliteDatabase } from '@omnitron-dev/titan-database/sqlite';
 import { ensurePrivateDir, sealSqliteFiles } from '../shared/private-files.js';
-import { readProcessLifetime } from './process-lifetime.js';
-import { compareProcessLifetimes } from '../shared/host-boot-identity.js';
 
 export interface JournalItem<T> { id: string; digest: string; value: T }
 export interface LogFileIntent { offset: number; inode: number; prefix: string }

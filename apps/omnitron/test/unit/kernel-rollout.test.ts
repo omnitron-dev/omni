@@ -13,7 +13,7 @@ import { ManagedRolloutFailure, type ManagedRolloutObservation, type ManagedSele
 import { NodeManagerRpcService } from '../../src/services/node-manager.rpc-service.js';
 import { RemoteDeployer, type DeployTarget } from '../../src/services/remote-deployer.service.js';
 import { commandFailure } from '../../src/execution/command-failure.js';
-import { readProcessLifetime } from '../../src/monitoring/process-lifetime.js';
+import { readProcessLifetime } from '@omnitron-dev/common/process-identity';
 
 const commit = 'f'.repeat(40), previous = '0'.repeat(64), candidate = '1'.repeat(64);
 const recordKey = (id: string) => 'fleet:kernel:v1:plan:' + id;

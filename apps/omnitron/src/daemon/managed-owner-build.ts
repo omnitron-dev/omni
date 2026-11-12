@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { verifyRuntimeArtifact } from '../shared/runtime-artifact.js';
 import { readBuildStamp, type BuildStamp } from '../shared/build-stamp.js';
-import { readHostBootIdentity } from '../shared/host-boot-identity.js';
+import { readHostBootIdentity } from '@omnitron-dev/common/process-identity';
 import { readManagedRuntime, type ManagedRuntime } from './managed-runtime.js';
 import { parseDarwinJob, parseDarwinProcesses } from './darwin-owner-evidence.js';
 import { ExecutionJournal } from './execution-journal.js';

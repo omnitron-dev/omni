@@ -3,9 +3,9 @@ import path from 'node:path';
 import os from 'node:os';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { guardianControlGroup, guardianGroupIdentity, prepareGuardianFence, checkGuardianStopFence, verifyStoppedGuardian } from '../../src/daemon/system-guardian-cgroup.js';
-import { readProcessLifetime } from '../../src/monitoring/process-lifetime.js';
+import { readProcessLifetime } from '@omnitron-dev/common/process-identity';
 
-vi.mock('../../src/monitoring/process-lifetime.js', () => ({ readProcessLifetime: vi.fn() }));
+vi.mock('@omnitron-dev/common/process-identity', async importOriginal => ({ ...await importOriginal<typeof import('@omnitron-dev/common/process-identity')>(), readProcessLifetime: vi.fn() }));
 let root: string;
 const guardian = 101, backend = 102, unit = 'omnitron-daemon.service', group = '/system.slice/' + unit;
 const facts = { Id: unit, ActiveState: 'active', MainPID: String(guardian), KillMode: 'control-group', Delegate: 'no', ControlGroup: group };

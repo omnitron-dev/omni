@@ -52,5 +52,16 @@
   "bugs": {
     "url": "https://github.com/omnitron-dev/omni/issues"
   },
-  "homepage": "https://github.com/omnitron-dev/omni/tree/main/packages/common#readme"
+  "homepage": "https://github.com/omnitron-dev/omni/tree/main/packages/common#readme",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./process-identity": {
+      "types": "./dist/node/process-identity.d.ts",
+      "node": "./dist/node/process-identity.js"
+    }
+  }
 }

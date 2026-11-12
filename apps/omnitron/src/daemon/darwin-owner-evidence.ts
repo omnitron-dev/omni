@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { compareProcessLifetimes, formatDarwinProcessLifetime } from '../shared/host-boot-identity.js';
+import { compareProcessLifetimes, formatDarwinProcessLifetime } from '@omnitron-dev/common/process-identity';
 import type { ManagedRuntime } from './managed-runtime.js';
 
 export interface DarwinProcessIdentity {

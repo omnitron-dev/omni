@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { readProcessLifetime } from '../monitoring/process-lifetime.js';
+import { readProcessLifetime } from '@omnitron-dev/common/process-identity';
 
 export interface GuardianStopFence {
   group: string;

@@ -8,7 +8,7 @@ import { once } from 'node:events';
 import { expect, it } from 'vitest';
 import { hostBootIdentity, type ManagedRuntime } from '../../src/daemon/managed-runtime.js';
 import { readPrivateRecord, writePrivateRecord } from '../../src/daemon/execution-journal.js';
-import { readProcessLifetime } from '../../src/monitoring/process-lifetime.js';
+import { readProcessLifetime } from '@omnitron-dev/common/process-identity';
 import { prepareOwnerReconciliation, acknowledgeOwnerReconciliation, consumeOwnerReconciliation } from '../../src/daemon/owner-reconciliation.js';
 
 // All processes, records and sockets in this test are newly created fixtures.

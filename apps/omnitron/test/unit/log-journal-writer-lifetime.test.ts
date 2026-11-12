@@ -5,7 +5,7 @@ import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LogJournal } from '../../src/monitoring/log-journal.js';
 const probe = vi.hoisted(() => vi.fn());
-vi.mock('../../src/monitoring/process-lifetime.js', () => ({ readProcessLifetime: probe }));
+vi.mock('@omnitron-dev/common/process-identity', async importOriginal => ({ ...await importOriginal<typeof import('@omnitron-dev/common/process-identity')>(), readProcessLifetime: probe }));
 const cleanups: Array<() => void> = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); vi.restoreAllMocks(); probe.mockReset(); });
 function fixture(identity: string | null = '11111111-1111-4111-8111-111111111111:200') {

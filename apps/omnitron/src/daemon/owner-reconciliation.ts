@@ -1,3 +1,4 @@
+import { readProcessLifetime, compareProcessLifetimes, isLegacyDarwinBootIdentity, isStableDarwinBootIdentity, isStableHostBootIdentity } from '@omnitron-dev/common/process-identity';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -5,10 +6,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readManagedRuntime, hostBootIdentity, type ManagedRuntime } from './managed-runtime.js';
 import { ExecutionJournal, readPrivateRecord, writePrivateRecord } from './execution-journal.js';
-import { readProcessLifetime } from '../monitoring/process-lifetime.js';
 import { withKernelFileLock } from '../shared/kernel-file-lock.js';
 import { readDarwinOwnerEvidence, type DarwinReconciliationScope } from './darwin-owner-evidence.js';
-import { compareProcessLifetimes, isLegacyDarwinBootIdentity, isStableDarwinBootIdentity, isStableHostBootIdentity } from '../shared/host-boot-identity.js';
 
 interface ProcessIdentity { pid: number; lifetime: string | null }
 interface CrashReceipt { bootId: string; clean: false; pid: number }

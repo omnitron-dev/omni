@@ -1,6 +1,5 @@
+import { readProcessLifetime, compareProcessLifetimes } from '@omnitron-dev/common/process-identity';
 import { afterEach, expect, it, vi } from 'vitest';
-import { readProcessLifetime } from '../../src/monitoring/process-lifetime.js';
-import { compareProcessLifetimes } from '../../src/shared/host-boot-identity.js';
 
 afterEach(() => vi.unstubAllEnvs());
 

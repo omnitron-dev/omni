@@ -1,6 +1,5 @@
+import { readProcessLifetime, compareProcessLifetimes } from '@omnitron-dev/common/process-identity';
 import { randomUUID } from 'node:crypto';
-import { readProcessLifetime } from '../monitoring/process-lifetime.js';
-import { compareProcessLifetimes } from '../shared/host-boot-identity.js';
 import type { DaemonStateStore } from '../daemon/daemon-state-store.service.js';
 import type { KernelRollout, KernelRolloutTarget } from '../shared/dto/nodes.js';
 import type { DeployTarget } from './remote-deployer.service.js';

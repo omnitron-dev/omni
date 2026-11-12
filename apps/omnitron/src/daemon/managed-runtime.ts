@@ -7,7 +7,7 @@ import { readPrivateRecord } from './execution-journal.js';
 import type { ServiceScope } from '../commands/service-units.js';
 import { checkGuardianStopEffects, guardianStopProperties } from './system-guardian-unit.js';
 import { checkGuardianStopFence, guardianControlGroup, prepareGuardianFence, verifyStoppedGuardian, type GuardianStopFence } from './system-guardian-cgroup.js';
-import { readHostBootIdentity, isStableHostBootIdentity, provesDifferentHostBoot } from '../shared/host-boot-identity.js';
+import { readHostBootIdentity, isStableHostBootIdentity, provesDifferentHostBoot } from '@omnitron-dev/common/process-identity';
 
 export interface ManagedRuntime {
   protocol: 1;

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { readMasterFixture, removeOwnedFixtureRoot } from './fixture-master-options.mjs';
+import { initialRuntimeDirectories, readMasterFixture, removeOwnedFixtureRoot } from './fixture-master-options.mjs';
 import { reserveDaemonPorts } from './fixture-ports.mjs';
 const db = 'postgresql://fixture:synthetic-test-secret@127.0.0.1:45509/fixture';
 const baseConfig = { port: 45500, httpPort: 45501, role: 'master', host: '127.0.0.1',
@@ -28,6 +28,32 @@ test('master inputs preserve store/auth, pin private execution and do not create
 test('default and legacy roundtrip modes remain unselected', async () => {
   assert.equal(await readMasterFixture(['/a', '/b', '--owner-roundtrip'], {}), undefined);
   assert.equal(await readMasterFixture(['/a', '/b', '--backend-only'], {}), undefined);
+});
+test('ordinary guardian/backend qualification preserves independently selected initial roles', () => {
+  const owner = '/sealed/omnitron-handoff-owner/packages/0/dist';
+  const backend = '/sealed/omnitron-handoff-backend/packages/0/dist';
+  const guardian = '/sealed/omnitron-handoff-guardian/packages/0/dist';
+  const candidate = '/sealed/omnitron-handoff-candidate/packages/0/dist';
+  for (const mode of [[], ['--backend-only'], ['--owner-roundtrip']]) {
+    const argv = [owner, candidate, ...mode, '--initial-backend', backend, '--initial-guardian', guardian];
+    assert.deepEqual(initialRuntimeDirectories(argv, owner, candidate), { initialBackendDist: backend, initialGuardianDist: guardian });
+  }
+  assert.deepEqual(initialRuntimeDirectories([owner, candidate], owner, candidate),
+    { initialBackendDist: owner, initialGuardianDist: owner });
+  assert.deepEqual(initialRuntimeDirectories([owner, candidate, '--initial-backend', backend], owner, candidate),
+    { initialBackendDist: backend, initialGuardianDist: owner });
+  assert.deepEqual(initialRuntimeDirectories([owner, candidate, '--initial-guardian', guardian], owner, candidate),
+    { initialBackendDist: owner, initialGuardianDist: guardian });
+});
+test('initial role selection rejects missing, duplicated and non-fixture runtime inputs', () => {
+  const owner = '/sealed/omnitron-handoff-owner/packages/0/dist';
+  const candidate = '/sealed/omnitron-handoff-candidate/packages/0/dist';
+  const selected = '/sealed/omnitron-handoff-selected/packages/0/dist';
+  for (const flag of ['--initial-backend', '--initial-guardian']) {
+    for (const suffix of [[flag], [flag, '--backend-only'], [flag, selected, flag, selected], [flag, '/live/runtime/packages/0/dist']])
+      assert.throws(() => initialRuntimeDirectories([owner, candidate, ...suffix], owner, candidate));
+    assert.throws(() => initialRuntimeDirectories([owner, flag, selected], owner, undefined), /requires a candidate/);
+  }
 });
 for (const [name, change] of Object.entries({ scope: { scope: 'system' }, socket: { socketPath: '/other/socket' }, environment: { environment: {} },
   role: { role: 'slave' }, host: { host: '0.0.0.0' }, cluster: { cluster: { enabled: true } },

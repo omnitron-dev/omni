@@ -15,6 +15,21 @@ function absolute(value, label) {
 }
 function sameFile(a, b) { return a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs; }
 
+/** Select each initial native role before the fixture creates any resources. */
+export function initialRuntimeDirectories(argv, ownerDist, candidateDist) {
+  const initial = option => {
+    const index = argv.indexOf(option);
+    if (index === -1) return ownerDist;
+    const directory = argv[index + 1];
+    assert.ok(candidateDist && index === argv.lastIndexOf(option) && directory && !directory.startsWith('--'),
+      `${option} requires a candidate and exactly one runtime path`);
+    const resolved = path.resolve(directory);
+    assert.ok(resolved.includes('omnitron-handoff-'), 'Use a disposable initial runtime artifact');
+    return resolved;
+  };
+  return { initialBackendDist: initial('--initial-backend'), initialGuardianDist: initial('--initial-guardian') };
+}
+
 export async function readMasterFixture(argv, env) {
   const options = ['--master-scenario', '--fixture-root', '--master-config'];
   if (!argv.includes(options[0])) {

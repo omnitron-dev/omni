@@ -3,8 +3,14 @@ import test from 'node:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { stopPrivateFixtureStack } from './managed-owner-roundtrip.mjs';
 import { applicationSdkOption } from './managed-project-runtime.mjs';
+
+const managementDist = fileURLToPath(new URL('../../dist/', import.meta.url));
+const execute = promisify(execFile);
 
 async function applicationProject(t) {
   const checkout = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-sdk-input-'));
@@ -26,21 +32,42 @@ test('admits only the separately pinned installed application SDK before the own
   const stamp = path.join(sdk, 'dist/BUILD.json');
   await fs.writeFile(stamp, JSON.stringify({commit:application, dirty:false}));
   const args = ['/owner', '/controller', '--owner-roundtrip', '--application-project', project.checkout, '--application-sdk-commit'];
-  assert.deepEqual(await applicationSdkOption([...args, application]), {...project, commit:application});
-  await assert.rejects(applicationSdkOption([...args, controller]), /independently reviewed/);
-  await assert.rejects(applicationSdkOption(args), /exactly once/);
-  await assert.rejects(applicationSdkOption([...args, application, '--application-sdk-commit', application]), /exactly once/);
+  assert.deepEqual(await applicationSdkOption([...args, application], managementDist), {...project, commit:application});
+  await assert.rejects(applicationSdkOption([...args, controller], managementDist), /independently reviewed/);
+  await assert.rejects(applicationSdkOption(args, managementDist), /exactly once/);
+  await assert.rejects(applicationSdkOption([...args, application, '--application-sdk-commit', application], managementDist), /exactly once/);
   await fs.writeFile(stamp, JSON.stringify({commit:application, dirty:true}));
-  await assert.rejects(applicationSdkOption([...args, application]), /clean sources/);
+  await assert.rejects(applicationSdkOption([...args, application], managementDist), /clean sources/);
   assert.equal(await applicationSdkOption(['/owner', '/controller', '--owner-roundtrip']), undefined);
   await assert.rejects(applicationSdkOption(['--application-sdk', sdk]), /installed consumer checkout/);
+});
+
+test('loads the native fixture without a built source checkout and uses only its explicit artifact', async t => {
+  const project = await applicationProject(t), commit = 'c'.repeat(40);
+  await fs.writeFile(path.join(project.root, 'dist/BUILD.json'), JSON.stringify({commit, dirty:false}));
+  const helper = path.join(project.checkout, 'fixture.mjs');
+  await fs.copyFile(new URL('./managed-project-runtime.mjs', import.meta.url), helper);
+  const moduleUrl = pathToFileURL(helper).href;
+  const args = ['--owner-roundtrip', '--application-project', project.checkout, '--application-sdk-commit', commit];
+  const code = `
+    import assert from 'node:assert/strict';
+    const {applicationSdkOption} = await import(${JSON.stringify(moduleUrl)});
+    assert.equal(await applicationSdkOption(['/old', '/new']), undefined);
+    await assert.rejects(applicationSdkOption(${JSON.stringify(args)}), /reviewed management artifact/);
+    const inspected = await applicationSdkOption(${JSON.stringify(args)}, ${JSON.stringify(managementDist)});
+    assert.equal(inspected.commit, ${JSON.stringify(commit)});
+    assert.equal(inspected.project, ${JSON.stringify(project.project)});
+  `;
+  await execute(process.execPath, ['--input-type=module', '--eval', code], {
+    cwd: project.checkout, timeout: 30_000,
+  });
 });
 
 test('refuses a missing workload dependency before creating native services', async t => {
   const project = await applicationProject(t);
   await fs.rm(project.dependencies['@omnitron-dev/titan-storage'], {recursive:true});
   await assert.rejects(applicationSdkOption(['--owner-roundtrip', '--application-project', project.checkout,
-    '--application-sdk-commit', 'a'.repeat(40)]), /must provide @omnitron-dev\/titan-storage/);
+    '--application-sdk-commit', 'a'.repeat(40)], managementDist), /must provide @omnitron-dev\/titan-storage/);
 });
 
 test('accepts virtual-store siblings inside the consumer workspace', async t => {
@@ -52,7 +79,7 @@ test('accepts virtual-store siblings inside the consumer workspace', async t => 
   for (const [name, root] of Object.entries(project.dependencies)) await fs.symlink(root, path.join(app, 'node_modules', name), 'dir');
   await fs.writeFile(path.join(project.root, 'dist/BUILD.json'), JSON.stringify({commit:'a'.repeat(40), dirty:false}));
   assert.deepEqual(await applicationSdkOption(['--owner-roundtrip', '--application-project', app,
-    '--application-sdk-commit', 'a'.repeat(40)]), {...project, project:app, commit:'a'.repeat(40)});
+    '--application-sdk-commit', 'a'.repeat(40)], managementDist), {...project, project:app, commit:'a'.repeat(40)});
 });
 
 test('refuses transitive dependencies outside the reviewed consumer installation', async t => {
@@ -62,7 +89,7 @@ test('refuses transitive dependencies outside the reviewed consumer installation
   await fs.mkdir(path.join(sdk, 'node_modules'));
   await fs.symlink(external.root, path.join(sdk, 'node_modules/escape'), 'dir');
   await assert.rejects(applicationSdkOption(['--owner-roundtrip', '--application-project', project.checkout,
-    '--application-sdk-commit', 'a'.repeat(40)]), /escapes the frozen checkouts/);
+    '--application-sdk-commit', 'a'.repeat(40)], managementDist), /escapes the frozen checkouts/);
 });
 
 const scope = { project: 'probe', stack: 'local' };

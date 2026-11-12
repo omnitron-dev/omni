@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { reserveDaemonPorts } from './fixture-ports.mjs';
 import { applicationSdkOption } from './managed-project-runtime.mjs';
-import { readMasterFixture, removeOwnedFixtureRoot } from './fixture-master-options.mjs';
+import { initialRuntimeDirectories, readMasterFixture, removeOwnedFixtureRoot } from './fixture-master-options.mjs';
 import { verifyFixtureLogs } from './fixture-log-evidence.mjs';
 import { createFixtureUnitFiles, assertFixtureUnitFilesOwned, removeFixtureUnitFiles, authorizeFixtureUnitWrite, authorizeFixtureGuardianReplacement } from './fixture-unit-files.mjs';
 import { execFile } from 'node:child_process';
@@ -29,18 +29,8 @@ if (backendOnly) assert.ok(managementDist, 'Provide the candidate artifact befor
 const ownerRoundtrip = process.argv.includes('--owner-roundtrip');
 assert.ok(!(backendOnly && ownerRoundtrip), 'Choose backend-only or owner-roundtrip qualification');
 if (ownerRoundtrip) assert.ok(managementDist, 'Owner replacement requires an independently built candidate');
-const applicationSdk = await applicationSdkOption(process.argv.slice(2));
-const initialRuntime = option => {
-  const index = process.argv.indexOf(option);
-  if (index === -1) return dist;
-  const directory = process.argv[index + 1];
-  assert.ok(ownerRoundtrip && directory && !directory.startsWith('--'), `${option} requires a cold owner fixture and a runtime path`);
-  const resolved = path.resolve(directory);
-  assert.ok(resolved.includes('omnitron-handoff-'), 'Use a disposable initial runtime artifact');
-  return resolved;
-};
-const initialBackendDist = initialRuntime('--initial-backend');
-const initialGuardianDist = initialRuntime('--initial-guardian');
+const applicationSdk = await applicationSdkOption(process.argv.slice(2), managementDist ?? dist);
+const { initialBackendDist, initialGuardianDist } = initialRuntimeDirectories(process.argv.slice(2), dist, managementDist);
 const root = masterFixture ? masterFixture.root : await fs.mkdtemp(path.join(os.tmpdir(), 'omni-managed-'));
 if (masterFixture) await fs.mkdir(root, { mode: 0o700 });
 const rootIdentity = masterFixture ? await fs.lstat(root) : undefined;
@@ -122,7 +112,7 @@ const until = async (work, message, ms = 150_000) => {
   throw new Error(`${message}; inspect ${root}; ${cause?.message ?? ''}`);
 };
 const waitCertificate = () => until(async () => (await status()).execution?.recovery?.status === 'ready', 'No recovery certificate');
-let sampler, inFlight = false, samples = 0, failures = 0, ownerPid, applicationPid, ownerClient;
+let sampler, inFlight = false, samples = 0, failures = 0, ownerPid, ownerId, applicationPid, ownerClient;
 const ownerRoundtripPids = new Set();
 let samplingStage = 'cold-start';
 const eventLoop = monitorEventLoopDelay({ resolution: 20 });
@@ -219,16 +209,26 @@ try {
   await release();
   for (const unit of units) await native(linux ? ['start', unit.job] : ['bootstrap', domain, unit.file]);
   let first = await until(status, 'Initial managed backend did not start');
-  mark({ stage: 'cold-start', root, backend: first.pid, owner: first.execution.owner.pid });
+  assert.equal(first.build?.commit, initialBackend.build.commit, 'Initial backend did not use its selected runtime');
+  assert.equal(first.build?.dirty, false);
+  mark({ stage: 'cold-start', root, backend: first.pid, owner: first.execution.owner.pid,
+    initialRuntimes: { owner: { hash: artifact.runtimeHash, build: artifact.build },
+      backend: { hash: initialBackend.runtimeHash, build: initialBackend.build },
+      guardian: { hash: initialGuardian.runtimeHash, build: initialGuardian.build } } });
   ownerPid = first.execution.owner.pid;
+  ownerId = first.execution.owner.id;
+  const initialNativePids = {};
+  for (const unit of units) {
+    const observed = await native(linux ? ['show', unit.job, '--property=MainPID', '--value'] : ['print', unit.job]);
+    const pid = Number(linux ? observed.stdout.trim() : observed.stdout.match(/^\s*pid = (\d+)\s*$/m)?.[1]);
+    assert.ok(Number.isSafeInteger(pid) && pid > 1, 'Private native unit has no process identity');
+    initialNativePids[unit.mode] = pid;
+  }
+  assert.equal(initialNativePids.owner, ownerPid, 'Backend reported another native execution owner');
+  assert.equal(first.execution.supervision.guardianPid, initialNativePids.backend, 'Backend reported another native guardian');
   if (masterFixture) {
     ownerRoundtripPids.add(first.pid); ownerRoundtripPids.add(ownerPid);
-    for (const unit of units) {
-      const observed = await native(linux ? ['show', unit.job, '--property=MainPID', '--value'] : ['print', unit.job]);
-      const pid = Number(linux ? observed.stdout.trim() : observed.stdout.match(/^\s*pid = (\d+)\s*$/m)?.[1]);
-      assert.ok(Number.isSafeInteger(pid) && pid > 1, 'Private native unit has no process identity');
-      ownerRoundtripPids.add(pid);
-    }
+    for (const pid of Object.values(initialNativePids)) ownerRoundtripPids.add(pid);
     const createClient = () => createDaemonClient(socket, 60_000);
     const check = createClient();
     try {
@@ -305,7 +305,7 @@ try {
       if (rpc.status === 'rejected') throw rpc.reason;
       const now = http.value, snapshot = rpc.value;
       assert.equal(now.pid, applicationPid); assert.equal(now.parent, ownerPid);
-      assert.equal(snapshot.status.owner.pid, ownerPid); samples++;
+      assert.equal(snapshot.status.owner.pid, ownerPid); assert.equal(snapshot.status.owner.id, ownerId); samples++;
     }
     catch (error) {
       failures++;
@@ -320,10 +320,10 @@ try {
       }
     } finally { inFlight = false; }
   }, 20);
-  const cli = (...args) => run(artifact.execPath, [path.join(artifact.directory, 'cli/omnitron.js'), ...args, '--json'], {
+  const cli = (...args) => run(initialBackend.execPath, [path.join(initialBackend.directory, 'cli/omnitron.js'), ...args, '--json'], {
     env: { ...process.env, OMNITRON_HOME: instance }, cwd: root, timeout: 600_000, maxBuffer: 1024 * 1024,
   });
-  const require = createRequire(path.join(artifact.directory, '../package.json'));
+  const require = createRequire(path.join(initialBackend.directory, '../package.json'));
   const Database = require('better-sqlite3');
   const migrationHistory = () => {
     const db = new Database(path.join(instance, 'data/slave.db'), { readonly: true, fileMustExist: true });
@@ -336,7 +336,7 @@ try {
   };
   if (managementDist && !backendOnly) {
     const { assertBackendMigrationsCompatible } = await import(pathToFileURL(path.join(managementDist, 'daemon/backend-candidate.js')).href);
-    const compatibility = await assertBackendMigrationsCompatible(artifact.directory, managementDist, 'node');
+    const compatibility = await assertBackendMigrationsCompatible(initialBackend.directory, managementDist, 'node');
     if (compatibility?.kind === 'checksum-metadata') {
       const supervisor = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor');
       let capable;
@@ -394,6 +394,8 @@ try {
     assert.equal(transitioned.result.ownerPid, ownerPid);
     assert.notEqual(transitioned.result.backendPid, settled.pid);
     assert.notEqual(transitioned.result.guardianPid, prepared.guardianPid);
+    assert.equal((await status()).build.commit, initialBackend.build.commit, 'Guardian transition changed the selected backend runtime');
+    assert.equal((await probe()).pid, applicationPid, 'Guardian transition restarted the application');
     assertHistoryPreserved('guardian-transition');
     await checkPlan(plan.file, false, transitioned.result.backendPid);
     assert.equal((await applySupervisorTransition(plan.file)).result.backendPid, transitioned.result.backendPid, 'A repeated apply started another backend');
@@ -408,7 +410,7 @@ try {
       const runner = path.resolve(managementDist, '../../../node');
       const invoke = async (...args) => JSON.parse((await run(runner, [path.join(managementDist, 'cli/omnitron.js'),
         '--json', 'backend', 'upgrade', ...args], { cwd: root, env: process.env, timeout: 300_000, maxBuffer: 1024 * 1024 })).stdout).data;
-      for (const [stage, target] of [['backend-forward', managementDist], ['backend-rollback', artifact.directory]]) {
+      for (const [stage, target] of [['backend-forward', managementDist], ['backend-rollback', initialBackend.directory]]) {
         samplingStage = stage + '-check';
         const backendBeforeUpdate = await until(async () => {
           const current = await status(), guardian = await supervisor.service.status();
@@ -427,6 +429,7 @@ try {
             guardian.state === 'ready' && !guardian.operationPending && guardian.backendPid === observed.pid ? observed : null;
         }, 'Qualified backend did not settle');
         assert.equal(current.build.commit, stamp.commit); assert.equal(current.execution.owner.pid, ownerPid);
+        assert.equal(current.execution.owner.id, ownerId);
         assert.equal((await supervisor.service.status()).pid, guardianBeforeUpdates.pid, 'Backend update replaced its guardian');
         assert.equal((await probe()).pid, applicationPid);
         assertHistoryPreserved(stage);
@@ -435,7 +438,8 @@ try {
     } finally { await supervisor.close(); }
   }
   // A regular CLI must delegate, so a replacement remains a child of the OS job.
-  const upgraded = JSON.parse((await cli('backend', 'upgrade', dist)).stdout).data;
+  const upgraded = JSON.parse((await cli('backend', 'upgrade', initialBackend.directory)).stdout).data;
+  assert.equal(upgraded.build.commit, initialBackend.build.commit);
   mark({ stage: 'upgraded', pid: upgraded.pid });
   assert.notEqual(upgraded.pid, first.pid); assert.equal(upgraded.ownerPid, ownerPid);
   await waitCertificate();
@@ -443,6 +447,7 @@ try {
   process.kill(upgraded.pid, 'SIGKILL');
   const recovered = await until(async () => { const value = await status(); return value.pid !== upgraded.pid ? value : null; }, 'Killed backend was not recovered');
   assert.equal(recovered.execution.owner.pid, ownerPid);
+  assert.equal(recovered.build.commit, initialBackend.build.commit, 'Crash recovery selected the owner runtime as the backend');
   mark({ stage: 'backend-crash-recovered', pid: recovered.pid });
   await waitCertificate();
   const supervisor = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor');
@@ -455,6 +460,7 @@ try {
   process.kill(guardian.pid, 'SIGKILL');
   const afterGuardian = await until(async () => { const value = await status(); return value.pid !== recovered.pid ? value : null; }, 'OS did not recover the killed guardian');
   assert.equal(afterGuardian.execution.owner.pid, ownerPid);
+  assert.equal(afterGuardian.build.commit, initialBackend.build.commit, 'Guardian recovery selected the owner runtime as the backend');
   await waitCertificate();
   const committedGuardian = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor');
   try {
@@ -503,7 +509,7 @@ try {
           ownerPid, appsDigest: next.appsDigest }), /selection changed since rollout planning/);
       } finally { await stale.close(); }
       await waitCertificate();
-      const previous = await planManagedRollout(invoke, await readStamp(dist));
+      const previous = await planManagedRollout(invoke, initialBackend.build.commit);
       assert.equal(previous.previous, next.candidate); assert.equal(previous.candidate, next.previous);
       await activateManagedTarget(invoke, previous);
       assert.equal(await reconcileManagedTarget(invoke, previous), 'candidate');
@@ -511,7 +517,7 @@ try {
       await waitCertificate();
     }
     samplingStage = 'guardian-rollback';
-    const rollback = await prepareSupervisorTransition(path.resolve(dist, '../../..'), socket);
+    const rollback = await prepareSupervisorTransition(initialGuardian.runtimeRoot, socket);
     await checkPlan(rollback.file, true, (await status()).pid);
     await authorizeFixtureGuardianReplacement(units, rollback.file, JSON.parse(await fs.readFile(rollback.file, 'utf8')), instance);
     const script = `import { applySupervisorTransition } from ${JSON.stringify(pathToFileURL(path.join(managementDist, 'daemon/supervisor-transition.js')).href)};await applySupervisorTransition(${JSON.stringify(rollback.file)});`;
@@ -538,6 +544,7 @@ try {
       mark({ stage: 'guardian-coordinator-killed', phase: interruptedPlan.phase });
       const resumed = await applySupervisorTransition(rollback.file);
       assert.equal(resumed.phase, 'complete'); assert.equal(resumed.result.ownerPid, ownerPid);
+      assert.equal((await status()).build.commit, initialBackend.build.commit, 'Guardian rollback changed the baseline backend');
       mark({ stage: 'guardian-transition-resumed', result: resumed.result });
     } finally {
       if (!completed) coordinator.kill('SIGKILL');
@@ -546,22 +553,31 @@ try {
     }
   }
   const after = await probe();
+  const finalStatus = await status();
+  assert.equal(finalStatus.build.commit, initialBackend.build.commit, 'Qualification did not restore the actual baseline backend');
+  assert.equal(finalStatus.execution.owner.pid, ownerPid); assert.equal(finalStatus.execution.owner.id, ownerId);
+  const finalSupervision = JSON.parse(await fs.readFile(path.join(instance, 'runtime/supervision.json'), 'utf8'));
+  assert.equal(finalSupervision.owner.artifact, artifact.runtimeHash, 'Qualification changed the owner artifact');
+  assert.equal(finalSupervision.backend.artifact, initialGuardian.runtimeHash, 'Qualification did not restore the actual baseline guardian');
   console.log(JSON.stringify({ stage: 'availability-summary', samples, failures, eventLoopMaxMs: eventLoop.max / 1e6 }));
   assert.ok(after.value > before.value); assert.equal(failures, 0);
   if (linux && process.env.OMNITRON_RUNTIME_PROBE) {
     const { runtimeProbeCommand } = await import(pathToFileURL(process.env.OMNITRON_RUNTIME_PROBE).href);
-    const bundle = { root: path.dirname(dist), version: first.version, commit: first.build.commit };
+    const bundle = { root: path.dirname(initialBackend.directory), version: first.version, commit: initialBackend.build.commit };
     const options = { env: { ...process.env, OMNITRON_HOME: instance }, timeout: 60_000, maxBuffer: 1024 * 1024 };
     const detected = JSON.parse((await run('/bin/sh', ['-c', runtimeProbeCommand(bundle, (await status()).pid)], options)).stdout);
     assert.equal(detected.kind, 'managed'); assert.equal(detected.ownerPid, ownerPid);
     await assert.rejects(run('/bin/sh', ['-c', runtimeProbeCommand(bundle, applicationPid)], options), /no recognized entry/);
     console.log(JSON.stringify({ stage: 'remote-inspection-verified', ownerPid, backendPid: afterGuardian.pid }));
   }
-  const verifiedLogs = await verifyFixtureLogs({ root, instance, runtime: path.resolve(dist, '../../..'), fixtureId: id, until });
+  const verifiedLogs = await verifyFixtureLogs({ root, instance, runtime: initialBackend.runtimeRoot, fixtureId: id, until });
   assertHistoryPreserved('complete');
   console.log(JSON.stringify({ test: linux ? 'independent-systemd-supervision' : 'independent-launchd-supervision', root, ownerPid, applicationPid,
     backends: [first.pid, upgraded.pid, recovered.pid, afterGuardian.pid], killedGuardian: guardian.pid, samples, failures,
-    verifiedLogs, preservedMigrationHistoryRows: originalHistory.length }));
+    verifiedLogs, preservedMigrationHistoryRows: originalHistory.length,
+    initialRuntimes: { owner: artifact.build.commit, backend: initialBackend.build.commit, guardian: initialGuardian.build.commit },
+    finalBackend: { pid: finalStatus.pid, commit: finalStatus.build.commit },
+    finalGuardian: { pid: finalStatus.execution.supervision.guardianPid, artifact: finalSupervision.backend.artifact } }));
   }
 } finally {
   await cleanup();

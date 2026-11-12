@@ -3,13 +3,16 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { resolveInstalledDependency } from '../../dist/release/package-resolution.js';
-import { installedGraph } from '../../dist/release/installed-graph.js';
-import { findWorkspaceRoot } from '../../dist/services/bundle-builder.js';
 
 /** The SDK is an independent release input. Verify it before any native job is created. */
-export async function inspectApplicationSdk(directory, commit) {
+export async function inspectApplicationSdk(directory, commit, managementDist) {
   assert.match(commit, /^[0-9a-f]{40}$/, 'Expected the full reviewed application SDK commit');
+  assert.equal(typeof managementDist, 'string', 'Supply the reviewed management artifact');
+  assert.ok(path.isAbsolute(managementDist), 'The management artifact must be an absolute path');
+  const load = name => import(pathToFileURL(path.join(managementDist, name + '.js')).href);
+  const [{ resolveInstalledDependency }, { installedGraph }, { findWorkspaceRoot }] = await Promise.all([
+    load('release/package-resolution'), load('release/installed-graph'), load('services/bundle-builder'),
+  ]);
   const project = await fs.realpath(directory);
   await fs.access(path.join(project, 'package.json'));
   const checkout = await fs.realpath(findWorkspaceRoot(project) ?? project);
@@ -32,7 +35,7 @@ export async function inspectApplicationSdk(directory, commit) {
   return { root: sdk, project, checkout, commit, dependencies };
 }
 
-export async function applicationSdkOption(argv) {
+export async function applicationSdkOption(argv, managementDist) {
   assert.ok(!argv.includes('--application-sdk'), 'Use --application-project with the installed consumer checkout, not a package leaf');
   const flags = ['--application-project', '--application-sdk-commit'];
   if (!flags.some(flag => argv.includes(flag))) return undefined;
@@ -43,7 +46,7 @@ export async function applicationSdkOption(argv) {
       'Supply --application-project and --application-sdk-commit exactly once');
     return argv[i + 1];
   });
-  return inspectApplicationSdk(root, commit);
+  return inspectApplicationSdk(root, commit, managementDist);
 }
 
 /** Public stack lifecycle with real source bootstrap, pools and a retained archive.
@@ -59,7 +62,7 @@ export async function prepareManagedProjectRuntime(context) {
   const { verifyRuntimeArtifact } = await load('shared/runtime-artifact');
   const { PidManager } = await load('daemon/pid-manager');
   const { root: sdk, checkout, commit: sdkCommit, dependencies: installedDependencies } =
-    await inspectApplicationSdk(applicationSdk.project, applicationSdk.commit);
+    await inspectApplicationSdk(applicationSdk.project, applicationSdk.commit, managementDist);
   const project = path.join(root, 'applications'), app = path.join(project, 'app');
   const observations = path.join(root, 'application-runtime.jsonl');
   for (const directory of ['src', 'dist', 'node_modules/@omnitron-dev'])

@@ -104,8 +104,11 @@ const TIMEOUT = "Backup failed for 'main': docker did not finish within 600 s an
 
 let dir: string;
 let store: InstanceType<typeof DaemonStateStore>;
+let previousExitCode: typeof process.exitCode;
 
 beforeEach(() => {
+  previousExitCode = process.exitCode;
+  process.exitCode = undefined;
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bk-silent-'));
   env.home = dir;
   fs.mkdirSync(path.join(dir, '.omnitron', 'backups'), { recursive: true });
@@ -115,6 +118,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  process.exitCode = previousExitCode;
   vi.restoreAllMocks();
   await store.dispose();
   fs.rmSync(dir, { recursive: true, force: true });
@@ -270,14 +274,12 @@ describe('backup schedules says what each schedule last did', () => {
     expect(warned).toMatch(/Last 'all' pass: 2026-09-23T06:04:08Z\s+PARTIAL/);
   });
 
-  it('an older daemon still lists its schedules, and says what it cannot tell', async () => {
+  it('fails explicitly when the daemon cannot report backup status', async () => {
     rpc['listSchedules'] = async () => ({ all: 'hourly', full: 'daily' });
 
     await backupSchedulesCommand();
 
-    const out = printed.map((p) => p.text).join('\n');
-    expect(out).toMatch(/all\s+hourly/);
-    expect(printed.some((p) => p.level === 'error')).toBe(false);
-    expect(printed.filter((p) => p.level === 'warn').map((p) => p.text).join('\n')).toMatch(/unknown/);
+    expect(process.exitCode).toBe(1);
+    expect(printed.filter((p) => p.level === 'error').map((p) => p.text).join('\n')).toContain('getBackupStatus');
   });
 });

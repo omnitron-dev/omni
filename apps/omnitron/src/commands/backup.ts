@@ -12,7 +12,7 @@ import {
   uniqueIdPrefixLength,
 } from '../services/backup-pipeline.js';
 import { createDaemonClient } from '../daemon/daemon-client.js';
-import { emitJson, isJsonMode } from './output.js';
+import { emitError, emitJson, isJsonMode } from './output.js';
 import type { BackupArtifactRequest, BackupRecord } from '../shared/dto/backups.js';
 
 async function invokeRpc(method: string, data?: any): Promise<any> {
@@ -28,26 +28,11 @@ async function invokeRpc(method: string, data?: any): Promise<any> {
   }
 }
 
-/**
- * Call a method an older daemon does not serve, and learn that without
- * failing. Netron refuses an unknown method by name ("Unknown member: …");
- * that one refusal becomes `undefined`, and the command says what it cannot
- * show. Any other error is still an error.
- */
-async function invokeOptionalRpc(method: string, data?: any): Promise<any | undefined> {
-  try {
-    return await invokeRpc(method, data);
-  } catch (err) {
-    if (/Unknown member: '[^']+' is not defined/.test((err as Error).message)) return undefined;
-    throw err;
-  }
-}
-
 /** The status the daemon reports beside the index rows, or why there is none. */
 async function readBackupStatus(): Promise<{ status?: any; unavailable?: string }> {
   try {
-    const status = await invokeOptionalRpc('getBackupStatus');
-    return status ? { status } : { unavailable: 'this daemon does not report it (no getBackupStatus)' };
+    const status = await invokeRpc('getBackupStatus');
+    return status ? { status } : { unavailable: 'the daemon returned no backup status' };
   } catch (err) {
     return { unavailable: (err as Error).message };
   }
@@ -87,6 +72,7 @@ export async function backupCreateCommand(database?: string): Promise<void> {
       const results: any[] = await invokeRpc('createAllBackups');
       if (!results || results.length === 0) {
         log.warn('No databases found to back up — is a stack running?');
+        process.exitCode = 1;
         return;
       }
       printPassResults(results, (r) => qualifiedName(r, r.database), 'database(s)');
@@ -99,7 +85,8 @@ export async function backupCreateCommand(database?: string): Promise<void> {
     log.info(`  ID: ${backup.id}`);
     log.info(`  Database: ${backup.database}`);
   } catch (err) {
-    log.error(`Failed: ${(err as Error).message}`);
+    emitError(err);
+    process.exitCode = 1;
   }
 }
 
@@ -121,36 +108,36 @@ export async function backupListCommand(): Promise<void> {
 
     if (backups.length === 0) {
       log.info('No backups available');
-      return;
+    } else {
+      log.info(`Found ${backups.length} backup(s):\n`);
+      // The id is the first column because it is what `backup restore` takes —
+      // the list used to print everything except it. A prefix, as long as it
+      // needs to be to stay unique and never shorter than `backup create`'s
+      // eight characters, so the same token works from either.
+      const idLength = uniqueIdPrefixLength(backups.map((b) => String(b.id)));
+      const rows = backups.map((b) => [
+        String(b.id).slice(0, idLength),
+        // Whose database this is: two stacks can both have a `main`.
+        stackLabel(b),
+        b.bucket ? `${b.database}/${b.bucket}` : b.database,
+        formatBackupSize(b.size),
+        // UTC, as the filenames are — see `formatUtc`.
+        formatUtc(b.createdAt),
+        b.filename,
+      ]);
+      for (const line of renderTable(['ID', 'Stack', 'Target', 'Size', 'Created (UTC)', 'File'], rows)) log.info(line);
+      if (backups.some((b) => stackLabel(b) === '—')) {
+        log.info('(Stack — : taken before backups recorded their stack)');
+      }
+      log.info('\nRestore one with: omnitron backup restore <ID>');
     }
-
-    log.info(`Found ${backups.length} backup(s):\n`);
-    // The id is the first column because it is what `backup restore` takes —
-    // the list used to print everything except it. A prefix, as long as it
-    // needs to be to stay unique and never shorter than `backup create`'s
-    // eight characters, so the same token works from either.
-    const idLength = uniqueIdPrefixLength(backups.map((b) => String(b.id)));
-    const rows = backups.map((b) => [
-      String(b.id).slice(0, idLength),
-      // Whose database this is: two stacks can both have a `main`.
-      stackLabel(b),
-      b.bucket ? `${b.database}/${b.bucket}` : b.database,
-      formatBackupSize(b.size),
-      // UTC, as the filenames are — see `formatUtc`.
-      formatUtc(b.createdAt),
-      b.filename,
-    ]);
-    for (const line of renderTable(['ID', 'Stack', 'Target', 'Size', 'Created (UTC)', 'File'], rows)) log.info(line);
-    if (backups.some((b) => stackLabel(b) === '—')) {
-      log.info('(Stack — : taken before backups recorded their stack)');
-    }
-    log.info('\nRestore one with: omnitron backup restore <ID>');
 
     // A pass that lost a database leaves a listing that looks complete — the
     // missing row is the only trace. Say so here, where people look.
     const { status, unavailable } = await readBackupStatus();
     if (!status) {
       log.warn(`Which stacks are backed up, and how each schedule last ran: unknown — ${unavailable}`);
+      process.exitCode = 1;
       return;
     }
     for (const s of status.schedules ?? []) {
@@ -160,7 +147,8 @@ export async function backupListCommand(): Promise<void> {
     }
     reportCoverage(status.stacks);
   } catch (err) {
-    log.error(`Failed: ${(err as Error).message}`);
+    emitError(err);
+    process.exitCode = 1;
   }
 }
 
@@ -205,6 +193,7 @@ function printPassResults(results: any[], nameOf: (r: any) => string, unit: stri
   const ok = attempted.filter((r) => r.ok).length;
   log.info(`Done: ${ok}/${attempted.length} ${unit} backed up`);
   if (skipped.length > 0) log.warn(`Not backed up: ${skipped.map(nameOf).join(', ')}`);
+  if (attempted.length === 0 || ok !== attempted.length) process.exitCode = 1;
 }
 
 /**
@@ -225,21 +214,25 @@ export async function backupFullCommand(): Promise<void> {
     const results: any[] = await invokeRpc('createFullBackup');
     if (!results || results.length === 0) {
       log.warn('Nothing to back up — is a stack running?');
+      process.exitCode = 1;
       return;
     }
     printPassResults(results, (r) => qualifiedName(r, r.target), 'target(s)');
   } catch (err) {
-    log.error(`Failed: ${(err as Error).message}`);
+    emitError(err);
+    process.exitCode = 1;
   }
 }
 
 export async function backupScheduleCommand(target: string, cron: string): Promise<void> {
   try {
-    await invokeRpc('setSchedule', { database: target, cron });
+    const result = await invokeRpc('setSchedule', { database: target, cron });
+    if (result?.success !== true) throw new Error('The daemon did not confirm the backup schedule');
     log.success(`Scheduled backup of '${target}': ${cron}`);
     log.info(`  (use 'all' to back up every running-stack database)`);
   } catch (err) {
-    log.error(`Failed: ${(err as Error).message}`);
+    emitError(err);
+    process.exitCode = 1;
   }
 }
 
@@ -247,23 +240,15 @@ export async function backupSchedulesCommand(): Promise<void> {
   try {
     const { status, unavailable } = await readBackupStatus();
     if (!status) {
-      // The configuration is all an older daemon can say — printed as it was,
-      // with the gap named rather than left to look like "all is well".
-      const map: Record<string, string> = await invokeRpc('listSchedules');
-      const entries = Object.entries(map || {});
-      if (entries.length === 0) {
-        log.info('No backup schedules configured');
-        return;
-      }
-      log.info('Backup schedules:');
-      for (const [target, cron] of entries) log.info(`  ${target.padEnd(28)} ${cron}`);
-      log.warn(`When each last ran, and how that went: unknown — ${unavailable}`);
+      emitError(`Backup status unavailable: ${unavailable}`);
+      process.exitCode = 1;
       return;
     }
 
     const schedules: any[] = status.schedules ?? [];
     if (schedules.length === 0) {
       log.info('No backup schedules configured');
+      reportCoverage(status.stacks);
       return;
     }
     // "all hourly" said what was configured, and nothing about whether it
@@ -287,16 +272,19 @@ export async function backupSchedulesCommand(): Promise<void> {
     }
     reportCoverage(status.stacks);
   } catch (err) {
-    log.error(`Failed: ${(err as Error).message}`);
+    emitError(err);
+    process.exitCode = 1;
   }
 }
 
 export async function backupUnscheduleCommand(target: string): Promise<void> {
   try {
-    await invokeRpc('removeSchedule', { database: target });
+    const result = await invokeRpc('removeSchedule', { database: target });
+    if (result?.success !== true) throw new Error('The daemon did not confirm removal of the backup schedule');
     log.success(`Removed backup schedule for '${target}'`);
   } catch (err) {
-    log.error(`Failed: ${(err as Error).message}`);
+    emitError(err);
+    process.exitCode = 1;
   }
 }
 
@@ -314,9 +302,11 @@ export async function backupRestoreCommand(id: string): Promise<void> {
     log.info(
       `Restoring ${target.id} — ${qualifiedName(target, target.database)}, taken ${formatUtc(target.createdAt)} (${target.filename})...`,
     );
-    await invokeRpc('restoreBackup', { backupId: target.id });
+    const result = await invokeRpc('restoreBackup', { backupId: target.id });
+    if (result?.success !== true) throw new Error('The daemon did not confirm the restore; inspect the destination before retrying');
     log.success('Backup restored successfully');
   } catch (err) {
-    log.error(`Failed: ${(err as Error).message}`);
+    emitError(err);
+    process.exitCode = 1;
   }
 }

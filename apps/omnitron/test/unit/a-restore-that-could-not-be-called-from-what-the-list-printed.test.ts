@@ -23,6 +23,9 @@ import os from 'node:os';
 import path from 'node:path';
 
 const env = vi.hoisted(() => ({ home: '' }));
+vi.mock('../../src/config/defaults.js', async importOriginal => ({
+  ...await importOriginal<Record<string, unknown>>(), get OMNITRON_HOME() { return path.join(env.home, '.omnitron'); },
+}));
 vi.mock('../../src/shared/paths.js', () => ({
   expandPath: (p: string) => (p === '~' || p.startsWith('~/') ? env.home + p.slice(1) : p),
 }));
@@ -96,17 +99,22 @@ const LISTED = [
 ];
 
 const restored: unknown[] = [];
+let previousExitCode: typeof process.exitCode;
 
 beforeEach(() => {
+  previousExitCode = process.exitCode;
+  process.exitCode = undefined;
   printed.length = 0;
   restored.length = 0;
   for (const k of Object.keys(rpc)) delete rpc[k];
   rpc['listBackups'] = async () => LISTED;
+  rpc['getBackupStatus'] = async () => ({ schedules: [], stacks: [] });
   rpc['restoreBackup'] = async (arg) => {
     restored.push(arg);
     return { success: true };
   };
 });
+afterEach(() => { process.exitCode = previousExitCode; });
 
 describe('the CLI restores from what it prints', () => {
   it('the ID that backup list prints is one that backup restore takes', async () => {
@@ -142,6 +150,7 @@ describe('the CLI restores from what it prints', () => {
     await backupRestoreCommand('a63d');
 
     expect(restored).toEqual([]);
+    expect(process.exitCode).toBe(1);
     const said = printed.filter((p) => p.level === 'error').map((p) => p.text).join('\n');
     expect(said).toContain('a63dbcf4-8f0e-4b8e-9d7c-2a1b3c4d5e6f');
     expect(said).toContain('a63d1111-2222-4333-8444-555566667777');

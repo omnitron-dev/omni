@@ -111,6 +111,7 @@ beforeEach(() => {
   store = new DaemonStateStore(fakeLogger().logger, path.join(dir, '.omnitron', 'data', 'daemon-state.db'));
   printed.length = 0;
   for (const k of Object.keys(rpc)) delete rpc[k];
+  rpc['getBackupStatus'] = async () => ({ schedules: [], stacks: [] });
 });
 
 afterEach(async () => {

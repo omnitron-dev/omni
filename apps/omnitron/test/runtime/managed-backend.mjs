@@ -15,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
+import { prepareRecoveryTopology, managedReviewedRecovery } from './managed-reviewed-recovery.mjs';
 
 assert.ok(['darwin', 'linux'].includes(process.platform), 'This fixture requires native service supervision');
 const linux = process.platform === 'linux';
@@ -30,6 +31,9 @@ if (managementDist) assert.ok(managementDist.includes('omnitron-handoff-'), 'Use
 const backendOnly = process.argv.includes('--backend-only');
 if (backendOnly) assert.ok(managementDist, 'Provide the candidate artifact before --backend-only');
 const ownerRoundtrip = process.argv.includes('--owner-roundtrip');
+const reviewedRecovery = process.argv.includes('--reviewed-recovery');
+assert.ok(!reviewedRecovery || managementDist && !backendOnly && !ownerRoundtrip && !masterFixture,
+  'Reviewed recovery requires its exact isolated guardian scenario');
 assert.ok(!(backendOnly && ownerRoundtrip), 'Choose backend-only or owner-roundtrip qualification');
 if (ownerRoundtrip) assert.ok(managementDist, 'Owner replacement requires an independently built candidate');
 const applicationSdk = await applicationSdkOption(process.argv.slice(2), managementDist ?? dist);
@@ -38,7 +42,8 @@ const fixtureDirectory = fileURLToPath(new URL('.', import.meta.url));
 const inputs = { owner: path.resolve(dist, '../../..'), backend: path.resolve(initialBackendDist, '../../..'),
   guardian: path.resolve(initialGuardianDist, '../../..'), candidate: managementDist ? path.resolve(managementDist, '../../..') : null };
 const prepared = preparation?.mode === 'execute'
-  ? await claimPreparedFixture({ file: preparation.receipt, inputs, fixtureDirectory }) : undefined;
+  ? await claimPreparedFixture({ file: preparation.receipt, inputs, fixtureDirectory,
+    scenario: reviewedRecovery ? 'reviewed-recovery' : 'ordinary' }) : undefined;
 const root = prepared?.root ?? (masterFixture ? masterFixture.root : await fs.mkdtemp(path.join(os.tmpdir(), 'omni-managed-')));
 if (masterFixture) await fs.mkdir(root, { mode: 0o700 });
 const rootIdentity = prepared?.rootIdentity ?? await fs.lstat(root);
@@ -65,7 +70,7 @@ if (prepared) {
   artifacts = await verifyPreparedFixture(prepared, RuntimeInstallation, reportPreparation);
 } else {
   const result = await prepareFixture({ root, id, inputs, RuntimeInstallation, fixtureDirectory, mark: reportPreparation,
-    scenario: masterFixture ? 'master' : ownerRoundtrip ? 'owner-roundtrip' : backendOnly ? 'backend-only' : 'ordinary' });
+    scenario: masterFixture ? 'master' : ownerRoundtrip ? 'owner-roundtrip' : backendOnly ? 'backend-only' : reviewedRecovery ? 'reviewed-recovery' : 'ordinary' });
   if (preparation?.mode === 'prepare') {
     reportPreparation({ stage: 'fixture-prepared', root, receipt: result.file, elapsedMs: result.receipt.elapsedMs,
       inputs: result.receipt.inputs, servicesStarted: false });
@@ -195,7 +200,8 @@ try {
      const server=http.createServer((q,r)=>{if(q.url==='/pause')paused=true;r.end(JSON.stringify({pid:process.pid,parent:process.ppid,value,sdkRevision,sourceRevision,fixture:${JSON.stringify(id)},ready:true,timestamp:new Date().toISOString()}));});
      server.listen(${counterPort},'127.0.0.1',()=>{fs.writeFileSync(${JSON.stringify(path.join(root, 'address.json'))},JSON.stringify(server.address()));process.send?.({type:'ready'});});
      process.on('SIGTERM',()=>server.close(()=>process.exit(0)));`);
-    await fs.writeFile(path.join(projectDirectory, 'omnitron.config.mjs'), `export default {${ownerRoundtrip ? "project:'probe',stacks:{local:{type:'local',apps:'all',infrastructureOwnership:'external'}}," : ''}apps:[{name:'counter',script:'./counter.mjs',cwd:${JSON.stringify(projectDirectory)},enabled:true,watch:${ownerRoundtrip ? "'source'" : 'false'},readiness:${JSON.stringify(readiness)}}]};`);
+    if (reviewedRecovery) await prepareRecoveryTopology(root, artifact.directory);
+    await fs.writeFile(path.join(projectDirectory, 'omnitron.config.mjs'), `export default {${ownerRoundtrip ? "project:'probe',stacks:{local:{type:'local',apps:'all',infrastructureOwnership:'external'}}," : ''}apps:[{name:'counter',script:'./counter.mjs',cwd:${JSON.stringify(projectDirectory)},enabled:true,watch:${ownerRoundtrip ? "'source'" : 'false'},readiness:${JSON.stringify(readiness)}}${reviewedRecovery ? ",{name:'topology',bootstrap:'./topology.mjs',enabled:true}" : ''}]};`);
     }
     const definitions = [];
     for (const mode of ['owner', 'backend']) {
@@ -349,6 +355,18 @@ try {
   const assertHistoryPreserved = stage => {
     assert.deepEqual(migrationHistory(), originalHistory, `${stage}: migration journal was rewritten`);
   };
+  if (reviewedRecovery) {
+    const result = await managedReviewedRecovery({ root, instance, execution, units, first, initialBackend, initialGuardian,
+      managementDist, ownerClient, applicationPid, probe, status, until, run, mark,
+      authorizeReplacement: authorizeFixtureGuardianReplacement });
+    clearInterval(sampler);
+    while (inFlight) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(failures, 0, 'Reviewed recovery interrupted application HTTP or owner RPC');
+    const verifiedLogs = await verifyFixtureLogs({ root, instance, runtime: initialBackend.runtimeRoot, fixtureId: id, until });
+    assertHistoryPreserved('reviewed-recovery');
+    console.log(JSON.stringify({ test: 'native-reviewed-backend-recovery', root, samples, failures, verifiedLogs,
+      preservedMigrationHistoryRows: originalHistory.length, ...result }));
+  } else {
   if (managementDist && !backendOnly) {
     const { assertBackendMigrationsCompatible } = await import(pathToFileURL(path.join(managementDist, 'daemon/backend-candidate.js')).href);
     const compatibility = await assertBackendMigrationsCompatible(initialBackend.directory, managementDist, 'node');
@@ -599,6 +617,7 @@ try {
     initialRuntimes: { owner: artifact.build.commit, backend: initialBackend.build.commit, guardian: initialGuardian.build.commit },
     finalBackend: { pid: finalStatus.pid, commit: finalStatus.build.commit },
     finalGuardian: { pid: finalStatus.execution.supervision.guardianPid, artifact: finalSupervision.backend.artifact } }));
+  }
   }
 } finally {
   await cleanup();

@@ -11,7 +11,7 @@ const CONSUMED = 'execute.started';
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const fixtureFiles = ['managed-backend.mjs', 'fixture-preparation.mjs', 'fixture-ports.mjs',
   'managed-project-runtime.mjs', 'fixture-master-options.mjs', 'fixture-log-evidence.mjs',
-  'fixture-unit-files.mjs', 'managed-owner-roundtrip.mjs'];
+  'fixture-unit-files.mjs', 'managed-owner-roundtrip.mjs', 'managed-reviewed-recovery.mjs'];
 const identity = stat => ({ dev: stat.dev, ino: stat.ino, uid: stat.uid, mode: stat.mode & 0o7777 });
 const host = () => ({ platform: process.platform, arch: process.arch, node: process.version });
 
@@ -52,6 +52,7 @@ export function preparationOption(argv, env = process.env) {
   const prepare = argv.indexOf('--prepare-only'), execute = argv.indexOf('--prepared');
   if (prepare === -1 && execute === -1) return undefined;
   assert.ok((prepare === -1) !== (execute === -1), 'Choose preparation or execution, not both');
+  assert.equal(argv.indexOf('--reviewed-recovery'), argv.lastIndexOf('--reviewed-recovery'), 'Reviewed recovery may be selected only once');
   const option = prepare !== -1 ? '--prepare-only' : '--prepared';
   const index = prepare !== -1 ? prepare : execute;
   assert.equal(index, argv.lastIndexOf(option), 'Preparation option must appear exactly once');
@@ -65,8 +66,8 @@ export function preparationOption(argv, env = process.env) {
     'Prepared fixture requires owner and management runtimes');
   for (let cursor = 2; cursor < argv.length; cursor++) {
     const flag = argv[cursor];
-    assert.ok(['--prepare-only', '--prepared', '--initial-backend', '--initial-guardian'].includes(flag), 'Unsupported preparation option');
-    if (flag === '--prepare-only') continue;
+    assert.ok(['--prepare-only', '--prepared', '--initial-backend', '--initial-guardian', '--reviewed-recovery'].includes(flag), 'Unsupported preparation option');
+    if (flag === '--prepare-only' || flag === '--reviewed-recovery') continue;
     assert.ok(argv[++cursor] && !argv[cursor].startsWith('--'), `${flag} requires a value`);
   }
   if (prepare !== -1) return { mode: 'prepare' };
@@ -150,13 +151,13 @@ export async function consumeFixture(prepared) {
 }
 
 /** Claim before importing runtime code or any other execution write. Never undo it. */
-export async function claimPreparedFixture({ file, inputs, fixtureDirectory }) {
+export async function claimPreparedFixture({ file, inputs, fixtureDirectory, scenario = 'ordinary' }) {
   assert.equal(path.basename(file), RECEIPT, 'Expected preparation.json');
   const root = path.dirname(file);
   await privateDirectory(root);
   await absent(path.join(root, CONSUMED), 'Prepared fixture was already claimed; it cannot be reset or replayed');
   const { value: receipt } = await readReceipt(file);
-  assert.ok(receipt?.protocol === 1 && receipt.kind === 'omnitron-native-preparation' && receipt.scenario === 'ordinary' &&
+  assert.ok(receipt?.protocol === 1 && receipt.kind === 'omnitron-native-preparation' && receipt.scenario === scenario &&
     /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(receipt.id), 'Invalid preparation receipt');
   const rootIdentity = await privateDirectory(root);
   assert.deepEqual(receipt.root, { path: root, ...rootIdentity }, 'Prepared root identity changed');

@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { initialRuntimeDirectories, readMasterFixture, removeOwnedFixtureRoot } from './fixture-master-options.mjs';
 import { reserveDaemonPorts } from './fixture-ports.mjs';
+import { preparationOption } from './fixture-preparation.mjs';
 const db = 'postgresql://fixture:synthetic-test-secret@127.0.0.1:45509/fixture';
 const baseConfig = { port: 45500, httpPort: 45501, role: 'master', host: '127.0.0.1',
   auth: { jwtSecret: 'synthetic-only' }, releaseStore: { endpoint: 'http://127.0.0.1:45510', bucket: 'fixture',
@@ -44,6 +45,16 @@ test('ordinary guardian/backend qualification preserves independently selected i
     { initialBackendDist: backend, initialGuardianDist: owner });
   assert.deepEqual(initialRuntimeDirectories([owner, candidate, '--initial-guardian', guardian], owner, candidate),
     { initialBackendDist: owner, initialGuardianDist: guardian });
+});
+test('reviewed recovery preparation is explicit, isolated and cannot be combined with another native scenario', () => {
+  const inputs = ['/sealed/omnitron-handoff-owner', '/sealed/omnitron-handoff-candidate'];
+  assert.deepEqual(preparationOption([...inputs, '--reviewed-recovery', '--prepare-only'], {}), { mode: 'prepare' });
+  assert.deepEqual(preparationOption([...inputs, '--reviewed-recovery', '--prepared', '/private/preparation.json'], {}),
+    { mode: 'execute', receipt: '/private/preparation.json' });
+  for (const extra of ['--owner-roundtrip', '--backend-only', '--master-scenario', '--reviewed-recovery'])
+    assert.throws(() => preparationOption([...inputs, '--reviewed-recovery', '--prepare-only', extra], {}));
+  assert.throws(() => preparationOption([...inputs, '--reviewed-recovery', '--prepare-only'], { OMNITRON_HOME: '/live' }),
+    /must not override/);
 });
 test('initial role selection rejects missing, duplicated and non-fixture runtime inputs', () => {
   const owner = '/sealed/omnitron-handoff-owner/packages/0/dist';

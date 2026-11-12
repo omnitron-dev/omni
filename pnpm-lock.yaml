@@ -809,8 +809,8 @@ importers:
         specifier: 0.6.2
         version: 0.6.2
       typescript:
-        specifier: npm:@typescript/typescript6@^6.0.2
-        version: '@typescript/typescript6@6.0.2'
+        specifier: 6.0.3
+        version: 6.0.3
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
@@ -835,7 +835,7 @@ importers:
         version: 6.5.438
       tsup:
         specifier: ^9.0.0
-        version: 9.0.0(@swc/core@1.16.20)(@typescript/typescript6@6.0.2)(postcss@8.5.32)(tsx@4.23.15)(yaml@2.9.1)
+        version: 9.0.0(@swc/core@1.16.20)(postcss@8.5.32)(tsx@4.23.15)(typescript@6.0.3)(yaml@2.9.1)
       vitest:
         specifier: ^5.0.5
         version: 5.0.5(patch_hash=c3c2409fb3a28cc9085db38333002c7de59470ec9743dedcfb6a5844d2fcb8b7)(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(@vitest/coverage-v8@5.0.5)(@vitest/ui@5.0.5)(happy-dom@21.0.4)(jsdom@30.1.3(@noble/hashes@2.4.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -14997,6 +14997,34 @@ snapshots:
       '@swc/core': 1.16.20
       postcss: 8.5.32
       typescript: '@typescript/typescript6@6.0.2'
+    transitivePeerDependencies:
+      - jiti
+      - tsx
+      - yaml
+
+  tsup@9.0.0(@swc/core@1.16.20)(postcss@8.5.32)(tsx@4.23.15)(typescript@6.0.3)(yaml@2.9.1):
+    dependencies:
+      bundle-require: 5.1.0(esbuild@0.28.2)
+      cac: 7.1.0
+      chokidar: 5.0.0
+      consola: 3.4.2
+      esbuild: 0.28.2
+      fix-dts-default-cjs-exports: 1.0.1
+      joycon: 3.1.1
+      obug: 3.0.0
+      picocolors: 1.1.1
+      postcss-load-config: 6.0.1(postcss@8.5.32)(tsx@4.23.15)(yaml@2.9.1)
+      resolve-from: 5.0.0
+      rollup: 4.65.1
+      source-map-js: 1.2.2
+      sucrase: 3.35.1
+      tinyexec: 1.3.1
+      tinyglobby: 0.2.17
+      tree-kill: 1.2.2
+    optionalDependencies:
+      '@swc/core': 1.16.20
+      postcss: 8.5.32
+      typescript: 6.0.3
     transitivePeerDependencies:
       - jiti
       - tsx

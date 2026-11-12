@@ -119,6 +119,7 @@
   },
   "dependencies": {
     "@omnitron-dev/access": "workspace:*",
+    "@omnitron-dev/common": "workspace:*",
     "@omnitron-dev/eventemitter": "workspace:*",
     "@omnitron-dev/kb": "workspace:*",
     "@omnitron-dev/titan": "workspace:*",

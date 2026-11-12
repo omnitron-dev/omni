@@ -289,6 +289,9 @@ importers:
       '@omnitron-dev/access':
         specifier: workspace:*
         version: link:../../packages/access
+      '@omnitron-dev/common':
+        specifier: workspace:*
+        version: link:../../packages/common
       '@omnitron-dev/eventemitter':
         specifier: workspace:*
         version: link:../../packages/eventemitter

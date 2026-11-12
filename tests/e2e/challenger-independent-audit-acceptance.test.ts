@@ -6,7 +6,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { spawnSync, spawn } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
+import { Client } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   defaultDiagramRenderer,
@@ -321,45 +323,19 @@ describe('IA-08 & CLI Probes: Corpus Integrity, Built-in CLI & Stdio MCP Project
       });
       expect(unknownRun.status).toBe(1);
 
-      // Verify stdio MCP projects public-only documents
-      const mcpLines = await new Promise<string[]>((resolveLines, rejectLines) => {
-        const child = spawn(process.execPath, [lumenBin, 'mcp', '--stdio'], {
-          cwd: scratch,
-          stdio: ['pipe', 'pipe', 'pipe'],
-        });
-        const collected: string[] = [];
-        let buf = '';
-        child.stdout.on('data', (chunk: Buffer) => {
-          buf += chunk.toString('utf8');
-          const parts = buf.split('\n');
-          buf = parts.pop() ?? '';
-          for (const line of parts) {
-            if (line.trim() && line.trim().startsWith('{')) {
-              collected.push(line.trim());
-              if (collected.length >= 2) {
-                child.kill();
-                resolveLines(collected);
-              }
-            }
-          }
-        });
-        child.on('error', rejectLines);
-        child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'resources/list' }) + '\n');
-        child.stdin.write(
-          JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'resources/read', params: { uri: 'lumen://docs/secret' } }) +
-            '\n'
-        );
-        child.stdin.end();
-      });
+      const client = new Client({ name: 'lumen-cli-audit', version: '1.0.0' });
+      const transport = new StdioClientTransport({ command: process.execPath, args: [lumenBin, 'mcp', '--stdio'], cwd: scratch, stderr: 'pipe' });
+      try {
+        await client.connect(transport);
+        const uris = (await client.listResources()).resources.map(resource => resource.uri);
+        expect(uris).toContain('lumen://corpus/docs/index.pdx');
+        expect(uris).not.toContain('lumen://corpus/docs/secret.pdx');
+        const publicRead = await client.readResource({ uri: 'lumen://corpus/docs/index.pdx' });
+        expect(JSON.stringify(publicRead)).toContain(PUBLIC_CANARY);
+        expect(JSON.stringify(publicRead)).not.toContain(SECRET_CANARY);
+        await expect(client.readResource({ uri: 'lumen://corpus/docs/secret.pdx' })).rejects.toThrow();
+      } finally { await client.close(); }
 
-      const listReply = JSON.parse(mcpLines[0]!);
-      const uris = listReply.result.resources.map((r: { uri: string }) => r.uri);
-      expect(uris).toContain('lumen://docs/index');
-      expect(uris).not.toContain('lumen://docs/secret');
-
-      const secretReply = JSON.parse(mcpLines[1]!);
-      expect(secretReply.error).toBeDefined();
-      expect(JSON.stringify(secretReply)).not.toContain(SECRET_CANARY);
     } finally {
       rmSync(scratch, { recursive: true, force: true });
     }

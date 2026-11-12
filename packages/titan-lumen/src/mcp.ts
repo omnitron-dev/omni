@@ -1,11 +1,9 @@
 import { createRequire } from 'node:module';
-import { McpServer, ResourceTemplate, ResourceNotFoundError, WebStandardStreamableHTTPServerTransport,
-  hostHeaderValidationResponse, originValidationResponse, type CallToolResult } from '@modelcontextprotocol/server';
-import { z } from 'zod';
+import { WebStandardStreamableHTTPServerTransport,
+  hostHeaderValidationResponse, originValidationResponse } from '@modelcontextprotocol/server';
 import { decodeHttpError, TitanError } from '@omnitron-dev/netron-protocol';
-import { parseDocument } from '@omnitron-dev/lumen-ast';
+import { createLumenMcpServer } from '@omnitron-dev/lumen-ast/mcp';
 import type { HttpNativeServer, HttpResponseMessage } from '@omnitron-dev/titan/netron/transport/http';
-import { MCP_RESOURCE_URI_PREFIX } from './constants.js';
 import type { LumenServiceContract } from './types.js';
 
 const { version } = createRequire(import.meta.url)('../package.json') as { version: string };
@@ -21,10 +19,6 @@ export interface LumenMcpOptions {
   allowedHostnames?: string[];
   allowedOriginHostnames?: string[];
   maxRequestBodyBytes?: number;
-}
-
-function toolResult(result: Record<string, unknown>): CallToolResult {
-  return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
 }
 
 /** External MCP protocol adapter. All document access runs through native Netron admission. */
@@ -60,43 +54,11 @@ export class LumenMcpAdapter {
     if (request.method !== 'POST') return new Response(null, { status: 405, headers: { Allow: 'POST' } });
 
     // Request-local closures retain credentials without any mutable session on the singleton.
-    const server = new McpServer({ name: 'titan-lumen', version }, { maxToolInputElements: 128 });
-    const invoke = <M extends keyof LumenServiceContract>(method: M, args: Parameters<LumenServiceContract[M]>) =>
-      this.invoke(request, method, args, remoteAddress);
-    server.registerTool('search_corpus', {
-      description: 'Search the documents accessible to the authenticated caller.',
-      inputSchema: z.object({ query: z.string().trim().min(1).max(4096), limit: z.number().int().min(1).max(100).optional() }).strict(),
-    }, async ({ query, limit }) => toolResult({ results: await invoke('search', [query, { limit }]) }));
-    server.registerTool('get_document', {
-      description: 'Read an authorized document by corpus-relative path.',
-      inputSchema: z.object({ path: z.string().min(1).max(4096) }).strict(),
-    }, async ({ path }) => toolResult({ path, content: await invoke('getDocument', [path]) }));
-    server.registerTool('lumen_inspect_ast', {
-      description: 'Inspect the parsed, authorized document projection.',
-      inputSchema: z.object({ docId: z.string().min(1).max(4096) }).strict(),
-    }, async ({ docId }) => {
-      const content = await invoke('getDocument', [docId]);
-      if (content === null) throw new ResourceNotFoundError('Document not found');
-      const ast = await parseDocument(content, docId);
-      return toolResult({ type: 'doc', docId, frontmatter: ast.frontmatter, content: ast.children, toc: ast.toc });
-    });
-    server.registerResource('corpus', new ResourceTemplate(`${MCP_RESOURCE_URI_PREFIX}{+path}`, {
-      list: async () => {
-        const resources: Array<{ uri: string; name: string; mimeType: string }> = [];
-        for (const path of this.options.resources ?? []) {
-          if (await invoke('getDocument', [path]) !== null) {
-            resources.push({ uri: MCP_RESOURCE_URI_PREFIX + path.split('/').map(encodeURIComponent).join('/'),
-              name: path, mimeType: 'text/markdown' });
-          }
-        }
-        return { resources };
-      },
-    }), { mimeType: 'text/markdown' }, async (uri) => {
-      const path = decodeURIComponent(uri.href.slice(MCP_RESOURCE_URI_PREFIX.length));
-      const text = await invoke('getDocument', [path]);
-      if (text === null) throw new ResourceNotFoundError('Document not found');
-      return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text }] };
-    });
+    const server = createLumenMcpServer({
+      resourcePaths: this.options.resources ?? [],
+      search: (query, options) => this.invoke(request, 'search', [query, options], remoteAddress),
+      getDocument: path => this.invoke(request, 'getDocument', [path], remoteAddress),
+    }, { name: 'titan-lumen', version });
 
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined, enableJsonResponse: true,

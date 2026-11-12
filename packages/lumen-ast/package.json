@@ -8,7 +8,8 @@
       "src/index.ts",
       "src/execution/index.ts",
       "src/execution/limits.ts",
-      "src/typst/index.ts"
+      "src/typst/index.ts",
+      "src/mcp/index.ts"
     ],
     "format": [
       "esm"
@@ -42,6 +43,10 @@
     "./typst": {
       "types": "./dist/typst/index.d.ts",
       "node": "./dist/typst/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "node": "./dist/mcp/index.js"
     }
   },
   "files": [
@@ -79,7 +84,8 @@
     "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0",
     "@myriaddreamin/typst-ts-web-compiler": "0.7.0",
     "tex2typst": "0.6.2",
-    "fontkit": "3.0.0"
+    "fontkit": "3.0.0",
+    "@modelcontextprotocol/server": "^2.4.0"
   },
   "devDependencies": {
     "micromark-extension-math": "^3.1.0",

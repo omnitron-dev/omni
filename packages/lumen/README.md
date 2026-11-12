@@ -35,3 +35,23 @@ that snapshot through Vite until shutdown. Restart the preview to inspect a new
 build. The publisher always writes fresh files in a new stage and never mutates
 a captured generation in place. This protocol coordinates one host, not writers
 sharing a network filesystem.
+
+## Local MCP access
+
+`lumen mcp --stdio --root <project>` serves the anonymous corpus projection over
+the official MCP SDK. The process that launches it owns the local trust boundary;
+stdio does not authenticate a remote user and accepts no caller-supplied roles.
+Use Titan-Lumen's native Netron-backed adapter for authenticated live access.
+
+Both adapters register the same `search_corpus`, `get_document` and
+`lumen_inspect_ast` tools through the isolated `lumen-ast/mcp` entry. Document
+arguments and resource URIs use corpus-relative paths, for example
+`lumen://corpus/docs/guide.md`. Restricted documents and sections are absent from
+static search, resource discovery, reads and AST results. Invalid or missing
+corpora fail startup.
+
+Only protocol messages go to stdout; diagnostics go to stderr. The official
+stdio transport checks its 1 MiB input buffer limit before appending a chunk,
+including an unfinished line, and an over-limit connection releases its input
+pipe. Protocol negotiation belongs to the SDK; implementation metadata comes
+from the package manifest.

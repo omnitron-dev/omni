@@ -37,20 +37,23 @@ describe('Feature 23: Lumen CLI Suite Boundaries', () => {
     expect(result.stdout).toContain('command: check');
   });
 
-  it('TC-B23-05: dispatches lumen pdf and mcp commands safely via programmatic runner', async () => {
+  it('TC-B23-05: exposes command help without starting a transport', async () => {
     const logs: string[] = [];
     const originalLog = console.log;
+    const originalError = console.error;
     console.log = (...args: unknown[]) => {
       logs.push(args.join(' '));
     };
+    console.error = console.log;
 
     try {
-      await runLumenCli(['pdf']);
-      await runLumenCli(['mcp']);
+      await runLumenCli(['pdf', '--help']);
+      await runLumenCli(['mcp', '--help']);
       expect(logs.some((l) => l.includes('command: pdf'))).toBe(true);
       expect(logs.some((l) => l.includes('command: mcp'))).toBe(true);
     } finally {
       console.log = originalLog;
+      console.error = originalError;
     }
   });
 });

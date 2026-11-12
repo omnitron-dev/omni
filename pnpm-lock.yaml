@@ -672,6 +672,9 @@ importers:
 
   packages/lumen:
     dependencies:
+      '@modelcontextprotocol/server':
+        specifier: ^2.4.0
+        version: 2.4.0
       '@emotion/cache':
         specifier: ^11.14.0
         version: 11.14.0
@@ -709,6 +712,9 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
     devDependencies:
+      '@modelcontextprotocol/client':
+        specifier: ^2.4.0
+        version: 2.4.0
       '@types/node':
         specifier: 26.6.6
         version: 26.6.6
@@ -733,6 +739,9 @@ importers:
 
   packages/lumen-ast:
     dependencies:
+      '@modelcontextprotocol/server':
+        specifier: ^2.4.0
+        version: 2.4.0
       '@jitl/quickjs-singlefile-browser-release-sync':
         specifier: 0.32.0
         version: 0.32.0

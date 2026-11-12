@@ -1,7 +1,7 @@
 /** Titan lifecycle and native Netron services for Lumen. */
 export { LumenModule } from './lumen.module.js';
 export { LumenService } from './lumen.service.js';
-export { LUMEN_OPTIONS_TOKEN, DEFAULT_DOCS_DIR, MCP_RESOURCE_URI_PREFIX } from './constants.js';
+export { LUMEN_OPTIONS_TOKEN, DEFAULT_DOCS_DIR } from './constants.js';
 export {
   AccessFilterService,
   extractDocumentAccess,

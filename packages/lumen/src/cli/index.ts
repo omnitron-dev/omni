@@ -28,8 +28,9 @@ import { buildStaticSite } from '../ssg/ssg-engine.js';
 import { captureGeneration, recoverGeneration } from '../ssg/publish-generation.js';
 import { runLumenMcpServer } from '../ai/mcp-server.js';
 import { documentRoute } from '../corpus/routes.js';
+import { createRequire } from 'node:module';
 
-const VERSION = '0.3.5';
+const { version: VERSION } = createRequire(import.meta.url)('../../package.json') as { version: string };
 
 interface ParsedCliOptions {
   rootDir: string;
@@ -568,13 +569,13 @@ Commands:
     }
 
     case 'mcp': {
-      console.log(`Lumen CLI v${VERSION} (command: mcp)`);
+      console.error(`Lumen CLI v${VERSION} (command: mcp)`);
       if (cliOpts.help) break;
 
-      const { config, graph } = await loadCorpusFromDirectory(cliOpts.rootDir);
-      if (cliOpts.stdio || (!process.env['VITEST'] && process.env['NODE_ENV'] !== 'test')) {
-        await runLumenMcpServer(graph, config);
-      }
+      const { graph, docsDirExists, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir);
+      if (!docsDirExists) throw new Error('Configured corpus directory does not exist');
+      if (astDiagnostics.some(diagnostic => diagnostic.severity === 'error')) throw new Error('Corpus parsing failed; run lumen check for diagnostics');
+      await runLumenMcpServer(graph);
       break;
     }
 

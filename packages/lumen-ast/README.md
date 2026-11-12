@@ -52,6 +52,20 @@ Authored HTML is parsed using `hast-util-raw` and rendered with
 `hast-util-sanitize`; scripts, event handlers and unsafe URLs are not executable.
 Code examples remain literal, including nested fences and directive attributes.
 
+## MCP protocol adapter
+
+The explicit Node-only `@omnitron-dev/lumen-ast/mcp` subpath registers Lumen's
+read-only tools and resources with the official MCP SDK. It is separate from the
+isomorphic root and is not imported into browser workers or page bundles. This
+adapter belongs to the document integration boundary; it supplies no transport,
+authentication, lifecycle, database or SSG dependency.
+
+`createLumenMcpServer(corpus, identity)` accepts an admitted `LumenMcpCorpus`:
+search, document reads and candidate resource paths. The provider owns access
+projection. Titan-Lumen supplies request-local native Netron invocations; the
+local CLI supplies its anonymous static projection. All tool and resource reads
+use that provider, including resource discovery and AST inspection.
+
 ## Executable examples
 
 `@omnitron-dev/lumen-ast/execution` provides `evaluatePlayground(code, timeoutMs)`

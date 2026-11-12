@@ -89,12 +89,12 @@ describe('Navigation Layout Components', () => {
     expect(prevOnly).not.toContain('class="lumen-pagination-next"');
   });
 
-  it('renders DocSectionNav with exact empty match and active heading spy', () => {
-    const emptyHtml = renderToStaticMarkup(DocSectionNav({ headings: [] }));
-    expect(emptyHtml).toBe('<aside class="lumen-section-nav" aria-label="Table of contents"><ul></ul></aside>');
+  it('renders native SSR section links and an explicitly controlled current section', () => {
+    const emptyHtml = renderToStaticMarkup(React.createElement(DocSectionNav, { headings: [] }));
+    expect(emptyHtml).toBe('<div><aside class="lumen-section-nav" aria-label="Table of contents"><ul></ul></aside></div>');
 
     const withHeadings = renderToStaticMarkup(
-      DocSectionNav({
+      React.createElement(DocSectionNav, {
         headings: [
           { id: 'h1', title: 'Header 1', level: 1 },
           { id: 'h2', title: 'Header 2', level: 2 },
@@ -105,6 +105,13 @@ describe('Navigation Layout Components', () => {
     expect(withHeadings).toContain('href="#h1"');
     expect(withHeadings).toContain('href="#h2"');
     expect(withHeadings).toContain('is-active');
+    expect(withHeadings).toContain('href="#h2" aria-current="location"');
+    expect(withHeadings.match(/aria-current=/g)).toHaveLength(1);
+    const uncontrolled = renderToStaticMarkup(React.createElement(DocSectionNav, {
+      headings: [{ id: 'Раздел #1', title: 'Section', level: 2 }],
+    }));
+    expect(uncontrolled).toContain('href="#%D0%A0%D0%B0%D0%B7%D0%B4%D0%B5%D0%BB%20%231"');
+    expect(uncontrolled).not.toContain('aria-current');
   });
 
   it('renders DocLayout with sidebar, content, and sectionNav', () => {

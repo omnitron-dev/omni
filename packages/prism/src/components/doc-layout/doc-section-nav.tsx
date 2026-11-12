@@ -1,6 +1,5 @@
 'use client';
 
-import { useCallback } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
@@ -19,19 +18,10 @@ interface DocSectionNavProps {
 
 /**
  * Right-side table of contents connected to ScrollSpy.
- * Highlights the currently visible section with a smooth indicator.
+ * Native document anchors with a current-section indicator.
  */
 export function DocSectionNav({ headings, title = 'On this page' }: DocSectionNavProps) {
   const { activeId } = useScrollSpy();
-
-  const handleClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
-    e.preventDefault();
-    const element = document.getElementById(id);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      window.history.replaceState(null, '', `#${id}`);
-    }
-  }, []);
 
   if (headings.length === 0) return null;
 
@@ -53,6 +43,7 @@ export function DocSectionNav({ headings, title = 'On this page' }: DocSectionNa
 
       <Box
         component="nav"
+        aria-label={title}
         sx={{
           position: 'relative',
           borderLeft: 1,
@@ -66,8 +57,8 @@ export function DocSectionNav({ headings, title = 'On this page' }: DocSectionNa
             <Box
               key={heading.id}
               component="a"
-              href={`#${heading.id}`}
-              onClick={(e: React.MouseEvent<HTMLAnchorElement>) => handleClick(e, heading.id)}
+              href={`#${encodeURIComponent(heading.id)}`}
+              aria-current={isActive ? 'location' : undefined}
               sx={{
                 display: 'block',
                 py: 0.75,

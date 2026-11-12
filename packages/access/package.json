@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/access",
-  "version": "0.3.5",
+  "version": "0.4.0",
   "description": "Dependency-free role hierarchies and permission policies for browsers and servers",
   "type": "module",
   "license": "MIT",

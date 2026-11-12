@@ -1,6 +1,6 @@
 {
   "name": "@omnitron-dev/netron-protocol",
-  "version": "0.3.5",
+  "version": "0.4.0",
   "description": "Shared, dependency-free Netron wire-protocol primitives (UID generator, wire constants) consumed by both @omnitron-dev/titan and @omnitron-dev/netron-browser. Single source of truth for the on-the-wire contract.",
   "type": "module",
   "main": "./dist/index.js",

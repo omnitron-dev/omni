@@ -1,10 +1,12 @@
 {
   "name": "@omnitron-dev/lumen-ast",
-  "version": "0.3.5",
+  "version": "0.4.0",
   "description": "Pure isomorphic prism-doc/2 AST compiler, math environments, Shiki/Twoslash highlighter, and multi-target emitters",
   "type": "module",
   "tsup": {
-    "noExternal": ["micromark-extension-math"]
+    "noExternal": [
+      "micromark-extension-math"
+    ]
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

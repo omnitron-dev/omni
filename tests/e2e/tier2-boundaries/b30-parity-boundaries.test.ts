@@ -3,10 +3,11 @@ import { verifyUrlAndAnchorParity } from '@omnitron-dev/lumen-migrate';
 import { normalizeAnchor, expectAnchorParity } from '../harness/assertions.js';
 
 describe('Feature 30: 100% Parity Verification Engine Boundaries', () => {
-  it('TC-B30-01: handles completely empty source and target route arrays returning passing parity', () => {
+  it('TC-B30-01: handles completely empty route arrays as insufficient parity evidence', () => {
     const report = verifyUrlAndAnchorParity([], []);
 
-    expect(report.passed).toBe(true);
+    expect(report.passed).toBe(false);
+    expect(report.parityScore).toBe(0);
     expect(report.totalRoutes).toBe(0);
     expect(report.matchedRoutes).toBe(0);
     expect(report.totalAnchors).toBe(0);

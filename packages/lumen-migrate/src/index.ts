@@ -35,7 +35,6 @@ export type {
   SidebarLinkItem,
   MigrationResult,
   MigrationOptions,
-  ParityCheckResult,
   SidebarCategoryItem,
   ConvertedLumenConfig,
   DocusaurusConfigInput,

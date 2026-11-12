@@ -1,7 +1,12 @@
-import { join, resolve, relative } from 'node:path';
-import { statSync, existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
-
-import { parseSafeFrontmatter, inspectPathContainment, DisabledFrontmatterEngineError } from '../utils/safe-matter.js';
+import { parseSafeFrontmatter } from '../utils/safe-matter.js';
+import {
+  documentationRoot,
+  documentationText,
+  inventoryDocumentation,
+  isDocumentationFile,
+  type DocumentationInventory,
+} from '../utils/documentation-files.js';
+import { normalizeUrl } from './normalizer.js';
 
 export interface CrawledProjectUrls {
   routeUrls: string[];
@@ -49,7 +54,7 @@ function extractHeadingAnchorId(rawHeadingText: string, index: number): string {
 }
 
 function computeCanonicalRouteUrl(relPath: string, frontmatter: Record<string, unknown>): string {
-  const normalizedRel = relPath.replace(/\\/g, '/').replace(/\.(md|mdx|pdx)$/, '');
+  const normalizedRel = relPath.replace(/\\/g, '/').replace(/\.(md|mdx|pdx)$/i, '');
   const slashIdx = normalizedRel.lastIndexOf('/');
   const dirPart = slashIdx >= 0 ? normalizedRel.slice(0, slashIdx) : '';
 
@@ -156,97 +161,30 @@ function extractDocumentAnchors(body: string, routeUrl: string): string[] {
   return anchors;
 }
 
+export function crawlDocumentationInventory(inventory: DocumentationInventory): CrawledProjectUrls {
+  const routeUrls: string[] = [],
+    anchorUrls: string[] = [];
+  const routes = new Map<string, string>();
+  for (const file of inventory.files) {
+    if (!isDocumentationFile(file.relativePath)) continue;
+    try {
+      const parsed = parseSafeFrontmatter(documentationText(file));
+      const routeUrl = computeCanonicalRouteUrl(file.relativePath, parsed.data);
+      const canonical = normalizeUrl(routeUrl);
+      if (routes.has(canonical)) throw Error('Duplicate documentation route also declared by ' + routes.get(canonical));
+      routes.set(canonical, file.relativePath);
+      routeUrls.push(routeUrl);
+      anchorUrls.push(...extractDocumentAnchors(parsed.content, routeUrl));
+    } catch (cause) {
+      throw new Error(
+        'Cannot inventory documentation ' + file.path + ': ' + (cause instanceof Error ? cause.message : String(cause)),
+        { cause }
+      );
+    }
+  }
+  return { routeUrls, anchorUrls, allUrls: [...routeUrls, ...anchorUrls] };
+}
+
 export function crawlDocumentationDirectory(dirPath: string): CrawledProjectUrls {
-  const routeUrls: string[] = [];
-  const anchorUrls: string[] = [];
-
-  if (!dirPath || !existsSync(dirPath)) {
-    return { routeUrls, anchorUrls, allUrls: [] };
-  }
-
-  let projectRootReal: string;
-  try {
-    projectRootReal = realpathSync(dirPath);
-  } catch {
-    return { routeUrls, anchorUrls, allUrls: [] };
-  }
-
-  const candidateDocsDir = resolve(dirPath, 'docs');
-  let docsDir = dirPath;
-  if (existsSync(candidateDocsDir)) {
-    const docsCheck = inspectPathContainment(projectRootReal, candidateDocsDir);
-    if (docsCheck.escaped) {
-      return { routeUrls, anchorUrls, allUrls: [] };
-    }
-    docsDir = candidateDocsDir;
-  }
-
-  if (!existsSync(docsDir)) {
-    return { routeUrls, anchorUrls, allUrls: [] };
-  }
-
-  let docsRootReal: string;
-  try {
-    docsRootReal = realpathSync(docsDir);
-  } catch {
-    return { routeUrls, anchorUrls, allUrls: [] };
-  }
-
-  const visitedDirs = new Set<string>();
-
-  const crawl = (currentDir: string): void => {
-    const dirCheck = inspectPathContainment(docsRootReal, currentDir);
-    if (dirCheck.escaped || visitedDirs.has(dirCheck.realPath)) {
-      return;
-    }
-    visitedDirs.add(dirCheck.realPath);
-
-    const entries = readdirSync(currentDir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = join(currentDir, entry.name);
-      const check = inspectPathContainment(docsRootReal, fullPath);
-      if (check.escaped) {
-        continue;
-      }
-
-      let isDir = entry.isDirectory();
-      let isFile = entry.isFile();
-      if (check.isSymlink) {
-        try {
-          const targetStat = statSync(check.realPath);
-          isDir = targetStat.isDirectory();
-          isFile = targetStat.isFile();
-        } catch {
-          continue;
-        }
-      }
-
-      if (isDir) {
-        crawl(fullPath);
-      } else if (isFile && (entry.name.endsWith('.md') || entry.name.endsWith('.mdx') || entry.name.endsWith('.pdx'))) {
-        try {
-          const content = readFileSync(fullPath, 'utf8');
-          const parsed = parseSafeFrontmatter(content);
-          const relPath = relative(docsDir, fullPath);
-          const routeUrl = computeCanonicalRouteUrl(relPath, parsed.data);
-          routeUrls.push(routeUrl);
-
-          const docAnchors = extractDocumentAnchors(parsed.content, routeUrl);
-          anchorUrls.push(...docAnchors);
-        } catch (err) {
-          if (err instanceof DisabledFrontmatterEngineError) {
-            continue;
-          }
-        }
-      }
-    }
-  };
-
-  crawl(docsDir);
-
-  return {
-    routeUrls,
-    anchorUrls,
-    allUrls: [...routeUrls, ...anchorUrls],
-  };
+  return crawlDocumentationInventory(inventoryDocumentation(documentationRoot(dirPath)));
 }

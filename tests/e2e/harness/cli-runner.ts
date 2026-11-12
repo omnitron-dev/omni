@@ -1,5 +1,6 @@
 import { spawn, type SpawnOptions } from 'node:child_process';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { existsSync } from 'node:fs';
 
 export const REPO_ROOT = resolve(import.meta.dirname, '../../..');
@@ -54,21 +55,25 @@ export class CliRunner {
 
     const mode = options?.mode ?? 'auto';
 
-    const distBinPath = resolve(this.repoRoot, `packages/${cliName}/bin/${cliName}.mjs`);
+    const distBinPath = resolve(this.repoRoot, `packages/${cliName}/bin/${cliName}.js`);
     const distJsPath = resolve(this.repoRoot, `packages/${cliName}/dist/cli/index.js`);
     const sourceTsPath = resolve(this.repoRoot, `packages/${cliName}/src/cli/index.ts`);
 
     if (mode === 'dist' || mode === 'auto') {
-      if (existsSync(distBinPath)) {
+      if (existsSync(distBinPath) && existsSync(distJsPath)) {
         return { execPath: process.execPath, initialArgs: [distBinPath] };
       }
-      if (existsSync(distJsPath)) {
+      if (cliName !== 'lumen-migrate' && existsSync(distJsPath)) {
         return { execPath: process.execPath, initialArgs: [distJsPath] };
       }
     }
 
     if (mode === 'source' || mode === 'auto') {
       if (existsSync(sourceTsPath)) {
+        if (cliName === 'lumen-migrate') {
+          return { execPath: process.execPath, initialArgs: ['--import', 'tsx', '--input-type=module', '--eval',
+            `const { runLumenMigrateCli } = await import(${JSON.stringify(pathToFileURL(sourceTsPath).href)}); await runLumenMigrateCli(process.argv.slice(1));`, '--'] };
+        }
         const tsxBin = resolve(this.repoRoot, 'node_modules/.bin/tsx');
         if (existsSync(tsxBin)) {
           return { execPath: tsxBin, initialArgs: [sourceTsPath] };
@@ -251,12 +256,10 @@ export class CliRunner {
   runLumenMigrate(
     sourceDir: string,
     targetDir: string,
-    options?: CliRunOptions & { reportFormat?: 'json' | 'summary' }
+    options?: CliRunOptions & { json?: boolean }
   ): Promise<CliRunResult> {
     const args: string[] = ['docusaurus', sourceDir, targetDir];
-    if (options?.reportFormat) {
-      args.push(`--format=${options.reportFormat}`);
-    }
+    if (options?.json) args.push('--json');
     return this.run('lumen-migrate', args, options);
   }
 }

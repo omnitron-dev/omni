@@ -46,7 +46,7 @@ describe('Sidebar Migrator', () => {
     const sidebars = convertDocusaurusSidebars({ docs: [deep] });
     expect(sidebars['docs']).toHaveLength(1);
 
-    let current: any = sidebars['docs'][0];
+    let current: any = sidebars['docs']?.[0];
     for (let i = 1; i <= 6; i++) {
       expect(current.label).toBe(`Level ${i}`);
       current = current.items[0];

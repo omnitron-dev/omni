@@ -383,7 +383,7 @@ describe('IA-10..IA-12 & GAP-01..04: Safe Frontmatter, Lexer Bounds, Migration S
       expect(crawled.anchorUrls).toContain('/docs/custom-guide#overview');
       expect(crawled.anchorUrls).toContain('/docs/custom-guide#deep-section');
 
-      // Symlink escaping source root must fail migration and roll back target staging
+      // Symlink input must fail before target claim
       const outsideSecret = join(base, 'outside.md');
       writeFileSync(outsideSecret, '# Outside\n');
       symlinkSync(outsideSecret, join(srcDir, 'docs/escape.md'));
@@ -391,7 +391,7 @@ describe('IA-10..IA-12 & GAP-01..04: Safe Frontmatter, Lexer Bounds, Migration S
       const targetDir = join(base, 'migrated-out');
       const prevExit = process.exitCode;
       try {
-        await expect(runLumenMigrateCli(['docusaurus', srcDir, targetDir, '--strict'])).rejects.toThrow();
+        await expect(runLumenMigrateCli(['docusaurus', srcDir, targetDir])).rejects.toThrow();
         expect(existsSync(targetDir)).toBe(false);
       } finally {
         process.exitCode = prevExit ?? 0;

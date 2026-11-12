@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import('../dist/cli/index.js').then(({ runLumenMigrateCli }) => {
-  runLumenMigrateCli().catch((error) => {
-    console.error('Error:', error.message);
-    process.exit(1);
-  });
-});
+try {
+  const { runLumenMigrateCli } = await import('../dist/cli/index.js');
+  await runLumenMigrateCli();
+} catch (error) {
+  console.error('Error:', error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+}

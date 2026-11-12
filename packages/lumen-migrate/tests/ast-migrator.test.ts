@@ -5,6 +5,12 @@ import { resolveLinks } from '../src/ast/link-resolver.js';
 import { migrateMarkdownToPdx } from '../src/ast/markdown-migrator.js';
 
 describe('AST Migrator', () => {
+  it('preserves valid frontmatter bytes and scalar types without reserialization', () => {
+    const prefix = '---\ntitle: "true"\ncustom: "007"\n"key: punctuation": "value"\n# Keep this comment\n---\n\n';
+    expect(migrateMarkdownToPdx(prefix + ':::tip Helpful\nBody\n:::')).toBe(
+      prefix + ':::tip{title="Helpful"}\nBody\n:::'
+    );
+  });
   it('normalizes admonition titles to {title="..."}', () => {
     const raw = `:::tip Optimization Tip\ncontent\n:::`;
     const transformed = transformCallouts(raw);

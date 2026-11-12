@@ -6,23 +6,18 @@ import { verifyUrlAndAnchorParity } from '../../parity/parity-engine.js';
 export async function verifyCommand(
   source: string,
   target: string,
-  options: { json?: boolean; format?: string; strict?: boolean } = {}
+  options: { json?: boolean } = {}
 ): Promise<ParityReport> {
-  const isJson = options.json || options.format === 'json';
   const report = verifyUrlAndAnchorParity(source, target);
 
   if (!report.passed) {
     process.exitCode = 1;
   }
 
-  if (isJson) {
+  if (options.json) {
     console.log(formatParityReport(report, 'json'));
   } else {
     console.log(formatParityReport(report, 'summary'));
-  }
-
-  if (!report.passed && options.strict) {
-    throw new Error(`Parity verification failed (score: ${report.parityScore})`);
   }
 
   return report;

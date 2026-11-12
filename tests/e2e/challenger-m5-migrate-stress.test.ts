@@ -309,9 +309,11 @@ export interface Config {
 \`\`\`
 `;
 
-      const pdx = migrateMarkdownToPdx(rawDoc);
+      expect(() => migrateMarkdownToPdx(rawDoc)).toThrow(/sidebar_position/);
+      const validDoc = rawDoc.replace('sidebar_position: "42"', 'sidebar_position: 42');
+      const pdx = migrateMarkdownToPdx(validDoc);
 
-      // Verify frontmatter normalization (numeric string "42" converted to number 42)
+      // Shared frontmatter validation requires a numeric sidebar_position
       expect(pdx).toContain('sidebar_position: 42');
       // Verify theme import removal while preserving JSX elements
       expect(pdx).not.toContain('@theme/Tabs');
@@ -520,7 +522,7 @@ export interface Config {
   // Domain 4: CLI Binary Stress
   // =========================================================================
   describe('Domain 4: CLI Binary Stress', () => {
-    it('fails closed on docusaurus migration of non-existent directories with --verify and --json', async () => {
+    it('fails closed on docusaurus migration of non-existent directories with --json', async () => {
       const tempNonExistentSource = join(tmpdir(), `lumen-challenger-nonexistent-src-${Date.now()}`);
       const tempTarget = join(tmpdir(), `lumen-challenger-cli-target-${Date.now()}`);
       tempDirsToClean.push(tempTarget);
@@ -528,18 +530,15 @@ export interface Config {
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       const prevExitCode = process.exitCode;
       try {
-        await runLumenMigrateCli(['docusaurus', tempNonExistentSource, tempTarget, '--verify', '--json']);
+        await expect(runLumenMigrateCli(['docusaurus', tempNonExistentSource, tempTarget, '--json'])).rejects.toThrow(/ENOENT/);
 
         expect(logSpy).toHaveBeenCalled();
         const rawOutput = logSpy.mock.calls.map((c) => c[0]).join('\n');
         const parsed = JSON.parse(rawOutput);
 
         expect(parsed).toBeDefined();
-        expect(parsed.config).toBeDefined();
-        expect(parsed.config.title).toBe('Migrated Documentation');
-        expect(parsed.documentsMigrated).toBe(0);
-        expect(parsed.parity).toBeDefined();
-        expect(parsed.parity.passed).toBe(false);
+        expect(parsed).toEqual({ ok: false, error: expect.stringContaining('ENOENT') });
+        expect(parsed.config).toBeUndefined();
         expect(process.exitCode).toBe(1);
       } finally {
         process.exitCode = prevExitCode ?? 0;
@@ -551,21 +550,18 @@ export interface Config {
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       const prevExitCode = process.exitCode;
       try {
-        await runLumenMigrateCli([
+        await expect(runLumenMigrateCli([
           'verify',
           join(tmpdir(), 'challenger-nonexistent-a'),
           join(tmpdir(), 'challenger-nonexistent-b'),
           '--json',
-        ]);
+        ])).rejects.toThrow(/ENOENT/);
 
         expect(logSpy).toHaveBeenCalled();
         const rawOutput = logSpy.mock.calls.map((c) => c[0]).join('\n');
         const parsed = JSON.parse(rawOutput);
 
-        expect(parsed.passed).toBe(false);
-        expect(parsed.totalRoutes).toBe(0);
-        expect(parsed.totalAnchors).toBe(0);
-        expect(parsed.parityScore).toBe(0);
+        expect(parsed).toEqual({ ok: false, error: expect.stringContaining('ENOENT') });
         expect(process.exitCode).toBe(1);
       } finally {
         process.exitCode = prevExitCode ?? 0;

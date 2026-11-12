@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { convertDocusaurusConfig } from '@omnitron-dev/lumen-migrate';
 import { cliRunner } from '../harness/cli-runner.js';
@@ -47,20 +47,21 @@ describe('Feature 28: Docusaurus Config & Sidebar Migrator', () => {
   });
 
   it('TC-F28-04: executes lumen-migrate CLI command with arguments', async () => {
-    const outDir = mkdtempSync(join(tmpdir(), 'lumen-f28-migrated-'));
+    const base = mkdtempSync(join(tmpdir(), 'lumen-f28-migrated-'));
+    const outDir = join(base, 'new-project');
     try {
-      const result = await cliRunner.runLumenMigrate('fixtures/docusaurus-classic', outDir);
+      const result = await cliRunner.runLumenMigrate(resolve(import.meta.dirname, '../fixtures/docusaurus-classic'), outDir, { mode: 'source' });
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('command: docusaurus');
+      expect(result.stdout).toContain('Created migrated project:');
     } finally {
-      rmSync(outDir, { recursive: true, force: true });
+      rmSync(base, { recursive: true, force: true });
     }
   });
 
   it('TC-F28-05: executes lumen-migrate --help and outputs usage guide', async () => {
-    const result = await cliRunner.run('lumen-migrate', ['--help']);
+    const result = await cliRunner.run('lumen-migrate', ['--help'], { mode: 'source' });
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('Usage:');
-    expect(result.stdout).toContain('lumen-migrate docusaurus');
+    expect(result.stdout).toContain('docusaurus [options] <sourceDir> <targetDir>');
   });
 });

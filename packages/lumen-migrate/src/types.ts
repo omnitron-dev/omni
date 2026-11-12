@@ -109,18 +109,13 @@ export interface ParityReport {
   parityScore: number; // 0.0 to 1.0 (1.0 = 100%)
 }
 
-export type ParityCheckResult = ParityReport;
-
 export interface MigrationOptions {
-  verify?: boolean;
   json?: boolean;
-  strict?: boolean;
-  reportFormat?: 'json' | 'summary';
   silent?: boolean;
 }
 
 export interface MigrationResult {
   config: ConvertedLumenConfig;
   documentsMigrated: number;
-  parity?: ParityReport;
+  parity: ParityReport;
 }

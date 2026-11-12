@@ -1,60 +1,41 @@
 #!/usr/bin/env node
-/**
- * Lumen Migrate CLI dispatcher
- */
-import { Command } from 'commander';
+import { readFileSync } from 'node:fs';
+import { Command, CommanderError } from 'commander';
 
 import { verifyCommand } from './commands/verify.js';
 import { migrateDocusaurusCommand } from './commands/docusaurus.js';
 
 export async function runLumenMigrateCli(argv: string[] = process.argv.slice(2)): Promise<void> {
-  const firstArg = argv[0];
-
-  if (firstArg === '--version' || firstArg === '-v') {
-    console.log('0.3.5');
-    return;
-  }
-
-  if (firstArg === 'help' || firstArg === '--help' || firstArg === '-h' || argv.length === 0) {
-    console.log(`Lumen Migrate CLI v0.3.5
-Usage:
-  lumen-migrate docusaurus <sourceDir> <targetDir>   Migrate Docusaurus repository to Lumen
-  lumen-migrate verify <source> <target>            Verify route and anchor parity
-
-Options:
-  -v, --version                                     output the version number
-  -h, --help                                        display help for command
-`);
-    return;
-  }
-
-  const program = new Command();
-  program
+  const { version } = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
+    version: string;
+  };
+  const program = new Command()
     .name('lumen-migrate')
-    .version('0.3.5')
-    .description('Docusaurus to Lumen migration engine and parity verification tool');
-
+    .version(version, '-v, --version')
+    .description('Create a separate Lumen source project with mandatory static route and anchor parity')
+    .configureOutput({ writeOut: (output) => console.log(output.trimEnd()) })
+    .exitOverride();
   program
     .command('docusaurus <sourceDir> <targetDir>')
-    .description('Migrate Docusaurus repository to Lumen')
-    .option('--verify', 'Run parity verification after migration')
-    .option('--json', 'Output migration result in JSON format')
-    .option('--strict', 'Throw on missing source, file errors, or failed parity')
-    .option('--format <format>', 'Report format (summary or json)')
+    .description('Migrate into a new, non-overlapping target directory')
+    .option('--json', 'Output the result or failure as JSON')
     .action(async (sourceDir, targetDir, options) => {
       await migrateDocusaurusCommand(sourceDir, targetDir, options);
     });
-
   program
     .command('verify <source> <target>')
-    .description('Verify route and anchor parity between source and target')
-    .option('--json', 'Output verification result in JSON format')
-    .option('--strict', 'Throw when parity verification fails')
-    .option('--format <format>', 'Report format (summary or json)')
+    .description('Verify static documentation routes and anchors; fail on incomplete inventory or missing parity')
+    .option('--json', 'Output the report or failure as JSON')
     .action(async (source, target, options) => {
       await verifyCommand(source, target, options);
     });
-
-  // Handle custom argv
-  await program.parseAsync(argv, { from: 'user' });
+  try {
+    await program.parseAsync(argv.length ? argv : ['--help'], { from: 'user' });
+  } catch (error) {
+    if (error instanceof CommanderError && error.exitCode === 0) return;
+    process.exitCode = 1;
+    if (argv.includes('--json'))
+      console.log(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+    throw error;
+  }
 }

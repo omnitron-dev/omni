@@ -39,10 +39,10 @@ export function compareUrlArrays(sourceUrls: string[], targetUrls: string[]): Pa
     }
   }
 
-  const passed = missingRoutes.length === 0 && missingAnchors.length === 0;
   const totalItems = totalRoutes + totalAnchors;
+  const passed = totalItems > 0 && missingRoutes.length === 0 && missingAnchors.length === 0;
   const matchedItems = matchedRoutes + matchedAnchors;
-  const parityScore = totalItems === 0 ? 1.0 : Number((matchedItems / totalItems).toFixed(4));
+  const parityScore = totalItems === 0 ? 0 : Number((matchedItems / totalItems).toFixed(4));
 
   return {
     totalRoutes,
@@ -76,16 +76,7 @@ export function compareDirectories(sourceDir: string, targetDir: string): Parity
   const sourceCrawled = crawlDocumentationDirectory(sourceDir);
   const targetCrawled = crawlDocumentationDirectory(targetDir);
 
-  const report = compareUrlArrays(sourceCrawled.allUrls, targetCrawled.allUrls);
-  if (sourceCrawled.routeUrls.length === 0 && sourceCrawled.allUrls.length === 0) {
-    return {
-      ...report,
-      passed: false,
-      parityScore: 0,
-    };
-  }
-
-  return report;
+  return compareUrlArrays(sourceCrawled.allUrls, targetCrawled.allUrls);
 }
 
 export function verifyUrlAndAnchorParity(source: string[] | string, target: string[] | string): ParityReport {

@@ -1,6 +1,15 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { rmSync, mkdirSync, existsSync, mkdtempSync, symlinkSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  rmSync,
+  mkdirSync,
+  existsSync,
+  mkdtempSync,
+  symlinkSync,
+  realpathSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 
 import { it, vi, expect, describe, afterEach } from 'vitest';
 
@@ -24,7 +33,7 @@ describe('GAP-12, IA-10 & IA-12 Audit Suite (@omnitron-dev/lumen-migrate)', () =
   });
 
   it('GAP-12: parses TypeScript config and nested sidebars via TypeScript AST without flattening categories', () => {
-    const workDir = mkdtempSync(join(tmpdir(), 'lumen-migrate-gap12-'));
+    const workDir = mkdtempSync(join(realpathSync(tmpdir()), 'lumen-migrate-gap12-'));
     try {
       const configTs = `import type { Config } from '@docusaurus/types';
 
@@ -152,7 +161,7 @@ export default sidebars as SidebarsConfig;
       return { title: 'Pwned' };
     };
 
-    const workDir = mkdtempSync(join(tmpdir(), 'lumen-migrate-ia10-'));
+    const workDir = mkdtempSync(join(realpathSync(tmpdir()), 'lumen-migrate-ia10-'));
     try {
       const jsPayload = `---js
 {
@@ -180,6 +189,9 @@ title: "Coffee Exploit"
         'utf8'
       );
 
+      expect(() => autogenerateSidebarForDir(docsDir)).toThrow(/disabled/i);
+      expect(() => crawlDocumentationDirectory(workDir)).toThrow(/disabled/i);
+      rmSync(join(docsDir, 'evil.md'));
       const sidebarItems = autogenerateSidebarForDir(docsDir);
       expect(sideEffectTriggered).toBe(false);
       expect(sidebarItems).toEqual([{ type: 'doc', id: 'safe', label: 'Safe Doc' }]);
@@ -195,7 +207,7 @@ title: "Coffee Exploit"
   });
 
   it('IA-12: rejects symlinks escaping root, respects frontmatter slug/id, extracts automatic heading slugs, and fails empty directory parity', () => {
-    const baseDir = mkdtempSync(join(tmpdir(), 'lumen-migrate-ia12-'));
+    const baseDir = mkdtempSync(join(realpathSync(tmpdir()), 'lumen-migrate-ia12-'));
     try {
       const outsideDir = join(baseDir, 'outside');
       const projectDir = join(baseDir, 'project');
@@ -235,6 +247,8 @@ slug: /modern-overview
         'utf8'
       );
 
+      expect(() => crawlDocumentationDirectory(projectDir)).toThrow(/symlink/i);
+      rmSync(join(docsDir, 'escaped-secret.md'));
       const crawled = crawlDocumentationDirectory(projectDir);
       expect(crawled.routeUrls).not.toContain('/docs/escaped-secret');
       expect(crawled.routeUrls).toContain('/docs/guides/setup');
@@ -254,8 +268,8 @@ slug: /modern-overview
     }
   });
 
-  it('IA-12: stages CLI migration atomically, rolls back on file errors, and sets process.exitCode = 1 on failures', async () => {
-    const baseDir = mkdtempSync(join(tmpdir(), 'lumen-migrate-cli-ia12-'));
+  it('IA-12: refuses missing input and existing output, and verifies a new project before publication', async () => {
+    const baseDir = mkdtempSync(join(realpathSync(tmpdir()), 'lumen-migrate-cli-ia12-'));
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -264,11 +278,11 @@ slug: /modern-overview
       const missingSrc = join(baseDir, 'does-not-exist');
       const untouchedTarget = join(baseDir, 'untouched-target');
       process.exitCode = 0;
-      await runLumenMigrateCli(['docusaurus', missingSrc, untouchedTarget, '--verify', '--json']);
+      await expect(runLumenMigrateCli(['docusaurus', missingSrc, untouchedTarget, '--json'])).rejects.toThrow(/ENOENT/);
       expect(process.exitCode).toBe(1);
       expect(existsSync(untouchedTarget)).toBe(false);
 
-      // 2. Migration with malicious ---js file rolls back staging without corrupting pre-existing target
+      // 2. An existing target is refused before any migration writes
       const badSrc = join(baseDir, 'bad-src');
       mkdirSync(join(badSrc, 'docs'), { recursive: true });
       writeFileSync(join(badSrc, 'docs', 'good.md'), '# Good\n', 'utf8');
@@ -279,12 +293,14 @@ slug: /modern-overview
       writeFileSync(join(protectedTarget, 'sentinel.txt'), 'KEEP_ME', 'utf8');
 
       process.exitCode = 0;
-      await runLumenMigrateCli(['docusaurus', badSrc, protectedTarget, '--json']);
+      await expect(runLumenMigrateCli(['docusaurus', badSrc, protectedTarget, '--json'])).rejects.toThrow(
+        /Target already exists/
+      );
       expect(process.exitCode).toBe(1);
       expect(readFileSync(join(protectedTarget, 'sentinel.txt'), 'utf8')).toBe('KEEP_ME');
       expect(existsSync(join(protectedTarget, 'lumen.config.ts'))).toBe(false);
 
-      // 3. Valid migration with --verify succeeds atomically with exitCode = 0 and 100% parity
+      // 3. Every valid migration requires successful staging parity
       const validSrc = join(baseDir, 'valid-src');
       mkdirSync(join(validSrc, 'docs'), { recursive: true });
       writeFileSync(join(validSrc, 'docusaurus.config.ts'), 'export default { title: "Atomic Site" };\n', 'utf8');
@@ -296,7 +312,7 @@ slug: /modern-overview
 
       const cleanTarget = join(baseDir, 'clean-target');
       process.exitCode = 0;
-      await runLumenMigrateCli(['docusaurus', validSrc, cleanTarget, '--verify', '--json']);
+      await runLumenMigrateCli(['docusaurus', validSrc, cleanTarget, '--json']);
       expect(process.exitCode).toBe(0);
       expect(existsSync(join(cleanTarget, 'lumen.config.ts'))).toBe(true);
       expect(existsSync(join(cleanTarget, 'docs', 'intro.pdx'))).toBe(true);

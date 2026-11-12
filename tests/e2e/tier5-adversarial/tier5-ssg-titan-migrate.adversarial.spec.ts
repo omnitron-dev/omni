@@ -479,18 +479,18 @@ describe('Tier 5 Adversarial Hardening: @omnitron-dev/lumen, @omnitron-dev/titan
       }).not.toThrow(RangeError);
     });
 
-    it('TC-ADV-MIGRATE-02A: parseDocusaurusConfigContent handles non-string and malformed inputs gracefully', () => {
+    it('TC-ADV-MIGRATE-02A: parseDocusaurusConfigContent rejects non-string and malformed inputs', () => {
       expect(() => {
         parseDocusaurusConfigContent(null as any);
-      }).not.toThrow();
+      }).toThrow();
 
       expect(() => {
         parseDocusaurusConfigContent(undefined as any);
-      }).not.toThrow();
+      }).toThrow();
 
       expect(() => {
         parseDocusaurusConfigContent('const corrupted = { unclosed_bracket: [1, 2, 3');
-      }).not.toThrow();
+      }).toThrow();
     });
 
     it('TC-ADV-MIGRATE-03A: migrateMarkdownToPdx produces valid YAML when frontmatter strings contain colons', () => {
@@ -525,19 +525,17 @@ sidebar_position: 1
       expect(parsedData?.['description']).toBe('Note: Highly experimental');
     });
 
-    it('TC-ADV-MIGRATE-03B: migrateMarkdownToPdx preserves unclosed frontmatter delimiters gracefully', () => {
+    it('TC-ADV-MIGRATE-03B: migrateMarkdownToPdx rejects unclosed frontmatter delimiters', () => {
       const malformedInput = `---
 unclosed frontmatter without trailing delimiter
 # Title Heading
 Some content body
 `;
 
-      const migrated = migrateMarkdownToPdx(malformedInput);
-      expect(typeof migrated).toBe('string');
-      expect(migrated).toContain('# Title Heading');
+      expect(() => migrateMarkdownToPdx(malformedInput)).toThrow(/Unclosed frontmatter/);
     });
 
-    it('TC-ADV-MIGRATE-04A: autogenerateSidebarForDir ignores non-markdown files and corrupted YAML files', () => {
+    it('TC-ADV-MIGRATE-04A: autogenerateSidebarForDir inventories ancillary files and rejects corrupted YAML', () => {
       const testDir = createTempDir('autogen-adversarial');
 
       // Add valid markdown file
@@ -551,9 +549,11 @@ Some content body
       // Add corrupted YAML markdown file
       writeFileSync(join(testDir, 'corrupt.md'), `---\ntitle: [unclosed array\n---\nCorrupted YAML body`);
 
+      expect(() => autogenerateSidebarForDir(testDir)).toThrow();
+      rmSync(join(testDir, 'corrupt.md'));
       const items = autogenerateSidebarForDir(testDir);
 
-      // Should collect the valid markdown and not throw on corrupt or binary files
+      // Once the invalid document is removed, ancillary binary files are inventoried without becoming sidebar entries
       expect(items.length).toBeGreaterThanOrEqual(1);
       const validItem = items.find((it) => it.id === 'guide');
       expect(validItem).toBeDefined();

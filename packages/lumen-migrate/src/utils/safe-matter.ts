@@ -1,6 +1,3 @@
-import { sep } from 'node:path';
-import { lstatSync, realpathSync } from 'node:fs';
-
 import { parseSafeFrontmatter as parseMetadata } from '@omnitron-dev/lumen-ast';
 
 export class DisabledFrontmatterEngineError extends Error {
@@ -21,39 +18,4 @@ export function parseSafeFrontmatter(rawContent: string): SafeMatterResult {
   if (error?.code === 'EXECUTABLE_FRONTMATTER_FORBIDDEN') throw new DisabledFrontmatterEngineError('script');
   if (error) throw new Error(error.message);
   return { data: parsed.data, content: parsed.content };
-}
-
-export interface PathContainmentResult {
-  isSymlink: boolean;
-  realPath: string;
-  escaped: boolean;
-}
-
-export function inspectPathContainment(rootRealPath: string, candidatePath: string): PathContainmentResult {
-  const lstat = lstatSync(candidatePath);
-  const isSymlink = lstat.isSymbolicLink();
-
-  let realPath: string;
-  try {
-    realPath = realpathSync(candidatePath);
-  } catch {
-    return {
-      isSymlink,
-      realPath: '',
-      escaped: true,
-    };
-  }
-
-  const normalizedRoot =
-    rootRealPath.length > 1 && rootRealPath.endsWith(sep) ? rootRealPath.slice(0, -1) : rootRealPath;
-  const escaped =
-    normalizedRoot === sep
-      ? !realPath.startsWith(sep)
-      : realPath !== normalizedRoot && !realPath.startsWith(`${normalizedRoot}${sep}`);
-
-  return {
-    isSymlink,
-    realPath,
-    escaped,
-  };
 }

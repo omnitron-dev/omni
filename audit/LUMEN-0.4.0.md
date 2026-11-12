@@ -39,7 +39,9 @@ gate exercises public entry points and does not replay every source test.
 | L40-18 | Twoslash uses handwritten partial TypeScript declarations, guesses another symbol when the query fails and marks oversized or hidden-error snippets as successful. | Use the actual compiler's standard libraries, exact query positions, bounded inputs and truthful results in Node/browser archives. | Closed in source: the build embeds 63 official ES2022/DOM library files (2.83 MiB); the runtime host admits only those files and the snippet. Forty-four focused checks, the actual package build and offline Chromium/CSP acceptance pass. The compiler is pinned directly (`06201c44`); a runtime/compiler mismatch is rejected before analysis. Actual Node/browser archive checks and reference-site annotations passed for `1ede1aea`. |
 | L40-19 | The first 0.4.0 npm consumer installation rejects Titan Mailer's two internal peer ranges, which still require 0.3.x. | Derive internal dependencies from the same workspace release and reject stale ranges before building or packing. | Closed in source: both peers use `workspace:*`; actual packing produces exact 0.4.0 peers and preserves the optional notifications peer. The existing dependency scanner and archive gate share one workspace-reference check, also run as the first release-build step. Five focused checks and the full scanner pass; the generated lockfile passes frozen validation. The complete clean 35-package archive installation passed for `1ede1aea`. |
 | L40-20 | The final website build passes static parity but its browser API/diagram imports fail with `__vite_ssr_import_meta__ is not defined`. | Preserve the native Node compiler boundary when executing the SSR bundle, and exercise its subsequent client build through the ordinary CLI in a browser. | Closed in source (`c706a90f`, `39ff2e55`): the scoped Vite environment treats the exact resolved Node compiler URLs as native modules. Vite's preload generator therefore receives its original function rather than an SSR-transformed function. The existing disposable SSR graph and its cleanup remain intact. The same ordinary CLI/Chromium regression fails on the old SDK and passes on the fix: custom layout hooks, lazy API chunk, CSS preload, filtering and Mermaid/ELK, with no page/network errors. All 84 package checks, types and lint pass. The `1ede1aea` archive gate includes this regression; its reference website also passes all twelve browser scenarios. |
-| L40-21 | A dynamically registered classic website starts successfully but is absent from the execution owner's watch inventory; `sdk dev --stack` therefore skips it. | Canonical owner inventory and SDK refresh must cover registered local applications, with two successful SDK rebuild/restart cycles and a failed build preserving the last ready generation. | Open. The isolated native owner served the actual website and passed HTTP readiness, but its watch inventory omitted the application. No SDK source revision was attempted after that refusal, and no manual restart was substituted. The core correction and repeated managed refresh acceptance are still required. |
+| L40-21 | A dynamically registered classic website starts successfully but is absent from the execution owner's watch inventory; `sdk dev --stack` therefore skips it. | Canonical owner inventory and SDK refresh must cover registered local applications, with two successful SDK rebuild/restart cycles and a failed build preserving the last ready generation. | Closed in source and isolated native website acceptance. Source fixes unify owner subscriptions, fence automatic refresh with `sourceRefresh@1` and exact generation/definition receipts, and distinguish successful builds from per-application readiness. SDK checkpoint checks pass 55 cases (`1dea91d0`); the mutable-entry retarget regression and related suites pass 68 (`a79dd63c`). A clean `b5a083e6` runtime serves both successful SDK revisions through new application PIDs while the owner stays unchanged; ten samples after a compiler failure preserve the second revision's PID, generation, checkpoint bytes and HTTP content. Old-backend/current-owner source-watch compatibility and final release qualification remain separate gates. |
+| L40-22 | `lumen dev` writes Vite's `.vite/deps` cache into the published generation; the next ordinary build rejects its inventory and the managed site cannot restart. | Keep dev-server state outside the published generation, with lifecycle cleanup and actual edit/restart acceptance. | Closed in source (`bd6bfc6c`) and isolated native acceptance. Eighty-five package checks, types and lint pass, including an ordinary CLI dev process with successful edits, a rejected build preserving the previous HTTP response, shutdown/cache cleanup and restart. The clean `b5a083e6` managed website completes both automatic SDK refreshes. The original failure preserves exactly two extra cache files, with no changed or missing declared output. |
+| L40-23 | A compiled system health worker inherits bare `tsx/esm` from the backend and cannot resolve it from the ecosystem directory; the daemon repeatedly falls back to direct checks. | Choose loading from the actual worker entry and installed package, and verify the dedicated child through real PM execution outside a dependency directory. | Closed in source (`b5a083e6`) and isolated native acceptance. The existing SystemWorkerManager owns child isolation and loader selection; compiled JS needs no preload and source TS uses the installed loader URL. Fifty-five focused checks, source/test types and lint pass. A real subprocess executes both compiled JS and a TS enum through PM from a cwd where `tsx/esm` cannot resolve. The frozen native health worker initializes through PM and reports no startup failure throughout both website refreshes and failed-build preservation. |
 
 ## Combined source verification
 
@@ -77,6 +79,80 @@ parameter. `e0b9eefc` fixes both without accepting unsupported expressions. An
 isolated frozen offline installation passed package lint, all 67 migration
 tests, typecheck and direct accepted/rejected unary-expression probes. This
 scoped result does not stand in for a later whole-workspace CI run.
+
+The later L40-21 core watcher/RPC checkpoint (`c13f21eb`) passes 126 checks in twelve files
+on an isolated SDK copy. Production and test typechecks and application-wide
+ESLint pass. Classic lifecycle checks use actual child forks, SQLite owner state
+and HTTP responses; only filesystem event delivery is controlled through the
+existing native watcher seam. They verify a retained subscription and a trailing
+edit while a replacement child waits for readiness, including after an earlier
+definition change. Native subscription errors and partial registration failures
+remove the reported watch inventory. These source results do not establish
+the complete website's managed SDK refresh, a release build or remote CI.
+
+The following owner-receipt correction (`b5ced073`) passes 239 checks across
+31 files, including the complete orchestrator directory, authenticated Netron
+HTTP, private Unix transport and FileWatcher checks. Source/test typechecks and
+application lint pass. The owner returns the exact admitted process/source
+receipt; later controller inventory cannot replace it. Canonical-name mismatch,
+revoked requests and unchanged generations do not produce a successful receipt.
+The separate native website replay below verifies the ordinary managed path.
+
+The SDK checkpoint fix (`1dea91d0`) passes 55 checks and records the successful
+build separately from each application's exact owner receipt. A build-only run
+or a different stack cannot certify application refresh. Pending/failed startup,
+missing subscriptions and changed bindings fail explicitly. The subsequent
+native watcher fix (`a79dd63c`) captures the configuration that created each
+subscription, rather than comparing two references to a caller-mutated object.
+Its new classic fixture proves same-object cwd A-to-B redefinition closes A,
+ignores later A events and produces a new child PID and HTTP value after a B
+event. The related 68 checks, full application source/test types and lint pass.
+
+A normal clean `a79dd63c` Xec/Turbo build completed 36 build and 13 build:titan
+tasks. The backend and Console stamps both identify that clean commit. Its
+separately frozen 301-package runtime has digest
+`3ae02e9e3484ba5dd3b82cb7ffc83de668e33ea06f5b762e24611ae8e83e9fe6`.
+The existing managed-backend scenario used a private home/socket, separate
+loopback ports and its own PostgreSQL container/network (512 MiB, one CPU,
+128 PIDs). Actual website HTTP returned 38,185 bytes with the custom SSR layout
+and a unique fixture nonce. Watch inventory passed the earlier refusal; the
+first owner-managed SDK refresh then failed on L40-22. SDK readiness was not
+reported as successful. Backend logs independently exposed L40-23, so the run
+does not qualify a healthy native runtime.
+
+The failed run's native jobs, owner/backend/site processes and Docker resources
+were cleaned up, and the fixture's site/source edits were restored. Its output,
+logs and exact inventory difference remain at
+`/Volumes/AGI-Dev/work/omnitron/omnitron-handoff-website-4QG73j`;
+`failure-evidence.json` records the two extra `.vite/deps` files and verified
+cleanup. Build/source logs are `source-refresh-native-build.log`,
+`watch-retarget-{red,green}.log` and `health-loader-{red,green}.log` under
+`/Volumes/AGI-Dev/work/omnitron`. These are local source/native failure evidence,
+not release qualification, rollback compatibility or remote CI acceptance.
+
+After the Lumen cache and worker-loader fixes, a second ordinary clean Xec/Turbo
+build freezes `b5a083e6505c7bcd84ce6793b468e842c27d8d6f` into a 301-package
+runtime with SHA-256
+`cc3e1eb39d6071f68574e9fe66391c9a7a798ee3464a4cb5e0388fa05b1627e2`.
+The repeated private managed website scenario passes through the shipped SDK
+CLI, owner receipt and actual SSR HTTP response. The owner PID stays 88186;
+the ready website PID changes from 1097 to 7380 and then 12299 for two real
+SDK source revisions. HTTP content changes from 38,185 to 38,240 bytes and
+contains each revision's unique marker. The failed third compilation leaves
+PID 12299, its generation, checkpoint bytes and revision-two HTTP response
+unchanged across ten samples. The health worker initializes through PM with
+zero startup failures. The successful run verifies native process/unit cleanup,
+removes only its own Docker container/network and restores source/site inputs.
+
+`source-refresh-native-website-3.log` and
+`omnitron-handoff-website-SoX2BR/result.json` under the same evidence directory
+record this acceptance. The preceding replay completed the production checks
+but failed while writing its fixture result because of a shadowed constant;
+the scenario was corrected, syntax/lint checked and replayed against the same
+immutable runtime before accepting success. No manual application restart or
+replacement of active output substituted for an SDK refresh. This proves the
+isolated managed website path, not browser HMR, compatibility after backend
+rollback, later pipeline changes, remote CI or final release qualification.
 
 The reference website on SDK `1ede1aea` passes typecheck, its ordinary build,
 239-page output validation, preservation of 236 original routes and 2,855
@@ -137,7 +213,15 @@ Local evidence is retained under `/Volumes/AGI-Dev/work`:
   sixteen screenshots.
 - `omnitron/managed-website-proof.log` records successful isolated managed startup
   and the watch-inventory refusal. It provides no evidence of automatic SDK
-  refresh; L40-21 remains open.
+  refresh; the later successful replay above closes that scoped acceptance.
+- `omnitron/source-refresh-qa-tests-4.log`,
+  `omnitron/source-refresh-qa-types-4.log` and
+  `omnitron/source-refresh-qa-lint-4.log` record the 126-check core watcher/RPC
+  source checkpoint. They do not certify subsequent SDK checkpoint changes.
+- `omnitron/source-refresh-receipt-tests.log`,
+  `omnitron/source-refresh-receipt-types.log` and
+  `omnitron/source-refresh-receipt-lint.log` record the 239-check owner-receipt
+  checkpoint, independently of the later complete SDK/website acceptance.
 
 Lumen E2E no longer invokes the same whole-workspace export and undeclared-import
 scanners a second time. Both remain required root gates; the Lumen-specific

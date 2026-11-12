@@ -20,6 +20,9 @@ export async function buildClientAssets(
     root: rootDir,
     publicDir: config.publicDir ? resolve(rootDir, config.publicDir) : false,
     base: config.baseUrl,
+    // A custom client owns its React peers. Linked SDK packages must share those
+    // instances instead of bundling the checkout's separate React dispatcher.
+    resolve: config.clientEntry ? { dedupe: ['react', 'react-dom', '@emotion/react'] } : undefined,
     worker: { format: 'es' },
     build: {
       write: false,

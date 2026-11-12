@@ -5,11 +5,13 @@ import os from 'node:os';
 import { reserveDaemonPorts } from './fixture-ports.mjs';
 import { applicationSdkOption } from './managed-project-runtime.mjs';
 import { initialRuntimeDirectories, readMasterFixture, removeOwnedFixtureRoot } from './fixture-master-options.mjs';
+import { preparationOption, prepareFixture, claimPreparedFixture, consumeFixture, verifyPreparedFixture,
+  assertPreparedFixtureIdle } from './fixture-preparation.mjs';
 import { verifyFixtureLogs } from './fixture-log-evidence.mjs';
 import { createFixtureUnitFiles, assertFixtureUnitFilesOwned, removeFixtureUnitFiles, authorizeFixtureUnitWrite, authorizeFixtureGuardianReplacement } from './fixture-unit-files.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
@@ -17,10 +19,11 @@ import { monitorEventLoopDelay } from 'node:perf_hooks';
 assert.ok(['darwin', 'linux'].includes(process.platform), 'This fixture requires native service supervision');
 const linux = process.platform === 'linux';
 if (linux) assert.equal(process.getuid(), 0, 'Linux fixture needs an isolated system service, independent of SSH login');
+const preparation = preparationOption(process.argv.slice(2));
 const masterFixture = await readMasterFixture(process.argv.slice(2), process.env);
-const dist = path.resolve(process.argv[2]);
+let dist = path.resolve(process.argv[2]);
 assert.ok(dist.includes('omnitron-handoff-'), 'Use a disposable sealed test artifact');
-const managementDist = process.argv[3] ? path.resolve(process.argv[3]) : undefined;
+let managementDist = process.argv[3] ? path.resolve(process.argv[3]) : undefined;
 if (managementDist) assert.ok(managementDist.includes('omnitron-handoff-'), 'Use a disposable management artifact');
 // Qualify an exact baseline -> candidate -> baseline with the baseline owner and
 // guardian retained. This is the same CLI path used by a backend-only rollout.
@@ -31,15 +34,21 @@ assert.ok(!(backendOnly && ownerRoundtrip), 'Choose backend-only or owner-roundt
 if (ownerRoundtrip) assert.ok(managementDist, 'Owner replacement requires an independently built candidate');
 const applicationSdk = await applicationSdkOption(process.argv.slice(2), managementDist ?? dist);
 const { initialBackendDist, initialGuardianDist } = initialRuntimeDirectories(process.argv.slice(2), dist, managementDist);
-const root = masterFixture ? masterFixture.root : await fs.mkdtemp(path.join(os.tmpdir(), 'omni-managed-'));
+const fixtureDirectory = fileURLToPath(new URL('.', import.meta.url));
+const inputs = { owner: path.resolve(dist, '../../..'), backend: path.resolve(initialBackendDist, '../../..'),
+  guardian: path.resolve(initialGuardianDist, '../../..'), candidate: managementDist ? path.resolve(managementDist, '../../..') : null };
+const prepared = preparation?.mode === 'execute'
+  ? await claimPreparedFixture({ file: preparation.receipt, inputs, fixtureDirectory }) : undefined;
+const root = prepared?.root ?? (masterFixture ? masterFixture.root : await fs.mkdtemp(path.join(os.tmpdir(), 'omni-managed-')));
 if (masterFixture) await fs.mkdir(root, { mode: 0o700 });
-const rootIdentity = masterFixture ? await fs.lstat(root) : undefined;
+const rootIdentity = prepared?.rootIdentity ?? await fs.lstat(root);
+const id = prepared?.receipt.id ?? randomUUID();
 console.log(JSON.stringify({ stage: 'fixture-created', root, pid: process.pid }));
 // Independent registered projects must be siblings, not nested registrations.
 const projectDirectory = applicationSdk ? path.join(root, 'probe') : root;
 if (projectDirectory !== root) await fs.mkdir(projectDirectory, { mode: 0o700 });
 const instance = path.join(root, 'i'), execution = path.join(root, 'e');
-for (const directory of [instance, execution]) await fs.mkdir(directory, { mode: 0o700 });
+if (!prepared) for (const directory of [instance, execution]) await fs.mkdir(directory, { mode: 0o700 });
 const applicationTemporary = applicationSdk ? path.join(root, 't') : undefined;
 if (applicationTemporary) {
   await fs.mkdir(applicationTemporary, { mode: 0o700 });
@@ -48,6 +57,27 @@ if (applicationTemporary) {
 process.env.OMNITRON_HOME = instance;
 const load = file => import(pathToFileURL(path.join(dist, file)).href);
 const { RuntimeInstallation } = await load('daemon/runtime-installation.js');
+const execute = promisify(execFile);
+const reportPreparation = event => console.log(JSON.stringify({ ...event, at: new Date().toISOString() }));
+let artifacts;
+if (prepared) {
+  await assertPreparedFixtureIdle(prepared, execute);
+  artifacts = await verifyPreparedFixture(prepared, RuntimeInstallation, reportPreparation);
+} else {
+  const result = await prepareFixture({ root, id, inputs, RuntimeInstallation, fixtureDirectory, mark: reportPreparation,
+    scenario: masterFixture ? 'master' : ownerRoundtrip ? 'owner-roundtrip' : backendOnly ? 'backend-only' : 'ordinary' });
+  if (preparation?.mode === 'prepare') {
+    reportPreparation({ stage: 'fixture-prepared', root, receipt: result.file, elapsedMs: result.receipt.elapsedMs,
+      inputs: result.receipt.inputs, servicesStarted: false });
+    process.exit(0);
+  }
+  await consumeFixture(result);
+  artifacts = result.artifacts;
+}
+const artifact = artifacts.owner, initialBackend = artifacts.backend, initialGuardian = artifacts.guardian;
+// Subsequent fixture imports and CLI operations use the verified private copies.
+dist = artifact.directory;
+managementDist = artifacts.candidate?.directory;
 const { renderLaunchdPlist, renderSystemdUnit: nativeSystemdUnit } = await load('commands/service-units.js');
 const renderSystemdUnit = inputs => {
   const unit = nativeSystemdUnit(inputs);
@@ -61,7 +91,6 @@ const renderSystemdUnit = inputs => {
 const { createDaemonClient } = await load('daemon/daemon-client.js');
 const { privateControlClient } = await load('daemon/private-control-client.js');
 const { PidManager } = await load('daemon/pid-manager.js');
-const execute = promisify(execFile);
 let interrupted = false;
 const assertActive = () => { if (interrupted) throw new Error('Private native fixture was interrupted'); };
 const run = (...args) => { assertActive(); return execute(...args); };
@@ -70,20 +99,6 @@ const native = (args, cleanup = false) => {
   return execute(linux ? 'systemctl' : '/bin/launchctl', args, { timeout: 45_000, maxBuffer: 1024 * 1024 });
 };
 const domain = `gui/${process.getuid()}`;
-const id = randomUUID();
-const installation = await RuntimeInstallation.open(instance);
-let artifact, initialBackend, initialGuardian;
-try {
-  artifact = await installation.exclusive(async () => {
-    const installed = await installation.install(path.resolve(dist, '../../..'));
-    initialBackend = initialBackendDist === dist ? installed : await installation.install(path.resolve(initialBackendDist, '../../..'));
-    initialGuardian = initialGuardianDist === dist ? installed : initialGuardianDist === initialBackendDist
-      ? initialBackend : await installation.install(path.resolve(initialGuardianDist, '../../..'));
-    await installation.select(initialBackend.runtimeHash, 0);
-    await installation.writeLauncher();
-    return installed;
-  });
-} finally { await installation.close(); }
 const { httpPort: port, ports: [tcpPort, counterPort], release } = await reserveDaemonPorts(masterFixture ? 1 : 2, masterFixture?.requestedPorts);
 const readiness = { intervalMs: 1000, timeoutMs: 1000, probes: [
   { name: 'counter HTTP', type: 'http', url: `http://127.0.0.1:${counterPort}/health`, expect: { fixture: id, ready: true } },
@@ -591,6 +606,5 @@ try {
 }
 // Retain failed fixtures for diagnosis. Successful runs release their private runtime copies.
 if (process.env.OMNITRON_KEEP_TEST_ARTIFACTS !== '1') {
-  if (masterFixture) await removeOwnedFixtureRoot(root, rootIdentity);
-  else await fs.rm(root, { recursive: true, force: true });
+  await removeOwnedFixtureRoot(root, rootIdentity);
 }

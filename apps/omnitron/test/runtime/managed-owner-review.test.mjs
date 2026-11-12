@@ -6,11 +6,15 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { randomUUID } from 'node:crypto';
 import { stopPrivateFixtureStack, upgradePrivateFixtureBackend } from './managed-owner-roundtrip.mjs';
 import { applicationSdkOption } from './managed-project-runtime.mjs';
+import { preparationOption, prepareFixture, claimPreparedFixture, verifyPreparedFixture,
+  assertPreparedFixtureIdle } from './fixture-preparation.mjs';
 
 const managementDist = fileURLToPath(new URL('../../dist/', import.meta.url));
 const execute = promisify(execFile);
+const fixtureDirectory = fileURLToPath(new URL('.', import.meta.url));
 
 test('backend replacement passes the installed dist to both CLI phases for rollback and restore', async () => {
   for (const commit of ['b'.repeat(40), 'c'.repeat(40)]) {
@@ -170,3 +174,154 @@ for (const [name, change] of [
     assert.equal(stopped, false);
   });
 }
+
+async function preparedInstallation(t) {
+  const { RuntimeInstallation } = await import(pathToFileURL(path.join(managementDist, 'daemon/runtime-installation.js')).href);
+  const { runtimeArtifactDigest } = await import(pathToFileURL(path.join(managementDist, 'shared/runtime-artifact.js')).href);
+  const workspace = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'omni-preparation-test-')));
+  t.after(() => fs.rm(workspace, { recursive: true, force: true }));
+  const root = path.join(workspace, 'private');
+  for (const directory of [root, path.join(root, 'i'), path.join(root, 'e')]) await fs.mkdir(directory, { mode: 0o700 });
+  const inputs = {};
+  for (const [role, commit] of [['owner', 'a'], ['backend', 'b'], ['candidate', 'c']]) {
+    const source = path.join(workspace, 'omnitron-handoff-' + role), dist = path.join(source, 'packages/0/dist');
+    for (const directory of ['daemon', 'cli', 'database/migrations']) await fs.mkdir(path.join(dist, directory), { recursive: true, mode: 0o700 });
+    const build = { commit: commit.repeat(40), dirty: false, builtAt: '2026-01-01T00:00:00.000Z', timeBasis: 'source' };
+    await fs.writeFile(path.join(dist, 'BUILD.json'), JSON.stringify(build));
+    await fs.writeFile(path.join(dist, 'daemon/daemon-entry.js'), 'export {};');
+    await fs.writeFile(path.join(dist, 'cli/installed.js'), 'export {};');
+    // As in runtime-installation.test.ts, this tiny executable supplies only the
+    // preflight wire response. The real installation/digest/SQLite APIs run here.
+    await fs.writeFile(path.join(source, 'node'), `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify({ protocol: 1, build })}'\n`, { mode: 0o700 });
+    const sha256 = await runtimeArtifactDigest(source);
+    await fs.writeFile(path.join(source, 'RUNTIME.json'), JSON.stringify({ protocol: 1, sha256,
+      platform: process.platform, arch: process.arch, nodeVersion: process.version, packages: 1 }));
+    inputs[role] = source;
+  }
+  inputs.guardian = inputs.owner;
+  const ordered = { owner: inputs.owner, backend: inputs.backend, guardian: inputs.guardian, candidate: inputs.candidate };
+  const events = [];
+  const prepared = await prepareFixture({ root, id: randomUUID(), inputs: ordered, RuntimeInstallation,
+    fixtureDirectory, mark: event => events.push(event) });
+  const claim = overrides => claimPreparedFixture({ file: prepared.file, inputs: ordered, fixtureDirectory, ...overrides });
+  return { workspace, root, inputs: ordered, prepared, RuntimeInstallation, events, claim };
+}
+
+test('prepares all exact roles without services and reopens verified installed copies without copying again', async t => {
+  const fixture = await preparedInstallation(t);
+  const { prepared, inputs, RuntimeInstallation, claim, events } = fixture;
+  assert.equal(prepared.receipt.scenario, 'ordinary');
+  assert.deepEqual(Object.keys(prepared.receipt.inputs), ['owner', 'backend', 'guardian', 'candidate']);
+  assert.equal(prepared.receipt.inputs.guardian.sha256, prepared.receipt.inputs.owner.sha256);
+  assert.equal(events.filter(event => event.stage === 'runtime-install-complete' && !event.reused).length, 3);
+  assert.equal(prepared.receipt.selection.current, prepared.receipt.inputs.backend.sha256);
+  const installed = prepared.artifacts.candidate.runtimeRoot;
+  const before = await fs.lstat(path.join(installed, 'node'));
+  await fs.writeFile(path.join(inputs.candidate, 'node'), 'source changed after private installation');
+  const claimed = await claim();
+  const copy = t.mock.method(fs, 'cp', async () => { throw new Error('Execution cannot copy a runtime'); });
+  const verified = await verifyPreparedFixture(claimed, RuntimeInstallation);
+  assert.equal(copy.mock.callCount(), 0);
+  assert.equal(verified.candidate.runtimeHash, prepared.receipt.inputs.candidate.sha256);
+  assert.equal((await fs.lstat(path.join(installed, 'node'))).ino, before.ino);
+  assert.deepEqual(await fs.readdir(path.join(fixture.root, 'e')), []);
+  assert.deepEqual(await fs.readdir(path.join(fixture.root, 'i')), ['runtime']);
+  await assert.rejects(claim({ fixtureDirectory: '/missing-helper-directory' }), /already claimed/);
+});
+
+test('a full installed digest failure consumes execution and cannot be retried as a fresh fixture', async t => {
+  const fixture = await preparedInstallation(t), claimed = await fixture.claim();
+  await fs.writeFile(path.join(fixture.prepared.artifacts.candidate.runtimeRoot, 'node'), 'corrupt installed bytes');
+  await assert.rejects(verifyPreparedFixture(claimed, fixture.RuntimeInstallation), /changed after sealing/);
+  assert.ok((await fs.lstat(path.join(fixture.root, 'execute.started'))).isFile());
+  await assert.rejects(fixture.claim(), /already claimed/);
+});
+
+test('only one simultaneous execution can claim a prepared fixture', async t => {
+  const fixture = await preparedInstallation(t);
+  const results = await Promise.allSettled([fixture.claim(), fixture.claim()]);
+  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
+  assert.equal(results.filter(result => result.status === 'rejected').length, 1);
+  assert.equal(JSON.parse(await fs.readFile(path.join(fixture.root, 'execute.started'), 'utf8')).id, fixture.prepared.receipt.id);
+});
+
+for (const [name, change] of [
+  ['source role', async value => ({ inputs: { ...value.inputs, backend: value.inputs.owner } })],
+  ['root identity', async value => {
+    const receipt = JSON.parse(await fs.readFile(value.prepared.file, 'utf8')); receipt.root.ino++;
+    await fs.writeFile(value.prepared.file, JSON.stringify(receipt)); return {};
+  }],
+  ['helper identity', async value => {
+    const receipt = JSON.parse(await fs.readFile(value.prepared.file, 'utf8')); receipt.fixture.sha256 = '0'.repeat(64);
+    await fs.writeFile(value.prepared.file, JSON.stringify(receipt)); return {};
+  }],
+  ['socket state', async value => { await fs.writeFile(path.join(value.root, 'i/daemon.sock'), 'leftover'); return {}; }],
+  ['execution state', async value => { await fs.writeFile(path.join(value.root, 'e/owner.json'), '{}'); return {}; }],
+  ['staging state', async value => { await fs.mkdir(path.join(value.root, 'i/runtime/releases/.install-leftover')); return {}; }],
+  ['symlink receipt', async value => {
+    await fs.rename(value.prepared.file, value.prepared.file + '.original');
+    await fs.symlink(value.prepared.file + '.original', value.prepared.file); return {};
+  }],
+  ['symlink root', async value => {
+    const link = path.join(value.workspace, 'alias'); await fs.symlink(value.root, link);
+    return { file: path.join(link, 'preparation.json') };
+  }],
+]) {
+  test(`rejects changed ${name} before execution is claimed`, async t => {
+    const fixture = await preparedInstallation(t);
+    await assert.rejects(fixture.claim(await change(fixture)));
+    await assert.rejects(fs.access(path.join(fixture.root, 'execute.started')), error => error.code === 'ENOENT');
+  });
+}
+
+for (const state of ['lease', 'activation', 'selection']) {
+  test(`refuses an unsettled or changed ${state} after claiming, without repairing the registry`, async t => {
+    const fixture = await preparedInstallation(t), claimed = await fixture.claim();
+    const store = await fixture.RuntimeInstallation.open(path.join(fixture.root, 'i'), { existing: true });
+    try {
+      await store.exclusive(async () => {
+        if (state === 'activation') store.beginActivation(fixture.prepared.artifacts.candidate.runtimeHash,
+          fixture.prepared.artifacts.backend.runtimeHash, path.join(fixture.root, 'pending.json'));
+        if (state === 'selection') await store.select(fixture.prepared.artifacts.owner.runtimeHash, 1);
+        if (state === 'lease') await assert.rejects(verifyPreparedFixture(claimed, fixture.RuntimeInstallation), /unsettled/);
+      });
+      if (state !== 'lease') await assert.rejects(verifyPreparedFixture(claimed, fixture.RuntimeInstallation), /unsettled|selection changed/);
+    } finally { await store.close(); }
+    await assert.rejects(fixture.claim(), /already claimed/);
+  });
+}
+
+test('native absence guard inspects only its UUID units and exact execution paths, never stops them', async () => {
+  const prepared = { root: '/private-isolated-fixture', receipt: { id: randomUUID() } }, calls = [];
+  const observed = async (command, args) => {
+    calls.push({ command, args });
+    if (command === 'systemctl') return { stdout: 'not-found\n' };
+    if (command === '/bin/launchctl') {
+      const label = args[1].split('/').at(-1);
+      throw Object.assign(new Error('Absent'), { code: 113, stderr: `Could not find service "${label}"` });
+    }
+    assert.equal(command, '/bin/ps');
+    return { stdout: '100 node /another-fixture/i/node\n200 node --prepared /private-isolated-fixture/preparation.json\n' };
+  };
+  await assertPreparedFixtureIdle(prepared, observed);
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every(call => !call.args.some(arg => ['kill', 'stop', 'bootout', 'start', 'bootstrap'].includes(arg))));
+  await assert.rejects(assertPreparedFixtureIdle(prepared, async (command, args, options) => command === '/bin/ps'
+    ? { stdout: '300 /private-isolated-fixture/i/runtime/releases/hash/node daemon-entry.js' } : observed(command, args, options)), /process still references/);
+  await assert.rejects(assertPreparedFixtureIdle(prepared, async () => ({ stdout: 'loaded\n' })), /already exists|Missing expected rejection/);
+});
+
+test('prepared options reject mixed scenarios, ambient live selectors and duplicate or incomplete flags', () => {
+  const input = ['/tmp/omnitron-handoff-owner/dist', '/tmp/omnitron-handoff-candidate/dist'];
+  assert.deepEqual(preparationOption([...input, '--prepare-only'], {}), { mode: 'prepare' });
+  assert.deepEqual(preparationOption([...input, '--prepared', '/tmp/private/preparation.json'], {}),
+    { mode: 'execute', receipt: '/tmp/private/preparation.json' });
+  for (const flags of [['--prepare-only', '--prepare-only'], ['--prepared'], ['--prepared', '/tmp/not-a-receipt'],
+    ['--prepare-only', '--prepared', '/tmp/private/preparation.json'], ['--prepare-only', '--owner-roundtrip'],
+    ['--prepare-only', '--master-scenario', '/tmp/scenario.mjs'], ['--prepare-only', '--unknown']]) {
+    assert.throws(() => preparationOption([...input, ...flags], {}));
+  }
+  for (const variable of ['OMNITRON_HOME', 'OMNITRON_SOCKET', 'OMNITRON_DATABASE_URL']) {
+    assert.throws(() => preparationOption([...input, '--prepare-only'], { [variable]: '' }), /must not override/);
+  }
+});

@@ -112,15 +112,15 @@ export function inventoryDocumentation(directory: string): DocumentationInventor
     const stamp = directoryStamp(current);
     directories.set(relative(root, current), nativeDirectoryIdentity(current));
     const names: string[] = [];
-    const directory = opendirSync(current);
+    const reader = opendirSync(current);
     try {
-      for (let entry = directory.readSync(); entry; entry = directory.readSync()) {
+      for (let entry = reader.readSync(); entry; entry = reader.readSync()) {
         if (++entries > DOCUMENTATION_LIMITS.entries)
           throw Error('Documentation tree exceeds the entry limit: ' + root);
         names.push(entry.name);
       }
     } finally {
-      directory.closeSync();
+      reader.closeSync();
     }
     names.sort();
     for (const name of names) {

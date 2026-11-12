@@ -133,6 +133,8 @@ function extractAstValue(
         break;
       case ts.SyntaxKind.ExclamationToken:
         return !operand;
+      default:
+        throw Error('Unsupported unary operator in configuration: ' + ts.SyntaxKind[expr.operator]);
     }
     throw Error('Unsupported unary expression in configuration');
   }

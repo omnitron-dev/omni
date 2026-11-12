@@ -165,6 +165,53 @@ records all original IDs and their explicit structural exclusions. Its registry
 lockfile and production publication remain pending the qualified 0.4.0 npm
 release; a development SDK receipt is not registry evidence.
 
+## Release-bound pipeline execution
+
+The source checkpoint `8ac5ade4`, with its public fixture corrected in
+`6579131c`, separates a pipeline's immutable producer identity from the physical
+installation used for an attempt. A `release` step names a registered
+project/stack/application, exact artifact and compiled member. The existing
+installed-release verifier resolves the selected closure without installing,
+selecting or rewriting anything. Xec retains command execution, streams,
+cancellation and retries. The attempt records its actual owner, controller
+epoch, native process lifetime, Node image and installation digest.
+
+Independent review found and closed three admission/recovery defects:
+
+- A backend retaining an observer connection could treat another controller's
+  grant as its own. Fresh admission now checks the held grant against both the
+  returned observation and the latest retained inventory. The same fence
+  protects shell, Xec and release steps; a delayed old reply cannot undo an
+  already observed takeover.
+- A process may start before its acknowledgement becomes durable. On recovery,
+  unfinished `prepared` and `started` attempts become `unconfirmed`; completed
+  evidence remains distinct. Failure to persist a completion also refuses
+  automatic replay of that attempt. This is not an exactly-once guarantee.
+- A dependency-free installed application could borrow native libraries from
+  an ancestor closure. Verified execution now bounds the common library
+  scanner to the admitted physical root and rejects explicit or inherited
+  native-loader overrides. Classic/topology launches, declaration readers and
+  local/remote sealed migrations use the same boundary.
+
+The combined source run on Node 24.13.0 passes 196 checks in sixteen files,
+including real Xec children, durable SQLite interruption/failing-write tests,
+Netron takeover/reordered-response tests and Console definition preservation.
+One existing Linux-only ELF test is skipped on macOS and still needs the Linux
+gate. Backend, test and Console typechecks and scoped lint pass. The corrected
+synthetic public fixture was then rechecked with all 31 pipeline integration
+tests. These counts overlap the narrower closure checks; they are not additive.
+The exact source and log digests are recorded in
+`/Volumes/AGI-Dev/work/omnitron/pipeline-release-receipt.json`.
+
+This proves the new source contract, not activation of an existing frozen
+caller. An application which still constructs shell definitions from physical
+installation paths needs a reviewed new artifact and an explicit conditional
+update of its registration. Existing history and running registrations are not
+silently rewritten. Release steps currently require a local resident owner;
+unsupported remote execution is rejected explicitly. Final clean archives,
+exact-commit CI and native transition/rollback qualification remain separate
+release gates.
+
 ## Installed archive acceptance
 
 The mandatory package-export gate now installs a separate declared Lumen

@@ -54,11 +54,7 @@ const projectDirectory = applicationSdk ? path.join(root, 'probe') : root;
 if (projectDirectory !== root) await fs.mkdir(projectDirectory, { mode: 0o700 });
 const instance = path.join(root, 'i'), execution = path.join(root, 'e');
 if (!prepared) for (const directory of [instance, execution]) await fs.mkdir(directory, { mode: 0o700 });
-const applicationTemporary = applicationSdk ? path.join(root, 't') : undefined;
-if (applicationTemporary) {
-  await fs.mkdir(applicationTemporary, { mode: 0o700 });
-  process.env.TMPDIR = applicationTemporary;
-}
+const applicationTemporary = path.join(root, 't');
 process.env.OMNITRON_HOME = instance;
 const load = file => import(pathToFileURL(path.join(dist, file)).href);
 const { RuntimeInstallation } = await load('daemon/runtime-installation.js');
@@ -80,6 +76,11 @@ if (prepared) {
   artifacts = result.artifacts;
 }
 const artifact = artifacts.owner, initialBackend = artifacts.backend, initialGuardian = artifacts.guardian;
+// Preparation admits an empty private root before execution creates resources.
+// All native children, including pool and system workers, require their own
+// temporary namespace; a fixture must never sweep another installation's sockets.
+await fs.mkdir(applicationTemporary, { mode: 0o700 });
+process.env.TMPDIR = applicationTemporary;
 // Subsequent fixture imports and CLI operations use the verified private copies.
 dist = artifact.directory;
 managementDist = artifacts.candidate?.directory;
@@ -110,7 +111,7 @@ const readiness = { intervalMs: 1000, timeoutMs: 1000, probes: [
 ] };
 const config = { protocol: 1, instanceHome: instance, directory: execution, scope: linux ? 'system' : 'user', cwd: root,
   environment: { OMNITRON_HOME: instance, OMNITRON_NO_INFRA: '1', OMNITRON_NO_WATCH: applicationSdk ? '0' : '1', PATH: process.env.PATH,
-    ...(applicationTemporary && { TMPDIR: applicationTemporary }),
+    TMPDIR: applicationTemporary,
     ...(masterFixture && { OMNITRON_DATABASE_URL: masterFixture.databaseUrl, ...masterFixture.dockerEnvironment }) },
   owner: { label: `dev.omnitron.fixture.${id}.owner`, unit: `omnitron-fixture-${id}-owner.service`, artifact: artifact.runtimeHash },
   backend: { label: `dev.omnitron.fixture.${id}.backend`, unit: `omnitron-fixture-${id}-backend.service`, artifact: initialGuardian.runtimeHash },

@@ -17,7 +17,8 @@ export async function prepareRecoveryTopology(root, ownerDist) {
   await fs.symlink(titan, path.join(packages, 'titan'));
   await fs.writeFile(path.join(root, 'Pool.mjs'), `
 import { Module, Service, Public } from '@omnitron-dev/titan/decorators';
-class Counter { count=0; snapshot(){return {pid:process.pid,parent:process.ppid,count:++this.count};} }
+import os from 'node:os';
+class Counter { count=0; snapshot(){return {pid:process.pid,parent:process.ppid,count:++this.count,temporary:os.tmpdir()};} }
 Public()(Counter.prototype,'snapshot',Object.getOwnPropertyDescriptor(Counter.prototype,'snapshot'));
 Service({name:'FixtureRecoveryPool'})(Counter);
 class FixtureModule {};
@@ -55,7 +56,11 @@ export async function managedReviewedRecovery(context) {
       }
     }, 'The real topology pool did not become available');
     const initialWorkers = new Set();
-    for (let i = 0; i < 16; i++) initialWorkers.add((await pool.service.snapshot()).pid);
+    for (let i = 0; i < 16; i++) {
+      const worker = await pool.service.snapshot();
+      assert.equal(worker.temporary, path.join(root, 't'), 'A native pool inherited a shared temporary namespace');
+      initialWorkers.add(worker.pid);
+    }
     assert.equal(initialWorkers.size, 2);
     await until(async () => (await status()).execution.recovery.status === 'ready', 'No pre-fault recovery certificate');
     const address = await (await client.service('OmnitronBackend')).controlAddress();

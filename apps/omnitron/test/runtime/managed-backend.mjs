@@ -215,7 +215,7 @@ try {
         nodeArgs: [],
         restart: mode === 'backend', workdir: path.dirname(serviceArtifact.directory), path: process.env.PATH,
         identity: linux ? { user: 'root', home: os.homedir() } : undefined,
-        environment: { OMNITRON_HOME: instance }, stderrLog: path.join(root, `${mode}.log`) });
+        environment: { OMNITRON_HOME: instance, TMPDIR: applicationTemporary }, stderrLog: path.join(root, `${mode}.log`) });
       definitions.push({ mode, file, job: linux ? config[mode].unit : `${domain}/${config[mode].label}`, contents });
     }
     await createFixtureUnitFiles(definitions, units, unit =>

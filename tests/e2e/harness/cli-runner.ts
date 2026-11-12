@@ -1,4 +1,4 @@
-import { spawn, type SpawnOptions } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { existsSync } from 'node:fs';
@@ -63,30 +63,17 @@ export class CliRunner {
       if (existsSync(distBinPath) && existsSync(distJsPath)) {
         return { execPath: process.execPath, initialArgs: [distBinPath] };
       }
-      if (cliName !== 'lumen-migrate' && existsSync(distJsPath)) {
-        return { execPath: process.execPath, initialArgs: [distJsPath] };
-      }
     }
 
     if (mode === 'source' || mode === 'auto') {
       if (existsSync(sourceTsPath)) {
-        if (cliName === 'lumen-migrate') {
-          return { execPath: process.execPath, initialArgs: ['--import', 'tsx', '--input-type=module', '--eval',
-            `const { runLumenMigrateCli } = await import(${JSON.stringify(pathToFileURL(sourceTsPath).href)}); await runLumenMigrateCli(process.argv.slice(1));`, '--'] };
-        }
-        const tsxBin = resolve(this.repoRoot, 'node_modules/.bin/tsx');
-        if (existsSync(tsxBin)) {
-          return { execPath: tsxBin, initialArgs: [sourceTsPath] };
-        }
-        return { execPath: process.execPath, initialArgs: ['--import', 'tsx', sourceTsPath] };
+        const entry = cliName === 'lumen-migrate' ? 'runLumenMigrateCli' : 'runLumenCli';
+        return { execPath: process.execPath, initialArgs: ['--import', 'tsx', '--input-type=module', '--eval',
+          `const { ${entry} } = await import(${JSON.stringify(pathToFileURL(sourceTsPath).href)}); await ${entry}(process.argv.slice(1));`, '--'] };
       }
     }
 
-    // Fallback descriptor if neither compiled dist nor source entrypoint is present
-    return {
-      execPath: process.execPath,
-      initialArgs: [distBinPath],
-    };
+    throw new Error(`No ${mode} CLI entry for ${cliName} in ${this.repoRoot}`);
   }
 
   async run(cliName: CliName, args: string[], options: CliRunOptions = {}): Promise<CliRunResult> {
@@ -155,17 +142,14 @@ export class CliRunner {
         timedOut = true;
         child.kill('SIGTERM');
         forceKillTimer = setTimeout(() => {
-          if (!child.killed) {
+          if (child.exitCode === null && child.signalCode === null) {
             child.kill('SIGKILL');
           }
         }, 2_000);
         forceKillTimer.unref();
       }, timeoutMs);
 
-      if (options.stdin && child.stdin) {
-        child.stdin.write(options.stdin);
-        child.stdin.end();
-      }
+      child.stdin?.end(options.stdin);
 
       child.stdout?.on('data', (data: Buffer) => {
         const text = data.toString('utf8');

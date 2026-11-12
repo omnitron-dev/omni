@@ -67,6 +67,28 @@ describe('E2E Harness Self-Tests', () => {
     expect(result.stdout).toMatch(/0\.\d+\.\d+/);
   });
 
+  it('closes unused stdin so a finite command can complete', async () => {
+    await withFixture('minimal-lumen', async fixture => {
+      await fixture.writeFile('read-stdin.js', "process.stdin.resume(); process.stdin.on('end', () => console.log('complete'));\n");
+      const result = await cliRunner.runLumen([], { binPath: resolve(fixture.fixtureDir, 'read-stdin.js') });
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('complete');
+      expect(result.timedOut).toBe(false);
+    });
+  });
+
+  it.skipIf(process.platform === 'win32')('reaps its own timed-out child after a refused graceful termination', async () => {
+    await withFixture('minimal-lumen', async fixture => {
+      await fixture.writeFile('ignore-term.js', "process.on('SIGTERM', () => console.log('termination refused')); setInterval(() => {}, 1000);\n");
+      const result = await cliRunner.runLumen([], {
+        binPath: resolve(fixture.fixtureDir, 'ignore-term.js'), timeoutMs: 1000,
+      });
+      expect(result.timedOut).toBe(true);
+      expect(result.stdout).toContain('termination refused');
+      expect(result.signal).toBe('SIGKILL');
+    });
+  });
+
   it('assertions helpers validate AST normalization, diagnostics, anchors, and reports', () => {
     const ast1 = { loc: { line: 1 }, type: 'doc', content: 'test', sha256: 'hash1' };
     const ast2 = { loc: { line: 99 }, type: 'doc', content: 'test', sha256: 'hash2' };

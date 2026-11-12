@@ -635,12 +635,3 @@ Commands:
     }
   }
 }
-
-// Auto-invoking entry check for direct execution via tsx or node
-const invokedFile = process.argv[1];
-if (invokedFile && /[/\\]cli[/\\]index\.(ts|js)$/.test(invokedFile)) {
-  runLumenCli().catch((err) => {
-    console.error('Error:', err instanceof Error ? err.message : String(err));
-    process.exit(1);
-  });
-}

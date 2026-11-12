@@ -49,6 +49,29 @@ The first 0.4.0 preparation stopped during the installed-consumer stage at
 L40-19. It created neither sealed release archives nor a release tag. Release
 preparation must succeed from the corrected commit before publication.
 
+The next preparation (`5b97692e`) passed its installed-consumer checks, including
+the separate Lumen consumer, but the reference website exposed L40-20. The
+ordinary clean-tree guard then refused to seal that superseded candidate. The
+new CLI-to-browser regression is now part of the mandatory archive gate.
+
+CI for `5b97692e` confirmed backend/Console reproducibility and exposed four
+additional verification failures. Shadowed local variables were renamed
+(`8fe77082`); the migration test now checks the actual structured parity report
+(`c0c9bb07`); test inventory asks the real Playwright runner to list configured
+and directly scripted tests (`63339380`, nine regression checks, no orphaned
+files or collection failures); the release fixture declares its actual Compiler
+API dependency (`e2f1b5f8`). Seven real Xec/loopback-registry checks verify both
+preflight refusal before building/tagging/sealing and subsequent publication,
+interruption, resumption and integrity rejection. These local fixes require a
+new exact-commit CI run.
+
+The reference website on SDK `39ff2e55` passes typecheck, its ordinary build,
+239-page output validation, preservation of 236 original routes and 2,855
+anchors, 46,119 link/asset checks and twelve Chromium scenarios. The latter cover
+the real lazy API, diagrams, execution, types, formulas, themes and mobile
+layouts. Its registry lockfile and production publication remain pending the
+qualified 0.4.0 npm release; a development SDK receipt is not registry evidence.
+
 ## Installed archive acceptance
 
 The mandatory package-export gate now installs a separate declared Lumen

@@ -129,36 +129,59 @@ describeOrSkip('consumer loops and the shared command connection', () => {
     const { getTestRedisConfig } = await import('./helpers/test-utils.js');
     const config = getTestRedisConfig(0);
     const probe = new Redis({ host: config.host, port: config.port, db: config.db });
-    await probe.ping();
+    const blockInterval = 30_000;
+    const observationTimeout = 2_000;
 
     // Scoped to this worker's database as well as to the connection name: the
     // Redis server is shared with the other workers, and CLIENT LIST reports
     // every connection on it, not just ours.
-    const countReadClients = async () =>
+    const readClients = async () =>
       ((await probe.client('LIST')) as string)
         .split('\n')
-        .filter((line) => line.includes('name=rotif-read:') && line.includes(` db=${config.db} `))
-        .length;
+        .map((line) => new Map(line.split(' ').map((field) => {
+          const separator = field.indexOf('=');
+          return [field.slice(0, separator), field.slice(separator + 1)];
+        })))
+        .filter((fields) => fields.get('name')?.startsWith('rotif-read:') && fields.get('db') === String(config.db))
+        .map((fields) => ({ id: fields.get('id'), flags: fields.get('flags'), command: fields.get('cmd') }));
 
-    expect(await countReadClients()).toBe(0);
+    try {
+      await probe.ping();
+      await expect.poll(readClients, { timeout: observationTimeout }).toEqual([]);
 
-    manager = await createTestNotificationManager(0, { blockInterval: 5_000, disableDelayed: true });
-    await manager.waitUntilReady();
+      // Start the clock before any read can enter BLOCK. The final elapsed-time
+      // assertion prevents natural read expiry from satisfying this test.
+      const started = performance.now();
+      manager = await createTestNotificationManager(0, { blockInterval, disableDelayed: true });
+      await manager.waitUntilReady();
 
-    for (const pattern of ['leak.a.*', 'leak.b.*', 'leak.c.*']) {
-      await manager.subscribe(pattern, async (msg) => {
-        await msg.ack();
-      });
+      for (const pattern of ['leak.a.*', 'leak.b.*', 'leak.c.*']) {
+        await manager.subscribe(pattern, async (msg) => {
+          await msg.ack();
+        });
+      }
+
+      // Each pattern has a main and retry loop. Observe actual blocked reads,
+      // not merely six named clients that may not have issued XREADGROUP yet.
+      await expect.poll(async () => (await readClients()).filter((client) =>
+        client.flags?.includes('b') && client.command === 'xreadgroup'),
+      { timeout: observationTimeout }).toHaveLength(6);
+      const blocked = await readClients();
+      expect(blocked).toHaveLength(6);
+      expect(new Set(blocked.map((client) => client.id)).size).toBe(6);
+      for (const client of blocked) expect(client.id).toMatch(/^\d+$/);
+
+      await manager.stopAll();
+
+      // disconnect() initiates TCP closure; even a local 'end' event does not
+      // order a CLIENT LIST command on another connection after Redis sees EOF.
+      // Still require every read connection to disappear well before BLOCK can
+      // expire: removing disconnect() leaves all six clients and fails here.
+      await expect.poll(async () => (await readClients()).map((client) => client.id),
+        { timeout: observationTimeout }).toEqual([]);
+      expect(performance.now() - started).toBeLessThan(blockInterval);
+    } finally {
+      probe.disconnect();
     }
-    await new Promise((resolve) => setTimeout(resolve, 250));
-
-    // Each pattern runs a main loop and a retry loop.
-    expect(await countReadClients()).toBe(6);
-
-    await manager.stopAll();
-    manager = undefined;
-
-    expect(await countReadClients()).toBe(0);
-    probe.disconnect();
   });
 });

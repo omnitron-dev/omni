@@ -508,8 +508,10 @@ describeWithRedis('Notifications Transport Subscription Control', () => {
 
       await vi.waitFor(
         () => {
-          expect(sub1.stats().messages).toBeGreaterThan(0);
-          expect(sub2.stats().messages).toBeGreaterThan(0);
+          // Seeing the first delivery does not mean channel.1's second message
+          // has completed. Wait for the actual per-subscription totals.
+          expect(sub1.stats().messages).toBe(2);
+          expect(sub2.stats().messages).toBe(1);
         },
         { timeout: 5000, interval: 25 }
       );

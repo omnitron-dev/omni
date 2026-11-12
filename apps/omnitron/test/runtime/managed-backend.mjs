@@ -174,16 +174,23 @@ try {
     if (masterFixture) {
       await fs.writeFile(path.join(root, 'omnitron.config.mjs'), 'export default { apps: [], stacks: {} };\n', { mode: 0o600 });
     } else {
+    await fs.mkdir(path.join(projectDirectory, 'source'));
+    await fs.writeFile(path.join(projectDirectory, 'source/value.json'), '0\n');
+    // A built dependency outside the watched source directory refreshes only
+    // through the public owner receipt, not an incidental native file event.
+    await fs.writeFile(path.join(projectDirectory, 'sdk-value.json'), '0\n');
     await fs.writeFile(path.join(projectDirectory, 'counter.mjs'), `import http from 'node:http';import fs from 'node:fs';
+     const sdkRevision=JSON.parse(fs.readFileSync(new URL('./sdk-value.json',import.meta.url),'utf8'));
+     const sourceRevision=JSON.parse(fs.readFileSync(new URL('./source/value.json',import.meta.url),'utf8'));
      let value=0,sequence=0,paused=false;setInterval(()=>value++,5);
-     setInterval(()=>{if(paused)return;const record={level:30,time:new Date().toISOString(),msg:'fixture:${id}:'+sequence+++'\\n  first continuation\\n  second continuation'};
+     setInterval(()=>{if(paused)return;const record={level:30,time:new Date().toISOString(),msg:'fixture:${id}:'+process.pid+':'+sdkRevision+':'+sourceRevision+':'+sequence+++'\\n  first continuation\\n  second continuation'};
      const began=performance.now();fs.appendFileSync(${JSON.stringify(path.join(root, 'expected.jsonl'))},JSON.stringify(record)+'\\n');
      const evidenceWriteMs=performance.now()-began;if(evidenceWriteMs>=500)process.stderr.write(JSON.stringify({level:40,time:new Date().toISOString(),msg:'fixture evidence write blocked',evidenceWriteMs})+'\\n');
      process.stdout.write(JSON.stringify(record)+'\\n');},50);
-     const server=http.createServer((q,r)=>{if(q.url==='/pause')paused=true;r.end(JSON.stringify({pid:process.pid,parent:process.ppid,value,fixture:${JSON.stringify(id)},ready:true,timestamp:new Date().toISOString()}));});
+     const server=http.createServer((q,r)=>{if(q.url==='/pause')paused=true;r.end(JSON.stringify({pid:process.pid,parent:process.ppid,value,sdkRevision,sourceRevision,fixture:${JSON.stringify(id)},ready:true,timestamp:new Date().toISOString()}));});
      server.listen(${counterPort},'127.0.0.1',()=>{fs.writeFileSync(${JSON.stringify(path.join(root, 'address.json'))},JSON.stringify(server.address()));process.send?.({type:'ready'});});
      process.on('SIGTERM',()=>server.close(()=>process.exit(0)));`);
-    await fs.writeFile(path.join(projectDirectory, 'omnitron.config.mjs'), `export default {${ownerRoundtrip ? "project:'probe',stacks:{local:{type:'local',apps:'all',infrastructureOwnership:'external'}}," : ''}apps:[{name:'counter',script:'./counter.mjs',cwd:${JSON.stringify(projectDirectory)},enabled:true,watch:false,readiness:${JSON.stringify(readiness)}}]};`);
+    await fs.writeFile(path.join(projectDirectory, 'omnitron.config.mjs'), `export default {${ownerRoundtrip ? "project:'probe',stacks:{local:{type:'local',apps:'all',infrastructureOwnership:'external'}}," : ''}apps:[{name:'counter',script:'./counter.mjs',cwd:${JSON.stringify(projectDirectory)},enabled:true,watch:${ownerRoundtrip ? "'source'" : 'false'},readiness:${JSON.stringify(readiness)}}]};`);
     }
     const definitions = [];
     for (const mode of ['owner', 'backend']) {
@@ -358,12 +365,12 @@ try {
     const runner = path.resolve(managementDist, '../../../node');
     const checkPlan = async (file, expected, backendPid) => {
       if (!supportsCheck) return;
-      const before = await fs.readFile(file);
+      const planBeforeCheck = await fs.readFile(file);
       const { stdout } = await run(runner, [path.join(managementDist, 'cli/omnitron.js'), 'backend', 'guardian', 'apply', file, '--check', '--json'], {
         env: { ...process.env, OMNITRON_HOME: instance }, cwd: root, timeout: 90_000, maxBuffer: 1024 * 1024,
       });
       assert.equal(JSON.parse(stdout).data.checked, expected);
-      assert.deepEqual(await fs.readFile(file), before, 'Readiness check changed the saved plan');
+      assert.deepEqual(await fs.readFile(file), planBeforeCheck, 'Readiness check changed the saved plan');
       assert.equal((await status()).pid, backendPid, 'Readiness check changed the backend');
     };
     const plan = await prepareSupervisorTransition(path.resolve(managementDist, '../../..'), socket);
@@ -397,13 +404,13 @@ try {
   if (managementDist) {
     const supervisor = await privateControlClient(path.join(execution, 'supervisor.sock'), 'OmnitronSupervisor');
     try {
-      const initialGuardian = await supervisor.service.status();
+      const guardianBeforeUpdates = await supervisor.service.status();
       const runner = path.resolve(managementDist, '../../../node');
       const invoke = async (...args) => JSON.parse((await run(runner, [path.join(managementDist, 'cli/omnitron.js'),
         '--json', 'backend', 'upgrade', ...args], { cwd: root, env: process.env, timeout: 300_000, maxBuffer: 1024 * 1024 })).stdout).data;
       for (const [stage, target] of [['backend-forward', managementDist], ['backend-rollback', artifact.directory]]) {
         samplingStage = stage + '-check';
-        const before = await until(async () => {
+        const backendBeforeUpdate = await until(async () => {
           const current = await status(), guardian = await supervisor.service.status();
           return current.execution.recovery.status === 'ready' && guardian.state === 'ready' &&
             !guardian.operationPending && guardian.backendPid === current.pid ? current : null;
@@ -411,19 +418,19 @@ try {
         const stamp = JSON.parse(await fs.readFile(path.join(target, 'BUILD.json'), 'utf8'));
         const checked = await invoke(target, '--check');
         assert.equal(checked.checked, true); assert.equal(checked.build.commit, stamp.commit);
-        assert.equal((await status()).pid, before.pid, 'Qualification check changed the backend');
+        assert.equal((await status()).pid, backendBeforeUpdate.pid, 'Qualification check changed the backend');
         samplingStage = stage;
         const changed = await invoke(target);
         const current = await until(async () => {
-          const current = await status(), guardian = await supervisor.service.status();
-          return current.pid === changed.pid && current.execution.recovery.status === 'ready' &&
-            guardian.state === 'ready' && !guardian.operationPending && guardian.backendPid === current.pid ? current : null;
+          const observed = await status(), guardian = await supervisor.service.status();
+          return observed.pid === changed.pid && observed.execution.recovery.status === 'ready' &&
+            guardian.state === 'ready' && !guardian.operationPending && guardian.backendPid === observed.pid ? observed : null;
         }, 'Qualified backend did not settle');
         assert.equal(current.build.commit, stamp.commit); assert.equal(current.execution.owner.pid, ownerPid);
-        assert.equal((await supervisor.service.status()).pid, initialGuardian.pid, 'Backend update replaced its guardian');
+        assert.equal((await supervisor.service.status()).pid, guardianBeforeUpdates.pid, 'Backend update replaced its guardian');
         assert.equal((await probe()).pid, applicationPid);
         assertHistoryPreserved(stage);
-        mark({ stage, commit: stamp.commit, backendPid: current.pid, ownerPid, applicationPid, guardianPid: initialGuardian.pid });
+        mark({ stage, commit: stamp.commit, backendPid: current.pid, ownerPid, applicationPid, guardianPid: guardianBeforeUpdates.pid });
       }
     } finally { await supervisor.close(); }
   }
@@ -481,9 +488,9 @@ try {
       const { createDaemonClient: connectCandidate } = await import(pathToFileURL(path.join(managementDist, 'daemon/daemon-client.js')).href);
       const candidate = connectCandidate(socket, 90_000);
       try {
-        const { execution } = await candidate.status();
-        assert.equal(execution.owner.pid, ownerPid);
-        const observation = { owner: execution.owner, epoch: execution.epoch };
+        const { execution: observedExecution } = await candidate.status();
+        assert.equal(observedExecution.owner.pid, ownerPid);
+        const observation = { owner: observedExecution.owner, epoch: observedExecution.epoch };
         const build = await candidate.attestApplicationOwner(observation);
         assert.equal(build.commit, await readStamp(dist));
         assert.equal(build.dirty, false);
@@ -517,18 +524,18 @@ try {
       // Include full sealed-artifact verification in the coordinator's budget.
       // A terminal child failure must not be swallowed by the retrying readiness helper.
       const deadline = Date.now() + interruptionBudgetMs;
-      let interrupted, saved;
+      let interruptedPlan, saved;
       while (Date.now() < deadline) {
         saved = JSON.parse(await fs.readFile(rollback.file, 'utf8'));
         if (completed) throw new Error('Coordinator exited before interruption: ' + JSON.stringify(completed));
-        if (['retired', 'stopped', 'configured', 'started'].includes(saved.phase)) { interrupted = saved; break; }
+        if (['retired', 'stopped', 'configured', 'started'].includes(saved.phase)) { interruptedPlan = saved; break; }
         if (saved.phase === 'complete') throw new Error('Coordinator finished before interruption');
         await new Promise(resolve => setTimeout(resolve, 100));
       }
-      assert.ok(interrupted, `Coordinator did not reach a recoverable phase within ${interruptionBudgetMs} ms; last phase=${saved?.phase}; inspect ${root}`);
+      assert.ok(interruptedPlan, `Coordinator did not reach a recoverable phase within ${interruptionBudgetMs} ms; last phase=${saved?.phase}; inspect ${root}`);
       coordinator.kill('SIGKILL');
       await until(() => completed, 'Fixture coordinator did not exit', 5000);
-      mark({ stage: 'guardian-coordinator-killed', phase: interrupted.phase });
+      mark({ stage: 'guardian-coordinator-killed', phase: interruptedPlan.phase });
       const resumed = await applySupervisorTransition(rollback.file);
       assert.equal(resumed.phase, 'complete'); assert.equal(resumed.result.ownerPid, ownerPid);
       mark({ stage: 'guardian-transition-resumed', result: resumed.result });

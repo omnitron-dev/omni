@@ -80,6 +80,90 @@ export async function managedOwnerRoundtrip(context) {
     const db = new Database(path.join(instance, 'data/slave.db'), { readonly: true, fileMustExist: true });
     try { return db.prepare('SELECT * FROM migrations ORDER BY name').all(); } finally { db.close(); }
   };
+  const qualifySourceRefresh = async (ownerPid, initialWorker) => {
+    const name = 'probe/local/counter', guardianPid = await jobPid('backend');
+    const initial = await status();
+    assert.equal(initial.execution.ownerCapabilities.sourceRefresh, 1);
+    await api(client => client.enableWatch({ apps: [name] }));
+    const binding = await until(async () => {
+      const watch = await api(client => client.getWatchStatus());
+      assert.equal(watch.enabled, true);
+      assert.equal(watch.watching, true);
+      const source = watch.apps.find(app => app.name === name);
+      assert.equal(source?.directory, path.join(projectDirectory, 'source'));
+      assert.equal(typeof source.generation, 'string');
+      assert.ok(Number.isSafeInteger(source.definitionRevision));
+      return source;
+    }, 'Dynamically registered classic application has no source binding');
+    assert.equal((await api(client => client.getApp({ name }))).pid, initialWorker.pid);
+    await fs.writeFile(path.join(projectDirectory, 'sdk-value.json'), '1\n');
+    const receipt = await api(client => client.restartAfterChange({ name,
+      generation: binding.generation, definitionRevision: binding.definitionRevision }));
+    assert.equal(receipt.process.status, 'online');
+    assert.equal(receipt.process.name, name);
+    assert.notEqual(receipt.process.generation, binding.generation);
+    assert.deepEqual(receipt.source, { ...binding, generation: receipt.process.generation });
+    let currentWorker = await ready(ownerPid, initialWorker.pid);
+    track(currentWorker.pid);
+    assert.equal(currentWorker.pid, receipt.process.pid);
+    assert.equal(currentWorker.sdkRevision, 1);
+    assert.equal(currentWorker.sourceRevision, 0);
+    await until(() => !PidManager.isProcessAlive(initialWorker.pid), 'Source refresh retained the previous child');
+    const receiptPid = currentWorker.pid, transitions = [];
+    for (const target of [
+      { phase: 'source-watch-backend-rollback', id: previous.backend, commit: previous.commit },
+      { phase: 'source-watch-backend-restore', id: candidate.id, commit: candidate.build.commit },
+    ]) {
+      await certificate();
+      const before = await status();
+      const checked = await cli('backend', 'upgrade', installed(target.id), '--check');
+      assert.equal(checked.checked, true);
+      assert.equal(checked.build.commit, target.commit);
+      assert.equal((await status()).pid, before.pid, 'Backend check changed the running backend');
+      const changed = await cli('backend', 'upgrade', installed(target.id));
+      const settled = await until(async () => {
+        const observed = await status();
+        return observed.pid === changed.pid && observed.build.commit === target.commit &&
+          observed.execution.recovery.status === 'ready' ? observed : false;
+      }, 'Backend did not settle for the source-watch compatibility check');
+      track(settled.pid);
+      assert.notEqual(settled.pid, before.pid);
+      assert.equal(settled.execution.owner.pid, ownerPid, 'Backend replacement changed the source owner');
+      assert.equal(await jobPid('backend'), guardianPid, 'Backend replacement changed the guardian');
+      assert.equal((await probe()).pid, currentWorker.pid, 'Backend replacement restarted the application');
+      if (target.phase === 'source-watch-backend-rollback') {
+        const priorPid = currentWorker.pid;
+        // A real file event under the previous backend must reach the retained
+        // current owner's native watcher. No refresh/restart RPC substitutes.
+        await fs.writeFile(path.join(projectDirectory, 'source/value.json'), '2\n');
+        currentWorker = await ready(ownerPid, priorPid);
+        track(currentWorker.pid);
+        assert.equal(currentWorker.sdkRevision, 1);
+        assert.equal(currentWorker.sourceRevision, 2);
+        await until(() => !PidManager.isProcessAlive(priorPid), 'Native watch retained the previous child');
+        await until(async () => {
+          const observed = await api(client => client.getApp({ name }));
+          assert.equal(observed.pid, currentWorker.pid);
+          assert.equal(observed.status, 'online');
+          const logs = await api(client => client.getLogs({ name, lines: 100 }));
+          assert.ok(logs.some(row => row.message.startsWith(`fixture:${fixtureId}:${currentWorker.pid}:1:2:`)),
+            'Previous backend did not expose logs from the source-restarted child');
+          return true;
+        }, 'Previous backend did not observe the source-restarted process and its logs');
+      }
+      const observedAfterChange = await status();
+      assert.equal(observedAfterChange.pid, settled.pid, 'Source change replaced the backend');
+      assert.equal(observedAfterChange.build.commit, target.commit);
+      assert.equal(observedAfterChange.execution.owner.pid, ownerPid);
+      assert.equal(await jobPid('backend'), guardianPid);
+      transitions.push({ ...target, backendPid: settled.pid, ownerPid, guardianPid,
+        applicationPid: currentWorker.pid, sdkRevision: currentWorker.sdkRevision,
+        sourceRevision: currentWorker.sourceRevision });
+      mark({ stage: target.phase, ...transitions.at(-1) });
+    }
+    return { worker: currentWorker, evidence: { receipt, receiptPid, transitions,
+      nativeWatchAfterBackendRollback: true, rpcAndLogsAfterBackendRollback: true } };
+  };
   await api(async client => {
     const project = await client.service('OmnitronProject');
     await project.addProject({ name: 'probe', path: projectDirectory });
@@ -88,7 +172,7 @@ export async function managedOwnerRoundtrip(context) {
   let worker = await ready(first.execution.owner.pid);
   track(first.execution.owner.pid, worker.pid, first.pid, await jobPid('backend'));
   const originalHistory = await history(), rounds = [];
-  let projects;
+  let projects, sourceRefresh;
   for (const target of [
     { phase: 'owner-forward', owner: candidate.id, guardian: candidate.id, backend: candidate.id, commit: candidate.build.commit },
     ...(applicationSdk ? [{ phase: 'owner-cold-restart', owner: candidate.id, guardian: candidate.id,
@@ -156,6 +240,11 @@ export async function managedOwnerRoundtrip(context) {
       assert.equal(after.execution.ownerCapabilities[capability], 1);
     await api(async client => (await client.service('OmnitronProject')).startStack({ project: 'probe', stack: 'local', workingTree: true }));
     worker = await ready(after.execution.owner.pid, priorWorker); track(worker.pid);
+    if (target.phase === 'owner-forward') {
+      const refreshed = await qualifySourceRefresh(after.execution.owner.pid, worker);
+      worker = refreshed.worker;
+      sourceRefresh = refreshed.evidence;
+    }
     if (applicationSdk && target.phase === 'owner-forward') {
       const { prepareManagedProjectRuntime } = await import('./managed-project-runtime.mjs');
       projects = await prepareManagedProjectRuntime({ root, instance, applicationSdk, managementDist,
@@ -164,7 +253,7 @@ export async function managedOwnerRoundtrip(context) {
     } else if (target.phase === 'owner-cold-restart') {
       await projects.start(after.execution.owner.pid, true);
     }
-    rounds.push({ ...target, cwd: config.cwd, ownerPid: after.execution.owner.pid, guardianPid: await jobPid('backend'), backendPid: after.pid,
+    rounds.push({ ...target, cwd: config.cwd, ownerPid: after.execution.owner.pid, guardianPid: await jobPid('backend'), backendPid: (await status()).pid,
       applicationPid: worker.pid, previousOwnerCleanExit: true, stoppedIntentPreserved: true,
       reviewedInfrastructureEmpty: true, preservedMigrationHistoryRows: originalHistory.length });
     mark({ stage: target.phase, ...rounds.at(-1) });
@@ -172,7 +261,7 @@ export async function managedOwnerRoundtrip(context) {
   const applicationRuntime = await projects?.finish();
   const verifiedLogs = await verifyFixtureLogs({ root, instance, runtime: candidateRoot, fixtureId, until });
   const result = { test: 'managed-owner-roundtrip', platform: process.platform, root, previous, candidate: candidate.build,
-    rounds, verifiedLogs, ...(applicationRuntime && { applicationRuntime }), liveMutation: false, success: true };
+    rounds, sourceRefresh, verifiedLogs, ...(applicationRuntime && { applicationRuntime }), liveMutation: false, success: true };
   await fs.writeFile(path.join(root, 'owner-roundtrip.json'), JSON.stringify(result, null, 2) + '\n');
   return result;
 }

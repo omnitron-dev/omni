@@ -7,8 +7,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
+import { preserveReproducibilityFailure } from './lib/reproducibility-evidence.mjs';
 
-const { values } = parseArgs({ args: globalThis.args ?? process.argv.slice(2), options: { out: { type: 'string' }, revision: { type: 'string' } } });
+const { values } = parseArgs({ args: globalThis.args ?? process.argv.slice(2), options: {
+  out: { type: 'string' }, revision: { type: 'string' }, diagnostics: { type: 'string' },
+} });
 if (values.revision && !/^[a-f0-9]{40}$/.test(values.revision)) throw Error('--revision requires a full Git commit');
 const destination = values.out ? path.resolve(values.out) : null;
 if (destination) {
@@ -19,13 +22,17 @@ const source = fileURLToPath(new URL('../', import.meta.url));
 const git = (...args) => releaseCommand(source, 'git', args);
 const revision = await git('rev-parse', '--verify', `${values.revision ?? 'HEAD'}^{commit}`);
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'omnitron-reproduce-'));
+const diagnostics = values.diagnostics ? path.resolve(values.diagnostics)
+  : await fs.mkdtemp(destination ? destination + '.diagnostics-' : root + '-evidence-');
+if (values.diagnostics) await fs.mkdir(diagnostics, { mode: 0o700 }); // Never replace another run's evidence.
+const inventories = {}, sdkRoots = {};
 const env = { ...process.env, TZ: 'UTC', SOURCE_DATE_EPOCH: await git('show', '-s', '--format=%ct', revision),
   npm_config_side_effects_cache: 'false', TURBO_TELEMETRY_DISABLED: '1', TURBO_FORCE: 'true', TURBO_CONCURRENCY: '3' };
 delete env.TURBO_TOKEN;
 delete env.TURBO_TEAM;
 
 /** Export only from the independent checkout, never from served Console output. */
-async function packSdk(cwd, output, buildEnv) {
+async function packSdk(cwd, output, buildEnv, round) {
   const load = file => import(pathToFileURL(path.join(cwd, 'apps/omnitron/dist', file)).href);
   const { normalizePackedWorkspace } = await load('release/portable-archive.js');
   const { inspectFrameworkArchive } = await load('release/registry-framework.js');
@@ -36,6 +43,9 @@ async function packSdk(cwd, output, buildEnv) {
   assert.ok(packages.some(pkg => pkg.name === '@omnitron-dev/omnitron'));
   await fs.mkdir(output, { mode: 0o700 });
   const records = [];
+  const inventory = [];
+  inventories[round] = inventory;
+  sdkRoots[round] = output;
   let files = 0;
   for (const pkg of packages) {
     const archive = path.join(output, 'workspace.tgz');
@@ -48,11 +58,14 @@ async function packSdk(cwd, output, buildEnv) {
     const inspected = await inspectFrameworkArchive({ name: pkg.name, version: pkg.version, integrity },
       createReadStream(archive), undefined, revision);
     files += inspected.files.size;
+    assert.ok(files <= 200_000, 'SDK diagnostic inventory exceeds 200000 files');
     const filename = `${pkg.name.slice(1).replace('/', '-')}-${pkg.version}-${sha256.slice(0, 12)}.tgz`;
     await fs.rename(archive, path.join(output, filename));
     records.push({ name: pkg.name, version: pkg.version, filename, sha256, integrity,
       sourceRevision: revision, sourceDirty: false, dependencies: metadata.dependencies ?? {},
       optionalDependencies: metadata.optionalDependencies ?? {}, peerDependencies: metadata.peerDependencies ?? {} });
+    inventory.push({ ...records.at(-1), files: Object.fromEntries([...inspected.files].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) });
+    await fs.writeFile(path.join(diagnostics, round + '-sdk.json'), JSON.stringify(inventory, null, 2) + '\n');
   }
   const manifest = JSON.stringify(records, null, 2) + '\n';
   await fs.writeFile(path.join(output, 'framework-manifest.json'), manifest, { flag: 'wx' });
@@ -78,21 +91,21 @@ async function build(round, retained, retainedSdk) {
   assert.equal(stamp.dirty, false, 'The build observed an uncommitted input');
   const runtime = await read('RUNTIME.json');
   const ui = await read('packages/0/webapp/dist/console-version.json');
-  const sdk = await packSdk(cwd, sdkOutput, buildEnv);
+  const sdk = await packSdk(cwd, sdkOutput, buildEnv, round);
   assert.equal(await releaseCommand(cwd, 'git', ['status', '--porcelain']), '',
     'The independent checkout changed during build or packing');
   const result = { sha256: runtime.sha256, packages: runtime.packages, console: ui.version, sdk };
-  // Only the measurements are needed for the comparison. Free the checkout and
-  // frozen runtime before installing the second independent dependency tree.
+  // Free the large checkout/runtime before the second build, but retain both
+  // inspected SDKs until their exact digests and file inventories are compared.
   await fs.rm(cwd, { recursive: true });
   if (!retained) await fs.rm(output, { recursive: true });
-  if (!retainedSdk) await fs.rm(sdkOutput, { recursive: true });
   return result;
 }
 let staging;
+let first, second, complete = false, evidenceRetained = false;
 try {
   console.log('Independent build 1/2 · running');
-  const first = await build('first');
+  first = await build('first');
   console.log('Independent build 1/2 · verified');
   // Stage the second verified tree on the requested filesystem. The caller
   // can import <destination>/runtime only after both measurements agree.
@@ -100,7 +113,7 @@ try {
   const retained = staging && path.join(staging, 'runtime');
   const retainedSdk = staging && path.join(staging, 'sdk');
   console.log('Independent build 2/2 · running');
-  const second = await build('second', retained, retainedSdk);
+  second = await build('second', retained, retainedSdk);
   assert.deepEqual(second, first, 'Independent backend, Console or normalized npm archives differ');
   if (destination) {
     await fs.mkdir(destination, { mode: 0o700 }); // Exclusive even if a concurrent run won the race.
@@ -114,7 +127,25 @@ try {
   }
   console.log(JSON.stringify({ revision, node: process.version, ...first,
     ...(destination && { runtime: path.join(destination, 'runtime'), sdkDirectory: path.join(destination, 'sdk') }) }));
+  complete = true;
+} catch (error) {
+  try {
+    const report = await preserveReproducibilityFailure(diagnostics, {
+      revision, node: process.version, error: String(error.message ?? error).slice(0, 16_384),
+      first: { result: first, sdkInventory: inventories.first }, second: { result: second, sdkInventory: inventories.second },
+    }, sdkRoots);
+    evidenceRetained = true;
+    console.error('Reproducibility failure evidence: ' + diagnostics);
+    console.error(JSON.stringify(report));
+  } catch (failure) {
+    console.error('Could not retain bounded failure evidence; original inputs remain at ' + root + (staging ? ' and ' + staging : ''));
+    throw new AggregateError([error, failure], 'Reproducibility and evidence retention failed');
+  }
+  throw error;
 } finally {
-  if (staging) await fs.rm(staging, { recursive: true, force: true });
-  await fs.rm(root, { recursive: true, force: true });
+  if (complete) await fs.rm(diagnostics, { recursive: true });
+  if (complete || evidenceRetained) {
+    if (staging) await fs.rm(staging, { recursive: true, force: true });
+    await fs.rm(root, { recursive: true, force: true });
+  }
 }

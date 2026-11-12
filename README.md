@@ -134,6 +134,12 @@ in package identity, complete file contents and executable bits. The existing
 archive inspector normalizes only dependency-map key order and verified `gitHead`
 metadata; qualification does not replace differing archives.
 
+`pnpm check:reproducibility` uses that same two-build check. On failure it prints
+the retained diagnostic directory: both SDK file inventories, a bounded difference
+report and up to 256 MiB of affected public npm archives. Set `--diagnostics <new-directory>`
+to choose its location. Successful checks remove diagnostics; failed checks never
+produce a qualification completion receipt. CI retains the failure evidence for 14 days.
+
 Resume qualification with `xec release <version> --qualify --previous <commit>`.
 Repeat `--finish` to reconcile interrupted npm uploads from the same archives.
 Use `--status` to inspect current qualification and `--list` for package inventory.

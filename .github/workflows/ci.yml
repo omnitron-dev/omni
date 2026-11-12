@@ -270,7 +270,15 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check:reproducibility
+      - run: pnpm check:reproducibility --diagnostics "${{ runner.temp }}/reproducibility-evidence"
+      - name: Preserve reproducibility failure evidence
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: reproducibility-evidence
+          path: ${{ runner.temp }}/reproducibility-evidence
+          if-no-files-found: ignore
+          retention-days: 14
 
   # -------------------------------------------------------------------
   # Standing checks — the scanners in `scripts/`.

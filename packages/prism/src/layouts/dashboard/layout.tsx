@@ -42,6 +42,7 @@ const MainWrapper = styled(Box, {
   flex: '1 1 auto',
   minHeight: '100vh',
   minWidth: 0,
+  marginInlineStart: 0,
   ...(contentMode === 'workspace' && { height: '100dvh', minHeight: 0, overflow: 'hidden' }),
   // Adjust margin for sidebar on desktop
   ...(hasSidebar && {
@@ -50,10 +51,9 @@ const MainWrapper = styled(Box, {
       minWidth: 0,
     },
   }),
-  // Smooth transition
-  transition: theme.transitions.create('margin-inline-start', {
-    duration: theme.transitions.duration.shorter,
-  }),
+  // The rail and its inset must change in the same layout. Animating this
+  // margin after the mobile breakpoint hides the rail leaves only 40px of
+  // content in a 320px window, including when reduced motion is requested.
 }));
 
 // =============================================================================

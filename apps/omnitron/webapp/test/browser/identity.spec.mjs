@@ -34,10 +34,46 @@ test('Console navigation uses the same brand in both modes and on a narrow scree
     await expect(page.getByText('OMNITRON', { exact: true })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('console-' + mode + '-1440.png'), fullPage: true });
     await page.setViewportSize({ width: 320, height: 740 });
+    const content = page.getByTestId('content');
+    const contentBox = await content.boundingBox();
+    expect(contentBox.x).toBe(8);
+    expect(contentBox.width).toBe(304);
+    const openMenu = page.getByRole('button', { name: 'Open menu' });
+    await expect(openMenu).toBeVisible();
+    await expect(content).toHaveText('Project content');
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
     await page.screenshot({ path: test.info().outputPath('console-' + mode + '-320.png'), fullPage: true });
+    await openMenu.click();
+    const drawer = page.getByRole('dialog', { name: 'Main navigation' });
+    await expect(drawer).toBeVisible();
+    await expect.poll(async () => {
+      const box = await drawer.boundingBox();
+      return box.x >= 0 && box.x + box.width <= 320;
+    }).toBe(true);
+    await expect(drawer.getByRole('link', { name: 'Dashboard', exact: true })).toBeVisible();
+    await drawer.getByRole('button', { name: 'Close menu' }).click();
+    await expect(drawer).not.toBeVisible();
   }
 });
+
+for (const motion of ['reduce', 'no-preference']) {
+  test('the first mobile frame releases the desktop sidebar inset with ' + motion + ' motion', async ({ page, url }) => {
+    await page.emulateMedia({ reducedMotion: motion });
+    await stubInventory(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(url + '/workspace.html');
+    await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
+    await page.evaluate(() => {
+      window.mobileFrame = new Promise(resolve => window.addEventListener('resize', () => requestAnimationFrame(() => {
+        const main = document.getElementById('main-content').getBoundingClientRect();
+        const content = document.querySelector('[data-testid="content"]').getBoundingClientRect();
+        resolve({ mainX: main.x, mainWidth: main.width, contentX: content.x, contentWidth: content.width });
+      }), { once: true }));
+    });
+    await page.setViewportSize({ width: 320, height: 740 });
+    expect(await page.evaluate(() => window.mobileFrame)).toEqual({ mainX: 0, mainWidth: 320, contentX: 8, contentWidth: 304 });
+  });
+}
 
 test('brand activity respects reduced motion and pauses outside the viewport', async ({ page, url }) => {
   await page.setViewportSize({ width: 1440, height: 560 });

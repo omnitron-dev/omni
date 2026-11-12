@@ -12,6 +12,7 @@ import { CloseIcon } from '../../icons/controls.js';
 import { Fragment, useEffect, type ReactNode } from 'react';
 import { styled, alpha } from '@mui/material/styles';
 import Drawer from '@mui/material/Drawer';
+import useMediaQuery from '@mui/material/useMediaQuery';
 import { Scrollbar } from '../../components/scrollbar/scrollbar.js';
 import { SidebarToggle } from '../sidebar-toggle.js';
 import Box from '@mui/material/Box';
@@ -48,9 +49,7 @@ const NavRoot = styled(Box, {
   zIndex: theme.zIndex.drawer,
   backgroundColor: `var(${LAYOUT_CSS_VARS.navBg}, ${theme.palette.background.paper})`,
   borderInlineEnd: `1px solid ${theme.palette.divider}`,
-  transition: theme.transitions.create('width', {
-    duration: theme.transitions.duration.shorter,
-  }),
+  // Match the content inset immediately when the rail changes width.
 }));
 
 const NavContent = styled(Box)({
@@ -241,6 +240,7 @@ export function MobileSidenav({
   const labels = { ...dashboardLabels, ...customLabels };
   const { config, setConfig } = useLayoutContext();
   const location = useLocation();
+  const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const close = () => setConfig({ drawerOpen: false });
   useEffect(() => {
     setConfig({ drawerOpen: false });
@@ -251,6 +251,7 @@ export function MobileSidenav({
     <Drawer
       open={drawerOpen}
       onClose={close}
+      transitionDuration={reducedMotion ? 0 : undefined}
       slotProps={{ paper: { role: 'dialog', 'aria-modal': true, 'aria-label': ariaLabel } }}
       aria-label={ariaLabel}
       sx={[

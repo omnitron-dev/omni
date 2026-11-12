@@ -58,6 +58,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@omnitron-dev/common": "workspace:*",
     "katex": "^0.19.1",
     "mdast-util-directive": "^3.2.0",
     "mdast-util-from-markdown": "^2.1.0",

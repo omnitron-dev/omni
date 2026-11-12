@@ -1,3 +1,4 @@
+import { runExclusive } from '@omnitron-dev/common';
 import { escapeHtml } from '../katex/render-math.js';
 import { serializeIslandProps } from '../islands/index.js';
 
@@ -18,10 +19,9 @@ export function renderDiagramHtml(code: string, diagramIndex = 0, filePath = 'do
   return `<figure class="lumen-diagram lumen-diagram-mermaid" id="${id}" data-lumen-island="${id}" data-component="MermaidDiagram" data-hydrate="visible" data-props="${escapeHtml(serializeIslandProps({ code }))}"><pre class="lumen-diagram-source"><code>${escapeHtml(code)}</code></pre></figure>`;
 }
 
-// Mermaid's configuration is process-global. Serialize configuration + rendering
-// together; its internal render queue alone does not protect initialize().
+// Bound this consumer's pending work. Serialization itself is shared with Prism
+// on the actual engine instance; Mermaid's queue does not protect initialize().
 let pending = 0;
-let queue: Promise<unknown> = Promise.resolve();
 
 export interface DiagramRenderOptions {
   theme?: 'light' | 'dark';
@@ -38,52 +38,54 @@ export async function renderDiagramSvg(code: string, id: string, options: Diagra
   if (typeof document === 'undefined') throw new Error('Mermaid rendering requires a browser DOM');
   if (pending >= DIAGRAM_LIMITS.pending) throw new Error('Diagram rendering queue is full');
   pending += 1;
-  const render = queue.catch(() => undefined).then(async () => {
+  try {
     options.signal?.throwIfAborted();
     const { default: mermaid } = await import('mermaid');
-    options.signal?.throwIfAborted();
-    const colors = options.colors;
-    mermaid.initialize({
-      startOnLoad: false,
-      securityLevel: 'strict',
-      suppressErrorRendering: true,
-      theme: colors ? 'base' : options.theme === 'dark' ? 'dark' : 'default',
-      ...(colors ? { themeVariables: {
-        darkMode: options.theme === 'dark',
-        background: colors.surface, mainBkg: colors.surface,
-        primaryColor: colors.surface, primaryTextColor: colors.foreground, primaryBorderColor: colors.border,
-        secondaryColor: colors.surface, tertiaryColor: colors.surface,
-        textColor: colors.foreground, lineColor: colors.muted,
-        clusterBkg: colors.surface, clusterBorder: colors.border,
-        edgeLabelBackground: colors.surface, actorBkg: colors.surface,
-        actorBorder: colors.border, actorTextColor: colors.foreground,
-        signalColor: colors.muted, signalTextColor: colors.foreground,
-        noteBkgColor: colors.surface, noteTextColor: colors.foreground, noteBorderColor: colors.border,
-        labelBoxBkgColor: colors.surface, labelBoxBorderColor: colors.border, labelTextColor: colors.foreground,
-        activationBkgColor: colors.accent, activationBorderColor: colors.border,
-      } } : {}),
-      // Mermaid's SVG-text renderer prints entity codes literally (#7015).
-      // Let its label renderer decode them before measuring, while admitting
-      // only text formatting: document HTML cannot add resources or actions.
-      htmlLabels: true,
-      dompurifyConfig: {
-        ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'em', 'strong', 'code', 'del', 's', 'sub', 'sup'],
-        ALLOWED_ATTR: [],
-      },
-      fontFamily: options.fontFamily ?? 'system-ui, sans-serif',
-      themeCSS: '.node, .cluster, .node rect, .node polygon, .node circle, .cluster rect { filter: none !important; }',
-      maxTextSize: DIAGRAM_LIMITS.sourceBytes,
-      maxEdges: DIAGRAM_LIMITS.edges,
-      deterministicIds: true,
-      deterministicIDSeed: id,
-      // Document directives may choose layout, but cannot relax these boundaries.
-      secure: ['secure', 'securityLevel', 'startOnLoad', 'suppressErrorRendering', 'maxTextSize', 'maxEdges', 'htmlLabels', 'dompurifyConfig', 'themeCSS', 'theme', 'themeVariables', 'fontFamily'],
+    return await runExclusive(mermaid, async () => {
+      options.signal?.throwIfAborted();
+      const colors = options.colors;
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'strict',
+        suppressErrorRendering: true,
+        theme: colors ? 'base' : options.theme === 'dark' ? 'dark' : 'default',
+        ...(colors ? { themeVariables: {
+          darkMode: options.theme === 'dark',
+          background: colors.surface, mainBkg: colors.surface,
+          primaryColor: colors.surface, primaryTextColor: colors.foreground, primaryBorderColor: colors.border,
+          secondaryColor: colors.surface, tertiaryColor: colors.surface,
+          textColor: colors.foreground, lineColor: colors.muted,
+          clusterBkg: colors.surface, clusterBorder: colors.border,
+          edgeLabelBackground: colors.surface, actorBkg: colors.surface,
+          actorBorder: colors.border, actorTextColor: colors.foreground,
+          signalColor: colors.muted, signalTextColor: colors.foreground,
+          noteBkgColor: colors.surface, noteTextColor: colors.foreground, noteBorderColor: colors.border,
+          labelBoxBkgColor: colors.surface, labelBoxBorderColor: colors.border, labelTextColor: colors.foreground,
+          activationBkgColor: colors.accent, activationBorderColor: colors.border,
+        } } : {}),
+        // Mermaid's SVG-text renderer prints entity codes literally (#7015).
+        // Let its label renderer decode them before measuring, while admitting
+        // only text formatting: document HTML cannot add resources or actions.
+        htmlLabels: true,
+        dompurifyConfig: {
+          ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'em', 'strong', 'code', 'del', 's', 'sub', 'sup'],
+          ALLOWED_ATTR: [],
+        },
+        fontFamily: options.fontFamily ?? 'system-ui, sans-serif',
+        themeCSS: '.node, .cluster, .node rect, .node polygon, .node circle, .cluster rect { filter: none !important; }',
+        maxTextSize: DIAGRAM_LIMITS.sourceBytes,
+        maxEdges: DIAGRAM_LIMITS.edges,
+        deterministicIds: true,
+        deterministicIDSeed: id,
+        // Document directives may choose layout, but cannot relax these boundaries.
+        secure: ['secure', 'securityLevel', 'startOnLoad', 'suppressErrorRendering', 'maxTextSize', 'maxEdges', 'htmlLabels', 'dompurifyConfig', 'themeCSS', 'theme', 'themeVariables', 'fontFamily'],
+      });
+      const { svg } = await mermaid.render(id, code);
+      options.signal?.throwIfAborted();
+      if (new TextEncoder().encode(svg).length > DIAGRAM_LIMITS.svgBytes) throw new Error('Diagram SVG exceeds the output limit');
+      return svg;
     });
-    const { svg } = await mermaid.render(id, code);
-    options.signal?.throwIfAborted();
-    if (new TextEncoder().encode(svg).length > DIAGRAM_LIMITS.svgBytes) throw new Error('Diagram SVG exceeds the output limit');
-    return svg;
-  }).finally(() => { pending -= 1; });
-  queue = render;
-  return render;
+  } finally {
+    pending -= 1;
+  }
 }

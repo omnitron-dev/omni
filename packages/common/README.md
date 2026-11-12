@@ -25,6 +25,8 @@ const publicRecord = omit({ id: '42', password: 'private' }, ['password']);
 
 `@omnitron-dev/common/process-identity` provides host boot and native process lifetime observations on supported operating systems. Keep that Node-only entry outside browser bundles.
 
+Use `runExclusive(resource, operation)` when independent consumers share a mutable resource. It keeps configuration and asynchronous work in one ordered operation; failures release the resource for the next caller. Different resources run independently. All callers must participate, and an operation must not await another operation on the same resource.
+
 ## Documentation
 
 [Public API](src/index.ts) · [Package exports](package.json) · [Omni](../../README.md)

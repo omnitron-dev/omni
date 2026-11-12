@@ -2,6 +2,29 @@ import { entries } from './entries.js';
 import { noop, truly } from './primitives.js';
 import { isNumber, isPromise, isFunction } from './predicates.js';
 
+const exclusiveOperations = new WeakMap<object, Promise<void>>();
+
+/**
+ * Runs operations in submission order for one shared resource. Operations on
+ * different resources remain independent, and a failure does not block the
+ * next operation. The callback owns the resource until its promise settles.
+ *
+ * This is not reentrant: an operation must not await another exclusive
+ * operation on the same resource. All users of the resource must participate.
+ */
+export function runExclusive<T>(resource: object, operation: () => T | PromiseLike<T>): Promise<T> {
+  const result = (exclusiveOperations.get(resource) ?? Promise.resolve()).then(operation);
+  const tail = result.then(
+    () => undefined,
+    () => undefined
+  );
+  exclusiveOperations.set(resource, tail);
+  void tail.then(() => {
+    if (exclusiveOperations.get(resource) === tail) exclusiveOperations.delete(resource);
+  });
+  return result;
+}
+
 // Define the Deferred type
 export type Deferred = {
   resolve?: (value: any) => void;

@@ -2,12 +2,10 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTheme } from '@mui/material/styles';
+import { runExclusive } from '@omnitron-dev/common';
 import type { ResearchLabels } from './document.js';
 import { researchLimits } from './parse.js';
 import { diagramImage } from './diagram-image.js';
-// Mermaid has mutable process-wide configuration. Serialise its configure/render
-// pair; document-local widgets and source code never get a configuration hook.
-let pending: Promise<unknown> = Promise.resolve();
 export function diagramSourceAllowed(source: string, engine: string) {
   return (
     engine === 'mermaid' && source.length <= researchLimits.block && !/^\s*---/m.test(source) && !/%%\s*\{/.test(source)
@@ -42,59 +40,61 @@ export function ResearchDiagram({
       let scratch: HTMLDivElement | undefined;
       try {
         const [{ default: mermaid }, { default: purify }] = await Promise.all([import('mermaid'), import('dompurify')]);
-        if (cancelled) return;
-        scratch = document.createElement('div');
-        scratch.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;width:1000px';
-        target.append(scratch);
-        mermaid.initialize({
-          startOnLoad: false,
-          securityLevel: 'strict',
-          htmlLabels: false,
-          maxTextSize: researchLimits.block,
-          maxEdges: 256,
-          suppressErrorRendering: true,
-          look: 'classic',
-          theme: 'base',
-          fontFamily: 'system-ui, sans-serif',
-          themeVariables: {
-            darkMode: mode === 'dark',
-            primaryColor: theme.palette.background.paper,
-            primaryTextColor: theme.palette.text.primary,
-            primaryBorderColor: theme.palette.text.secondary,
-            secondaryColor: theme.palette.background.default,
-            tertiaryColor: theme.palette.background.paper,
-            lineColor: theme.palette.text.secondary,
-            textColor: theme.palette.text.primary,
+        await runExclusive(mermaid, async () => {
+          if (cancelled) return;
+          scratch = document.createElement('div');
+          scratch.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;width:1000px';
+          target.append(scratch);
+          mermaid.initialize({
+            startOnLoad: false,
+            securityLevel: 'strict',
+            htmlLabels: false,
+            maxTextSize: researchLimits.block,
+            maxEdges: 256,
+            suppressErrorRendering: true,
+            look: 'classic',
+            theme: 'base',
             fontFamily: 'system-ui, sans-serif',
-            fontSize: '16px',
-          },
-          flowchart: { htmlLabels: false },
-          secure: [
-            'securityLevel',
-            'startOnLoad',
-            'maxTextSize',
-            'maxEdges',
-            'htmlLabels',
-            'theme',
-            'look',
-            'fontFamily',
-            'themeCSS',
-            'themeVariables',
-          ],
+            themeVariables: {
+              darkMode: mode === 'dark',
+              primaryColor: theme.palette.background.paper,
+              primaryTextColor: theme.palette.text.primary,
+              primaryBorderColor: theme.palette.text.secondary,
+              secondaryColor: theme.palette.background.default,
+              tertiaryColor: theme.palette.background.paper,
+              lineColor: theme.palette.text.secondary,
+              textColor: theme.palette.text.primary,
+              fontFamily: 'system-ui, sans-serif',
+              fontSize: '16px',
+            },
+            flowchart: { htmlLabels: false },
+            secure: [
+              'securityLevel',
+              'startOnLoad',
+              'maxTextSize',
+              'maxEdges',
+              'htmlLabels',
+              'theme',
+              'look',
+              'fontFamily',
+              'themeCSS',
+              'themeVariables',
+            ],
+          });
+          const result = await mermaid.render(id, source, scratch);
+          const renderedPicture = diagramImage(result.svg, purify);
+          if (!cancelled) {
+            setPicture(renderedPicture);
+            setState('ready');
+          }
         });
-        const result = await mermaid.render(id, source, scratch);
-        const renderedPicture = diagramImage(result.svg, purify);
-        if (!cancelled) {
-          setPicture(renderedPicture);
-          setState('ready');
-        }
       } catch {
         if (!cancelled) setState('error');
       } finally {
         scratch?.remove();
       }
     };
-    pending = pending.catch(() => undefined).then(run);
+    void run();
     return () => {
       cancelled = true;
       target?.replaceChildren();

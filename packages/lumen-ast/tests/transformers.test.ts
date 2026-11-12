@@ -4,12 +4,11 @@ import {
   parseDocument,
   toHtmlSsr,
   toCleanMarkdown,
-  toTipTapDoc,
   toTypst,
   type LumenDocumentAst,
 } from '../src/index.js';
 
-describe('All 4 Output Target Transformers', () => {
+describe('HTML, Markdown and Typst output transformers', () => {
   const sampleDoc = `---
 id: doc-transforms
 title: Quantum Computing Foundations
@@ -46,16 +45,6 @@ Unitary evolution is reversible.
     expect(cleanMd).toContain('Unitary evolution is reversible.');
   });
 
-  it('transforms AST to TipTap v3 JSON document', async () => {
-    const ast = await parseDocument(sampleDoc, 'docs/qc.pdx');
-    const tipTap = toTipTapDoc(ast);
-
-    expect(tipTap.type).toBe('doc');
-    expect(Array.isArray(tipTap.content)).toBe(true);
-    expect(tipTap.content.some((n) => n.type === 'heading')).toBe(true);
-    expect(tipTap.content.some((n) => n.type === 'mathEnvironment')).toBe(true);
-  });
-
   it('transforms AST to Typst markup and byte buffer', async () => {
     const ast = await parseDocument(sampleDoc, 'docs/qc.pdx');
     const typstMarkup = toTypst(ast, { paperSize: 'a4', author: 'Quantum Lab' });
@@ -81,7 +70,6 @@ Unitary evolution is reversible.
 
     expect(toHtmlSsr(redactedAst)).not.toContain('CONFIDENTIAL PAYLOAD');
     expect(toCleanMarkdown(redactedAst)).toBe('');
-    expect(toTipTapDoc(redactedAst)).toEqual({ type: 'doc', content: [] });
     expect(toTypst(redactedAst)).not.toContain('CONFIDENTIAL PAYLOAD');
 
     const invalidAst = {
@@ -98,7 +86,7 @@ arbitraryInternalTag: 9999
 Recovered body text after generic frontmatter stripping.`,
     } satisfies LumenDocumentAst;
 
-    for (const transform of [toCleanMarkdown, toHtmlSsr, toTipTapDoc, toTypst]) {
+    for (const transform of [toCleanMarkdown, toHtmlSsr, toTypst]) {
       expect(() => transform(invalidAst)).toThrow(TypeError);
     }
   });

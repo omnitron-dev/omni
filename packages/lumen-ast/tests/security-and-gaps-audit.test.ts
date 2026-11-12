@@ -16,7 +16,6 @@ import {
   sanitizeUrl,
   toCleanMarkdown,
   toHtmlSsr,
-  toTipTapDoc,
   toTypst,
   validateFrontmatter,
   type LumenDocumentAst,
@@ -369,7 +368,7 @@ Top secret equation.
         { id: 'public-overview', title: 'Public Overview', level: 1 },
       ]);
 
-      // Verify IA-01 across all 4 transformers + compileTypst when children are redacted to []
+      // Verify IA-01 across HTML, Markdown, Typst and PDF when children are redacted to []
       const fullyRedacted: LumenDocumentAst = {
         ...ast,
         frontmatter: { title: 'Restricted', access: 'confidential' },
@@ -378,7 +377,6 @@ Top secret equation.
       };
       expect(toHtmlSsr(fullyRedacted)).not.toContain('Top secret equation');
       expect(toCleanMarkdown(fullyRedacted)).not.toContain('Top secret equation');
-      expect(JSON.stringify(toTipTapDoc(fullyRedacted))).not.toContain('Top secret equation');
       expect(toTypst(fullyRedacted)).not.toContain('Top secret equation');
       const redactedPdf = (await inspectPdf(await compileTypst(fullyRedacted))).text;
       expect(redactedPdf).not.toContain('Top secret equation');

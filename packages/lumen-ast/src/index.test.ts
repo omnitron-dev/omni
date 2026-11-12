@@ -6,7 +6,6 @@ import {
   parseDocument,
   toCleanMarkdown,
   toHtmlSsr,
-  toTipTapDoc,
 } from './index.js';
 
 describe('@omnitron-dev/lumen-ast', () => {
@@ -88,9 +87,6 @@ Node.js is required.
 
     const cleanMd = toCleanMarkdown(ast);
     expect(cleanMd).toContain('# Introduction to SSG');
-
-    const tipTap = toTipTapDoc(ast);
-    expect(tipTap['type']).toBe('doc');
 
     const typst = await compileTypst(ast);
     expect(typst).toBeInstanceOf(Uint8Array);

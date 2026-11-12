@@ -6,7 +6,6 @@ import {
   parseDocument,
   toHtmlSsr,
   toCleanMarkdown,
-  toTipTapDoc,
   toTypst,
   LumenHighlighter,
   parseCodeDirectives,
@@ -236,7 +235,7 @@ if (a < b && c > d) {
   });
 
   describe('3. Multi-Target Transformers Stress Testing', () => {
-    it('handles empty AST and null/empty documents safely across all 4 transformers', async () => {
+    it('handles empty AST safely across HTML, Markdown and Typst transformers', async () => {
       const emptyAst: LumenDocumentAst = {
         frontmatter: {},
         children: [],
@@ -250,9 +249,6 @@ if (a < b && c > d) {
 
       const cleanMd = toCleanMarkdown(emptyAst);
       expect(cleanMd).toBe('');
-
-      const tipTap = toTipTapDoc(emptyAst);
-      expect(tipTap).toEqual({ type: 'doc', content: [] });
 
       const typst = toTypst(emptyAst);
       expect(typst).toContain('= Document');
@@ -285,10 +281,6 @@ if (a < b && c > d) {
 
       const cleanMd = toCleanMarkdown(nestedAst);
       expect(cleanMd).toContain('Deeply nested leaf content');
-
-      const tipTap = toTipTapDoc(nestedAst);
-      expect(tipTap.type).toBe('doc');
-      expect(tipTap.content.length).toBeGreaterThan(0);
 
       const typst = toTypst(nestedAst);
       expect(typst).toContain('= Deeply Nested');
@@ -339,15 +331,7 @@ $$\\int_{-\\infty}^{+\\infty} |\\Psi(x)|^2 dx = 1$$
       expect(cleanMd).toContain('日本語のセクション');
       expect(cleanMd).toContain('قسم اللغة العربية');
 
-      // 3. toTipTapDoc
-      const tipTap = toTipTapDoc(ast);
-      const tipTapString = JSON.stringify(tipTap);
-      expect(tipTapString).toContain('1. Введение: операторные алгебры фон Неймана');
-      expect(tipTapString).toContain('Спектральная Теорема');
-      expect(tipTapString).toContain('日本語のセクション');
-      expect(tipTapString).toContain('قسم اللغة العربية');
-
-      // 4. toTypst & compileTypst
+      // 3. toTypst & compileTypst
       const typstText = toTypst(ast);
       expect(typstText).toContain('Теория Операторов');
       expect(typstText).toContain('Спектральная Теорема');
@@ -465,10 +449,6 @@ For identical AST and compiler options, compileTypst yields byte-for-byte identi
 
       const cleanMd = toCleanMarkdown(malformedAst);
       expect(cleanMd).toContain('Fallback value');
-
-      const tipTap = toTipTapDoc(malformedAst);
-      expect(tipTap.type).toBe('doc');
-      expect(Array.isArray(tipTap.content)).toBe(true);
 
       const typst = toTypst(malformedAst);
       expect(typst).toContain('= Malformed Nodes');

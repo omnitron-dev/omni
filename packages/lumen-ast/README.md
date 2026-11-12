@@ -50,7 +50,7 @@ filtering. Authorized Markdown exports retain document classification metadata.
 
 All emitters require the parsed `children` tree. They never recover content from
 `rawContent`: that field belongs to authoring, not to an authorized output.
-HTML, Markdown, TipTap and Typst reject an object without the tree. Markdown
+HTML, Markdown and Typst reject an object without the tree. Markdown
 unwraps interactive island containers while retaining their projected document
 content, so runtime IDs and serialized widget properties do not leak into exports.
 HTML math rendering accepts `macros`; light/dark mode belongs to the page shell
@@ -59,6 +59,31 @@ and its shared CSS, including Shiki's dual-theme tokens.
 Authored HTML is parsed using `hast-util-raw` and rendered with
 `hast-util-sanitize`; scripts, event handlers and unsafe URLs are not executable.
 Code examples remain literal, including nested fences and directive attributes.
+
+## Editing the original document
+
+Prism's `ResearchEditor` owns the editor schema and accepts Markdown through
+`initialSource`. For durable authoring, obtain that source from the authenticated
+Titan-Lumen RPC `getEditableDocument(path)`. It requires
+`lumen.documents.write`, configured authoring storage, and access to the entire
+document; a caller who can read only a projection cannot obtain an editable
+revision. The response contains the original `content`, `revision` and SHA-256
+`hash`, including the exact bytes of a revision-zero file seed.
+
+Pass `content` to `ResearchEditor.initialSource`. Its `onChange` callback supplies
+a `ResearchSnapshot`; obtain the replacement source with `snapshot.getSource()`
+and call `saveLiveEdit` with `docId`, `mode: 'replace'`, `patch`, `baseRevision`
+and `baseHash` from the edition being edited. The service checks authorization
+again and commits only if both revision and hash still match. A conflict requires
+reloading and reconciling the draft, rather than overwriting the newer edition.
+An unchanged editor snapshot preserves the original source bytes, including
+scientific blocks that the editor retains as source.
+
+`getDocument` and `toCleanMarkdown(projected.ast)` serve reading and export.
+Clean Markdown deliberately converts scientific environments to blockquotes
+and UI constructs to document text. It may be imported as a new plain Markdown
+document, but it is not a lossless editing representation and must not replace
+the original source. This package does not define a second editor JSON schema.
 
 ## MCP protocol adapter
 

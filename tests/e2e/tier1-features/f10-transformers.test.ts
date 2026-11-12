@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseDocument, toHtmlSsr, toCleanMarkdown, toTipTapDoc } from '@omnitron-dev/lumen-ast';
+import { parseDocument, toHtmlSsr, toCleanMarkdown } from '@omnitron-dev/lumen-ast';
 import { compileTypst } from '@omnitron-dev/lumen-ast/typst';
 import { inspectPdf } from '../../../packages/lumen-ast/tests/pdf-oracle.js';
 
@@ -33,14 +33,6 @@ The operator $\\hat{H}\\psi = E\\psi$ governs the energy spectrum.
     expect(typeof cleanMd).toBe('string');
   });
 
-  it('TC-F10-03: transforms AST to TipTap document schema via toTipTapDoc', async () => {
-    const ast = await parseDocument(sampleDoc, 'docs/transforms.pdx');
-    const tipTapDoc = toTipTapDoc(ast);
-
-    expect(tipTapDoc).toHaveProperty('type', 'doc');
-    expect(Array.isArray(tipTapDoc.content)).toBe(true);
-  });
-
   it('TC-F10-04: compiles AST into typeset A4 PDF pages', async () => {
     const ast = await parseDocument(sampleDoc, 'docs/transforms.pdx');
     const typstBuffer = await compileTypst(ast, { title: 'Quantum Operators', paperSize: 'a4' });
@@ -52,18 +44,16 @@ The operator $\\hat{H}\\psi = E\\psi$ governs the energy spectrum.
     expect(pdf.pages[0]!.height).toBeCloseTo(841.89, 1);
   });
 
-  it('TC-F10-05: guarantees core content integrity across all four emitter targets', async () => {
+  it('TC-F10-05: preserves core content across HTML, Markdown and PDF exports', async () => {
     const ast = await parseDocument(sampleDoc, 'docs/transforms.pdx');
 
     const html = toHtmlSsr(ast);
     const cleanMd = toCleanMarkdown(ast);
-    const tipTap = toTipTapDoc(ast);
     const typstBuffer = await compileTypst(ast);
     const pdf = await inspectPdf(typstBuffer);
 
     expect(html).toContain('Quantum Operators');
     expect(cleanMd).toContain('Quantum Operators');
-    expect(JSON.stringify(tipTap)).toContain('Quantum Operators');
     expect(pdf.text).toContain('Quantum Operators');
   });
 });

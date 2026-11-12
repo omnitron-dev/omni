@@ -3,7 +3,6 @@ import { parseDocumentSync } from '../src/compiler/parser.js';
 import { createDocumentAccessPredicate, projectDocumentAccess } from '../src/ast/access.js';
 import { toCleanMarkdown } from '../src/transformers/to-clean-markdown.js';
 import { toHtmlSsr } from '../src/transformers/to-html-ssr.js';
-import { toTipTapDoc } from '../src/transformers/to-tiptap-doc.js';
 import { toTypst } from '../src/transformers/to-typst.js';
 import type { LumenDocumentAst } from '../src/ast/types.js';
 
@@ -11,8 +10,7 @@ const project = (source: string, roles = ['anonymous']) =>
   projectDocumentAccess(parseDocumentSync(source), createDocumentAccessPredicate(roles));
 
 describe('canonical document access projection', () => {
-  const emitters = [toCleanMarkdown, toHtmlSsr, toTypst,
-    (ast: LumenDocumentAst) => JSON.stringify(toTipTapDoc(ast))];
+  const emitters = [toCleanMarkdown, toHtmlSsr, toTypst];
 
   it('removes alternate container text after descendant redaction in every export', () => {
     const ast = parseDocumentSync('Visible heading.');
@@ -51,7 +49,7 @@ describe('canonical document access projection', () => {
       { type: 'paragraph', children: [{ type: 'text', value: 'Visible tab' }] },
     ] }] }];
     const projected = projectDocumentAccess(ast, createDocumentAccessPredicate()).ast;
-    expect(toTipTapDoc(projected).content[0]!.content![0]!.attrs?.['value']).toBe('stable-tab');
+    expect(projected.children[0]!.children![0]!.value).toBe('stable-tab');
     for (const emit of emitters) {
       expect(emit(projected)).toContain('Visible tab');
       expect(emit(projected)).not.toContain('PRIVATE');

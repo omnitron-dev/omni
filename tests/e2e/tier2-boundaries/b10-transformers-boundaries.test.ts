@@ -3,14 +3,13 @@ import {
   parseDocument,
   toHtmlSsr,
   toCleanMarkdown,
-  toTipTapDoc,
   type LumenDocumentAst,
 } from '@omnitron-dev/lumen-ast';
 import { compileTypst } from '@omnitron-dev/lumen-ast/typst';
 import { inspectPdf } from '../../../packages/lumen-ast/tests/pdf-oracle.js';
 
 describe('Feature 10: Multi-Target Transformers Boundaries', () => {
-  it('TC-B10-01: handles empty AST across all four output target emitters safely', async () => {
+  it('TC-B10-01: handles empty AST across HTML, Markdown and PDF exports safely', async () => {
     const emptyAst: LumenDocumentAst = {
       frontmatter: {},
       children: [],
@@ -24,10 +23,6 @@ describe('Feature 10: Multi-Target Transformers Boundaries', () => {
 
     const cleanMd = toCleanMarkdown(emptyAst);
     expect(cleanMd).toBe('');
-
-    const tipTap = toTipTapDoc(emptyAst);
-    expect(tipTap.type).toBe('doc');
-    expect(tipTap.content).toEqual([]);
 
     const pdf = await inspectPdf(await compileTypst(emptyAst));
     expect(pdf.pages).toHaveLength(1);
@@ -55,10 +50,6 @@ describe('Feature 10: Multi-Target Transformers Boundaries', () => {
     expect(() => toCleanMarkdown(customNodeAst)).not.toThrow();
     const cleanMd = toCleanMarkdown(customNodeAst);
     expect(typeof cleanMd).toBe('string');
-
-    expect(() => toTipTapDoc(customNodeAst)).not.toThrow();
-    const tipTap = toTipTapDoc(customNodeAst);
-    expect(tipTap.type).toBe('doc');
 
     const pdf = await inspectPdf(await compileTypst(customNodeAst));
     expect(pdf.text.trim()).toBe('Custom Nodes');
@@ -88,25 +79,6 @@ Tab B content.
     expect(typeof cleanMd).toBe('string');
     expect(cleanMd).toContain('Notice inside tab A.');
     expect(cleanMd).toContain('Tab B content.');
-  });
-
-  it('TC-B10-04: verifies toTipTapDoc produces compliant document tree with paragraphs and text nodes', async () => {
-    const multiDoc = `---
-title: TipTap Multi-Block
----
-
-# Heading 1
-Paragraph 1 text.
-
-Paragraph 2 with **bold** and *italic* styling.
-`;
-
-    const ast = await parseDocument(multiDoc, 'docs/tiptap.pdx');
-    const tipTap = toTipTapDoc(ast) as { type: string; content: Array<{ type: string; content?: unknown[] }> };
-
-    expect(tipTap.type).toBe('doc');
-    expect(Array.isArray(tipTap.content)).toBe(true);
-    expect(tipTap.content.length).toBeGreaterThan(0);
   });
 
   it('TC-B10-05: verifies compileTypst safely encodes Typst special characters without corrupting output', async () => {

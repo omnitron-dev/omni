@@ -37,20 +37,40 @@ describe('Search Dialog & Adapters', () => {
     expect(html).toContain('<button type="button">Close</button>');
   });
 
-  it('sanitizes regex patterns and handles query safely', () => {
-    const rawPattern = 'special[chars]+(.*)';
-    const sanitized = rawPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    expect(sanitized).toBe('special\\[chars\\]\\+\\(\\.\\*\\)');
-
-    const html = renderToStaticMarkup(React.createElement(LumenSearchDialog, { open: true, initialQuery: rawPattern }));
-    expect(html).toContain('class="lumen-search-dialog"');
+  it('offers local search without advertising an unconnected semantic service', () => {
+    const html = renderToStaticMarkup(React.createElement(LumenSearchDialog, { open: true }));
+    expect(html).not.toContain('Semantic AI');
+    expect(html).toContain('Search query');
   });
 
-  it('PagefindAdapter gracefully returns empty results when WASM binary is not loaded', async () => {
+  it('reports an unavailable Pagefind index instead of pretending the query has no matches', async () => {
     const adapter = new PagefindAdapter('/non-existent/pagefind.js');
-    const results = await adapter.search('test');
-    expect(Array.isArray(results)).toBe(true);
-    expect(results).toHaveLength(0);
+    await expect(adapter.search('test')).rejects.toThrow('Local search index is unavailable');
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(React.createElement(LumenSearchDialog, {
+        open: true, initialQuery: 'test', pagefindUrl: '/non-existent/pagefind.js',
+      }));
+    });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 200)); });
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Local search index is unavailable');
+    expect(container.textContent).not.toContain('No results found');
+    await act(async () => { root.unmount(); });
+  });
+
+  it('passes literal search text to the queried service and displays service failures', async () => {
+    const rpcClient = { search: vi.fn().mockRejectedValue(new Error('Search service unavailable')) };
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(React.createElement(LumenSearchDialog, {
+        open: true, defaultTab: 'semantic', initialQuery: '@package/entry[0]', rpcClient,
+      }));
+    });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 200)); });
+    expect(rpcClient.search).toHaveBeenCalledWith('@package/entry[0]', { limit: 10 });
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Search service unavailable');
+    expect(container.textContent).not.toContain('No results found');
+    await act(async () => { root.unmount(); });
   });
 
   it('NetronAdapter queries rpcClient and transforms results', async () => {
@@ -122,9 +142,9 @@ describe('Search Dialog & Adapters', () => {
     const rpcClient = {
       search: vi.fn().mockResolvedValue([
         {
-          id: 'xss-1',
+          documentId: 'xss-1',
           title: 'XSS Candidate',
-          url: 'javascript:alert(document.cookie)',
+          path: 'javascript:alert(document.cookie)',
           snippet: '<img src=x onerror=alert(1)>Found <mark>term</mark><script>evil()</script>',
           score: 0.99,
         },

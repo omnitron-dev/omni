@@ -82,7 +82,7 @@ export class PagefindAdapter {
 
   async search(query: string, maxResults: number = 10): Promise<PagefindSearchResult[]> {
     const ok = await this.init();
-    if (!ok || !this.pagefindInstance?.search) return [];
+    if (!ok || !this.pagefindInstance?.search) throw new Error('Local search index is unavailable. Reload the page to try again.');
 
     try {
       const response = await this.pagefindInstance.search(query);
@@ -99,8 +99,8 @@ export class PagefindAdapter {
         })
       );
       return results;
-    } catch {
-      return [];
+    } catch (cause) {
+      throw new Error('Local search failed. Reload the page to try again.', { cause });
     }
   }
 }

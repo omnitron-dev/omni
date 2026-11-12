@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { PagefindAdapter } from './pagefind-adapter.js';
-import { NetronAdapter } from './netron-adapter.js';
+import { NetronAdapter, type NetronSearchClient } from './netron-adapter.js';
 
 export interface LumenSearchDialogProps {
   /** Controlled open state */
@@ -13,10 +13,8 @@ export interface LumenSearchDialogProps {
   defaultTab?: 'local' | 'semantic';
   /** Path to Pagefind WASM bundle (default: '/pagefind/pagefind.js') */
   pagefindUrl?: string;
-  /** Endpoint for Netron semantic search RPC */
-  rpcEndpoint?: string;
-  /** Direct RPC client interface */
-  rpcClient?: { search: (query: string, options?: any) => Promise<any[]> };
+  /** Queried LumenService client; enables the semantic search tab when present. */
+  rpcClient?: NetronSearchClient;
   /** Maximum number of search results to return */
   maxResults?: number;
   /** Callback when result is selected */
@@ -222,15 +220,15 @@ export function LumenSearchDialogContent({
   initialQuery = '',
   defaultTab = 'local',
   pagefindUrl = '/pagefind/pagefind.js',
-  rpcEndpoint = '/api/rpc/search',
   rpcClient,
   maxResults = 10,
   onSelectResult,
 }: Omit<LumenSearchDialogProps, 'open' | 'className'>): React.JSX.Element {
   const [query, setQuery] = useState(initialQuery);
-  const [activeTab, setActiveTab] = useState<'local' | 'semantic'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'local' | 'semantic'>(rpcClient ? defaultTab : 'local');
   const [results, setResults] = useState<Array<{ id: string; title: string; url: string; snippet: string }>>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -240,9 +238,9 @@ export function LumenSearchDialogContent({
   const requestIdRef = useRef(0);
 
   const pagefindAdapter = useMemo(() => new PagefindAdapter(pagefindUrl), [pagefindUrl]);
-  const netronAdapter = useMemo(() => new NetronAdapter(rpcClient, rpcEndpoint), [rpcClient, rpcEndpoint]);
+  const netronAdapter = useMemo(() => rpcClient ? new NetronAdapter(rpcClient) : null, [rpcClient]);
 
-  const sanitizeQuery = useCallback((str: string): string => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), []);
+  useEffect(() => { if (!rpcClient) setActiveTab('local'); }, [rpcClient]);
 
   // Focus search input on open and restore previously focused element on close/unmount
   useEffect(() => {
@@ -324,6 +322,7 @@ export function LumenSearchDialogContent({
 
   useEffect(() => {
     const raw = query.trim();
+    setSearchError(null);
     if (!raw) {
       requestIdRef.current += 1;
       setResults([]);
@@ -333,7 +332,7 @@ export function LumenSearchDialogContent({
 
     const currentRequestId = requestIdRef.current + 1;
     requestIdRef.current = currentRequestId;
-    const truncated = sanitizeQuery(raw.slice(0, 256));
+    const truncated = raw.slice(0, 256);
     let cancelled = false;
     setIsLoading(true);
 
@@ -346,14 +345,16 @@ export function LumenSearchDialogContent({
             setResults(res.map((r) => ({ id: r.id, title: r.title, url: r.url, snippet: r.excerpt })));
           }
         } else {
+          if (!netronAdapter) throw new Error('Semantic search is not connected.');
           const res = await netronAdapter.search(truncated, maxResults);
           if (!cancelled && currentRequestId === requestIdRef.current) {
             setResults(res.map((r) => ({ id: r.id, title: r.title, url: r.path, snippet: r.snippet })));
           }
         }
-      } catch {
+      } catch (error) {
         if (!cancelled && currentRequestId === requestIdRef.current) {
           setResults([]);
+          setSearchError(error instanceof Error ? error.message : 'Search is unavailable.');
         }
       } finally {
         if (!cancelled && currentRequestId === requestIdRef.current) {
@@ -367,7 +368,7 @@ export function LumenSearchDialogContent({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [query, activeTab, maxResults, pagefindAdapter, netronAdapter, sanitizeQuery]);
+  }, [query, activeTab, maxResults, pagefindAdapter, netronAdapter]);
 
   return (
     <div
@@ -397,7 +398,7 @@ export function LumenSearchDialogContent({
         )}
       </header>
 
-      <div className="lumen-search-tabs">
+      {rpcClient && <div className="lumen-search-tabs">
         <button
           type="button"
           className={`lumen-search-tab ${activeTab === 'local' ? 'active' : ''}`}
@@ -412,11 +413,12 @@ export function LumenSearchDialogContent({
         >
           Semantic AI
         </button>
-      </div>
+      </div>}
 
       <div className="lumen-search-results">
         {isLoading && <div className="lumen-search-loading">Searching...</div>}
-        {!isLoading && query.trim() && results.length === 0 && (
+        {!isLoading && searchError && <p className="lumen-search-error" role="alert">{searchError}</p>}
+        {!isLoading && !searchError && query.trim() && results.length === 0 && (
           <div className="lumen-search-empty">No results found for &quot;{query.slice(0, 32)}&quot;</div>
         )}
         {!isLoading && results.length > 0 && (
@@ -453,7 +455,6 @@ export function LumenSearchDialog({
   initialQuery = '',
   defaultTab = 'local',
   pagefindUrl = '/pagefind/pagefind.js',
-  rpcEndpoint = '/api/rpc/search',
   rpcClient,
   maxResults = 10,
   onSelectResult,
@@ -478,7 +479,6 @@ export function LumenSearchDialog({
       defaultTab,
       pagefindUrl,
       rpcClient,
-      rpcEndpoint,
       maxResults,
       onSelectResult,
     })

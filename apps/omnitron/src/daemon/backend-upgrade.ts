@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { fork, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createNullLogger } from '@omnitron-dev/titan/module/logger';
+import { DomainError } from '@omnitron-dev/titan/errors';
 import { createDaemonClient } from './daemon-client.js';
 import type { BackendRpcService } from './backend.rpc-service.js';
 import type { BackendControlService } from './backend-control.js';
@@ -22,6 +23,7 @@ import { readManagedRuntime, managedSupervisorSocket } from './managed-runtime.j
 import type { BackendSupervisorService } from './backend-supervisor.js';
 import type { ExecutionHostService } from './execution-host.js';
 import { assertExecutionCapabilities } from './execution-capabilities.js';
+import { describeError } from '../shared/describe-error.js';
 
 export interface BackendReplacementResult {
   pid: number;
@@ -30,6 +32,36 @@ export interface BackendReplacementResult {
   epoch: number;
   checkpoint: string;
   build: BackendArtifact['build'];
+}
+
+type ReplacementFailurePhase = 'candidate' | 'stop-candidate' | 'prepare-recovery' | 'restore' |
+  'stop-restored' | 'complete-recovery' | 'select-recovery';
+
+/** One diagnostic across local execution, private Netron RPC and shared CLI
+ * output. Raw causes remain attached; only bounded descriptions enter details. */
+class BackendReplacementError extends DomainError {
+  declare readonly details: {
+    domainCode: 'BACKEND_REPLACEMENT_FAILED';
+    checkpoint: string;
+    recoveryCheckpoint: string | null;
+    outcome: 'restored' | 'unconfirmed';
+    failures: Array<{ phase: ReplacementFailurePhase; message: string }>;
+  };
+
+  constructor(checkpoint: string, recoveryCheckpoint: string | null, restored: boolean,
+    failures: Array<{ phase: ReplacementFailurePhase; error: unknown }>) {
+    const reasons = failures.map(({ phase, error }) => ({ phase, message: describeError(error) }));
+    const outcome = restored ? 'The previous backend was restored.' :
+      'Backend restoration is unconfirmed; inspect the resident owner and checkpoint before retrying.';
+    const message = `Candidate activation failed. ${outcome} ` +
+      reasons.map(({ phase, message: reason }) => `${phase}: ${reason}`).join('; ') +
+      `. Recovery checkpoint: ${recoveryCheckpoint ?? checkpoint}`;
+    super({ domainCode: 'BACKEND_REPLACEMENT_FAILED', message,
+      details: { checkpoint, recoveryCheckpoint, outcome: restored ? 'restored' : 'unconfirmed', failures: reasons },
+      cause: new AggregateError(failures.map(failure => failure.error), 'Backend replacement and recovery failures'),
+    });
+    this.name = 'BackendReplacementError';
+  }
 }
 
 export async function spawnReplacement(artifact: BackendArtifact, file: string, record: BackendBootRecord,
@@ -253,18 +285,32 @@ export async function replaceBackend(directory: string, options: {
       try {
         result = await spawnReplacement(installedCandidate, prepared.file, record, child => { candidate = child; });
       } catch (error) {
-        progress('Candidate failed; restoring the previous backend with a fresh controller epoch');
-        await stopFailedCandidate(candidate);
-        const recovery = await freshRecoveryRecord(record);
+        const failures: Array<{ phase: ReplacementFailurePhase; error: unknown }> = [{ phase: 'candidate', error }];
+        let phase: ReplacementFailurePhase = 'stop-candidate';
+        let recoveryCheckpoint: string | null = null;
         let restored: ChildProcess | null = null;
-        try { await spawnReplacement(installedRollback, recovery.file, recovery.record, child => { restored = child; }); }
-        catch (restoreError) {
-          await stopFailedCandidate(restored);
-          throw new AggregateError([error, restoreError], `Backend restoration failed. Applications remain with the resident owner. Recovery checkpoint: ${recovery.file}`, { cause: restoreError });
+        let restorationConfirmed = false;
+        try {
+          progress('Candidate failed; restoring the previous backend with a fresh controller epoch');
+          await stopFailedCandidate(candidate);
+          phase = 'prepare-recovery';
+          const recovery = await freshRecoveryRecord(record);
+          recoveryCheckpoint = recovery.file;
+          phase = 'restore';
+          await spawnReplacement(installedRollback, recovery.file, recovery.record, child => { restored = child; });
+          phase = 'complete-recovery';
+          await control.service.complete({ ticketId: prepared.ticketId });
+          phase = 'select-recovery';
+          await installation.select(installedRollback.runtimeHash, selected.revision);
+          restorationConfirmed = true;
+        } catch (recoveryError) {
+          failures.push({ phase, error: recoveryError });
+          if (phase === 'restore') {
+            try { await stopFailedCandidate(restored); }
+            catch (stopError) { failures.push({ phase: 'stop-restored', error: stopError }); }
+          }
         }
-        await control.service.complete({ ticketId: prepared.ticketId });
-        await installation.select(installedRollback.runtimeHash, selected.revision);
-        throw new Error('Candidate activation failed; the previous backend was restored. Application ownership was preserved.', { cause: error });
+        throw new BackendReplacementError(prepared.file, recoveryCheckpoint, restorationConfirmed, failures);
       }
       // Selection commits only after public readiness and application identity
       // checks. A failed commit leaves the activation journal, blocking cold boot.

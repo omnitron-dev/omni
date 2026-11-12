@@ -1,58 +1,37 @@
 # @omnitron-dev/titan-auth
 
-> JWT authentication module for the Titan framework
+JWT authentication, session verification and identity propagation for Titan applications. Netron uses the admitted identity to enforce method authorization.
 
-Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framework.
+## Capabilities
 
-## Installation
+- Token issuance and verification, HTTP adapters and async invocation context.
+- Shared-session authentication with a current revocable authority.
+- An optional authenticated Netron session-authority service.
 
-```bash
+## Quick start
+
+```sh
 pnpm add @omnitron-dev/titan-auth
 ```
 
-## Overview
+```ts
+import { TitanAuthModule } from '@omnitron-dev/titan-auth';
 
-Provides JWT-based authentication for Titan applications. Handles token issuance (HS256, via `jose`), validation in HTTP middleware, and bridges auth context into Titan's async-local-storage RLS layer so every RPC call has access to the authenticated user.
+export function authentication(jwtSecret: string) {
+  return TitanAuthModule.forRoot({ algorithm: 'HS256', jwtSecret });
+}
+```
 
-### Key Features
+Provide the configured module through the application's imports and keep secrets in its configuration boundary. Authentication alone does not grant access: declare roles, permissions or policies on protected Netron methods.
 
-- JWT issuance and validation
-- `AuthenticationManager` for HTTP middleware
-- `AuthenticationClient` with pluggable token storage
-- Auth context propagation via `AsyncLocalStorage`
-- Method-level authorization via `@Public({ auth: { roles, permissions, policies } })`
+For database-backed revocation, use `createSharedSessionAuthManager` from `./preset/shared-session` with `sessionAuthority(sessionId, userId)`. The authority returns current session ownership, expiry, revocation and grants from one consistent snapshot. Missing or revoked sessions reject; unavailable or malformed authority returns 503. Human sessions cannot claim `service_role`.
 
-## Live session authority
+`./preset/session-authority` exposes an optional `SessionAuthorityService`; callers require both `service_role` and `sessions.resolve`. The application owns the transport, database and lifecycle. Critical mutations should also check resource ownership inside their transaction.
 
-Use `createSharedSessionAuthManager` from `@omnitron-dev/titan-auth/preset/shared-session`
-with `sessionAuthority(sessionId, userId)` for current, revocable authorization.
-The adapter returns `userId`, `expiresAt`, `isRevoked`, `roles`, `permissions`, and
-optionally `activeRefreshTokenId` from one consistent database snapshot. A missing
-or revoked session is rejected; an unavailable or malformed authority returns 503.
-The token's subject must own the session. Current grants replace its role and
-permission claims, so a database role edit does not depend on cache invalidation.
+## Documentation
 
-`SessionAuthorityService` from `./preset/session-authority` is an optional Netron
-adapter for cooperating backends. Its `resolve({ sessionId, userId })` method
-requires both `service_role` and `sessions.resolve`; it returns no bearer tokens.
-The application owns the authenticated transport, deadline, database and lifecycle.
-Deploy the authority endpoint before its consumers. Authority unavailability
-refuses protected requests; replicate the owner and its database for availability.
-
-Registry mode remains available with `sessionRedis` and optional `sessionLookup`.
-The lookup can recover a registry miss, but this preset never writes Redis:
-restoration must serialize with revocation in the adapter. Cached registry hits
-are only as current as the application's registry update protocol. Prefer canonical
-mode where revocation must reflect committed database state on the next request.
-
-Tokens require bounded subject/session identifiers and an unexpired `exp`.
-Human sessions cannot claim `service_role`. The authentication-result cache is
-disabled in this preset (`cacheTtl` is deprecated); signature caching is separate.
-Netron revalidates token-backed persistent peers before calls, property access and
-core tasks, and binds the checked identity to that invocation's async context.
-An already admitted invocation retains its identity; critical mutations should
-also check resource ownership and authority under the transaction's locks.
+[Public API](src/index.ts) · [Package exports](package.json) · [Omni](../../README.md)
 
 ## License
 
-MIT
+[MIT](../../LICENSE).

@@ -1,102 +1,42 @@
 # @omnitron-dev/titan-database
 
-> Database module for the Titan framework — Kysely, migrations, RLS, multi-dialect
+Database connections, typed queries and explicit migrations for Titan applications. The module integrates Kysely and Kysera with Titan's dependency injection and lifecycle.
 
-Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framework.
+## Capabilities
 
-## Installation
+- Named PostgreSQL, MySQL and SQLite connections.
+- Typed query builders, repositories, transactions and optional RLS integration.
+- Migration runners with locking and checksum validation.
+- Read-only PostgreSQL schema readiness checks using an existing pool.
 
-```bash
+## Quick start
+
+```sh
 pnpm add @omnitron-dev/titan-database
 ```
 
-Install the driver for each database your application uses. For SQLite, install
-`better-sqlite3@^13.0.3` and use Node.js 22.14+ on 22.x or 23.6+.
-The native driver requires Node-API 10. PostgreSQL and MySQL can run without it.
+```ts
+import { TitanDatabaseModule } from '@omnitron-dev/titan-database';
 
-## Overview
+export function database(connection: string) {
+  return TitanDatabaseModule.forRoot({
+    connection: { dialect: 'postgres', connection },
+  });
+}
+```
 
-Provides database connectivity for Titan applications using Kysely as the query builder. Supports PostgreSQL and SQLite dialects, declarative migrations, and row-level security (RLS) via `AsyncLocalStorage` context propagation.
+Pass a PostgreSQL connection URL from application configuration and add the returned module to your Titan application. Resolve `DATABASE_MANAGER` to obtain the configured connections. Install the driver required by your chosen dialect; native SQLite drivers must match the Node runtime.
 
-### Key Features
+## Migrations and readiness
 
-- Kysely-based typed query builder
-- Declarative migration system
-- Row-level security (RLS) with async context
-- Multi-dialect support (PostgreSQL, SQLite)
-- Connection pooling and health checks
+Apply migrations explicitly through `@omnitron-dev/titan-database/migration`. Creating the DI module does not create tables or run migrations. Use the runner's own transaction, retry and checksum options; the module's `transactionOptions` and `migrations` configuration groups are currently not applied.
 
-## Architecture and migrations
+`requirePostgresSchema` from `@omnitron-dev/titan-database/readiness` checks a declared schema contract through an existing pool. It reads metadata without applying DDL or taking ownership of that pool. Its result covers the declared requirements, not every possible difference between database schemas.
 
-Kysera owns query extensions, repositories, savepoints, retry policies and the
-migration engine. Titan adds connection lifecycle, DI and transaction context.
-Nested transactions reuse Kysera DAL savepoints; a different database receives
-its own transaction. This does not provide distributed atomicity.
+## Documentation
 
-Use `@omnitron-dev/titan-database/migration` for standalone runners and
-`@omnitron-dev/omnitron/migration` in Omnitron applications. Schema changes run
-explicitly; migration decorator metadata does not execute at DI startup.
-
-`createHardenedRunner` preserves legacy history, lock identity and checksums.
-The shared engine commits each body and history atomically, supports explicit
-whole-batch transactions, and keeps inspection read-only. Preserve the journal
-and checksum format when moving an existing deployment. SQL definitions can use
-`defineSqlMigration`; arbitrary callbacks need a stable explicit checksum.
-
-## Read-only component readiness
-
-`@omnitron-dev/titan-database/readiness` exports `requirePostgresSchema(pool, requirements)`.
-It borrows an existing PostgreSQL pool, checks the component's declared table/column,
-key, trigger and routine requirements in a read-only repeatable-read transaction,
-and leaves the pool open. Importing the entry loads no driver, DI graph or migrator.
-Omnitron applications can use the same API through `@omnitron-dev/omnitron/readiness`.
-
-Declare only the objects the component consumes. Compatible additional tables,
-nullable columns and columns with defaults are accepted; `insert: true` rejects
-additional required inputs the component cannot supply. `defaultExpression` checks
-an exact PostgreSQL `pg_get_expr` expression when the default's meaning matters;
-`default` checks only its presence. `schema` selects an explicit schema, otherwise
-the connection's `current_schema()` applies. These are PostgreSQL guarantees.
-
-`unique` declares ordered whole-table keys. Readiness checks the enforcing
-PostgreSQL index, so an immediate primary/unique constraint and a standalone
-`UNIQUE INDEX` satisfy the same contract. `INCLUDE` columns are payload, not key
-columns. Partial, expression, invalid, unfinished, dropping and deferred indexes
-do not establish this guarantee. Foreign keys are checked independently, including
-their target schema, ordered columns and update/delete actions. The inspection
-does not create constraints or rewrite an application's migrations.
-
-`typeSchema` supports named enum/domain types outside `pg_catalog`.
-`formattedType` optionally binds PostgreSQL's `format_type` spelling, including
-precision and length. An insert table requires writable, non-generated columns
-unless their generated expression is explicitly declared. A read projection can
-leave that distinction unspecified. Routine contracts check ordered `argumentTypes`
-(zero arguments by default), body, language, volatility, invoker security and
-configuration. They require ordinary scalar functions without variadic/default
-arguments, so an unrelated overload cannot satisfy readiness. `returnType` uses
-`format_type` (for example `bigint`). Trigger functions must return `trigger`.
-`configuration` is an exact set of `pg_proc.proconfig` entries, empty by default.
-`schemaSearchPath: true` additionally requires exactly
-`pg_catalog, <checked schema>, pg_temp`, using PostgreSQL identifier quoting.
-Built-ins precede the component schema and temporary objects come last; other
-intentional settings must still be declared. This avoids relying on the caller's
-mutable search path for component-owned functions.
-
-The third argument accepts positive `statementTimeoutMs` and `lockTimeoutMs`.
-Defaults are **10 seconds per statement** and **1 second per lock wait**, restored
-when the read-only transaction ends. These are not a total-operation deadline.
-Configure a finite pool `connectionTimeoutMillis` separately: acquiring a
-connection is the owner's responsibility and cannot be cancelled by a fake timeout
-around the borrowed pool. Function requirements prove only declared properties;
-this is not a universal PostgreSQL schema-equivalence or SQL-security proof.
-
-A mismatch throws `SchemaReadinessError` with code `database_schema_incompatible`,
-the component name and individual violations. This does not apply migrations,
-alter journals, prove every database invariant or replace query authorization.
-The stack's declared migration phase owns schema changes; application startup
-checks compatibility before accepting traffic. A later unrelated migration does
-not require modifying an older component's migration registry.
+[Public API](src/index.ts) · [Connection options](src/database.types.ts) · [Package exports](package.json) · [Omni](../../README.md)
 
 ## License
 
-MIT
+[MIT](../../LICENSE).

@@ -1,25 +1,35 @@
-# Titan storage
+# @omnitron-dev/titan-storage
 
-A portable object-storage interface with S3 and local filesystem adapters.
-Both backends support multipart uploads, ranges, metadata, bulk deletion,
-copying and listing. Applications supply their own authorization, quotas,
-sharing rules and metadata storage.
+Object storage for Titan applications through one interface with S3 and local filesystem adapters.
 
-Import `StorageModule.forRoot({ backend: 's3' })` and inject `STORAGE_ADAPTER`.
-Titan config supplies `storage.s3` (endpoint, bucket, credentials, region,
-forcePathStyle and connection limits); the adapter also supports Omnitron's
-`S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET` environment convention.
-The local backend reads `storage.local.basePath` (default `./data/storage`, relative
-to the application's working directory). Registration captures this path without
-creating directories. The first storage operation initializes the root; concurrent
-calls share initialization, and a failed initialization can be retried after the
-underlying problem is repaired. Permission, invalid metadata and I/O errors remain
-errors, including in existence and usage checks; only missing objects mean `false`.
-Provide Titan config and logger
-modules. Only the selected backend is instantiated; objects remain private until
-an application explicitly grants access. Applications own authorization, metadata
-transactions, content validation, quota policy and retention.
+## Capabilities
 
-The existing local adapter's multipart bookkeeping is process-local; use S3 for
-durable multipart sessions and deployments with multiple instances. Never expose
-filesystem roots or arbitrary storage keys directly to untrusted callers.
+- Object reads and writes, ranges, metadata, listing and copying.
+- Multipart uploads and bulk deletion.
+- Only the selected backend is instantiated.
+
+## Quick start
+
+```sh
+pnpm add @omnitron-dev/titan-storage
+```
+
+```ts
+import { StorageModule } from '@omnitron-dev/titan-storage';
+
+export const storage = StorageModule.forRoot({ backend: 'local' });
+```
+
+Add this dynamic module to the `imports` of an existing Titan application.
+
+Provide Titan config and logger modules, then inject `STORAGE_ADAPTER`. Configure `storage.local.basePath` explicitly for durable data; the default is `./data/storage` relative to the application directory. The first storage operation initializes the local root.
+
+For S3, select `backend: 's3'` and configure `storage.s3`. Applications own authorization, quotas, content validation and retention. Local multipart bookkeeping is process-local; use S3 when sessions must survive process restarts or span instances. Permission and I/O errors remain errors; only a missing object means absence.
+
+## Documentation
+
+[Public API](src/index.ts) · [Package exports](package.json) · [Omni](../../README.md)
+
+## License
+
+[MIT](../../LICENSE).

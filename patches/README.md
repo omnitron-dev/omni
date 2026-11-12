@@ -1,20 +1,10 @@
 # Dependency patches
 
-`ts-morph-common@0.29.0.patch` aligns the bundled parser's dependency declaration
-with the patched minimatch 11.x used by the KB extractor. Upstream declares 10.x,
-which is affected by GHSA-g3hv-75wg-m249. npm validates the embedded manifest
-when it replays a consumer lockfile. Remove the patch once upstream accepts
-a safe version and the packed consumer passes `npm ci` and extraction.
+These patches are applied through [pnpm-workspace.yaml](../pnpm-workspace.yaml). Keep the patch, dependency declarations, and lockfile aligned when upgrading a dependency.
 
-`vitest@5.0.5.patch` keeps temporary compiler copies scoped to the owning process,
-cleans them on handled interruption and removes abandoned copies only after their
-owner no longer exists. It also applies `VITEST_MAX_WORKERS` before normal runner
-configuration: `fileParallelism: false` continues to require one worker, and
-inspector safety is checked against the effective worker count. A global worker
-budget must not make files that share a database fixture run concurrently.
+- [`@ts-morph/common`](ts-morph-common@0.29.0.patch) updates its declared minimatch dependency to the version used by the knowledge-base extractor. Packed consumers must replay the resulting dependency graph through ordinary `npm ci`.
+- [Vitest](vitest@5.0.5.patch) scopes temporary compiler copies to their owner process and cleans abandoned copies only after that owner is gone. It also applies `VITEST_MAX_WORKERS` before normal runner configuration, while preserving single-worker behavior for `fileParallelism: false` and inspector constraints.
 
-The installed runner is checked through its public `resolveConfig` API in
-`apps/omnitron/test/unit/vitest-worker-budget.test.ts`. The temporary-directory
-lifecycle check is `node scripts/a-temp-dir-the-test-runner-never-removed.mjs`.
-Preserve both behaviours when upgrading Vitest; drop a patch only after the
-ordinary installed upstream version passes the corresponding regressions.
+The worker-budget regression is [vitest-worker-budget.test.ts](../apps/omnitron/test/unit/vitest-worker-budget.test.ts). Temporary-directory lifecycle is checked by [a-temp-dir-the-test-runner-never-removed.mjs](../scripts/a-temp-dir-the-test-runner-never-removed.mjs).
+
+Remove a patch when the installed upstream version passes the corresponding checks and the package-consumer gate.

@@ -1,30 +1,14 @@
-# Titan Framework Examples
+# Titan source examples
 
-Runnable examples demonstrating Titan's core features.
+This directory contains application and service examples. They use repository source imports and are not exported package entry points.
 
-## Examples
+For current application APIs, start with the [application guide](../src/application/README.md), [dependency injection](../src/nexus/README.md), and [Netron](../src/netron/README.md). New applications should import public `@omnitron-dev/titan` entry points rather than copy internal source paths.
 
-### Simple Demo (`simple-demo.ts`)
+Useful source references include:
 
-Application lifecycle, module system, DI, events, configuration, logging.
+- [Simple application](simple-app.ts): a module, a service, and start/stop hooks.
+- [Validation](validation-example.ts): method schemas and validation middleware.
+- [Error handling](error-system-demo.ts): structured errors and contracts.
+- [Configuration](config-usage.ts): schema-based application configuration.
 
-```bash
-npx tsx examples/simple-demo.ts
-```
-
-### Task Manager (`task-manager-app.ts`)
-
-Multi-module architecture with services, event-driven workflows, notifications, and activity tracking.
-
-```bash
-npx tsx examples/task-manager-app.ts
-```
-
-## Concepts Covered
-
-- `@Module`, `@Injectable`, `@Service` decorators
-- Constructor and property injection via Nexus IoC
-- `@EventHandler` and programmatic subscriptions
-- `@ConfigValue` for typed configuration
-- `OnInit` / `OnDestroy` lifecycle hooks
-- Layered architecture: domain, service, orchestration, infrastructure
+Examples vary in their configuration and infrastructure requirements; they are not a single runnable test suite. [Application](../test/application/), [validation](../test/validation/), and [Netron](../test/netron/) tests contain the executable contract checks.

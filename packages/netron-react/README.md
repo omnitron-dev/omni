@@ -1,150 +1,55 @@
 # @omnitron-dev/netron-react
 
-> React hooks and providers for type-safe Netron RPC
+React providers and hooks for Netron services. Queries, mutations and subscriptions share the connection and cache owned by the provider.
 
-Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framework.
+## Capabilities
 
-## Installation
+- Typed service hooks, queries, infinite queries and mutations.
+- Cache invalidation, prefetching, hydration and optimistic updates.
+- Connection-aware components and routing across multiple backends.
+- Authentication bindings through the dedicated `auth` entry.
 
-```bash
-pnpm add @omnitron-dev/netron-react @omnitron-dev/netron-browser
+## Quick start
+
+```sh
+pnpm add @omnitron-dev/netron-react @omnitron-dev/netron-browser react react-dom
 ```
 
-## Overview
-
-Production-grade React bindings for Netron RPC. Provides hooks for queries, mutations, real-time subscriptions, multi-backend routing, and authentication — all with automatic type inference from service contracts.
-
-In React Server Component applications, render the provider from a client
-component and create its client there. The root, hooks, auth and React test
-entries declare that boundary in both ESM and CommonJS. Import
-`@omnitron-dev/netron-react/cache` for cache operations in server code.
-Node consumers require 22.12 or newer for synchronous CommonJS access to the
-shared ESM Netron Browser client.
-The devtools entry provides logging controls. Its inspector component currently
-renders no UI.
-
-### Key Features
-
-- **Type-safe hooks** — `useQuery`, `useMutation`, `useService`, `useSubscription`
-- **Multi-backend** — `MultiBackendProvider` + `useBackendService` for multiple Netron servers
-- **Real-time** — WebSocket subscriptions synced to React state
-- **Authentication** — `AuthProvider`, `useAuth`, `AuthGuard` components
-- **Caching** — smart invalidation, prefetching, optimistic updates
-- **Connection-aware** — `BackendConnectionAware` renders based on connection state
-
-## Quick Start
-
 ```tsx
-import { NetronReactClient, NetronProvider } from '@omnitron-dev/netron-react';
+'use client';
+
+import { NetronProvider, NetronReactClient, useService } from '@omnitron-dev/netron-react';
+
+interface Users {
+  getUser(id: string): Promise<{ name: string }>;
+}
 
 const client = new NetronReactClient({
   url: 'https://api.example.com',
-  transport: 'auto',
+  transport: 'http',
 });
 
-function App() {
-  return (
-    <NetronProvider client={client}>
-      <UserProfile userId="123" />
-    </NetronProvider>
-  );
+function UserName() {
+  const users = useService<Users>('Users');
+  const { data, error, isLoading } = users.getUser.useQuery(['123']);
+  if (isLoading) return <p>Loading…</p>;
+  if (error) return <p>Could not load this user.</p>;
+  return <p>{data?.name ?? 'No user'}</p>;
 }
 
-function UserProfile({ userId }: { userId: string }) {
-  const userService = useService<UserService>('users');
-  const { data, isLoading } = userService.getUser.useQuery([userId]);
-
-  if (isLoading) return <Skeleton />;
-  return <div>{data.name}</div>;
+export function App() {
+  return <NetronProvider client={client}><UserName /></NetronProvider>;
 }
 ```
 
-## Multi-Backend Setup
+The endpoint must publish the `Users` service. Keep the client stable across renders. In a React Server Component application, create the client and render the provider within a client component; use `@omnitron-dev/netron-react/cache` for server-side cache operations.
 
-For apps that talk to multiple Netron backends through a gateway, use `MultiBackendProvider`. It owns a shared `QueryCache` + `MutationCache` and bridges them into the same `NetronContext` that `useNetronQuery` / `useNetronMutation` / `useInfiniteQuery` read from — so a single cache serves every hook regardless of which backend the call routed to.
+`MultiBackendProvider` uses a shared query and mutation cache across routed backends. Pass query cancellation signals to RPC calls. Mutations are not automatically cancelled on unmount, and local cancellation does not roll back server work.
 
-```tsx
-import { createMultiBackendClient } from '@omnitron-dev/netron-browser';
-import { MultiBackendProvider } from '@omnitron-dev/netron-react';
+## Documentation
 
-const client = createMultiBackendClient({
-  baseUrl: '',
-  backends: {
-    main: { path: '/api/main' },
-    storage: { path: '/api/storage' },
-  },
-  defaultBackend: 'main',
-});
-
-function App() {
-  return (
-    <MultiBackendProvider
-      client={client}
-      autoConnect
-      defaultOptions={{
-        queries: {
-          staleTime: 20_000,       // tab-switch / brief side-trip → cache hit
-          cacheTime: 5 * 60_000,   // GC after 5 min without observers
-          refetchOnWindowFocus: false,
-          refetchOnReconnect: true,
-          retry: 1,
-        },
-      }}
-    >
-      <YourApp />
-    </MultiBackendProvider>
-  );
-}
-```
-
-### Per-query overrides
-
-Every `useQuery` / `useInfiniteQuery` accepts its own `staleTime` and `cacheTime`. Per-query `cacheTime` is a per-observer GC hint — the cache uses `max(observers, defaultCacheTime)`, so raising it on one hook doesn't shrink retention on others.
-
-```tsx
-const settings = useNetronQuery({
-  queryKey: ['platform', 'settings'],
-  queryFn: () => contentRpc('getSettings'),
-  staleTime: 10 * 60_000,  // settings rarely change
-  cacheTime: 30 * 60_000,  // keep around past the platform default
-});
-```
-
-### Mutate + invalidate
-
-`useMutation` accepts `invalidateQueries`. After a successful mutation, every cache entry whose key matches the listed prefix is flushed.
-
-```tsx
-const appeal = useNetronMutation({
-  mutationFn: (input: { reason: string }) =>
-    contentRpc('fileAppeal', { decisionId, reason: input.reason }),
-  invalidateQueries: [
-    ['moderation', 'appeals', decisionId],
-    ['moderation', 'history'],         // family-prefix invalidate
-  ],
-  onSuccess: () => toast.success('Filed'),
-});
-```
-
-### Cross-backend reconnect
-
-`MultiBackendClient.on('reconnect', handler)` aggregates per-backend WS reconnect events. The provider wires this into the cache so `refetchOnReconnect: true` revalidates stale entries when any WebSocket-backed backend recovers from a drop. HTTP-only deployments emit nothing — there's no reconnect semantic to revalidate against.
-
-## Related
-
-- `@omnitron-dev/netron-browser` — Transport layer
-- `@omnitron-dev/prism` — Design system for UI components
+[Public API](src/index.ts) · [Package exports](package.json) · [Transport client](../netron-browser/README.md) · [Omni](../../README.md)
 
 ## License
 
-MIT
-
-## Query cancellation
-
-`useBackendQuery`, `useBackendService(...).method.useQuery`, `useService`, and
-service-registry query configurations pass the query cache's `AbortSignal`
-through to Netron's transport. Cancelling a query stops its HTTP fetch or local
-WebSocket wait; a subsequent refetch receives a fresh signal. Custom `queryFn`
-functions must likewise forward their context's `signal` when invoking RPCs.
-Mutation invocation semantics are unchanged: unmounting a component does not
-automatically cancel a write that may already have committed.
+[MIT](../../LICENSE).

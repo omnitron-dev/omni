@@ -1,15 +1,25 @@
 # Omnitron identity
 
-Console and the Lumen website consume `@omnitron-dev/prism/identity`. The module extends Prism's existing MUI theme; it does not create another provider or state store. Pass `omnitronTheme` to `PrismProvider.themeOverrides`. Inter is the common interface and heading face; load its 400, 500, 600 and 700 weights in the application. Native monospace is reserved for code, identifiers and measurements.
+`@omnitron-dev/prism/identity` supplies the shared mark, palette, typography, and loading states for Console and the website. It extends the existing Prism/MUI theme.
 
-For server-rendered pages, pass the same explicit mode to `PrismProvider.mode` and `omnitronCssVariables(mode)`. Use `onModeChange` to update that prop when a visitor changes the theme. Controlled providers render their mode from the first server and client frame independently of the persisted mode and leave it unchanged. Console can omit `mode` to keep using its native settings store.
+```tsx
+import { PrismProvider } from '@omnitron-dev/prism/core';
+import { OmnitronBrand, omnitronTheme } from '@omnitron-dev/prism/identity';
 
-`omnitronTokens` is the source for light/dark surfaces, foregrounds, semantic colours and geometry. `omnitronCssVariables(mode)` exposes the same values to server-rendered page CSS. Use `--omni-text-muted` for secondary content, `--omni-border` for surface separation and `--omni-control-border` for controls. `--omni-focus-ring` is a two-pixel accent outline with a three-pixel offset. Surfaces have six-pixel corners and one-pixel borders. Avoid gradients, glow, ornamental grids and additional accent palettes.
+export function BrandedShell() {
+  return (
+    <PrismProvider mode="dark" themeOverrides={omnitronTheme}>
+      <OmnitronBrand />
+    </PrismProvider>
+  );
+}
+```
 
-Use `OmnitronBrand` for the text lockup and `OmnitronMark` when space is limited. The mark is four interlocking triangular planes around a stable core. Its geometry is exported as `omnitronMarkGeometry`; the standalone asset is `omnitronMarkSvg`. Text remains text in the lockup. Set `label={null}` when adjacent text already supplies the accessible name. A single mark works from 16 pixels upward; navigation uses 36 pixels and app loading uses 72 pixels.
+Use controlled `mode` and `onModeChange` when the host owns theme selection. SSR must use the same initial mode as the client. Static shell styles can consume `omnitronCssVariables('light' | 'dark')`; tokens and React components share that palette. Load the Inter font weights used by the application.
 
-`OmnitronSplash` describes loading, success or error through visible text and accessible status messages. Omit `progress` unless a real completed/total measurement exists. An unknown session-validation time must never be represented by a guessed percentage. Supply the real failure message and an `action` when recovery is possible.
+- [Tokens](tokens.ts) and [theme overrides](theme.ts): surfaces, text, borders, focus, spacing, and typography.
+- [Mark geometry](geometry.ts): shared SVG geometry and `omnitronMarkSvg` for static assets.
+- [Mark and wordmark](omnitron-mark.tsx): `OmnitronMark` and `OmnitronBrand`.
+- [Loading state](omnitron-splash.tsx): `OmnitronSplash` with `loading`, `success`, or `error`.
 
-The static logo never animates. Loading animates only three facet translations over 2.4 seconds, with no JavaScript frame loop, filters, external SVG library or rotating page content. Reduced-motion users receive the static mark and the same text. Visibility and intersection observers pause activity in hidden documents and outside the viewport; listeners are removed when loading ends or the mark unmounts. Success and error use static check/cross cores as well as semantic colours.
-
-The Console favicon at `apps/omnitron/webapp/public/logo.svg` is generated from `omnitronMarkSvg`; update the exported geometry first. Browser verification covers both themes, 320-pixel layouts, keyboard focus and normal/reduced/hidden motion. The shared palette tests enforce 4.5:1 for body text and semantic signals, and 3:1 for control boundaries and keyboard focus.
+Use `label={null}` on a mark when adjacent text already names it. Loading motion respects reduced-motion preferences and pauses when hidden or outside the viewport. Supply `progress` only as a measured percentage from 0 to 100; omit it for work with no known total. Error states should include a useful message and, where appropriate, an action.

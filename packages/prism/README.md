@@ -1,258 +1,54 @@
 # @omnitron-dev/prism
 
-> Design system constructor — high-level UI building blocks for complex frontends
+Prism provides UI components and composition tools for React applications. It builds on MUI and supplies a shared theme for navigation, forms, data displays and research documents.
 
-Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framework.
+## Capabilities
 
-Prism's UI entry points declare a React client boundary in the published ESM
-files. In React Server Component applications, render these components with
-serializable props and configure providers inside a client component.
-`@omnitron-dev/prism/http` also works in server code.
+- Theme primitives, application layouts, forms and navigation.
+- Tables, charts, maps, calendars and editors through dedicated component entries.
+- Research Markdown rendering, validated widgets, diagrams and source-preserving editing.
+- Shared providers and styles for applications using the Omni frontend packages.
 
-Named imports from the root and `@omnitron-dev/prism/components` discard unused
-component modules in production bundles. A `Card` does not require the editor,
-map or chart engines. Public component subpaths provide the same behavior and
-can be used as explicit lazy-loading boundaries. Import the documented CSS entry
-for components that require styles; CSS is preserved during tree shaking.
-Calendar locale registration stays with the calendar component.
+## Quick start
 
-`pnpm check:packages` verifies actual packed archives with a Vite consumer: small
-named imports retain only their peers, while selected calendar, map and stylesheet
-entries retain their required dependencies. Run it after building the workspace.
-
-## Installation
-
-```bash
-pnpm add @omnitron-dev/prism
+```sh
+pnpm add @omnitron-dev/prism react react-dom
 ```
 
-## Overview
-
-Prism is a design system built on MUI. It provides themed layouts, forms,
-navigation and data displays for application frontends.
-
-### Key Features
-
-- **MUI foundation** — themed components with full customization
-- **Layout system** — `DashboardLayout`, navigation items, sidebar, breadcrumbs
-- **Form components** — integrated with react-hook-form + zod validation
-- **Auth-aware** — components that respect authentication state
-- **OTP input** — standalone OTP code input component
-- **Avatar system** — default avatars, upload, presigned URL support
-
-## Usage
-
 ```tsx
-import { PrismProvider, DashboardLayout } from '@omnitron-dev/prism';
+'use client';
 
-function App() {
+import { Button, PrismThemeProvider, TextField } from '@omnitron-dev/prism/ui';
+import { createPrismTheme } from '@omnitron-dev/prism/theme';
+
+const theme = createPrismTheme({ mode: 'light' });
+
+export function App() {
   return (
-    <PrismProvider>
-      <DashboardLayout navItems={items}>
-        <Outlet />
-      </DashboardLayout>
-    </PrismProvider>
+    <PrismThemeProvider theme={theme}>
+      <TextField label="Title" size="small" />
+      <Button variant="contained">Save</Button>
+    </PrismThemeProvider>
   );
 }
 ```
 
-## Research documents
+`PrismThemeProvider` suits applications that own appearance preferences. `PrismProvider` also supplies settings and localization. Configure control appearance through the shared theme and preserve visible keyboard focus.
 
-`@omnitron-dev/prism/components/research` adds a source-preserving Markdown → typed document → React path. Import `@omnitron-dev/prism/components/research/styles.css` once. It supports GFM, stable Unicode heading anchors, admonitions, tabs, KaTeX and strict Mermaid diagrams. `parseResearchMarkdown(source, documentId)` returns the document tree, heading outline and diagnostics; node attributes retain source positions.
+Public component subpaths provide lazy-loading boundaries. Import the documented CSS entry for components that need it. Unused editor, map and chart modules can be removed from production bundles. UI entries declare a React client boundary; `@omnitron-dev/prism/http` is also available to server code.
 
-```tsx
-import { ResearchDocument, defineResearchWidget } from '@omnitron-dev/prism/components/research';
-import '@omnitron-dev/prism/components/research/styles.css';
-import { z } from 'zod';
+## Research documents and authoring
 
-const props = z.object({ value: z.number().finite() }).strict();
-const widgets = {
-  quantity: defineResearchWidget(
-    1,
-    (input) => props.parse(input),
-    ({ value }) => <output aria-label="Quantity">{value}</output>
-  ),
-};
-<ResearchDocument source={markdown} documentId="paper-overview" widgets={widgets} contents />;
-```
+`@omnitron-dev/prism/components/research` exports `ResearchDocument`, `parseResearchMarkdown` and validated widget definitions. Import `@omnitron-dev/prism/components/research/styles.css` once. The renderer supports GFM, heading anchors, admonitions, tabs, KaTeX and strict Mermaid diagrams.
 
-Use `$...$` / `$$...$$` for math, a `mermaid` fence for diagrams, and a `prism` fence containing `{"type":"quantity","version":1,"props":{"value":3}}` for a registered widget. `:::note`, `:::warning`, and `:::tabs` with nested `:::tab{label="..."}` use directive syntax. Custom widgets are ordinary host-owned React components with explicit versioned prop validation. The source cannot import JavaScript, register components or grant access. Registries belong to each document, not to process-wide state. `TipTapRenderer` also exposes `nodeRenderers` and `inheritRegisteredNodes`; existing global registrations remain supported by default, while `ResearchDocument` disables inheritance.
+Documents cannot import code or grant permissions. Host applications register widgets and validate their versioned props. Raw HTML and unsupported constructs remain inert with diagnostics. Mermaid output is sanitized and displayed as an isolated SVG image; source-size limits do not impose a browser execution-time limit.
 
-Raw HTML and unsupported constructs remain inert with source diagnostics. Unsupported diagram engines retain their source; Pintora is not interpreted as Mermaid. TeX runs with trust disabled and expansion/size limits. Mermaid source cannot change renderer configuration; rendered SVG is sanitized and displayed as an isolated SVG image, preserving the layout styles without inserting document-controlled CSS into the page. Active elements and links are removed; the browser image boundary disables scripting and external resources. Theme changes are serialized. Source/AST/block/edge limits bound accepted input, **not execution time**: Mermaid runs on the browser main thread. Host-owned widgets must independently obey the host's accessibility, resource, network and permission policies. This renderer provides presentation, not proof checking or Noesis semantics. The host owns immutable revision identity, digest verification, authorization and publication. Unknown or failing blocks preserve source rather than masquerading as successful verification.
+`@omnitron-dev/prism/components/research-editor` accepts the original document through `initialSource`. Save the resulting snapshot's `getSource()` through the host's revision and authorization checks. An unchanged snapshot preserves the original source bytes. A projected or cleaned Markdown export is not a lossless replacement for that source.
+
+## Documentation
+
+[Public API](src/index.ts) · [Package exports and styles](package.json) · [Omni](../../README.md)
 
 ## License
 
-MIT
-
-### Theme-native UI primitives
-
-`@omnitron-dev/prism/ui` is a separately built, tree-shakeable entry for MUI
-composition primitives (`Button`, `TextField`, `Tabs`, `Drawer`, `Typography`,
-`ListItemButton`, etc.). It preserves upstream props, slots and keyboard semantics;
-it does not introduce a second set of controls. Use these primitives alongside
-Prism's research editor and knowledge graph under the **same** theme.
-
-```tsx
-import { PrismThemeProvider, Button, TextField } from '@omnitron-dev/prism/ui';
-import { createPrismTheme } from '@omnitron-dev/prism/theme';
-const theme = createPrismTheme({ mode: 'light' });
-<PrismThemeProvider theme={theme}>
-  <TextField label="Title" size="small" />
-  <Button variant="contained">Save</Button>
-</PrismThemeProvider>;
-```
-
-The lightweight provider is appropriate for applications which already own their
-appearance preferences. `PrismProvider` supplies the larger settings/localization
-stack. Do not apply global `button`, `input` or `:focus-visible` appearance rules
-to either provider's controls: configure state styles through the shared theme.
-Keep a visible keyboard-focus indication when integrating legacy stylesheets.
-
-Menus, Select dropdowns and popovers stop intercepting pointer input as soon as
-their controlled `open` state becomes `false`, while the exit animation finishes.
-The next click on an adjacent control works immediately. Open overlays retain
-MUI's click-away behavior, keyboard navigation and focus restoration; closing a
-menu inside a dialog does not dismiss or bypass that dialog. Use the public MUI
-`transitionDuration` prop when a particular interaction requires a different
-animation duration. Keep native focus restoration enabled.
-
-`ResearchDocument` also accepts `sourceProfile="docusaurus"` for explicit
-`{#heading-id}` anchors and namespaced local fragment links. The default research
-profile leaves that syntax literal. This is an inert rendering profile, not an MDX
-runtime or a Docusaurus configuration executor. Corpus routes and semantic metadata
-are supplied by the host's source adapter; Prism does not infer knowledge status.
-
-## Dashboard blocks
-
-`DashboardBlock` from `@omnitron-dev/prism/blocks` stays expanded by default.
-Set `collapsible` to enable its header control; `collapsed` and `defaultCollapsed`
-describe state and never grant that capability. Custom headers can read the same
-`collapsible` flag from `useDashboardBlockContext`. Disabling collapse keeps the
-body expanded and context collapse actions inert.
-
-Use `defaultCollapsed` for internal state, or pair `collapsed` with
-`onCollapseChange` for controlled state. The callback reports user requests in
-both modes. Content, loading, error and empty states share the same collapse
-boundary; header controls remain available to expand the block again.
-
-```tsx
-import { DashboardBlock, useDashboardBlock } from '@omnitron-dev/prism/blocks';
-function RequestsPanel() {
-  const { blockProps } = useDashboardBlock({ defaultCollapsed: false });
-  return <DashboardBlock title="Requests" collapsible {...blockProps}>
-    <RequestsChart />
-  </DashboardBlock>;
-}
-```
-
-The hook supplies state props and external `actions.expand()` / `actions.collapse()`;
-enabling the visual capability remains explicit.
-
-## Corpus navigation
-
-`@omnitron-dev/prism/components/doc-layout` exposes `DocSidebar`, `DocLayout`
-and `DocSectionNav` without the full component barrel. Sidebar items carry
-stable IDs, labels, optional native hrefs and children. Native hrefs preserve
-modified-click and new-tab navigation; `onItemClick` may route ordinary clicks
-through the host router. Categories announce expansion and remove collapsed
-children from keyboard navigation. No source-format or authorization semantics
-belong in these presentation components.
-
-### Application icon families
-
-Wrap the application (including its theme provider) in `PrismIconProvider` from
-`@omnitron-dev/prism/icons`. Supply components accepting `SvgIconProps`, forwarding
-an SVG ref and retaining MUI's decorative/accessibly labelled behaviour. A partial
-set overrides selected slots; a complete `Record<PrismIconName, PrismIconComponent>`
-provides compile-time coverage. `prismIconNames` enumerates the public slots.
-
-The same context reaches layout controls, search, scientific and rich-text editors,
-graph controls and native MUI slots through portals. Nested providers inherit the
-parent set. Unconfigured slots retain bundled artwork; applications own and license
-their supplied assets. No network icon lookup or DOM replacement is performed.
-Local MUI `slots`, `IconComponent` and `icon` props still take precedence.
-
-```tsx
-import { PrismIconProvider, type PrismIconSet } from '@omnitron-dev/prism/icons';
-const icons = { search: ApplicationSearchIcon } satisfies PrismIconSet;
-<PrismIconProvider icons={icons}>
-  <PrismThemeProvider theme={theme}>{children}</PrismThemeProvider>
-</PrismIconProvider>;
-```
-
-### Scrollbar visibility
-
-Prism's baseline and `Scrollbar` share native, theme-aware scrollbars. On a fine
-pointer they reveal on container hover or `focus-within`, and become transparent
-when idle. Thumb visibility changes neither overflow nor scrollport dimensions.
-Touch input and forced-colors mode retain visible native controls. No mouse
-listener, overlay, delayed timer or scroll-position state is introduced.
-
-Set `<Scrollbar autoHide={false}>` for a persistent thumb, or use
-`mixins.scrollbarStyles(theme, { autoHide: false })` for a custom scrollport.
-`hideScrollbar` remains the explicit fully-hidden option.
-
-
-### Mode-aware application palettes
-
-`PrismProvider.themeOverrides` accepts a static object or a function receiving
-`{ mode: 'light' | 'dark' }`. The provider resolves the operating-system setting
-before calling this function, so an application does not need a second theme
-store or a synchronisation effect. Keep the callback stable when possible.
-
-```tsx
-const appTheme = ({ mode }: PrismThemeOverrideContext) => ({
-  palette: {
-    primary: { main: mode === 'dark' ? '#C9B2FF' : '#7446A6' },
-    background: { paper: mode === 'dark' ? '#241E2C' : '#FFFCF8' },
-  },
-});
-
-<PrismProvider themeOverrides={appTheme}>{children}</PrismProvider>
-```
-
-Import `PrismProvider` and the `PrismThemeOverrideContext` type from
-`@omnitron-dev/prism/core`. The callback is evaluated again when the resolved
-mode changes; existing object overrides retain their behavior.
-
-
-Palette overrides replace dependent tones and channels together: changing `main`
-rebuilds its tonal family; changing an individual colour rebuilds only that
-colour's channel. Explicit shades and channel expressions retain precedence.
-This includes Prism's `lighter`/`darker` and `text.disabledChannel` extensions.
-Opaque static colours receive the higher-contrast black/white `contrastText`
-when none is supplied. Authored contrast colours remain the application's
-responsibility.
-
-For runtime CSS colours (`var(...)`, `oklch(...)`, wide-gamut colours), use
-`themeOverrides={{ cssVariables: { nativeColor: true }, palette: ... }}`. MUI resolves tones and
-contrast in the browser; Prism channels use relative RGB expressions instead
-of guessed numeric values. This requires browser support for CSS relative
-colours and MUI native colour mode. Without native colour mode, an unresolved
-`main` requires explicit `light`, `dark` and `contrastText`; Prism reports this
-contract before MUI's JavaScript colour parser runs. Static presets and
-explicit channel overrides remain supported.
-
-
-### Compact navigation identity
-
-`DashboardLayout` and `Sidenav` accept `compactLogo` for the collapsed or mini
-sidebar. Pass a compact symbol that fits beside the collapse control; the full
-`logo` remains visible in expanded and mobile navigation. Omitting the prop
-preserves the existing logo behavior. The sidebar control stays centred on its
-boundary in either text direction, including enlarged accessible hit targets.
-
-### Keyboard ownership
-
-`CommandPalette` exposes a labelled combobox and listbox, follows the displayed
-order of grouped commands and ignores consumed or composing key events. Use
-`disableShortcut` when a workspace owns the shortcut. `onClosed` runs after the
-modal releases focus: use it for commands that focus another control or open a
-dialog. Command handlers remain responsible for errors and authorization.
-
-`TableViewport` lets a focused table browse rows with arrows, Home/End and
-Page Up/Down. Enter invokes the row action, Space toggles its checkbox and Escape
-returns to the viewport. Inputs, links and buttons keep their native keys.
-Specialized workspaces can set `keyboardNavigation={false}` and supply their own
-interaction model. `SearchInput` exposes `data-keyboard-search` for a workspace's
-focus-search command. These primitives do not install application-wide shortcuts.
+[MIT](../../LICENSE).

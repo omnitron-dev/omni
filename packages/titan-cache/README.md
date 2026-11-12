@@ -1,19 +1,37 @@
 # @omnitron-dev/titan-cache
 
-> Multi-tier caching module for the Titan framework
+Configurable caching for Titan services, with in-memory policies and optional multiple tiers.
 
-Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framework.
+## Capabilities
 
-## Installation
+- LRU, LFU and TTL behavior.
+- Named caches, cache decorators and statistics.
+- Optional compression and an application-supplied second-tier adapter.
 
-```bash
+## Quick start
+
+```sh
 pnpm add @omnitron-dev/titan-cache
 ```
 
-## Overview
+```ts
+import { TitanCacheModule } from '@omnitron-dev/titan-cache';
 
-Pluggable caching module supporting LRU, LFU, and TTL eviction strategies. Integrates with Titan's DI system and can be backed by in-memory stores or Redis.
+export const cache = TitanCacheModule.forRoot({
+  maxSize: 1000,
+  defaultTtl: 300,
+  evictionPolicy: 'lru',
+});
+```
+
+Add this dynamic module to the `imports` of an existing Titan application.
+
+Configure the second-tier client explicitly when sharing cache state between processes. Cache entries are derived data; applications own invalidation and access-sensitive cache keys.
+
+## Documentation
+
+[Public API](src/index.ts) · [Package exports](package.json) · [Omni](../../README.md)
 
 ## License
 
-MIT
+[MIT](../../LICENSE).

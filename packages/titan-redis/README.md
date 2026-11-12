@@ -1,29 +1,35 @@
 # @omnitron-dev/titan-redis
 
-> Redis connection management for the Titan framework
+Lifecycle-managed Redis clients for Titan applications.
 
-Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framework.
+## Capabilities
 
-## Installation
+- Named clients, common connection settings and Redis Cluster options.
+- Client injection, scripts, health checks and error callbacks.
+- Bounded shutdown through the owning application lifecycle.
 
-```bash
+## Quick start
+
+```sh
 pnpm add @omnitron-dev/titan-redis
 ```
 
-## Overview
+```ts
+import { TitanRedisModule } from '@omnitron-dev/titan-redis';
 
-Provides Redis connectivity for Titan applications with connection management, clustering support, health checks, and DB index separation. Used as the foundation for cache, lock, discovery, rate-limit, and scheduler modules.
+export const redis = TitanRedisModule.forRoot({
+  config: { host: '127.0.0.1', port: 6379 },
+});
+```
 
-### DB Index Convention
+Add this dynamic module to the `imports` of an existing Titan application.
 
-| App/Module | DB Index |
-|-----------|----------|
-| Main | 0 |
-| Storage | 1 |
-| Messaging | 2 |
-| Pricing | 3 |
-| Payments | 4 |
+The module uses Titan's logger provider and exposes `RedisManager`, `RedisService` and injection tokens. Choose namespaces, credentials and database indexes for your application; this package does not impose an application-wide database-number convention. Redis Cluster uses database zero.
+
+## Documentation
+
+[Public API](src/index.ts) · [Package exports](package.json) · [Omni](../../README.md)
 
 ## License
 
-MIT
+[MIT](../../LICENSE).

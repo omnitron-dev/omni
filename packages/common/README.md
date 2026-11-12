@@ -1,44 +1,34 @@
 # @omnitron-dev/common
 
-> Shared utilities — type predicates, promise helpers, object tools, data structures
+Shared TypeScript primitives used throughout Omni. Import small utilities directly; the separate process-identity entry is for Node.js host inspection.
 
-Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framework.
+## Capabilities
 
-## Installation
+- Type predicates, object selection and typed entry helpers.
+- Promise coordination, bounded concurrency, delays and retries.
+- List buffers, expiring maps, decimal helpers and errors.
 
-```bash
+## Quick start
+
+```sh
 pnpm add @omnitron-dev/common
 ```
 
-## Overview
+```ts
+import { isString, omit } from '@omnitron-dev/common';
 
-A comprehensive utility library providing type-safe primitives for everyday TypeScript development. Works in both Node.js and Bun.
+const value: unknown = 'hello';
+if (isString(value)) console.log(value.toUpperCase());
 
-### What's Inside
-
-- **Type predicates** — `isString`, `isNumber`, `isPlainObject`, `isNil`, `isPromise`, 50+ more with proper type narrowing
-- **Promise utilities** — `defer`, `delay`, `timeout`, `retry` (with backoff), `props`, `promisify`/`callbackify`
-- **Object utilities** — `omit` (deep, path-based, predicate), `entries`/`keys`/`values` with options
-- **Data structures** — `ListBuffer` (O(1) queue), `TimedMap` (auto-expiring cache)
-- **Primitives** — `noop`, `identity`, `truly`, `falsely`, `arrify`
-- **Platform detection** — `isWindows`, `darwin`, `linux`, `isNodejs`
-
-## Quick Start
-
-```typescript
-import { isString, delay, omit, retry } from '@omnitron-dev/common';
-
-if (isString(value)) {
-  console.log(value.toUpperCase()); // narrowed to string
-}
-
-await delay(1000);
-
-const safe = omit(user, ['password', 'ssn']);
-
-const data = await retry(() => fetch('/api'), { max: 3, backoffBase: 1000 });
+const publicRecord = omit({ id: '42', password: 'private' }, ['password']);
 ```
+
+`@omnitron-dev/common/process-identity` provides host boot and native process lifetime observations on supported operating systems. Keep that Node-only entry outside browser bundles.
+
+## Documentation
+
+[Public API](src/index.ts) · [Package exports](package.json) · [Omni](../../README.md)
 
 ## License
 
-MIT
+[MIT](../../LICENSE).

@@ -1,251 +1,45 @@
 # @omnitron-dev/titan-lumen
 
-Lumen's Titan integration provides document reads, search, theorem graphs and
-controlled authoring through Netron. The AST compiler remains in
-`@omnitron-dev/lumen-ast`; transport authentication and invocation isolation
-belong to Titan's Netron core.
+Lumen document services for Titan applications. The module exposes authorized reads, search, theorem graphs and optional durable authoring through the application's existing Netron peer.
 
-## Integrating with an existing Titan application
+## Capabilities
 
-Register `LumenModule.forRoot({ docsDir: '/absolute/docs' })` in the application's
-modules, or use `LumenModule.forRootAsync({ useFactory, inject })` for configuration
-provided by DI. Resolve `LumenService` and expose it on the application's
-Netron peer using `peer.exposeService(app.resolve(LumenService))`. The application owns its
-listeners and authentication adapter; Lumen does not need a second HTTP auth
-middleware.
+- Document reads and search projected for the admitted caller.
+- Symbol contracts and theorem graphs.
+- Explicitly authorized playground execution.
+- Revision-checked editing backed by the application's database.
 
-The equivalent explicit composition is:
+## Quick start
+
+```sh
+pnpm add @omnitron-dev/titan-lumen
+```
 
 ```ts
-import { LumenService } from '@omnitron-dev/titan-lumen';
+import { LumenModule } from '@omnitron-dev/titan-lumen';
 
-const documents = new LumenService({
+export const documents = LumenModule.forRoot({
   docsDir: '/absolute/docs',
   enablePlayground: false,
 });
-await netron.peer.exposeService(documents);
 ```
 
-Configure authentication on the host Netron before opening its listeners. Use the
-same application authentication/session provider as other Titan services. Never
-accept a role list or `valid: true` in a request as proof of identity.
+Add the module to an existing Titan application. Resolve `LumenService` and expose it with `peer.exposeService(app.resolve(LumenService))` on that application's Netron peer. The host owns its listeners and authentication provider. `LumenServiceContract` describes the published `Lumen` service; no separate controller or request-supplied session is needed.
 
-## Published RPC surface
+An empty corpus returns empty results. A missing configured corpus is an error. Direct in-process reads outside an admitted invocation are anonymous.
 
-The service name is `Lumen`. `LumenServiceContract` describes its network methods:
+## Authorization and editing
 
-| Method | Result | Authorization |
-| --- | --- | --- |
-| `search(query, options?)` | Ranked document hits | Public projection or verified caller's document access |
-| `getDocument(path)` | Authorized Markdown or `null` | Document and node access |
-| `getEditableDocument(path)` | Whole document, revision, hash and access or `null` | `lumen.documents.write` and access to every section |
-| `getSymbolContract(symbol)` | Symbol contract or `null` | Configured source access, internal by default |
-| `getTheoremGraph()` | Theorem nodes and edges | Authorized document projection |
-| `executePlayground(code)` | Execution result or error | `lumen.playground.execute` |
-| `saveLiveEdit(payload)` | Revision or conflict | `lumen.documents.write` |
+Netron supplies the verified invocation identity. `getEditableDocument` and `saveLiveEdit` require `lumen.documents.write`; `executePlayground` independently requires `lumen.playground.execute`. Caller-supplied roles or extra arguments cannot grant those permissions.
 
-Grant mutation permissions through the host application's role/permission system.
-They are independent: an editor can receive document write access without code
-execution access. The same requirements apply to HTTP and WebSocket; missing
-identity returns 401 and insufficient permissions return 403.
+Without `liveEdit`, the service reads files and refuses edits. Durable authoring uses `liveEdit: { corpusId, connectionName }`, the existing `TitanDatabaseModule`, and PostgreSQL or file-backed SQLite. Apply `lumenAuthoringMigration` through the application's migration workflow before enabling it. An unavailable store or missing schema is an error, not a fallback to stale files.
 
-Netron supplies the admitted identity through `getCurrentInvocationContext()`.
-`session` is not part of the wire contract. Extra arguments cannot impersonate an
-administrator. Search filters cannot override the verified caller's roles.
-`getOptions()` and `getAccessFilterService()` are internal service APIs and are
-not published RPC methods.
+`getEditableDocument` returns the original source, revision and hash only when the caller can edit the whole document. Pass that source to Prism's `ResearchEditor.initialSource`, then save snapshot `getSource()` with `baseRevision` and `baseHash`. `saveLiveEdit` reports a conflict when those no longer match. Projected Markdown is for reading or export, not overwriting the original.
 
-Direct in-process reads outside an admitted Netron invocation are anonymous.
-Mutations require the corresponding admitted service method and a verified
-identity. There is one service and one contract; there are no session arguments,
-controller wrappers or alternate service tokens. Titan resolves the service and
-its `AccessFilterService` and `LiveEditService` collaborators by their classes.
-`LUMEN_OPTIONS_TOKEN` is the configuration token.
+## Documentation
 
-An empty corpus returns empty results. A missing configured corpus reports an
-error on document, search and graph reads; it never substitutes demonstration
-documents or symbol contracts.
+[Public API](src/index.ts) · [Package exports](package.json) · [Lumen](../lumen/README.md) · [Prism authoring](../prism/README.md#research-documents-and-authoring)
 
-## Durable authoring
+## License
 
-Without `liveEdit`, Lumen reads the filesystem and refuses edits. Enable authoring
-with `liveEdit: { corpusId: 'product-docs', connectionName: 'default' }` and the
-application's `TitanDatabaseModule`. Both synchronous and asynchronous Lumen
-module providers resolve that module's `DATABASE_MANAGER`; they do not create
-another pool. The connection must use PostgreSQL or file-backed SQLite with its
-native driver installed. Choose a stable `corpusId` shared by every instance that
-serves the same corpus. Different corpus IDs have independent document identities.
-
-Apply the exported migration through the application's explicit migration workflow
-before enabling authoring. Runtime dependency injection never creates tables:
-
-```ts
-import { MigrationRunner } from '@omnitron-dev/titan-database/migration';
-import { lumenAuthoringMigration, type LumenAuthoringDatabase } from '@omnitron-dev/titan-lumen';
-
-const db = await databaseManager.getConnection<LumenAuthoringDatabase>('default');
-await new MigrationRunner(db, [lumenAuthoringMigration], {
-  useTransactions: true,
-  enforceChecksums: true,
-}).up();
-```
-
-An unavailable database or missing migration is an error for enabled authoring,
-including document reads, search and graph operations. No in-memory store or
-stale filesystem substitute is used.
-
-Editors first call `getEditableDocument('guides/start.pdx')`, then send its exact
-`revision` and SHA-256 `hash` as `baseRevision` and `baseHash` with each edit:
-
-```ts
-const document = await lumen.getEditableDocument('guides/start.pdx');
-if (document) {
-  const saved = await lumen.saveLiveEdit({
-    docId: document.docId,
-    baseRevision: document.revision,
-    baseHash: document.hash,
-    mode: 'replace',
-    patch: updatedMarkdown,
-  });
-  if (saved.conflict) {
-    // Reload the current revision and let the editor reconcile its changes.
-  }
-}
-```
-
-Paths include their `.pdx`, `.md` or `.mdx` extension and must be canonical relative
-paths. A disk document starts at revision zero. Its first successful edit stores
-that exact seed, provenance and hash as history revision zero and the edit as
-revision one, in the same transaction. The database then owns that path: later
-filesystem changes cannot replace it. A new document uses revision zero and the
-SHA-256 of the empty string as its base. `append`, `replace` and one-based
-`line-range` edits preserve submitted whitespace.
-
-Current content and append-only revision history commit atomically. A database
-compare-and-swap checks both revision and hash. Competing editors receive a
-conflict; SQLite snapshot conflicts and PostgreSQL serialization/deadlock errors
-use TitanDatabase's bounded whole-transaction retry. Connection failures are
-reported. Success and `live-edit` notifications occur only after commit. The
-author comes from the verified Netron invocation; client `author` and `access`
-fields are rejected. Existing content is authorized before conflict details are
-returned; every section of edited content is authorized before commit. Reads and
-edits verify stored revision numbers, UTF-8 byte lengths and content hashes;
-corruption is an explicit error.
-
-Accepted documents are never evicted. Writes default to 256 KiB per patch and
-2 MiB per document, configurable up to 8 MiB. `readCorpus` checks entry and byte
-metadata in one consistent database snapshot before reading content, then the
-service merges unowned filesystem documents within the remaining corpus budget.
-Document reads, search and graph therefore share the same durable source.
-Internal `getHistory` requires an authenticated actor and access to both the
-current document and each returned revision; it defaults to 50 versions and
-8 MiB per page, with hard bounds of 100 versions and 64 MiB. History is not an
-additional public RPC.
-
-## MCP on the existing Netron HTTP host
-
-`LumenMcpAdapter` uses the official MCP SDK for protocol negotiation, schemas and
-errors. It translates tool/resource calls into the host's native Netron HTTP
-entry point in process. Authorization headers and the host-supplied connection
-address enter the same authentication, permission and rate-limit path as RPC.
-The adapter has no listener, authentication callback or mutable caller session.
-
-```ts
-import { HttpNativeServer } from '@omnitron-dev/titan/netron/transport/http';
-import { LumenMcpAdapter } from '@omnitron-dev/titan-lumen';
-
-let mcp: LumenMcpAdapter;
-const http = new HttpNativeServer({
-  host: '127.0.0.1',
-  port: 8081,
-  customRoutes: [async (request, { remoteAddress }) =>
-    new URL(request.url).pathname === '/mcp'
-      ? mcp.handleRequest(request, remoteAddress)
-      : null],
-});
-http.setPeer(netron.peer);
-mcp = new LumenMcpAdapter({
-  http,
-  resources: ['guides/start.pdx'],
-  allowedHostnames: ['localhost', '127.0.0.1', '[::1]'],
-  allowedOriginHostnames: ['localhost', '127.0.0.1', '[::1]'],
-});
-await http.listen();
-```
-
-The adapter publishes `search_corpus`, `get_document`, `lumen_inspect_ast` and
-`lumen://corpus/{path}` resources. Resource lists contain only documents readable
-by the caller; every read re-enters the service, so no independent content store
-can bypass document access. Tool schemas reject undeclared role/session fields.
-
-The endpoint uses stateless Streamable HTTP with JSON responses. POST is the
-only accepted method; it does not open persistent SSE sessions. The default
-body limit is 1 MiB. Configure host/origin hostname allowlists for the actual
-deployment; they default to loopback names. Set `rpcPath` when the host changes
-its native invocation route. The host owns TLS, authentication and shutdown.
-See the [official TypeScript MCP SDK](https://github.com/modelcontextprotocol/typescript-sdk).
-
-## Qualification status
-
-Server playground calls use the shared Lumen WASM interpreter in a fresh Node
-Worker with an empty environment. Netron checks `lumen.playground.execute`
-before admitting a call. At most four workers run per service; excess calls
-receive 429, and capacity is released only after worker termination. The outer
-five-second timer includes initialization. Execution, memory, source and result
-limits are enforced by `@omnitron-dev/lumen-ast/execution`; no `node:vm` or host
-JavaScript fallback is used. Keep `enablePlayground: false` when execution is
-unnecessary; public read access never grants execution permission.
-
-The 0.4.0 audit is in progress. Do not infer that a test with a PDF header,
-hydration flag or mock request establishes production readiness. The repository's
-`audit/LUMEN-0.4.0.md` records release qualification work. Durable authoring is
-covered by real SQLite and PostgreSQL transactions, independent connection races, commit failure,
-restart, native RPC and shared document/search/graph tests. The isolated execution engine has
-local negative tests through actual Netron, including memory exhaustion,
-constructor escapes and concurrent admission. Browser and final package checks
-remain part of the release gate. Nothing in this package's audit
-activates changes on running Omnitron controllers or applications.
-
-## Corpus bounds and source visibility
-
-Filesystem documents use canonical relative paths. Symlinks, hidden paths,
-`node_modules` and generated `dist` trees are excluded. A missing document is
-`null`; a missing configured directory, invalid UTF-8 or failed read is an error.
-Search and theorem graphs consume the same complete, deterministic inventory.
-The default inventory budget is 10,000 entries, 64 MiB and 32 directory levels;
-`corpusLimits` configures these bounds. Documents are limited to 5 MiB and source
-files to 2 MiB. Exceeding a bound fails the request rather than returning a
-successful partial corpus. Search accepts limits from 0 to 100 and queries of
-at most 4 KiB.
-
-Each service admits at most four concurrent corpus reads, independently of its
-four playground workers. Read admission covers the complete operation through
-authorization and projection; excess calls receive 429 and can retry after the
-current operations finish. An overload is an error, not an empty search result.
-
-## PostgreSQL qualification
-
-The dedicated `test:postgres` target exercises the built package on a real
-PostgreSQL 16 container through TitanDatabase and Kysera. Build the SDK first,
-then set `LUMEN_POSTGRES_DATA_ROOT` to an existing absolute directory reserved
-for disposable test data. On this development Mac, use the mounted AGI workspace.
-The regular unit target excludes this container suite; the explicit PostgreSQL
-target fails if Docker, PostgreSQL or test storage is unavailable.
-
-The suite creates its own Docker network, loopback port and data directory.
-The existing DockerTestManager enforces 1 CPU, 512 MiB of memory and 128 processes
-from container creation; tests inspect the actual Docker configuration. Cleanup
-owns only these resources, and the global orphan reaper is disabled for this run.
-No configured application database is used.
-
-Qualification covers migration and checksum enforcement, races between eight
-independent PostgreSQL connections, rollback when a deferred constraint rejects
-COMMIT, canonical transaction retry after SQLSTATE `40001`, and history/source
-hashes after restarting the isolated PostgreSQL server. PostgreSQL durability
-settings remain enabled throughout the run.
-
-`sourceAccess` and `knowledgeBaseAccess` default to `internal`, independently of
-public Markdown. Set either to `public` only when that entire configured source
-is intended for anonymous readers. Per-entry and section restrictions still
-apply to knowledge-base search results. A failed KB query or source scan is
-reported explicitly; it does not silently fall back to a different corpus.
+[MIT](../../LICENSE).

@@ -1,6 +1,18 @@
 # @omnitron-dev/netron-http-core
 
-Use these primitives when implementing an HTTP transport for Netron. Titan and the Netron browser client already expose the fluent query API to applications.
+Shared HTTP request composition for Titan transports and Netron browser clients. Applications normally use the client API; transport authors implement `IHttpRequestExecutor`.
+
+## Capabilities
+
+- Fluent request builders with input, deadlines and execution options.
+- Reusable cache and retry managers.
+- Configurable service proxies.
+
+## Quick start
+
+```sh
+pnpm add @omnitron-dev/netron-http-core
+```
 
 ```ts
 import { QueryBuilder, type IHttpRequestExecutor } from '@omnitron-dev/netron-http-core';
@@ -14,6 +26,12 @@ export function readDevice(transport: IHttpRequestExecutor, id: string) {
 }
 ```
 
-Implement `IHttpRequestExecutor` to send requests over your transport. Pass an `HttpCacheManager` and a `RetryManager` to the builder when queries need caching or retries. Scope shared cached results to the caller's access and mark a request idempotent only when the service guarantees that repeating it is safe. Use `ConfigurableProxy` to apply query options across calls to a service.
+Scope shared cache entries to the caller's authority. Enable retries only for operations whose service contract permits repetition; a transport failure can leave the outcome unknown.
 
-[HTTP protocol reference](https://omnitron.dev/docs/reference/protocol)
+## Documentation
+
+[Public API](src/index.ts) · [Package exports](package.json) · [Omni](../../README.md)
+
+## License
+
+[MIT](../../LICENSE).

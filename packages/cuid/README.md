@@ -1,27 +1,34 @@
 # @omnitron-dev/cuid
 
-> Collision-resistant unique ID generation
+Generate compact string identifiers from a timestamp, counter, fingerprint and hashed entropy.
 
-Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framework.
+## Capabilities
 
-## Installation
+- A default 16-character identifier beginning with a lowercase letter.
+- `isCuid` for format validation.
+- `createOptimizedCuid` for a configured generator.
 
-```bash
+## Quick start
+
+```sh
 pnpm add @omnitron-dev/cuid
 ```
 
-## Overview
+```ts
+import { cuid, isCuid, createOptimizedCuid } from '@omnitron-dev/cuid';
 
-A fast, collision-resistant unique identifier generator. Produces URL-safe, monotonically sortable IDs suitable for distributed systems where coordination-free ID generation is required.
-
-## Quick Start
-
-```typescript
-import { cuid } from '@omnitron-dev/cuid';
-
-const id = cuid(); // e.g. "clh3k7v0a0000..."
+const id = cuid();
+console.log(isCuid(id)); // true
+const createLongId = createOptimizedCuid({ length: 32 });
+console.log(createLongId());
 ```
+
+The encoded hash does not preserve timestamp order. Entropy uses `Math.random`; use a cryptographic token generator for bearer credentials. Format validation does not prove uniqueness or origin; use a uniqueness constraint where your storage requires one.
+
+## Documentation
+
+[Public API](src/index.ts) · [Package exports](package.json) · [Omni](../../README.md)
 
 ## License
 
-MIT
+[MIT](../../LICENSE).

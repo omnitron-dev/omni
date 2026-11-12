@@ -1,37 +1,46 @@
 # @omnitron-dev/titan-telemetry-relay
 
-> Store-and-forward telemetry pipeline for distributed Titan applications
+A store-and-forward relay for application logs, metrics, events, health reports and alerts. Producers buffer entries and replay their write-ahead log when the authenticated recipient becomes available.
 
-Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framework.
+## Capabilities
 
-## Installation
+- Bounded memory buffering and file-backed WAL segments.
+- Producer and aggregator roles with application-supplied transports.
+- Stable entry IDs across retries and replay.
+- Delivery statistics, error reporting and shutdown flushing.
 
-```bash
+## Quick start
+
+```sh
 pnpm add @omnitron-dev/titan-telemetry-relay
 ```
 
-## Overview
+```ts
+import { TelemetryRelayService, type TelemetryTransport } from '@omnitron-dev/titan-telemetry-relay';
 
-The relay batches application logs, metrics, health reports, events and alerts.
-Configure a producer with a stable `nodeId` and a dedicated WAL directory.
-Install a `TelemetryTransport` that authenticates the recipient. On the
-receiving side, bind the source to the authenticated peer before calling
-`receive(nodeId, entries)`.
+export async function startRelay(transport: TelemetryTransport) {
+  const relay = new TelemetryRelayService({
+    role: 'producer',
+    nodeId: 'api-1',
+    wal: { directory: './var/telemetry/api-1' },
+    transport,
+  });
+  await relay.start();
+  relay.emitLog('api', 'info', 'Application started');
+  return relay;
+}
+```
 
-A transport or aggregator returns the number of entries durably accepted.
-Only a full acknowledgement across the replay clears the WAL. A timeout,
-partial count, malformed response or unreadable segment keeps the batch
-pending. Retry can deliver entries the sink already committed. Newly recorded
-entries have stable IDs for sink-side deduplication. Older WALs remain readable.
+Supply a transport that authenticates its recipient. Use a stable, unique `nodeId` and a dedicated WAL directory. On the receiving side, bind the source to the authenticated peer before calling `receive(nodeId, entries)`. Await `relay.stop()` before shutdown.
 
-`stats().lastError` describes the latest failed delivery. The memory buffer
-reports capacity drops in `buffer.totalDropped`. Entries become durable when
-the WAL flush completes. Segment rotation retains up to `wal.maxSegments`;
-size that limit for the expected outage. The WAL reports capacity evictions
-in `evictedSegments` and `evictedBytes` since startup. Await `stop()` to flush every memory
-batch before shutdown. With `wal: false`, unresolved entries stay in process
-memory and a failed final flush rejects `stop()`.
+Entries become durable when the WAL flush completes. A transport returns the number durably accepted; partial, invalid or failed acknowledgements retain pending data. Retries may repeat committed entries, so the sink must deduplicate by entry ID when required.
+
+Size memory and WAL limits for the expected outage. Capacity evictions are reported, not silently converted into successful delivery. With `wal: false`, unresolved entries remain in memory and a failed final flush rejects `stop()`.
+
+## Documentation
+
+[Public API](src/index.ts) · [Transport and storage contracts](src/types.ts) · [Omni](../../README.md)
 
 ## License
 
-MIT
+[MIT](../../LICENSE).

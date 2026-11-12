@@ -1,36 +1,33 @@
 # @omnitron-dev/msgpack
 
-> Extensible MessagePack serializer with custom type support and streaming
+MessagePack serialization with JavaScript value extensions. Netron uses it for binary RPC payloads.
 
-Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framework.
+## Capabilities
 
-## Installation
+- Encode and decode values, including registered Date, Map, Set, RegExp and BigInt extensions.
+- Create isolated `Serializer` instances and register application codecs.
+- Read partial buffers with `tryDecode`; access buffer utilities through `./smart-buffer`.
 
-```bash
+## Quick start
+
+```sh
 pnpm add @omnitron-dev/msgpack
 ```
 
-## Overview
-
-High-performance MessagePack implementation for Node.js. Compliant with the MessagePack spec, with built-in support for JavaScript-native types (Date, Map, Set, RegExp, BigInt, Error) and a custom type extension system. Used as the default wire format for Netron RPC.
-
-### Key Features
-
-- **Full spec compliance** — all MessagePack types
-- **Native JS types** — Date, Map, Set, RegExp, BigInt, Error serialization out of the box
-- **Custom extensions** — `serializer.register(typeId, constructor, encoder, decoder)`
-- **Streaming** — incremental decode via `tryDecode` for handling partial buffers
-- **Error preservation** — stack traces and custom properties survive round-trips
-
-## Quick Start
-
-```typescript
+```ts
 import { encode, decode } from '@omnitron-dev/msgpack';
 
-const buf = encode({ name: 'John', joined: new Date() });
-const obj = decode(buf); // Date instance preserved
+const bytes = encode({ title: 'Guide', created: new Date('2026-01-01') });
+const value = decode(bytes);
+console.log(value.created instanceof Date); // true
 ```
+
+Custom extension IDs and codecs must agree at both ends. Decoding reconstructs values; application payload validation and authorization belong to the caller.
+
+## Documentation
+
+[Public API](src/index.ts) · [Package exports](package.json) · [Omni](../../README.md)
 
 ## License
 
-MIT
+[MIT](../../LICENSE).

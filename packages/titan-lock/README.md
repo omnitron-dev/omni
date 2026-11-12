@@ -1,19 +1,33 @@
 # @omnitron-dev/titan-lock
 
-> Distributed lock module for the Titan framework
+Redis-backed lock ownership, expiry and renewal for cooperating Titan services.
 
-Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framework.
+## Capabilities
 
-## Installation
+- Atomic acquisition, release and extension with ownership IDs.
+- Configurable TTL, retries and backoff.
+- `withLock` and decorators for protected operations.
 
-```bash
+## Quick start
+
+```sh
 pnpm add @omnitron-dev/titan-lock
 ```
 
-## Overview
+```ts
+import { TitanLockModule } from '@omnitron-dev/titan-lock';
 
-Redis-backed distributed locking for Titan applications. Provides mutex and read-write lock primitives with automatic TTL expiration and deadlock prevention.
+export const lock = TitanLockModule.forRoot({ keyPrefix: 'app:locks', defaultTtl: 30_000 });
+```
+
+Add this dynamic module to the `imports` of an existing Titan application.
+
+Register Titan Redis first; the lock module resolves its client through `REDIS_MANAGER`. `withLock` renews by default while its callback runs. Applications still own transaction boundaries and reconciliation after a lost response or expired lease. A lock does not provide a universal deadlock-prevention guarantee.
+
+## Documentation
+
+[Public API](src/index.ts) · [Package exports](package.json) · [Omni](../../README.md)
 
 ## License
 
-MIT
+[MIT](../../LICENSE).

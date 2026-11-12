@@ -1,26 +1,33 @@
 # @omnitron-dev/titan-events
 
-> Event bus module for the Titan framework — decorators, validation, scheduling
+An application event bus integrated with Titan's dependency injection and lifecycle.
 
-Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framework.
+## Capabilities
 
-## Installation
+- Decorator-based handlers and programmatic subscriptions.
+- Event validation, wildcard matching and scheduled emission.
+- Awaitable asynchronous delivery with explicit error policies.
 
-```bash
+## Quick start
+
+```sh
 pnpm add @omnitron-dev/titan-events
 ```
 
-## Overview
+```ts
+import { EventsModule } from '@omnitron-dev/titan-events';
 
-Provides an event bus for Titan applications with decorator-based subscription (`@EventHandler`), event validation, wildcard patterns, and scheduled event emission. Builds on `@omnitron-dev/eventemitter`.
+export const events = EventsModule.forRoot({});
+```
 
-## Failure semantics
+Add this dynamic module to the `imports` of an existing Titan application.
 
-Await `emitAsync` when the producer must observe handler failures. Regular and
-wildcard handlers both propagate errors, including synchronous throws; multiple
-failed groups use `AggregateError`. A handler's configured error policy still
-applies. Emission is not a transaction and cannot undo completed side effects.
+Await `emitAsync` when the producer must observe handler failures. Regular and wildcard handlers propagate failures; multiple failed groups use `AggregateError`. Handler error policies still apply. Event delivery is not a transaction and cannot undo completed side effects.
+
+## Documentation
+
+[Public API](src/index.ts) · [Package exports](package.json) · [Omni](../../README.md)
 
 ## License
 
-MIT
+[MIT](../../LICENSE).

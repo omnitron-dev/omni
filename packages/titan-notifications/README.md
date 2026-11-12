@@ -1,44 +1,39 @@
 # @omnitron-dev/titan-notifications
 
-> Multi-channel notification delivery for the Titan framework
+Notification delivery with pluggable channels and Redis-backed Rotif messaging.
 
-Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framework.
+## Capabilities
 
-## Installation
+- Durable broker publication, consumer groups and dead-letter queues.
+- Configurable notification channels and lifecycle observers.
+- A diagnostics adapter through `./diagnostics` using the same transport and queue.
 
-```bash
+## Quick start
+
+```sh
 pnpm add @omnitron-dev/titan-notifications
 ```
 
-## Overview
+```ts
+import { NotificationsModule } from '@omnitron-dev/titan-notifications';
 
-Provides multi-channel notification delivery with Rotif messaging and dead-letter queue (DLQ) support. Channels are pluggable — add custom delivery backends alongside built-in ones.
+export const notifications = NotificationsModule.forRoot({
+  redis: { host: '127.0.0.1', port: 6379 },
+});
+```
 
-## Operational diagnostics
+Add this dynamic module to the `imports` of an existing Titan application.
 
-The optional `@omnitron-dev/titan-notifications/diagnostics` entry point exports
-`DiagnosticNotificationsModule`, `DiagnosticNotificationSink` and
-`DIAGNOSTIC_NOTIFICATION_SINK`. Pass a configured `NotificationsModule.forRoot`
-or `forRootAsync` module; the adapter uses its transport, queue, deduplication and
-DLQ. No messenger integration or automatic publication is enabled by importing it.
+Use a dedicated configured Redis service and register consumers for the channels you publish. The `./rotif` entry exposes the messaging layer directly.
 
-Delivery rejects when no consumer accepts the event or any matching stream
-fails to acknowledge publication. A Redis failure or invalid acknowledgement
-never counts as a duplicate. Partial fan-out remains retryable: reuse the event
-identity so confirmed streams deduplicate while failed streams can accept it.
-Transport and error-observer causes are retained with credential redaction.
-A queued receipt confirms broker acceptance, not human receipt; consumers must
-remain idempotent outside the 24-hour deduplication window.
+Delivery rejects if no consumer accepts the event or a matching stream fails to acknowledge publication. Reuse stable event identities when retrying partial fan-out. A broker receipt confirms queue acceptance, not end-user delivery; consumers must make external effects idempotent.
 
-Explicit deduplication keys preserve punctuation through percent encoding.
-When upgrading, keys previously changed by underscore substitution start a new
-broker deduplication window. Consumer idempotency must cover retries that cross
-that deployment boundary.
+Importing `./diagnostics` does not enable a messenger or publish events. Pass an explicitly configured notification module to its adapter. Observer failures are reported without resending notifications whose delivery already committed.
 
-Notification lifecycle observer failures are logged and retained in health until
-the next successful invocation of that event. They do not resend a notification
-whose delivery has already committed.
+## Documentation
+
+[Public API](src/index.ts) · [Package exports](package.json) · [Omni](../../README.md)
 
 ## License
 
-MIT
+[MIT](../../LICENSE).

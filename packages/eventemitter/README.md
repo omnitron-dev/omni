@@ -1,40 +1,35 @@
 # @omnitron-dev/eventemitter
 
-> Async event emitter with parallel, serial, and reduce emission patterns
+Synchronous and asynchronous event delivery for application code. The implementation owns its listener registry and supports Node.js, Bun and browser callers.
 
-Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framework.
+## Capabilities
 
-## Installation
+- Parallel, serial and reduction-based asynchronous emission.
+- Optional concurrency limits and unsubscribe functions.
+- Separate enhanced emitter, history, wildcard, scheduling and metrics APIs.
 
-```bash
+## Quick start
+
+```sh
 pnpm add @omnitron-dev/eventemitter
 ```
 
-## Overview
-
-Built on top of eventemitter3, this package adds async-first emission patterns with configurable concurrency control. Used internally throughout Titan and Netron for decoupled, event-driven communication.
-
-### Key Features
-
-- **Emission patterns** — `emitParallel`, `emitSerial`, `emitReduce`, `emitReduceRight`
-- **Concurrency control** — limit concurrent listener executions
-- **Subscription management** — `subscribe()` returns an unsubscribe function
-- **Cross-platform** — works in Node.js and browsers
-
-## Quick Start
-
-```typescript
+```ts
 import { EventEmitter } from '@omnitron-dev/eventemitter';
 
-const emitter = new EventEmitter();
-
-emitter.on('user:login', async (user) => {
-  await analytics.track('login', user);
+const events = new EventEmitter(4);
+events.on('saved', async (id: string) => {
+  console.log('Saved', id);
 });
-
-await emitter.emitParallel('user:login', { id: 123 });
+await events.emitParallel('saved', 'record-42');
 ```
+
+Await asynchronous emission when the producer needs completion or failure from its listeners. Delivery within a process does not provide a durable queue or roll back side effects.
+
+## Documentation
+
+[Public API](src/index.ts) · [Package exports](package.json) · [Omni](../../README.md)
 
 ## License
 
-MIT
+[MIT](../../LICENSE).

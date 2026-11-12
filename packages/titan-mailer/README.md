@@ -1,175 +1,49 @@
 # @omnitron-dev/titan-mailer
 
-Transactional email for Titan: lifecycle-managed Nodemailer SMTP pools, typed templates,
-a concrete email notification channel, and a durable outbox consumer using Titan Notifications.
+Transactional email for Titan applications: managed SMTP pools, typed templates and optional durable delivery through Titan Notifications.
 
-## Application module
+## Capabilities
+
+- Bounded SMTP submission with lifecycle-managed connection pools.
+- Typed, renderer-independent templates and explicit plaintext bodies.
+- Notification workers that carry opaque delivery IDs through Redis.
+- A PostgreSQL outbox adapter that uses the application's existing database executor.
+
+## Quick start
+
+```sh
+pnpm add @omnitron-dev/titan-mailer
+```
 
 ```ts
-import { MailerModule, MailerService } from '@omnitron-dev/titan-mailer';
+import { MailerModule } from '@omnitron-dev/titan-mailer';
 
-const mailModule = MailerModule.forRoot({
-  smtp: process.env.SMTP_URL!, // smtps://...:465 or smtp://...:587 with STARTTLS
-  from: 'Research <noreply@example.org>',
-  pool: { maxConnections: 3 },
-  maxPending: 1000,
-});
-// Import mailModule in your Titan @Module; inject MailerService or MAILER.
+export function mail(smtp: string) {
+  return MailerModule.forRoot({
+    smtp,
+    from: 'Example <noreply@example.org>',
+    pool: { maxConnections: 3 },
+    maxPending: 1000,
+  });
+}
 ```
 
-`forRootAsync({ imports, inject, useFactory })` resolves configuration through Nexus.
-`verifyOnStart: true` performs SMTP authentication during provider creation. Otherwise
-call `verify()` from a readiness probe; it sends no email. Titan disposal calls
-`onDestroy()`, which stops new submissions, drains accepted operations and closes the pool.
-SMTP timeouts and `maxPending` bound waiting work. The caller owns admission/retry policy.
+Add the returned module to your Titan application and inject `MailerService` or `MAILER`. Supply an SMTP URL through application configuration. `verify()` checks the connection without sending mail; `verifyOnStart` enables that check during creation. Application shutdown drains accepted work and closes the pool.
 
-`send()` accepts **one envelope recipient**, explicit UTF-8 plaintext, optional HTML,
-memory-backed attachments and a stable Message-ID. It returns SMTP acceptance, not inbox
-delivery. Fan-out creates a separate durable delivery for each recipient, avoiding partial
-recipient success and accidental address disclosure. Arbitrary SMTP envelopes, filesystem
-paths, URL attachments, raw MIME and security overrides are not forwarded.
+`send()` accepts one envelope recipient, a plaintext body, optional HTML, memory-backed attachments and a stable Message-ID. It reports SMTP acceptance, not inbox delivery. TLS certificate verification is required; the explicit insecure option is restricted to loopback development servers.
 
-TLS certificate verification and TLS 1.2+ are mandatory. Cleartext is only available with
-`allowInsecureLocalhost: true` and a loopback host. SMTP URL query options are rejected.
-Public errors contain a classification, never credentials, server transcripts or bodies.
-`MailDeliveryError.retryable` distinguishes temporary failures from invalid/configuration/
-permanent failures. Nodemailer's hidden pool requeue is disabled: one queue owns retries.
+## Durable delivery
 
-## Templates
+Use `MailDeliveryWorker` from `@omnitron-dev/titan-mailer/notifications` with a notification transport, mailer and durable `MailOutbox`. Stop the worker before disposing its injected dependencies. Persist rendered messages in the application's business transaction; send only opaque IDs through Redis.
 
-```ts
-import { MailTemplates, escapeMailHtml } from '@omnitron-dev/titan-mailer';
-const templates = new MailTemplates<{ welcome: { name: string } }>({
-  welcome: ({ name }) => ({
-    subject: 'Welcome',
-    text: `Hello, ${name}`,
-    html: `<p>Hello, ${escapeMailHtml(name)}</p>`,
-  }),
-});
-const rendered = templates.render('welcome', { name: 'Ada' });
-```
+`@omnitron-dev/titan-mailer/postgres` exports `PostgresMailOutbox`, schema SQL and schema readiness requirements. Apply the schema through your migration workflow and pass an existing database executor. The adapter does not create a second pool or migrate on startup.
 
-The registry is renderer-independent: Handlebars, MJML or a function may return the same
-`RenderedMail` contract. Render trusted templates with escaped data, then persist that
-result in the application's business transaction. Rendering never makes a network request.
-Plaintext is required; the module does not invent it by stripping arbitrary scientific HTML.
+An SMTP server and a database cannot share one atomic transaction. A crash after SMTP acceptance can lead to a repeated delivery. Stable Message-IDs support reconciliation but do not guarantee recipient-side deduplication. The application owns retries, cancellation and terminal-failure handling.
 
-## Redis notification workers
+## Documentation
 
-Use `NotificationsModule.forRoot({ redis })`, inject `NOTIFICATIONS_TRANSPORT`, and create
-`MailDeliveryWorker` from `@omnitron-dev/titan-mailer/notifications` with that bus,
-a `MailOutbox`, `MailerService`, and `{ channel, group }`. Start it in the supervised
-worker process and stop it **before** destroying its database, mailer and transport.
-The worker does not own injected dependencies; the Titan container disposes them.
+[Public API](src/index.ts) · [Package exports](package.json) · [Notifications](../titan-notifications/README.md) · [Omni](../../README.md)
 
-`MailOutbox` is the application's durable transaction boundary:
+## License
 
-- `pending(limit)` lists due opaque IDs, without message bodies or credentials.
-- `deliver(id, send)` locks/claims one due row. Completed or cancelled IDs are harmless.
-- SMTP acceptance and deletion/completion are recorded in the same database transaction.
-- A failed attempt retains the message with backoff, or records an explicit terminal failure.
-- Expired/replaced tokens cancel their queued mail. Database failure rejects; Redis is not ACKed.
-
-Only an ID travels through Redis. Polling reconciliation republishes due IDs after lost or
-trimmed wake-ups; it is bounded by `batchSize`, `intervalMs` and `maxConcurrent`. Concurrent
-consumers share a group. Worker health covers transport connectivity and failed reconciliation/
-delivery. Failed delivery policy and administrative re-drive remain in the durable store.
-
-### PostgreSQL delivery store
-
-`@omnitron-dev/titan-mailer/postgres` exports `PostgresMailOutbox`, the database port,
-and `POSTGRES_MAIL_OUTBOX_SCHEMA`. Apply the schema in your application migration and
-pass an existing pool/transaction executor; the adapter never creates a second connection pool.
-An existing Titan database transaction can supply this executor. Applications with an older
-mail schema must migrate its columns explicitly before enabling the worker.
-
-The same entry exports `POSTGRES_MAIL_OUTBOX_REQUIREMENTS`, a plain-data readiness
-contract owned alongside the schema. Before starting the worker, pass an existing
-pool and this contract to `requirePostgresSchema` from
-`@omnitron-dev/titan-database/readiness` (or `@omnitron-dev/omnitron/readiness`).
-The check reads schema metadata; it neither migrates nor sends mail. It detects
-missing columns, changed retry defaults and lost delivery-ID uniqueness before
-delivery begins. The PostgreSQL entry and the root mailer keep their existing
-dependencies: the contract itself imports no database engine or driver.
-
-```typescript
-const outbox = new PostgresMailOutbox(database, {
-  messageIdDomain: 'example.org',
-  maxAttempts: 6,
-  retrySeconds: 30,
-  maxRetrySeconds: 3600,
-});
-```
-
-Insert the recipient, subject, `body` (plain text), optional HTML and expiry into `mail_outbox`
-inside the **same transaction as the business operation**. The application can add foreign
-keys to cancel queued messages when an account or one-time credential is deleted. Do not
-store SMTP credentials in the outbox.
-
-`status(id)` distinguishes queued, retrying, accepted, failed and expired. `failed(limit)`
-and `health()` return bounded operational information without addresses or message content.
-`health().oldestDueSeconds` identifies an overdue queue even when Redis reports connected.
-After repairing a terminal failure, `retry(id)` resets its retry budget, retains the stable
-Message-ID and cumulative attempt count, and refuses completed or expired messages.
-`pruneReceipts(days)` removes only old receipts with no remaining queued payload.
-No failed payload is silently dropped. Keep database backups and monitor failed/overdue mail.
-
-The delivery contract is **at least once**, assuming durable storage, eventual recovery and retry of retained failures. An SMTP server may accept a message before a worker
-loses its database transaction. A stable Message-ID aids correlation but cannot make SMTP
-and SQL atomic, and mail clients need not deduplicate it. Do not call this exactly once.
-Use a dedicated Redis database/ACL, bounded streams and retention for durable delivery events.
-
-`MailerEmailChannel` adapts the service to the standard notification channel registry.
-It shares, and does not close, its injected MailerService. Critical security messages use
-the durable outbox path, not optional marketing notification preferences.
-
-## Delivery diagnostics
-
-Use the `PostgresMailOutbox` option `onDelivery` to forward committed outcomes to
-Titan Logger and therefore Omnitron's Console and CLI:
-
-```ts
-const outbox = new PostgresMailOutbox(database, {
-  messageIdDomain: 'example.org',
-  onDelivery: (event) => {
-    const level = event.state === 'failed' ? 'error'
-      : event.state === 'accepted' ? 'info' : 'warn';
-    logger[level](
-      { event: 'mail.delivery', ...event },
-      `mail.delivery ${event.state} delivery=${event.deliveryId}`,
-    );
-  },
-});
-```
-
-`MailDeliveryEvent` contains `deliveryId`, `state`, `attempts` in the current retry
-cycle and `errorKind`. It has no recipient, body, credential or server response.
-The callback runs only after the transaction commits. Async callbacks are supported;
-a throwing or rejected observer cannot change a committed outcome or trigger another
-send. These are best-effort operational logs, not a second durable event queue:
-`status(id)` and the SQL receipt remain authoritative if the process exits before logging.
-
-`MailDeliveryWorker.onError(stage, code)` reports `outbox_read_failed`,
-`notification_publish_failed`, `outbox_delivery_failed` or `notification_ack_failed`.
-It never passes the raw exception. A recorded SMTP rejection belongs to the outbox
-outcome; it is not an uncommitted worker error. Report queue counts and
-`oldestDueSeconds` in an application's standard health checks as well as transport
-connectivity; a running process or connected Redis alone is insufficient.
-
-For authentication mail, record the request's `queued` or `skipped` decision in the
-application **after commit**, with its opaque delivery ID. Keep the public recovery
-response uniform for missing, disabled and existing accounts. Use a keyed, domain-separated
-subject reference for operator correlation, not a raw email or unkeyed email hash.
-An unknown account produces no mail; `queued` means SQL committed; `accepted` means
-SMTP accepted the message; none of these establishes arrival in the recipient's inbox.
-
-## Verification
-
-`pnpm test` uses a real local SMTP server and independent MIME parser, tests STARTTLS
-refusal, reply/header injection, mixed content, rejected recipients, queue capacity and
-actual Titan DI disposal. Worker contract tests cover lost wake-ups, failed commits, poison
-envelopes and draining. Consumer integration tests also exercise the complete PostgreSQL → Redis → SMTP path
-with competing workers and checks the resulting Mailpit messages.
-
-Design references: [NestJS Mailer](https://nest-modules.github.io/mailer/docs/configuration/),
-[Nodemailer SMTP](https://nodemailer.com/smtp), [pool lifecycle](https://nodemailer.com/smtp/pooled).
+[MIT](../../LICENSE).

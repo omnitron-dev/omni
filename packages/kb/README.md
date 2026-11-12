@@ -1,43 +1,45 @@
 # @omnitron-dev/kb
 
-> Knowledge base framework — code intelligence, semantic search, and documentation
+Extract TypeScript API knowledge and compose indexing, embedding and discovery services. The extraction CLI can run at build time; Titan integration is available separately.
 
-Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framework.
+## Capabilities
 
-## Installation
+- Source, decorator, dependency and repository-map extraction through ts-morph.
+- Separate `./extractors`, `./embeddings`, `./specs`, `./discovery` and `./surreal` entry points.
+- Optional Titan integration through `./titan`.
 
-```bash
+## Quick start
+
+```sh
 pnpm add @omnitron-dev/kb
 ```
 
-## Overview
+Create `kb/kb.config.ts` in a TypeScript package with a `tsconfig.json`:
 
-Provides tooling for extracting, indexing, and querying knowledge from codebases. Used by the Omnitron CLI to build searchable documentation from Titan ecosystem packages.
+```ts
+import { defineKnowledge } from '@omnitron-dev/kb';
 
-The published archive includes the `ts-morph` extraction toolchain and its resolved
-dependencies from the workspace lockfile. This preserves the corrected `minimatch`
-version when installing with npm or pnpm, without requiring consumer overrides.
-The public `./extractors` API and `kb-extract` command use that same toolchain.
-Publication checks install the archives in an independent consumer, replay its
-generated lockfile with `npm ci`, audit the production dependency tree and
-extract a TypeScript project.
-
-### Key Features
-
-- **Code extraction** — parse TypeScript sources into structured knowledge entries
-- **Semantic indexing** — build searchable indexes from extracted knowledge
-- **Configurable** — per-package `kb.config.ts` for extraction rules
-
-## Usage
-
-```bash
-# Extract knowledge from all packages
-pnpm kb:extract
-
-# Build index
-pnpm kb:index
+export default defineKnowledge({
+  module: 'example',
+  name: 'Example API',
+  tags: ['api'],
+  extract: { symbols: true, decorators: [], entryPoints: ['src/index.ts'] },
+  specs: './specs',
+});
 ```
+
+```sh
+pnpm exec kb-extract --root /path/to/package --out ./kb/generated
+```
+
+The CLI writes symbols, decorators, dependencies, a repository map and a manifest to the selected output directory. `--out` is relative to the invoking directory; `--root` selects the package to inspect.
+
+The published package includes its extraction toolchain. The repository's `kb:extract` and `kb:index` tasks are workspace commands, not additional installed CLI subcommands.
+
+## Documentation
+
+[Extraction command](src/cli/extract.ts) · [Public API](src/index.ts) · [Exports](package.json)
 
 ## License
 
-MIT
+[MIT](../../LICENSE).

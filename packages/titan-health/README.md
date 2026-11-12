@@ -1,29 +1,33 @@
 # @omnitron-dev/titan-health
 
-> Health check module for the Titan framework
+Compose health indicators and expose application liveness, readiness and operational reports.
 
-Part of the [Omni](../../README.md) monorepo — Fullstack Type-Safe RPC Framework.
+## Capabilities
 
-## Installation
+- Custom indicators for databases, Redis and external dependencies.
+- Aggregated health status and configurable check timeouts.
+- Optional Netron RPC with separate access to detailed reports.
 
-```bash
+## Quick start
+
+```sh
 pnpm add @omnitron-dev/titan-health
 ```
 
-## Overview
-
-Extensible health check system for Titan applications. Register custom health indicators (database, Redis, external APIs) and expose aggregated health status via RPC or HTTP endpoints.
-
-## RPC access
-
-Set `detailRpcRoles` in `TitanHealthModule.forRoot` or in the options returned by a `forRootAsync` factory. Use roles issued by the application's Netron authentication provider.
-
 ```ts
-TitanHealthModule.forRoot({ detailRpcRoles: ['operator', 'observer'] })
+import { TitanHealthModule } from '@omnitron-dev/titan-health';
+
+export const health = TitanHealthModule.forRoot({ detailRpcRoles: ['operator'] });
 ```
 
-On `Health@1.0.0`, `live()` and `ready()` accept anonymous probes and return status and timestamp. Reading the full report, indicator details, indicator list, uptime or aggregate health requires one of the configured roles. Omitting the option preserves public health RPCs. To disable RPC exposure entirely, set `enableRpcService: false` at module registration.
+Add this dynamic module to the `imports` of an existing Titan application.
+
+On `Health@1.0.0`, `live()` and `ready()` allow anonymous probes and return status and timestamp. With `detailRpcRoles`, detailed reports require an admitted matching role. Omitting that option leaves health RPCs public; set `enableRpcService: false` to disable RPC exposure.
+
+## Documentation
+
+[Public API](src/index.ts) · [Package exports](package.json) · [Omni](../../README.md)
 
 ## License
 
-MIT
+[MIT](../../LICENSE).

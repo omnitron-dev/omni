@@ -230,6 +230,9 @@ export class BackendSupervisorService {
     if (this.stopping || this.busy || this.operationClaimed || Date.now() < this.nextAttempt) return;
     this.busy = true;
     let finishInspection: (() => void) | undefined;
+    // Reading the durable hold and publishing its status are observations too.
+    // Reserve this phase before its first await so one command can wait for it.
+    this.inspection = new Promise<void>(resolve => { finishInspection = resolve; });
     try {
       const hold = await this.reviewedRecoveryHold();
       if (hold) {
@@ -240,12 +243,16 @@ export class BackendSupervisorService {
       const pid = marker.getPid();
       const live = pid && marker.isRunning();
       if (live && this.children.has(pid)) {
-        this.inspection = new Promise<void>(resolve => { finishInspection = resolve; });
         await this.isolation();
         if (this.state.state !== 'ready' || this.state.backendPid !== pid) await this.ready(pid);
         return;
       }
       if (live || this.children.size) throw new Error('A backend process still exists without verified readiness; no concurrent backend will be started');
+      // A reserved operator command wins before any automatic lifecycle effect.
+      // Otherwise promote this tick synchronously: commands cannot queue behind
+      // recovery or shutdown once this observation has become a mutation.
+      if (this.stopping || this.operationClaimed) return;
+      this.inspection = null;
       if (this.lastExit?.code === 0 && !new PidManager(path.join(this.config.directory, 'owner.pid')).isRunning()) {
         const receipt = await readPrivateRecord<{ clean?: boolean; pid?: number; bootId?: string }>(path.join(this.config.directory, 'managed-owner.json'));
         if (!receipt || receipt.clean !== true || !this.state.ownerPid || receipt.pid !== this.state.ownerPid

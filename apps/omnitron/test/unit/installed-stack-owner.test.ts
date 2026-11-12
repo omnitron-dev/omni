@@ -15,6 +15,7 @@ import { recoveryState } from '../../src/daemon/recovery-state.js';
 import { StateStore } from '../../src/daemon/state-store.js';
 import { DaemonStateStore } from '../../src/daemon/daemon-state-store.service.js';
 import { RELEASE_RECEIPT, releaseTreeDigest } from '../../src/release/runtime-provenance.js';
+import { stageApplicationClosure } from '../../src/release/application-closure.js';
 
 const scope = { project: 'sample', stack: 'prod' };
 const cleanups: Array<() => Promise<void>> = [];
@@ -51,13 +52,18 @@ async function fixture(bootstrapWorker = false) {
   });
   for (const app of ['api', 'worker']) {
     const root = path.join(dir, app);
-    await fs.mkdir(root);
-    await fs.writeFile(path.join(root, 'main.cjs'), "process.send({type:'ready'});setInterval(()=>{},1000);");
+    const source = path.join(dir, app + '-source');
+    await fs.mkdir(source);
+    await fs.writeFile(path.join(source, 'package.json'), JSON.stringify({ name: app, version: '1.0.0',
+      files: ['main.cjs', 'bootstrap.mjs', 'server.mjs', 'jobs.mjs'] }));
+    await fs.writeFile(path.join(source, 'main.cjs'), "process.send({type:'ready'});setInterval(()=>{},1000);");
     const bootstrap = bootstrapWorker && app === 'worker';
     if (bootstrap) {
-      await fs.writeFile(path.join(root, 'bootstrap.mjs'), "export default {name:'worker',version:'1',processes:[{name:'server',module:'./server.mjs'},{name:'jobs',module:'./jobs.mjs'}]}");
-      for (const filename of ['server.mjs', 'jobs.mjs']) await fs.writeFile(path.join(root, filename), 'export default class Worker {}');
+      await fs.writeFile(path.join(source, 'bootstrap.mjs'), "export default {name:'worker',version:'1',processes:[{name:'server',module:'./server.mjs'},{name:'jobs',module:'./jobs.mjs'}]}");
+      for (const filename of ['server.mjs', 'jobs.mjs']) await fs.writeFile(path.join(source, filename), 'export default class Worker {}');
     }
+    // Package the real classic child; topology execution above is a unit-test double.
+    await stageApplicationClosure(source, root, { name: app, script: 'main.cjs', env: { NODE_OPTIONS: '' } }, [dir]);
     const origin = { app, releaseId: 'r1', manifestSha256: 'a'.repeat(64), artifactSha256: 'b'.repeat(64),
       artifactBytes: 100, frameworkCommit: 'c'.repeat(40) };
     const receipt = { version: 1, root, origin, frameworkContentUnchanged: true, installedFrameworkCommit: origin.frameworkCommit,

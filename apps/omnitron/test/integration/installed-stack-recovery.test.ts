@@ -16,6 +16,7 @@ import { ClusterRecipient, ClusterSigner } from '../../src/cluster/stop-authorit
 import { releaseTreeDigest, RELEASE_RECEIPT } from '../../src/release/runtime-provenance.js';
 import { targetRuntime } from '../../src/release/target-runtime.js';
 import type { ReleaseManifest } from '../../src/release/manifest.js';
+import { stageApplicationClosure } from '../../src/release/application-closure.js';
 
 const isolatedHome = await vi.hoisted(async () => {
   const io = await import('node:fs/promises');
@@ -81,13 +82,16 @@ it('recovers a signed source-stack stop through its imported allocation and veri
   const service = new ProjectService(logger, owner, store);
   const projectDir = path.join(isolatedHome, 'project'), allocationDir = path.join(projectDir, 'allocation');
   const releaseRoot = path.join(isolatedHome, 'release');
+  const sourceRoot = path.join(isolatedHome, 'source');
   const source = { project: 'sample', stack: 'prod' };
   let name: string | undefined;
   try {
-    for (const dir of [projectDir, allocationDir, releaseRoot]) await fs.mkdir(dir);
-    await fs.writeFile(path.join(releaseRoot, 'app.cjs'), "process.send('ready');setInterval(()=>{},1000);");
+    for (const dir of [projectDir, allocationDir, sourceRoot]) await fs.mkdir(dir);
+    await fs.writeFile(path.join(sourceRoot, 'package.json'), JSON.stringify({ name: 'api', version: '1.0.0', files: ['app.cjs'] }));
+    await fs.writeFile(path.join(sourceRoot, 'app.cjs'), "process.send('ready');setInterval(()=>{},1000);");
+    await stageApplicationClosure(sourceRoot, releaseRoot, { name: 'api', script: 'app.cjs', env: { NODE_OPTIONS: '' } }, [isolatedHome]);
     const archive = path.join(isolatedHome, 'api.tgz');
-    await promisify(execFile)('tar', ['-czf', archive, '-C', releaseRoot, 'app.cjs']);
+    await promisify(execFile)('tar', ['-czf', archive, '-C', releaseRoot, '.']);
     const bytes = await fs.readFile(archive);
     const sha = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
     const artifact = { app: 'api', version: '1.0.0', bytes: bytes.length, sha256: sha(bytes) };

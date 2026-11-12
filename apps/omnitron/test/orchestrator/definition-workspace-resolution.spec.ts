@@ -27,7 +27,7 @@ beforeAll(async () => {
   await build({ entryPoints: [path.join(source, '../shared/fresh-module-reader.ts')], outdir: path.join(root, 'shared'),
     platform: 'node', target: 'node22', format: 'esm', bundle: false });
   await build({ entryPoints: [path.join(source, '../release/closure-library-path.ts')], outdir: path.join(root, 'release'),
-    platform: 'node', target: 'node22', format: 'esm', bundle: false });
+    platform: 'node', target: 'node22', format: 'esm', bundle: true, packages: 'external' });
   await build({
     entryPoints: ['bootstrap-loader', 'bootstrap-loader-child', 'ts-compiler', 'runtime-package-resolution'].map(name => path.join(source, name + '.ts')),
     outdir: runtime, platform: 'node', target: 'node22', format: 'esm', bundle: false,

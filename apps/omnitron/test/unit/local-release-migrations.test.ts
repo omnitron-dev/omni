@@ -127,13 +127,15 @@ it('validates exact PostgreSQL schemes, rejects unsupported options and keeps pr
 });
 
 it('does not report success when cancellation races with a zero exit code', async () => {
+  const f = await fixture('');
+  const [target] = await localMigrationTargets(legacyPlan(), f.entries, f.dev, f.verify);
   const controller = new AbortController();
-  vi.spyOn(ExecutionEngine.prototype, 'execute').mockImplementation(async () => {
+  const execute = vi.spyOn(ExecutionEngine.prototype, 'execute').mockImplementation(async () => {
     controller.abort();
     return { exitCode: 0, stdout: 'applied', stderr: '' } as never;
   });
-  await expect(executeLocalMigration({ app: 'main', environmentApp: 'main', service: 'postgres', database: 'main', mode: 'script', source: 'src/database/migrate.ts', release: COMPILED_MIGRATION_ENTRY, sealed: true,
-    script: '/not-executed.js', cwd: '/', nodeOptions: '' }, {}, { signal: controller.signal })).rejects.toThrow('outcome may be unknown');
+  await expect(executeLocalMigration(target!, {}, { signal: controller.signal })).rejects.toThrow('outcome may be unknown');
+  expect(execute).toHaveBeenCalledOnce();
 });
 
 it('continues serving actual Netron RPC while a sealed migration child is running', async () => {

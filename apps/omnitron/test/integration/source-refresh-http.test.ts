@@ -9,6 +9,8 @@ import { Errors } from '@omnitron-dev/titan/errors';
 import { DaemonRpcService } from '../../src/daemon/daemon.rpc-service.js';
 import { DEFAULT_ECOSYSTEM, DAEMON_SERVICE_ID } from '../../src/config/defaults.js';
 import { createAuthContextWrapper } from '../../src/services/auth-context.js';
+import { AppHandle } from '../../src/orchestrator/app-handle.js';
+import { OrchestratorService } from '../../src/orchestrator/orchestrator.service.js';
 import type { ProcessInfoDto } from '../../src/config/types.js';
 import type { SourceChangeRequest, SourceRefreshReceipt } from '../../src/shared/dto/services.js';
 
@@ -107,6 +109,31 @@ describe('source refresh over the authenticated Netron HTTP surface', () => {
     expect(read).not.toHaveBeenCalled();
     expect(observed).toEqual(online);
   });
+
+  it.each(['stale generation', 'watch disabled', 'watch unavailable', 'noncanonical name'] as const)(
+    'maps the actual owner admission refusal to its HTTP status: %s', async fault => {
+      const owner = new OrchestratorService(createNullLogger(), {} as never, {} as never, process.cwd());
+      const handle = new AppHandle({ name: binding.name, cwd: '/fixture/source', script: 'main.js' }, 'classic');
+      handle.status = 'online';
+      (owner as unknown as { handles: Map<string, AppHandle> }).handles.set(handle.name, handle);
+      owner.devMode = fault !== 'watch disabled';
+      const start = vi.spyOn(owner, 'startApp');
+      refresh.mockImplementationOnce((name, expected) => owner.restartAfterChange(name, expected));
+      const response = await request('operator', {
+        name: fault === 'noncanonical name' ? 'site' : handle.name,
+        generation: fault === 'stale generation' ? 'retired-generation' : handle.generation,
+        definitionRevision: handle.definitionRevision,
+      });
+      expect(response.status).toBe(fault === 'noncanonical name' ? 400 : 409);
+      expect(JSON.stringify(response.body)).toContain(fault === 'noncanonical name' ? 'canonical application name' :
+        fault === 'stale generation' ? 'source binding changed' : fault === 'watch disabled' ? 'watch policy' : 'Source watcher');
+      expect(refresh).toHaveBeenCalledTimes(1);
+      expect(start).not.toHaveBeenCalled();
+      expect(owner.getHandle(handle.name)).toBe(handle);
+      expect(handle.status).toBe('online');
+      expect(read).not.toHaveBeenCalled();
+      expect(manualRestart).not.toHaveBeenCalled();
+    });
 
   it.each(['unchanged generation', 'not online', 'removed', 'no owner result'] as const)(
     'refuses a successful response without a receipt: %s', async condition => {

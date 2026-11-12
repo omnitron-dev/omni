@@ -2,11 +2,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { assertStandaloneNodeConfiguration, copyStandaloneNode } from './standalone-node.js';
 
 const [sourceInput, outputInput, ...overlayInputs] = process.argv.slice(2);
 if (!sourceInput || !outputInput) throw Error('Usage: node freeze-backend.mjs <built-package> <new-directory> [package=compiled-package-directory ...]');
 const source = fs.realpathSync(sourceInput), output = path.resolve(outputInput);
 if (fs.existsSync(output)) throw Error('Runtime destination already exists; never overwrite a release');
+assertStandaloneNodeConfiguration(process.config.variables);
 const consoleSources = path.join(source, 'webapp/package.json');
 const isConsoleWorkspace = fs.existsSync(consoleSources) && JSON.parse(fs.readFileSync(consoleSources, 'utf8')).name === '@omnitron/console';
 if (!isConsoleWorkspace && fs.existsSync(path.join(source, 'webapp/index.html'))) {
@@ -44,9 +46,10 @@ for (const item of packages) {
   sealedPackages.add(item.root);
 }
 fs.mkdirSync(output, { mode: 0o700, recursive: true });
+// Admit and exercise the exact interpreter before materializing or sealing the
+// package graph. A byte-valid snapshot is not proof that its Node can start.
+await copyStandaloneNode(path.join(output, 'node'));
 await materializeGraph(packages, packages.map((_, id) => path.join(output, 'packages', String(id))), { verifiedPackages: sealedPackages });
-fs.copyFileSync(process.execPath, path.join(output, 'node'), fs.constants.COPYFILE_FICLONE);
-fs.chmodSync(path.join(output, 'node'), 0o500);
 // Some Linux copy implementations retain the source uid when copying as root
 // (including official Node archives). Only this new, isolated tree belongs to
 // the instance owner; never chown the serving runtime or relax its verifier.

@@ -129,6 +129,7 @@ jobs:
         run: >-
           node --test
           apps/omnitron/scripts/console-publication.test.mjs
+          apps/omnitron/scripts/freeze-backend.test.mjs
           apps/omnitron/test/runtime/fixture-cleanup.test.mjs
           apps/omnitron/test/runtime/fixture-master-options.test.mjs
           apps/omnitron/test/runtime/fixture-unit-files.test.mjs

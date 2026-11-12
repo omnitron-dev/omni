@@ -125,6 +125,14 @@ observes CI and qualifies native transition/rollback on each configured Node.
 The release policy is in `.xec/release-policy.mjs`. `--push-source` publishes
 only the reviewed source branch for CI; omit it when another system handles Git.
 Publication rechecks exact evidence and hashes without rebuilding or retesting.
+The runtime producer must be a standalone Node distribution on macOS or Linux
+(for example, select it explicitly with `nvm exec 24.13.0 pnpm exec xec release ...`).
+Shared Node/dependency builds, system ICU and external built-in modules are refused;
+Homebrew's dynamically linked Node is not a supported runtime producer. Before
+sealing, the freezer checks the copied interpreter's exact bytes and identity,
+starts it from another directory with an empty environment, and rejects loaded
+native objects outside OS library directories. This supports standalone builds;
+it does not certify arbitrary custom linker settings or dependencies loaded later.
 Read-only status and publication use the selected build's recorded producer Node,
 even when the publishing CLI runs on another supported Node. The current policy,
 release identity, runtime manifest and archive digests must still match exactly;

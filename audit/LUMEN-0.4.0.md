@@ -279,6 +279,36 @@ generation retention and shutdown cleanup. Both native cases and lint pass;
 logs are in `/Volumes/AGI-Dev/work/omnitron/lumen-serve-ci-72cc`. These scoped
 results do not qualify a later complete release candidate.
 
+The subsequent `973ab9ed` preparation passes all 35 archive/consumer gates and
+both local and Linux independent-build comparisons. It is nevertheless rejected
+as a release candidate. Full CI exposes a Redis shutdown assertion that observes
+the server before it processes client EOF. The corrected test waits for the exact
+blocked client IDs to disappear, well before their blocking timeout; disabling
+the disconnect makes that same test fail. A second delivery assertion now waits
+for its actual expected counts. All 635 notification tests, types and lint pass
+at `05038828`; no production delivery code changes in that correction.
+
+Native qualification on both policy Node versions stops before starting services:
+the fixture imports a compiled helper from an unbuilt source checkout. `a44e2438`
+loads only its explicitly supplied management artifact and accepts independent
+initial owner, guardian and backend artifacts. Forty-one fixture tests pass;
+they do not replace a native transition/rollback run. This separation is required
+to qualify the actual local role combination without restarting its owner.
+
+The local activation review also finds that the byte-valid `973ab9ed` runtime
+contains a Homebrew Node binary whose external `libnode` is absent after copying.
+Its own interpreter cannot start; no candidate CLI or live transition is reached.
+A digest alone therefore does not qualify an executable runtime. The replacement
+must be built with an explicitly selected standalone Node and pass a clean
+startup of that exact copied interpreter before sealing. `ed099a76` adds that
+admission to the canonical freezer, including configuration, copied bytes,
+runtime identity and loaded native objects. Seven checks pass on macOS Node
+22.19.0 and 24.13.0; the real Homebrew producer is rejected before output is
+created, and the copied standalone Node starts after relocation. Linux remains
+part of final native qualification. The final commit still
+requires fresh archive preparation, complete CI and native acceptance. The old
+archives and failed receipts remain diagnostic evidence, never release evidence.
+
 The reference website also passes a fresh SDK `08271086` acceptance through the
 ordinary SDK and Lumen commands: 239 pages, 236 preserved original routes, 2,855
 content anchors, 46,121 link/asset checks and twelve Chromium scenarios. Desktop

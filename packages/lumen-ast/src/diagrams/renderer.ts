@@ -70,6 +70,10 @@ export async function renderDiagramSvg(code: string, id: string, options: Diagra
         dompurifyConfig: {
           ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'em', 'strong', 'code', 'del', 's', 'sub', 'sup'],
           ALLOWED_ATTR: [],
+          // DOMPurify admits these independently of ALLOWED_ATTR. In particular,
+          // author data attributes must never enter the shell's island discovery.
+          ALLOW_DATA_ATTR: false,
+          ALLOW_ARIA_ATTR: false,
         },
         fontFamily: options.fontFamily ?? 'system-ui, sans-serif',
         // The measurement DOM lives outside the document; keep these metrics

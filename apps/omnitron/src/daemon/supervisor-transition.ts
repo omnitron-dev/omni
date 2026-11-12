@@ -216,7 +216,8 @@ export async function prepareSupervisorTransition(directory: string, socket?: st
       const inputs = { scope: 'user' as const, execPath: candidate.execPath,
         entryPath: path.join(candidate.directory, 'daemon/managed-entry.js'), nodeArgs: [], args: ['backend'],
         workdir: path.dirname(candidate.directory), path: config.environment['PATH'] ?? process.env['PATH'] ?? '/usr/bin:/bin',
-        environment: { OMNITRON_HOME: config.instanceHome }, label: config.backend.label,
+        environment: { OMNITRON_HOME: config.instanceHome,
+          ...(config.environment['TMPDIR'] ? { TMPDIR: config.environment['TMPDIR'] } : {}) }, label: config.backend.label,
         stderrLog: path.join(config.directory, 'supervisor.log') };
       const beforeUnit = await fs.readFile(file, 'utf8');
       const afterUnit = config.scope === 'system' ? replaceGuardianExec(beforeUnit, config, after) :

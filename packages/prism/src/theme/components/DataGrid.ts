@@ -14,7 +14,7 @@ import type { Theme, Components } from '@mui/material/styles';
 // so `Components<Theme>['MuiDataGrid']` typechecks. The DataGrid lives
 // in a separate `@mui/x-data-grid` package, so its augmentation entry
 // must be imported explicitly by any consumer that themes it.
-import '@mui/x-data-grid/themeAugmentation';
+import type {} from '@mui/x-data-grid/themeAugmentation';
 import type { ComponentsConfig } from '../../types/theme.js';
 import { getColorChannel, getGreyChannel, paletteVar } from './theme-utils.js';
 

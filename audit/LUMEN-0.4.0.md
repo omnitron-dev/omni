@@ -12,28 +12,34 @@ Baseline: `3ea505ad` (2026-11-11). This is a verification ledger, not a release 
 
 ## Findings and closure evidence
 
+The completed archive and website checkpoint below is tied to
+`1ede1aea64f3876994e01d424309c070f54ad0be`. It does not certify later changes.
+Source-test counts describe their recorded checkpoints; the installed archive
+gate exercises public entry points and does not replay every source test.
+
 | ID | Finding | Required closure | State |
 | --- | --- | --- | --- |
 | L40-01 | Malformed frontmatter can become public; migration uses a second parser; cyclic metadata survives. | One bounded data-only parser, fail-closed metadata, browser compatibility, regression tests. | Closed in source: five baseline failures reproduced; 78 AST and 29 migration tests, typechecks and both package builds pass. YAML/JSON share the browser-compatible bounded parser; plural `tests/` directories now receive the common lint policy. |
 | L40-02 | SSG and Titan re-parse raw source with independent access algorithms and incompatible role defaults. | One AST projection, one configurable permission policy, consistent exports and section semantics. | Closed in source: 96 AST, 49 site and 44 Titan-Lumen tests pass, including three reproduced mixed HTML/Markdown leaks and configurable SSG grants. Three builds/typechecks and changed-file lint pass. Roughly 1,000 duplicated lines removed. |
-| L40-03 | RPC controller trusts caller-supplied session roles, uses the HTTP auth decorator instead of Netron publication metadata, and retains mutable auth state. | Authoritative invocation context and actual HTTP/WS tests with concurrent identities. | Closed in source: one `LumenService`, authoritative Netron context and one official MCP contract shared by HTTP and stdio (`66dd82cd`). Real official clients exercise negotiation, tools, resources, projection and bounded input. Static stdio uses the spawning process's local trust boundary; it does not accept wire-supplied roles. Final archive qualification remains required. |
-| L40-04 | Server JavaScript execution uses node:vm inside a Worker; browser execution uses host JavaScript with an ambient-global denylist. | Capability-free interpreter, resource limits and no host fallback. | Closed in source: six interpreter checks, all 37 Titan-Lumen tests, 43 UI tests and six real Chromium worker checks pass. The compiled module worker runs under CSP without unsafe-eval, rejects host access, excessive aggregate memory/output and endless execution, and has no host/snapshot fallback. Final release archive qualification remains required. |
-| L40-05 | PDF is an ASCII-only handwritten PDF writer; it does not compile Typst and truncates long words. | Real typesetter with Unicode, mathematics, layout and independently decoded output checks. | Replaced in source by real offline Typst WASM in a terminable Node worker. Unicode/mathematical geometry, multi-page content, projection, cancellation and injection tests use an independent PDF reader. Missing font glyphs now fail explicitly; 24 packaged-entry-point and multi-page oracle tests pass, including all 200 theorem headers staying with their first content lines. Final release archives remain to be qualified. |
-| L40-06 | SSG emits a second island runtime which reports hydration without mounting a component. | Built client assets using the actual lumen-ui runtime; interaction tests against generated output. | Closed in source (`ea697166`): Vite bundles the actual React/Prism runtime. Ten website browser scenarios exercise generated pages, search, execution, themes and three viewport widths. Final clean SDK/site qualification remains required. |
+| L40-03 | RPC controller trusts caller-supplied session roles, uses the HTTP auth decorator instead of Netron publication metadata, and retains mutable auth state. | Authoritative invocation context and actual HTTP/WS tests with concurrent identities. | Closed in source: one `LumenService`, authoritative Netron context and one official MCP contract shared by HTTP and stdio (`66dd82cd`). Real official clients exercise negotiation, tools, resources, projection and bounded input. Static stdio uses the spawning process's local trust boundary; it does not accept wire-supplied roles. The official-client archive checks passed for `1ede1aea`. |
+| L40-04 | Server JavaScript execution uses node:vm inside a Worker; browser execution uses host JavaScript with an ambient-global denylist. | Capability-free interpreter, resource limits and no host fallback. | Closed in source: six interpreter checks, all 37 Titan-Lumen tests, 43 UI tests and six real Chromium worker checks pass. The compiled module worker runs under CSP without unsafe-eval, rejects host access, excessive aggregate memory/output and endless execution, and has no host/snapshot fallback. Actual interpreter and browser-worker archive checks passed for `1ede1aea`. |
+| L40-05 | PDF is an ASCII-only handwritten PDF writer; it does not compile Typst and truncates long words. | Real typesetter with Unicode, mathematics, layout and independently decoded output checks. | Replaced in source by real offline Typst WASM in a terminable Node worker. Unicode/mathematical geometry, multi-page content, projection, cancellation and injection tests use an independent PDF reader. Missing font glyphs now fail explicitly; 24 packaged-entry-point and multi-page oracle tests pass, including all 200 theorem headers staying with their first content lines. Actual PDF output from the installed archives passed for `1ede1aea`. |
+| L40-06 | SSG emits a second island runtime which reports hydration without mounting a component. | Built client assets using the actual lumen-ui runtime; interaction tests against generated output. | Closed in source (`ea697166`): Vite bundles the actual React/Prism runtime. Twelve website browser scenarios on SDK `1ede1aea` exercise generated pages, search, execution, types, formulas, diagrams, themes and three viewport widths. The same candidate passed its installed-consumer browser gate. |
 | L40-07 | Pagefind is a handwritten compatibility layer; Mermaid/ELK implementation needs semantic verification. | Use real declared engines or expose accurately scoped alternatives, with representative fixtures. | Real Pagefind indexing/search, configured-index loading and retry are verified. The handwritten diagram parser, SVG geometry and simulated worker pool are removed. Actual Mermaid/ELK runs in the browser through the shared island runtime; SSR retains readable escaped source. Five Chromium scenarios check layout, sequence/class semantics, recovery and directive isolation. Build-time SVG generation is not claimed. |
 | L40-08 | Runtime starts with synthetic seed documents; live edits, persistence, missing-directory handling and KB authorization need end-to-end verification. | No synthetic production data or successful fallback; consistent durable state and authorization. | Synthetic data/fallbacks removed; bounded inventories and shared projection govern reads. Durable authoring uses TitanDatabase/Kysera with revision/hash CAS, transactional history and integrity checks (`f3a1c7de`). Actual SQLite and PostgreSQL acceptance pass. Five PostgreSQL scenarios cover independent-connection races, COMMIT failure, canonical transaction retry, migration integrity and database restart (`630a0e05`). |
 | L40-09 | SSG writes in place, silently skips invalid output paths, and can retain old files after access changes. | Validated output inventory, recoverable replacement and consistent serving; deletion/restriction and interrupted-build tests. | Closed for local macOS/Linux in `7ef9c7d3`: durable journal, exact file inventory and shared native process identity; 67 tests include real SIGKILL recovery. Serve captures a verified immutable generation. This is recoverable two-rename publication, not a zero-gap atomic exchange; Windows and shared network filesystems are not qualified. |
-| L40-10 | Five package READMEs contain only a heading and one sentence. | Complete public APIs, configuration, trust model, practical examples and limitations; publish-install checks. | All five guides now describe actual contracts, CLI/configuration, trust boundaries and limits. Source examples and migration acceptance pass. Final installed-package examples and whole-release archive qualification remain in progress. |
+| L40-10 | Five package READMEs contain only a heading and one sentence. | Complete public APIs, configuration, trust model, practical examples and limitations; publish-install checks. | All five guides now describe actual contracts, CLI/configuration, trust boundaries and limits. Source examples and migration acceptance pass. Installed public-entry-point examples and the complete 35-package archive gate passed for `1ede1aea`; this is not npm publication or a claim that every prose example has been executed. |
 | L40-11 | Docusaurus migration can replace an existing/source directory and verifies parity only after replacement; crawler silently omits failures. | New disjoint destination, complete bounded inventory, pre-publication parity and non-clobbering concurrent behavior. | Closed in source (`6202559e`): complete physical inventory, bounded data-only parsing, mandatory parity before exclusive target claim and exclusive file creation. Existing targets are never replaced. A partial copy remains visible with its exact recovery paths; this is not atomic directory publication. Sixty-six package tests include 36 real CLI cases, plus 58 E2E checks. The report now has one measured routes/anchors contract; phantom link counts and compatibility duplicates are removed. |
 | L40-12 | SSR and hydration accept different metadata and can replace malformed props with an empty object. | One bounded lossless JSON contract, local error handling and recovery after metadata changes. | Closed in source (`fa947b57`): one browser-safe codec, 256 KiB and depth 64 limits, strict data-only values, reactive props/triggers and local recovery. Five codec, 52 UI and two real Chromium hydration tests pass. |
-| L40-13 | Several configuration fields are accepted without behavior; warning modes skip validation. | Remove unsupported surface or connect it to the real implementation, validate configuration and emit truthful diagnostics. | Closed in source (`e384f4ff`): strict config removes unsupported Titan/PDF switches, KaTeX macros reach actual HTML/Pagefind output, warning modes emit diagnostics and failed custom gates block publication. Mermaid-only documents obtain the default client. Seventy-nine Lumen tests, types and lint pass; final archive/website qualification remains required. |
+| L40-13 | Several configuration fields are accepted without behavior; warning modes skip validation. | Remove unsupported surface or connect it to the real implementation, validate configuration and emit truthful diagnostics. | Closed in source (`e384f4ff`): strict config removes unsupported Titan/PDF switches, KaTeX macros reach actual HTML/Pagefind output, warning modes emit diagnostics and failed custom gates block publication. Mermaid-only documents obtain the default client. Seventy-nine Lumen tests, types and lint pass; the `1ede1aea` archive and website gates passed. |
 | L40-14 | Exporters recover missing AST children from raw authoring text, accept unused options, and retain interactive metadata in Markdown. | Require the projected tree, remove inactive API fields/callers, preserve useful content through the shared HTML policy. | Closed in source: HTML, Markdown and Typst require a projected tree; the separate TipTap format is removed (L40-17). Inactive options and their callers are removed. An independent review reproduced an island-marker bypass on prohibited HTML tags; Markdown unwrapping uses the same allowed container set as HTML sanitization, including nested adversarial checks. The initial checkpoint passed 113 AST tests, both package typechecks and 462 canonical Lumen E2E checks; subsequent combined verification is recorded below. |
-| L40-15 | A custom site layout with React hooks fails when a linked SDK and its consumer load separate React instances. | One SSR module graph for renderer, layout and React peers; actual ordinary-CLI fixture and website build. | Closed in source (`9939d9a0`, `5974457b`): a production Vite SSR graph compiles the renderer, layout and React peers together. Native CLI acceptance covers separate consumer React, ESM/CJS children, source metadata and conditional import resolution. Unsupported emitted resources fail explicitly; inline resources are verified in actual HTML. Eighty-four package checks, types and lint pass; the native fixture is part of archive acceptance (`55b2b79e`). Final release archives and the website remain to be qualified. |
-| L40-16 | Handwritten Markdown emission can turn literal HTML into markup and mishandles fences, nested lists and tables; projected extension containers can retain cached text after child removal. | Standard Markdown serialization with parsed round-trip oracles, and one projection that removes invalidated content caches. | Closed in source (`293c73b2`, `2a2e527a`): the shared projection removes invalidated container caches; canonical MDAST/GFM/math serialization replaces manual Markdown concatenation. Nineteen ordinary-parser round-trip scenarios cover literal HTML, code delimiters, nested lists, tables, references, metadata and URL handling. Forty-one focused projection/serialization checks pass. Final archives remain unqualified. |
+| L40-15 | A custom site layout with React hooks fails when a linked SDK and its consumer load separate React instances. | One SSR module graph for renderer, layout and React peers; actual ordinary-CLI fixture and website build. | Closed in source (`9939d9a0`, `5974457b`): a production Vite SSR graph compiles the renderer, layout and React peers together. Native CLI acceptance covers separate consumer React, ESM/CJS children, source metadata and conditional import resolution. Unsupported emitted resources fail explicitly; inline resources are verified in actual HTML. Eighty-four package checks, types and lint pass; the native fixture is part of archive acceptance (`55b2b79e`) and passed for `1ede1aea`, as did the reference website. |
+| L40-16 | Handwritten Markdown emission can turn literal HTML into markup and mishandles fences, nested lists and tables; projected extension containers can retain cached text after child removal. | Standard Markdown serialization with parsed round-trip oracles, and one projection that removes invalidated content caches. | Closed in source (`293c73b2`, `2a2e527a`): the shared projection removes invalidated container caches; canonical MDAST/GFM/math serialization replaces manual Markdown concatenation. Nineteen ordinary-parser round-trip scenarios cover literal HTML, code delimiters, nested lists, tables, references, metadata and URL handling. Forty-one focused projection/serialization checks pass. The complete `1ede1aea` archive gate passed. |
 | L40-17 | The unused TipTap exporter invents nodes that the actual Prism ResearchEditor schema does not accept and loses nested content. | Remove the parallel format and test the real authorized source-editing path. | Closed in source (`c8cada65`): exporter, types and fake callers removed. Native Netron/SQLite/Prism acceptance checks full-source permission, original CRLF bytes/hash, nested marks, ordered-list start, block table cells, untouched scientific source and successful/stale CAS writes. Clean Markdown is explicitly a read/export format, not a lossless editing format. |
-| L40-18 | Twoslash uses handwritten partial TypeScript declarations, guesses another symbol when the query fails and marks oversized or hidden-error snippets as successful. | Use the actual compiler's standard libraries, exact query positions, bounded inputs and truthful results in Node/browser archives. | Closed in source: the build embeds 63 official ES2022/DOM library files (2.83 MiB); the runtime host admits only those files and the snippet. Forty-four focused checks, the actual package build and offline Chromium/CSP acceptance pass. The compiler is pinned directly (`06201c44`); a runtime/compiler mismatch is rejected before analysis. Final archives remain unqualified. |
-| L40-19 | The first 0.4.0 npm consumer installation rejects Titan Mailer's two internal peer ranges, which still require 0.3.x. | Derive internal dependencies from the same workspace release and reject stale ranges before building or packing. | Closed in source: both peers use `workspace:*`; actual packing produces exact 0.4.0 peers and preserves the optional notifications peer. The existing dependency scanner and archive gate share one workspace-reference check, also run as the first release-build step. Five focused checks and the full scanner pass; the generated lockfile passes frozen validation. The complete clean archive installation must be repeated. |
-| L40-20 | The final website build passes static parity but its browser API/diagram imports fail with `__vite_ssr_import_meta__ is not defined`. | Preserve the native Node compiler boundary when executing the SSR bundle, and exercise its subsequent client build through the ordinary CLI in a browser. | Closed in source (`c706a90f`, `39ff2e55`): the scoped Vite environment treats the exact resolved Node compiler URLs as native modules. Vite's preload generator therefore receives its original function rather than an SSR-transformed function. The existing disposable SSR graph and its cleanup remain intact. The same ordinary CLI/Chromium regression fails on the old SDK and passes on the fix: custom layout hooks, lazy API chunk, CSS preload, filtering and Mermaid/ELK, with no page/network errors. All 84 package checks, types and lint pass. Final website and archive qualification must include this regression. |
+| L40-18 | Twoslash uses handwritten partial TypeScript declarations, guesses another symbol when the query fails and marks oversized or hidden-error snippets as successful. | Use the actual compiler's standard libraries, exact query positions, bounded inputs and truthful results in Node/browser archives. | Closed in source: the build embeds 63 official ES2022/DOM library files (2.83 MiB); the runtime host admits only those files and the snippet. Forty-four focused checks, the actual package build and offline Chromium/CSP acceptance pass. The compiler is pinned directly (`06201c44`); a runtime/compiler mismatch is rejected before analysis. Actual Node/browser archive checks and reference-site annotations passed for `1ede1aea`. |
+| L40-19 | The first 0.4.0 npm consumer installation rejects Titan Mailer's two internal peer ranges, which still require 0.3.x. | Derive internal dependencies from the same workspace release and reject stale ranges before building or packing. | Closed in source: both peers use `workspace:*`; actual packing produces exact 0.4.0 peers and preserves the optional notifications peer. The existing dependency scanner and archive gate share one workspace-reference check, also run as the first release-build step. Five focused checks and the full scanner pass; the generated lockfile passes frozen validation. The complete clean 35-package archive installation passed for `1ede1aea`. |
+| L40-20 | The final website build passes static parity but its browser API/diagram imports fail with `__vite_ssr_import_meta__ is not defined`. | Preserve the native Node compiler boundary when executing the SSR bundle, and exercise its subsequent client build through the ordinary CLI in a browser. | Closed in source (`c706a90f`, `39ff2e55`): the scoped Vite environment treats the exact resolved Node compiler URLs as native modules. Vite's preload generator therefore receives its original function rather than an SSR-transformed function. The existing disposable SSR graph and its cleanup remain intact. The same ordinary CLI/Chromium regression fails on the old SDK and passes on the fix: custom layout hooks, lazy API chunk, CSS preload, filtering and Mermaid/ELK, with no page/network errors. All 84 package checks, types and lint pass. The `1ede1aea` archive gate includes this regression; its reference website also passes all twelve browser scenarios. |
+| L40-21 | A dynamically registered classic website starts successfully but is absent from the execution owner's watch inventory; `sdk dev --stack` therefore skips it. | Canonical owner inventory and SDK refresh must cover registered local applications, with two successful SDK rebuild/restart cycles and a failed build preserving the last ready generation. | Open. The isolated native owner served the actual website and passed HTTP readiness, but its watch inventory omitted the application. No SDK source revision was attempted after that refusal, and no manual restart was substituted. The core correction and repeated managed refresh acceptance are still required. |
 
 ## Combined source verification
 
@@ -65,12 +71,23 @@ preflight refusal before building/tagging/sealing and subsequent publication,
 interruption, resumption and integrity rejection. These local fixes require a
 new exact-commit CI run.
 
-The reference website on SDK `39ff2e55` passes typecheck, its ordinary build,
+CI at `883922a2` still reported two migration-package lint failures: a unary
+expression switch lacked a default branch and a directory reader shadowed its
+parameter. `e0b9eefc` fixes both without accepting unsupported expressions. An
+isolated frozen offline installation passed package lint, all 67 migration
+tests, typecheck and direct accepted/rejected unary-expression probes. This
+scoped result does not stand in for a later whole-workspace CI run.
+
+The reference website on SDK `1ede1aea` passes typecheck, its ordinary build,
 239-page output validation, preservation of 236 original routes and 2,855
 anchors, 46,119 link/asset checks and twelve Chromium scenarios. The latter cover
 the real lazy API, diagrams, execution, types, formulas, themes and mobile
-layouts. Its registry lockfile and production publication remain pending the
-qualified 0.4.0 npm release; a development SDK receipt is not registry evidence.
+layouts at 320, 768 and 1,440 pixels in light and dark themes. Sixteen screenshots
+record the layouts and narrow-screen scientific content. The earlier count of
+3,092 anchors included 237 Docusaurus renderer IDs; the migration inventory
+records all original IDs and their explicit structural exclusions. Its registry
+lockfile and production publication remain pending the qualified 0.4.0 npm
+release; a development SDK receipt is not registry evidence.
 
 ## Installed archive acceptance
 
@@ -87,6 +104,40 @@ Chromium checks. The latter include an ordinary Mermaid-only site build with
 its default client, ELK geometry and Pagefind WASM search. These checks run in
 the existing release preparation and required CI gate; this checkpoint does
 not certify the final 35-package 0.4.0 archives.
+
+The subsequent canonical preparation completed for
+`1ede1aea64f3876994e01d424309c070f54ad0be` on Node 24.13.0. All 35 public archives
+passed the installed-consumer gate, including clean npm lockfile replay, audit,
+the separate declared Lumen closure, native SSR peer acceptance, official stdio
+MCP clients and actual CLI-to-Chromium tests. The latter include L40-20's custom
+SSR layout followed by lazy client imports; they do not bypass the CLI by calling
+the SSG directly.
+
+Two independent clean builds matched the runtime, Console and all 6,804 SDK
+files. The recorded runtime digest is
+`8045c474023ffe60525bdeca63b13bceaf9652bcb072cd882ae0cc1a3ce4aad3`; the SDK
+manifest digest is
+`c6bd57e4888da81fb6b978d54250a14fc31da1c23083003977f16d5504a103f9`.
+These are completed local build/archive results for that exact candidate, not
+publication or certification of the later watcher changes. Its qualification
+receipt records the reproducibility stage; native qualification is still empty.
+The replacement candidate requires its own clean preparation and exact-commit
+remote CI/native qualification before release.
+
+Local evidence is retained under `/Volumes/AGI-Dev/work`:
+
+- `omnitron/releases/prepare-0.4.0-1ede1aea.log` records preparation of all 35
+  archives.
+- `omnitron/releases/qualification/1ede1aea64f3876994e01d424309c070f54ad0be/796e19e85877c83589c86686e24c2d2b535ca4b7fc9d24838dcb0c694e2dfb3c/qualification.json`
+  records stage boundaries; its `build/QUALIFICATION.json` records the matching
+  independent builds and artifact digests.
+- `omnitron-website/artifacts/website-reference-qualification.log` records the
+  actual SDK source checks, site build, route/anchor inventory and twelve passing
+  browser scenarios. `omnitron-website/artifacts/reference-browser/` contains the
+  sixteen screenshots.
+- `omnitron/managed-website-proof.log` records successful isolated managed startup
+  and the watch-inventory refusal. It provides no evidence of automatic SDK
+  refresh; L40-21 remains open.
 
 Lumen E2E no longer invokes the same whole-workspace export and undeclared-import
 scanners a second time. Both remain required root gates; the Lumen-specific
@@ -121,10 +172,12 @@ implementations. No latency, memory, accessibility or superiority ranking has
 been established. Lumen's release acceptance focuses on complete advertised
 workflows and failure boundaries rather than adding every competitor feature.
 The website migration now preserves 236 prior routes and 2,855 content anchors;
-its 10 browser scenarios cover real search, execution and both themes at three
-viewport widths. Large-corpus performance budgets, external-inventory linking,
-full RTL qualification and broader scientific-output parity remain separately
-unqualified; they must not be implied by the 0.4.0 release description.
+its twelve browser scenarios cover real search, execution, types, formulas,
+diagrams and both themes at three viewport widths. These interaction and visual
+checks are not a complete accessibility audit. Large-corpus performance budgets,
+external-inventory linking, full RTL qualification and broader scientific-output
+parity remain separately unqualified; they must not be implied by the 0.4.0 release
+description.
 
 ## Projection acceptance notes
 
@@ -186,8 +239,8 @@ unqualified; they must not be implied by the 0.4.0 release description.
   native stdio transport. An official client verifies negotiation, tools,
   resources and access-projected output; oversized frames are rejected before
   accumulation exceeds the configured limit. Seventy Lumen tests and three
-  actual HTTP/Netron checks pass. Source/package tests do not replace the final
-  clean-release archive acceptance.
+  actual HTTP/Netron checks pass. The official-client tests also pass through the
+  installed `1ede1aea` archives, with the candidate boundary recorded above.
 
 ## Interpreter acceptance
 
@@ -205,7 +258,9 @@ verifies that the engine uses that exact memory. A dedicated regression test
 rejects that same finite allocation and then verifies a fresh successful call.
 The ordinary server path also rejects dynamic imports, host access, unbounded
 loops and oversized output. These are local source/package-boundary checks;
-the final published archives and browser worker still require qualification.
+the installed `1ede1aea` archive gate also exercises the interpreter and actual
+compiled browser worker. Those results do not certify a later candidate or
+expand the interpreter's declared capabilities.
 
 ## PDF acceptance
 

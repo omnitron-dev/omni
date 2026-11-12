@@ -25,6 +25,7 @@ import {
 } from '../gates/builtins/index.js';
 import { computeContentHash } from '../manifest/hashing.js';
 import { buildStaticSite } from '../ssg/ssg-engine.js';
+import { captureGeneration, recoverGeneration } from '../ssg/publish-generation.js';
 import { runLumenMcpServer } from '../ai/mcp-server.js';
 import { documentRoute } from '../corpus/routes.js';
 
@@ -426,7 +427,9 @@ Commands:
       console.log(`Lumen CLI v${VERSION} (command: build)`);
       if (cliOpts.help) break;
 
-      const { config, graph, docsDirExists, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir);
+      const initialConfig = await loadLumenConfig(cliOpts.rootDir);
+      recoverGeneration(resolve(cliOpts.rootDir, cliOpts.outDir ?? initialConfig.outDir));
+      const { config, graph, docsDirExists, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir, initialConfig);
       const gateResult = await runCorpusGates(
         { documents: graph.getAllDocuments(), graph, config, reportDiagnostic: () => {} },
         [
@@ -459,15 +462,25 @@ Commands:
       if (cliOpts.help) break;
       const config = await loadLumenConfig(cliOpts.rootDir);
       const outDir = resolve(cliOpts.rootDir, cliOpts.outDir ?? config.outDir);
+      recoverGeneration(outDir);
       if (!existsSync(outDir)) throw new Error(`Build output does not exist: ${outDir}. Run lumen build first.`);
+      const snapshot = captureGeneration(outDir);
       const { preview } = await import('vite');
       const server = await preview({
         configFile: false,
         root: cliOpts.rootDir,
         appType: 'mpa',
         base: config.baseUrl,
-        build: { outDir },
+        build: { outDir: snapshot.directory },
         preview: { host: cliOpts.host, port: cliOpts.port, strictPort: true },
+      }).catch(error => { snapshot.release(); throw error; });
+      const shutdown = () => { server.httpServer.close(); if ('closeIdleConnections' in server.httpServer) server.httpServer.closeIdleConnections(); };
+      process.once('SIGINT', shutdown);
+      process.once('SIGTERM', shutdown);
+      server.httpServer.once('close', () => {
+        process.removeListener('SIGINT', shutdown);
+        process.removeListener('SIGTERM', shutdown);
+        snapshot.release();
       });
       server.printUrls();
       break;

@@ -681,6 +681,9 @@ importers:
       '@emotion/server':
         specifier: ^11.11.0
         version: 11.11.0
+      '@omnitron-dev/common':
+        specifier: workspace:*
+        version: link:../common
       '@omnitron-dev/lumen-ast':
         specifier: workspace:*
         version: link:../lumen-ast

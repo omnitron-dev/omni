@@ -42,7 +42,8 @@
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vite": "^8.3.5",
     "zod": "^4.6.7",
-    "pagefind": "1.6.0"
+    "pagefind": "1.6.0",
+    "@omnitron-dev/common": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19.0.0",

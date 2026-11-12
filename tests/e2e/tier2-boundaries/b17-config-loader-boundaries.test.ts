@@ -15,7 +15,8 @@ describe('Feature 17: Configuration Loader Boundaries', () => {
     expect(config.locales).toEqual(['en']);
     expect(config.theme?.defaultMode).toBe('dark');
     expect(config.gates).toEqual([]);
-    expect(config.titan?.enabled).toBe(false);
+    expect(config).not.toHaveProperty('titan');
+    expect(config.pdf).toBeUndefined();
   });
 
   it('TC-B17-02: preserves subpath baseUrl formats with leading and trailing slashes', () => {
@@ -59,5 +60,14 @@ describe('Feature 17: Configuration Loader Boundaries', () => {
 
     expect(Array.isArray(config.gates)).toBe(true);
     expect(config.gates).toHaveLength(0);
+  });
+
+  it('TC-B17-06: rejects obsolete deployment switches and retains explicit PDF selection', () => {
+    const config = defineLumenConfig({ title: 'Paper', pdf: { paperSections: ['docs/paper.md'] } });
+    expect(config.pdf).toEqual({ paperSections: ['docs/paper.md'] });
+    for (const extra of [{ titan: { enabled: true } }, { pdf: { enabled: true } }]) {
+      expect(() => defineLumenConfig({ title: 'Paper', ...extra } as unknown as Parameters<typeof defineLumenConfig>[0]))
+        .toThrow(/Invalid Lumen configuration/);
+    }
   });
 });

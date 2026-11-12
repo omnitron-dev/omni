@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import {
   defineLumenConfig,
@@ -109,12 +110,13 @@ Content uniquely belonging to document ${i}.
       for (let i = 0; i < docCount; i++) {
         const route = `/docs/doc-${i}`;
         const entry = result.manifest[`routes${route}.html`];
-        expect(entry).toBeDefined();
-        if (typeof entry === 'object' && entry !== null) {
-          expect(entry.hash).toBeDefined();
-          expect(entry.sri).toMatch(/^sha256-[A-Za-z0-9+/=]+$/);
-          expect(entry.path).toContain(`routes${route}.`);
-        }
+        const html = result.pages.get(route)!;
+        expect(entry).toEqual({
+          path: `docs/doc-${i}.html`,
+          hash: createHash('sha256').update(html).digest('hex').slice(0, 8),
+          sri: `sha256-${createHash('sha256').update(html).digest('base64')}`,
+          sizeBytes: Buffer.byteLength(html),
+        });
       }
     });
   });

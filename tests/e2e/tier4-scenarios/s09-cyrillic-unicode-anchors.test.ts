@@ -55,9 +55,9 @@ locale: ru
 
     const report = verifyUrlAndAnchorParity(sourceUrls, targetUrls);
     expect(report.passed).toBe(true);
-    expect(report.totalAnchors).toBe(3);
-    expect(report.matchedAnchors).toBe(3);
-    expect(report.missingAnchors).toHaveLength(0);
+    expect(report.anchors.total).toBe(3);
+    expect(report.anchors.preserved).toBe(3);
+    expect(report.anchors.missing).toHaveLength(0);
   });
 
   it('registers Unicode anchors in CorpusGraph and allows direct navigation resolution', () => {

@@ -10,20 +10,20 @@ export function formatParityReport(report: ParityReport, format: 'summary' | 'js
     `Status: ${report.passed ? 'PASSED (100% Parity)' : 'FAILED'}`,
     `Parity Score: ${(report.parityScore * 100).toFixed(2)}%`,
     '',
-    `Routes:  ${report.matchedRoutes} / ${report.totalRoutes} matched (${report.missingRoutes.length} missing)`,
-    `Anchors: ${report.matchedAnchors} / ${report.totalAnchors} matched (${report.missingAnchors.length} missing)`,
+    `Routes:  ${report.routes.preserved} / ${report.routes.total} matched (${report.routes.missing.length} missing)`,
+    `Anchors: ${report.anchors.preserved} / ${report.anchors.total} matched (${report.anchors.missing.length} missing)`,
   ];
 
-  if (report.missingRoutes.length > 0) {
+  if (report.routes.missing.length > 0) {
     lines.push('', 'Missing Routes:');
-    for (const r of report.missingRoutes) {
+    for (const r of report.routes.missing) {
       lines.push(`  - ${r}`);
     }
   }
 
-  if (report.missingAnchors.length > 0) {
+  if (report.anchors.missing.length > 0) {
     lines.push('', 'Missing Anchors:');
-    for (const a of report.missingAnchors) {
+    for (const a of report.anchors.missing) {
       lines.push(`  - ${a}`);
     }
   }

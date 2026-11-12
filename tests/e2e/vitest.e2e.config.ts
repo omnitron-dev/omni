@@ -30,6 +30,7 @@ export default defineConfig({
     environment: 'node',
     root: REPO_ROOT,
     include: [
+      'tests/e2e/harness/*.test.ts',
       'tests/e2e/tier1-features/**/*.test.ts',
       'tests/e2e/tier2-boundaries/**/*.test.ts',
       'tests/e2e/tier3-interactions/**/*.test.ts',

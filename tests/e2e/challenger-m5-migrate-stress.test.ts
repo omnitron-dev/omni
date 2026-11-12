@@ -440,12 +440,12 @@ export interface Config {
       const durationMs = performance.now() - startTime;
 
       expect(report.passed).toBe(true);
-      expect(report.totalRoutes).toBe(ROUTE_COUNT);
-      expect(report.matchedRoutes).toBe(ROUTE_COUNT);
-      expect(report.totalAnchors).toBe(ANCHOR_COUNT);
-      expect(report.matchedAnchors).toBe(ANCHOR_COUNT);
-      expect(report.missingRoutes).toEqual([]);
-      expect(report.missingAnchors).toEqual([]);
+      expect(report.routes.total).toBe(ROUTE_COUNT);
+      expect(report.routes.preserved).toBe(ROUTE_COUNT);
+      expect(report.anchors.total).toBe(ANCHOR_COUNT);
+      expect(report.anchors.preserved).toBe(ANCHOR_COUNT);
+      expect(report.routes.missing).toEqual([]);
+      expect(report.anchors.missing).toEqual([]);
       expect(report.parityScore).toBe(1.0);
       expect(durationMs).toBeLessThan(500);
     });
@@ -456,7 +456,7 @@ export interface Config {
       const targetClean = ['/docs/intro', '/docs/guides/setup', '/docs/api/v2'];
       const slashReport = verifyUrlAndAnchorParity(sourceSlashes, targetClean);
       expect(slashReport.passed).toBe(true);
-      expect(slashReport.matchedRoutes).toBe(3);
+      expect(slashReport.routes.preserved).toBe(3);
 
       // 2. URL-encoded vs decoded Unicode Cyrillic and emoji anchors
       const sourceEncoded = [
@@ -466,16 +466,16 @@ export interface Config {
       const targetDecoded = ['/docs/math#теорема-эйлера', '/docs/speed#rocket-launch-🚀'];
       const anchorReport = verifyUrlAndAnchorParity(sourceEncoded, targetDecoded);
       expect(anchorReport.passed).toBe(true);
-      expect(anchorReport.totalAnchors).toBe(2);
-      expect(anchorReport.matchedAnchors).toBe(2);
+      expect(anchorReport.anchors.total).toBe(2);
+      expect(anchorReport.anchors.preserved).toBe(2);
 
       // 3. Hash link fragments with query parameters
       const sourceQueryHash = ['/doc?v=1#anchor', '/doc?v=2#benchmark'];
       const targetQueryHash = ['/doc?v=1#anchor', '/doc?v=2#benchmark'];
       const queryReport = verifyUrlAndAnchorParity(sourceQueryHash, targetQueryHash);
       expect(queryReport.passed).toBe(true);
-      expect(queryReport.totalAnchors).toBe(2);
-      expect(queryReport.matchedAnchors).toBe(2);
+      expect(queryReport.anchors.total).toBe(2);
+      expect(queryReport.anchors.preserved).toBe(2);
 
       // 4. Multiple leading slashes isolation
       expect(normalizeUrl('/docs/normal')).toBe('/docs/normal');
@@ -506,13 +506,13 @@ export interface Config {
       const report = verifyUrlAndAnchorParity(source, target);
 
       expect(report.passed).toBe(false);
-      expect(report.totalRoutes).toBe(4);
-      expect(report.matchedRoutes).toBe(2);
-      expect(report.missingRoutes).toEqual(['/docs/missing-page-x', '/docs/missing-page-y']);
+      expect(report.routes.total).toBe(4);
+      expect(report.routes.preserved).toBe(2);
+      expect(report.routes.missing).toEqual(['/docs/missing-page-x', '/docs/missing-page-y']);
 
-      expect(report.totalAnchors).toBe(5);
-      expect(report.matchedAnchors).toBe(3);
-      expect(report.missingAnchors).toEqual(['/docs/doc-2#missing-anchor-b', '/docs/doc-2#missing-anchor-c']);
+      expect(report.anchors.total).toBe(5);
+      expect(report.anchors.preserved).toBe(3);
+      expect(report.anchors.missing).toEqual(['/docs/doc-2#missing-anchor-b', '/docs/doc-2#missing-anchor-c']);
 
       expect(report.parityScore).toBe(Number((5 / 9).toFixed(4)));
     });

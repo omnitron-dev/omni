@@ -131,9 +131,8 @@ export their source. The HTML path supplies their interactive visual rendering.
 
 `@omnitron-dev/lumen-ast/diagrams` separates document emission from actual
 rendering. `renderDiagramHtml(code, index, filePath)` emits an escaped source
-fallback and the ordinary `MermaidDiagram` island metadata. It does not claim
-to create SVG in Node. The former partial parser, custom SVG graph layout and
-microtask-based `MermaidWorkerPool` have been removed.
+and the ordinary `MermaidDiagram` island metadata. SVG rendering takes place
+in the browser after hydration.
 
 `renderDiagramSvg(code, id, { theme, colors, signal })` lazily loads the actual
 Mermaid engine and requires a browser DOM. Mermaid 12 includes ELK; no second

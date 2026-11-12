@@ -8,28 +8,23 @@ describe('Feature 30: 100% Parity Verification Engine Boundaries', () => {
 
     expect(report.passed).toBe(false);
     expect(report.parityScore).toBe(0);
-    expect(report.totalRoutes).toBe(0);
-    expect(report.matchedRoutes).toBe(0);
-    expect(report.totalAnchors).toBe(0);
-    expect(report.matchedAnchors).toBe(0);
-    expect(report.missingRoutes).toEqual([]);
-    expect(report.missingAnchors).toEqual([]);
+    expect(report.routes.total).toBe(0);
+    expect(report.routes.preserved).toBe(0);
+    expect(report.anchors.total).toBe(0);
+    expect(report.anchors.preserved).toBe(0);
+    expect(report.routes.missing).toEqual([]);
+    expect(report.anchors.missing).toEqual([]);
   });
 
   it('TC-B30-02: reconciles trailing slash discrepancies through URL normalization', () => {
     const sourceWithTrailingSlash = ['/docs/intro/', '/docs/guides/installation/', '/docs/api/reference/'];
     const targetWithoutTrailingSlash = ['/docs/intro', '/docs/guides/installation', '/docs/api/reference'];
 
-    // Normalizing trailing slashes achieves 100% parity
-    const normalizeUrl = (url: string) => (url.length > 1 && url.endsWith('/') ? url.slice(0, -1) : url);
-    const normalizedSource = sourceWithTrailingSlash.map(normalizeUrl);
-    const normalizedTarget = targetWithoutTrailingSlash.map(normalizeUrl);
-
-    const report = verifyUrlAndAnchorParity(normalizedSource, normalizedTarget);
+    const report = verifyUrlAndAnchorParity(sourceWithTrailingSlash, targetWithoutTrailingSlash);
     expect(report.passed).toBe(true);
-    expect(report.totalRoutes).toBe(3);
-    expect(report.matchedRoutes).toBe(3);
-    expect(report.missingRoutes).toEqual([]);
+    expect(report.routes.total).toBe(3);
+    expect(report.routes.preserved).toBe(3);
+    expect(report.routes.missing).toEqual([]);
   });
 
   it('TC-B30-03: reconciles Cyrillic and non-ASCII anchor URI encoding differences', () => {
@@ -65,8 +60,8 @@ describe('Feature 30: 100% Parity Verification Engine Boundaries', () => {
     const durationMs = performance.now() - startTime;
 
     expect(report.passed).toBe(true);
-    expect(report.totalRoutes).toBe(count);
-    expect(report.matchedRoutes).toBe(count);
+    expect(report.routes.total).toBe(count);
+    expect(report.routes.preserved).toBe(count);
     expect(durationMs).toBeLessThan(500);
   });
 
@@ -92,11 +87,11 @@ describe('Feature 30: 100% Parity Verification Engine Boundaries', () => {
     const report = verifyUrlAndAnchorParity(sourceUrls, targetUrls);
 
     expect(report.passed).toBe(false);
-    expect(report.missingRoutes).toEqual(['/docs/missing-page-a', '/docs/missing-page-b']);
-    expect(report.missingAnchors).toEqual(['/docs/guides/quickstart#step-2']);
-    expect(report.matchedRoutes).toBe(2);
-    expect(report.totalRoutes).toBe(4);
-    expect(report.matchedAnchors).toBe(2);
-    expect(report.totalAnchors).toBe(3);
+    expect(report.routes.missing).toEqual(['/docs/missing-page-a', '/docs/missing-page-b']);
+    expect(report.anchors.missing).toEqual(['/docs/guides/quickstart#step-2']);
+    expect(report.routes.preserved).toBe(2);
+    expect(report.routes.total).toBe(4);
+    expect(report.anchors.preserved).toBe(2);
+    expect(report.anchors.total).toBe(3);
   });
 });

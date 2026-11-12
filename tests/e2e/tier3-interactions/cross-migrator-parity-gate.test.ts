@@ -40,10 +40,10 @@ describe('Tier 3: Cross-Feature — Migrator, Parity Engine & Corpus Gates (F28 
 
     const parityReport = verifyUrlAndAnchorParity(sourceRoutes, targetRoutes);
     expect(parityReport.passed).toBe(true);
-    expect(parityReport.matchedRoutes).toBe(2);
-    expect(parityReport.matchedAnchors).toBe(2);
-    expect(parityReport.missingRoutes).toHaveLength(0);
-    expect(parityReport.missingAnchors).toHaveLength(0);
+    expect(parityReport.routes.preserved).toBe(2);
+    expect(parityReport.anchors.preserved).toBe(2);
+    expect(parityReport.routes.missing).toHaveLength(0);
+    expect(parityReport.anchors.missing).toHaveLength(0);
   });
 
   it('TC-X08-02: Converted KaTeX macros from Docusaurus config match LumenMacroRegistry definitions', () => {
@@ -132,8 +132,8 @@ describe('Tier 3: Cross-Feature — Migrator, Parity Engine & Corpus Gates (F28 
 
     const parityReport = verifyUrlAndAnchorParity(sourceRoutes, targetRoutes);
     expect(parityReport.passed).toBe(false);
-    expect(parityReport.missingRoutes).toContain('/docs/old-route-a');
-    expect(parityReport.missingAnchors).toContain('/docs/old-route-b#anchor');
-    expect(parityReport.matchedRoutes).toBe(1);
+    expect(parityReport.routes.missing).toContain('/docs/old-route-a');
+    expect(parityReport.anchors.missing).toContain('/docs/old-route-b#anchor');
+    expect(parityReport.routes.preserved).toBe(1);
   });
 });

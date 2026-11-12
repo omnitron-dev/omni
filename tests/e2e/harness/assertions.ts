@@ -1,4 +1,7 @@
 import { expect } from 'vitest';
+import { normalizeAnchor, type ParityReport } from '@omnitron-dev/lumen-migrate';
+
+export { normalizeAnchor };
 
 export interface LumenDiagnosticSpec {
   code: string;
@@ -7,25 +10,6 @@ export interface LumenDiagnosticSpec {
   filePath?: string | RegExp;
   line?: number;
   hasSuggestedFix?: boolean;
-}
-
-export interface ParityRouteReport {
-  sourceRoute: string;
-  targetRoute: string;
-  status: 'matched' | 'missing' | 'unexpected' | 'redirect';
-  sourceAnchors?: string[];
-  targetAnchors?: string[];
-  missingAnchors?: string[];
-}
-
-export interface ParityReport {
-  totalRoutes: number;
-  matchedRoutes: number;
-  missingRoutes: string[];
-  unexpectedRoutes: string[];
-  parityPercentage: number;
-  routes: ParityRouteReport[];
-  brokenAnchors: Array<{ route: string; anchor: string }>;
 }
 
 export interface AstComparisonOptions {
@@ -110,21 +94,12 @@ export function expectDiagnostics(diagnostics: unknown[], expected: LumenDiagnos
 
 export function expectRouteParity(report: ParityReport, minParityPercentage: number = 100): void {
   expect(report).toBeDefined();
-  expect(report.parityPercentage).toBeGreaterThanOrEqual(minParityPercentage);
+  expect(report.parityScore * 100).toBeGreaterThanOrEqual(minParityPercentage);
   if (minParityPercentage >= 100) {
-    expect(report.missingRoutes).toEqual([]);
-    expect(report.brokenAnchors).toEqual([]);
+    expect(report.passed).toBe(true);
+    expect(report.routes.missing).toEqual([]);
+    expect(report.anchors.missing).toEqual([]);
   }
-}
-
-export function normalizeAnchor(anchor: string): string {
-  let cleaned = anchor.replace(/^#/, '');
-  try {
-    cleaned = decodeURIComponent(cleaned);
-  } catch {
-    // If not URI encoded, retain raw string
-  }
-  return cleaned.toLowerCase();
 }
 
 export function expectAnchorParity(sourceAnchors: string[], targetAnchors: string[]): void {
@@ -210,15 +185,15 @@ expect.extend({
   toHaveRouteParity(received: ParityReport, expectedPercentage: number = 100) {
     const pass = Boolean(
       received &&
-      received.parityPercentage >= expectedPercentage &&
-      (expectedPercentage < 100 || received.missingRoutes.length === 0)
+      received.parityScore * 100 >= expectedPercentage &&
+      (expectedPercentage < 100 || received.passed)
     );
     return {
       pass,
       message: () =>
         pass
           ? `Expected parity report to have less than ${expectedPercentage}% parity`
-          : `Expected ${expectedPercentage}% route parity. Actual: ${received?.parityPercentage}%. Missing routes: ${received?.missingRoutes?.join(', ')}`,
+          : `Expected ${expectedPercentage}% route parity. Actual: ${received?.parityScore * 100}%. Missing routes: ${received?.routes.missing.join(', ')}. Missing anchors: ${received?.anchors.missing.join(', ')}`,
     };
   },
 

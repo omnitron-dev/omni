@@ -137,7 +137,7 @@ export async function migrateDocusaurusCommand(
     if (!parity.passed)
       throw Error(
         'Staged migration failed route and anchor parity: ' +
-          JSON.stringify({ routes: parity.missingRoutes, anchors: parity.missingAnchors })
+          JSON.stringify({ routes: parity.routes.missing, anchors: parity.anchors.missing })
       );
 
     assertInventoryUnchanged(sourceInventory);

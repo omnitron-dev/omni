@@ -28,7 +28,7 @@ The target is claimed with exclusive directory creation. Each destination entry 
 
 Creating a source tree this way is not an atomic directory swap. Other processes may observe an incomplete new target during its copy. If copying or verification fails, the CLI exits nonzero and retains the stage and any claimed target, reporting their exact paths. Inspect them before explicitly removing anything or retrying with a new target. Failed stage cleanup also exits nonzero, even when the target copy is complete; cleanup errors are not hidden. On success, only the migrator's unchanged staging directory is removed.
 
-Parity compares discovered documentation routes and static Markdown/HTML anchors, including frontmatter `slug`/`id`, heading IDs and explicit anchors. It does not run Docusaurus or Lumen, prove rendered component equivalence, check external links, or validate plugin-generated pages. `links` in the report is currently an unmeasured zero-count field. Empty input is insufficient evidence and fails parity. An unreadable or malformed inventory is an error, not a partial parity report.
+Parity compares discovered documentation routes and static Markdown/HTML anchors, including frontmatter `slug`/`id`, heading IDs and explicit anchors. It does not run Docusaurus or Lumen, prove rendered component equivalence, check external links, or validate plugin-generated pages. Reports contain measured `routes` and `anchors` with counts and missing entries; `routes.matched` maps each source URL to the actual matching target URL. Empty input is insufficient evidence and fails parity. An unreadable or malformed inventory is an error, not a partial parity report.
 
 ## Exit status and library use
 

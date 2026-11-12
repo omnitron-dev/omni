@@ -5,21 +5,23 @@ import { crawlDocumentationDirectory } from './crawler.js';
 
 export function compareUrlArrays(sourceUrls: string[], targetUrls: string[]): ParityReport {
   const rawTargetSet = new Set(targetUrls);
-  const normalizedTargetSet = new Set(targetUrls.map(normalizeUrl));
+  const normalizedTargets = new Map<string, string>();
+  for (const url of targetUrls) if (!normalizedTargets.has(normalizeUrl(url))) normalizedTargets.set(normalizeUrl(url), url);
 
   const missingRoutes: string[] = [];
   const missingAnchors: string[] = [];
-  const matchedRoutesMap: Record<string, string> = {};
+  const matchedRoutesMap = new Map<string, string>();
 
   let totalRoutes = 0;
   let matchedRoutes = 0;
   let totalAnchors = 0;
   let matchedAnchors = 0;
 
-  for (const rawUrl of sourceUrls) {
+  for (const rawUrl of new Set(sourceUrls)) {
     const isAnchor = rawUrl.includes('#');
     const normUrl = normalizeUrl(rawUrl);
-    const isMatched = rawTargetSet.has(rawUrl) || normalizedTargetSet.has(normUrl);
+    const target = rawTargetSet.has(rawUrl) ? rawUrl : normalizedTargets.get(normUrl);
+    const isMatched = target !== undefined;
 
     if (isAnchor) {
       totalAnchors++;
@@ -32,7 +34,7 @@ export function compareUrlArrays(sourceUrls: string[], targetUrls: string[]): Pa
       totalRoutes++;
       if (isMatched) {
         matchedRoutes++;
-        matchedRoutesMap[rawUrl] = normUrl;
+        matchedRoutesMap.set(rawUrl, target!);
       } else {
         missingRoutes.push(rawUrl);
       }
@@ -45,28 +47,17 @@ export function compareUrlArrays(sourceUrls: string[], targetUrls: string[]): Pa
   const parityScore = totalItems === 0 ? 0 : Number((matchedItems / totalItems).toFixed(4));
 
   return {
-    totalRoutes,
-    matchedRoutes,
-    missingRoutes,
-    totalAnchors,
-    matchedAnchors,
-    missingAnchors,
     passed,
     routes: {
       total: totalRoutes,
       preserved: matchedRoutes,
       missing: missingRoutes,
-      matched: matchedRoutesMap,
+      matched: Object.fromEntries(matchedRoutesMap),
     },
     anchors: {
       total: totalAnchors,
       preserved: matchedAnchors,
       missing: missingAnchors,
-    },
-    links: {
-      total: 0,
-      valid: 0,
-      broken: [],
     },
     parityScore,
   };

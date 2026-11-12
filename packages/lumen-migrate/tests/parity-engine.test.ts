@@ -18,12 +18,12 @@ describe('Parity Engine', () => {
     const report = verifyUrlAndAnchorParity(urls, urls);
 
     expect(report.passed).toBe(true);
-    expect(report.totalRoutes).toBe(2);
-    expect(report.matchedRoutes).toBe(2);
-    expect(report.totalAnchors).toBe(1);
-    expect(report.matchedAnchors).toBe(1);
-    expect(report.missingRoutes).toHaveLength(0);
-    expect(report.missingAnchors).toHaveLength(0);
+    expect(report.routes.total).toBe(2);
+    expect(report.routes.preserved).toBe(2);
+    expect(report.anchors.total).toBe(1);
+    expect(report.anchors.preserved).toBe(1);
+    expect(report.routes.missing).toHaveLength(0);
+    expect(report.anchors.missing).toHaveLength(0);
     expect(report.parityScore).toBe(1.0);
   });
 
@@ -33,10 +33,23 @@ describe('Parity Engine', () => {
 
     const report = verifyUrlAndAnchorParity(source, target);
     expect(report.passed).toBe(false);
-    expect(report.missingRoutes).toEqual(['/docs/b']);
-    expect(report.missingAnchors).toEqual(['/docs/a#h2']);
-    expect(report.matchedRoutes).toBe(1);
-    expect(report.matchedAnchors).toBe(1);
+    expect(report.routes.missing).toEqual(['/docs/b']);
+    expect(report.anchors.missing).toEqual(['/docs/a#h2']);
+    expect(report.routes.preserved).toBe(1);
+    expect(report.anchors.preserved).toBe(1);
+  });
+
+  it('records actual targets, counts each source once and preserves anchor case', () => {
+    const report = verifyUrlAndAnchorParity(
+      ['/docs/intro', '/docs/intro', '/docs/intro#Overview', '/docs/intro#обзор'],
+      ['/docs/intro/', '/docs/intro/#overview', '/docs/intro/#%D0%BE%D0%B1%D0%B7%D0%BE%D1%80']
+    );
+    expect(report.routes.total).toBe(1);
+    expect(report.routes.matched).toEqual({ '/docs/intro': '/docs/intro/' });
+    expect(report.anchors.preserved).toBe(1);
+    expect(report.anchors.missing).toEqual(['/docs/intro#Overview']);
+    expect(report.passed).toBe(false);
+    expect(report.parityScore).toBe(0.6667);
   });
 
   it('completes 10,000 routes in under 500ms', () => {

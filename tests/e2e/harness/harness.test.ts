@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { verifyUrlAndAnchorParity } from '@omnitron-dev/lumen-migrate';
 import {
   IsolatedFixture,
   cliRunner,
@@ -71,7 +72,7 @@ describe('E2E Harness Self-Tests', () => {
     const ast2 = { loc: { line: 99 }, type: 'doc', content: 'test', sha256: 'hash2' };
 
     expectAstParity(ast1, ast2);
-    expect(normalizeAnchor('#My-Section')).toBe('my-section');
+    expect(normalizeAnchor('#My-Section')).toBe('#My-Section');
     expectAnchorParity(['#alpha', '#beta'], ['beta', 'alpha']);
 
     expectDiagnostics(
@@ -79,15 +80,10 @@ describe('E2E Harness Self-Tests', () => {
       [{ code: 'ERR_BROKEN_LINK', severity: 'error', message: /Missing/ }]
     );
 
-    expectRouteParity({
-      totalRoutes: 2,
-      matchedRoutes: 2,
-      missingRoutes: [],
-      unexpectedRoutes: [],
-      parityPercentage: 100,
-      routes: [],
-      brokenAnchors: [],
-    });
+    expectRouteParity(verifyUrlAndAnchorParity(['/guide', '/guide#Intro'], ['/guide/', '/guide/#Intro']));
+    const missing = verifyUrlAndAnchorParity(['/guide#Intro'], ['/guide#intro']);
+    expect(missing).not.toHaveRouteParity();
+    expect(() => expectRouteParity(missing)).toThrow();
 
     expectCriticalEmotionCss('<style data-emotion="css">body{margin:0}</style>');
     expectPortalIsland('<div data-lumen-island="x" data-hydrate="load"></div>', {

@@ -62,10 +62,10 @@ describe('Tier 4: Scenario 01 — Full Docusaurus Classic Migration', () => {
 
       const parityReport = verifyUrlAndAnchorParity(sourceUrls, targetUrls);
       expect(parityReport.passed).toBe(true);
-      expect(parityReport.matchedRoutes).toBe(3);
-      expect(parityReport.matchedAnchors).toBe(1);
-      expect(parityReport.missingRoutes).toHaveLength(0);
-      expect(parityReport.missingAnchors).toHaveLength(0);
+      expect(parityReport.routes.preserved).toBe(3);
+      expect(parityReport.anchors.preserved).toBe(1);
+      expect(parityReport.routes.missing).toHaveLength(0);
+      expect(parityReport.anchors.missing).toHaveLength(0);
     });
   });
 

@@ -9,9 +9,9 @@ describe('Feature 30: 100% Parity Verification Engine', () => {
     const report = verifyUrlAndAnchorParity(sourceUrls, targetUrls);
 
     expect(report.passed).toBe(true);
-    expect(report.totalRoutes).toBe(3);
-    expect(report.matchedRoutes).toBe(3);
-    expect(report.missingRoutes).toHaveLength(0);
+    expect(report.routes.total).toBe(3);
+    expect(report.routes.preserved).toBe(3);
+    expect(report.routes.missing).toHaveLength(0);
   });
 
   it('TC-F30-02: verifies 100% in-page heading anchor parity for hash links', () => {
@@ -21,9 +21,9 @@ describe('Feature 30: 100% Parity Verification Engine', () => {
     const report = verifyUrlAndAnchorParity(sourceUrls, targetUrls);
 
     expect(report.passed).toBe(true);
-    expect(report.totalAnchors).toBe(2);
-    expect(report.matchedAnchors).toBe(2);
-    expect(report.missingAnchors).toHaveLength(0);
+    expect(report.anchors.total).toBe(2);
+    expect(report.anchors.preserved).toBe(2);
+    expect(report.anchors.missing).toHaveLength(0);
   });
 
   it('TC-F30-03: detects missing routes and marks verification as failed', () => {
@@ -33,9 +33,9 @@ describe('Feature 30: 100% Parity Verification Engine', () => {
     const report = verifyUrlAndAnchorParity(sourceUrls, targetUrls);
 
     expect(report.passed).toBe(false);
-    expect(report.missingRoutes).toContain('/docs/missing-page');
-    expect(report.matchedRoutes).toBe(2);
-    expect(report.totalRoutes).toBe(3);
+    expect(report.routes.missing).toContain('/docs/missing-page');
+    expect(report.routes.preserved).toBe(2);
+    expect(report.routes.total).toBe(3);
   });
 
   it('TC-F30-04: detects missing in-page heading anchors', () => {
@@ -45,9 +45,9 @@ describe('Feature 30: 100% Parity Verification Engine', () => {
     const report = verifyUrlAndAnchorParity(sourceUrls, targetUrls);
 
     expect(report.passed).toBe(false);
-    expect(report.missingAnchors).toContain('/docs/intro#phantom-anchor');
-    expect(report.matchedAnchors).toBe(1);
-    expect(report.totalAnchors).toBe(2);
+    expect(report.anchors.missing).toContain('/docs/intro#phantom-anchor');
+    expect(report.anchors.preserved).toBe(1);
+    expect(report.anchors.total).toBe(2);
   });
 
   it('TC-F30-05: correctly separates route URLs from anchor URLs in parity summary', () => {
@@ -57,10 +57,10 @@ describe('Feature 30: 100% Parity Verification Engine', () => {
     const report = verifyUrlAndAnchorParity(sourceUrls, targetUrls);
 
     expect(report.passed).toBe(false);
-    expect(report.totalRoutes).toBe(2);
-    expect(report.matchedRoutes).toBe(2);
-    expect(report.totalAnchors).toBe(2);
-    expect(report.matchedAnchors).toBe(1);
-    expect(report.missingAnchors).toEqual(['/docs/b#anchor2']);
+    expect(report.routes.total).toBe(2);
+    expect(report.routes.preserved).toBe(2);
+    expect(report.anchors.total).toBe(2);
+    expect(report.anchors.preserved).toBe(1);
+    expect(report.anchors.missing).toEqual(['/docs/b#anchor2']);
   });
 });

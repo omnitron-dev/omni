@@ -80,16 +80,7 @@ export interface ConvertedLumenConfig {
 }
 
 export interface ParityReport {
-  // Flat properties for existing unit/E2E test suite compatibility
-  totalRoutes: number;
-  matchedRoutes: number;
-  missingRoutes: string[];
-  totalAnchors: number;
-  matchedAnchors: number;
-  missingAnchors: string[];
   passed: boolean;
-
-  // Structured properties for SCOPE.md & Corpus Gates
   routes: {
     total: number;
     preserved: number;
@@ -100,11 +91,6 @@ export interface ParityReport {
     total: number;
     preserved: number;
     missing: string[];
-  };
-  links: {
-    total: number;
-    valid: number;
-    broken: string[];
   };
   parityScore: number; // 0.0 to 1.0 (1.0 = 100%)
 }

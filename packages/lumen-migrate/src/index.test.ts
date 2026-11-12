@@ -22,20 +22,20 @@ describe('@omnitron-dev/lumen-migrate', () => {
       ['/docs/intro', '/docs/setup', '/docs/setup#install', '/docs/extra']
     );
     expect(passed.passed).toBe(true);
-    expect(passed.missingRoutes).toEqual([]);
-    expect(passed.missingAnchors).toEqual([]);
-    expect(passed.totalRoutes).toBe(2);
-    expect(passed.matchedRoutes).toBe(2);
-    expect(passed.totalAnchors).toBe(1);
-    expect(passed.matchedAnchors).toBe(1);
+    expect(passed.routes.missing).toEqual([]);
+    expect(passed.anchors.missing).toEqual([]);
+    expect(passed.routes.total).toBe(2);
+    expect(passed.routes.preserved).toBe(2);
+    expect(passed.anchors.total).toBe(1);
+    expect(passed.anchors.preserved).toBe(1);
 
     const failedRoute = verifyUrlAndAnchorParity(['/docs/intro', '/docs/missing-doc'], ['/docs/intro']);
     expect(failedRoute.passed).toBe(false);
-    expect(failedRoute.missingRoutes).toEqual(['/docs/missing-doc']);
+    expect(failedRoute.routes.missing).toEqual(['/docs/missing-doc']);
 
     const failedAnchor = verifyUrlAndAnchorParity(['/docs/intro#missing-anchor'], ['/docs/intro']);
     expect(failedAnchor.passed).toBe(false);
-    expect(failedAnchor.missingAnchors).toEqual(['/docs/intro#missing-anchor']);
+    expect(failedAnchor.anchors.missing).toEqual(['/docs/intro#missing-anchor']);
   });
 
   it('runs lumen-migrate cli without throwing', async () => {

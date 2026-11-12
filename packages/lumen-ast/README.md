@@ -56,6 +56,13 @@ content, so runtime IDs and serialized widget properties do not leak into export
 HTML math rendering accepts `macros`; light/dark mode belongs to the page shell
 and its shared CSS, including Shiki's dual-theme tokens.
 
+Markdown uses the canonical MDAST serializer with GFM and math extensions. Literal
+HTML, code delimiters, nested lists and table cells survive parsing the export
+again. An extension container's children are its only body; unknown leaf values
+are escaped literal text, not executable HTML or guessed Markdown. This export
+does not preserve every authoring construct; use the source-based editing
+contract below to edit the original document.
+
 Authored HTML is parsed using `hast-util-raw` and rendered with
 `hast-util-sanitize`; scripts, event handlers and unsafe URLs are not executable.
 Code examples remain literal, including nested fences and directive attributes.
@@ -100,6 +107,28 @@ local CLI supplies its anonymous static projection. All tool and resource reads
 use that provider, including resource discovery and AST inspection.
 
 ## Executable examples
+
+### TypeScript annotations
+
+Twoslash-style `// ^?`, `// @errors: 2322, 2304` and `// @noErrors`
+annotations use the actual TypeScript language service. The build embeds the
+declared compiler's ES2022 standard-library closure, including DOM declarations,
+with the upstream license in `licenses/typescript.txt`. Node and browser consumers
+use those same files without filesystem or network lookup. Snippets cannot import
+the host workspace or Node modules; this is a standalone virtual TypeScript file,
+not an implicit consumer-project typecheck.
+The JavaScript compiler dependency is pinned exactly; a runtime compiler/library
+version mismatch is rejected before analysis. Native TypeScript used for building
+the workspace is a separate tooling dependency.
+
+The caret identifies its exact column on the preceding code line. Missing symbols,
+malformed directives and sources above 128 KiB or 2,000 lines fail explicitly;
+the analyzer never substitutes another identifier or a synthetic hover. `@noErrors`
+hides displayed error annotations, while `actualErrors` and `errorsValid` still
+report the measured result. These are admission limits, not a hard CPU quota.
+Type analysis does not execute the example.
+
+### JavaScript execution
 
 `@omnitron-dev/lumen-ast/execution` provides `evaluatePlayground(code, timeoutMs)`
 for documentation examples. It creates a fresh QuickJS WASM instance with no

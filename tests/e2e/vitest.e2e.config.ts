@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
+import { typescriptLibrariesVitePlugin } from '../../packages/lumen-ast/build/typescript-libraries.js';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../..');
 
@@ -24,7 +25,7 @@ function resolveJsToTs() {
 }
 
 export default defineConfig({
-  plugins: [resolveJsToTs()],
+  plugins: [resolveJsToTs(), typescriptLibrariesVitePlugin()],
   test: {
     globals: true,
     environment: 'node',

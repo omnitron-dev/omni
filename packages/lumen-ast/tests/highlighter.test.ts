@@ -32,7 +32,7 @@ const greeting = "hello";
     expect(result.expectedErrors).toEqual([2322, 2304]);
     expect(result.annotations).toHaveLength(1);
     expect(result.annotations[0]?.type).toBe('hover');
-    expect(result.annotations[0]?.column).toBe(4);
+    expect(result.annotations[0]?.column).toBe(6);
     expect(result.code).toBe('const greeting = "hello";');
   });
 

@@ -4,25 +4,7 @@
   "description": "Pure isomorphic prism-doc/2 AST compiler, math environments, Shiki/Twoslash highlighter, and multi-target emitters",
   "type": "module",
   "tsup": {
-    "entry": [
-      "src/index.ts",
-      "src/execution/index.ts",
-      "src/execution/limits.ts",
-      "src/islands/index.ts",
-      "src/typst/index.ts",
-      "src/mcp/index.ts",
-      "src/diagrams/index.ts"
-    ],
-    "format": [
-      "esm"
-    ],
-    "dts": true,
-    "sourcemap": true,
-    "clean": true,
-    "treeshake": true,
-    "noExternal": [
-      "micromark-extension-math"
-    ]
+    "noExternal": ["micromark-extension-math"]
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -64,7 +46,8 @@
   "files": [
     "dist",
     "README.md",
-    "fonts"
+    "fonts",
+    "licenses"
   ],
   "scripts": {
     "build": "tsup",

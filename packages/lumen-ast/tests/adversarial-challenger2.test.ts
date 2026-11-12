@@ -97,8 +97,7 @@ describe('Challenger 2 Adversarial Stress Suite', () => {
       const twoslashCases = `// @errors: 99999, 2304, 2322
 // @noErrors
 const a = 1;
-// ^
-// ^?
+//    ^?
 //    ^? type-query-hover
 // @noErrors`;
 
@@ -111,9 +110,8 @@ const a = 1;
 
       // Verify caret on first line edge case
       const firstLineCaret = `//    ^?\nconst b = 2;`;
-      const firstLineResult = parseTwoslashAnnotations(firstLineCaret);
-      expect(firstLineResult.annotations.length).toBe(1);
-      expect(firstLineResult.annotations[0]?.lineIndex).toBe(0);
+      expect(() => parseTwoslashAnnotations(firstLineCaret)).toThrow('preceding code line');
+      expect(() => parseTwoslashAnnotations('const a = 1;\n// ^?')).toThrow('No TypeScript symbol');
 
       // Verify line with missing caret (e.g. // without ^?) does not create hover annotation
       const noCaretLine = `const c = 3;\n// comment without caret`;

@@ -14,7 +14,11 @@ async function imported(specifier) {
   assert.ok(entry.startsWith(path.join(consumer, 'node_modules') + path.sep), `${specifier} escaped the archive consumer`);
   return import(pathToFileURL(entry).href);
 }
-const { parseDocumentSync, toHtmlSsr, renderKaTeX } = await imported('@omnitron-dev/lumen-ast');
+const { parseDocumentSync, toHtmlSsr, renderKaTeX, parseTwoslashAnnotations } = await imported('@omnitron-dev/lumen-ast');
+const types = parseTwoslashAnnotations('const value = [1, 2].at(-1);\n//    ^?');
+assert.deepEqual(types.actualErrors, []);
+assert.equal(types.errorsValid, true);
+assert.match(types.annotations[0].text, /number \| undefined/);
 const ast = parseDocumentSync('# Math\n\nInline $x^2$ and display:\n\n$$\nx + y\n$$\n');
 assert.deepEqual(ast.diagnostics, []);
 assert.equal(ast.children[1].children[1].type, 'mathInline');

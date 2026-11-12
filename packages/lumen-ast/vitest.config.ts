@@ -1,6 +1,8 @@
 import { defineConfig } from 'vitest/config';
+import { typescriptLibrariesVitePlugin } from './build/typescript-libraries.js';
 
 export default defineConfig({
+  plugins: [typescriptLibrariesVitePlugin()],
   test: {
     globals: true,
     environment: 'node',

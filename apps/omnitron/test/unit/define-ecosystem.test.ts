@@ -59,4 +59,17 @@ describe('defineEcosystem', () => {
     expect(result.apps[1]!.dependsOn).toEqual(['main']);
     expect(result.apps[2]!.critical).toBe(true);
   });
+
+  it.each([
+    { script: './main.js' },
+    { bootstrap: './bootstrap.js' },
+    { releaseFrom: { release: 'producer', manifestSha256: 'a'.repeat(64), app: 'api' } },
+  ])('validates application counts in every authoring mode: %j', source => {
+    const entry = { name: 'api', ...source, instances: 2 };
+    expect(() => defineEcosystem({ apps: [entry] })).toThrow('Declare process.instances');
+    expect(() => defineEcosystem({ apps: [{ ...entry, enabled: false }] })).toThrow('Declare process.instances');
+    expect(entry.instances).toBe(2);
+    const historicalDefault = { ...entry, instances: 1 };
+    expect(defineEcosystem({ apps: [historicalDefault] }).apps).toEqual([historicalDefault]);
+  });
 });

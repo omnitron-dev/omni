@@ -43,8 +43,8 @@ describe('application instance admission', () => {
 
   it('preflights all enabled declarations before startAll can reconcile or start a sibling', async () => {
     const f = fixture();
-    const config = defineEcosystem({ apps: [{ name: 'valid', script: './main.js' }, historical('bootstrap', 2)] });
-    // Reading an old config does not rewrite it or fabricate a migration.
+    const config = { ...defineEcosystem({ apps: [] }), apps: [{ name: 'valid', script: './main.js' }, historical('bootstrap', 2)] };
+    // A retained observation can still contain historical fields; admission must validate it.
     expect(config.apps[1]).toMatchObject({ instances: 2 });
     await expect(f.owner.startAll(config)).rejects.toThrow('app-level instances');
     for (const effect of Object.values(f.effects)) expect(effect).not.toHaveBeenCalled();
@@ -54,6 +54,8 @@ describe('application instance admission', () => {
   it('refuses restarting an unsupported persisted entry before stopping its current process', async () => {
     const f = fixture(); const handle = new AppHandle(historical('classic', 2), 'classic');
     handle.status = 'online'; f.handles.set(handle.name, handle);
+    expect(f.owner.getHandle(handle.name)?.entry).toMatchObject({ instances: 2 });
+    expect(f.owner.getApp(handle.name)?.status).toBe('online');
     await expect(f.owner.restartApp(handle.name)).rejects.toThrow('app-level instances');
     expect(f.effects.stopAppQueued).not.toHaveBeenCalled(); expect(f.effects.tearDownApp).not.toHaveBeenCalled();
     expect(handle.status).toBe('online'); expect(f.handles.get(handle.name)).toBe(handle);

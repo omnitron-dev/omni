@@ -9,6 +9,7 @@ import { importReleaseArtifacts } from '../../src/release/import-artifacts.js';
 import { loadRelease } from '../../src/release/load.js';
 import { defineEcosystem } from '../../src/config/define-ecosystem.js';
 import { loadEcosystemConfigFile } from '../../src/config/loader.js';
+import { inspectLocalReleaseInstallation } from '../../src/release/local-installation.js';
 
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 const content = Buffer.from('producer archive bytes, unchanged by the consumer');
@@ -46,6 +47,17 @@ async function store(manifest: ReleaseManifest) {
 }
 
 describe('independent release artifact provenance', () => {
+  it('refuses an imported application multiplier before preparing an installation', async () => {
+    const manifest = consumer(), f = await store(manifest);
+    const loaded = await loadRelease(manifest.id, f.root);
+    const entry = { name: 'collector', releaseFrom: manifest.artifacts[0]!.origin!, instances: 2 };
+    await expect(inspectLocalReleaseInstallation(loaded, 'local', [entry], {
+      prepare: true, ownerPid: process.pid, ownerPackage: f.source,
+    })).rejects.toThrow('Declare process.instances');
+    await expect(fs.lstat(path.join(f.root, '.installed'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(entry.instances).toBe(2);
+  });
+
   it('retains the actual source, SDK, migration package and execution target through consumer aliases', () => {
     const upstream = producer(), release = consumer(upstream);
     const context = artifactReleaseContext(release, 'collector');

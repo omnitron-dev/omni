@@ -52,7 +52,7 @@ function fixture() {
   };
   const selector = () => new LocalReleaseSelection(db, scope, registration);
   cleanup.push(async () => { await db.dispose(); rmSync(root, { recursive: true, force: true }); });
-  return { handle, owner, make, installed, selected, selector, registration, scope, db,
+  return { handle, owner, make, installed, selected, selector, registration, scope, db, config,
     stopped: () => { handle.status = 'stopped'; handle.pid = null; },
     phase: () => phase,
     reboot: async () => { await db.dispose(); db = new DaemonStateStore(log as never, state); return make(); },
@@ -179,6 +179,59 @@ it('refuses an older owner before changing selection, stopping or starting appli
   expect(f.owner.stopStackExecution).not.toHaveBeenCalled();
   expect(f.owner.redefineApp).not.toHaveBeenCalled();
   expect(f.owner.startApp).not.toHaveBeenCalled();
+});
+
+it.each([false, true])('refuses an unsupported installed target before owner or selection effects (reconciliation support %s)', async supported => {
+  const f = fixture();
+  Object.assign(f.installed, { instances: 2 });
+  const reconcile = vi.fn();
+  Object.assign(f.owner, { getExecutionCapabilities: () => supported ? { stoppedStackReconciliation: 1 } : {}, reconcileStoppedStack: reconcile });
+  const result = await f.make().startStack('research', 'lab', { release: f.selected.id }).catch(error => error);
+  expect(f.owner.stopStackExecution).not.toHaveBeenCalled();
+  expect(f.owner.redefineApp).not.toHaveBeenCalled();
+  expect(reconcile).not.toHaveBeenCalled();
+  expect(f.owner.enableStackExecution).not.toHaveBeenCalled();
+  expect(f.owner.startApp).not.toHaveBeenCalled();
+  expect(f.selector().read()).toEqual({ revision: 0, release: null });
+  expect(result).toBeInstanceOf(Error);
+  expect(result.message).toContain('Declare process.instances');
+});
+
+it('refuses an unsupported configured target before provisioning infrastructure', async () => {
+  const f = fixture();
+  Object.assign(f.config.apps[0]!, { instances: 2 });
+  f.config.stacks.lab.infrastructureOwnership = 'stack';
+  const service = f.make();
+  const provision = vi.spyOn(service['infraManager'], 'provisionStack').mockRejectedValue(Error('infrastructure reached'));
+  const result = await service.startStack('research', 'lab').catch(error => error);
+  expect(provision).not.toHaveBeenCalled();
+  expect(f.owner.stopStackExecution).not.toHaveBeenCalled();
+  expect(f.owner.startApp).not.toHaveBeenCalled();
+  expect(result).toBeInstanceOf(Error);
+  expect(result.message).toContain('Declare process.instances');
+});
+
+it('validates the built target immediately before changing the owner fence', async () => {
+  const f = fixture(), service = f.make();
+  Object.assign(service, { stackEntryBuilder: () => (entry: IEcosystemAppEntry) => ({ ...entry, name: f.handle.name, instances: 2 }) });
+  await expect(service.startStack('research', 'lab', { release: f.selected.id })).rejects.toThrow('Declare process.instances');
+  expect(f.owner.stopStackExecution).not.toHaveBeenCalled();
+  expect(f.owner.redefineApp).not.toHaveBeenCalled();
+  expect(f.owner.enableStackExecution).not.toHaveBeenCalled();
+  expect(f.owner.startApp).not.toHaveBeenCalled();
+  expect(f.selector().read()).toEqual({ revision: 0, release: null });
+});
+
+it('refuses a preservation review of an invalid cached target before consulting infrastructure', async () => {
+  const f = fixture(), service = f.make();
+  Object.assign(f.config.apps[0]!, { instances: 2 });
+  Object.assign(service, { getLoadedConfig: () => f.config });
+  const review = vi.spyOn(service['infraManager'], 'reviewPreservation');
+  const result = await service.reviewStackStart('research', 'lab', { infrastructure: 'preserve' });
+  expect(result.digest).toBeNull();
+  expect(result.targets).toEqual([expect.objectContaining({ node: 'preflight', reason: expect.any(String) })]);
+  expect(review).not.toHaveBeenCalled();
+  expect(f.owner.stopStackExecution).not.toHaveBeenCalled();
 });
 
 it('reports retired registrations through the admission result shared by CLI and Console', async () => {

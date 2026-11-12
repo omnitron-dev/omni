@@ -1,4 +1,5 @@
 import { readProjectStacks, resolveProjectStacks } from '../config/project-stacks.js';
+import { assertApplicationInstances } from '../config/define-ecosystem.js';
 import { readSavedDaemonConfig } from '../config/saved.js';
 import { observeStackHealth, type HealthAnswers } from '../project/stack-health.js';
 import { LocalReleaseSelection } from '../project/local-release-selection.js';
@@ -1603,6 +1604,7 @@ export class ProjectService extends EventEmitter {
       if (release && prior && prior.id === id && prior.manifestSha256 !== release.manifestSha256) throw Error('Selected release changed');
       const installation = local && release ? await this.installedRelease(project, stackName, stack, config, release, false) : undefined;
       const entries = installation?.entries ?? this.resolveStackApps(stack, config);
+      for (const entry of entries) assertApplicationInstances(entry);
       resolveStartupOrder(entries);
       const definitions = release?.remoteDefinitions ?? this.preservationDefinitions(project, stackName, entries);
       const environment = await this.stackEnvFor(project, stackName, stack, entries.map(entry => entry.name));
@@ -1764,6 +1766,7 @@ export class ProjectService extends EventEmitter {
   ): Promise<IStackInfo> {
     const config = infrastructure?.mode === 'preserve' ? this.getLoadedConfig(projectName) : await this.loadProjectConfig(projectName);
     if (!config) throw Error('Project configuration must be loaded before preservation');
+    for (const entry of config.apps) assertApplicationInstances(entry);
     const stacks = this.resolveStacks(config, projectName);
     const stackConfig = stacks[stackName];
     if (!stackConfig) throw new Error(`Stack '${stackName}' not found in project '${projectName}'`);
@@ -3801,6 +3804,7 @@ export class ProjectService extends EventEmitter {
 
     // 1. Load bootstrap definitions (needed for both infra provisioning and config resolution)
     const appEntries = selectedEntries ?? this.resolveStackApps(stackConfig, ecosystemConfig);
+    for (const entry of appEntries) assertApplicationInstances(entry);
     // What the stack gives its apps, vault references resolved — now, before
     // anything is provisioned: a key the vault does not hold refuses the
     // start here (project/stack-env.ts).
@@ -5499,6 +5503,7 @@ export class ProjectService extends EventEmitter {
   private async checkLocalOwner(project: string, stack: string, entries: IEcosystemAppEntry[], changing: boolean, automatic = false) {
     const plan = await this.orchestrator.inspectStackExecution({ project, stack });
     await this.orchestrator.refreshObservation?.();
+    for (const entry of entries) assertApplicationInstances(entry);
     if (plan.phase === 'stopping' || plan.phase === 'starting')
       throw new Error('Stack has an unfinished owner operation; inspect it before selecting a release');
     const expected = new Map(entries.map(entry => [ProjectService.handleKey(project, stack, entry.name), entry]));
@@ -5523,7 +5528,11 @@ export class ProjectService extends EventEmitter {
   private async prepareLocalOwner(project: string, stack: string, entries: IEcosystemAppEntry[], changing: boolean,
     build: (entry: IEcosystemAppEntry) => IEcosystemAppEntry, commit: () => void) {
     let plan = await this.checkLocalOwner(project, stack, entries, changing);
-    const next = new Map(entries.map(entry => { const built = build(entry); return [built.name, built]; }));
+    const next = new Map(entries.map(entry => {
+      const built = build(entry);
+      assertApplicationInstances(built);
+      return [built.name, built];
+    }));
     const retiring = plan.apps.some(app => !next.has(app.name));
     if ((changing || retiring) && plan.phase !== 'stopped') {
       await this.orchestrator.stopStackExecution({ operationId: randomUUID(), plan });

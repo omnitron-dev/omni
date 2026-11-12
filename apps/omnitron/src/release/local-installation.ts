@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 
 import type { IEcosystemAppEntry } from '../config/types.js';
+import { assertApplicationInstances } from '../config/define-ecosystem.js';
 import { validateReadiness } from '../health/contracts.js';
 import { CLOSURE_FILE } from './application-closure.js';
 import { assertFrozenDirectory as assertDirectory, frozenMember as member, extractFrozenArchive, verifyFrozenApplication, verifyFrozenPayload } from './frozen-installation.js';
@@ -66,6 +67,7 @@ async function verify(root: string, launch: ReleaseLaunch, entry: IEcosystemAppE
 /** Selection is stored by the caller. This only materializes verified immutable inputs;
  * it never installs packages, mutates an owner, or rewrites a developer checkout. */
 export async function inspectLocalReleaseInstallation(release: LoadedRelease, stack: string, entries: readonly IEcosystemAppEntry[], options: { prepare?: boolean; ownerPid?: number; ownerPackage?: string; runtime?: TargetRuntime; requiredFiles?: Readonly<Record<string, readonly string[]>> } = {}): Promise<IEcosystemAppEntry[]> {
+  for (const entry of entries) assertApplicationInstances(entry);
   if (!digest(release.manifestSha256)) throw Error('Invalid local release manifest digest');
   const runtime = options.runtime ?? await targetRuntime();
   const sources = new Map(releaseArtifactOrigins(release.manifest, release.manifestSha256).map(source => [source.app, source]));

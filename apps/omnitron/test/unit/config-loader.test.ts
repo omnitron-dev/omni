@@ -46,6 +46,19 @@ describe('ConfigLoader', () => {
       ]);
     });
 
+    it.each([
+      { script: './main.js' },
+      { bootstrap: './bootstrap.js' },
+      { releaseFrom: { release: 'producer', manifestSha256: 'a'.repeat(64), app: 'api' } },
+    ])('rejects unsupported application counts from ordinary raw config in both load phases: %j', async source => {
+      const file = path.join(tmpDir, 'omnitron.config.mjs');
+      const raw = 'export default ' + JSON.stringify({ apps: [{ name: 'api', ...source, instances: 2 }] });
+      fs.writeFileSync(file, raw);
+      for (const phase of ['runtime', 'release'] as const)
+        await expect(loadEcosystemConfig(tmpDir, phase)).rejects.toThrow('Declare process.instances');
+      expect(fs.readFileSync(file, 'utf8')).toBe(raw);
+    });
+
     it('loads omnitron.config.js', async () => {
       const configContent = `
         module.exports = {

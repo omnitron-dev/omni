@@ -1,5 +1,6 @@
 import { configuredStartEntry, effectiveAppName, ensureNamespacedEntry, registeredAppName } from './app-name.js';
 import { Errors } from '@omnitron-dev/titan/errors';
+import { assertApplicationInstances } from '../config/define-ecosystem.js';
 import { OWNER_CAPABILITIES } from '../daemon/execution-capabilities.js';
 import { parsePoolScaleRequest, assertPoolScaleTarget } from '../shared/pool-scale.js';
 import { installedEntryRevision, installedExecutable, requireInstalledBinding } from './installed-execution.js';
@@ -103,14 +104,6 @@ function qualifyChildName(appName: string, childName: string): string {
   return childName.startsWith(`${appName}/`) || childName === appName
     ? childName
     : `${appName}/${childName}`;
-}
-
-/** Historical records remain readable, but an unsupported multiplier must not
- * change only the reported instance count while still launching one app. */
-function assertApplicationInstances(entry: IEcosystemAppEntry): void {
-  if ('instances' in entry && entry.instances !== undefined && entry.instances !== 1)
-    throw Errors.badRequest(`Application '${entry.name}' does not support app-level instances. ` +
-      'Declare process.instances in defineSystem(), then use omnitron scale <app> <count> --process <pool> for runtime resizing.');
 }
 
 const TOPOLOGY_EXPOSE_TIMEOUT_MS = 30_000;

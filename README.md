@@ -125,6 +125,14 @@ observes CI and qualifies native transition/rollback on each configured Node.
 The release policy is in `.xec/release-policy.mjs`. `--push-source` publishes
 only the reviewed source branch for CI; omit it when another system handles Git.
 Publication rechecks exact evidence and hashes without rebuilding or retesting.
+Read-only status and publication use the selected build's recorded producer Node,
+even when the publishing CLI runs on another supported Node. The current policy,
+release identity, runtime manifest and archive digests must still match exactly;
+read-only verification never builds, dispatches jobs or writes qualification state.
+The prepared public archive set must also match the independently reproduced SDK
+in package identity, complete file contents and executable bits. The existing
+archive inspector normalizes only dependency-map key order and verified `gitHead`
+metadata; qualification does not replace differing archives.
 
 Resume qualification with `xec release <version> --qualify --previous <commit>`.
 Repeat `--finish` to reconcile interrupted npm uploads from the same archives.

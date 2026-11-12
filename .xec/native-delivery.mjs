@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import { readRuntimeManifest, runtimeArtifactDigest, verifyRuntimeArtifact } from '../apps/omnitron/src/shared/runtime-artifact.ts';
 
 const json = async file => JSON.parse(await fs.readFile(file, 'utf8'));
 async function sha256(file) {
@@ -14,7 +15,6 @@ async function sha256(file) {
 /** Decode with the already qualified local SDK; never execute code from the download. */
 export async function retainNativeRuntime({ directory, localRuntime, evidence, context, download, observeOnly }) {
   const load = file => import(pathToFileURL(path.join(localRuntime, 'packages/0/dist', file)).href);
-  const { readRuntimeManifest, runtimeArtifactDigest } = await load('shared/runtime-artifact.js');
   async function verify(root) {
     const proof = await json(path.join(root, 'NATIVE.json'));
     if (proof.schema !== 1 || proof.commit !== context.commit || proof.previous !== context.previous ||
@@ -32,7 +32,7 @@ export async function retainNativeRuntime({ directory, localRuntime, evidence, c
     const stamp = await json(path.join(runtime, 'packages/0/dist/BUILD.json'));
     if (manifest.sha256 !== proof.runtime || manifest.nodeVersion !== proof.node ||
         manifest.platform !== proof.platform || manifest.arch !== proof.arch ||
-        stamp.commit !== proof.commit || stamp.dirty || await runtimeArtifactDigest(runtime) !== proof.runtime)
+        stamp.commit !== proof.commit || stamp.dirty !== false || await runtimeArtifactDigest(runtime) !== proof.runtime)
       throw Error('Native runtime differs from its sealed proof');
     return runtime;
   }
@@ -45,6 +45,7 @@ export async function retainNativeRuntime({ directory, localRuntime, evidence, c
     if (await fs.lstat(directory).catch(error => { if (error.code !== 'ENOENT') throw error; return null; })) throw error;
   }
   if (observeOnly) throw Error('The qualified native runtime has not been retained: ' + context.node);
+  await verifyRuntimeArtifact(localRuntime);
   const temporary = await fs.mkdtemp(path.join(path.dirname(directory), '.native-'));
   try {
     await download(temporary);

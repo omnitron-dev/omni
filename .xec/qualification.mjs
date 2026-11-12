@@ -4,10 +4,11 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { UserError } from '@xec-sh/ops';
 import { Pipeline } from '@xec-sh/ops/pipeline';
-import { releaseCommand } from '@xec-sh/ops/release';
+import { loadPreparedRelease, releaseCommand } from '@xec-sh/ops/release';
 import policy from './release-policy.mjs';
 import { githubQualification } from './github-qualification.mjs';
 import { retainNativeRuntime } from './native-delivery.mjs';
+import { verifyRuntimeArtifact } from '../apps/omnitron/src/shared/runtime-artifact.ts';
 
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const read = async filename => JSON.parse(await fs.readFile(filename, 'utf8'));
@@ -26,21 +27,22 @@ async function save(filename, value) {
   try { await directory.sync(); } finally { await directory.close(); }
 }
 
-async function verifyBuild(directory, commit) {
+async function verifyBuild(directory, commit, producerNode) {
   const proof = await read(path.join(directory, 'QUALIFICATION.json'));
-  if (proof.revision !== commit || proof.independentBuilds !== 2 || proof.node !== process.version)
-    throw Error('Independent build evidence differs from this release or Node version');
+  if (proof.revision !== commit || proof.independentBuilds !== 2 || proof.node !== producerNode)
+    throw Error('Independent build evidence differs from the selected release or producer Node version');
   const runtime = path.join(directory, 'runtime');
   const manifest = await read(path.join(runtime, 'RUNTIME.json'));
   if (manifest.sha256 !== proof.sha256 || manifest.nodeVersion !== proof.node) throw Error('Runtime differs from qualification');
   const stamp = await read(path.join(runtime, 'packages/0/dist/BUILD.json'));
-  if (stamp.commit !== commit || stamp.dirty) throw Error('Qualified runtime source differs');
-  const { verifyRuntimeArtifact } = await import(pathToFileURL(path.join(runtime, 'packages/0/dist/shared/runtime-artifact.js')).href);
+  if (stamp.commit !== commit || stamp.dirty !== false) throw Error('Qualified runtime source differs');
+  // Verification code comes from the reviewed checkout, never the bytes it is
+  // about to inspect. This builtins-only module needs no producer Node ABI.
   await verifyRuntimeArtifact(runtime);
   const inventory = await fs.readFile(path.join(directory, 'sdk/framework-manifest.json'));
   if (createHash('sha256').update(inventory).digest('hex') !== proof.sdk.manifestSha256) throw Error('Qualified SDK inventory changed');
   for (const entry of JSON.parse(inventory)) {
-    if (path.basename(entry.filename) !== entry.filename || entry.sourceRevision !== commit || entry.sourceDirty)
+    if (path.basename(entry.filename) !== entry.filename || entry.sourceRevision !== commit || entry.sourceDirty !== false)
       throw Error('Invalid qualified SDK entry');
     const bytes = await fs.readFile(path.join(directory, 'sdk', entry.filename));
     if ('sha512-' + createHash('sha512').update(bytes).digest('base64') !== entry.integrity) throw Error('Qualified SDK archive changed: ' + entry.name);
@@ -48,8 +50,28 @@ async function verifyBuild(directory, commit) {
   return proof;
 }
 
+async function verifyPreparedArchives(root, version, build, commit, run, signal, inspectArchives) {
+  const prepared = await loadPreparedRelease(root, version, run);
+  if (prepared.commit !== commit) throw Error('Prepared archives differ from the qualified release');
+  const records = await read(path.join(build, 'sdk/framework-manifest.json'));
+  const reproduced = records.map(entry => {
+    if (path.basename(entry.filename) !== entry.filename || entry.sourceRevision !== commit || entry.sourceDirty !== false)
+      throw Error('Invalid qualified SDK entry');
+    return { name: entry.name, version: entry.version, integrity: entry.integrity, file: path.join(build, 'sdk', entry.filename) };
+  });
+  // verifyBuild has already checked every byte of this runtime using the
+  // checkout's trusted verifier. Only then may its canonical archive inspector load.
+  const inspect = inspectArchives ?? (await import(pathToFileURL(
+    path.join(build, 'runtime/packages/0/dist/release/registry-framework.js')).href)).assertReproducedFrameworkArchives;
+  return inspect(prepared.artifacts, reproduced, commit, signal);
+}
+
 /** Invoked by the release command while holding Xec's existing release writer lock. */
 export async function qualifyRelease(root, version, options = {}) {
+  return runQualification(root, version, options);
+}
+
+async function runQualification(root, version, options, recordedIdentity) {
   const run = options.run ?? releaseCommand;
   const progress = options.progress ?? console.log;
   const selected = options.policy ?? policy;
@@ -60,14 +82,22 @@ export async function qualifyRelease(root, version, options = {}) {
   const nodes = selected.qualification.nodes;
   if (!Array.isArray(nodes) || nodes.length === 0 || new Set(nodes).size !== nodes.length ||
       nodes.some(node => !/^\d+\.\d+\.\d+$/.test(node))) throw Error('Configure exact, distinct Node versions');
-  const identity = { schema: 1, commit, version, previous, policy: selected, node: process.version };
+  // New builds belong to this Node. Read-only publication follows the exact
+  // selected producer identity; the publisher's Node does not create a new key.
+  const identity = { schema: 1, commit, version, previous, policy: selected, node: recordedIdentity?.node ?? process.version };
+  if (recordedIdentity && JSON.stringify(recordedIdentity) !== JSON.stringify(identity))
+    throw Error('Selected qualification identity or current release policy differs');
   const directory = path.join(root, '.release-artifacts/qualification', commit, digest(identity));
   const filename = path.join(directory, 'qualification.json');
   const saved = await optional(filename);
+  if (options.observeOnly && !saved) throw Error('Selected qualification receipt is missing');
   if (saved && JSON.stringify(saved.identity) !== JSON.stringify(identity)) throw Error('Qualification identity differs');
   const state = saved ?? { identity, stages: {}, native: {} };
   let writes = Promise.resolve();
-  const persist = () => (writes = writes.then(() => save(filename, state)));
+  const persist = () => {
+    if (options.observeOnly) throw Error('Read-only qualification cannot persist evidence');
+    return (writes = writes.then(() => save(filename, state)));
+  };
   const context = { commit, previous, observeOnly: options.observeOnly === true, signal: options.signal };
   const provider = options.provider ?? (selected.qualification.provider === 'github'
     ? githubQualification({ root, policy: selected, run, progress }) : null);
@@ -86,7 +116,9 @@ export async function qualifyRelease(root, version, options = {}) {
         'run', 'scripts/check-reproducible-backend.mjs', '--revision', commit, '--out', build],
         { timeoutMs: 90 * 60_000 });
     }
-    state.stages.reproducibility = await (options.verifyBuild ?? verifyBuild)(build, commit);
+    state.stages.reproducibility = await verifyBuild(build, commit, identity.node);
+    state.stages.archiveEquivalence = await verifyPreparedArchives(
+      root, version, build, commit, run, context.signal, options.inspectArchives);
     if (!context.observeOnly) await persist();
   } });
   pipeline.step('ci', { run: async ctx => {
@@ -129,9 +161,11 @@ export async function verifyReleaseQualification(root, version, options = {}) {
   const run = options.run ?? releaseCommand;
   const commit = await run(root, 'git', ['rev-parse', 'HEAD']);
   const selected = await optional(path.join(root, '.release-artifacts/qualification', commit, 'selected.json'));
-  if (!selected || selected.identity.version !== version || selected.identity.commit !== commit ||
+  if (!selected?.identity || selected.identity.schema !== 1 || typeof selected.identity.node !== 'string' ||
+      !/^v\d+\.\d+\.\d+$/.test(selected.identity.node) ||
+      selected.identity.version !== version || selected.identity.commit !== commit ||
       selected.key !== digest(selected.identity)) throw Error('Run xec release ' + version + ' --qualify --previous <commit> before publication');
-  return qualifyRelease(root, version, { ...options, previous: selected.identity.previous, observeOnly: true });
+  return runQualification(root, version, { ...options, previous: selected.identity.previous, observeOnly: true }, selected.identity);
 }
 
 export async function qualifiedRuntimes(root, commit) {

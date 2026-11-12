@@ -14,6 +14,7 @@ import type { CorpusProjectionOptions } from '../corpus/projection.js';
 import { buildHtmlPage } from './assemble-html.js';
 
 export interface RenderDocumentHtmlOptions extends CorpusProjectionOptions {
+  macros?: Record<string, string>;
   theme?: 'light' | 'dark' | string;
   locale?: string;
   baseUrl?: string;
@@ -35,7 +36,7 @@ export function renderDocumentHtml(ast: LumenDocumentAst, options?: RenderDocume
   );
 
   const articleHtml = docAllowed
-    ? toHtmlSsr(effectiveAst, { theme })
+    ? toHtmlSsr(effectiveAst, { theme, macros: options?.macros })
     : '<article class="lumen-doc"><h1>Restricted</h1></article>';
 
   const cache = createCache({ key: 'css' });

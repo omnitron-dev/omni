@@ -11,7 +11,6 @@ export {
   expandEnvVariables,
   LumenUserConfigSchema,
   LumenThemeConfigSchema,
-  LumenTitanConfigSchema,
   LumenPdfConfigSchema,
   LumenLocalesConfigSchema,
   LumenSidebarItemSchema,

@@ -79,9 +79,10 @@ export async function buildStaticSite(
   const projectedCorpus = projectCorpus(corpus, audience);
   const documents = projectedCorpus.getAllDocuments();
 
-  const hasWidgets = (nodes: LumenNode[]): boolean =>
-    nodes.some((node) => node.type === 'jsxWidget' || (Array.isArray(node.children) && hasWidgets(node.children)));
-  const needsClient = Boolean(config.clientEntry) || documents.some((doc) => hasWidgets(doc.ast?.children ?? []));
+  const hasIslands = (nodes: LumenNode[]): boolean =>
+    nodes.some((node) => node.type === 'jsxWidget' || node.type === 'diagram' ||
+      (Array.isArray(node.children) && hasIslands(node.children)));
+  const needsClient = Boolean(config.clientEntry) || documents.some((doc) => hasIslands(doc.ast?.children ?? []));
   const client =
     !options?.clientAssets && needsClient
       ? await buildClientAssets(options?.rootDir ?? process.cwd(), config)
@@ -157,6 +158,7 @@ export async function buildStaticSite(
     const html = doc.ast
       ? renderDocumentHtml(doc.ast, {
           theme: config.theme?.defaultMode ?? 'dark',
+          macros: config.katexMacros,
           locale: doc.locale ?? config.defaultLocale,
           baseUrl: config.baseUrl,
           currentPath: route,

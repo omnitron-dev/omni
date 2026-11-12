@@ -165,10 +165,7 @@ export async function loadCorpusFromDirectory(
   astDiagnostics: LumenGateDiagnostic[];
 }> {
   const config = explicitConfig ?? (await loadLumenConfig(rootDir));
-  const rawDocsDir = (config as unknown as Record<string, unknown>)['docsDir'];
-  const configuredSrcDir =
-    typeof rawDocsDir === 'string' && rawDocsDir.trim() ? rawDocsDir.trim() : config.srcDir || 'docs';
-  const docsDir = resolve(rootDir, configuredSrcDir);
+  const docsDir = resolve(rootDir, config.srcDir);
   const docsDirExists = existsSync(docsDir) && statSync(docsDir).isDirectory();
   const graph = new CorpusGraph();
   const astDiagnostics: LumenGateDiagnostic[] = [];
@@ -345,6 +342,36 @@ function generateCorpusTypesDeclaration(graph: CorpusGraph): string {
   ].join('\n');
 }
 
+function buildReferenceGates(config: LumenConfig): CorpusGate[] {
+  const policies = [
+    [linksGate, config.onBrokenLinks ?? 'throw'],
+    [anchorsGate, config.onBrokenAnchors ?? 'throw'],
+  ] as const;
+  return policies.flatMap(([gate, policy]): CorpusGate[] => {
+    if (policy === 'ignore') return [];
+    if (policy === 'throw') return [gate];
+    return [{
+      ...gate,
+      async run(context) {
+        const reported: LumenGateDiagnostic[] = [];
+        const result = await gate.run({ ...context, reportDiagnostic: diagnostic => reported.push(diagnostic) });
+        const diagnostics = [...result.diagnostics, ...reported].map(diagnostic => ({
+          ...diagnostic,
+          severity: diagnostic.severity === 'error' ? 'warning' as const : diagnostic.severity,
+        }));
+        const messages = new Set(diagnostics.map(diagnostic =>
+          `[${diagnostic.severity.toUpperCase()}] ${diagnostic.code} (${diagnostic.file ?? 'corpus'}): ${diagnostic.message}`
+        ));
+        for (const message of messages) {
+          if (policy === 'warn') console.warn(message);
+          else console.log(message);
+        }
+        return { ...result, passed: true, diagnostics };
+      },
+    }];
+  });
+}
+
 export async function runLumenCli(argv: string[] = process.argv.slice(2)): Promise<void> {
   const command = argv[0];
 
@@ -434,14 +461,15 @@ Commands:
       const gateResult = await runCorpusGates(
         { documents: graph.getAllDocuments(), graph, config, reportDiagnostic: () => {} },
         [
-          ...(config.onBrokenLinks === 'throw' ? [linksGate] : []),
-          ...(config.onBrokenAnchors === 'throw' ? [anchorsGate] : []),
+          ...buildReferenceGates(config),
           ...(config.gates ?? []),
         ]
       );
       const errors = [...astDiagnostics, ...gateResult.diagnostics].filter((item) => item.severity === 'error');
-      if (errors.length)
-        throw new Error(errors.map((item) => `${item.file}: ${item.code}: ${item.message}`).join('\n'));
+      if (!gateResult.passed || errors.length)
+        throw new Error(errors.length
+          ? errors.map((item) => `${item.file}: ${item.code}: ${item.message}`).join('\n')
+          : `Corpus gates failed: ${gateResult.results.filter(result => !result.passed).map(result => result.name).join(', ')}`);
       const targetOutDir = cliOpts.outDir
         ? resolve(cliOpts.rootDir, cliOpts.outDir)
         : resolve(cliOpts.rootDir, config.outDir || 'dist');

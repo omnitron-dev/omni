@@ -15,13 +15,13 @@ export const LumenSidebarDocItemSchema = z.object({
   type: z.literal('doc'),
   id: z.string(),
   label: z.string().optional(),
-});
+}).strict();
 
 export const LumenSidebarLinkItemSchema = z.object({
   type: z.literal('link'),
   label: z.string(),
   href: z.string(),
-});
+}).strict();
 
 export type LumenSidebarItem =
   | z.infer<typeof LumenSidebarDocItemSchema>
@@ -41,7 +41,7 @@ export const LumenSidebarCategoryItemSchema: z.ZodType<LumenSidebarItem> = z.laz
     items: z.array(LumenSidebarItemSchema),
     collapsed: z.boolean().optional(),
     href: z.string().optional(),
-  })
+  }).strict()
 );
 
 export const LumenSidebarItemSchema: z.ZodType<LumenSidebarItem> = z.union([
@@ -52,25 +52,19 @@ export const LumenSidebarItemSchema: z.ZodType<LumenSidebarItem> = z.union([
 
 export const LumenThemeConfigSchema = z.object({
   defaultMode: z.enum(['light', 'dark']).default('dark'),
-  layout: z.custom<(props: LumenPageLayoutProps) => ReactNode>().optional(),
-});
-
-export const LumenTitanConfigSchema = z.object({
-  url: z.string().optional(),
-  enabled: z.boolean().default(false),
-});
+  layout: z.custom<(props: LumenPageLayoutProps) => ReactNode>(value => typeof value === 'function', 'Expected a layout function').optional(),
+}).strict();
 
 export const LumenPdfConfigSchema = z.object({
-  enabled: z.boolean().default(false),
   paperSections: z.array(z.string()).default([]),
-});
+}).strict();
 
 export const LumenLocalesConfigSchema = z.union([
   z.array(z.string()),
   z.object({
     defaultLocale: z.string(),
     locales: z.array(z.string()),
-  }),
+  }).strict(),
 ]);
 
 export const LumenUserConfigSchema = z.object({
@@ -92,10 +86,12 @@ export const LumenUserConfigSchema = z.object({
   locales: LumenLocalesConfigSchema.optional(),
   defaultLocale: z.string().optional(),
   theme: LumenThemeConfigSchema.partial().optional(),
-  gates: z.array(z.custom<CorpusGate>()).optional(),
+  gates: z.array(z.custom<CorpusGate>(value =>
+    typeof value === 'object' && value !== null &&
+    typeof (value as CorpusGate).name === 'string' && typeof (value as CorpusGate).run === 'function',
+  'Expected a gate with name and run(context)')).optional(),
   pdf: LumenPdfConfigSchema.partial().optional(),
-  titan: LumenTitanConfigSchema.partial().optional(),
-});
+}).strict();
 
 export type LumenUserConfig = z.input<typeof LumenUserConfigSchema>;
 
@@ -123,11 +119,6 @@ export interface LumenConfig {
   };
   gates: CorpusGate[];
   pdf?: {
-    enabled: boolean;
     paperSections: string[];
-  };
-  titan?: {
-    url?: string;
-    enabled: boolean;
   };
 }

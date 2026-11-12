@@ -46,7 +46,7 @@ const INTERNAL_CANARY = 'auditinternalcanaryc24d';
 const HIDDEN_HEADING = 'audithiddenheadingb62c';
 
 const filter = new AccessFilterService();
-const config = defineLumenConfig({ title: 'Independent access audit', titan: { enabled: true } });
+const config = defineLumenConfig({ title: 'Independent access audit' });
 
 function corpusFrom(entries: Array<{ id: string; ast: LumenDocumentAst }>): CorpusGraph {
   const corpus = new CorpusGraph();

@@ -1,6 +1,14 @@
 import type { LumenUserConfig, LumenConfig } from './schema.js';
+import { LumenUserConfigSchema } from './schema.js';
 
-export function defineLumenConfig(userConfig: LumenUserConfig): LumenConfig {
+export function defineLumenConfig(input: LumenUserConfig): LumenConfig {
+  const parsed = LumenUserConfigSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error(`Invalid Lumen configuration:\n${parsed.error.issues
+      .map(issue => `${issue.path.join('.') || '<root>'}: ${issue.message}`)
+      .join('\n')}`, { cause: parsed.error });
+  }
+  const userConfig = parsed.data;
   let baseUrl = userConfig.baseUrl ?? '/';
   if (!baseUrl.startsWith('/')) {
     baseUrl = `/${baseUrl}`;
@@ -46,13 +54,8 @@ export function defineLumenConfig(userConfig: LumenUserConfig): LumenConfig {
     gates: userConfig.gates ?? [],
     pdf: userConfig.pdf
       ? {
-          enabled: userConfig.pdf.enabled ?? false,
           paperSections: userConfig.pdf.paperSections ?? [],
         }
       : undefined,
-    titan: {
-      url: userConfig.titan?.url,
-      enabled: userConfig.titan?.enabled ?? false,
-    },
   };
 }

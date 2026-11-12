@@ -24,7 +24,6 @@ export default defineLumenConfig({
     ],
   },
   pdf: {
-    enabled: true,
     paperSections: ['kernel-foundations'],
   },
 });

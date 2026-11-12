@@ -97,7 +97,7 @@ export async function buildSearchIndex(
   const manifestEntries: Record<string, string> = {};
   try {
     for (const [i, doc] of docs.entries()) {
-      const body = doc.ast ? toHtmlSsr(doc.ast) : `<p>${String(doc.title).replace(/[<>&]/g, '')}</p>`;
+      const body = doc.ast ? toHtmlSsr(doc.ast, { macros: config?.katexMacros }) : `<p>${String(doc.title).replace(/[<>&]/g, '')}</p>`;
       const result = await index.addHTMLFile({
         url: entries[i]!.url!,
         content: `<html lang="${config?.defaultLocale ?? 'en'}"><body>${body}</body></html>`,

@@ -2,7 +2,7 @@ import type { CorpusGate, GateContext, GateResult, LumenGateDiagnostic } from '.
 
 export const codeExamplesGate: CorpusGate = {
   name: 'codeExamplesGate',
-  description: 'Verifies code examples in corpus documents are non-empty and syntactically valid',
+  description: 'Rejects empty top-level code blocks; does not compile or execute examples',
   run(context: GateContext): GateResult {
     const diagnostics: LumenGateDiagnostic[] = [];
 

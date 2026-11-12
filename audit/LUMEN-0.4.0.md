@@ -256,6 +256,17 @@ Local reproductions are under
 `/Volumes/AGI-Dev/work/omnitron/lumen-ast-repro-72cc` and
 `/Volumes/AGI-Dev/work/omnitron/lumen-runtime-repro-72cc`.
 
+That CI run passes Typecheck (including its delivery, installed-consumer and
+browser checks), workspace lint and standing checks. Its complete test run
+also exposes three incomplete Omnitron mocks, one obsolete restart fixture and
+a Lumen preview fixture which parses the human-readable startup URL. With ANSI
+enabled, the real server starts but the fixture times out on the decorated port.
+The exact failure is reproduced with color forced in the child process; the
+corrected test waits for the actual HTTP generation and checks both color modes,
+generation retention and shutdown cleanup. Both native cases and lint pass;
+logs are in `/Volumes/AGI-Dev/work/omnitron/lumen-serve-ci-72cc`. These scoped
+results do not qualify a later complete release candidate.
+
 The reference website also passes a fresh SDK `08271086` acceptance through the
 ordinary SDK and Lumen commands: 239 pages, 236 preserved original routes, 2,855
 content anchors, 46,121 link/asset checks and twelve Chromium scenarios. Desktop

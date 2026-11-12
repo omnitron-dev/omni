@@ -1,4 +1,4 @@
-import { it, expect } from 'vitest';
+import { it, expect, vi } from 'vitest';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer, type AddressInfo } from 'node:net';
@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { publishGeneration } from './publish-generation.js';
 
-it('the ordinary serve CLI retains its captured generation and releases it on shutdown', async () => {
+it.each(['0', '1'])('the ordinary serve CLI retains its generation and releases it with FORCE_COLOR=%s', async (color) => {
   const root = mkdtempSync(join(tmpdir(), 'lumen-serve-'));
   const output = join(root, 'out');
   // External fixture without a package.json: explicit ESM config boundary.
@@ -21,33 +21,36 @@ it('the ordinary serve CLI retains its captured generation and releases it on sh
   const cli = new URL('../cli/index.ts', import.meta.url).href;
   const child = spawn(process.execPath, ['--import', import.meta.resolve('tsx'), '--input-type=module', '-e',
     `import { runLumenCli } from ${JSON.stringify(cli)}; await runLumenCli(${JSON.stringify(['serve', '--root', root, '--host', '127.0.0.1', '--port', String(port)])});`],
-  { stdio: ['ignore', 'pipe', 'pipe'] });
+  { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NO_COLOR: undefined, FORCE_COLOR: color } });
   let log = '';
   child.stdout.on('data', chunk => { log += String(chunk); });
   child.stderr.on('data', chunk => { log += String(chunk); });
   try {
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`Preview did not start: ${log}`)), 10000);
-      child.once('exit', code => { clearTimeout(timer); reject(new Error(`Preview exited ${code}: ${log}`)); });
-      child.stdout.on('data', () => {
-        if (log.includes(`127.0.0.1:${port}`)) { clearTimeout(timer); resolve(); }
-      });
-    });
     const origin = `http://127.0.0.1:${port}`;
-    expect(await (await fetch(origin)).text()).toContain('Previous generation');
+    // Human-readable URLs contain ANSI sequences under Turbo/CI. Readiness is
+    // the served generation, independently of terminal formatting.
+    await vi.waitFor(async () => {
+      expect(child.exitCode, log).toBeNull();
+      expect(child.signalCode, log).toBeNull();
+      const response = await fetch(origin, { signal: AbortSignal.timeout(1000) });
+      expect(response.status, log).toBe(200);
+      expect(await response.text(), log).toContain('Previous generation');
+    }, { timeout: 10000, interval: 50 });
     publishGeneration(output, new Map([['index.html', '<h1>Next generation</h1>'], ['next.js', 'next asset']]));
     expect(await (await fetch(origin)).text()).toContain('Previous generation');
     expect(await (await fetch(`${origin}/previous.js`)).text()).toBe('previous asset');
     expect((await fetch(`${origin}/next.js`)).status).toBe(404);
+    const ended = once(child, 'exit');
     child.kill('SIGTERM');
-    const [code] = await once(child, 'exit');
+    const [code] = await ended;
     // The TSX source loader reports conventional 128 + SIGTERM on shutdown.
     expect([0, 143], log).toContain(code);
     expect(readdirSync(root).filter(name => name.startsWith('.out-preview-'))).toEqual([]);
   } finally {
     if (child.exitCode === null && child.signalCode === null) {
+      const ended = once(child, 'exit');
       child.kill('SIGKILL');
-      await once(child, 'exit');
+      await ended;
     }
     rmSync(root, { recursive: true, force: true });
   }

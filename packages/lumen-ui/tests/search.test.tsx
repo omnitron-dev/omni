@@ -71,16 +71,21 @@ describe('Search Dialog & Adapters', () => {
   it('passes literal search text to the queried service and displays service failures', async () => {
     const rpcClient = { search: vi.fn().mockRejectedValue(new Error('Search service unavailable')) };
     const root = createRoot(container);
-    await act(async () => {
-      root.render(React.createElement(LumenSearchDialog, {
-        open: true, defaultTab: 'semantic', initialQuery: '@package/entry[0]', rpcClient,
-      }));
-    });
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 200)); });
-    expect(rpcClient.search).toHaveBeenCalledWith('@package/entry[0]', { limit: 10 });
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe('Search service unavailable');
-    expect(container.textContent).not.toContain('No results found');
-    await act(async () => { root.unmount(); });
+    try {
+      await act(async () => {
+        root.render(React.createElement(LumenSearchDialog, {
+          open: true, defaultTab: 'semantic', initialQuery: '@package/entry[0]', rpcClient,
+        }));
+      });
+      await act(async () => {
+        await vi.waitFor(() => expect(rpcClient.search).toHaveBeenCalledWith('@package/entry[0]', { limit: 10 }), { timeout: 5000 });
+        await expect(rpcClient.search.mock.results[0]?.value).rejects.toThrow('Search service unavailable');
+      });
+      expect(container.querySelector('[role="alert"]')?.textContent).toBe('Search service unavailable');
+      expect(container.textContent).not.toContain('No results found');
+    } finally {
+      await act(async () => { root.unmount(); });
+    }
   });
 
   it('NetronAdapter queries rpcClient and transforms results', async () => {
@@ -178,85 +183,85 @@ describe('Search Dialog & Adapters', () => {
     };
 
     const root = createRoot(container);
-    await act(async () => {
-      root.render(
-        React.createElement(LumenSearchDialog, {
-          open: true,
-          defaultTab: 'semantic',
-          initialQuery: 'term',
-          rpcClient,
-          onSelectResult,
-        })
-      );
-    });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    });
+    try {
+      await act(async () => {
+        root.render(
+          React.createElement(LumenSearchDialog, {
+            open: true,
+            defaultTab: 'semantic',
+            initialQuery: 'term',
+            rpcClient,
+            onSelectResult,
+          })
+        );
+      });
+      await act(async () => {
+        await vi.waitFor(() => expect(rpcClient.search).toHaveBeenCalledWith('term', { limit: 10 }), { timeout: 5000 });
+        await rpcClient.search.mock.results[0]?.value;
+      });
 
-    const link = container.querySelector('.lumen-search-result-item a') as HTMLAnchorElement | null;
-    expect(link).not.toBeNull();
-    expect(link?.getAttribute('href')).toBe('#');
-    expect(container.querySelector('.lumen-search-result-item img')).toBeNull();
-    expect(container.querySelector('.lumen-search-result-item script')).toBeNull();
-    expect(container.querySelector('.lumen-search-result-item mark')?.textContent).toBe('term');
+      const link = container.querySelector('.lumen-search-result-item a') as HTMLAnchorElement | null;
+      expect(link).not.toBeNull();
+      expect(link?.getAttribute('href')).toBe('#');
+      expect(container.querySelector('.lumen-search-result-item img')).toBeNull();
+      expect(container.querySelector('.lumen-search-result-item script')).toBeNull();
+      expect(container.querySelector('.lumen-search-result-item mark')?.textContent).toBe('term');
 
-    await act(async () => {
-      link?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    });
+      await act(async () => {
+        link?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      });
 
-    expect(onSelectResult).toHaveBeenCalledWith({ url: '#', title: 'XSS Candidate' });
-
-    await act(async () => {
-      root.unmount();
-    });
+      expect(onSelectResult).toHaveBeenCalledWith({ url: '#', title: 'XSS Candidate' });
+    } finally {
+      await act(async () => { root.unmount(); });
+    }
   });
 
   it('UI-06: clears loading state immediately when query is emptied and ignores superseded search responses', async () => {
-    let resolveSlowSearch: ((items: any[]) => void) | null = null;
-    const rpcClient = {
-      search: vi.fn().mockImplementation(
-        () =>
-          new Promise<any[]>((resolve) => {
-            resolveSlowSearch = resolve;
-          })
-      ),
-    };
+    const staleResults = [{ documentId: 'late', title: 'Stale Result', path: '/docs/stale', snippet: 'late' }];
+    let resolveSlowSearch!: (items: typeof staleResults) => void;
+    const pendingSearch = new Promise<typeof staleResults>((resolve) => { resolveSlowSearch = resolve; });
+    const rpcClient = { search: vi.fn().mockReturnValue(pendingSearch) };
 
     const root = createRoot(container);
-    await act(async () => {
-      root.render(
-        React.createElement(LumenSearchDialog, {
-          open: true,
-          defaultTab: 'semantic',
-          initialQuery: 'slow-query',
-          rpcClient,
-        })
-      );
-    });
+    try {
+      await act(async () => {
+        root.render(
+          React.createElement(LumenSearchDialog, {
+            open: true,
+            defaultTab: 'semantic',
+            initialQuery: 'slow-query',
+            rpcClient,
+          })
+        );
+      });
+      await act(async () => {
+        await vi.waitFor(() => expect(rpcClient.search).toHaveBeenCalledWith('slow-query', { limit: 10 }), { timeout: 5000 });
+      });
 
-    expect(container.textContent).toContain('Searching...');
+      expect(container.textContent).toContain('Searching...');
 
-    const input = container.querySelector('input[type="search"]') as HTMLInputElement;
-    await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-      setter?.call(input, '');
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+      const input = container.querySelector('input[type="search"]') as HTMLInputElement;
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+        setter?.call(input, '');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      });
 
-    expect(container.textContent).not.toContain('Searching...');
+      expect(container.textContent).not.toContain('Searching...');
 
-    await act(async () => {
-      resolveSlowSearch?.([{ id: 'late', title: 'Stale Result', url: '/docs/stale', snippet: 'late' }]);
-      await new Promise((resolve) => setTimeout(resolve, 260));
-    });
+      await act(async () => {
+        resolveSlowSearch(staleResults);
+        await pendingSearch;
+      });
 
-    expect(container.textContent).not.toContain('Searching...');
-    expect(container.textContent).not.toContain('Stale Result');
-
-    await act(async () => {
-      root.unmount();
-    });
+      expect(rpcClient.search).toHaveBeenCalledTimes(1);
+      expect(container.textContent).not.toContain('Searching...');
+      expect(container.textContent).not.toContain('Stale Result');
+    } finally {
+      await act(async () => { root.unmount(); });
+    }
   });
 
   it('UI-07: traps Tab and Shift+Tab focus strictly inside dialog and restores prior focus on close', async () => {

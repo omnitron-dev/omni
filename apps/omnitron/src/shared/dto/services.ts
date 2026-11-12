@@ -361,7 +361,8 @@ export interface IProjectRpcService {
 
   // --- Stacks (Operator) ---
   resumeInstalledStack(data: { project: string; stack: string }): Promise<import('./project.js').InstalledStackResumeResult>;
-  startStack(data: { project: string; stack: string; allowDirty?: boolean; release?: string; workingTree?: boolean; reinstall?: boolean }): Promise<IStackInfo>;
+  reviewStackStart(data: { project: string; stack: string } & import('./project.js').StackStartOptions): Promise<import('./project.js').StackStartReview>;
+  startStack(data: { project: string; stack: string } & import('./project.js').StackStartOptions): Promise<IStackInfo>;
   /** Would this stack take this release? The deployment's own decision, asked in advance. */
   checkRelease(data: { project: string; stack: string; release: string; prepare?: boolean }): Promise<import('./project.js').ReleaseAdmission>;
   reviewStackStop(data: { project: string; stack: string; keepInfrastructure?: boolean }): Promise<import('./project.js').StackStopReview>;
@@ -503,12 +504,14 @@ export interface IOmnitronInfraService {
    * The node executes; the master orchestrates. Refused by a daemon that
    * does not host one, rather than quietly doing nothing.
    */
-  provisionStack(data: { config: import('../../infrastructure/types.js').InfrastructureConfig }): Promise<{
+  reviewStack(data: import('./project.js').StackInfrastructureInput): Promise<import('./project.js').ExistingInfrastructureReview>;
+  provisionStack(data: import('./project.js').StackInfrastructureInput): Promise<{
     ready: boolean;
     detail: string;
     running: string[];
     failed: Array<{ name: string; status: string; error: string | null }>;
     missing: string[];
+    preservation?: import('./project.js').ExistingInfrastructureReview;
   }>;
   getState(): Promise<InfrastructureState | null>;
   /** What `provisionStack` would find and do on this host — read, never changed. */

@@ -21,21 +21,21 @@ function fixture(remote = true) {
     startsInFlight: new Map(), stopsInFlight: new Map(), stackStates: new Map(), ownershipFrozen: false,
     emit: vi.fn(), loadProjectConfig: vi.fn(async () => config), resolveStacks: () => config.stacks,
     getLoadedConfig: () => config, resolveStackApps: () => config.apps,
-    registry: { setStackEnabled: vi.fn() },
+    registry: { setStackEnabled: vi.fn(), get: () => ({ registeredAt: '2026-11-12T00:00:00Z' }) },
     daemonStateStore: {
       kvUpdateSync: vi.fn((key: string, update: (current: unknown) => unknown) => { const value = update(data.get(key) ?? null); data.set(key, structuredClone(value)); return value; }),
       kvGetSync: (key: string) => data.get(key) ?? null,
     },
     slaveConnector: { invokeOnSlave: invoke, removeSlave: vi.fn() },
     orchestrator: { inspectStackExecution: vi.fn().mockResolvedValue({ project, stack, revision: 0, phase: 'running', apps: [] }), stopStackExecution: vi.fn().mockResolvedValue({}) },
-    infraManager: { inspectStopContainers: async () => [], teardownStack: vi.fn().mockResolvedValue(undefined) },
+    infraManager: { inspectStopContainers: async () => [], teardownStack: vi.fn().mockResolvedValue(undefined), getInstance: () => null },
     toStackInfo: () => ({ name: stack, type: config.stacks.prod.type, status: service.stackStates.get('sample/prod')?.status,
       stopOperation: data.get('stack:sample/prod:last-stop') }),
   });
   return { service, calls, invoke, data };
 }
 describe('stack stop coordinator', () => {
-  it('keeps local containers and their reconciliation while disabling application resume', async () => {
+  it('keeps local containers and requires preservation review before application resume', async () => {
     const { service } = fixture(false);
     service.infraManager.inspectStopContainers = vi.fn(async () => [{ id: 'a'.repeat(64), name: 'database' }]);
     const ordinary = await service.reviewStackStop(project, stack);
@@ -89,6 +89,7 @@ describe('stack stop coordinator', () => {
     const { service } = fixture(false);
     service.infraManager.inspectStopContainers = vi.fn().mockResolvedValueOnce([{ id: 'a'.repeat(64), name: 'database' }]).mockResolvedValue([]);
     await expect(service.stopStack(project, stack, undefined, true)).rejects.toThrow('Retained stack infrastructure changed');
+    expect(service.orchestrator.stopStackExecution).not.toHaveBeenCalled();
     expect(service.stackStates.get('sample/prod').status).toBe('error');
     expect(service.infraManager.teardownStack).not.toHaveBeenCalled();
   });

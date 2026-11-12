@@ -136,6 +136,7 @@ describe('`--reinstall`, from the daemon\'s door to the start', () => {
     const svc: any = new ProjectService(quiet, { list: () => [], listHandleNames: () => [] } as never, {
       selectProjectsSync: () => [], kvGetSync: () => null, save() {}, load: () => null, get: () => null, set() {},
     } as never, { secrets: { get: async () => null } as never });
+    svc.infrastructurePolicy = () => null;
     const seen: unknown[][] = [];
     svc.runStackStart = async (...args: unknown[]) => (seen.push(args), { apps: [] });
     await svc.startStack('sample', 'test', { release: 'r', reinstall: true });

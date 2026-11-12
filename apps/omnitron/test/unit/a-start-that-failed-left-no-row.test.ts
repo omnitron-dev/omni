@@ -79,6 +79,7 @@ function service(stack: Record<string, unknown>, overrides: Record<string, unkno
     },
     localSelection: () => ({ read: () => ({ revision: 0, release: null }) }),
     startsInFlight: new Map(),
+    infrastructurePolicy: () => null,
     stopsInFlight: new Map(),
     assertStackMutable: vi.fn(),
     markPriorStopSuperseded: vi.fn(),

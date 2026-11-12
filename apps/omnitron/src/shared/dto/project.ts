@@ -126,6 +126,53 @@ export interface IStackAccountRemoved {
 
 export type StackStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'degraded' | 'error' | 'unknown';
 
+export interface ExistingInfrastructureReview {
+  protocol: 1;
+  mode: 'preserve';
+  scope?: { project: string; stack: string };
+  digest: string | null;
+  checks: import('./stack-diagnosis.js').StackDiagnosisCheck[];
+  containers: Array<{ name: string; id: string; fingerprint: string }>;
+}
+
+/** The existing node infrastructure transport, with an explicit effect authority. */
+export interface StackInfrastructureInput {
+  config: import('../../infrastructure/types.js').InfrastructureConfig;
+  services?: Record<string, import('../../infrastructure/types.js').IServiceRequirement> | undefined;
+  project?: string | undefined;
+  stack?: string | undefined;
+  overrides?: Record<string, import('../../infrastructure/types.js').IServiceOverride> | undefined;
+  configFiles?: import('../../infrastructure/config-payload.js').ConfigPayload | undefined;
+  staticRoots?: Record<string, string> | undefined;
+  staticLinkRoots?: Record<string, string> | undefined;
+  /** Expected content of the existing static link. Preservation never uploads or repoints it. */
+  staticDigests?: Record<string, string> | undefined;
+  infrastructure?: 'reconcile' | 'preserve' | undefined;
+  review?: string | undefined;
+}
+
+export interface StackStartOptions {
+  allowDirty?: boolean;
+  release?: string;
+  workingTree?: boolean;
+  reinstall?: boolean;
+  /** Preserve admits only existing verified infrastructure; reconcile authorizes its normal deployment lifecycle. */
+  infrastructure?: 'reconcile' | 'preserve';
+  /** Required when selecting preserve. Binds the complete read-only review, including native IDs. */
+  review?: string;
+}
+export interface StackStartReview {
+  protocol: 1;
+  project: string;
+  stack: string;
+  infrastructure: 'preserve';
+  selection?: { release?: string; workingTree?: true };
+  checkedAt: string;
+  digest: string | null;
+  targets: Array<{ node: string; infrastructure?: ExistingInfrastructureReview; reason?: string }>;
+  deferred: string[];
+}
+
 export interface StackStopReview {
   project: string;
   stack: string;
@@ -213,6 +260,8 @@ export interface StackHealthObservation {
 }
 
 export interface IStackInfo {
+  /** Durable authority for subsequent starts, including automatic resumes. */
+  infrastructureMode?: 'reconcile' | 'preserve';
   health?: StackHealthObservation;
   /** Desired release for the next local launch. Runtime evidence is reported separately. */
   selectedRelease?: SelectedRelease;

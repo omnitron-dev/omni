@@ -94,6 +94,7 @@ describe('admission asks the node before anything moves', () => {
       registry: { get: () => ({ name: 'sample', path: dir }), list: () => [] },
       stackStates: new Map(),
       startsInFlight: new Map(),
+    infrastructurePolicy: () => null,
       stopsInFlight: new Map(),
       assertStackMutable: vi.fn(),
       markPriorStopSuperseded: vi.fn(),

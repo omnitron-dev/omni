@@ -323,12 +323,31 @@ export async function stackReleaseAdmissionCommand(project: string, stack: strin
 export async function stackStartCommand(
   projectName: string,
   stackName: string,
-  opts?: { allowDirty?: boolean; release?: string; workingTree?: boolean; reinstall?: boolean },
+  opts?: import('../shared/dto/project.js').StackStartOptions & { dryRun?: boolean },
 ): Promise<void> {
   // Starting a stack boots every app in it; a minute is not enough.
   const client = createDaemonClient(undefined, LONG_REQUEST_TIMEOUT);
   try {
     const svc = await client.service<IProjectRpcService>('OmnitronProject');
+    if (opts?.infrastructure !== undefined && !['preserve', 'reconcile'].includes(opts.infrastructure)) throw Error('Use --infrastructure preserve or reconcile');
+    if (opts?.dryRun && opts.review) throw Error('Use --review when executing a previously inspected start');
+    if (opts?.dryRun && opts.infrastructure === 'reconcile') throw Error('Start --dry-run reviews preservation; reconcile requires a separately approved infrastructure change');
+    const review = opts?.dryRun || opts?.infrastructure === 'preserve'
+      ? await svc.reviewStackStart({ project: projectName, stack: stackName, ...opts, infrastructure: 'preserve' }) : null;
+    if (review && (review.protocol !== 1 || review.infrastructure !== 'preserve')) throw Error('Controller did not confirm preservation capability; no start was requested');
+    if (opts?.dryRun && review) {
+      if (!review.digest) process.exitCode = 1;
+      if (!emitJson(review)) {
+        for (const target of review.targets) {
+          if (target.reason) emitInfo(`${target.node}: ${target.reason}`);
+          for (const check of target.infrastructure?.checks ?? []) emitInfo(`${target.node}: ${check.resource}: ${check.state}: ${check.message}`);
+        }
+        if (review.digest) emitInfo(`Review digest: ${review.digest}`);
+      }
+      return;
+    }
+    if (opts?.infrastructure === 'preserve' && (!review?.digest || (opts.review !== undefined && opts.review !== review.digest)))
+      throw Error('Current infrastructure or launch differs from the review; no start was requested. Inspect again, or reconcile separately.');
     emitStep(`Starting stack ${projectName}/${stackName}...`);
 
     const scope = { project: projectName, stack: stackName, ...(opts?.release && { release: opts.release }) };
@@ -339,6 +358,8 @@ export async function stackStartCommand(
       ...(opts?.release ? { release: opts.release } : {}),
       ...(opts?.workingTree === true ? { workingTree: true } : {}),
       ...(opts?.reinstall === true ? { reinstall: true } : {}),
+      ...(opts?.infrastructure && { infrastructure: opts.infrastructure }),
+      ...(review?.digest ? { review: opts?.review ?? review.digest } : opts?.review ? { review: opts.review } : {}),
     });
     let observationsAvailable = true;
     const stack = isJsonMode() ? await start() : await observeStackStart(scope, start,
@@ -348,6 +369,7 @@ export async function stackStartCommand(
         for (const row of changed) emitInfo(`${row.node}  ${row.app}  ${row.status}  ${row.message}`);
       });
     const { confirmed, outcome, online, total, issues } = readStackStart(stack);
+    if (opts?.infrastructure === 'preserve' && stack.infrastructureMode !== 'preserve') throw Error('Daemon did not confirm preservation authority; inspect the start operation before retrying');
     if (!confirmed) process.exitCode = 1;
     if (emitJson({
       project: projectName,
@@ -359,6 +381,7 @@ export async function stackStartCommand(
       online,
       total,
       infrastructure: stack.infrastructure,
+      infrastructureMode: stack.infrastructureMode,
       ...(stack.notUp?.length ? { notUp: stack.notUp } : {}),
       ...(issues.length ? { issues } : {}),
     })) return;

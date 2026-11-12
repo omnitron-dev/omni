@@ -547,6 +547,72 @@ checks all required dependencies, their containment and the SDK's clean build st
 before creating services. Its result
 records the application's framework commit and the owner's commit and artifact hash.
 
+## Starting with existing infrastructure
+
+Runtime-only recovery uses the ordinary stack lifecycle with
+`--infrastructure preserve`. It requires existing, running resources whose
+native identities and specification match the resolved declaration. It cannot
+provision, recreate or restart infrastructure, run post-provision setup or
+framework database migrations, install a remote daemon, upload static content,
+or rewrite a node's infrastructure configuration. Application startup still runs
+the application itself; its readiness and application-owned startup hooks remain
+separate checks.
+
+Before the maintenance stop, prepare the selected release through
+`stack prepare-release` if necessary, load the intended project configuration,
+and review preservation for both the forward and rollback selections:
+
+```sh
+omnitron stack start acme prod --release <release-id> --infrastructure preserve --dry-run --json
+```
+
+The review reads existing resources and current cached bootstrap declarations;
+it does not import application code or install a release. A non-null `digest`
+requires every target to be verified. Native container IDs, restart generation,
+image identity, ownership, environment, ports, mounts, network, resource limits
+and health-check specification are checked against the desired plan. Extra or
+missing resources and changed presets require a separately approved reconcile.
+A changed historical spec-hash algorithm alone is not native drift. Mounted
+configuration needs a matching creation receipt because mount paths cannot prove
+which configuration bytes a running daemon consumed. Unverifiable configuration
+receipts, host-service identities or recipient capabilities remain explicit
+failures; they are never treated as a successful preservation review.
+
+After the separately planned application stop and runtime transition, start with
+the reviewed authority:
+
+```sh
+omnitron stack start acme prod --release <release-id> --infrastructure preserve --review <digest>
+```
+
+The daemon repeats release admission, installed provenance, declaration and
+environment fingerprinting, and native inspection before startup. It checks
+native identity again when adopting the existing resources. The digest binds
+the exact launch context: a changed owner, installation, release, configuration
+or resource requires a new inspection. A review made before a planned owner
+change does not certify that changed owner. Omitting `--review` makes the CLI
+obtain and submit a current review; supplying it additionally pins the previously
+inspected digest. No secret environment values are returned in review evidence.
+
+`stack stop --keep-infrastructure` persists the preservation restriction before
+stopping applications and drains infrastructure repair work. Subsequent ordinary
+and automatic starts cannot return to reconciliation. A successful preserve start
+retains read-only health observation; unhealthy or replaced resources are reported
+without repair. Handoff retains this authority. An operator must explicitly select
+`--infrastructure reconcile` to authorize normal provisioning, setup and migrations
+again. A new project registration does not inherit an old registration's authority.
+
+The operator RPC contract is `OmnitronProject.reviewStackStart({ project, stack,
+release?, workingTree?, infrastructure: 'preserve' })`, followed by
+`startStack({ project, stack, release?, workingTree?, infrastructure: 'preserve',
+review })`. The existing remote lifecycle forwards the resolved infrastructure
+through `OmnitronInfra.reviewStack` and `provisionStack` with the same preservation
+authority. Recipients must acknowledge protocol 1; an older node refuses recovery
+without a provisioning fallback. Existing project isolation, deployment operations
+and cluster authority checks continue to apply. `check-release` alone checks release
+admission; its historical build/test gates do not certify preservation or classic
+application startup compatibility.
+
 ## Standalone infrastructure
 
 `omnitron infra up`, `down` and `reset --yes` operate on containers declared

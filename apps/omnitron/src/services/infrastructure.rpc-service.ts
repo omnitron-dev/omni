@@ -21,6 +21,9 @@ import { containerEndpoint, REDIS_CONTAINER_PORT, withInfrastructureScope } from
 import type { InfrastructureState, ContainerState } from '../infrastructure/types.js';
 import type { IOmnitronInfraService } from '../shared/dto/services.js';
 import { gatewayRedisDb } from '../infrastructure/gateway-redis-db.js';
+import { reviewExistingContainers } from '../infrastructure/existing-containers.js';
+import type { StackInfrastructureInput, ExistingInfrastructureReview } from '../shared/dto/project.js';
+import { stackDefinitionFingerprint } from '../project/node-stack-stop.js';
 import {
   startContainer,
   stopContainer,
@@ -196,7 +199,17 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
   // principal it exists for — `Missing required role`, from a node that had
   // just authenticated that credential.
   @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
+  async reviewStack(data: StackInfrastructureInput): Promise<ExistingInfrastructureReview> {
+    const scope = infrastructureScope(data);
+    if (!scope || data.infrastructure !== 'preserve') throw Errors.badRequest('Review requires a stack owner and infrastructure=preserve');
+    return withInfrastructureScope(scope.project, scope.stack, async () => (await this.provisionStackNow(data, undefined, true)).preservation!);
+  }
+
+  @Public({ auth: { roles: CONTROL_PLANE_ROLES } })
   async provisionStack(data: {
+    infrastructure?: 'reconcile' | 'preserve';
+    review?: string;
+    staticDigests?: Record<string, string>;
     config: InfrastructureConfig;
     /**
      * What the stack's APPLICATIONS declare they need — a chain daemon, a
@@ -267,14 +280,20 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     running: string[];
     failed: Array<{ name: string; status: string; error: string | null }>;
     missing: string[];
+    preservation?: ExistingInfrastructureReview;
   }> {
     // Named while it runs, so a stall on this node says what it was doing.
     // Test node, 2026-09-22: it went quiet for ten seconds around the end of a
     // provision and nothing here could name it — `monitoring/event-loop-watch.ts`.
     const scope = infrastructureScope(data);
+    if (data.infrastructure !== undefined && !['reconcile', 'preserve'].includes(data.infrastructure)) throw Errors.badRequest('Invalid infrastructure authority');
+    if (data.review !== undefined && data.infrastructure !== 'preserve') throw Errors.badRequest('A preservation review cannot authorize reconciliation');
+    if (data.infrastructure === 'preserve' && (!scope || !data.review || !/^[a-f0-9]{64}$/.test(data.review)))
+      throw Errors.badRequest('Preservation requires a stack owner and native review');
     return this.trackMutation(data, () => duringPhase(`provisioning ${scope?.project ?? 'omnitron'}/${scope?.stack ?? 'default'} for the master`, () => {
+      if (data.infrastructure === 'preserve') return withInfrastructureScope(scope!.project, scope!.stack, () => this.provisionStackNow(data));
       if (this.hostedStacks && scope && !this.getInfra()?.representsStack(scope)) {
-        return this.hostedStacks.provisionHosted(scope.project, scope.stack, apply => this.provisionStackNow(data, apply), this.getInfra());
+        return this.hostedStacks.provisionHosted(scope.project, scope.stack, apply => this.provisionStackNow(data, apply), this.getInfra(), data.infrastructure === 'reconcile');
       }
       if (!scope && this.hostedStacks?.listInstances().length) throw Error('Select the project and stack before provisioning shared host infrastructure');
       return withInfrastructureScope(scope?.project, scope?.stack, () => this.provisionStackNow(data));
@@ -283,8 +302,9 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
 
   /** `provisionStack`'s work. Not an RPC method: it carries no `@Public`. */
   private async provisionStackNow(
-    data: Parameters<InfrastructureRpcService['provisionStack']>[0],
+    data: StackInfrastructureInput,
     apply?: (config: InfrastructureConfig, definition: InfrastructureService) => Promise<InfrastructureService>,
+    reviewOnly = false,
   ): ReturnType<InfrastructureRpcService['provisionStack']> {
     if (!this.hostInfra) {
       throw Errors.badRequest('This daemon does not host stack infrastructure.');
@@ -343,7 +363,7 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
       ? await withGeneratedCredentials(data.config, {
           project: data.project ?? 'omnitron',
           stack: data.stack ?? 'default',
-          vault,
+          vault: data.infrastructure === 'preserve' ? { get: key => vault.get(key), set: async () => { throw Error('Preservation cannot create credentials'); } } : vault,
           // The volume is what says whether this service already holds state
           // initialised with another password.
           hasExistingState: async (service) => {
@@ -370,19 +390,20 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
     // An application's declaration wins over the stack's sugar for the same
     // name: the app is the side that knows what it needs of it.
     const declared = { ...fromStack, ...(data.services ?? {}) };
-    const reused = apply ? null : this.getInfra();
-    let service = reused ?? this.hostInfra(config, declared, registry, data.overrides ?? {}, Boolean(apply));
+    const preserving = data.infrastructure === 'preserve';
+    const reused = apply || preserving ? null : this.getInfra();
+    let service = reused ?? this.hostInfra(config, declared, registry, data.overrides ?? {}, Boolean(apply) || preserving);
     const definition = reused?.resolveDefinition(config, declared, data.overrides ?? {}) ?? service;
-    if (data.project && data.stack) service.resumeStack({ project: data.project, stack: data.stack });
+    if (!preserving && data.project && data.stack) service.resumeStack({ project: data.project, stack: data.stack });
 
     // Write what the master sent, and point this node's containers at its own
     // copies. Before `provision()`, because a container created against a
     // path that does not exist yet mounts an empty directory and then has to
     // be recreated to pick the files up — and before the applications'
     // containers are resolved, because they may mount those copies too.
-    const configRoots = await this.writeStackConfigs(data.configFiles, data.project, data.stack);
-    const staticRoots = await this.acceptStaticRoots(data.staticRoots);
-    const staticLinkRoots = await this.acceptStaticRoots(data.staticLinkRoots);
+    const configRoots = preserving ? await this.checkStackConfigs(data) : await this.writeStackConfigs(data.configFiles, data.project, data.stack);
+    const staticRoots = preserving ? await this.checkStackStatics(data) : await this.acceptStaticRoots(data.staticRoots);
+    const staticLinkRoots = preserving ? new Map([...staticRoots].map(([name]) => [name, `/opt/omnitron/stack-static/${name}`])) : await this.acceptStaticRoots(data.staticLinkRoots);
 
     // Containers the applications declare, resolved the same way the master
     // resolves them for a local stack.
@@ -423,8 +444,26 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
       }, staticLinkRoots);
     }
 
+    if (preserving) {
+      const { selectBareMetal } = await import('../infrastructure/bare-metal-plan.js');
+      if (Object.entries(declared).some(([name, requirement]) => selectBareMetal(name, requirement, data.overrides?.[name])))
+        throw Error('This host service has no verifiable preservation identity');
+      const scope = { project: data.project!, stack: data.stack! };
+      const native = await reviewExistingContainers(definition.getDesiredContainers(), undefined, scope);
+      const preservation = { ...native, digest: native.digest && stackDefinitionFingerprint([native.digest, data.configFiles ?? {}, data.staticDigests ?? {}]) };
+      if (!reviewOnly) {
+        if (!preservation.digest || preservation.digest !== data.review) throw Error('Native infrastructure changed since review');
+        if (!this.hostedStacks) throw Error('This recipient cannot retain stack infrastructure authority');
+        const legacy = this.getInfra();
+        if (legacy?.representsStack({ project: data.project!, stack: data.stack! })) {
+          await legacy.preserveExisting(native.digest!, definition, scope);
+        } else await this.hostedStacks.preserveHosted(data.project!, data.stack!, config, definition, native.digest!);
+      }
+      return { ready: preservation.digest !== null, detail: 'Existing infrastructure observation; provisioning, setup and migrations are forbidden',
+        running: preservation.containers.map(container => container.name), failed: [], missing: [], preservation };
+    }
     if (apply) service = await apply(config, definition);
-    const state = apply ? service.getState() : await service.provision(reused ? definition : undefined);
+    const state = apply ? service.getState() : await service.provision(reused ? definition : undefined, data.infrastructure === 'reconcile');
     const outcome = summariseProvisioning(service.getDesiredServices(), state.services);
 
     // Services that are not containers.
@@ -495,6 +534,39 @@ export class InfrastructureRpcService implements IOmnitronInfraService {
       this.logger?.info?.({ service, dir }, 'Serving this service’s static content from the node');
     }
     return out;
+  }
+
+  private async checkStackConfigs(data: StackInfrastructureInput): Promise<Map<string, string>> {
+    const { validatePayload, nodeConfigRoot, readConfigDirectory } = await import('../infrastructure/config-payload.js');
+    const { isDeepStrictEqual } = await import('node:util');
+    const { homeDir } = await import('../shared/env-config.js');
+    const io = await import('node:fs/promises');
+    const payload = data.configFiles ?? {};
+    if (validatePayload(payload).length) throw Error('Invalid preservation configuration payload');
+    const roots = new Map<string, string>();
+    for (const [service, expected] of Object.entries(payload)) {
+      const root = nodeConfigRoot(homeDir(), data.project!, data.stack!, service);
+      const actual = await readConfigDirectory(root, { readdir: dir => io.readdir(dir, { withFileTypes: true }), readFile: file => io.readFile(file, 'utf8'), stat: file => io.lstat(file) });
+      const ordered = (files: typeof expected) => [...files].sort((a, b) => a.path.localeCompare(b.path));
+      if (actual.skipped.length || !isDeepStrictEqual(ordered(actual.files), ordered(expected))) throw Error('Existing infrastructure configuration files differ; reconcile separately');
+      roots.set(service, root);
+    }
+    return roots;
+  }
+
+  private async checkStackStatics(data: StackInfrastructureInput): Promise<Map<string, string>> {
+    const { releaseTreeDigest } = await import('../release/runtime-provenance.js');
+    const { gatewayStaticLinkName } = await import('./static-carry-forward.js');
+    const io = await import('node:fs/promises');
+    const roots = new Map<string, string>();
+    for (const [service, digest] of Object.entries(data.staticDigests ?? {})) {
+      if (service !== 'gateway' || !/^[a-f0-9]{64}$/.test(digest)) throw Error('Unsupported static preservation binding');
+      const parent = '/opt/omnitron/stack-static/gateway';
+      const root = await io.realpath(`${parent}/${gatewayStaticLinkName(data.project!, data.stack!)}`);
+      if (!root.startsWith(parent + '/') || await releaseTreeDigest(root, true) !== digest) throw Error('Existing static content differs; reconcile separately');
+      roots.set(service, root);
+    }
+    return roots;
   }
 
   private async writeStackConfigs(

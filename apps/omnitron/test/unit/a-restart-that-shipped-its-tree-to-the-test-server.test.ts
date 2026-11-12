@@ -42,6 +42,7 @@ function remoteService(answer: () => Promise<unknown>) {
     registry: { get: () => ({ name: 'sample', path: tmpdir() }), list: () => [] },
     stackStates: new Map(),
     startsInFlight: new Map(),
+    infrastructurePolicy: () => null,
     stopsInFlight: new Map(),
     assertStackMutable: vi.fn(),
     markPriorStopSuperseded: vi.fn(),

@@ -149,6 +149,7 @@ describe('a remote stack will not start from a tree that is not its commit', () 
         enableStackExecution: vi.fn(async () => {}),
       },
     startsInFlight: new Map(),
+    infrastructurePolicy: () => null,
     stopsInFlight: new Map(),
     assertStackMutable: vi.fn(),
     markPriorStopSuperseded: vi.fn(),

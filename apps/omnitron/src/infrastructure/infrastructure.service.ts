@@ -34,6 +34,8 @@ import { observeUnhealthy, type UnhealthyEvidence } from './health-recovery.js';
 import { normalizeInfraConfig } from './config-normalizer.js';
 import { createDefaultRegistry } from './presets/index.js';
 import { PhantomEndpointJanitor } from './phantom-endpoint-janitor.js';
+import { reviewExistingContainers } from './existing-containers.js';
+import type { ExistingInfrastructureReview } from '../shared/dto/project.js';
 import { LOCAL_INFRA_HOST } from '../shared/local-infra-host.js';
 import {
   isDockerAvailable,
@@ -126,6 +128,8 @@ export function decideControlPlaneDatabase(input: {
 }
 
 export interface InfrastructureHandoffState {
+  preservation?: ExistingInfrastructureReview;
+  preservationPending?: true;
   /** Native evidence is separate from desired services and their failure history. */
   nativeState?: { protocol: 1; observations?: Array<{ name: string; containerId: string | null }> };
   retiredStacks?: string[];
@@ -146,6 +150,8 @@ export interface InfrastructureHandoffState {
 }
 
 export class InfrastructureService {
+  private preservation: ExistingInfrastructureReview | undefined;
+  private preservationPending = false;
   private readonly retiredStacks = new Set<string>();
   private desiredContainers: ResolvedContainer[] = [];
   /** What the most recent reconcile did to each service. */
@@ -252,13 +258,15 @@ export class InfrastructureService {
    * runs post-provisioning setup, and starts the health monitor.
    */
   @RecoveryMutation()
-  async provision(definition?: InfrastructureService): Promise<InfrastructureState> {
+  async provision(definition?: InfrastructureService, reconcile = false): Promise<InfrastructureState> {
     if (this.monitoringRelinquished) throw new Error('Infrastructure monitoring ownership has been relinquished');
     if (this.ownershipFrozen) throw new Error('Infrastructure ownership is frozen');
+    if ((this.preservation || this.preservationPending) && !reconcile) throw new Error('Infrastructure is preserved; an explicit reconcile start is required');
     if (this.provisioning) {
       if (definition) throw new Error('Infrastructure provisioning is already in progress; retry the new declaration after it finishes');
       return this.provisioning;
     }
+    if (reconcile) { this.preservation = undefined; this.preservationPending = false; }
     const task = this.provisionDefinition(definition);
     this.provisioning = task;
     try { return await task; }
@@ -479,8 +487,59 @@ export class InfrastructureService {
     return structuredClone(this.desiredContainers);
   }
 
+  /** Adopt a reviewed native generation with no provisioning, setup or mutation monitor. */
+  @RecoveryMutation()
+  async holdForPreservation(): Promise<void> {
+    if (this.ownershipFrozen) throw new Error('Infrastructure ownership is frozen');
+    this.preservationPending = true;
+    this.stopHealthMonitor();
+    await Promise.allSettled([...this.activeSweeps, ...this.reconcileTasks.values(), ...(this.provisioning ? [this.provisioning] : [])]);
+    await this.phantomJanitor?.drain();
+    this.phantomJanitor = null;
+    this.janitorNetworks = [];
+  }
+
+  /** Adopt a reviewed native generation with no provisioning, setup or mutation monitor. */
+  @RecoveryMutation()
+  async preserveExisting(review: string, candidate: InfrastructureService = this, scope?: { project: string; stack: string }): Promise<ExistingInfrastructureReview> {
+    if (!/^[a-f0-9]{64}$/.test(review) || this.ownershipFrozen || this.provisioning)
+      throw new Error('Infrastructure preservation requires a current review and idle ownership');
+    this.preservationPending = true;
+    this.definitionChanging = true;
+    try {
+      this.stopHealthMonitor();
+      await Promise.allSettled([...this.activeSweeps, ...this.reconcileTasks.values()]);
+      await this.phantomJanitor?.drain();
+      this.phantomJanitor = null;
+      this.janitorNetworks = [];
+      const observed = await reviewExistingContainers(candidate.desiredContainers, undefined, scope ?? this.preservation?.scope);
+      if (!observed.digest || observed.digest !== review) throw new Error('Native infrastructure changed after review; nothing was provisioned');
+      const states = await Promise.all(observed.containers.map(async expected => {
+        const state = await getContainerState(expected.name, { orThrow: true, fullId: true });
+        if (!state || state.containerId !== expected.id || state.status !== 'running')
+          throw new Error('Native infrastructure identity changed during preservation');
+        return state;
+      }));
+      this.replaceDefinitionFrom(candidate);
+      this.preservation = observed;
+      this.preservationPending = false;
+      for (const key of Object.keys(this.state.services)) delete this.state.services[key];
+      for (const state of states) this.state.services[state.name] = state;
+      this.state.ready = observed.containers.length === 0 || summariseProvisioning(this.desiredContainers, this.state.services).ready;
+      this.startHealthMonitor();
+      return structuredClone(observed);
+    } finally { this.definitionChanging = false; }
+  }
+
   getDesiredServices(): ReadonlyArray<{ name: string; image?: string | undefined }> {
     return this.desiredContainers.map((c) => ({ name: c.name, image: c.image }));
+  }
+
+  async verifyPreservation(): Promise<ExistingInfrastructureReview> {
+    if (!this.preservation?.digest) throw new Error('Infrastructure has no preserved native binding');
+    const observed = await reviewExistingContainers(this.desiredContainers, undefined, this.preservation.scope);
+    if (observed.digest !== this.preservation.digest) throw new Error('Preserved native infrastructure changed');
+    return observed;
   }
 
   /** Identify a single stack handed off by a controller predating the scoped registry. */
@@ -540,7 +599,7 @@ export class InfrastructureService {
       const settled = await Promise.allSettled([...this.activeSweeps, ...this.reconcileTasks.values(), ...(this.provisioning ? [this.provisioning] : [])]);
       if (settled.some(result => result.status === 'rejected')) throw new Error('Infrastructure reconciliation failed while draining');
       await this.phantomJanitor?.drain();
-      const observations = await InfrastructureService.validateHandoffContainers(this.desiredContainers,
+      const observations = this.preservation ? (await this.verifyPreservation()).containers.map(c => ({ name: c.name, containerId: c.id })) : await InfrastructureService.validateHandoffContainers(this.desiredContainers,
         this.needsControlPlaneDatabase && !this.usingGlobalOmnitronPg ? this.omnitronPgContainer : undefined,
         this.state, { protocol: 1 });
       this.dispose();
@@ -560,6 +619,8 @@ export class InfrastructureService {
   private ownershipSnapshot(monitoring: boolean): InfrastructureHandoffState {
     return structuredClone({
       nativeState: { protocol: 1 as const },
+      ...(this.preservation && { preservation: this.preservation }),
+      ...(this.preservationPending && { preservationPending: true }),
       retiredStacks: [...this.retiredStacks],
       config: this.config, containers: this.desiredContainers, normalizedServices: this.normalizedServices,
       ...(this.serviceOverrides && { serviceOverrides: this.serviceOverrides }),
@@ -575,8 +636,8 @@ export class InfrastructureService {
   resumeAfterHandoff(): void {
     if (this.monitoringRelinquished) return;
     this.ownershipFrozen = false;
-    if (this.handoffMonitoring) this.startHealthMonitor();
-    if (!this.phantomJanitor && this.janitorNetworks.length) {
+    if (this.handoffMonitoring && !this.preservationPending) this.startHealthMonitor();
+    if (!this.preservation && !this.preservationPending && !this.phantomJanitor && this.janitorNetworks.length) {
       this.phantomJanitor = new PhantomEndpointJanitor({ networks: this.janitorNetworks, intervalMs: 60_000, logger: this.logger });
       this.phantomJanitor.start();
     }
@@ -585,7 +646,10 @@ export class InfrastructureService {
 
   /** Read and validate existing containers. Never provision, start or recreate during adoption. */
   static async adoptHandoff(logger: ILogger, snapshot: InfrastructureHandoffState): Promise<InfrastructureService> {
-    await InfrastructureService.validateHandoffContainers(snapshot.containers,
+    if (snapshot.preservation) {
+      const observed = await reviewExistingContainers(snapshot.containers, undefined, snapshot.preservation.scope);
+      if (!observed.digest || observed.digest !== snapshot.preservation.digest) throw new Error('Preserved infrastructure changed during handoff');
+    } else await InfrastructureService.validateHandoffContainers(snapshot.containers,
       snapshot.needsControlPlaneDatabase && !snapshot.usingGlobalOmnitronPg ? snapshot.controlPlaneContainer : undefined,
       snapshot.state, snapshot.nativeState);
     const service = new InfrastructureService(logger, snapshot.config, snapshot.normalizedServices,
@@ -599,6 +663,8 @@ export class InfrastructureService {
     Object.assign(service.state, structuredClone(snapshot.state));
     service.usingGlobalOmnitronPg = snapshot.usingGlobalOmnitronPg;
     service.handoffMonitoring = snapshot.monitoring;
+    service.preservation = snapshot.preservation;
+    service.preservationPending = snapshot.preservationPending === true;
     service.ownershipFrozen = true;
     return service;
   }
@@ -978,6 +1044,7 @@ export class InfrastructureService {
 
   @RecoveryMutation()
   private async reconcileServiceLocked(desired: ResolvedContainer): Promise<void> {
+    if (this.preservation || this.preservationPending) throw new Error('Preserved infrastructure cannot be reconciled');
     const actual = await getContainerState(desired.name, { orThrow: true, fullId: true });
     if (this.ownershipFrozen || this.definitionChanging || this.retiredStacks.has(this.containerScope(desired))) return;
 
@@ -1032,6 +1099,7 @@ export class InfrastructureService {
 
   @RecoveryMutation()
   private async recoverUnhealthyLocked(desired: ResolvedContainer, actual: ContainerState, previous: UnhealthyEvidence | undefined): Promise<void> {
+    if (this.preservation || this.preservationPending) throw new Error('Preserved infrastructure cannot be restarted');
     // Recheck immediately before destruction: queued polls, recovery and
     // replacement while inspecting must not authorize a stale decision.
     const confirmed = await getContainerState(desired.name, { orThrow: true, fullId: true });
@@ -1349,7 +1417,7 @@ export class InfrastructureService {
   // ===========================================================================
 
   private startHealthMonitor(): void {
-    if (this.monitoringRelinquished || this.ownershipFrozen || this.healthTimer) return;
+    if (this.preservationPending || this.monitoringRelinquished || this.ownershipFrozen || this.healthTimer) return;
     this.healthTimer = setInterval(() => {
       this.healthSweep().catch((err) => {
         this.logger.error({ error: (err as Error).message }, 'Health sweep failed');
@@ -1381,19 +1449,33 @@ export class InfrastructureService {
   }
 
   private async healthSweep(): Promise<void> {
-    if (this.ownershipFrozen || this.provisioning || this.activeSweeps.size) return;
+    if (this.preservationPending || this.ownershipFrozen || this.provisioning || this.activeSweeps.size) return;
     const task = this.healthSweepOwned();
     this.activeSweeps.add(task);
     try { await task; } finally { this.activeSweeps.delete(task); }
   }
 
   private async healthSweepOwned(): Promise<void> {
+    if (this.preservation) {
+      try {
+        const review = await reviewExistingContainers(this.desiredContainers, undefined, this.preservation.scope);
+        const states = await Promise.all(this.desiredContainers.map(container => getContainerState(container.name, { orThrow: true, fullId: true })));
+        if (this.ownershipFrozen || this.definitionChanging) return;
+        for (const key of Object.keys(this.state.services)) delete this.state.services[key];
+        for (const state of states) if (state) this.state.services[state.name] = state;
+        this.state.ready = review.digest !== null && review.digest === this.preservation.digest;
+      } catch {
+        this.state.ready = false;
+        this.logger.warn('Preserved native infrastructure observation is unavailable; repair authority remains disabled');
+      }
+      return; // Observation never promotes itself to repair authority.
+    }
     // The control-plane database alongside the app containers, where this
     // service keeps one.
     const allContainers = [...this.controlPlaneContainers(), ...this.desiredContainers];
     for (const desired of allContainers) {
       const actual = await getContainerState(desired.name, { orThrow: true, fullId: true });
-      if (this.ownershipFrozen || this.definitionChanging) return;
+      if (this.ownershipFrozen || this.definitionChanging || this.preservationPending || this.preservation) return;
       if (this.retiredStacks.has(this.containerScope(desired))) continue;
 
       // T#58: Docker's own `--restart=always` / `--restart=on-failure`

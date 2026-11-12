@@ -388,7 +388,7 @@ stack
 
 stack
   .command('start <project> <stack>')
-  .description('Start a stack — provision infra + deploy + start apps')
+  .description('Start a stack with reconciled or reviewed existing infrastructure')
   // A remote deployment ships the working tree, so it refuses one that is
   // not its commit. This is how you say you meant it — and it is a FLAG
   // rather than a setting because the path that caused the damage, a
@@ -399,6 +399,9 @@ stack
   // says `release: { mode: 'required' }` takes nothing else.
   .option('--release <id>', 'Start from a verified release; local stacks retain this choice across restarts')
   .option('--working-tree', 'Return a stopped local stack to its registered working tree')
+  .option('--infrastructure <mode>', 'preserve: verify existing resources and forbid provisioning/setup/migrations; reconcile: explicitly authorize normal infrastructure deployment')
+  .option('--dry-run', 'Review launch admission and existing native infrastructure without startup effects')
+  .option('--review <digest>', 'Start in preserve mode only if launch and infrastructure still match this review')
   // For an operator who doubts a node's record of what an app runs: every
   // artifact is shipped and every app restarted, whatever the record says.
   .option('--reinstall', "Ship and restart every app, whatever the node's record says it runs")
@@ -408,6 +411,9 @@ stack
       allowDirty: options.allowDirty === true,
       ...(typeof options.release === 'string' ? { release: options.release } : {}),
       ...(options.workingTree === true ? { workingTree: true } : {}),
+      ...(typeof options.infrastructure === 'string' ? { infrastructure: options.infrastructure as 'preserve' | 'reconcile' } : {}),
+      ...(options.dryRun === true ? { dryRun: true } : {}),
+      ...(typeof options.review === 'string' ? { review: options.review } : {}),
       ...(options.reinstall === true ? { reinstall: true } : {}),
     });
   });

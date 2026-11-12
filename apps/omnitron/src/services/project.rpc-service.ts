@@ -301,7 +301,7 @@ export class ProjectRpcService {
   }
 
   @Public({ auth: { roles: OPERATOR_ROLES } })
-  async startStack(data: { project: string; stack: string; allowDirty?: boolean; release?: string; workingTree?: boolean; reinstall?: boolean }): Promise<IStackInfo> {
+  async startStack(data: { project: string; stack: string } & import('../shared/dto/project.js').StackStartOptions): Promise<IStackInfo> {
     const logicalName = data.stack;
     data = await this.projectService.resolveProjectStack(data);
     // The report an operator acts on, and a script exits on: `only 0/6 apps
@@ -320,9 +320,18 @@ export class ProjectRpcService {
         ...(typeof data.release === 'string' && data.release ? { release: data.release } : {}),
         ...(data.workingTree === true ? { workingTree: true } : {}),
         ...(data.reinstall === true ? { reinstall: true } : {}),
+        ...(data.infrastructure !== undefined ? { infrastructure: data.infrastructure } : {}),
+        ...(data.review !== undefined ? { review: data.review } : {}),
       }),
     );
     return { ...publicStack(info), name: logicalName, runtimeScope: { project: data.project, stack: data.stack } };
+  }
+
+  @Public({ auth: { roles: OPERATOR_ROLES } })
+  async reviewStackStart(data: { project: string; stack: string } & import('../shared/dto/project.js').StackStartOptions): Promise<import('../shared/dto/project.js').StackStartReview> {
+    const scope = await this.projectService.resolveProjectStack(data, { readOnly: true });
+    const report = await this.projectService.reviewStackStart(scope.project, scope.stack, data);
+    return { ...report, project: data.project, stack: data.stack };
   }
 
   /**

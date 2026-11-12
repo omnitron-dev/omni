@@ -40,7 +40,7 @@ describe('node-confirmed stack stop', () => {
     expect(plan.keepInfrastructure).toBe(true);
     const receipt = await service.execute(plan);
     expect(receipt).toMatchObject({ outcome: 'stopped', keepInfrastructure: true, removedContainers: [], keptContainers: [id] });
-    expect(ports.disableResume).toHaveBeenCalledWith(runtime);
+    expect(ports.disableResume).toHaveBeenCalledWith(runtime, true);
     expect(ports.execution.stopStackExecution).toHaveBeenCalledOnce();
     expect(ports.retireInfrastructure).not.toHaveBeenCalled();
     expect(ports.removeContainer).not.toHaveBeenCalled();
@@ -88,7 +88,7 @@ describe('node-confirmed stack stop', () => {
     expect(ports.removeContainer).not.toHaveBeenCalled();
     const receipt = await service.execute(plan);
     expect(receipt).toMatchObject({ outcome: 'stopped', operationId: plan.operationId, removedContainers: [id] });
-    expect(ports.disableResume).toHaveBeenCalledWith(runtime);
+    expect(ports.disableResume).toHaveBeenCalledWith(runtime, undefined);
     expect(ports.removeContainer).toHaveBeenCalledWith(id);
     expect(ports.execution.stopStackExecution.mock.invocationCallOrder[0]).toBeLessThan(ports.retireInfrastructure.mock.invocationCallOrder[0]);
     expect(ports.retireInfrastructure.mock.invocationCallOrder[0]).toBeLessThan(ports.removeContainer.mock.invocationCallOrder[0]);

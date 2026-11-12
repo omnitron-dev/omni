@@ -39,7 +39,8 @@ interface StackStopPorts {
   /** Fails closed for unbound legacy app allocations. Never guesses ownership. */
   definition(scope: NodeStackStopRequest, cached?: boolean): Promise<{ runtime: StackExecutionScope | null; fingerprint: string }>;
   containers(scope: StackExecutionScope): Promise<Array<{ id: string; name: string }>>;
-  disableResume(scope: StackExecutionScope): void;
+  disableResume(scope: StackExecutionScope, keepInfrastructure?: boolean): void;
+  holdInfrastructure?(scope: StackExecutionScope): Promise<void>;
   retireInfrastructure(scope: StackExecutionScope): Promise<void>;
   removeContainer(id: string): Promise<void>;
 }
@@ -178,7 +179,8 @@ export class NodeStackStop {
       };
       await checkInventory();
       await admit();
-      if (definition.runtime) this.ports.disableResume(definition.runtime);
+      if (definition.runtime) this.ports.disableResume(definition.runtime, plan.keepInfrastructure);
+      if (plan.keepInfrastructure) { await this.ports.holdInfrastructure?.(plan); await checkInventory(); }
       const applications = plan.execution
         ? await this.ports.execution.stopStackExecution({ operationId: plan.operationId, plan: plan.execution }) : null;
       // Drain existing reconciliation and remove the desired state before

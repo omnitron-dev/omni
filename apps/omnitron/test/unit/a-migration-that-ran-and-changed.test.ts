@@ -149,6 +149,7 @@ describe('admission, against the release running on the stack', () => {
       registry: { get: () => ({ name: 'sample', path: dir }), list: () => [] },
       stackStates: new Map(),
       startsInFlight: new Map(),
+    infrastructurePolicy: () => null,
       stopsInFlight: new Map(),
       assertStackMutable: vi.fn(),
       markPriorStopSuperseded: vi.fn(),

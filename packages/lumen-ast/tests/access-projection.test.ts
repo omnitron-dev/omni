@@ -3,11 +3,68 @@ import { parseDocumentSync } from '../src/compiler/parser.js';
 import { createDocumentAccessPredicate, projectDocumentAccess } from '../src/ast/access.js';
 import { toCleanMarkdown } from '../src/transformers/to-clean-markdown.js';
 import { toHtmlSsr } from '../src/transformers/to-html-ssr.js';
+import { toTipTapDoc } from '../src/transformers/to-tiptap-doc.js';
+import { toTypst } from '../src/transformers/to-typst.js';
+import type { LumenDocumentAst } from '../src/ast/types.js';
 
 const project = (source: string, roles = ['anonymous']) =>
   projectDocumentAccess(parseDocumentSync(source), createDocumentAccessPredicate(roles));
 
 describe('canonical document access projection', () => {
+  const emitters = [toCleanMarkdown, toHtmlSsr, toTypst,
+    (ast: LumenDocumentAst) => JSON.stringify(toTipTapDoc(ast))];
+
+  it('removes alternate container text after descendant redaction in every export', () => {
+    const ast = parseDocumentSync('Visible heading.');
+    ast.children.push({
+      type: 'extension_container', raw: 'PRIVATE_CACHE', value: 'PRIVATE_CACHE',
+      children: [
+        { type: 'paragraph', children: [{ type: 'text', value: 'Visible child' }] },
+        { type: 'paragraph', access: 'confidential', children: [{ type: 'text', value: 'PRIVATE_CACHE' }] },
+      ],
+    });
+    const projected = projectDocumentAccess(ast, createDocumentAccessPredicate());
+    expect(projected.strippedAny).toBe(true);
+    for (const emit of emitters) {
+      expect(emit(projected.ast)).toContain('Visible child');
+      expect(emit(projected.ast)).not.toContain('PRIVATE');
+    }
+    // The fully redacted case must not select a cache when children becomes [].
+    ast.children[1]!.children!.shift();
+    const empty = projectDocumentAccess(ast, createDocumentAccessPredicate()).ast;
+    for (const emit of emitters) expect(emit(empty)).not.toContain('PRIVATE');
+  });
+
+  it('preserves literal text and code after an unrelated redaction and HTML normalization', () => {
+    const result = project(':::note{access="confidential"}\nPRIVATE\n:::\n\n<div>Visible HTML</div>\n\n```js\nVisibleCode()\n```');
+    for (const emit of emitters) {
+      expect(emit(result.ast)).toContain('Visible HTML');
+      expect(emit(result.ast)).toContain('VisibleCode');
+      expect(emit(result.ast)).not.toContain('PRIVATE');
+    }
+  });
+
+  it('retains the declared tab identifier while removing its restricted child content', () => {
+    const ast = parseDocumentSync('Visible.');
+    ast.children = [{ type: 'tabs', children: [{ type: 'tabItem', label: 'Example', value: 'stable-tab', children: [
+      { type: 'paragraph', access: 'confidential', children: [{ type: 'text', value: 'PRIVATE' }] },
+      { type: 'paragraph', children: [{ type: 'text', value: 'Visible tab' }] },
+    ] }] }];
+    const projected = projectDocumentAccess(ast, createDocumentAccessPredicate()).ast;
+    expect(toTipTapDoc(projected).content[0]!.content![0]!.attrs?.['value']).toBe('stable-tab');
+    for (const emit of emitters) {
+      expect(emit(projected)).toContain('Visible tab');
+      expect(emit(projected)).not.toContain('PRIVATE');
+    }
+  });
+
+  it('requires the parsed tree instead of accepting an empty projection of raw source', () => {
+    for (const children of [undefined, null, {}]) {
+      expect(() => projectDocumentAccess({ frontmatter: {}, children, rawContent: 'PRIVATE', toc: [], diagnostics: [] } as unknown as LumenDocumentAst,
+        createDocumentAccessPredicate())).toThrow('parsed children');
+    }
+  });
+
   it.each([null, '', false, 0, [], {}, 'restricted', 'unknown'])(
     'rejects invalid classification %j even for admin',
     (access) => {

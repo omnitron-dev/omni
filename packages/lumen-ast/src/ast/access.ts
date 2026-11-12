@@ -76,13 +76,14 @@ export interface DocumentProjection {
  * A restricted heading governs its whole section, including nested subsections.
  */
 export function projectDocumentAccess(ast: LumenDocumentAst, allows: DocumentAccessPredicate): DocumentProjection {
+  if (!Array.isArray(ast.children)) throw new TypeError('Document projection requires parsed children');
   if (ast.diagnostics?.some((diagnostic) => diagnostic.severity === 'error') || !allows(ast.frontmatter?.access))
     return {
       allowed: false,
       strippedAny: true,
       ast: { frontmatter: { title: 'Restricted', access: 'restricted' }, children: [], toc: [], diagnostics: [] },
     };
-  let strippedAny = false;
+  let strippedNodes = 0;
   let remaining = 100_000;
   const project = (nodes: LumenNode[], depth: number): LumenNode[] => {
     if (depth > 128) throw new Error('Document projection nesting limit exceeded');
@@ -97,23 +98,27 @@ export function projectDocumentAccess(ast: LumenDocumentAst, allows: DocumentAcc
             ? Number(String(node.tagName)[1])
             : undefined;
       if (!sectionAllowed(sections, level, permitsNode(node, allows))) {
-        strippedAny = true;
+        strippedNodes++;
         continue;
       }
       const projected = { ...node };
       if (node.children) {
+        const before = strippedNodes;
         projected.children = project(node.children, depth + 1);
         // Raw JSX/source caches must not preserve removed descendants.
         delete projected.raw;
+        // A generic container's alternate text must not restore redacted children.
+        // tabItem.value is a declared control identifier, not a body-text cache.
+        if (strippedNodes !== before && node.type !== 'tabItem') delete projected.value;
       }
       result.push(projected);
     }
     return result;
   };
-  const children = project(normalizeLumenHtml(ast.children ?? []), 0);
+  const children = project(normalizeLumenHtml(ast.children), 0);
   return {
     allowed: true,
-    strippedAny,
+    strippedAny: strippedNodes > 0,
     ast: {
       frontmatter: { ...ast.frontmatter },
       children,

@@ -14,6 +14,7 @@ async function imageSvg(image) {
       labels: [...svg.querySelectorAll('foreignObject')].map(label => ({
         width: Number.parseFloat(label.getAttribute('width')), height: Number.parseFloat(label.getAttribute('height')),
         text: label.textContent, namespaces: [...label.querySelectorAll('*')].map(child => child.namespaceURI),
+        whiteSpace: label.querySelector('div')?.style.getPropertyValue('white-space'),
       })),
     };
   });
@@ -31,6 +32,7 @@ test('Prism SVG images draw measured entity labels and text formatting in both t
     for (const label of svg.labels) {
       expect(label.width).toBeGreaterThan(20); expect(label.height).toBeGreaterThan(10);
       expect(label.namespaces.every(namespace => namespace === 'http://www.w3.org/1999/xhtml')).toBe(true);
+      expect(['nowrap', 'break-spaces']).toContain(label.whiteSpace);
     }
     expect(await image.evaluate(element => element.naturalWidth)).toBeGreaterThan(100);
     const visible = await image.screenshot({ path: test.info().outputPath(`prism-labels-${mode}.png`), animations: 'disabled' });
@@ -112,6 +114,17 @@ test('Prism preserves sequence, class and state labels in isolated images in bot
       await expect(image).toBeVisible(); await image.evaluate(element => element.decode());
       const svg = await imageSvg(image);
       for (const label of labels) expect(svg.text).toContain(label);
+      if (example === 'classes') {
+        for (const name of ['Document', 'Revision']) {
+          const title = svg.labels.find(label => label.text === name);
+          const width = await page.evaluate(text => {
+            const context = document.createElement('canvas').getContext('2d');
+            context.font = '700 16px system-ui';
+            return context.measureText(text).width;
+          }, name);
+          expect(title.width).toBeGreaterThanOrEqual(width - 0.5);
+        }
+      }
       expect(svg.activeElements).toBe(0); expect(svg.eventAttributes).toEqual([]);
       await image.screenshot({ path: test.info().outputPath(`prism-${example}-${mode}.png`), animations: 'disabled' });
       const current = await image.getAttribute('src');
@@ -119,6 +132,22 @@ test('Prism preserves sequence, class and state labels in isolated images in bot
       await expect(image).not.toHaveAttribute('src', current);
     }
   }
+});
+
+test('document typography cannot change already-measured inline diagram labels', async ({ page, url }) => {
+  await page.goto(url + '?example=formatting&documentTypography=1');
+  const svg = page.locator('.lumen-diagram-content svg');
+  await expect(svg).toBeVisible();
+  const code = svg.locator('foreignObject code');
+  await expect(code).toHaveText('value');
+  const geometry = await code.evaluate(element => {
+    const label = element.closest('foreignObject').getBoundingClientRect();
+    const text = element.getBoundingClientRect();
+    return { label: { left: label.left, right: label.right }, text: { left: text.left, right: text.right }, fontSize: getComputedStyle(element).fontSize };
+  });
+  expect(geometry.text.left).toBeGreaterThanOrEqual(geometry.label.left - 0.5);
+  expect(geometry.text.right).toBeLessThanOrEqual(geometry.label.right + 0.5);
+  expect(geometry.fontSize).toBe('16px');
 });
 
 test('the ordinary diagram-only site build ships its bootstrap, renderer and Pagefind WASM', async ({ page, siteUrl }) => {

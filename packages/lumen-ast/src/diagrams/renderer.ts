@@ -72,7 +72,13 @@ export async function renderDiagramSvg(code: string, id: string, options: Diagra
           ALLOWED_ATTR: [],
         },
         fontFamily: options.fontFamily ?? 'system-ui, sans-serif',
-        themeCSS: '.node, .cluster, .node rect, .node polygon, .node circle, .cluster rect { filter: none !important; }',
+        // The measurement DOM lives outside the document; keep these metrics
+        // when the resulting inline SVG enters article paragraph/code styles.
+        themeCSS: `
+          .node, .cluster, .node rect, .node polygon, .node circle, .cluster rect { filter: none !important; }
+          foreignObject p { font: inherit; line-height: inherit; margin: 0; }
+          foreignObject code { font: inherit; font-family: monospace; padding: 0; color: inherit; background: none; border-radius: 0; }
+        `,
         maxTextSize: DIAGRAM_LIMITS.sourceBytes,
         maxEdges: DIAGRAM_LIMITS.edges,
         deterministicIds: true,

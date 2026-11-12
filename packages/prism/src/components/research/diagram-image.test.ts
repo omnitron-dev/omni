@@ -30,7 +30,7 @@ describe('isolated SVG diagrams', () => {
   });
   it('preserves measured XHTML text and formatting without decoding its entities into markup', () => {
     const image = diagramImage(
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 80"><foreignObject width="200.5" height="48" transform="translate(10 10)"><div xmlns="http://www.w3.org/1999/xhtml" style="display:table-cell;white-space:nowrap;line-height:1.5;max-width:200px;text-align:center"><span class="nodeLabel"><p>A &quot;quoted&quot; <strong>contract</strong><br/>x &lt; y &amp; y &gt; 0</p></span></div></foreignObject></svg>', purify
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 80"><foreignObject width="200.5" height="48" style="width:202px;height:48px" transform="translate(10 10)"><div xmlns="http://www.w3.org/1999/xhtml" style="display:table-cell;white-space:nowrap;line-height:1.5;max-width:200px;text-align:center"><span class="nodeLabel"><p>A &quot;quoted&quot; <strong>contract</strong><br/>x &lt; y &amp; y &gt; 0</p></span></div></foreignObject></svg>', purify
     );
     const svg = new DOMParser().parseFromString(decodeURIComponent(image.src.split(',').slice(1).join(',')), 'image/svg+xml');
     expect(svg.querySelector('parsererror')).toBeNull();
@@ -38,7 +38,9 @@ describe('isolated SVG diagrams', () => {
     expect(label.getAttribute('width')).toBe('200.5');
     expect(label.getAttribute('height')).toBe('48');
     expect(label.getAttribute('transform')).toBe('translate(10 10)');
+    expect(label.getAttribute('style')).toBe('width: 202px; height: 48px;');
     expect(label.querySelector('div')?.getAttribute('style')).toContain('display: table-cell');
+    expect(label.querySelector('div')?.getAttribute('style')).toContain('white-space: nowrap');
     expect(label.querySelector('div')?.getAttribute('style')).toContain('max-width: 200px');
     expect(label.querySelector('span')?.getAttribute('class')).toBe('nodeLabel');
     expect(label.querySelector('strong')?.textContent).toBe('contract');

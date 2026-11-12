@@ -42,9 +42,13 @@ function sanitizeLabel(foreignObject: Element): void {
     foreignObject.remove();
     return;
   }
+  const geometry = foreignObject as SVGElement;
+  const dimensions = ['width', 'height'].map(name => ({ name, value: geometry.style.getPropertyValue(name) }))
+    .filter(({ value }) => /^(?:\d+(?:\.\d+)?|\.\d+)px$/.test(value));
   for (const attribute of foreignObject.getAttributeNames()) {
     if (!['width', 'height', 'x', 'y', 'transform'].includes(attribute)) foreignObject.removeAttribute(attribute);
   }
+  for (const { name, value } of dimensions) geometry.style.setProperty(name, value);
   for (const element of foreignObject.querySelectorAll('*')) {
     if (!foreignObject.contains(element)) continue;
     if (element.namespaceURI !== htmlNamespace || !labelTags.has(element.localName)) {
@@ -53,7 +57,9 @@ function sanitizeLabel(foreignObject: Element): void {
     }
     const html = element as HTMLElement;
     const classes = (html.getAttribute('class') ?? '').split(/\s+/).filter(name => labelClasses.has(name));
-    const styles = Array.from({ length: html.style.length }, (_, index) => html.style.item(index))
+    // CSSOM can enumerate a shorthand such as white-space as newer longhands.
+    // Read our allowed properties by name so the measured shorthand survives.
+    const styles = Object.keys(labelStyles)
       .map(name => ({ name, value: html.style.getPropertyValue(name), priority: html.style.getPropertyPriority(name) }))
       .filter(({ name, value }) => labelStyles[name]?.test(value));
     for (const attribute of html.getAttributeNames()) html.removeAttribute(attribute);

@@ -12,7 +12,7 @@ const examples: Record<string, string> = {
   states: 'stateDiagram-v2\n[*] --> Pending\nPending --> Running: accepted\nRunning --> Finished: complete\nRunning --> Failed: error\nFinished --> [*]',
   invalid: 'flowchart LR\nA[Unclosed',
   entities: 'flowchart TB\nsubgraph Infra["Infrastructure (Docker / bare-metal)"]\nA["A #quot;quoted#quot; contract"] --> B["x #60; y #38; y #62; 0"]\nend',
-  formatting: 'flowchart LR\nA["A <strong>bold</strong> contract<br/>Second line"] --> B["<em>Formatted</em> x #60; y"]',
+  formatting: 'flowchart LR\nA["A <strong>bold</strong> contract<br/>Second line"] --> B["<em>Formatted</em> x #60; y"]\nB --> C["<code>value</code>"]',
   labelAttack: 'flowchart LR\nA["<span style=position:fixed;inset:0;background:url(/canary)>Safe text</span><img src=/canary onerror=alert(1)>"] --> B["#60;img src=/canary onerror=alert(2)#62;Encoded"]\nB --> C["<a href=javascript:alert(3)>Link</a><style>body{opacity:0}</style><script>alert(4)</script><iframe src=/canary></iframe>"]\nclick C "javascript:alert(5)"',
   unsafe: '%%{init: {"securityLevel":"loose","htmlLabels":false,"themeCSS":"body{opacity:0}","dompurifyConfig":{"ALLOWED_TAGS":["img","script","style","a"],"ALLOWED_ATTR":["src","onerror","href"]}}}%%\nflowchart TD\nA["<img src=/canary onerror=alert(1)>Test"] --> B[Safe]\nB --> C["#60;img src=/canary onerror=alert(2)#62;Encoded"]\nC --> D["<a href=javascript:alert(3)>Link</a><style>body{opacity:0}</style><script>alert(4)</script>"]\nclick B "javascript:alert(1)"',
   edges: '%%{init: {"maxEdges":100000}}%%\nflowchart TD\n' + Array.from({ length: 501 }, (_, index) => `N${index}-->N${index + 1}`).join('\n'),
@@ -21,6 +21,12 @@ const parameters = new URLSearchParams(location.search);
 const selected = parameters.get('example') ?? 'flow';
 const research = parameters.get('consumer') === 'prism';
 const source = examples[selected] ?? examples.flow!;
+if (parameters.has('documentTypography')) {
+  document.getElementById('islands')!.classList.add('lumen-doc');
+  const style = document.createElement('style');
+  style.textContent = '.lumen-doc p{margin:16px 0}.lumen-doc :not(pre)>code{font-size:.88em;padding:2px 5px;background:#eee;font-family:monospace;border-radius:3px}';
+  document.head.append(style);
+}
 if (!research) document.getElementById('islands')!.innerHTML = renderDiagramHtml(source, 0, 'acceptance');
 function Fixture() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');

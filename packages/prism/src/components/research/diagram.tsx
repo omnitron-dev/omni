@@ -56,6 +56,12 @@ export function ResearchDiagram({
             look: 'classic',
             theme: 'base',
             fontFamily: 'system-ui, sans-serif',
+            // Measure with the same text metrics as the isolated SVG image.
+            // Article typography must not resize labels inside the scratch DOM.
+            themeCSS: `
+              foreignObject p { font: inherit; line-height: inherit; margin: 0; }
+              foreignObject code { font: inherit; font-family: monospace; padding: 0; color: inherit; background: none; border-radius: 0; }
+            `,
             themeVariables: {
               darkMode: mode === 'dark',
               primaryColor: theme.palette.background.paper,

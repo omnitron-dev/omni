@@ -1,12 +1,10 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { rmSync, mkdirSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 
 import { it, vi, expect, describe, afterEach } from 'vitest';
 
 import { parseDocument } from '@omnitron-dev/lumen-ast';
-import { PagefindAdapter } from '@omnitron-dev/lumen-ui';
 
 import {
   CorpusGraph,
@@ -64,8 +62,9 @@ Paragraph content for SSR extraction.
     expect(consolidated.html.split('</head>')[1]).not.toContain('<style data-emotion=');
   });
 
-  it('GAP-06: emits hashed client assets, portable Pagefind ESM bundle + shards, and materializes to disk', async () => {
-    const outDir = mkdtempSync(join(tmpdir(), 'lumen-ssg-gap06-'));
+  it('GAP-06: bundles React islands and emits native Pagefind WASM and index fragments', async () => {
+    const temporary = mkdtempSync(join(tmpdir(), 'lumen-ssg-gap06-'));
+    const outDir = join(temporary, 'output');
     try {
       const ast = await parseDocument(
         `---
@@ -76,7 +75,7 @@ title: Interactive Searchable Guide
 
 Explore eigenvalue solvers in real time.
 
-<PortalIslandHost islandId="solver-1" component="SolverWidget" hydrate="visible" />
+<ApiExplorer hydrate="load" symbols={[{name:"eigenvalue",kind:"function"}]} />
 `,
         'docs/quantum-widget.pdx'
       );
@@ -98,12 +97,13 @@ Explore eigenvalue solvers in real time.
 
       const assetKeys = Array.from(output.assets.keys());
       const cssKey = assetKeys.find((k) => /^assets\/lumen-styles\.[a-f0-9]+\.css$/.test(k));
-      const jsKey = assetKeys.find((k) => /^assets\/lumen-islands\.[a-f0-9]+\.js$/.test(k));
+      const jsKey = assetKeys.find((k) => /^assets\/client\.[A-Za-z0-9_-]+\.js$/.test(k));
 
       expect(cssKey).toBeDefined();
       expect(jsKey).toBeDefined();
       expect(output.assets.has('pagefind/pagefind.js')).toBe(true);
-      expect(output.assets.has('pagefind/search-index.json')).toBe(true);
+      expect(assetKeys.some((key) => /^pagefind\/wasm\..+\.pagefind$/.test(key))).toBe(true);
+      expect(assetKeys.some((key) => key.endsWith('.pf_fragment'))).toBe(true);
       expect(output.assets.has('asset-manifest.json')).toBe(true);
 
       const pageHtml = output.pages.get('/docs/quantum-widget') ?? '';
@@ -112,19 +112,17 @@ Explore eigenvalue solvers in real time.
 
       expect(existsSync(join(outDir, 'docs/quantum-widget.html'))).toBe(true);
       expect(existsSync(join(outDir, 'pagefind/pagefind.js'))).toBe(true);
-      expect(existsSync(join(outDir, 'pagefind/search-index.json'))).toBe(true);
+      expect(existsSync(join(outDir, '.lumen-generation.json'))).toBe(true);
       expect(existsSync(join(outDir, 'llms.txt'))).toBe(true);
       expect(existsSync(join(outDir, 'llms-full.txt'))).toBe(true);
 
-      // End-to-end verification: load emitted pagefind.js via PagefindAdapter over file:// URL
-      PagefindAdapter.resetFailureCache();
-      const pagefindUrl = pathToFileURL(join(outDir, 'pagefind/pagefind.js')).href;
-      const adapter = new PagefindAdapter(pagefindUrl);
-      const hits = await adapter.search('eigenvalue');
-      expect(hits.length).toBeGreaterThanOrEqual(1);
-      expect(hits[0]?.title).toBe('Interactive Searchable Guide');
+      // The native index contains real binary WASM; browser queries run against
+      // the production HTTP preview (the Pagefind runtime is browser-only).
+      const wasmKey = assetKeys.find((key) => /^pagefind\/wasm\..+\.pagefind$/.test(key))!;
+      expect(output.assets.get(wasmKey)).toBeInstanceOf(Uint8Array);
+      expect(output.assets.get(wasmKey)!.length).toBeGreaterThan(1000);
     } finally {
-      rmSync(outDir, { recursive: true, force: true });
+      rmSync(temporary, { recursive: true, force: true });
     }
   });
 
@@ -207,9 +205,9 @@ TOP_SECRET_CONFIDENTIAL_DOC_TOKEN
     expect(llmsFull).not.toContain('TOP_SECRET_INTRA_DOC_ROADMAP_TOKEN');
     expect(llmsFull).not.toContain('TOP_SECRET_CONFIDENTIAL_DOC_TOKEN');
 
-    expect(mirrors.has('/public-arch.md')).toBe(true);
-    expect(mirrors.has('/secret-runbook.md')).toBe(false);
-    expect(mirrors.get('/public-arch.md')).not.toContain('TOP_SECRET_INTRA_DOC_ROADMAP_TOKEN');
+    expect(mirrors.has('/docs/public-arch.md')).toBe(true);
+    expect(mirrors.has('/docs/secret-runbook.md')).toBe(false);
+    expect(mirrors.get('/docs/public-arch.md')).not.toContain('TOP_SECRET_INTRA_DOC_ROADMAP_TOKEN');
   });
 
   it('IA-08: resolves relative sibling links accurately, blocks duplicate math IDs cleanly, and validates local anchors', () => {

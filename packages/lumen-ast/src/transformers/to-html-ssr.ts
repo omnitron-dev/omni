@@ -126,7 +126,9 @@ export function toHtmlSsr(ast: LumenDocumentAst, options?: SsrOptions): string {
     options?.macros instanceof LumenMacroRegistry ? options.macros : new LumenMacroRegistry(options?.macros);
 
   const status = escapeHtml(String(ast.frontmatter.status ?? 'draft'));
-  const title = ast.frontmatter.title ? `<h1>${escapeHtml(String(ast.frontmatter.title))}</h1>` : '';
+  const hasTitleHeading = ast.children?.some((node) => node.type === 'heading' && node.depth === 1);
+  const title =
+    ast.frontmatter.title && !hasTitleHeading ? `<h1>${escapeHtml(String(ast.frontmatter.title))}</h1>` : '';
 
   const context: SsrContext = {
     macros,
@@ -286,7 +288,11 @@ function renderSingleNodeToHtml(node: LumenNode, context: SsrContext): string {
     }
 
     case 'htmlElement': {
-      return renderSafeHtmlElement(String(node.tagName), node.attributes ?? {}, renderNodesToHtml(node.children ?? [], context));
+      return renderSafeHtmlElement(
+        String(node.tagName),
+        node.attributes ?? {},
+        renderNodesToHtml(node.children ?? [], context)
+      );
     }
 
     case 'rawHtmlPlaceholder': {

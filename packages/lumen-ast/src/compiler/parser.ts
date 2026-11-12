@@ -232,11 +232,23 @@ function transformNode(rawNode: Record<string, unknown>, context: ParseContext):
       const fullText = serializeHeadingInlineText(children);
       const meta = extractHeadingMetadata(fullText, context.headingIndexRef.value);
       const cleanedChildren = meta.hasTrailingAttrBlock ? stripTrailingHeadingAttrFromChildren(children) : children;
+      let headingId = meta.id;
+      if (meta.hasTrailingAttrBlock && context.existingAnchors.has(headingId)) {
+        context.diagnostics.push({
+          code: 'LUMEN_DUPLICATE_ANCHOR',
+          message: `Duplicate heading anchor: ${headingId}`,
+          severity: 'error',
+        });
+      } else {
+        let suffix = 1;
+        while (context.existingAnchors.has(headingId)) headingId = `${meta.id}-${suffix++}`;
+      }
+      context.existingAnchors.add(headingId);
 
       return {
         type: 'heading',
         depth,
-        id: meta.id,
+        id: headingId,
         ...(meta.access !== undefined ? { access: meta.access } : {}),
         ...(meta.attributes !== undefined ? { attributes: meta.attributes } : {}),
         children: cleanedChildren,

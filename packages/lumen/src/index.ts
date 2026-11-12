@@ -19,7 +19,7 @@ export {
   LumenSidebarLinkItemSchema,
   LumenSidebarCategoryItemSchema,
 } from './config/index.js';
-export type { LumenConfig, LumenUserConfig, LumenSidebarItem } from './config/index.js';
+export type { LumenConfig, LumenUserConfig, LumenSidebarItem, LumenPageLayoutProps } from './config/index.js';
 
 // 2. Corpus Knowledge Graph Subsystem
 export {
@@ -85,12 +85,7 @@ export type {
 export { generateLlmsTxt, generateLlmsFullTxt, generateRouteMirrors, runLumenMcpServer } from './ai/index.js';
 
 // 6. Search Index & Asset Manifest Subsystems
-export {
-  tokenizeMultilingual,
-  generateSearchIndex,
-  buildSearchIndex,
-  createPagefindRuntimeScript,
-} from './search/index.js';
+export { tokenizeMultilingual, generateSearchIndex, buildSearchIndex } from './search/index.js';
 export type { SearchIndexEntry, SearchIndexResult } from './search/index.js';
 
 export {

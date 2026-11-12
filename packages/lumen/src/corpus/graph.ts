@@ -12,7 +12,7 @@ function normalizeSlashPath(p: string): string {
 }
 
 function stripDocExtension(p: string): string {
-  return p.replace(/\.(pdx|md)$/, '');
+  return p.replace(/\.(pdx|mdx?)$/, '');
 }
 
 function docContainsAnchor(doc: CorpusDocument, anchor: string): boolean {
@@ -193,7 +193,7 @@ export class CorpusGraph {
       return undefined;
     }
 
-    const joinedStem = stripDocExtension(joined);
+    const joinedStem = stripDocExtension(joined).replace(/\/$/, '');
     for (const candidate of this.documents.values()) {
       const candidateStem = stripDocExtension(normalizeSlashPath(candidate.path));
       if (candidateStem === joinedStem || candidateStem === `${joinedStem}/index`) {
@@ -213,6 +213,10 @@ export class CorpusGraph {
       return undefined;
     }
     const slashRef = ref.replace(/\\/g, '/').trim();
+    const routeMatch = [...this.documents.values()].find(
+      (doc) => doc.routePath !== undefined && doc.routePath.replace(/\/$/, '') === slashRef.replace(/\/$/, '')
+    );
+    if (routeMatch) return routeMatch;
     const clean = stripDocExtension(slashRef).replace(/^\.?\//, '');
     if (!clean || clean === '.' || clean.startsWith('..')) {
       return undefined;

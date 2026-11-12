@@ -20,6 +20,7 @@ export interface RenderDocumentHtmlOptions extends CorpusProjectionOptions {
   currentPath?: string;
   extraHead?: string[];
   bodyScripts?: string[];
+  renderLayout?: (content: React.ReactNode) => React.ReactNode;
 }
 
 export function renderDocumentHtml(ast: LumenDocumentAst, options?: RenderDocumentHtmlOptions): string {
@@ -48,18 +49,20 @@ export function renderDocumentHtml(ast: LumenDocumentAst, options?: RenderDocume
         children: ({ css, cx }) =>
           React.createElement(
             LumenShell,
-            { theme, locale, currentPath },
-            React.createElement('div', {
-              className: cx(
-                'lumen-doc-container',
-                css`
-                  display: block;
-                  width: 100%;
-                  color: inherit;
-                `
-              ),
-              dangerouslySetInnerHTML: { __html: articleHtml },
-            })
+            { theme, locale, currentPath, disablePrismProvider: Boolean(options?.renderLayout) },
+            (options?.renderLayout ?? ((content) => content))(
+              React.createElement('div', {
+                className: cx(
+                  'lumen-doc-container',
+                  css`
+                    display: block;
+                    width: 100%;
+                    color: inherit;
+                  `
+                ),
+                dangerouslySetInnerHTML: { __html: articleHtml },
+              })
+            )
           ),
       })
     )

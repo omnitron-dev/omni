@@ -43,10 +43,10 @@ export const anchorsGate: CorpusGate = {
         }
 
         // 2. Check anchor formatting and invalid characters in anchors
-        if (/[^a-zA-Z0-9\-_]/.test(anchor)) {
+        if (/[^\p{L}\p{N}\-_]/u.test(anchor)) {
           const normalized = anchor
             .toLowerCase()
-            .replace(/[^a-zA-Z0-9\-_]+/g, '-')
+            .replace(/[^\p{L}\p{N}\-_]+/gu, '-')
             .replace(/^-+|-+$/g, '');
           diagnostics.push({
             code: 'LUMEN_INVALID_HEADING_SLUG',

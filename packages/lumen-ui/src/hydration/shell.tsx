@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { PrismProvider } from '@omnitron-dev/prism';
+import { PrismProvider } from '@omnitron-dev/prism/core';
 import { LumenContext, type LumenContextValue, type IslandComponent, type IslandRegistry } from './context.js';
 import { setupTrigger, type HydrationTrigger } from './triggers.js';
 

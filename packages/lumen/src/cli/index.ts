@@ -4,7 +4,7 @@
  * Platforms: Vite 8, Rolldown, Pagefind WASM, Typst, MCP.
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, watch, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { compileTypst, parseDocument, type LumenNode } from '@omnitron-dev/lumen-ast';
 import { loadLumenConfig } from '../config/loader.js';
@@ -25,6 +25,7 @@ import {
 import { computeContentHash } from '../manifest/hashing.js';
 import { buildStaticSite } from '../ssg/ssg-engine.js';
 import { runLumenMcpServer } from '../ai/mcp-server.js';
+import { documentRoute } from '../corpus/routes.js';
 
 const VERSION = '0.3.5';
 
@@ -37,6 +38,8 @@ interface ParsedCliOptions {
   pureJson: boolean;
   stdio: boolean;
   help: boolean;
+  host: string;
+  port: number;
   gatesFilter?: string[];
 }
 
@@ -49,6 +52,8 @@ function parseCliOptions(argv: string[]): ParsedCliOptions {
   let pureJson = false;
   let stdio = false;
   let help = false;
+  let host = '127.0.0.1';
+  let port = 4173;
   let gatesFilter: string[] | undefined;
 
   for (let i = 1; i < argv.length; i++) {
@@ -66,6 +71,10 @@ function parseCliOptions(argv: string[]): ParsedCliOptions {
       stdio = true;
     } else if (arg === '--help' || arg === '-h') {
       help = true;
+    } else if (arg === '--host' && argv[i + 1]) {
+      host = argv[++i]!;
+    } else if (arg === '--port' && argv[i + 1]) {
+      port = Number(argv[++i]);
     } else if (arg === '--root' && argv[i + 1]) {
       rootDir = resolve(process.cwd(), argv[i + 1]!);
       i += 1;
@@ -90,6 +99,7 @@ function parseCliOptions(argv: string[]): ParsedCliOptions {
     }
   }
 
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Port must be an integer from 1 to 65535');
   return {
     rootDir,
     outDir,
@@ -99,6 +109,8 @@ function parseCliOptions(argv: string[]): ParsedCliOptions {
     pureJson,
     stdio,
     help,
+    host,
+    port,
     gatesFilter,
   };
 }
@@ -129,7 +141,7 @@ function scanDocFilesRecursively(dir: string): string[] {
       const fullPath = join(currentDir, entry.name);
       if (entry.isDirectory()) {
         walk(fullPath);
-      } else if (entry.isFile() && (entry.name.endsWith('.pdx') || entry.name.endsWith('.md'))) {
+      } else if (entry.isFile() && /\.(pdx|mdx?)$/.test(entry.name)) {
         collected.push(fullPath);
       }
     }
@@ -162,7 +174,12 @@ export async function loadCorpusFromDirectory(
     return { config, graph, docsDir, docsDirExists, astDiagnostics };
   }
 
-  const docFiles = scanDocFilesRecursively(docsDir);
+  const pagesDir = config.pagesDir ? resolve(rootDir, config.pagesDir) : undefined;
+  const docFiles = [
+    ...scanDocFilesRecursively(docsDir),
+    ...(pagesDir && existsSync(pagesDir) ? scanDocFilesRecursively(pagesDir) : []),
+  ];
+  const routes = new Set<string>();
   for (const fullPath of docFiles) {
     const raw = readFileSync(fullPath, 'utf8');
     const relFromDocs = relative(docsDir, fullPath).replace(/\\/g, '/');
@@ -182,7 +199,8 @@ export async function loadCorpusFromDirectory(
       }
     }
 
-    const stemFromDocs = relFromDocs.replace(/\.(pdx|md)$/, '');
+    const isPage = pagesDir !== undefined && fullPath.startsWith(`${pagesDir}/`);
+    const stemFromDocs = (isPage ? `pages/${relative(pagesDir!, fullPath)}` : relFromDocs).replace(/\.(pdx|mdx?)$/, '');
     const id =
       typeof ast.frontmatter.id === 'string' && ast.frontmatter.id.trim() ? ast.frontmatter.id.trim() : stemFromDocs;
     const anchors: string[] = [];
@@ -236,12 +254,8 @@ export async function loadCorpusFromDirectory(
         } else if (node.type === 'link' && typeof node.url === 'string') {
           const href = node.url.trim();
           if (href && !isExternalHref(href)) {
-            if (!href.startsWith('#')) {
-              const docPart = (href.split('#')[0] ?? '').trim();
-              if (docPart) {
-                dependsOn.push(docPart);
-              }
-            }
+            // Navigation links may be cyclic; only declared dependsOn edges
+            // participate in dependency ordering and cycle verification.
             if (href.includes('#')) {
               seeAlso.push(href);
             }
@@ -259,8 +273,21 @@ export async function loadCorpusFromDirectory(
     const inferredTitle =
       (typeof ast.frontmatter.title === 'string' && ast.frontmatter.title.trim()) || headers[0]?.title || id;
 
-    const routeStem = relFromRoot.replace(/\.(pdx|md)$/, '');
-    const routePath = routeStem.startsWith('/') ? routeStem : `/${routeStem}`;
+    let routePath: string;
+    try {
+      routePath = documentRoute(isPage ? relative(pagesDir!, fullPath) : relFromRoot, ast.frontmatter);
+      if (routes.has(routePath)) throw new Error(`Duplicate document route: ${routePath}`);
+      if (graph.getDocument(id)) throw new Error(`Duplicate document id: ${id}`);
+      routes.add(routePath);
+    } catch (error) {
+      astDiagnostics.push({
+        code: 'LUMEN_INVALID_ROUTE',
+        message: String(error),
+        file: relFromRoot,
+        severity: 'error',
+      });
+      continue;
+    }
 
     const corpusDoc: CorpusDocument = {
       id,
@@ -343,6 +370,54 @@ Commands:
   switch (command) {
     case 'dev': {
       console.log(`Lumen CLI v${VERSION} (command: dev)`);
+      if (cliOpts.help) break;
+      await runLumenCli(['build', '--root', cliOpts.rootDir, ...(cliOpts.outDir ? ['--outDir', cliOpts.outDir] : [])]);
+      const config = await loadLumenConfig(cliOpts.rootDir);
+      const { createServer } = await import('vite');
+      const server = await createServer({
+        configFile: false,
+        root: resolve(cliOpts.rootDir, cliOpts.outDir ?? config.outDir),
+        publicDir: false,
+        appType: 'mpa',
+        server: { host: cliOpts.host, port: cliOpts.port, strictPort: true },
+      });
+      await server.listen();
+      server.printUrls();
+      let pending = false;
+      let building = false;
+      const rebuild = async () => {
+        pending = true;
+        if (building) return;
+        building = true;
+        while (pending) {
+          pending = false;
+          try {
+            await runLumenCli([
+              'build',
+              '--root',
+              cliOpts.rootDir,
+              ...(cliOpts.outDir ? ['--outDir', cliOpts.outDir] : []),
+            ]);
+            server.ws.send({ type: 'full-reload', path: '*' });
+          } catch (error) {
+            console.error(error);
+          }
+        }
+        building = false;
+      };
+      const watched = [config.srcDir, config.pagesDir, config.publicDir, 'src'].filter((path): path is string =>
+        Boolean(path)
+      );
+      const watchers = watched
+        .filter((path) => existsSync(resolve(cliOpts.rootDir, path)))
+        .map((path) =>
+          watch(resolve(cliOpts.rootDir, path), { recursive: true }, () => {
+            void rebuild();
+          })
+        );
+      server.httpServer?.once('close', () => {
+        for (const watcher of watchers) watcher.close();
+      });
       break;
     }
 
@@ -350,7 +425,18 @@ Commands:
       console.log(`Lumen CLI v${VERSION} (command: build)`);
       if (cliOpts.help) break;
 
-      const { config, graph, docsDirExists } = await loadCorpusFromDirectory(cliOpts.rootDir);
+      const { config, graph, docsDirExists, astDiagnostics } = await loadCorpusFromDirectory(cliOpts.rootDir);
+      const gateResult = await runCorpusGates(
+        { documents: graph.getAllDocuments(), graph, config, reportDiagnostic: () => {} },
+        [
+          ...(config.onBrokenLinks === 'throw' ? [linksGate] : []),
+          ...(config.onBrokenAnchors === 'throw' ? [anchorsGate] : []),
+          ...(config.gates ?? []),
+        ]
+      );
+      const errors = [...astDiagnostics, ...gateResult.diagnostics].filter((item) => item.severity === 'error');
+      if (errors.length)
+        throw new Error(errors.map((item) => `${item.file}: ${item.code}: ${item.message}`).join('\n'));
       const targetOutDir = cliOpts.outDir
         ? resolve(cliOpts.rootDir, cliOpts.outDir)
         : resolve(cliOpts.rootDir, config.outDir || 'dist');
@@ -360,6 +446,7 @@ Commands:
       const shouldWriteToDisk = cliOpts.write || docsDirExists;
 
       await buildStaticSite(graph, config, {
+        rootDir: cliOpts.rootDir,
         outDir: targetOutDir,
         writeToDisk: shouldWriteToDisk,
       });
@@ -368,6 +455,20 @@ Commands:
 
     case 'serve': {
       console.log(`Lumen CLI v${VERSION} (command: serve)`);
+      if (cliOpts.help) break;
+      const config = await loadLumenConfig(cliOpts.rootDir);
+      const outDir = resolve(cliOpts.rootDir, cliOpts.outDir ?? config.outDir);
+      if (!existsSync(outDir)) throw new Error(`Build output does not exist: ${outDir}. Run lumen build first.`);
+      const { preview } = await import('vite');
+      const server = await preview({
+        configFile: false,
+        root: cliOpts.rootDir,
+        appType: 'mpa',
+        base: config.baseUrl,
+        build: { outDir },
+        preview: { host: cliOpts.host, port: cliOpts.port, strictPort: true },
+      });
+      server.printUrls();
       break;
     }
 

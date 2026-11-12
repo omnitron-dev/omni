@@ -24,14 +24,7 @@ export function generateRouteMirrors(
     const normalizedRoute = baseRoute.startsWith('/') ? baseRoute : `/${baseRoute}`;
 
     mirrors.set(normalizedRoute, cleanMd);
-    mirrors.set(`${normalizedRoute}.md`, cleanMd);
-
-    // Also register without srcDir prefix (e.g. /docs/intro -> /intro)
-    const strippedRoute = normalizedRoute.replace(/^\/docs\//, '/');
-    if (strippedRoute !== normalizedRoute) {
-      mirrors.set(strippedRoute, cleanMd);
-      mirrors.set(`${strippedRoute}.md`, cleanMd);
-    }
+    mirrors.set(`${normalizedRoute === '/' ? '/index' : normalizedRoute}.md`, cleanMd);
   }
 
   return mirrors;

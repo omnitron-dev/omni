@@ -31,12 +31,17 @@ export function defineLumenConfig(userConfig: LumenUserConfig): LumenConfig {
     onBrokenAnchors: userConfig.onBrokenAnchors ?? 'throw',
     srcDir: userConfig.srcDir ?? 'docs',
     outDir: userConfig.outDir ?? 'dist',
+    publicDir: userConfig.publicDir,
+    pagesDir: userConfig.pagesDir,
+    clientEntry: userConfig.clientEntry,
+    stylesheets: userConfig.stylesheets ?? [],
     sidebars: (userConfig.sidebars ?? {}) as Record<string, import('./schema.js').LumenSidebarItem[]>,
     katexMacros: userConfig.katexMacros ?? {},
     locales,
     defaultLocale,
     theme: {
       defaultMode: userConfig.theme?.defaultMode ?? 'dark',
+      layout: userConfig.theme?.layout,
     },
     gates: userConfig.gates ?? [],
     pdf: userConfig.pdf

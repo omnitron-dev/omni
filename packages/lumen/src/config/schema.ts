@@ -1,5 +1,15 @@
 import { z } from 'zod';
 import type { CorpusGate } from '../gates/types.js';
+import type { ReactNode } from 'react';
+import type { CorpusDocument } from '../corpus/types.js';
+
+/** Layouts receive only the audience-projected corpus, never restricted source. */
+export interface LumenPageLayoutProps {
+  children: ReactNode;
+  document: CorpusDocument;
+  documents: readonly CorpusDocument[];
+  config: LumenConfig;
+}
 
 export const LumenSidebarDocItemSchema = z.object({
   type: z.literal('doc'),
@@ -42,6 +52,7 @@ export const LumenSidebarItemSchema: z.ZodType<LumenSidebarItem> = z.union([
 
 export const LumenThemeConfigSchema = z.object({
   defaultMode: z.enum(['light', 'dark']).default('dark'),
+  layout: z.custom<(props: LumenPageLayoutProps) => ReactNode>().optional(),
 });
 
 export const LumenTitanConfigSchema = z.object({
@@ -72,6 +83,10 @@ export const LumenUserConfigSchema = z.object({
   onBrokenAnchors: z.enum(['throw', 'warn', 'ignore', 'log']).optional(),
   srcDir: z.string().optional(),
   outDir: z.string().optional(),
+  publicDir: z.string().optional(),
+  pagesDir: z.string().optional(),
+  clientEntry: z.string().optional(),
+  stylesheets: z.array(z.string()).optional(),
   sidebars: z.record(z.string(), z.array(LumenSidebarItemSchema)).optional(),
   katexMacros: z.record(z.string(), z.string()).optional(),
   locales: LumenLocalesConfigSchema.optional(),
@@ -94,12 +109,17 @@ export interface LumenConfig {
   onBrokenAnchors?: 'throw' | 'warn' | 'ignore' | 'log';
   srcDir: string;
   outDir: string;
+  publicDir?: string;
+  pagesDir?: string;
+  clientEntry?: string;
+  stylesheets?: string[];
   sidebars: Record<string, LumenSidebarItem[]>;
   katexMacros: Record<string, string>;
   locales: string[];
   defaultLocale: string;
   theme: {
     defaultMode: 'light' | 'dark';
+    layout?: (props: LumenPageLayoutProps) => ReactNode;
   };
   gates: CorpusGate[];
   pdf?: {

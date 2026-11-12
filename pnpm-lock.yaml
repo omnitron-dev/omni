@@ -675,9 +675,6 @@ importers:
 
   packages/lumen:
     dependencies:
-      '@modelcontextprotocol/server':
-        specifier: ^2.4.0
-        version: 2.4.0
       '@emotion/cache':
         specifier: ^11.14.0
         version: 11.14.0
@@ -687,6 +684,9 @@ importers:
       '@emotion/server':
         specifier: ^11.11.0
         version: 11.11.0
+      '@modelcontextprotocol/server':
+        specifier: ^2.4.0
+        version: 2.4.0
       '@omnitron-dev/common':
         specifier: workspace:*
         version: link:../common
@@ -745,12 +745,12 @@ importers:
 
   packages/lumen-ast:
     dependencies:
-      '@modelcontextprotocol/server':
-        specifier: ^2.4.0
-        version: 2.4.0
       '@jitl/quickjs-singlefile-browser-release-sync':
         specifier: 0.32.0
         version: 0.32.0
+      '@modelcontextprotocol/server':
+        specifier: ^2.4.0
+        version: 2.4.0
       '@myriaddreamin/typst-ts-web-compiler':
         specifier: 0.7.0
         version: 0.7.0

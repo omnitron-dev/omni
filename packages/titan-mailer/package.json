@@ -36,8 +36,8 @@
     "reflect-metadata": "^0.2.2"
   },
   "peerDependencies": {
-    "@omnitron-dev/titan": "^0.3.0",
-    "@omnitron-dev/titan-notifications": "^0.3.0"
+    "@omnitron-dev/titan": "workspace:*",
+    "@omnitron-dev/titan-notifications": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@omnitron-dev/titan-notifications": {

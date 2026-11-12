@@ -22,7 +22,10 @@ const verification = mkdtempSync(path.join(os.tmpdir(), 'omnitron-release-consum
 try {
   const consumer = path.join(verification, 'consumer');
   const pipeline = Pipeline.create('package-consumer-acceptance')
-    .step('build', { run: { command: 'pnpm', args: ['run', 'build'], shell: false, cwd: destination }, timeout: 30 * 60_000 })
+    .step('dependency-preflight', { run: {
+      command: process.execPath, args: ['scripts/undeclared-dependencies.mjs'], shell: false, cwd: destination,
+    }, timeout: 60_000 })
+    .step('build', { dependsOn: ['dependency-preflight'], run: { command: 'pnpm', args: ['run', 'build'], shell: false, cwd: destination }, timeout: 30 * 60_000 })
     .step('consumer-install', { dependsOn: ['build'], run: {
       command: process.execPath, args: ['scripts/check-package-exports.mjs', '--install-consumer', consumer], shell: false, cwd: destination,
     }, timeout: 20 * 60_000 })

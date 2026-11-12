@@ -5,6 +5,19 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { builtinModules, createRequire } from 'node:module';
 import { join, sep } from 'node:path';
 
+/** Internal dependencies are published from this release, never a previous minor. */
+export function workspaceReferenceFindings(pkg, workspaceNames) {
+  const findings = [];
+  for (const section of ['dependencies', 'peerDependencies', 'optionalDependencies', 'devDependencies']) {
+    for (const [name, specifier] of Object.entries(pkg[section] ?? {})) {
+      if (workspaceNames.has(name) && specifier !== 'workspace:*') {
+        findings.push(`${section}.${name}: ${JSON.stringify(specifier)} must be workspace:*`);
+      }
+    }
+  }
+  return findings;
+}
+
 /** No nested registry copy or workspace link may substitute for a qualified SDK archive. */
 export function assertConsumerArchives(directory, archives) {
   const root = realpathSync(directory);

@@ -7,6 +7,26 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { assertConsumerArchives, inlinedDevDependencies, retainedBuildImports } from '../lib/package-imports.mjs';
 
+test('the dependency gate rejects an internal peer left on the previous release minor', t => {
+  const directory = mkdtempSync(join(tmpdir(), 'omni-workspace-peer-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  mkdirSync(join(directory, 'src'));
+  const manifest = { name: 'peer-probe', version: '0.4.0', peerDependencies: {
+    '@omnitron-dev/titan': '^0.3.0', react: '^19.0.0',
+  } };
+  const file = join(directory, 'package.json');
+  const args = [fileURLToPath(new URL('../undeclared-dependencies.mjs', import.meta.url)), directory];
+  writeFileSync(file, JSON.stringify(manifest));
+  const denied = spawnSync(process.execPath, args, { encoding: 'utf8' });
+  assert.equal(denied.status, 1, denied.stderr);
+  assert.match(denied.stdout, /WORKSPACE.*peerDependencies\.@omnitron-dev\/titan.*workspace:\*/);
+  manifest.peerDependencies['@omnitron-dev/titan'] = 'workspace:*';
+  writeFileSync(file, JSON.stringify(manifest));
+  const accepted = spawnSync(process.execPath, args, { encoding: 'utf8' });
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.match(accepted.stdout, /0 invalid workspace references/);
+});
+
 test('the dependency gate recognizes DefinitelyTyped declarations without allowing runtime imports', t => {
   const directory = mkdtempSync(join(tmpdir(), 'omni-types-consumer-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));

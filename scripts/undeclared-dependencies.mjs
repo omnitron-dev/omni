@@ -51,11 +51,12 @@
  *   node scripts/undeclared-dependencies.mjs packages/titan
  *   node scripts/undeclared-dependencies.mjs --unused   # the reverse question
  *
- * Exit code 1 if any runtime import is undeclared.
+ * Internal workspace dependencies must use workspace:* so a release bump cannot
+ * leave an incompatible peer range behind. Exit code 1 for either defect.
  */
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
-import { inlinedDevDependencies, packageOf, specifiersOf, ts } from './lib/package-imports.mjs';
+import { inlinedDevDependencies, packageOf, specifiersOf, ts, workspaceReferenceFindings } from './lib/package-imports.mjs';
 import { createRequire } from 'node:module';
 
 const ROOT = resolve(new URL('..', import.meta.url).pathname);
@@ -259,14 +260,20 @@ function explainUnused(name, pkg, peers, sourceText) {
 let runtimeFindings = 0;
 let typeFindings = 0;
 let unusedFindings = 0;
+let workspaceFindings = 0;
 let scanned = 0;
 let filesScanned = 0;
 const unusedByPackage = [];
+const workspaceNames = new Set(packageDirs([]).map(dir => JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).name));
 
 for (const dir of packageDirs(argv)) {
   const pkgPath = join(dir, 'package.json');
   if (!existsSync(pkgPath)) continue;
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+  for (const finding of workspaceReferenceFindings(pkg, workspaceNames)) {
+    workspaceFindings++;
+    console.log(`WORKSPACE ${relative(ROOT, pkgPath)}: ${finding}`);
+  }
   const declared = new Set([
     ...Object.keys(pkg.dependencies ?? {}),
     ...Object.keys(pkg.peerDependencies ?? {}),
@@ -354,7 +361,7 @@ if (WANT_UNUSED && unusedByPackage.length) {
 
 console.log(
   `\nscanned ${scanned} packages, ${filesScanned} source files — ` +
-    `${runtimeFindings} runtime, ${typeFindings} type-only` +
+    `${runtimeFindings} runtime, ${typeFindings} type-only, ${workspaceFindings} invalid workspace references` +
     (WANT_UNUSED ? `, ${unusedFindings} declared-unused needing a look` : ''),
 );
-process.exit(runtimeFindings > 0 ? 1 : 0);
+process.exit(runtimeFindings > 0 || workspaceFindings > 0 ? 1 : 0);

@@ -8,7 +8,7 @@ import { parseArgs } from 'node:util';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import semver from 'semver';
-import { assertConsumerArchives, inlinedDevDependencies, retainedBuildImports } from './lib/package-imports.mjs';
+import { assertConsumerArchives, inlinedDevDependencies, retainedBuildImports, workspaceReferenceFindings } from './lib/package-imports.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'omni-pack-check-'));
@@ -58,79 +58,85 @@ function installConsumer(destination, roots) {
 }
 
 try {
+  const workspaces = [];
   for (const group of ['packages', 'apps']) {
     for (const entry of fs.readdirSync(path.join(root, group), { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       const directory = path.join(root, group, entry.name);
       const source = path.join(directory, 'package.json');
-      if (!fs.existsSync(source)) continue;
-      const workspace = JSON.parse(fs.readFileSync(source, 'utf8'));
-      if (workspace.private) continue;
-      const packed = JSON.parse(execFileSync('pnpm', ['pack', '--json', '--pack-destination', temporary], {
-        cwd: directory, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
-      }));
-      // Read the archive's manifest: publishConfig can change its entry points.
-      const manifest = JSON.parse(execFileSync('tar', ['-xOf', packed.filename, 'package/package.json'], {
-        encoding: 'utf8', maxBuffer: 1024 * 1024,
-      }));
-      const files = new Set(packed.files.map(file => file.path));
-      const inlined = inlinedDevDependencies(workspace);
-      const prism = manifest.name === '@omnitron-dev/prism';
-      if (inlined.size || prism) {
-        const unpacked = fs.mkdtempSync(path.join(temporary, 'archive-'));
-        execFileSync('tar', ['-xf', packed.filename, '-C', unpacked]);
-        const packageDir = path.join(unpacked, 'package');
-        if (inlined.size) {
-          for (const finding of retainedBuildImports(packageDir, files, inlined)) {
-            failures.push(`${manifest.name}: inlined build dependency escaped: ${finding}`);
-          }
-        }
-        if (prism) checkPrismConsumer(unpacked, packageDir, directory);
-      }
-      if (['@omnitron-dev/netron-react', '@omnitron-dev/prism'].includes(manifest.name)) {
-        for (const [subpath, conditions] of Object.entries(manifest.exports)) {
-          const client = manifest.name === '@omnitron-dev/netron-react'
-            ? ['.', './hooks', './auth', './test'].includes(subpath)
-            : !['./http', './cli'].includes(subpath);
-          for (const target of strings(conditions).filter(file => /\.(?:cjs|mjs|js)$/.test(file))) {
-            const source = execFileSync('tar', ['-xOf', packed.filename, 'package/' + target.slice(2)], { encoding: 'utf8' });
-            const hasDirective = /^(?:['"]use strict['"];\s*)?['"]use client['"];/.test(source.trimStart());
-            if (hasDirective !== client) failures.push(`${manifest.name}${subpath.slice(1)}: incorrect React boundary in ${target}`);
-          }
-        }
-      }
-      if (manifest.engines?.node) {
-        const minimum = semver.minVersion(manifest.engines.node);
-        const resolver = createRequire(source);
-        for (const dependency of Object.keys(manifest.dependencies ?? {})) {
-          // Follow Node's search order for either isolated or hoisted installs.
-          // Resolving the manifest directly would require a package.json export.
-          const installed = resolver.resolve.paths(`${dependency}/package.json`)
-            .map(base => path.join(base, dependency, 'package.json')).find(file => fs.existsSync(file));
-          if (!installed) throw new Error(`${manifest.name}: installed dependency is absent: ${dependency}`);
-          const required = JSON.parse(fs.readFileSync(installed, 'utf8')).engines?.node;
-          if (required && !semver.satisfies(minimum, required)) {
-            failures.push(`${manifest.name}: Node ${minimum} is below the requirement of ${dependency} (${required})`);
-          }
-        }
-      }
-      const publicTargets = [...new Set([
-        ...strings(manifest.exports), ...strings(manifest.bin),
-        manifest.main, manifest.module, manifest.types, manifest.typings,
-      ].filter(Boolean))];
-      for (const target of publicTargets) {
-        targets++;
-        const normalized = target.replace(/^\.\//, '');
-        const pattern = new RegExp('^' + normalized.split('*').map(escape).join('.*') + '$');
-        if (path.isAbsolute(normalized) || normalized.split('/').includes('..') ||
-            ![...files].some(file => pattern.test(file))) {
-          failures.push(`${manifest.name}: exported file is absent from the archive: ${target}`);
-        }
-      }
-      packages++;
-      if (values['install-consumer']) archives.set(manifest.name, { manifest, filename: packed.filename });
-      else fs.rmSync(packed.filename);
+      if (fs.existsSync(source)) workspaces.push({ directory, source, workspace: JSON.parse(fs.readFileSync(source, 'utf8')) });
     }
+  }
+  const workspaceNames = new Set(workspaces.map(({ workspace }) => workspace.name));
+  const invalidReferences = workspaces.flatMap(({ workspace }) =>
+    workspaceReferenceFindings(workspace, workspaceNames).map(finding => `${workspace.name}: ${finding}`));
+  if (invalidReferences.length) throw new Error('Invalid workspace references:\n' + invalidReferences.join('\n'));
+  for (const { directory, source, workspace } of workspaces) {
+    if (workspace.private) continue;
+    const packed = JSON.parse(execFileSync('pnpm', ['pack', '--json', '--pack-destination', temporary], {
+      cwd: directory, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
+    }));
+    // Read the archive's manifest: publishConfig can change its entry points.
+    const manifest = JSON.parse(execFileSync('tar', ['-xOf', packed.filename, 'package/package.json'], {
+      encoding: 'utf8', maxBuffer: 1024 * 1024,
+    }));
+    const files = new Set(packed.files.map(file => file.path));
+    const inlined = inlinedDevDependencies(workspace);
+    const prism = manifest.name === '@omnitron-dev/prism';
+    if (inlined.size || prism) {
+      const unpacked = fs.mkdtempSync(path.join(temporary, 'archive-'));
+      execFileSync('tar', ['-xf', packed.filename, '-C', unpacked]);
+      const packageDir = path.join(unpacked, 'package');
+      if (inlined.size) {
+        for (const finding of retainedBuildImports(packageDir, files, inlined)) {
+          failures.push(`${manifest.name}: inlined build dependency escaped: ${finding}`);
+        }
+      }
+      if (prism) checkPrismConsumer(unpacked, packageDir, directory);
+    }
+    if (['@omnitron-dev/netron-react', '@omnitron-dev/prism'].includes(manifest.name)) {
+      for (const [subpath, conditions] of Object.entries(manifest.exports)) {
+        const client = manifest.name === '@omnitron-dev/netron-react'
+          ? ['.', './hooks', './auth', './test'].includes(subpath)
+          : !['./http', './cli'].includes(subpath);
+        for (const target of strings(conditions).filter(file => /\.(?:cjs|mjs|js)$/.test(file))) {
+          const source = execFileSync('tar', ['-xOf', packed.filename, 'package/' + target.slice(2)], { encoding: 'utf8' });
+          const hasDirective = /^(?:['"]use strict['"];\s*)?['"]use client['"];/.test(source.trimStart());
+          if (hasDirective !== client) failures.push(`${manifest.name}${subpath.slice(1)}: incorrect React boundary in ${target}`);
+        }
+      }
+    }
+    if (manifest.engines?.node) {
+      const minimum = semver.minVersion(manifest.engines.node);
+      const resolver = createRequire(source);
+      for (const dependency of Object.keys(manifest.dependencies ?? {})) {
+        // Follow Node's search order for either isolated or hoisted installs.
+        // Resolving the manifest directly would require a package.json export.
+        const installed = resolver.resolve.paths(`${dependency}/package.json`)
+          .map(base => path.join(base, dependency, 'package.json')).find(file => fs.existsSync(file));
+        if (!installed) throw new Error(`${manifest.name}: installed dependency is absent: ${dependency}`);
+        const required = JSON.parse(fs.readFileSync(installed, 'utf8')).engines?.node;
+        if (required && !semver.satisfies(minimum, required)) {
+          failures.push(`${manifest.name}: Node ${minimum} is below the requirement of ${dependency} (${required})`);
+        }
+      }
+    }
+    const publicTargets = [...new Set([
+      ...strings(manifest.exports), ...strings(manifest.bin),
+      manifest.main, manifest.module, manifest.types, manifest.typings,
+    ].filter(Boolean))];
+    for (const target of publicTargets) {
+      targets++;
+      const normalized = target.replace(/^\.\//, '');
+      const pattern = new RegExp('^' + normalized.split('*').map(escape).join('.*') + '$');
+      if (path.isAbsolute(normalized) || normalized.split('/').includes('..') ||
+          ![...files].some(file => pattern.test(file))) {
+        failures.push(`${manifest.name}: exported file is absent from the archive: ${target}`);
+      }
+    }
+    packages++;
+    if (values['install-consumer']) archives.set(manifest.name, { manifest, filename: packed.filename });
+    else fs.rmSync(packed.filename);
   }
   if (!failures.length && values['install-consumer']) {
     // Keep the runtime probe independent of optional packages: a full install

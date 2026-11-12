@@ -650,6 +650,25 @@ application dependency. Use a complete, normally installed SDK workspace.
 The consumer must own its dependency directory. An external `node_modules`
 symlink is refused before installation; preserve that directory separately
 before migrating an ad hoc dependency setup to an SDK profile.
+The standard pnpm `virtualStoreDir` setting may point to a dedicated physical
+directory on another volume. For a thin local `node_modules` symlink graph with
+the package contents on that volume, use `nodeLinker: isolated`; a hoisted install
+keeps package contents in the consumer's modules directories. For example:
+
+```yaml
+# Consumer pnpm-workspace.yaml; use a separate store directory for each workspace.
+nodeLinker: isolated
+virtualStoreDir: /Volumes/AGI-Dev/work/my-project/virtual-store
+```
+
+The SDK preserves these pnpm settings. Registry verification compares the effective
+configuration with `.modules.yaml`, checks the physical modules/store paths,
+and matches installed lock entries and archive integrity to the distribution lock.
+The existing selection fingerprint includes the effective module settings, so an
+environment-resolved store change triggers the normal dependency switch as well.
+A redirected store, mismatched receipt, or framework import outside the admitted
+installation fails verification. This installation check does not replace the
+release builder's archive provenance checks.
 
 A new consumer can use unpublished SDK packages without a distribution lock.
 An existing lock may also predate newly declared packages. Development installation
@@ -660,7 +679,7 @@ that root lock as its baseline and writes the development dependency graph only
 under `.omnitron/dev-sdk`. A manager-only root lock is not a registry application
 lock. This one-time bootstrap lets subsequent ordinary `pnpm run build` and
 `pnpm exec` use the selected profile through the same hook without extra flags.
-`--no-watch` selects it without starting a watcher; omit `--stack` for an
+`--no-watch` builds the selected graph once without starting a watcher; omit `--stack` for an
 unregistered build-only consumer.
 
 `omnitron sdk registry` explicitly restores a current frozen registry lock.
@@ -691,7 +710,11 @@ imports and selected package identities; the daemon's `status` reports
 the running backend and owner independently. Online applications or a source
 watcher alone do not establish that the project uses the current SDK. Leave
 `sdk dev` running to rebuild platform packages and refresh their watched
-consumers; `--no-watch` selects dependencies without starting that watcher.
+consumers. Every `sdk dev --no-watch`, including an unchanged checkout path and
+package version, runs the normal Turbo build graph. Turbo decides which tasks
+are cached. After success, the SDK verifies imports and updates the same output
+checkpoint used by the watcher, refreshing affected watched consumers when
+`--stack` is supplied. A failed build leaves the last successful checkpoint intact.
 
 Build caches must include `.omnitron/dev-sdk/*.json` as inputs. For Turbo, add
 this glob to the project's `globalDependencies`. It binds cached tasks to the

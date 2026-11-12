@@ -18,7 +18,7 @@ omnitron sdk status [--project-dir PATH]
 
 init installs the pnpm bridge without resolving registry dependencies.
 dev selects the local SDK and watches its sources. Start again without a path to
-reuse the selection. --no-watch installs the profile for a separate watch session.
+reuse the selection. --no-watch builds the selected graph once without watching.
 --stack also refreshes running, watched applications in that local source stack.
 registry restores the frozen distribution dependencies. Releases always read Git.`;
 
@@ -145,6 +145,12 @@ function frameworkDependencies(manifest, development = false) {
     !(manifest.peerDependenciesMeta?.[name]?.optional && !manifest.dependencies?.[name] &&
       !manifest.optionalDependencies?.[name] && !(development && manifest.devDependencies?.[name]))).sort();
 }
+async function moduleConfiguration(root) {
+  const settings = await Promise.all(['nodeLinker', 'virtualStoreDir'].map(async key => JSON.parse(await command(
+    'pnpm', ['--config.lockfile=false', '--config.ignore-pnpmfile=true', 'config', 'get', key, '--json'], root, true
+  ))));
+  return { nodeLinker: settings[0] ?? 'isolated', virtualStoreDir: path.resolve(root, settings[1] ?? 'node_modules/.pnpm') };
+}
 async function desiredProfile(root, source, distribution) {
   const packages = await inventory(source), consumers = await inventory(root);
   for (const { directory } of consumers.values()) {
@@ -173,8 +179,11 @@ async function desiredProfile(root, source, distribution) {
   const settings = [];
   for (const file of ['pnpm-workspace.yaml', '.npmrc']) settings.push([file,
     await fs.readFile(path.join(root, file), 'utf8').catch(error => { if (error.code === 'ENOENT') return null; throw error; })]);
+  // Environment interpolation and global pnpm configuration can change module
+  // placement without changing either workspace file. Bind the effective layout.
+  const installation = await moduleConfiguration(root);
   const names = Object.keys(links).sort();
-  return { schema: 1, root, source, lockSha256: lockIdentity(distribution), inputSha256: sha256(JSON.stringify({ manifests, settings })),
+  return { schema: 1, root, source, lockSha256: lockIdentity(distribution), inputSha256: sha256(JSON.stringify({ manifests, settings, installation })),
     links: Object.fromEntries(names.map(name => [name, links[name]])), versions: Object.fromEntries(names.map(name => [name, versions[name]])) };
 }
 
@@ -269,24 +278,74 @@ async function registryBaseline(root, distribution, consumers) {
       if (!archive || /^(?:link:|file:|workspace:)/.test(version) || archive.resolution?.type ||
           !/^sha512-[A-Za-z0-9+/]{85}[AQgw]==$/.test(archive.resolution?.integrity ?? ''))
         throw Error('Distribution lock must resolve a registry archive for ' + name);
-      result.set(directory + '\0' + name, version);
+      result.set(directory + '\0' + name, { version, importer: key, entry, resolution: archive.resolution });
     }
   }
   return result;
 }
+
+async function physicalInstallationDirectory(directory) {
+  const stat = await fs.lstat(directory);
+  if (!stat.isDirectory() || stat.isSymbolicLink() || await fs.realpath(directory) !== directory)
+    throw Error('pnpm installation requires a physical directory: ' + directory);
+  return directory;
+}
+
+async function readInstallationReceipt(file) {
+  const stat = await fs.lstat(file);
+  if (!stat.isFile() || stat.isSymbolicLink() || await fs.realpath(file) !== file)
+    throw Error('pnpm installation requires a physical receipt file: ' + file);
+  return fs.readFile(file, 'utf8');
+}
+
+async function registryInstallation(root) {
+  const modules = await physicalInstallationDirectory(path.join(root, 'node_modules'));
+  const { nodeLinker, virtualStoreDir: configured } = await moduleConfiguration(root);
+  const documents = lockDocuments(await readInstallationReceipt(path.join(modules, '.modules.yaml')));
+  const receipt = documents.length === 1 ? documents[0].toJS() : null;
+  if (!['isolated', 'hoisted'].includes(nodeLinker) || receipt?.nodeLinker !== nodeLinker ||
+      typeof receipt?.virtualStoreDir !== 'string' ||
+      path.resolve(modules, receipt.virtualStoreDir) !== configured)
+    throw Error('pnpm installation receipt does not match the configured nodeLinker and virtualStoreDir; run pnpm install for these settings');
+  const store = await physicalInstallationDirectory(configured);
+  const lock = applicationDocument(await readInstallationReceipt(path.join(store, 'lock.yaml')));
+  if (!lock?.importers || !lock?.packages) throw Error('pnpm installed lock receipt is missing its application graph');
+  return { nodeLinker, modules, store, lock };
+}
+
 async function verifyLinks(root, profile) {
   const importers = await inventory(root);
   const locked = profile ? null : await registryBaseline(root, await distributionLock(root), importers);
+  const installed = profile ? null : await registryInstallation(root);
   let verified = 0;
   for (const { directory, manifest } of importers.values()) {
     for (const name of frameworkDependencies(manifest, true)) {
       const actual = await fs.realpath(path.join(directory, 'node_modules', name));
       if (!profile) {
         const identity = await readJson(path.join(actual, 'package.json'));
+        const expected = locked.get(directory + '\0' + name);
+        const importer = installed.lock.importers[expected.importer];
+        const entry = ['dependencies', 'devDependencies', 'optionalDependencies'].map(section => importer?.[section]?.[name]).find(Boolean);
+        if (!isDeepStrictEqual(entry, expected.entry) || !isDeepStrictEqual(
+          installed.lock.packages[name + '@' + expected.version]?.resolution, expected.resolution
+        )) throw Error('pnpm installed lock receipt does not match the distribution lock for ' + name);
+        // Isolated pnpm stores may live on a separate volume. Their configured
+        // physical identity and installed lock must agree with pnpm's receipt.
+        // Hoisted packages remain in this workspace's real modules directories.
+        let contained = inside(installed.store, actual);
+        if (installed.nodeLinker === 'hoisted') {
+          contained = inside(installed.modules, actual);
+          if (!contained) {
+            const localModules = path.join(directory, 'node_modules');
+            if (inside(localModules, actual)) {
+              await physicalInstallationDirectory(localModules);
+              contained = true;
+            }
+          }
+        }
         if (
           identity.name !== name ||
-          identity.version !== locked.get(directory + '\0' + name) ||
-          !inside(path.join(root, 'node_modules'), actual)
+          identity.version !== expected.version || !contained
         )
           throw Error('Registry installation does not match the distribution lock for ' + name);
       } else if (actual !== profile.links[name])
@@ -487,15 +546,31 @@ async function buildDigest(directory) {
   return hash.digest('hex');
 }
 
+async function checkpointSdkBuild(profile, names, stack, signal, packages) {
+  const checkpoint = path.join(statePath(profile.root), 'built.json');
+  const prior = await optionalJson(checkpoint);
+  const hashes = prior?.source === profile.source ? prior.hashes : {};
+  const next = Object.fromEntries(Object.entries(hashes).filter(([name]) => Object.hasOwn(profile.links, name)));
+  const changed = new Set();
+  for (const name of names) {
+    next[name] = await buildDigest(profile.links[name]);
+    if (hashes[name] !== next[name]) changed.add(name);
+  }
+  signal?.throwIfAborted();
+  if (changed.size && stack) {
+    packages ??= new Map([...(await inventory(profile.source)), ...(await inventory(profile.root))]);
+    await refresh(profile.root, stack, changed, packages);
+  }
+  await atomic(checkpoint, JSON.stringify({ source: profile.source, hashes: next }) + '\n');
+  console.log(changed.size ? 'Development SDK ready: ' + [...changed].join(', ') : 'Development SDK is current');
+}
+
 export async function watchSdk(profile, stack, signal) {
   if (stack) {
     const { client } = await localStack(profile.root, stack);
     await client.disconnect();
   }
   const packages = new Map([...(await inventory(profile.source)), ...(await inventory(profile.root))]);
-  const checkpoint = path.join(statePath(profile.root), 'built.json');
-  const prior = await optionalJson(checkpoint);
-  const hashes = prior?.source === profile.source ? prior.hashes : {};
   const sdkPackages = new Map([...packages].filter(([name]) => Object.hasOwn(profile.links, name)));
   const pending = new Set(Object.keys(profile.links));
   const handles = [];
@@ -508,17 +583,7 @@ export async function watchSdk(profile, stack, signal) {
       .map(([name]) => name);
     await build(profile.source, names, signal);
     await verifyLinks(profile.root, profile);
-    const changed = new Set();
-    const next = { ...hashes };
-    for (const name of names) {
-      next[name] = await buildDigest(profile.links[name]);
-      if (hashes[name] !== next[name]) changed.add(name);
-    }
-    if (signal.aborted) return;
-    if (changed.size) await refresh(profile.root, stack, changed, packages);
-    Object.assign(hashes, next);
-    await atomic(checkpoint, JSON.stringify({ source: profile.source, hashes }) + '\n');
-    console.log(changed.size ? 'Development SDK ready: ' + [...changed].join(', ') : 'Development SDK is current');
+    await checkpointSdkBuild(profile, names, stack, signal, packages);
   }
   const flush = async () => {
     if (running || signal.aborted || !pending.size) return;
@@ -707,9 +772,7 @@ export async function sdkCommand(argv) {
           desired = { ...desired, lockSha256: lockIdentity(prepared) };
           installationStarted = true;
           await installDevelopment(root, desired);
-          const hashes = {};
-          for (const [name, directory] of Object.entries(desired.links)) hashes[name] = await buildDigest(directory);
-          await atomic(path.join(dir, 'built.json'), JSON.stringify({ source: desired.source, hashes }) + '\n');
+          await checkpointSdkBuild(desired, Object.keys(desired.links), undefined, controller.signal);
           await atomic(selection, JSON.stringify(desired, null, 2) + '\n');
           if (prepared !== distribution)
             console.log('Accepted pnpm package-manager metadata in the distribution lock; the application dependency graph is unchanged.');
@@ -730,7 +793,22 @@ export async function sdkCommand(argv) {
           if (recovery) throw new AggregateError([error, recovery], 'SDK switch and recovery failed');
           throw error;
         }
-      } else await verifyLinks(root, desired);
+      } else {
+        await verifyLinks(root, desired);
+        if (values['no-watch']) {
+          if (values.stack) {
+            const { client } = await localStack(root, values.stack);
+            await client.disconnect();
+          }
+          // Profile equality says nothing about source or built output. Let the
+          // normal Turbo graph decide which tasks need rebuilding on every dev.
+          await build(source, Object.keys(desired.links), controller.signal);
+          if (!isDeepStrictEqual(await desiredProfile(root, source, distribution), desired))
+            throw Error('Consumer or SDK inputs changed while building; run sdk dev again');
+          await verifyLinks(root, desired);
+          await checkpointSdkBuild(desired, Object.keys(desired.links), values.stack, controller.signal);
+        }
+      }
       if (!values['no-watch']) await watchSdk(desired, values.stack, controller.signal);
     } finally {
       process.off('SIGINT', stop);

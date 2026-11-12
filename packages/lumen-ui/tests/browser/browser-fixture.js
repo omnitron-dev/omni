@@ -1,21 +1,28 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { realpathSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
 import { build, preview } from 'vite';
 import { test as base } from '@playwright/test';
 
 const consumer = process.env.LUMEN_CONSUMER_ROOT && realpathSync(process.env.LUMEN_CONSUMER_ROOT);
+const execute = promisify(execFile);
 
-/** Tooling stays in the checkout; executable package code resolves from the installed archives. */
-export async function importConsumer(specifier, workspaceManifest = new URL('../../package.json', import.meta.url)) {
+function resolveConsumer(specifier, workspaceManifest) {
   const require = createRequire(consumer ? path.join(consumer, 'package.json') : workspaceManifest);
   const entry = realpathSync(require.resolve(specifier));
   if (consumer) assert.ok(entry.startsWith(path.join(consumer, 'node_modules') + path.sep), `${specifier} escaped the archive consumer`);
-  return import(pathToFileURL(entry).href);
+  return entry;
+}
+
+/** Tooling stays in the checkout; executable package code resolves from the installed archives. */
+export async function importConsumer(specifier, workspaceManifest = new URL('../../package.json', import.meta.url)) {
+  return import(pathToFileURL(resolveConsumer(specifier, workspaceManifest)).href);
 }
 
 export const createBrowserTest = (entry, {
@@ -75,6 +82,33 @@ export const createBrowserTest = (entry, {
     } finally {
       await server?.close();
       await rm(directory, { recursive: true, force: true });
+    }
+  }, { scope: 'worker', timeout: 120_000 }],
+  cliSiteUrl: [async ({}, provide) => {
+    const lumenEntry = resolveConsumer('@omnitron-dev/lumen', new URL('../../../lumen/package.json', import.meta.url));
+    const lumenDirectory = path.dirname(path.dirname(lumenEntry));
+    // In archive mode the fixture inherits only the consumer's installed
+    // packages. The linked SDK case uses the package's ordinary dependency tree.
+    const directory = await mkdtemp(path.join(consumer ?? lumenDirectory, '.lumen-cli-browser-'));
+    const output = await mkdtemp(path.join(os.tmpdir(), 'lumen-cli-browser-output-'));
+    const outDir = path.join(output, 'site');
+    let server;
+    try {
+      await cp(new URL('./cli-site/', import.meta.url), directory, { recursive: true });
+      // Exercise the shipped bin, including its disposable SSR graph, before
+      // loading the emitted client in a browser. Calling buildStaticSite here
+      // would bypass the CLI's compiler boundary.
+      await execute(process.execPath, [path.join(lumenDirectory, 'bin/lumen.js'), 'build', '--root', directory, '--outDir', outDir], {
+        cwd: directory, timeout: 90_000, killSignal: 'SIGKILL', maxBuffer: 8 * 1024 * 1024,
+      });
+      server = await preview({ root: directory, configFile: false, logLevel: 'error', build: { outDir },
+        preview: { host: '127.0.0.1', port: 0, headers: { 'Content-Security-Policy': contentSecurityPolicy } },
+      });
+      await provide(`http://127.0.0.1:${server.httpServer.address().port}/docs.html`);
+    } finally {
+      await server?.close();
+      await rm(directory, { recursive: true, force: true });
+      await rm(output, { recursive: true, force: true });
     }
   }, { scope: 'worker', timeout: 120_000 }],
 });

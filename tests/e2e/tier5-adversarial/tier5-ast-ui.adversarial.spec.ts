@@ -194,28 +194,34 @@ Case 1 proof body.
   });
 
   describe('1.3 Malformed Frontmatter & Schema Violation Resilience', () => {
-    it('ADV-AST-10: handles non-object frontmatter gracefully without unhandled exceptions', () => {
+    it('ADV-AST-10: rejects non-object frontmatter with restricted access and an error diagnostic', () => {
       const inputs = ['simple-string-frontmatter', 12345, ['array', 'of', 'items'], null, undefined];
 
       for (const input of inputs) {
         const res = validateFrontmatter(input);
-        expect(res).toBeDefined();
-        expect(res.frontmatter).toEqual({});
-        expect(Array.isArray(res.diagnostics)).toBe(true);
+        expect(res.frontmatter).toEqual({ access: 'restricted' });
+        expect(res.diagnostics).toMatchObject([{
+          code: 'INVALID_FRONTMATTER', severity: 'error', message: 'Frontmatter must be a mapping',
+        }]);
       }
     });
 
-    it('ADV-AST-11: recovers body content and issues diagnostic for unclosed frontmatter fence', async () => {
+    it('ADV-AST-11: refuses to recover public body content from unclosed frontmatter', async () => {
       const doc = `---
 title: Unclosed Document
 tags: [test]
 # Real Heading
-Real body content following unclosed frontmatter fence.`;
+UNCLOSED_METADATA_CANARY must not become public body content.`;
 
       const ast = await parseDocument(doc);
-      expect(ast.diagnostics.some((d) => d.code === 'FRONTMATTER_PARSE_ERROR')).toBe(true);
-      expect(ast.children.length).toBeGreaterThan(0);
-      expect(ast.rawContent).toContain('Real Heading');
+      expect(ast.diagnostics).toMatchObject([{
+        code: 'FRONTMATTER_PARSE_ERROR', severity: 'error', message: 'Unclosed frontmatter',
+      }]);
+      expect(ast.frontmatter).toEqual({ access: 'restricted' });
+      expect(ast.children).toEqual([]);
+      expect(ast.toc).toEqual([]);
+      expect(ast.rawContent).toBe('');
+      expect(toHtmlSsr(ast)).not.toContain('UNCLOSED_METADATA_CANARY');
     });
 
     it('ADV-AST-12: reports diagnostics for type violations in frontmatter fields', () => {
@@ -451,29 +457,24 @@ Real body content following unclosed frontmatter fence.`;
       expect(html).toContain('&quot;special&quot;:&quot;&lt;script&gt;\\&quot;&amp;');
     });
 
-    it('ADV-AST-27: exposes uncaught TypeError when PortalIslandHost is passed non-serializable props (BigInt / Circular)', () => {
-      // In host.tsx: 'data-props': JSON.stringify(props ?? {})
-      // If props contains a BigInt or circular reference, JSON.stringify throws an unhandled TypeError.
+    it('ADV-AST-27: rejects BigInt and cyclic island props without emitting a replacement payload', () => {
       const bigintProps = { amount: 1000n };
-      expect(() =>
-        renderToStaticMarkup(
-          React.createElement(PortalIslandHost, {
-            islandId: 'bigint-island',
-            props: bigintProps as any,
-          })
-        )
-      ).not.toThrow();
-
       const circularProps: any = { name: 'circular' };
       circularProps.self = circularProps;
-      expect(() =>
-        renderToStaticMarkup(
-          React.createElement(PortalIslandHost, {
-            islandId: 'circular-island',
-            props: circularProps,
-          })
-        )
-      ).not.toThrow();
+      for (const [props, message] of [
+        [bigintProps, 'Island props must contain only JSON data'],
+        [circularProps, 'Island props must not contain cycles'],
+      ] as const) {
+        let markup: string | undefined;
+        expect(() => {
+          markup = renderToStaticMarkup(React.createElement(PortalIslandHost, {
+            islandId: 'rejected-island', props,
+          }));
+        }).toThrow(new TypeError(message));
+        expect(markup).toBeUndefined();
+      }
+      expect(bigintProps.amount).toBe(1000n);
+      expect(circularProps.self).toBe(circularProps);
     });
 
     it('ADV-AST-28: renders empty or missing props safely without breaking static markup', () => {

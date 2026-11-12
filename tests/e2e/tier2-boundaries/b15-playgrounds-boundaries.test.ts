@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { ApiExplorer, NetronPlayground, PortalIslandHost } from '@omnitron-dev/lumen-ui';
 import { LumenService } from '@omnitron-dev/titan-lumen';
-import { asUser } from '../../../packages/titan-lumen/tests/netron-fixture.js';
+import { ErrorCode, TitanError } from '@omnitron-dev/netron-protocol';
+import { asUser, createLumenFixture } from '../../../packages/titan-lumen/tests/netron-fixture.js';
 
 describe('Feature 15: Interactive Playground & Explorer Boundaries', () => {
   it('TC-B15-01: executes infinite loop snippet guard through an authorized Netron invocation', async () => {
@@ -22,11 +26,21 @@ describe('Feature 15: Interactive Playground & Explorer Boundaries', () => {
   });
 
   it('TC-B15-02: reports an unavailable configured corpus without fabricating empty success', async () => {
-    const offlineService = new LumenService({ docsDir: '__non_existent_offline__' });
-    await expect(offlineService.search('test query')).rejects.toThrow('configured documentation corpus');
-
-    const docRes = await offlineService.getDocument('phantom.pdx');
-    expect(docRes).toBeNull();
+    const directory = mkdtempSync(join(tmpdir(), 'lumen-unavailable-corpus-'));
+    try {
+      const service = new LumenService({ docsDir: join(directory, 'absent') });
+      for (const caller of [service, await asUser(service, 'reader')]) {
+        for (const invoke of [() => caller.search('test query'), () => caller.getDocument('phantom.pdx')]) {
+          const operation = invoke();
+          await expect(operation).rejects.toBeInstanceOf(TitanError);
+          await expect(operation).rejects.toMatchObject({ code: ErrorCode.INTERNAL_ERROR, httpStatus: 500 });
+        }
+      }
+      // A missing document in a readable corpus remains an ordinary absence.
+      const available = await asUser(createLumenFixture(), 'reader');
+      await expect(available.search('test query')).resolves.toEqual([]);
+      await expect(available.getDocument('phantom.pdx')).resolves.toBeNull();
+    } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
   it('TC-B15-03: renders ApiExplorer and NetronPlayground with null or empty property descriptors', () => {

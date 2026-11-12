@@ -125,3 +125,46 @@ limits when exposing document compilation as a multi-tenant service.
 PDF generation is a Node API; it is not imported into the browser's AST bundle.
 Interactive widgets export their document content, and Mermaid blocks currently
 export their source. The HTML path supplies their interactive visual rendering.
+
+
+## Mermaid and ELK
+
+`@omnitron-dev/lumen-ast/diagrams` separates document emission from actual
+rendering. `renderDiagramHtml(code, index, filePath)` emits an escaped source
+fallback and the ordinary `MermaidDiagram` island metadata. It does not claim
+to create SVG in Node. The former partial parser, custom SVG graph layout and
+microtask-based `MermaidWorkerPool` have been removed.
+
+`renderDiagramSvg(code, id, { theme, colors, signal })` lazily loads the actual
+Mermaid engine and requires a browser DOM. Mermaid 12 includes ELK; no second
+layout library or server DOM emulation is installed. Syntax, sequence branches,
+class members, subgraphs and layout selection belong to that engine. See the
+[Mermaid API](https://mermaid.js.org/config/usage) and
+[layout documentation](https://mermaid.js.org/config/layouts).
+
+Lumen serializes initialization and rendering together because Mermaid's theme
+configuration is shared. Source is capped at 64 KiB, rendered SVG at 4 MiB,
+configured edges at 500 and pending renders at 64. Cancellation drops queued or
+completed results; it cannot interrupt synchronous browser computation. This is
+not a worker sandbox or a hard CPU/RSS quota. Do not expose arbitrary hostile
+workloads as a privileged multi-tenant rendering service.
+
+Strict Mermaid security is mandatory. Document directives cannot change the
+security level, resource caps, raw theme CSS, host colors or HTML-label policy.
+The `MermaidDiagram` UI derives colors from Prism/MUI, displays parse failures,
+retains source for inspection and responds to the shell theme. The default
+Lumen client registers it automatically. Custom clients must include it in their
+island registry. Without JavaScript the source remains readable; PDF/Markdown
+exports currently retain diagram source rather than claiming graphical output.
+
+
+## Island wire data
+
+`@omnitron-dev/lumen-ast/islands` supplies the shared browser-safe
+`serializeIslandProps`, `parseIslandProps` and `parseHydrationTrigger` contract.
+SSR emission, React hosts and runtime activation use these same functions.
+Props must be a plain JSON object, bounded to 256 KiB and 64 nesting levels.
+Shared references are copied as a JSON tree; cycles, accessors, custom objects,
+BigInt, undefined/functions, non-finite numbers and negative zero are rejected
+rather than converted or dropped. Data serialization never executes getters or
+`toJSON`. Invalid activation metadata is an error, not an eager-load fallback.

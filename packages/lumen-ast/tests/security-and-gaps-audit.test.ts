@@ -6,7 +6,6 @@ import {
   LumenHighlighter,
   MAX_DOCUMENT_BYTES,
   MAX_FRONTMATTER_BYTES,
-  MermaidWorkerPool,
   parseAttributeString,
   parseDocument,
   parseJsxTag,
@@ -83,61 +82,15 @@ const strictCount: number = "invalid-number";`;
     });
   });
 
-  describe('GAP-02: Real Deterministic Build-Time SVG Diagram Engine & MermaidWorkerPool', () => {
-    it('renders real SVG nodes, shapes, edges, markers, and ELK orthogonal geometry', () => {
-      const flowchart = `%%{init: {"flowchart": {"defaultRenderer": "elk"}}}%%
-flowchart LR
-  Start((Init)) --> Check{Valid?}
-  Check -->|Yes| Run[Execute]
-  Check -.->|No| Halt(Stop)`;
-
-      const fcHtml = renderDiagramHtml(flowchart, 1, 'docs/elk.pdx');
-      expect(fcHtml).toContain('data-renderer="elk"');
-      expect(fcHtml).toContain('<defs>');
-      expect(fcHtml).toContain('<marker');
-      expect(fcHtml).toContain('class="lumen-diagram-edges"');
-      expect(fcHtml).toContain('class="lumen-edge-path"');
-      expect(fcHtml).toContain('class="lumen-diagram-nodes"');
-      expect(fcHtml).toContain('class="lumen-node"');
-      expect(fcHtml).toContain('<polygon');
-      expect(fcHtml).toContain('<circle');
-      expect(fcHtml).toContain('<rect');
-
-      const sequence = `sequenceDiagram
-  Client->>Gateway: Authenticate
-  Gateway-->>Client: SessionToken`;
-      const seqHtml = renderDiagramHtml(sequence, 2, 'docs/seq.pdx');
-      expect(seqHtml).toContain('data-diagram-type="sequence"');
-      expect(seqHtml).toContain('Authenticate');
-      expect(seqHtml).toContain('SessionToken');
-      expect(seqHtml).toContain('class="lumen-edge-path"');
-
-      const state = `stateDiagram-v2
-  [*] --> Idle
-  Idle --> Active : trigger
-  Active --> [*]`;
-      const stateHtml = renderDiagramHtml(state, 3, 'docs/state.pdx');
-      expect(stateHtml).toContain('data-diagram-type="state"');
-      expect(stateHtml).toContain('Idle');
-      expect(stateHtml).toContain('Active');
-    });
-
-    it('renders diagram batches asynchronously through bounded MermaidWorkerPool', async () => {
-      const pool = new MermaidWorkerPool({ concurrency: 2, maxQueueSize: 32 });
-      try {
-        const results = await pool.renderBatch([
-          { code: 'graph TD\n  A[Alpha] --> B[Beta]', diagramIndex: 1, filePath: 'docs/p1.pdx' },
-          { code: 'sequenceDiagram\n  A->>B: Ping', diagramIndex: 2, filePath: 'docs/p2.pdx' },
-          { code: 'stateDiagram-v2\n  [*] --> Ready', diagramIndex: 3, filePath: 'docs/p3.pdx' },
-        ]);
-
-        expect(results).toHaveLength(3);
-        expect(results[0]).toContain('Alpha');
-        expect(results[1]).toContain('Ping');
-        expect(results[2]).toContain('Ready');
-      } finally {
-        await pool.shutdown();
-      }
+  describe('GAP-02: actual Mermaid browser runtime boundary', () => {
+    it('keeps directives and every branch as data until the engine validates them', () => {
+      const code = '%%{init: {"layout": "elk"}}%%\nflowchart LR\nStart((Init)) --> Check{Valid?}\nCheck -->|Yes| Run[Execute]\nCheck -.->|No| Halt(Stop)';
+      const html = renderDiagramHtml(code, 1, 'docs/elk.pdx');
+      expect(html).toContain('data-component="MermaidDiagram"');
+      expect(html).toContain('data-hydrate="visible"');
+      expect(html).toContain('Halt(Stop)');
+      expect(html).toContain('elk');
+      expect(html).not.toContain('<svg');
     });
   });
 

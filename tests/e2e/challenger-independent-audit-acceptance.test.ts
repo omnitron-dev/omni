@@ -11,7 +11,7 @@ import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
-  defaultDiagramRenderer,
+  renderDiagramHtml,
   defaultHighlighter,
   parseDocument,
   toCleanMarkdown,
@@ -422,9 +422,9 @@ describe('IA-10..IA-12 & GAP-01..04: Safe Frontmatter, Lexer Bounds, Migration S
     expect(highlightedHtml).toContain('--shiki-dark');
     expect(highlightedHtml).toContain('twoslash');
 
-    const diagramSvg = defaultDiagramRenderer.render('flowchart LR\n  A[Parser] --> B[Renderer]\n');
-    expect(diagramSvg).toContain('<svg');
-    expect(diagramSvg).toContain('<path');
+    const diagramHtml = renderDiagramHtml('flowchart LR\n  A[Parser] --> B[Renderer]\n');
+    expect(diagramHtml).toContain('data-component="MermaidDiagram"');
+    expect(diagramHtml).not.toContain('<svg');
   });
 });
 

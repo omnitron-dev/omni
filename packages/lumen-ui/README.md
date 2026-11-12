@@ -12,7 +12,7 @@ this package directly when embedding documentation in an existing React app.
 
 | Import | Purpose |
 | --- | --- |
-| `@omnitron-dev/lumen-ui` | All public components, adapters and types, including `ApiExplorer` and `NetronPlayground`. |
+| `@omnitron-dev/lumen-ui` | All public components, adapters and types, including `ApiExplorer`, `MermaidDiagram` and `NetronPlayground`. |
 | `@omnitron-dev/lumen-ui/runtime` | `LumenShell`, `PortalIslandHost`, `PortalIslandManager`, `useLumen` and activation triggers. |
 | `@omnitron-dev/lumen-ui/layout` | `LumenNavbar`, `LumenFooter`, `DocLayout`, `DocSectionNav` and `DocPagination`. |
 | `@omnitron-dev/lumen-ui/blocks` | `MathTheoremBlock`, `HoverReferenceCard`, `CodeBlock`, `BacklinksSection` and `PageAgentActions`. |
@@ -54,7 +54,12 @@ The host renders static fallback content and serialized props. The manager
 mounts the registered React component into that element when its trigger fires;
 it retains the shell's context. This is portal mounting, not independent React
 roots or hydration of arbitrary third-party HTML. Keep one manager per document.
-Use unique island IDs and explicit component names. Unknown components retain
+Use unique island IDs and explicit component names. Props use the shared
+`lumen-ast/islands` plain-JSON contract (256 KiB, 64 levels). Cycles, accessors,
+BigInt and values JSON cannot preserve are errors; repeated references remain
+valid. Invalid DOM metadata displays a local error without mounting the
+component with empty props. Corrected metadata can recover; changes to props
+and triggers on an existing element are observed. Unknown components retain
 their static content until registered; replacing a DOM element creates a new
 activation lifecycle, even when it reuses the old ID.
 
@@ -138,13 +143,25 @@ and WebAssembly compilation permission
 (`script-src 'self' 'wasm-unsafe-eval'`); host JavaScript string evaluation and
 Blob workers are not required.
 
+## Diagrams
+
+`MermaidDiagram` accepts `code`, runs the actual Mermaid/ELK browser engine and
+uses the current Prism/MUI palette. The default Lumen client registers this
+island for Mermaid fences; a custom `LumenShell` registry must register it too.
+Loading, syntax errors and the original source are visible. No alternate graph
+renderer fabricates a successful result for unsupported syntax. Theme changes
+rerender the same source. Without JavaScript the static page retains its source
+fallback. See `lumen-ast/diagrams` for admission, source/output limits and the
+browser execution boundary.
+
 ## Navigation and document blocks
 
 - `DocLayout` accepts document children, sidebar and section-navigation slots.
   `LumenNavbar` accepts links, version/locale choices and callbacks for search,
   theme and selection. The host owns URL changes and persisted preferences.
 - `ApiExplorer` displays supplied symbol/method metadata and emits
-  `onSelectSymbol`. It is a documentation view; it does not fetch an OpenAPI
+  `onSelectSymbol`. Arrow keys, Home/End and Page Up/Down navigate the windowed
+  symbol list; Enter/Space select. `tags` are informational labels. It is a documentation view; it does not fetch an OpenAPI
   specification or invoke methods based on an endpoint string.
 - `MathTheoremBlock` renders an identified mathematical environment and a proof
   terminator. Parsing, numbering, access projection and graph validation belong

@@ -10,7 +10,8 @@
       "src/execution/limits.ts",
       "src/islands/index.ts",
       "src/typst/index.ts",
-      "src/mcp/index.ts"
+      "src/mcp/index.ts",
+      "src/diagrams/index.ts"
     ],
     "format": [
       "esm"
@@ -53,6 +54,11 @@
     "./mcp": {
       "types": "./dist/mcp/index.d.ts",
       "node": "./dist/mcp/index.js"
+    },
+    "./diagrams": {
+      "types": "./dist/diagrams/index.d.ts",
+      "import": "./dist/diagrams/index.js",
+      "default": "./dist/diagrams/index.js"
     }
   },
   "files": [

@@ -12,8 +12,7 @@ import {
   parseCodeDirectives,
   parseTwoslashAnnotations,
   renderCodeBlockHtml,
-  parseMermaidDirectives,
-  DiagramRenderer,
+  renderDiagramHtml,
   type LumenDocumentAst,
 } from '../src/index.js';
 
@@ -157,7 +156,7 @@ if (a < b && c > d) {
   });
 
   describe('2. Diagrams Adversarial Testing', () => {
-    it('handles severely broken Mermaid syntax without uncaught exceptions or process hangs', () => {
+    it('preserves malformed source without fabricating a successful SVG', () => {
       const brokenSnippets = [
         'flowchart TD\n   ??? ||| --->>> [Broken',
         'graph LR\n   A["unclosed quote',
@@ -168,10 +167,9 @@ if (a < b && c > d) {
         '',
       ];
 
-      const renderer = new DiagramRenderer();
       for (const broken of brokenSnippets) {
         const start = Date.now();
-        const html = renderer.render(broken, 1, 'docs/adversarial.pdx');
+        const html = renderDiagramHtml(broken, 1, 'docs/adversarial.pdx');
         const elapsed = Date.now() - start;
 
         expect(elapsed).toBeLessThan(1000);
@@ -180,28 +178,7 @@ if (a < b && c > d) {
       }
     });
 
-    it('handles ELK layout configurations with malformed JSON safely', () => {
-      const malformedJsonDirectives = [
-        '%%{init: {invalid json here...}}%%\nflowchart TD\n  A --> B',
-        "%%{init: {defaultRenderer: 'elk'}}%%\nflowchart TD\n  A --> B",
-        '%%{init: {"flowchart": {"defaultRenderer": "elk" \nflowchart LR\n  A --> B',
-        '%%{init: null}%%\nflowchart TD\n  A --> B',
-        '%%{init: {"flowchart": null}}%%\nflowchart TD\n  A --> B',
-        '%%{init: {"flowchart": {"defaultRenderer": 12345}}}%%\nflowchart TD\n  A --> B',
-        '%%{init: {"flowchart": {"defaultRenderer": "elk"}}}%%\nflowchart TD\n  A --> B',
-      ];
-
-      for (const diag of malformedJsonDirectives) {
-        // Must never throw or crash
-        const config = parseMermaidDirectives(diag);
-        expect(config.diagramType).toBe('flowchart');
-        if (diag.includes('defaultRenderer') && diag.includes('elk') && diag.includes('}%%')) {
-          expect(config.defaultRenderer).toBe('elk');
-        }
-      }
-    });
-
-    it('isolates 15+ diagrams in a single document with unique IDs and zero marker collisions', async () => {
+    it('isolates 15+ diagrams in a single document with unique island IDs', async () => {
       const diagramCount = 15;
       const docBlocks: string[] = [
         '---\ntitle: Multi-Diagram Stress Test\n---',
@@ -231,12 +208,11 @@ if (a < b && c > d) {
       // Verify each diagram index from 1 to 15 is represented
       for (let i = 1; i <= diagramCount; i++) {
         expect(html).toContain(`lumen-diag-doc-${i}`);
-        expect(html).toContain(`lumen-diag-doc-${i}-svg`);
+        expect(html).toContain('data-component="MermaidDiagram"');
       }
     });
 
     it('sanitizes dangerous or directory-traversing filePath in diagram renderer IDs', () => {
-      const renderer = new DiagramRenderer();
       const dangerousPaths = [
         '../../../etc/passwd',
         'C:\\Windows\\System32\\cmd.exe',
@@ -244,7 +220,7 @@ if (a < b && c > d) {
       ];
 
       for (const p of dangerousPaths) {
-        const html = renderer.render('graph TD\n  A --> B', 1, p);
+        const html = renderDiagramHtml('graph TD\n  A --> B', 1, p);
         expect(html).toContain('lumen-diagram-mermaid');
         const idMatch = html.match(/id="(lumen-diag-[^"]+)"/);
         expect(idMatch).toBeTruthy();
@@ -478,7 +454,11 @@ For identical AST and compiler options, compileTypst yields byte-for-byte identi
         diagnostics: [],
       };
 
-      // None of the transformers should crash on missing children
+      // Invalid island metadata must not become a successfully mounted empty
+      // props object. Missing optional children remain independently supported.
+      expect(() => toHtmlSsr(malformedAst)).toThrow('Island props must be a JSON object');
+      const widget = malformedAst.children.find(node => node.type === 'jsxWidget')!;
+      widget.props = {};
       const html = toHtmlSsr(malformedAst);
       expect(html).toContain('lumen-doc');
       expect(html).toContain('Fallback value');

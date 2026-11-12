@@ -1,33 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import { parseMermaidDirectives, DiagramRenderer, parseDocument } from '../src/index.js';
+import { renderDiagramHtml, renderDiagramSvg, parseDocument } from '../src/index.js';
 
 describe('Mermaid Diagrams & ELK Layout', () => {
-  it('parses ELK layout configuration and diagram types from directives', () => {
-    const elkMermaid = `%%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
-flowchart TD
-  A[Start] --> B[Process] --> C[Done]`;
-
-    const config = parseMermaidDirectives(elkMermaid);
-    expect(config.defaultRenderer).toBe('elk');
-    expect(config.diagramType).toBe('flowchart');
-
-    const sequenceMermaid = `sequenceDiagram
-Client->>Server: Request`;
-    const seqConfig = parseMermaidDirectives(sequenceMermaid);
-    expect(seqConfig.diagramType).toBe('sequence');
-  });
-
-  it('renders isolated diagram figures with unique namespaced IDs', () => {
-    const renderer = new DiagramRenderer();
-    const code = 'graph TD\n  A --> B';
-
-    const html1 = renderer.render(code, 1, 'docs/flow.pdx');
-    const html2 = renderer.render(code, 2, 'docs/flow.pdx');
-
+  it('retains complete Mermaid source in a real island without pretending to produce SVG', () => {
+    const code = 'sequenceDiagram\n  alt accepted\n    A->>B: Commit\n  else denied\n    B-->>A: Reject\n  end';
+    const html1 = renderDiagramHtml(code, 1, 'docs/flow.pdx');
+    const html2 = renderDiagramHtml(code, 2, 'docs/flow.pdx');
     expect(html1).toContain('lumen-diag-docs-flow-pdx-1');
     expect(html2).toContain('lumen-diag-docs-flow-pdx-2');
-    expect(html1).toContain('lumen-diagram-mermaid');
-    expect(html1).toContain('graph TD');
+    expect(html1).toContain('data-component="MermaidDiagram"');
+    expect(html1).toContain('alt accepted');
+    expect(html1).toContain('else denied');
+    expect(html1).not.toContain('<svg');
+  });
+
+  it('bounds source bytes and refuses a Node-only imitation renderer', async () => {
+    expect(() => renderDiagramHtml('я'.repeat(32769))).toThrow('UTF-8 bytes');
+    expect(() => renderDiagramHtml('graph TD\nA-->B', NaN)).toThrow('Invalid diagram index');
+    await expect(renderDiagramSvg('graph TD\nA-->B', 'diagram')).rejects.toThrow('browser DOM');
   });
 
   it('integrates diagram blocks into document AST without collision', async () => {

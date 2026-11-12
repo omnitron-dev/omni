@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { PrismProvider } from '@omnitron-dev/prism/core';
+import { parseIslandProps, parseHydrationTrigger } from '@omnitron-dev/lumen-ast/islands';
 import { LumenContext, type LumenContextValue, type IslandComponent, type IslandRegistry } from './context.js';
 import { setupTrigger, type HydrationTrigger } from './triggers.js';
 
@@ -24,8 +25,11 @@ interface DiscoveredIsland {
   instanceKey: string;
   islandId: string;
   componentName: string;
-  trigger: HydrationTrigger;
-  props: Record<string, unknown>;
+  trigger?: HydrationTrigger;
+  props?: Record<string, unknown>;
+  metadataError?: Error;
+  rawProps: string | null;
+  rawTrigger: string | null;
   element: HTMLElement;
 }
 
@@ -65,6 +69,22 @@ function resolveElementIslandIdentity(el: HTMLElement): { islandId: string; comp
 
   const componentName = dataComponent || dataWidget || islandId;
   return { islandId, componentName };
+}
+
+function discoverIsland(element: HTMLElement, previous?: DiscoveredIsland): DiscoveredIsland {
+  const { islandId, componentName } = resolveElementIslandIdentity(element);
+  const rawProps = element.getAttribute('data-props');
+  const rawTrigger = element.getAttribute('data-hydrate');
+  if (previous?.islandId === islandId && previous.componentName === componentName &&
+    previous.rawProps === rawProps && previous.rawTrigger === rawTrigger) return previous;
+  const item = { instanceKey: getOrCreateInstanceKey(element), islandId, componentName, element, rawProps, rawTrigger };
+  try {
+    return { ...item, props: rawProps === null ? {} : parseIslandProps(rawProps), trigger: parseHydrationTrigger(rawTrigger ?? 'idle') };
+  } catch (error) {
+    const metadataError = error instanceof Error ? error : new Error('Invalid island metadata');
+    console.error(`[LumenHydration] Invalid metadata for island "${islandId}":`, metadataError);
+    return { ...item, metadataError };
+  }
 }
 
 export function PortalIslandManager({
@@ -116,9 +136,18 @@ export function PortalIslandManager({
     };
 
     const activateElement = (el: HTMLElement) => {
-      if (!el.isConnected) {
-        return;
+      if (!el.isConnected) return;
+      let item = discoveredListRef.current.find(candidate => candidate.element === el);
+      const identity = resolveElementIslandIdentity(el);
+      const triggerChanged = item?.rawTrigger !== el.getAttribute('data-hydrate');
+      // Attributes may change and an interaction may fire in the same task, before MutationObserver runs.
+      if (!item || item.rawProps !== el.getAttribute('data-props') || triggerChanged ||
+        item.islandId !== identity.islandId || item.componentName !== identity.componentName) {
+        scanAndAttach();
+        if (triggerChanged) return;
+        item = discoveredListRef.current.find(candidate => candidate.element === el);
       }
+      if (!item || item.metadataError) return;
 
       // 1. Clean up ONLY this specific DOM element's trigger listener
       const cleanup = cleanups.get(el);
@@ -133,8 +162,7 @@ export function PortalIslandManager({
       }
       activeElements.add(el);
 
-      const { componentName } = resolveElementIslandIdentity(el);
-      clearStaticFallbackIfReady(el, componentName);
+      clearStaticFallbackIfReady(el, item.componentName);
 
       notifyActiveIds();
       setRenderVersion((v) => v + 1);
@@ -170,48 +198,26 @@ export function PortalIslandManager({
       });
 
       const prevList = discoveredListRef.current;
-      const nextList: DiscoveredIsland[] = [];
+      const previousByElement = new Map(prevList.map(item => [item.element, item]));
+      const nextList = [...connectedElements].map(el => discoverIsland(el, previousByElement.get(el)));
       const pendingElementsToActivate: HTMLElement[] = [];
-      let listChanged = prevList.length !== connectedElements.size;
+      const listChanged = prevList.length !== nextList.length || nextList.some((item, index) => item !== prevList[index]);
+      // Publish metadata before attaching triggers: visible fallback can activate synchronously.
+      discoveredListRef.current = nextList;
 
-      let idx = 0;
-      connectedElements.forEach((el) => {
-        const instanceKey = getOrCreateInstanceKey(el);
-        const { islandId, componentName } = resolveElementIslandIdentity(el);
-        const trigger = (el.getAttribute('data-hydrate') || 'idle') as HydrationTrigger;
-        let props: Record<string, unknown> = {};
-
-        const rawProps = el.getAttribute('data-props');
-        if (rawProps) {
-          try {
-            props = JSON.parse(rawProps);
-          } catch (e) {
-            console.error(`[LumenHydration] Failed to parse data-props for island "${islandId}":`, e);
-          }
+      for (const item of nextList) {
+        const { element: el, islandId, componentName } = item;
+        const previous = previousByElement.get(el);
+        if (item.metadataError || previous?.rawTrigger !== item.rawTrigger) {
+          cleanups.get(el)?.();
+          cleanups.delete(el);
         }
-
-        const item: DiscoveredIsland = {
-          instanceKey,
-          islandId,
-          componentName,
-          trigger,
-          props,
-          element: el,
-        };
-
-        const prevItem = prevList[idx];
-        if (
-          !prevItem ||
-          prevItem.element !== el ||
-          prevItem.instanceKey !== instanceKey ||
-          prevItem.islandId !== islandId ||
-          prevItem.componentName !== componentName
-        ) {
-          listChanged = true;
+        if (item.metadataError) {
+          el.setAttribute('data-lumen-error', 'metadata');
+          if (activeElements.delete(el)) activePruned = true;
+          continue;
         }
-        idx += 1;
-
-        nextList.push(item);
+        el.removeAttribute('data-lumen-error');
 
         // Drain any pending imperative hydration requests for this island
         if (
@@ -221,28 +227,26 @@ export function PortalIslandManager({
           pendingHydrateIdsRef.current.delete(islandId);
           pendingHydrateIdsRef.current.delete(componentName);
           pendingElementsToActivate.push(el);
-          return;
+          continue;
         }
 
         // Skip if this exact element is already active or already has an attached trigger listener
         if (activeElements.has(el) || cleanups.has(el)) {
-          return;
+          continue;
         }
 
-        const cleanup = setupTrigger(el, trigger, () => {
+        const cleanup = setupTrigger(el, item.trigger!, () => {
           activateElement(el);
         });
-
-        cleanups.set(el, cleanup);
-      });
-
-      discoveredListRef.current = nextList;
+        if (activeElements.has(el)) cleanup();
+        else cleanups.set(el, cleanup);
+      }
 
       for (const el of pendingElementsToActivate) {
         activateElement(el);
       }
 
-      if (activePruned) {
+      if (activePruned || listChanged) {
         notifyActiveIds();
       }
 
@@ -256,7 +260,7 @@ export function PortalIslandManager({
       scanAndAttach();
       let matched = false;
       for (const item of discoveredListRef.current) {
-        if (item.element.isConnected && (item.islandId === targetId || item.componentName === targetId)) {
+        if (!item.metadataError && item.element.isConnected && (item.islandId === targetId || item.componentName === targetId)) {
           matched = true;
           activateElement(item.element);
         }
@@ -282,6 +286,8 @@ export function PortalIslandManager({
       mutationObserver.observe(document.body, {
         childList: true,
         subtree: true,
+        attributes: true,
+        attributeFilter: ['data-props', 'data-hydrate', 'data-component', 'data-widget', 'data-lumen-island'],
       });
     }
 
@@ -303,6 +309,14 @@ export function PortalIslandManager({
   const portals: React.ReactPortal[] = [];
 
   for (const item of discovered) {
+    if (item.element.isConnected && item.metadataError) {
+      if (!clearedSsrElementsRef.current.has(item.element)) {
+        clearedSsrElementsRef.current.add(item.element);
+        item.element.replaceChildren();
+      }
+      portals.push(createPortal(<p className="lumen-island-error" role="alert">Unable to load this component: invalid island metadata.</p>, item.element, item.instanceKey));
+      continue;
+    }
     if (item.element.isConnected && activeElementsRef.current.has(item.element)) {
       const Component = registry[item.componentName];
       if (Component) {
@@ -421,6 +435,7 @@ export function LumenShell({
   return (
     <PrismProvider
       disableCssBaseline
+      mode={resolvedMode}
       config={{
         theme: {
           mode: resolvedMode,

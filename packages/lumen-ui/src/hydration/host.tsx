@@ -1,4 +1,5 @@
 import React, { type ReactNode } from 'react';
+import { serializeIslandProps, parseHydrationTrigger } from '@omnitron-dev/lumen-ast/islands';
 import type { HydrationTrigger } from './triggers.js';
 
 export interface PortalIslandHostProps {
@@ -9,26 +10,6 @@ export interface PortalIslandHostProps {
   children?: ReactNode;
   className?: string;
   style?: React.CSSProperties;
-}
-
-function safeSerializeProps(props: unknown): string {
-  try {
-    const seen = new WeakSet();
-    return JSON.stringify(props ?? {}, (_, v) => {
-      if (typeof v === 'bigint') {
-        return v.toString();
-      }
-      if (typeof v === 'object' && v !== null) {
-        if (seen.has(v)) {
-          return '[Circular]';
-        }
-        seen.add(v);
-      }
-      return v;
-    });
-  } catch {
-    return '{}';
-  }
 }
 
 export function PortalIslandHost({
@@ -46,8 +27,8 @@ export function PortalIslandHost({
       className,
       'data-lumen-island': islandId,
       ...(component ? { 'data-component': component } : {}),
-      'data-hydrate': hydrate,
-      'data-props': safeSerializeProps(props),
+      'data-hydrate': parseHydrationTrigger(hydrate),
+      'data-props': serializeIslandProps(props),
       style,
     },
     children

@@ -1,6 +1,8 @@
 import React, { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
+import { toHtmlSsr } from '@omnitron-dev/lumen-ast';
+import { parseIslandProps } from '@omnitron-dev/lumen-ast/islands';
 
 import {
   useLumen,
@@ -99,6 +101,82 @@ describe('Hydration Runtime & Triggers', () => {
     expect(el.props['data-component']).toBe('Counter');
     expect(el.props['data-hydrate']).toBe('interaction');
     expect(JSON.parse(el.props['data-props'])).toEqual({ step: 5, initial: 10 });
+  });
+
+  it('uses the same strict metadata contract for React hosts and AST SSR widgets', () => {
+    const shared = { value: 'same' };
+    const props = { left: shared, right: shared, text: '"><script>invalid()</script>' };
+    const host = PortalIslandHost({ islandId: 'roundtrip', props });
+    const html = toHtmlSsr({ frontmatter: { title: 'Test' }, children: [{ type: 'jsxWidget', name: 'Widget', props }], toc: [], diagnostics: [] });
+    const wrapper = document.createElement('div'); wrapper.innerHTML = html;
+    expect(parseIslandProps(wrapper.querySelector('[data-props]')!.getAttribute('data-props')!)).toEqual(props);
+    expect(parseIslandProps(host.props['data-props'])).toEqual(props);
+    expect(wrapper.querySelector('script')).toBeNull();
+    expect(() => PortalIslandHost({ islandId: 'invalid', props: { value: 1n } })).toThrow();
+    expect(() => toHtmlSsr({ frontmatter: {}, children: [{ type: 'jsxWidget', name: 'Widget', props: { hydrate: 'wrong' } }], toc: [], diagnostics: [] })).toThrow('trigger');
+  });
+
+  it('updates active props on the same element and replaces a pending trigger immediately', async () => {
+    function Label({ text }: { text: string }) { return <button>{text}</button>; }
+    const island = document.createElement('div');
+    island.setAttribute('data-lumen-island', 'changing'); island.setAttribute('data-component', 'Label');
+    island.setAttribute('data-hydrate', 'interaction'); island.setAttribute('data-props', '{"text":"first"}');
+    container.appendChild(island);
+    const mount = document.createElement('div'); container.appendChild(mount);
+    const root = createRoot(mount);
+    await act(async () => { root.render(<PortalIslandManager registry={{ Label }} />); });
+    await act(async () => {
+      island.setAttribute('data-hydrate', 'onready');
+      island.dispatchEvent(new Event('click'));
+    });
+    expect(island.querySelector('button')).toBeNull();
+    await act(async () => { island.dispatchEvent(new Event('ready')); });
+    expect(island.querySelector('button')?.textContent).toBe('first');
+    await act(async () => {
+      island.setAttribute('data-props', '{"text":"updated"}');
+      await new Promise(resolve => setTimeout(resolve, 10));
+    });
+    expect(island.querySelector('button')?.textContent).toBe('updated');
+    await act(async () => { root.unmount(); });
+  });
+
+  it('isolates malformed metadata, removes stale live content and recovers after correction', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const Mounted = vi.fn(({ text }: { text: string }) => <button>{text}</button>);
+    const bad = document.createElement('div');
+    bad.setAttribute('data-lumen-island', 'bad'); bad.setAttribute('data-component', 'Mounted');
+    bad.setAttribute('data-hydrate', 'interaction'); bad.setAttribute('data-props', '{bad');
+    const good = document.createElement('div');
+    good.setAttribute('data-lumen-island', 'good'); good.setAttribute('data-component', 'Mounted');
+    good.setAttribute('data-hydrate', 'interaction'); good.setAttribute('data-props', '{"text":"healthy"}');
+    container.append(bad, good);
+    const mount = document.createElement('div'); container.appendChild(mount);
+    const root = createRoot(mount);
+    try {
+      await act(async () => { root.render(<PortalIslandManager registry={{ Mounted }} />); });
+      expect(bad.querySelector('[role="alert"]')).not.toBeNull();
+      expect(Mounted).not.toHaveBeenCalled();
+      await act(async () => { good.dispatchEvent(new Event('click')); });
+      expect(good.querySelector('button')?.textContent).toBe('healthy');
+      await act(async () => {
+        bad.setAttribute('data-props', '{"text":"recovered"}');
+        await new Promise(resolve => setTimeout(resolve, 10));
+        bad.dispatchEvent(new Event('click'));
+      });
+      expect(bad.querySelector('button')?.textContent).toBe('recovered');
+      expect(bad.hasAttribute('data-lumen-error')).toBe(false);
+      await act(async () => {
+        bad.setAttribute('data-props', 'null');
+        await new Promise(resolve => setTimeout(resolve, 10));
+      });
+      expect(bad.querySelector('button')).toBeNull();
+      expect(bad.querySelector('[role="alert"]')).not.toBeNull();
+      expect(good.querySelector('button')?.textContent).toBe('healthy');
+      expect(errors).toHaveBeenCalledTimes(2);
+    } finally {
+      await act(async () => { root.unmount(); });
+      errors.mockRestore();
+    }
   });
 
   it('allows calling LumenShell as a pure function without hook error', () => {

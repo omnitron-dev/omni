@@ -3,6 +3,7 @@
  */
 
 import { normalizeLumenHtml } from '../compiler/html.js';
+import { serializeIslandProps, parseHydrationTrigger } from '../islands/index.js';
 import { renderSafeHtmlElement } from './safe-html.js';
 import type { LumenDocumentAst, LumenNode } from '../ast/types.js';
 import { renderDiagramHtml } from '../diagrams/renderer.js';
@@ -24,7 +25,6 @@ interface SsrContext {
 }
 
 const ALLOWED_URL_SCHEMES = new Set(['http', 'https', 'mailto', 'tel']);
-const VALID_HYDRATE_MODES = new Set(['load', 'visible', 'idle', 'interaction']);
 
 function decodeNumericHtmlEntities(input: string): string {
   return input
@@ -277,11 +277,10 @@ function renderSingleNodeToHtml(node: LumenNode, context: SsrContext): string {
       const rawName = String(node.name ?? 'Widget');
       const name = escapeHtml(rawName);
       const safeIslandName = escapeHtml(rawName.replace(/[^a-zA-Z0-9_.-]/g, '') || 'Widget');
-      const propsObj = (node.props && typeof node.props === 'object' ? node.props : {}) as Record<string, unknown>;
-      const rawHydrate = propsObj['client:hydrate'] ?? propsObj['hydrate'];
-      const hydrate =
-        typeof rawHydrate === 'string' && VALID_HYDRATE_MODES.has(rawHydrate) ? rawHydrate : 'interaction';
-      const propsJson = escapeHtml(safeJsonStringify(propsObj));
+      const propsObj = (node.props === undefined ? {} : node.props) as Record<string, unknown>;
+      const propsJson = escapeHtml(serializeIslandProps(propsObj));
+      const rawHydrate = propsObj['client:hydrate'] !== undefined ? propsObj['client:hydrate'] : propsObj['hydrate'];
+      const hydrate = parseHydrationTrigger(rawHydrate === undefined ? 'interaction' : rawHydrate);
       const children = (node.children ?? []) as LumenNode[];
       const inner = renderNodesToHtml(children, context);
       return `<div class="lumen-widget lumen-portal-island" data-widget="${name}" data-lumen-island="lumen-widget-${context.widgetCounter}-${safeIslandName}" data-component="${name}" data-hydrate="${escapeHtml(hydrate)}" data-props="${propsJson}">${inner}</div>`;
@@ -374,26 +373,6 @@ function renderSingleNodeToHtml(node: LumenNode, context: SsrContext): string {
       }
       return '';
     }
-  }
-}
-
-function safeJsonStringify(value: unknown): string {
-  const seen = new WeakSet<object>();
-  try {
-    return JSON.stringify(value ?? {}, (_key, val: unknown) => {
-      if (typeof val === 'bigint') {
-        return val.toString();
-      }
-      if (val && typeof val === 'object') {
-        if (seen.has(val)) {
-          return '[Circular]';
-        }
-        seen.add(val);
-      }
-      return val;
-    });
-  } catch {
-    return '{}';
   }
 }
 

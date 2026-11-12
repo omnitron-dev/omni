@@ -2,7 +2,8 @@
  * Hydration trigger definitions and lifecycle coordinators for Selective Portal Hydration.
  */
 
-export type HydrationTrigger = 'load' | 'visible' | 'interaction' | 'idle' | (string & {});
+import { parseHydrationTrigger, type HydrationTrigger } from '@omnitron-dev/lumen-ast/islands';
+export type { HydrationTrigger } from '@omnitron-dev/lumen-ast/islands';
 
 export interface TriggerOptions {
   /** IntersectionObserver threshold (0.0 - 1.0). Default: 0.1 */
@@ -25,7 +26,7 @@ export function setupTrigger(
   onTrigger: () => void,
   options?: TriggerOptions
 ): TriggerCleanup {
-  switch (trigger) {
+  switch (parseHydrationTrigger(trigger)) {
     case 'load':
       return setupLoadTrigger(onTrigger);
 
@@ -39,11 +40,7 @@ export function setupTrigger(
       return setupIdleTrigger(onTrigger, options);
 
     default:
-      if (typeof trigger === 'string' && trigger.startsWith('on') && trigger.length > 2) {
-        const eventName = trigger.slice(2).toLowerCase();
-        return setupEventTrigger(element, eventName, onTrigger);
-      }
-      return setupLoadTrigger(onTrigger);
+      return setupEventTrigger(element, trigger.slice(2).toLowerCase(), onTrigger);
   }
 }
 

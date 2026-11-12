@@ -8,6 +8,7 @@
       "src/index.ts",
       "src/execution/index.ts",
       "src/execution/limits.ts",
+      "src/islands/index.ts",
       "src/typst/index.ts",
       "src/mcp/index.ts"
     ],
@@ -39,6 +40,11 @@
       "types": "./dist/execution/limits.d.ts",
       "import": "./dist/execution/limits.js",
       "default": "./dist/execution/limits.js"
+    },
+    "./islands": {
+      "types": "./dist/islands/index.d.ts",
+      "import": "./dist/islands/index.js",
+      "default": "./dist/islands/index.js"
     },
     "./typst": {
       "types": "./dist/typst/index.d.ts",

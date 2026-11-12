@@ -92,8 +92,10 @@ process.exit(55);
         assert.equal(committed.status.phase, 'active');
         // Same production recycling exercised by backend-handoff.mjs. No scale,
         // app restart, owner mutation or OS signal is used to change membership.
+        const recyclingDeadline = Date.now() + 90_000;
         let requests = 0;
         while (requests < 24_000) {
+          assert.ok(Date.now() < recyclingDeadline, 'Request-count recycling deadline');
           const replies = await Promise.all(Array.from({ length: 16 }, () => pool.service.snapshot()));
           for (const reply of replies) assert.equal(reply.parent, first.execution.owner.pid);
           requests += replies.length;
@@ -103,7 +105,7 @@ process.exit(55);
           if (replies.some(reply => initialWorkers.has(reply.pid)) || [...initialWorkers].some(pid => PidManager.isProcessAlive(pid))) return null;
           const observed = await ownerClient.service.snapshot();
           return observed.inventoryDigest !== original.state.executionInventory ? observed : null;
-        }, 'Request-count recycling did not change the real pool membership', 90_000);
+        }, 'Request-count recycling did not change the real pool membership', Math.max(1, recyclingDeadline - Date.now()));
         assert.deepEqual(accepted.status.controller, original.state.ticket.to);
         assert.deepEqual(accepted.status.pending, original.state.ticket);
         assert.equal((await probe()).pid, applicationPid);

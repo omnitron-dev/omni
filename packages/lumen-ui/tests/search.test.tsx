@@ -1,6 +1,8 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 
 import {
@@ -92,28 +94,44 @@ describe('Search Dialog & Adapters', () => {
     expect(results[0]?.path).toBe('/docs/1');
   });
 
-  it('PagefindAdapter records permanent failed state on import failure without repeated imports', async () => {
-    const nonExistentPath = `/non-existent/pagefind-${Date.now()}.js`;
-    const adapter1 = new PagefindAdapter(nonExistentPath);
+  it('never substitutes an ambient global index for the configured URL', async () => {
+    const ambientSearch = vi.fn().mockResolvedValue({ results: [] });
+    const target = window as unknown as Record<string, unknown>;
+    target.pagefind = { search: ambientSearch };
+    try {
+      const adapter = new PagefindAdapter('/non-existent/configured-index.js');
+      await expect(adapter.search('private index')).rejects.toThrow('Local search index is unavailable');
+      expect(ambientSearch).not.toHaveBeenCalled();
+      expect(adapter.isReady).toBe(false);
+      expect(adapter.isFailedState).toBe(true);
+      expect(new PagefindAdapter('/non-existent/configured-index.js').isFailedState).toBe(false);
+    } finally {
+      delete target.pagefind;
+    }
+  });
 
-    expect(adapter1.isFailedState).toBe(false);
-    expect(adapter1.isReady).toBe(false);
+  it('shares concurrent initialization, retries a failed shard and rejects malformed results', async () => {
+    const adapter = new PagefindAdapter(pathToFileURL(resolve(import.meta.dirname, 'fixtures/pagefind-recovery.js')).href);
+    expect(await Promise.all([adapter.init(), adapter.init()])).toEqual([false, false]);
+    expect(adapter.isFailedState).toBe(true);
+    expect(await Promise.all([adapter.init(), adapter.init()])).toEqual([true, true]);
+    expect(adapter.isFailedState).toBe(false);
+    expect(adapter.isReady).toBe(true);
+    expect(await adapter.search('literal [text]', 1)).toEqual([{
+      id: '1', url: '/docs/1', title: 'Configured index result 1', excerpt: 'literal [text]', score: undefined,
+    }]);
+    await expect(adapter.search('invalid')).rejects.toThrow('Local search failed');
+  });
 
-    const initResult1 = await adapter1.init();
-    expect(initResult1).toBe(false);
-    expect(adapter1.isFailedState).toBe(true);
-    expect(adapter1.isReady).toBe(false);
-
-    const initResult2 = await adapter1.init();
-    expect(initResult2).toBe(false);
-
-    const adapter2 = new PagefindAdapter(nonExistentPath);
-    expect(adapter2.isFailedState).toBe(true);
-    const initResult3 = await adapter2.init();
-    expect(initResult3).toBe(false);
-
-    PagefindAdapter.resetFailureCache();
-    expect(adapter2.isFailedState).toBe(false);
+  it('validates query and result budgets before loading an index', async () => {
+    const adapter = new PagefindAdapter('/non-existent/index.js');
+    for (const limit of [-1, 1.5, NaN, Infinity, 101]) {
+      await expect(adapter.search('test', limit)).rejects.toThrow('Search result limit');
+    }
+    await expect(adapter.search('я'.repeat(2049))).rejects.toThrow('4096 UTF-8 bytes');
+    expect(await adapter.search('test', 0)).toEqual([]);
+    expect(await adapter.search('  ')).toEqual([]);
+    expect(adapter.isFailedState).toBe(false);
   });
 
   it('SEC-03: neutralizes XSS in search snippets and URLs without dangerouslySetInnerHTML', async () => {

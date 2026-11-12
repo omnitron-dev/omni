@@ -19,11 +19,12 @@ Baseline: `3ea505ad` (2026-11-11). This is a verification ledger, not a release 
 | L40-03 | RPC controller trusts caller-supplied session roles, uses the HTTP auth decorator instead of Netron publication metadata, and retains mutable auth state. | Authoritative invocation context and actual HTTP/WS tests with concurrent identities. | Native backend and HTTP MCP corrected: one `LumenService`, class-based DI and one wire contract. No controller, session arguments, duplicate tokens or handwritten HTTP/SSE MCP transport. Official MCP client works through a real Netron HTTP listener; verified authors and concurrent caller isolation are tested. Browser integration and the separate static-corpus stdio MCP implementation remain under audit. |
 | L40-04 | Server JavaScript execution uses node:vm inside a Worker; browser execution uses host JavaScript with an ambient-global denylist. | Capability-free interpreter, resource limits and no host fallback. | Closed in source: six interpreter checks, all 37 Titan-Lumen tests, 43 UI tests and six real Chromium worker checks pass. The compiled module worker runs under CSP without unsafe-eval, rejects host access, excessive aggregate memory/output and endless execution, and has no host/snapshot fallback. Final release archive qualification remains required. |
 | L40-05 | PDF is an ASCII-only handwritten PDF writer; it does not compile Typst and truncates long words. | Real typesetter with Unicode, mathematics, layout and independently decoded output checks. | Replaced in source by real offline Typst WASM in a terminable Node worker. Unicode/mathematical geometry, multi-page content, projection, cancellation and injection tests use an independent PDF reader. Missing font glyphs now fail explicitly; 24 packaged-entry-point and multi-page oracle tests pass, including all 200 theorem headers staying with their first content lines. Final release archives remain to be qualified. |
-| L40-06 | SSG emits a second island runtime which reports hydration without mounting a component. | Built client assets using the actual lumen-ui runtime; interaction tests against generated output. | Open |
-| L40-07 | Pagefind is a handwritten compatibility layer; Mermaid/ELK implementation needs semantic verification. | Use real declared engines or expose accurately scoped alternatives, with representative fixtures. | Open |
-| L40-08 | Runtime starts with synthetic seed documents; live edits, persistence, missing-directory handling and KB authorization need end-to-end verification. | No synthetic production data or successful fallback; consistent durable state and authorization. | Synthetic documents, symbol contracts and theorem-graph fallback removed. Missing configured corpus now fails search/graph reads explicitly. KB/source access now defaults to internal. Bounded descriptor reads and complete inventories reject read failures, oversized/deep corpora and symlinks. Nine new corpus/visibility regressions pass through the ordinary service. Durable editing remains open. |
-| L40-09 | SSG writes in place, silently skips invalid output paths, and can retain old files after access changes. | Validated output inventory and atomic replacement; deletion/restriction and interrupted-build tests. | Open |
-| L40-10 | Five package READMEs contain only a heading and one sentence. | Complete public APIs, configuration, trust model, practical examples and limitations; publish-install checks. | Open |
+| L40-06 | SSG emits a second island runtime which reports hydration without mounting a component. | Built client assets using the actual lumen-ui runtime; interaction tests against generated output. | Closed in source (`ea697166`): Vite bundles the actual React/Prism runtime. Ten website browser scenarios exercise generated pages, search, execution, themes and three viewport widths. Final clean SDK/site qualification remains required. |
+| L40-07 | Pagefind is a handwritten compatibility layer; Mermaid/ELK implementation needs semantic verification. | Use real declared engines or expose accurately scoped alternatives, with representative fixtures. | Real Pagefind indexing and generated-site search verified. UI adapter now respects the configured index, retries failed initialization and rejects malformed responses; 46 UI checks, types and lint pass. Mermaid/ELK semantic qualification remains open. |
+| L40-08 | Runtime starts with synthetic seed documents; live edits, persistence, missing-directory handling and KB authorization need end-to-end verification. | No synthetic production data or successful fallback; consistent durable state and authorization. | Synthetic documents, symbol contracts and theorem-graph fallback removed. Missing configured corpus now fails search/graph reads explicitly. KB/source access now defaults to internal. Bounded descriptor reads and complete inventories reject read failures, oversized/deep corpora and symlinks. Eleven corpus/visibility regressions pass through the ordinary service. Durable editing is implemented in `f3a1c7de` through TitanDatabase/Kysera with revision/hash CAS, transactional history and integrity checks. Real SQLite acceptance passes; PostgreSQL qualification is in progress. |
+| L40-09 | SSG writes in place, silently skips invalid output paths, and can retain old files after access changes. | Validated output inventory, recoverable replacement and consistent serving; deletion/restriction and interrupted-build tests. | Closed for local macOS/Linux in `7ef9c7d3`: durable journal, exact file inventory and shared native process identity; 67 tests include real SIGKILL recovery. Serve captures a verified immutable generation. This is recoverable two-rename publication, not a zero-gap atomic exchange; Windows and shared network filesystems are not qualified. |
+| L40-10 | Five package READMEs contain only a heading and one sentence. | Complete public APIs, configuration, trust model, practical examples and limitations; publish-install checks. | AST, Titan-Lumen and UI guides now describe actual contracts and limits. SSG and migration guides, final installed-package examples and migration acceptance remain in progress. |
+| L40-11 | Docusaurus migration can replace an existing/source directory and verifies parity only after replacement; crawler silently omits failures. | New disjoint destination, complete bounded inventory, pre-publication parity and non-clobbering concurrent behavior. | Open; migration implementation and ordinary CLI regressions in progress. |
 
 ## Comparative evidence
 
@@ -95,9 +96,22 @@ unqualified; they must not be implied by the 0.4.0 release description.
   Their useful coverage is exercised through real module lifecycle, HTTP/WS,
   official MCP-client, document-projection and live-edit tests. Test subclasses
   implementing their own role filtering were replaced by actual service calls.
-- These checks do not certify durable authoring. Edits are still in memory, and the static-corpus
-  stdio adapter remains separate. Those release blockers must be closed before
-  claiming a production-ready 0.4.0.
+- Durable authoring acceptance now uses an actual TitanDatabase connection and
+  declared Kysera migration, not a Map or a test-only store. Four independent
+  SQLite connections compete on the same revision/hash; only one succeeds.
+  History insertion and deferred COMMIT failures roll back without emitting a
+  successful event. Reopening the file preserves content/history, and SQL
+  corruption is rejected by hash/byte/revision checks. Source seed changes are
+  detected even at revision zero. In-memory SQLite is rejected explicitly.
+- The store uses the canonical transaction retry policy. Database failures do
+  not fall back to stale source files. Search, document and graph reads consume
+  the same persisted corpus with bounded inventory and read admission. Whole
+  document authoring permission includes every restricted section.
+- Qualification: 64 Titan-Lumen tests, then 19 focused checks after the final
+  Unicode guard; eight real module/MCP/concurrent-edit E2E checks, package
+  builds/types and lint pass. PostgreSQL is implemented but its separate real
+  database qualification is still in progress. Static-corpus stdio MCP remains
+  a release blocker; passing live HTTP MCP tests does not qualify it.
 
 ## Interpreter acceptance
 

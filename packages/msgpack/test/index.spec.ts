@@ -1424,7 +1424,7 @@ describe('Serializer', () => {
     it('encode/decode Map', () => {
       const val = new Map();
       val.set('key1', 'val2');
-      val.set(888, 'ateos');
+      val.set(888, 'example');
       val.set('state', true);
       const encoded = serializer.encode(val);
       const decodedVal = serializer.decode(encoded);

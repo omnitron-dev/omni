@@ -14,7 +14,7 @@ export const registerCommonTypesFor = (s: Serializer) => {
   // 121 - RegExp
   // 120 - BigInt
   // 119 - Long
-  // 110-118 - reserved for other ateos types
+  // 110-118 - reserved for additional common types
   // 100-109 - reserved for netron types
   // 1-99 - user-defined types
 

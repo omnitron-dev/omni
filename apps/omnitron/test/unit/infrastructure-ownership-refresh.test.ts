@@ -132,6 +132,61 @@ describe('native monitoring ownership refresh', () => {
     await expect(InfrastructureService.adoptHandoff(logger, checkpoint)).rejects.toThrow('identity or specification changed');
     original.dispose();
   });
+  it('adopts a historical spec fingerprint only with the same native identity and enforced shared-memory size', async () => {
+    const postgres = { ...desired('postgres'), image: 'postgres:17', shmSize: '256m' };
+    // Persisted by the pre-resource fingerprint schema for this exact synthetic declaration.
+    const historicalHash = 'd94b439555467d30';
+    const observed = actual(postgres, { specHash: historicalHash, resources: {
+      memoryBytes: 0, memoryReservationBytes: 0, nanoCpus: 0, shmBytes: 268435456, cpuQuota: 0, cpuPeriod: 0,
+    } });
+    expect(containerSpecHash(postgres)).not.toBe(historicalHash);
+    const original = service(postgres);
+    original.state.services.postgres = observed;
+    const checkpoint = original.captureRecoveryState();
+    checkpoint.nativeState = { protocol: 1, observations: [{ name: 'postgres', containerId: '1'.repeat(12) }] };
+    runtime.get.mockResolvedValue(observed);
+    const before = structuredClone(checkpoint);
+    await InfrastructureService.validateHandoff(checkpoint);
+    expect(checkpoint).toEqual(before);
+    const restored = await InfrastructureService.adoptHandoff(logger, checkpoint);
+    expect(restored.getState().services['postgres']?.containerId).toBe('1'.repeat(64));
+    const migration = { fromSchema: 1, toSchema: 2, fromHash: historicalHash,
+      toHash: containerSpecHash(postgres), containerId: '1'.repeat(64) };
+    expect(restored.getState().services['postgres']?.specHashMigration).toEqual(migration);
+    restored.resumeAfterHandoff();
+    await (restored as any).reconcileService(postgres);
+    expect(restored.getState().services['postgres']?.specHashMigration).toEqual(migration);
+    expect((restored as any).computeAction(postgres, observed).type).toBe('noop');
+    expect((restored as any).computeAction({ ...postgres, environment: { NEW: 'value' } }, observed).type).toBe('recreate');
+    const nextCheckpoint = await restored.prepareHandoff();
+    expect(nextCheckpoint.state.services['postgres']?.specHashMigration).toEqual(migration);
+    expect(runtime.get).toHaveBeenCalledWith('postgres', { orThrow: true, fullId: true });
+    expect(runtime.create).not.toHaveBeenCalled();
+    expect(runtime.start).not.toHaveBeenCalled();
+    expect(runtime.remove).not.toHaveBeenCalled();
+    original.dispose(); restored.dispose();
+  });
+  it.each(['identity', 'hash', 'resources', 'labels', 'schema', 'missing-prior', 'prior-hash'])('refuses historical fingerprint migration with changed %s', async change => {
+    const postgres = { ...desired('postgres'), image: 'postgres:17', shmSize: '256m' };
+    const observed = actual(postgres, { specHash: 'd94b439555467d30', resources: {
+      memoryBytes: 0, memoryReservationBytes: 0, nanoCpus: 0, shmBytes: 268435456, cpuQuota: 0, cpuPeriod: 0,
+    } });
+    const original = service(postgres);
+    original.state.services.postgres = structuredClone(observed);
+    const checkpoint = original.captureRecoveryState();
+    checkpoint.nativeState = { protocol: 1, observations: [{ name: 'postgres', containerId: '1'.repeat(12) }] };
+    if (change === 'identity') observed.containerId = '2'.repeat(64);
+    if (change === 'hash') observed.specHash = '0'.repeat(16);
+    if (change === 'resources') observed.resources.shmBytes = 67108864;
+    if (change === 'labels') observed.labels = { ...observed.labels, 'omnitron.project': 'another' };
+    if (change === 'schema') observed.labels = { ...observed.labels, 'omnitron.spec-hash-schema': '3' };
+    if (change === 'missing-prior') delete checkpoint.state.services.postgres.containerId;
+    if (change === 'prior-hash') checkpoint.state.services.postgres.specHash = '0'.repeat(16);
+    runtime.get.mockResolvedValue(observed);
+    await expect(InfrastructureService.adoptHandoff(logger, checkpoint)).rejects.toThrow('identity or specification changed');
+    expect(runtime.create).not.toHaveBeenCalled(); expect(runtime.start).not.toHaveBeenCalled(); expect(runtime.remove).not.toHaveBeenCalled();
+    original.dispose();
+  });
   it('keeps legacy snapshots strict and rejects incomplete native evidence', async () => {
     const original = service(desired('redis'));
     original.state.services.redis = { name: 'redis', status: 'exited', error: 'Image unavailable' };

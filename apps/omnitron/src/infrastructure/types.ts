@@ -234,6 +234,15 @@ export interface InfrastructureConfig {
 
 export type ContainerStatus = 'not_found' | 'created' | 'running' | 'paused' | 'restarting' | 'exited' | 'dead';
 
+/** Confirmed migration of immutable Docker label metadata, bound to one native container. */
+export interface ContainerSpecHashMigration {
+  fromSchema: 1;
+  toSchema: 2;
+  fromHash: string;
+  toHash: string;
+  containerId: string;
+}
+
 export interface ContainerState {
   /** Actual Docker HostConfig values, not the desired-spec label. Missing means unverified. */
   resources?: { memoryBytes: number; memoryReservationBytes: number; nanoCpus: number; shmBytes: number; cpuQuota: number; cpuPeriod: number } | undefined;
@@ -258,6 +267,8 @@ export interface ContainerState {
   provisioning?: 'pending' | 'ready' | 'failed';
   /** Desired-spec fingerprint from the omnitron.spec-hash label (config-drift detection). */
   specHash?: string | undefined;
+  /** Docker labels are not rewritten during adoption; this proof travels in the recovery state. */
+  specHashMigration?: ContainerSpecHashMigration;
   /**
    * Which declared service this container IS, from the `omnitron.service`
    * label — `postgres`, `redis`, `omnitron-pg`.

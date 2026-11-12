@@ -47,6 +47,8 @@ import {
   waitForHealthy,
   createVolume,
   containerSpecHash,
+  containerSpecHashMatches,
+  migrateContainerSpecHash,
   containerResources,
   containerResourcesMatch,
 } from './container-runtime.js';
@@ -576,7 +578,7 @@ export class InfrastructureService {
         const actual = await getContainerState(name);
         const labels = desired.labels;
         if (!labels['omnitron.project'] || !labels['omnitron.stack'] || labels['omnitron.managed'] !== 'true' ||
-            actual?.status !== 'running' || actual.networkAttached === false || actual.specHash !== containerSpecHash(desired) || !containerResourcesMatch(desired, actual) ||
+            actual?.status !== 'running' || actual.networkAttached === false || !containerSpecHashMatches(desired, actual) || !containerResourcesMatch(desired, actual) ||
             Object.entries(labels).some(([key, value]) => actual.labels?.[key] !== value)) {
           throw new Error(`Cannot adopt service without matching running native ownership and spec: ${name}`);
         }
@@ -599,12 +601,11 @@ export class InfrastructureService {
       const settled = await Promise.allSettled([...this.activeSweeps, ...this.reconcileTasks.values(), ...(this.provisioning ? [this.provisioning] : [])]);
       if (settled.some(result => result.status === 'rejected')) throw new Error('Infrastructure reconciliation failed while draining');
       await this.phantomJanitor?.drain();
-      const observations = this.preservation ? (await this.verifyPreservation()).containers.map(c => ({ name: c.name, containerId: c.id })) : await InfrastructureService.validateHandoffContainers(this.desiredContainers,
-        this.needsControlPlaneDatabase && !this.usingGlobalOmnitronPg ? this.omnitronPgContainer : undefined,
-        this.state, { protocol: 1 });
-      this.dispose();
       const snapshot = this.ownershipSnapshot(this.handoffMonitoring);
-      snapshot.nativeState = { protocol: 1, observations };
+      const validated = await InfrastructureService.validateHandoff(snapshot);
+      this.dispose();
+      snapshot.state = validated.state;
+      snapshot.nativeState = { protocol: 1, observations: validated.observations };
       return snapshot;
     } catch (error) { this.resumeAfterHandoff(); throw error; }
   }
@@ -644,14 +645,25 @@ export class InfrastructureService {
     this.handoffMonitoring = false;
   }
 
-  /** Read and validate existing containers. Never provision, start or recreate during adoption. */
-  static async adoptHandoff(logger: ILogger, snapshot: InfrastructureHandoffState): Promise<InfrastructureService> {
+  /** Read-only adoption check shared by candidate preflight and actual ownership transfer. */
+  static async validateHandoff(snapshot: InfrastructureHandoffState): Promise<{
+    state: InfrastructureState; observations: Array<{ name: string; containerId: string | null }>;
+  }> {
+    const state = structuredClone(snapshot.state);
     if (snapshot.preservation) {
       const observed = await reviewExistingContainers(snapshot.containers, undefined, snapshot.preservation.scope);
       if (!observed.digest || observed.digest !== snapshot.preservation.digest) throw new Error('Preserved infrastructure changed during handoff');
-    } else await InfrastructureService.validateHandoffContainers(snapshot.containers,
+      return { state, observations: observed.containers.map(container => ({ name: container.name, containerId: container.id })) };
+    }
+    const observations = await InfrastructureService.validateHandoffContainers(snapshot.containers,
       snapshot.needsControlPlaneDatabase && !snapshot.usingGlobalOmnitronPg ? snapshot.controlPlaneContainer : undefined,
-      snapshot.state, snapshot.nativeState);
+      state, snapshot.nativeState);
+    return { state, observations };
+  }
+
+  /** Read and validate existing containers. Never provision, start or recreate during adoption. */
+  static async adoptHandoff(logger: ILogger, snapshot: InfrastructureHandoffState): Promise<InfrastructureService> {
+    const validated = await InfrastructureService.validateHandoff(snapshot);
     const service = new InfrastructureService(logger, snapshot.config, snapshot.normalizedServices,
       undefined, snapshot.serviceOverrides, snapshot.needsControlPlaneDatabase);
     service.desiredContainers = structuredClone(snapshot.containers);
@@ -660,7 +672,7 @@ export class InfrastructureService {
     service.janitorNetworks = [...snapshot.janitorNetworks];
     service.unhealthyEvidence = new Map(snapshot.unhealthyEvidence ?? []);
     service.restartBackoff = new Map(snapshot.restartBackoff);
-    Object.assign(service.state, structuredClone(snapshot.state));
+    Object.assign(service.state, validated.state);
     service.usingGlobalOmnitronPg = snapshot.usingGlobalOmnitronPg;
     service.handoffMonitoring = snapshot.monitoring;
     service.preservation = snapshot.preservation;
@@ -696,11 +708,16 @@ export class InfrastructureService {
       // shape for rollback, while comparing a full prior state ID when present.
       const matches = (id: string | null | undefined) => id?.length === 12
         ? actual.containerId?.startsWith(id) : id === actual.containerId;
-      if (!actual.containerId || actual.specHash !== containerSpecHash(desired) || !containerResourcesMatch(desired, actual) ||
+      const migration = migrateContainerSpecHash(desired, actual, previous);
+      if (!actual.containerId || !containerSpecHashMatches(desired, actual, migration) || !containerResourcesMatch(desired, actual) ||
           (expected && !matches(expected.get(desired.name))) ||
           (previous?.containerId && !matches(previous.containerId)) ||
           Object.entries(desired.labels).some(([key, value]) => actual.labels?.[key] !== value)) {
         throw new Error(`Infrastructure identity or specification changed during handoff: ${desired.name}`);
+      }
+      if (previous) {
+        delete previous.specHashMigration;
+        if (migration) previous.specHashMigration = migration;
       }
       observations.push({ name: desired.name, containerId: actual.containerId.slice(0, 12) });
     }
@@ -1171,7 +1188,7 @@ export class InfrastructureService {
       // upgrading omnitron never churns an otherwise-healthy stack.
       if (actual.specHash) {
         const desiredHash = containerSpecHash(desired);
-        if (actual.specHash !== desiredHash) {
+        if (!containerSpecHashMatches(desired, actual, this.state.services[desired.name]?.specHashMigration)) {
           return {
             type: 'recreate',
             service: desired.name,
@@ -1202,7 +1219,7 @@ export class InfrastructureService {
       }
       if (actual.specHash) {
         const desiredHash = containerSpecHash(desired);
-        if (actual.specHash !== desiredHash) {
+        if (!containerSpecHashMatches(desired, actual, this.state.services[desired.name]?.specHashMigration)) {
           return {
             type: 'recreate',
             service: desired.name,
@@ -1293,7 +1310,17 @@ export class InfrastructureService {
   }
 
   private recordContainerObservation(desired: ResolvedContainer, actual: ContainerState): void {
-    this.state.services[desired.name] = retainProvisioningObservation(actual, this.state.services[desired.name], this.requiresPostProvision(desired));
+    const previous = this.state.services[desired.name];
+    const next = retainProvisioningObservation(actual, previous, this.requiresPostProvision(desired));
+    this.state.services[desired.name] = this.withSpecHashMigration(desired, next);
+  }
+
+  private withSpecHashMigration(desired: ResolvedContainer, actual: ContainerState): ContainerState {
+    const next = { ...actual };
+    delete next.specHashMigration;
+    const migration = this.state.services[desired.name]?.specHashMigration;
+    if (migration && containerSpecHashMatches(desired, actual, migration)) next.specHashMigration = migration;
+    return next;
   }
 
   private invalidateChangedSetup(previous: typeof this.normalizedServices): void {
@@ -1334,7 +1361,8 @@ export class InfrastructureService {
         const actual = await getContainerState(container.name, { orThrow: true, fullId: true });
         if (!actual) throw new Error('Declared service container is absent');
         const cName = ownedContainerId(container, actual);
-        this.state.services[container.name] = { ...actual, provisioning: 'pending', error: 'Declared service setup is in progress' };
+        this.state.services[container.name] = this.withSpecHashMigration(container,
+          { ...actual, provisioning: 'pending', error: 'Declared service setup is in progress' });
         if (!preset) throw new Error(`Preset '${requirement._preset}' is unavailable; declared service setup cannot be verified`);
         if (!await waitForHealthy(cName, 30_000)) throw new Error('Container did not become healthy before declared service setup');
         await preset.postProvision!({
@@ -1357,7 +1385,7 @@ export class InfrastructureService {
         if (!confirmed || confirmed.status !== 'running' || confirmed.health === 'unhealthy' ||
             confirmed.containerId !== actual.containerId || confirmed.startedAt !== actual.startedAt)
           throw new Error('Container generation changed during declared service setup');
-        this.state.services[container.name] = { ...confirmed, provisioning: 'ready' };
+        this.state.services[container.name] = this.withSpecHashMigration(container, { ...confirmed, provisioning: 'ready' });
       } catch (err) {
         const error = `Post-provisioning '${serviceName}': ${safeError(err)}`;
         this.state.services[container.name] = {

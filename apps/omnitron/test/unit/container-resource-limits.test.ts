@@ -37,6 +37,7 @@ describe('the declared resource limits reach Docker and its observation', () => 
     expect(resolved?.resources).toEqual(limits);
     expect(await createContainer(config({ resources: resolved!.resources! }))).toBe(id.slice(0, 12));
     const call = native.execute.mock.calls[0]![0];
+    expect(call.args).toContain('omnitron.spec-hash-schema=2');
     expect(call).toMatchObject({ command: 'docker', shell: false, adapter: 'local', timeout: 60_000 });
     const position = call.args.indexOf('--memory');
     expect(call.args.slice(position, position + 8)).toEqual(['--memory', '134217728', '--memory-reservation', '67108864', '--cpus', '0.500000000', '--shm-size', '33554432']);

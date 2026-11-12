@@ -11,7 +11,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { CONFIG_ROOT_PREFIX } from './shipped-config.js';
 import { nativeHealthCheck } from './health-recovery.js';
-import type { ContainerState, ContainerStatus, ResolvedContainer } from './types.js';
+import type { ContainerState, ContainerStatus, ContainerSpecHashMigration, ResolvedContainer } from './types.js';
 
 type NativeResources = NonNullable<ContainerState['resources']>;
 
@@ -95,6 +95,7 @@ export function containerResourcesMatch(config: ResolvedContainer, actual: Conta
 
 /** Label carrying the desired-spec fingerprint, used for config-drift detection. */
 export const SPEC_HASH_LABEL = 'omnitron.spec-hash';
+export const SPEC_HASH_SCHEMA_LABEL = 'omnitron.spec-hash-schema';
 
 /**
  * Stable fingerprint of a container's *desired* spec. Covers the fields that a
@@ -108,6 +109,11 @@ export const SPEC_HASH_LABEL = 'omnitron.spec-hash';
  * being silently ignored because the image is unchanged.
  */
 export function containerSpecHash(config: ResolvedContainer): string {
+  return specificationHash(config, 2);
+}
+
+/** Schema 1 omitted enforced resources. Its use is restricted to verified metadata migration. */
+function specificationHash(config: ResolvedContainer, schema: 1 | 2): string {
   const resources = containerResources(config);
   const sortedEnv = Object.keys(config.environment)
     .sort()
@@ -143,7 +149,7 @@ export function containerSpecHash(config: ResolvedContainer): string {
     // is on the old one, and its name resolves for nobody.
     network: config.network ?? null,
     restart: config.restart,
-    ...(Object.keys(resources).length ? { resources } : {}),
+    ...(schema === 2 && Object.keys(resources).length ? { resources } : {}),
     // What the mounted config files SAY, which the volume paths above cannot:
     // an nginx.conf rewritten in place has the same path. Only when present,
     // so a container with no config files keeps the hash it was created
@@ -151,6 +157,34 @@ export function containerSpecHash(config: ResolvedContainer): string {
     ...(config.configDigest ? { configDigest: config.configDigest } : {}),
   });
   return createHash('sha1').update(normalized).digest('hex').slice(0, 16);
+}
+
+/** Revalidate a recorded migration against the current desired spec and native observation. */
+export function containerSpecHashMatches(config: ResolvedContainer, actual: ContainerState,
+  migration?: ContainerSpecHashMigration): boolean {
+  const schema = actual.labels?.[SPEC_HASH_SCHEMA_LABEL];
+  if (schema !== undefined && schema !== '1' && schema !== '2') return false;
+  const current = containerSpecHash(config);
+  if (actual.specHash === current && schema !== '1') return true;
+  return Boolean(migration && migration.fromSchema === 1 && migration.toSchema === 2 && schema !== '2' &&
+    migration.containerId === actual.containerId && /^[a-f0-9]{64}$/.test(migration.containerId) &&
+    migration.fromHash === actual.specHash && migration.fromHash === specificationHash(config, 1) &&
+    migration.toHash === current && containerResourcesMatch(config, actual) &&
+    Object.entries(config.labels).every(([key, value]) => actual.labels?.[key] === value));
+}
+
+/** Admit only the historical schema on the exact container already recorded by its owner. */
+export function migrateContainerSpecHash(config: ResolvedContainer, actual: ContainerState,
+  previous: ContainerState | undefined): ContainerSpecHashMigration | undefined {
+  if (containerSpecHashMatches(config, actual)) return undefined;
+  if (containerSpecHashMatches(config, actual, previous?.specHashMigration)) return previous?.specHashMigration;
+  const id = actual.containerId, prior = previous?.containerId;
+  if (!id || !/^[a-f0-9]{64}$/.test(id) || !prior ||
+      (prior.length === 12 ? !id.startsWith(prior) : prior !== id) || previous?.specHash !== actual.specHash ||
+      (actual.labels?.[SPEC_HASH_SCHEMA_LABEL] !== undefined && actual.labels[SPEC_HASH_SCHEMA_LABEL] !== '1') ||
+      actual.specHash !== specificationHash(config, 1) || !containerResourcesMatch(config, actual) ||
+      Object.entries(config.labels).some(([key, value]) => actual.labels?.[key] !== value)) return undefined;
+  return { fromSchema: 1, toSchema: 2, fromHash: actual.specHash, toHash: containerSpecHash(config), containerId: id };
 }
 
 // =============================================================================
@@ -619,7 +653,8 @@ export async function createContainer(config: ResolvedContainer): Promise<string
   // detect config drift (env/ports/volumes/cmd change under the same image)
   // and recreate instead of silently no-op'ing.
   const creation = randomUUID();
-  const labels = { ...(config.labels ?? {}), [SPEC_HASH_LABEL]: containerSpecHash(config), 'omnitron.creation': creation };
+  const labels = { ...(config.labels ?? {}), [SPEC_HASH_LABEL]: containerSpecHash(config),
+    [SPEC_HASH_SCHEMA_LABEL]: '2', 'omnitron.creation': creation };
   for (const [key, value] of Object.entries(labels)) {
     args.push('--label', `${key}=${value}`);
   }

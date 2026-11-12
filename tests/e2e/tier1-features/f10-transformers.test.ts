@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { parseDocument, toHtmlSsr, toCleanMarkdown, toTipTapDoc, compileTypst } from '@omnitron-dev/lumen-ast';
+import { parseDocument, toHtmlSsr, toCleanMarkdown, toTipTapDoc } from '@omnitron-dev/lumen-ast';
+import { compileTypst } from '@omnitron-dev/lumen-ast/typst';
+import { inspectPdf } from '../../../packages/lumen-ast/tests/pdf-oracle.js';
 
 describe('Feature 10: Multi-Target Transformers', () => {
   const sampleDoc = `---
@@ -39,14 +41,15 @@ The operator $\\hat{H}\\psi = E\\psi$ governs the energy spectrum.
     expect(Array.isArray(tipTapDoc.content)).toBe(true);
   });
 
-  it('TC-F10-04: transforms AST to Typst format via compileTypst', async () => {
+  it('TC-F10-04: compiles AST into typeset A4 PDF pages', async () => {
     const ast = await parseDocument(sampleDoc, 'docs/transforms.pdx');
     const typstBuffer = await compileTypst(ast, { title: 'Quantum Operators', paperSize: 'a4' });
 
-    expect(typstBuffer instanceof Uint8Array).toBe(true);
-    const typstSource = new TextDecoder().decode(typstBuffer);
-    expect(typstSource).toContain('= Quantum Operators');
-    expect(typstSource).toContain('#set page(paper: "a4")');
+    const pdf = await inspectPdf(typstBuffer);
+    expect(pdf.text).toContain('Quantum Operators');
+    expect(pdf.text).toContain('governs the energy spectrum.');
+    expect(pdf.pages[0]!.width).toBeCloseTo(595.28, 1);
+    expect(pdf.pages[0]!.height).toBeCloseTo(841.89, 1);
   });
 
   it('TC-F10-05: guarantees core content integrity across all four emitter targets', async () => {
@@ -56,11 +59,11 @@ The operator $\\hat{H}\\psi = E\\psi$ governs the energy spectrum.
     const cleanMd = toCleanMarkdown(ast);
     const tipTap = toTipTapDoc(ast);
     const typstBuffer = await compileTypst(ast);
-    const typstText = new TextDecoder().decode(typstBuffer);
+    const pdf = await inspectPdf(typstBuffer);
 
     expect(html).toContain('Quantum Operators');
     expect(cleanMd).toContain('Quantum Operators');
     expect(JSON.stringify(tipTap)).toContain('Quantum Operators');
-    expect(typstText).toContain('Quantum Operators');
+    expect(pdf.text).toContain('Quantum Operators');
   });
 });

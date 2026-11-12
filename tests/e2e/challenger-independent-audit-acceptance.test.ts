@@ -9,7 +9,6 @@ import { join, resolve } from 'node:path';
 import { spawnSync, spawn } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
-  compileTypst,
   defaultDiagramRenderer,
   defaultHighlighter,
   parseDocument,
@@ -18,6 +17,8 @@ import {
   toTypst,
   type LumenDocumentAst,
 } from '@omnitron-dev/lumen-ast';
+import { compileTypst } from '@omnitron-dev/lumen-ast/typst';
+import { inspectPdf } from '../../packages/lumen-ast/tests/pdf-oracle.js';
 import {
   CorpusGraph,
   buildStaticSite,
@@ -424,16 +425,18 @@ describe('IA-10..IA-12 & GAP-01..04: Safe Frontmatter, Lexer Bounds, Migration S
     }
   });
 
-  it('produces real %PDF-1.4 binary output, Shiki dual-theme tokens, Twoslash hover types, and SVG geometry', async () => {
+  it('produces readable PDF pages, Shiki dual-theme tokens, Twoslash hover types, and SVG geometry', async () => {
     const ast = await parseDocument(
       '---\ntitle: Spec Paper\nauthors:\n  - Alice\n---\n\n# Theorem Section\n\n:::theorem{#thm-1 title="Main Result"}\nFor all $x \\in \\mathbb{R}$, $x^2 \\ge 0$.\n:::\n',
       'paper.pdx'
     );
-    const pdf = await compileTypst(ast);
-    const pdfText = Buffer.from(pdf).toString('latin1');
-    expect(pdfText.startsWith('%PDF-1.4\n')).toBe(true);
-    expect(pdfText).toContain('\nxref\n');
-    expect(pdfText.trimEnd().endsWith('%%EOF')).toBe(true);
+    const pdf = await inspectPdf(await compileTypst(ast));
+    expect(pdf.text).toContain('Spec Paper');
+    expect(pdf.text).toContain('Theorem Section');
+    expect(pdf.text).toContain('Main Result');
+    expect(pdf.text).toContain('For all');
+    expect(pdf.pages[0]!.width).toBeCloseTo(595.28, 1);
+    expect(pdf.pages[0]!.height).toBeCloseTo(841.89, 1);
 
     const highlightedHtml = defaultHighlighter.highlight('const answer = 42;\n//    ^?\n', {
       language: 'ts',

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { parseDocument, toTypst, compileTypst, toCleanMarkdown, toHtmlSsr } from '@omnitron-dev/lumen-ast';
+import { parseDocument, toTypst, toCleanMarkdown, toHtmlSsr } from '@omnitron-dev/lumen-ast';
+import { compileTypst } from '@omnitron-dev/lumen-ast/typst';
+import { inspectPdf } from '../../../packages/lumen-ast/tests/pdf-oracle.js';
 
 describe('Tier 4: Scenario 03 — Typst Academic PDF Multi-Paper Generation', () => {
   it('compiles multi-section mathematical paper from .pdx AST to Typst and generates PDF buffer', async () => {
@@ -52,7 +54,7 @@ Observables converge under discrete Trotter-Suzuki expansions.
     });
 
     expect(typstSource).toContain('#set page(paper: "a4")');
-    expect(typstSource).toContain('= Non-Commutative Spectral Measures');
+    expect(typstSource).toContain('= Non\\-Commutative Spectral Measures');
     expect(typstSource).toContain('LuxQuant Research');
     expect(typstSource).toContain('Spectral Projector Completeness');
     expect(typstSource).toContain('Von Neumann Entropy Bound');
@@ -63,9 +65,13 @@ Observables converge under discrete Trotter-Suzuki expansions.
       paperSize: 'a4',
     });
 
-    expect(pdfBuffer).toBeDefined();
-    expect(pdfBuffer.byteLength).toBeGreaterThan(0);
-    const decoded = new TextDecoder().decode(pdfBuffer);
-    expect(decoded).toContain('Spectral Projector Completeness');
+    const pdf = await inspectPdf(pdfBuffer);
+    expect(pdf.text).toContain('Spectral Projector Completeness');
+    expect(pdf.text).toContain('Von Neumann Entropy Bound');
+    expect(pdf.text).toContain('Numerical Simulation');
+    expect(pdf.text).toContain('Trotter-Suzuki expansions.');
+    expect(pdf.text).not.toContain('\\operatorname');
+    expect(pdf.pages[0]!.width).toBeCloseTo(595.28, 1);
+    expect(pdf.pages[0]!.height).toBeCloseTo(841.89, 1);
   });
 });

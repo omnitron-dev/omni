@@ -11,7 +11,6 @@ import {
   LumenMacroRegistry,
   toHtmlSsr,
   toTypst,
-  compileTypst,
   renderDiagramHtml,
   parseMermaidDirectives,
   parseAttributeString,
@@ -23,6 +22,8 @@ import {
   type LumenDocumentAst,
   type LumenNode,
 } from '@omnitron-dev/lumen-ast';
+import { compileTypst } from '@omnitron-dev/lumen-ast/typst';
+import { inspectPdf } from '../../../packages/lumen-ast/tests/pdf-oracle.js';
 
 // Subsystem 2: @omnitron-dev/lumen-ui
 import {
@@ -282,7 +283,7 @@ Real body content following unclosed frontmatter fence.`;
       expect(typst).not.toMatch(/\]\s*#sys\.command/);
     });
 
-    it('ADV-AST-16: compiles deterministic Typst byte stream from complex document AST', async () => {
+    it('ADV-AST-16: compiles deterministic PDF from projected AST without resurrecting raw source', async () => {
       const doc: LumenDocumentAst = {
         frontmatter: { title: 'Deterministic Paper' },
         rawContent: `# Introduction\n\n:::theorem{id="thm-1" title="Main Theorem"}\nE = mc^2\n:::\n`,
@@ -296,6 +297,9 @@ Real body content following unclosed frontmatter fence.`;
       expect(bytes1).toBeInstanceOf(Uint8Array);
       expect(bytes1.length).toBeGreaterThan(0);
       expect(Buffer.from(bytes1).equals(Buffer.from(bytes2))).toBe(true);
+      const pdf = await inspectPdf(bytes1);
+      expect(pdf.text.trim()).toBe('Deterministic Paper');
+      expect(pdf.text).not.toContain('Main Theorem');
     });
   });
 

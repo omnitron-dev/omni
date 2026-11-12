@@ -4,9 +4,10 @@ import {
   toHtmlSsr,
   toCleanMarkdown,
   toTipTapDoc,
-  compileTypst,
   type LumenDocumentAst,
 } from '@omnitron-dev/lumen-ast';
+import { compileTypst } from '@omnitron-dev/lumen-ast/typst';
+import { inspectPdf } from '../../../packages/lumen-ast/tests/pdf-oracle.js';
 
 describe('Feature 10: Multi-Target Transformers Boundaries', () => {
   it('TC-B10-01: handles empty AST across all four output target emitters safely', async () => {
@@ -28,9 +29,9 @@ describe('Feature 10: Multi-Target Transformers Boundaries', () => {
     expect(tipTap.type).toBe('doc');
     expect(tipTap.content).toEqual([]);
 
-    const typst = await compileTypst(emptyAst);
-    expect(typst instanceof Uint8Array).toBe(true);
-    expect(typst.byteLength).toBeGreaterThan(0);
+    const pdf = await inspectPdf(await compileTypst(emptyAst));
+    expect(pdf.pages).toHaveLength(1);
+    expect(pdf.text.trim()).toBe('Document');
   });
 
   it('TC-B10-02: handles unsupported custom AST nodes gracefully without emitter failure', async () => {
@@ -59,9 +60,9 @@ describe('Feature 10: Multi-Target Transformers Boundaries', () => {
     const tipTap = toTipTapDoc(customNodeAst);
     expect(tipTap.type).toBe('doc');
 
-    await expect(compileTypst(customNodeAst)).resolves.toBeDefined();
-    const typst = await compileTypst(customNodeAst);
-    expect(typst.byteLength).toBeGreaterThan(0);
+    const pdf = await inspectPdf(await compileTypst(customNodeAst));
+    expect(pdf.text.trim()).toBe('Custom Nodes');
+    expect(pdf.text).not.toContain('Custom circuit representation');
   });
 
   it('TC-B10-03: verifies toCleanMarkdown processes complex nested directives cleanly', async () => {
@@ -119,10 +120,9 @@ Variables: #let, #show, [bracket], @citation, _underscore_, and *asterisk*.
 
     const ast = await parseDocument(specialCharsDoc, 'docs/special.pdx');
     const typstBuffer = await compileTypst(ast);
-    const typstText = new TextDecoder().decode(typstBuffer);
-
-    expect(typstText).toContain('#set page(paper: "a4")');
-    expect(typstText).toContain('Typst Special Characters');
-    expect(typstBuffer.byteLength).toBeGreaterThan(0);
+    const pdf = await inspectPdf(typstBuffer);
+    expect(pdf.text).toContain('Typst Special Characters');
+    expect(pdf.text).toMatch(/\$\s*100 and 50% ratio/);
+    expect(pdf.text).toContain('#let, #show, [bracket], @citation');
   });
 });

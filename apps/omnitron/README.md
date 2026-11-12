@@ -34,6 +34,8 @@ The management backend and resident execution owner have separate identities. A 
 
 Use the ordinary stack release lifecycle to prepare and select installed artifacts. A backend source upgrade takes the compiled backend directory, `<runtime-root>/packages/0/dist`, while runtime installation takes the runtime root. Read-only checks and reviewed plans precede activation. Older peers that cannot enforce a required capability refuse the operation instead of falling back to another execution path.
 
+Backend preflight loads the actual daemon dependency graph with a 30-second child deadline. Failures include a machine-readable code and details with the verified runtime hash, elapsed time, child PID and last reported loading phase, while retaining the original cause. Bounded progress records appear on stderr only for `--check-backend`; they do not establish readiness or replace a successful protocol/build response. A successful standalone preflight does not qualify a transition or rollback.
+
 Stops use durable execution intent. Starting a stack does not silently clear a separately stopped child application's fence. Native process lifetimes and generations distinguish a current process from a reused PID.
 
 ## Starting with existing infrastructure

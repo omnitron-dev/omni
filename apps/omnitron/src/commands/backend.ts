@@ -23,7 +23,7 @@ export async function backendSchemaPrepareCommand(directory: string, options: { 
       for (const migration of result.plan.additions) emitInfo(`${migration.name}: ${migration.description}`);
       emitInfo('Review the plan, then apply it before replacing the backend.');
     }
-  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+  } catch (error) { emitError(error); process.exitCode = 1; }
 }
 
 export async function backendSchemaApplyCommand(file: string): Promise<void> {
@@ -31,7 +31,7 @@ export async function backendSchemaApplyCommand(file: string): Promise<void> {
     const { applySchemaTransition } = await import('../daemon/schema-transition.js');
     const result = await applySchemaTransition(path.resolve(file));
     if (!emitJson(result)) emitInfo(`Schema expansion ${result.id} applied; the compatibility runtime can be retained for rollback.`);
-  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+  } catch (error) { emitError(error); process.exitCode = 1; }
 }
 
 export async function backendSupervisorPrepareCommand(directory: string): Promise<void> {
@@ -42,7 +42,7 @@ export async function backendSupervisorPrepareCommand(directory: string): Promis
       emitInfo(`Guardian plan: ${result.file}`);
       emitInfo(`Owner PID ${result.plan.ownerPid} and the selected backend release will be preserved.`);
     }
-  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+  } catch (error) { emitError(error); process.exitCode = 1; }
 }
 
 export async function backendSupervisorApplyCommand(file: string, checkOnly = false): Promise<void> {
@@ -55,7 +55,7 @@ export async function backendSupervisorApplyCommand(file: string, checkOnly = fa
       return;
     }
     emitInfo(`Guardian PID ${result.result?.guardianPid}; backend PID ${result.result?.backendPid}; execution owner PID ${result.ownerPid} preserved`);
-  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+  } catch (error) { emitError(error); process.exitCode = 1; }
 }
 
 export async function backendInstallCommand(directory: string): Promise<void> {
@@ -68,7 +68,7 @@ export async function backendInstallCommand(directory: string): Promise<void> {
       emitInfo(`Installed ${artifact.build.commit}: ${artifact.runtimeHash}`);
       emitInfo('Running applications and the startup selection are unchanged.');
     }
-  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+  } catch (error) { emitError(error); process.exitCode = 1; }
   finally { await installation?.close(); }
 }
 
@@ -83,7 +83,7 @@ export async function backendInstallationCommand(): Promise<void> {
       if (state.directory) emitInfo(`Installation: ${state.directory}`);
       if (state.activation) emitInfo(`Unfinished activation: ${state.activation.checkpoint}`);
     }
-  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+  } catch (error) { emitError(error); process.exitCode = 1; }
   finally { await installation?.close(); }
 }
 
@@ -131,7 +131,7 @@ export async function backendSelectCommand(id: string, checkOnly = false): Promi
       return { selection, launcher };
     });
     if (!emitJson(result)) emitInfo(`Selected ${id}. Launch with ${result.launcher} up`);
-  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+  } catch (error) { emitError(error); process.exitCode = 1; }
   finally { await installation?.close(); }
 }
 
@@ -156,7 +156,7 @@ export async function backendStatusCommand(): Promise<void> {
     if ('recovery' in execution && execution.recovery) emitInfo(`Recovery checkpoint: ${execution.recovery.status}${execution.recovery.reason ? `; ${execution.recovery.reason}` : ''}`);
     if ('supervision' in execution && execution.supervision) emitInfo(`Independent OS supervision: guardian PID ${execution.supervision.guardianPid}; owner ${execution.supervision.ownerUnit}; backend ${execution.supervision.backendUnit}`);
     if (inventoryError) emitInfo(`Application inventory unavailable: ${inventoryError}`);
-  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+  } catch (error) { emitError(error); process.exitCode = 1; }
   finally { await client.disconnect(); }
 }
 
@@ -176,7 +176,7 @@ export async function backendUpgradeCommand(directory: string, options: { check?
       ...(options.schemaPlan ? { schemaPlan: path.resolve(options.schemaPlan) } : {}) });
     if (!emitJson(result)) emitInfo('checked' in result ? `Candidate ${result.build.commit} verified; no activation performed`
       : `Backend PID ${result.pid}; execution owner PID ${result.ownerPid} retained; epoch ${result.epoch}`);
-  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+  } catch (error) { emitError(error); process.exitCode = 1; }
 }
 
 export async function backendRecoverCommand(file?: string): Promise<void> {
@@ -184,12 +184,12 @@ export async function backendRecoverCommand(file?: string): Promise<void> {
     const config = { ...DEFAULT_DAEMON_CONFIG, ...savedDaemonOverrides(readSavedDaemonConfig()) };
     const result = file ? await recoverBackend(path.resolve(file)) : await recoverBackendAfterCrash(executionDirectory(config));
     if (!emitJson(result)) emitInfo(`Backend recovered as PID ${result.pid}; execution owner ${result.ownerPid}`);
-  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+  } catch (error) { emitError(error); process.exitCode = 1; }
 }
 
 export async function backendAbortCommand(file: string): Promise<void> {
   try {
     await abortBackendReplacement(path.resolve(file));
     if (!emitJson({ aborted: true })) emitInfo('Preparation cancelled; the original backend has resumed');
-  } catch (error) { emitError((error as Error).message); process.exitCode = 1; }
+  } catch (error) { emitError(error); process.exitCode = 1; }
 }

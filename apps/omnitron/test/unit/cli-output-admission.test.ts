@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Command } from 'commander';
 import { OutputCommand, prepareCommandOutput } from '../../src/cli/output-command.js';
-import { emitJson, installJsonModeGuard, finishJsonModeGuard } from '../../src/commands/output.js';
+import { emitJson, emitError, installJsonModeGuard, finishJsonModeGuard } from '../../src/commands/output.js';
+import { log } from '@xec-sh/kit';
 import { resetEnvCache, setEnvOverride } from '../../src/shared/env-config.js';
 let originalEnv: string | undefined;
 let exitListeners: Function[];
@@ -37,6 +38,53 @@ function program() {
   root.hook('preAction', (_root, action) => prepareCommandOutput(action));
   return root;
 }
+
+describe('shared error output', () => {
+  it('preserves existing string output and explicit detail fields', () => {
+    setEnvOverride({ OMNITRON_OUTPUT: 'json' });
+    emitError('request refused', { code: 'REFUSED', outcome: 'not-started' });
+    expect(JSON.parse(stderr.join(''))).toEqual({ ok: false, error: 'request refused', code: 'REFUSED', outcome: 'not-started' });
+  });
+
+  it('keeps ordinary Error output concise and excludes attached state', () => {
+    setEnvOverride({ OMNITRON_OUTPUT: 'json' });
+    const error = Object.assign(new Error('native failure', { cause: new Error('private cause') }), { env: { private: true } });
+    emitError(error);
+    expect(JSON.parse(stderr.join(''))).toEqual({ ok: false, error: 'native failure' });
+  });
+
+  it.each([null, undefined, 7, 'thrown string', { unexpected: true }])('normalizes an unexpected thrown value: %j', value => {
+    setEnvOverride({ OMNITRON_OUTPUT: 'json' });
+    expect(() => emitError(value)).not.toThrow();
+    expect(JSON.parse(stderr.join(''))).toEqual({ ok: false, error: String(value) });
+  });
+
+  it.each(['native', 'serialized'])('preserves explicit code and details from a %s error', mode => {
+    setEnvOverride({ OMNITRON_OUTPUT: 'json' });
+    const fields = { message: 'preflight refused', code: 504,
+      details: { domainCode: 'BACKEND_PREFLIGHT_TIMEOUT', phase: 'loading-runtime', elapsedMs: 30_001 },
+      stack: 'private stack', cause: { private: true }, env: { private: true } };
+    emitError(mode === 'native' ? Object.assign(new Error(fields.message), fields) : fields);
+    expect(JSON.parse(stderr.join(''))).toEqual({ ok: false, error: fields.message, code: 504, details: fields.details });
+  });
+
+  it('reports unencodable details without losing the original failure or throwing', () => {
+    setEnvOverride({ OMNITRON_OUTPUT: 'json' });
+    const details: Record<string, unknown> = {};
+    details['self'] = details;
+    expect(() => emitError({ message: 'failure with cyclic details', code: 500, details })).not.toThrow();
+    expect(JSON.parse(stderr.join(''))).toEqual({ ok: false, error: 'failure with cyclic details', code: 500,
+      detailsError: 'not-json-serializable' });
+  });
+
+  it('uses the same human logger for Error and string callers', () => {
+    const error = vi.spyOn(log, 'error').mockImplementation(() => {});
+    emitError(new Error('human reason'));
+    emitError('plain reason');
+    expect(error.mock.calls).toEqual([['human reason'], ['plain reason']]);
+  });
+});
+
 describe('machine output admission precedes action execution', () => {
   it.each(['flag', 'environment'])(
     'refuses unknown nested mutation support via %s without invoking its lazy handler',

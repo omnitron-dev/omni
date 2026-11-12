@@ -86,11 +86,26 @@ export function emitJson(payload: unknown): boolean {
  * normal TUI logger. Always returns the same boolean so callers can early-exit
  * regardless of mode.
  */
-export function emitError(message: string, details?: Record<string, unknown>): boolean {
+export function emitError(error: unknown, details?: Record<string, unknown>): boolean {
+  const value = error !== null && typeof error === 'object' ? error as Record<string, unknown> : undefined;
+  const message = typeof error === 'string' ? error : typeof value?.['message'] === 'string' ? value['message'] : String(error);
   if (isJsonMode()) {
     emittedJson = true;
-    const payload = { ok: false, error: message, ...(details ?? {}) };
-    process.stderr.write(JSON.stringify(payload) + '\n');
+    // The same fields survive native Errors and Netron's serialized errors.
+    // Do not expose the stack, cause graph or other attached process state.
+    const code = value?.['code'];
+    const errorDetails = value?.['details'];
+    const payload: Record<string, unknown> = { ok: false, error: message,
+      ...((typeof code === 'string' || typeof code === 'number' && Number.isFinite(code)) && { code }),
+      ...(errorDetails !== undefined && { details: errorDetails }), ...(details ?? {}) };
+    let encoded: string;
+    try { encoded = JSON.stringify(payload); }
+    catch {
+      const retainedCode = payload['code'];
+      encoded = JSON.stringify({ ok: false, error: message, detailsError: 'not-json-serializable',
+        ...((typeof retainedCode === 'string' || typeof retainedCode === 'number' && Number.isFinite(retainedCode)) && { code: retainedCode }) });
+    }
+    process.stderr.write(encoded + '\n');
     return true;
   }
   log.error(message);

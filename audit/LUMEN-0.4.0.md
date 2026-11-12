@@ -237,12 +237,24 @@ concurrent-write expectation and a new existing manager-only lock case. These
 25 distinct cases preserve absent/stale/manager-only lock states, failed builds
 and registry admission. They do not claim automatic manager installation.
 
-The intermittent SDK-archive mismatch from that run remains under investigation
-at this checkpoint. Two local Linux builds match all 35 archives and 6,804 files,
-including the original first-build digest, but do not explain the different
-second CI digest. Qualification retains its exact equality gate. CI now preserves
-bounded per-file evidence and affected public archives when it fails, instead of
-deleting the only evidence before reporting a manifest mismatch.
+The retained evidence for `72cc6084` identifies two independent sources of
+non-determinism in `lumen-ast`; the other 34 archives match. The local Node 26
+run changes the inferred Zod enum property order in a shared declaration,
+therefore also its chunk name and importing declaration. A two-file Compiler
+API reproduction produces both exact orders by changing the sequence of
+per-module declaration emission; tsup's declaration plugin follows asynchronous
+module visitation. The Linux Node 22 CI run instead changes the order of shared
+JavaScript imports in `dist/index.js`. Eight isolated package builds produce
+four byte variants before tsup's Rollup pass; repeatedly processing an identical
+input with that Rollup pass stays stable. The JavaScript defect is in the
+esbuild splitting stage, independently of declaration emission.
+
+Neither difference is excluded from the equality gate or normalized away.
+The candidate remains unqualified. CI retains bounded per-file evidence and
+affected public archives, including the [Linux failure artifact](https://github.com/omnitron-dev/omni/actions/runs/43217732489/artifacts/13943709847).
+Local reproductions are under
+`/Volumes/AGI-Dev/work/omnitron/lumen-ast-repro-72cc` and
+`/Volumes/AGI-Dev/work/omnitron/lumen-runtime-repro-72cc`.
 
 The reference website also passes a fresh SDK `08271086` acceptance through the
 ordinary SDK and Lumen commands: 239 pages, 236 preserved original routes, 2,855

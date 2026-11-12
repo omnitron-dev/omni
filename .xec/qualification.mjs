@@ -9,6 +9,8 @@ import policy from './release-policy.mjs';
 import { githubQualification } from './github-qualification.mjs';
 import { retainNativeRuntime } from './native-delivery.mjs';
 import { verifyRuntimeArtifact } from '../apps/omnitron/src/shared/runtime-artifact.ts';
+import os from 'node:os';
+import { verifyVersionQualification } from './version-qualification.js';
 
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const read = async filename => JSON.parse(await fs.readFile(filename, 'utf8'));
@@ -160,6 +162,12 @@ async function runQualification(root, version, options, recordedIdentity) {
 export async function verifyReleaseQualification(root, version, options = {}) {
   const run = options.run ?? releaseCommand;
   const commit = await run(root, 'git', ['rev-parse', 'HEAD']);
+  const versionOnly = await optional(path.join(root, '.release-artifacts/qualification', commit, 'version-only.json'));
+  if (versionOnly) return verifyVersionQualification(root, version, {
+    ...options, baseCommit: versionOnly.baseCommit,
+    prepared: await loadPreparedRelease(root, version, run),
+    verifyBase: base => verifyQualifiedRevision(root, base, options),
+  });
   const selected = await optional(path.join(root, '.release-artifacts/qualification', commit, 'selected.json'));
   if (!selected?.identity || selected.identity.schema !== 1 || typeof selected.identity.node !== 'string' ||
       !/^v\d+\.\d+\.\d+$/.test(selected.identity.node) ||
@@ -168,10 +176,47 @@ export async function verifyReleaseQualification(root, version, options = {}) {
   return runQualification(root, version, { ...options, previous: selected.identity.previous, observeOnly: true }, selected.identity);
 }
 
+/** Observe a previous qualification in its actual immutable source checkout.
+ * Its CI and native results remain attributed to that revision; no workflow is
+ * dispatched and no producer output is rewritten to impersonate a new build. */
+export async function verifyQualifiedRevision(root, revision, options = {}) {
+  if (!/^[a-f0-9]{40}$/.test(revision)) throw Error('Expected an exact qualified source revision');
+  const run = options.run ?? releaseCommand;
+  await run(root, 'git', ['merge-base', '--is-ancestor', revision, 'HEAD']);
+  const selection = await read(path.join(root, '.release-artifacts/qualification', revision, 'selected.json'));
+  if (selection?.identity?.commit !== revision || selection.identity.schema !== 1)
+    throw Error('The base must have a complete original qualification');
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'omnitron-qualified-source-'));
+  const checkout = path.join(directory, 'source');
+  try {
+    await fs.mkdir(checkout);
+    await run(root, 'git', ['archive', '--format=tar', '--output', path.join(directory, 'source.tar'), revision]);
+    await run(directory, 'tar', ['-xf', './source.tar', '-C', './source']);
+    await run(checkout, 'git', ['init', '--quiet']);
+    await run(checkout, 'git', ['fetch', '--quiet', '--depth=1', '--no-tags', '--', await fs.realpath(root), revision]);
+    if (await run(checkout, 'git', ['rev-parse', 'FETCH_HEAD']) !== revision) throw Error('Qualified source identity differs');
+    await run(checkout, 'git', ['update-ref', 'HEAD', revision]);
+    await run(checkout, 'git', ['read-tree', revision]);
+    if (await run(checkout, 'git', ['status', '--porcelain'])) throw Error('Qualified source export differs');
+    await fs.symlink(await fs.realpath(path.join(root, '.release-artifacts')), path.join(checkout, '.release-artifacts'), 'dir');
+    const proof = await verifyReleaseQualification(checkout, selection.identity.version, options);
+    const prepared = await loadPreparedRelease(checkout, selection.identity.version, run);
+    return {
+      ...proof, version: prepared.version,
+      receipt: await fs.realpath(proof.receipt), runtime: await fs.realpath(proof.runtime),
+      artifacts: await Promise.all(prepared.artifacts.map(async artifact => ({ ...artifact, file: await fs.realpath(artifact.file) }))),
+      runtimes: Object.fromEntries(await Promise.all(Object.entries(proof.runtimes).map(async ([name, value]) => [name, await fs.realpath(value)]))),
+    };
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+}
+
 export async function qualifiedRuntimes(root, commit) {
   const selected = await optional(path.join(root, '.release-artifacts/qualification', commit, 'selected.json'));
   if (selected?.identity.commit !== commit) throw Error('No selected qualification for this commit');
   const proof = await verifyReleaseQualification(root, selected.identity.version);
+  if (proof.kind === 'version-only') throw Error('A version-only npm release reuses source qualification; prepare native runtimes explicitly before fleet activation');
   if (proof.commit !== commit) throw Error('Use the clean checkout of the qualified release');
   return Object.values(proof.runtimes);
 }

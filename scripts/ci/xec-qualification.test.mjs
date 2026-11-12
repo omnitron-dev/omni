@@ -11,6 +11,7 @@ import { tsImport } from 'tsx/esm/api';
 import { githubQualification } from '../../.xec/github-qualification.mjs';
 import { qualifyRelease, verifyReleaseQualification } from '../../.xec/qualification.mjs';
 import { runtimeArtifactDigest } from '../../apps/omnitron/src/shared/runtime-artifact.ts';
+import './version-qualification.test.mjs';
 const { assertReproducedFrameworkArchives: inspectArchives } = await tsImport(
   '../../apps/omnitron/src/release/registry-framework.ts', import.meta.url);
 

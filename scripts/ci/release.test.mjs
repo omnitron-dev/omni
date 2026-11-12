@@ -13,6 +13,7 @@ import { promisify } from 'node:util';
 import { discoverReleasePackages } from '@xec-sh/ops/release';
 import { supersedeDraft } from '../../.xec/supersede-draft.mjs';
 import { assertPipelineSucceeded } from '../lib/pipeline-result.mjs';
+import './release-registry.test.mjs';
 
 const run = promisify(execFile);
 const repo = fileURLToPath(new URL('../../', import.meta.url));
@@ -147,7 +148,7 @@ else if (cmd === 'release' && op === 'view' && fs.readFileSync(state, 'utf8') ==
   await fs.cp(path.join(repo, 'scripts'), path.join(workspace, 'scripts'), { recursive: true });
   await fs.cp(path.join(repo, '.xec'), path.join(workspace, '.xec'), { recursive: true, filter: file => !file.includes('/.tmp') });
   // CI qualification has its own failure/resume suite; this loopback suite exercises registry publication.
-  await fs.writeFile(path.join(workspace, '.xec/qualification.mjs'), 'export async function qualifyRelease() {}\nexport async function verifyReleaseQualification() { return {fixture:true}; }\n');
+  await fs.writeFile(path.join(workspace, '.xec/qualification.mjs'), 'export async function qualifyRelease() {}\nexport async function verifyReleaseQualification() { return {fixture:true}; }\nexport async function verifyQualifiedRevision() { throw Error("This fixture does not qualify a previous runtime"); }\n');
   // The fixture publishes two tiny packages, not the complete Omnitron SDK.
   // Keep both package-consumer validation stages observable in its archive.
   await fs.mkdir(path.join(workspace, 'scripts/ci'), { recursive: true });
@@ -202,7 +203,7 @@ for (const name of ['base', 'client']) writeFileSync('packages/' + name + '/inde
   assert.equal(await git('rev-parse', 'HEAD'), before);
   assert.equal(await git('status', '--porcelain'), '');
   assert.equal(await fs.stat(path.join(workspace, '.release-artifacts')).catch(() => null), null);
-  await assert.rejects(release('--prepare'), error => error.code === 1 &&
+  await assert.rejects(release('--prepare', '--registry', registry), error => error.code === 1 &&
     `${error.stdout}\n${error.stderr}`.includes('dependency-preflight') &&
     `${error.stdout}\n${error.stderr}`.includes(`peerDependencies.${first}: "^0.1.0" must be workspace:*`));
   assert.equal(await fs.stat(buildRecord).catch(() => null), null, 'preflight must stop before the build');
@@ -214,7 +215,7 @@ for (const name of ['base', 'client']) writeFileSync('packages/' + name + '/inde
   await exec('pnpm', ['install', '--lockfile-only', '--offline']);
   await git('add', '--', 'packages/client/package.json', 'pnpm-lock.yaml');
   await git('commit', '-qm', 'Fix internal workspace peer');
-  await release('--prepare');
+  await release('--prepare', '--registry', registry);
   assert.notEqual(await fs.readFile(buildRecord, 'utf8'), workspace, 'the build must run in the clean export');
   const commit = await git('rev-parse', 'HEAD');
   assert.notEqual(commit, before);

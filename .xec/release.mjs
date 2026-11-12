@@ -13,7 +13,9 @@ import {
 import semver from 'semver';
 import policy from './release-policy.mjs';
 import { supersedeDraft } from './supersede-draft.mjs';
-import { qualifyRelease, verifyReleaseQualification } from './qualification.mjs';
+import { qualifyRelease, verifyReleaseQualification, verifyQualifiedRevision } from './qualification.mjs';
+import { assertReleaseVersionAvailable } from './release-registry.js';
+import { prepareVersionQualification } from './version-qualification.js';
 
 const defaultRoot = fileURLToPath(new URL('../', import.meta.url));
 const repository = policy.repository;
@@ -31,6 +33,7 @@ const usage = `xec release [VERSION] [OPERATION]
   --github    Create the GitHub release after confirming every package in npm
 
   --previous COMMIT  Exact previous backend for transition and rollback qualification
+  --from-qualified COMMIT  Reuse qualified code after a metadata-only version change; verify fresh archives
   --push-source      Push the exact source branch for CI before qualification (no tags)
   --supersede DIR    Archive an unsubmitted local draft from its preserved checkout
   --registry URL     Select an HTTPS registry or a loopback test registry
@@ -51,7 +54,7 @@ function publicationError(error) {
 export async function runRelease(args, root = defaultRoot) {
   const { values, positionals } = parseArgs({
     args,
-    options: { registry: { type: 'string' }, previous: { type: 'string' }, supersede: { type: 'string' }, ...Object.fromEntries(['help', 'list', 'list-packages', 'dry-run', 'prepare', 'skip-publish',
+    options: { registry: { type: 'string' }, previous: { type: 'string' }, 'from-qualified': { type: 'string' }, supersede: { type: 'string' }, ...Object.fromEntries(['help', 'list', 'list-packages', 'dry-run', 'prepare', 'skip-publish',
       'finish', 'push', 'publish', 'resume', 'github', 'qualify', 'status', 'push-source'].map(key => [key, { type: 'boolean' }])) },
     allowPositionals: true,
   });
@@ -65,6 +68,10 @@ export async function runRelease(args, root = defaultRoot) {
   const operation = selected[0] ?? 'plan';
   if (values['push-source'] && !['prepare', 'qualify'].includes(operation)) throw Error('--push-source requires --prepare or --qualify');
   if (values.previous && !['prepare', 'qualify'].includes(operation)) throw Error('--previous requires --prepare or --qualify');
+  if (values['from-qualified'] && (!['prepare', 'qualify'].includes(operation) || values.previous || values['push-source']))
+    throw Error('--from-qualified requires --prepare or --qualify, without --previous or --push-source');
+  if (values['from-qualified'] && !/^[a-f0-9]{40}$/.test(values['from-qualified']))
+    throw Error('--from-qualified requires the exact original qualified commit');
   if (values['push-source'] && !values.previous) throw Error('--push-source requires --previous');
   if (operation === 'list') {
     const packages = await discoverReleasePackages(root);
@@ -97,6 +104,10 @@ export async function runRelease(args, root = defaultRoot) {
   try {
     await assertCleanReleaseTree(root);
     const qualify = async () => {
+      if (values['from-qualified']) return prepareVersionQualification(root, version, {
+        baseCommit: values['from-qualified'], prepared: await loadPreparedRelease(root, version),
+        verifyBase: base => verifyQualifiedRevision(root, base),
+      });
       if (values['push-source']) {
         if (await releaseCommand(root, 'git', ['branch', '--show-current']) !== policy.branch) throw Error('Push the reviewed release branch: ' + policy.branch);
         const commit = await releaseCommand(root, 'git', ['rev-parse', 'HEAD']);
@@ -112,6 +123,11 @@ export async function runRelease(args, root = defaultRoot) {
       if (await releaseCommand(root, 'git', ['branch', '--show-current']) !== policy.branch) {
         throw new Error('Prepare from a clean ' + policy.branch + ' branch');
       }
+      // An occupied historical version must fail before a build, version commit
+      // or local release tag. Existing sealed archives use the resume path.
+      const existing = path.join(root, '.release-artifacts', version, plan.commit, 'release.json');
+      const sealed = await readFile(existing, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return null; });
+      if (!sealed) await assertReleaseVersionAvailable(root, plan.packages, version, { registry: values.registry });
       await commitReleaseVersion(root, version);
       const commit = await releaseCommand(root, 'git', ['rev-parse', 'HEAD']);
       const prepared = await prepareReleaseArtifacts(root, version, {
@@ -132,8 +148,8 @@ export async function runRelease(args, root = defaultRoot) {
       const notes = await releaseNotes(root, version, repository);
       await writeFile(path.join(root, '.release-artifacts', version, prepared.commit, 'NOTES.md'), notes);
       await ensureReleaseTag(root, version);
-      if (values.previous) await qualify();
-      console.log(`Prepared ${prepared.artifacts.length} archives. ${values.previous ? "Qualification verified; publish with xec release " + version + " --finish." : "Complete qualification with xec release " + version + " --qualify --previous <commit>."}`);
+      if (values.previous || values['from-qualified']) await qualify();
+      console.log(`Prepared ${prepared.artifacts.length} archives. ${values.previous || values['from-qualified'] ? "Qualification verified; publish with xec release " + version + " --finish." : "Complete qualification with xec release " + version + " --qualify --previous <commit>."}`);
       return;
     }
 

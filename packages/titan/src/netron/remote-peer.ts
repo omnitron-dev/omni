@@ -249,21 +249,7 @@ export class RemotePeer extends AbstractPeer {
    * @param {number} [requestTimeout] - Request timeout in milliseconds (overrides default)
    * @param {DefinitionCacheOptions} [cacheOptions] - Optional cache configuration for definition caching
    */
-  /**
-   * Per-invocation wrapper from the transport server that accepted this peer.
-   *
-   * `TransportOptions.invocationWrapper` was read by the HTTP server only. Every
-   * socket transport — WebSocket, TCP, Unix — dispatches through this class,
-   * and the CALL branch went straight into `stub.call()` with no frame around
-   * it. So an application that establishes its RLS scope in the wrapper (which
-   * is what it is for) got no scope at all on a WebSocket call.
-   *
-   * kysera fails CLOSED without a scope — impossible predicate on SELECT, zero
-   * rows touched on UPDATE/DELETE — so this leaked nothing. It surfaced as a
-   * realtime page that was simply empty, which is why it could last: the wrong
-   * answer looked like no data rather than an error. (Found by omni-4b, who
-   * measured it and left the fix here, in the owning zone.)
-   */
+  /** Optional application scope composed inside Netron's authoritative frame. */
   private invocationWrapper?: (metadata: Map<string, unknown>, fn: () => Promise<unknown>) => Promise<unknown>;
 
   /** Called by the server when it accepts this peer. */
@@ -274,45 +260,32 @@ export class RemotePeer extends AbstractPeer {
   }
 
   /**
-   * Run a service invocation inside the transport's wrapper, if one is set.
-   *
-   * The metadata map mirrors what the HTTP server passes, so a wrapper written
-   * against HTTP works unchanged here: `authContext` is the key consumers
-   * actually read.
+   * Establish the admitted identity for every invocation, with or without an
+   * application wrapper. Preserve the returned promise for stream ordering.
    */
   private withInvocationFrame<T>(
-    serviceName: () => string | undefined,
+    serviceName: string | undefined,
     methodName: string,
     fn: () => Promise<T>,
     auth: AuthContext | undefined,
   ): Promise<T> {
     return runWithInvocationContext({
       peer: this, peerId: this.id, transport: this.transportName,
-      serviceName: serviceName(), methodName, auth,
-    }, () => this.invocationWrapper ? this.wrapInvocation(serviceName, methodName, fn, this.getAuthContext()) : fn());
-  }
-
-  private async wrapInvocation<T>(
-    serviceName: () => string | undefined,
-    methodName: string,
-    fn: () => Promise<T>,
-    auth: AuthContext | undefined,
-  ): Promise<T> {
-    const metadata = new Map<string, unknown>([
-      ['serviceName', serviceName() ?? ''],
-      ['methodName', methodName],
-      ['peerId', this.id],
-    ]);
-    if (auth) {
-      metadata.set('authContext', auth);
-      metadata.set('authenticated', true);
-    } else {
-      metadata.set('authenticated', false);
-    }
-    // Non-null: the only caller checks it first. Read into a local so a
-    // concurrent `setInvocationWrapper(undefined)` cannot null it mid-call.
-    const wrapper = this.invocationWrapper!;
-    return (await wrapper(metadata, fn as () => Promise<unknown>)) as T;
+      serviceName, methodName, auth,
+    }, () => {
+      const wrapper = this.invocationWrapper;
+      if (!wrapper) return fn();
+      // Use the frozen invocation authority, not the connection's next login.
+      const authority = this.getAuthContext();
+      const metadata = new Map<string, unknown>([
+        ['serviceName', serviceName ?? ''],
+        ['methodName', methodName],
+        ['peerId', this.id],
+        ['authenticated', authority !== undefined],
+      ]);
+      if (authority) metadata.set('authContext', authority);
+      return wrapper(metadata, fn) as Promise<T>;
+    });
   }
 
   constructor(
@@ -1071,7 +1044,7 @@ export class RemotePeer extends AbstractPeer {
             // knows or guesses a property name bypasses ACLs entirely on
             // every non-HTTP transport.
             const auth = await this.enforceMethodAccess(stub, name, [value], 'set');
-            await this.withInvocationFrame(() => stub.definition?.meta?.name, name,
+            await this.withInvocationFrame(stub.definition?.meta?.name, name,
               async () => stub.set(name, value), auth);
             await this.sendResponse(packet, undefined);
           } catch (err: unknown) {
@@ -1110,7 +1083,7 @@ export class RemotePeer extends AbstractPeer {
             const auth = await this.enforceMethodAccess(stub, name, [], 'get');
             // SECURITY (T#49): pass `this` so a property getter returning
             // a nested service can be authz-filtered before the leak.
-            await this.sendResponse(packet, await this.withInvocationFrame(() => stub.definition?.meta?.name,
+            await this.sendResponse(packet, await this.withInvocationFrame(stub.definition?.meta?.name,
               name, () => stub.get(name, this), auth));
           } catch (err: unknown) {
             this.logger.error({ err, defId: defIdOrServiceName, name }, 'Failed to get property from remote service');
@@ -1161,7 +1134,7 @@ export class RemotePeer extends AbstractPeer {
             await this.sendResponse(
               packet,
               await this.withInvocationFrame(
-                () => stub.definition?.meta?.name,
+                stub.definition?.meta?.name,
                 method,
                 () => stub.call(method, validatedArgs, this),
                 auth,

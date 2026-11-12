@@ -4298,7 +4298,7 @@ export class ProjectService extends EventEmitter {
               },
               project?.path,
               release?.staticsDir ?? undefined,
-              preservation ? { mode: 'preserve', review: preservation.targets.find(target => target.node === nodeKey)?.infrastructure?.digest ?? undefined }
+              preservation ? { mode: 'preserve', review: preservation.targets.find(preservedTarget => preservedTarget.node === nodeKey)?.infrastructure?.digest ?? undefined }
                 : reconcile ? { mode: 'reconcile' } : undefined,
             );
             if (!infrastructure.ready) {

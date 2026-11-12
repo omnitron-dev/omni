@@ -79,8 +79,8 @@ export function existingContainerMismatch(desired: ResolvedContainer, native: Na
     ? [...desired.entrypoint.slice(1), ...(desired.command ?? [])] : desired.command ?? image['Config'].Cmd ?? null;
   if (!isDeepStrictEqual(config.Entrypoint ?? null, entrypoint) || !isDeepStrictEqual(config.Cmd ?? null, command)) return 'command or entrypoint differs';
   const wantedPorts = sorted(desired.ports.map(p => [p.container + '/tcp', host(p.bindHost), String(p.host)]));
-  const actualPorts = (bindings: Native | undefined) => sorted(Object.entries(bindings ?? {}).flatMap(([port, bindings]) =>
-    (bindings as Native[] | null)?.map(binding => [port, host(binding['HostIp']), binding['HostPort']]) ?? []));
+  const actualPorts = (bindings: Native | undefined) => sorted(Object.entries(bindings ?? {}).flatMap(([port, portBindings]) =>
+    (portBindings as Native[] | null)?.map(binding => [port, host(binding['HostIp']), binding['HostPort']]) ?? []));
   if (!isDeepStrictEqual(wantedPorts, actualPorts(runtime.PortBindings)) ||
       !isDeepStrictEqual(wantedPorts, actualPorts(native['NetworkSettings']?.Ports))) return 'published ports differ';
   if (!Array.isArray(native['Mounts'])) return 'native mounts are unavailable';

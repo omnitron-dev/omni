@@ -48,16 +48,24 @@ describe('Search Dialog & Adapters', () => {
   it('reports an unavailable Pagefind index instead of pretending the query has no matches', async () => {
     const adapter = new PagefindAdapter('/non-existent/pagefind.js');
     await expect(adapter.search('test')).rejects.toThrow('Local search index is unavailable');
+    const search = vi.spyOn(PagefindAdapter.prototype, 'search');
     const root = createRoot(container);
-    await act(async () => {
-      root.render(React.createElement(LumenSearchDialog, {
-        open: true, initialQuery: 'test', pagefindUrl: '/non-existent/pagefind.js',
-      }));
-    });
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 200)); });
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Local search index is unavailable');
-    expect(container.textContent).not.toContain('No results found');
-    await act(async () => { root.unmount(); });
+    try {
+      await act(async () => {
+        root.render(React.createElement(LumenSearchDialog, {
+          open: true, initialQuery: 'test', pagefindUrl: '/non-existent/pagefind.js',
+        }));
+      });
+      await act(async () => {
+        await vi.waitFor(() => expect(search).toHaveBeenCalledWith('test', 10), { timeout: 5000 });
+        await expect(search.mock.results[0]?.value).rejects.toThrow('Local search index is unavailable');
+      });
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain('Local search index is unavailable');
+      expect(container.textContent).not.toContain('No results found');
+    } finally {
+      await act(async () => { root.unmount(); });
+      search.mockRestore();
+    }
   });
 
   it('passes literal search text to the queried service and displays service failures', async () => {

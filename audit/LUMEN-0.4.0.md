@@ -225,10 +225,24 @@ fails and cleans its own resources.
 
 The corrected source checks pass on a clean Linux Node 22.23.4 build: 29 recovery,
 workspace-resolution and migration checks, and all 52 Lumen UI checks. This is
-scoped acceptance, not a replacement for complete exact-commit CI. The offline
-SDK-bootstrap fixture and the intermittent SDK-archive mismatch from that run
-remain under investigation at this checkpoint. Neither is waived because a
-developer machine or one later pair of builds passed.
+scoped acceptance, not a replacement for complete exact-commit CI. A subsequent
+isolated Linux run passes the later CI groups: 76 stack/schema, 20 RPC-role,
+28 telemetry-relay, 474 delivery/Console and 21 Prism checks. These groups
+overlap earlier scoped counts and must not be summed as unique coverage.
+The offline SDK-bootstrap fixture also depended on a warm global pnpm-manager
+cache. It now verifies the exact repository-pinned tool before using pnpm's
+externally managed mode and gives each fixture its own empty cache. Twenty-three
+cases pass in the Linux suite; two subsequent focused checks cover the corrected
+concurrent-write expectation and a new existing manager-only lock case. These
+25 distinct cases preserve absent/stale/manager-only lock states, failed builds
+and registry admission. They do not claim automatic manager installation.
+
+The intermittent SDK-archive mismatch from that run remains under investigation
+at this checkpoint. Two local Linux builds match all 35 archives and 6,804 files,
+including the original first-build digest, but do not explain the different
+second CI digest. Qualification retains its exact equality gate. CI now preserves
+bounded per-file evidence and affected public archives when it fails, instead of
+deleting the only evidence before reporting a manifest mismatch.
 
 The reference website also passes a fresh SDK `08271086` acceptance through the
 ordinary SDK and Lumen commands: 239 pages, 236 preserved original routes, 2,855

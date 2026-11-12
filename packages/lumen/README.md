@@ -86,6 +86,12 @@ Commands resolve the project from the current directory or `--root <directory>`.
 Both development and preview servers bind to `127.0.0.1:4173` by default and
 reject an occupied port.
 
+Development compiler caches live in a private temporary directory outside the
+published generation and are removed when Vite closes. A failed content build
+keeps serving the previous verified output; correcting the source rebuilds it.
+Restarting `lumen dev` verifies and replaces the same output without a manual
+cleanup step.
+
 | Command | Behavior |
 | --- | --- |
 | `lumen dev` | Builds the site, starts Vite, and rebuilds on changes in existing content, public and `src` directories. Restart after configuration changes. |

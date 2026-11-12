@@ -5,7 +5,8 @@ import { compileTypst } from '@omnitron-dev/lumen-ast/typst';
  * Platforms: Vite 8, Rolldown, Pagefind WASM, Typst, MCP.
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, watch, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, watch, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { parseDocument, type LumenNode } from '@omnitron-dev/lumen-ast';
 import { loadLumenConfig } from '../config/loader.js';
@@ -404,22 +405,38 @@ Commands:
       await runLumenCli(['build', '--root', cliOpts.rootDir, ...(cliOpts.outDir ? ['--outDir', cliOpts.outDir] : [])]);
       const config = await loadLumenConfig(cliOpts.rootDir);
       const { createServer } = await import('vite');
+      // Vite's default cache is inside its root. The served generation is
+      // verified publication output and must never contain compiler state.
+      const cacheDir = mkdtempSync(join(tmpdir(), 'lumen-dev-'));
       const server = await createServer({
         configFile: false,
         root: resolve(cliOpts.rootDir, cliOpts.outDir ?? config.outDir),
+        cacheDir,
         publicDir: false,
         appType: 'mpa',
+        plugins: [{
+          name: 'lumen-dev-cache',
+          // Vite awaits this hook after the optimizer and server environments
+          // close, including its own SIGTERM shutdown path.
+          closeServer: () => { rmSync(cacheDir, { recursive: true, force: true }); },
+        }],
         server: { host: cliOpts.host, port: cliOpts.port, strictPort: true },
+      }).catch(error => { rmSync(cacheDir, { recursive: true, force: true }); throw error; });
+      await server.listen().catch(async error => {
+        await server.close();
+        rmSync(cacheDir, { recursive: true, force: true });
+        throw error;
       });
-      await server.listen();
       server.printUrls();
       let pending = false;
       let building = false;
+      let closing = false;
       const rebuild = async () => {
+        if (closing) return;
         pending = true;
         if (building) return;
         building = true;
-        while (pending) {
+        while (pending && !closing) {
           pending = false;
           try {
             await runLumenCli([
@@ -445,9 +462,20 @@ Commands:
             void rebuild();
           })
         );
-      server.httpServer?.once('close', () => {
+      const shutdown = () => {
+        if (closing) return;
+        closing = true;
         for (const watcher of watchers) watcher.close();
-      });
+        process.removeListener('SIGINT', shutdown);
+        process.removeListener('SIGTERM', shutdown);
+        void server.close().catch(error => {
+          console.error(error);
+          process.exitCode = 1;
+        });
+      };
+      process.once('SIGINT', shutdown);
+      process.once('SIGTERM', shutdown);
+      server.httpServer?.once('close', shutdown);
       break;
     }
 

@@ -1800,6 +1800,9 @@ importers:
       '@modelcontextprotocol/client':
         specifier: ^2.4.0
         version: 2.4.0
+      '@omnitron-dev/testing':
+        specifier: workspace:*
+        version: link:../testing
       '@omnitron-dev/titan':
         specifier: workspace:*
         version: link:../titan

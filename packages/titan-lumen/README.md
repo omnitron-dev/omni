@@ -199,7 +199,7 @@ unnecessary; public read access never grants execution permission.
 The 0.4.0 audit is in progress. Do not infer that a test with a PDF header,
 hydration flag or mock request establishes production readiness. The repository's
 `audit/LUMEN-0.4.0.md` records release qualification work. Durable authoring is
-covered by real SQLite transactions, independent connection races, commit failure,
+covered by real SQLite and PostgreSQL transactions, independent connection races, commit failure,
 restart, native RPC and shared document/search/graph tests. The isolated execution engine has
 local negative tests through actual Netron, including memory exhaustion,
 constructor escapes and concurrent admission. Browser and final package checks
@@ -222,6 +222,27 @@ Each service admits at most four concurrent corpus reads, independently of its
 four playground workers. Read admission covers the complete operation through
 authorization and projection; excess calls receive 429 and can retry after the
 current operations finish. An overload is an error, not an empty search result.
+
+## PostgreSQL qualification
+
+The dedicated `test:postgres` target exercises the built package on a real
+PostgreSQL 16 container through TitanDatabase and Kysera. Build the SDK first,
+then set `LUMEN_POSTGRES_DATA_ROOT` to an existing absolute directory reserved
+for disposable test data. On this development Mac, use the mounted AGI workspace.
+The regular unit target excludes this container suite; the explicit PostgreSQL
+target fails if Docker, PostgreSQL or test storage is unavailable.
+
+The suite creates its own Docker network, loopback port and data directory.
+The existing DockerTestManager enforces 1 CPU, 512 MiB of memory and 128 processes
+from container creation; tests inspect the actual Docker configuration. Cleanup
+owns only these resources, and the global orphan reaper is disabled for this run.
+No configured application database is used.
+
+Qualification covers migration and checksum enforcement, races between eight
+independent PostgreSQL connections, rollback when a deferred constraint rejects
+COMMIT, canonical transaction retry after SQLSTATE `40001`, and history/source
+hashes after restarting the isolated PostgreSQL server. PostgreSQL durability
+settings remain enabled throughout the run.
 
 `sourceAccess` and `knowledgeBaseAccess` default to `internal`, independently of
 public Markdown. Set either to `public` only when that entire configured source

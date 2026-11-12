@@ -20,6 +20,7 @@
     "build": "../../scripts/build-package.sh -p ./tsconfig.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:postgres": "vitest run --config vitest.postgres.config.ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {
@@ -35,6 +36,7 @@
     "@omnitron-dev/titan": "workspace:*"
   },
   "devDependencies": {
+    "@omnitron-dev/testing": "workspace:*",
     "better-sqlite3": "^13.0.3",
     "@omnitron-dev/titan": "workspace:*",
     "@types/node": "26.6.6",

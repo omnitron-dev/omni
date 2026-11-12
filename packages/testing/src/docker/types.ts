@@ -95,6 +95,12 @@ export interface ContainerOptions {
   labels?: Record<string, string>;
   /** Volume mounts (format: "host:container" or "volume:container") */
   volumes?: string[];
+  /** Docker enforces these limits from container creation, before the entrypoint starts. */
+  resources?: {
+    memoryBytes?: number;
+    cpus?: number;
+    pidsLimit?: number;
+  };
   /** Networks to connect to */
   networks?: string[];
   /** Health check configuration */

@@ -660,6 +660,13 @@ export class DockerTestManager extends EventEmitter {
    * ```
    */
   async createContainer(options: ContainerOptions): Promise<DockerContainer> {
+    const resources = options.resources;
+    if (resources?.memoryBytes !== undefined && (!Number.isSafeInteger(resources.memoryBytes) || resources.memoryBytes < 6 * 1024 * 1024))
+      throw new RangeError('memoryBytes must be a safe integer of at least 6 MiB');
+    if (resources?.cpus !== undefined && (!Number.isFinite(resources.cpus) || resources.cpus <= 0))
+      throw new RangeError('cpus must be a finite positive number');
+    if (resources?.pidsLimit !== undefined && (!Number.isSafeInteger(resources.pidsLimit) || resources.pidsLimit < 1))
+      throw new RangeError('pidsLimit must be a positive safe integer');
     const id = `test-${randomBytes(8).toString('hex')}`; // 8 bytes for better uniqueness in parallel execution
     const name = options.name || `container-${id}`;
     const host = '127.0.0.1';
@@ -685,6 +692,9 @@ export class DockerTestManager extends EventEmitter {
 
     // Build docker run command
     const dockerArgs: string[] = ['run', '-d', '--name', name];
+    if (resources?.memoryBytes !== undefined) dockerArgs.push('--memory', String(resources.memoryBytes));
+    if (resources?.cpus !== undefined) dockerArgs.push('--cpus', String(resources.cpus));
+    if (resources?.pidsLimit !== undefined) dockerArgs.push('--pids-limit', String(resources.pidsLimit));
 
     // Add ports. The slice is remembered so a collision retry can rewrite just
     // these entries instead of rebuilding the whole command.
